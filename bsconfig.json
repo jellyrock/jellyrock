@@ -44,7 +44,7 @@
       {
         "kind": "design-system",
         "files": ["components/ui/label/colors/**"],
-        "reason": "Themed label colour x size matrix (#106): the full set is the design system, and screens pick variants as they need them."
+        "reason": "Themed label color x size matrix (#106): the full set is the design system, and screens pick variants as they need them."
       },
       {
         "kind": "design-system",

@@ -304,6 +304,23 @@ describe('dead-code — scope resolution', () => {
     ).toEqual(['Overhang.userMenuAction']);
   });
 
+  it("reaches a source/ function from a component only when the component's scope imports it", () => {
+    // SearchTask called its OWN searchMedia, which kept the unimported source/api one alive.
+    expect(
+      dead({
+        'components/MainScene.xml': scene('SearchTask', 'Importer'),
+        'components/SearchTask.xml': component('SearchTask'),
+        'components/SearchTask.bs':
+          'sub init()\n  searchMedia("q")\nend sub\nfunction searchMedia(q)\n  return q\nend function',
+        'components/Importer.xml': component('Importer'),
+        'components/Importer.bs':
+          'import "pkg:/source/api/format.bs"\nsub init()\n  formatQuery("q")\nend sub',
+        'source/api/items.bs': 'function searchMedia(q)\n  return q\nend function',
+        'source/api/format.bs': 'function formatQuery(q)\n  return q\nend function',
+      }),
+    ).toEqual(['searchMedia']);
+  });
+
   it('lets a parent component call a hook its child defines (template method)', () => {
     expect(
       dead({
@@ -399,6 +416,17 @@ describe('dead-code — code the platform or tooling reaches', () => {
   it('never reports vendored code', () => {
     expect(dead({ 'source/roku_modules/lib/lib.brs': 'sub libOnly()\nend sub' })).toEqual([]);
   });
+
+  it("does not count a vendored library's own declaration as a use of a same-named function", () => {
+    // rodash (via sgRouter) declares getMinutes, which kept misc.bs's unused one alive.
+    expect(
+      dead({
+        'source/roku_modules/lib/lib.d.bs':
+          'namespace lib\n  function getMinutes() as integer\n  end function\nend namespace',
+        'source/utils/misc.bs': 'function getMinutes(ticks) as integer\n  return 0\nend function',
+      }),
+    ).toEqual(['getMinutes']);
+  });
 });
 
 describe('dead-code — keeping code on purpose', () => {
@@ -434,6 +462,24 @@ describe('dead-code — keeping code on purpose', () => {
     const keep = diagnosticsByCode(diagnostics, KEEP);
     expect(keep).toHaveLength(1);
     expect(keep[0].message).toMatch(problem);
+  });
+
+  it('honors a keep marker on the declaration line itself (bsc-disable-line)', () => {
+    const diagnostics = run({
+      'source/api.bs':
+        "sub publicApi() ' bsc-disable-line dead-code keep: api — first caller lands later\nend sub",
+    });
+    expect(deadNames(diagnostics)).toEqual([]);
+    expect(diagnosticsByCode(diagnostics, KEEP)).toEqual([]);
+  });
+
+  it('reports a keep marker that is not above a declaration', () => {
+    const diagnostics = run({
+      'source/api.bs':
+        "sub main()\nend sub\n' bsc-disable-next-line dead-code keep: api — drifted away\n\nsub publicApi()\nend sub",
+    });
+    expect(deadNames(diagnostics)).toEqual(['publicApi']);
+    expect(diagnosticsByCode(diagnostics, KEEP)[0].message).toMatch(/not directly above/);
   });
 
   it('reports a keep marker on code that is used as stale', () => {
@@ -478,37 +524,169 @@ describe('dead-code — keeping code on purpose', () => {
     expect(keep).toHaveLength(1);
     expect(keep[0].message).toMatch(/entry 1 .* matches no declaration/);
   });
+
+  it.each([
+    [{ kind: 'design-system', reason: 'no files' }, /lists no files/],
+    [{ kind: 'someday', files: ['source/**'], reason: 'x' }, /not a keep kind/],
+    [{ kind: 'planned', files: ['source/**'], reason: 'later' }, /must cite its issue/],
+  ])('rejects the allowlist entry %j', (entry, problem) => {
+    const diagnostics = run(
+      { 'source/main.bs': 'sub main()\nend sub', 'source/api.bs': 'sub publicApi()\nend sub' },
+      { deadCode: { keep: [entry] } },
+    );
+    expect(deadNames(diagnostics)).toEqual(['publicApi']);
+    const keep = diagnosticsByCode(diagnostics, KEEP);
+    expect(keep).toHaveLength(1);
+    expect(keep[0].message).toMatch(problem);
+  });
 });
 
 describe('dead-code — tests as consumers of interface exposures only', () => {
   let dir;
   afterEach(() => dir && fs.rmSync(dir, { recursive: true, force: true }));
 
-  it('counts a callFunc from a test for an exposure, but not a test calling a source function', () => {
+  const withTests = (specs) => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dead-code-tests-'));
-    fs.writeFileSync(
-      path.join(dir, 'queue.spec.bs'),
-      'sub t()\n  m.q.callFunc("pop")\n  helperOnlyTestsUse()\nend sub',
-    );
-    fs.writeFileSync(
-      path.join(dir, 'bench.spec.js'),
-      "await odc.callFunc({ funcName: 'runCell' });",
-    );
+    for (const [name, body] of Object.entries(specs)) fs.writeFileSync(path.join(dir, name), body);
+    return {
+      deadCode: { exposureConsumers: [path.join(dir, '*.spec.bs'), path.join(dir, '*.spec.js')] },
+    };
+  };
+  const queue = (codebehind) => ({
+    'components/MainScene.xml': scene('Queue'),
+    'components/Queue.xml': component('Queue', {
+      iface:
+        '    <function name="pop" />\n    <function name="runCell" />\n    <function name="peek" />',
+    }),
+    'components/Queue.bs': codebehind,
+    'source/util.bs': 'sub helperOnlyTestsUse()\nend sub',
+  });
+
+  it('counts a test callFunc for an exposure whose function the app runs, but not a test calling a source function', () => {
+    const options = withTests({
+      'queue.spec.bs': 'sub t()\n  m.q.callFunc("pop")\n  helperOnlyTestsUse()\nend sub',
+      'bench.spec.js': "await odc.callFunc({ funcName: 'runCell' });",
+    });
     const names = dead(
-      {
-        'components/MainScene.xml': scene('Queue'),
-        'components/Queue.xml': component('Queue', {
-          iface:
-            '    <function name="pop" />\n    <function name="runCell" />\n    <function name="peek" />',
-        }),
-        'components/Queue.bs': 'sub pop()\nend sub\nsub runCell()\nend sub\nsub peek()\nend sub',
-        'source/util.bs': 'sub helperOnlyTestsUse()\nend sub',
-      },
-      {
-        deadCode: { exposureConsumers: [path.join(dir, '*.spec.bs'), path.join(dir, '*.spec.js')] },
-      },
+      queue(
+        'sub init()\n  pop()\n  runCell()\nend sub\nsub pop()\nend sub\nsub runCell()\nend sub\nsub peek()\nend sub',
+      ),
+      options,
     );
     expect(names).toEqual(['Queue.peek', 'helperOnlyTestsUse', 'peek']);
+  });
+
+  it('reports an exposure only a test calls when the app never runs the function behind it', () => {
+    // QueueManager.pop: a spec's cleanup was its only caller.
+    const options = withTests({ 'queue.spec.bs': 'sub t()\n  m.q.callFunc("pop")\nend sub' });
+    const diagnostics = run(
+      queue(
+        'sub init()\n  runCell()\n  peek()\nend sub\nsub pop()\nend sub\nsub runCell()\nend sub\nsub peek()\nend sub',
+      ),
+      options,
+    );
+    expect(deadNames(diagnostics)).toEqual([
+      'Queue.peek',
+      'Queue.pop',
+      'Queue.runCell',
+      'helperOnlyTestsUse',
+      'pop',
+    ]);
+    const exposure = diagnosticsByCode(diagnostics, CODE).find((d) =>
+      d.message.includes("'Queue.pop'"),
+    );
+    expect(exposure.message).toMatch(/Only a test calls it \(.*queue\.spec\.bs:2\)/);
+  });
+});
+
+describe('dead-code — callFunc reaches only a declared exposure', () => {
+  it('does not let a callFunc reach a same-named function in a component that does not declare it', () => {
+    // JROverhang.resetTime: SceneManager calls overhang.callFunc("resetTime"), but only
+    // Clock declares it, so the overhang's own resetTime is unreachable.
+    const diagnostics = run({
+      'components/MainScene.xml': scene('Clock', 'Overhang'),
+      'components/MainScene.bs': 'sub init()\n  m.top.findNode("o").callFunc("resetTime")\nend sub',
+      'components/Clock.xml': component('Clock', { iface: '    <function name="resetTime" />' }),
+      'components/Clock.bs': 'sub resetTime()\nend sub',
+      'components/Overhang.xml': component('Overhang'),
+      'components/Overhang.bs': 'sub resetTime()\nend sub',
+    });
+    expect(deadNames(diagnostics)).toEqual(['resetTime']);
+    const [finding] = diagnosticsByCode(diagnostics, CODE);
+    expect(finding.message).toMatch(
+      /callFunc\("resetTime"\)` is called \(components\/MainScene\.bs:2\)/,
+    );
+    expect(finding.message).toMatch(/missing declaration is the bug/);
+  });
+
+  it('reaches a source/ function a component exposes, and not one no component exposes', () => {
+    expect(
+      dead({
+        'components/MainScene.xml': scene('Api'),
+        'components/MainScene.bs':
+          'sub init()\n  m.a.callFunc("exposedHelper")\n  m.a.callFunc("hiddenHelper")\nend sub',
+        'components/Api.xml': component('Api', {
+          iface: '    <function name="exposedHelper" />',
+        }).replace(
+          '<interface>',
+          '<script type="text/brightscript" uri="pkg:/source/api.bs" />\n  <interface>',
+        ),
+        'source/api.bs': 'sub exposedHelper()\nend sub\nsub hiddenHelper()\nend sub',
+      }),
+    ).toEqual(['hiddenHelper']);
+  });
+
+  it('does not count a string that merely spells an interface function name', () => {
+    // QueueManager.top was kept alive by vertAlignment = "top".
+    expect(
+      dead({
+        'components/MainScene.xml': scene('Queue'),
+        'components/MainScene.bs': 'sub init()\n  m.top.vertAlignment = "top"\nend sub',
+        'components/Queue.xml': component('Queue', { iface: '    <function name="top" />' }),
+        'components/Queue.bs': 'sub init()\n  top()\nend sub\nsub top()\nend sub',
+      }),
+    ).toEqual(['Queue.top']);
+  });
+});
+
+describe('dead-code — dead XML elements and shared scripts', () => {
+  it("takes a dead field's onChange handler with it, and leaves a live element on the same line alone", () => {
+    // UserData.xml carries two elements on one line; a line-based region would kill both.
+    expect(
+      dead({
+        'components/MainScene.xml': scene('W'),
+        'components/W.xml': component('W', {
+          iface:
+            '    <field id="live" type="string" onChange="onLive" />    <field id="deadF" type="string" onChange="onDead" />',
+        }),
+        'components/W.bs':
+          'sub init()\n  m.top.live = "x"\nend sub\nsub onLive()\nend sub\nsub onDead()\n  helperX()\nend sub',
+        'source/h.bs': 'sub helperX()\nend sub',
+      }),
+    ).toEqual(['W.deadF', 'helperX', 'onDead']);
+  });
+
+  const sharedScript = (...live) => ({
+    'components/MainScene.xml': scene(...live),
+    'components/A.xml': component('A').replace(
+      '<interface>',
+      '<script type="text/brightscript" uri="pkg:/components/shared/helpers.bs" />\n  <interface>',
+    ),
+    'components/B.xml': component('B').replace(
+      '<interface>',
+      '<script type="text/brightscript" uri="pkg:/components/shared/helpers.bs" />\n  <interface>',
+    ),
+    'components/shared/helpers.bs':
+      'import "pkg:/source/util.bs"\nsub init()\n  shared()\nend sub\nsub shared()\n  utilOnlySharedUses()\nend sub',
+    'source/util.bs': 'sub utilOnlySharedUses()\nend sub',
+  });
+
+  it('keeps a script several components include while any of them is live', () => {
+    expect(dead(sharedScript('A'))).toEqual(['B']);
+  });
+
+  it('kills a script several components include once all of them are dead, and reports the components', () => {
+    expect(dead(sharedScript())).toEqual(['A', 'B', 'utilOnlySharedUses']);
   });
 });
 
@@ -538,6 +716,22 @@ describe('dead-code — baseline', () => {
     const stale = diagnosticsByCode(diagnostics, BASELINE);
     expect(stale).toHaveLength(1);
     expect(stale[0].message).toMatch(/removedLongAgo.*no longer exists/);
+  });
+
+  it('reports a baselined entry whose code became used, on the declaration', () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dead-code-baseline-'));
+    const baseline = path.join(dir, 'baseline.json');
+    fs.writeFileSync(baseline, JSON.stringify({ entries: ['function source/util.bs oldDead'] }));
+    const diagnostics = run(
+      {
+        'source/main.bs': 'sub main()\n  oldDead()\nend sub',
+        'source/util.bs': 'sub oldDead()\nend sub',
+      },
+      { deadCode: { baseline } },
+    );
+    const [stale] = diagnosticsByCode(diagnostics, BASELINE);
+    expect(stale.message).toMatch(/'oldDead' is listed in .* but is no longer dead/);
+    expect(stale.location.range.start.line).toBe(0);
   });
 
   it('writes every current finding, keyed without line numbers, when asked to', () => {

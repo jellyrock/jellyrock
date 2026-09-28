@@ -14,8 +14,9 @@
  * an interface function: a test needs the exposure to drive a live component
  * through `callFunc`, so `deadCode.exposureConsumers` (test globs) is read for
  * `callFunc("x")` / `@.x` in BrightScript and for quoted names in JavaScript (the
- * RTA suite passes `funcName: 'x'` to ODC), and those count for interface
- * functions and the codebehind functions behind them — for nothing else.
+ * RTA suite passes `funcName: 'x'` to ODC). Such a call keeps the interface
+ * declaration alive only while the app itself still runs the function behind it;
+ * it never keeps that function, or anything else, alive.
  *
  * WHAT COUNTS AS A CONSUMER
  * -------------------------
@@ -41,17 +42,26 @@
  *     relative reference written inside that namespace — never by its short
  *     name alone. `itemAspectRatio.SQUARE` and the live `rowSlotSize.SQUARE`
  *     share a short name; bare-name matching hid the first behind the second.
- *   - A function in a component codebehind is matched only inside the component
- *     scopes that include its file (the component, its ancestors and
- *     descendants), plus `callFunc` / `@.` from anywhere. Two components can
- *     each define `onHeightChanged`, and one of them can still be dead.
- *   - A `source/` function is shared by every scope that imports it, so it is
- *     matched anywhere.
+ *   - A function in a component codebehind is matched by name only inside the
+ *     component scopes that include its file (the component, its ancestors and
+ *     descendants). Two components can each define `onHeightChanged`, and one of
+ *     them can still be dead.
+ *   - A `source/` function is shared by every scope that imports it, so its name
+ *     is matched anywhere.
+ *   - `callFunc("x")` / `@.x` reaches a function only through an `<interface>`
+ *     `<function name="x">` declared by a component whose scope includes it: the
+ *     interface is how SceneGraph dispatches the call. A same-named function in
+ *     a component that declares no such exposure is not reached.
+ *   - An interface function is reached only by `callFunc` / `@.`. A string that
+ *     merely spells its name (`"top"`, another component's `observeField`
+ *     handler) is not a call.
  *
  * Deadness is TRANSITIVE: a reference that sits inside dead code does not keep
  * its target alive. The analysis iterates to a fixed point, so code reachable
  * only from dead code is reported too (the message names what it was reached
- * from).
+ * from). Dead code here includes a dead field's own XML element (its `onChange`
+ * handler), matched by column so a live element on the same line is unaffected,
+ * and a script several components include once every one of them is dead.
  *
  * NEVER REPORTED
  * --------------
@@ -68,8 +78,8 @@
  *
  * KEEPING CODE ON PURPOSE
  * -----------------------
- * Unused code is kept only as one of four recorded kinds:
- *   design-system  a whole set kept deliberately, e.g. a colour × size matrix
+ * Unused code is kept only as one of five recorded kinds:
+ *   design-system  a whole set kept deliberately, e.g. a color × size matrix
  *   api            built ahead of its first caller
  *   planned        scaffolding for a tracked feature; the reason must cite an
  *                  issue (#123)
@@ -92,17 +102,36 @@
  * --------
  * `deadCode.baseline` names a JSON file of findings awaiting removal. They are
  * not reported; an entry that no longer matches a finding IS (`dead-code-
- * baseline`), so the file can only shrink. Entries are keyed by kind, file and
+ * baseline`), so the file cannot hold a stale entry. Nothing stops an entry
+ * being ADDED — that is how a deliberate deferral is recorded — so an addition
+ * is a review decision, visible in the diff. Entries are keyed by kind, file and
  * qualified name — never by line — so unrelated edits do not churn it.
  * `DEAD_CODE_WRITE_BASELINE=1 npx bsc --noEmit` rewrites it from the current
  * findings; do that only to record findings you are deliberately deferring.
  *
- * KNOWN LIMITS (all fall toward reporting LESS, never more)
- * ---------------------------------------------------------
- * Member access, fields and methods are matched by name program-wide, because a
- * node or object's type is not known statically: an unused method or field
- * whose name another type also uses is not reported. A name assembled at
- * runtime from a variable prefix, or fetched through `m[name]`, cannot be seen.
+ * KNOWN LIMITS
+ * ------------
+ * Reporting LESS (a dead declaration can go unreported):
+ *   - A member access on anything but `m.top` (`node.field`, `obj.method()`) is
+ *     matched by name program-wide, because the node or object's type is not
+ *     known statically. An unused field or method whose name another of our
+ *     components, or a Roku built-in node, also uses is kept alive by it.
+ *   - Reads and writes are not told apart: a field that is only ever written
+ *     counts as used. `npm run dead-code:write-only` lists those candidates for
+ *     review; whether one is dead needs judgment (a `getFields()` loop reads
+ *     every field by no name), so it is a report, not a build error.
+ * Reporting MORE (a live declaration can be reported, which fails the build):
+ *   - A name assembled at runtime from a variable (`setField(name, …)`,
+ *     `m[name]`, `callFunc(name)`) is invisible. A declaration reached only
+ *     that way must be kept with a marker whose reason names the site.
+ *
+ * ACCURACY TOOLING
+ * ----------------
+ * `scripts/dead-code-accuracy.js` replays the rule over the repo's history
+ * (`npm run dead-code:replay`) and checks that every live declaration is
+ * flagged once its references are erased (`npm run dead-code:mutate`). Run both
+ * after changing this file; docs/architecture/build-and-tooling.md#dead-code
+ * records the last result.
  */
 'use strict';
 
@@ -177,6 +206,16 @@ const INJECTED_CALLS = new Set(
 // the stem of a name family.
 const MIN_PREFIX_LENGTH = 3;
 
+const DECLARATION_KEYWORDS = new Set([
+  TokenKind.Function,
+  TokenKind.Sub,
+  TokenKind.Class,
+  TokenKind.Namespace,
+  TokenKind.Enum,
+  TokenKind.Const,
+  TokenKind.Interface,
+]);
+
 const VENDORED = /(^|[\\/])(roku_modules|components[\\/]vendor)([\\/])/;
 const GENERATED_PATHS = new Set(['source/translationkeys.bs']);
 const WORD = /[A-Za-z_][A-Za-z0-9_]*/g;
@@ -204,8 +243,28 @@ function analyzeProgram(program, register, { explain = false } = {}) {
 
   const index = buildReferenceIndex(program, files, brsFiles, xmlFiles);
   index.testCallFunc = indexExposureConsumers(options.exposureConsumers, rootDir);
-  const { decls, markers, fileLevelMarkers } = collectDeclarations(brsFiles, xmlFiles, rootDir);
+  const { decls, markers, fileLevelMarkers, sharedScripts } = collectDeclarations(
+    brsFiles,
+    xmlFiles,
+    rootDir,
+  );
   const scopeFilesOf = componentScopeMembership(program);
+  // By lowercased name: the interface functions that expose it, and the plain
+  // functions that could implement it.
+  const exposures = new Map();
+  const functionsByName = new Map();
+  for (const d of decls) {
+    const into =
+      d.kind === 'interfaceFunction'
+        ? exposures
+        : d.kind === 'function' && !d.ns
+          ? functionsByName
+          : null;
+    if (!into) continue;
+    const k = d.name.toLowerCase();
+    if (!into.has(k)) into.set(k, []);
+    into.get(k).push(d);
+  }
 
   // --- keeps: inline markers + bsconfig allowlist --------------------------------
   const keepEntries = normalizeKeepEntries(options.keep);
@@ -224,7 +283,16 @@ function analyzeProgram(program, register, { explain = false } = {}) {
   }
 
   // --- fixed point -------------------------------------------------------------------
-  const ctx = { index, scopeFilesOf, deadRegions: new Map(), deadFiles: new Map() };
+  const ctx = {
+    index,
+    scopeFilesOf,
+    exposures,
+    functionsByName,
+    sharedScripts,
+    deadRegions: new Map(),
+    deadFiles: new Map(),
+    deadSharedFiles: new Set(),
+  };
   let changed = true;
   while (changed) {
     changed = false;
@@ -243,7 +311,10 @@ function analyzeProgram(program, register, { explain = false } = {}) {
   const baseline = loadBaseline(options.baseline, rootDir);
   const findings = new Map();
   for (const d of decls) {
-    if (!d.dead || d.parentDecl?.dead) continue;
+    // Code inside a dead component, or in a script only dead components include,
+    // is reported through those components.
+    if (!d.dead || d.parentDecl?.dead || ctx.deadSharedFiles.has(d.file.srcPath)) continue;
+    d.finding = true;
     findings.set(baselineKey(d), d);
   }
 
@@ -253,7 +324,7 @@ function analyzeProgram(program, register, { explain = false } = {}) {
   } else {
     for (const [key, d] of findings) {
       if (baseline.entries.has(key)) continue;
-      register({ code: CODE, message: deadMessage(d), location: d.location });
+      register({ code: CODE, message: deadMessage(d, ctx, rootDir), location: d.location });
     }
     reportStaleBaseline(baseline, findings, decls, program, register);
   }
@@ -319,6 +390,26 @@ function lineOf(token) {
   return token?.location?.range?.start?.line ?? token?.range?.start?.line ?? 0;
 }
 
+function colOf(token) {
+  return token?.location?.range?.start?.character ?? token?.range?.start?.character ?? 0;
+}
+
+// 0-based line / column of each offset in `text`.
+function positionMap(text) {
+  const lineStarts = [0];
+  for (let i = 0; i < text.length; i++) if (text[i] === '\n') lineStarts.push(i + 1);
+  return (offset) => {
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (lineStarts[mid] <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return { line: lo, col: offset - lineStarts[lo] };
+  };
+}
+
 function indexBrsFile(file, idx) {
   const tokens = (file.parser?.tokens || []).filter(
     (t) =>
@@ -340,15 +431,21 @@ function indexBrsFile(file, idx) {
     const prev = tokens[i - 1];
     const next = tokens[i + 1];
     const line = lineOf(t);
-    const occ = { file, line };
+    const occ = { file, line, col: colOf(t) };
 
     if (t.kind === TokenKind.StringLiteral || t.kind === TokenKind.TemplateStringQuasi) {
       const value = t.kind === TokenKind.StringLiteral ? t.text.replace(/^"|"$/g, '') : t.text;
       // findNode("x") takes a node ID, which can never name a component.
-      const nodeId =
-        prev?.kind === TokenKind.LeftParen && tokens[i - 2]?.text?.toLowerCase() === 'findnode';
-      if (t.kind === TokenKind.StringLiteral)
+      const calledWith = prev?.kind === TokenKind.LeftParen && tokens[i - 2]?.text?.toLowerCase();
+      const nodeId = calledWith === 'findnode';
+      // callFunc("x", ...) is a call through an interface, not a string naming a
+      // handler, so it is indexed as a call only: otherwise it would reach any
+      // function of that name by the string route and bypass the interface.
+      if (t.kind === TokenKind.StringLiteral && calledWith === 'callfunc') {
+        add(idx.callFunc, value, occ);
+      } else if (t.kind === TokenKind.StringLiteral) {
         add(idx.str, value, nodeId ? { ...occ, nodeId } : occ);
+      }
       if (
         next?.kind === TokenKind.Plus &&
         /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) &&
@@ -356,18 +453,14 @@ function indexBrsFile(file, idx) {
       ) {
         idx.prefixes.push({ prefix: value.toLowerCase(), occ });
       }
-      // callFunc("x", ...)
-      if (
-        prev?.kind === TokenKind.LeftParen &&
-        tokens[i - 2]?.text?.toLowerCase() === 'callfunc' &&
-        t.kind === TokenKind.StringLiteral
-      ) {
-        add(idx.callFunc, value, occ);
-      }
       continue;
     }
 
     if (!IDENT.test(t.text)) continue;
+    // A declaration's own name is not a use. Our declarations are discounted as
+    // `self` anyway, but a vendored library's are not: its `function getString()`
+    // would otherwise keep a same-named function of ours alive.
+    if (DECLARATION_KEYWORDS.has(prev?.kind)) continue;
     const name = t.text.replace(/[$%!#&]$/, '');
 
     if (prev?.kind === TokenKind.Callfunc) {
@@ -437,22 +530,11 @@ function indexXmlFile(file, idx) {
   const text = (file.fileContents || '').replace(/<!--[\s\S]*?-->/g, (c) =>
     c.replace(/[^\n]/g, ' '),
   );
-  const lineStarts = [0];
-  for (let i = 0; i < text.length; i++) if (text[i] === '\n') lineStarts.push(i + 1);
-  const lineAt = (offset) => {
-    let lo = 0;
-    let hi = lineStarts.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (lineStarts[mid] <= offset) lo = mid;
-      else hi = mid - 1;
-    }
-    return lo;
-  };
+  const at = positionMap(text);
   // An element's attributes may span lines, so match whole start tags.
   for (const m of text.matchAll(/<([A-Za-z_][\w.]*)([^<>]*?)\/?>/g)) {
     const tag = m[1].toLowerCase();
-    add(idx.xmlTag, m[1], { file, line: lineAt(m.index) });
+    add(idx.xmlTag, m[1], { file, ...at(m.index + 1) });
     const attrsAt = m.index + 1 + m[1].length;
     for (const a of m[2].matchAll(/([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
       const attr = a[1];
@@ -461,11 +543,13 @@ function indexXmlFile(file, idx) {
       // Declarations: <component name>, <function name>; <field id> and child ids.
       if ((tag === 'component' || tag === 'function') && la === 'name') continue;
       if (NON_REFERENCE_ATTRS.has(la)) continue;
-      const occ = { file, line: lineAt(attrsAt + a.index) };
-      add(idx.xmlAttrName, attr, occ);
-      for (const w of value.match(WORD) || []) add(idx.xmlAttrWord, w, occ);
+      const attrAt = attrsAt + a.index;
+      add(idx.xmlAttrName, attr, { file, ...at(attrAt) });
+      const valueAt = attrAt + a[0].indexOf(value, attr.length);
+      for (const w of value.matchAll(WORD))
+        add(idx.xmlAttrWord, w[0], { file, ...at(valueAt + w.index) });
       if (la === 'extends' || la.endsWith('componentname'))
-        add(idx.xmlComponentRef, value.trim(), occ);
+        add(idx.xmlComponentRef, value.trim(), { file, ...at(valueAt) });
     }
   }
 }
@@ -554,8 +638,9 @@ function indexJsonFile(file, idx) {
   } catch (_e) {
     return;
   }
-  const occ = { file, line: 0 };
-  for (const m of text.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)) add(idx.json, m[1], occ);
+  const at = positionMap(text);
+  for (const m of text.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g))
+    add(idx.json, m[1], { file, ...at(m.index + 1) });
 }
 
 // ======================================================================================
@@ -570,6 +655,11 @@ function packagePath(file) {
     .replace(/\\/g, '/')
     .replace(/^pkg:\//i, '')
     .toLowerCase();
+}
+
+// Every file under `source/` is compiled into the one main scope.
+function isSourceScopeFile(file) {
+  return packagePath(file).startsWith('source/');
 }
 
 function isOwnedFile(file) {
@@ -722,6 +812,7 @@ function collectDeclarations(brsFiles, xmlFiles, rootDir) {
       if (!name) continue;
       const hasAlias = !!field.getAttribute?.('alias');
       const hasValue = !!field.getAttribute?.('value');
+      const hasOnChange = !!field.getAttribute?.('onChange');
       decls.push({
         kind: 'field',
         name,
@@ -733,6 +824,9 @@ function collectDeclarations(brsFiles, xmlFiles, rootDir) {
         line: field.location?.range?.start?.line ?? 0,
         parentDecl: compDecl,
         alwaysLive: FIRMWARE_FIELDS.has(name.toLowerCase()) || (hasAlias && hasValue),
+        // A write to an aliased or self-observed field is a use in its own right.
+        hasAlias,
+        hasOnChange,
       });
     }
     for (const fn of api?.getElementsByTagName?.('function') || []) {
@@ -755,7 +849,7 @@ function collectDeclarations(brsFiles, xmlFiles, rootDir) {
   }
 
   // A component's own files: its XML plus codebehind files no other component
-  // includes. Those die with it; a shared script does not.
+  // includes. Those die with it.
   const scriptOwners = new Map();
   for (const d of decls) {
     if (d.kind !== 'component') continue;
@@ -780,9 +874,15 @@ function collectDeclarations(brsFiles, xmlFiles, rootDir) {
       if (!scriptOwners.get(uri).includes(d)) scriptOwners.get(uri).push(d);
     }
   }
+  // A script several components include dies once all of them are dead
+  // (markDead). A `source/` script never dies with a component: every `source/`
+  // file is also compiled into the main scope.
+  const sharedScripts = new Map();
   for (const [uri, owners] of scriptOwners) {
     const f = byPkg.get(uri);
-    if (f && owners.length === 1) owners[0].ownFiles.add(f.srcPath);
+    if (!f || /^source\//.test(uri)) continue;
+    if (owners.length === 1) owners[0].ownFiles.add(f.srcPath);
+    else sharedScripts.set(f.srcPath, owners);
   }
   // Codebehind functions belong to their component: when it is dead, report the
   // component, not every function in it. A function the firmware calls through the
@@ -802,7 +902,7 @@ function collectDeclarations(brsFiles, xmlFiles, rootDir) {
     }
   }
 
-  return { decls, markers, fileLevelMarkers };
+  return { decls, markers, fileLevelMarkers, sharedScripts };
 }
 
 // --- keep markers ------------------------------------------------------------------------
@@ -910,13 +1010,48 @@ function componentScopeMembership(program) {
 function markDead(d, ctx) {
   if (d.kind === 'component') {
     for (const f of d.ownFiles) ctx.deadFiles.set(f, d);
+    for (const [f, owners] of ctx.sharedScripts) {
+      if (ctx.deadFiles.has(f) || !owners.every((o) => o.dead)) continue;
+      ctx.deadFiles.set(f, d);
+      ctx.deadSharedFiles.add(f);
+    }
     return;
   }
+  const region = deadRegionOf(d);
+  if (!region) return;
+  const key = d.file.srcPath;
+  if (!ctx.deadRegions.has(key)) ctx.deadRegions.set(key, []);
+  ctx.deadRegions.get(key).push({ ...region, decl: d });
+}
+
+// The code a dead declaration takes with it. A function, method or class is whole
+// lines. An interface field or function is its XML element, bounded by COLUMN: an
+// element can share a line with a live one, and a line-based region would take the
+// neighbor's onChange handler down with it.
+function deadRegionOf(d) {
   if (d.kind === 'function' || d.kind === 'method' || d.kind === 'class') {
-    const key = d.file.srcPath;
-    if (!ctx.deadRegions.has(key)) ctx.deadRegions.set(key, []);
-    ctx.deadRegions.get(key).push({ start: d.start, end: d.end, decl: d });
+    return { start: d.start, end: d.end };
   }
+  if (d.kind === 'field' || d.kind === 'interfaceFunction') {
+    const r = d.location?.range;
+    if (!r) return null;
+    return {
+      start: r.start.line,
+      end: r.end.line,
+      startCol: r.start.character,
+      endCol: r.end.character,
+    };
+  }
+  return null;
+}
+
+function inRegion(occ, r) {
+  if (occ.line < r.start || occ.line > r.end) return false;
+  if (r.startCol === undefined) return true;
+  const col = occ.col ?? 0;
+  if (occ.line === r.start && col < r.startCol) return false;
+  if (occ.line === r.end && col >= r.endCol) return false;
+  return true;
 }
 
 /**
@@ -929,16 +1064,13 @@ function discount(occ, d, ctx) {
   const srcPath = occ.file.srcPath;
   if (d.ownFiles?.has(srcPath)) return { self: true };
   if (srcPath === d.file.srcPath) {
-    if (d.kind === 'field' || d.kind === 'interfaceFunction') {
-      if (occ.line === d.line) return { self: true };
-    } else if (occ.line >= (d.start ?? d.line) && occ.line <= (d.end ?? d.line)) {
-      return { self: true };
-    }
+    const own = deadRegionOf(d) || { start: d.line, end: d.line };
+    if (inRegion(occ, own)) return { self: true };
   }
   const deadComp = ctx.deadFiles.get(srcPath);
   if (deadComp) return { dead: deadComp };
   for (const r of ctx.deadRegions.get(srcPath) || []) {
-    if (occ.line >= r.start && occ.line <= r.end) return { dead: r.decl };
+    if (inRegion(occ, r)) return { dead: r.decl };
   }
   return null;
 }
@@ -952,13 +1084,15 @@ function liveness(d, ctx, collect) {
   const lq = d.qname.toLowerCase();
   const underscore = lq.replace(/\./g, '_');
 
-  const anyLive = (list, filter) => {
+  // `via` names the index a reference was found in; explain mode records it so a
+  // report can say which rule kept a declaration alive.
+  const anyLive = (list, filter, via) => {
     for (const occ of list || []) {
       if (filter && !filter(occ)) continue;
       const why = discount(occ, d, ctx);
       if (!why) {
         if (!collect) return true;
-        collect.push(occ);
+        collect.push({ ...occ, via });
         continue;
       }
       if (why.dead) reachedFrom.add(why.dead.qname);
@@ -970,7 +1104,7 @@ function liveness(d, ctx, collect) {
       if (
         name.startsWith(p.prefix) &&
         name !== p.prefix &&
-        anyLive([{ ...p.occ, prefix: p.prefix }])
+        anyLive([{ ...p.occ, prefix: p.prefix }], null, 'prefix')
       )
         return true;
     }
@@ -985,27 +1119,27 @@ function liveness(d, ctx, collect) {
         const q = qualifiedLive(d, ctx, anyLive);
         return result(prefixHit(underscore) || q);
       }
-      if (d.inSource) {
-        return result(
-          anyLive(idx.bare.get(lname)) ||
-            (d.kind === 'function' &&
-              (anyLive(idx.str.get(lname)) ||
-                anyLive(idx.callFunc.get(lname)) ||
-                anyLive(idx.xmlAttrWord.get(lname)))) ||
-            prefixHit(lname),
-        );
-      }
-      // Component codebehind: only the scopes that include this file can reach it
-      // by name; callFunc / @. can reach it from anywhere.
-      const inScope = ctx.scopeFilesOf.get(d.file.srcPath);
-      const scoped = inScope ? (occ) => inScope.has(occ.file.srcPath) : () => true;
+      // A codebehind function is reached by name only from the component scopes that
+      // include its file. A `source/` function is reached by a bare call from
+      // `source/` (one scope), or from a component whose scope imports its file: a
+      // component that does not import it cannot call it, and a same-named function
+      // of its own is what its call reaches (SearchTask's own searchMedia kept the
+      // unreachable source/api one alive). A STRING naming a function is left
+      // unscoped for `source/`: `functionName = "run"` names a function in the
+      // target node's scope, not the writer's.
+      const inScope = d.inSource ? null : ctx.scopeFilesOf.get(d.file.srcPath);
+      const scoped = inScope ? (occ) => inScope.has(occ.file.srcPath) : null;
+      const bareScoped = d.inSource
+        ? (occ) =>
+            isSourceScopeFile(occ.file) ||
+            !!ctx.scopeFilesOf.get(occ.file.srcPath)?.has(d.file.srcPath)
+        : scoped;
       return result(
-        anyLive(idx.bare.get(lname), scoped) ||
+        anyLive(idx.bare.get(lname), bareScoped, 'bare') ||
           (d.kind === 'function' &&
-            (anyLive(idx.str.get(lname), scoped) ||
-              anyLive(idx.xmlAttrWord.get(lname), scoped) ||
-              anyLive(idx.callFunc.get(lname)) ||
-              anyLive(idx.testCallFunc?.get(lname)))) ||
+            (anyLive(idx.str.get(lname), scoped, 'str') ||
+              anyLive(idx.xmlAttrWord.get(lname), scoped, 'xmlAttrWord') ||
+              (isExposed(d, ctx) && anyLive(idx.callFunc.get(lname), null, 'callFunc')))) ||
           prefixHit(lname),
       );
     }
@@ -1014,24 +1148,25 @@ function liveness(d, ctx, collect) {
     case 'enumMember':
       return result(qualifiedLive(d, ctx, anyLive));
     case 'method':
-      return result(anyLive(idx.member.get(lname)) || anyLive(idx.str.get(lname)));
+      return result(
+        anyLive(idx.member.get(lname), null, 'member') || anyLive(idx.str.get(lname), null, 'str'),
+      );
     // A component is named by an EXACT value — a tag, extends= / itemComponentName=,
     // or a whole string (CreateObject, createChild, a route) — never by a word
     // inside a longer string: "Registry section: " is not a use of Section, and
     // findNode("itemGrid") is not a use of ItemGrid.
     // Case-insensitive, although Roku documents component names as matched
-    // case-sensitively (rokudev/dev-doc, scenegraph-compilation.md): ItemDetails.xml
-    // declares <extrasSlider>, and the ExtrasSlider it relies on works in the shipped
-    // app. Until that discrepancy is checked on a device, the conservative match is
-    // the one that cannot fail the build over it. A findNode() argument is a node ID,
-    // never a component name, so it does not count.
+    // case-sensitively (rokudev/dev-doc, scenegraph-compilation.md): the firmware
+    // builds an ExtrasSlider from ItemDetails.xml's <extrasSlider>, which
+    // ItemDetailsExtrasSlider.spec.bs pins on device. A findNode() argument is a node
+    // ID, never a component name, so it does not count.
     case 'component': {
       const notNodeId = (occ) => !occ.nodeId;
       return result(
-        anyLive(idx.xmlTag.get(lname)) ||
-          anyLive(idx.xmlComponentRef.get(lname)) ||
-          anyLive(idx.str.get(lname), notNodeId) ||
-          anyLive(idx.json.get(lname)) ||
+        anyLive(idx.xmlTag.get(lname), null, 'xmlTag') ||
+          anyLive(idx.xmlComponentRef.get(lname), null, 'xmlComponentRef') ||
+          anyLive(idx.str.get(lname), notNodeId, 'str') ||
+          anyLive(idx.json.get(lname), null, 'json') ||
           prefixHit(lname),
       );
     }
@@ -1042,23 +1177,26 @@ function liveness(d, ctx, collect) {
       const sameScope = (occ) =>
         ctx.scopeFilesOf.get(occ.file.srcPath)?.has(d.file.srcPath) ?? true;
       return result(
-        anyLive(idx.mTopMember.get(lname), sameScope) ||
-          anyLive(idx.member.get(lname)) ||
-          anyLive(idx.aaKey.get(lname)) ||
-          anyLive(idx.str.get(lname)) ||
-          anyLive(idx.xmlAttrName.get(lname)) ||
-          anyLive(idx.xmlAttrWord.get(lname)) ||
-          anyLive(idx.json.get(lname)) ||
+        anyLive(idx.mTopMember.get(lname), sameScope, 'mTopMember') ||
+          anyLive(idx.member.get(lname), null, 'member') ||
+          anyLive(idx.aaKey.get(lname), null, 'aaKey') ||
+          anyLive(idx.str.get(lname), null, 'str') ||
+          anyLive(idx.xmlAttrName.get(lname), null, 'xmlAttrName') ||
+          anyLive(idx.xmlAttrWord.get(lname), null, 'xmlAttrWord') ||
+          anyLive(idx.json.get(lname), null, 'json') ||
           prefixHit(lname),
       );
     }
+    // Only a call reaches an interface function: `callFunc("x")` / `@.x`. A test's
+    // call keeps the exposure only while the app still runs a function behind it —
+    // an exposure of code the app never runs is dead with that code.
     case 'interfaceFunction': {
-      const own = ctx.scopeFilesOf.get(d.file.srcPath) || new Set();
-      return result(
-        anyLive(idx.callFunc.get(lname)) ||
-          anyLive(idx.testCallFunc?.get(lname)) ||
-          anyLive(idx.str.get(lname), (occ) => !own.has(occ.file.srcPath)),
-      );
+      if (anyLive(idx.callFunc.get(lname), null, 'callFunc')) return result(true);
+      // No implementation in scope is broken wiring, not dead code: leave it to the
+      // test that calls it to fail.
+      const impls = implementationsOf(d, ctx);
+      const implLive = !impls.length || impls.some((f) => f.kept || f.alwaysLive || !f.dead);
+      return result(implLive && anyLive(idx.testCallFunc?.get(lname), null, 'testCallFunc'));
     }
     default:
       return result(true);
@@ -1082,18 +1220,37 @@ function qualifiedLive(d, ctx, anyLive) {
     const filter = mustBeIn
       ? (occ) => occ.ns === mustBeIn || (occ.ns || '').startsWith(mustBeIn + '.')
       : null;
-    if (anyLive(idx.chain.get(written), filter)) return true;
+    if (anyLive(idx.chain.get(written), filter, 'chain')) return true;
   }
   if (d.kind === 'function') {
     const underscore = lq.replace(/\./g, '_');
     if (
-      anyLive(idx.str.get(underscore)) ||
-      anyLive(idx.str.get(lq)) ||
-      anyLive(idx.callFunc.get(underscore))
+      anyLive(idx.str.get(underscore), null, 'str') ||
+      anyLive(idx.str.get(lq), null, 'str') ||
+      anyLive(idx.callFunc.get(underscore), null, 'callFunc')
     )
       return true;
   }
   return false;
+}
+
+/**
+ * Is `fn` exposed through an `<interface><function>` of a component whose scope
+ * includes its file? Only then can a `callFunc` reach it.
+ */
+function isExposed(fn, ctx) {
+  const scope = ctx.scopeFilesOf.get(fn.file.srcPath);
+  if (!scope) return false;
+  return (ctx.exposures.get(fn.name.toLowerCase()) || []).some((e) => scope.has(e.file.srcPath));
+}
+
+/** The functions that could run when interface function `e` is called. */
+function implementationsOf(e, ctx) {
+  const scope = ctx.scopeFilesOf.get(e.file.srcPath);
+  if (!scope) return [];
+  return (ctx.functionsByName.get(e.name.toLowerCase()) || []).filter((f) =>
+    scope.has(f.file.srcPath),
+  );
 }
 
 // ======================================================================================
@@ -1112,17 +1269,42 @@ const KIND_LABEL = {
   interfaceFunction: 'interface function',
 };
 
-function deadMessage(d) {
+// Where a name is written, for a message: `components/Foo.bs:12`.
+function siteOf(occ, rootDir) {
+  const rel = path.relative(rootDir, occ.file.srcPath || '').replace(/\\/g, '/');
+  return `${rel.startsWith('..') ? occ.file.srcPath : rel}:${occ.line + 1}`;
+}
+
+// The near-misses a reader would otherwise take as proof the code is used: a call
+// that cannot reach it, or a test that is its only caller.
+function deadHint(d, ctx, rootDir) {
+  const lname = d.name.toLowerCase();
+  if (d.kind === 'function' && !d.ns && !isExposed(d, ctx)) {
+    const call = ctx.index.callFunc.get(lname)?.[0];
+    if (call) {
+      return ` \`callFunc("${d.name}")\` is called (${siteOf(call, rootDir)}), but no component whose scope includes this file declares <function name="${d.name}" /> in its <interface>, so that call cannot reach it. If it should, the missing declaration is the bug.`;
+    }
+  }
+  if (d.kind === 'interfaceFunction') {
+    const test = ctx.index.testCallFunc?.get(lname)?.[0];
+    if (test) {
+      return ` Only a test calls it (${siteOf(test, rootDir)}), and the app never runs the function behind it.`;
+    }
+  }
+  return '';
+}
+
+function deadMessage(d, ctx, rootDir) {
   const what = `${KIND_LABEL[d.kind]} '${d.qname}'`;
   const via = d.reachedFrom?.length
     ? ` Its only references are inside code that is itself dead (${d.reachedFrom.slice(0, 3).join(', ')}).`
-    : '';
+    : deadHint(d, ctx, rootDir);
   const marker =
     d.kind === 'component' || d.kind === 'field' || d.kind === 'interfaceFunction'
       ? '<!-- bsc-disable-next-line dead-code keep: <kind> — <reason> -->'
       : "' bsc-disable-next-line dead-code keep: <kind> — <reason>";
   return (
-    `The ${what} has no consumer in the app: nothing calls or references it, and no string, XML attribute or packaged JSON names it.${via} ` +
+    `The ${what} has no consumer in the app: no call, reference, string, XML attribute or packaged JSON that the app runs reaches it.${via} ` +
     `Delete it — or, if it is kept on purpose, say so above it: ${marker} (kinds: ${KEEP_KINDS.join(', ')}; a planned keep cites its issue). ` +
     `See docs/architecture/build-and-tooling.md#dead-code.`
   );
@@ -1149,7 +1331,7 @@ function loadBaseline(relative, rootDir) {
 
 function writeBaseline(file, keys) {
   const body = {
-    '//': 'Dead code awaiting removal (#1072). The dead-code BSC plugin skips these entries and fails on any that is no longer dead, so this file only shrinks. Do not add entries to silence a new finding: delete the code, or mark it kept (see docs/architecture/build-and-tooling.md#dead-code).',
+    '//': 'Dead code awaiting removal (#1072). The dead-code BSC plugin skips these entries and fails on any that is no longer dead, so this file cannot hold a stale entry. An added entry is a deliberate deferral, decided in review: never add one to silence a new finding. Delete the code, or mark it kept (see docs/architecture/build-and-tooling.md#dead-code).',
     entries: [...keys].sort(),
   };
   fs.writeFileSync(file, JSON.stringify(body, null, 2) + '\n');
@@ -1259,4 +1441,5 @@ module.exports.__internals = {
   // Accuracy tooling: the full analysis without registering diagnostics.
   analyze: (program, options) => analyzeProgram(program, () => {}, options),
   baselineKey,
+  componentScopeMembership,
 };

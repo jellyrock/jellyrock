@@ -148,7 +148,10 @@
     "screenshots:capture:dev": "npm run build && DEPLOY=1 node scripts/capture-screenshots.js",
     "screenshots:capture:fast": "node scripts/capture-screenshots.js",
     "screenshots:store": "node scripts/screenshots-store.js",
-    "screenshots:index": "node scripts/screenshots-index.js"
+    "screenshots:index": "node scripts/screenshots-index.js",
+    "dead-code:replay": "node scripts/dead-code-accuracy.js replay",
+    "dead-code:mutate": "node scripts/dead-code-accuracy.js mutate",
+    "dead-code:write-only": "node scripts/dead-code-accuracy.js write-only"
   },
   "repository": {
     "type": "git",
