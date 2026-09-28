@@ -41,7 +41,7 @@ jobs:
           # i.e. the guard could be weakened by a change that never re-runs it. The
           # thread-release check additionally imports its helpers from the
           # auth-binding check, so an edit to either can change what both gate.
-          pattern: '\.(brs|bs|xml)$|^bsconfig.*\.json$|^scripts/(bsc-plugins|lib)/|^\.promise-ratchet-baseline$|^scripts/lint/(promise-ratchet\.cjs|socket-auth-binding-check\.js|socket-thread-release-check\.js|log-manager-init-check\.js)$'
+          pattern: '\.(brs|bs|xml)$|^bsconfig.*\.json$|^scripts/(bsc-plugins|lib)/|^\.promise-ratchet-baseline$|^\.dead-code-baseline\.json$|^scripts/lint/(promise-ratchet\.cjs|socket-auth-binding-check\.js|socket-thread-release-check\.js|log-manager-init-check\.js)$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'
