@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Dependencies
+
+- Update sharp from v0.35.4 to v0.35.5 ([#1066](https://github.com/jellyrock/jellyrock/pull/1066))
+
 ## [2.34.0](https://github.com/jellyrock/jellyrock/compare/v2.33.0...v2.34.0) - 2026-09-27
 
 ### Added
