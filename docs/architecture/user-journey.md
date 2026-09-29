@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-27
+last-reviewed: 2026-09-29
 ---
 
 # The User Journey
@@ -253,12 +253,10 @@ sub launchItem(itemNode)
     queueItem.type = itemNode.parentType
     queueItem.startingPoint = itemNode.playbackPositionTicks
     push(queueItem) : playQueue()
-  else if itemType = "episode" or = "recording" or = "movie" or = "video"
+  else if itemType = "episode" or = "recording" or = "movie" or = "video" or = "musicvideo"
     quickplay.video(itemNode) : playQueue()
   else if itemType = "audio"
     quickplay.audio(itemNode) : playQueue()
-  else if itemType = "musicvideo"
-    quickplay.musicVideo(itemNode) : playQueue()
   else if itemType = "photo"
     quickplay.photo(itemNode)              ' photo viewer; no playQueue
   else if itemType = "tvchannel"
@@ -275,7 +273,7 @@ end sub
 The split is "synchronous types" vs "async types":
 
 - **Synchronous**: a single item has all the info needed to play. Wrap in queue format, push, play.
-- **Async**: requires API expansion (e.g., "play this whole series" → fetch all episodes in order). `launchQuickPlayAction` spawns a `QuickPlayTask` which writes results to its `output` field and finishes the queue setup.
+- **Async**: requires API expansion (e.g., "play this whole series" → fetch all episodes in order). `launchQuickPlayAction` spawns a `QuickPlayTask` which writes results to its `output` field and finishes the queue setup. A read that searches a whole library (Play on a library, folder or collection tile) or every library for one person or artist gets `timeouts.QUICKPLAY_LIBRARY_MS` (60 s) as a grid page does, because a large library on a slow server answers it long after 10 s (#811); the playback start's spinner says it is still loading meanwhile, and Back stops the Task, which gives the request's pool slot back.
 
 ## 8. QueueManager.playQueue() — `components/manager/QueueManager.bs`
 

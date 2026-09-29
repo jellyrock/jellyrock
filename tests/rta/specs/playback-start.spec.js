@@ -11,7 +11,9 @@
  *    shows the screen Play was pressed on again, as Back from the player does, so a Series
  *    "Play all" never begins; and a second press is ignored rather than starting a second
  *    launch;
- *  - a slow start says it is still loading.
+ *  - a slow start says it is still loading;
+ *  - Play on a library the server is slow to list still plays it, and Back while it waits
+ *    frees the request's pool slot (#811).
  *
  * The grid and "Play all" cases were each measured wrong on an Ultra (2026-09-26) before
  * playback-start waits: the spinner stayed up over the grid and Home 35 s after Back, with the
@@ -28,6 +30,7 @@ import { hardRelaunch } from '../lib/driver.js';
 import {
   focusDetailButton,
   navLibraryGrid,
+  openLibraryByType,
   navSeriesDetails,
   navTvLibrary,
   startPlayback,
@@ -53,6 +56,12 @@ const STILL_LOADING = 'Still loading…';
 // honored exactly and the answer still arrives: long enough to press Back into, short enough
 // that a start nobody stopped would reach its player inside the spec.
 const HOLD_MS = 8000;
+// Play on a whole library asks the server for its items at random, which a large library on a
+// slow server takes past an ordinary request's limit (#811). Past that request's wait
+// (timeouts.API_WAIT_MS, 12 s), inside the library query's own.
+const SLOW_LIBRARY_MS = 20000;
+// Far longer than the spec waits for the slot to come back, so only a stop can free it.
+const HELD_LIBRARY_MS = 90000;
 
 let ctx;
 
@@ -240,4 +249,52 @@ it('a slow start says it is still loading, then plays', async () => {
   });
   expect(await getActiveVal('subtype()'), 'the player took the start').toBe('PlayerHostView');
   await stopPlayback();
+});
+
+/** Home -> Play on the Movies library tile: quick play, which lists the library first. */
+function quickPlayMoviesLibrary() {
+  return openLibraryByType('movies', libraryIdFor(ctx.libraries, 'movies'), {
+    key: ecp.Key.Play,
+  });
+}
+
+it('Play on a library the server is slow to list still plays it', async () => {
+  await freshApp();
+  await failRequests([
+    { prefix: 'qp_videoContainerMovies', kind: 'slow', ms: SLOW_LIBRARY_MS, times: 1 },
+  ]);
+  await quickPlayMoviesLibrary();
+  await waitHeld(1, "the library's items are on a pool slot");
+  await waitFor('#loadingStageText.text', (v) => v === STILL_LOADING, {
+    timeout: 12000,
+    interval: 500,
+    label: '"Still loading" under the spinner',
+  });
+  await waitFor('subtype()', (v) => v === 'PlayerHostView', {
+    read: getActiveVal,
+    timeout: SLOW_LIBRARY_MS + 15000,
+    interval: 500,
+    label: 'the library plays once its items land',
+  });
+  await waitFor('#spinner.visible', (v) => v === false, {
+    timeout: 20000,
+    interval: 250,
+    label: 'the spinner gone once the stream loads',
+  });
+  await stopPlayback();
+});
+
+it('Back while Play on a library waits on the server frees its pool slot', async () => {
+  await freshApp();
+  await failRequests([
+    { prefix: 'qp_videoContainerMovies', kind: 'slow', ms: HELD_LIBRARY_MS, times: 1 },
+  ]);
+  await quickPlayMoviesLibrary();
+  await waitHeld(1, "the library's items are on a pool slot");
+  await waitStartHoldsRemote();
+
+  await press(ecp.Key.Back);
+  // Given back long before the hold would have let it go.
+  await waitHeld(0, 'the slot was given back on Back');
+  await expectStartEndedOn('Home');
 });
