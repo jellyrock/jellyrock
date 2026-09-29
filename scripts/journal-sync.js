@@ -12,7 +12,8 @@
 //   3. Bumps frontmatter last-updated: to today.
 //   4. Prunes ## Recently shipped bullets older than the retention window
 //      (RECENTLY_SHIPPED_PRUNE_DAYS) — so the section stays bounded without a
-//      manual /catchup sweep.
+//      manual /catchup sweep — and rebuilds the section's shape (intro on top, no
+//      doubled blank lines).
 //
 // What it skips (exit 0, prints "skipped: <reason>"):
 //   - PRs labeled dependencies / documentation / ci / automated
@@ -280,20 +281,13 @@ export function applyShipEdit(content, { prTitle, today }) {
   const cursorOverlap = cursor ? tokenOverlap(cursor, prTitle) : 0;
   const clearCursor = cursor !== '' && cursorOverlap >= 2;
 
-  // 1. Prepend Recently shipped bullet. Match the heading + the optional
-  //    intro paragraph (e.g. "Newest first...") so the new bullet lands
-  //    BELOW the intro, not above it. Falls back to inserting right after
-  //    the heading when there's no intro.
+  // 1. Prepend Recently shipped bullet straight after the heading. Where the intro
+  //    ("Newest first...") sits does not matter here: step 4 rebuilds the section,
+  //    which puts the intro back on top and the newest bullet directly under it.
   let next = content.replace(
-    /(##\s+Recently shipped[^\n]*\n\n(?:Newest first[^\n]*\n\n)?)/,
-    (_match, header) => `${header}- ${today} — ${prTitle}\n`,
+    /(##\s+Recently shipped[^\n]*\n)/,
+    (_match, header) => `${header}\n- ${today} — ${prTitle}\n`,
   );
-  if (next === content) {
-    next = next.replace(
-      /(##\s+Recently shipped[^\n]*\n)/,
-      (_match, header) => `${header}\n- ${today} — ${prTitle}\n`,
-    );
-  }
 
   // 2. Clear Currently running if appropriate. `[^\n]*\n` after the heading
   //    avoids the `\s*\n` greedy-swallow trap (which would consume the
@@ -313,10 +307,11 @@ export function applyShipEdit(content, { prTitle, today }) {
   // 3. Bump frontmatter last-updated.
   next = next.replace(/^(---\s*\nlast-updated:\s*)\d{4}-\d{2}-\d{2}/, `$1${today}`);
 
-  // 4. Prune Recently shipped bullets older than the retention window. This runs
-  //    in the same post-merge commit that prepends the new bullet, so the section
-  //    stays bounded automatically instead of relying on a manual /catchup sweep.
-  //    The just-prepended bullet is dated `today`, so it is always retained.
+  // 4. Prune Recently shipped bullets older than the retention window, and rebuild the
+  //    section's shape. This runs in the same post-merge commit that prepends the new
+  //    bullet, so the section stays bounded automatically instead of relying on a
+  //    manual /catchup sweep. The just-prepended bullet is dated `today`, so it is
+  //    always retained.
   next = pruneRecentlyShipped(next, today, RECENTLY_SHIPPED_PRUNE_DAYS);
 
   return {
@@ -341,23 +336,35 @@ function isoDaysBefore(isoDate, days) {
 }
 
 // Removes "- YYYY-MM-DD — …" bullets older than `maxAgeDays` from the Recently
-// shipped section ONLY. Scoped by the section regex so dated bullets elsewhere
-// (e.g. Open followups) are untouched. ISO dates compare lexically = chrono, so
-// a string >= is a correct date comparison. Non-bullet lines (heading intro,
-// blanks) and bullets within the window are kept verbatim. Exported for tests.
+// shipped section ONLY, then rebuilds the section's shape (see below). Scoped by the
+// section regex so dated bullets elsewhere (e.g. Open followups) are untouched. ISO
+// dates compare lexically = chrono, so a string >= is a correct date comparison.
+// Bullets within the window and any non-bullet lines are kept. Exported for tests.
+//
+// The rebuilt shape is: heading, blank, the "Newest first" intro wherever it was
+// found, blank, everything else in its existing order, and one blank before the next
+// heading. Only blank lines are dropped. Rebuilding on every run, instead of editing
+// the shape in place, is what keeps a hand edit or an earlier sync from leaving the
+// section wrong for every run after it: keeping blanks verbatim left two in a row
+// once a run of pruned bullets was gone (markdownlint MD012 failed every push), and
+// looking for the intro only directly under the heading sent every later prepend
+// above an intro a hand edit had moved.
 export function pruneRecentlyShipped(content, today, maxAgeDays) {
   const cutoff = isoDaysBefore(today, maxAgeDays);
   return content.replace(
     /(##\s+Recently shipped[^\n]*\n)([\s\S]*?)(?=\n##\s|$)/,
     (_match, header, body) => {
-      const kept = body
+      const lines = body
         .split('\n')
+        .filter((line) => line.trim() !== '')
         .filter((line) => {
           const m = line.match(/^- (\d{4}-\d{2}-\d{2}) /);
           return !m || m[1] >= cutoff;
-        })
-        .join('\n');
-      return header + kept;
+        });
+      const introAt = lines.findIndex((line) => line.startsWith('Newest first'));
+      const intro = introAt === -1 ? [] : lines.splice(introAt, 1);
+      const blocks = [intro.join('\n'), lines.join('\n')].filter(Boolean);
+      return header + (blocks.length ? `\n${blocks.join('\n\n')}\n` : '');
     },
   );
 }
