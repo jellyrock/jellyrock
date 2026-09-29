@@ -24,6 +24,9 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
+
+- 2026-09-29 — chore(journal-sync): Rebuild the Recently shipped section on every sync
 - 2026-09-29 — build(tooling): Fail the build on code the app never uses
 - 2026-09-27 — fix(playback): Back cancels a start, keys wait; slow starts say still loading
 - 2026-09-27 — chore(editor): Load two language-server projects; format JS and JSON with Prettier
@@ -118,7 +121,6 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 - 2026-09-15 — fix: Hide the series Resume button until an episode has been watched
 - 2026-09-15 — ci: Fix server-upgrade handling of `12.0` labels and digest counts
 - 2026-09-15 — fix: Version-gate the `ws://` socket token param for Jellyfin 12.0
-Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
 ## Open followups
 

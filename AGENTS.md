@@ -22,6 +22,14 @@ JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, t
 - **Never cite a GITIGNORED path as a SOURCE in tracked content** — `tasks/`, `docs/projects/`, `.claude/handoffs/`, `.claude/plans/`. A reviewer cannot open them, and a local planning file is archived or deleted the moment its work finishes, so the citation rots by design. Covers commit messages, PR bodies, shared docs **and source comments** — the last is the one that keeps slipping, because a `PLAN.md` feels like a real document while you are working out of it. If a rationale is worth citing from tracked code, promote it to a tracked home first ([`/log decision`](.claude/skills/log/SKILL.md), an ADR, or the relevant doc) and cite that. Naming such a path as a *destination* is fine — a skill telling an agent where to write a handoff is an instruction, not a citation
 - **PR follow-ups land in a journal, not just the PR body** — when a PR explicitly defers something ("out of scope", "follow-up"), add an entry to the right journal (see Capture & state discipline below) and link it from the PR. Otherwise the deferral evaporates the moment the PR merges
 
+## Landing
+
+How far an agent may land a change here without asking. Landing is a push to `main`, a PR merge, a deploy command, or a change on a live host; a throwaway test in a scratch copy is not.
+
+- **Level: `ask`.** Nothing reaches `main` without the operator's yes: never push to `main` directly or force-push (branch protection lets the owner's login bypass it, so this rule is the gate), and never merge a PR without the operator's direct approval, even when every check passed. Opening a PR is fine, through `/pr`.
+- **Always ask:** publishing a release or tag, and anything posted publicly.
+- **When waiting costs something** (a harm due before the operator is likely back): get the fix ready short of landing, try to reach the operator (a push notification, when the session has one), then wait. The report leads with the deadline.
+
 ## Capture & state discipline
 
 The four-pillar journal system (see [`docs/architecture/system-shape.md`](docs/architecture/system-shape.md)) treats live project state as load-bearing. These rules govern how agents interact with the journals:

@@ -307,6 +307,70 @@ last-updated: 2026-05-01
     expect(out).not.toContain('old ship'); // pruned from Recently shipped
     expect(out).toContain('an old but still-open followup'); // untouched elsewhere
   });
+
+  // The section is rebuilt on every prune, so its shape no longer depends on how the
+  // last hand edit or the last sync left it. Each case below is a shape that broke it.
+  describe('section shape', () => {
+    const INTRO = 'Newest first. Prepended by the post-merge journal-sync.';
+
+    // The Recently shipped body, from the heading to the next heading.
+    function shippedSection(content) {
+      return content.match(/## Recently shipped\n([\s\S]*?)(?=\n## )/)[1];
+    }
+
+    function progressWith(sectionBody) {
+      return `---\nlast-updated: 2026-05-01\n---\n\n## Recently shipped\n${sectionBody}\n## Open followups\n\n(none)\n`;
+    }
+
+    it('leaves one blank line where a blank sat between two runs of pruned bullets', () => {
+      // #1073: pruning both runs left the blank on each side of them, so two in a row.
+      const before = progressWith(
+        `\n${INTRO}\n\n- 2026-05-20 — keep\n- 2026-05-01 — old a\n\n- 2026-05-02 — old b\n`,
+      );
+      const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+      expect(out).not.toMatch(/\n{3,}/);
+      expect(shippedSection(out)).toBe(`\n${INTRO}\n\n- 2026-05-20 — keep\n`);
+    });
+
+    it('returns an intro stranded mid-list to the top', () => {
+      const before = progressWith(
+        `\n- 2026-05-20 — first\n- 2026-05-19 — second\n${INTRO}\n\n- 2026-05-18 — third\n`,
+      );
+      const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+      expect(shippedSection(out)).toBe(
+        `\n${INTRO}\n\n- 2026-05-20 — first\n- 2026-05-19 — second\n- 2026-05-18 — third\n`,
+      );
+    });
+
+    it('puts a new bullet under the intro when bullets were hand-inserted above it', () => {
+      // #918: bullets above the intro made every later sync prepend above the intro too.
+      const before = progressWith(
+        `\n- 2026-05-19 — hand added\n\n${INTRO}\n\n- 2026-05-18 — older\n`,
+      );
+      const r = applyShipEdit(before, { prTitle: 'feat: new thing', today: '2026-05-21' });
+      expect(shippedSection(r.content)).toBe(
+        `\n${INTRO}\n\n- 2026-05-21 — feat: new thing\n- 2026-05-19 — hand added\n- 2026-05-18 — older\n`,
+      );
+    });
+
+    it('leaves the section holding nothing but the intro and bullets', () => {
+      const before = progressWith(`\n\n${INTRO}\n\n\n- 2026-05-20 — a\n\n\n- 2026-05-19 — b\n\n`);
+      const r = applyShipEdit(before, { prTitle: 'fix: c', today: '2026-05-21' });
+      const lines = shippedSection(r.content)
+        .split('\n')
+        .filter((l) => l.trim() !== '');
+      expect(lines.filter((l) => l !== INTRO && !l.startsWith('- '))).toEqual([]);
+      expect(lines[0]).toBe(INTRO);
+      expect(r.content).not.toMatch(/\n{3,}/);
+    });
+
+    it('keeps a line that is neither the intro nor a bullet, in order after the intro', () => {
+      // Only extra blank lines may be dropped — never content.
+      const before = progressWith(`\n(a note)\n${INTRO}\n\n- 2026-05-20 — a\n`);
+      const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+      expect(shippedSection(out)).toBe(`\n${INTRO}\n\n(a note)\n- 2026-05-20 — a\n`);
+    });
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
