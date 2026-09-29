@@ -120,7 +120,6 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 - 2026-09-15 — fix: Version-gate the `ws://` socket token param for Jellyfin 12.0
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
-
 ## Open followups
 
 Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/done <slug-or-keyword>`. If the area you need isn't here, add a new `###` subsection.
