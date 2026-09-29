@@ -20,7 +20,7 @@ namespace quickplay
     end if
   end sub
 
-  ' A single video file.
+  ' A single video file — a movie, episode, recording, video or music video.
   sub video(itemNode as object)
     if not isValid(itemNode) or not isValid(itemNode.id) or itemNode.id = "" then return
 
@@ -102,17 +102,6 @@ namespace quickplay
   ' A single audio file.
   sub audio(itemNode as object)
     if not isValid(itemNode) or not isValid(itemNode.id) then return
-
-    ' Create a queue-specific item to avoid modifying the UI node
-    queueItem = nodeHelpers.createQueueItem(itemNode)
-    if not isValid(queueItem) then return
-
-    m.global.queueManager.callFunc("push", queueItem)
-  end sub
-
-  ' A single music video file.
-  sub musicVideo(itemNode as object)
-    if not isValid(itemNode) or not isValidAndNotEmpty(itemNode.id) then return
 
     ' Create a queue-specific item to avoid modifying the UI node
     queueItem = nodeHelpers.createQueueItem(itemNode)
