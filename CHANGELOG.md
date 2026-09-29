@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update rooibos-roku to v6.0.0 ([#1067](https://github.com/jellyrock/jellyrock/pull/1067))
 - Update brighterscript to v1.0.0 ([#1065](https://github.com/jellyrock/jellyrock/pull/1065))
 - Update sharp from v0.35.4 to v0.35.5 ([#1066](https://github.com/jellyrock/jellyrock/pull/1066))
 
