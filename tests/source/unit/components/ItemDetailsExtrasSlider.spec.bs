@@ -1,0 +1,40 @@
+namespace tests
+
+  ' ItemDetails.xml declares its extras slider as <extrasSlider>, while the component is
+  ' named ExtrasSlider. Roku documents component names as matched case-sensitively, yet
+  ' the firmware builds an ExtrasSlider from that tag. This pins that behavior: the live
+  ' screen relies on it, and the dead-code rule matches component names
+  ' case-insensitively because of it (ADR 0047).
+  @suite("ItemDetails - extras slider child")
+  class ItemDetailsExtrasSliderTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+    end function
+
+    protected override function afterEach()
+      m.itemDetails = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the itemExtras child")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds an ExtrasSlider from the lowercase <extrasSlider> child tag")
+    function _()
+      slider = m.itemDetails.findNode("itemExtras")
+      m.assertNotInvalid(slider)
+      if slider <> invalid then m.assertEqual(slider.subtype(), "ExtrasSlider")
+    end function
+
+  end class
+
+end namespace

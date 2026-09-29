@@ -188,3 +188,6 @@ function makeAbandonStatement() {
 }
 
 module.exports = () => new AutoAbandonPromisesPlugin();
+// Calls this plugin injects at transpile time. They never appear in source, so the
+// dead-code plugin reads this list to keep their targets from looking unused.
+module.exports.injectedCalls = [ABANDON_FN];

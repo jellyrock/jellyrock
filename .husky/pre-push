@@ -109,7 +109,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # File-type detection
 # ──────────────────────────────────────────────────────────────────────────
-HAS_VALIDATE_TRIGGERS=$(echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\.json$' && echo 1 || true)
+HAS_VALIDATE_TRIGGERS=$(echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\.json$|^\.dead-code-baseline\.json$' && echo 1 || true)
 HAS_BS=$(echo "$CHANGED" | grep -qE '\.(bs|brs)$' && echo 1 || true)
 HAS_DEV_DOCS=$(echo "$CHANGED" | grep -qE '^docs/dev/.*\.md$' && echo 1 || true)
 TRANSLATION_TRIGGERS=$(echo "$CHANGED" | grep -E '^(source|components)/.*\.bs$|^locale/|^settings/settings\.json$' || true)
