@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-27
+last-updated: 2026-09-29
 ---
 
 # Progress
@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-29 — build(tooling): Fail the build on code the app never uses
 - 2026-09-27 — fix(playback): Back cancels a start, keys wait; slow starts say still loading
 - 2026-09-27 — chore(editor): Load two language-server projects; format JS and JSON with Prettier
 - 2026-09-27 — fix(audio): Transcode Opus in `ogg` music instead of hanging
@@ -117,17 +118,8 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 - 2026-09-15 — fix: Hide the series Resume button until an episode has been watched
 - 2026-09-15 — ci: Fix server-upgrade handling of `12.0` labels and digest counts
 - 2026-09-15 — fix: Version-gate the `ws://` socket token param for Jellyfin 12.0
-- 2026-09-14 — `ExtrasRowList` extras completion is now DERIVED, not marked: one `LoadExtrasRowsTask` run fills a slot per planned row and `contentReady` is set when `extrasRows.isRunResolved` finds none pending, so no handler can forget to mark a chain tail (`markChainComplete` and its four call sites are gone). Closes the "four chain tails are a prose-only invariant" followup.
-- 2026-09-14 — ci(rta): Pin the texture window to device-measured column sets
-- 2026-09-14 — feat: Add subtitle search, download and delete to item details
-- 2026-09-14 — Subtitle panel badges in both columns are now right-aligned and sized from their measured text (`subtitleLayout.badgesThatFit` / `detailWidthBeside`), dropping whole badges that would not fit — replacing the guessed per-section and flat `460px` badge widths. Closes the "subtitle RESULTS column reserves a flat badge width" followup (#750); also fixed "Forced" being clipped in the "On this item" column.
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
-- 2026-09-14 — fix: Register `m.top` observers once so the player cannot silence its host
-- 2026-09-14 — ci: Run device tests without code coverage, and set up test globals once per session
-- 2026-09-13 — fix: Report a force-finished playback as stopped once, not twice
-- 2026-09-13 — fix: Finish playback when a segment skip lands at the end of the media
-- 2026-09-13 — remove: Unused `Section` and `SectionScroller` components
 
 ## Open followups
 
