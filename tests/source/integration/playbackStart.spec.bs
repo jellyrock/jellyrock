@@ -15,6 +15,7 @@ namespace tests
     private host as object
     private launcher as object
     private previousView as object
+    private previousQueue as object
     private addedSceneFields as object
 
     ' beforeEach, not setup: every test opens and ends starts (tests/CLAUDE.md).
@@ -26,6 +27,12 @@ namespace tests
         localUser.settings.playbackCinemaMode = false
       end if
       m.queue = CreateObject("roSGNode", "QueueManager")
+      ' The quickplay helpers push to the app's queue manager, so this test's queue stands in;
+      ' the one it replaces comes back in afterEach.
+      if not m.global.doesExist("queueManager") then m.global.addField("queueManager", "node", false)
+      if not m.global.doesExist("playbackLaunchRequest") then m.global.addField("playbackLaunchRequest", "assocarray", true)
+      m.previousQueue = m.global.queueManager
+      m.global.queueManager = m.queue
 
       if not m.global.doesExist("activeRoutedView") then m.global.addField("activeRoutedView", "node", false)
       if not m.global.doesExist("photoLaunchRequest") then m.global.addField("photoLaunchRequest", "assocarray", true)
@@ -57,6 +64,8 @@ namespace tests
       end for
       m.mountedIn.removeChildren([m.host, m.launcher])
       m.global.activeRoutedView = m.previousView
+      m.global.queueManager = m.previousQueue
+      m.previousQueue = invalid
       m.previousView = invalid
       m.host = invalid
       m.launcher = invalid
@@ -121,12 +130,6 @@ namespace tests
 
     @it("queues it as any single video is queued, resuming where the viewer left off")
     function _()
-      ' The quickplay helpers push to the app's queue manager, so this test's queue stands in.
-      if not m.global.doesExist("queueManager") then m.global.addField("queueManager", "node", false)
-      if not m.global.doesExist("playbackLaunchRequest") then m.global.addField("playbackLaunchRequest", "assocarray", true)
-      previousManager = m.global.queueManager
-      m.global.queueManager = m.queue
-
       musicVideo = CreateObject("roSGNode", "JellyfinBaseItem")
       musicVideo.id = "music-video-1"
       musicVideo.type = "MusicVideo"
@@ -140,7 +143,6 @@ namespace tests
       m.assertEqual(m.global.playbackLaunchRequest.id, "music-video-1")
 
       m.queue.callFunc("failPendingPlaybackStart", "test done")
-      m.global.queueManager = previousManager
     end function
 
   end class

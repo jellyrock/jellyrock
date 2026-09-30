@@ -1,0 +1,50 @@
+import "pkg:/source/utils/misc.bs"
+
+' What a quick play of a whole library plays (QuickPlayTask). Its shuffles take watched
+' episodes only, so a shuffle spoils nothing, and leave out a video the viewer is partway
+' through, which Continue Watching resumes instead.
+'
+' Pure, so the rules are unit-tested without a network seam; QuickPlayTask makes the requests.
+namespace quickplayLibrary
+
+  ' Query (for BuildGetItemsByQueryRequest) for up to 500 of a library's watched episodes, at
+  ' random. The TV library's quick play, and the episode half of a mixed library's.
+  '
+  ' No images: the player loads its own art for the item it plays.
+  '
+  ' @param {string} libraryId
+  ' @return {object}
+  function watchedEpisodesQuery(libraryId as string) as object
+    return {
+      "parentId": libraryId,
+      "includeItemTypes": "Episode",
+      "isPlayed": true,
+      "sortBy": "Random",
+      "recursive": true,
+      "limit": 500,
+      "imageTypeLimit": 0,
+      "enableUserData": false,
+      "EnableTotalRecordCount": false,
+      "enableImages": false
+    }
+  end function
+
+  ' `items` without the videos the viewer is partway through (a playback position above 0).
+  ' The server cannot filter these out itself (its filters have IsResumable, not its opposite),
+  ' so the query must ask for user data. A video with no user data is kept.
+  '
+  ' @param {dynamic} items - raw items (BaseItemDto)
+  ' @return {object} a new array
+  function withoutInProgress(items as dynamic) as object
+    kept = []
+    if not isValid(items) then return kept
+    for each item in items
+      userData = item.UserData
+      if not isValid(userData) or not isValid(userData.PlaybackPositionTicks) or userData.PlaybackPositionTicks = 0
+        kept.push(item)
+      end if
+    end for
+    return kept
+  end function
+
+end namespace

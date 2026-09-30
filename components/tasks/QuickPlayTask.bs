@@ -4,6 +4,7 @@ import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/quickplayLibrary.bs"
 
 ' QuickPlayTask: Orchestrator task for all quickplay, Play All, Instant Mix,
 ' Trailer, and Photo Album flows that require API calls.
@@ -147,6 +148,17 @@ sub executeQuickPlay()
     startsFresh: not launch.resumes
   }
 end sub
+
+' --- Requests ---
+
+' fetchJson for a read that searches a whole library, or every library for one person or
+' artist, which a large library on a slow server answers long after an ordinary request's limit
+' (timeouts.QUICKPLAY_LIBRARY_MS). Back stops this Task, which frees the request's pool slot at
+' once (apiPool.bs, "Stopping a request nobody is waiting for").
+function fetchLibraryJson(req as dynamic, requestId as string) as dynamic
+  if isValid(req) then req.timeoutMs = timeouts.QUICKPLAY_LIBRARY_MS
+  return fetchJson(req, requestId)
+end function
 
 ' --- QuickPlay actions (from quickplay.bs) ---
 
@@ -355,16 +367,6 @@ sub doPhotoAlbum(input as object, items as object)
 end sub
 
 ' --- Folder / CollectionFolder / UserView (complex multi-call) ---
-
-' fetchJson for a read that searches a whole library, or every library for one person or
-' artist, which a large library on a slow server answers long after an ordinary request's
-' limit (timeouts.QUICKPLAY_LIBRARY_MS). Back stops this Task,
-' which frees the request's pool slot at once (apiPool.bs, "Stopping a request nobody is
-' waiting for").
-function fetchLibraryJson(req as dynamic, requestId as string) as dynamic
-  if isValid(req) then req.timeoutMs = timeouts.QUICKPLAY_LIBRARY_MS
-  return fetchJson(req, requestId)
-end function
 
 function doFolder(input as object) as dynamic
   items = []
@@ -590,40 +592,19 @@ sub doVideoContainer(input as object, items as object)
       "limit": 500
     }), "qp_videoContainerMovies")
     if isValid(data) and isValidAndNotEmpty(data.items)
-      for each item in data.Items
-        ' only add videos we're not currently watching
-        if isValid(item.userdata) and isValid(item.userdata.PlaybackPositionTicks)
-          if item.userdata.PlaybackPositionTicks = 0
-            items.push(item)
-          end if
-        else
-          items.push(item)
-        end if
-      end for
+      items.append(quickplayLibrary.withoutInProgress(data.items))
     end if
   else if collectionType = "tvshows"
-    ' Watched episodes only, shuffled across the library, so a shuffle spoils nothing — the
-    ' same rule doMultipleSeries and doSeries' shuffle follow.
-    tvshowsData = fetchLibraryJson(GetApi().BuildGetItemsByQueryRequest({
-      "parentId": input.id,
-      "includeItemTypes": "Episode",
-      "isPlayed": true,
-      "sortBy": "Random",
-      "recursive": true,
-      "limit": 500,
-      "imageTypeLimit": 0,
-      "enableUserData": false,
-      "EnableTotalRecordCount": false,
-      "enableImages": false
-    }), "qp_videoContainerTvShows")
+    tvshowsData = fetchLibraryJson(GetApi().BuildGetItemsByQueryRequest(quickplayLibrary.watchedEpisodesQuery(input.id)), "qp_videoContainerTvShows")
     if isValid(tvshowsData) and isValidAndNotEmpty(tvshowsData.items)
       items.append(tvshowsData.items)
     end if
   end if
 end sub
 
-' Helper: a mixed-content library — its movies and videos, and its watched episodes only (the
-' TV library's rule, doVideoContainer), shuffled together by executeQuickPlay.
+' Helper: a mixed-content library — its movies and videos that are not in progress, and its
+' watched episodes, the Movies and TV libraries' rules (quickplayLibrary), shuffled together by
+' executeQuickPlay.
 sub doMixedLibrary(input as object, items as object)
   videoData = fetchLibraryJson(GetApi().BuildGetItemsByQueryRequest({
     "parentId": input.id,
@@ -632,24 +613,13 @@ sub doMixedLibrary(input as object, items as object)
     "recursive": true,
     "limit": 500,
     "imageTypeLimit": 1,
-    "enableUserData": false,
     "EnableTotalRecordCount": false
   }), "qp_mixedVideos")
   if isValid(videoData) and isValidAndNotEmpty(videoData.items)
-    items.append(videoData.items)
+    items.append(quickplayLibrary.withoutInProgress(videoData.items))
   end if
 
-  episodeData = fetchLibraryJson(GetApi().BuildGetItemsByQueryRequest({
-    "parentId": input.id,
-    "includeItemTypes": "Episode",
-    "isPlayed": true,
-    "sortBy": "Random",
-    "recursive": true,
-    "limit": 500,
-    "imageTypeLimit": 1,
-    "enableUserData": false,
-    "EnableTotalRecordCount": false
-  }), "qp_mixedEpisodes")
+  episodeData = fetchLibraryJson(GetApi().BuildGetItemsByQueryRequest(quickplayLibrary.watchedEpisodesQuery(input.id)), "qp_mixedEpisodes")
   if isValid(episodeData) and isValidAndNotEmpty(episodeData.items)
     items.append(episodeData.items)
   end if
