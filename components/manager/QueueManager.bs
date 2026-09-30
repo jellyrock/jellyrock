@@ -277,14 +277,11 @@ sub launchItem(itemNode as object)
       push(queueItem)
       playQueue()
     end if
-  else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
+  else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video" or itemType = "musicvideo"
     quickplay.video(itemNode)
     playQueue()
   else if itemType = "audio"
     quickplay.audio(itemNode)
-    playQueue()
-  else if itemType = "musicvideo"
-    quickplay.musicVideo(itemNode)
     playQueue()
   else if itemType = "photo"
     quickplay.photo(itemNode)

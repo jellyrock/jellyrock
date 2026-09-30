@@ -32,6 +32,7 @@ related-files:
   - components/tasks/QuickPlayTask.bs
   - components/GetShuffleItemsTask.bs
   - source/utils/quickplay.bs
+  - source/utils/quickplayLibrary.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
   - source/utils/liveTv.bs

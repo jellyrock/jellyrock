@@ -25,6 +25,15 @@ namespace timeouts
   ' nobody is waiting for").
   const GRID_PAGE_MS = 60000
 
+  ' HTTP limit for a quick play request that searches a whole library, or every library for one
+  ' person or artist (QuickPlayTask), set as the request's own `timeoutMs`. Same shape of wait
+  ' as a grid page, and the same 60 s for the same reverse-proxy reason (GRID_PAGE_MS):
+  ' measured 2026-09-29 against Jellyfin 10.11.11 with 8,643 movies and `sqlite_stat1` dropped,
+  ' the random 500-item library query took 17.2-17.4 s, and 34.2-35.0 s with user data, where
+  ' HTTP_MS gave up at 10 s and Play did nothing (#811). Safe only because Back stops the quick
+  ' play's Task, which gives its pool slot up at once.
+  const QUICKPLAY_LIBRARY_MS = 60000
+
   ' Whole-run budget for one apiPipeline run (source/api/apiPipeline.bs).
   ' ONE budget across every request in the run, not a fresh one per request:
   ' a per-request wait lets N slow requests stack into N * API_WAIT_MS, so a

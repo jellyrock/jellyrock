@@ -681,8 +681,14 @@ const formatPressProbe = (p, i) =>
  * The press-into-the-library half of navLibraryByType, WITHOUT the loaded wait.
  * Exists for specs that must interact with a view's intermediate stages (the Genres
  * skeleton window) — everything else should use navLibraryByType, which settles.
+ *
+ * `key` is what is pressed on the tile: OK opens the library, Play quick-plays it.
  */
-export async function openLibraryByType(collectionType, libraryId = null) {
+export async function openLibraryByType(
+  collectionType,
+  libraryId = null,
+  { key = ecp.Key.Ok } = {},
+) {
   await waitHome();
   // Focus must be INSIDE the row list before walking it. `rowItemFocused` RETAINS its
   // last value when the RowList doesn't hold focus, so a walk started while focus is
@@ -753,7 +759,7 @@ export async function openLibraryByType(collectionType, libraryId = null) {
     });
     console.warn(`[nav] ${detail}`);
   }
-  await press(ecp.Key.Ok);
+  await press(key);
   // Read what Home SELECTED, not just what we aimed at. `aimedAt` is carried alongside so
   // the record compares the two without a reader having to reconstruct the intent.
   return {
