@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Quick play slow, TV and mixed libraries, and resume music videos ([#1076](https://github.com/jellyrock/jellyrock/pull/1076))
+
 ### Dependencies
 
 - Update rooibos-roku to v6.0.0 ([#1067](https://github.com/jellyrock/jellyrock/pull/1067))
