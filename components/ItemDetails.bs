@@ -3998,8 +3998,7 @@ sub setItemLogo(item as object)
   else if item.type = "MusicArtist"
     ' Same as Person — primary photo where the logo sits, falling back to the
     ' canonical artist silhouette (account_box) when no primary image. Matches
-    ' what JRRowItem shows for MusicArtist items in the row list and what
-    ' MusicArtistGridItem shows on grid fallback.
+    ' what JRRowItem shows for MusicArtist items in the row list.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       setLogoImage(item.id, "Primary", imgParams)

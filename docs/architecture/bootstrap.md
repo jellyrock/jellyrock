@@ -173,7 +173,6 @@ while true
   else if isNodeEvent(msg, "preLoginIntent")           ' routed pre-login view emitted an intent
   else if isNodeEvent(msg, "closeSidePanel")           ' options panel closed → restore focus
   else if isNodeEvent(msg, "isFontDownloadCompleted")  ' fallback font finished downloading
-  else if isNodeEvent(msg, "playItem")                 ' AlbumTrackList row → play audio
   else if isNodeEvent(msg, "searchValue") / "results"  ' search box → SearchTask
   else if isNodeEvent(msg, "optionSelected")           ' OptionsSlider action → handleMenuAction
   else if isNodeEvent(msg, "userMenuAction")           ' routed Home user dropdown → handleMenuAction
