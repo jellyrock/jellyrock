@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-30 — fix: Quick play slow, TV and mixed libraries, and resume music videos
 - 2026-09-29 — chore(journal-sync): Rebuild the Recently shipped section on every sync
 - 2026-09-29 — build(tooling): Fail the build on code the app never uses
 - 2026-09-27 — fix(playback): Back cancels a start, keys wait; slow starts say still loading
@@ -114,13 +115,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-16 — Widen the API request pool for faster loading (up to 30% on Home)
 - 2026-09-16 — fix: Stabilize `ItemDetails` row focus and prevent buttons from popping in
 - 2026-09-16 — fix: Save and resume progress per version on Jellyfin 12.0
-- 2026-09-15 — chore: Drop the nonexistent `needs-triage` label from the issue templates
-- 2026-09-15 — fix(measure): a record's `screenVariant` now comes from the named `--component`'s samples (`recordMountIdentity` in `scripts/measure-selection.js`, unit-tested), so `measure:compare` can select `--component homeRows` / `itemDetails` series again — closes the "`measure` stamps a record's `screenVariant` from the first sample carrying ANY variant" followup
-- 2026-09-15 — fix: Stop the extras row counter flickering on `ItemDetails`
-- 2026-09-15 — chore: Acknowledge Jellyfin 12.0 after the `/server-upgrade` triage
-- 2026-09-15 — fix: Hide the series Resume button until an episode has been watched
-- 2026-09-15 — ci: Fix server-upgrade handling of `12.0` labels and digest counts
-- 2026-09-15 — fix: Version-gate the `ws://` socket token param for Jellyfin 12.0
 
 ## Open followups
 
