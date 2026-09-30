@@ -54,9 +54,7 @@
         "js-yaml",
         "patch-package",
         "rimraf",
-        "sharp",
-        "undent",
-        "xml2js"
+        "sharp"
       ],
       "addLabels": ["javascript"]
     }

@@ -29,8 +29,6 @@ const { httpGet, isUnstableVersion, isReleaseVersionBase } = require('./signals-
 
 const ARCHIVE_STABLE = 'https://api.jellyfin.org/openapi/stable/';
 const ARCHIVE_UNSTABLE = 'https://api.jellyfin.org/openapi/unstable/';
-// Back-compat alias: the stable dir was the only channel before unstable support.
-const ARCHIVE_BASE = ARCHIVE_STABLE;
 const CACHE_REL = '.api-watch/cache';
 // Specs are large; allow well beyond the signals-fetch 5s default.
 const SPEC_TIMEOUT_MS = 30000;
@@ -112,7 +110,6 @@ async function fetchSpec(
 }
 
 module.exports = {
-  ARCHIVE_BASE,
   ARCHIVE_STABLE,
   ARCHIVE_UNSTABLE,
   CACHE_REL,

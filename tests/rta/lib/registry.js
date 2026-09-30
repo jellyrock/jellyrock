@@ -635,8 +635,3 @@ export function armRestoreOnInterrupt(saved) {
     });
   }
 }
-
-/** Drop the interrupt-restore arming (e.g. after restoring by another path). */
-export function disarmRestoreOnInterrupt() {
-  armed = null;
-}

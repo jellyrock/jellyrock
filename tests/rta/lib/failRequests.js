@@ -25,8 +25,3 @@ import { odc } from 'roku-test-automation';
 export async function failRequests(rules) {
   await odc.setValue({ base: 'global', keyPath: 'rtaFailRequests', value: rules });
 }
-
-/** Let every request through again, at full speed. */
-export async function clearRequestFailures() {
-  await failRequests([]);
-}

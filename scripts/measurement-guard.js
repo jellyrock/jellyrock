@@ -403,25 +403,6 @@ export function checkSeriesConsistency(first, current) {
 }
 
 /**
- * The RAM tier for a `model-number`, re-exported from the device dictionary.
- *
- * This used to be a 38-entry table typed by hand into this file off Roku's spec. It
- * was accurate and it was still incomplete in the way hand-typed tables always are:
- * it keyed on `/^(\\d{4})/`, so every Roku TV and the Projector — sixteen families
- * from 512 MB to 2 GB — resolved to `null` forever. It also could not notice that
- * upstream had added a new supported device.
- *
- * It is now derived from `scripts/data/roku-hardware.json`, generated from Roku's
- * published table and kept current by a weekly sync. See `scripts/roku-devices.js`
- * for the lookup contract and `scripts/generate/roku-hardware.js` for the pipeline.
- *
- * Re-exported here rather than repointing every caller, because this is the name the
- * guard's own API already promised and `readDeviceProvenance` below is its main user.
- */
-export { deviceFor, describeDevice } from './roku-devices.js';
-export { ramTierFor };
-
-/**
  * Tier 2, device half. Model and Roku OS version, read from ECP.
  *
  * RECORDED, never asserted — and that is a decision with a history. The CI/local
