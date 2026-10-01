@@ -35,6 +35,12 @@ const MAX_HLS_PLAYLIST_ENTRIES = 5000
 ' seq_level_idx starts at 0 for level 2.0).
 const NO_VIDEO_LEVEL = -1
 
+' Most channels DTS is played at without the server converting it: the DTS core's 5.1.
+' Roku's media spec documents DTS passthrough and no DTS-HD or DTS:X, which is all that
+' carries more. Shared by the device profile (getActualCodecSupport) and the mid-play
+' track switch (isStreamDirectPlayable in streamSelection.bs), so both draw one line.
+const DTS_MAX_DIRECT_PLAY_CHANNELS = 6
+
 ' Translate Jellyfin codec names to Roku API codec names where they differ.
 ' Covers both audio and video codecs.
 '   "h264"      → "mpeg4 avc" (Jellyfin uses "h264"; Roku API uses "mpeg4 avc" with a space)
@@ -157,6 +163,36 @@ function getDeviceProfileV2(globalDevice as object) as object
   }
 end function
 
+' AAC profiles Roku does not play, which the device profile refuses for every aac
+' codec profile and the mid-play track switch (isStreamDirectPlayable) refuses too.
+function getUnsupportedAacProfiles() as object
+  return ["Main", "HE-AAC"]
+end function
+
+' The AudioProfile conditions refusing getUnsupportedAacProfiles(), followed by
+' channelCondition, in the order the aac codec profiles have always carried them.
+function aacProfileConditions(channelCondition as object) as object
+  conditions = []
+  for each profile in getUnsupportedAacProfiles()
+    conditions.push({
+      "Condition": "NotEquals",
+      "Property": "AudioProfile",
+      "Value": profile,
+      "IsRequired": true
+    })
+  end for
+  conditions.push(channelCondition)
+  return conditions
+end function
+
+' Codecs whose multichannel audio Roku decodes on the device rather than passing it
+' through. The "Decode Multichannel Audio" setting caps these at 2ch when it is off (see
+' getCodecProfiles); the mid-play track switch (isStreamDirectPlayable) honors the same
+' cap, so both read the list here.
+function getStereoOutputCodecs() as object
+  return ["aac", "flac", "alac", "pcm", "lpcm", "wav", "opus", "vorbis"]
+end function
+
 ' Test if device can decode a specific codec at a given channel count
 ' This is a public wrapper for getActualCodecSupport that can be called from other files
 ' Returns true if the Roku can decode this codec at this channel count
@@ -189,6 +225,13 @@ function getActualCodecSupport(codec as string, channelCount as integer, di as o
 
   ' For multichannel surround codecs (>2ch), prioritize PassThru check
   if channelCount > 2 and arrayHasValue(surroundOutputCodecs, rokuCodec)
+    ' DTS as Roku documents it. Its media spec lists DTS passthrough and no DTS-HD or
+    ' DTS:X, and the DTS core carries at most 5.1; more channels exist only in the
+    ' DTS-HD extension. The API still answers yes at 8ch on a DTS-HD soundbar, and on
+    ' a Roku Ultra `4850X` a DTS-HD MA + DTS:X 7.1 track then failed to start (error
+    ' -3) while DTS and DTS-HD MA 5.1 played. Above 5.1 the server converts instead.
+    if rokuCodec = "dts" and channelCount > DTS_MAX_DIRECT_PLAY_CHANNELS then return false
+
     ' First: Check if receiver supports this via PassThru
     if di.CanDecodeAudio({ Codec: rokuCodec, ChCnt: channelCount, PassThru: 1 }).Result
       return true ' Receiver connected and supports this channel count!
@@ -362,10 +405,13 @@ function GetDirectPlayProfiles() as object
     for each audioCodec in audioCodecs
       rokuCodec = jellyfinToRokuCodecName(audioCodec)
       if rokuCodec = "mat"
-        ' mat does not accept the Container parameter. TrueHD is only valid in mkv
-        ' and ts, and ts is deliberately absent from supportedContainers above — so
-        ' mkv is the whole of it here, and testing for "ts" only looked like cover.
-        if container = "mkv" and di.CanDecodeAudio({ Codec: rokuCodec }).Result
+        ' TrueHD stays out of the video rows for the same reason it stays out of the
+        ' audio rows, and canDecodeAudioInContainer() owns that rule for both. Roku
+        ' answers yes to mat bare (and with PassThru) when the soundbar advertises
+        ' TrueHD, yet direct play never starts: buffering with audioFormat=mat, then
+        ' a failed playback. Roku's media spec lists no TrueHD at all. Left out, the
+        ' server keeps the video and converts the audio to a surround codec.
+        if canDecodeAudioInContainer(di, audioCodec, container)
           supportedContainers[container]["audio"].push(audioCodec)
         end if
       else if rokuCodec = "dtshd"
@@ -535,8 +581,9 @@ function canDecodeAudioInContainer(di as object, jellyfinCodec as string, rokuCo
   ' true bare and false for mkv / mp4 / ts alike.
   '
   ' DO NOT "FIX" THIS BY FALLING BACK TO THE BARE PROBE. That reads as the obvious
-  ' repair — the video mkv row does exactly that, so the audio mkv row looks like it
-  ' is under-claiming truehd by comparison — and it ships a HANG. Measured on that
+  ' repair — the bare probe says yes on a TrueHD soundbar, so every row looks like
+  ' it is under-claiming truehd — and it ships a HANG. The video rows in
+  ' GetDirectPlayProfiles() call this too, so the rule covers them. Measured on that
   ' same Ultra: a 6ch TrueHD stream muxed into .mka (Jellyfin reports it as
   ' container "mkv", codec "truehd") reaches state=buffering with audioFormat=mat and
   ' errorCode 0, and NEVER reaches playing — still buffering after 45 s, under
@@ -751,8 +798,8 @@ end function
 '
 ' Ordering rules (leftmost is the server's first-choice transcode target):
 '   1. AAC (universal Roku decode, in both ts and mp4 server target sets)
-'   2. User's preferredCodec if set, device-passthru-supported, and server-target
-'   3. Other surround codecs in priority order (eac3 > ac3 > dts > truehd), each
+'   2. User's preferredCodec if set, offerable, device-passthru-supported, and server-target
+'   3. Other surround codecs in priority order (eac3 > ac3), each
 '      gated by device passthru AND server-target for this container
 '   4. Stereo fallback codecs the device decodes (mp3 > flac > alac > opus), each
 '      gated by server-target for this container
@@ -767,7 +814,15 @@ function buildVideoTranscodingAudioCodecsForContainer(container as string, allSu
   serverTargets = getHlsTranscodeTargetsForContainer(container)
   if serverTargets.count() = 0 then return []
 
-  surroundPriority = ["eac3", "ac3", "dts", "truehd"]
+  ' dts and truehd are never offered, though the server's fMP4 target set includes
+  ' both. A source codec on this list is COPIED rather than converted, and on a Roku
+  ' Ultra `4850X` both failed copied into fMP4 HLS: DTS played SILENT (a transcode
+  ' forced by bitrate, and a Dolby Vision remux) while the same soundbar plays direct
+  ' DTS with sound; TrueHD failed to start, as it does in direct play (see
+  ' canDecodeAudioInContainer). Nor can the server ENCODE dts (see
+  ' resolveMultichannelSurroundTarget in items.bs). Left off, either source is
+  ' converted to the first surround codec here instead.
+  surroundPriority = ["eac3", "ac3"]
   audioCodecList = []
 
   ' 1. AAC always first
@@ -775,7 +830,7 @@ function buildVideoTranscodingAudioCodecsForContainer(container as string, allSu
 
   ' 2. User's preferred surround codec, if both device-supported and server-supported
   if isValid(preferredCodec) and preferredCodec <> "" and preferredCodec <> "auto"
-    if arrayHasValue(allSurroundCodecs, preferredCodec) and arrayHasValue(serverTargets, preferredCodec)
+    if arrayHasValue(surroundPriority, preferredCodec) and arrayHasValue(allSurroundCodecs, preferredCodec) and arrayHasValue(serverTargets, preferredCodec)
       audioCodecList.push(preferredCodec)
     end if
   end if
@@ -845,7 +900,7 @@ function getCodecProfiles() as object
   '
   ' Note: this list is intentionally distinct from `stereoOnlyCodecs` in items.bs; that list
   ' represents server transcode-target capability (different concept), so the contents differ.
-  stereoOutputCodecs = ["aac", "flac", "alac", "pcm", "lpcm", "wav", "opus", "vorbis"]
+  stereoOutputCodecs = getStereoOutputCodecs()
 
   ' ========================================
   ' AUDIO CODEC PROFILES
@@ -867,26 +922,12 @@ function getCodecProfiles() as object
           codecProfiles.push({
             "Type": codecType,
             "Codec": audioCodec,
-            "Conditions": [
-              {
-                "Condition": "NotEquals",
-                "Property": "AudioProfile",
-                "Value": "Main",
-                "IsRequired": true
-              },
-              {
-                "Condition": "NotEquals",
-                "Property": "AudioProfile",
-                "Value": "HE-AAC",
-                "IsRequired": true
-              },
-              {
-                "Condition": "LessThanEqual",
-                "Property": "AudioChannels",
-                "Value": "2",
-                "IsRequired": true
-              }
-            ]
+            "Conditions": aacProfileConditions({
+              "Condition": "LessThanEqual",
+              "Property": "AudioChannels",
+              "Value": "2",
+              "IsRequired": true
+            })
           })
         else
           ' All other stereo-output codecs: just limit channels
@@ -915,26 +956,12 @@ function getCodecProfiles() as object
               codecProfiles.push({
                 "Type": codecType,
                 "Codec": audioCodec,
-                "Conditions": [
-                  {
-                    "Condition": "NotEquals",
-                    "Property": "AudioProfile",
-                    "Value": "Main",
-                    "IsRequired": true
-                  },
-                  {
-                    "Condition": "NotEquals",
-                    "Property": "AudioProfile",
-                    "Value": "HE-AAC",
-                    "IsRequired": true
-                  },
-                  {
-                    "Condition": "LessThanEqual",
-                    "Property": "AudioChannels",
-                    "Value": audioChannel.ToStr(),
-                    "IsRequired": true
-                  }
-                ]
+                "Conditions": aacProfileConditions({
+                  "Condition": "LessThanEqual",
+                  "Property": "AudioChannels",
+                  "Value": audioChannel.ToStr(),
+                  "IsRequired": true
+                })
               })
             else
               codecProfiles.push({

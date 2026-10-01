@@ -85,6 +85,21 @@ namespace tests
       m.assertTrue(result, "Should return true when PassThru is supported")
     end function
 
+    @it("returns false for dts above 5.1 even when PassThru says yes")
+    function _()
+      ' Roku documents DTS (whose core carries at most 5.1), not DTS-HD or DTS:X. A Roku
+      ' Ultra `4850X` answers yes to dts 8ch PassThru on a DTS-HD soundbar, and a
+      ' DTS-HD MA + DTS:X 7.1 track then failed to start (error -3).
+      mockDi = {
+        CanDecodeAudio: function(_params as object) as object
+          return { Result: true }
+        end function
+      }
+
+      m.assertFalse(getActualCodecSupport("dts", 8, mockDi), "dts 8ch must not be advertised — the server converts it instead")
+      m.assertTrue(getActualCodecSupport("dts", 6, mockDi), "dts 5.1 is documented and played, so it stays")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getActualCodecSupport() - Surround Codecs Native Decode")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

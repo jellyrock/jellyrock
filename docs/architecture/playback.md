@@ -45,7 +45,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-26
+last-reviewed: 2026-10-01
 ---
 
 # Video & Audio Playback
@@ -964,7 +964,8 @@ Before `VideoPlayerView` starts the `Video` node, it needs a URL. The decision t
 Multichannel audio handling lives in `source/api/items.bs` and `source/utils/deviceCapabilities.bs`:
 
 - **Direct-play multichannel by default** on surround-capable hardware — the device's `MaxAudioChannels` (from its `TranscodingProfiles`) gates whether 5.1+ tracks are direct-played.
-- **Surround codec preservation on transcode** — when a multichannel source can't direct-play, the transcoder is steered toward surround-capable codecs (`eac3`/`ac3`/`dts`) over downmixing to AAC stereo. The `surroundCodecs` list in `items.bs` is intentionally distinct from `stereoOutputCodecs` in `deviceCapabilities.bs`; the former is a pick-from-this-list hint to the server, the latter is an output capability.
+- **Surround codec preservation on transcode** — when a multichannel source can't direct-play, the transcoder is steered toward surround-capable codecs (`eac3`/`ac3`) over downmixing to AAC stereo. The `surroundCodecs` list in `items.bs` is intentionally distinct from `stereoOutputCodecs` in `deviceCapabilities.bs`; the former is a pick-from-this-list hint to the server, the latter is an output capability.
+- **Only what Roku documents is direct-played, and `dts` / `truehd` are never transcode targets.** Roku's `CanDecodeAudio` and the soundbar's EDID can both say yes to a format the player then fails on, so the profile takes what Roku's media spec lists AND the device reports. TrueHD (absent from the spec) is never direct-played; DTS (listed as passthrough, its core at most 5.1) is direct-played up to 6 channels (`DTS_MAX_DIRECT_PLAY_CHANNELS`). The mid-play track switch asks the profile's own question (`isStreamDirectPlayable` answers from `getActualCodecSupport` plus the same refusals, the Decode Multichannel Audio cap and the AAC profile rule), so a switch goes native only where the server would have direct-played the track, and otherwise reloads. Neither is offered as a transcode target, because the server COPIES a source codec it finds on that list: on a Roku Ultra `4850X`, DTS copied into `mp4`-segment HLS played silent and TrueHD failed to start (issues #821, #892), so the server converts both to `eac3`/`ac3` instead.
 
 Special case: **Dolby Vision (DoVi)**. JellyRock has dedicated DoVi handling because `Jellyfin`'s transcoder can sometimes produce HLS segments that overflow Roku's video buffer:
 
