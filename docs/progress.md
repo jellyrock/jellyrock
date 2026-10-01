@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-01 — fix: Silent DTS, failing TrueHD over passthrough, and track switching
 - 2026-09-30 — fix: Quick play slow, TV and mixed libraries, and resume music videos
 - 2026-09-29 — chore(journal-sync): Rebuild the Recently shipped section on every sync
 - 2026-09-29 — build(tooling): Fail the build on code the app never uses
@@ -108,13 +109,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-17 — chore: Ask before an agent creates a git worktree
 - 2026-09-17 — chore: Charge the `apiPipeline` budget only while waiting on the server
 - 2026-09-17 — fix: Match the selected version ignoring case in `ItemDetails`, and drop the dead `MaxVideoDecodeResolution`
-- 2026-09-16 — `ItemDetails.findSelectedSource` now matches the selected version ignoring case through `mediaSourceIndexForId`, as playback start does (closes the #943 follow-up).
-- 2026-09-16 — Removed `LoadVideoContentTask`'s never-applied `video.MaxVideoDecodeResolution` (closes the #943 follow-up): applying it to the player changed neither the texture budget nor channel memory on a Roku Stick `3600X`, a Streaming Stick 4K or a Roku Ultra.
-- 2026-09-16 — Dropped the idle-freeze followup (the app stopped rendering after about an hour idle on User Select, `.178`, 2026-09-15): seen once and never reproduced, so judged a one-off rather than a defect to chase.
-- 2026-09-16 — fix: Read the version being played when starting playback
-- 2026-09-16 — Widen the API request pool for faster loading (up to 30% on Home)
-- 2026-09-16 — fix: Stabilize `ItemDetails` row focus and prevent buttons from popping in
-- 2026-09-16 — fix: Save and resume progress per version on Jellyfin 12.0
 
 ## Open followups
 
