@@ -226,6 +226,32 @@ namespace tests
       end if
     end function
 
+    @it("keeps truehd out of every video row, even where Roku answers yes to mat")
+    function _()
+      ' Regression guard on the REAL builder. The video mkv row used to add truehd off
+      ' a bare CanDecodeAudio({ Codec: "mat" }), which is true on a Roku Ultra `4850X`
+      ' with a TrueHD soundbar — and a movie direct-played that way buffers with
+      ' audioFormat=mat and then fails. Only a device whose bare mat probe is true can
+      ' fail this; elsewhere it passes trivially.
+      for each profile in GetDirectPlayProfiles()
+        if profile.Type = "Video" and isValid(profile.AudioCodec)
+          m.assertFalse(arrayHasValue(profile.AudioCodec.split(","), "truehd"), "truehd must not be direct-played in " + profile.Container + " — the server must convert its audio")
+        end if
+      end for
+    end function
+
+    @it("keeps dtshd out of every row, even where Roku answers yes to it")
+    function _()
+      ' Regression guard on the REAL builder. Every row used to add dtshd off a PassThru
+      ' yes, which a Roku Ultra `4850X` gives on a DTS-HD soundbar, though Roku's media
+      ' spec lists no DTS-HD. Only a device that says yes can fail this.
+      for each profile in GetDirectPlayProfiles()
+        if isValid(profile.AudioCodec)
+          m.assertFalse(arrayHasValue(profile.AudioCodec.split(","), "dtshd"), "dtshd must not be direct-played in " + profile.Container)
+        end if
+      end for
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("canDecodeAudioInContainer()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -274,8 +300,8 @@ namespace tests
       ' BE "mat" — so that false is a rejected question, not a real "no".
       '
       ' And truehd must stay OUT of the container rows regardless. Falling back to the
-      ' bare probe here is the obvious-looking repair (the video mkv row does exactly
-      ' that, so the audio row looks like it under-claims truehd) and it ships a HANG:
+      ' bare probe here is the obvious-looking repair (the bare probe says yes on a
+      ' TrueHD soundbar, so the rows look like they under-claim it) and it ships a HANG:
       ' measured on a Roku Ultra `4850X` with a TrueHD-capable soundbar, a 6ch TrueHD
       ' stream in .mka reaches buffering with audioFormat=mat and never reaches
       ' playing — 45 s, under streamFormat mkv / mka / unset alike — while a

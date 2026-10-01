@@ -635,9 +635,9 @@ end sub
 '       InferAudioCodec falls through to the container name ("m3u8"), ffmpeg gets
 '       `-codec:a:0 m3u8` and exits 8. Happens when passthrough is detected only via codecs
 '       not in surroundPriority (truehd/dtshd-only) so no surround codec is in the list.
-'     - On-device-decode leak: a list like "truehd,opus" (truehd un-encodeable for a non-truehd
-'       source; opus on-device-decode only) resolves server-side to opus, silently abandoning
-'       the user's surround/passthrough intent for a decoded stereo-ish path.
+'     - On-device-decode leak: a list with no surround codec but an on-device-decode one like
+'       opus resolves server-side to opus, silently abandoning the user's surround/passthrough
+'       intent for a decoded stereo-ish path.
 '   Fix: prepend the user's preferred multichannel codec (playbackPreferredMultichannelCodec),
 '   clamped to a reliably-encodeable HLS surround target — eac3 or ac3 (dts is excluded: the
 '   server emits no audio stream for a dts transcode target). This is a no-op for healthy

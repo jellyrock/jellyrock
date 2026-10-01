@@ -57,7 +57,6 @@
     "function source/api/userAuth.bs AvailableUsers",
     "function source/libraryViewFactory.bs CreateLibraryView",
     "function source/showScenes.bs SendPerformanceBeacon",
-    "function source/utils/deviceCapabilities.bs canDeviceDecodeCodec",
     "function source/utils/displaySettings.bs deleteLibraryDisplaySettings",
     "function source/utils/displaySettings.bs getLibraryDisplaySettingsBatch",
     "function source/utils/itemImageUrl.bs getItemParentBackdropUrl",

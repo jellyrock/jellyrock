@@ -19,7 +19,7 @@ Video playback subsystem. See [docs/architecture/playback.md](../../docs/archite
 
 - Decision tree (Direct Play → Direct Stream → Transcode) lives in `source/api/items.bs` + `source/utils/deviceCapabilities.bs`. Don't replicate the codec-capability logic in player code; surface fields and let the items layer decide.
 - **DoVi fallback path is sophisticated** — `playbackPreserveDovi` setting + `isRetrying` flag + `shouldBypassDoviPreservation` retry. Don't simplify it; it handles a real `buffer:loop:` source overflow on Roku.
-- **Multichannel audio is direct-play by default** on surround-capable hardware; the transcoder is steered toward surround codecs (`eac3`/`ac3`/`dts`) when transcoding is required. The `surroundCodecs` list in `items.bs` is intentionally distinct from `stereoOutputCodecs` in `deviceCapabilities.bs`.
+- **Multichannel audio is direct-play by default** on surround-capable hardware; the transcoder is steered toward surround codecs (`eac3`/`ac3`) when transcoding is required. `dts` and `truehd` are never transcode targets: the server copies them, and Roku plays DTS copied into fMP4 HLS silent ([playback.md](../../docs/architecture/playback.md)). The `surroundCodecs` list in `items.bs` is intentionally distinct from `stereoOutputCodecs` in `deviceCapabilities.bs`.
 
 ## Trickplay
 
