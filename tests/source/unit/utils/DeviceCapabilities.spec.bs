@@ -449,82 +449,24 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("getActualCodecSupport() - Passthrough-Only Codecs")
+    @describe("getActualCodecSupport() - DTS-HD and DTS:X")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("dtshd is passthrough-only: returns true at >2ch when PassThru is supported")
-    function _()
-      mockDi = {
-        CanDecodeAudio: function(params as object) as object
-          if params.Codec = "dtshd" and params.DoesExist("PassThru") and params.PassThru = 1
-            return { Result: true }
-          end if
-          return { Result: false }
-        end function
-      }
-
-      result = getActualCodecSupport("dtshd", 6, mockDi)
-      m.assertTrue(result, "dtshd should return true at 6ch when PassThru is supported")
-    end function
-
-    @it("dtshd is passthrough-only: returns false at 2ch even with PassThru support")
-    function _()
-      ' Passthrough-only codecs are irrelevant at stereo — they only make sense for surround
-      mockDi = {
-        CanDecodeAudio: function(params as object) as object
-          if params.Codec = "dtshd" and params.DoesExist("PassThru") and params.PassThru = 1
-            return { Result: true }
-          end if
-          return { Result: false }
-        end function
-      }
-
-      result = getActualCodecSupport("dtshd", 2, mockDi)
-      m.assertFalse(result, "dtshd should return false at 2ch (passthrough-only, not relevant for stereo)")
-    end function
-
-    @it("dtshd is passthrough-only: returns false at >2ch when PassThru is not supported")
-    function _()
+    @it("never advertises dtshd or dtsx, even when PassThru says yes")
+    @params("dtshd")
+    @params("dtsx")
+    function _(codec)
+      ' Roku's media spec lists DTS passthrough and neither of these, though a Roku
+      ' Ultra `4850X` answers yes to both on a DTS-HD soundbar.
       mockDi = {
         CanDecodeAudio: function(_params as object) as object
-          ' Device has no receiver — PassThru not supported
-          return { Result: false }
+          return { Result: true }
         end function
       }
 
-      result = getActualCodecSupport("dtshd", 6, mockDi)
-      m.assertFalse(result, "dtshd should return false at 6ch when PassThru is not supported")
-    end function
-
-    @it("dtsx (DTS:X) passthrough-only: returns true at >2ch when PassThru is supported")
-    function _()
-      ' dtsx is treated identically to dtshd — passthrough-only, no ChCnt
-      mockDi = {
-        CanDecodeAudio: function(params as object) as object
-          if params.Codec = "dtsx" and params.DoesExist("PassThru") and params.PassThru = 1
-            return { Result: true }
-          end if
-          return { Result: false }
-        end function
-      }
-
-      result = getActualCodecSupport("dtsx", 6, mockDi)
-      m.assertTrue(result, "dtsx should return true at 6ch when PassThru is supported")
-    end function
-
-    @it("dtsx passthrough-only: returns false at 2ch even with PassThru support")
-    function _()
-      mockDi = {
-        CanDecodeAudio: function(params as object) as object
-          if params.Codec = "dtsx" and params.DoesExist("PassThru") and params.PassThru = 1
-            return { Result: true }
-          end if
-          return { Result: false }
-        end function
-      }
-
-      result = getActualCodecSupport("dtsx", 2, mockDi)
-      m.assertFalse(result, "dtsx should return false at 2ch (passthrough-only, not relevant for stereo)")
+      for each channels in [2, 6, 8]
+        m.assertFalse(getActualCodecSupport(codec, channels, mockDi), codec + " " + channels.toStr() + "ch must not be advertised")
+      end for
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

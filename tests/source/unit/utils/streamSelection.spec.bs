@@ -532,15 +532,17 @@ namespace tests
       m.assertFalse(isSelectedAudioStreamDirectPlayable(99, audioStreams))
     end function
 
-    @it("never switches natively to DTS above 5.1 or to TrueHD, whatever the device answers")
+    @it("never switches natively to DTS above 5.1, DTS-HD or TrueHD, whatever the device answers")
     function _()
       ' Runs against the real device. On a Roku Ultra `4850X` with a DTS-HD and TrueHD
-      ' soundbar, CanDecodeAudio says yes to dts at 8ch with PassThru, and a native switch
-      ' would take the path that failed to start; answering no makes the switch reload.
+      ' soundbar, CanDecodeAudio says yes to dts at 8ch and to dtshd with PassThru, and a
+      ' native switch would take the path that failed to start; answering no makes the
+      ' switch reload.
       audioStreams = [
         { index: 1, channels: 8, codec: "dts", language: "eng" },
         { index: 2, channels: 6, codec: "truehd", language: "eng" },
-        { index: 3, channels: 8, codec: "truehd", language: "eng" }
+        { index: 3, channels: 8, codec: "truehd", language: "eng" },
+        { index: 4, channels: 8, codec: "dtshd", language: "eng" }
       ]
       for each stream in audioStreams
         m.assertFalse(isSelectedAudioStreamDirectPlayable(stream.index, audioStreams), stream.codec + " " + stream.channels.toStr() + "ch must reload, not switch natively")

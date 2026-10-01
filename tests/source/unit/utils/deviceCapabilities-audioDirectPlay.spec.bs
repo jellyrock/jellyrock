@@ -240,6 +240,18 @@ namespace tests
       end for
     end function
 
+    @it("keeps dtshd out of every row, even where Roku answers yes to it")
+    function _()
+      ' Regression guard on the REAL builder. Every row used to add dtshd off a PassThru
+      ' yes, which a Roku Ultra `4850X` gives on a DTS-HD soundbar, though Roku's media
+      ' spec lists no DTS-HD. Only a device that says yes can fail this.
+      for each profile in GetDirectPlayProfiles()
+        if isValid(profile.AudioCodec)
+          m.assertFalse(arrayHasValue(profile.AudioCodec.split(","), "dtshd"), "dtshd must not be direct-played in " + profile.Container)
+        end if
+      end for
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("canDecodeAudioInContainer()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

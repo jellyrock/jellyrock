@@ -208,16 +208,12 @@ end function
 function getActualCodecSupport(codec as string, channelCount as integer, di as object) as boolean
   rokuCodec = jellyfinToRokuCodecName(codec) ' e.g. "truehd" → "mat"
 
-  ' Codecs where the Roku API does not accept ChCnt (returns chcnt: "n.a.").
-  ' These are passthrough-only; check PassThru without ChCnt.
-  ' dtsx (DTS:X) is an extension of DTS-HD MA — covered by dtshd in the profile.
-  passThroughOnlyCodecs = ["dtshd", "dtsx"]
-  if arrayHasValue(passThroughOnlyCodecs, rokuCodec)
-    if channelCount > 2
-      return di.CanDecodeAudio({ Codec: rokuCodec, PassThru: 1 }).Result
-    end if
-    return false ' Passthrough-only codecs are not relevant at 2ch
-  end if
+  ' DTS-HD and DTS:X are never advertised, because Roku's media spec lists DTS
+  ' passthrough and neither of these; the API answers yes to both on a DTS-HD soundbar
+  ' anyway. Jellyfin labels DTS-HD and DTS:X tracks "dts", with the variant in the
+  ' stream's Profile (ProbeResultNormalizer, and BdInfoExaminer from 10.10), so they
+  ' reach the dts rules below, not this line.
+  if rokuCodec = "dtshd" or rokuCodec = "dtsx" then return false
 
   ' Codecs that Roku can OUTPUT multichannel audio (passthru + possible native decode).
   ' mat is the Roku API name for TrueHD/Dolby MAT (Jellyfin name: "truehd").
@@ -356,7 +352,7 @@ function GetDirectPlayProfiles() as object
   }
   ' all possible codecs (besides those restricted by user settings)
   videoCodecs = ["h264", "hevc", "vp8", "vp9", "mpeg1video", "h263"]
-  audioCodecs = ["mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "opus", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
+  audioCodecs = ["mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "opus", "dts", "wmapro", "vorbis", "eac3", "truehd", "mpg123"]
 
   ' check video codecs for each container
   for each container in supportedContainers
@@ -412,14 +408,6 @@ function GetDirectPlayProfiles() as object
         ' a failed playback. Roku's media spec lists no TrueHD at all. Left out, the
         ' server keeps the video and converts the audio to a surround codec.
         if canDecodeAudioInContainer(di, audioCodec, container)
-          supportedContainers[container]["audio"].push(audioCodec)
-        end if
-      else if rokuCodec = "dtshd"
-        ' dtshd: ChCnt is N/A; standard container check returns false on passthrough-only devices.
-        ' Check native decode first, then fall back to PassThru (current hardware support path).
-        nativeDecode = di.CanDecodeAudio({ Codec: rokuCodec, Container: container }).Result
-        passthroughSupport = di.CanDecodeAudio({ Codec: rokuCodec, PassThru: 1 }).Result
-        if nativeDecode or passthroughSupport
           supportedContainers[container]["audio"].push(audioCodec)
         end if
       else if di.CanDecodeAudio({ Codec: rokuCodec, Container: container }).Result
@@ -906,7 +894,7 @@ function getCodecProfiles() as object
   ' AUDIO CODEC PROFILES
   ' ========================================
 
-  audioCodecs = ["aac", "mp3", "mp2", "opus", "pcm", "lpcm", "wav", "flac", "alac", "ac3", "ac4", "aiff", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
+  audioCodecs = ["aac", "mp3", "mp2", "opus", "pcm", "lpcm", "wav", "flac", "alac", "ac3", "ac4", "aiff", "dts", "wmapro", "vorbis", "eac3", "truehd", "mpg123"]
   audioChannels = [8, 6, 2] ' highest first
 
   for each audioCodec in audioCodecs

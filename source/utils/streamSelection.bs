@@ -698,11 +698,12 @@ function isStreamDirectPlayable(stream as object, deviceCapabilities as object) 
   if not isValid(stream.channels) then return false
 
   ' Rules that hold whatever the hardware answers, so mock mode applies them too.
-  ' TrueHD is never direct-played (see canDecodeAudioInContainer), and DTS only up to
-  ' DTS_MAX_DIRECT_PLAY_CHANNELS: Roku says yes to both, and both fail natively. AAC
-  ' in a profile the device profile refuses (getUnsupportedAacProfiles) is refused here too.
+  ' TrueHD is never direct-played (see canDecodeAudioInContainer), nor are DTS-HD and DTS:X
+  ' (see getActualCodecSupport), and DTS only up to DTS_MAX_DIRECT_PLAY_CHANNELS: Roku says
+  ' yes to them all, and they fail natively. AAC in a profile the device profile refuses
+  ' (getUnsupportedAacProfiles) is refused here too.
   codec = LCase(stream.codec)
-  if codec = "truehd" then return false
+  if codec = "truehd" or codec = "dtshd" or codec = "dtsx" then return false
   if codec = "dts" and stream.channels > DTS_MAX_DIRECT_PLAY_CHANNELS then return false
   if codec = "aac" and isValid(stream.profile)
     for each unsupported in getUnsupportedAacProfiles()
@@ -730,7 +731,7 @@ function isStreamDirectPlayable(stream as object, deviceCapabilities as object) 
     return true
   end if
 
-  return getActualCodecSupport(codec, stream.channels, CreateObject("roDeviceInfo"))
+  return canDeviceDecodeCodec(codec, stream.channels)
 end function
 
 ' findDirectPlayableStreamByChannelCount: Finds a direct-playable stream with specific channel count
