@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Silent DTS, failing TrueHD over passthrough, and track switching ([#1079](https://github.com/jellyrock/jellyrock/pull/1079))
 - Quick play slow, TV and mixed libraries, and resume music videos ([#1076](https://github.com/jellyrock/jellyrock/pull/1076))
 
 ### Dependencies
