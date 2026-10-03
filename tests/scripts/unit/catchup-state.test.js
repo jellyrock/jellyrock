@@ -87,10 +87,10 @@ describe('catchup-state', () => {
     expect(parsed._errors).toEqual({});
   });
 
-  it('progress section parses last_updated + days_since + commits_since', () => {
+  it('progress section parses last_updated + days_since + commits_since, counting `####` entries and not the bullets in their bodies', () => {
     fix = setupFixture();
     fix.commit('seed', {
-      'docs/progress.md': `---\nlast-updated: 2020-01-01\n---\n# Progress\n\n## Currently running\n\nin-flight stuff.\n\n## Open followups\n\n### scripts\n\n- one followup\n- another\n\n### components\n\n(none)\n`,
+      'docs/progress.md': `---\nlast-updated: 2020-01-01\n---\n# Progress\n\n## Currently running\n\nin-flight stuff.\n\n## Open followups\n\n### scripts\n\n#### one followup \`[fid: one-followup]\` \`[captured 2020-01-01]\`\n\nIts body lists three things:\n\n- a bullet in the body\n- another bullet in the body\n- a third bullet in the body\n\n#### another \`[fid: another]\` \`[captured 2020-01-01]\`\n\nBody.\n`,
     });
     fix.commit('post-progress code change');
     const { stdout } = runAggregator(fix.dir);
@@ -181,7 +181,7 @@ describe('catchup-state', () => {
   it('--area filters progress.open_followups_by_area to the requested area', () => {
     fix = setupFixture();
     fix.commit('seed', {
-      'docs/progress.md': `---\nlast-updated: ${TODAY}\n---\n# Progress\n\n## Open followups\n\n### scripts\n\n- one\n\n### components\n\n- two\n- three\n`,
+      'docs/progress.md': `---\nlast-updated: ${TODAY}\n---\n# Progress\n\n## Open followups\n\n### scripts\n\n#### one \`[fid: one]\` \`[captured 2020-01-01]\`\n\nBody with a bullet:\n\n- not an entry\n\n### components\n\n#### two \`[fid: two]\` \`[captured 2020-01-01]\`\n\nBody.\n\n#### three \`[fid: three]\` \`[captured 2020-01-01]\`\n\nBody.\n`,
     });
     const { stdout } = runAggregator(fix.dir, ['--area=scripts']);
     const parsed = JSON.parse(stdout);

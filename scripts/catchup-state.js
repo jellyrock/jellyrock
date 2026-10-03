@@ -340,7 +340,8 @@ run('progress', () => {
 
   // Line-by-line state machine: parse "## Currently running" (single
   // paragraph) and "## Open followups" (grouped by ### area subsection).
-  // "(none)" bullets are NOT counted; they're placeholders for empty areas.
+  // Each followup is a `#### <title> `[fid: …]`` entry; bullets in an entry's
+  // body are not followups.
   const lines = content.split(/\r?\n/);
   let section = null; // 'running' | 'followups' | null
   let currentArea = null;
@@ -375,13 +376,13 @@ run('progress', () => {
         if (!(currentArea in followupsByArea)) followupsByArea[currentArea] = 0;
         continue;
       }
-      if (currentArea && /^-\s+(?!\(none\)).+$/.test(line)) {
+      if (currentArea && /^####\s+.*`\[fid: [^\]]+\]`/.test(line)) {
         followupsByArea[currentArea]++;
       }
     }
   }
 
-  // Drop areas with zero real bullets (placeholders only)
+  // Drop areas with no entries
   for (const k of Object.keys(followupsByArea)) {
     if (followupsByArea[k] === 0) delete followupsByArea[k];
   }
