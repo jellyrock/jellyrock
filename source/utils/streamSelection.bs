@@ -683,8 +683,11 @@ end function
 
 ' isStreamDirectPlayable: Checks if an audio stream can be directly played by the device
 '
-' For 8-channel: MUST use PassThru: 1 (only HDMI passthrough, Roku can't decode 8-channel)
-' For 6-channel and below: Use combined check (no PassThru) - checks both Roku and HDMI
+' Answers the question the device profile answers (getActualCodecSupport, plus the
+' rules around it in getCodecProfiles), so a mid-play switch goes native exactly where
+' the server would have direct-played the track, and auto-pick favors those tracks.
+' Asking Roku its own way here is what let a switch go native onto a path the server
+' never chooses: DTS 7.1, which failed to start, and TrueHD, which buffers forever.
 '
 ' @param {object} stream - Audio stream object with codec and channels fields
 ' @param {object} deviceCapabilities - Device capability info
@@ -693,6 +696,26 @@ function isStreamDirectPlayable(stream as object, deviceCapabilities as object) 
   if not isValid(stream) then return false
   if not isValid(stream.codec) then return false
   if not isValid(stream.channels) then return false
+
+  ' Rules that hold whatever the hardware answers, so mock mode applies them too.
+  ' TrueHD is never direct-played (see canDecodeAudioInContainer), nor are DTS-HD and DTS:X
+  ' (see getActualCodecSupport), and DTS only up to DTS_MAX_DIRECT_PLAY_CHANNELS: Roku says
+  ' yes to them all, and they fail natively. AAC in a profile the device profile refuses
+  ' (getUnsupportedAacProfiles) is refused here too.
+  codec = LCase(stream.codec)
+  if codec = "truehd" or codec = "dtshd" or codec = "dtsx" then return false
+  if codec = "dts" and stream.channels > DTS_MAX_DIRECT_PLAY_CHANNELS then return false
+  if codec = "aac" and isValid(stream.profile)
+    for each unsupported in getUnsupportedAacProfiles()
+      if LCase(stream.profile) = LCase(unsupported) then return false
+    end for
+  end if
+
+  ' "Decode Multichannel Audio" off: the profile caps these codecs at 2ch so the server
+  ' handles multichannel, and a native switch must not bypass that choice.
+  if stream.channels > 2 and arrayHasValue(getStereoOutputCodecs(), codec)
+    if not m.global.user.settings.playbackDecodeMultichannelAudio then return false
+  end if
 
   ' Testing mode: If isMock flag is present, trust the capabilities without real hardware checks
   ' This allows deterministic unit testing on any hardware configuration
@@ -708,30 +731,7 @@ function isStreamDirectPlayable(stream as object, deviceCapabilities as object) 
     return true
   end if
 
-  ' Production mode: Check actual hardware capabilities
-  di = CreateObject("roDeviceInfo")
-
-  ' For 8-channel audio, MUST verify with PassThru: 1
-  ' Roku cannot natively decode 8-channel (max is 6)
-  ' Combined check can lie about 8-channel support
-  if stream.channels = 8
-    if not deviceCapabilities.supports8Channel then return false
-    result = di.CanDecodeAudio({
-      Codec: LCase(stream.codec),
-      ChCnt: stream.channels,
-      PassThru: 1
-    })
-    return isValid(result) and result.Result = true
-  end if
-
-  ' For 6-channel and below, use combined check (Roku + HDMI)
-  ' This is safe and efficient - checks if either can decode it
-  result = di.CanDecodeAudio({
-    Codec: LCase(stream.codec),
-    ChCnt: stream.channels
-  })
-
-  return isValid(result) and result.Result = true
+  return canDeviceDecodeCodec(codec, stream.channels)
 end function
 
 ' findDirectPlayableStreamByChannelCount: Finds a direct-playable stream with specific channel count

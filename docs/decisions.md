@@ -1867,6 +1867,16 @@ The editor's BrighterScript language server loads only `bsconfig.json` (dev: eve
 
 Ruled out: one merged editor bsconfig (all-tests plus the plugins in `bsconfig.json`). It measured 1.52 GB and 19 s but raised 29 false diagnostics in spec files (`callfunc-interface` 25, `print-outside-allowlist` 3, `no-task-fanout` 1), and it would add a third plugin list to keep in step with the one in `bsconfig.json`. Also ruled out: `brightscript.languageServer.maxWorkerThreads: 1`, which keeps all five programs in memory and only serializes validation. Re-evaluate if a prod-only plugin or file set starts producing diagnostics dev does not; then flip prod's `disabled` off.
 
+## decision-id: audio-profile-documented-and-reported
+
+**date**: 2026-10-01
+**status**: accepted
+**related-files**: `source/utils/deviceCapabilities.bs`
+
+The device profile advertises an audio format only where Roku's media spec documents it AND the device reports it, and `dts` / `truehd` are never transcode targets. This carries `audio-direct-play-surround-containers` from the audio rows to the video rows: TrueHD, absent from the spec, is direct-played nowhere; DTS-HD and `DTS:X` (`dtshd`, `dtsx`), also absent, are direct-played nowhere either, and the DTS-HD MA tracks measured were reported by Jellyfin as `dts` and played as their DTS core; DTS, which the spec lists as passthrough and whose core carries at most 5.1, is direct-played up to 6 channels; and neither appears in a transcode profile's `AudioCodec`, because Jellyfin copies a source codec it finds there rather than converting it. The mid-play track switch (`isStreamDirectPlayable`) asks the same question, `getActualCodecSupport` plus the same refusals, the Decode Multichannel Audio cap and the AAC profile rule, so a switch goes native only where the server would have direct-played the track, and otherwise reloads. Measured on a Roku Ultra `4850X` whose soundbar advertises `MAT`, `DTS` and `DTSHD` at 8ch: TrueHD failed to start, direct or copied into `fmp4` HLS; a `DTS-HD MA + DTS:X` 7.1 track failed to start (error -3); DTS copied into `fmp4` HLS played silent (#821, #892) while the same soundbar plays direct DTS with sound. With this change each converts to `eac3` in ts and plays with sound. (Where the earlier note says the device "really can decode" DTS, that is passthrough: the spec lists DTS as passthrough only.) `getSupportedPassthruCodecs` still counts a `dtshd` sink: it only detects surround passthrough for choosing a transcode target, and never adds a direct-play row.
+
+Ruled out: trusting `CanDecodeAudio` and the EDID alone (both say yes to `mat` and to `dts` at 8ch); a per-soundbar override; dropping the `fmp4` transcode profile, which the Dolby Vision transcode uses; and a general "retry failed direct play as a transcode" as the fix, which would hide an inaccurate profile rather than correct it (logged as a separate safety-net follow-up). To re-evaluate: 7.1 DTS-HD on a setup that could bitstream it is converted to lossy `eac3`, and a direct-playable 7.1 DTS-HD track without `DTS:X` has not been measured.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

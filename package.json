@@ -1,7 +1,7 @@
 {
   "name": "jellyrock",
   "type": "module",
-  "version": "2.34.0",
+  "version": "2.34.1",
   "description": "Roku client for Jellyfin media server",
   "dependencies": {
     "@rokucommunity/bslib": "0.1.1",
@@ -21,12 +21,12 @@
     "dotenv": "17.4.2",
     "eslint": "10.11.0",
     "eslint-config-prettier": "10.1.8",
-    "eslint-plugin-n": "18.3.0",
+    "eslint-plugin-n": "18.4.0",
     "fast-glob": "3.3.3",
     "husky": "9.1.7",
     "js-yaml": "5.4.2",
     "jshint": "2.13.6",
-    "lint-staged": "17.5.1",
+    "lint-staged": "17.6.0",
     "markdownlint-cli2": "0.23.3",
     "patch-package": "8.0.1",
     "prettier": "3.9.9",
@@ -38,7 +38,7 @@
     "sharp": "0.35.5",
     "source-map": "0.8.0",
     "spellchecker-cli": "7.0.4",
-    "vitest": "5.0.2"
+    "vitest": "5.0.3"
   },
   "overrides": {
     "brighterscript-xml-plugin": {

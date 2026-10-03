@@ -7,12 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Dependencies
+
+- Update vitest from v5.0.2 to v5.0.3 ([#1077](https://github.com/jellyrock/jellyrock/pull/1077))
+
+## [2.34.1](https://github.com/jellyrock/jellyrock/compare/v2.34.0...v2.34.1) - 2026-10-02
+
 ### Fixed
 
+- Silent DTS, failing TrueHD over passthrough, and track switching ([#1079](https://github.com/jellyrock/jellyrock/pull/1079))
 - Quick play slow, TV and mixed libraries, and resume music videos ([#1076](https://github.com/jellyrock/jellyrock/pull/1076))
 
 ### Dependencies
 
+- Update lint-staged from v17.5.1 to v17.6.0 ([#1053](https://github.com/jellyrock/jellyrock/pull/1053))
+- Update eslint-plugin-n from v18.3.0 to v18.4.0 ([#1052](https://github.com/jellyrock/jellyrock/pull/1052))
 - Update rooibos-roku to v6.0.0 ([#1067](https://github.com/jellyrock/jellyrock/pull/1067))
 - Update brighterscript to v1.0.0 ([#1065](https://github.com/jellyrock/jellyrock/pull/1065))
 - Update sharp from v0.35.4 to v0.35.5 ([#1066](https://github.com/jellyrock/jellyrock/pull/1066))
