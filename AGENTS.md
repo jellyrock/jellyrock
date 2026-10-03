@@ -30,6 +30,35 @@ How far an agent may land a change here without asking. Landing is a push to `ma
 - **Always ask:** publishing a release or tag, and anything posted publicly.
 - **When waiting costs something** (a harm due before the operator is likely back): get the fix ready short of landing, try to reach the operator (a push notification, when the session has one), then wait. The report leads with the deadline.
 
+## Repo facts
+
+The facts the shared skills read, one slot each (they link `AGENTS.md#<slot>`).
+
+### Capture types
+
+decision, followup, signal (an upstream version-watch row in `docs/signals-backlog.md`), running (replaces the one-paragraph Currently running note in `docs/progress.md`)
+
+### Public posture
+
+`public`
+
+### Docs check
+
+`npm run lint:docs`
+
+### Verification commands
+
+- `npm run test:scripts`: the Vitest suite (scripts, BSC plugins, lint scripts), no device. Pre-push runs it when JS is in the push range, CI on every PR.
+- `npm run validate`: the BrighterScript typecheck.
+- `npm run lint`: the lint chain CI runs; pre-push mirrors it, scoped to the files in the push range.
+- On a Roku: `npm run device:check` first, then `npm run test:tdd` (one spec, fastest), `test:unit`, `test:integration` or `test:all`, and `npm run test:rta` for navigation and screen regressions. No hook runs these. A failed probe is reported as the probe failing, and a fix is never called tested when only the build was checked.
+- Never bare `bsc`, `vitest`, `markdownlint-cli2` or `spellchecker`: the npm wrappers carry the project files, plugins and config.
+- Never `--no-verify`. A new worktree has no hooks until `npm ci` runs in it.
+
+### Plan path
+
+`.claude/plans/` (gitignored)
+
 ## Capture & state discipline
 
 The four-pillar journal system (see [`docs/architecture/system-shape.md`](docs/architecture/system-shape.md)) treats live project state as load-bearing. These rules govern how agents interact with the journals:
@@ -39,7 +68,7 @@ The four-pillar journal system (see [`docs/architecture/system-shape.md`](docs/a
   - Internal debt with a slug + severity (refactor candidate, design intent worth preserving) → invoke [`/tech-debt-scan`](.claude/skills/tech-debt-scan/SKILL.md) (writes to [`docs/architecture/tech-debt.md`](docs/architecture/tech-debt.md))
   - Generic deferred work without a debt classification → invoke `/log followup "<text>" --area=<name>` (writes to [`docs/progress.md`](docs/progress.md))
   - External upstream watching (Jellyfin / Roku OS / dep version) → invoke `/log signal <slug>` (writes to [`docs/signals-backlog.md`](docs/signals-backlog.md))
-- **Catchup-discipline rule** — at the start of any genuine new session and after multi-day gaps, run one of [`/focus`](.claude/skills/focus/SKILL.md) (opus triage + routing — surfaces a 3–5 item menu of next-move candidates with a "Recommended" call, then routes the pick to the right downstream skill) or [`/catchup`](.claude/skills/catchup/SKILL.md) (sonnet, read-only state briefing). Use `/focus` when you want help picking *which* of several plausible next moves to take; use `/catchup` for a pure state load. The four journals plus GitHub state should never be re-derived from scratch — the aggregator at [`scripts/catchup-state.js`](scripts/catchup-state.js) is the canonical state surface and both skills consume it. For area-scoped re-entry (>2 weeks away from a subsystem), use [`/ramp <area>`](.claude/skills/ramp/SKILL.md) instead.
+- **Catchup-discipline rule** — at the start of any genuine new session and after multi-day gaps, run one of [`/focus`](.claude/skills/focus/SKILL.md) (opus triage + routing — recommends one next move with 1–3 alternatives and prints the command to take it) or [`/catchup`](.claude/skills/catchup/SKILL.md) (sonnet, read-only state briefing). Use `/focus` when you want help picking *which* of several plausible next moves to take; use `/catchup` for a pure state load. The journals plus GitHub state should never be re-derived from scratch — both skills read the shared state reader ([`.claude/skills/catchup/catchup-state.sh`](.claude/skills/catchup/catchup-state.sh): git, the followup journal, projects) and the aggregator at [`scripts/catchup-state.js`](scripts/catchup-state.js) (GitHub, signals, decisions, tech debt). For area-scoped re-entry (>2 weeks away from a subsystem), use [`/ramp <area>`](.claude/skills/ramp/SKILL.md) instead.
 - **No standalone journal PR** — a change that touches ONLY `docs/progress.md`, `docs/decisions.md`, `docs/signals-backlog.md` or `docs/architecture/tech-debt.md` rides the next PR that changes code. It does not get a PR of its own: a one-line followup edit is not worth a template, a CI round and a review, and `/pr`'s whole point is that journal hygiene lands in the same change set as the work. If the work it describes is paused, the finding waits in the project's `PLAN.md` until something ships. The exception is a journal entry that would go WRONG if it waited — a signal row about a release happening now, or a correction to an entry another session is about to act on. (Recorded 2026-09-17 after a device finding about `SearchResults` became its own docs PR.)
 - **Ship-ritual rule** — invoking [`/pr`](.claude/skills/pr/SKILL.md) is the ship moment. `/pr` bundles the three judgment passes (tech-debt scan, decision-shape detect, followup capture) so journal hygiene lands in the same change set instead of a separate manual step. Don't bypass `/pr` with `gh pr create` or the GitHub UI — those skip the passes and leave the journals to drift.
 
