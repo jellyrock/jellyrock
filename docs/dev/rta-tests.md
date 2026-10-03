@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-09-26
+last-reviewed: 2026-10-02
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -844,6 +844,19 @@ await odc.setValue({ base: 'global', keyPath: 'rtaGridPageSize', value: 4 });
 
 App-memory only, like the other hooks. `specs/fail-requests.spec.js` uses it to fail a later
 page.
+
+## Asking "Are you still watching?" now (`rtaForceStillWatching`)
+
+The still-watching prompt normally needs an hour or more of unattended playback. RTA builds
+add an `rtaForceStillWatching` field on `m.global` (same `#if ENABLE_RTA` block); while it is
+`true`, `PlayerHostView` asks at every automatic advance. Set it after relaunch:
+
+```js
+await odc.setValue({ base: 'global', keyPath: 'rtaForceStillWatching', value: true });
+```
+
+App-memory only, like the other hooks. `specs/still-watching.spec.js` uses it; when to ask is
+unit-tested instead (`tests/source/unit/utils/stillWatching.spec.bs`).
 
 ## Making requests fail or slow (`rtaFailRequests`)
 

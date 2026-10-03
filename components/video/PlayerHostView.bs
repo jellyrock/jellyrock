@@ -8,6 +8,7 @@ import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackReport.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
+import "pkg:/source/utils/stillWatching.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/trackPickerOptions.bs"
@@ -61,6 +62,17 @@ sub init()
 
   ' Live TV restart budget, carried across mounts: see newLiveRestartBudget.
   m.liveRestart = newLiveRestartBudget()
+
+  ' "Are you still watching?" (stillWatching.bs). The session spans every video this route
+  ' plays; pending means "ask when the video just mounted starts playing"; pausedForAnswer
+  ' means the prompt timed out and paused it, so the next `playing` is an answer.
+  m.stillWatching = newStillWatchingSession(UpTime(0))
+  m.stillWatchingPending = false
+  m.stillWatchingPausedForAnswer = false
+  m.stillWatchingDialog = invalid
+  m.stillWatchingSecondsLeft = 0
+  m.stillWatchingTimer = m.top.findNode("stillWatchingTimer")
+  m.stillWatchingTimer.observeField("fire", "onStillWatchingTick")
 end sub
 
 ' Router lifecycle (via JRScreen's onViewOpen bridge): mount the player for the
@@ -119,6 +131,8 @@ end sub
 
 ' Tear down the current player child (stop -> report stop to Jellyfin -> onDestroy -> remove).
 sub destroyPlayer()
+  m.stillWatchingPending = false
+  m.stillWatchingPausedForAnswer = false
   if isValid(m.view)
     m.view.unobserveField("state")
     m.view.unobserveField("selectPlaybackInfoPressed")
@@ -142,12 +156,20 @@ sub destroyPlayer()
 end sub
 
 ' Host-internal advancement: remount the player for the CURRENT queue position.
-' Callers (onPlayerStateChange next-item; VideoPlayerView channel
-' switch) set the position + backdrop first. Replaces ViewCreator's
+' Callers (onPlayerStateChange next-item; skipToCurrentQueueItem for the player's
+' next / previous and channel switch) set the position + backdrop first. Replaces ViewCreator's
 ' clearPreviousScene + playQueue (which created a new pushed scene).
 sub playCurrentQueueItem()
   destroyPlayer()
   mountPlayer()
+end sub
+
+' The viewer moved to another queue item (the player's next / previous, a channel switch).
+' A button press started the item, the same as the press that opened the player, so the
+' still-watching count starts over with it.
+sub skipToCurrentQueueItem()
+  m.stillWatching = newStillWatchingSession(UpTime(0))
+  playCurrentQueueItem()
 end sub
 
 ' Restart the Live TV channel whose stream ended. Same remount as playCurrentQueueItem, except
@@ -178,6 +200,7 @@ end sub
 ' player child. abandonApiPromises() is injected here by the auto-abandon-promises BSC
 ' plugin (JRScreen.onDestroy's floor doesn't chain to SG-component overrides).
 sub onDestroy()
+  m.stillWatchingTimer.unobserveField("fire")
   ' The picker / info overlays are appended to the SCENE, so they outlive this
   ' view — anything that navigates without the user closing the dialog first
   ' (deep link, session expiry, voice "stop") would strand one over the incoming
@@ -191,6 +214,7 @@ end sub
 ' dialog's `closed`. The dialogs outlive this view (they are appended to the
 ' SCENE), so an unreleased observer on one would keep calling into a dead scope.
 sub abandonPlaybackDialogs()
+  closeStillWatchingPrompt()
   releasePlaybackInfoRefresh()
   if isValid(m.reportDialog) then m.reportDialog.unobserveField("closed")
   abandonDialog(m.reportDialog)
@@ -206,7 +230,9 @@ end sub
 ' destroy/remount, and the queue-exhausted pop has become exitPlayback (goBack).
 ' ===========================================================================
 sub onPlayerStateChange()
-  if LCase(m.view.state) <> "finished" then return
+  state = LCase(m.view.state)
+  if state = "playing" then onStillWatchingPlaying()
+  if state <> "finished" then return
 
   if not prepareToLeaveMount() then return
   queueManager = m.global.queueManager
@@ -232,9 +258,12 @@ sub onPlayerStateChange()
   ' More items in the queue -> advance and play the next one, from its beginning
   position = queueManager.callFunc("getPosition")
   if position < queueManager.callFunc("getCount") - 1
+    askStillWatching = shouldAskStillWatching(queueManager.callFunc("getItemByIndex", position + 1))
     queueManager.callFunc("advanceTo", position + 1)
     updateQueueBackdrop()
     playCurrentQueueItem()
+    ' After the remount: destroyPlayer clears it, and it belongs to the player just mounted.
+    m.stillWatchingPending = askStillWatching
     return
   end if
 
@@ -334,8 +363,96 @@ end sub
 ' here (the router-active view is this host, not the inner player); forward to the
 ' child player's own handler.
 function handleTransport(evt as object) as object
+  ' A voice or Jellyfin-app command means someone is there, whatever it asks for, the same
+  ' as a button press. With the prompt up it is also the answer: canceled rather than
+  ' abandoned so the dialog hands focus back to the player as it closes; its result handler
+  ' sees an outside close and only cleans up.
+  stillWatchingOnActivity(m.stillWatching, UpTime(0))
+  if isValid(m.stillWatchingDialog) then m.stillWatchingDialog.callFunc("cancelDialog")
   if isValid(m.view) then return m.view.callFunc("handleTransport", evt)
   return { status: "error.no-media" }
+end function
+
+' ===========================================================================
+' "Are you still watching?" (issue #982). When to ask is source/utils/stillWatching.bs;
+' this is the asking. The next video plays under the prompt; any key answers it, and with
+' no answer in STILL_WATCHING_RESPONSE_SECONDS the video pauses with its OSD up.
+' ===========================================================================
+
+' The queue is about to move on by itself to `nextItem`. Records the video that ended and
+' says whether to ask before the next one. Moving from a Cinema Mode intro to the video it
+' plays in front of is the same video starting, not a new one, so it neither counts nor asks.
+'
+' @param {dynamic} nextItem - the queue item about to play
+' @returns {boolean}
+function shouldAskStillWatching(nextItem as dynamic) as boolean
+  if isValid(nextItem) and nextItem.followsIntro = true then return false
+
+  if not isValid(m.deviceInfo) then m.deviceInfo = CreateObject("roDeviceInfo")
+  thresholds = stillWatchingThresholds(textOrEmpty(m.global.user.settings.playbackStillWatching))
+  ask = stillWatchingOnAdvance(m.stillWatching, thresholds, m.deviceInfo.TimeSinceLastKeypress(), UpTime(0))
+
+  #if ENABLE_RTA
+    ' RTA-only: ask now instead of after an hour of playback (globals.bs).
+    if isValid(m.global.rtaForceStillWatching) and m.global.rtaForceStillWatching then ask = true
+  #end if
+
+  if ask then m.log.info("Asking if still watching", "unattendedVideos", m.stillWatching.unattendedCount)
+  return ask
+end function
+
+' The player reached `playing`: show a pending prompt, or take a resume after a timeout as
+' the answer (a voice "play" presses no key, so this is how it is seen).
+sub onStillWatchingPlaying()
+  if m.stillWatchingPausedForAnswer
+    m.stillWatchingPausedForAnswer = false
+    stillWatchingOnActivity(m.stillWatching, UpTime(0))
+  end if
+  if not m.stillWatchingPending then return
+  m.stillWatchingPending = false
+
+  m.stillWatchingSecondsLeft = STILL_WATCHING_RESPONSE_SECONDS
+  m.stillWatchingDialog = showStillWatchingDialog(stillWatchingCountdownText(m.stillWatchingSecondsLeft), "onStillWatchingResult")
+  m.stillWatchingTimer.control = "start"
+end sub
+
+' Any key answered the prompt, or something else closed it (a dialog that superseded it,
+' a teardown). Only the first is an answer.
+sub onStillWatchingResult(event as object)
+  result = event.getData()
+  closeStillWatchingPrompt()
+  if not isValid(result) or result.externallyCancelled = true then return
+  stillWatchingOnActivity(m.stillWatching, UpTime(0))
+end sub
+
+sub onStillWatchingTick()
+  if not isValid(m.stillWatchingDialog) then return
+  m.stillWatchingSecondsLeft = m.stillWatchingSecondsLeft - 1
+  if m.stillWatchingSecondsLeft > 0
+    ' One short line, so rewriting it after the dialog is up is safe (showStillWatchingDialog).
+    m.stillWatchingDialog.subheading = stillWatchingCountdownText(m.stillWatchingSecondsLeft)
+    return
+  end if
+
+  ' No answer: pause where it is, with the player's own paused OSD, so whoever comes back
+  ' sees a paused video and resumes it the usual way.
+  m.log.info("No answer to still watching; pausing")
+  closeStillWatchingPrompt()
+  if not isValid(m.view) then return
+  m.stillWatchingPausedForAnswer = true
+  m.view.callFunc("pauseWithOsd")
+end sub
+
+' Stop the countdown and drop the prompt, delivering nothing. Safe when none is open.
+sub closeStillWatchingPrompt()
+  m.stillWatchingTimer.control = "stop"
+  if not isValid(m.stillWatchingDialog) then return
+  abandonDialog(m.stillWatchingDialog)
+  m.stillWatchingDialog = invalid
+end sub
+
+function stillWatchingCountdownText(seconds as integer) as string
+  return translatePlural(translationKeys.LabelPausingIn, seconds, [seconds.toStr()])
 end function
 
 ' ===========================================================================

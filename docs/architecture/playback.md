@@ -35,6 +35,7 @@ related-files:
   - source/utils/quickplayLibrary.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
+  - source/utils/stillWatching.bs
   - source/utils/liveTv.bs
   - source/utils/bufferStall.bs
   - source/enums/BufferCheckAction.bs
@@ -45,7 +46,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-01
+last-reviewed: 2026-10-03
 ---
 
 # Video & Audio Playback
@@ -158,7 +159,7 @@ The whole file is well-commented and reads cleanly. It's frequently held up inte
 The **routed host** for video playback (route `/details/:type/:id/play`). `VideoPlayerView` extends Roku's native `Video` node, so it can't itself be a `sgrouter_View`; this thin `JRScreen` wrapper is the routed view and owns the player as a **runtime child** (`m.top.appendChild(m.view)`), not a separate pushed scene. It is the new home for what was `ViewCreator`'s video half (the deleted `components/manager/ViewCreator.bs`). Its job is three-fold:
 
 1. **Player mount**: `onScreenShown` → `mountPlayer()` instantiates `VideoPlayerView`, wires observers (no `GetPlaybackInfoTask` yet — each report fetch creates its own, see **Playback info** below), updates the backdrop, and appends the player as a child (player `visible=false` during loading to avoid a black flash over the backdrop). The queue is already populated *before* navigation (the launcher cleared + pushed, then navigated to `/play`), so the host just reads `getCurrentItem` — **the queue is the source of truth**.
-2. **Queue advancement** (host-internal): next-episode / Live TV restart / channel switch destroy + remount the player child, rather than pop/push of scenes. Next-episode and channel switch go through `playCurrentQueueItem()` (`destroyPlayer()` + `mountPlayer()`); the Live TV restart goes through `restartLiveChannel()` (`destroyPlayer()` + `mountPlayer(true)`), the only remount that keeps the restart count (see `onPlayerStateChange` below).
+2. **Queue advancement** (host-internal): next-episode / Live TV restart / channel switch destroy + remount the player child, rather than pop/push of scenes. Next-episode goes through `playCurrentQueueItem()` (`destroyPlayer()` + `mountPlayer()`), and the player's next / previous and channel switch through `skipToCurrentQueueItem()`, which also restarts the still-watching count; the Live TV restart goes through `restartLiveChannel()` (`destroyPlayer()` + `mountPlayer(true)`), the only remount that keeps the restart count (see `onPlayerStateChange` below).
 3. **Playback-time track selection**: when the user opens the `OSD`'s track menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `PlayerHostView` catches via observers and shows a dialog from the standard family (`source/utils/dialogs.bs`). (Note: *pre-playback* track selection happens inline via `ItemDetails`'s `TrackDropdown` cluster — see `user-journey.md`. The two flows write to the same `VideoPlayerView` fields; they're parallel entry points, not duplicates.)
 
 The dialog flow:
@@ -209,7 +210,7 @@ them* — which is what decides both the verb and the order:
 
 | # | Dialog | Owned by | How teardown clears it |
 |---|---|---|---|
-| 1 | Track pickers (`m.trackPickerDialog`) + the playback-info report (`m.reportDialog`) | `PlayerHostView` | `abandonPlaybackDialogs()` |
+| 1 | Track pickers (`m.trackPickerDialog`), the playback-info report (`m.reportDialog`) and the still-watching prompt (`m.stillWatchingDialog`) | `PlayerHostView` | `abandonPlaybackDialogs()` |
 | 2 | The playback-error alert | **`VideoPlayerView`** (the player child) | `m.view.callFunc("abandonErrorDialog")` |
 | 3 | Anything a main-thread flow put over the player (cast notice, server-switch prompt) | someone else | `cancelOpenDialog()` |
 
@@ -381,10 +382,54 @@ The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `s
 - **Live TV stream that stalled** (not an end): `VideoPlayerView.bufferCheck` sees no buffering progress across a 30 s tick (`classifyBufferCheck()` in `source/utils/bufferStall.bs`) and calls the host's `onLiveStreamStalled()`, which clears the screen the same way and asks `liveRestartOnStall()`: a mount that had made `LIVE_RESTART_HEALTHY_MS` of progress restarts (a dropped feed), any other stall shows the error and stops the stream. No `LIVE_RESTART_MAX` budget for stalls, because each is detected at least 30 s into the spinner (later if the buffering percentage kept rising). Instead, the mount a stall restart started must play `LIVE_STALL_REPROVE_MS` before its own stall restarts again: a restart into a playlist that stopped growing plays its leftover, which grows with the segment length (29.6 s with 10 s segments, measured) and would otherwise pass the `LIVE_RESTART_HEALTHY_MS` bar every time. A movie or episode that stalls shows the error directly, as before
 - **The give-up error's wording** (`liveGiveUpCauseKey()`): "This channel isn't sending any video" when no mount since the viewer chose the channel made progress, "This channel's stream stopped" when one did
 - **A terminal Video `error`** ends the server's session with a stop marked `Failed` (`reportPlaybackEnd("error")`), which leaves the user's resume position alone, and releases a Live TV channel's live stream, which otherwise stays open until the server restarts (#988): the stop releases a stream that had reported its start, a close by id one that failed before its first frame ([below](#reportplayback--server-side-reporting))
-- **More items in queue** → `advanceTo(position + 1)` + `playCurrentQueueItem()` (destroy + remount for the next item, which starts fresh — [Items a queue arrives at](#items-a-queue-arrives-at))
+- **More items in queue** → `advanceTo(position + 1)` + `playCurrentQueueItem()` (destroy + remount for the next item, which starts fresh — [Items a queue arrives at](#items-a-queue-arrives-at)). Before it moves, `shouldAskStillWatching()` decides whether the next item plays under the still-watching prompt ([below](#are-you-still-watching))
 - **Queue exhausted** → `exitPlayback()` → `sgrouter.goBack()` (leaves the play route; the suspended view beneath — the launching detail, or Home — resumes)
 
 The player reports its stop playstate to Jellyfin in `destroyPlayer()`: it removes the observer on `state`, then sets `m.view.control = "stop"` (the `Video` node's own `onDestroy` does not report a stop), before `callFunc("onDestroy")` and `removeChild`. So whether the user backs out (`goBack` → `beforeViewClose` → `onDestroy` → `destroyPlayer`) or the queue exhausts, Jellyfin records the stop.
+
+### Are you still watching?
+
+When the queue moves on by itself after enough unattended videos, the next one plays under a
+centered prompt (#982). **When** to ask is `source/utils/stillWatching.bs`, pure and
+unit-tested; **the asking** is `PlayerHostView`, which owns the session for as long as the
+play route is mounted.
+
+- **The rule.** A video counts as unattended when no remote button was pressed while it
+  played (`roDeviceInfo.TimeSinceLastKeypress()` against when it started). Ask before the
+  next one once the count reaches the preset's N, or, from the second unattended video in a
+  row (`STILL_WATCHING_MIN_VIDEOS_FOR_TIME_LIMIT`), once the time since the last button press
+  reaches its limit. That floor is so one long video, such as a movie, never prompts on its
+  own: the time limit is for runs of long episodes or movies, the count for short ones. It
+  covers every kind of queue (episodes, movies, mixed playlists), unlike jellyfin-web and
+  Android TV, which only count episodes. The presets are the ones `jellyfin-web` and Android TV use (2/60 min, 3/90,
+  5/150, 8/240, off), in `playbackStillWatching`. Web keeps its choice in the browser's
+  `localStorage`, not on the server, so there is no web value to read and no "Use Web
+  Client Setting" option; the default is web's default.
+- **Not a new video.** A Cinema Mode intro and the item behind it (`followsIntro`) are one
+  video, so that step neither counts nor asks.
+- **The prompt** is `showStillWatchingDialog()`: a `JRDialog` that takes focus, shown on the
+  next video's first `playing`, with that video playing underneath. **Any key answers it,
+  Back included** (`anyKeyResolves` → `buttonDialogKeyAction`), and the press does nothing
+  else. A 1 s timer rewrites the countdown in the subheading — the one text field rewritten
+  after a dialog is up, which is safe only because it is a single short line.
+- **No answer** in `STILL_WATCHING_RESPONSE_SECONDS` (30): the prompt is abandoned and the
+  player calls `pauseWithOsd()` — what the Play key does — so whoever comes back finds an
+  ordinary paused player.
+- **Activity that presses no key** counts too: any voice or Jellyfin app command
+  (`handleTransport`, which also answers the prompt when it is up), and a resume after the
+  timeout (the next `playing`). So the session tracks the last such activity as well as the
+  last key press.
+- **Skipping** with the player's next / previous starts the count over
+  (`skipToCurrentQueueItem`), the same as the press that opened the player.
+- **The key-press clock counts whole seconds** (`TimeSinceLastKeypress`) and `UpTime` does
+  not, so a press within `STILL_WATCHING_KEYPRESS_PRECISION_SECONDS` of a video's start is
+  taken as the press that started it, not one made while it played. Without that, whether the
+  first video counted depended on a fraction of a second.
+- **While it is up,** the Skip Intro and Next Episode pop-ups stay down (`isDialogOpen` in
+  `VideoPlayerView.onPositionChanged`), and an auto-skip intro waits until it closes.
+
+RTA covers both endings (`tests/rta/specs/still-watching.spec.js`, with the RTA hook
+`rtaForceStillWatching` so it need not play for an hour first).
 
 ## VideoPlayerView — `components/video/VideoPlayerView.bs/.xml`
 

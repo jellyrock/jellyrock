@@ -340,7 +340,7 @@ sub switchToQueueItem(queueManager as object, targetPosition as integer)
   ' The player is a child of PlayerHostView — remount it for the new queue position. The host
   ' destroys this player + mounts the next.
   host = m.top.getParent()
-  if isValid(host) then host.callFunc("playCurrentQueueItem")
+  if isValid(host) then host.callFunc("skipToCurrentQueueItem")
 end sub
 
 sub showChannelSwitchSpinner(nextItem as object)
@@ -2379,12 +2379,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       return true
     end if
 
-    ' Pause video and show OSD
-    m.top.control = "pause"
-    m.osd.playbackState = "paused"
-    m.osd.visible = true
-    m.osd.hasFocus = true
-    m.osd.setFocus(true)
+    pauseWithOsd()
     return true
   end if
 
@@ -2568,6 +2563,17 @@ sub onDestroy()
   m.chapterMenu = invalid
   m.chapterContent = invalid
   m.captionGroup = invalid
+end sub
+
+' Pause and show the OSD in its paused state — what the Play key does to a playing video.
+' Also PlayerHostView's when nobody answers the still-watching prompt, so a viewer who
+' comes back finds the same paused player they would have left themselves.
+sub pauseWithOsd()
+  m.top.control = "pause"
+  m.osd.playbackState = "paused"
+  m.osd.visible = true
+  m.osd.hasFocus = true
+  m.osd.setFocus(true)
 end sub
 
 ' handleTransport: Roku voice transport handler. Called from source/main.bs when an

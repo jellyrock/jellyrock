@@ -7,9 +7,9 @@
      directly. -->
 <component name="PlayerHostView" extends="JRScreen">
   <interface>
-    <!-- Host-internal advancement, called by the child VideoPlayerView (channel
-         up/down) and by this host's own onPlayerStateChange (finished -> next). -->
-    <function name="playCurrentQueueItem" />
+    <!-- The child VideoPlayerView moved the queue (next / previous, channel up/down):
+         remount the player for the new position. -->
+    <function name="skipToCurrentQueueItem" />
     <!-- The child VideoPlayerView's bufferCheck saw a Live TV stream stall: restart the
          channel or show the error. -->
     <function name="onLiveStreamStalled" />
@@ -21,4 +21,8 @@
          the caller then reroutes to the new content). -->
     <function name="teardownForDeepLink" />
   </interface>
+  <children>
+    <!-- The still-watching prompt's countdown, one tick a second (stillWatching.bs). -->
+    <Timer id="stillWatchingTimer" repeat="true" duration="1" />
+  </children>
 </component>

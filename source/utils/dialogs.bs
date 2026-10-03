@@ -70,6 +70,28 @@ function showAlertDialog(title as string, message as string, onResult = "" as st
   return presentOverlayDialog(dialog, onResult)
 end function
 
+' "Are you still watching?" (issue #982). One button, and ANY key answers it, Back
+' included (anyKeyResolves) — the question is only whether someone is there, so making
+' them find a particular button would defeat it.
+'
+' `countdown` goes in the subheading slot, and the caller rewrites it every second. That
+' is the one exception to setting text before presenting, and it is safe only because the
+' slot holds a single short line: its height never changes, so the layout never has to
+' (see JRDialog.onSubheadingChanged). The instruction stays in `message`, fixed.
+'
+' @param {string} countdown - the first countdown line ("Pausing in 30 seconds")
+' @param {string} onResult - result handler in the caller's scope
+function showStillWatchingDialog(countdown as string, onResult = "" as string) as object
+  dialog = createObject("roSGNode", "JRDialog")
+  dialog.title = translate(translationKeys.LabelAreYouStillWatching)
+  dialog.subheading = countdown
+  dialog.message = translate(translationKeys.MessagePressAnyButtonToKeepWatching)
+  dialog.anyKeyResolves = true
+  dialog.defaultButtonIndex = 0
+  dialog.buttons = [translate(translationKeys.ButtonContinueWatching)]
+  return presentOverlayDialog(dialog, onResult)
+end function
+
 ' Yes/No-style confirmation. Cancel is LEFT, confirm is RIGHT; back = cancelled.
 ' Read result.confirmed — true only when the confirm button was selected.
 function showConfirmDialog(title as string, message as string, onResult = "" as string, confirmText = "" as string, cancelText = "" as string) as object
