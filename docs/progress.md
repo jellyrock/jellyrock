@@ -268,6 +268,14 @@ The registry's `requires` gates are honored by the functional suite and the scre
 
 `HomeRows` logs `latest-rows row removed` once per row it drops mid-load, and `assembleSamples` (`scripts/measurements.js`) closes a sample whenever a line key repeats, so a second `row removed` splits the launch: sample #0 holds that one line and is incomplete, and the real paint lands as #1, which `selectColdSamples` (`scripts/measure-selection.js`) never picks. Seen 2026-09-25 on the 512 MB Stick against the demo server (Jellyfin 12.1.0): 5 of 5 launches painted 4 rows, 0 of 5 cold samples, run recorded `blocked`. Every Home first-paint A/B against the demo server fails until this is fixed. Fix shape: a repeated `rowRemoved` belongs to the same run rather than opening a new one, with a unit test built from that launch's line order.
 
+#### `scripts/catchup-state.js` writes during a read: it rewrites `docs/signals-backlog.md` and deletes old handoffs `[fid: catchup-reader-writes-tracked-files]` `[captured 2026-10-03]`
+
+A state reader should only read. Every run rewrites `latest_upstream` and `last_checked` in the tracked `docs/signals-backlog.md` (`maintainSignals()`), so the tree shows modified right after a session-start briefing, and it deletes handoffs older than 30 days. Move the signals refresh and the handoff pruning to commands of their own; the `/catchup` and `/focus` `## This repo` notes then drop the exception.
+
+#### `scripts/catchup-state.js` still builds `git` and `progress` sections the shared state reader now covers `[fid: catchup-reader-duplicate-sections]` `[captured 2026-10-03]`
+
+Nothing in `/catchup` or `/focus` reads them any more; `/ramp` still reads the area-scoped commits from `git`. Drop `progress`, narrow `git` to what `/ramp` uses, and update `tests/scripts/unit/catchup-state.test.js`.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
