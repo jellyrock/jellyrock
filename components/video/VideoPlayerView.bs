@@ -2565,17 +2565,6 @@ sub onDestroy()
   m.captionGroup = invalid
 end sub
 
-' handleTransport: Roku voice transport handler. Called from source/main.bs when an
-' roInputEvent with info.type = "transport" arrives and the active scene is this player.
-'
-' Returns { status: "<code>" } per roInput.EventResponse() — Roku OS uses the status
-' to render the appropriate HUD message. Codes used here:
-'   - success / success.seek-start / success.seek-end — op completed (with bounds note)
-'   - error.redundant — state already matches request (e.g. pause-while-paused)
-'   - error.generic — op semantically unsupported in this context
-'   - unhandled — command we don't recognize; lets Roku show "Command not available"
-'
-' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
 ' Pause and show the OSD in its paused state — what the Play key does to a playing video.
 ' Also PlayerHostView's when nobody answers the still-watching prompt, so a viewer who
 ' comes back finds the same paused player they would have left themselves.
@@ -2587,6 +2576,17 @@ sub pauseWithOsd()
   m.osd.setFocus(true)
 end sub
 
+' handleTransport: Roku voice transport handler. Called from source/main.bs when an
+' roInputEvent with info.type = "transport" arrives and the active scene is this player.
+'
+' Returns { status: "<code>" } per roInput.EventResponse() — Roku OS uses the status
+' to render the appropriate HUD message. Codes used here:
+'   - success / success.seek-start / success.seek-end — op completed (with bounds note)
+'   - error.redundant — state already matches request (e.g. pause-while-paused)
+'   - error.generic — op semantically unsupported in this context
+'   - unhandled — command we don't recognize; lets Roku show "Command not available"
+'
+' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
 function handleTransport(evt as object) as object
   if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
   cmd = lcase(evt.command)
