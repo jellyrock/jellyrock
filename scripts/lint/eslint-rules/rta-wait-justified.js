@@ -138,6 +138,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#jrDialog.#scrollContent.translation',
   '#jrDialog.id',
   '#jrDialog.sections',
+  // `VideoPlayerView.showNextEpisodeButton` sets it `showing`, and the instance in
+  // `VideoPlayerView.xml` keeps `autoDismissSeconds` at 0, so `showing` holds until the
+  // viewer dismisses it or the episode ends. Terminal, not a pulse. Read against the app
+  // source 2026-10-02 (VideoNotification.show / hide / dismiss).
+  '#nextEpisodeNotification.state',
   '#optionList.itemFocused',
   '#osd.visible',
   '#quickConnectCode.text',
@@ -149,6 +154,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#videoTitle.text',
   'itemId',
   'loadState',
+  // Roku's `Video.position`, read off the player by id. While the video plays it only
+  // climbs, so a `>= target` predicate stays true once true. Read 2026-10-02 against the
+  // one gate using it (playback-notifications.spec.js, which seeks before it waits).
+  'position',
   'state',
 ]);
 

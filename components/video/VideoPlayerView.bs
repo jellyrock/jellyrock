@@ -1692,9 +1692,8 @@ sub onPositionChanged()
     m.trickplayCarousel.playbackPosition = m.top.position
   end if
 
-  ' Check if dialog is open
-  m.dialog = m.top.getScene().findNode("dialogBackground")
-  if not isValid(m.dialog)
+  ' No segment or next-episode notification while a dialog is open over the player
+  if not m.global.sceneManager.callFunc("isDialogOpen")
     ' Do not check segments or next episode for intro videos
     if not m.LoadMetaDataTask.isIntro
       checkMediaSegments()
