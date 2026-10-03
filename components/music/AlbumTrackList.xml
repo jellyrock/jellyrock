@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<component name="AlbumTrackList" extends="MarkupList">
-  <interface>
-    <field id="MusicArtistAlbumData" type="assocarray" onChange="getData" />
-    <field id="isDoneLoading" type="boolean" value="false" />
-  </interface>
-</component>

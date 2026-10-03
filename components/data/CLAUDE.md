@@ -3,7 +3,7 @@
 Two related but distinct concerns share this folder:
 
 - **`components/data/jellyfin/*`** — typed `ContentNode` schemas for Jellyfin server data (user, server, items, settings, …). The XML *is* the schema.
-- **`components/data/*` (parent)** — a wider mix: typed data nodes (`UserData`, `PublicUserData`, `OptionsData`), stateful managers (`SceneManager`), Task helpers (`GetFiltersTask`), debug nodes (`DebugFlags`).
+- **`components/data/*` (parent)** — a wider mix: typed data nodes (`UserData`, `PublicUserData`), stateful managers (`SceneManager`), Task helpers (`GetFiltersTask`), debug nodes (`DebugFlags`).
 
 See [docs/architecture/global-state.md](../../docs/architecture/global-state.md) for which nodes hang off `m.global` and when they're initialized.
 
@@ -23,7 +23,7 @@ See [docs/architecture/global-state.md](../../docs/architecture/global-state.md)
 
 ## Parent-folder nodes (`components/data/*`) — more permissive
 
-- Typed data nodes here (e.g., `UserData`, `PublicUserData`, `OptionsData`, `OptionsButton`) follow the same data-only convention as the Jellyfin schemas above.
+- Typed data nodes here (e.g., `UserData`, `PublicUserData`, `OptionsButton`) follow the same data-only convention as the Jellyfin schemas above.
 - Stateful manager nodes (`SceneManager`) and Task helpers (`GetFiltersTask`) are NOT data containers — they extend `ContentNode` (or `Task`) for the node-mounting machinery, with substantial behavior in their backing files. That's intentional and pre-existing.
 - When in doubt: if you'd describe what you're building as "the X for the Y" (a manager, a coordinator), put it here. If it's "an X" (a row of data), make it a typed schema.
 

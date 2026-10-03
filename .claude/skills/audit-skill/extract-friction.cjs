@@ -424,12 +424,6 @@ function locateTranscripts(skill, sessionId, transcriptsDir, sessionMode = 'late
   return matches.slice(0, count).map((m) => m.path);
 }
 
-// Backward-compatible single-file resolver (kept for the exported contract +
-// any caller wanting just the most-recent transcript).
-function locateTranscript(skill, sessionId, transcriptsDir) {
-  return locateTranscripts(skill, sessionId, transcriptsDir, 'latest', 1)[0];
-}
-
 function fileContainsSkill(filePath, skill) {
   // Cheap substring scan — avoids full JSON parse for files that don't
   // mention the skill at all. Uses a buffer so we can search bytes.
@@ -1706,7 +1700,6 @@ module.exports = {
   buildAggregate,
   loadAllowlist,
   defaultTranscriptsDir,
-  locateTranscript,
   locateTranscripts,
   firstDownstreamMutation,
   computeEffectiveRange,

@@ -71,8 +71,6 @@ components/video/                             ← VIDEO playback UI
 
 components/music/                              ← AUDIO playback UI
   ├── AudioPlayerView.bs/.xml                 ← the audio "now playing" screen; extends JRScreen
-  ├── AlbumTrackList.bs/.xml                   ← track list for the current album
-  ├── SongItem.bs/.xml                         ← row item for a song
   └── LoadScreenSaverTimeoutTask.bs/.xml       ← screensaver suppression while music plays
 
 components/mediaPlayers/                       ← AUDIO playback ENGINE

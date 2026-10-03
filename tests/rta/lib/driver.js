@@ -15,7 +15,6 @@ import { sleep } from './steps.js';
 import { withTimeout } from './timeout.js';
 
 export { ecp, odc, device, utils };
-export const BOOT_MS = RTA_CONFIG.bootMs;
 
 /**
  * Apply RTA config to the client singletons (device host/password from .env,
