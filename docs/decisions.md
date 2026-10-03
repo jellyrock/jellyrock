@@ -1877,6 +1877,16 @@ The device profile advertises an audio format only where Roku's media spec docum
 
 Ruled out: trusting `CanDecodeAudio` and the EDID alone (both say yes to `mat` and to `dts` at 8ch); a per-soundbar override; dropping the `fmp4` transcode profile, which the Dolby Vision transcode uses; and a general "retry failed direct play as a transcode" as the fix, which would hide an inaccurate profile rather than correct it (logged as a separate safety-net follow-up). To re-evaluate: 7.1 DTS-HD on a setup that could bitstream it is converted to lossy `eac3`, and a direct-playable 7.1 DTS-HD track without `DTS:X` has not been measured.
 
+## decision-id: still-watching-prompt
+
+**date**: 2026-10-02
+**status**: accepted
+**related-files**: `source/utils/stillWatching.bs`, `components/video/PlayerHostView.bs`, `source/utils/dialogKeys.bs`
+
+"Are you still watching?" (#982) asks over the next video, not before it. When the queue moves on by itself, `PlayerHostView` asks once N videos in a row have played with no remote button pressed, or once the time since the last press reaches a limit. The presets are the ones jellyfin-web and Android TV use (2 videos/60 min, 3/90 default, 5/150, 8/240, off). An answer by voice or from the Jellyfin app counts as activity too, since it presses no button. The next video plays under a centered `JRDialog` that takes focus; any key answers it, Back included, and the press does nothing else. With no answer in 30 s the video pauses with its normal paused OSD. The design serves the viewer who is there: one press, nothing lost. Checked against the server source (Jellyfin 12.1, `UserDataManager.UpdatePlayState`): at the default `MinResumePct` of 5, 30 s under the prompt leaves no resume point on a video of 10 minutes or more; a video under 5 minutes (`MinResumeDurationSeconds` 300) played past 5% is marked played, as any unattended playback already is.
+
+Ruled out: a "Use Web Client Setting" option, because jellyfin-web 12.x keeps `stillWatchingPrompt` in the browser's `localStorage` (`userSettings.set(..., false)`), so the server has nothing to read. Holding the next video paused on its first frame: the countdown would time nothing the viewer can see, and they would land on 0:00 of a video they never saw. Asking at the end of the current video, or in a corner card: one covers the end of the episode, the other is easy to miss. The counting rule jellyfin-web uses, whose count resets only when the prompt is answered, so it prompts viewers who are using the remote. Rewinding after the timeout, and a 60 s window. Re-evaluate if jellyfin-web starts saving the setting on the server, which would make a web-client default possible.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
