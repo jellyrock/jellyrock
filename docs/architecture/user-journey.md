@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-29
+last-reviewed: 2026-10-02
 ---
 
 # The User Journey
@@ -314,7 +314,7 @@ While the video plays:
 When the video finishes (`state = "finished"`), `PlayerHostView.onPlayerStateChange` decides what to do (queue advancement is **host-internal** — destroy + remount the player child, not pop/push):
 
 - **Live TV channel** — `restartLiveChannel()` (restart the same channel by remounting), unless it keeps ending without playing: then the playback error shows instead (see [`playback.md`](./playback.md))
-- **More items in queue** — `advanceTo(position + 1)` → `playCurrentQueueItem()` (remount for the next item, which starts from its beginning)
+- **More items in queue** — `advanceTo(position + 1)` → `playCurrentQueueItem()` (remount for the next item, which starts from its beginning). After enough unattended videos the next one plays under an "Are you still watching?" prompt that any key answers; unanswered, the video pauses ([`playback.md`](./playback.md#are-you-still-watching))
 - **Queue exhausted** — `exitPlayback()` → `sgrouter.goBack()` (the suspended launching detail, or Home, resumes)
 
 Two `finished` states are *not* the end of playback and bail before any of that: a DoVi

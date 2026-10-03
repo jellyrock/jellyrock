@@ -35,6 +35,7 @@ related-files:
   - source/utils/quickplayLibrary.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
+  - source/utils/stillWatching.bs
   - source/utils/liveTv.bs
   - source/utils/bufferStall.bs
   - source/enums/BufferCheckAction.bs
@@ -45,7 +46,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-01
+last-reviewed: 2026-10-02
 ---
 
 # Video & Audio Playback
@@ -209,7 +210,7 @@ them* — which is what decides both the verb and the order:
 
 | # | Dialog | Owned by | How teardown clears it |
 |---|---|---|---|
-| 1 | Track pickers (`m.trackPickerDialog`) + the playback-info report (`m.reportDialog`) | `PlayerHostView` | `abandonPlaybackDialogs()` |
+| 1 | Track pickers (`m.trackPickerDialog`), the playback-info report (`m.reportDialog`) and the still-watching prompt (`m.stillWatchingDialog`) | `PlayerHostView` | `abandonPlaybackDialogs()` |
 | 2 | The playback-error alert | **`VideoPlayerView`** (the player child) | `m.view.callFunc("abandonErrorDialog")` |
 | 3 | Anything a main-thread flow put over the player (cast notice, server-switch prompt) | someone else | `cancelOpenDialog()` |
 
@@ -381,10 +382,43 @@ The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `s
 - **Live TV stream that stalled** (not an end): `VideoPlayerView.bufferCheck` sees no buffering progress across a 30 s tick (`classifyBufferCheck()` in `source/utils/bufferStall.bs`) and calls the host's `onLiveStreamStalled()`, which clears the screen the same way and asks `liveRestartOnStall()`: a mount that had made `LIVE_RESTART_HEALTHY_MS` of progress restarts (a dropped feed), any other stall shows the error and stops the stream. No `LIVE_RESTART_MAX` budget for stalls, because each is detected at least 30 s into the spinner (later if the buffering percentage kept rising). Instead, the mount a stall restart started must play `LIVE_STALL_REPROVE_MS` before its own stall restarts again: a restart into a playlist that stopped growing plays its leftover, which grows with the segment length (29.6 s with 10 s segments, measured) and would otherwise pass the `LIVE_RESTART_HEALTHY_MS` bar every time. A movie or episode that stalls shows the error directly, as before
 - **The give-up error's wording** (`liveGiveUpCauseKey()`): "This channel isn't sending any video" when no mount since the viewer chose the channel made progress, "This channel's stream stopped" when one did
 - **A terminal Video `error`** ends the server's session with a stop marked `Failed` (`reportPlaybackEnd("error")`), which leaves the user's resume position alone, and releases a Live TV channel's live stream, which otherwise stays open until the server restarts (#988): the stop releases a stream that had reported its start, a close by id one that failed before its first frame ([below](#reportplayback--server-side-reporting))
-- **More items in queue** → `advanceTo(position + 1)` + `playCurrentQueueItem()` (destroy + remount for the next item, which starts fresh — [Items a queue arrives at](#items-a-queue-arrives-at))
+- **More items in queue** → `advanceTo(position + 1)` + `playCurrentQueueItem()` (destroy + remount for the next item, which starts fresh — [Items a queue arrives at](#items-a-queue-arrives-at)). Before it moves, `shouldAskStillWatching()` decides whether the next item plays under the still-watching prompt ([below](#are-you-still-watching))
 - **Queue exhausted** → `exitPlayback()` → `sgrouter.goBack()` (leaves the play route; the suspended view beneath — the launching detail, or Home — resumes)
 
 The player reports its stop playstate to Jellyfin in `destroyPlayer()`: it removes the observer on `state`, then sets `m.view.control = "stop"` (the `Video` node's own `onDestroy` does not report a stop), before `callFunc("onDestroy")` and `removeChild`. So whether the user backs out (`goBack` → `beforeViewClose` → `onDestroy` → `destroyPlayer`) or the queue exhausts, Jellyfin records the stop.
+
+### Are you still watching?
+
+When the queue moves on by itself after enough unattended videos, the next one plays under a
+centered prompt (#982). **When** to ask is `source/utils/stillWatching.bs`, pure and
+unit-tested; **the asking** is `PlayerHostView`, which owns the session for as long as the
+play route is mounted.
+
+- **The rule.** A video counts as unattended when no remote button was pressed while it
+  played (`roDeviceInfo.TimeSinceLastKeypress()` against when it started). Ask before the
+  next one once the count reaches the preset's N, or the time since the last button press
+  reaches its limit. The presets are the ones `jellyfin-web` and Android TV use (2/60 min, 3/90,
+  5/150, 8/240, off), in `playbackStillWatching`. Web keeps its choice in the browser's
+  `localStorage`, not on the server, so there is no web value to read and no "Use Web
+  Client Setting" option; the default is web's default.
+- **Not a new video.** A Cinema Mode intro and the item behind it (`followsIntro`) are one
+  video, so that step neither counts nor asks.
+- **The prompt** is `showStillWatchingDialog()`: a `JRDialog` that takes focus, shown on the
+  next video's first `playing`, with that video playing underneath. **Any key answers it,
+  Back included** (`anyKeyResolves` → `buttonDialogKeyAction`), and the press does nothing
+  else. A 1 s timer rewrites the countdown in the subheading — the one text field rewritten
+  after a dialog is up, which is safe only because it is a single short line.
+- **No answer** in `STILL_WATCHING_RESPONSE_SECONDS` (30): the prompt is abandoned and the
+  player calls `pauseWithOsd()` — what the Play key does — so whoever comes back finds an
+  ordinary paused player.
+- **Answers that press no key** count too: a voice or Jellyfin app command while the prompt
+  is up (`handleTransport` cancels it), and a resume after the timeout (the next `playing`).
+  So the session tracks the last answer as well as the last key press.
+- **While it is up,** the Skip Intro and Next Episode pop-ups stay down (`isDialogOpen` in
+  `VideoPlayerView.onPositionChanged`), and an auto-skip intro waits until it closes.
+
+RTA covers both endings (`tests/rta/specs/still-watching.spec.js`, with the RTA hook
+`rtaForceStillWatching` so it need not play for an hour first).
 
 ## VideoPlayerView — `components/video/VideoPlayerView.bs/.xml`
 

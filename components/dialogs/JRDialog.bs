@@ -440,7 +440,7 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  action = buttonDialogKeyAction(key, m.stackButtons = true)
+  action = buttonDialogKeyAction(key, m.stackButtons = true, m.top.anyKeyResolves)
 
   if action = "cancel"
     resolveDialog(-1)

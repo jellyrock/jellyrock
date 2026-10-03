@@ -21,4 +21,8 @@
          the caller then reroutes to the new content). -->
     <function name="teardownForDeepLink" />
   </interface>
+  <children>
+    <!-- The still-watching prompt's countdown, one tick a second (stillWatching.bs). -->
+    <Timer id="stillWatchingTimer" repeat="true" duration="1" />
+  </children>
 </component>

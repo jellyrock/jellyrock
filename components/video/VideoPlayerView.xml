@@ -53,6 +53,7 @@
     <field id="cachedPlaybackInfo" type="assocarray" />
     <function name="onDestroy" />
     <function name="handleTransport" />
+    <function name="pauseWithOsd" />
     <function name="abandonErrorDialog" />
     <function name="showLiveStreamStoppedError" />
     <function name="showLiveStreamStalledError" />

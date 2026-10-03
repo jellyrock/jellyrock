@@ -133,5 +133,17 @@ namespace tests
       end for
     end function
 
+    ' The still-watching prompt: any press is the answer, so no key may cancel,
+    ' step or be swallowed — Back included.
+    @it("resolves on EVERY key when any key answers the dialog")
+    function _()
+      keys = ["OK", "back", "left", "right", "up", "down", "play", "replay", "rewind", "fastforward", "options"]
+      for each stacked in [true, false]
+        for each key in keys
+          m.assertEqual(buttonDialogKeyAction(key, stacked, true), "resolve", key)
+        end for
+      end for
+    end function
+
   end class
 end namespace

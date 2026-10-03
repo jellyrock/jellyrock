@@ -32,6 +32,7 @@
     <field id="playbackNextUpButtonSeconds" type="integer" alwaysNotify="true" />
     <field id="playbackPlayNextEpisode" type="string" alwaysNotify="true" />
     <field id="playbackPreferredMultichannelCodec" type="string" alwaysNotify="true" />
+    <field id="playbackStillWatching" type="string" alwaysNotify="true" />
     <field id="playbackSubsOnlyText" type="boolean" alwaysNotify="true" />
     <field id="playbackForceTranscodeAnamorphic" type="boolean" alwaysNotify="true" />
     <field id="playbackMpeg2" type="boolean" alwaysNotify="true" />

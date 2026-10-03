@@ -94,6 +94,7 @@ Settings relating to playback and supported codec and media types.
 - [Play Next Episode Automatically](#playbackPlayNextEpisode)
 - [Preferred Surround Audio Codec](#playbackPreferredMultichannelCodec)
 - [Preserve DoVi](#playbackPreserveDovi)
+- [Still Watching Prompt](#playbackStillWatching)
 - [Text Subtitles Only](#playbackSubsOnlyText)
 - [Video Codec Support](#playback-video-codec-support)
   - [Force Transcode Anamorphic Video](#playbackForceTranscodeAnamorphic)
@@ -226,6 +227,19 @@ Preserve Dolby Vision content when possible by forcing remux instead of direct p
 | Setting Name | `playbackPreserveDovi` |
 | Type | `bool` |
 | Default | `true` |
+
+<h3 id="playbackStillWatching">Still Watching Prompt</h3>
+
+<a href="#playback">Playback</a> › <a href="#playbackStillWatching">Still Watching Prompt</a>
+
+Ask if you're still watching when videos keep playing on their own with no button pressed. If nobody answers, playback pauses.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackStillWatching` |
+| Type | `radio` |
+| Default | `default` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Disabled</td><td><code>disabled</code></td></tr><tr><td>2 videos or 60 minutes</td><td><code>short</code></td></tr><tr><td>3 videos or 90 minutes</td><td><code>default</code></td></tr><tr><td>5 videos or 150 minutes</td><td><code>long</code></td></tr><tr><td>8 videos or 240 minutes</td><td><code>veryLong</code></td></tr></tbody></table> |
 
 <h3 id="playbackSubsOnlyText">Text Subtitles Only</h3>
 

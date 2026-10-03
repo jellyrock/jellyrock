@@ -1,0 +1,76 @@
+import "pkg:/source/utils/misc.bs"
+
+' "Are you still watching?" — when to ask (issue #982).
+'
+' The question is whether anyone is at the remote. Roku can say when a remote button was last
+' pressed (roDeviceInfo.TimeSinceLastKeypress), so the rule is: ask before the next video when
+' too many videos in a row played with no button pressed, or too long has passed since the last
+' press. A press while a video plays means someone was there, so that video does not count.
+'
+' The presets match jellyfin-web's and Android TV's (count of videos, minutes). Web keeps its
+' choice in the browser's localStorage rather than on the server, so there is no web value to
+' read; the default is web's default.
+'
+' PlayerHostView owns the session (newStillWatchingSession) for as long as the player route is
+' mounted, and calls these at each automatic advance and each answer.
+
+' How long the prompt waits for an answer before the video pauses.
+const STILL_WATCHING_RESPONSE_SECONDS = 30
+
+' The thresholds for a playbackStillWatching value, or invalid when the prompt is off.
+' An empty or unrecognized value is the default preset, so a bad registry value never
+' silently disables the check.
+'
+' @param {string} option - playbackStillWatching ("disabled", "short", "default", "long", "veryLong")
+' @returns {dynamic} { count, seconds } or invalid
+function stillWatchingThresholds(option as string) as dynamic
+  if option = "disabled" then return invalid
+  if option = "short" then return { count: 2, seconds: 60 * 60 }
+  if option = "long" then return { count: 5, seconds: 150 * 60 }
+  if option = "veryLong" then return { count: 8, seconds: 240 * 60 }
+  return { count: 3, seconds: 90 * 60 }
+end function
+
+' A new session, started when the player route mounts (a button press started it).
+'
+' @param {float} nowSeconds - UpTime(0)
+' @returns {object} { unattendedCount, itemStartedAt, answeredAt }
+function newStillWatchingSession(nowSeconds as float) as object
+  return { unattendedCount: 0, itemStartedAt: nowSeconds, answeredAt: nowSeconds }
+end function
+
+' A video ended and the queue is moving on to the next one by itself. Records whether the video
+' that ended was unattended and returns whether to ask before the next one plays.
+'
+' Idle time is the shorter of "since the last button press" and "since the last answer": an
+' answer can come by voice or from the Jellyfin app, which presses no button.
+'
+' @param {object} session - from newStillWatchingSession
+' @param {dynamic} thresholds - from stillWatchingThresholds (invalid = off)
+' @param {integer} secondsSinceKeypress - roDeviceInfo.TimeSinceLastKeypress()
+' @param {float} nowSeconds - UpTime(0)
+' @returns {boolean} true to ask
+function stillWatchingOnAdvance(session as object, thresholds as dynamic, secondsSinceKeypress as integer, nowSeconds as float) as boolean
+  idleSeconds = secondsSinceKeypress
+  sinceAnswer = nowSeconds - session.answeredAt
+  if sinceAnswer < idleSeconds then idleSeconds = sinceAnswer
+
+  if idleSeconds < nowSeconds - session.itemStartedAt
+    session.unattendedCount = 0
+  else
+    session.unattendedCount = session.unattendedCount + 1
+  end if
+  session.itemStartedAt = nowSeconds
+
+  if not isValid(thresholds) then return false
+  return session.unattendedCount >= thresholds.count or idleSeconds >= thresholds.seconds
+end function
+
+' Someone answered: the prompt was dismissed, or playback resumed after it paused.
+'
+' @param {object} session - from newStillWatchingSession
+' @param {float} nowSeconds - UpTime(0)
+sub stillWatchingOnAnswer(session as object, nowSeconds as float)
+  session.unattendedCount = 0
+  session.answeredAt = nowSeconds
+end sub

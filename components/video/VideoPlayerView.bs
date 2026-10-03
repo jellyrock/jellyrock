@@ -2379,12 +2379,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       return true
     end if
 
-    ' Pause video and show OSD
-    m.top.control = "pause"
-    m.osd.playbackState = "paused"
-    m.osd.visible = true
-    m.osd.hasFocus = true
-    m.osd.setFocus(true)
+    pauseWithOsd()
     return true
   end if
 
@@ -2581,6 +2576,17 @@ end sub
 '   - unhandled — command we don't recognize; lets Roku show "Command not available"
 '
 ' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+' Pause and show the OSD in its paused state — what the Play key does to a playing video.
+' Also PlayerHostView's when nobody answers the still-watching prompt, so a viewer who
+' comes back finds the same paused player they would have left themselves.
+sub pauseWithOsd()
+  m.top.control = "pause"
+  m.osd.playbackState = "paused"
+  m.osd.visible = true
+  m.osd.hasFocus = true
+  m.osd.setFocus(true)
+end sub
+
 function handleTransport(evt as object) as object
   if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
   cmd = lcase(evt.command)

@@ -144,6 +144,7 @@ class SessionDataTransformer
     settingsNode.playbackSubtitleLanguagePreference = settingsData["playbackSubtitleLanguagePreference"] ?? ""
     settingsNode.playbackSubtitleLanguageCustom = settingsData["playbackSubtitleLanguageCustom"] ?? ""
     settingsNode.playbackPreferredMultichannelCodec = settingsData["playbackPreferredMultichannelCodec"] ?? ""
+    settingsNode.playbackStillWatching = settingsData["playbackStillWatching"] ?? ""
     settingsNode.playbackSubsOnlyText = toBoolean(settingsData["playbackSubsOnlyText"])
     settingsNode.playbackForceTranscodeAnamorphic = toBoolean(settingsData["playbackForceTranscodeAnamorphic"])
     settingsNode.playbackMpeg2 = toBoolean(settingsData["playbackMpeg2"])

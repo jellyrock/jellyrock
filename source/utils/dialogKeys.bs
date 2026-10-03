@@ -81,10 +81,17 @@ end function
 ' app's other horizontal row. A dialog that dead-ends feels broken. The caller
 ' owns the wrap arithmetic; this function only says which direction to step.
 '
+' `anyKeyResolves` replaces all of that with one rule: every key, Back included,
+' resolves with the focused button. It is for a dialog whose only question is
+' "is anyone there?" (the still-watching prompt), where any press is the answer
+' and making the viewer find a particular button would defeat it.
+'
 ' @param {string} key - the key name from onKeyEvent
 ' @param {boolean} stacked - true when the row is laid out vertically
+' @param {boolean} anyKeyResolves - true when any key answers the dialog
 ' @returns {string} - "cancel" | "resolve" | "stepBack" | "stepForward" | "consume"
-function buttonDialogKeyAction(key as string, stacked as boolean) as string
+function buttonDialogKeyAction(key as string, stacked as boolean, anyKeyResolves = false as boolean) as string
+  if anyKeyResolves then return "resolve"
   if key = "back" then return "cancel"
   if key = "OK" then return "resolve"
   if key = "left" then return "stepBack"
