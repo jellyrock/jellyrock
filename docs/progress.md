@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-01
+last-updated: 2026-10-03
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-03 — refactor: Remove unused components, dev dependencies and JS exports
 - 2026-10-01 — fix: Silent DTS, failing TrueHD over passthrough, and track switching
 - 2026-09-30 — fix: Quick play slow, TV and mixed libraries, and resume music videos
 - 2026-09-29 — chore(journal-sync): Rebuild the Recently shipped section on every sync
@@ -94,21 +95,7 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-19 — fix: Keep the `ItemGridOptions` dialog usable while a library grid loads
 - 2026-09-19 — fix: Give each `BaseGridView` load and page its own Task node
 - 2026-09-19 — fix: Give each run its own Task node where a restart can lose the work
-- 2026-09-18 — `SearchResults.loadResults` now drops a delivery from a replaced search node (`isCurrentTaskEvent`) and warns naming the query it answered, closing the followup that the search keystroke race was detected but deliberately not acted on — with a new node per keystroke, reading the current node on a stale event would resolve and unobserve the live run
 - 2026-09-19 — ci: Give every `PENDING_MIGRATIONS` state in `no-same-node-relaunch` an honest verdict
-- 2026-09-17 — An in-player version switch now maps the position into the new version's OWN timeline (`versionResume.switchTicksFor()`): the exact time when the new version reaches it, otherwise the same percentage — so a switch can no longer seed a start position past the new file's end. Deliberately NOT the `wouldMarkPlayed()` guard this followup proposed: two releases of one cut are offset by a constant rather than stretched (+4 s across a 47 s runtime gap), so time-first is the accurate mapping, and past the resume ceiling the viewer continues at the exact time and the item counts as watched — what finishing it would have done. Verified on 12.0, both branches: 603 s → 605 s switching into a shorter file, and 1803 s in the 1843 s version → 1758 s in the 1796 s one.
-- 2026-09-17 — chore: Gate line-number citations in docs behind a per-file ratchet
-- 2026-09-17 — chore: Record that `SearchResults` does not reproduce the relaunch race
-- 2026-09-17 — Label alternate versions by what differs, and offer every version
-- 2026-09-17 — fix: Stop Next Up listing every series' pilot on Jellyfin 10.7–10.10
-- 2026-09-17 — ci: Fail the build on a same-node Task stop-and-relaunch
-- 2026-09-17 — Alternate-version labels now lead with what differs between the versions and drop the name text they all share (`source/utils/versionLabels.bs`): a full label in the `ItemDetails` Video menu and the in-player dialog, a short one in the collapsed trigger and the player, which now also names the version on an episode's line; the menu marks the in-progress version on 12.0+ (closes the #933 label follow-up; recorded as `version-label-forms`).
-- 2026-09-17 — ci: Accept either outcome of a same-callback Task relaunch in `TaskRelaunch.spec`
-- 2026-09-17 — `TaskRelaunch.spec`'s same-callback case now accepts both platform outcomes (the relaunch is a race: ignored when run alone, sometimes honored under a full suite) and fails only on a third, and the `threading.md` row says so. Closes the followup that it flaked on a Stick 4K and in CI.
-- 2026-09-17 — Read device settings from a per-user env file as well as `.env`
-- 2026-09-17 — chore: Ask before an agent creates a git worktree
-- 2026-09-17 — chore: Charge the `apiPipeline` budget only while waiting on the server
-- 2026-09-17 — fix: Match the selected version ignoring case in `ItemDetails`, and drop the dead `MaxVideoDecodeResolution`
 
 ## Open followups
 
