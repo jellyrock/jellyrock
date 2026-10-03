@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update dotenv from v17.4.2 to v18 ([#962](https://github.com/jellyrock/jellyrock/pull/962))
 - Update vitest from v5.0.2 to v5.0.3 ([#1077](https://github.com/jellyrock/jellyrock/pull/1077))
 
 ## [2.34.1](https://github.com/jellyrock/jellyrock/compare/v2.34.0...v2.34.1) - 2026-10-02
