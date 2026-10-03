@@ -24,8 +24,10 @@
 #   2. a projects index at    README.md  with an `## Active projects` table
 #
 # Usage: bash .claude/skills/start-project/scaffold-project.sh <slug> <goal-oneliner>
+#        bash .claude/skills/start-project/scaffold-project.sh --check <slug>
 #   slug:  kebab-case project slug (no date prefix — the script adds YYYY-MM-)
 #   goal:  one-line goal for the README row (the full Charter is filled by the skill)
+#   --check: only say whether the slug is free, by the same rule the scaffold uses; writes nothing
 #
 # Exit 1 (no mutation) on: missing args or a slug collision (an existing
 # *-<slug>/ dir, active OR archived) — so the skill can never scaffold over a
@@ -37,9 +39,14 @@ set -euo pipefail
 
 die() { printf 'scaffold-project: %s\n' "$1" >&2; exit 1; }
 
-[ $# -eq 2 ] || die "usage: scaffold-project.sh <slug> <goal-oneliner>"
-SLUG="$1"
-GOAL="$2"
+CHECK=0
+if [ "${1:-}" = --check ]; then
+  [ $# -eq 2 ] || die "usage: scaffold-project.sh --check <slug>"
+  CHECK=1; SLUG="$2"; GOAL=""
+else
+  [ $# -eq 2 ] || die "usage: scaffold-project.sh <slug> <goal-oneliner>  (or --check <slug>)"
+  SLUG="$1"; GOAL="$2"
+fi
 
 [[ "$SLUG" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "slug must be kebab-case (got: '$SLUG')"
 
@@ -49,6 +56,16 @@ RESOLVER="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/projects-dir.sh"
 PROJECTS="$(bash "$RESOLVER")" || die "projects-dir.sh could not say where projects live"
 TEMPLATE="$PROJECTS/_TEMPLATE.md"
 README="$PROJECTS/README.md"
+
+# Collision check — active and archived, any month prefix. Atomic guard against
+# the "scaffold over an existing slug" failure mode, run before anything is
+# written. The prefix is matched as YYYY-MM-, so a slug that only ends another
+# project's name (cache vs redis-cache) is not a collision.
+shopt -s nullglob
+collisions=( "$PROJECTS"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG" "$PROJECTS"/_archive/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG" )
+shopt -u nullglob
+[ ${#collisions[@]} -eq 0 ] || die "slug '$SLUG' already exists: ${collisions[*]} — use /resume-project instead"
+if [ "$CHECK" -eq 1 ]; then printf "slug '%s' is free in %s\n" "$SLUG" "$PROJECTS"; exit 0; fi
 
 # Self-bootstrap the lifecycle infra if absent. Where the project tree is
 # gitignored (PLANs are local agent-continuity, like .claude/handoffs), a fresh
@@ -63,6 +80,7 @@ if [ ! -f "$TEMPLATE" ]; then
 ---
 project: <slug>
 status: active            # draft | active | paused | completed | abandoned
+waits-on:                 # what must finish first, comma-separated: <slug>, <slug>:<phase>, fid:<id>, <repo>/<slug>
 created: YYYY-MM-DD
 last-updated: YYYY-MM-DD
 ---
@@ -71,7 +89,7 @@ last-updated: YYYY-MM-DD
 
 ## ⛰ Charter
 
-> Lightweight stub that grows. Intent stays mutable — record scope changes as dated decisions in the Status section, or a supersede-ADR / explicit scope-cut for a big shift, rather than rewriting the Charter in place (that keeps the original intent as an anchor). No mandatory immutability flip.
+> Lightweight stub that grows. Intent stays mutable — record scope changes as dated decisions in the Status section (a big shift gets an explicit scope-cut decision) rather than rewriting the Charter in place (that keeps the original intent as an anchor). No mandatory immutability flip.
 
 - **Goal**: <one sentence>
 - **Success criteria**:
@@ -87,23 +105,45 @@ last-updated: YYYY-MM-DD
 
 ## 📍 Status (updated every session via /end-session)
 
-**Current phase:** <name>
+**Current phase:** A — <name>
 
 **Phase progress:**
-- A ✅ done (commits `<range>`)
-- B 🚧 in progress
-- C ⬜ pending
+- A 🚧 in progress
+- B ⬜ pending
 - ...
 
 **Last 5 decisions (newest first, dated):**
 - YYYY-MM-DD: <decision + why>
 
-**Open questions / blockers:** <list, or "none">
+**Open questions / blockers:** <list, or "none". A blocker only a person or an outside event can clear is tagged `[external-gate: <reason>]`.>
 
 ## 🚀 Next-session kickoff (rewritten by /end-session each time)
 
-<A self-contained prompt the next session can act on cold: what's done, what's
-next, required reading, and any landmines. Assume no memory of prior sessions.>
+**Starts at:** A — <the step to start with>
+
+**Last session stopped:** <where it stopped and why, in a sentence or two>
+
+**Unanswered:** <questions put to the operator that got no reply, or "none">
+
+### Verify first
+
+- `<command>` → `<the one line it printed at the close>` <what its numbers mean, when the line does not say>
+
+### Next, in order
+
+1. <step>
+
+### Required reading
+
+- <file or section, and why>
+
+### Landmines
+
+- <a trap that bites inside this project, and how to avoid it>
+
+## 📚 Reference (never printed at resume: read a part by its heading when the work needs it)
+
+<Findings, measurements, how-tos, and each finished phase's detail.>
 
 ## 📜 Session log (append-only)
 
@@ -127,15 +167,6 @@ MONTH="$(date +%Y-%m)"
 TODAY="$(date +%Y-%m-%d)"
 DIRNAME="${MONTH}-${SLUG}"
 TARGET="$PROJECTS/$DIRNAME"
-
-# Collision check — active and archived, any month prefix. Atomic guard against
-# the "scaffold over an existing slug" failure mode. The prefix is matched as
-# YYYY-MM-, so a slug that only ends another project's name (cache vs
-# redis-cache) is not a collision.
-shopt -s nullglob
-collisions=( "$PROJECTS"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG" "$PROJECTS"/_archive/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG" )
-shopt -u nullglob
-[ ${#collisions[@]} -eq 0 ] || die "slug '$SLUG' already exists: ${collisions[*]} — use /resume-project instead"
 
 # Scaffold.
 mkdir -p "$TARGET"
@@ -174,4 +205,4 @@ mv "$tmp" "$README"
 
 printf 'Scaffolded %s\n' "$TARGET/PLAN.md"
 printf 'Indexed in %s\n' "$README"
-printf 'Next (skill, judgment): co-design the Charter body into PLAN.md, write the kickoff + first log line.\n'
+printf 'Next (the skill): commit this stub where the projects folder is committed, then write the Charter, Status, kickoff and first log line into PLAN.md.\n'

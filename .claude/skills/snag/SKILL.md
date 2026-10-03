@@ -1,105 +1,172 @@
 ---
 name: snag
-model: sonnet
-effort: low
-description: Reactive flaw-remediation for JellyRock — fires the moment a defect, bug, gap, or regression surfaces mid-work, BEFORE you hack a first-draft fix. Triages the flaw by size (blast radius + judgment required, NOT line count) and routes it behind a confirm gate: trivial → fix now with zero ceremony; small/medium → a structured in-session fix carrying RCA gates (confirm root cause / weigh ≥2 fixes / right-size the artifact / regression+dogfood via `npm run validate`/`test:scripts`/`test:tdd` / human gate), optionally delegated to an Opus sub-agent to preserve main-thread context; large → escalate to tracked work (`/log followup` or `/start-project`). Recommend-then-confirm, flat disclosure, non-mandatory — self-demotes so it never taxes a 2-line fix. Reuses `/focus`'s triage→route architecture but is distinct by TRIGGER: `/focus` is proactive session-start backlog triage; `/snag` is reactive triage of a flaw found mid-work. Use when something turns out broken and you want to handle it at the right size instead of reflexively patching. NOT for picking the next task (use `/focus`), and NOT for a known crash/CI/issue investigation that already has a dedicated flow (`/runtime-triage`, `/ci-triage`, `/issue-triage`).
+model: opus
+effort: medium
+description: Handle a flaw found mid-work without switching gears. Start it the moment a defect, bug, gap or regression surfaces while doing other work, BEFORE any fix is drafted. A trivial slip is fixed on the spot. Anything else is investigated read-only (reproduce, root cause, history of the broken lines, what depends on it), then shown on one decision screen with the candidate fixes, a recommended fix and a recommended timing. The user picks a fix to build now (test-first, committed, never pushed) or files it as a pinned followup (asap) or a plain one (later). Not for picking the next task (use /focus), saving a thought unexamined (use /log), or a pasted Roku log, failed CI run or issue that has its own flow (use /runtime-triage, /ci-triage, /issue-triage).
 ---
 
-# /snag — reactive triage → route (fix-now / structured-fix / escalate)
+# /snag — investigate a flaw found mid-work; the user chooses the fix and when
+
+## This repo
+
+- **Shared mechanisms** (a change to one is never trivial, Step 1; prove it on one target first): the BrighterScript build plugins `../../../scripts/bsc-plugins/` (compile-time guards such as `no-task-fanout`, `no-raw-run`; one edit changes the build of every `.bs` file); the lint scripts and ESLint rules `../../../scripts/lint/`; the git hooks `../../../.husky/` and the agent hooks `../../hooks/`; the CI workflows `../../../.github/workflows/` (the `_*.yml` files are reusable and called by the others); the API client and its task pool `../../../source/api/` ([its notes](../../../source/api/CLAUDE.md)); the committed ratchet baselines (`.promise-ratchet-baseline`, `.dead-code-baseline.json`, `.doc-citation-baseline.json`); the shared skills.
+- **Where failures are read:** a device flaw, in the Roku debug console (`telnet ${ROKU_DEV_TARGET} 8085`, [DEVGUIDE](../../../docs/dev/DEVGUIDE.md#bugcrash-reports)) and the test runners' output (`npm run device:check` first); a CI flaw, in the failed GitHub Actions run (`gh run view <id> --log-failed`); a field crash, in the weekly Roku crash report ([workflow](../../../docs/dev/crash-reports.md), routing table `../../../.crash-report/known-noise.yml`).
+- **A pasted Roku log, a failed CI run or an issue** already has a flow: `/runtime-triage`, `/ci-triage`, `/issue-triage`. Use `/snag` for a flaw found mid-work that is not one of those.
 
 ## Contract
 
-**Goal.** Turn the moment a flaw surfaces mid-work into the right-sized response instead of a reflexive first-draft patch. When a defect, bug, gap, or regression is found — by the agent or surfaced by the user — `/snag` **triages its size and routes** it behind a confirm gate, mirroring the proven proactive-triage architecture (triage → recommend → route behind a confirm gate; flat disclosure; non-mandatory; recommend-then-confirm). The three routes: **fix-now** (trivial — a typo, a one-line correction the agent never gets wrong — applied immediately with zero ceremony); **structured-fix** (small/medium — carries the RCA gates below, optionally delegated to a sub-agent so the main thread keeps its context); **escalate** (large — hand off to tracked work because the flaw deserves its own triage, not an in-place hack). The skill **operationalizes** the workflow's standing norms (iterate-on-evidence, dogfood-changes, cost-efficiency) as an *active gate* that fires at flaw-discovery time — the rules state the "why," the skill is the "when + how." It ships at the cost-efficient tier: triage and the trivial/escalate routes are light judgment, and the one genuinely judgment-heavy sub-step — naming a subtle root cause on a structured fix — is carried by an escalated sub-agent (judgment tier) only when the cause isn't obvious, so the common case never pays the expensive tier.
+**Goal.** Turn the moment a flaw surfaces mid-work into a considered response instead of a reflexive first-draft patch, without pulling the user off what they were doing. A trivial slip is fixed on the spot. Anything else is **investigated before anything is decided**: the flaw is reproduced, its actual cause named, the history of the broken lines read, and what depends on it found, all read-only. The result goes to the user on **one fixed decision screen**: the evidence, the candidate fixes, a recommended fix and a recommended timing. **The user always chooses the fix**; no repo setting waives that. They build it now, or file it for later with the investigation attached. A fix built now is test-first, verified on a real target, committed on its own paths and **never pushed**: the user is mid-work, and the fix goes out with their next push. The agent starts it the moment it finds a flaw, or the user types it. Started by the agent it runs on the session's own model and effort; its pin applies when it is typed. The one judgment-heavy sub-step, naming a subtle root cause, may go to a sub-agent at the judgment tier.
 
-**Inputs.** The arguments are an optional short description of the flaw just found (e.g. `the keep-list guard let the sweep clobber protected files`). If absent, the skill triages the most recently surfaced defect in the working context. The skill expects to be invoked **the moment a flaw is found, before any fix is drafted** — its whole value is interposing a triage step between discovery and patch. It reads the working state needed to size the flaw (the failing artifact, its blast radius, what depends on it) but does not require a prior `/catchup`.
+**Inputs.** The arguments are an optional short description of the flaw just found (e.g. `the keep-list guard let the sweep clobber protected files`). If absent, the skill takes the most recently surfaced defect in the working context. It expects to be invoked **the moment a flaw is found, before any fix is drafted**.
 
 **Outputs.**
 
-- A `Triage` block surfaced to the user: the flaw in one line, its **size** (trivial / small-medium / large) with a one-line rationale grounded in *blast radius + judgment required*, and the **route** that size implies. Surfaced behind a confirm gate before any fix is applied (except a genuinely trivial fix, which may apply directly — see Success criteria).
-- **On fix-now:** the trivial correction applied directly, no ceremony, no human gate.
-- **On structured-fix:** the five gates walked and their outputs surfaced for the human gate — the confirmed root cause, the ≥2 candidate fixes weighed with the chosen one and why, the fix's footprint (sized to match the defect), and a regression/dogfood result proving the fix works on a real target before "done." The fix's RCA narrative (root cause + chosen fix + alternatives rejected) lands in the commit body, not a separate artifact.
-- **On escalate:** a hand-off to tracked work — a `/log followup` capturing the flaw + its suspected cause, or a `/start-project` scaffold when it's multi-session-shaped — and the skill stops without fixing in place.
-- A `Captures for /log` tail listing anything journal-worthy that surfaced during the fix but isn't yet captured, using the types `/log` records. Omit if nothing surfaced; do not pad.
+- **A trivial slip:** the correction applied directly and named in one line. No screen, no report.
+- **Anything else:** the decision screen of Step 3, every field filled, shown before any edit; then the turn ends.
+- **On a fix chosen to build now:** the fix, its tests, one commit on its own paths whose body carries the root cause, the chosen fix and the alternatives rejected; nothing pushed; then the report of Step 7, every field filled.
+- **On `asap` or `later`:** a followup holding the cause and the options (pinned for `asap`), and nothing edited.
+- Anything journal-worthy that surfaced and is not yet captured, using the types `/log` records. Omit if nothing surfaced; do not pad.
 
 **Success criteria.**
 
-- The flaw is sized by **blast radius + judgment required, not line count** — a one-line change to a shared mechanism that fans out to many targets is *not* trivial; a ten-line change isolated to one throwaway spot may be. The size determines exactly one route.
-- The **trivial route is genuinely zero-ceremony** — the skill self-demotes and never taxes a 2-line fix with gates, sub-agents, or a human-gate question. If the triage is hesitating over whether a fix is trivial, that hesitation *is* the signal it's not.
-- The **structured-fix route walks all five gates** in order: (1) confirm the *actual* root cause, not the first symptom; (2) weigh ≥2 candidate fixes and pick on merit; (3) right-size the artifact so its footprint matches the defect; (4) regression+dogfood the fix on a real target before declaring done; (5) human gate — surface root cause + chosen fix + footprint for confirmation before applying anything beyond trivial.
-- A **destructive or fan-out mechanism is verified on ONE target before it's applied across many** — a sweep, a multi-file `sed`, a batch transform proves itself on a single instance first.
-- The **escalate route hands off rather than fixing in place** — a large flaw becomes tracked work, not an in-session hack that skips its own triage.
-- The skill **reuses the routing architecture but is distinct by trigger** — proactive next-move triage stays with the session-start orchestrator; `/snag` owns reactive flaw triage. No duplication of the rules' content: the skill is the active gate, the rules remain the rationale.
+- Nothing is edited before the user replies to the decision screen, except a genuinely trivial slip.
+- The screen and the report follow their templates: **every field appears every time**, and a step that was not done says `not done: <why>` instead of being left out.
+- The root cause on the screen is the actual cause, backed by a reproduction and by the history of the broken lines; anything stated but not measured is listed under **Not checked**.
+- The user chose the fix. With one viable fix the screen still shows it, with why nothing else is viable.
+- A fix built now has a test that failed before it and passes after it, was tried on a real target, and is sized to the defect.
+- A **destructive or fan-out mechanism is verified on ONE target before it is applied across many**.
+- The fix is committed on its own paths and not pushed; a file holding the user's uncommitted work is never committed.
 
 **Failure modes to avoid.**
 
-- **Hacking the first-draft fix.** Shipping the first remedy that comes to mind, commit-as-you-go, with no gate forcing confirm-root-cause / weigh-alternatives / check-regressions. This is the exact failure the skill exists to interpose against — if you find yourself editing before you've triaged, stop and triage.
-- **Fan-out before verifying the mechanism on one target.** Running a destructive batch operation (a multi-file `sed`, a sweep, a scripted transform) across many targets without proving the mechanism on a single one first. A silently-failing guard can corrupt every target at once. Verify on one, confirm the result, *then* fan out.
-- **Over-sizing the artifact.** Answering a two-sentence behavioral gap with a multi-paragraph edit, or a one-file defect with a cross-cutting refactor. The fix's footprint must match the defect's — gate 3 exists precisely to catch this. Bloat is a regression, not thoroughness.
-- **Asserting comprehensiveness without verifying the vectors.** Declaring "this makes every case safe" / "there's zero risk" without having checked the cases. A known-shaped error class shrugged off as "probably fine" is the defer-clause inversion — name the vectors and verify them, or don't claim coverage.
-- **Skipping the human gate on a non-trivial fix.** Applying a structured fix unilaterally — root cause, chosen fix, and footprint never surfaced for confirmation. Beyond the trivial route, the human gate is mandatory; the agent classifies and proposes, the human confirms before anything lands.
-- **Taxing a trivial fix with ceremony.** The inverse failure — running the full gate sequence, spawning a sub-agent, or opening a human-gate question for a typo. The trivial route must stay frictionless or the skill becomes something people route *around*.
-- **Sizing by line count instead of blast radius.** Treating a small diff as automatically trivial. The metric is what the change can break and how much judgment the cause needs — not how many lines move.
-- **Restating the rules instead of operationalizing them.** The skill is the active trigger and the gate sequence; it does not re-explain *why* evidence beats taste or *why* dogfooding matters. Those live in the rules. If the skill starts lecturing the rationale, it's drifted out of its lane.
+- **Hacking the first-draft fix.** Shipping the first remedy that comes to mind with nothing forcing a confirmed cause, weighed alternatives and a regression check. If you find yourself editing before the screen, stop.
+- **Choosing the fix for the user.** Picking among the candidates and building one because the repo lets a checked change land. A landing level says when a change may ship; it never says which change to build.
+- **Deciding the size before knowing the cause.** A fix sized or scheduled on the symptom is a guess: the history of the lines can show the flaw was fixed before and reverted, which changes the right fix.
+- **Dropping a field.** Leaving a check out of the screen or the report because it was not run. The empty field is the information: write `not done` and why.
+- **Reporting what the run did not show.** "Both new tests failed before the fix" when the runner printed one passing; a figure that was estimated, stated as measured. Quote the runner's own line.
+- **Pushing, or sweeping in the user's work.** The user is in the middle of something else. Commit the fix's own paths; never push; never commit a file that holds their uncommitted changes.
+- **Fan-out before verifying the mechanism on one target.** A silently failing guard can corrupt every target at once. Verify on one, confirm the result, then fan out.
+- **Over-sizing the artifact.** Answering a two-sentence gap with a rewrite, or a one-file defect with a cross-cutting refactor. Bloat is a regression, not thoroughness.
+- **Taxing a trivial fix with ceremony.** A screen, a sub-agent or a report for a typo. The trivial path must stay frictionless or the skill becomes something people route around.
 
 **When NOT to use.**
 
-- **Picking what to work on next.** Proactive, session-start, "what should I do now" triage is the session-start orchestrator's job (`/focus`), not `/snag`. `/snag` fires reactively on a flaw already found.
-- **A flaw that's actually planned new work.** If the "flaw" is really a missing feature or a deliberate design gap, that's a project or a quick-fix plan — route through the lifecycle/triage skills, not the remediation gate.
-- **Shipping a known, already-scoped change.** A config deploy, a secret rotation, a routine update — those have their own dedicated skills with their own verification gates. `/snag` is for *unexpected* defects, not planned changes.
-- **Mid-fix on a snag already triaged.** Once `/snag` has routed a flaw and you're executing the structured fix, don't re-invoke it on the same flaw — that's just continuing the work.
+- **Picking what to work on next.** That is the session-start orchestrator's job (`/focus`). `/snag` fires on a flaw already found.
+- **Saving something for later without looking into it.** That is `/log`. `/snag` always investigates.
+- **A flaw that is really planned new work.** A missing feature or a deliberate design gap is a project or a plan, not a remediation.
+- **Shipping a known, already-scoped change.** A config deploy, a secret rotation, a routine update have their own skills. `/snag` is for unexpected defects.
 
 ## Implementation
 
-### Step 1 — Triage the flaw's size
+Repo facts this skill reads: [this repo's verification commands](../../../AGENTS.md#verification-commands) (Step 5), [its capture types](../../../AGENTS.md#capture-types), and this skill's `## This repo` when the repo has one: what counts as a shared mechanism here, and where failures are read (logs, hosts). It does not read the repo's landing level: it never lands.
 
-Name the flaw in one line. Then size it by **blast radius + judgment required, not line count**:
+### Step 1 — A trivial slip is fixed now
 
-- **Trivial** — a single obvious correction with no judgment on the cause: a typo, a wrong literal, an off-by-one in a comment, a broken link. Blast radius is the one spot; reversible at a glance; you never get it wrong. → **fix-now.**
-- **Small / medium** — *any* of: the root cause is non-obvious, ≥2 viable fixes exist, the change touches a **shared mechanism** others depend on (a tool, rule, skill, script, hook, schema), or the fix fans out across multiple files/targets. Fits in this session. → **structured-fix.** *(Note: a one-line edit can land here — a guard in a hook that fans out to many consumers is small in diff but wide in blast radius.)*
-- **Large** — needs its own design, spans multiple sessions, crosses a phase/decision boundary, or the root cause itself needs investigation before any fix can be scoped. → **escalate.**
+Trivial means a single obvious correction with no judgment on the cause: a typo, a wrong literal, a broken link. One spot, reversible at a glance, never got wrong. Apply it, name it in one line, and stop. Size by **what the change can break, not line count**: a one-line edit to a shared mechanism (a tool, rule, skill, script, hook, schema, or anything `## This repo` lists) is not trivial. Hesitating over whether it is trivial means it is not.
 
-When size is genuinely ambiguous between trivial and structured, the hesitation itself is the signal — treat it as structured. When ambiguous between structured and large, default to structured and let the work prove it needs escalation; don't over-escalate a fixable defect.
+### Step 2 — Investigate, read-only
 
-Surface the triage in this block (real names from the working context; never invent):
+No edit in this step. Find, in this order:
+
+1. **The reproduction.** Run the thing that fails and keep the command and what it showed. If it cannot be run here, say why.
+2. **The root cause.** The actual cause, not the first symptom, at a file and line. If it needs real reasoning across components, delegate the reading to a sub-agent at the judgment tier (see `## Sub-agent invocation`).
+3. **The history of those lines.** `git log -S'<the broken text>' -- <file>` and `git log -p -3 -- <file>`: when it broke, and whether it was fixed before and undone.
+4. **What depends on it.** Callers, the tests that cover it (and whether any reaches the broken path), anything it is copied or deployed to.
+5. **At least two candidate fixes**, each with its footprint and risk. With one viable fix, the reason nothing else is.
+
+If the cause cannot be confirmed without changing something, stop here anyway: the screen says `not confirmed` and what was ruled out.
+
+### Step 3 — The decision screen
+
+In chat, exactly this shape, real names from the working context, every field present; then end the turn. Never a pop-up.
 
 ```text
-**Snag:** <one-line description of the flaw>
+**Snag:** <the flaw in one line>
 
-**Size:** <trivial | small-medium | large> — <one line: the blast radius + judgment that sets the size>
+**Where:** <file, section, line, as a clickable link>
 
-**Route:** <fix-now | structured-fix | escalate> — <one line: what this route does next>
+**Evidence:**
+- **Reproduced:** <the command run and what it showed> | not reproduced: <why>
+- **Root cause:** <the actual cause> | not confirmed: <what was ruled out>
+- **History:** <when it broke; any earlier fix, from both of Step 2's commands; one not run goes under Not checked> | nothing relevant
+- **Depends on it:** <callers, tests that cover it, where it is copied or deployed>
+- **Not checked:** <anything stated above that was not measured> | nothing
+
+**Options:**
+
+| Fix | What it does | Fixes the cause? | Same result every time? | Your time | Upkeep | Could it break something? |
+|---|---|---|---|---|---|---|
+| `<label>` | ... <and its footprint: files, tests> | ... | ... | ... | ... | ... |
+
+**Recommended:** `<label>`: <why, and its risk>
+
+**Timing:** <now | asap | later>: <one line of why>
+
+| Reply | What happens |
+|---|---|
+| `<label>` | Build that fix now, test first, commit it, no push. |
+| `ok` | The recommended fix at the recommended timing. |
+| `asap` | File a pinned followup with this cause and these options; stop. |
+| `later` | File a followup with this cause and these options; stop. |
+| `edit: <text>` | Change the plan as you say. |
+| `second-opinion` | A reviewer with a clean context compares the options first. |
 ```
 
-For **trivial**, you MAY apply the fix directly and report it without waiting — zero ceremony is the contract. For **structured-fix** and **escalate**, STOP and wait for the user to confirm the route, pick a different size, or redirect.
+A label is a short word saying what the fix does (`mark`, `restore`), never a letter. Recommend `now` when the fix fits this session without derailing the work in hand, `asap` when it does not fit but blocks or endangers that work, `later` otherwise, or when it needs its own design or several sessions.
 
-### Step 2 — Branch on the confirmed route
+### Step 4 — Act on the reply
 
-- **fix-now** → apply the one-line correction. Done. (If it touched a tool/rule/skill/script, the standing dogfood-changes norm still applies — exercise the changed tool once — but that's the general rule, not skill ceremony.)
-- **structured-fix** → walk the five gates (Step 3). Decide inline-vs-sub-agent there.
-- **escalate** → capture the flaw as tracked work: `/log followup` with the flaw + its suspected cause for a single-shape defect, or invoke `/start-project` when it's multi-session-shaped. Then STOP — do not fix in place.
+- **A fix label, or `ok` with timing `now`** → Step 5 with that fix.
+- **`asap`, `later`, or `ok` with that timing** → follow `/log`'s steps for a followup whose body holds the root cause, the options and the recommendation, stating nothing the screen did not (its title too) and carrying the screen's **Not checked** list word for word; for `asap` add `--pinned` to its `journal.sh add`. When the fix needs its own design or several sessions, also print `/start-project` alone in its own block for the user to type. Edit nothing else; stop.
+- **`edit: <text>`** → apply it and show the screen again.
+- **`second-opinion`** → print `/second-opinion` with the options, alone in its own block, for the user to type.
 
-### Step 3 — The structured-fix gates (small/medium path)
+### Step 5 — Build the chosen fix
 
-Walk these in order. Each is a checkpoint, not a ritual — keep the footprint light.
+1. **Test first.** Write the test that fails on the flaw; run it and keep the runner's line showing which cases failed.
+2. **The fix, sized to the defect.** A two-sentence gap gets a two-sentence fix. Trim before committing.
+3. **Verify.** Run [this repo's verification commands](../../../AGENTS.md#verification-commands) on what changed, then try it on the **real target**: re-trigger the failure and watch it not happen. A destructive or fan-out mechanism proves itself on ONE target before it is applied across many, and fans out by content-anchored edits (match the text being changed), never by line numbers, which shift once the first target is edited.
 
-1. **Confirm the root cause.** Reproduce or verify the defect; name the *actual* cause, not the first symptom. If the cause is non-obvious enough to need real reasoning across components, this is the one sub-step worth the judgment tier — delegate it to a sub-agent with a model override (see `## Sub-agent invocation`).
-2. **Weigh ≥2 candidate fixes.** Generate at least two; pick on merit and state why the others lost. Don't ship the first idea unexamined.
-3. **Right-size the artifact.** Make the fix's footprint match the defect. A two-sentence behavioral gap gets a two-sentence fix, not a rewrite. Trim before you commit.
-4. **Regression + dogfood.** Verify the fix works on a **real target** before declaring done — run the changed tool, exercise the path, re-trigger the failure and watch it not happen. For a code fix this means the relevant JellyRock gate (`npm run validate` for a typecheck, `npm run test:scripts` for the vitest suite, `npm run test:tdd` for the Roku TDD suite, `npm run lint` for the lint chain) goes green on the actual change. If the fix is a destructive/fan-out mechanism, prove it on ONE target before applying it across many.
-5. **Human gate.** Surface the root cause + chosen fix + footprint and get confirmation before applying anything beyond trivial. The agent proposes; the human confirms.
+**A Sonnet sub-agent builds it, not the main thread:** the prompt in `## Sub-agent invocation`, which hands it 1–3. **Review before Step 6:** read `git diff` against the chosen fix, and the runner lines and each check's output in its report, not only its verdicts. A slip inside the chosen fix goes back to the same sub-agent (`SendMessage`); anything that changes the fix comes back to the user. So does a claim on the screen that the build disproves, when the recommendation or a rejection rested on it: before Step 6, quote the claim and what the run showed, and ask whether the choice stands. Never repeat a disproved claim under **Rejected**.
 
-When delegating the fix to a sub-agent (to preserve main-thread context, or because the root cause needs deep reading): hand it the confirmed root cause, the chosen approach, the gates to honor, and the capture clause. If the sub-agent writes files in parallel with other work, give it worktree isolation. Spawn it at the judgment tier only when the root cause is non-obvious; a mechanical structured fix runs fine at the default tier.
+### Step 6 — Commit, never push
 
-Land the fix as a commit whose body carries the RCA narrative — root cause, chosen fix, alternatives rejected. That commit IS the record; do not also write a separate RCA note. If a residual tail surfaced (a related defect, a followup the fix exposed), capture it via `/log` at Step 4.
+Commit only the fix's own paths (`git commit -- <paths>`), with a body carrying the root cause, the chosen fix and the alternatives rejected: that commit is the record. **Never push**, whatever the repo's landing level: the fix goes out with the user's next push. If a path the fix touches already holds uncommitted work that is not the fix's, do not commit it: leave the fix in the working tree and say so in the report.
 
-### Step 4 — Capture residuals
+### Step 7 — The report
 
-If the fix surfaced anything journal-worthy not yet captured, invoke `/log` for each, one at a time, per the capture convention. Then stop. Don't pad with captures that don't exist.
+Exactly this shape, every field present. If the build is blocked partway (a check that cannot run, a step that needs the user), the report still takes this shape: the blocker goes under **Not done**, and any question to the user comes after the report, never in place of a field.
+
+```text
+**<Fixed, committed, not pushed | Fixed, not committed: <why> | Filed for later>:** <what now behaves differently, or the followup's id> <commit>
+
+**Root cause:** <one or two lines>
+
+**Fix:** `<label>`: <what changed, one line per file>
+
+**Rejected:** <each other option and why it lost>
+
+**Checks:**
+- **Failed before the fix:** <which new tests, in the runner's own line>
+- **Passing now:** <the runner's summary line>
+- **Verification commands:** <each command and its result>
+- **Tried on the real target:** <what was run and what it showed>
+
+**Not done:** <each check or step skipped, and why> | nothing
+
+**Undo:** <the command: `git revert <sha>`, or `git reset --soft HEAD~<n>` while unpushed; never `--hard`, which also throws away later uncommitted work>
+
+**Not pushed.** It goes out with your next push.
+
+**Captures:** <each journal-worthy item, by this repo's capture types> | none
+```
+
+For each capture, follow `/log`'s steps, one at a time, using [this repo's capture types](../../../AGENTS.md#capture-types). Don't pad with captures that don't exist.
 
 ## Sub-agent invocation
 
-`/snag` delegates the **structured fix** to a sub-agent when the root cause needs deep reading or the main thread should keep its context. Parent passes (set the Task `model` to the judgment tier only when the root cause is non-obvious; give the agent worktree isolation if it writes files in parallel with other work):
+`/snag` hands Step 5's build to a general-purpose sub-agent with the Agent tool's `model` set to Sonnet (without it, the sub-agent runs the parent's model), and Step 2's reading of a non-obvious root cause to one at the judgment tier. For the build the parent passes (with worktree isolation if it writes files in parallel with other work):
 
-`A flaw was found: <one-line flaw>. The confirmed (or suspected) root cause is <cause>. Apply a structured fix honoring these gates: weigh ≥2 candidate fixes and pick on merit; right-size the artifact to the defect (don't over-edit); verify the fix on a real target before declaring done, and if the fix is a destructive/fan-out mechanism prove it on ONE target before fanning out. Do NOT commit — surface the chosen fix, the alternatives rejected, the footprint, and the dogfood result back to me for the human gate. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is decision, followup, signal, or running (a signal is an upstream version-watch row; a running item replaces the one-paragraph note on what is being worked on right now); omit the section if there are none, and never write to journals yourself.`
+`A flaw was found: <one-line flaw>. The confirmed root cause is <cause>; the fix the user chose is <fix>. Build it: write the test that fails on the flaw first and keep the runner's line; size the fix to the defect (don't over-edit); verify with [this repo's verification commands](../../../AGENTS.md#verification-commands) and on a real target, and if the fix is a destructive/fan-out mechanism prove it on ONE target before fanning out. Do NOT commit or push. Report what changed per file, the failing-before and passing-after runner lines, each verification command with its result, and anything not done with why. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.`
 
-Sub-agents NEVER commit, enter plan mode, or write to journals directly (Sub-agent capture rule) — they propose; the parent runs the human gate and lands the commit.
+A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the commands and types out from the slots in place of the links. Sub-agents NEVER commit, enter plan mode, or write to journals directly (Sub-agent capture rule): they propose; the parent commits.

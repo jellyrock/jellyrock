@@ -1,191 +1,105 @@
 ---
 name: done
-description: Close-loop completion for journal entries. Three modes — `running` (special keyword: moves the `## Currently running` paragraph in `docs/progress.md` to `## Recently shipped` dated today and clears the cursor), or polymorphic slug/keyword match (searches `docs/progress.md` "Open followups" first via substring against bullet text; falls through to `docs/signals-backlog.md` exact `### <slug>:` match). For followups: removes the bullet, prepends a "Recently shipped" entry with today's date (on `main` only — on a branch the post-merge journal-sync writes it), bumps `last-updated:`. For signals: an auto-managed signal is acknowledged (`latest_acknowledged` set to the current upstream, `action_pending` → `watching`; never `completed`, and `last_checked:` is left to the aggregator), a manually-managed one flips to `completed`; both bump the file `last-updated:` to today. Before closing a followup or the running cursor, checks that the work landed (commit in this branch or on `main`, or PR merged). Edit-only — never commits. If no match, suggests `/tech-debt-scan` (for tech-debt removals) or `gh issue close <N>` (for issues). Distinct from `/log` (which CREATES entries).
+description: Mark journal work complete — close an existing followup by its fid, acknowledge or complete an upstream-version signal, or ship the in-flight `running` cursor. Companion to /log (which captures NEW entries — /done closes EXISTING entries). Finds the entry, proves the work actually landed, then closes it: a followup through the journal script (the entry is removed; git is the history; on main it also gains a Recently shipped line), a signal or the cursor by a direct edit. Nothing is committed on its own: the closure rides in the commit of the change that prompted it. No confirm gate on a proven closure. Pure local-file edits, apart from read-only checks that the work landed. Use when a piece of work lands and its journal entry needs closing. NOT for capturing NEW entries (use /log) and NOT for work that hasn't actually landed yet (don't pre-mark optimistically).
 model: sonnet
 effort: low
 ---
 
-# /done `<slug-or-keyword>` — close a journal entry
+# /done — mark journal work complete
+
+## This repo
+
+- **Two closure types of this repo's own: `running` and `signal`.** Both are direct edits, not `journal.sh` calls, and neither commits (this repo's journal settings already say journal writes ride in the change's commit). A type is picked before the followup match: the literal token `running` (case-insensitive) is the cursor; a pointer that is an exact `### <slug>:` heading in [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) and matches no followup title is a signal.
+- **`running`** closes the cursor paragraph under `## Currently running` in [`docs/progress.md`](../../../docs/progress.md). Landing check as for a followup (Step 2). Empty paragraph: say "no Currently-running cursor to close" and stop. Otherwise: on `main` only, prepend `- YYYY-MM-DD — <paragraph, whitespace collapsed to one line>` to `## Recently shipped`; clear the paragraph (keep the heading); bump the file's `last-updated:`. Only part of it shipped: ask whether to promote it whole or replace it, and replace with `/log running`.
+- **`signal`** needs no landing check (acknowledging means "I reviewed the upstream", not "work shipped"). Auto-managed slugs `jellyfin-server-stable`, `jellyfin-server-rc`, `roku-os` are perpetual: set `**latest_acknowledged**:` to the current `**latest_upstream**:` (already equal: say "nothing to acknowledge" and stop), flip `**status**:` `action_pending` to `watching`, never to `completed`. Never touch `**last_checked**:` or `**latest_upstream**:` (the aggregator's fields). Any other slug: `**status**:` to `completed` and `**latest_acknowledged**:` to `**latest_upstream**:`. Then bump the file's `last-updated:`.
+- **Recently shipped, for a closed followup.** On `main` only, after `journal.sh close`, prepend `- YYYY-MM-DD — <title>` to `## Recently shipped`. On any other branch skip it: the post-merge [`journal-sync`](../../../.github/workflows/journal-sync.yml) writes one line from the PR title (it skips some PRs by label, author or title: `shouldSkip()` in `scripts/journal-sync.js`; git is the record then). A followup that states a problem rather than a deliverable gets a one-line resolution naming what shipped, not its text verbatim under today's date. The `running` close needs the same `main` rule.
+- **No journal match:** a tech-debt entry is removed with [`/tech-debt-scan`](../tech-debt-scan/SKILL.md); a GitHub issue with `gh issue close <N>` (`/done` never touches GitHub).
 
 ## Contract
 
-**Goal.** Be the single closure entry point for every kind of journal entry this repo keeps. When a piece of work lands — a followup is done, an upstream-version signal is acknowledged or completed, the in-flight cursor shipped — the user types `/done <thing>` and the skill detects what kind of thing it is, finds the existing entry in the right journal (`docs/progress.md` or `docs/signals-backlog.md`), and applies the closure writes (bullet-remove + Recently-shipped move / signal-field flip / cursor promote) directly via Edit — no per-invocation diff-then-confirm gate (see Success criteria). Companion to `/log`: same journal system, different moment — `/log` captures NEW entries; `/done` closes EXISTING ones. The reasoning load is **not** uniformly mechanical, and the tier follows the riskiest step rather than the average one. Locating an entry and applying the closure writes are mechanical. But deciding that the work *actually landed* (Success criteria: "Closure writes reflect reality, not optimism") is a judgment call with an asymmetric downside: a wrong close **deletes** a known gap and leaves no trace that anything was lost, whereas a wrong *capture* only adds noise a later reader can discard. The `signals-backlog.md` dual-lifecycle adds a second trap — *acknowledging* a perpetual upstream watch is not *completing* a one-off signal, and the auto-fetched `last_checked` field is off-limits — which rewards careful instruction-following over a tier that just does the "obvious" closure. So this skill ships at the **Sonnet tier with `effort: low`** — `low` because the verdict correlates evidence already in front of it (the entry's own closing clause, plus the command output) rather than generating anything absent.
+**Goal.** Be the single closure entry point for every kind of journal entry this repo keeps. When a piece of work lands — a followup is done, a backlog row is built, a queued item is materialized — the user types `/done <thing>` and the skill finds the existing entry, proves the work landed, and closes it directly — no per-invocation diff-then-confirm gate (see Success criteria). A followup is closed by the journal script (`journal.sh`), which removes the entry by its fid, bumps the journal's date line and makes the commit, so the model carries only the judgment. Companion to `/log`: same journal system, different moment. `/log` captures NEW entries; `/done` closes EXISTING entries. The reasoning load is **not** uniformly mechanical, and the tier follows the riskiest step rather than the average one. Finding an entry and closing it are mechanical. But deciding that the work *actually landed* (Success criteria: "Closure writes reflect reality, not optimism") is a judgment call with an asymmetric downside: a wrong close **deletes** a known gap and leaves no trace that anything was lost, whereas a wrong *capture* only adds noise a later reader can discard. That is the same plausible-wrong shape that rules the cheapest tier out for `/log`, and it applies with more force here, so this skill ships at the **Sonnet tier with `effort: low`** — `low` because the verdict correlates evidence already in front of it (the entry's own closing clause, plus the command output) rather than generating anything absent.
 
-**Inputs.** The arguments are `<slug-or-keyword>`, required. The literal token `running` is a reserved keyword that maps to the `## Currently running` cursor and short-circuits the polymorphic match. Otherwise the input is matched polymorphically, first hit wins: a case-insensitive substring against open-followup bullet text in `docs/progress.md`, then an exact `### <slug>:` heading match in `docs/signals-backlog.md`. If there are no arguments, the skill lists the top pending followups + the `action_pending` signals and asks which one. If the input matches more than one entry, the skill surfaces the candidates and asks — it never silently picks.
+**Inputs.** The arguments are a pointer — a followup's fid, or a few words of its title — optionally preceded by a type (`/done followup <pointer>`; a type of this repo's own takes the pointer form its steps give). An explicit type always wins. A pointer matching more than one entry → the skill shows the candidates and asks in chat which, never silently picks. No arguments → it lists the open entries and asks.
 
 **Outputs.**
 
-- The closure writes applied directly via `Edit`: for a **followup** — remove the bullet from `## Open followups` (restore the `(none)` placeholder if the area empties), prepend a dated `- YYYY-MM-DD — <text>` entry to `## Recently shipped` (on `main` only; see Step 2-F), bump `last-updated:`; for a **signal** — the auto-managed-vs-manual field updates (see Success criteria); for **running** — promote the cursor paragraph to a dated `## Recently shipped` bullet (on `main` only), clear the cursor body, bump `last-updated:`.
-- A one-line confirmation after the writes, so the user can see what landed.
-- A verification pass (`npm run lint:docs`) confirming the file stays lint-clean (staleness gate + signals schema).
-- **No commit.** `/done` is edit-only — it surfaces "edited `<path>` — review and commit when ready." The commit (carrying the actual code change that closed the work) is the user's call.
+- For a followup: the entry removed from the journal by `journal.sh close` (its category too, when it was the last), the journal's date line bumped.
+- For a type of this repo's own: that type's closure writes (a status flip, a row move), per this skill's `## This repo`.
+- A standalone path-restricted commit made by `journal.sh commit`: its body says what closed the item and how that was checked, and ends with a `Closes fid:` line — unless this repo commits journal writes together with the change that prompted them, which the script knows and says.
+- A one-line confirmation after the writes (and after any commit), so the user has the new HEAD's short SHA or the equivalent confirmation that the closure landed.
 
 **Success criteria.**
 
-- The closure is applied directly via `Edit` — no per-invocation diff-then-confirm gate. The skill is dead-simple closure; trust it, and if outputs go wrong, run `/audit-skill done` to fix the SKILL.md. Per-invocation confirmation is the wrong corrective loop for systematic issues — it adds friction every session and the user can always `git reset --soft HEAD~1` to recover a rare mis-closure.
-- Closure writes reflect reality, not optimism. If the journal claim depends on the work actually shipping, the skill verifies it BEFORE drafting the writes — the commit that did the work is in this branch's history (or on `main`), or the PR carrying it is merged — and surfaces an inconclusive check as a question rather than closing on it. Pre-marking optimistically is the failure shape `/done` exists to prevent.
-- Closed followups are REMOVED from `## Open followups` (and recorded in `## Recently shipped` — by `/done` on `main`, by journal-sync after merge on a branch), never annotated in place with a `✅`-style marker — git is the shipping history; the open section tracks open work.
-- Auto-managed signals (`jellyfin-server-stable`, `jellyfin-server-rc`, `roku-os`) are ACKNOWLEDGED — clear the stale flag, set `latest_acknowledged` to the current `latest_upstream`, flip `action_pending`→`watching` if set — and are NOT flipped to `completed` (they are perpetual), and `last_checked` is left untouched (it is the aggregator's field). Only manually-managed signals flip to `completed`.
-- Disambiguation surfaces candidates and asks ONLY when the input genuinely matches more than one entry; unambiguous pointers apply directly. The skill never silently picks among ambiguous matches, but it also doesn't gate unambiguous ones with a confirmation prompt.
-- Pure local-file edits — the only remote-ish calls are the landing check and the lint verify, which read but never write.
+- A proven closure is applied directly — no per-invocation diff-then-confirm gate. Trust the skill; if outputs go wrong, audit the skill's runs and fix the SKILL.md. Per-invocation confirmation is the wrong corrective loop for systematic issues — it adds friction every session, and `git reset --soft HEAD~1` recovers a rare mis-closure.
+- Closure writes reflect reality, not optimism. When the entry's claim depends on work being committed, deployed, materialized or shipped, the skill proves it landed BEFORE closing. Pre-marking optimistically is the failure shape `/done` exists to prevent.
+- Closed entries are REMOVED, not annotated with a `✅`-style marker. Git is the history; the journal tracks open work.
+- An entry is closed by its fid, the identity it keeps for life. Closing one never changes what any other reference points at, and the closing commit names the fid, so the item's whole history is one `git log --grep` away.
+- A fid that is no longer open is reported as closed, with the commit it left in — not as unknown, and never re-closed.
+- Disambiguation asks ONLY when the pointer genuinely matches more than one entry. Unambiguous pointers apply directly.
+- The skill is pure local-file edits, except for the read-only checks that the work landed.
 
 **Failure modes to avoid.**
 
-- **Pre-marking optimistically.** "I think it shipped, let me close it." NO. If the closure depends on the work landing, run the landing check (the commit is in this branch's history or on `main`, or the PR is merged) BEFORE drafting the closure — a premature `/done` is a future audit failure.
-- **Flipping a perpetual signal to `completed` (or touching `last_checked`).** The signals dual-lifecycle trap: for an auto-managed slug, `/done` means "I reviewed the new upstream" — acknowledge, don't complete; never bump `last_checked` (the aggregator owns it). Flipping it to `completed` corrupts the watchlist that drives `/catchup` banners and `/server-upgrade`.
-- **Replacing a closed followup with a `✅`-marked line.** Closed work is REMOVED from the open section (Recently shipped records it — see Step 2-F for who writes that line). A `✅` annotation in the open list breaks the open/closed distinction and fails the docs-lint.
-- **Skipping the load-bearing side effects.** A closure that doesn't bump `last-updated:` leaves a stale-looking journal and a phantom staleness banner on the next `/catchup`; an area emptied without its `(none)` placeholder fails the docs-lint. Apply the per-type side effects every time.
-- **Silent ambiguous-pointer resolution.** When the input matches multiple candidates, surface them and ask. Picking the first match, the most recent, or the highest-priority is silent corruption — the user knew which one they meant.
-- **Adding friction prompts in place of audit-driven fixes.** If closures consistently land wrong, the corrective loop is `/audit-skill done` → fix the SKILL.md → re-dogfood — NOT bolting a per-invocation confirmation prompt back on. Per-session friction is a worse pathology than rare mis-closures (`git reset --soft HEAD~1` recovers those).
-- **Committing from inside `/done`.** The skill is edit-only; the commit (with the code change that closed the work) is the user's call. Bundling a journal closure into the skill's own commit is the wrong shape here.
-- **Editing `progress.md` / `signals-backlog.md` with raw `Write`/`Edit` outside this skill.** `/done` (closure) and `/log` (capture) are the only sanctioned write paths for these journals.
+- **Pre-marking optimistically.** "I think the deploy went through, let me close it." NO. Check it first. Without evidence, a closure is a future audit failure waiting to surface.
+- **Closing on a plausible story.** A narrative that the work is probably done is not evidence: the entry is the only thing standing between a known gap and it being forgotten. When a check can't be run, the result is *inconclusive*, and the user decides.
+- **Bypassing a check that errored.** A landed-check tool that fails to run is not a pass. Surface the error; close only on the user's explicit say-so.
+- **Closing a partly done item.** If only part of the work landed, revise the entry to say what remains (`journal.sh replace`, the `/log` path) and leave it open.
+- **Hand-editing the journal instead of running the script.** It skips the date line and the checks, and can break the format every reader depends on.
+- **Closing by position.** "#3 under Tooling" means a different item once anything above it closes. Close by fid.
+- **Adding friction prompts in place of audit-driven fixes.** Same as `/log`'s rule: bad outputs get fixed by an audit of the skill's runs → SKILL.md revision → re-dogfood, not by a confirmation gate on every run.
+- **Silent ambiguous-pointer resolution.** Picking the first match, the most recent, or the likeliest is silent corruption — the user knew which one they meant; ask.
+- **Bundling the closure into an unrelated code commit.** A closure commit is standalone (unless this repo commits journal writes with the change that prompted them); bundling it creates conflicts when the code commit moves on its own.
 
 **When NOT to use.**
 
-- The work hasn't actually shipped yet — capture it via `/log followup` first; close via `/done` later when it lands.
-- The followup is deferred, not closed — leave it in place (optionally revise its body with `/log followup --replace=<substring>`), or record the deferral decision via `/log decision`.
-- A multi-step landing where some pieces are still in flight. Wait until all pieces land before `/done` (or revise the bullet to the remaining step with `/log followup --replace`); otherwise the closure record is misleading.
-- An open GitHub issue closed in the PR → `gh issue close <N>` (or "Closes #N" in the commit body). `/done` doesn't touch GitHub state.
-- A tech-debt entry to remove → `/tech-debt-scan` walks tech-debt entries one-by-one and applies removals.
-- A `decision` entry to revise → decisions are append-only; file a new `/log decision` with `**supersedes**: <old-slug>` (which flips the old entry to `superseded`).
-- The capture is a NEW entry, not a closure of an existing one. That's `/log`, not `/done`.
-- The thing to close is a project's PLAN.md milestone (a phase shipped, a slice landed). That's handled by `/end-session` on the project's PLAN.md, not by `/done`.
+- The thing isn't actually done yet. Wait until the work has materialized.
+- The work is a tactical bug fix with no journal entry to close — just commit normally.
+- The entry is deferred, not closed — leave it in place (update its body with the new context via `/log`'s `replace` path if useful).
+- Only some pieces of a multi-step landing are done. Revise the entry; `/done` it when the last piece lands.
+- The capture is a NEW entry. That's `/log`.
+- The thing to close is a decision. Decisions are records, not to-dos: a later `/log decision` supersedes one.
+- The thing to close is a project's PLAN milestone (a phase shipped). That's `/end-session` on the project's PLAN.
 
 ## Implementation
 
-The completion side of the capture/completion ritual. `/log` adds; `/done` closes. Operates on `progress.md` (followups → recently shipped) and `signals-backlog.md` (status flip). Tech-debt removal stays via [`/tech-debt-scan`](../tech-debt-scan/SKILL.md); GitHub issues stay via `gh issue close`.
+Every followup read and write goes through `bash .claude/skills/log/journal.sh` (run from anywhere in the repo; with no arguments it prints its commands). A closure type of this repo's own is closed per this skill's `## This repo`.
 
-**Auto-close-loop note:** the `running` cursor close-loop fires automatically when a PR merges to main via [`.github/workflows/journal-sync.yml`](../../../.github/workflows/journal-sync.yml). You only need to invoke `/done running` manually when the work shipped via a path that bypasses the workflow (direct push to main, squash-merge with a heavily edited title, the workflow being skipped by label). For the normal `/pr` → review → merge path, the cursor close happens for you.
+### Step 1 — Resolve the pointer
 
-### Inputs
+- `/done decision …` → say decisions are records, not to-dos (a later `/log decision` supersedes one), and stop.
+- A type of this repo's own named first (or plainly meant) → its steps in `## This repo`.
+- Otherwise a followup; `followup`, `f` and `todo` may lead. The pointer:
+  - **a fid** → `journal.sh show <fid>`. If the script says it is not open, pass that on (it names the commit the entry left in) and stop.
+  - **words of the title** → match them against the titles `journal.sh list` prints. One match → its fid. Several → show them and ask in chat which. None → say so and stop: `/done` closes existing entries; new ones are `/log`.
+  - **nothing** → show `journal.sh list` and ask which to close.
+  - **a position** ("#3", "Tooling #3") → positions are not identities; show that category's entries and ask which fid is meant.
 
-`$ARGUMENTS`: a slug or keyword identifying what's done. Must be present.
+**Before any write:** `journal.sh close` refuses a journal that already has uncommitted edits, where this repo commits journal writes, since the commit after it would take them along (the refusal says so). Show those edits and ask: commit them first, or run the close again with `--allow-dirty` and leave this closure uncommitted.
 
-- For followups: the input is matched as a case-insensitive substring against bullet text under `## Open followups`. So `/done aggregator perf` matches `- Verify aggregator perf on slow networks`.
-- For signals: the input is matched as an exact `### <slug>:` heading in `signals-backlog.md`. So `/done jellyfin-server-stable` matches `### jellyfin-server-stable: Jellyfin server stable channel`.
+### Step 2 — Prove the work landed
 
-If `$ARGUMENTS` is empty: list pending followups (top 5) + signals with `status: action_pending` (top 5) and ask which one.
+Read the entry's body for what closes it, and check that:
 
-### The capture rule
+- **A committed change** (a file, script, config) → find the commit that made it (`git log -S'<the changed text>' --format='%h %s' -- <path>`, or the sha the entry names), then check it is in this branch's history: `git merge-base --is-ancestor <sha> HEAD`. A path's log alone proves only that some commit touched it. Pushed or not does not matter: this close commits on the same branch, on top of the fix, so it can reach the remote only with it. For a behavior fix, run the test that covers it.
+- **A deploy, a converged host, a synced change** → this repo's own way of proving it, in this skill's `## This repo`.
+- **A fact about a live box or an outside service** → the user reports what they actually saw; never assert it from documentation.
+- **An entry that names a pull request** → the forge says it is merged (on GitHub, `gh pr view <N> --json state -q .state` prints `MERGED`), or it is the one open for this branch and its commits are in this branch's history.
+- **An entry that says it is tracked in a project** → that project's PLAN Status records the work done (the projects folder is what `bash .claude/skills/start-project/projects-dir.sh` prints).
+- **"Noticed and dealt with"**, with nothing checkable named → no check; close.
 
-Same as [`/log`](../log/SKILL.md): this skill is the ONLY sanctioned write path for `docs/progress.md` and `docs/signals-backlog.md` completion edits. Agents do NOT use raw `Write` / `Edit` on those files outside this skill — closures flow through `/done`, captures through `/log`. Within the skill, the closure applies directly (no per-invocation confirmation prompt); systematic wrongness is fixed via `/audit-skill done`, and `git reset --soft HEAD~1` recovers a rare mis-closure. (A sub-agent invoking `/done` is the exception — it surfaces the proposed edit and never auto-applies, because its context dies at exit; see Sub-agent invocation.)
+**Pass** → Step 3. **Inconclusive** → show exactly what was and wasn't confirmed, and close only on the user's explicit go-ahead. **Fail** → refuse: show the evidence and say what would make it pass, naming the step ("commit the fix on this branch"); never offer to run it, to push, or to wait for CI yourself. A checking command that errors is inconclusive, never a pass. If only part of the work landed, don't close: revise the entry with `journal.sh replace <fid> --body-file <file>` to say what remains, and stop.
 
-### Step 1 — Match polymorphically
+### Step 3 — Close it
 
-The literal token `running` is a reserved keyword that maps to the Currently-running cursor (Step 2-R below); it short-circuits the polymorphic match. Otherwise, search in this order; first hit wins:
+`bash .claude/skills/log/journal.sh close <fid>` — it removes the entry (and its category, when it was the last), and bumps the journal's date line. No confirmation: the check in Step 2 is the gate.
 
-#### Running keyword (progress.md `## Currently running`)
+### Step 4 — Check, commit, suggest the follow-on
 
-If `$ARGUMENTS` is exactly the token `running` (case-insensitive, optionally with trailing whitespace): proceed to Step 2-R. Skip the followup / signal searches entirely — `running` never matches a followup bullet by accident because it isn't typical bullet text, and reserving it as a keyword keeps the contract clean.
-
-#### Followup match (progress.md)
-
-```bash
-grep -in '<keyword>' docs/progress.md
-```
-
-Restrict matches to lines BETWEEN `## Open followups` and the next `## ` heading. Skip any `(none)` placeholder lines. If exactly 1 bullet matches, proceed. If 0 matches, fall through to signal match. If >1 matches, surface all matches and ask which one.
-
-#### Signal match (signals-backlog.md)
-
-```bash
-grep -n '^### <slug>:' docs/signals-backlog.md
-```
-
-Exact match on the `### <slug>:` heading. If 1 hit, proceed. If 0 hits, fall through to the no-match branch.
-
-#### No match
-
-Tell the user no journal entry matched, then suggest:
-
-- For internal tech debt: `/tech-debt-scan` (handles add + remove for `docs/architecture/tech-debt.md`)
-- For GitHub issues: `gh issue close <N>` (the closed issue is its own audit trail)
-- For arbitrary file edits: just edit the file directly — `/done` is journal-scoped
-
-### Step 1.5 — Landing check (followups and the running cursor)
-
-Before drafting any closure for a followup or `running`, check that the work actually landed. Signals skip this: acknowledging one means "I reviewed the upstream", not "work shipped".
-
-- The entry or the session names a commit → `git merge-base --is-ancestor <sha> HEAD` (in this branch) or `git branch -r --contains <sha>` lists `origin/main`.
-- It names a PR → `gh pr view <N> --json state -q .state` is `MERGED`, or the PR is the one open for this branch and its commits are here.
-- Nothing to check against, or the check is inconclusive (a commit not found, a PR still open for another branch) → say what was checked and ask whether to close anyway. Never close on an inconclusive check.
-
-### Step 2-F — Followup completion (when a followup matched)
-
-Compose the diff:
-
-1. Remove the matched bullet from the area subsection under `## Open followups`. If removing the bullet leaves the area subsection empty, restore the `(none)` placeholder line. If the bullet was the LAST line of the file, make sure the file still ends with a single newline — removing a final line takes its newline with it, and `markdownlint`'s MD047 fires on the next edit rather than on this one, so the breakage surfaces attached to unrelated work.
-2. **Only if `git branch --show-current` is `main`**, prepend a new bullet at the top of `## Recently shipped`: `- YYYY-MM-DD — <followup text>` using today's ISO date and the followup's text verbatim. On any other branch skip this step: the work ships in a PR, and the post-merge `journal-sync.yml` writes its one Recently-shipped line from the PR title, so a line here is a duplicate. That sync skips some PRs by label, author or title (`shouldSkip()` in `scripts/journal-sync.js` holds the rules), so a followup closed in one of those leaves no Recently-shipped line at all — git history is its record, by that skip's own intent.
-3. Bump `last-updated:` in the frontmatter to today.
-
-**Verbatim has one exception, and it is not a style call.** A followup that states a PROBLEM rather than a deliverable — "X has no sanctioned way to do Y", "Z cannot be verified" — reads as a live complaint when copied verbatim under a today's date, i.e. it asserts the problem still exists on the very day it was fixed. That fails this skill's own "closure writes reflect reality, not optimism" criterion in the honest direction rather than the optimistic one, but it fails it. For those, write a one-line RESOLUTION naming what shipped and the followup it closes, which is the shape `docs/progress.md` already uses — see its `run-meta.json` and registry-restore entries. Deliverable-shaped bullets ("Expand automated store screenshots to all ~99 locales") are unaffected: verbatim is already the resolution, and rewriting them would just be drift.
-
-Apply directly via `Edit` (no confirmation prompt — trust the skill; `/audit-skill done` is the corrective loop for systematic issues).
-
-### Step 2-S — Signal completion (when a signal matched)
-
-Two distinct lifecycles depending on whether the signal is auto-managed or manually-managed.
-
-#### Auto-managed slugs (`jellyfin-server-stable`, `jellyfin-server-rc`, `roku-os`)
-
-These signals are perpetual — the upstream isn't going to stop existing. `/done` here means "I've reviewed the new upstream version", which clears the stale flag. It does NOT flip status to `completed`.
-
-Compose the diff:
-
-1. Find the `### <slug>:` block in `signals-backlog.md`.
-2. Read the row's current `**latest_upstream**:` value.
-3. If `**latest_acknowledged**:` already equals `**latest_upstream**:`, tell the user "nothing to acknowledge — already up to date" and stop.
-4. Otherwise update fields:
-   - `**latest_acknowledged**:` → the current `**latest_upstream**:` value
-   - If `**status**:` is `action_pending`, flip to `watching` (the work that the action_pending tracked has presumably shipped).
-5. Bump file frontmatter `last-updated:` to today.
-
-Note: this skill does NOT bump `**last_checked**:` — that's the aggregator's territory and reflects "last time we asked upstream", not "last time we acknowledged". Don't overwrite it.
-
-#### Manually-managed slugs (any other slug added via `/log signal`)
-
-The original close-loop lifecycle — flip status to `completed` and the row stays as a historical record.
-
-Compose the diff:
-
-1. Find the `### <slug>:` block in `signals-backlog.md`.
-2. Update fields:
-   - `**status**:` → `completed`
-   - `**latest_acknowledged**:` → the current `**latest_upstream**:` value (so the historical record is consistent)
-   - Optionally update `**latest_upstream**:` and `**current**:` if the user provides new values; otherwise leave unchanged.
-3. Bump file frontmatter `last-updated:` to today.
-
-Apply directly via `Edit` (no confirmation prompt — trust the skill; `/audit-skill done` is the corrective loop for systematic issues).
-
-Note: a signal in `completed` status stays in the file as a record of past work. If the file accumulates many `completed` rows over time, archive them by hand (move to a "## Completed" subsection) — not yet automated.
-
-### Step 2-R — Running cursor completion (when `$ARGUMENTS == running`)
-
-The in-flight cursor shipped — promote it to `## Recently shipped` and clear the cursor.
-
-Compose the diff:
-
-1. Read the current paragraph between `## Currently running` and the next `## ` heading in `docs/progress.md`. If the paragraph is empty (already cleared), tell the user "no Currently-running cursor to close" and stop — don't pad Recently shipped with a blank entry.
-2. **Only on `main`** (same reason as Step 2-F), prepend a new bullet at the top of `## Recently shipped`: `- YYYY-MM-DD — <currently-running text>` using today's ISO date and the paragraph verbatim. If the paragraph is multi-line, collapse internal whitespace to single spaces so the bullet stays one line.
-3. Replace the `## Currently running` body with a blank-line pair (clears the cursor; leaves the section heading intact).
-4. Bump `last-updated:` frontmatter to today.
-
-Apply directly via `Edit` (no confirmation prompt — trust the skill; `/audit-skill done` is the corrective loop for systematic issues).
-
-If the in-flight work was multi-step and only part of it shipped, ask the user: "Promote the whole cursor to Recently shipped, or replace it with a follow-on description?" The latter is `/log running "<new text>"` — `/done running` only handles full closure.
-
-### Step 3 — Verify
-
-```bash
-npm run lint:docs
-```
-
-Both edits should keep the file lint-clean: progress.md staleness gate passes (last-updated bumped to today); signals schema validator passes (all required bullets still present, valid status enum).
-
-### Step 4 — Don't commit
-
-`/done` drafts + applies but does NOT `git commit`. Surface "edited `<path>` — review and commit when ready." The commit (with the actual code change that closed the followup or moved the signal) is the user's call.
+1. Write the commit body to a temporary file with a quoted heredoc: what closed the item (with its commit, when there is one) and how that was checked, in a sentence or two. When [this repo's public posture](../../../AGENTS.md#public-posture) is `public`, re-read the body and the subject: no other repository or host, no person, email or home path, no secret.
+2. Run `journal.sh check` and [this repo's docs check](../../../AGENTS.md#docs-check) unless it is `none`. Surface every FAIL or WARN.
+3. `bash .claude/skills/log/journal.sh commit --intent "close [fid:<fid>]" --closes <fid> --body-file "$tmp"` — a path-restricted commit of the journal whose body ends with the `Closes fid:` line; it prints `committed as <sha> on <branch>` (or says this repo commits journal writes with the change that prompted them). If a hook refuses, nothing was committed: fix what it names and commit again; never `--no-verify`. Skip the commit only when the user said "don't commit".
+4. If closing the work settled a choice nobody recorded (a rule changed, a new pattern, a tool picked), suggest `/log decision`; don't run it. Closing is a common moment for an unrecorded decision to surface.
 
 ## Sub-agent invocation
 
-Read .claude/skills/done/SKILL.md and surface the proposed completion edit for $ARGUMENTS=<slug-or-keyword>; do NOT apply the edit — return the proposed diff for the parent to confirm.
+To invoke from a sub-agent, the parent passes: `Read .claude/skills/done/SKILL.md and follow the steps with the arguments <thing>: resolve it to one fid with journal.sh, run the Step 2 check, and report the fid with the evidence that the work landed — never run close or commit. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link. Sub-agents NEVER apply a closure: a wrong "closed" deletes a known gap from the journal `/catchup` reads first every session, and nothing afterwards shows it was lost.
