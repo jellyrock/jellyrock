@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (video) Ask "Are you still watching?" before endless auto-play ([#1086](https://github.com/jellyrock/jellyrock/pull/1086))
+
 ### Changed
 
 - Remove unused components, dev dependencies and JS exports ([#1078](https://github.com/jellyrock/jellyrock/pull/1078))
