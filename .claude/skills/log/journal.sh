@@ -503,6 +503,7 @@ case "$cmd" in
           # mid-sentence ("**…**, so …") keeps its whole first line in the body, the title a copy.
           rest = ""; dup[k] = 0
           x = (f ~ /^\*\*/) ? boldend(f) : 0
+          if (f ~ /^\*\*/ && x == 0) { print "STATUS\twrap\t" k "\t" f; exit 3 }
           if (x > 3) {
             title[k] = substr(f, 3, x - 3); rest = substr(f, x + 2); sub(/^[ \t]+/, "", rest)
             if (rest ~ /^[,;:)]/) { dup[k] = 1; rest = f }
@@ -569,6 +570,7 @@ case "$cmd" in
         STATUS$'\t'none*) rm -f "$res" "$sum"; refuse "$FILE has no old items to migrate" ;;
         STATUS$'\t'mixed*) rm -f "$res" "$sum"; refuse "$FILE mixes entries and old items; convert the rest by hand" ;;
         STATUS$'\t'nosection*) rm -f "$res" "$sum"; die "$FILE has no '## Open followups' section" ;;
+        STATUS$'\t'wrap*) IFS=$'\t' read -r _ _ wk wl <<<"$st"; rm -f "$res" "$sum"; refuse "migrate: item $wk opens a bold lead that wraps onto the next line (\"$wl\"); put the lead on one line, or shorten it, by hand, then re-run" ;;
         *) cat "$res"; rm -f "$res" "$sum"; refuse "migrate --apply refused: nothing was changed" ;;
       esac
     fi
