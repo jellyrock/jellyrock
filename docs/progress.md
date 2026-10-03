@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-03 — chore(journal): Give every open followup a permanent id
 - 2026-10-03 — fix(video): Keep Next Episode and Skip pop-ups off open dialogs
 - 2026-10-03 — refactor: Remove unused components, dev dependencies and JS exports
 - 2026-10-01 — fix: Silent DTS, failing TrueHD over passthrough, and track switching
