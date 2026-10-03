@@ -56,12 +56,32 @@ namespace tests
       m.assertEqual(session.unattendedCount, 0)
     end function
 
-    @it("asks on time alone when the videos are long")
+    ' TimeSinceLastKeypress is whole seconds; UpTime is not. Play pressed at 0.0, the session
+    ' started at 0.3, the video ends at 1320.9: the press reads as 1320 (rounded down) or 1321
+    ' (rounded up), and either way it is the press that started the video, not one during it.
+    @it("counts the first video as unattended whichever way the key-press seconds round")
+    function _()
+      for each secondsSinceKeypress in [1320, 1321]
+        session = newStillWatchingSession(0.3)
+        stillWatchingOnAdvance(session, stillWatchingThresholds("default"), secondsSinceKeypress, 1320.9)
+        m.assertEqual(session.unattendedCount, 1, secondsSinceKeypress.toStr())
+      end for
+    end function
+
+    @it("does not ask after one long video, however long")
+    function _()
+      session = newStillWatchingSession(0)
+      ' One 150-minute movie, nothing pressed: past the 90-minute limit, but only one video
+      m.assertFalse(stillWatchingOnAdvance(session, stillWatchingThresholds("default"), 150 * 60, 150 * 60))
+    end function
+
+    @it("asks on time from the second unattended video when the videos are long")
     function _()
       session = newStillWatchingSession(0)
       thresholds = stillWatchingThresholds("default")
-      ' One 95-minute movie, nothing pressed
-      m.assertTrue(stillWatchingOnAdvance(session, thresholds, 95 * 60, 95 * 60))
+      ' Two 60-minute episodes, nothing pressed: 120 minutes is past the limit, before the count
+      m.assertFalse(stillWatchingOnAdvance(session, thresholds, 60 * 60, 60 * 60))
+      m.assertTrue(stillWatchingOnAdvance(session, thresholds, 120 * 60, 120 * 60))
     end function
 
     @it("never asks when off, but still keeps count")
@@ -74,31 +94,30 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("stillWatchingOnAnswer()")
+    @describe("stillWatchingOnActivity()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("starts the count again after an answer")
+    @it("starts the count again after activity")
     function _()
       session = newStillWatchingSession(0)
       thresholds = stillWatchingThresholds("default")
       for i = 1 to 3
         stillWatchingOnAdvance(session, thresholds, i * m.EPISODE, i * m.EPISODE)
       end for
-      stillWatchingOnAnswer(session, 3 * m.EPISODE + 10)
+      stillWatchingOnActivity(session, 3 * m.EPISODE + 10)
       m.assertEqual(session.unattendedCount, 0)
     end function
 
-    @it("counts an answer with no button press (voice, the Jellyfin app) as activity")
+    @it("counts activity with no button press (voice, the Jellyfin app) like a press")
     function _()
       session = newStillWatchingSession(0)
       thresholds = stillWatchingThresholds("default")
       for i = 1 to 3
         stillWatchingOnAdvance(session, thresholds, i * m.EPISODE, i * m.EPISODE)
       end for
-      ' Answered by voice 10 s into the fourth video; still no button press since 0
-      answeredAt = 3 * m.EPISODE + 10
-      stillWatchingOnAnswer(session, answeredAt)
-      ' The fourth video ends: the answer, not the old keypress, is the latest activity
+      ' A voice command 10 s into the fourth video; still no button press since 0
+      stillWatchingOnActivity(session, 3 * m.EPISODE + 10)
+      ' The fourth video ends: the command, not the old keypress, is the latest activity
       m.assertFalse(stillWatchingOnAdvance(session, thresholds, 4 * m.EPISODE, 4 * m.EPISODE))
       m.assertEqual(session.unattendedCount, 0)
     end function

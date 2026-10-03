@@ -156,12 +156,20 @@ sub destroyPlayer()
 end sub
 
 ' Host-internal advancement: remount the player for the CURRENT queue position.
-' Callers (onPlayerStateChange next-item; VideoPlayerView channel
-' switch) set the position + backdrop first. Replaces ViewCreator's
+' Callers (onPlayerStateChange next-item; skipToCurrentQueueItem for the player's
+' next / previous and channel switch) set the position + backdrop first. Replaces ViewCreator's
 ' clearPreviousScene + playQueue (which created a new pushed scene).
 sub playCurrentQueueItem()
   destroyPlayer()
   mountPlayer()
+end sub
+
+' The viewer moved to another queue item (the player's next / previous, a channel switch).
+' A button press started the item, the same as the press that opened the player, so the
+' still-watching count starts over with it.
+sub skipToCurrentQueueItem()
+  m.stillWatching = newStillWatchingSession(UpTime(0))
+  playCurrentQueueItem()
 end sub
 
 ' Restart the Live TV channel whose stream ended. Same remount as playCurrentQueueItem, except
@@ -355,13 +363,12 @@ end sub
 ' here (the router-active view is this host, not the inner player); forward to the
 ' child player's own handler.
 function handleTransport(evt as object) as object
-  ' A voice or Jellyfin-app command is someone answering, whatever it asks for. Cancelled
-  ' rather than abandoned so the dialog hands focus back to the player as it closes; its
-  ' result handler sees an outside close and only cleans up.
-  if isValid(m.stillWatchingDialog)
-    stillWatchingOnAnswer(m.stillWatching, UpTime(0))
-    m.stillWatchingDialog.callFunc("cancelDialog")
-  end if
+  ' A voice or Jellyfin-app command means someone is there, whatever it asks for, the same
+  ' as a button press. With the prompt up it is also the answer: canceled rather than
+  ' abandoned so the dialog hands focus back to the player as it closes; its result handler
+  ' sees an outside close and only cleans up.
+  stillWatchingOnActivity(m.stillWatching, UpTime(0))
+  if isValid(m.stillWatchingDialog) then m.stillWatchingDialog.callFunc("cancelDialog")
   if isValid(m.view) then return m.view.callFunc("handleTransport", evt)
   return { status: "error.no-media" }
 end function
@@ -399,7 +406,7 @@ end function
 sub onStillWatchingPlaying()
   if m.stillWatchingPausedForAnswer
     m.stillWatchingPausedForAnswer = false
-    stillWatchingOnAnswer(m.stillWatching, UpTime(0))
+    stillWatchingOnActivity(m.stillWatching, UpTime(0))
   end if
   if not m.stillWatchingPending then return
   m.stillWatchingPending = false
@@ -415,7 +422,7 @@ sub onStillWatchingResult(event as object)
   result = event.getData()
   closeStillWatchingPrompt()
   if not isValid(result) or result.externallyCancelled = true then return
-  stillWatchingOnAnswer(m.stillWatching, UpTime(0))
+  stillWatchingOnActivity(m.stillWatching, UpTime(0))
 end sub
 
 sub onStillWatchingTick()

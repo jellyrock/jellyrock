@@ -46,7 +46,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-02
+last-reviewed: 2026-10-03
 ---
 
 # Video & Audio Playback
@@ -159,7 +159,7 @@ The whole file is well-commented and reads cleanly. It's frequently held up inte
 The **routed host** for video playback (route `/details/:type/:id/play`). `VideoPlayerView` extends Roku's native `Video` node, so it can't itself be a `sgrouter_View`; this thin `JRScreen` wrapper is the routed view and owns the player as a **runtime child** (`m.top.appendChild(m.view)`), not a separate pushed scene. It is the new home for what was `ViewCreator`'s video half (the deleted `components/manager/ViewCreator.bs`). Its job is three-fold:
 
 1. **Player mount**: `onScreenShown` → `mountPlayer()` instantiates `VideoPlayerView`, wires observers (no `GetPlaybackInfoTask` yet — each report fetch creates its own, see **Playback info** below), updates the backdrop, and appends the player as a child (player `visible=false` during loading to avoid a black flash over the backdrop). The queue is already populated *before* navigation (the launcher cleared + pushed, then navigated to `/play`), so the host just reads `getCurrentItem` — **the queue is the source of truth**.
-2. **Queue advancement** (host-internal): next-episode / Live TV restart / channel switch destroy + remount the player child, rather than pop/push of scenes. Next-episode and channel switch go through `playCurrentQueueItem()` (`destroyPlayer()` + `mountPlayer()`); the Live TV restart goes through `restartLiveChannel()` (`destroyPlayer()` + `mountPlayer(true)`), the only remount that keeps the restart count (see `onPlayerStateChange` below).
+2. **Queue advancement** (host-internal): next-episode / Live TV restart / channel switch destroy + remount the player child, rather than pop/push of scenes. Next-episode goes through `playCurrentQueueItem()` (`destroyPlayer()` + `mountPlayer()`), and the player's next / previous and channel switch through `skipToCurrentQueueItem()`, which also restarts the still-watching count; the Live TV restart goes through `restartLiveChannel()` (`destroyPlayer()` + `mountPlayer(true)`), the only remount that keeps the restart count (see `onPlayerStateChange` below).
 3. **Playback-time track selection**: when the user opens the `OSD`'s track menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `PlayerHostView` catches via observers and shows a dialog from the standard family (`source/utils/dialogs.bs`). (Note: *pre-playback* track selection happens inline via `ItemDetails`'s `TrackDropdown` cluster — see `user-journey.md`. The two flows write to the same `VideoPlayerView` fields; they're parallel entry points, not duplicates.)
 
 The dialog flow:
@@ -396,8 +396,12 @@ play route is mounted.
 
 - **The rule.** A video counts as unattended when no remote button was pressed while it
   played (`roDeviceInfo.TimeSinceLastKeypress()` against when it started). Ask before the
-  next one once the count reaches the preset's N, or the time since the last button press
-  reaches its limit. The presets are the ones `jellyfin-web` and Android TV use (2/60 min, 3/90,
+  next one once the count reaches the preset's N, or, from the second unattended video in a
+  row (`STILL_WATCHING_MIN_VIDEOS_FOR_TIME_LIMIT`), once the time since the last button press
+  reaches its limit. That floor is so one long video, such as a movie, never prompts on its
+  own: the time limit is for runs of long episodes or movies, the count for short ones. It
+  covers every kind of queue (episodes, movies, mixed playlists), unlike jellyfin-web and
+  Android TV, which only count episodes. The presets are the ones `jellyfin-web` and Android TV use (2/60 min, 3/90,
   5/150, 8/240, off), in `playbackStillWatching`. Web keeps its choice in the browser's
   `localStorage`, not on the server, so there is no web value to read and no "Use Web
   Client Setting" option; the default is web's default.
@@ -411,9 +415,16 @@ play route is mounted.
 - **No answer** in `STILL_WATCHING_RESPONSE_SECONDS` (30): the prompt is abandoned and the
   player calls `pauseWithOsd()` — what the Play key does — so whoever comes back finds an
   ordinary paused player.
-- **Answers that press no key** count too: a voice or Jellyfin app command while the prompt
-  is up (`handleTransport` cancels it), and a resume after the timeout (the next `playing`).
-  So the session tracks the last answer as well as the last key press.
+- **Activity that presses no key** counts too: any voice or Jellyfin app command
+  (`handleTransport`, which also answers the prompt when it is up), and a resume after the
+  timeout (the next `playing`). So the session tracks the last such activity as well as the
+  last key press.
+- **Skipping** with the player's next / previous starts the count over
+  (`skipToCurrentQueueItem`), the same as the press that opened the player.
+- **The key-press clock counts whole seconds** (`TimeSinceLastKeypress`) and `UpTime` does
+  not, so a press within `STILL_WATCHING_KEYPRESS_PRECISION_SECONDS` of a video's start is
+  taken as the press that started it, not one made while it played. Without that, whether the
+  first video counted depended on a fraction of a second.
 - **While it is up,** the Skip Intro and Next Episode pop-ups stay down (`isDialogOpen` in
   `VideoPlayerView.onPositionChanged`), and an auto-skip intro waits until it closes.
 

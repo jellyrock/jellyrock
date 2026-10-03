@@ -340,7 +340,7 @@ sub switchToQueueItem(queueManager as object, targetPosition as integer)
   ' The player is a child of PlayerHostView — remount it for the new queue position. The host
   ' destroys this player + mounts the next.
   host = m.top.getParent()
-  if isValid(host) then host.callFunc("playCurrentQueueItem")
+  if isValid(host) then host.callFunc("skipToCurrentQueueItem")
 end sub
 
 sub showChannelSwitchSpinner(nextItem as object)

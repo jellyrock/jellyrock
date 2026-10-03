@@ -2,7 +2,7 @@
  * RTA functional test: "Are you still watching?" (#982).
  *
  * When the queue moves on by itself after enough unattended videos, the next video plays
- * under a centred prompt that any key answers. With no answer in 30 s the video pauses with
+ * under a centered prompt that any key answers. With no answer in 30 s the video pauses with
  * its OSD up. Reaching the real trigger takes an hour or more of playback, so the spec turns
  * on the RTA-only `rtaForceStillWatching` hook (source/utils/globals.bs), which makes every
  * automatic advance ask. What the hook skips — when to ask — is unit-tested in
