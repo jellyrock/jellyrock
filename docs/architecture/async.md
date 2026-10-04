@@ -117,9 +117,9 @@ only dispatches inside a SceneGraph component (the render thread). So:
 - **`main.bs`'s `Main()` loop runs on the main BrightScript thread** (`wait(0, m.port)`), where named
   observers never fire — which is why every observation there is port-based. It **cannot** consume
   `fetchAsync` directly. A main-thread caller **delegates to a render-thread component method via
-  `callFunc`** (which rendezvouses to the render thread); the canonical example is `main.bs`'s button
-  router calling `group.callFunc("toggleFavorite")` → `ItemDetails.toggleFavorite` (issue #551,
-  Phase `3c`). This is preferred over wiring `promises.setMessagePort`/`wait2` into the main loop —
+  `callFunc`** (which rendezvouses to the render thread); the canonical example is `loginRouter`
+  calling `m.scene.callFunc("routerNavigate", …)` → `JRScene.routerNavigate`, whose
+  `navigateThenFocus` consumes `sgrouter.navigateTo`'s promise on the render thread. This is preferred over wiring `promises.setMessagePort`/`wait2` into the main loop —
   delegation needs no foundation change and keeps the one async vocabulary.
 - **Task threads** — don't use promises. Blocking `fetchRes` (above) is the default; when a Task has
   N *independent* requests, [`apiPipeline`](../../source/api/apiPipeline.bs) keeps several in flight

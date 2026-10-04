@@ -83,12 +83,13 @@ AA with `ok: false`, `statusCode: 0`, and a `reason` (`"timeout"` / `"pool-unava
   thread (`wait(0, m.port)`), so named observers never fire there — that's why every observation in
   `main.bs` is port-based. **Delegate the async work to a render-thread component method via
   `callFunc`** instead: `callFunc` rendezvouses to the node's render thread, so a `fetchAsync().then()`
-  inside that method runs where the adapter works. The canonical example is `main.bs`'s button
-  router invoking `group.callFunc("toggleFavorite")` (see Canonical examples below). Do **not** wire
+  inside that method runs where the adapter works. The canonical example is `loginRouter`
+  calling `m.scene.callFunc("routerNavigate", …)` (a router promise rather than `fetchAsync`; the
+  principle is identical — see Canonical examples below). Do **not** wire
   `setMessagePort`/`wait2` into the `main.bs` loop for this — delegation is simpler and keeps the
   one async vocabulary.
   - **The delegated method MUST be declared in the component's `<interface>`** as
-    `<function name="toggleFavorite" />` — `callFunc` only dispatches to exposed functions, and a
+    `<function name="routerNavigate" />` (as `JRScene.xml` does) — `callFunc` only dispatches to exposed functions, and a
     missing declaration is a **silent no-op** the transpiler won't catch (it shipped a dead watched
     toggle once). The `callfunc-interface` BSC plugin now makes this a build error; see
     [`build-and-tooling.md`](../architecture/build-and-tooling.md).
@@ -183,7 +184,7 @@ shapes you'll hit:
 |---|---|---|---|
 | `3a` | **Collapse a pure-fetch Task** | [`VideoPlayerView.fetchNextEpisode`](../../components/video/VideoPlayerView.bs) | A whole `.xml`+`.bs` Task (`GetNextEpisodeTask`) deleted; one `fetchRes` becomes a render-thread `fetchAsync().then().catch()`. The biggest DX win. |
 | `3b` | **Render-thread `submitApiRequest`+`observeField` → promise** | [`ItemDetails.checkTrailerAvailability`](../../components/ItemDetails.bs) | Swaps a named-observer result node for `fetchAsync().then()`. Uses the **`context`** AA to drop a result that lands after the user navigated away (no closures in BS). |
-| `3c` | **Main-thread caller → render-thread promise via `callFunc`** | [`ItemDetails.toggleFavorite`](../../components/ItemDetails.bs), invoked from [`main.bs`](../../source/main.bs)'s button router | The favorite toggle moves off `main.bs`'s god-loop. `main.bs` (main thread) calls `group.callFunc("toggleFavorite")`; the method runs on the render thread where `fetchAsync` works. Exercises the **error contract** (revert button + toast when `res.ok` is false or on reject). |
+| `3c` | **Main-thread caller → render-thread promise via `callFunc`** | [`JRScene.routerNavigate`](../../components/JRScene.bs), invoked from [`loginRouter`](../../source/loginRouter.bs) | The main-thread caller (`loginRouter`) hands off via `m.scene.callFunc("routerNavigate", …)`; `navigateThenFocus` then consumes `sgrouter.navigateTo`'s promise with `promises.chain(...).then(...)` on the render thread. The favorite toggle (`ItemDetails.toggleFavorite`, now called directly on the render thread) exercises the **error contract** (revert button + toast when `res.ok` is false or on reject). |
 | `3d` | **A dependent SEQUENCE on the render thread** | [`UserSelect.startQuickConnect`](../../components/login/UserSelect.bs) | Three requests where each depends on the last (initiate → poll until approved → exchange the secret), driven by a `Timer` between the polls rather than a loop. Replaced a Task node that was `CreateObject`ed **per poll**. The classification of each poll is extracted to a pure module ([`source/utils/quickConnect.bs`](../../source/utils/quickConnect.bs)) so the decision table is unit-testable without a pool. |
 
 > **The "two dependent calls" case, and why it stayed rare.** Dependent fetch *sequences* mostly
