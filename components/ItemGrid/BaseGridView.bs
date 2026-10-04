@@ -494,20 +494,18 @@ sub loadInitialItems()
   ' Configure grid based on presenter and view
   configureGrid()
 
-  ' Check if LiveTV presenter wants to show TV Guide
-  if m.top.presenterType = "livetv"
-    if LCase(m.view) = "tvguide"
-      ' Update title before early return to ensure overhang shows correct title on first load
-      updateTitle()
-      showTVGuide()
-      stopGridSpinner()
-      ' The guide is this view's finished surface; the grid never loads on this path.
-      m.top.loadState = "loaded"
-      return
-    else
-      ' Ensure TV Guide is hidden if switching away from it
-      hideTVGuide()
-    end if
+  ' The presenter decides whether this view is the TV Guide rather than the grid
+  if m.presenter.showsTVGuide(m.view)
+    ' Update title before early return to ensure overhang shows correct title on first load
+    updateTitle()
+    showTVGuide()
+    stopGridSpinner()
+    ' The guide is this view's finished surface; the grid never loads on this path.
+    m.top.loadState = "loaded"
+    return
+  else
+    ' Ensure TV Guide is hidden if switching away from it
+    hideTVGuide()
   end if
 
   ' Alpha search

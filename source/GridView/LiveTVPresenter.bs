@@ -67,10 +67,9 @@ class LiveTVPresenter extends GridPresenterBase
     task.isRecursive = false
   end sub
 
-  ' Check if current view is TV Guide
-  function isTVGuideView() as boolean
-    if not isValid(m.view) or not isValid(m.view.top) then return false
-    return LCase(m.view.top.currentView) = "tvguide"
+  ' The "tvGuide" view offered in getOptions() is the EPG, not a grid
+  override function showsTVGuide(viewMode as string) as boolean
+    return LCase(viewMode) = "tvguide"
   end function
 
   override sub onDestroy()

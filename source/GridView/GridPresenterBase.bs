@@ -168,6 +168,13 @@ class GridPresenterBase
     return false
   end function
 
+  ' Returns whether the view mode is the TV Guide (EPG) instead of the item grid
+  ' @param {string} viewMode - Current view mode
+  ' @return {boolean} True to show the TV Guide
+  function showsTVGuide(_viewMode as string) as boolean
+    return false
+  end function
+
   ' ============================================================================
   ' Focus Handling
   ' ============================================================================

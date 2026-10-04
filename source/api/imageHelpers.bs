@@ -3,10 +3,10 @@ import "pkg:/source/utils/misc.bs"
 
 ' Generate user avatar URL from JellyfinUser node
 ' @param user - JellyfinUser content node
-' @param maxHeight - Maximum height in pixels (default: 300)
-' @param maxWidth - Maximum width in pixels (default: 300)
+' @param maxHeight - Maximum height in pixels
+' @param maxWidth - Maximum width in pixels
 ' @returns Image URL string or empty string if no image available
-function GetUserAvatarURL(userObj as object, maxHeight = 300 as integer, maxWidth = 300 as integer) as string
+function GetUserAvatarURL(userObj as object, maxHeight as integer, maxWidth as integer) as string
   if not isValid(userObj) or not isValidAndNotEmpty(userObj.id) then return ""
 
   if not isValidAndNotEmpty(userObj.primaryImageTag) then return ""

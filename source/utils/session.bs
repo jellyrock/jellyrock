@@ -7,6 +7,7 @@ import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/userAuth.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
+import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/migrations.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
@@ -190,7 +191,6 @@ namespace server
       ' This keeps any base path (e.g., /jellyfin) rather than reducing to scheme + authority
       newBaseUrl = getServerBaseUrl(resolvedUrl, endpointPath)
       normalizedNewUrl = normalizeUrl(newBaseUrl)
-      normalizedCurrentUrl = normalizeUrl(currentUrl)
 
       ' Only follow redirect if path matches /system/info/public (ignores query strings and fragments)
       resolvedParts = parseUrlComponents(resolvedUrl)
@@ -212,7 +212,7 @@ namespace server
           end if
 
           ' Loop detection: if new URL is same as current, we've looped
-          if normalizedNewUrl = normalizedCurrentUrl
+          if urlsEqual(newBaseUrl, currentUrl)
             return { "Error": true, "ErrorMessage": "Server redirect loop detected - redirecting to same URL" }
           end if
 
@@ -640,7 +640,7 @@ namespace user
 
         ' Extract media segment action preferences from CustomPrefs
         ' Web client stores these with key format: segmentTypeAction__[Type]
-        segmentTypes = ["Intro", "Outro", "Commercial", "Preview", "Recap", "Unknown"]
+        segmentTypes = [MediaSegmentType.INTRO, MediaSegmentType.OUTRO, MediaSegmentType.COMMERCIAL, MediaSegmentType.PREVIEW, MediaSegmentType.RECAP, MediaSegmentType.UNKNOWN]
         for each segmentType in segmentTypes
           customPrefsKey = "segmentTypeAction__" + segmentType
           configFieldKey = "segmentAction" + segmentType

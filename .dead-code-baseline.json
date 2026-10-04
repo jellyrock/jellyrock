@@ -1,11 +1,6 @@
 {
   "//": "Dead code awaiting removal (#1072). The dead-code BSC plugin skips these entries and fails on any that is no longer dead, so this file cannot hold a stale entry. An added entry is a deliberate deferral, decided in review: never add one to silence a new finding. Delete the code, or mark it kept (see docs/architecture/build-and-tooling.md#dead-code).",
   "entries": [
-    "const source/utils/playbackErrorInfo.bs PLAYBACK_ERR_GENERIC",
-    "enumMember source/enums/MediaSegmentType.bs MediaSegmentType.INTRO",
-    "enumMember source/enums/MediaSegmentType.bs MediaSegmentType.OUTRO",
-    "enumMember source/enums/MediaSegmentType.bs MediaSegmentType.PREVIEW",
-    "enumMember source/enums/MediaSegmentType.bs MediaSegmentType.UNKNOWN",
     "field components/Buttons/TextSizeTask.xml TextSizeTask.fontName",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.audioCodecs",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.canPlay4K",
@@ -16,12 +11,9 @@
     "field components/data/jellyfin/JellyfinBaseItem.xml JellyfinBaseItem.lyricsData",
     "function components/JROverhang.bs resetTime",
     "function components/data/UserData.bs removeFromRegistry",
-    "function source/GridView/gridQuery.bs gridQuery.optionValues",
     "function source/showScenes.bs SendPerformanceBeacon",
     "function source/utils/displaySettings.bs deleteLibraryDisplaySettings",
     "function source/utils/itemImageUrl.bs getProgramImageUrl",
-    "function source/utils/url.bs urlsEqual",
-    "method source/GridView/LiveTVPresenter.bs LiveTVPresenter.isTVGuideView",
     "method source/data/JellyfinDataTransformer.bs JellyfinDataTransformer.populateLyrics"
   ]
 }
