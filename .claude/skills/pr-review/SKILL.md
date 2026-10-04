@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Investigate unresolved code review comments on a JellyRock PR end-to-end. Fetches the PR's review comments via gh, sorts by file:line, groups co-located comments, writes a handoff packet to `.claude/handoffs/`, and continues into the per-comment investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md) — read code, validate, root-cause, present options, wait, implement. Dedup-first: a recent unchanged triage on the same PR (no new commits, no new comments) short-circuits to the existing handoff. Distinct from /pr (which CREATES a pull request).
+description: "Investigate unresolved code review comments on a JellyRock PR end-to-end. Fetches the PR's review comments via gh, sorts by file:line, groups co-located comments, writes a handoff packet to `.claude/handoffs/`, and continues into the per-comment investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md) — read code, validate, root-cause, present options, wait, implement. Dedup-first: a recent unchanged triage on the same PR (no new commits, no new comments) short-circuits to the existing handoff. Distinct from /pr (which CREATES a pull request)."
 model: opus
 effort: high
 user-invocable: true
