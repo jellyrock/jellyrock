@@ -11,6 +11,7 @@ related-files:
   - scripts/translations-seed.js
   - locale/seed/sources.yml
   - locale/seed/keymap.yml
+  - locale/seed/seeded.json
 last-reviewed: 2026-10-04
 ---
 
@@ -183,7 +184,7 @@ Missing keys are caught at build time — the `BSC` plugin generates `translatio
 
 Run locally with `npm run update-translations`.
 
-Translations themselves move between `main` and the `weblate` branch at **release prep** (`release-management.yml`): the translations from Weblate are merged in key by key (Weblate wins conflicts, nothing added on `main` is lost), missing ones are seeded from other Jellyfin clients, and the result is pushed back to `weblate`. The why and the exact steps: [architecture/translations.md → Weblate sync](../architecture/translations.md#weblate-sync).
+Translations themselves move between `main` and the `weblate` branch at **release prep** (`release-management.yml`): the translations from Weblate are merged in key by key, three-way (whichever side changed a key since the last release wins, deletions included; Weblate wins when both did), missing ones are seeded from other Jellyfin clients, and the result is pushed back to `weblate`. The why and the exact steps: [architecture/translations.md → Weblate sync](../architecture/translations.md#weblate-sync).
 
 ## Seeding translations from other Jellyfin clients
 
@@ -192,7 +193,7 @@ A new key starts untranslated in every locale, but often another Jellyfin client
 ```bash
 npm run translations:seed                           # dry run: per-key/per-locale coverage, refusals, casing flags
 npm run translations:seed -- suggest --key LabelX   # candidate source keys for a key, as YAML stubs
-npm run translations:seed -- --write                # apply to locale/custom/
+npm run translations:seed -- --write                # apply to locale/custom/ and record each fill in locale/seed/seeded.json
 ```
 
 The first run fetches each pinned source (sparse, depth 1) into the gitignored `.cache/translation-seed/`; later runs are offline.
@@ -202,7 +203,7 @@ The first run fetches each pinned source (sparse, depth 1) into the gitignored `
 1. `suggest --key <Key>` lists source keys with the same English. It is a starting point, not an answer.
 2. For each candidate, check **meaning** and **shape** in context: what the source key's name says it is for (web's `MediaInfo*` keys label its media-info panel; `PriorityIdle` is a process priority), and whether it is the same kind of string (a bare label vs `Codec: %1$s`, a standalone label vs a word from inside a sentence). Prefer the key whose context matches yours.
 3. Add the entry to `locale/seed/keymap.yml` — copy both English strings exactly; they are what makes the entry stop seeding if either side changes later. Record refused candidates under `reject:` with a reason, so `suggest` never offers them again.
-4. Run the dry run and **read the values**, at least for languages you can check. Source translations can be wrong for their own key — web's `MediaInfoChannels` reads "Chaînes" (TV channels) in French. Drop a bad cell with `exclude: { <locale>: <reason> }`.
+4. Run the dry run and **read the values**, at least for languages you can check. Source translations can be wrong for their own key — web's `MediaInfoChannels` reads "Chaînes" (TV channels) in French. Drop a bad cell with `exclude: { <locale>: <reason> }`. Once a value has been written, excluding it is not enough: delete it from the locale file too. The seed ledger (`locale/seed/seeded.json`) then keeps it from coming back, and the next release's merge removes it from Weblate as well.
 5. Review the **Casing to review** list. Nothing is re-cased automatically; exclude a cell when a better-cased value is inherited from the base locale, otherwise keep it (a lowercase word in the user's language beats English).
 
 ### Moving a source forward, or adding one

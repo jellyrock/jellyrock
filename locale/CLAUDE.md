@@ -6,7 +6,7 @@ Translation files for the custom JSON i18n system. See [docs/architecture/transl
 
 - `locale/custom/en_US.json` is the source of truth. Add / rename / remove keys here, never in non-English locale files directly.
 - **The only sanctioned writers of non-English files are `npm run translations:seed` and release prep's `npm run translations:merge`.** Never hand-edit one: translators own wording in Weblate.
-- Every push to `main` sends `en_US.json` and `languages.json` to the `weblate` branch. Translations come back, and seeded ones go out to Weblate, only at release prep — a key-level merge where Weblate wins conflicts ([architecture](../docs/architecture/translations.md#weblate-sync)).
+- Every push to `main` sends `en_US.json` and `languages.json` to the `weblate` branch. Translations come back, and seeded ones go out to Weblate, only at release prep — a three-way, key-level merge: whichever side changed a key wins (deletions included), and Weblate wins when both did ([architecture](../docs/architecture/translations.md#weblate-sync)).
 - `npm run update-translations` (with `--fix` via the npm script) auto-fixes sortable issues locally.
 
 ## Seeding from other Jellyfin clients
