@@ -5,6 +5,9 @@
   "LabelAll": "ro",
   "LabelArtists": "lo larpra",
   "LabelAudio": "sance",
+  "LabelPersonKindActor": "tigni",
+  "LabelPersonKindAlbumArtist": "albuma larpra",
+  "LabelPersonKindArtist": "larpra",
   "LabelPhotoAlbums": "lo pixra albuma",
   "LabelPlaylists": "lo zgipor"
 }

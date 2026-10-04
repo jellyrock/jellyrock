@@ -9,6 +9,7 @@
   "LabelCollections": "Koleksyon yo",
   "LabelContinueWatching": "Kontinye Kade",
   "LabelDefault": "Defo",
+  "LabelExternalSubtitle": "Extèn",
   "LabelFavorite": "Renmen",
   "LabelFavorites": "Pi Renmen",
   "LabelFolders": "Dosye",
@@ -16,6 +17,10 @@
   "LabelMovies": "Fim",
   "LabelMusicVideos": "Videyo Mizik",
   "LabelMyMedia": "Medya Pa'm",
+  "LabelPersonKindActor": "Aktè",
+  "LabelPersonKindAlbumArtist": "Atis Albòm",
+  "LabelPersonKindArtist": "Atis",
+  "LabelPersonKindAuthor": "Otè",
   "LabelPhotos": "Foto",
   "LabelShows": "Emisyon yo",
   "LabelSongs": "Mizik yo"

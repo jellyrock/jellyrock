@@ -76,6 +76,7 @@
   "LabelParentalRatings": "Parental Ratings",
   "LabelPassword": "Password",
   "LabelPeople": "People",
+  "LabelPersonKindColorist": "Colourist",
   "LabelPhotoAlbums": "Photo Albums",
   "LabelPhotos": "Photos",
   "LabelPickAJellyfinServerFromThe": "Select an available Jellyfin server from your local network:",
