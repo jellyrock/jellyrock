@@ -15,6 +15,9 @@ jobs:
   # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
   copilot-setup-steps:
     runs-on: ubuntu-latest
+    # 59, not the 15 every other hosted job uses: GitHub caps this value at 59,
+    # and a lower one may also cap the Copilot agent's whole session.
+    timeout-minutes: 59
 
     # Set the permissions to the lowest permissions possible needed for your steps.
     # Copilot will be given its own token for its operations.
