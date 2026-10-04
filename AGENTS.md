@@ -173,7 +173,7 @@ Most useful subtrees: `docs/REFERENCES/scenegraph/` (scene graph nodes + interfa
 
 ### Commit messages
 
-Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer. A PR's title is the squash commit's first line, and its type decides where the change lands in `CHANGELOG.md` — the types and their sections are defined once in [`scripts/lib/pr-title.js`](scripts/lib/pr-title.js), and CI rejects a PR title without one
+Conventional Commits style (matches `git log`): `type(scope): summary`. A PR's title is the squash commit's first line, and its type decides where the change lands in `CHANGELOG.md` — the types and their sections are defined once in [`scripts/lib/pr-title.js`](scripts/lib/pr-title.js), and CI rejects a PR title without one
 
 ### Pull requests
 
