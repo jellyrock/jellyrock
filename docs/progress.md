@@ -837,6 +837,14 @@ Home opens on the Favorites tab, so the spec's Home-tab gate times out (`tab "ho
 
 `falls back to the movie placeholder when both logoImageTag and primaryImageTag are empty` reads `itemLogo.uri` right after setting `itemContent` and got `""` on the Stick 4K (3820, OS 15.3.4) 4 of 4 runs, alone and in the full `test:unit` run (4781 of 4782), on the branch with and without its changes; the same build passed 20 of 20 on the Ultra (4850X). Not yet known whether the app sets the placeholder later on the slower device (then the test should wait for it) or never sets it there (an app bug on that device): log `itemLogo.uri` over time on the Stick first.
 
+#### `user.Login()`'s registry-load loop has no test for its skip rules `[fid: login-registry-load-routing-untested]` `[captured 2026-10-04]`
+
+`user.Login()` ([`source/utils/session.bs`](../source/utils/session.bs)) loads the user's registry section in an inline loop that routes each key: it skips global keys (`isGlobalSetting`), `display.*` (handled by `TransformDisplaySettings`), `homeSection*` (server-authoritative) and `authToken` / `primaryImageTag` (set by the login flow itself), sets user-node fields, and passes settings-node fields to `user.settings.Save()`. No test exercises that routing. The registry specs used to test a parallel loader, `SessionDataTransformer.transformUserSettings`, that production never ran; the #1072 cleanup removed it and pointed them at `BaseTestSuite.loadSettingsFromRegistry`, which covers `user.settings.Save()`'s type conversion but not the routing. A key rename or a new prefix can therefore break loading silently. Closing it needs the loop pulled out of `user.Login()` into a named function a spec can call (a login-path change, so test on a device), then specs for each skip rule.
+
+#### `SubtitlePanel.shouldOfferPerfectMatchFilter()` has no test `[fid: perfect-match-filter-rule-untested]` `[captured 2026-10-04]`
+
+`SubtitlePanel.shouldOfferPerfectMatchFilter()` ([`components/subtitles/SubtitlePanel.bs`](../components/subtitles/SubtitlePanel.bs)) decides whether the "perfect matches only" toggle appears: kept while the filter is on, hidden when the result set fits on screen, and offered only when some but not all results are hash matches. It has no test. Its only coverage was the removed `remoteSubtitles.hasAnyHashMatch` spec, which tested a helper the panel no longer called (removed in the #1072 cleanup). The function is not declared in the component's interface, so a spec cannot call it as is. Closing it means moving the rule into `remoteSubtitles` as a pure function of the results, the filter state and `subtitleLayout.VISIBLE_ROWS` that the panel calls, then a spec for each case.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
