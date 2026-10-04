@@ -1,0 +1,113 @@
+import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/utils/languageFilters.bs"
+
+namespace tests
+
+  ' The property both halves of the filter panel depend on: what the user checked must
+  ' survive being joined into the saved query and split back out again. Each half is
+  ' self-consistently correct on its own while the PAIR disagrees, which is a filter that
+  ' applies while showing no ticks — so the pair is what gets tested.
+  '
+  ' It runs through the panel the app builds: ItemGridOptions turns the options into
+  ' FilterOptionNodes, and the save reads them back off those same nodes (the CheckList's
+  ' content is the focused category node). A test that built its own nodes would keep
+  ' passing if the component stopped normalizing values — the leading space Str() gives a
+  ' numeric year is that bug.
+  @suite("ItemGridOptions - filter save and restore round trip")
+  class ItemGridOptionsFiltersTests extends tests.BaseTestSuite
+
+    protected testComponent as dynamic
+
+    protected override function afterEach()
+      super.afterEach()
+      if isValid(m.testComponent)
+        m.top.removeChild(m.testComponent)
+        m.testComponent = invalid
+      end if
+    end function
+
+    ' Builds the panel with one filter category, saves `checkedState` the way the OK
+    ' handler does, and restores it the way BaseGridView.SetUpOptions does.
+    private function roundTrips(options as object, checkedState as object, delimiter as string) as object
+      saved = m.savedQuery(options, checkedState, delimiter)
+      return gridQuery.checkedStateFor(options, saved, delimiter)
+    end function
+
+    private function savedQuery(options as object, checkedState as object, delimiter as string) as string
+      m.testComponent = m.top.CreateChild("ItemGridOptions")
+      m.testComponent.options = {
+        filter: [{ Title: "Category", Name: "Category", Delimiter: delimiter, options: options }]
+      }
+      category = m.testComponent.findNode("filterMenu").content.getChild(0)
+      return gridQuery.queryValueFor(gridQuery.checkListValues(category), checkedState, delimiter)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("round trip through the built panel")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("round-trips a Genres selection - plain strings, pipe delimiter")
+    function _()
+      options = ["Action", "Drama", "Science Fiction"]
+      m.assertEqual(m.roundTrips(options, [false, true, true], "|"), [false, true, true])
+    end function
+
+    @it("round-trips a Years selection - numeric options, comma delimiter")
+    function _()
+      options = [1999, 2004, 2021]
+      m.assertEqual(m.savedQuery(options, [true, false, true], ","), "1999,2021")
+      m.assertEqual(m.roundTrips(options, [true, false, true], ","), [true, false, true])
+    end function
+
+    @it("round-trips a single-code language selection")
+    function _()
+      options = [{ title: "Japanese", value: "jpn" }, { title: "Polish", value: "pol" }]
+      m.assertEqual(m.roundTrips(options, [true, false], "|"), [true, false])
+    end function
+
+    @it("round-trips an alias-merged language, whose value holds two codes")
+    ' The 8 alias pairs the server advertises separately are merged into one option, so a
+    ' language option's value is "fra,fre". That value must not be torn apart by the
+    ' category's own delimiter on the way back in.
+    function _()
+      options = [{ title: "French", value: "fra,fre" }]
+      m.assertEqual(m.roundTrips(options, [true], "|"), [true])
+    end function
+
+    @it("round-trips a mixed multi-select of merged and single-code languages")
+    function _()
+      options = [{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }, { title: "German", value: "deu,ger" }]
+      m.assertEqual(m.roundTrips(options, [true, true, false], "|"), [true, true, false])
+    end function
+
+    @it("round-trips every option languageFilters produces")
+    ' The end-to-end property for the 12.0 language filters: what optionsFrom() offers
+    ' must survive the panel's own save and restore, for every option at once.
+    function _()
+      options = languageFilters.optionsFrom([
+        { Name: "French (fra)", Value: "fra" },
+        { Name: "French (fre)", Value: "fre" },
+        { Name: "Japanese", Value: "jpn" },
+        { Name: "Basque (baq)", Value: "baq" },
+        { Name: "Basque (eus)", Value: "eus" }
+      ])
+
+      checkedState = []
+      for each option in options
+        checkedState.push(true)
+      end for
+
+      m.assertEqual(m.roundTrips(options, checkedState, languageFilters.PANEL_DELIMITER), checkedState)
+    end function
+
+    @it("round-trips an empty selection as no filter at all")
+    function _()
+      options = [{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }]
+      saved = m.savedQuery(options, [false, false], "|")
+
+      m.assertEqual(saved, "")
+      m.assertEqual(gridQuery.checkedStateFor(options, saved, "|"), [false, false])
+    end function
+
+  end class
+end namespace

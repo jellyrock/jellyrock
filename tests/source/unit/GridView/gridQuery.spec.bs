@@ -152,58 +152,39 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("queryValueFor() / checkedStateFor() round trip")
+    @describe("checkListValues()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' The property both halves of the panel depend on: what the user checked must survive
-    ' being joined into the saved query and split back out again. Each half is
-    ' self-consistently correct on its own while the PAIR disagrees, which is a filter
-    ' that applies while showing no ticks — so the pair is what gets tested.
-    private function roundTrips(options as object, checkedState as object, delimiter as string) as object
-      saved = gridQuery.queryValueFor(gridQuery.optionValues(options), checkedState, delimiter)
-      return gridQuery.checkedStateFor(options, saved, delimiter)
+    ' The round trip through the panel the app builds is pinned in ItemGridOptions.spec.bs;
+    ' these cover the reader on its own.
+
+    ' A filter category as ItemGridOptions builds it: one FilterOptionNode per option.
+    private function categoryOf(options as object) as object
+      category = CreateObject("roSGNode", "ContentNode")
+      for each option in options
+        node = category.CreateChild("FilterOptionNode")
+        node.title = option.title
+        node.value = option.value
+      end for
+      return category
     end function
 
-    @it("round-trips a Genres selection - plain strings, pipe delimiter")
+    @it("reads every option's value, in panel order")
     function _()
-      options = ["Action", "Drama", "Science Fiction"]
-      m.assertEqual(m.roundTrips(options, [false, true, true], "|"), [false, true, true])
+      category = m.categoryOf([{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }])
+      m.assertEqual(gridQuery.checkListValues(category), ["fra,fre", "jpn"])
     end function
 
-    @it("round-trips a Years selection - numeric options, comma delimiter")
+    @it("falls back to the title for an option whose value was never set")
     function _()
-      options = [1999, 2004, 2021]
-      m.assertEqual(m.roundTrips(options, [true, false, true], ","), [true, false, true])
+      category = m.categoryOf([{ title: "Drama", value: "" }, { title: "French", value: "fra,fre" }])
+      m.assertEqual(gridQuery.checkListValues(category), ["Drama", "fra,fre"])
     end function
 
-    @it("round-trips a single-code language selection")
+    @it("answers a missing or empty category with no values")
     function _()
-      options = [{ title: "Japanese", value: "jpn" }, { title: "Polish", value: "pol" }]
-      m.assertEqual(m.roundTrips(options, [true, false], "|"), [true, false])
-    end function
-
-    @it("round-trips an alias-merged language, whose value holds two codes")
-    ' The 8 alias pairs the server advertises separately are merged into one option, so a
-    ' language option's value is "fra,fre". That value must not be torn apart by the
-    ' category's own delimiter on the way back in.
-    function _()
-      options = [{ title: "French", value: "fra,fre" }]
-      m.assertEqual(m.roundTrips(options, [true], "|"), [true])
-    end function
-
-    @it("round-trips a mixed multi-select of merged and single-code languages")
-    function _()
-      options = [{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }, { title: "German", value: "deu,ger" }]
-      m.assertEqual(m.roundTrips(options, [true, true, false], "|"), [true, true, false])
-    end function
-
-    @it("round-trips an empty selection as no filter at all")
-    function _()
-      options = [{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }]
-      saved = gridQuery.queryValueFor(gridQuery.optionValues(options), [false, false], "|")
-
-      m.assertEqual(saved, "")
-      m.assertEqual(gridQuery.checkedStateFor(options, saved, "|"), [false, false])
+      m.assertEqual(gridQuery.checkListValues(invalid), [])
+      m.assertEqual(gridQuery.checkListValues(CreateObject("roSGNode", "ContentNode")), [])
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

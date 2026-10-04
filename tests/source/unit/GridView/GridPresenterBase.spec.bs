@@ -53,6 +53,19 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showsTVGuide()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows no TV guide for any view by default")
+    ' BaseGridView asks every presenter, so a library that is not Live TV must answer no
+    ' even for a view named like the guide.
+    function _()
+      presenter = new GridPresenterBase()
+      m.assertFalse(presenter.showsTVGuide("tvGuide"))
+      m.assertFalse(presenter.showsTVGuide(""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("showToast()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

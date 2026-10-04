@@ -171,15 +171,25 @@ namespace gridQuery
     return LCase(type(option)) = "roassociativearray"
   end function
 
-  ' optionValues: every option's query value, in the order the panel lists them.
+  ' checkListValues: every option's query value, read off the filter panel's own nodes.
   '
-  ' @param options - a category's `Options` list
-  ' @return {object} array of strings, one per option
-  function optionValues(options as dynamic) as object
+  ' The VALUE of each option, never its title. They are the same text for Genres and
+  ' Years; for a language filter the title is a localized name the server would match
+  ' nothing against. Read off the CheckList's nodes, not the presenter's option list,
+  ' because those nodes are what the CheckList's checkedState indexes into.
+  '
+  ' @param category - a filter category node whose children are FilterOptionNodes
+  ' @return {object} array of strings, one per option, in panel order
+  function checkListValues(category as dynamic) as object
     values = []
-    if type(options) <> "roArray" then return values
-    for each option in options
-      values.push(gridQuery.optionValue(option))
+    if not isValid(category) then return values
+    for i = 0 to category.getChildCount() - 1
+      option = category.getChild(i)
+      value = option.value
+      ' A node whose value never got set falls back to its title, which is the correct
+      ' answer for every category whose options are plain strings.
+      if not isValidAndNotEmpty(value) then value = textOrEmpty(option.title)
+      values.push(value)
     end for
     return values
   end function
@@ -187,8 +197,7 @@ namespace gridQuery
   ' queryValueFor: the saved query for one category — its checked options' values, joined.
   '
   ' Takes VALUES rather than options because the caller (ItemGridOptions) reads them off
-  ' the CheckList's own nodes, not off the presenter's option list; optionValues() is the
-  ' bridge for callers that hold the list instead.
+  ' the CheckList's own nodes via checkListValues(), not off the presenter's option list.
   '
   ' @param values - option query values in panel order
   ' @param checkedState - one boolean per option, panel order
