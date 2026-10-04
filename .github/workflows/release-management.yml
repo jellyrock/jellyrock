@@ -212,10 +212,11 @@ jobs:
         run: npm ci
 
       # Lock Weblate and make it commit + push everything it holds, so the weblate
-      # branch read below is complete and stays still until pull-and-unlock.
-      # Without the WEBLATE_TOKEN secret this warns and the merge runs on whatever
-      # Weblate already pushed. See scripts/weblate-sync.js.
+      # branch read below is complete and stays still until pull-and-unlock. Fails
+      # without the WEBLATE_TOKEN secret, or if the component is already locked: the
+      # push-back below is only safe under our own lock. See scripts/weblate-sync.js.
       - name: Lock Weblate and flush pending translations
+        id: weblate-lock
         env:
           WEBLATE_TOKEN: ${{ secrets.WEBLATE_TOKEN }}
         run: node scripts/weblate-sync.js lock-and-flush
@@ -268,23 +269,17 @@ jobs:
 
           echo "count=${#TRANSLATOR_COMMITS[@]}" >> "$GITHUB_OUTPUT"
 
-      # Key-level merge instead of `git checkout origin/weblate -- locale/custom/`,
-      # which made weblate the sole owner of every locale file and silently reverted
-      # anything added on main (a seed, a fix) at each release. Weblate still wins
-      # every conflict; keys only main has are kept; orphans are dropped.
-      - name: Merge weblate translations (Weblate wins, main-side additions kept)
+      # Three-way, key-level merge (scripts/translations-merge.js): per key, the side
+      # that changed since the last release both sides agreed on wins, deletions
+      # included; Weblate wins when both changed. Merges against the snapshot, so the
+      # cherry-picks' whole-file conflict fallback can't drop main-only keys.
+      - name: Merge weblate translations
         id: refresh
         run: |
-          rm -rf /tmp/tr && mkdir -p /tmp/tr/release /tmp/tr/weblate
-          git archive "${{ steps.snapshot.outputs.sha }}" locale/custom | tar -x -C /tmp/tr/release
-          git archive origin/weblate locale/custom | tar -x -C /tmp/tr/weblate
-          npm run translations:merge -- \
-            --base /tmp/tr/release/locale/custom \
-            --incoming /tmp/tr/weblate/locale/custom \
-            --en locale/custom/en_US.json \
-            --out /tmp/tr/release/locale/custom
-          cp /tmp/tr/release/locale/custom/*.json locale/custom/
-          git checkout HEAD -- locale/custom/en_US.json
+          npm run translations:merge -- release \
+            --ours "${{ steps.snapshot.outputs.sha }}" \
+            --theirs origin/weblate \
+            --version "${{ needs.validate-and-prepare.outputs.version }}"
           git add locale/custom/
 
           if git diff --cached --quiet; then
@@ -303,11 +298,19 @@ jobs:
       # Fill what is still missing from other Jellyfin clients' community
       # translations: fill-only, from the reviewed locale/seed/keymap.yml at pinned
       # commits, AFTER Weblate's merge, so a translator's work always comes first.
+      # Optional: if a source can't be fetched (a moved tag, a network failure) the
+      # release goes ahead without it, and anything half-written is discarded.
       - name: Seed missing translations from other Jellyfin clients
         id: seed
         run: |
-          npm run translations:seed -- --write --summary-file /tmp/seed-message.txt
-          git add locale/custom/
+          if ! npm run translations:seed -- --write --summary-file /tmp/seed-message.txt; then
+            echo "::warning::Translation seeding failed; releasing without it. See the log above."
+            git checkout HEAD -- locale/
+            git clean -fdq -- locale/
+            echo "had_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git add locale/
           if git diff --cached --quiet; then
             echo "had_changes=false" >> "$GITHUB_OUTPUT"
           else
@@ -331,43 +334,22 @@ jobs:
 
       # Send the release's translations back so Weblate has every seeded or
       # main-side translation and translators don't redo them. Merged into the
-      # CURRENT weblate branch with Weblate winning, so nothing it pushed meanwhile
-      # is lost; en_US.json and languages.json travel too, as jellyrock-bot does.
+      # CURRENT weblate branch against the commit the merge above read, so anything
+      # Weblate changed since still wins. Reads the committed release, never the
+      # working tree. Its commit's Translations-Release trailer is the next run's
+      # merge ancestor.
       - name: Sync translations back to the weblate branch
         run: |
-          VERSION="${{ needs.validate-and-prepare.outputs.version }}"
-          for attempt in 1 2 3; do
-            git fetch origin weblate
-            rm -rf /tmp/weblate-wt
-            git worktree add --detach /tmp/weblate-wt origin/weblate
-            npm run translations:merge -- \
-              --base locale/custom \
-              --incoming /tmp/weblate-wt/locale/custom \
-              --en locale/custom/en_US.json \
-              --out /tmp/weblate-wt/locale/custom
-            cp locale/custom/en_US.json /tmp/weblate-wt/locale/custom/en_US.json
-            cp locale/languages.json /tmp/weblate-wt/locale/languages.json
-            git -C /tmp/weblate-wt add locale/
-            if git -C /tmp/weblate-wt diff --cached --quiet; then
-              echo "ℹ️ weblate branch already has every translation"
-              git worktree remove --force /tmp/weblate-wt
-              exit 0
-            fi
-            git -C /tmp/weblate-wt commit -m "chore: sync translations from release v$VERSION"
-            if git -C /tmp/weblate-wt push origin HEAD:weblate; then
-              git worktree remove --force /tmp/weblate-wt
-              exit 0
-            fi
-            echo "weblate moved during the merge; retrying ($attempt/3)"
-            git worktree remove --force /tmp/weblate-wt
-          done
-          echo "::error::Could not push to the weblate branch after 3 attempts"
-          exit 1
+          npm run translations:merge -- push-back \
+            --ancestor "${{ steps.refresh.outputs.weblate_sha }}" \
+            --version "${{ needs.validate-and-prepare.outputs.version }}"
 
-      # Always runs once the flush ran: a component left locked stops every
-      # translator. Pulls first so Weblate continues from the merged branch.
+      # Runs whenever OUR lock is in place, even after a failure: a component left
+      # locked stops every translator. Never runs otherwise, so it can't undo a lock
+      # an admin (or Weblate's auto-lock on error) set. Pulls first so Weblate
+      # continues from the merged branch.
       - name: Pull into Weblate and unlock
-        if: always()
+        if: always() && steps.weblate-lock.outputs.locked == 'true'
         env:
           WEBLATE_TOKEN: ${{ secrets.WEBLATE_TOKEN }}
         run: node scripts/weblate-sync.js pull-and-unlock
@@ -451,13 +433,11 @@ jobs:
         if: env.has_changes == 'true'
         run: git push origin ${{ needs.validate-and-prepare.outputs.branch_name }}
 
-  # Runs on every release-prep pass, not only the first, so the translator credits
-  # follow translations Weblate adds later. Only the block after the marker is
-  # rewritten; anything else in the body is left as the author edited it.
   create-release-pr:
     needs: [validate-and-prepare, update-version-files]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    if: needs.validate-and-prepare.outputs.pr_exists == 'false'
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -471,50 +451,27 @@ jobs:
         with:
           ref: ${{ needs.validate-and-prepare.outputs.branch_name }}
           token: ${{ steps.app-token.outputs.token }}
-          fetch-depth: 0
 
-      # Release PRs are squash-merged with the PR body as the commit message, which
-      # drops the Co-authored-by trailers Weblate puts on each translator's commit.
-      # Re-stating them as the LAST lines of the body carries them into the squash.
-      - name: Create or update the release pull request
+      - name: Create Pull Request
         id: create_pr
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           VERSION="${{ needs.validate-and-prepare.outputs.version }}"
           BRANCH_NAME="${{ needs.validate-and-prepare.outputs.branch_name }}"
-          MARK='<!-- translator-credits -->'
 
-          git fetch origin main
-          CREDITS=$(git log --format='%(trailers:key=Co-authored-by,valueonly)' \
-              origin/main..HEAD --grep='^Translated using Weblate' \
-            | sed '/^[[:space:]]*$/d' | grep -vi 'noreply@weblate.org' | sort -u || true)
+          # Create PR body with version info and changelog
+          PR_BODY="## 🚀 Prepare for v$VERSION release"
 
-          PR_NUMBER="${{ needs.validate-and-prepare.outputs.pr_number }}"
-          if [ -n "$PR_NUMBER" ]; then
-            BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body)
-          else
-            BODY="## 🚀 Prepare for v$VERSION release"
-          fi
-          BODY="${BODY%%"$MARK"*}"
-          BODY="$(printf '%s' "$BODY" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
-          if [ -n "$CREDITS" ]; then
-            BODY="$(printf '%s\n\n%s\nTranslations in this release by:\n\n%s' "$BODY" "$MARK" "$(printf '%s\n' "$CREDITS" | sed 's/^/Co-authored-by: /')")"
-          fi
+          PR_URL=$(gh pr create \
+            --title "Prepare for v$VERSION release" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --label "release-prep")
 
-          if [ -n "$PR_NUMBER" ]; then
-            gh pr edit "$PR_NUMBER" --body "$BODY"
-            echo "✅ Updated release preparation PR #$PR_NUMBER"
-          else
-            PR_URL=$(gh pr create \
-              --title "Prepare for v$VERSION release" \
-              --body "$BODY" \
-              --base main \
-              --head "$BRANCH_NAME" \
-              --label "release-prep")
-            echo "✅ Created release preparation PR for v$VERSION"
-            echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
-          fi
+          echo "✅ Created release preparation PR for v$VERSION"
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
 
   create-draft-release:
     needs: [validate-and-prepare, update-version-files]
