@@ -33,12 +33,17 @@
  *   tests misread unicameral scripts. A translation starting lowercase where en_US is
  *   capitalized, in a cased script, is flagged in the report for a reviewer instead.
  *
+ * - **Refill a cell it filled before** (`locale/seed/seeded.json`, the ledger). Every
+ *   fill is recorded there with its source and commit, and a recorded cell is never
+ *   written again. So removing a seeded translation, on main or in Weblate, is
+ *   permanent, and the ledger answers where any seeded value came from (the seed
+ *   commit's `Translation-Source:` lines do not survive a squash merge).
+ *
  * Sources are pinned to a commit and fetched into `.cache/translation-seed/`, so a run
  * is deterministic: the output depends only on the repo and the pinned commits.
  * Release prep runs `--write` after merging Weblate (see `release-management.yml`),
  * so Weblate's own translations always come first.
  */
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -47,6 +52,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const require = createRequire(import.meta.url);
 const fg = require('fast-glob');
 const yaml = require('js-yaml');
+const { git: gitIn } = require('./lib/git-safe.cjs');
 const {
   baseChain,
   readLocaleDir,
@@ -65,6 +71,7 @@ const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const SOURCES_REL = path.join('locale', 'seed', 'sources.yml');
 export const KEYMAP_REL = path.join('locale', 'seed', 'keymap.yml');
 export const CACHE_REL = path.join('.cache', 'translation-seed');
+export const LEDGER_REL = path.join('locale', 'seed', 'seeded.json');
 
 /**
  * Licenses whose text may be copied into GPL-2.0-only JellyRock, each with phrases
@@ -273,27 +280,8 @@ export function mapLocales(rawCodes, source, jrLocales) {
 
 // ── Fetching ─────────────────────────────────────────────────────────────────
 
-/**
- * git with the hook-time variables removed: under a hook `GIT_DIR` is set, and git
- * obeys it over `-C`, which once pointed a nested git at the real repository.
- */
-function git(args, options = {}) {
-  const env = { ...process.env };
-  for (const name of [
-    'GIT_DIR',
-    'GIT_WORK_TREE',
-    'GIT_INDEX_FILE',
-    'GIT_OBJECT_DIRECTORY',
-    'GIT_COMMON_DIR',
-  ])
-    delete env[name];
-  return execFileSync('git', args, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env,
-    ...options,
-  });
-}
+/** git, with the hook-time variables that would redirect it removed (scripts/lib/git-safe.cjs). */
+const git = (args) => gitIn(undefined, args);
 
 /** The sparse paths a source needs: its translations, its English, its LICENSE. */
 function sparsePatterns(source) {
@@ -444,8 +432,9 @@ export function rejectReason({ value, enValue, sourceEnglish }) {
  * @param {object} args.locales - `{ locale: { key: value } }`, en_US included
  * @param {Array} args.sources - priority order: `{ ...config, loaded: { english, translations } }`
  * @param {object} args.keymap
+ * @param {object} [args.ledger] - `{ locale: { key: 'source@commit' } }`: cells seeded before
  */
-export function planSeed({ locales, sources, keymap }) {
+export function planSeed({ locales, sources, keymap, ledger = {} }) {
   const enUs = locales[SOURCE_LOCALE];
   // Bases before regional variants, so the same-as-base check sees planned fills.
   const targets = Object.keys(locales)
@@ -515,6 +504,15 @@ export function planSeed({ locales, sources, keymap }) {
 
     for (const locale of targets) {
       if (locales[locale][jrKey] !== undefined) continue;
+      if (ledger[locale]?.[jrKey] !== undefined) {
+        rejections.push({
+          key: jrKey,
+          locale,
+          source: ledger[locale][jrKey],
+          reason: 'seeded-before',
+        });
+        continue;
+      }
       for (const { source, m } of usable) {
         if (m.exclude && locale in m.exclude) continue;
         const raw = source.loaded.translations[locale]?.[m.key];
@@ -656,7 +654,7 @@ export function formatReport({ plan, locales, sources, verbose }) {
     const shown = verbose
       ? plan.rejections
       : plan.rejections.filter(
-          (r) => r.reason !== 'same-as-english' && r.reason !== 'same-as-base-locale',
+          (r) => !['same-as-english', 'same-as-base-locale', 'seeded-before'].includes(r.reason),
         );
     for (const r of shown.slice(0, verbose ? Infinity : 40))
       lines.push(`    ${r.key} ${r.locale} ← ${r.source}: ${r.reason}`);
@@ -678,6 +676,44 @@ export function formatCommitBody({ plan, locales, sources }) {
     ...used.map((src) => `Translation-Source: ${src.id} ${src.ref} ${src.commit} ${src.license}`),
   ];
   return lines.join('\n') + '\n';
+}
+
+/** The ledger id of a fill: source and pinned commit, enough to find the exact file. */
+const ledgerEntry = (source) => `${source.id}@${source.commit.slice(0, 12)}`;
+
+/**
+ * The ledger after this plan: every fill added, and entries for keys en_US no longer
+ * has (or locales that no longer exist) pruned, since nothing can refill those.
+ */
+export function nextLedger({ ledger, plan, sources, locales }) {
+  const byId = Object.fromEntries(sources.map((src) => [src.id, src]));
+  const enUs = locales[SOURCE_LOCALE];
+  const next = {};
+  const add = (locale, key, entry) => {
+    if (!(locale in locales) || locale === SOURCE_LOCALE || !(key in enUs)) return;
+    (next[locale] ??= {})[key] = entry;
+  };
+  for (const [locale, keys] of Object.entries(ledger))
+    for (const [key, entry] of Object.entries(keys)) add(locale, key, entry);
+  for (const [locale, keys] of Object.entries(plan.fills))
+    for (const [key, { source }] of Object.entries(keys))
+      add(locale, key, ledgerEntry(byId[source]));
+  return next;
+}
+
+/** The ledger's on-disk form: locales and keys sorted, 2-space, trailing newline. */
+export function serializeLedger(ledger) {
+  const sorted = {};
+  for (const locale of Object.keys(ledger).sort()) {
+    sorted[locale] = {};
+    for (const key of Object.keys(ledger[locale]).sort()) sorted[locale][key] = ledger[locale][key];
+  }
+  return JSON.stringify(sorted, null, 2) + '\n';
+}
+
+export function readLedger(root = rootDir) {
+  const file = path.join(root, LEDGER_REL);
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
 }
 
 export function applyPlan(plan, locales, localeDir) {
@@ -783,15 +819,20 @@ function parseArgs(argv) {
     localeDir: null,
     sources: null,
   };
+  const value = (i, flag) => {
+    const v = argv[i];
+    if (v === undefined || v.startsWith('--')) throw new SeedConfigError(`${flag} needs a value`);
+    return v;
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === 'suggest') args.mode = 'suggest';
     else if (a === '--write') args.write = true;
     else if (a === '--verbose') args.verbose = true;
-    else if (a === '--key') args.keys.push(argv[++i]);
-    else if (a === '--summary-file') args.summaryFile = argv[++i];
-    else if (a === '--locale-dir') args.localeDir = argv[++i];
-    else if (a === '--source') (args.sources ??= []).push(argv[++i]);
+    else if (a === '--key') args.keys.push(value(++i, a));
+    else if (a === '--summary-file') args.summaryFile = value(++i, a);
+    else if (a === '--locale-dir') args.localeDir = value(++i, a);
+    else if (a === '--source') (args.sources ??= []).push(value(++i, a));
     else throw new SeedConfigError(`unknown argument ${a}`);
   }
   return args;
@@ -808,6 +849,7 @@ export function loadEverything({ root = rootDir, localeDir, only } = {}) {
   const locales = readLocaleDir(dir);
   const jrLocales = Object.keys(locales);
   const cacheDir = path.join(root, CACHE_REL);
+  const ledger = readLedger(root);
   const sources = sourcesConfig
     .filter((s) => !only || only.includes(s.id))
     .map((source) => {
@@ -815,14 +857,14 @@ export function loadEverything({ root = rootDir, localeDir, only } = {}) {
       verifyLicense(source, checkout);
       return { ...source, loaded: loadSource(source, checkout, jrLocales) };
     });
-  return { keymap, locales, sources, localeDir: dir };
+  return { keymap, locales, sources, ledger, localeDir: dir };
 }
 
 function main(argv) {
   let args;
   try {
     args = parseArgs(argv);
-    const { keymap, locales, sources, localeDir } = loadEverything({
+    const { keymap, locales, sources, ledger, localeDir } = loadEverything({
       localeDir: args.localeDir,
       only: args.sources,
     });
@@ -830,13 +872,18 @@ function main(argv) {
       console.log(formatSuggestions(suggest({ locales, sources, keymap, keys: args.keys })));
       return;
     }
-    const plan = planSeed({ locales, sources, keymap });
+    const plan = planSeed({ locales, sources, keymap, ledger });
     console.log(formatReport({ plan, locales, sources, verbose: args.verbose }));
     if (args.summaryFile)
       writeFileSync(args.summaryFile, formatCommitBody({ plan, locales, sources }), 'utf8');
     if (args.write) {
       const changed = applyPlan(plan, locales, localeDir);
-      console.log(`\ntranslations:seed: wrote ${changed.length} locale files.`);
+      writeFileSync(
+        path.join(rootDir, LEDGER_REL),
+        serializeLedger(nextLedger({ ledger, plan, sources, locales })),
+        'utf8',
+      );
+      console.log(`\ntranslations:seed: wrote ${changed.length} locale files and ${LEDGER_REL}.`);
     } else {
       console.log('\nDry run — nothing written. Re-run with --write to apply.');
     }

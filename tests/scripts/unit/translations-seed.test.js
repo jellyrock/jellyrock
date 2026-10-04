@@ -5,7 +5,7 @@
  * written to a temp dir.
  */
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,15 +13,18 @@ import {
   formatCommitBody,
   loadSource,
   mapLocales,
+  nextLedger,
   normalizeLocaleCode,
   parseKeymap,
   parseSources,
   planSeed,
   rejectReason,
   SeedConfigError,
+  serializeLedger,
   suggest,
   verifyLicense,
 } from '../../../scripts/translations-seed.js';
+import { spawnScript } from './_helpers/spawn-script.js';
 
 const SHA = 'a'.repeat(40);
 
@@ -445,5 +448,58 @@ describe('formatCommitBody', () => {
     const body = formatCommitBody({ plan, locales: locales(), sources: [web, tv] });
     expect(body).toContain(`Translation-Source: web v1 ${SHA} GPL-2.0-only`);
     expect(body).not.toContain('Translation-Source: tv');
+  });
+});
+
+describe('the ledger', () => {
+  it('never refills a cell it seeded before, so a removal is permanent', () => {
+    // fr's LabelActor was seeded once, then deleted (on main or in Weblate).
+    const ledger = { fr: { LabelActor: `web@${SHA.slice(0, 12)}` } };
+    const plan = planSeed({ locales: locales(), sources: [web, tv], keymap, ledger });
+    expect(plan.fills.fr?.LabelActor).toBeUndefined();
+    expect(plan.rejections).toContainEqual({
+      key: 'LabelActor',
+      locale: 'fr',
+      source: `web@${SHA.slice(0, 12)}`,
+      reason: 'seeded-before',
+    });
+    expect(plan.fills.de.LabelActor).toBeDefined(); // other cells are untouched
+  });
+
+  it('records every fill with its source and pinned commit', () => {
+    const plan = planSeed({ locales: locales(), sources: [web, tv], keymap });
+    const next = nextLedger({ ledger: {}, plan, sources: [web, tv], locales: locales() });
+    expect(next.fr.LabelActor).toBe(`web@${SHA.slice(0, 12)}`);
+    expect(next.nl).toBeUndefined(); // nl already had it: not seeded
+  });
+
+  it('prunes keys en_US no longer has and locales that are gone', () => {
+    const ledger = { fr: { Removed: 'web@x', LabelActor: 'web@x' }, gone: { LabelActor: 'web@x' } };
+    const next = nextLedger({ ledger, plan: { fills: {} }, sources: [web], locales: locales() });
+    expect(next).toEqual({ fr: { LabelActor: 'web@x' } });
+  });
+
+  it('serializes sorted at both levels, so a re-run writes the same bytes', () => {
+    expect(serializeLedger({ fr: { b: '2', a: '1' }, de: { z: '0' } })).toBe(
+      '{\n  "de": {\n    "z": "0"\n  },\n  "fr": {\n    "a": "1",\n    "b": "2"\n  }\n}\n',
+    );
+  });
+
+  it('the committed ledger is in canonical form and names only real locale keys', () => {
+    const root = join(import.meta.dirname, '..', '..', '..');
+    const text = readFileSync(join(root, 'locale/seed/seeded.json'), 'utf8');
+    const ledger = JSON.parse(text);
+    expect(serializeLedger(ledger)).toBe(text);
+    const en = JSON.parse(readFileSync(join(root, 'locale/custom/en_US.json'), 'utf8'));
+    for (const keys of Object.values(ledger))
+      for (const key of Object.keys(keys)) expect(en).toHaveProperty(key);
+  });
+});
+
+describe('CLI flags', () => {
+  it('rejects a flag with no value instead of reading undefined', () => {
+    const r = spawnScript('scripts/translations-seed.js', ['--key']);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toMatch(/--key needs a value/);
   });
 });
