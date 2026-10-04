@@ -57,43 +57,84 @@ describe('baseChain', () => {
 });
 
 describe('mergeLocales', () => {
-  const en = ['Kept', 'Shared', 'WeblateOnly'];
+  const enKeys = ['K', 'Other'];
+  // One key, every combination of what each side did since the ancestor.
+  const merge = (a, o, t) =>
+    mergeLocales({
+      ancestor: a === undefined ? {} : { fr: { K: a } },
+      ours: o === undefined ? { fr: {} } : { fr: { K: o } },
+      theirs: t === undefined ? { fr: {} } : { fr: { K: t } },
+      enKeys,
+    });
 
-  it('keeps a translation only main has — the one the old overwrite threw away', () => {
-    const { merged } = mergeLocales({ fr: { Kept: 'Gardé' } }, { fr: {} }, en);
-    expect(merged.fr).toEqual({ Kept: 'Gardé' });
+  it.each([
+    // ancestor, ours, theirs → result
+    ['a', 'a', 'a', 'a'], //            nobody changed it
+    ['a', 'main', 'a', 'main'], //      fixed on main: main's fix survives
+    ['a', 'a', 'web', 'web'], //        changed in Weblate
+    ['a', 'main', 'web', 'web'], //     changed on both: Weblate wins
+    ['a', 'same', 'same', 'same'], //   changed on both, identically
+    ['a', undefined, 'a', undefined], // deleted on main: stays deleted
+    ['a', 'a', undefined, undefined], // deleted in Weblate: stays deleted
+    ['a', undefined, undefined, undefined], // deleted on both
+    ['a', undefined, 'web', 'web'], //  deleted on main, changed in Weblate: Weblate wins
+    ['a', 'main', undefined, undefined], // changed on main, deleted in Weblate: Weblate wins
+    [undefined, 'main', undefined, 'main'], // added on main (a seed)
+    [undefined, undefined, 'web', 'web'], // added in Weblate
+    [undefined, 'main', 'web', 'web'], // added on both, differently: Weblate wins
+  ])('ancestor %j, ours %j, theirs %j → %j', (a, o, t, expected) => {
+    expect(merge(a, o, t).merged.fr.K).toBe(expected);
   });
 
-  it('lets Weblate win a conflict', () => {
-    const { merged } = mergeLocales({ fr: { Shared: 'main' } }, { fr: { Shared: 'weblate' } }, en);
-    expect(merged.fr.Shared).toBe('weblate');
+  it('lists exactly the keys both sides changed differently', () => {
+    expect(merge('a', 'main', 'web').conflicts).toEqual([
+      { locale: 'fr', key: 'K', ours: 'main', theirs: 'web' },
+    ]);
+    expect(merge('a', 'a', 'web').conflicts).toEqual([]);
+    expect(merge('a', 'same', 'same').conflicts).toEqual([]);
   });
 
-  it('takes keys and whole locales only Weblate has', () => {
-    const { merged } = mergeLocales({}, { de: { WeblateOnly: 'Nur' } }, en);
-    expect(merged.de).toEqual({ WeblateOnly: 'Nur' });
+  it('counts where each value came from and what was deleted', () => {
+    expect(merge('a', 'main', 'a').stats.fr).toMatchObject({ fromOurs: 1, fromTheirs: 0 });
+    expect(merge('a', 'a', 'web').stats.fr).toMatchObject({ fromOurs: 0, fromTheirs: 1 });
+    expect(merge('a', 'a', undefined).stats.fr).toMatchObject({ deleted: 1 });
+  });
+
+  it('with no ancestor, is the two-way union with Weblate winning', () => {
+    const { merged } = mergeLocales({
+      ours: { fr: { K: 'main' } },
+      theirs: { fr: { K: 'web', Other: 'w' }, de: { K: 'nur' } },
+      enKeys,
+    });
+    expect(merged).toEqual({ de: { K: 'nur' }, fr: { K: 'web', Other: 'w' } });
   });
 
   it('drops keys en_US no longer has, as the Cleanup add-on would', () => {
-    const { merged, stats } = mergeLocales(
-      { fr: { Gone: 'x' } },
-      { fr: { AlsoGone: 'y', Kept: 'z' } },
-      en,
-    );
-    expect(merged.fr).toEqual({ Kept: 'z' });
+    const { merged, stats } = mergeLocales({
+      ancestor: { fr: { Gone: 'x' } },
+      ours: { fr: { Gone: 'x' } },
+      theirs: { fr: { AlsoGone: 'y', K: 'z' } },
+      enKeys,
+    });
+    expect(merged.fr).toEqual({ K: 'z' });
     expect(stats.fr.dropped).toBe(2);
   });
 
   it('never touches en_US', () => {
-    const { merged } = mergeLocales({ en_US: { Kept: 'a' } }, { en_US: { Kept: 'b' } }, en);
+    const { merged } = mergeLocales({
+      ours: { en_US: { K: 'a' } },
+      theirs: { en_US: { K: 'b' } },
+      enKeys,
+    });
     expect(merged.en_US).toBeUndefined();
   });
 
-  it('is idempotent', () => {
-    const base = { fr: { Kept: 'Gardé', Shared: 'main' } };
-    const incoming = { fr: { Shared: 'weblate', WeblateOnly: 'w' } };
-    const once = mergeLocales(base, incoming, en).merged;
-    expect(mergeLocales(once, incoming, en).merged).toEqual(once);
-    expect(mergeLocales(incoming, once, en).merged).toEqual(once);
+  it('is idempotent: merging the result again changes nothing', () => {
+    const ancestor = { fr: { K: 'a', Other: 'o' } };
+    const ours = { fr: { K: 'main' } };
+    const theirs = { fr: { K: 'a', Other: 'o2' } };
+    const once = mergeLocales({ ancestor, ours, theirs, enKeys }).merged;
+    expect(mergeLocales({ ancestor, ours: once, theirs, enKeys }).merged).toEqual(once);
+    expect(mergeLocales({ ancestor: once, ours: once, theirs: once, enKeys }).merged).toEqual(once);
   });
 });

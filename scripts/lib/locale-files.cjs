@@ -77,46 +77,66 @@ function inheritedValue(locales, locale, key) {
 }
 
 /**
- * Merge two snapshots of the non-English locale files, key by key.
+ * Three-way merge of the non-English locale files, key by key, against the last
+ * state both sides agreed on (`ancestor`). Per key, compared with the ancestor:
  *
- * - `incoming` wins on conflict. Release prep passes Weblate as `incoming`:
- *   translators are the authority on wording.
- * - A key only `base` has is kept. This is the property the old
- *   `git checkout origin/weblate -- locale/custom/` lacked: it threw away every
- *   translation added on main (a seed, a fix) at each release.
- * - A key that is not in `enKeys` is dropped, as Weblate's Cleanup add-on would.
- * - A locale either side has is kept; en_US is never touched (main owns it).
+ * - changed on one side only (a new value, a new key, or a deletion) → that side;
+ * - changed on both sides, differently → `theirs`. Release prep passes Weblate as
+ *   `theirs`: translators are the authority on wording. Each one is listed in
+ *   `conflicts` so the run can say what it overrode;
+ * - a key not in `enKeys` is dropped, as Weblate's Cleanup add-on would;
+ * - en_US is never touched (main owns it).
  *
- * @returns {{ merged: object, stats: { locale: { fromBase, fromIncoming, dropped } } }}
+ * The ancestor is what lets a deletion through. With only two snapshots, a key one
+ * side lacks could be a deletion there or an addition on the other side, and the
+ * old merge had to guess "addition", so a removed translation always came back and
+ * a fix made on main lost to Weblate's older value.
+ *
+ * An empty `ancestor` makes every key an addition, which is the plain two-way
+ * union with `theirs` winning: the safe fallback when no agreed state is known.
+ *
+ * @returns {{ merged: object, stats: object, conflicts: Array<{ locale, key, ours, theirs }> }}
+ *   `stats[locale]` counts `fromOurs`, `fromTheirs`, `deleted` and `dropped`.
  */
-function mergeLocales(base, incoming, enKeys) {
+function mergeLocales({ ours, theirs, ancestor = {}, enKeys }) {
   const keep = new Set(enKeys);
   const merged = {};
   const stats = {};
-  const allLocales = new Set([...Object.keys(base), ...Object.keys(incoming)]);
+  const conflicts = [];
+  const allLocales = new Set([...Object.keys(ours), ...Object.keys(theirs)]);
   allLocales.delete(SOURCE_LOCALE);
   for (const locale of [...allLocales].sort()) {
-    const b = base[locale] ?? {};
-    const i = incoming[locale] ?? {};
+    const o = ours[locale] ?? {};
+    const t = theirs[locale] ?? {};
+    const a = ancestor[locale] ?? {};
     const out = {};
-    const s = { fromBase: 0, fromIncoming: 0, dropped: 0 };
-    for (const key of new Set([...Object.keys(b), ...Object.keys(i)])) {
+    const s = { fromOurs: 0, fromTheirs: 0, deleted: 0, dropped: 0 };
+    for (const key of new Set([...Object.keys(o), ...Object.keys(t), ...Object.keys(a)])) {
       if (!keep.has(key)) {
-        s.dropped++;
+        if (o[key] !== undefined || t[key] !== undefined) s.dropped++;
         continue;
       }
-      if (i[key] !== undefined) {
-        out[key] = i[key];
-        if (b[key] !== i[key]) s.fromIncoming++;
+      let value;
+      if (o[key] === t[key] || t[key] !== a[key]) {
+        value = t[key];
+        if (o[key] !== t[key]) {
+          s.fromTheirs++;
+          if (o[key] !== a[key]) conflicts.push({ locale, key, ours: o[key], theirs: t[key] });
+        }
       } else {
-        out[key] = b[key];
-        s.fromBase++;
+        value = o[key];
+        s.fromOurs++;
+      }
+      if (value === undefined) {
+        if (a[key] !== undefined) s.deleted++;
+      } else {
+        out[key] = value;
       }
     }
     merged[locale] = out;
     stats[locale] = s;
   }
-  return { merged, stats };
+  return { merged, stats, conflicts };
 }
 
 module.exports = {
