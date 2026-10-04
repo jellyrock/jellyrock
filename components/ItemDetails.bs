@@ -1126,12 +1126,9 @@ sub insertManageSubtitlesButton()
   applyOverflow()
 end sub
 
-' callFunc entry — toggles the favorite state of the current item. Invoked from main.bs's
-' button router; because callFunc rendezvouses to this render-thread-owned node, the body
-' (and the fetchAsync().then() promise delivery + auto-abandon) runs on this component's
-' render thread, where the named-observer adapter works. This is the Phase-3c canonical
-' "main thread → render thread delegation" pattern — see docs/dev/promises.md. It moves the
-' favorite toggle off main.bs's god-loop (was submitApiRequest + isDone branch + handler).
+' Toggles the favorite state of the current item. Called from dispatchDetailButtonAction on
+' this component's render thread, where the fetchAsync().then() promise delivery and
+' auto-abandon work.
 sub toggleFavorite()
   favoriteButton = m.top.findNode("favoriteButton")
   item = m.top.itemContent
@@ -1175,14 +1172,9 @@ sub onFavoriteToggleFailed(favoriteButton as object, attemptedState as boolean)
   displayToast(translate(translationKeys.ErrorFailedToUpdateFavorite), "error")
 end sub
 
-' callFunc entry — toggles the watched/played state of the current item. Invoked from main.bs's
-' button router; Movie/Episode call it directly, while Series route through the "mark all
-' episodes" confirmation dialog first (main.bs keeps that dialog routing and re-invokes this on
-' confirm — #550 sgRouter territory). Because callFunc rendezvouses to this render-thread-owned
-' node, the body (and the fetchAsync().then() promise delivery + auto-abandon) runs on this
-' component's render thread, where the named-observer adapter works. This is the deferred twin of
-' toggleFavorite() — the Phase-3c "main thread → render thread delegation" pattern (see
-' docs/dev/promises.md). It moves the LAST raw submitApiRequest + isDone flow off main.bs's god-loop.
+' Toggles the watched/played state of the current item. Called from onWatchedButtonPressed
+' (Movie/Episode) or onWatchedConfirmResponse (a Series, after the "mark all episodes"
+' confirmation), on this component's render thread like toggleFavorite().
 sub toggleWatched()
   watchedButton = m.top.findNode("watchedButton")
   item = m.top.itemContent
@@ -5173,18 +5165,6 @@ sub focusInteractiveDropdown(candidates as object)
     end if
   end for
 end sub
-
-' firstInteractiveDropdown: Returns the first visible, interactive TrackDropdown in
-' left-to-right order, or invalid if none exist.
-function firstInteractiveDropdown() as object
-  candidates = [m.videoDropdown, m.audioDropdown, m.subtitleDropdown]
-  for each candidate in candidates
-    if isValid(candidate) and candidate.visible and candidate.isInteractive
-      return candidate
-    end if
-  end for
-  return invalid
-end function
 
 ' onTrackDropdownFocusChanged: Observer wired to each TrackDropdown's focusedChild.
 ' Remembers the last dropdown that held focus so the UP-from-buttons handler can

@@ -13,13 +13,6 @@ sub loadFromJSON(json)
   m.top.token = json.AccessToken
 end sub
 
-sub loadFromRegistry(id as string)
-  m.top.id = id
-
-  m.top.username = getUserSetting("username")
-  m.top.token = getUserSetting("authToken")
-end sub
-
 sub saveToRegistry()
   users = parseJson(getSetting("available_users", "[]"))
   thisUser = invalid
@@ -46,14 +39,3 @@ sub removeFromRegistry()
   setSetting("available_users", formatJson(newUsers))
 end sub
 
-function getPreference(key as string)
-  return getUserSetting("pref-" + key)
-end function
-
-function setPreference(key as string, value as string)
-  return setUserSetting("pref-" + key, value)
-end function
-
-sub setServer(hostname as string)
-  m.top.server = hostname
-end sub

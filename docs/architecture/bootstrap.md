@@ -147,7 +147,7 @@ Interface fields exposed for global control:
 | `contentVersion` | int | Content-freshness token bumped on a content mutation (e.g. item delete); a grid suspended beneath the detail re-fetches on resume when it differs |
 | `testToast` | string | Debug-only test trigger (see `debug-tools.md`) |
 
-`JRScene` also exposes router hooks called from `main.bs` / `loginRouter` on the main thread (the `sgrouter` namespace resolves on the render thread, so the main loop can't call it directly): `initRouter`, `routerNavigate`, `replayRoutedDeepLink`, `reloadRoutedHome`, `resetRouter`, `routerGoBack`. Its `AppWaitHost` child keeps the waits the whole app is in: `appWaits.begin(kind, label)` opens one there and returns its Promise (`source/utils/appWaits.bs`).
+`JRScene` also exposes router hooks called from `main.bs` / `loginRouter` on the main thread (the `sgrouter` namespace resolves on the render thread, so the main loop can't call it directly): `routerNavigate`, `replayRoutedDeepLink`, `reloadRoutedHome`, `resetRouter`, `routerGoBack`. Its `AppWaitHost` child keeps the waits the whole app is in: `appWaits.begin(kind, label)` opens one there and returns its Promise (`source/utils/appWaits.bs`).
 
 `components/JRScene.bs` adds the controller logic:
 
