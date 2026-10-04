@@ -20,13 +20,13 @@ This file is the index. The authoring conventions live in [`CLAUDE.md`](CLAUDE.m
 
 ### Investigation flows (single-file opus skills)
 
-Each: an opus skill does prep (fetch, parse, classify, build context packet) + writes a handoff file to `.claude/handoffs/` for compaction recovery / `/catchup` discovery / cross-session resume + continues into the per-skill investigation contract at sibling `INVESTIGATION.md`. End-to-end, in main thread, no Task delegation — human-in-the-loop the entire time. Dedup-first: a recent unchanged triage on the same target short-circuits to the existing handoff.
+Each runs end to end in the main thread on opus, human in the loop the entire time. `/issue-triage` and `/ci-triage` investigate, then follow `/snag`'s steps from its decision screen on: the user picks the fix, which is built test-first and committed on a `fix/…` branch, never pushed. `/ci-triage` reads the run through its tested `ci-triage-state.sh`, which classifies each failed step against this repo's [`ci-triage/gates.tsv`](ci-triage/gates.tsv). `/runtime-triage` does its prep, writes a handoff file to `.claude/handoffs/` (compaction recovery, `/catchup` discovery, cross-session resume) and continues into its sibling `INVESTIGATION.md`.
 
 | Skill | Investigation contract | What |
 |---|---|---|
-| [`/issue-triage`](issue-triage/SKILL.md) `<N>` | [`issue-triage/INVESTIGATION.md`](issue-triage/INVESTIGATION.md) | Diagnose + semi-auto-fix or present-options for a GitHub issue |
+| [`/issue-triage`](issue-triage/SKILL.md) `<N>` | its Steps 2–8, then [`/snag`](snag/SKILL.md)'s | Diagnose + semi-auto-fix or present-options for a GitHub issue |
 | [`/runtime-triage`](runtime-triage/SKILL.md) `<paste>` | [`runtime-triage/INVESTIGATION.md`](runtime-triage/INVESTIGATION.md) | Diagnose a Roku log / crash / unexpected behavior |
-| [`/ci-triage`](ci-triage/SKILL.md) `<run-id>` | [`ci-triage/INVESTIGATION.md`](ci-triage/INVESTIGATION.md) | Diagnose a failing GitHub Actions run |
+| [`/ci-triage`](ci-triage/SKILL.md) `<run-id>` | its Steps 2–7, then [`/snag`](snag/SKILL.md)'s | Diagnose a failing GitHub Actions run |
 
 ### Source-of-truth bridges
 
