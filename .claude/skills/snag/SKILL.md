@@ -105,12 +105,14 @@ In chat, exactly this shape, real names from the working context, every field pr
 | Reply | What happens |
 |---|---|
 | `<label>` | Build that fix now, test first, commit it, no push. |
-| `ok` | The recommended fix at the recommended timing. |
+| `ok` | <if timing is now: Build `<label>` now, test first, commit it, no push.; if asap or later: File a followup recommending `<label>` (pinned for asap); to build it now, reply `<label>`.> |
 | `asap` | File a pinned followup with this cause and these options; stop. |
 | `later` | File a followup with this cause and these options; stop. |
 | `edit: <text>` | Change the plan as you say. |
 | `second-opinion` | A reviewer with a clean context compares the options first. |
 ```
+
+In the `ok` row, write only the sentence for this screen's timing, with the recommended fix's label filled in, so it names the one action `ok` triggers.
 
 A label is a short word saying what the fix does (`mark`, `restore`), never a letter. Recommend `now` when the fix fits this session without derailing the work in hand, `asap` when it does not fit but blocks or endangers that work, `later` otherwise, or when it needs its own design or several sessions.
 
