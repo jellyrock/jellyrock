@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-04 — refactor: Remove unused component functions, fields and interface exposures
 - 2026-10-04 — refactor: Remove unused API calls, image helpers and utilities
 - 2026-10-04 — docs: Cite symbols instead of line numbers in every tracked doc
 - 2026-10-04 — ci: Time out wedged CI jobs instead of letting them run 6 hours
