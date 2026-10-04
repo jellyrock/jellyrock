@@ -115,6 +115,8 @@
     "patches:apply": "patch-package",
     "ropm": "ropm copy && node scripts/ropm-hook.cjs",
     "update-translations": "node scripts/lint/update-translations.cjs --fix",
+    "translations:seed": "node scripts/translations-seed.js",
+    "translations:merge": "node scripts/translations-merge.js",
     "package": "node scripts/create-package.cjs",
     "package:signed": "npm run build:prod && node scripts/create-signed-package.cjs",
     "validate": "npx bsc --noEmit",

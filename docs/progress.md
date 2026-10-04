@@ -267,6 +267,10 @@ The registry's `requires` gates are honored by the functional suite and the scre
 
 A state reader should only read. Every run rewrites `latest_upstream` and `last_checked` in the tracked `docs/signals-backlog.md` (`maintainSignals()`), so the tree shows modified right after a session-start briefing, and it deletes handoffs older than 30 days. Move the signals refresh and the handoff pruning to commands of their own; the `/catchup` and `/focus` `## This repo` notes then drop the exception.
 
+#### Check whether the seeded vi and fa `LabelProfile` values mean a codec profile or a personal profile `[fid: labelprofile-vi-fa-meaning-check]` `[captured 2026-10-04]`
+
+The seeded `LabelProfile` values for `vi` (`Hồ sơ`) and `fa` (`نمایه`) came from the `jellyfin-web` key `MediaInfoProfile` (a codec profile, e.g. H.264 High). Both words can also mean a personal profile, which is how that key reads in its `ja`, `ko`, `ar` and `ta` translations; those four were excluded in `locale/seed/keymap.yml` with reasons, but nobody on #931 could judge `vi` or `fa`. Close by having a Vietnamese and a Persian speaker check the two values. If either reads as a personal profile, delete it from `locale/custom/vi.json` / `fa.json` (or have a translator delete it in Weblate): the seed ledger (`locale/seed/seeded.json`) keeps the seeder from refilling it, and the next release's three-way merge carries the deletion to the other side. Also add it to that entry's `exclude:` with the reason, so the refusal is recorded next to the mapping.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`

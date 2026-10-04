@@ -211,12 +211,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Lock Weblate and make it commit + push everything it holds, so the weblate
+      # branch read below is complete and stays still until pull-and-unlock. Fails
+      # without the WEBLATE_TOKEN secret, or if the component is already locked: the
+      # push-back below is only safe under our own lock. See scripts/weblate-sync.js.
+      - name: Lock Weblate and flush pending translations
+        id: weblate-lock
+        env:
+          WEBLATE_TOKEN: ${{ secrets.WEBLATE_TOKEN }}
+        run: node scripts/weblate-sync.js lock-and-flush
+
       - name: Verify weblate branch exists
         run: |
           if ! git ls-remote --exit-code --heads origin weblate > /dev/null 2>&1; then
             echo "::error::The 'weblate' branch does not exist. Cannot merge translations for release."
             exit 1
           fi
+
+      # The merge below needs the release's locale files as they were BEFORE the
+      # cherry-picks: `-X theirs` and the conflict fallback can take a whole file from
+      # weblate, dropping translations only main has.
+      - name: Snapshot release translations
+        id: snapshot
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Cherry-pick translator commits from weblate
         id: cherry-pick
@@ -225,9 +242,9 @@ jobs:
 
           # Weblate uses a stable subject "Translated using Weblate (<lang>)" for real
           # translator activity. Pull only those onto the release branch so each
-          # session lands as a first-parent commit with the translator credited via
-          # the Co-authored-by trailer. Bot/cleanup commits are filtered out and
-          # absorbed by the refresh step below.
+          # session lands as its own commit, with the translator credited via the
+          # Co-authored-by trailer. Bot/cleanup commits are filtered out and
+          # absorbed by the merge step below.
           mapfile -t TRANSLATOR_COMMITS < <(
             git log --reverse --format='%H' origin/weblate ^HEAD --grep='^Translated using Weblate'
           )
@@ -252,37 +269,90 @@ jobs:
 
           echo "count=${#TRANSLATOR_COMMITS[@]}" >> "$GITHUB_OUTPUT"
 
-      - name: Stage residual translation changes (cleanup add-on, etc)
+      # Three-way, key-level merge (scripts/translations-merge.js): per key, the side
+      # that changed since the last release both sides agreed on wins, deletions
+      # included; Weblate wins when both changed. Merges against the snapshot, so the
+      # cherry-picks' whole-file conflict fallback can't drop main-only keys.
+      - name: Merge weblate translations
         id: refresh
         run: |
-          # After cherry-picks, the remaining delta vs origin/weblate is whatever
-          # the Cleanup add-on and main→weblate sync produced. Bundle into one commit.
-          git checkout origin/weblate -- locale/custom/
-          git checkout HEAD -- locale/custom/en_US.json
-          git diff --name-only --cached | grep -v '^locale/custom/' \
-            | xargs -r git checkout HEAD -- 2>/dev/null || true
+          npm run translations:merge -- release \
+            --ours "${{ steps.snapshot.outputs.sha }}" \
+            --theirs origin/weblate \
+            --version "${{ needs.validate-and-prepare.outputs.version }}"
+          git add locale/custom/
 
           if git diff --cached --quiet; then
             echo "had_changes=false" >> "$GITHUB_OUTPUT"
           else
+            git commit -m "chore: refresh translation files from weblate"
+            echo "had_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache translation sources
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/translation-seed
+          key: translation-seed-${{ hashFiles('locale/seed/sources.yml') }}
+
+      # Fill what is still missing from other Jellyfin clients' community
+      # translations: fill-only, from the reviewed locale/seed/keymap.yml at pinned
+      # commits, AFTER Weblate's merge, so a translator's work always comes first.
+      # Optional: if a source can't be fetched (a moved tag, a network failure) the
+      # release goes ahead without it, and anything half-written is discarded.
+      - name: Seed missing translations from other Jellyfin clients
+        id: seed
+        run: |
+          if ! npm run translations:seed -- --write --summary-file /tmp/seed-message.txt; then
+            echo "::warning::Translation seeding failed; releasing without it. See the log above."
+            git checkout HEAD -- locale/
+            git clean -fdq -- locale/
+            echo "had_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git add locale/
+          if git diff --cached --quiet; then
+            echo "had_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            { echo "chore(translations): seed missing translations from other Jellyfin clients"; echo; cat /tmp/seed-message.txt; } > /tmp/seed-commit.txt
+            git commit -F /tmp/seed-commit.txt
             echo "had_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Validate translations
         run: npm run lint:translations
 
-      - name: Commit residual changes and push
+      - name: Push release branch
         run: |
-          if [ "${{ steps.refresh.outputs.had_changes }}" = "true" ]; then
-            git commit -m "chore: refresh translation files from weblate"
-          fi
-
           if [ "${{ steps.cherry-pick.outputs.count }}" -gt 0 ] \
-             || [ "${{ steps.refresh.outputs.had_changes }}" = "true" ]; then
+             || [ "${{ steps.refresh.outputs.had_changes }}" = "true" ] \
+             || [ "${{ steps.seed.outputs.had_changes }}" = "true" ]; then
             git push origin ${{ needs.validate-and-prepare.outputs.branch_name }}
           else
             echo "ℹ️ Nothing to push"
           fi
+
+      # Send the release's translations back so Weblate has every seeded or
+      # main-side translation and translators don't redo them. Merged into the
+      # CURRENT weblate branch against the commit the merge above read, so anything
+      # Weblate changed since still wins. Reads the committed release, never the
+      # working tree. Its commit's Translations-Release trailer is the next run's
+      # merge ancestor.
+      - name: Sync translations back to the weblate branch
+        run: |
+          npm run translations:merge -- push-back \
+            --ancestor "${{ steps.refresh.outputs.weblate_sha }}" \
+            --version "${{ needs.validate-and-prepare.outputs.version }}"
+
+      # Runs whenever OUR lock is in place, even after a failure: a component left
+      # locked stops every translator. Never runs otherwise, so it can't undo a lock
+      # an admin (or Weblate's auto-lock on error) set. Pulls first so Weblate
+      # continues from the merged branch.
+      - name: Pull into Weblate and unlock
+        if: always() && steps.weblate-lock.outputs.locked == 'true'
+        env:
+          WEBLATE_TOKEN: ${{ secrets.WEBLATE_TOKEN }}
+        run: node scripts/weblate-sync.js pull-and-unlock
 
   update-version-files:
     needs: [validate-and-prepare, merge-translations]

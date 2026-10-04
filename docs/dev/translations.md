@@ -8,7 +8,11 @@ related-files:
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/lint/update-translations.cjs
   - scripts/lint/language-coverage.cjs
-last-reviewed: 2026-09-22
+  - scripts/translations-seed.js
+  - locale/seed/sources.yml
+  - locale/seed/keymap.yml
+  - locale/seed/seeded.json
+last-reviewed: 2026-10-04
 ---
 
 # Translations
@@ -179,3 +183,30 @@ The JellyRock bot (`jellyrock-bot.yml`) runs on every push to main:
 Missing keys are caught at build time — the `BSC` plugin generates `translationKeys` constants from en_US.json, so referencing a key that doesn't exist is a compile error.
 
 Run locally with `npm run update-translations`.
+
+Translations themselves move between `main` and the `weblate` branch at **release prep** (`release-management.yml`): the translations from Weblate are merged in key by key, three-way (whichever side changed a key since the last release wins, deletions included; Weblate wins when both did), missing ones are seeded from other Jellyfin clients, and the result is pushed back to `weblate`. The why and the exact steps: [architecture/translations.md → Weblate sync](../architecture/translations.md#weblate-sync).
+
+## Seeding translations from other Jellyfin clients
+
+A new key starts untranslated in every locale, but often another Jellyfin client's community has already translated the same string. `npm run translations:seed` copies those in — fill-only, from a reviewed map, from license-compatible projects only. Release prep runs it automatically, so mapping a key is all it takes for it to fill at the next release; run it yourself to see the result in your PR.
+
+```bash
+npm run translations:seed                           # dry run: per-key/per-locale coverage, refusals, casing flags
+npm run translations:seed -- suggest --key LabelX   # candidate source keys for a key, as YAML stubs
+npm run translations:seed -- --write                # apply to locale/custom/ and record each fill in locale/seed/seeded.json
+```
+
+The first run fetches each pinned source (sparse, depth 1) into the gitignored `.cache/translation-seed/`; later runs are offline.
+
+### Mapping a key
+
+1. `suggest --key <Key>` lists source keys with the same English. It is a starting point, not an answer.
+2. For each candidate, check **meaning** and **shape** in context: what the source key's name says it is for (web's `MediaInfo*` keys label its media-info panel; `PriorityIdle` is a process priority), and whether it is the same kind of string (a bare label vs `Codec: %1$s`, a standalone label vs a word from inside a sentence). Prefer the key whose context matches yours.
+3. Add the entry to `locale/seed/keymap.yml` — copy both English strings exactly; they are what makes the entry stop seeding if either side changes later. Record refused candidates under `reject:` with a reason, so `suggest` never offers them again.
+4. Run the dry run and **read the values**, at least for languages you can check. Source translations can be wrong for their own key — web's `MediaInfoChannels` reads "Chaînes" (TV channels) in French. Drop a bad cell with `exclude: { <locale>: <reason> }`. Once a value has been written, excluding it is not enough: delete it from the locale file too. The seed ledger (`locale/seed/seeded.json`) then keeps it from coming back, and the next release's merge removes it from Weblate as well.
+5. Review the **Casing to review** list. Nothing is re-cased automatically; exclude a cell when a better-cased value is inherited from the base locale, otherwise keep it (a lowercase word in the user's language beats English).
+
+### Moving a source forward, or adding one
+
+- **Bump** `ref` and `commit` together in `locale/seed/sources.yml`, then dry-run: entries whose source English changed are listed under **Needs re-review**.
+- **Add** a project only if its license is `GPL-2.0-only`, `GPL-2.0-or-later` or `MPL-2.0` (the seeder refuses anything else, and checks the LICENSE file at the pinned commit). A new file format needs a parser in `scripts/lib/translation-formats.cjs`, with a fixture test.

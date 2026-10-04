@@ -77,6 +77,16 @@ m.label.text = translate(translationKeys.ButtonSaveChanges)
 
 The `translate(...)` and `translatePlural(...)` helpers live in [`source/utils/translate.bs`](../../../source/utils/translate.bs).
 
+## Step 6b — Look for an existing translation in another Jellyfin client
+
+Another Jellyfin client's community has often translated the same string already. Check before the key ships untranslated in every locale:
+
+```bash
+npm run translations:seed -- suggest --key <YourKey>
+```
+
+If a candidate means the same thing AND has the same shape (a bare label vs `Codec: %1$s`; a standalone label vs a word from inside a sentence), add a reviewed entry to [`locale/seed/keymap.yml`](../../../locale/seed/keymap.yml), run `npm run translations:seed` and read the values it would write. Release prep seeds it from then on. Full checklist: [`docs/dev/translations.md`](../../../docs/dev/translations.md#seeding-translations-from-other-jellyfin-clients). No candidate is a normal outcome — Weblate translators take it from there.
+
 ## Step 7 — Verify
 
 ```bash
@@ -89,7 +99,7 @@ If any fail with auto-fixable issues, run `npm run lint:translations -- --fix`. 
 
 ## Step 8 — Don't touch non-English locale files
 
-Don't manually edit `locale/custom/<other>.json`. The Weblate bot syncs them on push to main: orphaned keys removed, new keys propagated as untranslated. Translators handle the actual translation downstream. Manual edits create merge conflicts when Weblate runs.
+Don't manually edit `locale/custom/<other>.json`. Translators own wording in Weblate; the only other writers are `translations:seed` (Step 6b) and release prep's merge.
 
 ## When NOT to use
 

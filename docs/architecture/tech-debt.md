@@ -154,9 +154,9 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 #### `weblate-branch-stale-sync`
 
-- **area**: Weblate integration (`locale/custom/*.json`, the Weblate branch/config).
-- **issue**: The Weblate branch does not stay in sync with `main`. New `en_US` keys added on `main` don't reach Weblate for translators, and completed translations on the Weblate side don't flow back. Translation work drifts. NOTE: this is hygiene only — it is NOT the cause of the 216 untranslated keys in #641 (those strings exist in no source, Weblate included; syncing won't backfill them). See #641.
-- **direction**: Restore bidirectional Weblate ↔ `main` sync (the Weblate GitHub integration / a scheduled merge) so new keys flow out and translations flow back automatically.
+- **area**: Weblate integration (`locale/custom/*.json`, the `weblate` branch), `.github/workflows/jellyrock-bot.yml` (`sync-translations-to-weblate`), `.github/workflows/release-management.yml` (`merge-translations`), `scripts/weblate-sync.js`, `scripts/translations-merge.js`.
+- **issue**: Outside release prep, only `en_US.json` and `languages.json` flow `main` → `weblate` (every push, `jellyrock-bot.yml`). Every other locale file moves both ways only at release prep, via a three-way key-level merge (see [`translations.md`](translations.md#weblate-sync)). So a translation seed or fix merged to `main` mid-cycle does not reach Weblate until the next release, and translator edits do not reach `main` until then either. NOTE: this is hygiene only — it is NOT the cause of the 216 untranslated keys in #641 (those strings exist in no source, Weblate included; syncing won't backfill them). See #641.
+- **direction**: Only worth doing if the mid-cycle gap causes translators to redo work. Then extend `translations-merge.js` rather than writing a sibling, with two things settled first: a mid-cycle push needs `weblate-sync.js`'s lock just as release prep does, and it must not write a `Translations-Release` marker, which `findAncestor()` would take for a shipped release. Otherwise close this entry as accepted release-cadence behavior.
 
 #### `loginflow-error-boundaries`
 

@@ -8,7 +8,16 @@ related-files:
   - scripts/lint/update-translations.cjs
   - scripts/lint/language-coverage.cjs
   - locale/languages.json
-last-reviewed: 2026-09-22
+  - locale/seed/sources.yml
+  - locale/seed/keymap.yml
+  - locale/seed/seeded.json
+  - scripts/translations-seed.js
+  - scripts/translations-merge.js
+  - scripts/weblate-sync.js
+  - scripts/lib/locale-files.cjs
+  - scripts/lib/translation-formats.cjs
+  - .github/workflows/release-management.yml
+last-reviewed: 2026-10-04
 ---
 
 # Translations (i18n)
@@ -319,13 +328,60 @@ The generated file is virtual (`program.setFile`) — never written to disk. The
 
 ## Weblate sync
 
-Translations are crowdsourced via Weblate (an open-source translation platform). The CI workflow `jellyrock-bot.yml` runs on every push to `main` and:
+Translations are crowdsourced on a self-hosted Weblate (`translate.jellyrock.app`, project `jellyrock`, component `roku`), which commits to the `weblate` branch. Two workflows move files between that branch and `main`:
 
-- Removes orphaned keys (keys that exist in non-English files but not in `en_US.json`)
-- Sorts all locale files
-- Pushes changes back to Weblate (and pulls translator updates back into the repo)
+| When | Workflow | What moves |
+|---|---|---|
+| every push to `main` | `jellyrock-bot.yml` | `en_US.json` and `languages.json`, `main` → `weblate`, so translators see new keys |
+| release prep (push to `release-X.Y.Z`) | `release-management.yml` → `merge-translations` | every locale file, both ways |
 
-So the developer-side workflow is just: edit `en_US.json`, the bot keeps everything else in sync, and translators do their work in Weblate.
+Release prep, in order:
+
+1. **Lock and flush Weblate** — `scripts/weblate-sync.js lock-and-flush` locks the component and makes Weblate commit and push what it holds, so the branch read next is complete and nothing lands on it mid-merge. It refuses a component that is already locked (by an admin, or by Weblate itself after a repository error), and fails without the `WEBLATE_TOKEN` secret: the push-back in step 5 is only safe under this lock.
+2. **Cherry-pick translator commits** (`Translated using Weblate (…)`), each keeping the `Co-authored-by` trailers Weblate wrote for its translators.
+3. **Merge key by key, three-way** — `npm run translations:merge -- release` (rules below).
+4. **Seed** whatever is still missing from other Jellyfin clients (next section). After the merge, so a translator's work always comes first. Optional: if a source can't be fetched, the release goes ahead without it.
+5. **Push the result back to `weblate`** — `npm run translations:merge -- push-back`, merged into the branch's *current* state, so Weblate receives every seeded or main-side translation and translators don't redo them. Its commit carries a `Translations-Release: X.Y.Z` trailer, which makes it the next run's ancestor.
+6. **Pull into Weblate and unlock** — runs whenever step 1's lock is ours, even after a failure, so a failed release can't leave translators locked out. It never runs otherwise, so it can't undo someone else's lock.
+
+**Translator credit** needs nothing extra. Release PRs are squash-merged with the PR body as the message, and GitHub appends a `Co-authored-by` trailer for every author and co-author of the PR's commits, so each cherry-picked translator is credited on `main`. Checked 2026-10-04 on a throwaway repo with the same squash settings, merged both with `gh pr merge --squash` and from the web page.
+
+### The merge rules
+
+Each key is compared with the **ancestor**, the last state the release and the `weblate` branch agreed on:
+
+| On the release (`main`) | In Weblate | Result |
+|---|---|---|
+| unchanged | unchanged | kept |
+| changed, added or deleted | unchanged | the release's change |
+| unchanged | changed, added or deleted | the change made in Weblate |
+| changed | changed differently | **Weblate wins**, and the run lists it |
+
+Keys no longer in `en_US.json` are dropped, as the Weblate Cleanup add-on does; `en_US.json` itself is never merged (main owns it).
+
+The ancestor is the newest push-back commit on `weblate` (step 5) whose release shipped (tag `vX.Y.Z` exists) or is the release in progress. An abandoned release doesn't count: its push-back reached `weblate` but never `main`, so `main` would look as if it had deleted everything that release merged. With no such commit (the first release on this scheme, or a re-cut `weblate` branch), the merge falls back to the two-way union with Weblate winning, warns, and deletions start syncing from the next release.
+
+**Why three-way.** Release prep used to run `git checkout origin/weblate -- locale/custom/`, and nothing sent main's locale files to `weblate`, so the `weblate` branch owned every non-English file and anything added on main was silently reverted at the next release. (The #531 CLDR seed survived only because the `weblate` branch happened to be re-cut from main right after it merged.) A two-way merge fixes additions but can't tell "deleted here" from "added there": a removed translation always came back, and a fix made on main lost to the older value in Weblate. Comparing both sides with the ancestor settles each key.
+
+### Removing a translation
+
+Delete it, on `main` or in Weblate. The merge carries the deletion to the other side at the next release, and the seed ledger (`locale/seed/seeded.json`) stops the seeder from filling a cell it filled before. To stop a key from ever being seeded in a locale, add `exclude: { <locale>: <reason> }` to its `keymap.yml` entry.
+
+### Weblate token setup
+
+`WEBLATE_TOKEN` is a **project** API token, not a user account, so no bot login is needed. A project admin creates it in the `jellyrock` project's **API access** tab (Weblate docs: **Operations → Users**, then that tab) and adds it to a team whose only role is **Manage repository** (the default `VCS` team, if its role matches), which covers commit, push, update and lock. Check it read-only with `WEBLATE_TOKEN=… node scripts/weblate-sync.js check`, then store it with `gh secret set WEBLATE_TOKEN -R jellyrock/jellyrock`. If it expires, release prep stops at step 1 with these steps in the error.
+
+## Seeding from other Jellyfin clients
+
+`npm run translations:seed` fills missing translations from other open-source Jellyfin clients' community translations — `jellyfin-web`, `jellyfin-androidtv`, `jellyfin-roku`, `jellyfin-android`, Swiftfin, `streamyfin` and the Jellyfin server, in that priority order. The how-to is in [`docs/dev/translations.md`](../dev/translations.md#seeding-translations-from-other-jellyfin-clients); the shape and the constraints:
+
+- **Sources are config, not code** (`locale/seed/sources.yml`): repo, tag pinned to a commit SHA, license, file format, placeholder style, locale-code overrides. A new project is one entry, plus a parser in `scripts/lib/translation-formats.cjs` only when its file format is new.
+- **A reviewed map, never English-text matching** (`locale/seed/keymap.yml`). The same English means different things across projects — web's "Idle" is a process priority; the audio-channel "Channels" and the Live TV "Channels" are different words in French — and a source's own translation can be wrong for its key. Each entry records the English both sides had when it was reviewed, so it stops seeding when either changes; refused candidates are recorded with a reason.
+- **License allowlist: `GPL-2.0-only`, `GPL-2.0-or-later`, `MPL-2.0`.** JellyRock is `GPL-2.0-only`. `MPL-2.0` §1.12 names `GPL-2.0` a Secondary License, so `MPL` text may be combined unless a file is marked "Incompatible With Secondary Licenses", which the seeder refuses. `GPL-3.0` sources (`jellyfin-vue`, `jellyfin-kodi`, `findroid`) can never be added. The LICENSE file at the pinned commit is checked against the declared license on every fetch.
+- **Fill only, once per cell.** Every fill is recorded in `locale/seed/seeded.json` (locale → key → `source@commit`), and a recorded cell is never filled again, so a removal sticks. The ledger is also the provenance record: the seed commit's `Translation-Source:` lines do not survive a squash merge.
+- **Nothing the runtime would show anyway.** It never overwrites; it refuses a different placeholder set, new markup or line breaks, a value equal to the English, and a regional value equal to its base locale's (runtime layering already shows it, and a copy would shadow later fixes to the base).
+- **No re-casing.** Title Case is an English convention, and case tests misread unicameral scripts (Georgian letters upper-case to a separate all-caps alphabet). A lowercase-first translation in a cased script is flagged in the dry run for review instead.
+- **Runs at every release prep** (step 4 above), so a newly mapped key, or a locale a source adds, fills without anyone remembering to.
 
 ## Known cruft
 

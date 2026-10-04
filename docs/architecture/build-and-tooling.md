@@ -440,6 +440,8 @@ Lint and format:
 | `npm run format:bs` / `:js` | Type-scoped formatting writes |
 | `npm run validate` | `bsc --noEmit` (type-check) |
 | `npm run update-translations` | Auto-fix translation issues |
+| `npm run translations:seed` | Dry-run (default) or `--write` the fill-only import of missing translations from other Jellyfin clients — see [translations.md](translations.md#seeding-from-other-jellyfin-clients) |
+| `npm run translations:merge` | Release prep's three-way, key-level `main` ↔ `weblate` sync (`release` and `push-back` subcommands) — see [translations.md](translations.md#weblate-sync) |
 | `npm run test:scripts` | Vitest unit tests for `scripts/` (BSC plugins + tooling). Uses `vitest.config.js` |
 | `npm run test:scripts:tdd` | Vitest watch mode (parity with `test:tdd` for BS) |
 

@@ -36,3 +36,6 @@ node_modules/
 # Project PLANs are local agent-continuity (like .claude/handoffs, .claude/plans);
 # public repo keeps them out of git. Lifecycle skills still run locally.
 docs/projects/
+
+# translations:seed — sparse checkouts of the pinned source projects (locale/seed/sources.yml).
+.cache/translation-seed/
