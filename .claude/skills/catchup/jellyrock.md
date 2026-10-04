@@ -12,7 +12,7 @@ A section the reader could not build is `null` with an `_errors[<section>]` entr
 | `signals.stale_count > 0` | `signals-backlog: <n> row(s) need attention (<slugs where stale=true>)` | a row with `row.digest` (the `jellyfin-server-stable` row, when an open release digest exists): `/server-upgrade` for digest `#<row.digest.number>`. Any other stale row: review the upstream change, then `/done <slug>` (bumps `latest_acknowledged`) |
 | `signals.action_pending_count > 0` | `<n> signal(s) in action_pending (<slugs>): these need a JellyRock change` | the change itself; `/focus` to pick it |
 | a run in `ci.current_branch_runs` with `conclusion != 'success'` | `CI run "<name>" <conclusion> (<createdAt>)` | `/ci-triage <run-id>`; one that a later green run recovered is a one-line info entry |
-| `prs.review_requested` not empty | `<n> PR(s) awaiting your review: #N title` | `/pr-review <N>` |
+| `prs.review_requested` not empty | `<n> PR(s) awaiting your review: #N title` | `/code-review <N>` |
 | `docs_stale.architecture` not empty | `<n> architecture doc(s) stale: file (Nd)` (info only; the blocking gate is CI's) | re-read the doc before touching its territory, then update it or bump `last-reviewed` |
 
 The journal (followups, the running cursor, its staleness) is the shared reader's alone: this reader does not parse `docs/progress.md`.

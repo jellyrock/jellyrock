@@ -38,8 +38,8 @@ skills load automatically. The ones you'll reach for most:
   [tech-debt](docs/architecture/tech-debt.md) and
   [signals](docs/signals-backlog.md) — so the next contributor inherits the
   context even though the scratchpad PLAN stays local.
-- **Forge workflow** (`/create-issue`, `/pr`, `/pr-review`, `/issue-triage`,
-  `/ci-triage`) — for filing issues, opening and reviewing pull requests, and
+- **Forge workflow** (`/create-issue`, `/pr`, `/issue-triage`, `/ci-triage`) —
+  for filing issues, opening pull requests, and
   triaging issues and failing CI runs.
 - **Recipe skills** (`/new-setting`, `/new-migration`, `/new-api-version`,
   `/translation-add`) — guided, step-by-step procedures for the common change
