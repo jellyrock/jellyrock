@@ -1315,8 +1315,8 @@ fire often enough to matter, not as a number to compare against.
 | unattributed build | neither `--deploy` nor `--deployed-by` — nobody can say the measured build came from the recorded commit | 33% |
 | server not asserted | no `--server`, so the recorded server is what the app reported rather than what anyone declared | 32% |
 | identity drift | the server identity moved or could not be re-read at the end | 0% |
-| hour boundary | the series crossed `:00`, where a resetting fixture changes the workload | 2% |
-| hour not recorded | the series predates the flag, so whether it crossed `:00` is unknown | 3% |
+| hour boundary | the series crossed the top of the hour, where a resetting fixture changes the workload | 2% |
+| hour not recorded | the series predates the flag, so whether it crossed the top of the hour is unknown | 3% |
 
 **Acting on the dirty warning:** `--select dirty=false` narrows a cell to the series that
 recorded a clean tree. It is a three-state field, not a boolean — records predating the

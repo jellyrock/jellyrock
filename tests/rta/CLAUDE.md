@@ -381,12 +381,13 @@ twice into `#itemDescription`). Every one now presses the keys a viewer presses.
 **What the teleports were standing in for turned out to be untested app code.** The
 ladders are real and reachable in both directions:
 
-- UserSelect focuses `UserRow` in `init()` (`UserRow.bs:8`), and one Down reaches the
-  button group (`UserSelect.bs:564`). Unconditional — a single rung.
+- UserSelect focuses `UserRow` in `init()` (`UserRow.init()`), and one Down reaches the
+  button group (the `key = "down"` branch of `UserSelect.onKeyEvent()`). Unconditional — a single rung.
 - ItemDetails is two-branched. Up from the button group targets an interactive track
   dropdown when there is one and falls through to the description when there is not
-  (`ItemDetails.bs:4271`); Up from a CLOSED dropdown arrives via `requestFocusReturn` ->
-  `onDropdownRequestUp` (`ItemDetails.bs:3898`). So the rung COUNT is a property of the
+  (the `key = "up"` branch of `ItemDetails.onKeyEvent()`, via
+  `pickTrackDropdownFromButtons()`); Up from a CLOSED dropdown arrives via
+  `requestFocusReturn` -> `ItemDetails.onDropdownRequestUp()`. So the rung COUNT is a property of the
   fixture's tracks, not of the app.
 
 That second point is why the walks are guarded loops rather than counted presses. A fixed
@@ -441,7 +442,7 @@ Neither is sufficient alone, so do not delete one on the strength of the other:
   call until a raw TCP probe says the component is there. That is the only thing that
   handles the common case, because a connect RTA cannot complete does not merely fail — it
   rejects a promise the library then orphans through its own unattached `.finally()`
-  (`OnDeviceComponent.js:1080`), and an unhandled rejection is a hard `exit 1`. Measured
+  (in `OnDeviceComponent.setupClientSocket()`), and an unhandled rejection is a hard `exit 1`. Measured
   2026-09-06: a caller that awaits, catches and carries on still dies. The orphan is
   unreachable from our code, so this is not a thing a `try`/`catch` or a `withTimeout` can
   be added to fix — the call has to not be made. Mechanism and the control that proved it

@@ -23,15 +23,25 @@
 //
 // THE METRIC
 // ----------
-// Occurrences of `<path>.<code-ext>:<digits>` (optionally a `-<digits>` range)
-// in tracked markdown. Deliberate choices:
+// Occurrences, in tracked markdown, of two forms:
+//   - the full form `<path>.<code-ext>:<digits>` (optionally a `-<digits>` range);
+//   - the SHORTHAND `:<digits>` standing alone, after a space, a backtick, `[` or
+//     `(` — "the comment at `:25-28`", `RokuDevice.js:63-70 / :71-76`, a link
+//     whose text is `[:60]`. It leans on a file named nearby and rots the same way.
+// Deliberate choices:
 //   - Fenced code blocks are STRIPPED before matching. A block showing what a
 //     compiler or a lint prints is tool output, not a citation, and rewriting
 //     it would falsify the example.
 //   - Inline code IS matched. `` `ItemDetails.bs:623` `` is the citation form
 //     these docs actually use, so exempting backticks would exempt the problem.
-//   - Only code extensions (bs/brs/xml/js/cjs/mjs) count. `localhost:8096` and
-//     `10.11:8101` are not citations and must not trip the gate.
+//   - The full form needs a code extension (bs/brs/xml/js/cjs/mjs), and the
+//     shorthand needs nothing glued to its left, so `localhost:8096`,
+//     `http://<server>:8098`, `10.11:8101` and `15:45` do not trip the gate.
+//   - A LONE clock minute (`:46`) or port (`:8102`) does. Nothing in the text
+//     tells it from a shorthand citation (`:20` is both a minute and a line), so
+//     a guess would either miss citations or cry wolf. The docs write those in
+//     words instead ("46 minutes past the hour", "port 8102"), and the failure
+//     message says so.
 //
 // SCOPE — tracked docs only
 // -------------------------
@@ -44,10 +54,10 @@
 // PER-FILE BASELINE, not one total
 // --------------------------------
 // The baseline is a per-file map, which is where this departs from
-// `promise-ratchet.cjs`'s single integer — deliberately. The population is ~55
-// refs spread over 13 files, so one global total would let a PR add three fresh
-// refs to a new doc while an unrelated cleanup removed three elsewhere, and the
-// gate would sit green. That is the "silently refill the slack" failure
+// `promise-ratchet.cjs`'s single integer — deliberately. It started with ~55
+// refs over 13 files, where one global total would let a PR add three fresh refs
+// to a new doc while an unrelated cleanup removed three elsewhere, and the gate
+// would sit green. That is the "silently refill the slack" failure
 // promise-ratchet's own advisory warns about; with a per-file map a file may
 // only ever improve, and a file absent from the map is allowed ZERO.
 //
@@ -59,7 +69,8 @@
 //   count == allowance → PASS, one-line OK.
 //   allowance == 0     → an automatic hard guard for that file.
 //
-// Draining the grandfathered 55 is tracked in issue #959; this gate stops the 56th.
+// Issue #959 drained the grandfathered 55 to an empty baseline, so every file is
+// now held at zero.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -71,6 +82,9 @@ const JSON_MODE = process.argv.includes('--json');
 // A path-looking token ending in a code extension, then `:digits`, optionally a
 // `-digits` range. Leading char class avoids matching mid-word.
 const CITATION_RE = /[A-Za-z0-9_][A-Za-z0-9_/.-]*\.(?:bs|brs|xml|js|cjs|mjs):\d+(?:-\d+)?/g;
+// The shorthand: `:<digits>` with nothing glued to its left, so the `:623` inside
+// a full-form match is never counted twice, and `host:port` never matches.
+const SHORTHAND_RE = /(?<=^|[\s`[(]):\d+(?:-\d+)?(?![\d:A-Za-z])/gm;
 
 const SKIP_DIRS = new Set([
   'node_modules',
@@ -149,8 +163,8 @@ function collectDocs(rootDir) {
 
 function countCitations(relPath) {
   const text = fs.readFileSync(path.join(ROOT_DIR, relPath), 'utf8');
-  const matches = stripFencedBlocks(text).match(CITATION_RE);
-  return matches ? matches : [];
+  const prose = stripFencedBlocks(text);
+  return [...(prose.match(CITATION_RE) ?? []), ...(prose.match(SHORTHAND_RE) ?? [])];
 }
 
 const baselinePath = path.join(ROOT_DIR, BASELINE_REL);
@@ -196,7 +210,10 @@ if (over.length > 0) {
     `doc-citation-ratchet: ${over.length} file(s) gained line-number citations.\n\n` +
       `A line number rots on any edit above it. Cite the SYMBOL instead —\n` +
       `\`ItemDetails.launchQueueItemToPlay()\`, not \`ItemDetails.bs:623\` — which a\n` +
-      `reader or an agent can grep. See .claude/rules/derive-dont-duplicate.md.\n`,
+      `reader or an agent can grep. A lone \`:46\` or \`:8102\` reads as a line\n` +
+      `citation too, so write a clock minute or a port in words:\n` +
+      `"46 minutes past the hour", "port 8102".\n` +
+      `See .claude/rules/derive-dont-duplicate.md.\n`,
   );
   for (const o of over) {
     console.error(`  ${o.file}: ${o.count} (allowed ${o.allowed}) — e.g. ${o.samples.join(', ')}`);

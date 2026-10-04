@@ -37,8 +37,8 @@ touch. Two tech-debt entries proved the cost — `itemdetails-size` claimed 3,60
 lines against an actual 5,355 — and a stale figure is what makes an entry stop
 being believed.
 
-**The tell:** you are about to type a colon followed by a digit after a filename,
-or to copy a number out of `wc -l` / a grep count into a sentence. Also: you
+**The tell:** you are about to type a colon followed by a digit after a filename
+(or a bare `:NNN` leaning on a file named nearby), or to copy a number out of `wc -l` / a grep count into a sentence. Also: you
 catch yourself *refreshing* such a number. Refreshing is the trap — it feels like
 maintenance and it re-arms the same decay. Delete it or date it.
 
@@ -56,6 +56,10 @@ maintenance and it re-arms the same decay. Delete it or date it.
   that has to be enforced belongs in a file a script reads
   (`.doc-citation-baseline.json`, `.promise-ratchet-baseline`), where it is
   checked rather than remembered.
+- **Clock minutes and ports → words.** "46 minutes past the hour", "the top of
+  the hour", "port 8102" — not a lone colon-minute or colon-port (`:MM`,
+  `:PORT`). Nothing in the text tells a minute from a line number, so the gate
+  counts every lone colon-number; written in words, there is nothing to guess.
 
 **Counterweight:** this is not a ban on numbers. Dated measurements are the
 backbone of `async.md` and `threading.md` and must stay. Tool output quoted inside
@@ -65,8 +69,9 @@ skill's `AUDIT-LOG.md`) are likewise exempt: they say what a run saw on a date.
 
 **Enforced by** [`scripts/lint/doc-citation-ratchet.js`](../../scripts/lint/doc-citation-ratchet.js)
 (`npm run lint:doc-citations`), a per-file ratchet over tracked markdown: a file
-may only ever improve, and a file absent from the baseline is allowed zero. Draining the
-grandfathered baseline is tracked in issue #959. It
+may only ever improve, and a file absent from the baseline is allowed zero. It counts the
+full `file.bs:NNN` form and the lone `:NNN` shorthand. The grandfathered
+citations were drained in issue #959, so every file is now held at zero. It
 does **not** gate clauses 2 and 3 — judging whether a number is a live claim or a
 dated measurement needs reading, so those stay convention.
 
