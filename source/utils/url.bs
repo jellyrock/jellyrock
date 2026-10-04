@@ -325,23 +325,6 @@ function reconstructUrl(parts as object) as string
   return url
 end function
 
-' Extract base URL (scheme + authority) from a full URL
-' @param url - The full URL
-' @returns Base URL (e.g., "https://example.com:8096"), or empty string if invalid
-function getBaseUrl(url as string) as string
-  if url = "" then return ""
-
-  parts = parseUrlComponents(url)
-  if not isValid(parts) then return ""
-
-  base = LCase(parts.scheme) + ":"
-  if isValid(parts.authority) and parts.authority <> ""
-    base = base + "//" + parts.authority
-  end if
-
-  return base
-end function
-
 ' Check if two URLs are equivalent after normalization
 ' @param url1 - First URL
 ' @param url2 - Second URL
@@ -351,7 +334,7 @@ function urlsEqual(url1 as string, url2 as string) as boolean
 end function
 
 ' Extract server base URL by removing a known endpoint path suffix
-' This preserves any base path (e.g., /jellyfin) unlike getBaseUrl() which strips all paths
+' This preserves any base path (e.g., /jellyfin) instead of reducing the URL to scheme + authority
 ' @param url - The full URL (e.g., "https://host/jellyfin/system/info/public")
 ' @param endpointPath - The endpoint path to remove (e.g., "/system/info/public")
 ' @returns Base URL with preserved path (e.g., "https://host/jellyfin"), or empty string if invalid

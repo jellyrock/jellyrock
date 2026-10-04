@@ -7,8 +7,8 @@ const TOAST_ICON_GAP = 12
 const TOAST_MAX_WIDTH = 800
 ' 5% action safe zone: 1920 * 0.05 = 96px from each edge
 const TOAST_ACTION_SAFE_MARGIN = 96
-const TOAST_RIGHT_EDGE = 1824 ' 1920 - TOAST_ACTION_SAFE_MARGIN
-const TOAST_BOTTOM_EDGE = 984 ' 1080 - TOAST_ACTION_SAFE_MARGIN
+const TOAST_RIGHT_EDGE = 1920 - TOAST_ACTION_SAFE_MARGIN
+const TOAST_BOTTOM_EDGE = 1080 - TOAST_ACTION_SAFE_MARGIN
 
 sub init()
   m.container = m.top.findNode("toastContainer")

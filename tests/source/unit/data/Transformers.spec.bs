@@ -754,71 +754,6 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Image Helpers")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("generates poster URL from primary tag")
-    function _()
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.id = "movie123"
-      item.primaryImageTag = "abc123"
-
-      url = GetPosterURLFromItem(item, 440, 295)
-
-      m.assertTrue(url.inStr("movie123") > -1)
-      m.assertTrue(url.inStr("abc123") > -1)
-      m.assertTrue(url.inStr("Primary") > -1)
-    end function
-
-    @it("falls back to thumb when no primary")
-    function _()
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.id = "movie123"
-      item.thumbImageTag = "def456"
-
-      url = GetPosterURLFromItem(item, 440, 295)
-
-      m.assertTrue(url.inStr("Thumb") > -1)
-      m.assertTrue(url.inStr("def456") > -1)
-    end function
-
-    @it("returns empty string when no images")
-    function _()
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.id = "movie123"
-
-      url = GetPosterURLFromItem(item, 440, 295)
-
-      m.assertEqual(url, "")
-    end function
-
-    @it("generates backdrop URL from backdrop tag")
-    function _()
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.id = "movie123"
-      item.backdropImageTags = ["backdrop123"]
-
-      url = GetBackdropURLFromItem(item, 720, 1280)
-
-      m.assertTrue(url.inStr("movie123") > -1)
-      m.assertTrue(url.inStr("backdrop123") > -1)
-      m.assertTrue(url.inStr("Backdrop") > -1)
-    end function
-
-    @it("generates logo URL from logo tag")
-    function _()
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.id = "movie123"
-      item.logoImageTag = "logo123"
-
-      url = GetLogoURLFromItem(item, 100, 300)
-
-      m.assertTrue(url.inStr("movie123") > -1)
-      m.assertTrue(url.inStr("logo123") > -1)
-      m.assertTrue(url.inStr("Logo") > -1)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Integration Tests - End-to-End Scenarios")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -900,37 +835,6 @@ namespace tests
 
     ' NOTE: Skipping GetGlobalAA() test since it doesn't work reliably in Rooibos test environment
     ' The GetGlobalAA() functionality will be tested in production runtime
-
-    @it("generates complete image URLs from transformed items - end to end")
-    function _()
-      ' Create a mock item node with image tags
-      mockItem = CreateObject("roSGNode", "ContentNode")
-      mockItem.id = "testItem123"
-      mockItem.addFields({
-        primaryImageTag: "primaryTag456",
-        thumbImageTag: "thumbTag789",
-        logoImageTag: "logoTag101",
-        backdropImageTags: ["backdropTag111", "backdropTag222"]
-      })
-
-      ' Test GetPosterURLFromItem
-      posterURL = GetPosterURLFromItem(mockItem, 480, 720)
-      m.assertTrue(posterURL <> "")
-      m.assertTrue(posterURL.inStr("testItem123") > -1)
-      m.assertTrue(posterURL.inStr("primaryTag456") > -1)
-
-      ' Test GetBackdropURLFromItem
-      backdropURL = GetBackdropURLFromItem(mockItem, 720, 1280)
-      m.assertTrue(backdropURL <> "")
-      m.assertTrue(backdropURL.inStr("testItem123") > -1)
-      m.assertTrue(backdropURL.inStr("backdropTag111") > -1)
-
-      ' Test GetLogoURLFromItem
-      logoURL = GetLogoURLFromItem(mockItem, 200, 300)
-      m.assertTrue(logoURL <> "")
-      m.assertTrue(logoURL.inStr("testItem123") > -1)
-      m.assertTrue(logoURL.inStr("logoTag101") > -1)
-    end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("JellyfinDataTransformer - Three-State Pattern")

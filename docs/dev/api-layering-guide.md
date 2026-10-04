@@ -4,9 +4,10 @@ related-files:
   - source/api/ApiClient.bs
   - source/api/image.bs
   - source/api/imageHelpers.bs
+  - source/utils/itemImageUrl.bs
   - source/api/items.bs
   - source/api/userAuth.bs
-last-reviewed: 2026-08-09
+last-reviewed: 2026-10-04
 ---
 
 # API Architecture Layering Guide
@@ -20,7 +21,7 @@ The API architecture follows a **3-layer abstraction model**, where each layer b
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 3: Domain Helpers                                    │
-│  (source/api/imageHelpers.bs)                               │
+│  (source/utils/itemImageUrl.bs)                             │
 │  • Type-safe node wrappers                                  │
 │  • JellyfinUser, JellyfinBaseItem specific functions        │
 └─────────────────────────────────────────────────────────────┘
@@ -150,25 +151,28 @@ url = UserImageURL(userId, {
 
 ## Layer 3: Domain Helpers (Type-Safe Wrappers)
 
-**File:** `source/api/imageHelpers.bs`  
-**Import:** `import "pkg:/source/api/imageHelpers.bs"`
+**Files:** `source/utils/itemImageUrl.bs` (items), `source/utils/rowItemImage.bs` (row cells), `source/api/imageHelpers.bs` (user avatar)
 
-The highest-level layer provides **type-safe, node-specific functions** that extract data from Jellyfin content nodes automatically.
+The highest-level layer provides **type-safe, node-specific functions** that extract data from Jellyfin content nodes automatically. Item helpers take a size from the `imageSize` namespace (`source/constants/imageSize.bs`).
 
 ### When to Use Layer 3
 
 - Working with `JellyfinUser` or `JellyfinBaseItem` nodes
-- Need fallbacks (try primary, then thumb, then parent, etc.)
+- Need fallbacks (try the item's image, then its parent's, etc.)
 - Want simplest possible API for common operations
 
 ### Layer 3 Functions
 
-| Function                                   | Input              | Fallback Chain                                                                                            |
-|--------------------------------------------|--------------------|-----------------------------------------------------------------------------------------------------------|
-| `GetPosterURLFromItem(item, maxH, maxW)`   | `JellyfinBaseItem` | primary → thumb → `parentPrimary` → `parentThumb` → `seriesPrimary` → backdrop                            |
-| `GetBackdropURLFromItem(item, maxH, maxW)` | `JellyfinBaseItem` | backdrop → `parentBackdrop`                                                                               |
-| `GetLogoURLFromItem(item, maxH, maxW)`     | `JellyfinBaseItem` | logo only                                                                                                 |
-| `GetUserAvatarURL(user, maxH, maxW)`       | `JellyfinUser`     | primary only (with validation)                                                                            |
+| Function                                   | Input              | Fallback Chain                                                   |
+|--------------------------------------------|--------------------|------------------------------------------------------------------|
+| `getItemPosterUrl(item, size)`             | `JellyfinBaseItem` | item primary → parent primary → series primary                   |
+| `getItemWidePosterUrl(item, size)`         | `JellyfinBaseItem` | item thumb → item backdrop → parent thumb → parent backdrop      |
+| `getItemThumbnailUrl(item, size)`          | `JellyfinBaseItem` | same as `getItemWidePosterUrl`, smaller default size             |
+| `getItemBackdropUrl(item, size)`           | `JellyfinBaseItem` | item backdrop → parent backdrop                                  |
+| `getItemParentWidePosterUrl(item, size)`   | `JellyfinBaseItem` | parent thumb → parent backdrop                                   |
+| `getItemImageUrl(item, imageType, size)`   | `JellyfinBaseItem` | the requested type only (e.g. `"Logo"`)                          |
+| `getRowItemImageUrl(item, w, h, settings)` | `JellyfinBaseItem` | picks one of the above by item type, slot size and user settings |
+| `GetUserAvatarURL(user, maxH, maxW)`       | `JellyfinUser`     | primary only (with validation)                                   |
 
 ### Layer 3 Example
 
@@ -241,11 +245,11 @@ end sub
 ### Loading Item Poster with Fallbacks
 
 ```brighterscript
-import "pkg:/source/api/imageHelpers.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 
 sub loadItemPoster(item as object)
   ' Layer 3: Tries multiple image types automatically
-  poster.uri = GetPosterURLFromItem(item, 440, 295)
+  poster.uri = getItemPosterUrl(item, imageSize.POSTER_LG)
 end sub
 ```
 
@@ -338,7 +342,7 @@ If you encounter code using the wrong endpoint:
 
 - `source/api/ApiClient.bs` - Layer 1: Raw API client
 - `source/api/image.bs` - Layer 2: Business logic utilities
-- `source/api/imageHelpers.bs` - Layer 3: Domain helpers
+- `source/utils/itemImageUrl.bs`, `source/utils/rowItemImage.bs`, `source/api/imageHelpers.bs` - Layer 3: Domain helpers
 - `tests/source/unit/api/sdk.versioning.spec.bs` - `V1/V2` endpoint tests
 - `tests/source/unit/api/ImageURL.spec.bs` - Validation tests
 - `docs/dev/sdk-api-versioning.md` - `V1` vs `V2` API differences

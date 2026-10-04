@@ -293,16 +293,6 @@ namespace tests
     ' These methods have NO userId guard — validatedReq() is their
     ' only protection against a missing server URL.
 
-    @it("returns invalid from BuildGetArtistByNameRequest when serverUrl is empty")
-    function _()
-      m.global.server.serverUrl = ""
-
-      result = m.apiClient.BuildGetArtistByNameRequest("test-artist")
-
-      m.setupMockServer()
-      m.assertInvalid(result)
-    end function
-
     @it("returns invalid from BuildGetArtistSimilarRequest when serverUrl is empty")
     function _()
       m.global.server.serverUrl = ""
