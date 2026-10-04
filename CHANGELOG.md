@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [2.35.0](https://github.com/jellyrock/jellyrock/compare/v2.34.1...v2.35.0) - 2026-10-04
 
 ### Added
 
