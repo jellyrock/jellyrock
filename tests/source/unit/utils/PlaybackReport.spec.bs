@@ -166,29 +166,6 @@ namespace tests
       m.assertEqual(m.rowValue(report, "audio.channels"), "5.1")
     end function
 
-    @it("labels the audio channel count with its own key, not the Live TV one")
-    function _()
-      ' REGRESSION. The row reused LabelChannels, which also names the Live TV
-      ' channel list, and French has two words for the two meanings: "Chaînes" (TV)
-      ' and "Canaux" (audio). One shared key can only carry one of them.
-      original = m.global.translations
-      french = {}
-      french.Append(original)
-      french.LabelChannels = "Chaînes"
-      french.LabelAudioChannels = "Canaux"
-      m.global.setFields({ translations: french })
-
-      label = invalid
-      for each section in buildPlaybackReport(m.input).sections
-        for each row in section.rows
-          if row.id = "audio.channels" then label = row.label
-        end for
-      end for
-
-      m.global.setFields({ translations: original })
-      m.assertEqual(label, "Canaux")
-    end function
-
     @it("draws no channel arrow when the count did not change, whatever the layout is called")
     function _()
       ' REGRESSION. Source channels used to come from ChannelLayout ("stereo")
@@ -228,6 +205,36 @@ namespace tests
       ' resolution: a cap says what was allowed, not what came out.
       m.input.mediaSource.TranscodingUrl = "/videos/x/master.m3u8?VideoCodec=h264&VideoBitrate=139616000&AudioBitrate=384000"
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitrate"), "25.4 Mbps")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("labels in another language")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ' Its own group: these tests swap m.global.translations, and the base suite's
+    ' setup() reloads en_US once per group, so a test that crashes before restoring
+    ' them cannot leak another language into a neighbor.
+
+    @it("labels the audio channel count with its own key, not the Live TV one")
+    function _()
+      ' REGRESSION. The row reused LabelChannels, which also names the Live TV
+      ' channel list, and French has two words for the two meanings: "Chaînes" (TV)
+      ' and "Canaux" (audio). One shared key can only carry one of them.
+      original = m.global.translations
+      french = {}
+      french.Append(original)
+      french.LabelChannels = "Chaînes"
+      french.LabelAudioChannels = "Canaux"
+      m.global.setFields({ translations: french })
+
+      label = invalid
+      for each section in buildPlaybackReport(m.input).sections
+        for each row in section.rows
+          if row.id = "audio.channels" then label = row.label
+        end for
+      end for
+
+      m.global.setFields({ translations: original })
+      m.assertEqual(label, "Canaux")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
