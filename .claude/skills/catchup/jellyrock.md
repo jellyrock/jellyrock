@@ -1,6 +1,6 @@
 # /catchup: JellyRock's own reader
 
-Run `node scripts/catchup-state.js --pretty` once (the allowlisted call in `.claude/settings.json`). Read the JSON; never re-run it or re-fetch what it holds by hand. `--no-network` skips the signals fetch, so use it only offline. Top-level keys: `meta`, `git`, `prs`, `issues`, `ci`, `handoffs`, `progress`, `signals`, `decisions`, `tech_debt`, `docs_stale`, `_errors`.
+Run `node scripts/catchup-state.js --pretty` once (the allowlisted call in `.claude/settings.json`). Read the JSON; never re-run it or re-fetch what it holds by hand. `--no-network` skips the signals fetch, so use it only offline. Top-level keys: `meta`, `prs`, `issues`, `ci`, `handoffs`, `signals`, `decisions`, `tech_debt`, `docs_stale`, `_errors`.
 
 ## Banners
 
@@ -8,14 +8,14 @@ A section the reader could not build is `null` with an `_errors[<section>]` entr
 
 | Fires when | Banner | Suggested next |
 |---|---|---|
-| `_errors.progress` or `_errors.signals` | name the file and the parser error | fix the file, then `npm run lint:docs` |
+| `_errors.signals` | name the file and the parser error | fix the file, then `npm run lint:docs` |
 | `signals.stale_count > 0` | `signals-backlog: <n> row(s) need attention (<slugs where stale=true>)` | a row with `row.digest` (the `jellyfin-server-stable` row, when an open release digest exists): `/server-upgrade` for digest `#<row.digest.number>`. Any other stale row: review the upstream change, then `/done <slug>` (bumps `latest_acknowledged`) |
 | `signals.action_pending_count > 0` | `<n> signal(s) in action_pending (<slugs>): these need a JellyRock change` | the change itself; `/focus` to pick it |
 | a run in `ci.current_branch_runs` with `conclusion != 'success'` | `CI run "<name>" <conclusion> (<createdAt>)` | `/ci-triage <run-id>`; one that a later green run recovered is a one-line info entry |
 | `prs.review_requested` not empty | `<n> PR(s) awaiting your review: #N title` | `/pr-review <N>` |
 | `docs_stale.architecture` not empty | `<n> architecture doc(s) stale: file (Nd)` (info only; the blocking gate is CI's) | re-read the doc before touching its territory, then update it or bump `last-reviewed` |
 
-The cursor's staleness is the shared reader's journal-stale banner, not a second parse of `progress`.
+The journal (followups, the running cursor, its staleness) is the shared reader's alone: this reader does not parse `docs/progress.md`.
 
 ## Extra sections, after the shared ones, each rendered even when empty
 

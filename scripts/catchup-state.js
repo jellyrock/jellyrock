@@ -1,9 +1,10 @@
 // scripts/catchup-state.js — Aggregator for /catchup, /ramp, sub-agents.
 //
-// Single Node call returns JSON describing the repo's current state — git,
-// open PRs, recent issues, CI runs, pending handoffs, journal staleness,
-// signal watchlist age, etc. Replaces ~13 parallel-bash calls with one
-// allowlisted invocation. Banner-detection in /catchup becomes deterministic
+// Single Node call returns JSON describing the repo state the shared reader
+// (.claude/skills/catchup/catchup-state.sh) does not cover — open PRs, recent
+// issues, CI runs, pending handoffs, signal watchlist age, recent ADRs, tech
+// debt, doc staleness. Git position and the followup journal are the shared
+// reader's. Replaces ~13 parallel-bash calls with one allowlisted invocation. Banner-detection in /catchup becomes deterministic
 // JSON compares instead of agent text-parsing of mixed tool outputs.
 //
 // Usage:
@@ -14,8 +15,7 @@
 //   --area=<name>  scope to one of: components, components/video,
 //                  components/data, source, source/api, source/utils,
 //                  tests, locale, scripts. Filters PR/issue gh queries
-//                  via the area→keyword map (mirrors /ramp/SKILL.md) and
-//                  filters progress.open_followups_by_area.
+//                  via the area→keyword map (mirrors /ramp/SKILL.md).
 //   --no-gh        skip all `gh` API calls (offline / fast tests)
 //   --no-network   skip ALL network I/O — same as --no-gh PLUS skip the
 //                  signals upstream-version fetch. Used by tests and any
@@ -39,7 +39,6 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { readFrontmatter, getLastUpdated } = require('./lib/frontmatter.cjs');
 const {
   fetchJellyfinVersions,
   fetchRokuOs,
@@ -142,12 +141,6 @@ function isoDaysAgo(n) {
   return new Date(Date.now() - n * 86400 * 1000).toISOString().slice(0, 10);
 }
 
-function daysBetween(isoStart, isoEnd) {
-  const a = new Date(isoStart + 'T00:00:00Z');
-  const b = new Date(isoEnd + 'T00:00:00Z');
-  return Math.floor((b - a) / (1000 * 60 * 60 * 24));
-}
-
 // Compress a tech-debt **issue** bullet body to a single short line for the
 // /catchup briefing. First sentence wins; if shorter than 40 chars (anemic
 // preamble like "1,315-line file."), glue on the next sentence. Over-120
@@ -186,35 +179,6 @@ function run(section, fn) {
 
 // ────────────────────────────────────────────────────────────────────
 // Sections
-
-run('git', () => {
-  const branch = execTrim('git rev-parse --abbrev-ref HEAD');
-  const lastCommit = execTrim('git log -1 --format=%H%x09%s%x09%cI').split('\t');
-  const status_porcelain = exec('git status --porcelain');
-  const total_7d = parseInt(execTrim('git rev-list --count --since="7 days ago" HEAD'), 10) || 0;
-
-  const by_area = {};
-  for (const area of VALID_AREAS) {
-    try {
-      const out = exec(`git log --oneline --since="7 days ago" -- ${area}`);
-      const count = out.split('\n').filter(Boolean).length;
-      if (count > 0) by_area[area] = count;
-    } catch {
-      // area doesn't exist on disk yet; skip
-    }
-  }
-
-  return {
-    branch,
-    last_commit: {
-      sha: (lastCommit[0] || '').slice(0, 8),
-      subject: lastCommit[1] || '',
-      committed_at: lastCommit[2] || '',
-    },
-    status_porcelain: status_porcelain.trim() || null,
-    commits_7d: { total: total_7d, by_area },
-  };
-});
 
 run('prs', () => {
   if (NO_GH) return { review_requested: [], yours_open: [] };
@@ -318,90 +282,6 @@ run('handoffs', () => {
     }));
 
   return { pending, pruned_count };
-});
-
-run('progress', () => {
-  const path = 'docs/progress.md';
-  if (!existsSync(path)) return null;
-  const content = readFileSync(path, 'utf8');
-  const fm = readFrontmatter(content);
-  const last_updated = getLastUpdated(fm);
-  const days_since = last_updated ? daysBetween(last_updated, todayIso()) : null;
-
-  let commits_since = 0;
-  if (last_updated) {
-    try {
-      commits_since =
-        parseInt(execTrim(`git rev-list --count --since="${last_updated}T00:00:00" HEAD`), 10) || 0;
-    } catch {
-      // ignore
-    }
-  }
-
-  // Line-by-line state machine: parse "## Currently running" (single
-  // paragraph) and "## Open followups" (grouped by ### area subsection).
-  // Each followup is a `#### <title> `[fid: …]`` entry; bullets in an entry's
-  // body are not followups.
-  const lines = content.split(/\r?\n/);
-  let section = null; // 'running' | 'followups' | null
-  let currentArea = null;
-  const runningLines = [];
-  const followupsByArea = {};
-
-  for (const line of lines) {
-    if (/^##\s+Currently running\s*$/.test(line)) {
-      section = 'running';
-      continue;
-    }
-    if (/^##\s+Open followups\s*$/.test(line)) {
-      section = 'followups';
-      currentArea = null;
-      continue;
-    }
-    if (/^##\s+/.test(line)) {
-      section = null;
-      currentArea = null;
-      continue;
-    }
-
-    if (section === 'running') {
-      runningLines.push(line);
-      continue;
-    }
-
-    if (section === 'followups') {
-      const areaMatch = line.match(/^###\s+(\S+)\s*$/);
-      if (areaMatch) {
-        currentArea = areaMatch[1];
-        if (!(currentArea in followupsByArea)) followupsByArea[currentArea] = 0;
-        continue;
-      }
-      if (currentArea && /^####\s+.*`\[fid: [^\]]+\]`/.test(line)) {
-        followupsByArea[currentArea]++;
-      }
-    }
-  }
-
-  // Drop areas with no entries
-  for (const k of Object.keys(followupsByArea)) {
-    if (followupsByArea[k] === 0) delete followupsByArea[k];
-  }
-  const open_followups_total = Object.values(followupsByArea).reduce((a, b) => a + b, 0);
-
-  const open_followups_by_area = AREA
-    ? Object.fromEntries(Object.entries(followupsByArea).filter(([k]) => k === AREA))
-    : followupsByArea;
-
-  const currently_running_summary = runningLines.join('\n').trim() || null;
-
-  return {
-    last_updated,
-    days_since,
-    commits_since,
-    open_followups_total,
-    open_followups_by_area,
-    currently_running_summary,
-  };
 });
 
 // Query the live open server-upgrade digest (if any) for the stable row's

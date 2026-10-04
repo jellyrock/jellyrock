@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-03
+last-updated: 2026-10-04
 ---
 
 # Progress
@@ -271,10 +271,6 @@ The registry's `requires` gates are honored by the functional suite and the scre
 #### `scripts/catchup-state.js` writes during a read: it rewrites `docs/signals-backlog.md` and deletes old handoffs `[fid: catchup-reader-writes-tracked-files]` `[captured 2026-10-03]`
 
 A state reader should only read. Every run rewrites `latest_upstream` and `last_checked` in the tracked `docs/signals-backlog.md` (`maintainSignals()`), so the tree shows modified right after a session-start briefing, and it deletes handoffs older than 30 days. Move the signals refresh and the handoff pruning to commands of their own; the `/catchup` and `/focus` `## This repo` notes then drop the exception.
-
-#### `scripts/catchup-state.js` still builds `git` and `progress` sections the shared state reader now covers `[fid: catchup-reader-duplicate-sections]` `[captured 2026-10-03]`
-
-Nothing in `/catchup` or `/focus` reads them any more; `/ramp` still reads the area-scoped commits from `git`. Drop `progress`, narrow `git` to what `/ramp` uses, and update `tests/scripts/unit/catchup-state.test.js`.
 
 ### components
 
