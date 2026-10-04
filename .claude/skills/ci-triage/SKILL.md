@@ -1,6 +1,6 @@
 ---
 name: ci-triage
-description: Triage a JellyRock CI failure (failed GitHub Actions workflow run) end-to-end. Fetches the run via gh, identifies which job/step failed, extracts the failure tail, classifies the category (lint-fail / build-fail / device-test-fail / docs-stale-blocking / language-coverage-fail), assembles initial file context, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Dedup-first: a recent unchanged triage on the same run-id (cited files unchanged) short-circuits to the existing handoff. Use when a CI workflow failed on a PR or on main.
+description: "Triage a JellyRock CI failure (failed GitHub Actions workflow run) end-to-end. Fetches the run via gh, identifies which job/step failed, extracts the failure tail, classifies the category (lint-fail / build-fail / device-test-fail / docs-stale-blocking / language-coverage-fail), assembles initial file context, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Dedup-first: a recent unchanged triage on the same run-id (cited files unchanged) short-circuits to the existing handoff. Use when a CI workflow failed on a PR or on main."
 model: opus
 effort: high
 user-invocable: true

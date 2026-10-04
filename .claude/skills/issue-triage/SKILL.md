@@ -1,6 +1,6 @@
 ---
 name: issue-triage
-description: Investigate a JellyRock GitHub issue end-to-end. Fetches the issue body and comments via gh, parses YAML-form fields, classifies (bug / feature / enhancement / arch-decision-needed), identifies the probable code area, assembles initial file context, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md) — validate, root-cause, semi-auto fix or 2-3 tradeoff'd options. Dedup-first: a recent unchanged triage on the same issue short-circuits to the existing handoff. Use when you have an issue number and want to act on it.
+description: "Investigate a JellyRock GitHub issue end-to-end. Fetches the issue body and comments via gh, parses YAML-form fields, classifies (bug / feature / enhancement / arch-decision-needed), identifies the probable code area, assembles initial file context, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md) — validate, root-cause, semi-auto fix or 2-3 tradeoff'd options. Dedup-first: a recent unchanged triage on the same issue short-circuits to the existing handoff. Use when you have an issue number and want to act on it."
 model: opus
 effort: high
 user-invocable: true
