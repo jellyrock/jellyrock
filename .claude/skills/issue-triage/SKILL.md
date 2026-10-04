@@ -1,200 +1,138 @@
 ---
 name: issue-triage
-description: "Investigate a JellyRock GitHub issue end-to-end. Fetches the issue body and comments via gh, parses YAML-form fields, classifies (bug / feature / enhancement / arch-decision-needed), identifies the probable code area, assembles initial file context, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md) — validate, root-cause, semi-auto fix or 2-3 tradeoff'd options. Dedup-first: a recent unchanged triage on the same issue short-circuits to the existing handoff. Use when you have an issue number and want to act on it."
+description: "Investigate one GitHub issue and act on it the /snag way. Fetches the issue and its comments, first checks it is still true (everything it names still exists), reads it through the repo's issue forms, classifies it (bug, feature, enhancement, or a design decision), checks whether it is real, reproducible and not already fixed, maps it to an area, reproduces it and finds the root cause, then shows one decision screen; the chosen fix is built test-first and committed on a fix branch, never pushed. Anything posted on the issue is drafted and shown first. Use when you have an issue number you want to act on."
 model: opus
 effort: high
 user-invocable: true
 allowed-tools: Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh search issues:*), Bash(git log:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
 ---
 
-# /issue-triage `<N>` — investigate a GitHub issue
+# /issue-triage — investigate one GitHub issue
 
-Single-file workflow: prep + investigation, end-to-end on opus, in main thread, no Task delegation. The mechanical prep (Steps 1-7) produces a handoff packet that's written to `.claude/handoffs/` for cross-session resume + compaction recovery + `/catchup` discovery. The investigation contract — validate, root-cause, semi-auto-fix or present-options — is in sibling [`INVESTIGATION.md`](INVESTIGATION.md) and is followed in main thread once Step 7 completes.
+## This repo
+
+- **Area map** (Step 5), also used by `/runtime-triage`:
+
+  | Keywords | Probable area |
+  |---|---|
+  | video, playback, player, OSD, trickplay, transcode, DoVi, AV1, multichannel, surround | `components/video` |
+  | library, ContentNode, SceneManager, data, items grid | `components/data` |
+  | api, jellyfin, request, task, http, auth, login | `source/api` |
+  | translation, locale, language, i18n, en_US | `locale` |
+  | util, helper, registry, config, global state | `source/utils` |
+  | component, scene, focus, navigation, dialog, menu, button | `components` |
+  | migration, bootstrap, main entry | `source` |
+  | test, rooibos, spec | `tests` |
+  | build, lint, BSC plugin, generator script | `scripts` |
+
+- **Expected behavior** (Step 4): [`docs/user/app-settings.md`](../../../docs/user/app-settings.md) and [`docs/user/jellyfin-server-feature-matrix.md`](../../../docs/user/jellyfin-server-feature-matrix.md).
+- **The fix** (`/snag`'s build): a change that touches logging gets the `log-reviewer` agent, never blanket-added logs.
 
 ## Contract
 
-**Goal.** Take a GitHub issue number and drive it from "filed" to "acted on" end-to-end, in one main-thread session. The mechanical prep — fetch the issue and comments, parse the YAML-form fields, classify (bug / feature / enhancement / arch-decision-needed), identify the probable code area, and assemble initial file context — feeds the investigation contract in sibling `INVESTIGATION.md` (validate, root-cause, then a semi-automatic fix or 2-3 tradeoff'd options). It runs on Opus because classification, area-mapping, and root-cause investigation are real judgment over real code, not template fill — a wrong area or a misclassification sends the whole investigation off course. It is dedup-first: a recent unchanged triage on the same issue (cited files untouched, working tree clean, no new issue activity) short-circuits to the existing handoff. Reach for it when you have an issue number you want to act on.
+**Goal.** Take one GitHub issue from filed to acted on in one session: a fix built, a decision put to the user, a reply asking the reporter for what is missing, or a recommendation to close. It checks before it fixes, stopping at the first check that settles it: is the issue still true (everything it names still exists), is it expected behavior, is it already fixed, is it reproducible. Then it reproduces it, names the root cause and follows `/snag`'s method: a decision screen, the user's pick, the fix built test-first and committed, never pushed. It runs on Opus because classification, validation and root cause are judgment over real code.
 
-**Inputs.** The arguments are the required issue number (e.g., `419`); if empty, prompt for it. The skill reads the issue and its comments via `gh issue view`, the codebase via `git ls-files` / `git log` / `Grep`, the architecture topic docs (`docs/architecture/*.md` related-files frontmatter), and any prior handoff at `.claude/handoffs/issue-<N>-*.md` for the dedup check.
+**Inputs.** The arguments are an issue number; with none, ask for it. The skill reads the issue and its comments, the repo's issue forms, its issues and merged pull requests (duplicates, earlier fixes), the code and history the issue points at, and this skill's `## This repo` (the area map, the docs that say what is expected behavior, how to reproduce here).
 
-**Outputs.** A handoff packet written to `.claude/handoffs/issue-<N>-<timestamp>.md` with YAML frontmatter (`created`, `target`, `branch`, `sha`, `cited-files`) and a body carrying the classification, probable area, 2-5 cited initial-context files, and the full untruncated issue body + comments — durable for cross-session resume, compaction recovery, and `/catchup` discovery; a one-line confirmation of the saved path, classification, area, and file count; and then the in-thread investigation per `INVESTIGATION.md`. On a clean dedup hit, no new file is written — the prior handoff is surfaced with resume/re-triage/cancel options.
+**Outputs.** One of: `/snag`'s decision screen and, on the user's pick, a fix (its test, one commit on a `fix/issue-<N>` branch when it started on the default branch, and `/snag`'s report); a comment drafted for the issue (missing detail, a duplicate, a support answer, or a recommendation to close citing the commit that removed its premise), posted only on approval; or a design question routed to a project.
 
 **Success criteria.**
 
-- The dedup check runs first and short-circuits correctly: all three signals clean (cited files untouched, working tree clean for them, no new issue activity) → surface the prior handoff and STOP for the user's pick; any signal changed → proceed.
-- The issue is classified correctly from labels + body shape (body shape wins on label conflict), with genuinely ambiguous cases surfaced to the user.
-- The probable area is identified from the keyword→area map; multiple matches are listed for the investigator rather than forced to one; no match is surfaced honestly as "uncertain area."
-- Initial file context is 2-5 genuinely relevant files (quality over quantity, not padded).
-- The handoff is written with valid frontmatter and untruncated bodies, then the skill continues immediately into `INVESTIGATION.md` as one motion.
+- A stale premise, expected behavior, a duplicate, an earlier fix and a support question are each caught before any fix and answered as such.
+- The classification rests on the issue's shape first and its labels second; the area on this repo's area map; an ambiguous call is shown, not forced.
+- The issue's own acceptance criteria, when it states them, are what done means.
+- The fix is the user's pick, built test-first, committed on its own paths, not pushed; nothing reaches the issue without approval.
 
 **Failure modes to avoid.**
 
-- **Re-prepping over a clean dedup hit.** If all three signals are clean, do not write a new file — surface the prior handoff and wait for the user's pick.
-- **Forcing a classification or area when ambiguous.** Surface conflicting labels (trust body shape), list multiple matching areas, and flag "uncertain area" rather than guessing — a wrong call misdirects the whole investigation.
-- **Padding the initial file context.** Pick the 2-5 files that actually matter; the investigator reads more as it goes.
-- **Truncating the issue body or comments.** Keep them full — diagnosis needs the complete text.
-- **Running the investigator on a support question.** If the body is a how-does-it-work question, redirect to the contact links rather than triaging.
-- **Stopping after the handoff.** Step 7 is "save the handoff AND continue into investigation" as one motion; don't write the file and wait.
+- **Reproducing a ghost.** A mechanism run against a path or setting that was since removed can still "reproduce" (a pattern matches a path whether or not the file exists). Check that what the issue names exists first.
+- **Fixing before validating.** User error, expected behavior, or a fix in a newer release is answered with a reply, not a change.
+- **Inventing what the reporter left out.** Ask on the issue for a missing version or repro step; never assume it.
+- **Forcing a classification or an area.** Surface the ambiguity; a wrong call misdirects everything after it.
+- **Cutting the issue short.** Read the whole body and every comment: the decisive detail is often in a later one.
+- **Acting on the issue without asking.** A comment, label, close or edit is public at once: draft it and show it first.
+- **Claiming a test that did not run.** A test that needs hardware, a service or credentials this machine lacks is reported as not run, and why.
+- **Filing a followup for what the issue already tracks.** The issue is the record; unbuilt findings go on it as a drafted comment, if anywhere.
 
 **When NOT to use.**
 
-- The issue is a support question (how a feature works, not a bug/feature/enhancement) — direct the reporter to the contact links in `.github/ISSUE_TEMPLATE/config.yml`.
-- The issue is a duplicate — if a quick search shows it duplicates an existing one, comment to consolidate rather than triage.
-- The issue is closed and was resolved — there's nothing to investigate; ask the user to clarify if they want to revisit.
-- The issue body is empty (filed via the old templates) — comment requesting more info before triage.
+- The issue is a support question: answer it with the contact links, no investigation.
+- You want to file a new issue: that is `/create-issue`.
+- A failed CI run: that is `/ci-triage`. A flaw found mid-work with no issue: that is `/snag`.
 
 ## Implementation
 
-### Inputs
+This skill's `## This repo` holds the repo's own parts: the area map (what words in an issue point at which paths), the user docs that say what is expected behavior, how to reproduce in this repo (and what needs hardware or a service), and any routing its areas carry. Where a step needs one, it says so.
 
-`$ARGUMENTS`: required issue number (e.g., `419`). If empty, prompt for it.
+### Step 1 — Fetch
 
-### Step 0 — Check for prior triage (dedup)
-
-Before any prep, look for a recent handoff on this issue:
-
-```bash
-ls -t .claude/handoffs/issue-<N>-*.md 2>/dev/null | head -1
+```sh
+gh issue view <N> --json number,title,body,state,stateReason,labels,author,comments,createdAt,updatedAt,closedByPullRequestsReferences,url
 ```
 
-If a prior handoff exists, `Read` it. The handoff has a YAML frontmatter with `created`, `branch`, `sha`, `cited-files`. Check three signals:
+Never add `2>/dev/null`: gh names a rejected field exactly. Keep the body and every comment whole. A closed issue: say how it closed (`stateReason`, `closedByPullRequestsReferences`) and ask in chat whether to revisit it before going on.
 
-1. **Cited files unchanged?** `git log <sha>..HEAD -- <cited-file-1> <cited-file-2> ...` — empty output means no commits touched them on this branch.
-2. **Working tree clean for cited files?** `git status --porcelain -- <cited-files>` — empty means no uncommitted changes.
-3. **Issue itself unchanged?** `gh issue view <N> --json updatedAt` — compare to the frontmatter's `created`. If the issue's `updatedAt` is older than `created`, no new activity.
+### Step 2 — Is it still true?
 
-If all three are clean, **do not write a new file**. Surface to the user:
+For every path, file, function, setting, command or workflow the issue names, check it exists now:
 
-> Prior triage exists at `.claude/handoffs/issue-<N>-<timestamp>.md` from <relative-time>. Cited files unchanged (sha <abc>..HEAD has no commits on them, working tree clean), and the issue has no new activity since. Options:
-> - **(a) Resume from the existing triage** — Read the handoff and follow [`INVESTIGATION.md`](INVESTIGATION.md) from there
-> - **(b) Re-triage anyway** — fresh prep, new handoff file (use this if you suspect the prior prep itself was wrong, or want a different angle)
-> - **(c) Cancel**
-
-Then **STOP**. Wait for the user's pick before proceeding.
-
-If any signal shows change (or no prior handoff exists), proceed to Step 1.
-
-### Step 1 — Fetch the issue
-
-```bash
-gh issue view <N> --json number,title,body,state,labels,author,comments,createdAt,updatedAt,closedAt
+```sh
+git ls-files | grep -iF '<name>'                     # a tracked file or folder
+git grep -n -F '<name>'                              # a symbol, setting or command
+git log --oneline --diff-filter=D -- '<path>'         # gone: which commit removed it
+git log --oneline -S'<name>' | head -5               # gone: which commits last touched the text
 ```
 
-If the issue is closed, ask whether to proceed (sometimes you want to revisit a closed issue; usually not). If the issue is a question (the YAML schema doesn't fit either bug/feature/enhancement and the body is a question for support), surface that and suggest the user direct the reporter to the contact links in `.github/ISSUE_TEMPLATE/config.yml` — `/issue-triage` isn't the right tool for support questions.
+Prefer `git ls-files` over `ls`: an untracked leftover must not answer for a tracked file. **Premise gone:** the outcome is a recommendation to close, citing the commit that removed it; go to Step 7 to draft that comment, and stop. **Premise intact:** continue.
 
-### Step 2 — Parse the YAML-form fields
+### Step 3 — Read and classify
 
-Issues filed via the upgraded YAML templates have predictable structure: each form field renders as `### <Field label>` followed by the user's value. Parse:
+When the repo has issue forms, read them live (`.github/ISSUE_TEMPLATE/*.yml`, never a copied field list): each field appears in the body as `### <its attributes.label>`, so the body splits into named fields. Without forms the body is plain Markdown. When the issue states acceptance criteria, keep them: they are what done means.
 
-For **bug_report.yml** issues:
-- Description ("What happened?")
-- Steps to reproduce
-- JellyRock client version
-- Roku device info
-- Server connection type
-- Jellyfin server version (optional)
-- Logs (optional)
-- Screenshots (optional)
+Classify, from the body's shape first and the labels second (and the shape alone when the repo has no labels): `bug` (something behaves wrongly, with steps or versions), `feature` (a new capability), `enhancement` (a change to an existing one), or `arch-decision-needed` (its options differ in architecture, even when filed as a bug). Ambiguous: show the two candidates and why. A support question (how something works): draft an answer with the contact links in `.github/ISSUE_TEMPLATE/config.yml`, if the repo has them, go to Step 7, and stop.
 
-For **feature_request.yml** / **enhancement_request.yml**: simpler shape (problem + solution, or existing-feature + proposed-change).
+Search for a duplicate, open and closed:
 
-If the issue was filed via the OLD markdown templates (`.md`), the structure is more freeform. Extract what you can; the investigator will handle gaps. If the body is genuinely raw text with no structure, just pass it through verbatim.
-
-### Step 3 — Classify
-
-Map labels + body shape to a classification:
-
-- **bug** — `bug` label is present OR body shape matches bug_report.yml (has repro steps + version info). Subcategory: `arch-decision-needed` if the bug crosses architectural seams (multiple components, cross-cutting concerns, or the diagnosis would force a choice between minimal-fix and refactor).
-- **feature** — `feature-request` label OR body shape matches feature_request.yml (has problem + proposed solution).
-- **enhancement** — `enhancement` label OR body shape matches enhancement_request.yml.
-
-If two labels conflict (`bug` AND `enhancement`), trust the body shape over the labels. If neither label fits, surface that and ask the user to disambiguate.
-
-### Step 4 — Identify probable area
-
-Map keywords in the title + body + labels to JellyRock areas. Use this map as a starting point:
-
-| Keywords | Probable area |
-|---|---|
-| video, playback, player, OSD, trickplay, transcode, DoVi, AV1, multichannel, surround | `components/video` |
-| library, ContentNode, SceneManager, data, items grid | `components/data` |
-| api, jellyfin, request, task, http, auth, login | `source/api` |
-| translation, locale, language, i18n, en_US | `locale` |
-| util, helper, registry, config, global state | `source/utils` |
-| component, scene, focus, navigation, dialog, menu, button | `components` |
-| migration, bootstrap, main entry | `source` |
-| test, rooibos, spec | `tests` |
-| build, lint, BSC plugin, generator script | `scripts` |
-
-If multiple areas match, list them and let the investigator decide. If no area matches, surface that as "uncertain area" and let the investigator search.
-
-### Step 5 — Assemble initial file context
-
-For the probable area, surface up to 5 files the investigator should read first:
-
-```bash
-# Files in the probable area
-git ls-files <area>/ | head -20
-
-# Recent commits in the area (often the right starting point — what changed
-# recently might have introduced the bug)
-git log --oneline -10 -- <area>/
-
-# Architecture topic doc for the area (find via related-files frontmatter)
-grep -lE "^  - <area>" docs/architecture/*.md
+```sh
+gh issue list --state all --search "<2-3 keywords>" --limit 10 --json number,title,state
 ```
 
-Pick 2-5 files that look most relevant based on the issue body. Don't pad — quality over quantity. The investigator will read more as it goes.
+A likely duplicate: show it in one line with its state, and ask in chat whether to draft a pointer comment (Step 7) or go on.
 
-### Step 6 — Build the handoff packet
+### Step 4 — Validate
 
-Construct the packet with a YAML frontmatter (so future Step-0 dedup checks can read it) plus the prep body:
+Answer in order, each in a sentence with its evidence; stop at the first that settles it:
 
-```markdown
----
-created: <ISO-8601 UTC timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
-target: issue-<N>
-branch: <git rev-parse --abbrev-ref HEAD>
-sha: <git rev-parse --short HEAD>
-cited-files:
-  - <path-1>
-  - <path-2>
----
+1. **Expected behavior?** Read the user docs this skill's `## This repo` names. Expected: draft the explaining reply (Step 7), and stop.
+2. **Already fixed?** Its `closedByPullRequestsReferences`, then `gh pr list --state merged --search "<keywords>" --limit 10 --json number,title,mergedAt`, and `git log --oneline -S'<symbol>'` on the code it names. Fixed in a release newer than the reporter's version: the answer is to upgrade (Step 7), not a new fix.
+3. **Reproducible?** Are the steps specific enough to run? Not: draft a comment asking for exactly what is missing (Step 7); never fill the gap with a guess.
+4. **Scope?** Just the named spot, its area, or a pattern that repeats elsewhere. Say so honestly; a narrowed fix names what it leaves.
 
-Issue #<N>: <title>
-Status: <open | closed>
-Labels: <comma list>
-Reporter: @<login>
-Filed: <date>
+A `feature` or `enhancement` is validated the same way in spirit: does it already exist, does it fit the project, what does done look like. An `arch-decision-needed` issue, or anything too big for one session, goes to Step 8 as options, where `later` routes it.
 
-Classification: bug | feature | enhancement | arch-decision-needed
-Probable area: <area>
-Initial file context:
-  - <path>:<line range or whole-file> — <one-line why-relevant>
-  - ...
+### Step 5 — Area and context
 
-Issue body:
-<full body, untruncated>
+Match the issue's words against the area map in this skill's `## This repo`. List every matching area, or say `uncertain area` and search. Pick 2 to 5 files that matter (the code the issue names, its tests, the area's recent history: `git log --oneline -10 -- <area>`); read more as the work needs it.
 
-Comments:
-<@author>: <body>
-<@author>: <body>
-```
+### Step 6 — Reproduce and find the root cause
 
-Keep bodies untruncated — full text is needed to diagnose.
+Reproduce it for real (this skill's `## This repo` says how in this repo, and what needs a device or a service): run it, keep the command and what it showed. When it cannot run here, say what is missing. Then name the root cause at a file and line, not the first symptom; when the same cause likely sits elsewhere, search and list those places as a scope question.
 
-### Step 7 — Write the handoff and continue into investigation
+### Step 7 — Anything posted on the issue
 
-1. Compute the timestamp once: `date +%Y%m%d-%H%M%S` (for the filename) and `date -u +%Y-%m-%dT%H:%M:%SZ` (for the frontmatter).
+A comment, a label, a close or an edit is drafted, never sent. Write a comment to `"$(git rev-parse --git-dir)/issue-comment.md"` (it can never be committed there). When [this repo's public posture](../../../AGENTS.md#public-posture) is `public`, sweep it as `/create-issue`'s Step 7 does (a home path, a person's name or email, a secret, another repository's or host's name) and remove what is private. Show it, and ask in chat: `post`, `edit: <text>` or `cancel`. On `post`: `gh issue comment <N> --body-file "$(git rev-parse --git-dir)/issue-comment.md"`; a close is `gh issue close <N> --reason "not planned"` (or `duplicate`, or `completed`) only on its own approval.
 
-2. Write the packet to `.claude/handoffs/issue-<N>-<YYYYMMDD-HHMMSS>.md` (gitignored; durable for compaction recovery + cross-session resume + `/catchup` discovery).
+### Step 8 — Decide and build, the `/snag` way
 
-3. Output a single confirmation line, this exact shape:
+Read `.claude/skills/snag/SKILL.md` and follow its Steps 2 to 7, carrying in what Steps 2 to 6 here found (finish its Step 2 with the history, what depends on the code, and at least two options). Four differences:
 
-   > Handoff saved: `.claude/handoffs/issue-<N>-<timestamp>.md` (classification: <X>, probable area: <Y>, <count> files cited). Now following [`INVESTIGATION.md`](INVESTIGATION.md) — adjust scope freely.
-
-4. Then **continue immediately** into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Don't stop or wait — Step 7's "save the handoff + continue" is one motion.
+- The screen's first line is `**Issue:** #<N> <title> (<classification>)`; when the issue states acceptance criteria, the screen lists them under **Evidence**.
+- `asap` and `later` file no followup: the issue already tracks the work. Offer instead to draft a comment carrying the findings (Step 7). Work that needs its own design or several sessions gets `/start-project` printed alone in its own block.
+- Before its Step 5 builds anything on the default branch, create the fix branch: `git switch -c fix/issue-<N>`. On any other branch, commit there. The commit body names the issue as `#<N>`.
+- Its report ends with one more line: **Next:** push the branch (`/pr` opens its pull request, which links the issue).
 
 ## Sub-agent invocation
 
-To invoke from a parent sub-agent (rare): parent passes `Read .claude/skills/issue-triage/SKILL.md and follow Steps 0-7 for $ARGUMENTS=<issue-number>; write the handoff file but stop before INVESTIGATION.md — surface the handoff path so the parent can decide next. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is decision, followup, signal, or running (a signal is an upstream version-watch row; a running item replaces the one-paragraph note on what is being worked on right now); omit the section if there are none, and never write to journals yourself.` in the Task prompt. Sub-agents only run the prep; they don't follow INVESTIGATION.md (which is interactive).
+A parent that wants an issue investigated without the conversation (another skill handing on an issue it filed) starts a sub-agent with `model: "opus"` and this Task prompt; the parent then shows `/snag`'s decision screen, and any drafted comment, itself:
+
+`Read .claude/skills/issue-triage/SKILL.md and follow Steps 1 to 6 for issue <N>. Edit nothing, commit nothing, and post, label or close nothing on the issue. Report whether the issue is still true (and the commit that removed its premise if not), its classification and why, each validation answer with its evidence, the areas and the 2 to 5 files that matter, the reproduction command and what it showed or why it could not run, the root cause at a file and line, at least two options with their footprint and risk, and the text of any comment the issue should get. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link.
