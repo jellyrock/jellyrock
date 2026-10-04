@@ -38,6 +38,18 @@ LabelAudio:
     jellyfin-roku: { key: Audio, en: Audio }
     streamyfin: { key: common.audio, en: Audio }
 
+LabelAudioChannels:
+  en: Channels
+  from:
+    jellyfin-web: { key: LabelSelectAudioChannels, en: Channels }
+  reject:
+    - { source: jellyfin-web, key: MediaInfoChannels, reason: "audio-channel context, but translated as TV channels (fr \"Chaînes\")" }
+    - { source: jellyfin-web, key: Channels, reason: "Live TV channels, not audio channels" }
+    - { source: jellyfin-androidtv, key: channels, reason: "Live TV channels, not audio channels" }
+    - { source: jellyfin-roku, key: Channels, reason: "Live TV channels (fr \"Chaînes\"), not audio channels" }
+    - { source: swiftfin, key: channels, reason: "Live TV channels, not audio channels" }
+    - { source: streamyfin, key: live_tv.tabs.channels, reason: "Live TV channels, not audio channels" }
+
 LabelBitDepth:
   en: Bit Depth
   from:
@@ -72,17 +84,12 @@ LabelBitrateMbps:
         hi: "\"एमबी/सेकंड\" reads as megabytes"
         pl: "adds a \"Szybkość transmisji\" label to a bare value"
 
+# LabelChannels names the Live TV channel list (LiveTVPresenter, search,
+# favorites); the playback report's audio row has LabelAudioChannels.
 LabelChannels:
   en: Channels
-  from:
-    jellyfin-web: { key: LabelSelectAudioChannels, en: Channels }
   reject:
-    - { source: jellyfin-web, key: MediaInfoChannels, reason: "audio-channel context, but translated as TV channels (fr \"Chaînes\")" }
-    - { source: jellyfin-web, key: Channels, reason: "Live TV channels, not audio channels" }
-    - { source: jellyfin-androidtv, key: channels, reason: "Live TV channels, not audio channels" }
-    - { source: jellyfin-roku, key: Channels, reason: "Live TV channels (fr \"Chaînes\"), not audio channels" }
-    - { source: swiftfin, key: channels, reason: "Live TV channels, not audio channels" }
-    - { source: streamyfin, key: live_tv.tabs.channels, reason: "Live TV channels, not audio channels" }
+    - { source: jellyfin-web, key: LabelSelectAudioChannels, reason: "audio channels; this key is the Live TV channel list" }
 
 LabelCodec:
   en: Codec

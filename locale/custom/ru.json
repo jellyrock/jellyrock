@@ -28,6 +28,7 @@
   "LabelAppearsOn": "Фигурирует в",
   "LabelArtists": "Исполнители",
   "LabelAudio": "Аудио",
+  "LabelAudioChannels": "Каналы",
   "LabelBitDepth": "Разрядность",
   "LabelBitRate": "Потоковая скорость",
   "LabelBitrateKbps": "{0} Кбит/с",

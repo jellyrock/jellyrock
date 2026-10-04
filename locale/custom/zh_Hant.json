@@ -28,6 +28,7 @@
   "LabelAppearsOn": "出現在",
   "LabelArtists": "藝人",
   "LabelAudio": "音訊",
+  "LabelAudioChannels": "聲道",
   "LabelBitDepth": "位元深度",
   "LabelBitRate": "位元率",
   "LabelBitrateKbps": "{0} Kbit/秒",

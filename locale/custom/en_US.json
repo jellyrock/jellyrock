@@ -103,6 +103,7 @@
   "LabelAt": "at",
   "LabelAttemptDirectPlayOfPotentiallyUnsupported": "Attempt Direct Play of potentially unsupported profile levels",
   "LabelAudio": "Audio",
+  "LabelAudioChannels": "Channels",
   "LabelAudioLanguage": "Audio Language",
   "LabelAudioLanguagePreference": "Audio Language Preference",
   "LabelAutoSkip": "Auto Skip",

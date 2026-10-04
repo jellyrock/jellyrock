@@ -28,6 +28,7 @@
   "LabelAppearsOn": "同时出现于",
   "LabelArtists": "艺术家",
   "LabelAudio": "音频",
+  "LabelAudioChannels": "声道",
   "LabelBitDepth": "位深度",
   "LabelBitRate": "比特率",
   "LabelBitrateKbps": "{0} 千比特/秒",

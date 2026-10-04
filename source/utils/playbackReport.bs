@@ -232,7 +232,7 @@ function audioSection(stream as dynamic, transcoding as dynamic, urlParams as ob
   end if
 
   reportRow(rows, "audio.codec", translationKeys.LabelCodec, pairedValue(upperOrEmpty(stream.Codec), targetCodec))
-  reportRow(rows, "audio.channels", translationKeys.LabelChannels, pairedValue(sourceChannels(stream), targetChannels))
+  reportRow(rows, "audio.channels", translationKeys.LabelAudioChannels, pairedValue(sourceChannels(stream), targetChannels))
 
   targetAudioBitrate = ""
   targetSampleRate = ""

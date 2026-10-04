@@ -166,6 +166,29 @@ namespace tests
       m.assertEqual(m.rowValue(report, "audio.channels"), "5.1")
     end function
 
+    @it("labels the audio channel count with its own key, not the Live TV one")
+    function _()
+      ' REGRESSION. The row reused LabelChannels, which also names the Live TV
+      ' channel list, and French has two words for the two meanings: "Chaînes" (TV)
+      ' and "Canaux" (audio). One shared key can only carry one of them.
+      original = m.global.translations
+      french = {}
+      french.Append(original)
+      french.LabelChannels = "Chaînes"
+      french.LabelAudioChannels = "Canaux"
+      m.global.setFields({ translations: french })
+
+      label = invalid
+      for each section in buildPlaybackReport(m.input).sections
+        for each row in section.rows
+          if row.id = "audio.channels" then label = row.label
+        end for
+      end for
+
+      m.global.setFields({ translations: original })
+      m.assertEqual(label, "Canaux")
+    end function
+
     @it("draws no channel arrow when the count did not change, whatever the layout is called")
     function _()
       ' REGRESSION. Source channels used to come from ChannelLayout ("stereo")
