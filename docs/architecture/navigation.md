@@ -53,7 +53,7 @@ Scene
   └─ JRScene               ← components/JRScene.xml/.bs (the router HOST; one for the app's lifetime)
 ```
 
-`JRScreen` extends `sgrouter_View` (the router's view base), so every full-screen component is a router view with no per-screen wiring — `JRScreen.bs` bridges the router lifecycle to JellyRock's existing `onScreen*` contract (see "`JRScreen` lifecycle bridge" below). `JRScene` is a plain `Scene`, so it does **not** inherit `sgrouter_View`'s scripts; it imports the `sgrouter`/`promises` namespaces directly (`JRScene.bs:6-14`) to drive the router.
+`JRScreen` extends `sgrouter_View` (the router's view base), so every full-screen component is a router view with no per-screen wiring — `JRScreen.bs` bridges the router lifecycle to JellyRock's existing `onScreen*` contract (see "`JRScreen` lifecycle bridge" below). `JRScene` is a plain `Scene`, so it does **not** inherit `sgrouter_View`'s scripts; it imports the `sgrouter`/`promises` namespaces directly (the `import` lines at the top of `JRScene.bs`) to drive the router.
 
 ### `JRGroup` — `components/JRGroup.xml`
 
@@ -94,7 +94,7 @@ The `roku-log` log manager is initialized in `JRScene.bs:init()` (debug builds: 
 
 #### `JRScreen` lifecycle bridge
 
-sgRouter drives the views it mounts through a promise-native lifecycle (`onViewOpen` / `onViewResume` / `onViewSuspend` / `beforeViewClose`) and asks them to take focus via `handleFocus()`. JellyRock screens implement `onScreenShown` / `onScreenHidden` / `onDestroy`. `JRScreen.bs:68-106` bridges the two so every existing screen works under the router with **no per-screen changes**:
+sgRouter drives the views it mounts through a promise-native lifecycle (`onViewOpen` / `onViewResume` / `onViewSuspend` / `beforeViewClose`) and asks them to take focus via `handleFocus()`. JellyRock screens implement `onScreenShown` / `onScreenHidden` / `onDestroy`. `JRScreen.bs`'s router hooks (`onViewOpen()`, `onViewResume()`, `onViewSuspend()`, `beforeViewClose()`, `handleFocus()`) bridge the two so every existing screen works under the router with **no per-screen changes**:
 
 | Router callback | `JRScreen` bridge (`JRScreen.bs`) |
 |---|---|
@@ -104,7 +104,7 @@ sgRouter drives the views it mounts through a promise-native lifecycle (`onViewO
 | `beforeViewClose` (permanent destroy) | `onScreenHidden()` + `onDestroy()` |
 | `handleFocus` (router asks for remote focus) | restore `m.top.lastFocus` if valid, else focus `m.top` |
 
-Publishing `activeRoutedView` *before* `onScreenShown` matters: `JRScene`'s overhang controller and `main.bs`'s playback/options/device code all resolve "what's on screen" via `getActiveView()`, which now simply returns `m.global.activeRoutedView` (`source/utils/misc.bs:255`).
+Publishing `activeRoutedView` *before* `onScreenShown` matters: `JRScene`'s overhang controller and `main.bs`'s playback/options/device code all resolve "what's on screen" via `getActiveView()`, which now simply returns `m.global.activeRoutedView` (`getActiveView()` in `source/utils/misc.bs`).
 
 > **Locked invariant — never set `m.top.id` on a routed view.** sgRouter uses the view node's `id` as its history-node id; clobbering it breaks `goBack`.
 
@@ -118,7 +118,7 @@ The router **host**. One scene for the entire lifetime of the channel. See `boot
 
 `JRScene` initializes the router, registers the route table, drives the overhang from the router-active view, and confirms app exit. Navigation is driven from the **main thread** (`main.bs` / `loginRouter`) via `callFunc` into `JRScene`'s render-thread functions, because the `sgrouter` namespace resolves on the render thread and the main loop can't call it directly.
 
-### `initRouter()` — idempotent bring-up (`JRScene.bs:270`)
+### `JRScene.initRouter()` — idempotent bring-up
 
 A no-op if a router already exists (`sgrouter.getRouter()`). Otherwise it:
 
@@ -130,7 +130,7 @@ A no-op if a router already exists (`sgrouter.getRouter()`). Otherwise it:
 
 `initRouter()` does **not** navigate. The first `routerNavigate` / `replayRoutedDeepLink` call brings the router up. It is re-callable after `resetRouter()` (sign-out → re-login): `sgrouter.initialize` creates a fresh router when none exists.
 
-### The route table (`JRScene.bs:298-326`)
+### The route table (`sgrouter.addRoutes([…])` in `JRScene.initRouter()`)
 
 Registered exactly as below. Pre-login routes carry **no guard** (their redirect target, `/login`, is one of them); every post-login route carries the `AuthManager` `canActivate` guard.
 
@@ -164,9 +164,9 @@ What the flags mean:
 
 ### The auth guard — `components/auth/AuthManager`
 
-`AuthManager` is created on `m.global` in `setGlobalNodes` (`globals.bs:116`) **before** `addRoutes`, and registered by node reference as the `canActivate` guard on every post-login route. The router invokes it on the render thread once per guarded navigation.
+`AuthManager` is created on `m.global` in `setGlobalNodes()` (`source/utils/globals.bs`) **before** `addRoutes`, and registered by node reference as the `canActivate` guard on every post-login route. The router invokes it on the render thread once per guarded navigation.
 
-`canActivate(currentRequest)` (`AuthManager.bs:18`) is a cheap **synchronous** token check — no network (launch-time `AboutMe` re-validation stays in the login flow):
+`canActivate(currentRequest)` (`AuthManager.canActivate()`) is a cheap **synchronous** token check — no network (launch-time `AboutMe` re-validation stays in the login flow):
 
 ```brightscript
 function canActivate(currentRequest as object) as dynamic
@@ -231,7 +231,7 @@ The spinner is one widget, but the waits it covers are not alike, and each kind 
 
 ## The back arbiter & exit confirmation
 
-Because the whole app is routed, a routed view's `back` is intercepted by the **outlet first** (`sgrouter.goBack`). A back key only bubbles up to `JRScene.onKeyEvent` when `goBack` is a no-op — i.e. the router is at history root (depth ≤ 1). That is `JRScene`'s cue to confirm exit (`JRScene.bs:228-233`):
+Because the whole app is routed, a routed view's `back` is intercepted by the **outlet first** (`sgrouter.goBack`). A back key only bubbles up to `JRScene.onKeyEvent` when `goBack` is a no-op — i.e. the router is at history root (depth ≤ 1). That is `JRScene`'s cue to confirm exit (the `key = "back"` branch of `JRScene.onKeyEvent()`):
 
 ```brightscript
 if key = "back"
@@ -243,7 +243,7 @@ if key = "back"
 
 To distinguish the two reasons a back bubbles up — at history root (confirm exit) vs. a navigation still in flight (the settling nav owns the back) — the arbiter calls `isRouterNavigating()`, which reads the router's public `routerState.type` field **directly**. A non-terminal type means a nav is in flight (swallow the back); a terminal type (`NavigationEnd`/`NavigationError`/`NavigationCancel`), or no router yet, means idle (confirm exit). The field is **read**, never observed: a `routerState` observer *coalesces* rapid writes and reliably drops the terminal `NavigationEnd` (proven on device — a mirrored `navInProgress` flag wedged true and ate back→exit), but a field *read* never coalesces, so the field always holds the true latest state.
 
-The `options` key (`JRScene.bs:234-242`) opens the active routed view's options panel: it resolves the view via `getActiveView()`, checks `isOptionsAvailable`, saves `lastFocus`, and focuses the panel's list.
+The `options` key (the `key = "options"` branch of `JRScene.onKeyEvent()`) opens the active routed view's options panel: it resolves the view via `getActiveView()`, checks `isOptionsAvailable`, saves `lastFocus`, and focuses the panel's list.
 
 ## Replacing an active player (cast-over-player)
 
@@ -273,7 +273,7 @@ Preserving the *deepest* focused element (not just `focusedChild`) matters for n
 
 `JROverhang` is the persistent top bar (logo, current user info, search icon, settings icon, library tabs, clock). It lives in `JRScene` and is **not** part of any individual view. Each view *describes* what it wants in the overhang via its `JRGroup` fields (`isOverhangVisible`, `overhangTitle`, `overhangTabs`, `selectedTabId`, `isLogoVisible`, `shouldShowIcons`, `shouldShowUserDropdown`) — the controller projects them onto the shared `JROverhang` atomically on view-change, so the whole top bar updates in one frame (no transition flicker). Views **declare** these (typically in `init()`); they never poke the `JROverhang` node directly.
 
-The controller **now lives on `JRScene`** (lifted verbatim from the deleted `SceneManager` register/`unregister` pair) and is driven by the router's active view rather than a stack. When the router mounts or switches the active view, `m.global.activeRoutedView` changes and `onActiveRoutedViewChanged()` (`JRScene.bs:434`) re-points the binding:
+The controller **now lives on `JRScene`** (lifted verbatim from the deleted `SceneManager` register/`unregister` pair) and is driven by the router's active view rather than a stack. When the router mounts or switches the active view, `m.global.activeRoutedView` changes and `JRScene.onActiveRoutedViewChanged()` re-points the binding:
 
 ```brightscript
 sub onActiveRoutedViewChanged()
@@ -288,10 +288,10 @@ sub onActiveRoutedViewChanged()
 end sub
 ```
 
-`registerOverhangData(view)` (`JRScene.bs:463`) wires the field observers, preserving two behaviors carried over from the stack era:
+`JRScene.registerOverhangData(view)` wires the field observers, preserving two behaviors carried over from the stack era:
 
 - **Tabs before title** — `m.overhang.tabs` is set *before* `m.overhang.title` so `onTabsChanged` can hide the title before it renders with text, preventing a visible title→tab transition flash.
-- **Bidirectional `selectedTabId`** — when the user changes tabs in the overhang, `onOverhangTabSelected` (`JRScene.bs:504`) writes back into the active routed view's `selectedTabId`, which the view observes to swap content. Home uses this for the home/favorites tab swap.
+- **Bidirectional `selectedTabId`** — when the user changes tabs in the overhang, `JRScene.onOverhangTabSelected()` writes back into the active routed view's `selectedTabId`, which the view observes to swap content. Home uses this for the home/favorites tab swap.
 - **Logo / icons / dropdown projection** — `isLogoVisible`, `shouldShowIcons` and `shouldShowUserDropdown` are projected (and observed) alongside tabs/title so the whole overhang settles in one frame. `shouldShowUserDropdown` is intentionally a boolean: the controller derives the displayed name from the global user (`applyOverhangUserDropdown`), so a view only declares *whether* the dropdown shows, not the name. This replaced the older pattern where each post-login screen poked `isLogoVisible` / `currentUser` / `shouldShowIcons` imperatively in `onScreenShown` (across multiple frames → a visible overhang flicker on Home↔detail transitions).
 
 ## `SceneManager` is now a service node

@@ -89,7 +89,7 @@ branch to find it.
   builds. Deploy runs once per test run, from [`scripts/rta-run.js`](../../scripts/rta-run.js)
   before Vitest starts; `RTA_NO_DEPLOY=1` skips it.
   ⚠️ **Those are two separate jobs and only the injection is behind that option.** The
-  manifest rewrite sits outside it (`RokuDevice.js:71-76`) and runs on every deploy, so
+  manifest rewrite sits outside it (the `createPackage` callback in `RokuDevice.createPackage()`) and runs on every deploy, so
   `injectTestingFiles: false` does **not** give you a non-RTA build — it gives you an
   `ENABLE_RTA=true` build whose component is missing, which still runs every `#if
   ENABLE_RTA` block. Turning the flag off as well needs a `beforeZipCallback`; that is
@@ -564,7 +564,7 @@ needs a human reader — *why* the filter is shaped this way.
 
 **The hour row is a WARNING, not a filter.** It is the one property that invalidates a
 series without changing any single run in it: a ~13-minute suite starting after roughly
-`:46` has the demo server's reset land mid-run, so those samples ran against a fixture
+46 minutes past the hour has the demo server's reset land mid-run, so those samples ran against a fixture
 that changed underneath them. It is not excluded, for two reasons — whether it matters
 is the *proportion* (1 of 8 is noise, 5 of 8 is measuring the fixture, and only a human
 can make that call), and dropping them silently would shrink the population and widen
@@ -789,10 +789,10 @@ durable record is an `fs` write and is unaffected; re-read `run-meta.json`.
 The summary also reports the window, and flags a run that **crossed the top of the
 hour**. The demo server resets on the hour, which changes both its own content
 (playlists have come and gone) and anything a run marked watched through the app —
-so a ~13-minute suite (measured at 13.6 min on `.177`) starting after roughly `:46`
-can have that change land *mid-run* and fail as an unrelated-looking nav timeout.
+so a ~13-minute suite (measured at 13.6 min on `.177`) starting after roughly 46 minutes
+past the hour can have that change land *mid-run* and fail as an unrelated-looking nav timeout.
 Individual failures carry `afterHourBoundary`, so a record says whether it landed on
-the far side of a reset. A green run that straddled `:00` is flagged too: its result
+the far side of a reset. A green run that straddled the top of the hour is flagged too: its result
 was taken against a fixture that changed underneath it.
 
 The flag is **suppressed in watch mode** (`npm run test:rta:tdd`), where the record

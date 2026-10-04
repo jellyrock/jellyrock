@@ -147,7 +147,7 @@ When the user clicks a library section header or an individual row item:
 3. `HomeRows` bubbles to `Home`.
 4. `Home` observes its **own** `selectedItem` (a self-observer; `Home.bs:onRowItemSelected`) and navigates the router directly — the `main.bs` relay that used to catch this is gone.
 
-The view does the navigation itself because it runs on the render thread, where the `sgrouter` namespace resolves. The route is computed by the pure helper `routeForItem(item)` (`source/utils/misc.bs:276`): library/grid container types (`CollectionFolder`, `UserView`, `Folder`, `Genre`, `Studio`, …) map to `{ name: "library", params: { id } }`; everything else maps to `{ name: "details", params: { type, id } }`; `Chapter` returns `invalid` (it's playback, not navigation). The view then calls `sgrouter.navigateTo(route, { context: { item: item } })`, passing the rich node as route context so the destination needn't re-fetch.
+The view does the navigation itself because it runs on the render thread, where the `sgrouter` namespace resolves. The route is computed by the pure helper `routeForItem(item)` (in `source/utils/misc.bs`): library/grid container types (`CollectionFolder`, `UserView`, `Folder`, `Genre`, `Studio`, …) map to `{ name: "library", params: { id } }`; everything else maps to `{ name: "details", params: { type, id } }`; `Chapter` returns `invalid` (it's playback, not navigation). The view then calls `sgrouter.navigateTo(route, { context: { item: item } })`, passing the rich node as route context so the destination needn't re-fetch.
 
 Playback presses are separate: a row's Play button (or a Live TV channel) sets `quickPlayNode`, which the view's own `onQuickPlayLaunch` self-observer forwards to `QueueManager` (see step 6). This is still BS's "bubbling field" pattern (`alwaysNotify="true"` fields rise to each parent until one handles them) — what changed is that the *handler* is now the routed view itself, not `main.bs`.
 
@@ -298,7 +298,7 @@ end sub
 
 ## 9. Player launch — `JRScene` → `PlayerHostView`
 
-`JRScene.onPlaybackLaunchRequested` (`JRScene.bs:375`) observes `playbackLaunchRequest` and turns it into a route on the render thread: audio → `/audio` (the routed `AudioPlayerView`), every video-family type → `/details/<type>/<id>/play` (the `PlayerHostView`).
+`JRScene.onPlaybackLaunchRequested()` observes `playbackLaunchRequest` and turns it into a route on the render thread: audio → `/audio` (the routed `AudioPlayerView`), every video-family type → `/details/<type>/<id>/play` (the `PlayerHostView`).
 
 `PlayerHostView` is the **routed host** for video: `VideoPlayerView` extends Roku's native `Video` node and can't itself be a router view, so this thin `JRScreen` wrapper mounts it as a runtime child. On `onScreenShown` → `mountPlayer()` it instantiates `VideoPlayerView` (visible=false during loading to avoid a black flash), wires observers, updates the backdrop, and `appendChild`s the player. The playback report's `GetPlaybackInfoTask` is created per fetch, only once the user opens the report (`onSelectPlaybackInfoPressed`). It reads the already-built queue (`getCurrentItem`) — the queue is the source of truth. The `VideoPlayerView` itself fetches media metadata, builds the URL, and starts the underlying `Video` node. See `playback.md` for the full picture.
 

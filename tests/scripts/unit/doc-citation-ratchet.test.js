@@ -85,13 +85,43 @@ describe('doc-citation-ratchet — what counts as a citation', () => {
     expect(res.stderr).not.toContain('x.bs:1');
   });
 
-  // The regex keys on a CODE extension precisely so host:port and version:port
-  // strings — which these docs are full of — don't read as citations.
-  it('does not treat host:port or a server version as a citation', () => {
+  // The full form keys on a CODE extension, and the shorthand form needs nothing
+  // glued to its left, so host:port, version:port and clock times don't read as
+  // citations.
+  it('does not treat host:port, a server version or a clock time as a citation', () => {
     const r = makeRoot({
-      'docs/a.md': 'Server at http://localhost:8096 and the 12.0 box on :8102. Also 10.11:8101.\n',
+      'docs/a.md':
+        'Server at http://localhost:8096 and http://<server>:8098. Also 10.11:8101, ' +
+        'and the window ran 15:45–15:52 UTC.\n',
     });
     expect(run(r).exitCode).toBe(0);
+  });
+
+  // `RokuDevice.js:63-70 / :71-76` and "the comment at `:25-28`": a shorthand that
+  // leans on a file named nearby rots exactly like the full form.
+  it('fails on a shorthand citation, inline, bare or as link text', () => {
+    for (const body of [
+      'The comment at `:25-28` explains it.\n',
+      'See `RokuDevice.js` / :71-76 for the callback.\n',
+      'Only `ARCH_DIR`, [:60](../scripts/lint/x.cjs), is scanned.\n',
+    ]) {
+      const r = makeRoot({ 'docs/a.md': body });
+      const res = run(r);
+      expect(res.exitCode, body).toBe(1);
+      expect(res.stderr).toContain('docs/a.md');
+      rmSync(r, { recursive: true, force: true });
+      root = undefined;
+    }
+  });
+
+  // A lone `:46` (a clock minute) or `:8102` (a port) cannot be told apart from a
+  // shorthand line citation, so it is counted, and the advice says to write it in words.
+  it('counts a lone minute or port and says to write it in words', () => {
+    const r = makeRoot({ 'docs/a.md': 'Runs after roughly `:46` hit the reset, on :8102.\n' });
+    const res = run(r);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain(':46');
+    expect(res.stderr).toContain('minutes past the hour');
   });
 
   it('does not count a filename with no line number', () => {

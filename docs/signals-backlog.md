@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-15
+last-updated: 2026-10-04
 ---
 
 # Signals backlog
@@ -105,7 +105,7 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 ### jellyfin-demo-single-mediasource: demo server has no movie with two video sources
 
 - **watching**: `demo.jellyfin.org/stable` regaining any movie that reports `numVideoSources >= 2` — or JellyRock standing up its own demo server, which is the plan (owner, 2026-09-07) and would let the fixture be seeded rather than waited on
-- **current**: `tests/rta/specs/dialogs.spec.js`'s `osd video-source button opens the list dialog; back cancels it` skips at runtime, because `components/video/OSD.bs:204` correctly removes `#showVideoSourceMenu` when `numVideoSources < 2`. Jellyfin **`v12`** landed on the demo server and dropped Dracula's color version, so the hero reports one `MediaSource` and **0 of its 11 movies** carry more than one (checked 2026-09-08). The skip is therefore not conditional — the test **cannot run against the only fixture the suite has**, and has not run since `v12` landed. That is coverage which reads as present in the suite listing and is inert, which is the same "green for a reason nobody chose" class the rest of this harness work is about; it is tracked here rather than as a followup because the trigger is an EXTERNAL fixture change nobody here controls. The four `#showVideoInfoPopup` callers beside it still throw on a missing button — they have no content precondition, so a missing button there is a real defect
+- **current**: `tests/rta/specs/dialogs.spec.js`'s `osd video-source button opens the list dialog; back cancels it` skips at runtime, because `OSD.setButtonStates()` correctly removes `#showVideoSourceMenu` when `numVideoSources < 2`. Jellyfin **`v12`** landed on the demo server and dropped Dracula's color version, so the hero reports one `MediaSource` and **0 of its 11 movies** carry more than one (checked 2026-09-08). The skip is therefore not conditional — the test **cannot run against the only fixture the suite has**, and has not run since `v12` landed. That is coverage which reads as present in the suite listing and is inert, which is the same "green for a reason nobody chose" class the rest of this harness work is about; it is tracked here rather than as a followup because the trigger is an EXTERNAL fixture change nobody here controls. The four `#showVideoInfoPopup` callers beside it still throw on a missing button — they have no content precondition, so a missing button there is a real defect
 - **latest_upstream**: Jellyfin `v12` on demo.jellyfin.org/stable — 0 of 11 movies with >1 `MediaSource`
 - **latest_acknowledged**: Jellyfin `v12` on demo.jellyfin.org/stable — 0 of 11 movies with >1 `MediaSource`
 - **last_checked**: 2026-09-09

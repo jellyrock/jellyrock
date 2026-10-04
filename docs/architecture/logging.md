@@ -90,8 +90,8 @@ can create the manager**. `initializeLogManager` creates a `log_Log` node, and t
 
 This is a **lifecycle** constraint, not a thread one, and it confirms the note in
 [`globals.bs`](../../source/utils/globals.bs) that "`roSGNode`s must be created after `m.screen` is
-shown" — plain `ContentNode`s tolerate earlier creation (which is why `setGlobals()` works at
-`main.bs:9`), SceneGraph node types like `Timer` do not. `JRScene.init()` runs on the **render
+shown" — plain `ContentNode`s tolerate earlier creation (which is why `setGlobals()` works where
+`Main()` calls it, before `m.screen.show()`), SceneGraph node types like `Timer` do not. `JRScene.init()` runs on the **render
 thread**, where node creation is unrestricted, which is why it works there.
 
 Measured availability of `m.global.rLog` on the main thread (3/3 identical cold starts):
@@ -107,7 +107,7 @@ completed.
 
 #### Known consequence: the bootstrap window has no logger
 
-Nodes created in `setGlobals()` (`main.bs:9`) are constructed **before any manager can exist**, so
+Nodes created in `setGlobals()` (called from `Main()`) are constructed **before any manager can exist**, so
 their `m.log` is permanently dead. Today that is `JellyfinUserSettings` — its `init()` line and the
 bootstrap `enableAutoSync` call are lost. It is not visible at runtime because
 `SessionDataTransformer.transformUserInfo` creates a **fresh** `JellyfinUserSettings` at login, and
