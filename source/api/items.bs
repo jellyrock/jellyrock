@@ -296,13 +296,6 @@ function ItemDetailsMetaData(id as string, forceRefresh = false as boolean)
   return ItemMetaData(id, "Chapters,Trickplay,Genres,Studios,People", forceRefresh)
 end function
 
-' Music Artist Data
-function ArtistOverview(name as string)
-  data = fetchJson(GetApi().BuildGetArtistByNameRequest(name), "artistOverview")
-  if not isValid(data) then return invalid
-  return data.overview
-end function
-
 ' ── Music extras requests ─────────────────────────────────────────────────
 ' Request builders for ItemDetails' music extras rows, which LoadExtrasRowsTask pipelines.
 ' They return a request AA rather than fetching, so the orchestrator owns the round trip —
@@ -356,34 +349,6 @@ function BuildAlbumSongsRequest(albumId as string) as dynamic
     "includeitemtypes": "Audio",
     "sortBy": "SortName"
   })
-end function
-
-' Get list of songs belonging to an artist
-function GetSongsByArtist(id as string, params = {} as object)
-  paramArray = {
-    "AlbumArtistIds": id,
-    "includeitemtypes": "Audio",
-    "sortBy": "SortName",
-    "Recursive": true
-  }
-  ' overwrite defaults with the params provided
-  for each param in params
-    paramArray.AddReplace(param, params[param])
-  end for
-
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest(paramArray), "songsByArtist")
-  results = []
-
-  if not isValid(data) then return invalid
-  if not isValid(data.Items) then return invalid
-  if data.Items.Count() = 0 then return invalid
-
-  transformer = JellyfinDataTransformer()
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
 end function
 
 ' Get audio item metadata (raw, no transform)
@@ -564,21 +529,6 @@ function BackdropImage(id as string)
   localDevice = m.global.device
   imgParams = { "maxHeight": localDevice.uiResolution[1], "maxWidth": localDevice.uiResolution[0] }
   return ImageURL(id, "Backdrop", imgParams)
-end function
-
-' Seasons for a TV Show
-function TVSeasons(id as string) as dynamic
-  data = fetchJson(GetApi().BuildGetSeasonsRequest(id), "seasons")
-  ' validate data
-  if not isValid(data) or not isValid(data.Items) then return invalid
-
-  transformer = JellyfinDataTransformer()
-  results = []
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
 end function
 
 ' applyLiveTvMinSegments: For HLS transcodes that report no source duration (live channels),

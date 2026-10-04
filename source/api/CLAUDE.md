@@ -6,7 +6,7 @@ Jellyfin API layer + task pool dispatcher. See [docs/architecture/api.md](../../
 
 Pick the right layer for the job:
 
-- **Layer 3 — domain helpers** (`imageHelpers.bs`): one-call solutions with built-in fallback chains. Use for poster/backdrop/logo URLs. UI components usually want this.
+- **Layer 3 — domain helpers** (`source/utils/itemImageUrl.bs`, `source/utils/rowItemImage.bs`): one-call solutions with built-in fallback chains. Use for poster/backdrop/logo URLs. UI components usually want this. The user avatar URL is `GetUserAvatarURL` in `imageHelpers.bs`.
 - **Layer 2 — business logic** (`image.bs`, `userAuth.bs`, `items.bs`): validation, defaults, graceful degradation. Returns empty string / `invalid` on missing prerequisites rather than building bad URLs.
 - **Layer 1 — `ApiClient`** (`ApiClient.bs`): singleton via `GetApi()`. Per-method `Build*Request()` returns a request AA for the task pool. Auto-injects user ID, applies image defaults, routes `V1/V2`.
 

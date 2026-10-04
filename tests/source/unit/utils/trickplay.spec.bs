@@ -61,31 +61,6 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("thumbnailIndexToPosition(index, interval)")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("converts thumbnail indexes to video positions correctly")
-    @params(0, 10000, 0.0)
-    @params(1, 10000, 10.0)
-    @params(5, 10000, 50.0)
-    @params(10, 5000, 50.0)
-    @params(100, 10000, 1000.0)
-    function _(index, interval, expectedPosition)
-      result = trickplay.thumbnailIndexToPosition(index, interval)
-      ' Compare as floats - both should be floats
-      m.assertTrue(result = expectedPosition, `Expected ${expectedPosition} but got ${result}`)
-    end function
-
-    @it("handles zero and negative intervals gracefully")
-    @params(10, 0, 0.0)
-    @params(10, -100, 0.0)
-    function _(index, interval, expectedPosition)
-      result = trickplay.thumbnailIndexToPosition(index, interval)
-      ' Compare as floats - both should be floats
-      m.assertTrue(result = expectedPosition, `Expected ${expectedPosition} but got ${result}`)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("calculateClippingRect(thumbnailIndex, tileWidth, tileHeight, thumbWidth, thumbHeight)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

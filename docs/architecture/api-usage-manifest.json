@@ -16,18 +16,6 @@
       ]
     },
     {
-      "path": "/artists/{0}",
-      "normalized": "/artists/{}",
-      "methods": [
-        "GET"
-      ],
-      "minApiVersion": 1,
-      "maxApiVersion": null,
-      "sourceFiles": [
-        "source/api/ApiClient.bs"
-      ]
-    },
-    {
       "path": "/Artists/{0}/Similar",
       "normalized": "/artists/{}/similar",
       "methods": [
@@ -668,18 +656,6 @@
       ]
     },
     {
-      "path": "/system/configuration/{0}",
-      "normalized": "/system/configuration/{}",
-      "methods": [
-        "GET"
-      ],
-      "minApiVersion": 1,
-      "maxApiVersion": null,
-      "sourceFiles": [
-        "source/api/sdk.bs"
-      ]
-    },
-    {
       "path": "/system/info/public",
       "normalized": "/system/info/public",
       "methods": [
@@ -1083,12 +1059,6 @@
     },
     {
       "name": "IsRequired",
-      "sourceFiles": [
-        "source/api/items.bs"
-      ]
-    },
-    {
-      "name": "Items",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -3197,15 +3167,15 @@
       }
     },
     "counts": {
-      "endpoints": 80,
-      "requestFields": 41,
+      "endpoints": 78,
+      "requestFields": 40,
       "responseFields": 215,
       "unresolvedEndpointSinks": 2
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 427
+        "line": 392
       },
       {
         "sourceFile": "source/utils/subtitles.bs",

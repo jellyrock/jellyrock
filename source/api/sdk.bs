@@ -25,14 +25,6 @@ namespace sdk
     end function
   end namespace
 
-  namespace system
-    ' Gets a named configuration.
-    function GetConfigurationByName(name as string)
-      req = APIRequest(Substitute("/system/configuration/{0}", name))
-      return getJson(req)
-    end function
-  end namespace
-
   namespace users
     ' Gets a user by Id, or all users if id is empty.
     function Get(id = "")

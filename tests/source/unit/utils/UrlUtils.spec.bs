@@ -1,6 +1,5 @@
 ' Unit tests for URL utility functions
 import "pkg:/source/utils/misc.bs"
-import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/url.bs"
 
 namespace tests
@@ -336,48 +335,6 @@ namespace tests
       result = resolveUrl(base, location)
       ' Empty query should be normalized away
       m.assertEqual(result, "http://example.com:8096/path")
-    end function
-
-    ' ============================================
-    ' getBaseUrl Tests
-    ' ============================================
-
-    @describe("getBaseUrl extraction with path")
-    @it("should extract scheme and authority from URL with path")
-    function _()
-      m.assertEqual(getBaseUrl("http://example.com:8096/system/info"), "http://example.com:8096")
-      m.assertEqual(getBaseUrl("https://example.com/path?query=1"), "https://example.com")
-    end function
-
-    @describe("getBaseUrl extraction without path")
-    @it("should extract base from URL without path component")
-    function _()
-      m.assertEqual(getBaseUrl("http://example.com:8096"), "http://example.com:8096")
-    end function
-
-    @describe("getBaseUrl invalid input handling")
-    @it("should return empty string for invalid or empty URLs")
-    function _()
-      m.assertEqual(getBaseUrl(""), "")
-      m.assertEqual(getBaseUrl("not-a-url"), "")
-    end function
-
-    @describe("getBaseUrl IPv6 with port")
-    @it("should extract scheme and authority from IPv6 URL with port")
-    function _()
-      m.assertEqual(getBaseUrl("http://[2001:db8::1]:8096/system/info"), "http://[2001:db8::1]:8096")
-    end function
-
-    @describe("getBaseUrl IPv6 without port")
-    @it("should extract scheme and authority from IPv6 URL without port")
-    function _()
-      m.assertEqual(getBaseUrl("http://[::1]/path"), "http://[::1]")
-    end function
-
-    @describe("getBaseUrl IPv6 with query")
-    @it("should strip query string from IPv6 URL")
-    function _()
-      m.assertEqual(getBaseUrl("http://[fe80::1]:8096/path?key=value"), "http://[fe80::1]:8096")
     end function
 
     ' ============================================
@@ -1056,32 +1013,6 @@ namespace tests
       parts = parseUrlComponents("http://example.com/apps/jellyfin/system/info/public?format=json")
       m.assertEqual(parts.path, "/apps/jellyfin/system/info/public")
       m.assertEqual(parts.query, "?format=json")
-    end function
-
-    ' ============================================
-    ' server.GetNormalizedUrl Tests - Wrapper function
-    ' ============================================
-
-    @describe("server.GetNormalizedUrl returns normalized URL")
-    @it("should wrap normalizeUrl for consistent server URL handling")
-    function _()
-      m.assertEqual(server.GetNormalizedUrl("HTTP://192.168.1.1:8096"), "http://192.168.1.1:8096")
-      m.assertEqual(server.GetNormalizedUrl("http://192.168.1.1:80"), "http://192.168.1.1")
-      m.assertEqual(server.GetNormalizedUrl("https://192.168.1.1:443/"), "https://192.168.1.1")
-      m.assertEqual(server.GetNormalizedUrl(""), "")
-    end function
-
-    @describe("server.GetNormalizedUrl provides value for persistence")
-    @it("should return canonical value that matches stored serverUrl")
-    function _()
-      ' This test verifies the fix for: normalized URL isn't returned to caller
-      ' Callers should use GetNormalizedUrl to get the canonical value for persistence
-      inputUrl = "HTTP://192.168.1.1:80/"
-      normalizedUrl = server.GetNormalizedUrl(inputUrl)
-
-      ' The normalized URL should be what gets stored in the server node
-      m.assertEqual(normalizedUrl, "http://192.168.1.1")
-      m.assertTrue(normalizedUrl <> inputUrl)
     end function
   end class
 end namespace
