@@ -335,6 +335,8 @@ Translations are crowdsourced on a self-hosted Weblate (`translate.jellyrock.app
 | every push to `main` | `jellyrock-bot.yml` | `en_US.json` and `languages.json`, `main` → `weblate`, so translators see new keys |
 | release prep (push to `release-X.Y.Z`) | `release-management.yml` → `merge-translations` | every locale file, both ways |
 
+**The `weblate` branch is always far "behind" `main`, and that is expected.** Nothing ever merges `main` into it: both workflows copy files, so `main`'s code commits never enter its history and GitHub's behind count only grows. Weblate reads only `locale/`, and that is what the two workflows keep in step; the rest of the branch is stale code that nothing builds. Re-cutting the branch from `main` to reset the count would also delete the `Translations-Release` marker the next merge needs (see [The merge rules](#the-merge-rules)).
+
 Release prep, in order:
 
 1. **Lock and flush Weblate** — `scripts/weblate-sync.js lock-and-flush` locks the component and makes Weblate commit and push what it holds, so the branch read next is complete and nothing lands on it mid-merge. It refuses a component that is already locked (by an admin, or by Weblate itself after a repository error), and fails without the `WEBLATE_TOKEN` secret: the push-back in step 5 is only safe under this lock.
