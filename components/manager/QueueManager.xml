@@ -4,7 +4,6 @@
     <function name="advanceTo" />
     <function name="beginPlaybackStart" />
     <function name="clear" />
-    <function name="deleteAtIndex" />
     <function name="failPendingPlaybackStart" />
     <function name="getCount" />
     <function name="getCurrentItem" />
@@ -25,11 +24,8 @@
     <function name="launchShuffle" />
     <function name="moveBack" />
     <function name="moveForward" />
-    <function name="peek" />
     <function name="playQueue" />
-    <function name="pop" />
     <function name="push" />
-    <function name="resetShuffle" />
     <function name="set" />
     <function name="setCurrentStartingPoint" />
     <function name="setPosition" />
@@ -38,6 +34,5 @@
     <function name="startCurrentFresh" />
     <function name="toggleShuffle" />
     <function name="takePlaybackStart" />
-    <function name="top" />
   </interface>
 </component>
