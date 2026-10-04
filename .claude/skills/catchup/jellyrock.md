@@ -29,7 +29,7 @@ The journal (followups, the running cursor, its staleness) is the shared reader'
 
 ## Routes, when no banner fired (Step 5 picks the first that applies)
 
-- A pending handoff for a triage in flight: read `.claude/handoffs/<name>.md` and continue with that skill's `INVESTIGATION.md`.
+- A pending handoff for a `/runtime-triage` in flight: read `.claude/handoffs/<name>.md` and continue with its `INVESTIGATION.md`.
 - A high-engagement bug, or a recent bug report not yet read: `/issue-triage <N>`.
 - Recent non-bug discussion heating up: read it; a decision in it is `/log decision`. Not `/issue-triage`: that flow is bug-shaped.
 - A Roku log or crash in hand: `/runtime-triage` with the log pasted.

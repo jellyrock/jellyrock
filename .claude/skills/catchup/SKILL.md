@@ -12,7 +12,7 @@ audit-span: read-only
 
 - **Own reader:** `node scripts/catchup-state.js --pretty` ([source](../../../scripts/catchup-state.js)), run in Step 1 as a parallel call beside the shared reader. It prints one JSON document, not `BANNER:` lines: PRs, issues, CI, handoffs, signals, decisions, tech debt, doc staleness, and `_errors`.
 - **Banners, extra sections, routes:** [jellyrock.md](jellyrock.md). Its banners are JSON compares, listed there in the order Step 3 uses; a section that is `null` with an `_errors` entry is a banner.
-- **Handoffs:** pending handoffs are `.claude/handoffs/*.md` (untracked); a paused triage resumes from its `INVESTIGATION.md`, per the skill named in the file.
+- **Handoffs:** pending handoffs are `.claude/handoffs/*.md` (untracked): a paused `/runtime-triage` resumes from its `INVESTIGATION.md`; `/crash-report` and `/server-upgrade` leave run summaries there.
 - **Known write exceptions of the reader (to remove, so the tree stays clean):** it rewrites tracked `docs/signals-backlog.md` (`latest_upstream` and `last_checked` lines) and deletes handoffs older than 30 days. A dirty tree whose only change is those signal lines is this rewrite: report it as such, not as unfinished work.
 - **Area re-entry:** after more than two weeks away from one subsystem, `/ramp <area>` instead of this briefing.
 

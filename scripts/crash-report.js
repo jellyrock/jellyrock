@@ -1757,7 +1757,7 @@ N/A — telemetry-sourced.
 Not available in the aggregate report. To gather logs, reproduce in dev mode and run \`/runtime-triage\` against a captured BrightScript console log.
 
 ### Additional context (optional)
-- Run \`/issue-triage <this-issue-number>\` to load a deeper investigation handoff.
+- Run \`/issue-triage <this-issue-number>\` for a deeper investigation.
 - Filed by the \`/crash-report\` skill — see \`docs/dev/crash-reports.md\`.
 `;
 }
