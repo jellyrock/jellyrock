@@ -24,7 +24,6 @@ Each: an opus skill does prep (fetch, parse, classify, build context packet) + w
 
 | Skill | Investigation contract | What |
 |---|---|---|
-| [`/pr-review`](pr-review/SKILL.md) `<N>` | [`pr-review/INVESTIGATION.md`](pr-review/INVESTIGATION.md) | Investigate unresolved PR review comments one at a time |
 | [`/issue-triage`](issue-triage/SKILL.md) `<N>` | [`issue-triage/INVESTIGATION.md`](issue-triage/INVESTIGATION.md) | Diagnose + semi-auto-fix or present-options for a GitHub issue |
 | [`/runtime-triage`](runtime-triage/SKILL.md) `<paste>` | [`runtime-triage/INVESTIGATION.md`](runtime-triage/INVESTIGATION.md) | Diagnose a Roku log / crash / unexpected behavior |
 | [`/ci-triage`](ci-triage/SKILL.md) `<run-id>` | [`ci-triage/INVESTIGATION.md`](ci-triage/INVESTIGATION.md) | Diagnose a failing GitHub Actions run |
