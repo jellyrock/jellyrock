@@ -12,6 +12,7 @@ concurrency:
 jobs:
   validate-and-prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       version: ${{ steps.extract_version.outputs.version }}
       branch_name: ${{ steps.extract_version.outputs.branch_name }}
@@ -174,6 +175,7 @@ jobs:
   merge-translations:
     needs: validate-and-prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: bot-push-release-${{ needs.validate-and-prepare.outputs.branch_name }}
       cancel-in-progress: false
@@ -285,6 +287,7 @@ jobs:
   update-version-files:
     needs: [validate-and-prepare, merge-translations]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: bot-push-release-${{ needs.validate-and-prepare.outputs.branch_name }}
       cancel-in-progress: false
@@ -363,6 +366,7 @@ jobs:
   create-release-pr:
     needs: [validate-and-prepare, update-version-files]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: needs.validate-and-prepare.outputs.pr_exists == 'false'
     steps:
       - name: Generate GitHub App Token
@@ -403,6 +407,7 @@ jobs:
     needs: [validate-and-prepare, update-version-files]
     if: always() && needs.validate-and-prepare.result == 'success' && needs.update-version-files.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Generate GitHub App Token
         id: app-token

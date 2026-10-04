@@ -38,6 +38,7 @@ permissions:
 jobs:
   check-skip:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       relevant: ${{ steps.paths.outputs.relevant }}
     steps:

@@ -15,6 +15,7 @@ on:
 jobs:
   notify-homepage:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Generate GitHub App Token
         id: app-token

@@ -97,7 +97,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-09-28
+last-reviewed: 2026-10-04
 ---
 
 # Build & Tooling
@@ -745,6 +745,8 @@ Each lint scope has a workflow pair under [`.github/workflows/`](../../.github/w
 - `_lint-X.yml` — the reusable workflow that does the actual work.
 
 The pair pattern exists so the same lint logic can be invoked from other workflows in the future without duplication.
+
+**Every job that runs on a machine sets `timeout-minutes`** — 15 for a GitHub-hosted job, unless a comment at the job says why it differs (the hardware jobs, `copilot-setup-steps`). Without it a job inherits GitHub's 6-hour default, and a wedged step holds the PR's checks for hours (#791). A caller job (`uses: ./.github/workflows/_lint-X.yml`) can't take the key; the limit goes on the job inside `_lint-X.yml`. [`workflow-timeouts.test.js`](../../tests/scripts/unit/lint/workflow-timeouts.test.js) enforces it.
 
 **Path relevance is computed *inside* the job, not at event time.** Each `_lint-X.yml` starts with [`./.github/actions/changed-paths`](../../.github/actions/changed-paths/action.yml) — a composite action that uses `gh pr diff --name-only` to check whether the PR modified any file matching the workflow's regex. All subsequent steps are gated on the action's `relevant` output.
 

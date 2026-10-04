@@ -9,6 +9,7 @@ jobs:
   update-draft-release:
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release-prep')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Generate GitHub App Token
         id: app-token

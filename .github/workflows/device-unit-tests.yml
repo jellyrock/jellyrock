@@ -82,6 +82,7 @@ permissions:
 jobs:
   check-skip:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       should_skip: ${{ steps.combined.outputs.skip }}
     steps:
@@ -178,6 +179,7 @@ jobs:
       && needs.check-skip.outputs.should_skip != 'true'
       && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: roku-device
     steps:
       - run: echo "Maintainer approved device tests for fork PR #${{ github.event.pull_request.number }}."

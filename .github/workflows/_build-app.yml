@@ -39,6 +39,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       version: ${{ steps.context.outputs.version }}
       artifact_name: ${{ steps.context.outputs.artifact_name }}
