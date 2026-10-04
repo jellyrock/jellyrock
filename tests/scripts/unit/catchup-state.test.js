@@ -19,8 +19,7 @@ function setupFixture() {
   mkdirSync(join(fix.dir, 'docs/architecture'), { recursive: true });
   mkdirSync(join(fix.dir, 'docs/adr'), { recursive: true });
   mkdirSync(join(fix.dir, 'scripts/lib'), { recursive: true });
-  // Copy the frontmatter helper so the aggregator's createRequire works.
-  // The aggregator does `require('./lib/frontmatter.cjs')` relative to its
+  // The aggregator does `require('./lib/*.cjs')` relative to its
   // OWN location, not cwd — so we ALWAYS use the real script via spawnScript
   // (which resolves to repo root). The fixture only needs the data files.
   return fix;
@@ -52,28 +51,14 @@ describe('catchup-state', () => {
         'ci',
         'decisions',
         'docs_stale',
-        'git',
         'handoffs',
         'issues',
         'meta',
         'prs',
-        'progress',
         'signals',
         'tech_debt',
       ].sort(),
     );
-  });
-
-  it('git section returns branch + last_commit + commits_7d', () => {
-    fix = setupFixture();
-    fix.commit('first commit');
-    fix.commit('second commit');
-    const { stdout } = runAggregator(fix.dir);
-    const parsed = JSON.parse(stdout);
-    expect(parsed.git.branch).toBe('main');
-    expect(parsed.git.last_commit.subject).toBe('second commit');
-    expect(parsed.git.last_commit.sha).toMatch(/^[a-f0-9]{8}$/);
-    expect(parsed.git.commits_7d.total).toBe(2);
   });
 
   it('--no-network empties prs / issues / ci and reports no errors', () => {
@@ -85,30 +70,6 @@ describe('catchup-state', () => {
     expect(parsed.issues.high_engagement_bugs).toEqual([]);
     expect(parsed.ci.current_branch_runs).toEqual([]);
     expect(parsed._errors).toEqual({});
-  });
-
-  it('progress section parses last_updated + days_since + commits_since, counting `####` entries and not the bullets in their bodies', () => {
-    fix = setupFixture();
-    fix.commit('seed', {
-      'docs/progress.md': `---\nlast-updated: 2020-01-01\n---\n# Progress\n\n## Currently running\n\nin-flight stuff.\n\n## Open followups\n\n### scripts\n\n#### one followup \`[fid: one-followup]\` \`[captured 2020-01-01]\`\n\nIts body lists three things:\n\n- a bullet in the body\n- another bullet in the body\n- a third bullet in the body\n\n#### another \`[fid: another]\` \`[captured 2020-01-01]\`\n\nBody.\n`,
-    });
-    fix.commit('post-progress code change');
-    const { stdout } = runAggregator(fix.dir);
-    const parsed = JSON.parse(stdout);
-    expect(parsed.progress.last_updated).toBe('2020-01-01');
-    expect(parsed.progress.days_since).toBeGreaterThan(0);
-    expect(parsed.progress.commits_since).toBeGreaterThan(0);
-    expect(parsed.progress.open_followups_total).toBe(2);
-    expect(parsed.progress.open_followups_by_area).toEqual({ scripts: 2 });
-    expect(parsed.progress.currently_running_summary).toMatch(/in-flight/);
-  });
-
-  it('progress section returns null when docs/progress.md is absent', () => {
-    fix = setupFixture();
-    fix.commit('seed');
-    const { stdout } = runAggregator(fix.dir);
-    const parsed = JSON.parse(stdout);
-    expect(parsed.progress).toBeNull();
   });
 
   it('signals section flags stale when latest_upstream != latest_acknowledged', () => {
@@ -178,18 +139,12 @@ describe('catchup-state', () => {
     expect(parsed.tech_debt.top_3[2]).toMatchObject({ slug: 'med-1', severity: 'Medium' });
   });
 
-  it('--area filters progress.open_followups_by_area to the requested area', () => {
+  it('--area records the area in meta', () => {
     fix = setupFixture();
-    fix.commit('seed', {
-      'docs/progress.md': `---\nlast-updated: ${TODAY}\n---\n# Progress\n\n## Open followups\n\n### scripts\n\n#### one \`[fid: one]\` \`[captured 2020-01-01]\`\n\nBody with a bullet:\n\n- not an entry\n\n### components\n\n#### two \`[fid: two]\` \`[captured 2020-01-01]\`\n\nBody.\n\n#### three \`[fid: three]\` \`[captured 2020-01-01]\`\n\nBody.\n`,
-    });
+    fix.commit('seed');
     const { stdout } = runAggregator(fix.dir, ['--area=scripts']);
     const parsed = JSON.parse(stdout);
     expect(parsed.meta.area).toBe('scripts');
-    expect(parsed.progress.open_followups_by_area).toEqual({ scripts: 1 });
-    // The total stays unfiltered (it's a global signal); only the by_area
-    // map is scoped.
-    expect(parsed.progress.open_followups_total).toBe(3);
   });
 
   it('--area=invalid exits 2 with a helpful error', () => {
@@ -257,7 +212,7 @@ describe('catchup-state', () => {
     // Healthy fixture, no errors.
     expect(parsed._errors).toEqual({});
     // All sections present and non-undefined.
-    for (const k of ['git', 'progress', 'signals', 'decisions', 'tech_debt']) {
+    for (const k of ['signals', 'decisions', 'tech_debt']) {
       expect(k in parsed).toBe(true);
     }
   });

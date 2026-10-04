@@ -19,7 +19,7 @@ If `$ARGUMENTS` is empty, list the recognized areas and ask which one. If it's n
 
 State for the briefing comes from two sources:
 
-1. **Single aggregator call** — `scripts/catchup-state.js` with `--area=<area>` returns area-scoped JSON: PRs/issues filtered by the area→keyword map (mirrors the map below), git commits scoped via `git log -- <area>`, plus the four journals (progress.md followups filtered to this area, full signals watchlist, recent decisions, tech-debt severity counts, pending handoffs):
+1. **Single aggregator call** — `scripts/catchup-state.js` with `--area=<area>` returns JSON with PRs/issues filtered by the area→keyword map (mirrors the map below), plus the full signals watchlist, recent decisions, tech-debt severity counts and pending handoffs:
 
    ```bash
    node scripts/catchup-state.js --area=<area> --pretty
@@ -28,6 +28,9 @@ State for the briefing comes from two sources:
 2. **Targeted file reads** for area-specific content the aggregator doesn't carry (file-content data, not state):
 
    ```bash
+   # Recent activity — the last 10 commits in the area
+   git log --oneline -10 -- <area>
+
    # Scoped rules (auto-load convention) — full content
    cat <area>/CLAUDE.md 2>/dev/null
 
