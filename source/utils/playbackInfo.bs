@@ -10,7 +10,9 @@
 ' pre-rendered markup ("<b>• Codec:</b> h264"), which put font-weight decisions on
 ' a Task thread and made the report untestable. Both are gone: the task fetches,
 ' playbackReport.bs models, and the dialog renders.
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' The source → target separator.
 '
@@ -39,10 +41,10 @@ function getDisplayBitrate(bitrate as dynamic) as string
   if bits <= 0 then return ""
 
   if bits > 1000000
-    return formatOneDecimal(bits / 1000000.0) + " Mbps"
+    return translate(translationKeys.LabelBitrateMbps, [formatOneDecimal(bits / 1000000.0)])
   end if
 
-  return Str(Fix(bits / 1000)).trim() + " Kbps"
+  return translate(translationKeys.LabelBitrateKbps, [Str(Fix(bits / 1000)).trim()])
 end function
 
 ' A byte count as a human-readable size — binary units with one decimal

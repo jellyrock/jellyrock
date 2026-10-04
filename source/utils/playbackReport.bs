@@ -480,7 +480,7 @@ function transcodeSpeed(transcoding as object, videoStream as dynamic) as string
   encodeFps = decimalOrZero(transcoding.Framerate)
   if encodeFps <= 0 then return ""
 
-  speed = formatOneDecimal(encodeFps) + " fps"
+  speed = framerateLabel(encodeFps)
 
   sourceFps = sourceFramerate(videoStream)
   if sourceFps > 0
@@ -646,9 +646,11 @@ end function
 function bitDepthLabel(depth as dynamic) as string
   bits = mediaNumber(depth)
   if bits <= 0 then return ""
-  return bits.toStr().trim() + "-bit"
+  return translate(translationKeys.LabelBitDepthBits, [bits.toStr().trim()])
 end function
 
+' Hz / kHz stay literal: they are SI symbols, unlike the bitrate and bit-depth
+' units, which translators do localize ("Мбит/с", "10ビット").
 function sampleRateLabel(rate as dynamic) as string
   hz = mediaNumber(rate)
   if hz <= 0 then return ""
@@ -658,7 +660,7 @@ end function
 
 function framerateLabel(fps as float) as string
   if fps <= 0 then return ""
-  return formatOneDecimal(fps) + " fps"
+  return translate(translationKeys.LabelFramerateFps, [formatOneDecimal(fps)])
 end function
 
 function percentageLabel(value as dynamic) as string
