@@ -2,6 +2,7 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
+import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
@@ -648,10 +649,11 @@ sub applyItemArtwork(item as object)
   m.currentBackdropUrl = backdropUri
   m.global.sceneManager.callFunc("setBackgroundImage", backdropUri)
 
+  artSize = imageSize.AUDIO_ART
   if isValidAndNotEmpty(item.albumId) and isValidAndNotEmpty(item.albumPrimaryImageTag)
-    setPosterImage(ImageURL(item.albumId, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": item.albumPrimaryImageTag }))
+    setPosterImage(ImageURL(item.albumId, "Primary", { "maxHeight": artSize.height, "maxWidth": artSize.width, "tag": item.albumPrimaryImageTag }))
   else if isValidAndNotEmpty(item.primaryImageTag)
-    setPosterImage(ImageURL(item.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": item.primaryImageTag }))
+    setPosterImage(ImageURL(item.id, "Primary", { "maxHeight": artSize.height, "maxWidth": artSize.width, "tag": item.primaryImageTag }))
   else
     setPosterImage("")
   end if

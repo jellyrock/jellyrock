@@ -110,7 +110,7 @@ completed.
 Nodes created in `setGlobals()` (called from `Main()`) are constructed **before any manager can exist**, so
 their `m.log` is permanently dead. Today that is `JellyfinUserSettings` — its `init()` line and the
 bootstrap `enableAutoSync` call are lost. It is not visible at runtime because
-`SessionDataTransformer.transformUserInfo` creates a **fresh** `JellyfinUserSettings` at login, and
+`user.Login()` creates a **fresh** `JellyfinUserSettings` at login, and
 that instance (created after the scene is up) logs normally.
 
 **Rule: do not construct a `log.Logger` in anything created before the scene exists.** Use `print`

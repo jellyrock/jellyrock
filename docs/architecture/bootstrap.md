@@ -147,7 +147,7 @@ Interface fields exposed for global control:
 | `contentVersion` | int | Content-freshness token bumped on a content mutation (e.g. item delete); a grid suspended beneath the detail re-fetches on resume when it differs |
 | `testToast` | string | Debug-only test trigger (see `debug-tools.md`) |
 
-`JRScene` also exposes router hooks called from `main.bs` / `loginRouter` on the main thread (the `sgrouter` namespace resolves on the render thread, so the main loop can't call it directly): `initRouter`, `routerNavigate`, `replayRoutedDeepLink`, `reloadRoutedHome`, `resetRouter`, `routerGoBack`. Its `AppWaitHost` child keeps the waits the whole app is in: `appWaits.begin(kind, label)` opens one there and returns its Promise (`source/utils/appWaits.bs`).
+`JRScene` also exposes router hooks called from `main.bs` / `loginRouter` on the main thread (the `sgrouter` namespace resolves on the render thread, so the main loop can't call it directly): `routerNavigate`, `replayRoutedDeepLink`, `reloadRoutedHome`, `resetRouter`, `routerGoBack`. Its `AppWaitHost` child keeps the waits the whole app is in: `appWaits.begin(kind, label)` opens one there and returns its Promise (`source/utils/appWaits.bs`).
 
 `components/JRScene.bs` adds the controller logic:
 
@@ -190,7 +190,7 @@ What is **no longer here** (moved to per-view render-thread handlers in #550):
 
 - **`quickPlayNode`** — Play presses are no longer relayed through `main.bs`. Each routed view (`Home` / `BaseGridView` / `SearchResults` / `ItemDetails`) observes its *own* `quickPlayNode` and forwards it to `QueueManager.launchItem`; single-item plays navigate `/details/:type/:id/play` directly (see `user-journey.md`).
 - **`selectedItem`** — library/item selection is handled by each view's own `selectedItem` observer, which navigates the router via `routeForItem(item)` — not relayed to `main.bs`.
-- The favorite/watched toggles were migrated off this loop in #551 (`group.callFunc("toggleFavorite")` / `toggleWatched` run as render-thread `fetchAsync()` promises in `ItemDetails`). Confirmation dialogs are no longer routed here at all: a component's dialog answers through a scoped observer in that component (`ItemDetails`, `settings`, and the **exit** confirm, which `JRScene` owns), and the one dialog `main.bs` still handles — the deep-link **server-switch** confirm — is observed per instance on `m.port` rather than through a shared field. No raw `submitApiRequest` + `observeField("isDone")` consumer remains in app code — the `promise-ratchet` lint is a hard grep-zero guard.
+- The favorite/watched toggles left this loop in #551; since #677 `ItemDetails` handles its own buttons and calls `toggleFavorite` / `toggleWatched` directly on the render thread, as `fetchAsync()` promises. Confirmation dialogs are no longer routed here at all: a component's dialog answers through a scoped observer in that component (`ItemDetails`, `settings`, and the **exit** confirm, which `JRScene` owns), and the one dialog `main.bs` still handles — the deep-link **server-switch** confirm — is observed per instance on `m.port` rather than through a shared field. No raw `submitApiRequest` + `observeField("isDone")` consumer remains in app code — the `promise-ratchet` lint is a hard grep-zero guard.
 
 Session-ending actions converge on `handleMenuAction(actionId)`: each tears down the routed Home (`m.scene.callFunc("resetRouter")` → `sgrouter.destroy`) and re-enters the login flow **in place** via `reenterLogin()` — no `goto appStart` (that path is gone).
 

@@ -1,7 +1,7 @@
 ' Maps 3-letter ISO 639-2 codes (T = terminological, B = bibliographic) and
 ' deprecated ISO 639-1 codes to the 2-letter base codes used by the app's
 ' translation system. Only languages the app supports as a UI locale are
-' covered (see scripts/update-translations.cjs LANGUAGE_METADATA).
+' covered (see scripts/lint/update-translations.cjs LANGUAGE_METADATA).
 '
 ' Why this exists: ffmpeg/Jellyfin pass through whatever the container
 ' metadata holds — most modern files use 639-2/T (e.g., "fra"), older or

@@ -56,11 +56,11 @@ allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*),
 - **Detail stuffed into a commit-message body.** Measurement tables, device or host matrices and reviewer asides belong in the notes comment, with a one-line summary of the evidence left in the body.
 - **Dropping a code reference to pass a check.** When a title or spelling check rejects an identifier, backtick it; rephrasing the reference away is the wrong fix.
 - **Inventing a `gh --json` field, or silencing `gh`.** Ask only for fields this skill names; an unknown field fails the whole call, and `2>/dev/null` turns gh's exact error into a guess.
+- **Creating a label to fit the PR.** A new label for each PR fragments the repo's label set; a missing label is replaced by the closest existing one first, and `gh label create` is proposed only as the last option, never run silently.
 - **Suppressing the create, edit or comment permission prompts** by allowlisting them — they are intentional user gates.
 
 **When NOT to use.**
 
-- You want to investigate review comments on an existing PR — that's the PR-review skill, not this one (which CREATES or updates a PR).
 - There is no branch to ship (on the default branch, or nothing committed) — there's nothing to open a PR for.
 - You need to bypass the journal passes for a genuinely trivial change — that's still in scope (skip the passes with one confirmation), not a reason to call `gh pr create` directly.
 
@@ -145,7 +145,7 @@ Labels are for finding PRs in the forge's list: a label is right when someone fi
 | `dev-improvement` | changes only tooling (rule 3) |
 | `documentation` | the PR changes **only** docs; never on a PR that also changes code |
 
-Check each chosen label exists (`gh label list --limit 100 --json name`; the default lists only 30); report a missing one to the user with the `gh label create` command, never create it silently. Leave alone the labels automation owns (this skill's `## This repo` lists them) and any label not in the table.
+Check each chosen label exists (`gh label list --limit 500 --json name,description`; the default lists only 30). For a missing one, in this order: use the existing label whose name and description fit the same deliverable, shown beside the label it replaces; else leave it off and say so; and only when the user wants it and nothing existing fits, show the `gh label create <name> --description "<text>"` command for them to run or approve. Never create a label silently. Leave alone the labels automation owns (this skill's `## This repo` lists them) and any label not in the table.
 
 ### Step 8 — Build the body (and the notes comment)
 

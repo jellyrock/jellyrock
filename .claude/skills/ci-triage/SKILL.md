@@ -1,191 +1,119 @@
 ---
 name: ci-triage
-description: "Triage a JellyRock CI failure (failed GitHub Actions workflow run) end-to-end. Fetches the run via gh, identifies which job/step failed, extracts the failure tail, classifies the category (lint-fail / build-fail / device-test-fail / docs-stale-blocking / language-coverage-fail), assembles initial file context, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Dedup-first: a recent unchanged triage on the same run-id (cited files unchanged) short-circuits to the existing handoff. Use when a CI workflow failed on a PR or on main."
+description: "Diagnose a failed CI workflow run and fix it the /snag way. A tested read-only script fetches the run, reports every failed job and step with the log region around its errors (not the post-job cleanup), and classifies each against this repo's gates.tsv, printing the banner a gate carries when its obvious fix is the wrong one. Then: re-run only what is transient, reproduce locally, find the root cause, and show one decision screen; the chosen fix is built test-first and committed on a fix branch, never pushed. Use when a CI run failed on a pull request or on the default branch."
 model: opus
 effort: high
 user-invocable: true
 allowed-tools: Bash(gh run view:*), Bash(gh run list:*), Bash(git log:*), Bash(git diff:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
 ---
 
-# /ci-triage `<run-id>` — investigate a failing CI run
+# /ci-triage — diagnose a failed CI run
 
-Single-file workflow: prep + investigation, end-to-end on opus, in main thread, no Task delegation. The mechanical prep (Steps 1-6) produces a handoff packet that's written to `.claude/handoffs/` for cross-session resume + compaction recovery + `/catchup` discovery. The investigation contract is in sibling [`INVESTIGATION.md`](INVESTIGATION.md) and is followed in main thread once Step 6 completes.
+## This repo
+
+- **Local commands** (Step 5): each lint and test step runs an `npm run <script>` that runs the same locally after `npm ci`; the step's `##[group]Run …` line names it. `npm run lint` runs every lint check in one go.
+- **Not a CI run:** a log pasted from a Roku is `/runtime-triage`.
 
 ## Contract
 
-**Goal.** Take a failing CI run and drive it from "red" to root-caused end-to-end, in one main-thread session. The mechanical prep — fetch the run, find the failed job/step, extract the failure tail, classify the category (lint-fail / build-fail / device-test-fail / docs-stale-blocking / language-coverage-fail), and assemble initial file context — feeds the investigation contract in sibling `INVESTIGATION.md`. It runs on Opus because classifying an unfamiliar failure tail and mapping it to the right code area is genuine diagnostic judgment over real build/test output, not template fill — a misclassified failure sends the fix the wrong way. It is dedup-first: a CI run-id is immutable, so a recent unchanged triage on the same run-id (cited files untouched) short-circuits to the existing handoff. Reach for it when a CI workflow failed on a PR or on `main`.
+**Goal.** Take a failed CI run from red to a chosen, verified fix in one session. A tested script does the mechanical read (fetch the run, find every failed job and step, cut each job's log to the region around its errors, classify each step against this repo's `gates.tsv`), so the session's effort goes to the diagnosis: is it transient, does it reproduce locally, what is the root cause. From there it follows `/snag`'s method: a decision screen with the evidence and at least two candidate fixes, the user's pick, the fix built test-first and committed, never pushed. It runs on Opus because reading an unfamiliar failure correctly is real judgment, and a wrong call sends the fix the wrong way or loosens a gate that was right to fail.
 
-**Inputs.** The arguments are the required run ID or URL (e.g., `1234567890` or a full `/actions/runs/<id>` URL — extract the run-id from `/runs/(\d+)`); if empty, prompt or list recent failures with `gh run list --status failure --branch <current> --limit 5`. The skill reads the run and its failed-step logs via `gh run view`, the codebase and recent diffs via `git`, and any prior handoff at `.claude/handoffs/ci-<run-id>-*.md` for the dedup check.
+**Inputs.** The arguments are a run id or a run URL (the id is the number after `/runs/`); with none, the skill lists the newest failed runs on the current branch and asks which. It reads the run through `ci-triage-state.sh`, the step map and banners in this skill's `gates.tsv` (the repo's own file), each gate's local command in this skill's `## This repo`, and the code and history the failure points at.
 
-**Outputs.** A handoff packet written to `.claude/handoffs/ci-<run-id>-<timestamp>.md` with YAML frontmatter (`created`, `target`, `branch`, `sha`, `cited-files`) and a body carrying the classification, failed step, 2-5 cited initial-context files, and the failure tail (last 50-100 lines of the failed step) — durable for cross-session resume, compaction recovery, and `/catchup` discovery; a one-line confirmation of the saved path, classification, failed step, and file count; and then the in-thread investigation per `INVESTIGATION.md`. On a clean dedup hit, no new file is written — the prior handoff is surfaced with resume/re-triage/cancel options.
+**Outputs.** The state read's report in the conversation; for a transient failure, the re-run command for the user to run; otherwise `/snag`'s decision screen, then on the user's pick either a fix (its test, one commit on a `fix/ci-<run id>` branch when it started on the default branch, and `/snag`'s report) or a filed followup. A step `gates.tsv` did not know gets its line proposed.
 
 **Success criteria.**
 
-- The dedup check runs first and short-circuits correctly: both signals clean (cited files untouched, working tree clean for them) → surface the prior handoff and STOP for the user's pick; any signal changed → proceed.
-- The failed job and step are correctly identified (walk `.jobs[]`/`.steps[]` for `conclusion == "failure"`); in-progress runs and succeeded runs are surfaced and stopped on, not triaged.
-- The failure is classified by step name first, then by failure-tail content when the step name doesn't match a known shape; genuinely unmatched failures classified `unknown` for the investigator.
-- The failure tail keeps the diagnostic region (last ~50-100 lines plus extra context above a stack trace) and drops the setup boilerplate.
-- The handoff is written with valid frontmatter, then the skill continues immediately into `INVESTIGATION.md` as one motion.
+- Every failed job is diagnosed, not only the first; jobs that share one root cause are said to.
+- The category and any banner come from the script; nothing it reports is re-derived by hand.
+- A transient failure is re-run before any code is changed, and a failure that points at code is never just re-run.
+- A failure that reproduces locally is reproduced before any theory; one that cannot is said to.
+- The root cause is named at a file and line, and the screen separates what was measured from what was not.
+- The fix is the user's pick, built test-first, committed on its own paths, and not pushed.
 
 **Failure modes to avoid.**
 
-- **Re-prepping over a clean dedup hit.** If both signals are clean, do not write a new file — surface the prior handoff and wait for the user's pick.
-- **Triaging an in-progress or succeeded run.** Wait for completion; `/ci-triage` is for failures only.
-- **Capturing the wrong log region.** Drop the workflow-setup/checkout/npm-install boilerplate; keep the diagnostic tail (and 5-10 lines above a named error or stack trace).
-- **Forcing a classification.** When neither the step name nor the tail content matches a known shape, classify `unknown` rather than guessing wrong.
-- **Triaging transient infra failures.** If the failure is a GitHub Actions outage / runner-unavailable, re-run first; only triage code if it repeats.
-- **Stopping after the handoff.** Step 7 is "save the handoff AND continue into investigation" as one motion; don't write the file and wait.
+- **Turning a gate green by loosening it.** Allowlisting a secret finding, extending a security baseline or grace period, bumping a review date, skipping a test or raising a timeout makes the check pass and leaves the cause. Such a change is only ever a named option on the screen with its reason, never the reflexive fix; a gate's banner says when it is the wrong one.
+- **Treating a leaked secret as a red check.** The credential is the emergency: rotate it first. Deleting the finding or rewriting history to hide it is not a fix; one that reached the default branch is disclosed.
+- **Stopping at the first failed job.** A second failure hides behind the first and is the next red run.
+- **Reading cleanup as the failure.** A job's last lines are mostly post-job cleanup; the diagnosis is at its `##[error]` lines, which is the region the script prints.
+- **Forcing a category.** A step `gates.tsv` does not know is `unknown`: classify it from the tail and propose its line, never guess one of the known categories.
+- **Re-running, or pushing, on the user's behalf.** A re-run spends CI and a push lands work; both are the user's to run.
+- **Re-running a failure that points at code, or theorizing about one that is transient.** Decide which it is from the tail first.
 
 **When NOT to use.**
 
-- The run is in-progress — wait for it to complete.
-- The run succeeded — there's nothing to triage.
-- The failure is a transient infra issue (Actions outage, runner unavailable) — re-run first; triage code only if it repeats.
-- The pasted text is a Roku runtime log, not a CI log — use `/runtime-triage`.
-- The failure is a docs-stale-blocking whose fix is purely mechanical (bump `last-reviewed`, no shape change) — fix directly without the investigation contract.
+- The run is still in progress, or did not fail: there is nothing to triage yet.
+- The failure is not a CI run: a flaw found mid-work is `/snag`, and a log from the running app goes to whatever this repo uses for runtime failures.
+- The fix is already known and trivial (a typo the log names): fix it directly.
 
 ## Implementation
 
-### Inputs
+Two repo-owned parts: `gates.tsv` beside the script maps each CI step to a category, an optional sub-check pattern and a banner (its header says the format); this skill's `## This repo` gives each gate's local command and anything the repo's gates need beyond the shared steps.
 
-`$ARGUMENTS`: required run ID or URL (e.g., `1234567890` or `https://github.com/jellyrock/jellyrock/actions/runs/1234567890`). If empty, prompt or list recent failures: `gh run list --status failure --branch <current> --limit 5`.
+### Step 1 — Which run
 
-If the input is a URL, extract the run-id (`/runs/(\d+)`).
+A run URL gives its id after `/runs/`. With no arguments, list the newest failures and ask in chat which one:
 
-### Step 0 — Check for prior triage (dedup)
-
-Before any prep, look for a recent handoff on this run-id:
-
-```bash
-ls -t .claude/handoffs/ci-<run-id>-*.md 2>/dev/null | head -1
+```sh
+gh run list --branch "$(git branch --show-current)" --status failure --limit 5 --json databaseId,workflowName,displayTitle,createdAt,url
 ```
 
-If a prior handoff exists, `Read` it. The handoff has a YAML frontmatter with `created`, `branch`, `sha`, `cited-files`. The run-id itself is immutable (CI runs don't change), so check two signals:
+None on this branch: say so, and offer the same list for the default branch (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`).
 
-1. **Cited files unchanged?** `git log <sha>..HEAD -- <cited-files>` — empty output means no commits touched them on this branch.
-2. **Working tree clean for cited files?** `git status --porcelain -- <cited-files>` — empty means no uncommitted changes.
+### Step 2 — The state read
 
-If both are clean, **do not write a new file**. Surface to the user:
-
-> Prior CI triage exists at `.claude/handoffs/ci-<run-id>-<timestamp>.md` from <relative-time>. Cited files unchanged since then. Options:
-> - **(a) Resume from the existing triage** — Read the handoff and follow [`INVESTIGATION.md`](INVESTIGATION.md) from there
-> - **(b) Re-triage anyway** — fresh prep (use this if a re-run of the workflow produced different output)
-> - **(c) Cancel**
-
-Then **STOP**. Wait for the user's pick before proceeding.
-
-If any signal shows change (or no prior handoff exists), proceed to Step 1.
-
-### Step 1 — Fetch the run
-
-```bash
-gh run view <run-id> --json status,conclusion,name,event,headBranch,jobs,createdAt,htmlUrl
+```sh
+bash .claude/skills/ci-triage/ci-triage-state.sh <run id>
 ```
 
-If the run is still in-progress, surface that and stop — there's nothing to triage yet. If the run succeeded, surface that too — `/ci-triage` is for failures.
+| Exit | Meaning | Do |
+|---|---|---|
+| `0` | the run failed; each failed job is reported | Step 3 |
+| `2` | the run did not fail, or has not finished | Say which, and stop. |
+| `3` | the run could not be fetched or read | Read its `gh said:` or `jq said:` lines: a rejected field or an expired token reads nothing like a bad id. Stop. |
 
-Find the failed job(s) by walking `.jobs[]` and filtering `conclusion == "failure"`. Each job has `.steps[]` — find the failed step (also `conclusion == "failure"`).
+Never re-fetch what it printed with your own `gh` calls. Its output is the evidence the decision screen cites.
 
-### Step 2 — Extract the failure tail
+### Step 3 — Read each failed job
 
-```bash
-gh run view <run-id> --log-failed --job <job-id>
+For each `FAILED JOB` section: the step, the category, the sub-check when the gate wraps several checks in one step (the sub-check, not the step name, is the finding), any `BANNER:` line, and the tail. A banner outranks the obvious fix; follow it. Several failed jobs often share one cause (a build failure that fails every job after it): name which, and diagnose the cause once. A step reported `unknown`: classify it from the tail, and carry the line `gates.tsv` should get into the decision screen.
+
+### Step 4 — Transient or code?
+
+Transient: a platform outage, a runner that never started, a network fetch or tool install that failed upstream, a device or service the job needs that was unreachable, or a time limit hit with nothing in the tail pointing at code. Then print the re-run command alone in its own block, say why it looks transient, and stop: triage it only if it fails again.
+
+```text
+gh run rerun <run id> --failed
 ```
 
-This streams the failed step's log. Capture the last ~50-100 lines — that's where the diagnostic message lives. Drop the leading boilerplate (workflow setup logs, git checkout, npm install) — the user doesn't need them.
+Anything else is code or configuration: continue.
 
-If the failure shows a stack trace or named diagnostic, capture 5-10 extra lines of context above the error line.
+### Step 5 — Reproduce locally
 
-### Step 3 — Classify
+Run the gate's local command from this skill's `## This repo`; with none there, the command in the tail's `##[group]Run …` line. Keep the command and the lines that show the failure. It fails in CI but passes locally: the difference between the two environments is the finding, never a reason to change the check. It cannot be run here (it needs a network service, a tool or a device this machine lacks): say so, and work from the tail.
 
-Match the failed step's name + the failure tail to a category:
+### Step 6 — Root cause
 
-| Failed step name | Category |
-|---|---|
-| `lint`, `lint:*`, `check-formatting`, `validate`, `format:check` | `lint-fail` |
-| `build`, `build:*` | `build-fail` |
-| `test:tdd`, `test:unit`, `test:integration`, `test:all`, `device-tests` | `device-test-fail` |
-| `lint:docs`, `docs:check`, `docs-stale*` | `docs-stale-blocking` (or `lint-fail` if it's a docs-check broken-ref, not a stale-blocking) |
-| `lint:language-coverage`, `language-coverage` | `language-coverage-fail` |
-| `lint:translations` | `lint-fail` (translations subcategory) |
+Read the file and line the tail names, and the change that brought it in:
 
-If the step name doesn't match a known shape, use the failure-tail content to classify:
-
-- `BRIGHTSCRIPT_ERR_*`, BSC errors → likely `build-fail` or `lint-fail`
-- `[Rooibos Result]: FAIL` → `device-test-fail`
-- `stale doc ... related-files` → `docs-stale-blocking`
-- ESLint output → `lint-fail`
-
-If still ambiguous, classify as `unknown` — the investigator will sort it out.
-
-### Step 4 — Identify probable area
-
-The failed step often points at the area:
-
-- `lint:bs` / `validate` / `build` failures: the BSC error names file:line. The file path → area mapping is the same as `/runtime-triage`'s "Identify probable area" step (uses `pkg:/components/...` or `pkg:/source/...`).
-- `lint:docs` failures: the validator's stdout names the broken doc + path.
-- `device-test-fail`: the Rooibos output names the test file (`tests/source/unit/<area>/...`).
-- `docs-stale-blocking`: names the stale architecture doc.
-
-### Step 5 — Assemble initial file context
-
-For the probable area, surface 2-5 files:
-
-```bash
-# Recent commits scoped to the failing file's area — regressions often
-# correlate with a recent change
-git log --oneline -10 -- <file-or-area>
-
-# Diff between this branch and main (what's NEW vs the baseline)
-git diff main...HEAD -- <file-or-area>
+```sh
+git log --oneline -10 -- <path>
+git diff "origin/$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)...HEAD" -- <path>
 ```
 
-For test failures, include the test file + the SUT it tests.
+For a failing test, read the test and the code it covers. Ask whether the diagnostic is the cause or a symptom of one upstream (a type error at a call site whose contract changed), and name the cause at a file and line.
 
-### Step 6 — Build the handoff packet
+### Step 7 — Decide and build, the `/snag` way
 
-Construct the packet with a YAML frontmatter (so future Step-0 dedup checks can read it) plus the prep body:
+Read `.claude/skills/snag/SKILL.md` and follow its Steps 2 to 7, carrying in what Steps 2 to 6 here found (the reproduction and the root cause are done; finish its Step 2 with the history, what depends on the code, and at least two fixes). Three differences:
 
-```markdown
----
-created: <ISO-8601 UTC timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
-target: ci-<run-id>
-branch: <git rev-parse --abbrev-ref HEAD>
-sha: <git rev-parse --short HEAD>
-cited-files:
-  - <path-1>
-  - <path-2>
----
-
-CI failure
-Run: <run-id> (<workflow name>)
-Branch: <branch>
-Triggered by: <event>
-URL: <htmlUrl>
-
-Classification: <category>
-Failed step: <step name>
-Initial file context:
-  - <path>:<line range or whole-file> — <one-line why-relevant>
-  - ...
-
-Failure tail (last 50-100 lines of the failed step):
-
-  <log excerpt>
-```
-
-### Step 7 — Write the handoff and continue into investigation
-
-1. Compute the timestamp: `date +%Y%m%d-%H%M%S` (filename) and `date -u +%Y-%m-%dT%H:%M:%SZ` (frontmatter).
-
-2. Write the packet to `.claude/handoffs/ci-<run-id>-<YYYYMMDD-HHMMSS>.md`.
-
-3. Output a single confirmation line, this exact shape:
-
-   > Handoff saved: `.claude/handoffs/ci-<run-id>-<timestamp>.md` (classification: <X>, failed step: <step>, <count> files cited). Now following [`INVESTIGATION.md`](INVESTIGATION.md) — adjust scope freely.
-
-4. Then **continue immediately** into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Don't stop or wait.
+- The screen's first line is `**CI run:** <workflow> <run id>: <job> / <step> (<category>)`, with one such line per failed job, and its options include the `gates.tsv` line a step reported `unknown` needs.
+- Before its Step 5 builds anything on the default branch, create the fix branch: `git switch -c fix/ci-<run id>`. On any other branch, commit there.
+- Its report ends with one more line: **Next:** push the branch (`/pr` opens its pull request); the push re-runs the workflow.
 
 ## Sub-agent invocation
 
-To invoke from a parent sub-agent (rare): parent passes `Read .claude/skills/ci-triage/SKILL.md and follow Steps 0-7 for $ARGUMENTS=<run-id>; write the handoff file but stop before INVESTIGATION.md — surface the handoff path so the parent can decide next. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is decision, followup, signal, or running (a signal is an upstream version-watch row; a running item replaces the one-paragraph note on what is being worked on right now); omit the section if there are none, and never write to journals yourself.` in the Task prompt. Sub-agents only run the prep; they don't follow INVESTIGATION.md (which is interactive).
+A parent that wants a failed run diagnosed without the conversation starts a sub-agent with `model: "opus"` and this Task prompt; the parent then shows `/snag`'s decision screen itself:
+
+`Read .claude/skills/ci-triage/SKILL.md and follow Steps 2 to 6 for run <run id>. Edit nothing, commit nothing, and do not run gh run rerun or push. Report each failed job with its step, category, sub-check and banners; whether the failure looks transient and why; the reproduction command and what it showed, or why it could not run; the root cause at a file and line with the evidence; and at least two candidate fixes with their footprint and risk. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link.

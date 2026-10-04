@@ -33,7 +33,7 @@ Pick a stable kebab-case key. Match the JSON shape of nearby existing entries (t
 
 Edit [`components/data/jellyfin/JellyfinUserSettings.xml`](../../../components/data/jellyfin/JellyfinUserSettings.xml) and the `.bs` sibling. The XML declares the field's type (`assocarray` / `node` / `nodearray` / `string` / `int` / `float` / `boolean`); the BS reads the default from `settings.json` and exposes the field for downstream observation.
 
-[`source/data/SessionDataTransformer.bs`](../../../source/data/SessionDataTransformer.bs) reads the user's registry section at login and overlays saved values on top of the defaults. Confirm your new field flows through it.
+`user.Login()` ([`source/utils/session.bs`](../../../source/utils/session.bs)) reads the user's registry section at login and applies every key that names a field on this node through `user.settings.Save()`, which converts it to the field's type. Loading needs no code: confirm only that the field `id` matches the `settings.json` name, because that id is the registry key.
 
 ## Step 4 — Surface in the Settings UI (if user-facing)
 

@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Consolidate duplicate helpers from the dead-code baseline ([#1104](https://github.com/jellyrock/jellyrock/pull/1104))
+- Remove unused session transformers, test the live login ([#1103](https://github.com/jellyrock/jellyrock/pull/1103))
+- Remove unused component functions, fields and interface exposures ([#1098](https://github.com/jellyrock/jellyrock/pull/1098))
+- Remove unused API calls, image helpers and utilities ([#1096](https://github.com/jellyrock/jellyrock/pull/1096))
 - Remove unused components, dev dependencies and JS exports ([#1078](https://github.com/jellyrock/jellyrock/pull/1078))
 
 ### Fixed

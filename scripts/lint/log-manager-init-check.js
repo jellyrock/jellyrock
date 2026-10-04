@@ -53,12 +53,11 @@ export const GLOBALS_REL = 'source/utils/globals.bs';
 //
 // JellyfinUserSettings: its bootstrap instance loses its init() line and the
 // bootstrap `enableAutoSync` call. Accepted because the instance is short-lived —
-// SessionDataTransformer.transformUserInfo creates a FRESH JellyfinUserSettings at
-// login (source/data/SessionDataTransformer.bs), after the scene is up, and that
-// one logs normally. Fixing it would need either a second, lazy logging idiom for
-// one node or a bootstrap reorder; neither is worth two startup lines. This is a
-// platform limitation, not tech debt — `print` is the correct tool in the
-// bootstrap window. Documented in docs/architecture/logging.md.
+// user.Login() creates a FRESH JellyfinUserSettings at login (source/utils/session.bs),
+// after the scene is up, and that one logs normally. Fixing it would need either a
+// second, lazy logging idiom for one node or a bootstrap reorder; neither is worth
+// two startup lines. This is a platform limitation, not tech debt — `print` is the
+// correct tool in the bootstrap window. Documented in docs/architecture/logging.md.
 export const BOOTSTRAP_LOGGER_ALLOWLIST = new Set(['JellyfinUserSettings']);
 
 // Components created in setGlobals() — i.e. BEFORE m.screen.show(), so before the

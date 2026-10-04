@@ -1,106 +1,12 @@
 import "pkg:/source/api/image.bs"
 import "pkg:/source/utils/misc.bs"
 
-' Generate poster URL from JellyfinBaseItem node
-' Uses existing ImageURL() function with appropriate fallbacks
-' @param item - JellyfinBaseItem content node
-' @param maxHeight - Maximum height in pixels (default: 440)
-' @param maxWidth - Maximum width in pixels (default: 295)
-' @returns Image URL string or empty string if no image available
-function GetPosterURLFromItem(item as object, maxHeight = 440 as integer, maxWidth = 295 as integer) as string
-  if not isValid(item) then return ""
-
-  imgParams = { "maxHeight": maxHeight, "maxWidth": maxWidth }
-
-  ' Try primary image
-  if isValidAndNotEmpty(item.primaryImageTag)
-    imgParams["tag"] = item.primaryImageTag
-    return ImageURL(item.id, "Primary", imgParams)
-  end if
-
-  ' Try thumb image
-  if isValidAndNotEmpty(item.thumbImageTag)
-    imgParams["tag"] = item.thumbImageTag
-    return ImageURL(item.id, "Thumb", imgParams)
-  end if
-
-  ' Try parent primary image (for episodes, etc.)
-  if isValidAndNotEmpty(item.parentPrimaryImageTag) and isValidAndNotEmpty(item.parentPrimaryImageItemId)
-    imgParams["tag"] = item.parentPrimaryImageTag
-    return ImageURL(item.parentPrimaryImageItemId, "Primary", imgParams)
-  end if
-
-  ' Try parent thumb
-  if isValidAndNotEmpty(item.parentThumbImageTag) and isValidAndNotEmpty(item.parentThumbItemId)
-    imgParams["tag"] = item.parentThumbImageTag
-    return ImageURL(item.parentThumbItemId, "Thumb", imgParams)
-  end if
-
-  ' Try series primary (for episodes)
-  if isValidAndNotEmpty(item.seriesPrimaryImageTag) and isValidAndNotEmpty(item.seriesId)
-    imgParams["tag"] = item.seriesPrimaryImageTag
-    return ImageURL(item.seriesId, "Primary", imgParams)
-  end if
-
-  ' Try backdrop as last resort
-  if isValid(item.backdropImageTags) and item.backdropImageTags.Count() > 0
-    imgParams["tag"] = item.backdropImageTags[0]
-    return ImageURL(item.id, "Backdrop", imgParams)
-  end if
-
-  return ""
-end function
-
-' Generate backdrop URL from JellyfinBaseItem node
-' @param item - JellyfinBaseItem content node
-' @param maxHeight - Maximum height in pixels (default: 720)
-' @param maxWidth - Maximum width in pixels (default: 1280)
-' @returns Image URL string or empty string if no image available
-function GetBackdropURLFromItem(item as object, maxHeight = 720 as integer, maxWidth = 1280 as integer) as string
-  if not isValid(item) then return ""
-
-  imgParams = { "maxHeight": maxHeight, "maxWidth": maxWidth }
-
-  ' Try backdrop image
-  if isValid(item.backdropImageTags) and item.backdropImageTags.Count() > 0
-    imgParams["tag"] = item.backdropImageTags[0]
-    return ImageURL(item.id, "Backdrop", imgParams)
-  end if
-
-  ' Try parent backdrop
-  if isValid(item.parentBackdropImageTags) and item.parentBackdropImageTags.Count() > 0 and isValidAndNotEmpty(item.parentBackdropItemId)
-    imgParams["tag"] = item.parentBackdropImageTags[0]
-    return ImageURL(item.parentBackdropItemId, "Backdrop", imgParams)
-  end if
-
-  return ""
-end function
-
-' Generate logo URL from JellyfinBaseItem node
-' @param item - JellyfinBaseItem content node
-' @param maxHeight - Maximum height in pixels (default: 100)
-' @param maxWidth - Maximum width in pixels (default: 300)
-' @returns Image URL string or empty string if no image available
-function GetLogoURLFromItem(item as object, maxHeight = 100 as integer, maxWidth = 300 as integer) as string
-  if not isValid(item) then return ""
-
-  imgParams = { "maxHeight": maxHeight, "maxWidth": maxWidth }
-
-  ' Try logo image
-  if isValidAndNotEmpty(item.logoImageTag)
-    imgParams["tag"] = item.logoImageTag
-    return ImageURL(item.id, "Logo", imgParams)
-  end if
-
-  return ""
-end function
-
 ' Generate user avatar URL from JellyfinUser node
 ' @param user - JellyfinUser content node
-' @param maxHeight - Maximum height in pixels (default: 300)
-' @param maxWidth - Maximum width in pixels (default: 300)
+' @param maxHeight - Maximum height in pixels
+' @param maxWidth - Maximum width in pixels
 ' @returns Image URL string or empty string if no image available
-function GetUserAvatarURL(userObj as object, maxHeight = 300 as integer, maxWidth = 300 as integer) as string
+function GetUserAvatarURL(userObj as object, maxHeight as integer, maxWidth as integer) as string
   if not isValid(userObj) or not isValidAndNotEmpty(userObj.id) then return ""
 
   if not isValidAndNotEmpty(userObj.primaryImageTag) then return ""

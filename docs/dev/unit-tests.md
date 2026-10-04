@@ -202,14 +202,14 @@ end function
 All test suites **MUST** extend `tests.BaseTestSuite`, which provides:
 
 - Automatic initialization of `m.global` with proper ContentNode structure
-- Mock data loading and transformation using production code paths
+- The default mock server and user applied to `m.global` before every test (Configuration and Policy through the same transformers `user.Login()` uses)
 - Helper methods for common testing patterns
 
 ### Helper Methods
 
 | Method | Purpose |
 | -------- | --------- |
-| `loadTestUser(userName)` | Load mock user from JSON file in `tests/source/mocks/users/` |
+| `loadSettingsFromRegistry(userId)` | Load a user's registry section into a fresh settings node the way `user.Login()` does |
 | `setTestDisplaySetting(libId, key, val)` | Set single display setting for testing |
 | `getTestServer()` | Get local server reference (minimizes rendezvous) |
 | `getTestUser()` | Get local user reference |
@@ -222,32 +222,20 @@ All test suites **MUST** extend `tests.BaseTestSuite`, which provides:
 Mock data is stored in `tests/source/mocks/`:
 
 - `servers/` - Server configurations (e.g., `default.json`)
-- `users/` - User configurations (e.g., `user-with-display-settings.json`)
+- `users/` - User records (`default.json`, `admin.json`)
 - `api/` - API responses
 
-**Mock User JSON Structure:**
+**Mock User JSON Structure:** a user record as the server returns it: `id`, `name`, and the `Configuration` and `Policy` objects.
 
-```json
-{
-  "id": "test-user-id",
-  "name": "Test User",
-  "settings": {
-    "display.library1.sortAscending": "true",
-    "display.library1.sortField": "DateCreated",
-    "ui.rowLayout": "fullwidth"
-  }
-}
-```
-
-**Key points:** Display settings use dot notation `"display.libraryId.settingKey"`. All values stored as **strings** (registry format). `SessionDataTransformer` converts types automatically.
+**Key points:** User settings are not part of the mock. To test settings loaded from the registry, write them to a test user's registry section and call `m.loadSettingsFromRegistry(userId)`; it converts each stored string to the field's type through `user.settings.Save()`, as `user.Login()` does. Display settings use dot notation `"display.libraryId.settingKey"`; set one with `m.setTestDisplaySetting()`.
 
 ### ✅ DO: Use Mock Data Files
 
 ```brighterscript
 @it("tests with proper mock data")
 function _()
-  m.loadTestUser("user-with-display-settings")
-  result = someFunction()
+  mockData = MockDataLoader.LoadItem("movie-quickplay-basic")
+  result = someFunction(mockData)
   m.assertEqual(result, expectedValue)
 end function
 ```
@@ -571,7 +559,7 @@ userName = m.global.user.name   ' Rendezvous 2
 
 ```brighterscript
 ' ✅ GOOD
-m.loadTestUser("user-with-display-settings")
+m.setTestDisplaySetting("library1", "sortField", "DateCreated")
 
 ' ❌ BAD
 m.global.user.settings = {...}  ' Wrong type!
@@ -612,7 +600,7 @@ m.global.user.settings = {...}  ' Wrong type!
 
 ### Type Mismatch Errors
 
-**Solution:** Use `m.loadTestUser()` instead of direct assignment. Direct assignment bypasses ContentNode creation.
+**Solution:** Use `user.settings.Save()` or `m.setTestDisplaySetting()` instead of direct assignment. Direct assignment bypasses the settings node's type conversion.
 
 ### Mock Data Not Loading
 
@@ -681,7 +669,7 @@ m.assertMocks()
 ### `BaseTestSuite` Helpers
 
 ```brighterscript
-m.loadTestUser("filename")
+settings = m.loadSettingsFromRegistry("test-user-id")
 m.setTestDisplaySetting("libId", "key", value)
 server = m.getTestServer()
 user = m.getTestUser()

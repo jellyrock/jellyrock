@@ -28,7 +28,6 @@ sub init()
     "id",
     "isLoaded",
     "loadedAt",
-    "rawSettings", ' Debug-only field, don't observe
     "displaySettings"
   ]
   for each fieldName in m.top.getFields()

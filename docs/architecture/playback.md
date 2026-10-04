@@ -114,10 +114,10 @@ m.global.queueManager.callFunc("playQueue")
 
 Queue mutation:
 
-- `push(item)`, `pop()`, `peek()`, `top()` — array-style access
+- `push(item)` — append to the end of the queue
 - `insertAfterCurrent(item)` — play `item` next; the Cinema Mode intro queues the item it plays in front of this way (see [below](#items-a-queue-arrives-at))
 - `set(items)` — replace the whole queue's contents (a shuffle toggle reorders through it); keeps the version pick
-- `clear()`, `deleteAtIndex(i)`
+- `clear()`
 
 Queue inspection:
 
@@ -133,7 +133,7 @@ Position:
 Shuffle:
 
 - `toggleShuffle()` → switches shuffle on/off, snapshots original order or restores it
-- `resetShuffle()`, `getIsShuffled()`, `getUnshuffledQueue()`
+- `getIsShuffled()`, `getUnshuffledQueue()`; `resetShuffle()` is internal, run when an item, quick-play action or shuffle load starts a new queue
 - `shuffleQueueItems()` keeps the currently-playing item at position 0 when enabling shuffle
 
 Resume:
@@ -440,7 +440,6 @@ The canonical video player and the largest single component in the playback subs
 ```xml
 <component name="VideoPlayerView" extends="Video">
   <interface>
-    <field id="backPressed" />
     <field id="selectSubtitlePressed" />
     <field id="selectAudioPressed" />
     <field id="selectVideoSourcePressed" />

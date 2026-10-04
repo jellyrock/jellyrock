@@ -61,7 +61,6 @@ Pure interface declaration. No BrighterScript backing file. Adds these fields to
 
 | Field | Type | Purpose |
 |---|---|---|
-| `backPressed` | bool (alwaysNotify) | Set to true when child wants to handle back internally |
 | `lastFocus` | node | The element that had focus when this group was last shown/suspended |
 | `overhangTitle` | string | Title to display in the top bar |
 | `overhangTabs` | array | Tab definitions for the top bar |

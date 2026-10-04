@@ -7,6 +7,7 @@ import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/userAuth.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
+import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/migrations.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
@@ -111,13 +112,6 @@ namespace server
     return true
   end function
 
-  ' Get normalized/canonical URL for consistent storage and comparison
-  ' @param url - The URL to normalize
-  ' @returns Normalized URL string (or empty string if invalid)
-  function GetNormalizedUrl(url as string) as string
-    return normalizeUrl(url)
-  end function
-
   ' Reset server to defaults
   sub Delete()
     ' Get local reference to minimize rendezvous
@@ -129,7 +123,7 @@ namespace server
 
   ' Discovers server information and handles redirects.
   '
-  ' Convention: all API calls should go through the ApiClient class via GetApi() (e.g. GetApi().GetConfigurationByName()).
+  ' Convention: all API calls should go through the ApiClient class via GetApi() (e.g. GetApi().GetUser()).
   ' Those functions bundle APIRequest() with a synchronous execution strategy (getJson, postVoid, etc.).
   '
   ' Discover() is an intentional exception: it must intercept the roUrlEvent to read GetResponseHeaders()
@@ -194,10 +188,9 @@ namespace server
       resolvedUrl = resolveUrl(fullRequestUrl, headers.location)
 
       ' Strip the endpoint path to get the new server base URL
-      ' This preserves any base path (e.g., /jellyfin) unlike getBaseUrl()
+      ' This keeps any base path (e.g., /jellyfin) rather than reducing to scheme + authority
       newBaseUrl = getServerBaseUrl(resolvedUrl, endpointPath)
       normalizedNewUrl = normalizeUrl(newBaseUrl)
-      normalizedCurrentUrl = normalizeUrl(currentUrl)
 
       ' Only follow redirect if path matches /system/info/public (ignores query strings and fragments)
       resolvedParts = parseUrlComponents(resolvedUrl)
@@ -219,7 +212,7 @@ namespace server
           end if
 
           ' Loop detection: if new URL is same as current, we've looped
-          if normalizedNewUrl = normalizedCurrentUrl
+          if urlsEqual(newBaseUrl, currentUrl)
             return { "Error": true, "ErrorMessage": "Server redirect loop detected - redirecting to same URL" }
           end if
 
@@ -647,7 +640,7 @@ namespace user
 
         ' Extract media segment action preferences from CustomPrefs
         ' Web client stores these with key format: segmentTypeAction__[Type]
-        segmentTypes = ["Intro", "Outro", "Commercial", "Preview", "Recap", "Unknown"]
+        segmentTypes = [MediaSegmentType.INTRO, MediaSegmentType.OUTRO, MediaSegmentType.COMMERCIAL, MediaSegmentType.PREVIEW, MediaSegmentType.RECAP, MediaSegmentType.UNKNOWN]
         for each segmentType in segmentTypes
           customPrefsKey = "segmentTypeAction__" + segmentType
           configFieldKey = "segmentAction" + segmentType
@@ -811,42 +804,6 @@ namespace user.settings
         ' Fallback - try toStr() method
         settingsNode.setField(name, value.toStr())
       end if
-    end if
-  end sub
-
-  ' Read setting value
-  function Read(name as string) as dynamic
-    if name = "" then return invalid
-    return m.global.user.settings[name]
-  end function
-
-  ' Reset setting to its XML default value
-  ' NOTE: This does NOT delete from registry - observer always saves changes
-  ' Use this for "reset to default" functionality
-  ' For sensitive fields (token, username), use unsetUserSetting() instead
-  sub Delete(name as string)
-    if name = "" then return
-
-    settingsNode = m.global.user.settings
-    if not settingsNode.hasField(name) then return
-
-    ' Get the field type to determine XML default value
-    fieldType = settingsNode.getFieldType(name)
-
-    ' Reset XML-defined field to its default value
-    ' This will trigger observer which saves the default to registry
-    if fieldType = "string"
-      settingsNode.setField(name, "")
-    else if fieldType = "boolean"
-      settingsNode.setField(name, false)
-    else if fieldType = "integer"
-      settingsNode.setField(name, 0)
-    else if fieldType = "float"
-      settingsNode.setField(name, 0.0)
-    else if fieldType = "assocarray"
-      settingsNode.setField(name, {})
-    else if fieldType = "array"
-      settingsNode.setField(name, [])
     end if
   end sub
 

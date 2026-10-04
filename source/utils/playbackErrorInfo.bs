@@ -104,6 +104,8 @@ function playbackErrorCategoryKey(errorCode as integer) as string
   if errorCode = PLAYBACK_ERR_EMPTY_LIST then return translationKeys.LabelPlaybackErrorNoStream
   if errorCode = PLAYBACK_ERR_MEDIA then return translationKeys.LabelPlaybackErrorMedia
   if errorCode = PLAYBACK_ERR_DRM then return translationKeys.LabelPlaybackErrorDrm
+  ' Named rather than left to the fallback below, so every code in the table is read here.
+  if errorCode = PLAYBACK_ERR_GENERIC then return translationKeys.LabelPlaybackErrorUnknown
   return translationKeys.LabelPlaybackErrorUnknown
 end function
 

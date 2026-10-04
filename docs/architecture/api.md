@@ -10,12 +10,13 @@ related-files:
   - source/api/apiTimeout.bs
   - source/api/image.bs
   - source/api/imageHelpers.bs
+  - source/utils/itemImageUrl.bs
   - components/api/ApiTask.bs
   - components/api/ApiQueueTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-09-25
+last-reviewed: 2026-10-04
 ---
 
 # API Layer & Task Pool
@@ -36,7 +37,7 @@ Application code talks to the API at one of three layers, depending on need:
 
 ```text
 Layer 3 — Domain helpers      ← typed wrappers; one-call solutions for common needs
-  source/api/imageHelpers.bs  ← GetPosterURLFromItem(item) with full fallback chain
+  source/utils/itemImageUrl.bs ← getItemPosterUrl(item, size) with a fallback chain
                               ↓
 Layer 2 — Business logic       ← validation, defaults, error degradation
   source/api/image.bs          ← ImageURL(id, type, params) — validates tag, returns ""
@@ -92,7 +93,7 @@ function BuildGetItemRequest(itemId as string, params = {} as object) as dynamic
 end function
 ```
 
-**Legacy synchronous methods** (`Get*` without `Build`) execute the HTTP synchronously on the calling thread. Five remain, all on the bootstrap path (login, server discovery). **Don't add new sync calls.**
+**Legacy synchronous methods** (`Get*` without `Build`) execute the HTTP synchronously on the calling thread. Four remain, all on the bootstrap path (login, server discovery). **Don't add new sync calls.**
 
 Their reason is narrower than "the pool isn't running yet", which is what this section used to say and is not true: `setGlobalNodes()` starts the pool in `Main()` *before* the login flow, and `UserSelect` has been issuing pre-login `fetchAsync` calls since #551. The real constraint is that `fetchAsync` registers a **named render-thread observer**, which Roku dispatches only inside a SceneGraph component — and `main.bs` / `source/loginRouter.bs` run on the MAIN thread, where named observers never fire.
 
@@ -112,30 +113,27 @@ end function
 
 Returning empty string on failure is the consistent pattern — the caller can pass it to a Roku Poster's `uri` field which silently shows nothing, rather than triggering a 404.
 
-### Layer 3 — Domain helpers (`imageHelpers.bs`)
+### Layer 3 — Domain helpers (`itemImageUrl.bs`, `rowItemImage.bs`)
 
-One-call solutions for common product needs. The poster URL helper has a full fallback chain:
+One-call solutions for common product needs. Each `getItem*Url()` in `source/utils/itemImageUrl.bs` takes a `JellyfinBaseItem` node and a size from the `imageSize` namespace, walks a fallback chain, and returns `""` when no image fits:
 
 ```brightscript
-function GetPosterURLFromItem(item, maxHeight=440, maxWidth=295) as string
+function getItemPosterUrl(item, size = imageSize.POSTER_LG) as string
   ' 1. Item's primary image
-  ' 2. Item's thumb image
-  ' 3. Parent's primary image (for episodes)
-  ' 4. Parent's thumb
-  ' 5. Series primary image (for episodes)
-  ' 6. Backdrop (last resort)
+  ' 2. Parent's primary image (episodes/seasons)
+  ' 3. Series primary image
 end function
 ```
 
 This is usually what UI components want to call. It encapsulates "what's a sensible image to show for this item?" without making every consumer re-implement the chain.
 
-Equivalent helpers exist for backdrops (`GetBackdropURLFromItem`) and logos (`GetLogoURLFromItem`).
+The same file has `getItemWidePosterUrl`, `getItemThumbnailUrl`, `getItemBackdropUrl` and `getItemParentWidePosterUrl`; `getItemImageUrl` takes any image type (a logo, for example). Row cells go through `getRowItemImageUrl()` in `source/utils/rowItemImage.bs`, which picks the image by item type, slot size and user settings. `source/api/imageHelpers.bs` holds the user-avatar helper, `GetUserAvatarURL`.
 
 ### Picking a layer
 
 `docs/dev/api-layering-guide.md` has the canonical decision tree. Short version:
 
-- **Need a poster/backdrop/logo URL** → Layer 3 (`imageHelpers.bs`)
+- **Need a poster/backdrop/logo URL** → Layer 3 (`itemImageUrl.bs`)
 - **Need a custom image URL** → Layer 2 (`image.bs.ImageURL`)
 - **Need to call any other API endpoint** → Layer 1 (`GetApi().Build*Request()` + task pool)
 - **Need to add a new endpoint** → add a `Build*Request()` method to `ApiClient`, route through `V1/V2` if needed
