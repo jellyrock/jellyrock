@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-04 — chore(scripts): Drop unused `git` and `progress` catchup state sections
 - 2026-10-03 — feat(video): Ask "Are you still watching?" before endless auto-play
 - 2026-10-03 — chore(journal): Give every open followup a permanent id
 - 2026-10-03 — fix(video): Keep Next Episode and Skip pop-ups off open dialogs
@@ -91,14 +92,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-21 — feat: Merge a person's credits into one Cast & Crew card, translated
 - 2026-09-20 — fix: Stop the session socket being reaped a minute after it connects
 - 2026-09-20 — Show the version that would actually play on posters and episode rows
-- 2026-09-19 — fix: Start every item a queue arrives at from the beginning
-- 2026-09-19 — Quick play of a folder holding one series now resumes that series: `QuickPlayTask.doFolder` carries `doSeries`'s whole launch (its resume position, not just whether it resumes), so the episode resumes whatever its version count — measured on 12.0, a single-version episode resumed at 200.0 s where it previously started at 0.5 s
-- 2026-09-19 — The Cinema Mode intro now queues the item it plays in front of directly after that slot (`QueueManager.insertAfterCurrent`), so a multi-item queue keeps its play order — reproduced on 10.11 with the Local Intros plugin (a Play All queue played `e2` after the intro and `e1` last) and gated in `queueArrival.spec.bs`
-- 2026-09-19 — fix: Resume the same version everywhere, and map an in-player switch
-- 2026-09-19 — fix: Keep the `ItemGridOptions` dialog usable while a library grid loads
-- 2026-09-19 — fix: Give each `BaseGridView` load and page its own Task node
-- 2026-09-19 — fix: Give each run its own Task node where a restart can lose the work
-- 2026-09-19 — ci: Give every `PENDING_MIGRATIONS` state in `no-same-node-relaunch` an honest verdict
 
 ## Open followups
 
