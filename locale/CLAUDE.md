@@ -5,8 +5,15 @@ Translation files for the custom JSON i18n system. See [docs/architecture/transl
 ## Edit `en_US.json` only
 
 - `locale/custom/en_US.json` is the source of truth. Add / rename / remove keys here, never in non-English locale files directly.
-- The Weblate bot keeps non-English locales in sync with `en_US.json` (orphaned keys removed, keys sorted) on every push to `main`.
+- **The only sanctioned writers of non-English files are `npm run translations:seed` and release prep's `npm run translations:merge`.** Never hand-edit one: translators own wording in Weblate.
+- Every push to `main` sends `en_US.json` and `languages.json` to the `weblate` branch. Translations come back, and seeded ones go out to Weblate, only at release prep — a key-level merge where Weblate wins conflicts ([architecture](../docs/architecture/translations.md#weblate-sync)).
 - `npm run update-translations` (with `--fix` via the npm script) auto-fixes sortable issues locally.
+
+## Seeding from other Jellyfin clients
+
+- **A new key can be born translated.** Run `npm run translations:seed -- suggest --key <Key>`; if another client already has the string, add a reviewed entry to [`seed/keymap.yml`](seed/keymap.yml). Release prep then fills it every release. How-to: [`docs/dev/translations.md`](../docs/dev/translations.md#seeding-translations-from-other-jellyfin-clients).
+- **Never map on English text alone** — check the source key's meaning and shape, and read the dry run's values. Both have caught real errors (see the comments in `keymap.yml`).
+- **Only GPL-2.0 or MPL-2.0 sources** go in [`seed/sources.yml`](seed/sources.yml); JellyRock is GPL-2.0-only, so a GPL-3.0 project can never be added.
 
 ## Key naming convention
 

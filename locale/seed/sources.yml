@@ -1,0 +1,110 @@
+# Projects `npm run translations:seed` may copy translations from.
+#
+# ORDER IS PRIORITY: for each key and locale, the first source with a usable
+# translation wins. jellyfin-web is first because it is the largest and most-reviewed
+# set, and it is the wording users already see in the Jellyfin dashboard.
+#
+# Every source is pinned to a full commit SHA; the seeder refuses to run if `ref` no
+# longer points at it. To move a source forward: update `ref` + `commit`, run the dry
+# run, and re-review whatever it reports under "Needs re-review".
+#
+# `license` must be on the allowlist in scripts/translations-seed.js
+# (GPL-2.0-only, GPL-2.0-or-later, MPL-2.0), and the seeder checks `licenseFile` at
+# the pinned commit says the same. JellyRock is GPL-2.0-only, so GPL-3.0 projects
+# (jellyfin-vue, jellyfin-kodi, findroid) can never be added.
+#
+# Not listed because they have no translations of their own (they wrap
+# jellyfin-web): jellyfin-desktop, jellyfin-tizen, jellyfin-webos.
+#
+# Locale codes: each source's code is normalized to JellyRock's spelling
+# (`pt-br` → `pt_BR`, `values-b+es+419` → `es_419`, `zh-cn` → `zh_Hans`). A code with
+# no JellyRock locale is reported as unmapped and skipped, never guessed. `localeMap`
+# overrides the normalizer; `skipLocales` drops a code without reporting it.
+
+sources:
+  - id: jellyfin-web
+    repo: https://github.com/jellyfin/jellyfin-web.git
+    ref: v12.1
+    commit: fae41f33eb7cd636a9ef68984adb82bb247a6e1b
+    license: GPL-2.0-or-later # LICENSE is the GPL-2.0 text; package.json declares GPL-2.0-or-later
+    licenseFile: LICENSE
+    format: json-flat
+    placeholders: brace-index
+    english: src/strings/en-us.json
+    translations: src/strings/{locale}.json
+    localeMap:
+      pr: x-pirate # web's pirate-speak locale (verified: "Ahoy, matey! This be Jellyfin!")
+
+  - id: jellyfin-androidtv
+    repo: https://github.com/jellyfin/jellyfin-androidtv.git
+    ref: v0.19.10
+    commit: 984181a3d6ab14e9a6d2dcc850c582e1c138bd95
+    license: GPL-2.0-only
+    licenseFile: LICENSE
+    format: android-xml
+    placeholders: printf
+    english: app/src/main/res/values/strings.xml
+    translations: app/src/main/res/values-{locale}/strings.xml
+    localeMap:
+      tl: fil # Android's resource code for Filipino
+
+  - id: jellyfin-roku
+    repo: https://github.com/jellyfin/jellyfin-roku.git
+    ref: 3.2.4
+    commit: 9636e28ebd40253a1c6695ae5251f1dfc869a2a2
+    license: GPL-2.0-only
+    licenseFile: LICENSE
+    format: qt-ts
+    placeholders: qt
+    english: locale/en_US/translations.ts
+    translations: locale/{locale}/translations.ts
+
+  - id: jellyfin-android
+    repo: https://github.com/jellyfin/jellyfin-android.git
+    ref: v2.7.3
+    commit: 9a5f9be6a76da47ca07733b982a12dbd0f75539b
+    license: GPL-2.0-only
+    licenseFile: LICENSE.md
+    format: android-xml
+    placeholders: printf
+    english: app/src/main/res/values/strings.xml
+    translations: app/src/main/res/values-{locale}/strings.xml
+    localeMap:
+      tl: fil # Android's resource code for Filipino
+
+  - id: swiftfin
+    repo: https://github.com/jellyfin/Swiftfin.git
+    ref: v76
+    commit: e5f3ab9a0c715041fb9f83a49fc9378313b3630a
+    license: MPL-2.0
+    licenseFile: LICENSE.md
+    format: apple-strings
+    placeholders: printf
+    english: Translations/en.lproj/Localizable.strings
+    translations: Translations/{locale}.lproj/Localizable.strings
+
+  - id: streamyfin
+    repo: https://github.com/streamyfin/streamyfin.git
+    ref: v0.55.0
+    commit: ad708bcd7a4b4f642c28a7717837b8b49db4fe01
+    license: MPL-2.0
+    licenseFile: LICENSE.txt
+    format: json-nested
+    placeholders: i18next
+    english: translations/en.json
+    translations: translations/{locale}.json
+    skipLocales:
+      - tlh-AA # Klingon; JellyRock has no such locale
+
+  - id: jellyfin-server
+    repo: https://github.com/jellyfin/jellyfin.git
+    ref: v12.1
+    commit: ee91c75e777da41a9c4f4855e70adc604fbf2ef8
+    license: GPL-2.0-only
+    licenseFile: LICENSE
+    format: json-flat
+    placeholders: brace-index
+    english: Emby.Server.Implementations/Localization/Core/en-US.json
+    translations: Emby.Server.Implementations/Localization/Core/{locale}.json
+    localeMap:
+      pr: x-pirate # the server's pirate-speak locale (verified: "Books": "Scrolls")

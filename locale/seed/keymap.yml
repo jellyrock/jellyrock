@@ -1,0 +1,411 @@
+# Reviewed map: JellyRock translation key → the key in another project that means
+# the same thing AND has the same shape. Read by `npm run translations:seed`.
+#
+# Never add an entry on English text alone — `suggest` finds candidates, a reviewer
+# decides. Check the source key's CONTEXT (its key name, where the project uses it)
+# and spot-check a few of its translations. Two traps this file has already caught:
+#   - meaning: web's "Idle" (PriorityIdle) is a process priority, not an idle transcode
+#   - a wrong translation: web's MediaInfoChannels means audio channels, but fr reads
+#     "Chaînes" (TV channels); web's LabelSelectAudioChannels has "Canaux"
+#
+# Entry shape:
+#   JellyRockKey:
+#     en: <en_US text this was reviewed against>
+#     from:                                  # any number of sources; sources.yml order decides
+#       <source-id>: { key: <source key>, en: <source English it was reviewed against> }
+#         optional: placeholders: { name: index }   (i18next named placeholders)
+#                   exclude: { <locale>: <reason> } (drop one cell, e.g. a casing slip)
+#     reject:                                # refused candidates, so nobody re-proposes them
+#       - { source: <id>, key: <source key>, reason: <why> }
+#
+# When en_US text or a pinned source's English changes, the entry stops seeding and
+# the dry run lists it under "Needs re-review".
+
+# ── Playback info report (source/utils/playbackReport.bs, playbackInfo.bs) ──────
+# jellyfin-web's MediaInfo* keys label its own media-info panel, the same rows this
+# report shows; jellyfin-roku's strings come from its own playback-info overlay.
+
+LabelAnamorphic:
+  en: Anamorphic
+  from:
+    jellyfin-web: { key: MediaInfoAnamorphic, en: Anamorphic }
+
+LabelAudio:
+  en: Audio
+  from:
+    jellyfin-web: { key: Audio, en: Audio }
+    jellyfin-androidtv: { key: pref_audio, en: Audio }
+    jellyfin-roku: { key: Audio, en: Audio }
+    streamyfin: { key: common.audio, en: Audio }
+
+LabelBitDepth:
+  en: Bit Depth
+  from:
+    jellyfin-web: { key: MediaInfoBitDepth, en: Bit depth }
+
+LabelBitRate:
+  en: Bit Rate
+  from:
+    jellyfin-web: { key: MediaInfoBitrate, en: Bitrate }
+    jellyfin-roku: { key: Bit Rate, en: Bit Rate }
+
+LabelBitrateKbps:
+  en: "{0} Kbps"
+  from:
+    jellyfin-androidtv:
+      key: bitrate_kbit
+      en: "%1$,.0f Kbit/s"
+      exclude:
+        eo: "\"Kibit/s\" is a binary unit, not the decimal kilobit shown"
+        hi: "\"केबी/सेकंड\" reads as kilobytes"
+        lt: "\"Kbit per sekundę\" is Polish"
+        pl: "adds a \"Szybkość transmisji\" label to a bare value"
+
+LabelBitrateMbps:
+  en: "{0} Mbps"
+  from:
+    jellyfin-androidtv:
+      key: bitrate_mbit
+      en: "%1$,.0f Mbit/s"
+      exclude:
+        eo: "\"Mibit/s\" is a binary unit, not the decimal megabit shown"
+        hi: "\"एमबी/सेकंड\" reads as megabytes"
+        pl: "adds a \"Szybkość transmisji\" label to a bare value"
+
+LabelChannels:
+  en: Channels
+  from:
+    jellyfin-web: { key: LabelSelectAudioChannels, en: Channels }
+  reject:
+    - { source: jellyfin-web, key: MediaInfoChannels, reason: "audio-channel context, but translated as TV channels (fr \"Chaînes\")" }
+    - { source: jellyfin-web, key: Channels, reason: "Live TV channels, not audio channels" }
+    - { source: jellyfin-androidtv, key: channels, reason: "Live TV channels, not audio channels" }
+    - { source: jellyfin-roku, key: Channels, reason: "Live TV channels (fr \"Chaînes\"), not audio channels" }
+    - { source: swiftfin, key: channels, reason: "Live TV channels, not audio channels" }
+    - { source: streamyfin, key: live_tv.tabs.channels, reason: "Live TV channels, not audio channels" }
+
+LabelCodec:
+  en: Codec
+  from:
+    jellyfin-web: { key: MediaInfoCodec, en: Codec }
+    jellyfin-roku: { key: Codec, en: Codec }
+
+LabelCodecTag:
+  en: Codec Tag
+  from:
+    jellyfin-web: { key: MediaInfoCodecTag, en: Codec tag }
+    jellyfin-roku: { key: Codec Tag, en: Codec Tag }
+
+LabelContainer:
+  en: Container
+  from:
+    jellyfin-web: { key: MediaInfoContainer, en: Container }
+    jellyfin-roku: { key: Container, en: Container }
+
+LabelDirectPlaying:
+  en: Direct playing
+  from:
+    jellyfin-web: { key: DirectPlaying, en: Direct playing }
+    jellyfin-roku: { key: Direct playing, en: Direct playing }
+
+LabelDirectStreaming:
+  en: Direct streaming
+  from:
+    jellyfin-web: { key: DirectStreaming, en: Direct streaming }
+
+LabelExternalSubtitle:
+  en: External
+  from:
+    jellyfin-web: { key: MediaInfoExternal, en: External }
+    jellyfin-server: { key: External, en: External }
+
+LabelFile:
+  en: File
+  from:
+    jellyfin-web: { key: File, en: File }
+    swiftfin: { key: file, en: File }
+  reject:
+    - { source: streamyfin, key: player.technical_info.source_bitrate, reason: "\"File:\" labels a bitrate value; different shape" }
+
+LabelFramerate:
+  en: Frame Rate
+  from:
+    jellyfin-web: { key: MediaInfoFramerate, en: Framerate }
+
+LabelHardwareAcceleration:
+  en: Acceleration
+  reject:
+    - { source: jellyfin-web, key: LabelHardwareAccelerationType, reason: "\"Hardware acceleration\": a longer label than the report's \"Acceleration\"" }
+
+LabelIdle:
+  en: Idle
+  reject:
+    - { source: jellyfin-web, key: PriorityIdle, reason: "a process priority, not an idle transcode" }
+
+LabelInterlaced:
+  en: Interlaced
+  from:
+    jellyfin-web: { key: MediaInfoInterlaced, en: Interlaced }
+
+LabelLanguage:
+  en: Language
+  from:
+    jellyfin-web: { key: MediaInfoLanguage, en: Language }
+
+LabelPath:
+  en: Path
+  from:
+    jellyfin-web: { key: MediaInfoPath, en: Path }
+
+LabelPixelFormat:
+  en: Pixel Format
+  from:
+    jellyfin-web: { key: MediaInfoPixelFormat, en: Pixel format }
+    jellyfin-roku: { key: Pixel format, en: Pixel format }
+
+LabelProfile:
+  en: Profile
+  from:
+    jellyfin-web:
+      key: MediaInfoProfile
+      en: Profile
+      exclude: # translated as a PERSONAL profile; a codec profile is a different word
+        ar: "\"الملف الشخصي\" is a personal profile"
+        ja: "\"プロフィール\" is a personal profile (codec: プロファイル)"
+        ko: "\"프로필\" is a personal profile (codec: 프로파일)"
+        ta: "\"சுயவிவரம்\" is a personal profile"
+    jellyfin-roku: { key: Profile, en: Profile }
+  reject:
+    - { source: jellyfin-web, key: Profile, reason: "a user/device profile, not a codec profile" }
+
+LabelRange:
+  en: Range
+  reject:
+    - { source: jellyfin-web, key: MediaInfoVideoRange, reason: "\"Video range\": a longer label than the report's \"Range\"" }
+
+LabelReasons:
+  en: Reasons
+  from:
+    jellyfin-web: { key: LabelReasons, en: Reasons }
+
+LabelRefFrames:
+  en: Ref Frames
+  from:
+    jellyfin-web: { key: MediaInfoRefFrames, en: Ref frames }
+
+LabelResolution:
+  en: Resolution
+  from:
+    jellyfin-web: { key: MediaInfoResolution, en: Resolution }
+
+LabelSampleRate:
+  en: Sample Rate
+  from:
+    jellyfin-web: { key: MediaInfoSampleRate, en: Sample rate }
+
+LabelSize:
+  en: Size
+  from:
+    jellyfin-web: { key: MediaInfoSize, en: Size }
+    jellyfin-roku: { key: Size, en: Size }
+
+LabelSpeed:
+  en: Speed
+  from:
+    # Playback speed there, transcode speed here: the bare noun is the same word.
+    streamyfin: { key: player.menu.speed, en: Speed }
+
+LabelSubtitles:
+  en: Subtitles
+  from:
+    jellyfin-web: { key: Subtitles, en: Subtitles }
+    jellyfin-androidtv: { key: pref_subtitles, en: Subtitles }
+    jellyfin-roku: { key: Subtitles, en: Subtitles }
+
+LabelTotalBitrate:
+  en: Total Bitrate
+  from:
+    jellyfin-roku: { key: Total Bitrate, en: Total Bitrate }
+
+LabelTranscoding:
+  en: Transcoding
+  from:
+    jellyfin-web: { key: Transcoding, en: Transcoding }
+
+LabelVideo:
+  en: Video
+  from:
+    jellyfin-web: { key: Video, en: Video }
+    jellyfin-androidtv: { key: pref_video, en: Video }
+    jellyfin-roku: { key: Video, en: Video }
+
+LabelYes:
+  en: "Yes"
+  from:
+    jellyfin-web: { key: "Yes", en: "Yes" }
+    jellyfin-androidtv: { key: lbl_yes, en: "Yes" }
+    jellyfin-android: { key: "yes", en: "Yes" }
+    jellyfin-roku: { key: "Yes", en: "Yes" }
+
+# ── Cast & crew (source/utils/people.bs) ─────────────────────────────────────
+# jellyfin-web labels the same server PersonKind values with these keys.
+
+LabelPersonJobNovel:
+  en: Novel
+  from:
+    jellyfin-web: { key: Novel, en: Novel }
+
+LabelPersonJobScreenplay:
+  en: Screenplay
+  from:
+    jellyfin-web: { key: Screenplay, en: Screenplay }
+
+LabelPersonKindActor:
+  en: Actor
+  from:
+    jellyfin-web: { key: Actor, en: Actor }
+
+LabelPersonKindAlbumArtist:
+  en: Album artist
+  from:
+    jellyfin-web: { key: AlbumArtist, en: Album Artist }
+    jellyfin-roku: { key: Album Artist, en: Album Artist }
+
+LabelPersonKindArranger:
+  en: Arranger
+  from:
+    jellyfin-web: { key: Arranger, en: Arranger }
+
+LabelPersonKindArtist:
+  en: Artist
+  from:
+    jellyfin-web: { key: Artist, en: Artist }
+
+LabelPersonKindAuthor:
+  en: Author
+  from:
+    jellyfin-web: { key: Author, en: Author }
+  reject:
+    - { source: jellyfin-androidtv, key: license_author, reason: "author of an open-source library on the licenses screen" }
+
+LabelPersonKindColorist:
+  en: Colorist
+  from:
+    jellyfin-web:
+      key: Colorist
+      en: Colorist
+      exclude: { es_MX: "lowercase slip; es_MX inherits the capitalized es value" }
+
+LabelPersonKindComposer:
+  en: Composer
+  from:
+    jellyfin-web: { key: Composer, en: Composer }
+
+LabelPersonKindConductor:
+  en: Conductor
+  from:
+    jellyfin-web: { key: Conductor, en: Conductor }
+
+LabelPersonKindCoverArtist:
+  en: Cover artist
+  from:
+    jellyfin-web: { key: CoverArtist, en: Cover artist }
+
+LabelPersonKindCreator:
+  en: Creator
+  from:
+    jellyfin-web: { key: Creator, en: Creator }
+
+LabelPersonKindDirector:
+  en: Director
+  from:
+    jellyfin-web: { key: Director, en: Director }
+    streamyfin: { key: item_card.director, en: Director }
+    jellyfin-roku: { key: Director, en: Director }
+  reject:
+    - { source: swiftfin, key: director, reason: "\"DIRECTOR\" is all-caps styling, not a label" }
+
+LabelPersonKindEditor:
+  en: Editor
+  from:
+    jellyfin-web: { key: Editor, en: Editor }
+
+LabelPersonKindEngineer:
+  en: Sound engineer
+  from:
+    jellyfin-web: { key: Engineer, en: Sound engineer }
+
+LabelPersonKindGuestStar:
+  en: Guest star
+  from:
+    jellyfin-web: { key: GuestStar, en: Guest star }
+
+LabelPersonKindIllustrator:
+  en: Illustrator
+  from:
+    jellyfin-web: { key: Illustrator, en: Illustrator }
+
+LabelPersonKindInker:
+  en: Inker
+  from:
+    jellyfin-web:
+      key: Inker
+      en: Inker
+      exclude: { es_MX: "lowercase slip; es_MX inherits the capitalized es value" }
+
+LabelPersonKindLetterer:
+  en: Letterer
+  from:
+    jellyfin-web:
+      key: Letterer
+      en: Letterer
+      exclude: { es_MX: "lowercase slip; es_MX inherits the capitalized es value" }
+
+LabelPersonKindLyricist:
+  en: Lyricist
+  from:
+    jellyfin-web: { key: Lyricist, en: Lyricist }
+
+LabelPersonKindMixer:
+  en: Mixer
+  from:
+    jellyfin-web: { key: Mixer, en: Mixer }
+
+LabelPersonKindPenciller:
+  en: Penciller
+  from:
+    jellyfin-web:
+      key: Penciller
+      en: Penciler
+      exclude: { es_MX: "lowercase slip; es_MX inherits the capitalized es value" }
+
+LabelPersonKindProducer:
+  en: Producer
+  from:
+    jellyfin-web: { key: Producer, en: Producer }
+
+LabelPersonKindRemixer:
+  en: Remixer
+  from:
+    jellyfin-web: { key: Remixer, en: Remixer }
+
+LabelPersonKindTranslator:
+  en: Translator
+  from:
+    jellyfin-web: { key: Translator, en: Translator }
+
+LabelPersonKindWriter:
+  en: Writer
+  from:
+    jellyfin-web: { key: Writer, en: Writer }
+
+LabelPersonRoleAs:
+  en: "as {0}"
+  from:
+    jellyfin-web: { key: PersonRole, en: "as {0}" }
+    jellyfin-roku: { key: "as %1", en: "as %1" }
+
+MessageDirectedBy1:
+  en: "Directed by {0}"
+  from:
+    jellyfin-web: { key: RecommendationDirectedBy, en: "Directed by {0}" }
