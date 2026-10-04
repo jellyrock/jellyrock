@@ -7,7 +7,7 @@ related-files:
   - source/api/sdk.bs
   - source/data/JellyfinDataTransformer.bs
   - source/utils/people.bs
-last-reviewed: 2026-09-22
+last-reviewed: 2026-10-04
 ---
 
 # API Usage Manifest
@@ -65,6 +65,9 @@ same parser the BSC plugins use — robust to formatting, unlike grep) and extra
   ContentNode writes are camelCase (`item.runTimeTicks`) — but only inside files
   that are *purely* such mappers, which is why this one is a list and not a glob:
   elsewhere a PascalCase read can be a Roku object (`deviceInfo.DolbyVision`).
+  One listed file is not a pure mapper: `source/utils/session.bs`, where
+  `user.Login()` and `server.Discover()` read the session responses. The few PascalCase
+  names it writes itself are skipped through `APP_MADE_RESPONSE_FIELDS`.
 
   **The list is a maintenance burden with teeth.** Moving DTO reads into a file
   that is not on it silently shrinks the manifest, and the manifest going quiet is

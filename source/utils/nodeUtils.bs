@@ -1,6 +1,6 @@
 ' ContentNode utility functions
 ' Provides reusable utilities for manipulating ContentNode objects
-' Reset nodes to defaults, populate from AAs or other nodes
+' Reset nodes to their XML defaults
 
 import "pkg:/source/utils/misc.bs"
 
@@ -59,76 +59,4 @@ namespace nodeUtils
       targetNode.setFields(fieldsToUpdate)
     end if
   end sub
-
-  ' ============================================
-  ' CONTENT NODE POPULATION UTILITIES
-  ' ============================================
-
-  ' Populate a ContentNode from an associative array
-  '
-  ' @param targetNode - The node to populate (must be a local reference)
-  ' @param dataAA - Associative array with field names/values
-  ' @param skipFields - Array of field names to skip (e.g. ["settings"])
-  '
-  ' Example:
-  '   localServer = m.global.server
-  '   mockData = MockDataLoader.LoadServer("default")
-  '   nodeUtils.populateNodeFromAA(localServer, mockData, [])
-  '
-  ' IMPORTANT: When populating nodes on m.global, get a local reference first
-  ' This minimizes rendezvous
-  sub populateNodeFromAA(targetNode as object, dataAA as object, skipFields = [] as object)
-    if not isValid(targetNode) or not isValid(dataAA)
-      return
-    end if
-
-    ' Build AA of fields to update (excluding skipped fields)
-    fieldsToUpdate = {}
-    for each key in dataAA
-      ' Skip fields that should not be copied
-      shouldSkip = false
-      for each skipField in skipFields
-        if key = skipField
-          shouldSkip = true
-          exit for
-        end if
-      end for
-
-      if not shouldSkip
-        ' Add field to update batch
-        fieldsToUpdate[key] = dataAA[key]
-      end if
-    end for
-
-    ' Update all fields at once using setFields() - single rendezvous
-    if fieldsToUpdate.Count() > 0
-      targetNode.setFields(fieldsToUpdate)
-    end if
-  end sub
-
-  ' Populate a ContentNode from another ContentNode's fields
-  '
-  ' @param targetNode - The node to populate (must be a local reference)
-  ' @param sourceNode - The node to copy from
-  ' @param skipFields - Array of field names to skip (e.g. ["settings"])
-  '
-  ' Example:
-  '   localServer = m.global.server
-  '   transformedServer = transformer.transformServerInfo(mockData)
-  '   nodeUtils.populateNodeFromNode(localServer, transformedServer, [])
-  '
-  ' IMPORTANT: When populating nodes on m.global, get a local reference first
-  ' This minimizes rendezvous
-  sub populateNodeFromNode(targetNode as object, sourceNode as object, skipFields = [] as object)
-    if not isValid(targetNode) or not isValid(sourceNode)
-      return
-    end if
-
-    ' Get all fields from source node as associative array
-    sourceFields = sourceNode.getFields()
-
-    ' Use populateNodeFromAA to do the actual copying
-    populateNodeFromAA(targetNode, sourceFields, skipFields)
-  end sub
-
 end namespace

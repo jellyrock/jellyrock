@@ -14,25 +14,14 @@
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.memoryTotal",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.videoCodecs",
     "field components/data/jellyfin/JellyfinBaseItem.xml JellyfinBaseItem.lyricsData",
-    "field components/data/jellyfin/JellyfinUser.xml JellyfinUser.rawUserData",
     "function components/JROverhang.bs resetTime",
     "function components/data/UserData.bs removeFromRegistry",
     "function source/GridView/gridQuery.bs gridQuery.optionValues",
     "function source/showScenes.bs SendPerformanceBeacon",
     "function source/utils/displaySettings.bs deleteLibraryDisplaySettings",
     "function source/utils/itemImageUrl.bs getProgramImageUrl",
-    "function source/utils/nodeUtils.bs nodeUtils.populateNodeFromAA",
-    "function source/utils/nodeUtils.bs nodeUtils.populateNodeFromNode",
-    "function source/utils/remoteSubtitles.bs remoteSubtitles.hasAnyHashMatch",
-    "function source/utils/session.bs user.settings.Delete",
-    "function source/utils/session.bs user.settings.Read",
     "function source/utils/url.bs urlsEqual",
     "method source/GridView/LiveTVPresenter.bs LiveTVPresenter.isTVGuideView",
-    "method source/data/JellyfinDataTransformer.bs JellyfinDataTransformer.populateLyrics",
-    "method source/data/SessionDataTransformer.bs SessionDataTransformer.transformAppInfo",
-    "method source/data/SessionDataTransformer.bs SessionDataTransformer.transformDeviceInfo",
-    "method source/data/SessionDataTransformer.bs SessionDataTransformer.transformServerInfo",
-    "method source/data/SessionDataTransformer.bs SessionDataTransformer.transformUserInfo",
-    "method source/data/SessionDataTransformer.bs SessionDataTransformer.transformUserSettings"
+    "method source/data/JellyfinDataTransformer.bs JellyfinDataTransformer.populateLyrics"
   ]
 }

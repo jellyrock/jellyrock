@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-09-23
+last-reviewed: 2026-10-04
 ---
 
 # Global State
@@ -145,7 +145,7 @@ Lifecycle:
 1. **Phase 1** — `setGlobals()` creates the empty `JellyfinUserSettings` node and parents it under `m.global.user`.
 2. **Bootstrap** — `main.bs` calls `user.settings.SaveDefaults()`, which reads `settings/settings.json` and writes the default value of every setting onto the node.
 3. **Bootstrap** — `m.global.user.settings.callFunc("enableAutoSync")` turns on the auto-sync behavior: any subsequent write to a settings field automatically writes through to the user's registry section.
-4. **Login** — `SessionDataTransformer` (`source/data/SessionDataTransformer.bs`) reads the per-user registry section and overlays any saved values on top of the defaults.
+4. **Login** — `user.Login()` (`source/utils/session.bs`) gives the user a fresh settings node with the defaults, reads the per-user registry section and overlays any saved values through `user.settings.Save()`.
 5. **Steady state** — Reads happen from `m.global.user.settings.<field>` directly. Writes go through the same field assignment, and the auto-sync observer persists them to the registry.
 
 `JellyfinUserSettings.bs` (the BS backing file) implements the auto-sync observer + the display/library-settings sync logic (`enableAutoSync`, `disableAutoSync`, `onSettingChanged`, `onDisplaySettingsChanged`, plus library-settings sync helpers — the observers themselves are registered once in its `init()`, and enable/disable only flip whether the handlers persist; see [settings.md](./settings.md#auto-sync--jellyfinusersettingsbs)). The settings-loading orchestration — `SaveDefaults`, `LoadGlobals`, etc. — lives separately in the `user.settings` namespace in `source/utils/session.bs`; calls like `user.settings.SaveDefaults()` from `main.bs` invoke those namespaced subs, not methods on the node. Settings are categorized by prefix:

@@ -807,42 +807,6 @@ namespace user.settings
     end if
   end sub
 
-  ' Read setting value
-  function Read(name as string) as dynamic
-    if name = "" then return invalid
-    return m.global.user.settings[name]
-  end function
-
-  ' Reset setting to its XML default value
-  ' NOTE: This does NOT delete from registry - observer always saves changes
-  ' Use this for "reset to default" functionality
-  ' For sensitive fields (token, username), use unsetUserSetting() instead
-  sub Delete(name as string)
-    if name = "" then return
-
-    settingsNode = m.global.user.settings
-    if not settingsNode.hasField(name) then return
-
-    ' Get the field type to determine XML default value
-    fieldType = settingsNode.getFieldType(name)
-
-    ' Reset XML-defined field to its default value
-    ' This will trigger observer which saves the default to registry
-    if fieldType = "string"
-      settingsNode.setField(name, "")
-    else if fieldType = "boolean"
-      settingsNode.setField(name, false)
-    else if fieldType = "integer"
-      settingsNode.setField(name, 0)
-    else if fieldType = "float"
-      settingsNode.setField(name, 0.0)
-    else if fieldType = "assocarray"
-      settingsNode.setField(name, {})
-    else if fieldType = "array"
-      settingsNode.setField(name, [])
-    end if
-  end sub
-
   ' Load all default settings from settings.json
   sub SaveDefaults()
     configTree = GetConfigTree()

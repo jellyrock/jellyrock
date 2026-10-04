@@ -32,10 +32,8 @@ namespace tests
       m.assertTrue(m.isStringType(registryValue))
       m.assertEqual(registryValue, "true")
 
-      ' WHEN: Load from registry and transform
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      ' WHEN: Load the way user.Login() does
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       ' THEN: Value is boolean true
       m.assertEqual(type(settings.uiDesignHideClock), "roBoolean")
@@ -57,9 +55,7 @@ namespace tests
       m.assertTrue(m.isStringType(registryValue))
       m.assertEqual(registryValue, "false")
 
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       m.assertEqual(type(settings.uiFontFallback), "roBoolean")
       m.assertEqual(settings.uiFontFallback, false)
@@ -79,11 +75,16 @@ namespace tests
       m.assertTrue(m.isStringType(registryValue))
       m.assertEqual(registryValue, "8000")
 
-      ' Note: SessionDataTransformer does not handle playback settings yet
-      ' This test verifies registry I/O only
       value = getUserSetting("playbackBitrateLimit")
       m.assertTrue(m.isStringType(value))
       m.assertEqual(value, "8000")
+
+      ' WHEN: Load the way user.Login() does
+      settings = m.loadSettingsFromRegistry(testUserId)
+
+      ' THEN: The stored string becomes an integer
+      m.assertEqual(type(settings.playbackBitrateLimit), "roInt")
+      m.assertEqual(settings.playbackBitrateLimit, 8000)
 
     end function
 
@@ -100,9 +101,7 @@ namespace tests
       m.assertTrue(m.isStringType(registryValue))
       m.assertEqual(registryValue, "landscape")
 
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       m.assertEqual(type(settings.uiRowLayout), "roString")
       m.assertEqual(settings.uiRowLayout, "landscape")
@@ -122,9 +121,7 @@ namespace tests
       m.assertTrue(m.isStringType(registryValue))
       m.assertEqual(registryValue, "")
 
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       m.assertEqual(type(settings.uiGeneralEpisodeImages), "roString")
       m.assertEqual(settings.uiGeneralEpisodeImages, "")

@@ -110,9 +110,6 @@
     <field id="isLoaded" type="boolean" value="false" />
     <field id="loadedAt" type="longinteger" value="0" />
 
-    <!-- DEBUG ONLY: Raw settings for debugging - only populated when bs_const=debug=true -->
-    <field id="rawSettings" type="assocarray" />
-
     <!-- Exported functions callable via callFunc() -->
     <function name="enableAutoSync" />
     <function name="disableAutoSync" />

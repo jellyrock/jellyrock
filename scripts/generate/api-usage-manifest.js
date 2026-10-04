@@ -66,7 +66,23 @@ const RESPONSE_FIELD_FILES = [
   // BaseItemPerson.PrimaryImageTag, which is exactly the blindness /server-upgrade
   // reads this file to avoid.
   'source/utils/people.bs',
+  // Where production reads the session DTOs: user.Login() (UserDto Configuration and
+  // Policy, AuthenticationResult User and AccessToken) and server.Discover()
+  // (PublicSystemInfo). Its app-made names are listed in APP_MADE_RESPONSE_FIELDS.
+  'source/utils/session.bs',
 ];
+
+// PascalCase names a scanned file reads that the app writes itself, not the server.
+const APP_MADE_RESPONSE_FIELDS = new Map([
+  [
+    'source/utils/session.bs',
+    new Set([
+      'Error', // server.Discover() builds its own { Error, ErrorMessage } result
+      'ErrorMessage',
+      'LastRunVersion', // written to the registry by main.bs after migrations
+    ]),
+  ],
+]);
 
 // Request-body fields are built in the API layer.
 const REQUEST_FIELD_GLOBS = ['source/api/**/*.bs'];
@@ -527,7 +543,9 @@ export function buildManifest(rootDir, { verboseSink } = {}) {
 
   for (const rel of responseFiles) {
     const ast = parse(readFileSync(path.join(rootDir, rel), 'utf8'));
+    const appMade = APP_MADE_RESPONSE_FIELDS.get(rel);
     for (const f of extractResponseFields(ast)) {
+      if (appMade?.has(f.name)) continue;
       let rec = responseMap.get(f.name);
       if (!rec) {
         rec = { readVia: new Set(), sourceFiles: new Set() };

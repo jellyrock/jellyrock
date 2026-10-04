@@ -121,10 +121,8 @@ namespace tests
       reg.write("uiDesignHideClock", "true")
       reg.flush()
 
-      ' WHEN: Load via transformer
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      ' WHEN: Load the way user.Login() does
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       ' THEN: Setting is boolean true
       m.assertEqual(type(settings.uiDesignHideClock), "roBoolean")
@@ -140,9 +138,7 @@ namespace tests
       reg.write("uiFontFallback", "false")
       reg.flush()
 
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       m.assertEqual(type(settings.uiFontFallback), "roBoolean")
       m.assertEqual(settings.uiFontFallback, false)
@@ -157,9 +153,7 @@ namespace tests
       reg.write("uiRowLayout", "landscape")
       reg.flush()
 
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       m.assertEqual(type(settings.uiRowLayout), "roString")
       m.assertEqual(settings.uiRowLayout, "landscape")
@@ -174,9 +168,7 @@ namespace tests
       reg.write("uiGeneralEpisodeImages", "")
       reg.flush()
 
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       m.assertEqual(type(settings.uiGeneralEpisodeImages), "roString")
       m.assertEqual(settings.uiGeneralEpisodeImages, "")
@@ -207,10 +199,8 @@ namespace tests
       ' Save global setting (goes to test-global when user ID starts with "test-")
       setSetting("globalRememberMe", false)
 
-      ' Load and transform
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      ' Load the way user.Login() does
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       ' Verify user settings maintained
       for each key in boolSettings
@@ -219,7 +209,7 @@ namespace tests
       end for
 
       ' Global settings have XML default values (false for boolean) when not loaded from registry
-      ' The transformer doesn't load global settings - they come from LoadGlobals()
+      ' A user's own section holds no global settings: user.Login() reads them via LoadGlobals()
       m.assertEqual(type(settings.globalRememberMe), "roBoolean", "globalRememberMe should have XML default type")
       m.assertEqual(settings.globalRememberMe, false, "globalRememberMe should have XML default value (false)")
 
@@ -248,10 +238,8 @@ namespace tests
         setUserSetting(key, stringSettings[key])
       end for
 
-      ' Load and transform
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      ' Load the way user.Login() does
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       ' Verify all values maintained
       for each key in stringSettings
@@ -274,10 +262,8 @@ namespace tests
       setUserSetting("itemGridTitles", "showalways") ' String
       setSetting("globalRememberMe", true) ' Boolean - global setting (goes to test-global when user ID starts with "test-")
 
-      ' Load and transform
-      registryData = RegistryReadAll(testUserId)
-      transformer = new SessionDataTransformer()
-      settings = transformer.transformUserSettings(registryData)
+      ' Load the way user.Login() does
+      settings = m.loadSettingsFromRegistry(testUserId)
 
       ' Verify types and values
       m.assertEqual(type(settings.uiDesignHideClock), "roBoolean")
@@ -293,7 +279,7 @@ namespace tests
       m.assertEqual(settings.itemGridTitles, "showalways")
 
       ' Global settings have XML default values when not loaded from registry
-      ' The transformer doesn't load global settings - they come from LoadGlobals()
+      ' A user's own section holds no global settings: user.Login() reads them via LoadGlobals()
       m.assertEqual(type(settings.globalRememberMe), "roBoolean", "globalRememberMe should have XML default type")
       m.assertEqual(settings.globalRememberMe, false, "globalRememberMe should have XML default value (false)")
 
@@ -429,44 +415,8 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Delete and Reset Operations")
+    @describe("Reset Operations")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("user.settings.Delete() resets field to default and saves default to registry")
-    function _()
-      testUserId = "test-delete-reset-001"
-      m.global.user.id = testUserId
-
-      ' Test with an XML-defined field (all fields should be in XML now)
-      localSettings = m.getTestUserSettings()
-      localUser = m.getTestUser()
-
-      ' Enable auto-sync so observers write to registry
-      localSettings.callFunc("enableAutoSync")
-
-      ' Set a non-default value
-      user.settings.Save("playbackCinemaMode", "true")
-      m.assertEqual(localSettings.playbackCinemaMode, true)
-
-      ' Verify it was written to registry
-      reg = CreateObject("roRegistrySection", localUser.id)
-      m.assertTrue(reg.exists("playbackCinemaMode"), "Setting should exist in registry after Save")
-      m.assertEqual(reg.read("playbackCinemaMode"), "true")
-
-      ' Delete the setting (resets to default)
-      user.settings.Delete("playbackCinemaMode")
-
-      ' Field should still exist (XML field) but be reset to default (false)
-      m.assertTrue(localSettings.hasField("playbackCinemaMode"), "XML field should still exist")
-      m.assertEqual(localSettings.playbackCinemaMode, false, "Field should be reset to default (false)")
-
-      ' Registry entry should still exist but with default value (false)
-      ' Observer always saves - this preserves user intent
-      regAfterDelete = CreateObject("roRegistrySection", localUser.id)
-      m.assertTrue(regAfterDelete.exists("playbackCinemaMode"), "Setting should still exist in registry")
-      m.assertEqual(regAfterDelete.read("playbackCinemaMode"), "false", "Should save default value (false) to registry")
-
-    end function
 
     ' Settings reset brackets its bulk rewrite with disableAutoSync / enableAutoSync, so
     ' nothing written while disabled may reach the registry — and sync must come back.

@@ -106,38 +106,50 @@ namespace tests
 
       ' ===================================================================
       ' Override with test-specific mock data
-      ' Load mock data from JSON files and transform using SessionDataTransformer
-      ' This ensures mock data structure matches production transformers
+      ' Reset the shared global nodes to their XML defaults every setup, so one
+      ' test's writes never leak into the next, then apply the mock JSON the way
+      ' a signed-in session would leave it. Configuration and Policy go through
+      ' the same SessionDataTransformer methods user.Login() uses.
       ' ===================================================================
 
-      transformer = new SessionDataTransformer()
-
-      ' Load and transform mock server data
+      ' Load mock server data
       mockServerData = MockDataLoader.LoadServer("default")
       if isValid(mockServerData)
-        ' Transform mock data to ContentNode using transformer
-        transformedServer = transformer.transformServerInfo(mockServerData)
-        if isValid(transformedServer)
-          ' Get local reference to minimize rendezvous
-          localServer = m.global.server
-
-          ' Copy all fields from transformed node (no fields skipped)
-          nodeUtils.populateNodeFromNode(localServer, transformedServer, [])
-        end if
+        ' Get local reference to minimize rendezvous
+        localServer = m.global.server
+        nodeUtils.resetNodeToDefaults(localServer, "JellyfinServer", [])
+        localServer.setFields({
+          id: mockServerData.id ?? "",
+          name: mockServerData.name ?? "",
+          version: mockServerData.version ?? "",
+          productName: mockServerData.productName ?? "",
+          serverUrl: mockServerData.serverUrl ?? "",
+          localURL: mockServerData.localURL ?? "",
+          isHTTPS: mockServerData.isHTTPS ?? false,
+          isLocalHTTPS: mockServerData.isLocalHTTPS ?? false,
+          isStartupWizardCompleted: mockServerData.startupWizardCompleted ?? false,
+          isLoaded: true,
+          isConnected: true,
+          lastConnected: CreateObject("roDateTime").AsSeconds()
+        })
       end if
 
-      ' Load and transform mock user data
+      ' Load mock user data
       mockUserData = MockDataLoader.LoadUser("default")
       if isValid(mockUserData)
-        ' Transform mock data to ContentNode using transformer
-        transformedUser = transformer.transformUserInfo(mockUserData)
-        if isValid(transformedUser)
-          ' Get local reference to minimize rendezvous
-          localUser = m.global.user
-
-          ' Copy all fields EXCEPT settings (settings already created above)
-          nodeUtils.populateNodeFromNode(localUser, transformedUser, ["settings"])
-        end if
+        ' Get local reference to minimize rendezvous
+        localUser = m.global.user
+        ' Keep the settings node created above
+        nodeUtils.resetNodeToDefaults(localUser, "JellyfinUser", ["settings"])
+        transformer = new SessionDataTransformer()
+        localUser.setFields({
+          id: mockUserData.id ?? "",
+          name: mockUserData.name ?? "",
+          config: transformer.transformUserConfiguration(mockUserData.Configuration),
+          policy: transformer.transformUserPolicy(mockUserData.Policy),
+          isLoaded: true,
+          loadedAt: CreateObject("roDateTime").AsSeconds()
+        })
       end if
 
       ' Initialize roku-log if not already initialized
@@ -318,70 +330,30 @@ namespace tests
     end function
 
     ' ===================================================================
-    ' DISPLAY SETTINGS TEST HELPERS
+    ' REGISTRY LOAD HELPER
     ' ===================================================================
 
-    ' Load and apply a specific mock user configuration
-    ' @param userName - Name of user mock file (e.g., "user-with-display-settings")
-    ' @param mergeSettings - If true, merges with existing settings; if false, replaces
-    protected function loadTestUser(userName as string, mergeSettings = false as boolean) as void
-      transformer = new SessionDataTransformer()
-
-      ' Load mock user data
-      mockUserData = MockDataLoader.LoadUser(userName)
-      if not isValid(mockUserData)
-        throw "Failed to load mock user: " + userName
-      end if
-
-      ' Transform to ContentNode
-      transformedUser = transformer.transformUserInfo(mockUserData)
-      if not isValid(transformedUser)
-        throw "Failed to transform mock user: " + userName
-      end if
-
-      ' Get local reference to minimize rendezvous
+    ' Load a user's registry section into the settings node the way user.Login() does:
+    ' a fresh JellyfinUserSettings node (auto-sync off, so loading writes nothing back),
+    ' then each stored string that names a settings field through user.settings.Save(),
+    ' which converts it to the field's type. Login's routing of other keys (globals,
+    ' display.*, homeSection*, credentials) is not reproduced here.
+    ' @param userId - Registry section to read
+    ' @returns The loaded settings node (m.global.user.settings)
+    protected function loadSettingsFromRegistry(userId as string) as object
       localUser = m.global.user
-
-      if mergeSettings
-        ' Copy all fields EXCEPT settings
-        nodeUtils.populateNodeFromNode(localUser, transformedUser, ["settings"])
-
-        ' Merge settings manually
-        if isValid(transformedUser.settings)
-          localSettings = localUser.settings
-          transformedSettings = transformedUser.settings
-
-          ' Merge displaySettings
-          if isValid(transformedSettings.displaySettings)
-            currentDisplaySettings = localSettings.displaySettings as roAssociativeArray
-            if not isValid(currentDisplaySettings)
-              currentDisplaySettings = {}
-            end if
-
-            ' Merge library settings
-            for each libraryId in transformedSettings.displaySettings
-              if not currentDisplaySettings.DoesExist(libraryId)
-                currentDisplaySettings[libraryId] = {}
-              end if
-
-              for each key in transformedSettings.displaySettings[libraryId]
-                currentDisplaySettings[libraryId][key] = transformedSettings.displaySettings[libraryId][key]
-              end for
-            end for
-
-            localSettings.displaySettings = currentDisplaySettings
-          end if
-        end if
-      else
-        ' Replace all fields INCLUDING settings
-        nodeUtils.populateNodeFromNode(localUser, transformedUser, ["settings"])
-
-        ' Manually copy settings node (node fields need special handling)
-        if isValid(transformedUser.settings)
-          localUser.settings = transformedUser.settings
-        end if
-      end if
+      localUser.settings = CreateObject("roSGNode", "JellyfinUserSettings")
+      settingsNode = localUser.settings
+      registryData = RegistryReadAll(userId)
+      for each key in registryData
+        if settingsNode.hasField(key) then user.settings.Save(key, registryData[key])
+      end for
+      return settingsNode
     end function
+
+    ' ===================================================================
+    ' DISPLAY SETTINGS TEST HELPERS
+    ' ===================================================================
 
     ' Set a single display setting for testing
     ' This is the ONLY acceptable way to set individual settings in tests

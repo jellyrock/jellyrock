@@ -7,6 +7,14 @@ namespace tests
     ' Type-check helpers (isStringType/isBooleanType/isIntegerType/isFloatType)
     ' live on BaseTestSuite so any spec can reuse them via m.*.
 
+    ' Every case writes settings, so each one starts on a fresh settings node (as
+    ' user.Login() does; auto-sync is off, so nothing reaches the registry) and no
+    ' value carries into the next case.
+    protected override sub setup()
+      super.setup()
+      m.global.user.settings = CreateObject("roSGNode", "JellyfinUserSettings")
+    end sub
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("valueToString() - Conversion to Registry Format")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -93,8 +101,6 @@ namespace tests
       value = settingsNode.playbackCinemaMode
       m.assertEqual(type(value), "roBoolean")
       m.assertEqual(value, false)
-
-      user.settings.Delete("playbackCinemaMode")
     end function
 
     @it("converts string to integer when updating existing integer field")
@@ -111,8 +117,6 @@ namespace tests
       value = settingsNode.playbackBitrateLimit
       m.assertTrue(type(value) = "roInt" or type(value) = "roInteger" or type(value) = "Integer")
       m.assertEqual(value, 200)
-
-      user.settings.Delete("playbackBitrateLimit")
     end function
 
     @it("converts integer to boolean when updating existing boolean field")
@@ -135,8 +139,6 @@ namespace tests
       value = settingsNode.uiFontFallback
       m.assertEqual(type(value), "roBoolean")
       m.assertEqual(value, false)
-
-      user.settings.Delete("uiFontFallback")
     end function
 
     @it("converts boolean to string when updating existing string field")
@@ -152,8 +154,6 @@ namespace tests
       value = settingsNode.uiRowLayout
       m.assertTrue(m.isStringType(value))
       m.assertEqual(value, "true")
-
-      user.settings.Delete("uiRowLayout")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -178,9 +178,6 @@ namespace tests
         value = settingsNode.playbackPreferredMultichannelCodec
         m.assertEqual(value, specialString, `Special string value should match: ${specialString}`)
       end for
-
-      ' Cleanup
-      user.settings.Delete("playbackPreferredMultichannelCodec")
     end function
 
     @it("handles case-insensitive boolean strings")
@@ -205,9 +202,6 @@ namespace tests
         m.assertEqual(type(value), "roBoolean", `Failed for input: ${testCase.input}`)
         m.assertEqual(value, testCase.expected, `Failed for input: ${testCase.input}`)
       end for
-
-      ' Cleanup
-      user.settings.Delete("playbackCinemaMode")
     end function
 
     @it("handles invalid type gracefully (should not crash)")
@@ -264,8 +258,6 @@ namespace tests
         value = settingsNode[setting]
         m.assertEqual(type(value), "roBoolean", `${setting} should be boolean`)
         m.assertEqual(value, false, `${setting} should be false`)
-
-        user.settings.Delete(setting)
       end for
     end function
 
@@ -285,8 +277,6 @@ namespace tests
         value = settingsNode[setting.name]
         m.assertTrue(type(value) = "roInt" or type(value) = "roInteger" or type(value) = "Integer", `${setting.name} should be integer`)
         m.assertEqual(value, setting.testValue.ToInt(), `${setting.name} value should match`)
-
-        user.settings.Delete(setting.name)
       end for
     end function
 
@@ -326,8 +316,6 @@ namespace tests
         valueType = type(value)
         m.assertTrue(valueType = "String" or valueType = "roString", `${setting.name} should be string, got ${valueType}`)
         m.assertEqual(value, setting.testValue, `${setting.name} value should match`)
-
-        user.settings.Delete(setting.name)
       end for
     end function
 

@@ -436,25 +436,6 @@ namespace remoteSubtitles
     return added
   end function
 
-  ' hasAnyHashMatch: Whether a result set contains at least one file-hash match.
-  '
-  ' Gates the "perfect matches only" affordance. The isPerfectMatch=true query
-  ' returns exactly the hash-matched subset, so offering the control against a
-  ' set with no hash matches gives the user a switch whose only effect is to
-  ' empty the list. Measured hit rates vary wildly by title — 0 of 50 for both
-  ' The Dark Knight and Die Hard, but 6 of 20 for Mrs. Doubtfire and 5 of 24 for
-  ' DodgeBall — so this must be computed per search, never assumed.
-  '
-  ' @param {object} results - RemoteSubtitleInfo array
-  ' @return {boolean} true when any result has IsHashMatch set
-  function hasAnyHashMatch(results as object) as boolean
-    if not isValid(results) then return false
-    for each info in results
-      if isValid(info) and info.IsHashMatch = true then return true
-    end for
-    return false
-  end function
-
   ' hasMixedProviders / hasMixedFormats: Whether the provider or format is worth
   ' spending a line of row real estate on.
   '

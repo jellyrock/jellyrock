@@ -4,10 +4,10 @@ related-files:
   - settings/settings.json
   - source/utils/config.bs
   - source/utils/globals.bs
-  - source/data/SessionDataTransformer.bs
+  - source/utils/session.bs
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-last-reviewed: 2026-09-13
+last-reviewed: 2026-10-04
 ---
 
 # Settings
@@ -154,7 +154,7 @@ function RegistryReadAll(section)                              ' dump entire sec
 
 `valueToString(value)` handles type coercion when writing — bools become `"true"`/`"false"`, integers/floats become their string representation.
 
-**Defaults are never written to the registry.** If a setting key is missing from the registry, it's loaded from `settings.json` at startup (via `SessionDataTransformer`). This avoids the "user has the same value as the default but it's stuck because of an old write" problem when defaults change.
+**Defaults are never written to the registry.** If a setting key is missing from the registry, it's loaded from `settings.json` by `user.settings.SaveDefaults()`. This avoids the "user has the same value as the default but it's stuck because of an old write" problem when defaults change.
 
 ## The startup data flow
 
@@ -184,8 +184,8 @@ setGlobalNodes() ... LoginFlow() ... user authenticates
   ↓
 User login completes
   ↓
-SessionDataTransformer reads the user's registry section
-  ↓ for each saved setting, writes it onto m.global.user.settings (overlaying defaults)
+user.Login() gives the user a fresh settings node with the defaults, then reads the user's registry section
+  ↓ for each saved setting, user.settings.Save() writes it onto m.global.user.settings (overlaying defaults)
   ↓
 loadHomeScreen()
 ```
@@ -239,13 +239,13 @@ m.global.user.settings.uiThemeColorPrimary = "8b5cf6"
 
 This is one of the cleaner patterns in the codebase — the developer experience is "just write to the field." Persistence, type coercion, and observer firing are all handled.
 
-## `SessionDataTransformer` — `source/data/SessionDataTransformer.bs`
+## Loading at login — `user.Login()` in `source/utils/session.bs`
 
-Runs on login. Reads the user's registry section (via `RegistryReadAll(userId)`) and overlays every saved value onto `m.global.user.settings`. Because defaults were already loaded, this only changes fields the user has actually customized.
+Runs on login. It gives `m.global.user` a fresh `JellyfinUserSettings` node, writes the defaults onto it with `user.settings.SaveDefaults()`, then reads the user's registry section (`RegistryReadAll(userId)`) and overlays every saved value. Because the defaults are already there, this only changes fields the user has actually customized.
 
-It also handles type coercion: registry values are always strings, but `JellyfinUserSettings` fields are typed (bool, integer, string, etc.). The transformer converts on the way in.
+Each key that names a settings field goes through `user.settings.Save()`, which converts the stored string to the field's type (registry values are always strings; `JellyfinUserSettings` fields are typed). No per-setting code is needed. The loop skips global keys (loaded by `user.settings.LoadGlobals()`), `display.*` keys (nested by `user.settings.TransformDisplaySettings()`), `homeSection*` (server-authoritative) and the credentials the login flow sets itself.
 
-The same transformer is used by tests — `tests/source/integration/registry/` exercises the full read-overlay-validate cycle.
+Tests load the same way through `BaseTestSuite.loadSettingsFromRegistry()`, and `tests/source/integration/registry/` exercises the save-load round trip. The loop's skip rules have no test yet (followup `login-registry-load-routing-untested`).
 
 ## Known cruft
 
