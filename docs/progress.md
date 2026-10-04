@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-04 — ci: Time out wedged CI jobs instead of letting them run 6 hours
 - 2026-10-04 — chore(scripts): Drop unused `git` and `progress` catchup state sections
 - 2026-10-03 — feat(video): Ask "Are you still watching?" before endless auto-play
 - 2026-10-03 — chore(journal): Give every open followup a permanent id
