@@ -10,7 +10,7 @@ description: Execute a procedural implementation plan on the Sonnet model for to
 ## This repo
 
 - **A landing here is a PR, never a push to `main`.** On `main`, branch before the commit. On `ok` or `push`, run `/pr` in place of `git push` (it pushes the branch and runs the journal passes); never merge, and never open a PR with a bare `gh pr create` ([Landing](../../../AGENTS.md#landing)). After a sub-agent run, the parent runs `/pr`.
-- **Commit subjects are Conventional Commits** (`type(scope): summary`), with no `Co-Authored-By` footer ([Commit messages](../../../AGENTS.md#commit-messages)).
+- **Commit subjects are Conventional Commits** (`type(scope): summary`) ([Commit messages](../../../AGENTS.md#commit-messages)).
 - **Items under To record** go in through `/log` and ride the PR's own change set; a journal edit alone gets no PR ([Capture & state discipline](../../../AGENTS.md#capture--state-discipline)).
 - **A `Cannot find module` error** means dependencies are not installed: run `npm ci`, then retry once. Any other missing tool stops the run.
 
