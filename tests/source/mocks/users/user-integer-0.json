@@ -1,9 +1,0 @@
-{
-  "id": "test-user-integer-0",
-  "name": "Test User with Integer 0",
-  "Configuration": {},
-  "Policy": {},
-  "settings": {
-    "display.library2.testKey": "0"
-  }
-}

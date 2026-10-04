@@ -1,9 +1,0 @@
-{
-  "id": "test-user-boolean-true-upper",
-  "name": "Test User with Boolean TRUE",
-  "Configuration": {},
-  "Policy": {},
-  "settings": {
-    "display.library1.testKey": "TRUE"
-  }
-}

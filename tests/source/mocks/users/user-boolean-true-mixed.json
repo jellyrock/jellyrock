@@ -1,9 +1,0 @@
-{
-  "id": "test-user-boolean-true-mixed",
-  "name": "Test User with Boolean TrUe",
-  "Configuration": {},
-  "Policy": {},
-  "settings": {
-    "display.library3.testKey": "TrUe"
-  }
-}

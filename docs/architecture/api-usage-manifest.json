@@ -1202,6 +1202,15 @@
       ]
     },
     {
+      "name": "AccessToken",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
+      ]
+    },
+    {
       "name": "AirDays",
       "readVia": [
         "apiData"
@@ -1549,7 +1558,7 @@
         "userData"
       ],
       "sourceFiles": [
-        "source/data/SessionDataTransformer.bs"
+        "source/utils/session.bs"
       ]
     },
     {
@@ -1586,6 +1595,15 @@
       ],
       "sourceFiles": [
         "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CustomPrefs",
+      "readVia": [
+        "jsonResponse"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
       ]
     },
     {
@@ -2016,11 +2034,14 @@
       "readVia": [
         "apiData",
         "firstSource",
-        "person"
+        "myServerInfo",
+        "person",
+        "userData"
       ],
       "sourceFiles": [
         "source/data/JellyfinDataTransformer.bs",
-        "source/utils/people.bs"
+        "source/utils/people.bs",
+        "source/utils/session.bs"
       ]
     },
     {
@@ -2265,6 +2286,15 @@
       ],
       "sourceFiles": [
         "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "LocalAddress",
+      "readVia": [
+        "myServerInfo"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
       ]
     },
     {
@@ -2672,7 +2702,7 @@
         "userData"
       ],
       "sourceFiles": [
-        "source/data/SessionDataTransformer.bs"
+        "source/utils/session.bs"
       ]
     },
     {
@@ -2705,10 +2735,12 @@
     {
       "name": "PrimaryImageTag",
       "readVia": [
-        "person"
+        "person",
+        "userData"
       ],
       "sourceFiles": [
-        "source/utils/people.bs"
+        "source/utils/people.bs",
+        "source/utils/session.bs"
       ]
     },
     {
@@ -2937,6 +2969,24 @@
       ]
     },
     {
+      "name": "ServerName",
+      "readVia": [
+        "myServerInfo"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
+      ]
+    },
+    {
+      "name": "ShowBackdrop",
+      "readVia": [
+        "jsonResponse"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
+      ]
+    },
+    {
       "name": "SongCount",
       "readVia": [
         "apiData"
@@ -2979,6 +3029,15 @@
       ],
       "sourceFiles": [
         "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "StartupWizardCompleted",
+      "readVia": [
+        "myServerInfo"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
       ]
     },
     {
@@ -3112,12 +3171,30 @@
       ]
     },
     {
+      "name": "User",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
+      ]
+    },
+    {
       "name": "UserData",
       "readVia": [
         "apiData"
       ],
       "sourceFiles": [
         "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Version",
+      "readVia": [
+        "myServerInfo"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
       ]
     },
     {
@@ -3162,14 +3239,15 @@
         "files": [
           "source/data/JellyfinDataTransformer.bs",
           "source/data/SessionDataTransformer.bs",
-          "source/utils/people.bs"
+          "source/utils/people.bs",
+          "source/utils/session.bs"
         ]
       }
     },
     "counts": {
       "endpoints": 78,
       "requestFields": 40,
-      "responseFields": 215,
+      "responseFields": 223,
       "unresolvedEndpointSinks": 2
     },
     "unresolvedEndpointSinks": [

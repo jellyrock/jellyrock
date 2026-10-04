@@ -4,7 +4,6 @@ related-files:
   - settings/settings.json
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-  - source/data/SessionDataTransformer.bs
   - source/utils/config.bs
   - source/utils/session.bs
 last-reviewed: 2026-05-01
@@ -41,7 +40,7 @@ This guide covers **User Settings** and **Global Settings**.
 
 - Default values come from `settings/settings.json` (single source of truth)
 - Defaults are **NEVER** written to registry (only user changes are saved)
-- Settings are loaded at app startup via `SessionDataTransformer`
+- Saved values are loaded at login by `user.Login()` (`source/utils/session.bs`)
 - All settings must have proper type safety and validation
 
 **Data Flow:**
@@ -51,8 +50,8 @@ App Startup
   → user.settings.SaveDefaults()  (loads ALL defaults from settings.json)
   → enableAutoSync                 (turns on registry sync; the per-field observers exist from node creation)
   → migrations run
-  → User logs in → SessionDataTransformer reads user's registry section
-                   and overlays saved values on top of defaults
+  → User logs in → user.Login() reads the user's registry section and overlays
+                   saved values on top of defaults (user.settings.Save() converts types)
   → Application code reads from m.global.user.settings
 ```
 
@@ -97,8 +96,8 @@ jellyrock/
 │   └── settings.json                              # Setting definitions & defaults
 ├── components/data/jellyfin/
 │   └── JellyfinUserSettings.xml                   # ContentNode field definitions
-├── source/data/
-│   └── SessionDataTransformer.bs                  # Registry → Node transformer
+├── source/utils/
+│   └── session.bs                                 # user.Login() loads saved values
 └── tests/source/unit/
     └── [feature]/[FeatureName].spec.bs           # Unit tests
 ```
@@ -307,47 +306,11 @@ Add a field definition in the appropriate section (Playback Settings, UI Setting
 <field id="playbackPlayDefaultAudioTrack" type="string" alwaysNotify="true" />
 ```
 
-### Step 3: Update `SessionDataTransformer.bs`
+### Step 3: Loading Needs No Code
 
-Add code to load the setting from registry in `transformUserSettings()`:
+`user.Login()` loads every saved value whose registry key names a field on `JellyfinUserSettings`, and `user.settings.Save()` converts the stored string to the field's XML type (`boolean`, `integer`, `float` or `string`). The field you added in Step 2 is picked up automatically, as are its registry observers in `JellyfinUserSettings.bs`. Global settings (`global*`) load separately, through `user.settings.LoadGlobals()`.
 
-```brighterscript
-' [Category] Settings
-settingsNode.categorySettingName = settingsData["categorySettingName"] ?? ""
-```
-
-**Type Conversion:**
-
-```brighterscript
-' Boolean settings
-settingsNode.settingName = toBoolean(settingsData["settingName"])
-
-' Integer settings
-if settingsData.DoesExist("settingName")
-  settingsNode.settingName = Val(settingsData["settingName"])
-end if
-
-' String/radio settings
-settingsNode.settingName = settingsData["settingName"] ?? ""
-```
-
-**Why `DoesExist` for integers only?** `Val(invalid)` returns `0`, which could be a valid setting value. Without the check, you can't tell if the user never set it (should use default) or explicitly set it to `0`. For booleans and strings, `toBoolean(invalid)` and `?? ""` already handle missing values safely.
-
-**Important:**
-
-- Use `??` operator for default fallback (empty string for strings)
-- Use `toBoolean()` helper for boolean settings
-- Use `Val()` for integer settings (with `DoesExist` check)
-- Do NOT hardcode default values (they come from settings.json)
-
-**Example:**
-
-```brighterscript
-' Playback Settings
-settingsNode.playbackPlayNextEpisode = settingsData["playbackPlayNextEpisode"] ?? ""
-settingsNode.playbackPlayDefaultAudioTrack = settingsData["playbackPlayDefaultAudioTrack"] ?? ""
-settingsNode.playbackPreferredMultichannelCodec = settingsData["playbackPreferredMultichannelCodec"] ?? ""
-```
+Check only that the field `id` matches `settingName` in settings.json: the observer saves the value under the field `id`, and `user.Login()` loads it back by the same key.
 
 ### Step 4: Implement Setting Logic (If Needed)
 
@@ -580,18 +543,17 @@ Test the setting manually on a real Roku device:
 
 **Problem:**
 
-```brighterscript
-' SessionDataTransformer.bs
-settingsNode.categorySettingName = settingsData["categorySettingName"] ?? "hardcodedDefault"  ' ❌ WRONG!
+```xml
+<field id="categorySettingName" type="string" value="hardcodedDefault" alwaysNotify="true" />  <!-- ❌ WRONG! -->
 ```
 
 **Why this fails:** Default should come from settings.json, not code. This creates two sources of truth.
 
 **Solution:**
 
-```brighterscript
-' SessionDataTransformer.bs - Use empty string, actual default comes from settings.json
-settingsNode.categorySettingName = settingsData["categorySettingName"] ?? ""  ' ✅ CORRECT
+```xml
+<!-- No value attribute: the default comes from settings.json -->
+<field id="categorySettingName" type="string" alwaysNotify="true" />  <!-- ✅ CORRECT -->
 ```
 
 ### 2. ❌ Writing Defaults to Registry
@@ -713,12 +675,9 @@ When implementing a new user setting, use this checklist to ensure nothing is ov
 - [ ] Do NOT set `value` attribute (defaults come from settings.json)
 - [ ] Place in appropriate category section with XML comments
 
-### Phase 3: Data Transformer
+### Phase 3: Loading
 
-- [ ] Add loading code to `source/data/SessionDataTransformer.bs` in `transformUserSettings()`
-- [ ] Use appropriate type conversion (`toBoolean()`, `Val()`, or `??`)
-- [ ] Do NOT hardcode default values (use `?? ""` for strings)
-- [ ] Place in correct category section
+- [ ] Nothing to add: `user.Login()` loads the new field (confirm its `id` matches `settingName`)
 
 ### Phase 4: Implementation Logic
 
