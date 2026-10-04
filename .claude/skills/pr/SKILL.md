@@ -61,7 +61,6 @@ allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*),
 
 **When NOT to use.**
 
-- You want to investigate review comments on an existing PR — that's the PR-review skill, not this one (which CREATES or updates a PR).
 - There is no branch to ship (on the default branch, or nothing committed) — there's nothing to open a PR for.
 - You need to bypass the journal passes for a genuinely trivial change — that's still in scope (skip the passes with one confirmation), not a reason to call `gh pr create` directly.
 
