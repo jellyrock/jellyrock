@@ -1,12 +1,14 @@
 /**
  * Bracket release prep's translation merge with Weblate's own repository state.
  *
+ *   node scripts/weblate-sync.js check             read-only: does the token work, what state is Weblate in
  *   node scripts/weblate-sync.js lock-and-flush    lock the component, commit + push what Weblate holds
  *   node scripts/weblate-sync.js pull-and-unlock   make Weblate pull the weblate branch, then unlock
  *
- * Env: `WEBLATE_TOKEN` (a project token for `jellyrock`), optional `WEBLATE_URL`
- * (default https://translate.jellyrock.app) and `WEBLATE_COMPONENT`
- * (default `jellyrock/roku`).
+ * Env: `WEBLATE_TOKEN` (required: a project token for `jellyrock` in a team with the
+ * "Manage repository" role; setup in docs/architecture/translations.md#weblate-sync),
+ * optional `WEBLATE_URL` (default https://translate.jellyrock.app) and
+ * `WEBLATE_COMPONENT` (default `jellyrock/roku`).
  *
  * ## Why
  *
@@ -14,18 +16,28 @@
  * the `weblate` branch. Release prep merges that branch into the release and then
  * pushes main's additions back to it. Without a flush, edits still inside Weblate are
  * missed by the release; and if Weblate commits next to a line the push-back
- * changed, its next pull hits a merge conflict an admin must clear by hand. Locking
- * first stops new edits arriving mid-merge; the pull afterwards hands Weblate the
- * merged branch before translators resume.
+ * changed, its next pull hits a merge conflict, which (with `auto_lock_error`) locks
+ * the component until an admin clears it. Locking first stops new edits arriving
+ * mid-merge; the pull afterwards hands Weblate the merged branch before translators
+ * resume. That is why the token is required: without the lock the push-back is
+ * unsafe, so release prep stops rather than run it.
+ *
+ * ## Only ever unlock our own lock
+ *
+ * A component that is already locked was locked by an admin or by Weblate itself
+ * after an error. `lock-and-flush` refuses to touch it, and reports `locked=true`
+ * (a GitHub step output) only once its own lock succeeded; the unlock step runs on
+ * that output alone.
  *
  * ## Checked by outcome, not by response shape
  *
- * Depending on the Weblate version, a repository operation answers with
- * `{ "result": bool }` or queues a task (HTTP 202 + `task_url`). Rather than trust
- * either, `lock-and-flush` polls a queued task to completion and then reads the
- * documented repository status: it succeeds only when nothing is left to commit or
- * push.
+ * A component repository operation answers `{ "result": bool }` (the instance's own
+ * OpenAPI schema, checked 2026-10-04 on Weblate 2026.8.1); a queued task (HTTP 202 +
+ * `task_url`) is handled too, as project-level operations answer that way. Rather
+ * than trust either, `lock-and-flush` then reads the documented repository status:
+ * it succeeds only when nothing is left to commit or push.
  */
+import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const DEFAULT_URL = 'https://translate.jellyrock.app';
@@ -90,14 +102,26 @@ export function client({
   }
 
   return {
+    isLocked: async () => (await call('GET', 'lock')).data.locked === true,
     lock: (locked) => call('POST', 'lock', { lock: locked }),
     repositoryStatus: async () => (await call('GET', 'repository')).data,
     operation,
   };
 }
 
-export async function lockAndFlush(api) {
+/**
+ * @param {object} api
+ * @param {{ onLocked?: () => void }} [hooks] - called once OUR lock is in place
+ */
+export async function lockAndFlush(api, { onLocked = () => {} } = {}) {
+  if (await api.isLocked()) {
+    throw new WeblateError(
+      'the component is already locked — by an admin, or by Weblate after a repository error. ' +
+        'Resolve it in Weblate, unlock the component, then re-run release prep.',
+    );
+  }
   await api.lock(true);
+  onLocked();
   // `push` commits pending changes first (Weblate's do_push(force_commit=True)).
   await api.operation('push');
   const status = await api.repositoryStatus();
@@ -113,6 +137,8 @@ export async function pullAndUnlock(api) {
   try {
     await api.operation('pull');
     const status = await api.repositoryStatus();
+    // Not `needs_merge`: jellyrock-bot pushes en_US to weblate on every main push, so
+    // it can be true here even though this pull succeeded.
     if (status.merge_failure)
       throw new WeblateError(`Weblate could not merge the weblate branch: ${status.merge_failure}`);
   } finally {
@@ -121,25 +147,41 @@ export async function pullAndUnlock(api) {
   }
 }
 
+/** Read-only: proves the token can read the repository status, and shows the state. */
+export async function check(api) {
+  const locked = await api.isLocked();
+  const status = await api.repositoryStatus();
+  return { locked, ...status };
+}
+
+const SETUP = [
+  'WEBLATE_TOKEN is not set. Release prep needs it to lock Weblate around the translation merge.',
+  'Create a project token in Weblate (project jellyrock → API access), give it only the team',
+  'with the "Manage repository" role, check it with `WEBLATE_TOKEN=… node scripts/weblate-sync.js check`,',
+  'then store it: gh secret set WEBLATE_TOKEN -R jellyrock/jellyrock',
+].join(' ');
+
+/** Append `name=value` to the GitHub step output, when running in Actions. */
+function stepOutput(name, value) {
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+}
+
 async function main(argv) {
   const token = process.env.WEBLATE_TOKEN;
-  if (!token) {
-    console.log(
-      '::warning::WEBLATE_TOKEN is not set — skipping the Weblate flush. Edits still inside Weblate wait for the next release.',
-    );
-    return;
-  }
+  if (!token) throw new WeblateError(SETUP);
   const api = client({
     token,
     url: process.env.WEBLATE_URL || DEFAULT_URL,
     component: process.env.WEBLATE_COMPONENT || DEFAULT_COMPONENT,
   });
   const [command] = argv;
-  if (command === 'lock-and-flush') await lockAndFlush(api);
+  if (command === 'check') console.log(JSON.stringify(await check(api), null, 2));
+  else if (command === 'lock-and-flush')
+    await lockAndFlush(api, { onLocked: () => stepOutput('locked', 'true') });
   else if (command === 'pull-and-unlock') await pullAndUnlock(api);
   else
     throw new WeblateError(
-      `unknown command ${command ?? '(none)'} — expected lock-and-flush or pull-and-unlock`,
+      `unknown command ${command ?? '(none)'} — expected check, lock-and-flush or pull-and-unlock`,
     );
   console.log(`weblate-sync: ${command} done.`);
 }
