@@ -53,6 +53,7 @@
       "Bash(bash .claude/skills/pr/forge.sh issue comment:*)",
       "Bash(bash .claude/skills/pr/forge.sh issue close:*)",
       "Bash(bash .claude/skills/pr/forge.sh label list:*)",
+      "Bash(bash .claude/skills/pr/forge.sh repo file-url:*)",
       "Bash(bash .claude/skills/pr/forge.sh label create:*)",
       "Bash(bash .claude/skills/pr/forge.sh run view:*)",
       "Bash(bash .claude/skills/pr/forge.sh run list:*)",
