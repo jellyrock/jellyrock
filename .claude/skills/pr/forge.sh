@@ -200,17 +200,20 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" \
 facts="$root/AGENTS.md"
 fix="add to ## Repo facts in $facts:  ### Forge / backend: github (or forgejo) / prs: always (or on-request)"
 [ -f "$facts" ] || die 3 "no AGENTS.md at $root; $fix"
-# <1 when the slot was found, else 0><TAB><its backend: value><TAB><its api: value>
+# <1 when the slot was found, else 0>, <its backend: value>, <its api: value>, <how many backend: lines>,
+# <how many api: lines>, split on \037 (a tab would collapse an empty field)
 slot="$(awk '
   { sub(/\r$/, "") }
   /^### Forge[ \t]*$/ { s = 1; next }
   s && /^#/ { exit }
   s { l = $0; gsub(/`/, "", l)
-      if (l ~ /^[ \t]*backend:/) { sub(/^[ \t]*backend:[ \t]*/, "", l); sub(/[ \t]+$/, "", l); v = l }
-      if (l ~ /^[ \t]*api:/) { sub(/^[ \t]*api:[ \t]*/, "", l); sub(/[ \t]+$/, "", l); a = l } }
-  END { printf "%d\t%s\t%s\n", s, v, a }' "$facts")"
-IFS=$'\t' read -r found backend api_line <<<"$slot"
+      if (l ~ /^[ \t]*backend:/) { sub(/^[ \t]*backend:[ \t]*/, "", l); sub(/[ \t]+$/, "", l); v = l; nb++ }
+      if (l ~ /^[ \t]*api:/) { sub(/^[ \t]*api:[ \t]*/, "", l); sub(/[ \t]+$/, "", l); a = l; na++ } }
+  END { printf "%d\037%s\037%s\037%d\037%d\n", s, v, a, nb, na }' "$facts")"
+IFS=$'\037' read -r found backend api_line n_backend n_api <<<"$slot"
 [ "$found" = 1 ] || die 3 "no ### Forge slot in $facts; $fix"
+[ "$n_backend" -le 1 ] || die 3 "the ### Forge slot in $facts has $n_backend backend: lines; keep one"
+[ "$n_api" -le 1 ] || die 3 "the ### Forge slot in $facts has $n_api api: lines; keep one"
 case "$backend" in
   github|forgejo) ;;
   "") die 3 "the ### Forge slot in $facts has no backend: line; $fix" ;;
