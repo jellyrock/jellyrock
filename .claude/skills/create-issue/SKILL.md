@@ -4,7 +4,7 @@ model: sonnet
 effort: low
 description: Draft a GitHub issue body for the JellyRock repo from a Reddit/Discord post or free-form bug report and submit it via gh. Reads the YAML form templates under .github/ISSUE_TEMPLATE/ to know which fields are required, fills them by extracting from the input, asks for any missing required fields, validates the body matches the chosen template's schema, then runs gh issue create with the auto-labels the template defines. Use when you have a user report (paste from anywhere) and want to formalize it into a properly-structured GitHub issue.
 user-invocable: true
-allowed-tools: Bash(gh issue create:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh search issues:*), Read
+allowed-tools: Bash(bash .claude/skills/pr/forge.sh issue create:*), Bash(bash .claude/skills/pr/forge.sh issue view:*), Bash(bash .claude/skills/pr/forge.sh issue list:*), Bash(bash .claude/skills/pr/forge.sh label list:*), Read
 ---
 
 # /create-issue — draft + submit a GitHub issue
@@ -18,7 +18,7 @@ allowed-tools: Bash(gh issue create:*), Bash(gh issue view:*), Bash(gh issue lis
 
 ## Contract
 
-**Goal.** Turn a raw report — a forum thread, a chat message, an email, a free-form bug description, or a defect found during work — into a well-formed GitHub issue, or route it to the surface this repo actually uses for that kind of work. The skill first checks the report belongs in the issue tracker; then it wraps the repo's YAML issue forms (`.github/ISSUE_TEMPLATE/*.yml`) as a drafting-and-submission API: it picks the right form, fills each required field from the input, marks (never fabricates) the gaps, and submits via `gh issue create` with the form's labels passed explicitly. A repo without forms gets the body shape this skill's `## This repo` gives, else plain Markdown. It ships at the Sonnet tier because the work is extract-and-fill drafting with light classification judgment, not deep investigation.
+**Goal.** Turn a raw report — a forum thread, a chat message, an email, a free-form bug description, or a defect found during work — into a well-formed GitHub issue, or route it to the surface this repo actually uses for that kind of work. The skill first checks the report belongs in the issue tracker; then it wraps the repo's YAML issue forms (`.github/ISSUE_TEMPLATE/*.yml`) as a drafting-and-submission API: it picks the right form, fills each required field from the input, marks (never fabricates) the gaps, and submits via `forge.sh issue create` with the form's labels passed explicitly. A repo without forms gets the body shape this skill's `## This repo` gives, else plain Markdown. It ships at the Sonnet tier because the work is extract-and-fill drafting with light classification judgment, not deep investigation.
 
 **Inputs.** The arguments (optional) are the source text — a forum post body, a chat message, an email, or a free-form problem description; if empty, ask the user for it. The skill reads `.github/ISSUE_TEMPLATE/` (forms and `config.yml` contact links), this skill's `## This repo` (a routing table, a body shape, label guidance), the repo's labels, and its open and closed issues to check for duplicates.
 
@@ -38,18 +38,18 @@ allowed-tools: Bash(gh issue create:*), Bash(gh issue view:*), Bash(gh issue lis
 
 - **Filing what belongs elsewhere.** A followup, a decision or multi-session work filed as an issue in a repo that tracks those in its journal moves work onto a surface nobody reads. Apply this skill's `## This repo` routing before drafting.
 - **Fabricating field values.** Don't invent a device model, a version number or repro steps to satisfy a required field — that defeats the form's purpose. Mark the gap.
-- **Auto-submitting.** Never call `gh issue create` before the user has confirmed the rendered issue, even if it looks complete.
+- **Auto-submitting.** Never call `forge.sh issue create` before the user has confirmed the rendered issue, even if it looks complete.
 - **Auto-deciding a duplicate.** Show the candidates and let the user pick; duplicate calls are judgment.
 - **Paraphrasing the reporter into corporate-speak.** Lift the reporter's own wording verbatim where possible — a sanitized report loses diagnostic signal.
 - **Forgetting the explicit `--label`.** A YAML form's labels are applied only when the issue is filed through the web form; the API cannot see forms, so without `--label` the issue lands unlabeled.
-- **Passing a label the repo doesn't have.** `gh issue create --label <missing>` fails the whole create (`could not add label: '<name>' not found`) and files nothing. Check every label first.
-- **Creating a label to fit the issue.** A new label for each issue fragments the repo's label set; reach for the closest existing label first, and propose `gh label create` only as the last option, never silently.
+- **Passing a label the repo doesn't have.** `forge.sh issue create --label <missing>` fails the whole create and files nothing. Check every label first.
+- **Creating a label to fit the issue.** A new label for each issue fragments the repo's label set; reach for the closest existing label first, and propose `forge.sh label create` only as the last option, never silently.
 - **Naming a person in a public issue.** A forwarded report's footer names its channel and links the source when it is public; it never names the reporter.
 - **Shell-quoting a body.** A multi-paragraph Markdown body passed through `--body` is one quoting slip from arriving mangled; write it to a file and pass `--body-file`.
 
 **When NOT to use.**
 
-- The user wants to comment on an existing issue, not file a new one — use `gh issue comment <N>` directly.
+- The user wants to comment on an existing issue, not file a new one — use `bash .claude/skills/pr/forge.sh issue comment <N> --body-file <file>` directly.
 - The user is asking a question, not reporting a bug or proposing a change — point them to the contact links in `.github/ISSUE_TEMPLATE/config.yml`, if the repo has them.
 - The input is too vague to fill any form — say so and ask for more detail before drafting.
 
@@ -60,7 +60,7 @@ This skill's `## This repo` holds the repo's own parts: a routing table for work
 ### Step 1 — Does this belong in the issue tracker?
 
 - **A question** → the contact links in `.github/ISSUE_TEMPLATE/config.yml` (or the repo's docs when it has none); stop.
-- **New context for an issue the user names** → `gh issue comment <N> --body-file <file>`, after the same confirm as Step 7.
+- **New context for an issue the user names** → `bash .claude/skills/pr/forge.sh issue comment <N> --body-file <file>`, after the same confirm as Step 7.
 - **This skill's `## This repo` routing table**, when it has one: a report whose shape the table sends elsewhere is routed there — say which surface and print its command in its own block (for example `/log followup <text>`). That is a successful outcome; stop.
 
 Otherwise continue.
@@ -76,11 +76,11 @@ No `.github/ISSUE_TEMPLATE/` forms → use the body shape and title convention i
 Before drafting, search open and closed issues with 2–3 keywords from the input, title first, then broad:
 
 ```sh
-gh issue list --state all --search "<keywords> in:title" --limit 10 --json number,title,state,labels
-gh issue list --state all --search "<keywords>" --limit 10 --json number,title,state,labels
+bash .claude/skills/pr/forge.sh issue list --state all --search "<keywords> in:title" --limit 10
+bash .claude/skills/pr/forge.sh issue list --state all --search "<keywords>" --limit 10
 ```
 
-Show each likely candidate in one line with its state. Before offering to link one, check it is still true (`gh issue view <N> --json title,state,body`): an issue whose premise has since changed passes the staleness on. Then ask in chat: `comment` (add the new context to the existing issue), `link` (file new and reference it in the body), or `new` (not a duplicate). A bug that matches a closed, fixed issue may be a regression: say so, and offer the regression label this skill's `## This repo` names, if any.
+Show each likely candidate in one line with its state. Before offering to link one, check it is still true (`bash .claude/skills/pr/forge.sh issue view <N> | jq '{title, state, body}'`): an issue whose premise has since changed passes the staleness on. Then ask in chat: `comment` (add the new context to the existing issue), `link` (file new and reference it in the body), or `new` (not a duplicate). A bug that matches a closed, fixed issue may be a regression: say so, and offer the regression label this skill's `## This repo` names, if any.
 
 ### Step 4 — Fill the fields
 
@@ -101,14 +101,14 @@ Write the body to `"$(git rev-parse --git-dir)/issue-body.md"`: inside the git d
 Start from the chosen form's `labels:` (no form: the guidance in this skill's `## This repo`, else none), plus any label the user asked for or Step 3 offered. Check each exists — the command prints the ones the repo lacks, and nothing when all exist:
 
 ```sh
-printf '%s\n' <label> [<label> …] | grep -Fxv -f <(gh label list --limit 500 --json name --jq '.[].name')
+printf '%s\n' <label> [<label> …] | grep -Fxv -f <(bash .claude/skills/pr/forge.sh label list | jq -r '.[].name')
 ```
 
-(`gh label list` shows only 30 labels without `--limit`.) For each missing label, in this order:
+For each missing label, in this order:
 
-1. **Use an existing label.** Read `gh label list --limit 500 --json name,description` and pick the one whose name and description fit what the missing label meant; show it to the user beside the label it replaces.
+1. **Use an existing label.** Read `bash .claude/skills/pr/forge.sh label list` and pick the one whose name and description fit what the missing label meant; show it to the user beside the label it replaces.
 2. **Leave it off** when nothing fits, and say so.
-3. **Create it** only when the user wants it and nothing existing fits: show the `gh label create <name> --description "<text>"` command for them to run or approve. Never create a label silently.
+3. **Create it** only when the user wants it and nothing existing fits: show the `bash .claude/skills/pr/forge.sh label create <name> --description "<text>"` command for them to run or approve. Never create a label silently.
 
 A form that names a missing label is out of date: say so in one line, so the form gets fixed rather than worked around each time.
 
@@ -121,10 +121,10 @@ Then show the user the form, the title, the labels (each replacement beside what
 ### Step 8 — Submit
 
 ```sh
-gh issue create --title "<title>" --body-file "$(git rev-parse --git-dir)/issue-body.md" [--label <name>,<name>] [--parent <N>]
+bash .claude/skills/pr/forge.sh issue create --title "<title>" --body-file "$(git rev-parse --git-dir)/issue-body.md" [--label <name> [--label <name> …]] [--parent <N>]
 ```
 
-`--parent <N>` files it as a sub-issue of a tracking issue, when the user says it belongs under one. Never `--template`: it cannot select a YAML form (the API does not see forms) and gh refuses it beside `--body-file`.
+`--parent <N>` files it as a sub-issue of a tracking issue, when the user says it belongs under one.
 
 ### Step 9 — After
 
@@ -134,4 +134,4 @@ Print the issue URL; don't summarize the body. If the input also holds a followu
 
 A parent that has a report to formalize starts a sub-agent with `model: "sonnet"` and this Task prompt; the sub-agent drafts and returns, and the parent runs Steps 7–9 with the user:
 
-`Read .claude/skills/create-issue/SKILL.md and follow Steps 1-6 for this report: <source text>. Do not run gh issue create or gh label create: return the chosen form, title, labels (with any replacement and what it replaced), the body file path, the duplicate candidates, and any route Step 1 chose instead. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link.
+`Read .claude/skills/create-issue/SKILL.md and follow Steps 1-6 for this report: <source text>. Do not create an issue or a label: return the chosen form, title, labels (with any replacement and what it replaced), the body file path, the duplicate candidates, and any route Step 1 chose instead. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link.

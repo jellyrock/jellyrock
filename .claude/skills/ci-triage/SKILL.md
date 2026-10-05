@@ -4,7 +4,7 @@ description: "Diagnose a failed CI workflow run and fix it the /snag way. A test
 model: opus
 effort: high
 user-invocable: true
-allowed-tools: Bash(gh run view:*), Bash(gh run list:*), Bash(git log:*), Bash(git diff:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
+allowed-tools: Bash(bash .claude/skills/pr/forge.sh run view:*), Bash(bash .claude/skills/pr/forge.sh run list:*), Bash(bash .claude/skills/pr/forge.sh repo default-branch:*), Bash(git log:*), Bash(git diff:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
 ---
 
 # /ci-triage — diagnose a failed CI run
@@ -56,10 +56,10 @@ Two repo-owned parts: `gates.tsv` beside the script maps each CI step to a categ
 A run URL gives its id after `/runs/`. With no arguments, list the newest failures and ask in chat which one:
 
 ```sh
-gh run list --branch "$(git branch --show-current)" --status failure --limit 5 --json databaseId,workflowName,displayTitle,createdAt,url
+bash .claude/skills/pr/forge.sh run list --branch "$(git branch --show-current)" --status failure --limit 5
 ```
 
-None on this branch: say so, and offer the same list for the default branch (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`).
+None on this branch: say so, and offer the same list for the default branch (`bash .claude/skills/pr/forge.sh repo default-branch`).
 
 ### Step 2 — The state read
 
@@ -71,9 +71,9 @@ bash .claude/skills/ci-triage/ci-triage-state.sh <run id>
 |---|---|---|
 | `0` | the run failed; each failed job is reported | Step 3 |
 | `2` | the run did not fail, or has not finished | Say which, and stop. |
-| `3` | the run could not be fetched or read | Read its `gh said:` or `jq said:` lines: a rejected field or an expired token reads nothing like a bad id. Stop. |
+| `3` | the run could not be fetched or read | Read its `forge.sh said:` or `jq said:` lines: a missing `### Forge` slot, a rejected field or an expired token reads nothing like a bad id. Stop. |
 
-Never re-fetch what it printed with your own `gh` calls. Its output is the evidence the decision screen cites.
+Never re-fetch what it printed with your own `forge.sh` calls. Its output is the evidence the decision screen cites.
 
 ### Step 3 — Read each failed job
 
@@ -84,7 +84,7 @@ For each `FAILED JOB` section: the step, the category, the sub-check when the ga
 Transient: a platform outage, a runner that never started, a network fetch or tool install that failed upstream, a device or service the job needs that was unreachable, or a time limit hit with nothing in the tail pointing at code. Then print the re-run command alone in its own block, say why it looks transient, and stop: triage it only if it fails again.
 
 ```text
-gh run rerun <run id> --failed
+bash .claude/skills/pr/forge.sh run rerun <run id>
 ```
 
 Anything else is code or configuration: continue.
@@ -99,7 +99,7 @@ Read the file and line the tail names, and the change that brought it in:
 
 ```sh
 git log --oneline -10 -- <path>
-git diff "origin/$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)...HEAD" -- <path>
+git diff "origin/$(bash .claude/skills/pr/forge.sh repo default-branch)...HEAD" -- <path>
 ```
 
 For a failing test, read the test and the code it covers. Ask whether the diagnostic is the cause or a symptom of one upstream (a type error at a call site whose contract changed), and name the cause at a file and line.
@@ -110,10 +110,10 @@ Read `.claude/skills/snag/SKILL.md` and follow its Steps 2 to 7, carrying in wha
 
 - The screen's first line is `**CI run:** <workflow> <run id>: <job> / <step> (<category>)`, with one such line per failed job, and its options include the `gates.tsv` line a step reported `unknown` needs.
 - Before its Step 5 builds anything on the default branch, create the fix branch: `git switch -c fix/ci-<run id>`. On any other branch, commit there.
-- Its report ends with one more line: **Next:** push the branch (`/pr` opens its pull request); the push re-runs the workflow.
+- Its report ends with one more line, by [this repo's forge](../../../AGENTS.md#forge) `prs:` value: `always` gives **Next:** push the branch (`/pr` opens its pull request); the push re-runs the workflow. `on-request` gives **Next:** push as this repo's Landing says (`/pr` when you want a pull request); the push re-runs the workflow.
 
 ## Sub-agent invocation
 
 A parent that wants a failed run diagnosed without the conversation starts a sub-agent with `model: "opus"` and this Task prompt; the parent then shows `/snag`'s decision screen itself:
 
-`Read .claude/skills/ci-triage/SKILL.md and follow Steps 2 to 6 for run <run id>. Edit nothing, commit nothing, and do not run gh run rerun or push. Report each failed job with its step, category, sub-check and banners; whether the failure looks transient and why; the reproduction command and what it showed, or why it could not run; the root cause at a file and line with the evidence; and at least two candidate fixes with their footprint and risk. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link.
+`Read .claude/skills/ci-triage/SKILL.md and follow Steps 2 to 6 for run <run id>. Edit nothing, commit nothing, and do not re-run the run or push. Report each failed job with its step, category, sub-check and banners; whether the failure looks transient and why; the reproduction command and what it showed, or why it could not run; the root cause at a file and line with the evidence; and at least two candidate fixes with their footprint and risk. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link.
