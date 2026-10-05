@@ -2,25 +2,25 @@
 name: create-issue
 model: sonnet
 effort: low
-description: Draft a GitHub issue body for the JellyRock repo from a Reddit/Discord post or free-form bug report and submit it via gh. Reads the YAML form templates under .github/ISSUE_TEMPLATE/ to know which fields are required, fills them by extracting from the input, asks for any missing required fields, validates the body matches the chosen template's schema, then runs gh issue create with the auto-labels the template defines. Use when you have a user report (paste from anywhere) and want to formalize it into a properly-structured GitHub issue.
+description: Draft a GitHub issue body for the JellyRock repo from a Reddit/Discord post or free-form bug report and submit it via forge.sh. Reads the YAML form templates under .github/ISSUE_TEMPLATE/ to know which fields are required, fills them by extracting from the input, asks for any missing required fields, validates the body matches the chosen template's schema, then runs forge.sh issue create with the auto-labels the template defines. Use when you have a user report (paste from anywhere) and want to formalize it into a properly-structured GitHub issue.
 user-invocable: true
 allowed-tools: Bash(bash .claude/skills/pr/forge.sh issue create:*), Bash(bash .claude/skills/pr/forge.sh issue view:*), Bash(bash .claude/skills/pr/forge.sh issue list:*), Bash(bash .claude/skills/pr/forge.sh label list:*), Read
 ---
 
-# /create-issue — draft + submit a GitHub issue
+# /create-issue — draft + submit an issue
 
 ## This repo
 
 - **Routing** (Step 1): a user-facing bug, feature or enhancement is an issue. Internal tech debt, upstream version watches and other deferred work go where [Capture & state discipline](../../../AGENTS.md#capture--state-discipline) says (`/tech-debt-scan`, `/log signal`, `/log followup`).
 - **Regression label** (Step 3): `regression`.
-- **Tracking issues** (Step 8): open epics carry the `epic` label (`gh issue list --label epic --state open --json number,title`); offer `--parent <N>` when the report belongs under one.
+- **Tracking issues** (Step 8): open epics carry the `epic` label (`bash .claude/skills/pr/forge.sh issue list --label epic --state open`); offer `--parent <N>` when the report belongs under one.
 - **Tooling issues** (Step 6): an issue about tooling only (tests, scripts, CI, dev setup) also gets `dev-improvement`, as #910 did.
 
 ## Contract
 
-**Goal.** Turn a raw report — a forum thread, a chat message, an email, a free-form bug description, or a defect found during work — into a well-formed GitHub issue, or route it to the surface this repo actually uses for that kind of work. The skill first checks the report belongs in the issue tracker; then it wraps the repo's YAML issue forms (`.github/ISSUE_TEMPLATE/*.yml`) as a drafting-and-submission API: it picks the right form, fills each required field from the input, marks (never fabricates) the gaps, and submits via `forge.sh issue create` with the form's labels passed explicitly. A repo without forms gets the body shape this skill's `## This repo` gives, else plain Markdown. It ships at the Sonnet tier because the work is extract-and-fill drafting with light classification judgment, not deep investigation.
+**Goal.** Turn a raw report — a forum thread, a chat message, an email, a free-form bug description, or a defect found during work — into a well-formed issue, or route it to the surface this repo actually uses for that kind of work. The skill first checks the report belongs in the issue tracker; then it wraps the repo's YAML issue forms (`.github/ISSUE_TEMPLATE/*.yml`) as a drafting-and-submission API: it picks the right form, fills each required field from the input, marks (never fabricates) the gaps, and submits via `forge.sh issue create` with the form's labels passed explicitly. A repo without forms gets the body shape this skill's `## This repo` gives, else plain Markdown. It ships at the Sonnet tier because the work is extract-and-fill drafting with light classification judgment, not deep investigation.
 
-**Inputs.** The arguments (optional) are the source text — a forum post body, a chat message, an email, or a free-form problem description; if empty, ask the user for it. The skill reads `.github/ISSUE_TEMPLATE/` (forms and `config.yml` contact links), this skill's `## This repo` (a routing table, a body shape, label guidance), the repo's labels, and its open and closed issues to check for duplicates.
+**Inputs.** The arguments (optional) are the source text — a forum post body, a chat message, an email, or a free-form problem description; if empty, ask the user for it. The skill reads the issue form folder, `ISSUE_TEMPLATE/` under `.github/` (on Forgejo also under `.forgejo/`, `.gitea/` or `docs/`): its forms and its `config.yml` contact links, this skill's `## This repo` (a routing table, a body shape, label guidance), the repo's labels, and its open and closed issues to check for duplicates.
 
 **Outputs.** One of: a created issue whose body follows the chosen form (one `### <Field label>` per field, filled where the input supports it, gap-marked where it doesn't) or this repo's body shape, labeled with labels that exist in the repo, its URL printed; a comment on an existing issue when the report is a duplicate the user chose to add to; or a route to another surface (a journal entry, a project, a contact link) with the command to take it. A followup the input also implies is routed through `/log`.
 
@@ -50,16 +50,16 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh issue create:*), Bash(bash .
 **When NOT to use.**
 
 - The user wants to comment on an existing issue, not file a new one — use `bash .claude/skills/pr/forge.sh issue comment <N> --body-file <file>` directly.
-- The user is asking a question, not reporting a bug or proposing a change — point them to the contact links in `.github/ISSUE_TEMPLATE/config.yml`, if the repo has them.
+- The user is asking a question, not reporting a bug or proposing a change — point them to the contact links in the form folder's `config.yml`, if the repo has them.
 - The input is too vague to fill any form — say so and ask for more detail before drafting.
 
 ## Implementation
 
-This skill's `## This repo` holds the repo's own parts: a routing table for work the repo tracks outside GitHub, the body shape and title convention when the repo has no forms, label guidance beyond the forms' `labels:` (a regression label, labels automation owns), and anything to do after filing. Where a step needs one of them, it says so.
+This skill's `## This repo` holds the repo's own parts: a routing table for work the repo tracks outside its issue tracker, the body shape and title convention when the repo has no forms, label guidance beyond the forms' `labels:` (a regression label, labels automation owns), and anything to do after filing. Where a step needs one of them, it says so.
 
 ### Step 1 — Does this belong in the issue tracker?
 
-- **A question** → the contact links in `.github/ISSUE_TEMPLATE/config.yml` (or the repo's docs when it has none); stop.
+- **A question** → the contact links in the form folder's `config.yml` (or the repo's docs when it has none); stop.
 - **New context for an issue the user names** → `bash .claude/skills/pr/forge.sh issue comment <N> --body-file <file>`, after the same confirm as Step 7.
 - **This skill's `## This repo` routing table**, when it has one: a report whose shape the table sends elsewhere is routed there — say which surface and print its command in its own block (for example `/log followup <text>`). That is a successful outcome; stop.
 
@@ -67,9 +67,9 @@ Otherwise continue.
 
 ### Step 2 — Pick the form
 
-List `.github/ISSUE_TEMPLATE/*.yml` (skip `config.yml`) and read each form's `name`, `description` and its intro `markdown` block: they say what each form is for (a bug, a new feature, a change to an existing one). Match the input to one; on an ambiguous call, show the top two with why and let the user pick. Read the chosen form in full: its `body` fields (each `attributes.label`, `validations.required`, a dropdown's `options`) and its `labels:`. Never work from a field or label list copied into this file or anywhere else.
+List the form folder's `*.yml` (skip `config.yml`) and read each form's `name`, `description` and its intro `markdown` block: they say what each form is for (a bug, a new feature, a change to an existing one). Match the input to one; on an ambiguous call, show the top two with why and let the user pick. Read the chosen form in full: its `body` fields (each `attributes.label`, `validations.required`, a dropdown's `options`) and its `labels:`. Never work from a field or label list copied into this file or anywhere else.
 
-No `.github/ISSUE_TEMPLATE/` forms → use the body shape and title convention in this skill's `## This repo`; with none there, a plain Markdown body (what is wrong, how to reproduce it, what done looks like).
+No forms there → use the body shape and title convention in this skill's `## This repo`; with none there, a plain Markdown body (what is wrong, how to reproduce it, what done looks like).
 
 ### Step 3 — Search for duplicates
 
@@ -92,7 +92,7 @@ A required field the input does not cover: ask the user to fill it when they are
 
 **Title:** one line that names the defect or the change specifically (what fails, where), not the reporter's subject line; the convention in this skill's `## This repo` when it has one.
 
-**Body:** one `### <Field label>` per filled field, spelled exactly as the form's `attributes.label`, in the form's order; leave out empty optional fields, never an empty heading. For a forwarded report, end with a source line in the additional-context field (or a last paragraph without forms): `Reported via <channel>.`, plus a link when the source is public. Never name the reporter.
+**Body:** one `### <Field label>` per filled field, spelled exactly as the form's `attributes.label`, in the form's order; leave out empty optional fields, never an empty heading. For a forwarded report, end with a source line in the additional-context field (or a last paragraph without forms): `Reported via <channel>.`, plus a link when the source is public. Never name the reporter. On a Forgejo repo, an issue that belongs under a tracking issue starts with `Part of #<N>` (Step 8 says why).
 
 Write the body to `"$(git rev-parse --git-dir)/issue-body.md"`: inside the git directory it can never be committed, and it survives a failed create.
 
@@ -124,7 +124,7 @@ Then show the user the form, the title, the labels (each replacement beside what
 bash .claude/skills/pr/forge.sh issue create --title "<title>" --body-file "$(git rev-parse --git-dir)/issue-body.md" [--label <name> [--label <name> …]] [--parent <N>]
 ```
 
-`--parent <N>` files it as a sub-issue of a tracking issue, when the user says it belongs under one.
+`--parent <N>` files it as a sub-issue of a tracking issue, when the user says it belongs under one. On a Forgejo repo (`backend: forgejo` in [this repo's forge](../../../AGENTS.md#forge)) there are no sub-issues, and forge.sh refuses `--parent` (exit 5): in its place the body starts with `Part of #<N>`, written in Step 5 so the user confirms it in Step 7.
 
 ### Step 9 — After
 

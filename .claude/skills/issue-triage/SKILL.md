@@ -70,7 +70,7 @@ This skill's `## This repo` holds the repo's own parts: the area map (what words
 bash .claude/skills/pr/forge.sh issue view <N>
 ```
 
-Never add `2>/dev/null`: forge.sh passes the forge's own message on whole. Keep the body and every comment whole. A closed issue: say how it closed (`stateReason`, `closedByPullRequestsReferences`) and ask in chat whether to revisit it before going on.
+Never add `2>/dev/null`: forge.sh passes the forge's own message on whole. Keep the body and every comment whole. A closed issue: say how it closed (`stateReason`, `closedByPullRequestsReferences`; both `null` means the forge records neither, as Forgejo does, so say that rather than guess) and ask in chat whether to revisit it before going on.
 
 ### Step 2 — Is it still true?
 
