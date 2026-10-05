@@ -46,6 +46,7 @@ F_RUN_VIEW="status,conclusion,name,event,headBranch,url,createdAt,jobs"
 
 # One line per verb: <noun verb>;<arguments>;<output>;<what it does>
 SPEC="repo default-branch;;text: the branch name;The repo's default branch.
+repo file-url;<path>;text: the URL;The web URL of <path> (a file path from the repo root) on the repo's default branch.
 repo merge-settings;;JSON: squash_merge_commit_title, squash_merge_commit_message;What a squash merge keeps (empty without enough rights on the repo).
 user login;;text: the login;The account this session acts as.
 pr view;[<N>];JSON: $F_PR_VIEW;PR <N>, or the current branch's PR; exit 4 when the branch has none.
@@ -133,9 +134,26 @@ one_of() { # <flag> <value> <allowed...>
   die 2 "$cmd: $flag must be one of: $*, not '$v'"
 }
 
+# uri_path <path>: sets fpath to the path with each character outside A-Za-z0-9._~- as %XX, the /
+# between segments kept (byte-wise under LC_ALL=C, so UTF-8 is fine); the caller's LC_ALL is left alone
+uri_path() {
+  local LC_ALL=C i c enc=""
+  for ((i = 0; i < ${#1}; i++)); do
+    c="${1:i:1}"
+    case "$c" in [A-Za-z0-9._~/-]) enc+="$c" ;; *) printf -v c '%%%02X' "'$c"; enc+="$c" ;; esac
+  done
+  fpath="$enc"
+}
+
 case "$cmd" in
   "repo default-branch"|"repo merge-settings"|"user login"|"label list")
     parse "" "$@"; positional 0 0 ;;
+  "repo file-url")
+    parse "" "$@"; positional 1 1
+    fpath="${pos[0]}"; fpath="${fpath#./}"
+    case "$fpath" in /*) die 2 "$cmd: <path> is from the repo root, not absolute ('${pos[0]}')" ;; esac
+    required "<path>" "$fpath"
+    uri_path "$fpath" ;;
   "pr view")
     parse "" "$@"; positional 0 1; [ "${#pos[@]}" = 0 ] || number "<N>" "${pos[0]}" ;;
   "pr comments"|"pr commits"|"pr reopen"|"issue view")
@@ -307,6 +325,10 @@ if [ "$backend" = forgejo ]; then
 
   case "$cmd" in
     "repo default-branch") fj GET "$rapi"; jq -r .default_branch "$resp" ;;
+    "repo file-url")
+      fj GET "$rapi"
+      url="$(jq -er '(.html_url // empty) + "/src/branch/" + .default_branch' "$resp")" || die 1 "the repo answer has no html_url or default_branch"
+      printf '%s/%s\n' "$url" "$fpath" ;;
     "user login")          fj GET "$base/user"; jq -r .login "$resp" ;;
     "pr view")
       if [ -n "$n" ]; then fj GET "$rapi/pulls/$n"; jq -c "$prmap" "$resp"; exit 0; fi
@@ -425,6 +447,10 @@ n="${pos[0]:-}"
 
 case "$cmd" in
   "repo default-branch") gh_run repo view --json defaultBranchRef --jq .defaultBranchRef.name ;;
+  "repo file-url")
+    url="$(gh repo view --json url,defaultBranchRef --jq '.url + "/blob/" + .defaultBranchRef.name' 2>"$err")" || { cat "$err" >&2; exit 1; }
+    cat "$err" >&2
+    printf '%s/%s\n' "$url" "$fpath" ;;
   "repo merge-settings") gh_run api 'repos/{owner}/{repo}' --jq '{squash_merge_commit_title, squash_merge_commit_message}' ;;
   "user login")          gh_run api user --jq .login ;;
   "pr view")             gh_run pr view ${n:+"$n"} --json "$F_PR_VIEW" ;;
