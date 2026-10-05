@@ -10,6 +10,7 @@
 #   ### Forge
 #   backend: github        (or forgejo)
 #   prs: always            (read by the skills, not by this script)
+#   api: <URL>             (forgejo, optional: the API root when it is not https://<host>/api/v1)
 #
 # Contract with the skills:
 #   * Output keeps gh's shape: a JSON verb prints exactly what `gh ... --json <its fields>` prints,
@@ -19,14 +20,17 @@
 #
 # Exit codes:
 #   0  done
-#   1  the forge refused or failed (its message is on stderr), or gh is missing
+#   1  the forge refused or failed (its message is on stderr), a tool it needs is missing (gh;
+#      curl and jq on Forgejo), or the Forgejo token file is missing
 #   2  usage: an unknown verb or flag, a missing or bad argument, a body file that does not exist
-#   3  no `### Forge` slot, no backend: in it, a backend it does not know, or not in a git repo
+#   3  no `### Forge` slot, no backend: in it, a backend it does not know, not in a git repo, or
+#      (forgejo) no origin remote to read the host and repo from
 #   4  `pr view` only: the branch has no pull request
 #   5  the verb is not available on this backend
 #
 # Usage: bash forge.sh <noun> <verb> [args]      bash forge.sh --help      bash forge.sh <noun> <verb> --help
 
+# shellcheck disable=SC2016 # single-quoted jq programs: their $names are jq variables
 set -uo pipefail
 
 prog="forge.sh"
@@ -54,7 +58,7 @@ pr comment;<N> --body-file <file>;text: the comment's URL;Comment on a PR.
 pr reopen;<N>;text;Reopen a closed PR.
 comment edit;<id> --body-file <file>;text: the comment's URL;Replace a PR or issue comment's body, by its numeric id.
 issue view;<N>;JSON: $F_ISSUE_VIEW;Issue <N> (a PR number works too).
-issue list;[--state open|closed|all] [--search <q>] [--limit <n>];JSON: $F_ISSUE_LIST;Issues matching a search.
+issue list;[--state open|closed|all] [--search <q>] [--label <l>]... [--limit <n>];JSON: $F_ISSUE_LIST;Issues matching a search and having every given label.
 issue create;--title <t> --body-file <file> [--label <l>]... [--parent <N>];text: the issue's URL;File an issue, as a sub-issue of <N> with --parent.
 issue comment;<N> --body-file <file>;text: the comment's URL;Comment on an issue.
 issue close;<N> --reason completed|not-planned|duplicate;text;Close an issue.
@@ -73,6 +77,8 @@ usage() {
   printf '%s\n' "$SPEC" | awk -F';' '{ l = sprintf("  %-20s %s", $1, $2); sub(/ +$/, "", l); print l }'
   echo
   echo "The backend comes from the ### Forge slot in the repo's AGENTS.md (backend: github or forgejo)."
+  echo "Forgejo: the API is https://<the origin remote's host>/api/v1 unless the slot has an api: <URL> line;"
+  echo 'the token is the curl config at $FORGEJO_CURLRC, else ~/.config/forgejo/<host>.curlrc.'
 }
 verb_help() {
   printf '%s\n' "$SPEC" | awk -F';' -v c="$cmd" -v p="$prog" '$1 == c "" {
@@ -141,7 +147,7 @@ case "$cmd" in
     [ -z "$opt_state" ] || one_of --state "$opt_state" open closed merged all
     [ -z "$opt_limit" ] || number --limit "$opt_limit" ;;
   "issue list")
-    parse "--state --search --limit" "$@"; positional 0 0
+    parse "--state --search --label --limit" "$@"; positional 0 0
     [ -z "$opt_state" ] || one_of --state "$opt_state" open closed all
     [ -z "$opt_limit" ] || number --limit "$opt_limit" ;;
   "run list")
@@ -176,22 +182,226 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" \
 facts="$root/AGENTS.md"
 fix="add to ## Repo facts in $facts:  ### Forge / backend: github (or forgejo) / prs: always (or on-request)"
 [ -f "$facts" ] || die 3 "no AGENTS.md at $root; $fix"
-# <1 when the slot was found, else 0><TAB><its backend: value>
+# <1 when the slot was found, else 0><TAB><its backend: value><TAB><its api: value>
 slot="$(awk '
   { sub(/\r$/, "") }
   /^### Forge[ \t]*$/ { s = 1; next }
   s && /^#/ { exit }
   s { l = $0; gsub(/`/, "", l)
-      if (l ~ /^[ \t]*backend:/) { sub(/^[ \t]*backend:[ \t]*/, "", l); sub(/[ \t]+$/, "", l); v = l; exit } }
-  END { printf "%d\t%s\n", s, v }' "$facts")"
-backend="${slot#*$'\t'}"
-[ "${slot%%$'\t'*}" = 1 ] || die 3 "no ### Forge slot in $facts; $fix"
+      if (l ~ /^[ \t]*backend:/) { sub(/^[ \t]*backend:[ \t]*/, "", l); sub(/[ \t]+$/, "", l); v = l }
+      if (l ~ /^[ \t]*api:/) { sub(/^[ \t]*api:[ \t]*/, "", l); sub(/[ \t]+$/, "", l); a = l } }
+  END { printf "%d\t%s\t%s\n", s, v, a }' "$facts")"
+IFS=$'\t' read -r found backend api_line <<<"$slot"
+[ "$found" = 1 ] || die 3 "no ### Forge slot in $facts; $fix"
 case "$backend" in
-  github) ;;
-  forgejo) die 5 "the Forgejo backend is not built yet: '$cmd' cannot run on this repo" ;;
+  github|forgejo) ;;
   "") die 3 "the ### Forge slot in $facts has no backend: line; $fix" ;;
   *) die 3 "unknown backend '$backend' in the ### Forge slot of $facts: use github or forgejo" ;;
 esac
+
+# --------------------------------------------------------------------------- Forgejo (curl + jq)
+# The API is https://<the origin remote's host>/api/v1, or the slot's api: line (the API root, for a
+# forge on another port, scheme or path). The token is a curl config file, passed to curl and never
+# read here: $FORGEJO_CURLRC, else ~/.config/forgejo/<the origin remote's host>.curlrc.
+# Output keeps gh's field names (see the contract above); a field Forgejo does not record is null.
+if [ "$backend" = forgejo ]; then
+  # What Forgejo cannot do, refused before any setup or call.
+  case "$cmd" in
+    run\ *) die 5 "'$cmd' is not available on the Forgejo backend: its API has no Actions logs or rerun, so the run verbs wait for it" ;;
+    "issue create") [ -z "$opt_parent" ] || die 5 "Forgejo has no sub-issues: drop --parent and add \"Part of #$opt_parent\" to the body" ;;
+    "repo merge-settings")
+      # Forgejo keeps no squash commit templates: both null, as gh gives without enough rights.
+      echo '{"squash_merge_commit_title":null,"squash_merge_commit_message":null}'; exit 0 ;;
+  esac
+  # --search: plain words, ANDed here (Forgejo ORs them), and GitHub's in:title honored here.
+  words=(); title_only=0
+  if [ -n "$opt_search" ]; then
+    read -ra sw <<<"$opt_search"
+    for w in "${sw[@]}"; do
+      if [ "$w" = "in:title" ]; then title_only=1
+      elif [[ "$w" =~ ^[A-Za-z-]+:.+ ]]; then
+        die 5 "search qualifier '$w' is GitHub search syntax: on Forgejo, --search takes plain words and in:title"
+      else words+=("$w"); fi
+    done
+  fi
+
+  for t in curl jq; do command -v "$t" >/dev/null 2>&1 || die 1 "$t is required by the Forgejo backend but is not installed"; done
+  remote="$(git -C "$root" remote get-url origin 2>/dev/null)" \
+    || die 3 "the Forgejo backend reads the host and repo from the origin remote, and this repo has none"
+  case "$remote" in
+    *://*) rest="${remote#*://}"; rest="${rest#*@}"; hostport="${rest%%/*}"; rpath="${rest#*/}" ;;
+    *:*)   rest="${remote#*@}"; hostport="${rest%%:*}"; rpath="${rest#*:}" ;;
+    *)     rpath="" ;;
+  esac
+  rpath="${rpath%/}"; rpath="${rpath%.git}"; host="${hostport%%:*}"
+  repo="${rpath##*/}"; owner="${rpath%/*}"; owner="${owner##*/}"
+  [ -n "$host" ] && [ -n "$owner" ] && [ -n "$repo" ] && [ "$owner" != "$rpath" ] \
+    || die 3 "cannot read host/owner/repo from the origin remote '$remote'"
+  base="${api_line:-https://$host/api/v1}"; base="${base%/}"
+  rapi="$base/repos/$owner/$repo"
+  curlrc="${FORGEJO_CURLRC:-$HOME/.config/forgejo/$host.curlrc}"
+  [ -f "$curlrc" ] && [ -r "$curlrc" ] \
+    || die 1 "no Forgejo token file at $curlrc: a curl config holding the token header (header = \"Authorization: token <token>\"), or point FORGEJO_CURLRC at one"
+
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+  resp="$tmp/resp" hdr="$tmp/hdr" req="$tmp/req" err="$tmp/err"
+  # fj <METHOD> <URL> [<JSON body>]: the answer's body lands in $resp. curl's own error, or an HTTP
+  # status outside 2xx with Forgejo's message, is exit 1.
+  fj() {
+    local m="$1" u="$2" code body=()
+    if [ $# -ge 3 ]; then printf '%s' "$3" >"$req"; body=(-H 'Content-Type: application/json' --data-binary "@$req"); fi
+    code="$(curl -sS --config "$curlrc" -X "$m" -H 'Accept: application/json' ${body[@]+"${body[@]}"} \
+      -D "$hdr" -o "$resp" -w '%{http_code}' "$u" 2>"$err")" || { cat "$err" >&2; exit 1; }
+    case "$code" in 2??) return 0 ;; esac
+    local msg; msg="$(jq -r '.message // empty' "$resp" 2>/dev/null)"
+    [ -n "$msg" ] || msg="$(head -c 500 "$resp")"
+    die 1 "Forgejo answered HTTP $code to $m ${u#"$base"}: $msg"
+  }
+  next_link() { tr ',' '\n' <"$hdr" | tr -d '\r' | grep -i 'rel="next"' | sed -n 's/.*<\([^>]*\)>.*/\1/p' | head -1; }
+  # pages <URL> <max, 0 for all> <jq filter: a page's array to the items kept>: follows the Link
+  # header's next page until max items are kept, into $tmp/list as one array. JQ_ARGS go to the
+  # filter. It and label_ids write files, never stdout: a die inside $(...) would end only the
+  # subshell, and a failed scan would read as "nothing found".
+  JQ_ARGS=()
+  pages() {
+    local u="$1" max="$2" f="$3"
+    echo '[]' >"$tmp/list"
+    while [ -n "$u" ]; do
+      fj GET "$u"
+      jq -c ${JQ_ARGS[@]+"${JQ_ARGS[@]}"} "$f" "$resp" >"$tmp/page" || die 1 "unreadable answer from GET ${u#"$base"}"
+      jq -cs '.[0] + .[1]' "$tmp/list" "$tmp/page" >"$tmp/list.n" && mv "$tmp/list.n" "$tmp/list"
+      [ "$max" -gt 0 ] && [ "$(jq length "$tmp/list")" -ge "$max" ] && break
+      u="$(next_link)"
+    done
+    [ "$max" -gt 0 ] || return 0
+    jq -c ".[:$max]" "$tmp/list" >"$tmp/list.n" && mv "$tmp/list.n" "$tmp/list"
+  }
+  uri() { jq -rn --arg s "$1" '$s|@uri'; }
+  # label_ids <name>...: the labels' ids into $tmp/ids as a JSON array; an unknown name is exit 1,
+  # before any write
+  label_ids() {
+    JQ_ARGS=(); pages "$rapi/labels?limit=50" 0 '[.[] | {id, name}]'
+    jq -c --slurpfile all "$tmp/list" '$ARGS.positional | map(. as $n | ($all[0] | map(select(.name == $n)) | .[0].id) // ("missing:" + $n))' \
+      -n --args "$@" >"$tmp/ids"
+    local missing; missing="$(jq -r '[.[] | strings | ltrimstr("missing:") | "'"'"'\(.)'"'"'"] | join(", ")' "$tmp/ids")"
+    [ -z "$missing" ] || die 1 "no label $missing on this repo (forge.sh label list shows the ones there are)"
+  }
+  # The filter that keeps a page's items matching every search word (title only with in:title)
+  matches='map(select(. as $i | all($words[]; ascii_downcase as $w
+    | (($i.title // "") + (if $t == 1 then "" else "\n" + ($i.body // "") end)) | ascii_downcase | contains($w))))'
+  search_args() { JQ_ARGS=(--argjson labs "$(jq -cn '$ARGS.positional' --args ${labs[@]+"${labs[@]}"})" --argjson words "$(jq -cn '$ARGS.positional' --args ${words[@]+"${words[@]}"})" --argjson t "$title_only"); }
+  has_labs='map(select(. as $i | all($labs[]; . as $l | any($i.labels[]?; .name == $l))))'
+  q=""; [ "${#words[@]}" = 0 ] || q="&q=$(uri "${words[*]}")"
+  # A client-side filter thins every page, so those ask for full pages (issue list --label too)
+  page_for() { if [ "${#words[@]}" -gt 0 ] || [ "${#labels[@]}" -gt 0 ] || [ "$title_only" = 1 ] || [ "$1" = merged ]; then echo 50; else echo "$2"; fi; }
+  who='{login: .user.login, name: (.user.full_name // "")}'
+  lbl='[.labels[]? | {name, description, color}]'
+  # Forgejo keeps a draft in the title (a WIP: or [WIP] prefix, any case); gh keeps it out, so a draft's title loses one
+  unwip='def unwip(d): if d then .title |= sub("^(\\[wip\\]|wip:) *"; ""; "i") else . end;'
+  prmap="$unwip unwip(.draft) | {number, url: .html_url, state: (if .merged then \"MERGED\" elif .state == \"open\" then \"OPEN\" else \"CLOSED\" end),
+    author: $who, title, labels: $lbl, body: (.body // \"\"), headRefOid: .head.sha}"
+  cmap='[.[] | {author: {login: .user.login}, body, createdAt: .created_at, url: .html_url}]'
+  state='(if .state == "open" then "OPEN" else "CLOSED" end)'
+  n="${pos[0]:-}"
+  body_json() { jq -n --rawfile body "$opt_body_file" "$@"; }
+
+  case "$cmd" in
+    "repo default-branch") fj GET "$rapi"; jq -r .default_branch "$resp" ;;
+    "user login")          fj GET "$base/user"; jq -r .login "$resp" ;;
+    "pr view")
+      if [ -n "$n" ]; then fj GET "$rapi/pulls/$n"; jq -c "$prmap" "$resp"; exit 0; fi
+      branch="$(git branch --show-current)"
+      [ -n "$branch" ] || die 1 "pr view: not on a branch (detached HEAD): give the PR number"
+      JQ_ARGS=(--arg b "$branch" --arg full "$owner/$repo" --arg sha "$(git rev-parse HEAD)")
+      # gh's pick: the branch's open PR, else its newest closed one; a merged PR whose branch was
+      # deleted lost its name (head.ref is refs/pull/<N>/head), so its head commit finds it.
+      mine='map(select((.head.ref == $b and .head.repo.full_name == $full) or (.merged and (.head.ref | startswith("refs/pull/")) and .head.sha == $sha)))'
+      pages "$rapi/pulls?state=open&limit=50" 0 "$mine"; found="$(jq -c 'max_by(.number) // empty' "$tmp/list")"
+      if [ -z "$found" ]; then pages "$rapi/pulls?state=closed&limit=50" 0 "$mine"; found="$(jq -c 'max_by(.number) // empty' "$tmp/list")"; fi
+      [ -n "$found" ] || { printf 'no pull requests found for branch "%s"\n' "$branch" >&2; exit 4; }
+      jq -c "$prmap" <<<"$found" ;;
+    "pr comments")  fj GET "$rapi/issues/$n/comments"; jq -c "{comments: $cmap}" "$resp" ;;
+    "pr commits")
+      # Forgejo lists newest first; gh lists the first commit first
+      pages "$rapi/pulls/$n/commits?stat=false&files=false&verification=false&limit=50" 0 \
+        '[.[] | {oid: .sha, messageHeadline: (.commit.message | split("\n")[0]),
+                 messageBody: (.commit.message | sub("^[^\n]*\n*"; "")),
+                 authoredDate: .commit.author.date, committedDate: .commit.committer.date}]'
+      jq -c '{commits: reverse}' "$tmp/list" ;;
+    "pr list"|"issue list")
+      st="${opt_state:-open}"; lim="${opt_limit:-30}"
+      # an unknown label would be ignored by the server (every issue back), so check the names first
+      lq=""; labs=()
+      if [ "$cmd" = "issue list" ] && [ "${#labels[@]}" -gt 0 ]; then
+        label_ids "${labels[@]}"; labs=("${labels[@]}")
+        lq="&labels="; for l in "${labels[@]}"; do lq+="$(uri "$l"),"; done; lq="${lq%,}"
+      fi
+      search_args
+      if [ "$cmd" = "pr list" ]; then
+        type=pulls; keep="$matches"; [ "$st" != merged ] || keep="map(select(.pull_request.merged)) | $matches"
+        out="$unwip [.[] | unwip(.pull_request.draft) | {number, title, mergedAt: (.pull_request.merged_at // null)}]"
+      else
+        type=issues; keep="$matches | $has_labs"; out="[.[] | {number, title, state: $state, labels: $lbl}]"
+      fi
+      fst="$st"; [ "$st" != merged ] || fst=closed
+      pages "$rapi/issues?type=$type&state=$fst&limit=$(page_for "$st" "$lim")$q$lq" "$lim" "$keep"
+      jq -c "$out" "$tmp/list" ;;
+    "pr create")
+      branch="$(git branch --show-current)"
+      [ -n "$branch" ] || die 1 "pr create: not on a branch (detached HEAD)"
+      ids='[]'; [ "${#labels[@]}" = 0 ] || { label_ids "${labels[@]}"; ids="$(cat "$tmp/ids")"; }
+      # Forgejo has no draft flag: a title prefix marks one (WORK_IN_PROGRESS_PREFIXES, WIP: by default)
+      title="$opt_title"; [ -z "$opt_draft" ] || title="WIP: $title"
+      fj POST "$rapi/pulls" "$(body_json --arg base "$opt_base" --arg head "$branch" --arg title "$title" --argjson labels "$ids" \
+        '{base: $base, head: $head, title: $title, body: $body} + (if ($labels | length) > 0 then {labels: $labels} else {} end)')"
+      jq -r .html_url "$resp" ;;
+    "pr edit")
+      IFS=, read -ra add <<<"$opt_add_label"; IFS=, read -ra del <<<"$opt_remove_label"
+      [ "$(( ${#add[@]} + ${#del[@]} ))" = 0 ] || label_ids ${add[@]+"${add[@]}"} ${del[@]+"${del[@]}"}
+      url=""; title="$opt_title"
+      if [ -n "$opt_title" ]; then
+        # a draft's title carries its WIP prefix: a new title keeps it, or the edit would undraft the PR
+        fj GET "$rapi/pulls/$n"
+        title="$(jq -r --arg t "$opt_title" 'def pre: "^(\\[wip\\]|wip:)";
+          if .draft and ($t | test(pre; "i") | not) and (.title | test(pre; "i")) then (.title | capture("(?<p>" + pre + ")"; "i").p) + " " + $t else $t end' "$resp")" || die 1 "unreadable answer from GET pulls/$n"
+      fi
+      if [ -n "$opt_title$opt_body_file" ]; then
+        patch="$(jq -n --arg title "$title" 'if $title == "" then {} else {title: $title} end')"
+        [ -z "$opt_body_file" ] || patch="$(body_json --argjson p "$patch" '$p + {body: $body}')"
+        fj PATCH "$rapi/pulls/$n" "$patch"; url="$(jq -r .html_url "$resp")"
+      fi
+      [ "${#add[@]}" = 0 ] || fj POST "$rapi/issues/$n/labels" "$(jq -cn '{labels: $ARGS.positional}' --args "${add[@]}")"
+      for l in ${del[@]+"${del[@]}"}; do fj DELETE "$rapi/issues/$n/labels/$(uri "$l")"; done
+      [ -n "$url" ] || { fj GET "$rapi/pulls/$n"; url="$(jq -r .html_url "$resp")"; }
+      echo "$url" ;;
+    "pr comment"|"issue comment")
+      fj POST "$rapi/issues/$n/comments" "$(body_json '{body: $body}')"; jq -r .html_url "$resp" ;;
+    "pr reopen")    fj PATCH "$rapi/pulls/$n" '{"state":"open"}'; jq -r .html_url "$resp" ;;
+    "comment edit") fj PATCH "$rapi/issues/comments/$n" "$(body_json '{body: $body}')"; jq -r .html_url "$resp" ;;
+    "issue view")
+      fj GET "$rapi/issues/$n"; cp "$resp" "$tmp/issue"
+      fj GET "$rapi/issues/$n/comments"
+      jq -c --slurpfile c "$resp" "{number, title, body: (.body // \"\"), state: $state, stateReason: null, labels: $lbl,
+        author: $who, comments: (\$c[0] | $cmap), createdAt: .created_at, updatedAt: .updated_at,
+        closedByPullRequestsReferences: null, url: .html_url}" "$tmp/issue" ;;
+    "issue create")
+      ids='[]'; [ "${#labels[@]}" = 0 ] || { label_ids "${labels[@]}"; ids="$(cat "$tmp/ids")"; }
+      fj POST "$rapi/issues" "$(body_json --arg title "$opt_title" --argjson labels "$ids" \
+        '{title: $title, body: $body} + (if ($labels | length) > 0 then {labels: $labels} else {} end)')"
+      jq -r .html_url "$resp" ;;
+    "issue close")
+      fj PATCH "$rapi/issues/$n" '{"state":"closed"}'
+      [ "$opt_reason" = completed ] || printf '%s: Forgejo records no close reason: closed, "%s" not kept\n' "$prog" "$opt_reason" >&2
+      jq -r .html_url "$resp" ;;
+    "label list")   pages "$rapi/labels?limit=50" 500 '[.[] | {name, description}]'; cat "$tmp/list" ;;
+    "label create")
+      # gh picks a random color when none is given; Forgejo requires one
+      color="$(printf '#%06x' $(( (RANDOM << 15 | RANDOM) & 0xFFFFFF )))"
+      fj POST "$rapi/labels" "$(jq -n --arg name "$n" --arg d "$opt_description" --arg c "$color" '{name: $name, color: $c, description: $d}')"
+      jq -r .name "$resp" ;;
+  esac
+  exit 0
+fi
 
 # -------------------------------------------------------------------------------- GitHub (gh)
 command -v gh >/dev/null 2>&1 || die 1 "gh is required by the GitHub backend but is not installed"
@@ -238,6 +448,7 @@ case "$cmd" in
   "issue view")          gh_run issue view "$n" --json "$F_ISSUE_VIEW" ;;
   "issue list")
     optional --state "$opt_state"; optional --search "$opt_search"; optional --limit "$opt_limit"
+    for l in ${labels[@]+"${labels[@]}"}; do extra+=(--label "$l"); done
     gh_run issue list "${extra[@]}" --json "$F_ISSUE_LIST" ;;
   "issue create")
     for l in "${labels[@]}"; do extra+=(--label "$l"); done
