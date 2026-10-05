@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-04
+last-updated: 2026-10-05
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-05 — chore(skills): allow `forge.sh repo file-url` without a prompt
 - 2026-10-04 — update(translations): Seed translations from other Jellyfin clients
 - 2026-10-04 — refactor: Consolidate duplicate helpers from the dead-code baseline
 - 2026-10-04 — refactor: Remove unused session transformers, test the live login
@@ -97,8 +98,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-21 — fix: Honor v12 web client's "Original language" audio preference
 - 2026-09-21 — ci: Make an RTA run against a non-demo server mean what it says
 - 2026-09-21 — feat: Merge a person's credits into one Cast & Crew card, translated
-- 2026-09-20 — fix: Stop the session socket being reaped a minute after it connects
-- 2026-09-20 — Show the version that would actually play on posters and episode rows
 
 ## Open followups
 
