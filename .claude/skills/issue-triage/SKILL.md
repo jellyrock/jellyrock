@@ -4,7 +4,7 @@ description: "Investigate one GitHub issue and act on it the /snag way. Fetches 
 model: opus
 effort: high
 user-invocable: true
-allowed-tools: Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh search issues:*), Bash(git log:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
+allowed-tools: Bash(bash .claude/skills/pr/forge.sh issue view:*), Bash(bash .claude/skills/pr/forge.sh issue list:*), Bash(bash .claude/skills/pr/forge.sh pr list:*), Bash(git log:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
 ---
 
 # /issue-triage — investigate one GitHub issue
@@ -67,10 +67,10 @@ This skill's `## This repo` holds the repo's own parts: the area map (what words
 ### Step 1 — Fetch
 
 ```sh
-gh issue view <N> --json number,title,body,state,stateReason,labels,author,comments,createdAt,updatedAt,closedByPullRequestsReferences,url
+bash .claude/skills/pr/forge.sh issue view <N>
 ```
 
-Never add `2>/dev/null`: gh names a rejected field exactly. Keep the body and every comment whole. A closed issue: say how it closed (`stateReason`, `closedByPullRequestsReferences`) and ask in chat whether to revisit it before going on.
+Never add `2>/dev/null`: forge.sh passes the forge's own message on whole. Keep the body and every comment whole. A closed issue: say how it closed (`stateReason`, `closedByPullRequestsReferences`) and ask in chat whether to revisit it before going on.
 
 ### Step 2 — Is it still true?
 
@@ -94,7 +94,7 @@ Classify, from the body's shape first and the labels second (and the shape alone
 Search for a duplicate, open and closed:
 
 ```sh
-gh issue list --state all --search "<2-3 keywords>" --limit 10 --json number,title,state
+bash .claude/skills/pr/forge.sh issue list --state all --search "<2-3 keywords>" --limit 10
 ```
 
 A likely duplicate: show it in one line with its state, and ask in chat whether to draft a pointer comment (Step 7) or go on.
@@ -104,7 +104,7 @@ A likely duplicate: show it in one line with its state, and ask in chat whether 
 Answer in order, each in a sentence with its evidence; stop at the first that settles it:
 
 1. **Expected behavior?** Read the user docs this skill's `## This repo` names. Expected: draft the explaining reply (Step 7), and stop.
-2. **Already fixed?** Its `closedByPullRequestsReferences`, then `gh pr list --state merged --search "<keywords>" --limit 10 --json number,title,mergedAt`, and `git log --oneline -S'<symbol>'` on the code it names. Fixed in a release newer than the reporter's version: the answer is to upgrade (Step 7), not a new fix.
+2. **Already fixed?** Its `closedByPullRequestsReferences`, then `bash .claude/skills/pr/forge.sh pr list --state merged --search "<keywords>" --limit 10`, and `git log --oneline -S'<symbol>'` on the code it names. Fixed in a release newer than the reporter's version: the answer is to upgrade (Step 7), not a new fix.
 3. **Reproducible?** Are the steps specific enough to run? Not: draft a comment asking for exactly what is missing (Step 7); never fill the gap with a guess.
 4. **Scope?** Just the named spot, its area, or a pattern that repeats elsewhere. Say so honestly; a narrowed fix names what it leaves.
 
@@ -120,7 +120,7 @@ Reproduce it for real (this skill's `## This repo` says how in this repo, and wh
 
 ### Step 7 — Anything posted on the issue
 
-A comment, a label, a close or an edit is drafted, never sent. Write a comment to `"$(git rev-parse --git-dir)/issue-comment.md"` (it can never be committed there). When [this repo's public posture](../../../AGENTS.md#public-posture) is `public`, sweep it as `/create-issue`'s Step 7 does (a home path, a person's name or email, a secret, another repository's or host's name) and remove what is private. Show it, and ask in chat: `post`, `edit: <text>` or `cancel`. On `post`: `gh issue comment <N> --body-file "$(git rev-parse --git-dir)/issue-comment.md"`; a close is `gh issue close <N> --reason "not planned"` (or `duplicate`, or `completed`) only on its own approval.
+A comment, a label, a close or an edit is drafted, never sent. Write a comment to `"$(git rev-parse --git-dir)/issue-comment.md"` (it can never be committed there). When [this repo's public posture](../../../AGENTS.md#public-posture) is `public`, sweep it as `/create-issue`'s Step 7 does (a home path, a person's name or email, a secret, another repository's or host's name) and remove what is private. Show it, and ask in chat: `post`, `edit: <text>` or `cancel`. On `post`: `bash .claude/skills/pr/forge.sh issue comment <N> --body-file "$(git rev-parse --git-dir)/issue-comment.md"`; a close is `bash .claude/skills/pr/forge.sh issue close <N> --reason not-planned` (or `duplicate`, or `completed`) only on its own approval.
 
 ### Step 8 — Decide and build, the `/snag` way
 
@@ -129,7 +129,7 @@ Read `.claude/skills/snag/SKILL.md` and follow its Steps 2 to 7, carrying in wha
 - The screen's first line is `**Issue:** #<N> <title> (<classification>)`; when the issue states acceptance criteria, the screen lists them under **Evidence**.
 - `asap` and `later` file no followup: the issue already tracks the work. Offer instead to draft a comment carrying the findings (Step 7). Work that needs its own design or several sessions gets `/start-project` printed alone in its own block.
 - Before its Step 5 builds anything on the default branch, create the fix branch: `git switch -c fix/issue-<N>`. On any other branch, commit there. The commit body names the issue as `#<N>`.
-- Its report ends with one more line: **Next:** push the branch (`/pr` opens its pull request, which links the issue).
+- Its report ends with one more line, by [this repo's forge](../../../AGENTS.md#forge) `prs:` value: `always` gives **Next:** push the branch (`/pr` opens its pull request, which links the issue). `on-request` gives **Next:** push as this repo's Landing says (`/pr` when you want a pull request).
 
 ## Sub-agent invocation
 

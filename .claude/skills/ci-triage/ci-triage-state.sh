@@ -2,7 +2,7 @@
 #
 # ci-triage-state.sh — the one read /ci-triage makes. Fetches one CI run, finds every job and step
 # that failed, prints each failed job's diagnostic tail, and classifies each against this repo's
-# gates.tsv, so the session spends its effort on the diagnosis rather than on gh calls and a log
+# gates.tsv, so the session spends its effort on the diagnosis rather than on forge calls and a log
 # scroll. What to do about a failure stays with the skill.
 #
 # gates.tsv (beside this script, the repo's own file): one line per gate, tab-separated:
@@ -13,7 +13,8 @@
 # gate whose obvious fix is the wrong one. Lines starting with # and blank lines are skipped.
 #
 # Contract with the skill:
-#   * Read-only: `gh run view` only. It never re-runs, cancels or comments on a run.
+#   * Read-only: `forge.sh run view` and `run log` only (forge.sh ships with the pr skill). It
+#     never re-runs, cancels or comments on a run.
 #   * Anything it cannot fetch or read prints an ERROR: or NOTE: line: silence never reads as clean.
 #   * It classifies and never acts. Routing is the skill's.
 #
@@ -23,7 +24,7 @@
 #   3  the run could not be fetched or read, or jq is missing, or no run id was given
 #
 # Usage: bash ci-triage-state.sh <run-id>
-# CI_TRIAGE_FIXTURE=<dir> reads <dir>/run.json and <dir>/log.txt in place of gh (the tests);
+# CI_TRIAGE_FIXTURE=<dir> reads <dir>/run.json and <dir>/log.txt in place of forge.sh (the tests);
 # CI_TRIAGE_GATES=<file> reads another gates file.
 
 set -uo pipefail # not -e: a section that fails must still let the later ones run
@@ -36,6 +37,7 @@ fi
 run_id="${1:-}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 gates_file="${CI_TRIAGE_GATES:-$here/gates.tsv}"
+forge="$here/../pr/forge.sh"
 fixture="${CI_TRIAGE_FIXTURE:-}"
 # lines kept before the first error marker, and the most a tail prints
 before=40; most=80
@@ -50,20 +52,24 @@ err="$(mktemp)"; trap 'rm -f "$err"' EXIT
 
 fetch_run() {
   if [ -n "$fixture" ]; then cat "$fixture/run.json" 2>"$err"
-  else gh run view "$run_id" --json status,conclusion,name,event,headBranch,url,createdAt,jobs 2>"$err"; fi
+  else bash "$forge" run view "$run_id" 2>"$err"; fi
 }
 fetch_log() {
   if [ -n "$fixture" ]; then cat "$fixture/log.txt" 2>/dev/null
-  else gh run view "$run_id" --log-failed 2>/dev/null; fi
+  else bash "$forge" run log "$run_id" 2>/dev/null; fi
 }
 
 # ------------------------------------------------------------------------------------------ run
-run_json="$(fetch_run)"
 section "RUN"
+if [ -z "$fixture" ] && [ ! -f "$forge" ]; then
+  echo "ERROR: could not fetch run $run_id: no forge.sh at $forge (it ships with the pr skill: install the forge set whole)"
+  exit 3
+fi
+run_json="$(fetch_run)"
 if [ -z "$run_json" ]; then
   echo "ERROR: could not fetch run ${run_id:-<fixture>}"
-  [ -s "$err" ] && { echo "gh said:"; sed 's/^/  /' "$err"; }
-  echo "BANNER: read gh's message above before assuming a bad run id: a rejected field or an expired token looks nothing like a missing run"
+  [ -s "$err" ] && { echo "forge.sh said:"; sed 's/^/  /' "$err"; }
+  echo "BANNER: read forge.sh's message above before assuming a bad run id: a missing ### Forge slot, a rejected field or an expired token looks nothing like a missing run"
   exit 3
 fi
 if ! parsed="$(printf '%s' "$run_json" | jq -r '[.status,.conclusion,.name,.event,.headBranch,.url]|map(. // "")|@tsv' 2>"$err")"; then
