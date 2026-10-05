@@ -60,6 +60,11 @@ decision, followup, signal (an upstream version-watch row in `docs/signals-backl
 
 `.claude/plans/` (gitignored)
 
+### Forge
+
+backend: github
+prs: always
+
 ## Capture & state discipline
 
 The four-pillar journal system (see [`docs/architecture/system-shape.md`](docs/architecture/system-shape.md)) treats live project state as load-bearing. These rules govern how agents interact with the journals:
