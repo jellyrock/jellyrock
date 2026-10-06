@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- (home) Show Home sections placed in web client slots 8-10 ([#1119](https://github.com/jellyrock/jellyrock/pull/1119))
+
 ### Dependencies
 
 - Update eslint-plugin-n from v18.4.0 to v18.4.1 ([#1087](https://github.com/jellyrock/jellyrock/pull/1087))
