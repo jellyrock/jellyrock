@@ -299,3 +299,26 @@ function formatSubtitleDisplayTitle(stream as object) as string
 
   return result
 end function
+
+' formatSubtitleTrackLabel: The label a subtitle list shows for one track — the
+' details-screen dropdown and the playback picker both use it, so the same track
+' reads the same on both. It was two paths once, and the picker's (the server's
+' DisplayTitle verbatim) led with "Undefined" for a track with no language.
+'
+' formatSubtitleDisplayTitle() plus a marker on a file stored beside the video
+' rather than inside it. "External" is the word the subtitle panel and playback
+' report already use for that. When there is no language or codec to build from,
+' the server's DisplayTitle says more than "N/A".
+'
+' @param {object} stream - Subtitle MediaStream object from Jellyfin API
+' @param {boolean} [markExternal=true] - false for a slot that shows the track alone, without the entries the marker distinguishes it from
+' @returns {string} - e.g. "English SUBRIP", "SAMI  ·  External"; "N/A" if there is nothing to describe it by
+function formatSubtitleTrackLabel(stream as object, markExternal = true as boolean) as string
+  label = formatSubtitleDisplayTitle(stream)
+  if not isValid(stream) then return label
+
+  if label = "N/A" and isValidAndNotEmpty(stream.DisplayTitle) then label = toString(stream.DisplayTitle)
+  if markExternal and stream.IsExternal = true then label = label + "  ·  " + translate(translationKeys.LabelExternalSubtitle)
+
+  return label
+end function

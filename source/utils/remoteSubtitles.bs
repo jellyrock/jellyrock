@@ -243,9 +243,13 @@ namespace remoteSubtitles
   ' offered "English SUBRIP" three times, so after downloading a subtitle there
   ' was no way to tell which entry was the file just fetched.
   '
-  ' ONE RULE, statable in a sentence: a downloaded file is marked, and everything
-  ' else came with the video. That is the question a user is actually asking here
-  ' — "which one did I just add?" — and answering only that keeps the list quiet.
+  ' ONE RULE, statable in a sentence: a file stored beside the video is marked
+  ' External, and everything else is inside the video. That answers "which one
+  ' did I just add?" — a download is stored that way — and answering only that
+  ' keeps the list quiet. The marker said "Downloaded" until #1004, which was
+  ' wrong for a sidecar file placed by hand and disagreed with the subtitle panel.
+  ' The rule itself is formatSubtitleTrackLabel(), which the playback picker
+  ' shares, so a track reads the same on both screens.
   '
   ' What this deliberately does NOT do is number the built-in tracks. An earlier
   ' cut appended a source segment wherever two entries collided and an ordinal
@@ -266,16 +270,10 @@ namespace remoteSubtitles
     subs = remoteSubtitles.subtitleStreams(streams)
     if subs.count() = 0 then return entries
 
-    downloadedMark = translate(translationKeys.LabelDownloadedSubtitle)
-
     for each stream in subs
-      base = formatSubtitleDisplayTitle(stream)
-      title = base
-      if stream.IsExternal = true then title = base + "  ·  " + downloadedMark
-
       index = 0
       if isValid(stream.Index) then index = stream.Index
-      entries.push({ index: index, title: title, triggerTitle: base })
+      entries.push({ index: index, title: formatSubtitleTrackLabel(stream), triggerTitle: formatSubtitleTrackLabel(stream, false) })
     end for
 
     return entries

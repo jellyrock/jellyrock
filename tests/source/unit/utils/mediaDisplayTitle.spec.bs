@@ -380,6 +380,44 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatSubtitleTrackLabel()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("tells apart two external tracks that differ only by codec")
+    function _()
+      ' The real pair from issue #1004 (Jellyfin 12.1.0): no language on either,
+      ' so the server's own DisplayTitle led with its "Undefined" placeholder.
+      sami = { Codec: "sami", Language: invalid, IsExternal: true, DisplayTitle: "Undefined - SAMI - External" }
+      subrip = { Codec: "subrip", Language: invalid, IsExternal: true, DisplayTitle: "Undefined - SUBRIP - External" }
+      m.assertEqual(formatSubtitleTrackLabel(sami), "SAMI  ·  External")
+      m.assertEqual(formatSubtitleTrackLabel(subrip), "SUBRIP  ·  External")
+    end function
+
+    @it("leaves a track inside the video file unmarked")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsExternal: false }
+      m.assertEqual(formatSubtitleTrackLabel(stream), "English SUBRIP")
+    end function
+
+    @it("omits the marker when asked to")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsExternal: true }
+      m.assertEqual(formatSubtitleTrackLabel(stream, false), "English SUBRIP")
+    end function
+
+    @it("falls back to the server's DisplayTitle when there is no language or codec")
+    function _()
+      stream = { IsExternal: false, DisplayTitle: "Track 3" }
+      m.assertEqual(formatSubtitleTrackLabel(stream), "Track 3")
+    end function
+
+    @it("returns N/A when there is nothing to describe the track by")
+    function _()
+      m.assertEqual(formatSubtitleTrackLabel({}), "N/A")
+      m.assertEqual(formatSubtitleTrackLabel(invalid), "N/A")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("resolveLanguageName()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

@@ -3815,8 +3815,9 @@ end function
 ' from formatSubtitleDisplayTitle(), because language + codec + flags does not
 ' separate two English SRTs — measured on a 6-stream movie, this dropdown offered
 ' "English SUBRIP" three times, so a freshly downloaded subtitle was impossible
-' to pick out from the built-in ones. The helper marks the downloaded ones and
-' leaves the rest plain, which is the one question worth answering here.
+' to pick out from the built-in ones. The helper marks the external ones (a
+' download is one) and leaves the rest plain, which is the one question worth
+' answering here.
 '
 ' Each item carries triggerTitle as well: the collapsed trigger is a narrow slot
 ' that already ellipsizes, and the marker is only meaningful beside the entries

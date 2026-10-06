@@ -1,4 +1,5 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
 ' defaultSubtitleTrackFromVid: Identifies the default subtitle track given metadata and audio index
@@ -164,8 +165,12 @@ function sortSubtitles(MediaStreams, originalLanguage = "" as string)
         end if
       end if
 
+      ' Description is the label the playback picker shows (and Roku's own caption
+      ' menu). formatSubtitleTrackLabel() is the one the details screen uses too,
+      ' rather than the server's DisplayTitle, which led with "Undefined" for a
+      ' track with no language (#1004).
       stream = {
-        "Track": { "Language": stream.language, "Description": stream.displaytitle, "TrackName": url },
+        "Track": { "Language": stream.language, "Description": formatSubtitleTrackLabel(stream), "TrackName": url },
         "IsTextSubtitleStream": stream.IsTextSubtitleStream ?? false,
         "Index": stream.index,
         "IsDefault": stream.IsDefault ?? false,

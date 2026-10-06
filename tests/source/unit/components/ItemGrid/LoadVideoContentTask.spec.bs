@@ -429,6 +429,24 @@ namespace tests
       m.assertEqual(defaultSubtitleTrackFromVid(meta, 1, "picked720"), SubtitleSelection.NONE)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("sortSubtitles() - track labels")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("labels each track the way the details screen does, not with the server's DisplayTitle")
+    function _()
+      ' The real pair from issue #1004: the playback picker showed these
+      ' DisplayTitles verbatim, "Undefined" placeholder and all.
+      m.useAlwaysEnglish()
+      streams = [
+        { Type: "Subtitle", index: 0, Codec: "sami", language: invalid, IsExternal: true, IsTextSubtitleStream: true, displaytitle: "Undefined - SAMI - External" },
+        { Type: "Subtitle", index: 1, Codec: "subrip", language: invalid, IsExternal: true, IsTextSubtitleStream: true, displaytitle: "Undefined - SUBRIP - External" }
+      ]
+      tracks = sortSubtitles(streams)["all"]
+      m.assertEqual(tracks[0].Track.Description, "SAMI  ·  External")
+      m.assertEqual(tracks[1].Track.Description, "SUBRIP  ·  External")
+    end function
+
   end class
 
 end namespace
