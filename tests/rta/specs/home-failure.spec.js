@@ -34,6 +34,7 @@
  * What a row does with a result is `source/home/homeRowFailure.bs`'s rule and unit-tested
  * there; this proves the wiring on a device, end to end.
  */
+import fs from 'node:fs';
 import { beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
@@ -47,11 +48,21 @@ import { captureRawUI } from '../capture.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const LIBRARY_SECTION_TYPES = ['smalllibrarytiles', 'librarybuttons'];
-// Home section slots the app reads. Mirrors homeSlots.SLOT_COUNT (source/constants/homeSlots.bs),
-// which mirrors the Jellyfin web client's MAX_SECTIONS.
-const HOME_SLOT_COUNT = 10;
+// Home section slots the app reads: homeSlots.SLOT_COUNT, read from its source so the two
+// cannot drift (it mirrors the Jellyfin web client's MAX_SECTIONS).
+const HOME_SLOT_COUNT = readHomeSlotCount();
 // RTA_CAPTURE=1 also saves the failed tiles, focused, to out/rta-captures/ for review.
 const CAPTURE = process.env.RTA_CAPTURE === '1';
+
+function readHomeSlotCount() {
+  const source = fs.readFileSync(
+    new URL('../../../source/constants/homeSlots.bs', import.meta.url),
+    'utf8',
+  );
+  const count = Number(/const SLOT_COUNT = (\d+)/.exec(source)?.[1]);
+  if (!count) throw new Error('source/constants/homeSlots.bs declares no `const SLOT_COUNT = <n>`');
+  return count;
+}
 
 let session;
 
