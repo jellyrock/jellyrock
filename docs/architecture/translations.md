@@ -17,7 +17,7 @@ related-files:
   - scripts/lib/locale-files.cjs
   - scripts/lib/translation-formats.cjs
   - .github/workflows/release-management.yml
-last-reviewed: 2026-10-04
+last-reviewed: 2026-10-06
 ---
 
 # Translations (i18n)
@@ -97,6 +97,15 @@ end function
 ```
 
 Returning the key itself when nothing is found is intentional — during development, an untranslated string shows up as `LabelEpisodeCount` in the UI, immediately visible.
+
+### Translating a batch on a Task thread: `translateCached()`
+
+From a Task thread each `translate()` copies `m.global.translations` across the thread boundary ([async.md](async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)), so code labeling many items on a Task goes through `translateCached(key, cache)`, which keeps each key's value for the rest of one batch. The caller picks the seed by how many distinct keys the batch needs:
+
+- **An empty AA** when the batch needs a few keys: the cast labels in `people.bs` need four or five, and a full table copy cost more than those calls.
+- **`m.global.translations` itself, read once**, when it needs many: `sortSubtitles()` needs a language name per subtitle track, often dozens. A key missing from the locale still falls back through `translate()`, and the miss is written only into the local copy.
+
+The cache lives for one batch, never longer: the locale can change mid-session.
 
 ## Plurals — `translatePlural`
 
