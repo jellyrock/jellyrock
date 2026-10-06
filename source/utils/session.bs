@@ -5,6 +5,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/userAuth.bs"
+import "pkg:/source/constants/homeSlots.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
@@ -681,7 +682,7 @@ namespace user
   function hasHomeSectionData(prefs as object) as boolean
     if not isValid(prefs) then return false
 
-    for i = 0 to 6
+    for i = 0 to homeSlots.SLOT_COUNT - 1
       key = "homesection" + i.toStr()
       if prefs.DoesExist(key)
         return true
@@ -702,7 +703,7 @@ namespace user
       userPreferences = user.getDefaultHomeSections()
     end if
 
-    for i = 0 to 6
+    for i = 0 to homeSlots.SLOT_COUNT - 1
       oldHomeSectionKey = "homesection" + i.toStr()
       newHomeSectionKey = "homeSection" + i.toStr()
 

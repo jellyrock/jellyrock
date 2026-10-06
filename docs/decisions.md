@@ -1888,6 +1888,16 @@ Ruled out: trusting `CanDecodeAudio` and the EDID alone (both say yes to `mat` a
 
 Ruled out: a "Use Web Client Setting" option, because jellyfin-web 12.x keeps `stillWatchingPrompt` in the browser's `localStorage` (`userSettings.set(..., false)`), so the server has nothing to read. Holding the next video paused on its first frame: the countdown would time nothing the viewer can see, and they would land on 0:00 of a video they never saw. Asking at the end of the current video, or in a corner card: one covers the end of the episode, the other is easy to miss. The counting rule jellyfin-web uses, whose count resets only when the prompt is answered, so it prompts viewers who are using the remote. Applying the time limit only to queues of episodes: a Play All of 2-hour movies would run 6 h unattended, and the setting's "or N minutes" would silently not apply to movies. Rewinding after the timeout, and a 60 s window. Re-evaluate if jellyfin-web starts saving the setting on the server, which would make a web-client default possible.
 
+## decision-id: home-slots-follow-web-client
+
+**date**: 2026-10-06
+**status**: accepted
+**related-files**: `source/constants/homeSlots.bs`, `components/data/jellyfin/JellyfinUserSettings.xml`, `tests/source/unit/utils/homeSlots.spec.bs`
+
+JellyRock reads as many Home-section slots as the Jellyfin web client shows (`homeSlots.SLOT_COUNT`, mirroring `jellyfin-web`'s `MAX_SECTIONS`, ten since server 10.10.0), not as many as the server stores. The server's `DisplayPreferencesController` keeps any `homesectionN` a client sends and has no cap, so reading every key would show sections the web client hides and break the parity "Use Web Client's Home Section Arrangement" promises. Each slot is its own `homeSection<N>` field on `JellyfinUserSettings`, because `user.settings.Save()` refuses an undeclared name; `homeSlots.spec.bs` fails when the constant and the fields disagree.
+
+Ruled out: one ordered-list field in place of the per-slot fields (a cleaner model, but a restructure beyond #937, and the RTA spec would rely on an ODC array write nothing had verified), and reading every `homesectionN` uncapped. Re-evaluate if jellyfin-web changes `MAX_SECTIONS`: the spec compares the constant with the fields, not with the web client.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

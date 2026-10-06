@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-05
+last-updated: 2026-10-06
 ---
 
 # Progress
@@ -600,10 +600,6 @@ Production builds STRIP every `m.log.*` call (`bsconfig-prod.json` `"strip": tru
 #### Every cold launch logs `BRIGHTSCRIPT: ERROR: ParseJSON: Data is empty` from the vendored `rr/Requests.brs`, and nobody knows which request sends the empty body. `[fid: parsejson-data-empty-cold-launch]` `[captured 2026-09-23]`
 
 Seen once per launch, 6/6 on `main` and 6/6 on a branch (Stick 4K, BATCAVE, 2026-09-22), so it predates the latest-rows migration it was found beside. Either a real request is answering with an empty body and being parsed anyway, or it is noise that trains readers to skip `BRIGHTSCRIPT: ERROR` lines — which is the worse outcome, because it degrades every future log read. **Next step:** find the caller. Log the URL when `rr` hits the empty-body parse, then decide whether that endpoint should skip parsing (e.g. a 204) or has a real bug.
-
-#### JellyRock reads only `homesection0`–`6`, but Jellyfin's web client stores up to `homesection9` `[fid: homesection-reads-only-0-to-6]` `[captured 2026-09-23]`
-
-**JellyRock reads only `homesection0`–`6`, but Jellyfin's web client stores up to `homesection9`**, so a section a user places in `homesection7`–`9` is outside JellyRock's Home plan (`buildSectionPlan` in `HomeRows` and `user.SaveUserHomeSections` both loop `0 to 6`). Seen 2026-09-23 on `BATCAVE` (Jellyfin 12.1): `charlie`'s `latestmedia` sits at `homesection7`. Latest rows still loaded for this user in a 2026-09-23 device probe on this branch, because `onLibrariesLoaded()` starts them without consulting the plan — so what this changes on screen is unverified. **Next step:** move one plan-gated section (e.g. Next Up) to `homesection8` in the web client, see whether JellyRock drops it, and find which server/web version introduced ten slots before deciding to read `0`–`9`.
 
 #### Decide the "DTS" choice in Preferred Surround Codec `[fid: dts-choice-preferred-surround-codec]` `[captured 2026-10-01]`
 
