@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-06 — fix(home): Show Home sections placed in web client slots 8-10
 - 2026-10-05 — chore(skills): allow `forge.sh repo file-url` without a prompt
 - 2026-10-04 — update(translations): Seed translations from other Jellyfin clients
 - 2026-10-04 — refactor: Consolidate duplicate helpers from the dead-code baseline
@@ -92,12 +93,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-22 — fix: Fetch a focused TV guide program's details once, not twice
 - 2026-09-22 — feat: Show which collections an item is in on its details page
 - 2026-09-22 — fix: Play Live TV HLS channels from their own URL again on Jellyfin 12
-- 2026-09-21 — fix: Stop copying prebuilt source maps into builds
-- 2026-09-21 — ci: Make the device test run account for every test it counts
-- 2026-09-21 — Share bsconfig settings through one base config and clear the new BrighterScript warnings
-- 2026-09-21 — fix: Honor v12 web client's "Original language" audio preference
-- 2026-09-21 — ci: Make an RTA run against a non-demo server mean what it says
-- 2026-09-21 — feat: Merge a person's credits into one Cast & Crew card, translated
 
 ## Open followups
 
