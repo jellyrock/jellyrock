@@ -1898,6 +1898,16 @@ JellyRock reads as many Home-section slots as the Jellyfin web client shows (`ho
 
 Ruled out: one ordered-list field in place of the per-slot fields (a cleaner model, but a restructure beyond #937, and the RTA spec would rely on an ODC array write nothing had verified), and reading every `homesectionN` uncapped. Re-evaluate if jellyfin-web changes `MAX_SECTIONS`: the spec compares the constant with the fields, not with the web client.
 
+## decision-id: subtitle-track-label-shared
+
+**date**: 2026-10-06
+**status**: accepted
+**related-files**: `source/utils/mediaDisplayTitle.bs`, `source/utils/subtitles.bs`, `source/utils/remoteSubtitles.bs`, `source/utils/translate.bs`
+
+Every subtitle list labels a track through `formatSubtitleTrackLabel()`, never the server's `DisplayTitle` directly. The playback picker passed `DisplayTitle` through from `sortSubtitles()`, so a track with no language led with the server's "Undefined" placeholder and read differently from the same track on the details screen (#1004). The label follows the server's own rule minus that placeholder: the track's `Title` first, then each of language, codec and flags it does not already say, so "Spanish (Latin America)" and "Spanish (Spain)" stay apart. `DisplayTitle` stays as the fallback when a track has no Title, language or codec. A file kept outside the video is marked "External" and the panel's section is "External files": that is Jellyfin's word, already translated in 82 of 98 locales, and it covers a download (saved beside the video or in the server's metadata folder) and a file placed by hand alike, which "Downloaded" did not. On `LoadVideoContentTask` the labels read the translations table once per list, and the pass that only picks the default track builds none (measurements in the `perf(subtitles)` commit).
+
+Ruled out: formatting the label only in the playback picker, which keeps two label paths, the drift that caused #1004; calling `formatSubtitleDisplayTitle()` on the picker's records as the issue suggested, because the slim records `sortSubtitles()` builds carry no codec or language, so every row would read "N/A"; language, codec and flags alone, which drop the Title the picker used to show; and a per-key `translateCached()` memo for the labels, which still reads the table once per distinct language.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

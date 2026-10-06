@@ -199,10 +199,10 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("subtitleDropdownEntries() - mark what you added, leave the rest")
+    @describe("subtitleDropdownEntries() - mark external files, leave the rest")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("marks a downloaded file and leaves built-in tracks plain")
+    @it("marks an external file and leaves built-in tracks plain")
     function _()
       streams = [
         { Type: "Subtitle", Index: 1, IsExternal: false, Language: "eng", Codec: "subrip" },
@@ -211,7 +211,7 @@ namespace tests
       ]
       entries = remoteSubtitles.subtitleDropdownEntries(streams)
       m.assertEqual(entries[0].title, "English SUBRIP")
-      m.assertEqual(entries[1].title, "English SUBRIP (Hearing impaired)  ·  Downloaded")
+      m.assertEqual(entries[1].title, "English SUBRIP (Hearing impaired)  ·  External")
       m.assertEqual(entries[2].title, "Spanish SUBRIP")
     end function
 
@@ -231,22 +231,22 @@ namespace tests
       m.assertEqual(entries[1].title, "English SUBRIP")
     end function
 
-    @it("marks every downloaded file, so two of them are still both marked")
+    @it("marks every external file, so two of them are still both marked")
     function _()
       streams = [
         { Type: "Subtitle", Index: 1, IsExternal: true, Language: "eng", Codec: "subrip", Path: "/m/movie.en.srt" },
         { Type: "Subtitle", Index: 2, IsExternal: true, Language: "spa", Codec: "subrip", Path: "/m/movie.es.srt" }
       ]
       entries = remoteSubtitles.subtitleDropdownEntries(streams)
-      m.assertEqual(entries[0].title, "English SUBRIP  ·  Downloaded")
-      m.assertEqual(entries[1].title, "Spanish SUBRIP  ·  Downloaded")
+      m.assertEqual(entries[0].title, "English SUBRIP  ·  External")
+      m.assertEqual(entries[1].title, "Spanish SUBRIP  ·  External")
     end function
 
     @it("keeps the collapsed trigger free of the marker")
     function _()
       streams = [{ Type: "Subtitle", Index: 1, IsExternal: true, Language: "eng", Codec: "subrip", Path: "/m/movie.en.srt" }]
       entries = remoteSubtitles.subtitleDropdownEntries(streams)
-      m.assertEqual(entries[0].title, "English SUBRIP  ·  Downloaded")
+      m.assertEqual(entries[0].title, "English SUBRIP  ·  External")
       m.assertEqual(entries[0].triggerTitle, "English SUBRIP")
     end function
 

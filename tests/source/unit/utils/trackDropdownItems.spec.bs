@@ -1,0 +1,41 @@
+import "pkg:/source/utils/trackDropdownItems.bs"
+
+namespace tests
+
+  @suite("trackDropdownItems - Track dropdown item helpers")
+  class TrackDropdownItemsTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("triggerText()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns triggerTitle when the item carries one")
+    function _()
+      item = { id: "1", title: "SAMI  ·  External", triggerTitle: "SAMI" }
+      m.assertEqual(trackDropdownItems.triggerText(item), "SAMI")
+    end function
+
+    @it("returns title when the item has no triggerTitle")
+    function _()
+      item = { id: "1", title: "English AAC 2.0" }
+      m.assertEqual(trackDropdownItems.triggerText(item), "English AAC 2.0")
+    end function
+
+    @it("returns title when triggerTitle is an empty string")
+    function _()
+      item = { id: "1", title: "English AAC 2.0", triggerTitle: "" }
+      m.assertEqual(trackDropdownItems.triggerText(item), "English AAC 2.0")
+    end function
+
+    @it("returns an empty string for an invalid item")
+    function _()
+      m.assertEqual(trackDropdownItems.triggerText(invalid), "")
+    end function
+
+  end class
+
+end namespace

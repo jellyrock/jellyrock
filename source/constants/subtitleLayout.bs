@@ -198,7 +198,7 @@ namespace subtitleLayout
   ' Gap between a column's heading and the content beneath it.
   const COLUMN_HEADING_HEIGHT = 44
 
-  ' A section heading INSIDE the "on this item" column ("Downloaded files",
+  ' A section heading INSIDE the "on this item" column ("External files",
   ' "In the video file"), and the gap between one section and the next.
   const SECTION_HEADING_HEIGHT = 34
   const SECTION_GAP = 18
