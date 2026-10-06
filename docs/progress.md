@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-06 — fix: Clearer subtitle track names; dropdowns keep short text on pick
 - 2026-10-06 — fix(home): Show Home sections placed in web client slots 8-10
 - 2026-10-05 — chore(skills): allow `forge.sh repo file-url` without a prompt
 - 2026-10-04 — update(translations): Seed translations from other Jellyfin clients
