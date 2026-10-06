@@ -28,7 +28,8 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
   allStreams = playedSource.MediaStreams
 
   originalLanguage = meta.originalLanguage ?? ""
-  subtitles = sortSubtitles(allStreams, originalLanguage)
+  ' Picks a track only, so the labels would be thrown away.
+  subtitles = sortSubtitles(allStreams, originalLanguage, false)
 
   selectedAudioLanguage = ""
   ' Find the audio stream with the matching Jellyfin index
@@ -148,8 +149,12 @@ function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, 
 end function
 
 'Checks available subtitle tracks and puts subtitles in forced, default, and non-default/forced but preferred language at the top
-function sortSubtitles(MediaStreams, originalLanguage = "" as string)
+'
+' withLabels = false leaves each Track.Description empty, for a caller that only picks a
+' track: the labels are most of this function's cost on a Task thread.
+function sortSubtitles(MediaStreams, originalLanguage = "" as string, withLabels = true as boolean)
   tracks = { "forced": [], "default": [], "normal": [], "textForced": [], "textDefault": [], "textNormal": [] }
+  labelCache = invalid
   ' ONE rendezvous to get user node
   localUser = m.global.user
   preferredLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config, originalLanguage)
@@ -165,12 +170,22 @@ function sortSubtitles(MediaStreams, originalLanguage = "" as string)
         end if
       end if
 
-      ' Description is the label the playback picker shows (and Roku's own caption
-      ' menu). formatSubtitleTrackLabel() is the one the details screen uses too,
-      ' rather than the server's DisplayTitle, which led with "Undefined" for a
-      ' track with no language (#1004).
+      ' Description is the label the playback picker shows. formatSubtitleTrackLabel()
+      ' is the one the details screen uses too, rather than the server's DisplayTitle,
+      ' which led with "Undefined" for a track with no language (#1004). Roku's docs say
+      ' its own * caption menu shows Description as well, but on Roku OS 15.3.4 that menu
+      ' listed language names only, so this is not what a user sees there.
+      description = ""
+      if withLabels
+        ' Seeded with the whole table, copied once, on the first label: a list can
+        ' need a different language name for every track, and each translate() a
+        ' Task thread makes copies that table (see translateCached).
+        if labelCache = invalid then labelCache = m.global.translations
+        description = formatSubtitleTrackLabel(stream, true, labelCache)
+      end if
+
       stream = {
-        "Track": { "Language": stream.language, "Description": formatSubtitleTrackLabel(stream), "TrackName": url },
+        "Track": { "Language": stream.language, "Description": description, "TrackName": url },
         "IsTextSubtitleStream": stream.IsTextSubtitleStream ?? false,
         "Index": stream.index,
         "IsDefault": stream.IsDefault ?? false,

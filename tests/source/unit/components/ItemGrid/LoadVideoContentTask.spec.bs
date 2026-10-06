@@ -447,6 +447,16 @@ namespace tests
       m.assertEqual(tracks[1].Track.Description, "SUBRIP  ·  External")
     end function
 
+    @it("leaves the labels empty for a caller that only picks a track")
+    function _()
+      streams = [
+        { Type: "Subtitle", index: 0, Codec: "subrip", language: "eng", IsExternal: false, IsTextSubtitleStream: true }
+      ]
+      tracks = sortSubtitles(streams, "", false)["all"]
+      m.assertEqual(tracks[0].Track.Description, "")
+      m.assertEqual(tracks[0].Track.Language, "eng")
+    end function
+
   end class
 
 end namespace

@@ -65,8 +65,9 @@ end function
 ' because they convey real information when they appear.
 '
 ' @param {string} langCode - Media stream language code from any common format
+' @param {object} [cache=invalid] - translateCached() batch cache
 ' @returns {string} - Localized name, English fallback, "" for und/zxx, or raw code
-function resolveLanguageName(langCode as string) as string
+function resolveLanguageName(langCode as string, cache = invalid as dynamic) as string
   if langCode = "" then return ""
 
   base = LCase(langCode)
@@ -82,7 +83,7 @@ function resolveLanguageName(langCode as string) as string
   if aliases.doesExist(base) then base = aliases[base]
 
   keyMap = languageTranslationKeys()
-  if keyMap.doesExist(base) then return translate(keyMap[base])
+  if keyMap.doesExist(base) then return translateCached(keyMap[base], cache)
 
   fallbacks = languageEnglishFallbacks()
   if fallbacks.doesExist(base) then return fallbacks[base]
@@ -259,15 +260,16 @@ end function
 ' Forced takes precedence over default if both are set.
 '
 ' @param {object} stream - Subtitle MediaStream object from Jellyfin API
+' @param {object} [cache=invalid] - translateCached() batch cache, for a caller labeling many tracks
 ' @returns {string} - Formatted display title (e.g., "English SUBRIP (Forced)") or "N/A" if insufficient data
-function formatSubtitleDisplayTitle(stream as object) as string
+function formatSubtitleDisplayTitle(stream as object, cache = invalid as dynamic) as string
   if not isValid(stream) then return "N/A"
 
   parts = []
 
   ' 1. Language (full name from ISO 639-2 code; omitted for "und"/Undefined)
   if isValid(stream.Language) and stream.Language <> ""
-    langName = resolveLanguageName(stream.Language)
+    langName = resolveLanguageName(stream.Language, cache)
     if langName <> "" then parts.push(langName)
   end if
 
@@ -287,12 +289,12 @@ function formatSubtitleDisplayTitle(stream as object) as string
   '
   flags = []
   if isValid(stream.IsHearingImpaired) and stream.IsHearingImpaired = true
-    flags.push(translate(translationKeys.LabelHearingImpaired))
+    flags.push(translateCached(translationKeys.LabelHearingImpaired, cache))
   end if
   if isValid(stream.IsForced) and stream.IsForced = true
-    flags.push(translate(translationKeys.LabelForcedSubtitle))
+    flags.push(translateCached(translationKeys.LabelForcedSubtitle, cache))
   else if isValid(stream.IsDefault) and stream.IsDefault = true
-    flags.push(translate(translationKeys.LabelDefault))
+    flags.push(translateCached(translationKeys.LabelDefault, cache))
   end if
 
   if flags.count() > 0 then result = result + " (" + flags.join(", ") + ")"
@@ -312,13 +314,14 @@ end function
 '
 ' @param {object} stream - Subtitle MediaStream object from Jellyfin API
 ' @param {boolean} [markExternal=true] - false for a slot that shows the track alone, without the entries the marker distinguishes it from
+' @param {object} [cache=invalid] - translateCached() batch cache, for a caller labeling many tracks
 ' @returns {string} - e.g. "English SUBRIP", "SAMI  ·  External"; "N/A" if there is nothing to describe it by
-function formatSubtitleTrackLabel(stream as object, markExternal = true as boolean) as string
-  label = formatSubtitleDisplayTitle(stream)
+function formatSubtitleTrackLabel(stream as object, markExternal = true as boolean, cache = invalid as dynamic) as string
+  label = formatSubtitleDisplayTitle(stream, cache)
   if not isValid(stream) then return label
 
   if label = "N/A" and isValidAndNotEmpty(stream.DisplayTitle) then label = toString(stream.DisplayTitle)
-  if markExternal and stream.IsExternal = true then label = label + "  ·  " + translate(translationKeys.LabelExternalSubtitle)
+  if markExternal and stream.IsExternal = true then label = label + "  ·  " + translateCached(translationKeys.LabelExternalSubtitle, cache)
 
   return label
 end function
