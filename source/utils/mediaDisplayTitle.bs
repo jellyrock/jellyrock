@@ -254,51 +254,66 @@ function formatAudioDisplayTitle(stream as object) as string
   return result
 end function
 
+' subtitleLabelParts: What a subtitle stream says about itself, as the pieces its
+' labels are built from — the full language name ("" for none or "und"), the codec
+' uppercased ("" for none), and the flags in display order. Hearing-impaired leads
+' because it changes what the track IS rather than when it plays; Forced takes
+' precedence over Default if both are set.
+'
+' @param {object} stream - Subtitle MediaStream object from Jellyfin API
+' @param {object} [cache=invalid] - translateCached() batch cache, for a caller labeling many tracks
+' @returns {object} - { language as string, codec as string, flags as roArray of string }
+function subtitleLabelParts(stream as object, cache = invalid as dynamic) as object
+  parts = { language: "", codec: "", flags: [] }
+  if not isValid(stream) then return parts
+
+  if isValid(stream.Language) and stream.Language <> ""
+    parts.language = resolveLanguageName(stream.Language, cache)
+  end if
+  if isValid(stream.Codec) and stream.Codec <> ""
+    parts.codec = UCase(stream.Codec)
+  end if
+
+  if isValid(stream.IsHearingImpaired) and stream.IsHearingImpaired = true
+    parts.flags.push(translateCached(translationKeys.LabelHearingImpaired, cache))
+  end if
+  if isValid(stream.IsForced) and stream.IsForced = true
+    parts.flags.push(translateCached(translationKeys.LabelForcedSubtitle, cache))
+  else if isValid(stream.IsDefault) and stream.IsDefault = true
+    parts.flags.push(translateCached(translationKeys.LabelDefault, cache))
+  end if
+
+  return parts
+end function
+
+' joinSubtitleLabelParts: "Language CODEC (flag, flag)", leaving out whatever is
+' empty. "" when there is no language and no codec, whatever the flags: a flag
+' alone does not say which track it is.
+function joinSubtitleLabelParts(language as string, codec as string, flags as object) as string
+  words = []
+  if language <> "" then words.push(language)
+  if codec <> "" then words.push(codec)
+  if words.count() = 0 then return ""
+
+  result = words.join(" ")
+  if flags.count() > 0 then result = result + " (" + flags.join(", ") + ")"
+  return result
+end function
+
 ' formatSubtitleDisplayTitle: Build a display title for a subtitle stream
 ' Format: "Language CODEC", optionally followed by a parenthesised flag list —
 ' "English SUBRIP (Hearing impaired)", "English SUBRIP (Hearing impaired, Forced)".
-' Forced takes precedence over default if both are set.
+' The language is omitted for "und"/Undefined. The flags matter: the panel badges
+' hearing-impaired, so without it the dropdown and the panel described the same
+' track differently.
 '
 ' @param {object} stream - Subtitle MediaStream object from Jellyfin API
 ' @param {object} [cache=invalid] - translateCached() batch cache, for a caller labeling many tracks
 ' @returns {string} - Formatted display title (e.g., "English SUBRIP (Forced)") or "N/A" if insufficient data
 function formatSubtitleDisplayTitle(stream as object, cache = invalid as dynamic) as string
-  if not isValid(stream) then return "N/A"
-
-  parts = []
-
-  ' 1. Language (full name from ISO 639-2 code; omitted for "und"/Undefined)
-  if isValid(stream.Language) and stream.Language <> ""
-    langName = resolveLanguageName(stream.Language, cache)
-    if langName <> "" then parts.push(langName)
-  end if
-
-  ' 2. Codec (uppercase)
-  if isValid(stream.Codec) and stream.Codec <> ""
-    parts.push(UCase(stream.Codec))
-  end if
-
-  ' If no parts could be assembled, return "N/A"
-  if parts.count() = 0 then return "N/A"
-
-  result = parts.join(" ")
-
-  ' 3. Flags. Hearing-impaired leads because it changes what the track IS rather
-  ' than when it plays — and its absence was a real gap: the panel badges it, so
-  ' without it the dropdown and the panel described the same track differently.
-  '
-  flags = []
-  if isValid(stream.IsHearingImpaired) and stream.IsHearingImpaired = true
-    flags.push(translateCached(translationKeys.LabelHearingImpaired, cache))
-  end if
-  if isValid(stream.IsForced) and stream.IsForced = true
-    flags.push(translateCached(translationKeys.LabelForcedSubtitle, cache))
-  else if isValid(stream.IsDefault) and stream.IsDefault = true
-    flags.push(translateCached(translationKeys.LabelDefault, cache))
-  end if
-
-  if flags.count() > 0 then result = result + " (" + flags.join(", ") + ")"
-
+  parts = subtitleLabelParts(stream, cache)
+  result = joinSubtitleLabelParts(parts.language, parts.codec, parts.flags)
+  if result = "" then return "N/A"
   return result
 end function
 
@@ -307,20 +322,58 @@ end function
 ' reads the same on both. It was two paths once, and the picker's (the server's
 ' DisplayTitle verbatim) led with "Undefined" for a track with no language.
 '
-' formatSubtitleDisplayTitle() plus a marker on a file stored beside the video
-' rather than inside it. "External" is the word the subtitle panel and playback
-' report already use for that. When there is no language or codec to build from,
-' the server's DisplayTitle says more than "N/A".
+' A track's own Title leads when it has one, because it is often the only thing
+' telling two tracks apart: "Spanish (Latin America)" and "Spanish (Spain)" are both
+' "Spanish SUBRIP" by language and codec, as are a "Signs" track and a full one.
+' This is the server's own DisplayTitle rule, minus its "Undefined" placeholder:
+' the Title, then each part it does not already say. A Title that names the language
+' stands in for it, so the codec follows with a space ("English (SDH) SUBRIP");
+' otherwise " · " separates the two ("SDH · English SUBRIP (Hearing impaired)").
+'
+' A file kept outside the video gets a marker. "External" is the word Jellyfin and
+' the playback report use for it, and it covers a download and a file placed by hand
+' alike. When there is no Title, language or codec to build from, the server's
+' DisplayTitle says more than "N/A".
 '
 ' @param {object} stream - Subtitle MediaStream object from Jellyfin API
 ' @param {boolean} [markExternal=true] - false for a slot that shows the track alone, without the entries the marker distinguishes it from
 ' @param {object} [cache=invalid] - translateCached() batch cache, for a caller labeling many tracks
-' @returns {string} - e.g. "English SUBRIP", "SAMI  ·  External"; "N/A" if there is nothing to describe it by
+' @returns {string} - e.g. "English SUBRIP", "SAMI  ·  External", "Spanish (Latin America) SUBRIP"; "N/A" if there is nothing to describe it by
 function formatSubtitleTrackLabel(stream as object, markExternal = true as boolean, cache = invalid as dynamic) as string
-  label = formatSubtitleDisplayTitle(stream, cache)
-  if not isValid(stream) then return label
+  if not isValid(stream) then return "N/A"
 
-  if label = "N/A" and isValidAndNotEmpty(stream.DisplayTitle) then label = toString(stream.DisplayTitle)
+  parts = subtitleLabelParts(stream, cache)
+  title = ""
+  if isValidAndNotEmpty(stream.Title) then title = toString(stream.Title).Trim()
+
+  if title = ""
+    label = joinSubtitleLabelParts(parts.language, parts.codec, parts.flags)
+  else
+    lowerTitle = LCase(title)
+    titleNamesLanguage = parts.language <> "" and inStr(1, lowerTitle, LCase(parts.language)) > 0
+    language = parts.language
+    if titleNamesLanguage then language = ""
+    codec = parts.codec
+    if codec <> "" and inStr(1, lowerTitle, LCase(codec)) > 0 then codec = ""
+    flags = []
+    for each flag in parts.flags
+      if inStr(1, lowerTitle, LCase(flag)) = 0 then flags.push(flag)
+    end for
+
+    rest = joinSubtitleLabelParts(language, codec, flags)
+    if rest <> "" and titleNamesLanguage
+      label = title + " " + rest
+    else if rest <> ""
+      label = title + " · " + rest
+    else if flags.count() > 0
+      label = title + " (" + flags.join(", ") + ")"
+    else
+      label = title
+    end if
+  end if
+
+  if label = "" and isValidAndNotEmpty(stream.DisplayTitle) then label = toString(stream.DisplayTitle)
+  if label = "" then return "N/A"
   if markExternal and stream.IsExternal = true then label = label + "  ·  " + translateCached(translationKeys.LabelExternalSubtitle, cache)
 
   return label

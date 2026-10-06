@@ -411,6 +411,54 @@ namespace tests
       m.assertEqual(formatSubtitleTrackLabel(stream), "Track 3")
     end function
 
+    @it("lets a Title that names the language stand in for it")
+    function _()
+      ' Both are "Spanish SUBRIP" by language and codec alone.
+      latin = { Language: "spa", Codec: "subrip", Title: "Spanish (Latin America)" }
+      spain = { Language: "spa", Codec: "subrip", Title: "Spanish (Spain)" }
+      m.assertEqual(formatSubtitleTrackLabel(latin), "Spanish (Latin America) SUBRIP")
+      m.assertEqual(formatSubtitleTrackLabel(spain), "Spanish (Spain) SUBRIP")
+    end function
+
+    @it("tells a signs track from a full one by Title, flags kept")
+    function _()
+      signs = { Language: "eng", Codec: "ass", IsForced: true, Title: "English (Signs)" }
+      full = { Language: "eng", Codec: "ass", IsDefault: true, Title: "English (Full)" }
+      m.assertEqual(formatSubtitleTrackLabel(signs), "English (Signs) ASS (Forced)")
+      m.assertEqual(formatSubtitleTrackLabel(full), "English (Full) ASS (Default)")
+    end function
+
+    @it("leads with a Title that does not name the language, then the rest after a dot")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsHearingImpaired: true, Title: "SDH" }
+      m.assertEqual(formatSubtitleTrackLabel(stream), "SDH · English SUBRIP (Hearing impaired)")
+    end function
+
+    @it("drops every part the Title already says")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsForced: true, Title: "English SUBRIP forced" }
+      m.assertEqual(formatSubtitleTrackLabel(stream), "English SUBRIP forced")
+    end function
+
+    @it("keeps the flags of a Title-only track")
+    function _()
+      stream = { IsForced: true, Title: "Signs" }
+      m.assertEqual(formatSubtitleTrackLabel(stream), "Signs (Forced)")
+    end function
+
+    @it("marks an external track that has a Title, and leaves the marker off on request")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsExternal: true, Title: "Commentary" }
+      m.assertEqual(formatSubtitleTrackLabel(stream), "Commentary · English SUBRIP  ·  External")
+      m.assertEqual(formatSubtitleTrackLabel(stream, false), "Commentary · English SUBRIP")
+    end function
+
+    @it("ignores a blank Title")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", Title: "   " }
+      m.assertEqual(formatSubtitleTrackLabel(stream), "English SUBRIP")
+    end function
+
     @it("returns N/A when there is nothing to describe the track by")
     function _()
       m.assertEqual(formatSubtitleTrackLabel({}), "N/A")
