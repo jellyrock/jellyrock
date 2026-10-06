@@ -28,6 +28,38 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("planNextUpSeriesLookups()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sends a series with a played special to the exact check, the rest to the count lookup")
+    function _()
+      specials = [{ SeriesId: "sop", ParentIndexNumber: 0 }, { SeriesId: "notInNextUp", ParentIndexNumber: 0 }]
+      plan = planNextUpSeriesLookups(["rock", "sop", "sv"], specials)
+      m.assertEqual(plan.counted, ["rock", "sv"])
+      m.assertEqual(plan.exact, ["sop"])
+    end function
+
+    @it("counts every series when the specials lookup has no answer")
+    function _()
+      plan = planNextUpSeriesLookups(["rock", "sop"], invalid)
+      m.assertEqual(plan.counted, ["rock", "sop"])
+      m.assertEqual(plan.exact, [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playedSpecialsQuery()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for every played season-0 episode")
+    function _()
+      q = playedSpecialsQuery()
+      m.assertEqual(q.Recursive, true)
+      m.assertEqual(q.IncludeItemTypes, "Episode")
+      m.assertEqual(q.IsPlayed, true)
+      m.assertEqual(q.ParentIndexNumber, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("classifyNextUpSeries()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

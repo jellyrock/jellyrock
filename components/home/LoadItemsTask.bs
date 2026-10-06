@@ -42,13 +42,19 @@ sub loadItems()
     userSettings = globalUser.settings
     params = buildHomeNextUpParams(m.global.server.version, userSettings.uiDetailsEnableRewatchingNextUp, userSettings.uiDetailsMaxDaysNextUp, CreateObject("roDateTime").AsSeconds())
 
+    ' The played-specials lookup does not need Next Up's answer, so it is sent first and its
+    ' wait overlaps Next Up's (keepStartedSeries). Not sent while the pool is still coming up.
+    specialsPort = CreateObject("roMessagePort")
+    specialsReq = submitApiRequest(GetApi().BuildGetItemsByQueryRequest(playedSpecialsQuery()), "nextUpPlayedSpecials", specialsPort)
     items = fetchRowItems(GetApi().BuildGetNextUpRequest(params), "nextUp")
     status = statusOf(items)
     if isValid(items)
-      items = keepStartedSeries(items)
+      items = keepStartedSeries(items, specialsReq, specialsPort)
       for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
+    else
+      dropApiRequest(specialsReq)
     end if
 
     ' Load Continue Watching
@@ -263,64 +269,95 @@ end function
 
 ' Drops the Next Up items whose series has no watched regular episode (classifyNextUpSeries).
 '
-' The two lookups ride the pipeline together, then one hasWatchedRegularEpisode() check per
-' series that has a played special. The Next Up fetch before this blocked on the pool, so the
-' pool is up for apiPipeline. A lookup that gets no answer keeps the items it would have judged.
-function keepStartedSeries(items as object) as object
+' The played-specials lookup was sent alongside Next Up (specialsReq). Its answer splits the
+' series (planNextUpSeriesLookups), so the count lookup and the exact per-series checks then
+' go out together and only one round of requests waits after Next Up's. When it could not be
+' sent early it joins that round, and a series it marks CHECK takes a second one. The Next Up
+' fetch before this blocked on the pool, so the pool is up for apiPipeline. A lookup that gets
+' no answer keeps the items it would have judged.
+function keepStartedSeries(items as object, specialsReq as dynamic, specialsPort as object) as object
   seriesIds = nextUpSeriesIds(items)
-  if seriesIds.count() = 0 then return items
+  if seriesIds.count() = 0
+    dropApiRequest(specialsReq)
+    return items
+  end if
+
+  specialsSent = isValid(specialsReq)
+  playedSpecials = invalid
+  if specialsSent
+    res = collectApiRequest(specialsReq, specialsPort)
+    if isValid(res) and res.ok then playedSpecials = apiResponse.listFrom(res.json)
+  end if
+  plan = planNextUpSeriesLookups(seriesIds, playedSpecials)
 
   api = GetApi()
-  seriesItems = invalid
-  playedSpecials = invalid
-  pipe = apiPipelineBegin([
-    {
+  entries = []
+  if plan.counted.count() > 0
+    entries.push({
       requestId: "nextUpSeries",
-      req: api.BuildGetItemsByQueryRequest({ Ids: seriesIds.join(","), Fields: "RecursiveItemCount", EnableImages: false, EnableTotalRecordCount: false }),
+      req: api.BuildGetItemsByQueryRequest({ Ids: plan.counted.join(","), Fields: "RecursiveItemCount", EnableImages: false, EnableTotalRecordCount: false }),
       lookup: "series"
-    },
-    {
-      requestId: "nextUpPlayedSpecials",
-      req: api.BuildGetItemsByQueryRequest({ Recursive: true, IncludeItemTypes: "Episode", IsPlayed: true, ParentIndexNumber: 0, EnableImages: false, EnableUserData: false, EnableTotalRecordCount: false }),
-      lookup: "specials"
-    }
-  ])
-  result = apiPipelineNext(pipe)
-  while isValid(result)
-    list = invalid
-    if isValid(result.res) and result.res.ok then list = apiResponse.listFrom(result.res.json)
-    if result.entry.lookup = "series"
-      seriesItems = list
-    else
-      playedSpecials = list
-    end if
-    result = apiPipelineNext(pipe)
-  end while
-
-  starts = classifyNextUpSeries(seriesItems, playedSpecials)
+    })
+  end if
+  if not specialsSent
+    entries.push({ requestId: "nextUpPlayedSpecials", req: api.BuildGetItemsByQueryRequest(playedSpecialsQuery()), lookup: "specials" })
+  end if
+  for each seriesId in plan.exact
+    entries.push(regularEpisodeCheckEntry(api, seriesId))
+  end for
+  found = runNextUpLookups(entries)
+  starts = found.starts
+  if not specialsSent then playedSpecials = found.playedSpecials
 
   checks = []
-  for each seriesId in starts
-    if starts[seriesId] = NextUpSeriesStart.CHECK
-      checks.push({ requestId: "nextUpSeriesPlayed-" + seriesId, req: api.BuildGetItemsByQueryRequest(watchedRegularEpisodeQuery(seriesId)), seriesId: seriesId })
+  counted = classifyNextUpSeries(found.seriesItems, playedSpecials)
+  for each seriesId in counted
+    if counted[seriesId] = NextUpSeriesStart.CHECK
+      checks.push(regularEpisodeCheckEntry(api, seriesId))
+    else
+      starts[seriesId] = counted[seriesId]
     end if
   end for
-  pipe = apiPipelineBegin(checks)
-  result = apiPipelineNext(pipe)
-  while isValid(result)
-    if isValid(result.res) and result.res.ok
-      if hasWatchedRegularEpisode(result.res.json)
-        starts[result.entry.seriesId] = NextUpSeriesStart.STARTED
-      else
-        starts[result.entry.seriesId] = NextUpSeriesStart.NOT_STARTED
-      end if
-    end if
-    result = apiPipelineNext(pipe)
-  end while
+  if checks.count() > 0 then starts.append(runNextUpLookups(checks).starts)
 
   kept = keepStartedSeriesItems(items, starts)
   if kept.count() < items.count() then m.log.debug("Next Up dropped series with no watched episode", "dropped", items.count() - kept.count())
   return kept
+end function
+
+' A pipeline entry asking whether one series has a watched regular episode.
+function regularEpisodeCheckEntry(api as object, seriesId as string) as object
+  return {
+    requestId: "nextUpSeriesPlayed-" + seriesId,
+    req: api.BuildGetItemsByQueryRequest(watchedRegularEpisodeQuery(seriesId)),
+    lookup: "check",
+    seriesId: seriesId
+  }
+end function
+
+' Runs keepStartedSeries' lookups over one pipeline and sorts the answers by kind. A lookup
+' with no answer leaves its slot invalid, and its series out of `starts`.
+function runNextUpLookups(entries as object) as object
+  found = { seriesItems: invalid, playedSpecials: invalid, starts: {} }
+  pipe = apiPipelineBegin(entries)
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    res = result.res
+    if isValid(res) and res.ok
+      lookup = result.entry.lookup
+      if lookup = "series"
+        found.seriesItems = apiResponse.listFrom(res.json)
+      else if lookup = "specials"
+        found.playedSpecials = apiResponse.listFrom(res.json)
+      else if hasWatchedRegularEpisode(res.json)
+        found.starts[result.entry.seriesId] = NextUpSeriesStart.STARTED
+      else
+        found.starts[result.entry.seriesId] = NextUpSeriesStart.NOT_STARTED
+      end if
+    end if
+    result = apiPipelineNext(pipe)
+  end while
+  return found
 end function
 
 ' `status` for a Home row load from what fetchRowItems returned.

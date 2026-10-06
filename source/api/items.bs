@@ -496,17 +496,64 @@ function nextUpSeriesIds(items as dynamic) as object
   return ids
 end function
 
+' playedSpecialsQuery: Items query params for every played special (season 0) in the library.
+'
+' Next Up's started-series filter reads it (planNextUpSeriesLookups). It does not depend on the
+' Next Up response, so it can be sent alongside it.
+'
+' @returns {object} - Params for BuildGetItemsByQueryRequest
+function playedSpecialsQuery() as object
+  return {
+    Recursive: true,
+    IncludeItemTypes: "Episode",
+    IsPlayed: true,
+    ParentIndexNumber: 0,
+    EnableImages: false,
+    EnableUserData: false,
+    EnableTotalRecordCount: false
+  }
+end function
+
+' planNextUpSeriesLookups: Splits Next Up's series between the two ways of deciding them.
+'
+' A series with a played special goes to the exact per-series check (hasWatchedRegularEpisode),
+' because its counts include that special. Every other series is decided by the batched count
+' lookup (classifyNextUpSeries). With no answer for the specials, every series is counted.
+'
+' @param {object} seriesIds - nextUpSeriesIds() result
+' @param {dynamic} playedSpecials - playedSpecialsQuery() items: [BaseItemDto] or invalid
+' @returns {object} - { counted: [SeriesId], exact: [SeriesId] }
+function planNextUpSeriesLookups(seriesIds as object, playedSpecials as dynamic) as object
+  hasPlayedSpecial = {}
+  if isValid(playedSpecials)
+    for each special in playedSpecials
+      if isValidAndNotEmpty(special.SeriesId) then hasPlayedSpecial[special.SeriesId] = true
+    end for
+  end if
+
+  plan = { counted: [], exact: [] }
+  for each seriesId in seriesIds
+    if hasPlayedSpecial.DoesExist(seriesId)
+      plan.exact.push(seriesId)
+    else
+      plan.counted.push(seriesId)
+    end if
+  end for
+  return plan
+end function
+
 ' classifyNextUpSeries: Whether each Next Up series has a watched regular episode.
 '
 ' From 10.11 the server offers a series' first episode once ANY of its episodes was started,
 ' even with none finished: jellyfin/jellyfin#13687 dropped the filter that 10.10 applied with
 ' DisableFirstEpisode (#973). The rule that filter applied is hasWatchedRegularEpisode()'s,
-' and this decides it for every series from two batched lookups instead of one request each:
+' and this decides it from batched lookups instead of one request per series:
 '
 ' - The series' own counts (Fields=RecursiveItemCount): nothing played means NOT_STARTED.
 ' - The played specials across the library: a played series with none of them is STARTED.
 '   Its counts include specials, so a series that has one played is CHECK, decided by
-'   hasWatchedRegularEpisode() on its own.
+'   hasWatchedRegularEpisode() on its own. planNextUpSeriesLookups() normally sends those
+'   straight to that check, so CHECK only comes back when the specials arrived late.
 '
 ' A series missing from the lookup, or without its counts, is left out, and a played series
 ' is STARTED when the specials lookup got no answer: an unanswered lookup never removes an
