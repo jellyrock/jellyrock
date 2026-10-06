@@ -434,7 +434,7 @@ interesting removals are, and a code read says why.
 **The removal is unconditional.** Every cold launch on this server drops the Active Recordings
 row exactly once, and no branch on the path can skip it:
 
-- `homeSection0-6` are **server-authoritative** — the Jellyfin server's `DisplayPreferences`,
+- The `homeSection` slots (`homeSlots.SLOT_COUNT` of them) are **server-authoritative** — the Jellyfin server's `DisplayPreferences`,
   fetched fresh on each sign-in and deliberately never cached in the registry
   (`session.SaveUserHomeSections`). The section plan is identical launch to launch.
 - `createSkeletonRows()` builds the row unconditionally for a planned section, and

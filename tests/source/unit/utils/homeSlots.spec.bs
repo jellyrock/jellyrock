@@ -1,0 +1,95 @@
+import "pkg:/source/constants/homeSlots.bs"
+
+namespace tests
+
+  @suite("session.bs - home section slots")
+  class HomeSlotsTests extends tests.BaseTestSuite
+
+    protected savedSlots as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      ' SaveUserHomeSections writes the shared global settings node: put it back afterwards.
+      m.savedSlots = {}
+      settings = m.global.user.settings
+      for i = 0 to homeSlots.SLOT_COUNT - 1
+        name = "homeSection" + i.toStr()
+        if settings.hasField(name) then m.savedSlots[name] = settings[name]
+      end for
+    end sub
+
+    protected override sub afterEach()
+      settings = m.global.user.settings
+      for each name in m.savedSlots
+        settings[name] = m.savedSlots[name]
+      end for
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("slot count and JellyfinUserSettings fields agree")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("declares a homeSection field for every slot")
+    function _()
+      node = CreateObject("roSGNode", "JellyfinUserSettings")
+
+      for i = 0 to homeSlots.SLOT_COUNT - 1
+        m.assertTrue(node.hasField("homeSection" + i.toStr()), "JellyfinUserSettings.xml has no homeSection" + i.toStr() + " field")
+      end for
+    end function
+
+    @it("declares no homeSection field past the last slot")
+    function _()
+      node = CreateObject("roSGNode", "JellyfinUserSettings")
+
+      firstPast = homeSlots.SLOT_COUNT
+      m.assertFalse(node.hasField("homeSection" + firstPast.toStr()), "JellyfinUserSettings.xml declares a slot beyond homeSlots.SLOT_COUNT")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("user.hasHomeSectionData()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true when only the last slot is present")
+    function _()
+      prefs = {}
+      lastSlot = homeSlots.SLOT_COUNT - 1
+      prefs["homesection" + lastSlot.toStr()] = "latestmedia"
+
+      m.assertTrue(user.hasHomeSectionData(prefs))
+    end function
+
+    @it("is false when no slot is present")
+    function _()
+      m.assertFalse(user.hasHomeSectionData({ unrelated: "x" }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("user.SaveUserHomeSections()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("saves sections placed in slots 7 to 9")
+    function _()
+      user.SaveUserHomeSections({
+        homesection7: "nextup",
+        homesection8: "latestmedia",
+        homesection9: "resume"
+      })
+
+      settings = m.global.user.settings
+      m.assertEqual(settings.homeSection7, "nextup")
+      m.assertEqual(settings.homeSection8, "latestmedia")
+      m.assertEqual(settings.homeSection9, "resume")
+    end function
+
+    @it("saves none for a slot the server did not send")
+    function _()
+      user.SaveUserHomeSections({ homesection0: "resume" })
+
+      settings = m.global.user.settings
+      m.assertEqual(settings.homeSection0, "resume")
+      m.assertEqual(settings.homeSection9, "none")
+    end function
+  end class
+end namespace

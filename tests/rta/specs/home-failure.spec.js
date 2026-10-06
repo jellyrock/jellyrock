@@ -47,6 +47,9 @@ import { captureRawUI } from '../capture.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const LIBRARY_SECTION_TYPES = ['smalllibrarytiles', 'librarybuttons'];
+// Home section slots the app reads. Mirrors homeSlots.SLOT_COUNT (source/constants/homeSlots.bs),
+// which mirrors the Jellyfin web client's MAX_SECTIONS.
+const HOME_SLOT_COUNT = 10;
 // RTA_CAPTURE=1 also saves the failed tiles, focused, to out/rta-captures/ for review.
 const CAPTURE = process.env.RTA_CAPTURE === '1';
 
@@ -158,9 +161,10 @@ it('the libraries failing with no My Media row show one Recently Added row, and 
   // Changing it there reaches only this app run and the local registry, which the runner
   // restores — never the server.
   const sections = [];
-  for (let i = 0; i <= 6; i++) sections.push(await getGlobalVal(`user.settings.homeSection${i}`));
+  for (let i = 0; i < HOME_SLOT_COUNT; i++)
+    sections.push(await getGlobalVal(`user.settings.homeSection${i}`));
   if (!sections.includes('latestmedia')) testCtx.skip('layout shows no latest media');
-  for (let i = 0; i <= 6; i++) {
+  for (let i = 0; i < HOME_SLOT_COUNT; i++) {
     if (LIBRARY_SECTION_TYPES.includes(sections[i])) {
       await odc.setValue({
         base: 'global',

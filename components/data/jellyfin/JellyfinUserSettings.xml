@@ -99,6 +99,9 @@
     <field id="homeSection4" type="string" alwaysNotify="true" />
     <field id="homeSection5" type="string" alwaysNotify="true" />
     <field id="homeSection6" type="string" alwaysNotify="true" />
+    <field id="homeSection7" type="string" alwaysNotify="true" />
+    <field id="homeSection8" type="string" alwaysNotify="true" />
+    <field id="homeSection9" type="string" alwaysNotify="true" />
 
     <!-- Display Settings -->
     <field id="displayLiveTvLanding" type="string" alwaysNotify="true" />
