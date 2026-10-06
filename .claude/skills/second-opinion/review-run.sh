@@ -19,8 +19,9 @@
 #         labels.txt   `<neutral label><TAB><the brief's label>`, one per item: for the parent only
 #   … cost <agent id> [--note <what was reviewed>]
 #       the finished review's token use, from its sub-agent transcript (one count per message, the
-#       last output count), logged in $XDG_STATE_HOME/second-opinion/costs.tsv (a review recorded
-#       again replaces its line)
+#       last output count; output is n/a when any message has no line with a final stop_reason, as
+#       in a transcript that kept only stream-start usage), logged in
+#       $XDG_STATE_HOME/second-opinion/costs.tsv (a review recorded again replaces its line)
 # Exit: check  0 ok; 1 problems (each a PROBLEM line); 3 an unreadable brief
 #       split  0 written; 1 the brief fails check (nothing written); 3 unreadable, or no folder
 #       cost   0 recorded; 3 no id, or no transcript for it
@@ -179,6 +180,8 @@ cmd_cost() {
       if (!match(r, /"id":"msg_[^"]*"/)) next
       id = substr(r, RSTART + 6, RLENGTH - 7)
       if (match(r, /"model":"[^"]*"/)) { md = substr(r, RSTART + 9, RLENGTH - 10); if (!(md in models)) { models[md] = 1; ml = ml (ml == "" ? "" : ",") md } }
+      # a line with a stop_reason other than null (it comes before usage) holds the final count of its message
+      sr = ""; if (match(r, /"stop_reason":(null|"[^"]*")/)) sr = substr(r, RSTART + 14, RLENGTH - 14)
       # each count is the first after "usage":{ — the top-level four come before the nested
       # iterations, which repeat them
       u = index(r, "\"usage\":{"); if (!u) next
@@ -186,10 +189,11 @@ cmd_cost() {
       if (!(id in seen)) { seen[id] = 1; n++ }
       inp[id] = num(r, "input_tokens"); cw[id] = num(r, "cache_creation_input_tokens"); cr[id] = num(r, "cache_read_input_tokens")
       o = num(r, "output_tokens"); if (o > out[id] + 0) out[id] = o
+      if (sr != "" && sr != "null") fin[id] = 1
     }
     END {
-      for (k in seen) { ti += inp[k]; tw += cw[k]; tr += cr[k]; to += out[k] }
-      printf "%s\t%d\t%d\t%d\t%d\t%d\n", (ml == "" ? "unknown" : ml), n, ti, tw, tr, to
+      for (k in seen) { ti += inp[k]; tw += cw[k]; tr += cr[k]; to += out[k]; if (!(k in fin)) nf++ }
+      printf "%s\t%d\t%d\t%d\t%d\t%s\t%d\n", (ml == "" ? "unknown" : ml), n, ti, tw, tr, (nf ? "n/a" : to), nf
     }
   ' "$f")"
   repo="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo -)")"
@@ -198,8 +202,9 @@ cmd_cost() {
   mkdir -p "$(dirname "$log")" || die 3 "cannot make $(dirname "$log")"
   [ -s "$log" ] || printf 'date\trepo\tagent\tmodel\tmessages\tinput\tcache_write\tcache_read\toutput\tnote\n' > "$log"
   awk -F'\t' -v id="$id" '$3 != id ""' "$log" > "$log.tmp" && mv "$log.tmp" "$log"
-  printf '%s\t%s\t%s\t%s\t%s\n' "${REVIEW_RUN_TODAY:-$(date +%F)}" "$repo" "$id" "$line" "$note" >> "$log"
-  IFS=$'\t' read -r m n i w r o <<<"$line"
+  IFS=$'\t' read -r m n i w r o k <<<"$line"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${REVIEW_RUN_TODAY:-$(date +%F)}" "$repo" "$id" "$m" "$n" "$i" "$w" "$r" "$o" "$note" >> "$log"
+  [ "$k" -gt 0 ] && o="n/a (no final count in $k of $n messages)"
   printf 'recorded: %s model=%s messages=%s input=%s cache_write=%s cache_read=%s output=%s\nlog: %s\n' "$id" "$m" "$n" "$i" "$w" "$r" "$o" "$log"
 }
 

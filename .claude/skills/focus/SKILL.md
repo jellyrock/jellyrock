@@ -27,7 +27,7 @@ effort: high
 
 - A triage block: the **Recommended** pick, **Why** (the ranking rule that won, and the state behind it, cited), its route with the one command to type in its own copyable block (or "reply `ok` to plan it"), and 1-3 **Alternatives**, one line each, with a command route's command in its own block under its line. Nothing else happens until the user replies.
 - **On a non-plan route:** only that printed command. `/focus` writes nothing.
-- **On the plan route:** a plan file at this repo's plan path with a required `**Project:** <slug | n/a>` line and the sections Context, Approach, Critical files, Verification, Landing & closeout, What this plan deliberately does NOT do — saved without a separate approval (the user's choices are the fork questions before it; the push stop is the gate after it), then a hand-off block, in a message of its own before anything runs: the one line to paste in a fresh session, alone in its own block, for the implementation tier `/focus` classified (`/sonnet <plan-path>` by default). On the default tier the run follows at once: a Sonnet sub-agent supervised to a reviewed ready-to-push message (`/sonnet`'s `## Sub-agent invocation`).
+- **On the plan route:** a plan file at this repo's plan path with a required `**Project:** <slug | n/a>` line and the sections Context, Approach, Critical files, Verification, Landing & closeout, What this plan deliberately does NOT do — saved without a separate approval (the user's choices are the fork questions before it, with the plan's Always ask call; after it, the push stop, or in a `gated` repo whose plan touches nothing on its Always ask list, the review, the checks and `/sonnet`'s gate), then a hand-off block, in a message of its own before anything runs: the one line to paste in a fresh session, alone in its own block, for the implementation tier `/focus` classified (`/sonnet <plan-path>` by default). On the default tier the run follows at once: a Sonnet sub-agent supervised to a reviewed ready-to-push message (`/sonnet`'s `## Sub-agent invocation`).
 - A `Captures for /log` tail listing anything journal-worthy that surfaced and isn't captured yet, using the types `/log` records. Omit it when there are none.
 
 **Success criteria.**
@@ -150,6 +150,8 @@ Sub-agents are an escape hatch: at most three Explore sub-agents in parallel, on
 
 Draft the plan without rendering any of it. Conversation text in this step is one short status sentence per phase ("Drafting the plan internally — it will be saved and linked when it runs."), plus the fork questions: each a chat question with the decision, its options, a **Recommended** option with why and risk, and its reply words, carrying the context the choice needs and no plan content. Several forks may go in one message; then end the turn and wait.
 
+**The Always ask call.** In a repo whose `## Landing` level is `gated`, a supervised run whose plan says `**Always ask:** none` is pushed without asking, so that line is decided here, in front of the user: read the repo's Always ask list (its `## Landing`) against the change, and with the forks (or, with no fork, as one line before the plan is saved) say `Always ask: none`, or the item it touches and why. The user's reply corrects it; silence keeps it. In a repo at any other level, write the line without showing it: every push stops there anyway.
+
 Draft with this structure:
 
 ```markdown
@@ -177,7 +179,9 @@ Draft with this structure:
 
 ## Landing & closeout
 
-<For a change that must reach production to count as done, each production step and who lands it: it lands by itself (when, and how to verify it did); the implementing session (only a routine, undoable step, the exact command approved here, run after the push); or the operator (the exact command, run right after the push; the implementing session lists it and never runs it). A followup only if the operator defers a step. With no production artifact, exactly `n/a — no production artifact`.>
+**Always ask:** <none | the item of this repo's `## Landing` Always ask list the change touches, quoted, and how>
+
+<For a change that must reach production to count as done, each production step and who lands it: it lands by itself (when, and how to verify it did); the implementing session (only a routine, undoable step, the exact command approved here, run after the push); or the operator (the exact command, run right after the push; the implementing session lists it and never runs it). A followup only if the operator defers a step. With no production artifact, the line after Always ask is exactly `n/a — no production artifact`.>
 
 ## What this plan deliberately does NOT do
 
@@ -190,7 +194,7 @@ The `**Project:**` line is required: a run outside that project's session never 
 
 ### Step 6 — Save, hand off, run it
 
-Your choices are made at the fork questions (Step 5), and nothing reaches the shared branch without the push stop: there is no separate plan approval.
+Your choices are made at the fork questions (Step 5), with the Always ask call; nothing reaches the shared branch without the push stop, or, where `/sonnet`'s gate clears, the review and the checks: there is no separate plan approval.
 
 1. **Captures first.** For each capture held from Steps 4-5, follow `/log`'s steps. Never save the plan with captures outstanding.
 2. Write the plan, once, to `<plan path>/focus-YYYY-MM-DD-<task-slug>.md` (today's date from `date +%F`, a two-to-four-word kebab-case slug). A choice that surfaces while writing it is a fork: stop, ask it in chat as Step 5 does, and write the plan after the reply, never with the choice made for the user.
@@ -202,7 +206,7 @@ Your choices are made at the fork questions (Step 5), and nothing reaches the sh
    /sonnet <plan path>/focus-YYYY-MM-DD-<task-slug>.md
    ```
 
-   If a fork answer has the user act before the run (an edit only they may make, a box only they can reach), end the turn here and ask in chat: `done` starts the run, `skip` runs without it. Otherwise read `/sonnet`'s `## Sub-agent invocation` (in `.claude/skills/sonnet/SKILL.md`) and follow it: start the sub-agent, handle its stops, review its result (say what the review covered: a truncated or sampled read is a spot-check, and is called one), show the ready-to-push message, and push only on the user's `ok` or `push`. A timestamp any step writes comes from `date -u` at that write, never estimated.
+   If a fork answer has the user act before the run (an edit only they may make, a box only they can reach), end the turn here and ask in chat: `done` starts the run, `skip` runs without it. Otherwise read `/sonnet`'s `## Sub-agent invocation` (in `.claude/skills/sonnet/SKILL.md`) and follow it: start the sub-agent, handle its stops, review its result (say what the review covered: a truncated or sampled read is a spot-check, and is called one), run its gate, and either push and show the landed report or show the ready-to-push message and push only on the user's `ok` or `push`. A timestamp any step writes comes from `date -u` at that write, never estimated.
 
    For the judgment-grade tier: "Plan saved → `<path>` (needs the judgment-grade tier: <one-line reason>). Paste this in a fresh session:"
 

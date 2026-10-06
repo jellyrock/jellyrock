@@ -329,6 +329,8 @@ active_list() { # the active projects' folders, one per line
 plan=""
 if [ -n "$slug" ]; then
   hits=(); for p in "$dir"/*-"$slug"/PLAN.md; do [ -e "$p" ] && hits+=("$p"); done
+  # a terminal close archives the PLAN before /end-session checks it: --check reads the archived one
+  [ ${#hits[@]} -eq 0 ] && [ "$mode" = check ] && for p in "$dir"/_archive/*-"$slug"/PLAN.md; do [ -e "$p" ] && hits+=("$p"); done
   case ${#hits[@]} in
     1) plan="${hits[0]}"; echo "requested: $slug" ;;
     0) if [ "$mode" = release ]; then
