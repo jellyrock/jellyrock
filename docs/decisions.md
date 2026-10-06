@@ -1898,6 +1898,16 @@ JellyRock reads as many Home-section slots as the Jellyfin web client shows (`ho
 
 Ruled out: one ordered-list field in place of the per-slot fields (a cleaner model, but a restructure beyond #937, and the RTA spec would rely on an ODC array write nothing had verified), and reading every `homesectionN` uncapped. Re-evaluate if jellyfin-web changes `MAX_SECTIONS`: the spec compares the constant with the fields, not with the web client.
 
+## decision-id: subtitle-track-label-shared
+
+**date**: 2026-10-06
+**status**: accepted
+**related-files**: `source/utils/mediaDisplayTitle.bs`, `source/utils/subtitles.bs`, `source/utils/remoteSubtitles.bs`
+
+Every subtitle list labels a track through `formatSubtitleTrackLabel()`, never the server's `DisplayTitle` directly, and marks a file stored beside the video "External", not "Downloaded". The playback picker passed `DisplayTitle` through from `sortSubtitles()`, so a track with no language led with the server's "Undefined" placeholder and read differently from the same track on the details screen (#1004). "Downloaded" was wrong for a sidecar file placed by hand and disagreed with the subtitle panel and playback report, which already say "External". `DisplayTitle` stays as the fallback when a track has neither language nor codec.
+
+Ruled out: formatting the label only in the playback picker, which keeps two label paths, the drift that caused #1004; and calling `formatSubtitleDisplayTitle()` on the picker's records as the issue suggested, because the slim records `sortSubtitles()` builds carry no codec or language, so every row would read "N/A".
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
