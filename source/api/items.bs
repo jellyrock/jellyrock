@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/enums/NextUpSeriesStart.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
@@ -445,9 +446,10 @@ end function
 ' copy because Next Up's disableFirstEpisode param, which used to apply that rule for us, is
 ' ignored from Jellyfin 10.11 and removed in 12.0 (#925).
 '
-' The REST API has no "not equals" filter, so the caller fetches played episodes sorted
-' ParentIndexNumber,IndexNumber descending with Limit 1: specials (season 0) sort below
-' every regular season, so a special on top means no regular episode was watched.
+' The REST API has no "not equals" filter, so the caller fetches watchedRegularEpisodeQuery():
+' played episodes sorted ParentIndexNumber,IndexNumber descending with Limit 1. Specials
+' (season 0) sort below every regular season, so a special on top means no regular episode
+' was watched.
 '
 ' @param {dynamic} playedEpisodes - Items query result: { Items: [BaseItemDto] } or invalid
 ' @returns {boolean} - true if the top played episode is not a special
@@ -456,6 +458,104 @@ function hasWatchedRegularEpisode(playedEpisodes as dynamic) as boolean
   seasonNumber = playedEpisodes.Items[0].ParentIndexNumber
   if not isValid(seasonNumber) then return true
   return seasonNumber <> 0
+end function
+
+' watchedRegularEpisodeQuery: Items query params whose result hasWatchedRegularEpisode() reads.
+'
+' @param {string} seriesId - The series to check
+' @returns {object} - Params for BuildGetItemsByQueryRequest
+function watchedRegularEpisodeQuery(seriesId as string) as object
+  return {
+    ParentId: seriesId,
+    Recursive: true,
+    IncludeItemTypes: "Episode",
+    IsPlayed: true,
+    SortBy: "ParentIndexNumber,IndexNumber",
+    SortOrder: "Descending",
+    Limit: 1,
+    EnableTotalRecordCount: false,
+    EnableImages: false
+  }
+end function
+
+' nextUpSeriesIds: The series behind a Next Up response's items, each once, in response order.
+'
+' @param {dynamic} items - Next Up items: [BaseItemDto] or invalid
+' @returns {object} - Array of SeriesId strings
+function nextUpSeriesIds(items as dynamic) as object
+  ids = []
+  if not isValidAndNotEmpty(items) then return ids
+  seen = {}
+  for each item in items
+    seriesId = item.SeriesId
+    if isValidAndNotEmpty(seriesId) and not seen.DoesExist(seriesId)
+      seen[seriesId] = true
+      ids.push(seriesId)
+    end if
+  end for
+  return ids
+end function
+
+' classifyNextUpSeries: Whether each Next Up series has a watched regular episode.
+'
+' From 10.11 the server offers a series' first episode once ANY of its episodes was started,
+' even with none finished: jellyfin/jellyfin#13687 dropped the filter that 10.10 applied with
+' DisableFirstEpisode (#973). The rule that filter applied is hasWatchedRegularEpisode()'s,
+' and this decides it for every series from two batched lookups instead of one request each:
+'
+' - The series' own counts (Fields=RecursiveItemCount): nothing played means NOT_STARTED.
+' - The played specials across the library: a played series with none of them is STARTED.
+'   Its counts include specials, so a series that has one played is CHECK, decided by
+'   hasWatchedRegularEpisode() on its own.
+'
+' A series missing from the lookup, or without its counts, is left out, and a played series
+' is STARTED when the specials lookup got no answer: an unanswered lookup never removes an
+' episode from the row.
+'
+' @param {dynamic} seriesItems - Series lookup items: [BaseItemDto] or invalid (no answer)
+' @param {dynamic} playedSpecials - Played season-0 episodes: [BaseItemDto] or invalid (no answer)
+' @returns {object} - AA of SeriesId -> NextUpSeriesStart value
+function classifyNextUpSeries(seriesItems as dynamic, playedSpecials as dynamic) as object
+  starts = {}
+  if not isValid(seriesItems) then return starts
+
+  seriesWithPlayedSpecial = {}
+  if isValid(playedSpecials)
+    for each special in playedSpecials
+      if isValidAndNotEmpty(special.SeriesId) then seriesWithPlayedSpecial[special.SeriesId] = true
+    end for
+  end if
+
+  for each series in seriesItems
+    total = series.RecursiveItemCount
+    unplayed = invalid
+    if isValid(series.UserData) then unplayed = series.UserData.UnplayedItemCount
+    if isValidAndNotEmpty(series.Id) and isValid(total) and isValid(unplayed)
+      if unplayed >= total
+        starts[series.Id] = NextUpSeriesStart.NOT_STARTED
+      else if seriesWithPlayedSpecial.DoesExist(series.Id)
+        starts[series.Id] = NextUpSeriesStart.CHECK
+      else
+        starts[series.Id] = NextUpSeriesStart.STARTED
+      end if
+    end if
+  end for
+  return starts
+end function
+
+' keepStartedSeriesItems: Drops the Next Up items whose series is NOT_STARTED, keeping order.
+'
+' @param {object} items - Next Up items: [BaseItemDto]
+' @param {object} starts - classifyNextUpSeries() result, CHECK entries resolved where answered
+' @returns {object} - The kept items
+function keepStartedSeriesItems(items as object, starts as object) as object
+  kept = []
+  for each item in items
+    if not (isValid(item.SeriesId) and starts[item.SeriesId] = NextUpSeriesStart.NOT_STARTED)
+      kept.push(item)
+    end if
+  end for
+  return kept
 end function
 
 ' honorsDisableFirstEpisode: Whether a server acts on Next Up's DisableFirstEpisode parameter.
@@ -478,9 +578,10 @@ end function
 ' on 10.8–10.10 it also makes the server ignore NextUpDateCutoff. So it is sent only where
 ' it costs nothing: always on 10.7 (which has no cutoff), and on 10.8–10.10 only when Max
 ' Days is off. With Max Days on, those servers keep the cutoff and still add first episodes.
-' From 10.11 the server returns watch history only, so the parameter is not sent.
-' So a user with no history gets no Next Up row, except on 10.8–10.10 with Max Days on. That
-' is intended, and differs from jellyfin-web 10.10, which asks for the first episodes.
+' From 10.11 the parameter does nothing, and the server adds the first episode of every series
+' with an episode started but none finished. LoadItemsTask drops what the parameter missed on
+' every version (classifyNextUpSeries), so a user with no finished episode gets no Next Up
+' row. That is intended, and differs from jellyfin-web, which shows those first episodes.
 '
 ' @param {string} serverVersion - Server version string, e.g. "10.10.7"
 ' @param {boolean} enableRewatching - uiDetailsEnableRewatchingNextUp

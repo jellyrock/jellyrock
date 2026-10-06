@@ -1,4 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/items.bs"
@@ -44,6 +45,7 @@ sub loadItems()
     items = fetchRowItems(GetApi().BuildGetNextUpRequest(params), "nextUp")
     status = statusOf(items)
     if isValid(items)
+      items = keepStartedSeries(items)
       for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
@@ -187,17 +189,7 @@ sub loadItems()
       ' No resumable episode — fall back to next unstarted episode, but only once a regular
       ' episode has been watched: a Resume button must never appear for an unwatched series.
       ' Checked here because Next Up's DisableFirstEpisode is ignored from Jellyfin 10.11 (#925).
-      playedData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-        ParentId: m.top.itemId,
-        Recursive: true,
-        IncludeItemTypes: "Episode",
-        IsPlayed: true,
-        SortBy: "ParentIndexNumber,IndexNumber",
-        SortOrder: "Descending",
-        Limit: 1,
-        EnableTotalRecordCount: false,
-        EnableImages: false
-      }), "seriesPlayed")
+      playedData = fetchJson(GetApi().BuildGetItemsByQueryRequest(watchedRegularEpisodeQuery(m.top.itemId)), "seriesPlayed")
       if hasWatchedRegularEpisode(playedData)
         nextUpData = fetchJson(GetApi().BuildGetNextUpRequest({ SeriesId: m.top.itemId, Limit: 1, Fields: "PrimaryImageAspectRatio" }), "seriesNextUp")
         if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
@@ -267,6 +259,68 @@ function fetchRowItems(req as dynamic, requestId as string) as dynamic
     return invalid
   end if
   return items
+end function
+
+' Drops the Next Up items whose series has no watched regular episode (classifyNextUpSeries).
+'
+' The two lookups ride the pipeline together, then one hasWatchedRegularEpisode() check per
+' series that has a played special. The Next Up fetch before this blocked on the pool, so the
+' pool is up for apiPipeline. A lookup that gets no answer keeps the items it would have judged.
+function keepStartedSeries(items as object) as object
+  seriesIds = nextUpSeriesIds(items)
+  if seriesIds.count() = 0 then return items
+
+  api = GetApi()
+  seriesItems = invalid
+  playedSpecials = invalid
+  pipe = apiPipelineBegin([
+    {
+      requestId: "nextUpSeries",
+      req: api.BuildGetItemsByQueryRequest({ Ids: seriesIds.join(","), Fields: "RecursiveItemCount", EnableImages: false, EnableTotalRecordCount: false }),
+      lookup: "series"
+    },
+    {
+      requestId: "nextUpPlayedSpecials",
+      req: api.BuildGetItemsByQueryRequest({ Recursive: true, IncludeItemTypes: "Episode", IsPlayed: true, ParentIndexNumber: 0, EnableImages: false, EnableUserData: false, EnableTotalRecordCount: false }),
+      lookup: "specials"
+    }
+  ])
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    list = invalid
+    if isValid(result.res) and result.res.ok then list = apiResponse.listFrom(result.res.json)
+    if result.entry.lookup = "series"
+      seriesItems = list
+    else
+      playedSpecials = list
+    end if
+    result = apiPipelineNext(pipe)
+  end while
+
+  starts = classifyNextUpSeries(seriesItems, playedSpecials)
+
+  checks = []
+  for each seriesId in starts
+    if starts[seriesId] = NextUpSeriesStart.CHECK
+      checks.push({ requestId: "nextUpSeriesPlayed-" + seriesId, req: api.BuildGetItemsByQueryRequest(watchedRegularEpisodeQuery(seriesId)), seriesId: seriesId })
+    end if
+  end for
+  pipe = apiPipelineBegin(checks)
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    if isValid(result.res) and result.res.ok
+      if hasWatchedRegularEpisode(result.res.json)
+        starts[result.entry.seriesId] = NextUpSeriesStart.STARTED
+      else
+        starts[result.entry.seriesId] = NextUpSeriesStart.NOT_STARTED
+      end if
+    end if
+    result = apiPipelineNext(pipe)
+  end while
+
+  kept = keepStartedSeriesItems(items, starts)
+  if kept.count() < items.count() then m.log.debug("Next Up dropped series with no watched episode", "dropped", items.count() - kept.count())
+  return kept
 end function
 
 ' `status` for a Home row load from what fetchRowItems returned.
