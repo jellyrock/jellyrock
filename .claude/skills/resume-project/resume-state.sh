@@ -247,7 +247,7 @@ sessions_dir="${CLAIMS_SESSIONS_DIR:-$HOME/.claude/sessions}"
 json_str() { grep -o "\"$2\":\"[^\"]*\"" "$1" 2>/dev/null | head -1 | sed 's/^"[^"]*":"//; s/"$//'; }
 json_num() { grep -o "\"$2\":[0-9]*" "$1" 2>/dev/null | head -1 | sed 's/^"[^"]*"://'; }
 session_file() { grep -l "\"sessionId\":\"$1\"" "$sessions_dir"/*.json 2>/dev/null | head -1; }
-claim_file() { printf '%s/%s' "$claims_dir" "$(readlink -f "$1" | sed 's#/#%#g')"; }
+claim_file() { printf '%s/%s' "$claims_dir" "$(readlink -m "$1" | sed 's#/#%#g')"; }
 my_name() { local n=""; [ -n "${CLAUDE_PID:-}" ] && n="$(json_str "$sessions_dir/$CLAUDE_PID.json" name)"; printf '%s' "${n:-this session}"; }
 
 # claim_take <plan>: warn about another holder, then record this session as the holder
@@ -331,7 +331,15 @@ if [ -n "$slug" ]; then
   hits=(); for p in "$dir"/*-"$slug"/PLAN.md; do [ -e "$p" ] && hits+=("$p"); done
   case ${#hits[@]} in
     1) plan="${hits[0]}"; echo "requested: $slug" ;;
-    0) echo "ERROR: no project matches '$slug'"
+    0) if [ "$mode" = release ]; then
+         # a terminal close archives the PLAN first: its claim is keyed on the path it had before
+         arch=(); for p in "$dir"/_archive/*-"$slug"/PLAN.md; do [ -e "$p" ] && arch+=("$p"); done
+         if [ ${#arch[@]} -gt 0 ]; then
+           echo "requested: $slug (archived)"; section "CLAIM"
+           for p in "${arch[@]}"; do claim_release "$dir/$(basename "$(dirname "$p")")/PLAN.md"; done; exit 0
+         fi
+       fi
+       echo "ERROR: no project matches '$slug'"
        for p in "$dir"/_archive/*-"$slug"/PLAN.md; do
          [ -e "$p" ] && echo "archived: $(basename "$(dirname "$p")") (closed; not resumable)"; done
        echo "active projects:"; active_list | sed 's/^/  /'
