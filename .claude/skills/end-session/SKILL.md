@@ -153,7 +153,7 @@ The PLAN is committed in the repo that holds the projects folder. If `git -C <pr
 
 ### Step 10 — Prove it loads cold, then release the claim
 
-Run `bash .claude/skills/resume-project/resume-state.sh <slug>` once more: it is what the next session will see. Every `BANNER:` line is something to fix now (a dirty tree, an unpushed commit, a commit after the PLAN's save, a PLAN check), not to hand on. Then `bash .claude/skills/resume-project/resume-state.sh --release <slug>`, so the next session is not warned about this one.
+Run `bash .claude/skills/resume-project/resume-state.sh <slug>` once more: it is what the next session will see. Every `BANNER:` line is something to fix now (a dirty tree, an unpushed commit, a commit after the PLAN's save, a PLAN check), not to hand on. After a terminal close the read refuses by design (exit 2, `archived: <folder> (closed; not resumable)` and a `did not resolve` banner): no session can resume a closed project, so that refusal is the cold load and the one `BANNER:` to leave. Check the rest by hand: `git status --short` lists nothing of yours, and `git status -sb` shows no `ahead`. Then `bash .claude/skills/resume-project/resume-state.sh --release <slug>`, so the next session is not warned about this one.
 
 ### Notes
 

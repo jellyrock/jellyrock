@@ -18,15 +18,25 @@
 #       any left uncommitted, against the plan's Critical files (the project PLAN's landing record
 #       is expected, not out of plan); and where a push goes: the branch, its upstream, and how far
 #       ahead and behind it is as of the last fetch (this script never fetches)
-#   … land <plan> [--commit <rev>] [--dry-run]
+#   … gate <plan> <base>
+#       after a supervised run's review: whether it may push without asking. Only when the Landing
+#       section of the repo's AGENTS.md gives level `gated`, the plan's Landing & closeout says
+#       **Always ask:** none, and scope matches the plan; every reason to stop is listed
+#   … land <plan> [--commit <rev>] [--dry-run] [--floor '<command>'] [--base <starting commit>]
 #       the landing line in the Session log of the plan's project, last-updated bumped, committed
 #       alone (a local edit where the projects folder is gitignored). Nothing when this session
 #       holds the project: /end-session records the work then.
+#       --floor runs the command first (from the repo root, its whole output shown) and records nothing
+#       when it fails; --base then prints scope against that commit, as `scope <plan> <base>` does, and
+#       the exit is scope's. One call, so the order floor, landing, scope never rests on the caller.
 # Exit: check  0 LOCAL; 2 no plan named (--list printed the candidates); 3 the plan cannot be read;
 #              4 locality FOREIGN, MIXED or UNKNOWN: confirm before any edit
 #       scope  0 matches the plan; 1 differs; 3 an unreadable plan, or no base
-#       land   0 recorded, already recorded, nothing to record, or left to /end-session;
-#              2 cannot record (the message says the fix); 3 an unreadable plan
+#       gate   0 push without asking; 1 stop before the push (each STOP line says why);
+#              3 an unreadable plan, or no base
+#       land   0 recorded, already recorded, nothing to record, or left to /end-session (with --base: scope's
+#              exit, 0 matches the plan, 1 differs); 2 cannot record (the message says the fix);
+#              3 an unreadable plan, or a --base that is not a commit; 4 the --floor failed, nothing recorded
 # Judgment stays with the caller: BANNER lines are what to raise, NOTE lines inform.
 # PLAN_RUN_TODAY (YYYY-MM-DD) dates the landing line in tests.
 
@@ -241,6 +251,61 @@ do_scope() {
   exit 1
 }
 
+# --- gate --------------------------------------------------------------------------------------
+
+# landing_level -> the level the AGENTS.md Landing section gives (`Level: \`<word>\``), "unknown"
+# when it gives none or two different ones; a level written anywhere else never counts
+landing_level() {
+  [ -f "$root/AGENTS.md" ] || { echo "unknown (no AGENTS.md)"; return; }
+  awk '
+    /^## / { f = ($0 ~ /^## Landing[[:space:]]*$/); next }
+    f && match($0, /Level: `[a-z-]+`/) { v = substr($0, RSTART + 8, RLENGTH - 9); if (!(v in seen)) { seen[v] = 1; n++; last = v } }
+    END { print (n == 1 ? last : "unknown") }' "$root/AGENTS.md"
+}
+
+# always_ask <plan> -> the plan's **Always ask:** value inside its Landing & closeout section;
+# nothing when there is none
+always_ask() {
+  awk '
+    /^## / { f = ($0 ~ /^## Landing & closeout/); next }
+    f && /^\*\*Always ask:\*\*/ { v = $0; sub(/^\*\*Always ask:\*\*[ \t]*/, "", v); print v; exit }' "$1"
+}
+
+do_gate() {
+  local plan="$1" base="$2" level ask stops=()
+  [ -f "$plan" ] && [ -r "$plan" ] || die 3 "no such plan file: $plan"
+  git -C "$root" rev-parse -q --verify "$base^{commit}" >/dev/null || die 3 "not a commit: $base"
+
+  section "LEVEL"
+  level="$(landing_level)"
+  echo "level: $level"
+  case "$level" in
+    gated) ;;
+    ask) stops+=("this repo's landing level is ask") ;;
+    *) stops+=("this repo's landing level is not clearly gated: read its ## Landing section") ;;
+  esac
+
+  section "ALWAYS ASK"
+  ask="$(always_ask "$plan")"
+  if [ -z "$ask" ]; then
+    echo "always ask: missing"; stops+=("the plan has no **Always ask:** line in its Landing & closeout (a plan written before the line existed)")
+  elif printf '%s' "$ask" | grep -qiE '^none([^[:alnum:]]|$)'; then
+    echo "always ask: none"
+  else
+    echo "always ask: $ask"; stops+=("the plan names an Always ask item")
+  fi
+
+  section "SCOPE"
+  if (do_scope "$plan" "$base") >/dev/null 2>&1; then echo "scope: matches the plan"
+  else echo "scope: differs (run scope for each line)"; stops+=("the work differs from the plan"); fi
+
+  section "END"
+  if [ "${#stops[@]}" -eq 0 ]; then echo "RESULT: push without asking"; exit 0; fi
+  printf 'STOP: %s\n' "${stops[@]}"
+  echo "RESULT: stop before the push"
+  exit 1
+}
+
 # --- land --------------------------------------------------------------------------------------
 
 do_land() {
@@ -313,12 +378,35 @@ case "$cmd" in
   scope)
     [ -n "${1:-}" ] && [ -n "${2:-}" ] || die 3 "usage: plan-run.sh scope <plan> <base>"
     do_scope "$(abs "$1")" "$2" ;;
+  gate)
+    [ -n "${1:-}" ] && [ -n "${2:-}" ] || die 3 "usage: plan-run.sh gate <plan> <base>"
+    do_gate "$(abs "$1")" "$2" ;;
   land)
-    plan="${1:-}"; [ -n "$plan" ] || die 3 "usage: plan-run.sh land <plan> [--commit <rev>] [--dry-run]"; shift
-    rev=HEAD dry=0
+    usage="usage: plan-run.sh land <plan> [--commit <rev>] [--dry-run] [--floor '<command>'] [--base <starting commit>]"
+    plan="${1:-}"; [ -n "$plan" ] || die 3 "$usage"; shift
+    rev=HEAD dry=0 floor="" base="" lrc=0
     while [ $# -gt 0 ]; do
-      case "$1" in --commit) rev="${2:-}"; shift 2 ;; --dry-run) dry=1; shift ;; *) die 3 "unknown option: $1" ;; esac
+      case "$1" in
+        --commit) rev="${2:-}"; shift 2 ;;
+        --dry-run) dry=1; shift ;;
+        --floor) [ -n "${2:-}" ] || die 3 "--floor needs a command"; floor="$2"; shift 2 ;;
+        --base) [ -n "${2:-}" ] || die 3 "--base needs a commit"; base="$2"; shift 2 ;;
+        *) die 3 "unknown option: $1" ;;
+      esac
     done
-    do_land "$(abs "$plan")" "$rev" "$dry" ;;
-  *) die 3 "usage: plan-run.sh check <plan> | check --list <folder> | scope <plan> <base> | land <plan> [--commit <rev>] [--dry-run]" ;;
+    plan="$(abs "$plan")"
+    if [ -n "$floor" ]; then
+      section FLOOR; printf '%s\n' "$floor"
+      (cd "$root" && bash -c "$floor"); frc=$?
+      [ "$frc" -eq 0 ] || { echo "FLOOR: failed (exit $frc): nothing recorded"; exit 4; }
+      echo "FLOOR: exit 0"
+    fi
+    [ -z "$floor$base" ] || section LAND
+    (do_land "$plan" "$rev" "$dry"); lrc=$?
+    if [ -n "$base" ] && [ "$lrc" -ne 2 ] && [ "$lrc" -ne 3 ]; then
+      section SCOPE
+      (do_scope "$plan" "$base"); exit $?
+    fi
+    exit "$lrc" ;;
+  *) die 3 "usage: plan-run.sh check <plan> | check --list <folder> | scope <plan> <base> | gate <plan> <base> | land <plan> [--commit <rev>] [--dry-run] [--floor '<command>'] [--base <starting commit>]" ;;
 esac
