@@ -42,14 +42,17 @@ sub loadItems()
     userSettings = globalUser.settings
     params = buildHomeNextUpParams(m.global.server.version, userSettings.uiDetailsEnableRewatchingNextUp, userSettings.uiDetailsMaxDaysNextUp, CreateObject("roDateTime").AsSeconds())
 
-    ' The played-specials lookup does not need Next Up's answer, so it is sent first and its
-    ' wait overlaps Next Up's (keepStartedSeries). Not sent while the pool is still coming up.
+    ' Only a server not asked to drop unstarted series needs the client to (and to pay for
+    ' its lookups). The played-specials lookup does not need Next Up's answer, so it is sent
+    ' first and its wait overlaps Next Up's. Not sent while the pool is still coming up.
+    needsStartedFilter = nextUpNeedsStartedFilter(params)
     specialsPort = CreateObject("roMessagePort")
-    specialsReq = submitApiRequest(GetApi().BuildGetItemsByQueryRequest(playedSpecialsQuery()), "nextUpPlayedSpecials", specialsPort)
+    specialsReq = invalid
+    if needsStartedFilter then specialsReq = submitApiRequest(GetApi().BuildGetItemsByQueryRequest(playedSpecialsQuery()), "nextUpPlayedSpecials", specialsPort)
     items = fetchRowItems(GetApi().BuildGetNextUpRequest(params), "nextUp")
     status = statusOf(items)
     if isValid(items)
-      items = keepStartedSeries(items, specialsReq, specialsPort)
+      if needsStartedFilter then items = keepStartedSeries(items, specialsReq, specialsPort)
       for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
