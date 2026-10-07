@@ -27,6 +27,12 @@
 #   date=bold|frontmatter     the date line: `**Last updated**: …` or a frontmatter `last-updated:`
 #   commit=yes|no             no: journal writes ride in the commit of the change that prompted them
 #   subject=<prefix>          the commit subject prefix for journal writes (default: cursor)
+#   review_days=<days>        turns on `review` (default: off)
+#
+# The review bound. An entry's review date is the later of its captured date and the newest
+# `Re-checked YYYY-MM-DD` note in its own text (any case; written with `replace` when someone
+# re-reads the entry and keeps it). An entry whose review date is more than review_days old is
+# unreviewed: a kept entry whose trigger lives only in prose has no reader unless someone re-reads it.
 #
 # Usage: bash .claude/skills/log/journal.sh <command> …   (run anywhere inside the repo)
 #   path                                     print the journal's path
@@ -35,6 +41,9 @@
 #   show <fid>                               print one entry
 #   stats                                    count and oldest age (days), per category and TOTAL
 #   date                                     the date on the journal's date line (YYYY-MM-DD)
+#   review                                   unreviewed entries, oldest first: fid, category,
+#                                            reviewed, days, title; then TOTAL, unreviewed, entries,
+#                                            review_days (one `review: off` line without review_days)
 #   add --category <c> --fid <f> --title <t> --body-file <p> [--prompt "<command>"] [--pinned]
 #                                            append an entry at the end of its category (made if new)
 #   replace <fid> [--title <t>] [--body-file <p>] [--pin | --unpin]
@@ -62,7 +71,7 @@ die()    { printf 'journal.sh: %s\n' "$*" >&2; exit 2; }
 refuse() { printf 'journal.sh: %s\n' "$*" >&2; exit 1; }
 usage()  { sed -n '/^# Usage:/,/^# setup error/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
-FILE=docs/cursor.md; DATE=bold; COMMIT=yes; SUBJECT=cursor
+FILE=docs/cursor.md; DATE=bold; COMMIT=yes; SUBJECT=cursor; REVIEW_DAYS=""
 conf="$here/journal.conf"
 if [ -f "$conf" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
@@ -74,7 +83,8 @@ if [ -f "$conf" ]; then
       date) case "$val" in bold|frontmatter) DATE="$val" ;; *) die "journal.conf: date must be bold or frontmatter, not '$val'" ;; esac ;;
       commit) case "$val" in yes|no) COMMIT="$val" ;; *) die "journal.conf: commit must be yes or no, not '$val'" ;; esac ;;
       subject) SUBJECT="$val" ;;
-      *) die "journal.conf: unknown key '$key' (known: file, date, commit, subject)" ;;
+      review_days) case "$val" in ''|*[!0-9]*|0*) die "journal.conf: review_days must be a whole number of days above 0, not '$val'" ;; *) REVIEW_DAYS="$val" ;; esac ;;
+      *) die "journal.conf: unknown key '$key' (known: file, date, commit, subject, review_days)" ;;
     esac
   done <"$conf"
 fi
@@ -275,6 +285,38 @@ case "$cmd" in
       END { print "category\tentries\toldest_days"
             for (i = 1; i <= k; i++) printf "%s\t%d\t%s\n", order[i], n[order[i]], old[order[i]]
             printf "TOTAL\t%d\t%d\n", t, tot }' <<<"$IDX"
+    ;;
+
+  review)
+    need_journal
+    if [ -z "$REVIEW_DAYS" ]; then
+      echo "review: off (set review_days=<days> in journal.conf beside journal.sh to list followups not re-read within that many days)"; exit 0
+    fi
+    # the index, then the journal: each entry's newest whole-word `Re-checked YYYY-MM-DD` in its
+    # lines, then its review date; rows carry their journal position so equal ages keep that order
+    rows="$(awk -F'\037' -v today="$TODAY" -v bound="$REVIEW_DAYS" "$AGE_AWK"'
+      function isdate(s) { return s ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ }
+      function scan(s, k,   l, p, d) {
+        l = tolower(s)
+        while ((p = index(l, "re-checked ")) > 0) {
+          d = substr(l, p + 11, 10)
+          if ((p == 1 || substr(l, p - 1, 1) !~ /[a-z0-9_]/) && isdate(d) && substr(l, p + 21, 1) !~ /[a-z0-9_]/ && d > seen[k]) seen[k] = d
+          l = substr(l, p + 11)
+        }
+      }
+      BEGIN { k = 1 }
+      FNR == NR { if ($1 == "E") { n++; from[n] = $2; to[n] = $3; cat[n] = $4; fid[n] = $5; cap[n] = $6; title[n] = $8 } next }
+      { while (k <= n && FNR > to[k]) k++; if (k <= n && FNR >= from[k]) scan($0, k) }
+      END {
+        for (i = 1; i <= n; i++) {
+          r = isdate(cap[i]) ? cap[i] : ""; if (seen[i] > r) r = seen[i]
+          if (r != "" && age(r) > bound + 0) printf "%s\t%s\t%s\t%d\t%d\t%s\n", fid[i], cat[i], r, age(r), i, title[i]
+        }
+      }' - "$J" <<<"$IDX" | LC_ALL=C sort -t "$(printf '\t')" -k4,4nr -k5,5n | cut -f1-4,6)"
+    total="$(awk -F'\037' '$1 == "E"' <<<"$IDX" | wc -l)"
+    printf 'fid\tcategory\treviewed\tdays\ttitle\n'
+    [ -n "$rows" ] && printf '%s\n' "$rows"
+    printf 'TOTAL\t%d\t%d\t%d\n' "$(grep -c . <<<"$rows")" "$total" "$REVIEW_DAYS"
     ;;
 
   check)

@@ -9,8 +9,8 @@ effort: high
 
 ## This repo
 
-- **Reader (Step 1).** The repo's own reader is `node scripts/catchup-state.js --pretty` (JSON; `npm run catchup:state` runs the same script), run beside the shared one as `/catchup`'s steps say; with `--area=<name>` it scopes PR and issue queries to that area. It rewrites the tracked `docs/signals-backlog.md` on every run, so that file can show modified right after Step 1: the reader's refresh, not an unclosed session (tracked-for-removal: the reader should not write).
-- **Reader sections to ranks.** `_errors[<section>]` non-null or a `ci.current_branch_runs[]` entry with `conclusion != 'success'` → rank 1. `handoffs.pending[]` → rank 3. A `signals.rows[]` entry with `stale=true`, or `prs.review_requested[]` → rank 4. `issues.high_engagement_bugs[]` (most comments first) and `issues.recent_bug_reports[]` → rank 5 (GitHub issues are this repo's backlog). `tech_debt.top_3[0]` (`docs/architecture/tech-debt.md`) → rank 7.
+- **Reader (Step 1).** The repo's own reader is `node scripts/catchup-state.js` (`npm run catchup:state` runs the same script); `/catchup`'s reader runs it with `--typed --pretty` from `catchup.conf`, which also sets each of its banners' class, and its lines come ranked in the CANDIDATES block. With `--area=<name>`, also run `node scripts/catchup-state.js --pretty --area=<name>` in Step 1: it scopes the PR and issue queries to that area. It rewrites the tracked `docs/signals-backlog.md` on every run, so that file can show modified right after Step 1: the reader's refresh, not an unclosed session (tracked-for-removal: the reader should not write).
+- **Backlogs.** In the reader's JSON, `issues.high_engagement_bugs[]` (most comments first) and `issues.recent_bug_reports[]` are rank 5, at `SLOT 5-6` (GitHub issues are this repo's backlog); `tech_debt.top_3[0]` (`docs/architecture/tech-debt.md`) is rank 7, at `SLOT 7`.
 - **Areas** for `--area`: `components`, `components/video`, `components/data`, `source`, `source/api`, `source/utils`, `tests`, `locale`, `scripts`. After a long time away from one, `/ramp <area>` is the deep-dive briefing; `/focus --area=<name>` then triages what is actionable there.
 - **Handoffs** are packets in `.claude/handoffs/` (gitignored) written by `/runtime-triage`, `/crash-report` and `/server-upgrade`. `/focus` writes none, so it has no packet steps. A paused one is resumed by reading it and following the skill that wrote it.
 - **Skills a route can name** (print the command, never run it). Triage: `/ci-triage <run-id>`, `/issue-triage <N>`, `/runtime-triage` (a pasted Roku log), `/server-upgrade` (a Jellyfin release digest), `/crash-report` (the weekly crash CSV), `/dep-major` (a major dependency bump). Recipe (the recipe is the plan): `/new-setting`, `/new-migration`, `/new-api-version`, `/translation-add`; also `/tech-debt-scan` and `/docs-lint`. Capture: `/done <slug>`, `/log signal <slug>`.
@@ -68,46 +68,46 @@ effort: high
 
 ## Implementation
 
-Repo facts this skill reads: [this repo's plan path](../../../AGENTS.md#plan-path), its `## This repo` (areas; the skills its routes can name; any backlog files; how its own reader's banners map onto the ranks below; handoff packets, if it keeps them), and [this repo's verification commands](../../../AGENTS.md#verification-commands). Journal reads go through `bash .claude/skills/log/journal.sh`.
+Repo facts this skill reads: [this repo's plan path](../../../AGENTS.md#plan-path), its `## This repo` (areas; the skills its routes can name; any backlog files; handoff packets, if it keeps them), and [this repo's verification commands](../../../AGENTS.md#verification-commands). Journal reads go through `bash .claude/skills/log/journal.sh`.
 
 If `## This repo` keeps handoff packets, follow its packet steps: its check for an unfinished `/focus` (at the point its `## This repo` names), and its write at each step's end.
 
 ### Step 1 — Load state
 
-Read `.claude/skills/catchup/SKILL.md` and follow its steps inline: its readers and banners are this triage's input, and the user sees the briefing as it is produced — without its `Suggested next` line, which Step 2's pick replaces (two "next" answers in a row contradict each other), and with its `Captures for /log` items folded into this skill's own tail. If `/catchup` already ran in this session and HEAD and the working tree are unchanged since, reuse that briefing instead (say so in one line).
+Read `.claude/skills/catchup/SKILL.md` and follow its steps inline: its reader's `=== CANDIDATES ===` block is this triage's ranked input, and the user sees the briefing as it is produced — without its `Suggested next` line, which Step 2's pick replaces (two "next" answers in a row contradict each other), and with its `Captures for /log` items folded into this skill's own tail. If `/catchup` already ran in this session and HEAD and the working tree are unchanged since, reuse that briefing instead (say so in one line).
 
 Then `bash .claude/skills/log/journal.sh list` for every open followup's title, age, pin and prompt. Read an entry in full (`journal.sh show <fid>`) only once it is a candidate being weighed; never read the journal file. For a project candidate, read its PLAN's Next-session kickoff section and the `**Open questions / blockers:**` part of its Status, never the whole PLAN. Read the backlogs `## This repo` names only for their ready rows. With `--area=<name>`, keep only candidates in that area.
 
 ### Step 2 — Rank, pick one, classify its route, recommend
 
-Rank every candidate; the first rank wins:
+Take the CANDIDATES block's lines in order; the first that yields a candidate is the pick. The reader ranked them in code, by kind; never re-rank them here. What each part of the block holds, in its order:
 
-1. **On fire:** a reader `ERROR:`; a failing pipeline, CI run or deploy (this repo's own banners, mapped per `## This repo`); a dirty tree left by an unclosed session.
-2. **Pinned followups** (`[pinned]` in `journal.sh list`): above all project work. One its body says a project tracks routes to that project (resume) with the fid after the slug, `/resume-project <slug> <fid>`, so the session starts at the followup rather than the kickoff.
-3. **In-flight work to resume:** a paused handoff (where `## This repo` keeps them); an item in the journal's in-flight or running-work sections that no project tracks; a project the reader says no longer waits (every wait met).
-4. **Overdue:** an overdue cadence; a dormant active project; a project whose PLAN contradicts itself (a close that should have fixed it: `/resume-project <slug>`).
-5. **Cheap unblocks:** a followup whose fix is already named and small (pick the likely ones from their titles, then `show` them to confirm); a ready row in a backlog `## This repo` names.
-6. **Project forward motion:** the next step in an active project's kickoff.
-7. **Maintenance debt:** known smells no banner is forcing.
+1. **On fire:** `ERROR` lines, then fire `BANNER` lines (a failing pipeline, CI run or deploy; a dirty tree left by an unclosed session).
+2. **Pinned followups:** `PIN` lines, above all project work. One its body says a project tracks routes to that project (resume) with the fid after the slug, `/resume-project <slug> <fid>`, so the session starts at the followup rather than the kickoff.
+3. **In-flight work to resume:** resume `BANNER` lines (a paused handoff, running work, a project that no longer waits), then `SLOT 3`, printed when the journal's in-flight section has items: one no project tracks is a candidate here; when every item is a project's, the slot yields nothing.
+4. **Overdue:** overdue `BANNER` lines (an overdue cadence, a stale journal, a dormant project, a PLAN that contradicts itself: a close that should have fixed it).
+5. **Cheap unblocks**, at `SLOT 5-6`: a followup whose fix is already named and small (pick the likely ones from their titles, then `show` them to confirm); a ready row in a backlog `## This repo` names.
+6. **Project forward motion**, at `SLOT 5-6`, after rank 5: the next step in an active project's kickoff.
+7. **Maintenance debt:** debt `BANNER` lines, then `SLOT 7`: known smells no line forces.
 
 **No candidate in any rank:** say so in one line (the last commit, the tree's state) and stop, with no pick and no route; never promote something to fill the block.
 
-A flaw found during this triage (the case `.claude/rules/flaw-found-mid-work.md` covers) is a candidate, not a `/snag` run: rank 1 when it takes a live system down or makes this triage's own input wrong, else rank 7. Its route is another skill, its command `/snag <the flaw in one line: what is wrong, and where>`.
+A flaw found during this triage (the case `.claude/rules/flaw-found-mid-work.md` covers) is a candidate, not a `/snag` run: rank 1, before the block's first line, when it takes a live system down or makes this triage's own input wrong, else rank 7, at `SLOT 7`. Its route is another skill, its command `/snag <the flaw in one line: what is wrong, and where>`.
 
-The quick tree fixes the reader bannered — unpushed commits, being off the default branch, the commit gate not installed — are not ranked: they are seconds of work, not the next piece of work, so they go in the block's **Before anything:** line and never displace a pick.
+The `FIX` lines — unpushed commits, being off the default branch, the commit gate not installed — are not ranked: they are seconds of work, not the next piece of work, so they go in the block's **Before anything:** line and never displace a pick. `INFO` and `CAVEAT` lines are never candidates; quote a `CAVEAT` on the candidate it affects.
 
-Across the ranks: within one rank, consequence beats age (an item whose failure takes a live system down outranks an older, tidier one). A project whose PLAN carries an `[external-gate: <reason>]` tag (search the PLAN for it), or that the reader lists as still `waiting:` on something, is never the recommendation — show it only as an alternative, naming the gate or the wait. If a fix for the same thing has shipped twice and is failing again, recommend a gate (a test, a check), not a third fix. A candidate drawn from a followup cites its `[fid: …]`, and a count or claim in the entry is dated to its capture ("as of <captured>"), never restated as today's state.
+Within a judgment slot, consequence beats age (an item whose failure takes a live system down outranks an older, tidier one). A project whose PLAN carries an `[external-gate: <reason>]` tag (search the PLAN for it), or that the reader lists as still `waiting:` on something, is never the recommendation: a line naming one is skipped, and shown only as an alternative, naming the gate or the wait. If a fix for the same thing has shipped twice and is failing again, recommend a gate (a test, a check), not a third fix. A candidate drawn from a followup cites its `[fid: …]`, and a count or claim in the entry is dated to its capture ("as of <captured>"), never restated as today's state.
 
 Classify the pick into exactly one route: **resume** (an active or paused tracked project; its slug is the folder name without the `YYYY-MM-` prefix), **scaffold** (new project-shaped work), **another skill** (one that covers it: `/done` or `/log` for a journal fix, or a triage or recipe skill `## This repo` names), or **plan** (everything else). A one-off that *might* grow is a plan; a stub project can come later.
 
 Show it in this shape, with real names only:
 
 ````markdown
-**Before anything:** <only when the reader bannered one: each quick tree fix in one line, its command in its own block below it, e.g. "2 commits not pushed:" then a block holding `git push`>
+**Before anything:** <only when the block has `FIX` lines: each in one line, its command in its own block below it, e.g. "2 commits not pushed:" then a block holding `git push`>
 
 **Recommended:** <the pick, one line>
 
-**Why:** rank <n>, <the rule> — <the state behind it: the banner, `[fid: …]`, backlog row or commit, cited>.
+**Why:** <a picked line: "the reader's first candidate" (or "its first after <the skipped line and why>"), with the line quoted; a judgment slot: rank <n>, <the rule>> — <the state behind it: `[fid: …]`, backlog row or commit, cited>.
 
 **Route:** <resume | scaffold | another skill | plan>. <For a command route:> Type this to take it:
 
