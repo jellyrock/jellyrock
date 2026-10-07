@@ -2,7 +2,7 @@
 #
 # Mirrors the skip rules of .github/workflows/journal-sync.yml: only PRs that
 # WILL be synced (i.e., the same predicate that the bot runs post-merge) are
-# checked. For those, the script builds the candidate "- YYYY-MM-DD — <title>"
+# checked. For those, the script builds the candidate "- YYYY-MM-DD: <title>"
 # bullet and spell-checks it against dictionary.txt with the same spellchecker
 # plugins lint:spelling uses.
 #
