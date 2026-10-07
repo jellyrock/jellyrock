@@ -857,10 +857,13 @@ export async function homeListId({ timeout = 5000, interval = 300 } = {}) {
  * has no way to know the load it failed has finished.
  *
  * Two round trips: the row count first, then every row's fields in ONE batch, so the rows all
- * describe the same frame (see `getActiveVals` for why that matters).
+ * describe the same frame (see `getActiveVals` for why that matters). The batch reads the
+ * count again, and a snapshot whose count moved between the two trips is discarded: the list
+ * was rebuilt in between (Favorites trims its skeleton, one row per type, to the types that
+ * loaded, in one callback), so the first count indexes rows that no longer exist.
  *
  * @returns {Promise<{rows: object[], results: object}|undefined>} undefined while the active
- *   list has no content to count
+ *   list has no content to count, or when it changed mid-read (a poll simply reads again)
  */
 export async function readHomeRows() {
   const list = await homeListId();
@@ -876,7 +879,9 @@ export async function readHomeRows() {
       `${row}.0.loadFailed`,
     );
   }
+  paths.push(`${list}.content.getChildCount()`);
   const [results, ...fields] = await getVals(paths);
+  if (fields.pop() !== count) return undefined;
   const rows = [];
   for (let i = 0; i < count; i++) {
     const [sectionId, items, firstType, loadFailed] = fields.slice(i * 4, i * 4 + 4);

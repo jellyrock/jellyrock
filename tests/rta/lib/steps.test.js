@@ -73,6 +73,7 @@ const {
   resendUntilFocusInside,
   resendUntilFocused,
   homeListId,
+  readHomeRows,
   waitFocusInHomeContent,
   walkFocusInto,
   walkHomeToFirstRow,
@@ -2330,5 +2331,58 @@ describe('waitFor audits only the reads a scene census can describe', () => {
       interval: 1,
     });
     expect(auditSceneResolution).not.toHaveBeenCalled();
+  });
+});
+
+describe('readHomeRows — one snapshot describes one frame', () => {
+  /** The Favorites list as the device holds it NOW: two rows, each with one item. */
+  const NOW = {
+    '#favoritesRows.rtaSectionResults': { favorites: { status: 'ok', count: 2 } },
+    '#favoritesRows.content.getChildCount()': 2,
+    '#favoritesRows.content.0.sectionId': 'Movie',
+    '#favoritesRows.content.0.getChildCount()': 1,
+    '#favoritesRows.content.0.0.type': 'Movie',
+    '#favoritesRows.content.0.0.loadFailed': false,
+    '#favoritesRows.content.1.sectionId': 'Audio',
+    '#favoritesRows.content.1.getChildCount()': 1,
+    '#favoritesRows.content.1.0.type': 'Audio',
+    '#favoritesRows.content.1.0.loadFailed': false,
+  };
+
+  beforeEach(() => {
+    getFocusedNode.mockReset().mockResolvedValue(null);
+    // Every batch is answered from NOW, by keyPath: the homeListId probe finds the
+    // Favorites list, and a row index past the end is `found: false`, as on a device.
+    getValues.mockReset().mockImplementation(async ({ requests }) => ({
+      results: Object.fromEntries(
+        Object.entries(requests).map(([k, { keyPath }]) => {
+          if (keyPath === '#favoritesRows.subtype()')
+            return [k, { found: true, value: 'FavoritesRows' }];
+          return keyPath in NOW ? [k, { found: true, value: NOW[keyPath] }] : [k, { found: false }];
+        }),
+      ),
+    }));
+  });
+
+  it('rejects a snapshot whose row count changed between its two reads', async () => {
+    // Seen on the 512 MB Stick (2026-10-07): the count read answered 16 just before the
+    // list's content was replaced by 2 rows, and the batch then reported rows 2-15 with
+    // every field undefined. A snapshot like that must read as "not yet" so the wait polls
+    // again, never as 16 rows a spec can take as its reference.
+    getValue.mockReset().mockResolvedValue({ found: true, value: 16 });
+
+    await expect(readHomeRows()).resolves.toBeUndefined();
+  });
+
+  it('returns the rows when the count held across both reads', async () => {
+    getValue.mockReset().mockResolvedValue({ found: true, value: 2 });
+
+    await expect(readHomeRows()).resolves.toEqual({
+      rows: [
+        { sectionId: 'Movie', items: 1, firstType: 'Movie', loadFailed: false },
+        { sectionId: 'Audio', items: 1, firstType: 'Audio', loadFailed: false },
+      ],
+      results: { favorites: { status: 'ok', count: 2 } },
+    });
   });
 });
