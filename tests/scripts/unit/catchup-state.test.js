@@ -171,6 +171,69 @@ describe('catchup-state', () => {
     expect(p).toEqual(c);
   });
 
+  it('--typed prints the typed lines, then one === STATE === line, then the same JSON', () => {
+    fix = setupFixture();
+    mkdirSync(join(fix.dir, '.claude/handoffs'), { recursive: true });
+    writeFileSync(join(fix.dir, '.claude/handoffs/issue-1.md'), 'paused');
+    fix.commit('seed', {
+      'docs/signals-backlog.md':
+        `---\nlast-updated: ${TODAY}\n---\n# Signals\n\n## Watching\n\n` +
+        `### ahead: label\n\n- **latest_upstream**: 2.0.0\n- **latest_acknowledged**: 1.0.0\n- **last_checked**: ${TODAY}\n- **status**: watching\n`,
+    });
+    const { exitCode, stdout } = runAggregator(fix.dir, ['--typed', '--pretty']);
+    expect(exitCode).toBe(0);
+    const lines = stdout.split('\n');
+    const at = lines.indexOf('=== STATE ===');
+    expect(at).toBeGreaterThan(0);
+    expect(lines.slice(0, at)).toEqual([
+      'BANNER\tsignals-stale\tsignals-backlog: ahead needs attention (upstream 2.0.0, acknowledged 1.0.0)\treview the upstream change, then /done ahead',
+      'BANNER\thandoff-pending\tpending handoff .claude/handoffs/issue-1.md (0d old)\tread it and follow the skill that wrote it',
+    ]);
+    const typed = JSON.parse(lines.slice(at + 1).join('\n'));
+    const plain = JSON.parse(runAggregator(fix.dir, ['--pretty']).stdout);
+    delete typed.meta.generated_at;
+    delete plain.meta.generated_at;
+    expect(typed).toEqual(plain);
+  });
+
+  it('--typed asks gh for the run id and routes a failing run to /ci-triage with it; the JSON alone does not', () => {
+    fix = setupFixture();
+    fix.commit('seed');
+    // a gh stand-in: run list answers with the fields it was asked for, everything else is empty
+    const bin = join(fix.dir, '.stub-bin');
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, 'gh'),
+      '#!/bin/sh\ncase "$*" in\n' +
+        '  "run list"*databaseId*) echo \'[{"status":"completed","conclusion":"failure","name":"Build","createdAt":"2026-10-06T10:00:00Z","event":"push","databaseId":37560200942}]\' ;;\n' +
+        '  "run list"*) echo \'[{"status":"completed","conclusion":"failure","name":"Build","createdAt":"2026-10-06T10:00:00Z","event":"push"}]\' ;;\n' +
+        "  *) echo '[]' ;;\nesac\n",
+      { mode: 0o755 },
+    );
+    const env = { PATH: `${bin}:${process.env.PATH}` };
+    const typed = spawnScript(SCRIPT, ['--typed'], { cwd: fix.dir, env });
+    expect(typed.stdout.split('\n')).toContain(
+      'BANNER\tci-failing\tCI run "Build" failure (2026-10-06T10:00:00Z)\t/ci-triage 37560200942',
+    );
+    const plain = JSON.parse(spawnScript(SCRIPT, [], { cwd: fix.dir, env }).stdout);
+    expect(plain._errors).toEqual({});
+    expect(Object.keys(plain.ci.current_branch_runs[0]).sort()).toEqual([
+      'conclusion',
+      'createdAt',
+      'event',
+      'name',
+      'status',
+    ]);
+  });
+
+  it('without --typed there are no typed lines and no STATE line', () => {
+    fix = setupFixture();
+    fix.commit('seed');
+    const { stdout } = runAggregator(fix.dir, ['--pretty']);
+    expect(stdout).not.toContain('=== STATE ===');
+    expect(() => JSON.parse(stdout)).not.toThrow();
+  });
+
   it('handoffs section returns empty pending + 0 pruned when dir absent', () => {
     fix = setupFixture();
     fix.commit('seed');
