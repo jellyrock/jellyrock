@@ -17,7 +17,7 @@ All notable changes to this project are documented in [CHANGELOG.md](CHANGELOG.m
 
 ## Prerequisites
 
-- Roku OS 11 or later
+- Roku OS 15.1 or later
 - Jellyfin server 10.7.0 or later
 
 ## Install
