@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-06
+last-updated: 2026-10-07
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-07 — chore(catchup): add `--typed` banner lines to the catchup reader
 - 2026-10-06 — fix: Clearer subtitle track names; dropdowns keep short text on pick
 - 2026-10-06 — fix(home): Show Home sections placed in web client slots 8-10
 - 2026-10-05 — chore(skills): allow `forge.sh repo file-url` without a prompt
@@ -81,19 +82,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-23 — feat: Filter a movie library by audio and subtitle language on Jellyfin 12
 - 2026-09-23 — chore(skills): Don't let a refactor hide a fix from the PR title
 - 2026-09-23 — ci: Gate `creditRowKinds()` against the `PersonKind` enum
-- 2026-09-22 — `lint:language-coverage` now gates `creditRowKinds()`: every kind it names must be a `PersonKind` value in the committed spec fingerprints, every `messageKey` must exist in `en_US.json`, and a shape-drift guard keeps a re-authored table from passing vacuously
-- 2026-09-22 — fix: Don't let abandoned requests delay the ones you're waiting for
-- 2026-09-22 — feat: Show Created by and Directed by credits on every item type that has them
-- 2026-09-22 — fix: Show the focused movie's logo, not the previous one's, in the `Movies` view
-- 2026-09-22 — `no-same-node-relaunch` now flags a relaunch from a node's own delivery handler (the #991 TV-guide paging shape), as part of flagging any `launchTask(m.x)` with no new node assigned first; closes the own-delivery-handler followup
-- 2026-09-22 — fix(skills): Make `/pr` titles name every user-visible change
-- 2026-09-22 — fix: Fit `ItemDetails` text to the logo's real size
-- 2026-09-22 — Give each `HomeRows` latest-rows run its own task node
-- 2026-09-22 — fix: Stop crashing when a server answers a list endpoint with an object
-- 2026-09-22 — Show every TV guide channel, loading programs near the focus
-- 2026-09-22 — fix: Fetch a focused TV guide program's details once, not twice
-- 2026-09-22 — feat: Show which collections an item is in on its details page
-- 2026-09-22 — fix: Play Live TV HLS channels from their own URL again on Jellyfin 12
 
 ## Open followups
 
