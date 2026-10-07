@@ -45,6 +45,14 @@ describe('typedLines', () => {
     expect(line).toBe(`ERROR${T}prs${T}catchup-state: prs failed: a b c`);
   });
 
+  it('a ci note (no runs for the branch) is an INFO ci-none line', () => {
+    expect(
+      typedLines({
+        ci: { current_branch_runs: [], note: 'no CI runs for feat/x among the 100 newest runs' },
+      }),
+    ).toEqual([`INFO${T}ci-none${T}no CI runs for feat/x among the 100 newest runs`]);
+  });
+
   describe('ci-failing', () => {
     it('a finished run that did not pass fires, routed to /ci-triage with its id', () => {
       const lines = typedLines({

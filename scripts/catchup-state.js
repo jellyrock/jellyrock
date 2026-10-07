@@ -241,14 +241,22 @@ run('issues', () => {
 run('ci', () => {
   if (NO_GH) return { current_branch_runs: [] };
   const branch = execTrim('git rev-parse --abbrev-ref HEAD');
-  const current_branch_runs = JSON.parse(
+  // Filtered to the branch here, not with --branch: GitHub often serves a --branch
+  // run list stale on a cold call (months old, measured 2026-10-07); the unfiltered
+  // list was fresh every time.
+  const runs = JSON.parse(
     exec(
       // the run id is the /ci-triage route; asked for only under --typed, so the
       // JSON alone stays as it was
-      `gh run list --branch "${branch}" --limit 3 --json status,conclusion,name,createdAt,event${TYPED ? ',databaseId' : ''}`,
+      `gh run list --limit 100 --json headBranch,status,conclusion,name,createdAt,event${TYPED ? ',databaseId' : ''}`,
     ),
   );
-  return { current_branch_runs };
+  const current_branch_runs = runs
+    .filter((r) => r.headBranch === branch)
+    .slice(0, 3)
+    .map(({ headBranch: _headBranch, ...r }) => r);
+  if (current_branch_runs.length > 0) return { current_branch_runs };
+  return { current_branch_runs, note: `no CI runs for ${branch} among the 100 newest runs` };
 });
 
 run('handoffs', () => {

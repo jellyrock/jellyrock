@@ -74,6 +74,7 @@ function typedLines(state) {
 
   const ci = section(state, 'ci');
   if (ci && Array.isArray(ci.current_branch_runs)) out.push(...ciLines(ci.current_branch_runs));
+  if (ci?.note) out.push(note('INFO', 'ci-none', ci.note));
 
   const signals = section(state, 'signals');
   if (signals) out.push(...signalLines(signals));

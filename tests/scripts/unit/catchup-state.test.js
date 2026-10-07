@@ -205,8 +205,8 @@ describe('catchup-state', () => {
     writeFileSync(
       join(bin, 'gh'),
       '#!/bin/sh\ncase "$*" in\n' +
-        '  "run list"*databaseId*) echo \'[{"status":"completed","conclusion":"failure","name":"Build","createdAt":"2026-10-06T10:00:00Z","event":"push","databaseId":37560200942}]\' ;;\n' +
-        '  "run list"*) echo \'[{"status":"completed","conclusion":"failure","name":"Build","createdAt":"2026-10-06T10:00:00Z","event":"push"}]\' ;;\n' +
+        '  "run list --limit 100"*databaseId*) echo \'[{"headBranch":"main","status":"completed","conclusion":"failure","name":"Build","createdAt":"2026-10-06T10:00:00Z","event":"push","databaseId":37560200942}]\' ;;\n' +
+        '  "run list --limit 100"*) echo \'[{"headBranch":"main","status":"completed","conclusion":"failure","name":"Build","createdAt":"2026-10-06T10:00:00Z","event":"push"}]\' ;;\n' +
         "  *) echo '[]' ;;\nesac\n",
       { mode: 0o755 },
     );
@@ -224,6 +224,66 @@ describe('catchup-state', () => {
       'name',
       'status',
     ]);
+  });
+
+  // a gh stand-in for the unfiltered run list: answers `run list --limit 100` with the
+  // given runs, everything else (a --branch query included) with an empty list
+  function ghRunList(dir, runs) {
+    const bin = join(dir, '.stub-bin');
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, 'gh'),
+      `#!/bin/sh\ncase "$*" in\n  "run list --limit 100"*) echo '${JSON.stringify(runs)}' ;;\n  *) echo '[]' ;;\nesac\n`,
+      { mode: 0o755 },
+    );
+    return { PATH: `${bin}:${process.env.PATH}` };
+  }
+  const ghRun = (headBranch, name, createdAt) => ({
+    headBranch,
+    status: 'completed',
+    conclusion: 'success',
+    name,
+    createdAt,
+    event: 'push',
+  });
+
+  it('ci reads the 100 newest runs and keeps the first 3 on the checked-out branch, without --branch', () => {
+    fix = setupFixture();
+    fix.commit('seed');
+    const env = ghRunList(fix.dir, [
+      ghRun('feat/x', 'Other', '2026-10-07T12:00:00Z'),
+      ghRun('main', 'A', '2026-10-07T11:00:00Z'),
+      ghRun('main', 'B', '2026-10-07T10:00:00Z'),
+      ghRun('feat/x', 'Other', '2026-10-07T09:00:00Z'),
+      ghRun('main', 'C', '2026-10-07T08:00:00Z'),
+      ghRun('main', 'D', '2026-10-07T07:00:00Z'),
+    ]);
+    const { ci, _errors } = JSON.parse(spawnScript(SCRIPT, [], { cwd: fix.dir, env }).stdout);
+    expect(_errors).toEqual({});
+    expect(ci.current_branch_runs.map((r) => r.name)).toEqual(['A', 'B', 'C']);
+    expect(Object.keys(ci.current_branch_runs[0]).sort()).toEqual([
+      'conclusion',
+      'createdAt',
+      'event',
+      'name',
+      'status',
+    ]);
+    expect(ci.note).toBeUndefined();
+  });
+
+  it('a branch with no run among the 100 newest gets a note and an INFO line, never silence', () => {
+    fix = setupFixture();
+    fix.commit('seed');
+    const env = ghRunList(fix.dir, [ghRun('feat/x', 'Other', '2026-10-07T12:00:00Z')]);
+    const { stdout } = spawnScript(SCRIPT, ['--typed'], { cwd: fix.dir, env });
+    expect(stdout.split('\n')).toContain(
+      'INFO\tci-none\tno CI runs for main among the 100 newest runs',
+    );
+    const { ci } = JSON.parse(stdout.slice(stdout.indexOf('=== STATE ===') + 14));
+    expect(ci).toEqual({
+      current_branch_runs: [],
+      note: 'no CI runs for main among the 100 newest runs',
+    });
   });
 
   it('without --typed there are no typed lines and no STATE line', () => {
