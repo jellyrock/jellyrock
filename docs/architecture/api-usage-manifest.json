@@ -1034,6 +1034,12 @@
       ]
     },
     {
+      "name": "EnableImages",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
       "name": "EnableImageTypes",
       "sourceFiles": [
         "source/api/ApiClient.bs"
@@ -1046,15 +1052,33 @@
       ]
     },
     {
+      "name": "EnableUserData",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
       "name": "ImageTypeLimit",
       "sourceFiles": [
         "source/api/ApiClient.bs"
       ]
     },
     {
+      "name": "IncludeItemTypes",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
       "name": "IsPaused",
       "sourceFiles": [
         "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "IsPlayed",
+      "sourceFiles": [
+        "source/api/items.bs"
       ]
     },
     {
@@ -1089,6 +1113,18 @@
     },
     {
       "name": "MinSegments",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "ParentId",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "ParentIndexNumber",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -1131,6 +1167,12 @@
     },
     {
       "name": "SegmentLength",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "SortBy",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -3246,14 +3288,14 @@
     },
     "counts": {
       "endpoints": 78,
-      "requestFields": 40,
+      "requestFields": 47,
       "responseFields": 223,
       "unresolvedEndpointSinks": 2
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 392
+        "line": 393
       },
       {
         "sourceFile": "source/utils/subtitles.bs",
