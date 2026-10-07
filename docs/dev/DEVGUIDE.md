@@ -13,7 +13,7 @@ Follow the steps below to install the app on your personal Roku device. This wil
 
 ## Developer Mode
 
-Put your Roku device in [developer mode](https://blog.roku.com/developer/2016/02/04/developer-setup-guide). Write down your Roku device IP and the password you created - you will need these!
+Put your Roku device in [developer mode](developer-mode.md). Write down your Roku's IP address and the password you create: you need both later.
 
 ## Clone the GitHub Repo
 
@@ -31,7 +31,7 @@ cd jellyrock
 
 ## Install Dependencies
 
-You'll need [`node`](https://nodejs.org), version 16 at least.
+You need [`node`](https://nodejs.org) 22 (22.22.1 or later), 24, or 26 and later.
 
 Then, use `npm` to install dependencies
 

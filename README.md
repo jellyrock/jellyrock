@@ -24,11 +24,21 @@ All notable changes to this project are documented in [CHANGELOG.md](CHANGELOG.m
 
 ### Using your Roku device
 
-- Navigate to Home -> Search -> "JellyRock".
+- Go to **Home → Search** and search for "JellyRock".
 
 ### Using your browser
 
-- Visit the [Roku Channel Store](https://channelstore.roku.com/details/232f9e82db11ce628e3fe7e01382a330:a85d6e9e520567806e8dae1c0cabadd5/jellyrock) -> Add app -> Login. This will install JellyRock on **all** devices linked to your Roku account.
+- Visit the [Roku Channel Store](https://channelstore.roku.com/details/232f9e82db11ce628e3fe7e01382a330:a85d6e9e520567806e8dae1c0cabadd5/jellyrock), select **Add app** and sign in. JellyRock installs on **all** devices linked to your Roku account.
+
+## Companion server plugin (optional)
+
+[JellyRock Companion](https://github.com/jellyrock/jellyfin-plugin-jellyrock) is a plugin for your Jellyfin server. It adds:
+
+- **Cast to JellyRock while it's closed.** Your Roku shows up as a cast target and opens straight into what you picked. Your server must be on the same network as your Roku.
+- **Remote control on HTTPS servers.** On an HTTP server, this already works without the plugin.
+- **Fast cleanup after you press Home on HTTPS servers.** Jellyfin ends the playback session within about a minute and keeps the right resume point. On an HTTP server, this already works without the plugin.
+
+It needs Jellyfin server 10.11 or later. To install it, and to see the other plugins JellyRock supports, read [Jellyfin Server Plugins](docs/user/jellyfin-server-plugins.md).
 
 ## Screenshots
 
@@ -61,13 +71,13 @@ That client is now archived as [jellyfin-roku-legacy](https://github.com/jellyfi
 
 JellyRock continues the original's own line. I forked it at [v2.2.5](https://github.com/jellyfin-archive/jellyfin-roku-legacy/releases/tag/v2.2.5), the last release I'd personally vetted as stable, and have rebuilt and refined it independently ever since, cherry-picking select fixes from later commits along the way.
 
-## Sideload / Beta Test
+## Sideload / beta test
 
 To run the latest version of JellyRock before it hits the Roku Channel Store:
 
 1. Put your Roku device in [Developer Mode](docs/dev/developer-mode.md). Save your password!
-2. Download the latest [build](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain) created by GitHub Actions. Select the first item listed then click one of the links at the bottom of the page i.e. `JellyRock-prod-main-e34f4f169ff47531abd23ae3a11c102f6811f907`. This will download a zip file to your computer.
-3. Put your Roku's IP from step 1 into a browser i.e. `http://192.0.2.10` and press enter.
+2. Download the latest [build](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain) created by GitHub Actions. Select the first item listed then click one of the links at the bottom of the page, for example `JellyRock-prod-main-e34f4f169ff47531abd23ae3a11c102f6811f907`. This will download a zip file to your computer.
+3. Put your Roku's IP from step 1 into a browser, for example `http://192.0.2.10`, and press enter.
 4. Log in with credentials from step 1.
 5. Upload and install the zip file downloaded in step 2.
 
@@ -83,15 +93,17 @@ npm install
 npm run build # OR npm run build:prod
 ```
 
-## User Docs
+## User docs
 
 - [App Settings](docs/user/app-settings.md)
 - [Deep Linking & Casting](docs/user/deep-linking.md)
 - [Jellyfin Server Feature Matrix](docs/user/jellyfin-server-feature-matrix.md)
-- [Jellyfin Server Plugins & Server-Side Setup](docs/user/jellyfin-server-plugins.md)
+- [Jellyfin Server Plugins](docs/user/jellyfin-server-plugins.md)
+- [Manage Subtitles](docs/user/manage-subtitles.md)
+- [Media Segments (skip intro / outro)](docs/user/media-segments.md)
 - [Playback Troubleshooting](docs/user/playback-troubleshooting.md)
 
-## Dev Docs
+## Dev docs
 
 - [Developer Mode](docs/dev/developer-mode.md)
 - [Dev Guide](docs/dev/DEVGUIDE.md)
@@ -101,6 +113,7 @@ npm run build # OR npm run build:prod
 - [TDD Workflow](docs/dev/unit-tests-tdd.md)
 - [Unit Tests](docs/dev/unit-tests.md)
 - [Jellyfin Server Versioning](docs/dev/jellyfin-server-versioning.md)
+- [Writing Style](docs/dev/writing-style.md)
 
 ## Translations
 

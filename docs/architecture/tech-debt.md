@@ -597,6 +597,14 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **severity**: **Low**. Only the name misleads: the check works and runs in CI, and [`docs/dev/translations.md`](../dev/translations.md) names it as the `PersonKind` gate. `parseAA` and `parseAAArray` both read BrightScript source by regex in this one file; a fourth table of a third shape is the point to stop extending and build the tokenizer the header comment already calls for.
 - **direction**: Rename to an intent-based name covering both tables (for example `lint:translation-table-coverage`), moving the npm script, the CI reference, the test file and the doc mentions in one change. Do not split it into two scripts, since that would copy `parseAA`.
 
+#### `doc-citation-ratchet-name-covers-voice`
+
+- **area**: [`scripts/lint/doc-citation-ratchet.js`](../../scripts/lint/doc-citation-ratchet.js), its npm script `lint:doc-citations`, the matching step and trigger pattern in [`_lint-docs.yml`](../../.github/workflows/_lint-docs.yml), and [`doc-citation-ratchet.test.js`](../../tests/scripts/unit/doc-citation-ratchet.test.js)
+- **issue**: The script began as the line-number citation ratchet and now also runs a second per-file ratchet for the house voice ([`writing-style.md`](../dev/writing-style.md)), with its own baseline, `.doc-voice-baseline.json`. The file name, npm script, workflow step and test file still say "citation", so someone looking by name for the gate that holds docs to the house voice will not find it. The file header and the workflow comment describe both ratchets.
+- **why it was extended rather than renamed**: both ratchets share one walk over tracked markdown, one fenced-block skip and one per-file "may only improve" comparison, so a sibling script would copy that machinery. A rename touches the CI parity wiring (`lint:ci-parity`, `lint:ci-workflow-sync`), the pre-push hook and the doc mentions.
+- **severity**: **Low**. Only the name misleads: both ratchets run in CI and pre-push.
+- **direction**: Rename to a name that covers both ratchets (for example `lint:doc-ratchets`), moving the script, the npm script, the workflow step and pattern, the test file and the doc mentions in one change. Do not split it into two scripts, which would copy the shared walk.
+
 #### `translate-per-item-task-copy`
 
 - **area**: [`source/utils/translate.bs`](../../source/utils/translate.bs) (`translate()`), and every Task-thread caller that translates per item

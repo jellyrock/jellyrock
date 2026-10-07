@@ -64,6 +64,7 @@
     "check-formatting:js": "npx prettier --check .",
     "dictionary:sentence-final": "node scripts/generate/sentence-final-dictionary.js",
     "dictionary:sentence-final:check": "node scripts/generate/sentence-final-dictionary.js --check",
+    "docs:fact-report": "node scripts/docs-fact-report.js",
     "docs:dev-index": "node scripts/generate/dev-index.cjs",
     "docs:dev-index:check": "node scripts/generate/dev-index.cjs --check",
     "docs:api-manifest": "node scripts/generate/api-usage-manifest.js",
