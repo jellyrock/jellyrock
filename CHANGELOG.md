@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update dotenv from v18.0.5 to v18.0.6 ([#1125](https://github.com/jellyrock/jellyrock/pull/1125))
 - Update eslint-plugin-n from v18.4.0 to v18.4.1 ([#1087](https://github.com/jellyrock/jellyrock/pull/1087))
 
 ## [2.35.0](https://github.com/jellyrock/jellyrock/compare/v2.34.1...v2.35.0) - 2026-10-04
