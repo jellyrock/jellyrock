@@ -30,6 +30,19 @@ describe('docs-fact-report — what counts as a fact', () => {
     expect([...f.code.keys()]).toEqual(['timeout = 30']);
     expect([...f.link.keys()]).toEqual(['adr/0043-x.md']);
   });
+
+  // Found running the report on its own first PR: each of these showed as a lost or
+  // added fact although nothing a reader relies on changed.
+  it('skips frontmatter and numbered-list step numbers', () => {
+    const f = extractFacts('---\nlast-reviewed: 2026-10-07\n---\n\n1. Open it.\n2. Wait 30 s.\n');
+    expect([...f.number.keys()]).toEqual(['30']);
+  });
+
+  it('treats a URL moved from inline code into a fenced block as unchanged', () => {
+    const before = 'Paste `https://x.org/manifest.json`.\n';
+    const after = 'Paste it:\n\n```text\nhttps://x.org/manifest.json\n```\n';
+    expect(diffFacts(before, after)).toEqual({ removed: [], added: [] });
+  });
 });
 
 describe('docs-fact-report — the diff', () => {

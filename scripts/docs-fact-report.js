@@ -36,18 +36,32 @@ export function extractFacts(text) {
   const facts = { number: new Map(), code: new Map(), link: new Map() };
   const add = (kind, value) => facts[kind].set(value, (facts[kind].get(value) ?? 0) + 1);
 
-  for (const m of text.matchAll(/`([^`\n]+)`/g)) add('code', m[1]);
-  for (const m of text.matchAll(/\]\(([^)\s]+)[^)]*\)/g)) add('link', m[1]);
-  for (const m of text.matchAll(/<(https?:\/\/[^>\s]+)>/g)) add('link', m[1]);
-  for (const m of text.matchAll(/^\s*\[[^\]]+\]:\s*(\S+)/gm)) add('link', m[1]);
+  // Frontmatter is metadata (a `last-reviewed` date is not a fact a rewrite keeps).
+  // Each line of a fenced block is a code fact, so text that moves between inline
+  // code and a block (a URL to copy, say) is neither lost nor added.
+  const lines = [];
+  let fenced = false;
+  for (const line of text.replace(/^---\n[\s\S]*?\n---\n/, '').split('\n')) {
+    if (line.trimStart().startsWith('```')) fenced = !fenced;
+    else if (fenced) {
+      if (line.trim()) add('code', line.trim());
+    } else lines.push(line);
+  }
+  const body = lines.join('\n');
+
+  for (const m of body.matchAll(/`([^`\n]+)`/g)) add('code', m[1]);
+  for (const m of body.matchAll(/\]\(([^)\s]+)[^)]*\)/g)) add('link', m[1]);
+  for (const m of body.matchAll(/<(https?:\/\/[^>\s]+)>/g)) add('link', m[1]);
+  for (const m of body.matchAll(/^\s*\[[^\]]+\]:\s*(\S+)/gm)) add('link', m[1]);
 
   // Numbers from the prose only, so a number inside a code span or a link is not
-  // counted twice.
-  const prose = text
+  // counted twice, and a numbered list's step numbers are not facts.
+  const prose = body
     .replace(/`[^`\n]+`/g, ' ')
     .replace(/\]\([^)]*\)/g, ']')
     .replace(/<https?:\/\/[^>]*>/g, ' ')
-    .replace(/https?:\/\/\S+/g, ' ');
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/^(\s*)\d+[.)]\s/gm, '$1');
   for (const m of prose.matchAll(/\d+(?:[.,:]\d+)*%?/g)) add('number', m[0]);
   return facts;
 }
