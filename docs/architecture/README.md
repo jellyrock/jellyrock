@@ -106,5 +106,6 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 | [`docs/dev/translations.md`](../dev/translations.md) | Translations |
 | [`docs/dev/unit-tests-tdd.md`](../dev/unit-tests-tdd.md) | Test-Driven Development (TDD) Workflow |
 | [`docs/dev/unit-tests.md`](../dev/unit-tests.md) | Unit Testing Guide (Rooibos Framework) |
+| [`docs/dev/writing-style.md`](../dev/writing-style.md) | Writing style |
 
 <!-- END auto-generated dev-index -->

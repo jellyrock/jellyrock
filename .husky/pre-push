@@ -24,6 +24,9 @@
 #   9. npm run lint:docs          — ALWAYS. Validates related-files: paths and
 #                                    markdown links across every doc + CLAUDE.md.
 #                                    Cross-doc check; not file-scopable.
+#  9'. npm run lint:doc-citations — ALWAYS (about 0.1s). Per-file ratchets on
+#                                    line-number citations and the house voice
+#                                    (docs/dev/writing-style.md).
 #  9a. npm run lint:markdown      — when any *.md changed. markdownlint style
 #                                    (MD022 blanks-around-headings, etc.). Backstop
 #                                    for the pre-commit auto-fix, which git skips on
@@ -210,6 +213,9 @@ fi
 
 echo "📚 Validating doc references..."
 npm run lint:docs
+
+echo "✍️  Checking doc citations and house voice..."
+npm run lint:doc-citations
 
 # Ahead of lint:spelling on purpose: a stale companion dictionary presents as
 # unrelated spelling failures on words that are already in dictionary.txt.

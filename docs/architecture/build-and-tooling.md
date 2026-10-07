@@ -97,7 +97,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-10-04
+last-reviewed: 2026-10-07
 ---
 
 # Build & Tooling
@@ -415,6 +415,7 @@ Lint and format:
 | `npm run lint:json` | jshint on JSON files (excluding node_modules, scripts, tasks, build, out, locale, eslint.config.js, vitest.config.js). Catches duplicate keys; complementary to Prettier (which handles whitespace) |
 | `npm run lint:markdown` | markdownlint on all `.md` (with exclusions for AI agent docs) |
 | `npm run lint:spelling` | spellchecker on Markdown files |
+| `npm run lint:doc-citations` | Per-file ratchets over tracked Markdown, in [`doc-citation-ratchet.js`](../../scripts/lint/doc-citation-ratchet.js): line-number citations ([`derive-dont-duplicate.md`](../../.claude/rules/derive-dont-duplicate.md)) and the mechanical rules of the house voice ([`writing-style.md`](../dev/writing-style.md)), with allowances in `.doc-citation-baseline.json` and `.doc-voice-baseline.json`. A file may only improve. `npm run docs:fact-report` lists the numbers, code spans and links a docs rewrite removed or added, for review |
 | `npm run lint:dictionary` | Audits `dictionary.txt` for identifier-shaped entries (PascalCase / camelCase / file extensions / paths). Code identifiers belong in backticks in source markdown, not in the dictionary — see [code-style.md](../dev/code-style.md#when-to-add-to-dictionarytxt-instead). Acronym plurals (`URIs`, `PNGs`) and product names (`BrighterScript`, `ESLint`) are bypassed via pattern + allowlist |
 | `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
@@ -698,6 +699,7 @@ Surfaces 1–7 are a pure cost ladder — the same check pushed to the cheapest 
 | `spellchecker` (`lint:spelling`) | ✓ | ✓ | Pre-commit checks (no auto-fix — correctness); pre-push re-runs it (gated on `.md` changes) as the same backstop for commits that bypass pre-commit. Dictionaries and plugins come from [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml), NOT from per-invocation flags — see below |
 | `jshint` (`lint:json`) | ✓ | — | File-scoped; no auto-fix |
 | `docs-check.cjs` (`lint:docs`) | — | ✓ | Cross-doc reference check; needs all docs loaded |
+| `doc-citation-ratchet.js` (`lint:doc-citations`) | — | ✓ | Per-file ratchets over every tracked doc; runs on every push (about 0.1 s) so a baseline-only change is checked too |
 | `generate-dev-index.cjs --check` | — | ✓ | Drift check on auto-generated table |
 | `update-translations` (regen) | — | ✓ | Project-wide regen from `en_US.json` |
 | `lint:language-coverage` | — | ✓ | Conditional on specific files; unusual pattern |
