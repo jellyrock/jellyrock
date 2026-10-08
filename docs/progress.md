@@ -834,6 +834,22 @@ Home opens on the Favorites tab, so the spec's Home-tab gate times out (`tab "ho
 
 Closes when the same press-to-index delay has been measured on `.176` and `.178` (a scratch ODC script that presses one key and polls the index until it changes, for both Home rows and a library grid). Then either confirm the wait still has headroom, or set it from the slowest device and record that measurement next to the constant. Came from the row-walk and grid-walk fixes on `fix/rta-row-walk-step`.
 
+#### The release RTA job has never passed in CI: a 25-minute limit on a suite that now takes over half an hour, and the rest of its setup needs redoing with it `[fid: release-rta-never-passes-in-ci]` `[captured 2026-10-08]` `[prompt: /start-project]` `[pinned]`
+
+The `rta` job in `.github/workflows/rta-functional-tests.yml` has `timeout-minutes: 25`, set in #772 (2026-08-06) when a full pass took 10-15 min. The suite has since grown from 10 tests in 5 spec files (2026-08-14) to 62 in 21 (2026-10-04), and a full pass now takes 35-44 min locally (RTA ledger, early October: `.178` Ultra 35, `.177` Stick 4K 35-42, `.176` 43-44). Every release run where the job started (15 since 2026-08-07) failed or was canceled, most at the limit; run 37243742270 (release-2.35.0) reports `The job has exceeded the maximum execution time of 25m0s` and uploaded no run record. Releases still showed green because the path gate skips the job on release pushes that touch no app or test paths. The "10-15 min" figure is repeated in `tests/rta/CLAUDE.md`, `docs/dev/rta-tests.md`, `docs/architecture/build-and-tooling.md` (twice), ADR 0031 and the workflow's header comment.
+
+Do this as one project, not piecemeal, because the parts depend on each other:
+
+- **Suite audit:** decide whether all 62 tests earn their device time, or whether some were written during implementation and never retired. The audit sets the run time, which sets the limit.
+- **Server:** the workflow sets no `RTA_SERVER_URL`, so `tests/rta/config.js` falls back to the public demo server, unless the self-hosted runner's per-user env file overrides it. The operator believes that file has not changed since the runner was set up, so it probably does not, but this needs verifying on the runner. Decide which server the release run should target. Cases that need data the demo server wipes hourly (the Favorites cases in `home-failure.spec.js` need a favorite Movie) either seed it themselves (the app uses `POST /UserFavoriteItems/{id}`; RTA already writes to the demo server when it signs in and authorizes Quick Connect) or wait for the new demo server.
+- **Limit:** raise `timeout-minutes` with headroom over the audited run time, and replace the "10-15 min" figure with a scale plus the command that shows it live.
+- **Loud failure:** a skipped or canceled `rta` job should show on the release as "RTA did not run". Read the release flow first.
+- **Optional trim:** move measurement-style specs (leaks, task-thread peak) to an on-demand job.
+
+Options weighed on the /snag screen: `limit` (raise to 60 min, fix the docs), `trim` (limit plus move measurement specs out), `loud` (limit plus a visible did-not-run signal). Recommended `limit` as the first step; the operator chose to defer and do all of it together.
+
+Not checked: whether the 2026-08-07 and 2026-08-17 failures would pass today; whether anything in the release flow reads this job's result; the CI device's actual run time (assumed to match `.177`, the same model); whether a single spec got slower, since the ledger has no per-spec times; the self-hosted runner's env file.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
