@@ -56,4 +56,9 @@ supports_etc_next=1
 
 requires_mkv=1
 
+### SceneGraph version. Roku certification requires rsg_version=1.3 (and a
+### store minimum of Roku OS 15.1.0) from October 1, 2026: see "rsg_version"
+### in Roku's channel manifest reference. Issue #337.
+rsg_version=1.3
+
 bs_const=debug=false;ENABLE_RTA=false;perfTiming=true
