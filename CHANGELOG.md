@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (focus) Stop screens taking focus back when it leaves the router ([#1138](https://github.com/jellyrock/jellyrock/pull/1138))
 - Clearer subtitle track names; dropdowns keep short text on pick ([#1121](https://github.com/jellyrock/jellyrock/pull/1121))
 - (home) Show Home sections placed in web client slots 8-10 ([#1119](https://github.com/jellyrock/jellyrock/pull/1119))
 
