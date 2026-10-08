@@ -18,7 +18,7 @@ related-files:
   - source/utils/screenWaits.bs
   - source/utils/appWaits.bs
   - components/AppWaitHost.bs
-last-reviewed: 2026-09-27
+last-reviewed: 2026-10-08
 ---
 
 # Navigation (sgRouter)
@@ -101,7 +101,7 @@ sgRouter drives the views it mounts through a promise-native lifecycle (`onViewO
 | `onViewResume` (suspended view back on top) | publishes `m.global.activeRoutedView = m.top`, then `onScreenShown()` |
 | `onViewSuspend` (a new view pushed on top, this one kept alive) | `saveLastFocus()` (walk to deepest focused descendant → `m.top.lastFocus`), then `onScreenHidden()` |
 | `beforeViewClose` (permanent destroy) | `onScreenHidden()` + `onDestroy()` |
-| `handleFocus` (router asks for remote focus) | restore `m.top.lastFocus` if valid, else focus `m.top` |
+| `handleFocus` (router asks for remote focus) | `restoreScreenFocus()`: restore `m.top.lastFocus` if valid, else focus `m.top`. Skipped for a focus-left notice (see Focus management) |
 
 Publishing `activeRoutedView` *before* `onScreenShown` matters: `JRScene`'s overhang controller and `main.bs`'s playback/options/device code all resolve "what's on screen" via `getActiveView()`, which now simply returns `m.global.activeRoutedView` (`getActiveView()` in `source/utils/misc.bs`).
 
@@ -261,11 +261,12 @@ sgRouter is **hands-off about focus** — views own their own focus; `JRScene` o
 
 1. **On suspend** (`onViewSuspend`) — `saveLastFocus()` walks the focus chain to the *deepest* focused descendant and stores it in `m.top.lastFocus`. (Lifted from the old `SceneManager.pushScene` focus-save loop.)
 2. **On resume / open** (`onViewResume` / `onViewOpen`) — `onScreenShown()` runs; its default reads `m.top.lastFocus` and `.setFocus(true)`. Subclasses can override to re-fetch data first, then focus.
-3. **On `handleFocus`** — same rule: restore `lastFocus`, else focus the view root.
+3. **On `handleFocus`** — same rule through `restoreScreenFocus()`: restore `lastFocus`, else focus the view root. A screen that restores differently overrides `restoreScreenFocus`, never `handleFocus`.
 
-Preserving the *deepest* focused element (not just `focusedChild`) matters for nested panels (a list inside a tab inside a screen) so back navigation lands the cursor exactly where the user left it. For suspended views, this is what makes suspend→resume feel seamless: the cursor returns to its exact prior position. The `lastFocus` mechanism is one of the things JellyRock gets reliably right — as long as what `lastFocus` names is still what the view shows on return. Two platform facts decide when it is not:
+Preserving the *deepest* focused element (not just `focusedChild`) matters for nested panels (a list inside a tab inside a screen) so back navigation lands the cursor exactly where the user left it. For suspended views, this is what makes suspend→resume feel seamless: the cursor returns to its exact prior position. The `lastFocus` mechanism is one of the things JellyRock gets reliably right — as long as what `lastFocus` names is still what the view shows on return, and nothing takes focus it should not. Three facts decide when that fails:
 
-- **The router calls `handleFocus` AFTER `onScreenShown`** (`sgrouter_showView` runs `_handleFocus` in the `finally` of the resume/open promise), and the base `handleFocus` restores `lastFocus` again. So a screen that decides focus on return from anything but `lastFocus` must route **both** hooks through one function, or the second undoes the first. `Home.restoreHomeFocus` (the overhang-icon case) and `BaseGridView.restoreGridFocus` (a load that failed or finished while suspended) are the two that do.
+- **The router calls `handleFocus` AFTER `onScreenShown`** (`sgrouter_showView` runs `_handleFocus` in the `finally` of the resume/open promise), and the base restores `lastFocus` again. So a screen that decides focus on return from anything but `lastFocus` overrides `restoreScreenFocus`, the one function both hooks reach, or the second undoes the first. `Home.restoreHomeFocus` (the overhang-icon case) and `BaseGridView.restoreGridFocus` (a load that failed or finished while suspended) are the two that do.
+- **`handleFocus` has three callers, and the third is a notice, not a request.** The first is `JRScene`'s `sgrouter.setFocus` (`routerFocused: true`). The second is the call right after `onViewOpen` / `onViewResume` (`routerFocused` is the router's own flag, often `false`; this is the call that focuses the player, so it must take focus). The third is `sgrouter_onFocusChildChanged`, when focus LEAVES the router outlet: always `routerFocused: false`. `AppWaitHost.releaseFocus` also calls it directly, with no `routerFocused`, and that must take focus. Taking focus on the third call steals it back from the overhang (a sibling of the outlet), a dialog or `AppWaitHost`. So `JRScreen.handleFocus` returns without moving focus when no show is pending (`m.isShowFocusPending`, set by `onViewOpen` / `onViewResume` and cleared by the next `handleFocus`), `routerFocused` is `false`, and another node holds focus (`isFocusHeldElsewhere`). Focus stranded on the bare scene still takes focus, because there the call is the recovery path.
 - **A suspended `"detach"` view's own nodes still report focus.** Measured 2026-09-25 on an Ultra (Roku OS 15.3.4), with `BaseGridView` detached under an `ItemDetails`: `setFocus(true)` on its grid returned `true`, and afterwards the grid's `hasFocus()` and the view's `isInFocusChain()` both read `true` — while the real focus stayed on the detail's Play button, which kept answering keys, and `lastFocus` won on return. So focusing inside a suspended view is harmless, but **`hasFocus()` / `isInFocusChain()` cannot answer "is the user here?"** for a view that can be suspended. A timer or observer that would act on the user's behalf (narration, a toast) checks a flag the view keeps from `onScreenShown` / `onScreenHidden` instead — `BaseGridView.m.isShown`, `Schedule.m.isShown`.
 
 ## Overhang controller

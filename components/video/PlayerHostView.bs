@@ -88,16 +88,15 @@ end sub
 sub onScreenHidden()
 end sub
 
-' Router: take remote focus. Hand it to the player child if mounted; the player also
-' grabs focus itself once content loads (VideoPlayerView.onVideoContentLoaded).
-function handleFocus(_data = {} as object) as boolean
+' Take remote focus (overrides JRScreen.restoreScreenFocus). Hand it to the player child if
+' mounted; the player also grabs focus itself once content loads (VideoPlayerView.onVideoContentLoaded).
+sub restoreScreenFocus()
   if isValid(m.view)
     m.view.setFocus(true)
   else
     m.top.setFocus(true)
   end if
-  return true
-end function
+end sub
 
 ' Build + mount the VideoPlayerView as a child of this host. Ported from
 ' ViewCreator.CreateVideoPlayerView; the only behavioral change is appendChild to

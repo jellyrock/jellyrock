@@ -58,6 +58,7 @@ end sub
 ' their own onScreenShown / onRouteUpdate overrides.
 function onViewOpen(_params = {} as object) as dynamic
   m.global.activeRoutedView = m.top
+  m.isShowFocusPending = true
   onScreenShown()
   return promises.resolve(invalid)
 end function
@@ -66,6 +67,7 @@ end function
 ' uncovered it). Re-publish it as the active routed view, then restore via onScreenShown.
 function onViewResume(_params = {} as object) as dynamic
   m.global.activeRoutedView = m.top
+  m.isShowFocusPending = true
   onScreenShown()
   return promises.resolve(invalid)
 end function
@@ -85,11 +87,36 @@ function beforeViewClose(_params = {} as object) as dynamic
   return promises.resolve(invalid)
 end function
 
-' Router: take remote focus. Mirrors onScreenShown's focus rule (restore the
-' saved descendant, else focus the view root).
-function handleFocus(_data = {} as object) as boolean
-  restoreFocus(m.top)
+' Router: take remote focus. The router also calls this with routerFocused = false when focus
+' LEFT its outlet (to the overhang, a dialog or AppWaitHost). Taking focus then would steal it
+' back, so that notice is ignored while another node holds focus. The call right after the view
+' is shown always takes focus, and a stranded focus (on the bare scene) is still recovered.
+' Screens override restoreScreenFocus, not this.
+function handleFocus(data = {} as object) as boolean
+  wasShowPending = m.isShowFocusPending = true
+  m.isShowFocusPending = false
+  if not wasShowPending and isValid(data) and data.routerFocused = false and isFocusHeldElsewhere()
+    return false
+  end if
+  restoreScreenFocus()
   return true
+end function
+
+' Where this screen takes focus. Mirrors onScreenShown's focus rule (restore the saved
+' descendant, else focus the view root). Screens that restore focus differently override this.
+sub restoreScreenFocus()
+  restoreFocus(m.top)
+end sub
+
+' True when a node outside the bare scene holds focus. The scene itself holding it (or nothing)
+' means focus is stranded.
+function isFocusHeldElsewhere() as boolean
+  scene = m.top.getScene()
+  focused = scene
+  while isValid(focused) and focused.hasFocus() = false
+    focused = focused.focusedChild
+  end while
+  return isValid(focused) and not focused.isSameNode(scene)
 end function
 
 ' Walk the focus chain to the deepest focused descendant and remember it in

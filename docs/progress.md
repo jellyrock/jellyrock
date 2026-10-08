@@ -433,7 +433,7 @@ Seen once on a Stick 4K when the RTA harness's hard relaunch exited the app (`EX
 
 #### Check `ItemDetails`, `SearchResults`, `PhotoDetails` and `settings` for the resume-focus trap. `[fid: resume-focus-trap-other-screens]` `[captured 2026-09-25]`
 
-Each sets focus in `onScreenShown()` but does not override `handleFocus`, which the router calls right after and which restores `lastFocus` again. Home (the overhang-icon regression) and `BaseGridView` (#1033) were the two confirmed cases; for each of these four, compare what `onScreenShown()` focuses with what `lastFocus` would restore, and route both hooks through one function only where they differ. See [navigation.md → Focus management](architecture/navigation.md#focus-management).
+Each sets focus in `onScreenShown()` but does not override `restoreScreenFocus`, which `JRScreen.handleFocus` runs right after and which restores `lastFocus` again. Home (the overhang-icon regression) and `BaseGridView` (#1033) were the two confirmed cases; for each of these four, compare what `onScreenShown()` focuses with what `lastFocus` would restore, and override `restoreScreenFocus` only where they differ. See [navigation.md → Focus management](architecture/navigation.md#focus-management).
 
 #### A library grid's filter list still gives up at 10 s on a slow server (found with #1043). `[fid: grid-filter-list-10s-timeout]` `[captured 2026-09-25]`
 
