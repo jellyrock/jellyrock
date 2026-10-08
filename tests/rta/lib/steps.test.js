@@ -1127,6 +1127,89 @@ describe('scrollFocus', () => {
     expect(index).toBe(3);
   });
 
+  describe('stepped', () => {
+    // A device whose index shows up `latencyMs` after a press, on a real clock: the stepped
+    // walk's decision is about elapsed time, so a tick counter would not model it.
+    function slowDevice({ latencyMs, dropPress = 0, start = 0 }) {
+      const device = { index: start, sent: [] };
+      let count = 0;
+      sendKeypress.mockImplementation(async (key) => {
+        device.sent.push(key);
+        count++;
+        if (count === dropPress) return; // the swallowed key
+        setTimeout(() => {
+          device.index += key === 'Down' ? 1 : -1;
+        }, latencyMs);
+      });
+      getValue.mockImplementation(async () => ({ found: true, value: device.index }));
+      return device;
+    }
+
+    it('sends one press per step to a device slower than the poll interval', async () => {
+      // Latency 30 ms against a 5 ms poll: a read-then-press loop sees the old index on
+      // several ticks and presses again. The stepped walk waits for the index to move.
+      const device = slowDevice({ latencyMs: 30 });
+      const walk = await scrollFocus({
+        keyPath: '#g.itemFocused',
+        target: 2,
+        forwardKey: 'Down',
+        backKey: 'Up',
+        stepped: true,
+        interval: 5,
+        dropWaitMs: 500,
+      });
+      expect(walk).toEqual({ from: 0, to: 2, pressed: 2, recovered: 0 });
+      expect(device.sent).toEqual(['Down', 'Down']);
+      await new Promise((r) => setTimeout(r, 60));
+      expect(device.index).toBe(2);
+    });
+
+    it('re-presses a dropped key once and counts it in recovered', async () => {
+      const device = slowDevice({ latencyMs: 10, dropPress: 2 });
+      const walk = await scrollFocus({
+        keyPath: '#g.itemFocused',
+        target: 3,
+        forwardKey: 'Down',
+        backKey: 'Up',
+        stepped: true,
+        interval: 5,
+        dropWaitMs: 80,
+      });
+      expect(walk).toEqual({ from: 0, to: 3, pressed: 3, recovered: 1 });
+      expect(device.sent).toEqual(['Down', 'Down', 'Down', 'Down']);
+      await new Promise((r) => setTimeout(r, 40));
+      expect(device.index).toBe(3);
+    });
+
+    it('walks back with backKey, one press per step', async () => {
+      const device = slowDevice({ latencyMs: 20, start: 3 });
+      const walk = await scrollFocus({
+        keyPath: '#g.itemFocused',
+        target: 1,
+        forwardKey: 'Down',
+        backKey: 'Up',
+        stepped: true,
+        interval: 5,
+        dropWaitMs: 500,
+      });
+      expect(walk).toEqual({ from: 3, to: 1, pressed: 2, recovered: 0 });
+      expect(device.sent).toEqual(['Up', 'Up']);
+    });
+
+    it('presses nothing when already on the target', async () => {
+      const device = slowDevice({ latencyMs: 10, start: 2 });
+      const walk = await scrollFocus({
+        keyPath: '#g.itemFocused',
+        target: 2,
+        forwardKey: 'Down',
+        stepped: true,
+        interval: 5,
+      });
+      expect(walk).toEqual({ from: 2, to: 2, pressed: 0, recovered: 0 });
+      expect(device.sent).toEqual([]);
+    });
+  });
+
   it('presses once per STRIDE, not once per index — a grid row is numColumns items', async () => {
     // The defect this closes, measured on `.177` 2026-08-20: a library grid's `itemFocused`
     // moves by `numColumns` on Down, so a walk from 0 to 18 on a 6-column grid is THREE

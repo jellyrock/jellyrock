@@ -80,10 +80,12 @@ reading taken before the press can catch this** — the press has to be brackete
 So a walk presses through [`scrollFocus`](lib/steps.js), which sends the exact distance as
 one burst and re-presses ONLY for a key it can prove was dropped (the index unchanged across
 a whole tick, then re-armed). If you are writing a loop that reads an index and presses
-toward a target, you are writing this bug; reach for the helper. The one deliberate holdout
-is `walkHomeRowsTo`'s ROW half, because `Home.onKeyEvent` releases focus to the overhang on
-Up from row 0 — there an overshoot leaves Home rather than landing on the wrong tile, so it
-was not converted on the strength of a column measurement.
+toward a target, you are writing this bug; reach for the helper.
+
+`walkHomeRowsTo`'s ROW half was the holdout, and a stale-read loop double-pressed there too. A
+burst is the wrong cure for it, because a surplus Up from row 0 leaves Home, so it uses
+`scrollFocus` with `stepped: true`. Use `stepped` for any axis where a stray key does damage a
+retry cannot undo.
 
 **A guarded re-press must re-send the key that is actually still owed.** `waitOsdUp` re-sends
 `Up` until the OSD is up; `focusOverhangIcon` pressed `Up` once and then re-sent `Right`, which
@@ -167,7 +169,7 @@ a contract.
 |---|---|---|
 | `FN` Function `keyPath` | 21 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
 | `ABS` Waits for absence | 1 | The node is gone. A departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument on behalf of the ten dialog-dismiss sites that route through it. |
-| `ACT` `action:` retry loops | 8 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
+| `ACT` `action:` retry loops | 7 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
 | `SETTLE` Plain field settle | 72 | The primitive could apply; it is ruled out below. |
 | `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is RESOLVED rather than named. Unclassifiable from syntax, so each carries a rule disable naming the reason and the argument lives in its docblock. |
 | `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 35 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |

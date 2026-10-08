@@ -1311,6 +1311,20 @@ export async function stopPlayback() {
 export const SCROLL_KEY_INTERVAL_MS = 150;
 
 /**
+ * How long a stepped walk waits for the index to leave its pre-press value before it
+ * concludes the key was dropped and sends it again.
+ *
+ * A Limit: it has to clear the device's slowest honest answer, or a slow key reads as a
+ * dropped one and the re-press is the overshoot the stepped mode exists to prevent. On a
+ * Stick 4K (`.177`, Roku OS 15.3.4, Home tab) a Down or Up took 350-444 ms to show in
+ * `rowItemFocused`, measured 2026-10-08 with a scratch ODC script over two runs of 24
+ * presses (medians 397 and 409 ms). 1000 ms is more than twice that worst case. A genuinely dropped key costs this
+ * long once; a slow device that outgrows it is a fact to re-measure, not a number to raise
+ * quietly.
+ */
+export const STEPPED_DROP_WAIT_MS = 1000;
+
+/**
  * Drive a focus INDEX to `target` by bursting keypresses at remote cadence, then gating on
  * the index actually arriving.
  *
@@ -1350,6 +1364,20 @@ export const SCROLL_KEY_INTERVAL_MS = 150;
  * the moment the gate opened, not the one that was requested — they are equal by the gate's
  * own predicate, and reporting the observed one keeps that an assertion rather than a claim.
  *
+ * ## `stepped` — when a stray extra key is not survivable
+ *
+ * A burst is fast and its reconciliation is exact, but it still has several keys in flight
+ * at once. Use `stepped: true` where a surplus key does damage a retry cannot undo, which is
+ * Home's ROW axis: Up from row 0 releases focus to the overhang, and the field this walk
+ * reads keeps RETAINING its last value after that, so a wrong press can leave the screen
+ * without anything reading as wrong. A stepped walk presses ONE key, then waits for the
+ * index to leave its pre-press value before it decides anything, so a press is never sent
+ * while an earlier one is still unseen. It re-presses only when the index has stayed put for
+ * `dropWaitMs`, well beyond the device's measured delay (see `STEPPED_DROP_WAIT_MS`), and
+ * counts that in `recovered`. The cost is one round trip of waiting per index unit instead
+ * of `keyIntervalMs`, which is why it is opt-in: a scripted scroll that must run fast stays
+ * on the burst.
+ *
  * ## `stride` — one press is not always one index
  *
  * MEASURED on `.177`, 2026-08-20, because the first version of this assumed otherwise and
@@ -1371,6 +1399,9 @@ export const SCROLL_KEY_INTERVAL_MS = 150;
  *                                     `[row, item]` pair, `itemFocused` is the index itself)
  * @param {(k:string)=>Promise<any>} [opts.read] `getVal` (default) or `getActiveVal`
  * @param {string} [opts.label]      what to call this walk in waits, warnings and the report
+ * @param {boolean} [opts.stepped]   press ONE key at a time instead of a burst; see below
+ * @param {number} [opts.dropWaitMs] stepped only: how long an unmoved index is taken as a
+ *                                   dropped key; defaults to `STEPPED_DROP_WAIT_MS`
  * @param {number} [opts.keyIntervalMs] burst cadence; defaults to `SCROLL_KEY_INTERVAL_MS`
  * @param {number} [opts.timeout]    budget for the reconciliation, once the burst is sent
  * @param {number} [opts.interval]   poll interval of the reconciliation
@@ -1388,6 +1419,8 @@ export async function scrollFocus({
   keyIntervalMs = SCROLL_KEY_INTERVAL_MS,
   timeout = 25000,
   interval = 400,
+  stepped = false,
+  dropWaitMs = STEPPED_DROP_WAIT_MS,
 }) {
   const name = label || `${keyPath} -> ${target}`;
   // The precondition, gated rather than assumed: `itemFocused` / `rowItemFocused` read as
@@ -1423,6 +1456,21 @@ export async function scrollFocus({
         `${stride}-unit presses — the list cannot stop there`,
     );
   }
+  if (stepped) {
+    return steppedWalk({
+      name,
+      keyPath,
+      from,
+      target,
+      forwardKey,
+      backKey,
+      select,
+      read,
+      timeout,
+      interval,
+      dropWaitMs,
+    });
+  }
   for (let i = 0; i < Math.abs(delta) / stride; i++) {
     await press(key);
     await sleep(keyIntervalMs);
@@ -1452,6 +1500,71 @@ export async function scrollFocus({
     },
   });
   return { from, to: select(landed), pressed: Math.abs(delta) / stride, recovered };
+}
+
+/**
+ * `scrollFocus`'s `stepped` mode: one key in flight at a time. The reasoning is in
+ * `scrollFocus`'s docblock; this is the loop.
+ *
+ * Each press is followed by reads until the index differs from the value it had BEFORE the
+ * press. Only then is the next key chosen, from the index just observed. If the index has not
+ * moved after `dropWaitMs`, the key is taken as dropped and sent again (counted as
+ * `recovered`). Throws when `timeout` is spent, naming what the walk last saw.
+ */
+async function steppedWalk({
+  name,
+  keyPath,
+  from,
+  target,
+  forwardKey,
+  backKey,
+  select,
+  read,
+  timeout,
+  interval,
+  dropWaitMs,
+}) {
+  const start = Date.now();
+  let cur = from;
+  let pressed = 0;
+  let recovered = 0;
+  while (cur !== target) {
+    const key = cur < target ? forwardKey : backKey;
+    if (!key) {
+      // Fail-fast, cause named: the index moved past the target and no key was given back.
+      // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+      throw new Error(`${name}: at ${cur}, target ${target}, but no key was given for that way`);
+    }
+    const before = cur;
+    await press(key);
+    pressed++;
+    let pressedAt = Date.now();
+    for (;;) {
+      await sleep(interval);
+      const seen = select(await read(keyPath));
+      if (typeof seen === 'number' && seen !== before) {
+        cur = seen;
+        break;
+      }
+      if (Date.now() - start >= timeout) {
+        throw await diagnosedError(
+          `nav timed out waiting for ${name} (stepped; at ${before}, last=${JSON.stringify(seen)})`,
+          {
+            kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+            label: name,
+            waitedMs: Date.now() - start,
+            observed: { keyPath, target, pressed, recovered },
+          },
+        );
+      }
+      if (Date.now() - pressedAt >= dropWaitMs) {
+        recovered++;
+        await press(key);
+        pressedAt = Date.now();
+      }
+    }
+  }
+  return { from, to: cur, pressed, recovered };
 }
 
 /**
