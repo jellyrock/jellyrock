@@ -179,8 +179,8 @@ export async function selectHomeTab(tabId) {
 
 /**
  * Move focus in Home's active row list to row `row`, column 0 — the one tile a row still
- * showing a placeholder has. Shares `walkHomeRowsTo`, so the row half keeps its one-press-per-read
- * shape and the column half goes through `scrollFocus`.
+ * showing a placeholder has. Shares `walkHomeRowsTo`, so both halves go through `scrollFocus`,
+ * the row half in its stepped mode (one key in flight at a time).
  */
 export async function focusHomeRow(row, label) {
   const list = await homeListId();
@@ -718,9 +718,9 @@ export async function openLibraryByType(
   const probe = await pressProbe(list, tile);
   // Where the walk AIMED against where focus actually sits one read before the press.
   // They disagree when a key landed AFTER the wait that sent it had already returned —
-  // the over-press shape measured on the column axis on `.177` 2026-09-07, and the one
-  // the row axis can still produce, because it is walked by a read-then-press loop
-  // rather than by `scrollFocus` (that asymmetry is argued in `walkHomeRowsTo`).
+  // the over-press shape measured on the column axis on `.177` 2026-09-07. Both axes now
+  // walk through `scrollFocus` (the row axis in stepped mode, see `walkHomeRowsTo`), so
+  // this record is what would show either of them regressing.
   //
   // Costs nothing: `pressProbe` already batches this reading and `aimedAt` is already
   // carried on the return. What was missing is that nothing COMPARED them on a green
@@ -731,9 +731,7 @@ export async function openLibraryByType(
   //
   // Recorded, not gated, for the same reason `pressProbe` is not a gate: this is the
   // success path of every library nav, and an instrument may not fail the thing it
-  // observes. `axis` is the field the open question needs — `walkHomeRowsTo` defers
-  // converting its row half until a row over-press is captured, and until now nothing
-  // could capture one.
+  // observes. `axis` says which half drifted.
   if (
     Array.isArray(probe.focused) &&
     (probe.focused[0] !== tile.row || probe.focused[1] !== tile.col)
@@ -771,41 +769,35 @@ export async function openLibraryByType(
   };
 }
 
-/** Step focus to `tile`, vertically then horizontally. Guarded against overshoot. */
 /**
- * Walk focus to a Home tile at `{row, col}`.
+ * Walk focus to a Home tile at `{row, col}`: rows first, then columns, both through
+ * `scrollFocus`.
  *
- * ## Why the two halves are not symmetrical
+ * ## Why the two halves are not configured the same
  *
- * The COLUMN half goes through `scrollFocus`; the ROW half deliberately does not, and the
- * asymmetry is a decision rather than an unfinished conversion. The defect measured here
- * was a column over-press, and the column axis is bounded on both sides by the row itself.
- * The row axis is NOT: `Home.onKeyEvent` releases focus to the OVERHANG on Up from row 0
- * (the whole reason `walkHomeToFirstRow` exists), so a single overshoot there does not land
- * on the wrong tile, it leaves Home entirely — and the caller's next step would then be
- * pressing at the overhang. Converting it on the strength of a column measurement would be
- * changing the riskier half on speculation — and the conversion is not free of risk in the
- * other direction either: `scrollFocus` computes ONE burst from a single index read, so a
- * stale read there sends several Ups at once, and past row 0 that walks into the overhang
- * while `rowItemFocused` keeps RETAINING its last value, which is a failure the recovery
- * loop cannot see. The current loop presses at most one key before re-reading.
- *
- * Revisit if a row over-press is ever captured. `navHomeLibraryTile` is what captures one:
- * it compares the walk's target against `pressProbe`'s reading one read before the press
- * and records an `axis: 'row'` drift. That comparison is the evidence this paragraph is
- * waiting on — before it existed the condition above could never be met, because nothing
- * measured it.
+ * The COLUMN half uses `scrollFocus`'s burst. The ROW half uses its stepped mode: one key
+ * in flight at a time, the next chosen only after the index has visibly left its pre-press
+ * value. The axes differ in what a surplus key costs. The column axis is bounded on both
+ * sides by the row itself, so a stray Right lands on a neighbor tile. The row axis is NOT
+ * bounded: `Home.onKeyEvent` releases focus to the OVERHANG on Up from row 0 (the whole
+ * reason `walkHomeToFirstRow` exists), so a surplus Up leaves Home entirely while
+ * `rowItemFocused` keeps RETAINING its last value, which nothing downstream can see. A
+ * burst computes its keys from one index read, so it is the wrong shape there. A
+ * read-then-press loop on a fixed tick double-presses whenever a key takes longer than the
+ * tick to show, which is why the row half waits for each key.
  */
 async function walkHomeRowsTo(list, { row, col }, collectionType) {
-  await waitFor(`${list}.rowItemFocused`, (v) => Array.isArray(v) && v[0] === row, {
+  await scrollFocus({
+    keyPath: `${list}.rowItemFocused`,
+    target: row,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    select: (v) => (Array.isArray(v) ? v[0] : undefined),
+    read: getVal,
+    stepped: true,
+    within: list,
+    interval: 150,
     timeout: 12000,
-    interval: 350,
-    action: async () => {
-      const v = await getVal(`${list}.rowItemFocused`);
-      if (!Array.isArray(v)) return;
-      if (v[0] < row) await press(ecp.Key.Down);
-      else if (v[0] > row) await press(ecp.Key.Up);
-    },
     label: `home library row ${row} (${collectionType})`,
   });
   // The COLUMN walk goes through `scrollFocus`, and that is the fix for a measured defect
@@ -1237,15 +1229,21 @@ async function focusGridTile(target) {
   // press Right at whatever actually holds focus. Same precondition as the Home walk.
   await waitFocusInside('#itemGrid');
   if (target <= 0) return;
-  // Press Right until the grid reports the target tile focused (robust to a
-  // dropped keypress — only presses while focus is still short of the target).
-  await waitFor('#itemGrid.itemFocused', (v) => v === target, {
+  // One Right at a time, each awaited until the index moves (`scrollFocus`'s stepped mode).
+  // A read-then-press loop on a fixed tick double-presses whenever a key shows later than
+  // the tick, and an extra Right opens the wrong tile. `getVal` stays the reader, as it was:
+  // it is scene-rooted like the `waitFocusInside` gate above, so the two resolve `#itemGrid`
+  // the same way.
+  await scrollFocus({
+    keyPath: '#itemGrid.itemFocused',
+    target,
+    forwardKey: ecp.Key.Right,
+    backKey: ecp.Key.Left,
+    read: getVal,
+    stepped: true,
+    within: '#itemGrid',
+    interval: 150,
     timeout: 15000,
-    interval: 500,
-    action: async () => {
-      const cur = await getVal('#itemGrid.itemFocused');
-      if (typeof cur === 'number' && cur < target) await press(ecp.Key.Right);
-    },
     label: `grid focus -> tile ${target}`,
   });
 }
