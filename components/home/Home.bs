@@ -215,7 +215,7 @@ sub onScreenShown()
   ' Restore focus (overhang-icon-aware — see restoreHomeFocus). NOTE: do NOT clear
   ' m.lastOverhangFocus here. The router calls handleFocus() immediately AFTER onScreenShown,
   ' and its default restoreFocus(m.top) would override the overhang-icon focus with a Home row;
-  ' Home's handleFocus re-runs restoreHomeFocus and clears the one-shot target once consumed.
+  ' Home's restoreScreenFocus re-runs restoreHomeFocus and clears the one-shot target once consumed.
   restoreHomeFocus()
 
   ' First run: load libraries (the router mounts Home now, so this is no longer
@@ -273,10 +273,10 @@ end function
 '      via m.top.lastFocus.
 '   2. Home's own lastFocus (normal in-group restoration), skipping the hidden voice box.
 '   3. Active content, then the Home group.
-' Called by BOTH onScreenShown and handleFocus: the router invokes handleFocus right after
+' Called by BOTH onScreenShown and restoreScreenFocus: the router invokes handleFocus right after
 ' onScreenShown, and its base restoreFocus(m.top) would otherwise override the overhang-icon focus
 ' with a Home row (the "gear focus removed on return to Home" regression). Does NOT clear the
-' one-shot m.lastOverhangFocus — handleFocus clears it once the resume's focus restore is complete.
+' one-shot m.lastOverhangFocus — restoreScreenFocus clears it once the resume's focus restore is complete.
 sub restoreHomeFocus()
   if isValid(m.lastOverhangFocus)
     m.lastOverhangFocus.setFocus(true)
@@ -289,16 +289,15 @@ sub restoreHomeFocus()
   end if
 end sub
 
-' Router focus hook (overrides JRScreen.handleFocus). The router asks the resuming view to take
+' Focus hook (overrides JRScreen.restoreScreenFocus). The router asks the resuming view to take
 ' focus right after onViewResume -> onScreenShown. The base implementation uses restoreFocus(m.top),
 ' which focuses a Home row and clobbers the overhang-icon (gear/search) focus onScreenShown just set.
 ' Re-run Home's overhang-aware restore so the gear stays focused on return (matching prod), then
 ' consume the one-shot overhang target.
-function handleFocus(_data = {} as object) as boolean
+sub restoreScreenFocus()
   restoreHomeFocus()
   m.lastOverhangFocus = invalid
-  return true
-end function
+end sub
 
 ' JRScreen hook called when the screen is hidden by the screen manager
 sub onScreenHidden()

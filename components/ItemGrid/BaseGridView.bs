@@ -267,13 +267,12 @@ sub onScreenShown()
   updateLoadingMore()
 end sub
 
-' Router focus hook (overrides JRScreen.handleFocus). The router calls it right after
+' Focus hook (overrides JRScreen.restoreScreenFocus). The router's handleFocus runs it right after
 ' onScreenShown, and the base restores lastFocus again — undoing a restore that followed what
 ' changed while this view was suspended. Same trap and same fix as Home.restoreHomeFocus.
-function handleFocus(_data = {} as object) as boolean
+sub restoreScreenFocus()
   restoreGridFocus()
-  return true
-end function
+end sub
 
 ' Configure the library view from its route. Both in-app navigation and a deep link / cast
 ' supply the rich library node as route.context.item (the resolver passes the node
@@ -1133,7 +1132,7 @@ sub focusAfterLoad()
   end if
 end sub
 
-' Focus on return to this view (onScreenShown and handleFocus). The saved lastFocus is kept
+' Focus on return to this view (onScreenShown and restoreScreenFocus). The saved lastFocus is kept
 ' when it is outside the content area (the alpha menu, the TV guide). Inside it, what it
 ' names may no longer be what the view shows — a load can fail or finish while suspended —
 ' so the content area is focused as it is now.
