@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-08: fix(focus): Stop screens taking focus back when it leaves the router
 - 2026-10-08: test(rta): Say what the hourly demo reset wipes, and not to debug past it
 - 2026-10-08: update(manifest): Require Roku OS 15.1 and SceneGraph 1.3
 - 2026-10-07: chore(catchup): Filter CI runs locally, drop the prose banner rules
