@@ -227,6 +227,7 @@ describe('navLibraryByType — which library actually opened', () => {
       forwardKey: 'Down',
       backKey: 'Up',
       stepped: true,
+      within: '#homeRows',
     });
     expect(opts.label).toContain('home library row');
     expect(opts.select([7, 3])).toBe(7);

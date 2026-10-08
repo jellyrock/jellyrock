@@ -1316,11 +1316,15 @@ export const SCROLL_KEY_INTERVAL_MS = 150;
  *
  * A Limit: it has to clear the device's slowest honest answer, or a slow key reads as a
  * dropped one and the re-press is the overshoot the stepped mode exists to prevent. On a
- * Stick 4K (`.177`, Roku OS 15.3.4, Home tab) a Down or Up took 350-444 ms to show in
+ * Stick 4K (`.177`, Roku OS 15.3.4) a Down or Up took 350-444 ms to show in Home's
  * `rowItemFocused`, measured 2026-10-08 with a scratch ODC script over two runs of 24
- * presses (medians 397 and 409 ms). 1000 ms is more than twice that worst case. A genuinely dropped key costs this
- * long once; a slow device that outgrows it is a fact to re-measure, not a number to raise
- * quietly.
+ * presses (medians 397 and 409 ms). A Right or Left took 372-405 ms to show in a Movies
+ * grid's `itemFocused`, measured the same day. 1000 ms is more than twice the worst case.
+ *
+ * A genuinely dropped key costs this long once. A late key that it misreads as dropped is
+ * caught by the walk's settle and focus check (see `steppedWalk`), and a device slower than
+ * this on every key fails the walk with a message naming this constant. That device is a
+ * fact to re-measure, not a number to raise quietly.
  */
 export const STEPPED_DROP_WAIT_MS = 1000;
 
@@ -1378,6 +1382,11 @@ export const STEPPED_DROP_WAIT_MS = 1000;
  * of `keyIntervalMs`, which is why it is opt-in: a scripted scroll that must run fast stays
  * on the burst.
  *
+ * A stepped walk must name `within`, the list it may not leave, and it ends by checking that
+ * focus is still there: an index that keeps its last value cannot show that a key left. A
+ * walk that re-sent a key also settles for one quiet `dropWaitMs` before it returns, in case
+ * the key was late rather than dropped and its copy is still on the way.
+ *
  * ## `stride` — one press is not always one index
  *
  * MEASURED on `.177`, 2026-08-20, because the first version of this assumed otherwise and
@@ -1400,11 +1409,14 @@ export const STEPPED_DROP_WAIT_MS = 1000;
  * @param {(k:string)=>Promise<any>} [opts.read] `getVal` (default) or `getActiveVal`
  * @param {string} [opts.label]      what to call this walk in waits, warnings and the report
  * @param {boolean} [opts.stepped]   press ONE key at a time instead of a burst; see below
+ * @param {string} [opts.within]     stepped only, and required there: the id of the list
+ *                                   focus must still be inside when the walk ends
  * @param {number} [opts.dropWaitMs] stepped only: how long an unmoved index is taken as a
  *                                   dropped key; defaults to `STEPPED_DROP_WAIT_MS`
  * @param {number} [opts.keyIntervalMs] burst cadence; defaults to `SCROLL_KEY_INTERVAL_MS`
- * @param {number} [opts.timeout]    budget for the reconciliation, once the burst is sent
- * @param {number} [opts.interval]   poll interval of the reconciliation
+ * @param {number} [opts.timeout]    burst: budget for the reconciliation, once the burst is
+ *                                   sent. Stepped: budget for the whole walk.
+ * @param {number} [opts.interval]   poll interval of the reconciliation, or of each step
  * @returns {Promise<{from:number, to:number, pressed:number, recovered:number}>}
  */
 export async function scrollFocus({
@@ -1420,9 +1432,16 @@ export async function scrollFocus({
   timeout = 25000,
   interval = 400,
   stepped = false,
+  within,
   dropWaitMs = STEPPED_DROP_WAIT_MS,
 }) {
   const name = label || `${keyPath} -> ${target}`;
+  if (stepped && !within) {
+    // Fail-fast, cause named: stepped mode exists because a stray key can leave the list,
+    // so it has to know which list that is.
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+    throw new Error(`${name}: a stepped walk needs \`within\`, the list it must not leave`);
+  }
   // The precondition, gated rather than assumed: `itemFocused` / `rowItemFocused` read as
   // their retained value (or as undefined) until the list holds focus, and a burst sent at
   // that moment goes to whatever does. This is `waitFocusInside`'s rule applied to the field
@@ -1466,6 +1485,7 @@ export async function scrollFocus({
       backKey,
       select,
       read,
+      within,
       timeout,
       interval,
       dropWaitMs,
@@ -1509,7 +1529,16 @@ export async function scrollFocus({
  * Each press is followed by reads until the index differs from the value it had BEFORE the
  * press. Only then is the next key chosen, from the index just observed. If the index has not
  * moved after `dropWaitMs`, the key is taken as dropped and sent again (counted as
- * `recovered`). Throws when `timeout` is spent, naming what the walk last saw.
+ * `recovered`).
+ *
+ * A re-sent key may have been late rather than dropped, and then both copies land. So once
+ * the walk has re-sent anything, arriving on the target is not the end: it watches for one
+ * quiet `dropWaitMs` and walks back if the index moves. The late copy was sent `dropWaitMs`
+ * after the first, so it lands within `dropWaitMs` of the first one showing. Last, focus must
+ * still be inside `within`, because a surplus key can leave the list while the index keeps
+ * its last value.
+ *
+ * Throws when `timeout` is spent, naming what the walk last saw and how many keys it re-sent.
  */
 async function steppedWalk({
   name,
@@ -1520,6 +1549,7 @@ async function steppedWalk({
   backKey,
   select,
   read,
+  within,
   timeout,
   interval,
   dropWaitMs,
@@ -1528,27 +1558,22 @@ async function steppedWalk({
   let cur = from;
   let pressed = 0;
   let recovered = 0;
-  while (cur !== target) {
-    const key = cur < target ? forwardKey : backKey;
-    if (!key) {
-      // Fail-fast, cause named: the index moved past the target and no key was given back.
-      // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
-      throw new Error(`${name}: at ${cur}, target ${target}, but no key was given for that way`);
-    }
-    const before = cur;
-    await press(key);
-    pressed++;
-    let pressedAt = Date.now();
+
+  // Poll until the index leaves `at`. Given a `key`, re-send it each time the index stays put
+  // for `dropWaitMs`; without one, return `undefined` after one quiet `dropWaitMs`.
+  const nextIndex = async (at, key) => {
+    let quietSince = Date.now();
     for (;;) {
       await sleep(interval);
       const seen = select(await read(keyPath));
-      if (typeof seen === 'number' && seen !== before) {
-        cur = seen;
-        break;
-      }
+      if (typeof seen === 'number' && seen !== at) return seen;
       if (Date.now() - start >= timeout) {
         throw await diagnosedError(
-          `nav timed out waiting for ${name} (stepped; at ${before}, last=${JSON.stringify(seen)})`,
+          `nav timed out waiting for ${name} (stepped; at ${at}, last=${JSON.stringify(seen)})` +
+            (recovered
+              ? ` — re-sent ${recovered} key(s); the device may answer slower than ` +
+                `STEPPED_DROP_WAIT_MS (${dropWaitMs} ms)`
+              : ''),
           {
             kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
             label: name,
@@ -1557,13 +1582,39 @@ async function steppedWalk({
           },
         );
       }
-      if (Date.now() - pressedAt >= dropWaitMs) {
+      if (Date.now() - quietSince >= dropWaitMs) {
+        if (!key) return undefined;
         recovered++;
         await press(key);
-        pressedAt = Date.now();
+        quietSince = Date.now();
       }
     }
+  };
+
+  for (;;) {
+    if (cur === target) {
+      if (!recovered) break;
+      const moved = await nextIndex(cur);
+      if (moved === undefined) break;
+      cur = moved;
+      continue;
+    }
+    const key = cur < target ? forwardKey : backKey;
+    if (!key) {
+      // Fail-fast, cause named: the index moved past the target and no key was given back.
+      // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+      throw new Error(`${name}: at ${cur}, target ${target}, but no key was given for that way`);
+    }
+    await press(key);
+    pressed++;
+    cur = await nextIndex(cur, key);
   }
+
+  await waitFocusInside(within, {
+    timeout: dropWaitMs,
+    interval,
+    label: `${name}: focus still inside ${within} after the walk`,
+  });
   return { from, to: cur, pressed, recovered };
 }
 

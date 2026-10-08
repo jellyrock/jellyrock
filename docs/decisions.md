@@ -1924,11 +1924,13 @@ Ruled out: skipping every `routerFocused: false` call, which leaves the player u
 **date**: 2026-10-08
 **status**: accepted
 **partially-supersedes**: `rta-row-walk-instrumented-not-converted` (the row half's read-then-press loop)
-**related-files**: `tests/rta/lib/nav.js`, `tests/rta/lib/steps.js`, `tests/rta/lib/nav-row-walk.test.js`
+**related-files**: `tests/rta/lib/nav.js`, `tests/rta/lib/steps.js`, `tests/rta/lib/nav-row-walk.test.js`, `tests/rta/lib/nav-grid-walk.test.js`
 
 `walkHomeRowsTo`'s row half now goes through `scrollFocus` in a stepped mode: one key in flight, the next chosen only after the index has moved off the value it had before the press, and a re-press only after `STEPPED_DROP_WAIT_MS` with no movement. The old note kept a read-then-press loop because it "presses at most one key before re-reading", but the re-read was of a lagging field. On `.177` (Stick 4K, Roku OS 15.3.4) a Down or Up took 350-444 ms to show in `rowItemFocused` (measured 2026-10-08, two runs of 24 presses), and the loop re-read about 390-410 ms after each press, so a late key drew a second one. The RTA ledger run of 2026-10-08 (commit `295fadab`) caught it: "Favorites: People failing alone" aimed at row 1 and opened an Audio item on row 2. `focusHomeRow` bypasses the drift instrument, so this surfaced as a wrong outcome rather than a drift record.
 
 The old note's case against a burst still holds, and it is why the mode is stepped: a surplus Up from row 0 leaves Home while `rowItemFocused` keeps its last value. Two alternatives were rejected. Settling on the target and correcting still sends the surplus key, and a late Up at row 0 leaves Home. A longer tick only out-waits one measured device. The cost is a row step of about one device delay instead of a 350 ms tick. The drift instrument in `navHomeLibraryTile` stays.
+
+The walk also guards against a key it took as dropped that was only late. Once it has re-sent a key, reaching the target is followed by one quiet `STEPPED_DROP_WAIT_MS` window, and the walk goes back if the index moves: the late copy was sent one drop wait after the first, so it lands inside that window. Every stepped walk names `within`, the list it may not leave, and ends with `waitFocusInside` on it, because a surplus Up from Home's row 0, or a Left that reaches `BaseGridView.onKeyEvent` from the grid, moves focus out while the index keeps its last value. A device slower than the drop wait on every key cannot finish, and the timeout names `STEPPED_DROP_WAIT_MS`. Adapting the wait at runtime was rejected because it would hide the slow device that followup `stepped-walk-drop-wait-one-device` exists to find. Hardware-free tests on 2026-10-08, with a first key at 1100 ms, showed the walk without these guards returning success with focus one row too far, and with focus out of Home after a walk to row 0.
 
 ## Migrated to ADRs
 

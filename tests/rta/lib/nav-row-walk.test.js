@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const getValue = vi.fn();
 const getValues = vi.fn();
 const sendKeypress = vi.fn();
+const getFocusedNode = vi.fn();
 vi.mock('roku-test-automation', () => ({
   ecp: {
     sendKeypress: (...a) => sendKeypress(...a),
@@ -32,7 +33,7 @@ vi.mock('roku-test-automation', () => ({
   odc: {
     getValue: (...a) => getValue(...a),
     getValues: (...a) => getValues(...a),
-    getFocusedNode: async () => ({ found: false }),
+    getFocusedNode: (...a) => getFocusedNode(...a),
   },
 }));
 
@@ -41,21 +42,32 @@ const { focusHomeRow } = await import('./nav.js');
 const PRESS_LATENCY_MS = 400;
 const ROW_COUNT = 3;
 
-/** A Home whose focus index changes `latencyMs` after each Down or Up. */
-function installDevice({ latencyMs, startRow = 0 }) {
+/**
+ * A Home whose focus index changes `latencyMs` after each Down or Up, or `latencies[n]`
+ * after the n-th key. Focus reports the row list until a surplus Up leaves Home.
+ */
+function installDevice({ latencyMs, latencies = [], startRow = 0 }) {
   const device = { row: startRow, presses: [], leftHome: false };
   sendKeypress.mockImplementation(async (key) => {
     device.presses.push(key);
-    setTimeout(() => {
-      if (key === 'Down') device.row = Math.min(device.row + 1, ROW_COUNT - 1);
-      if (key === 'Up') {
-        // Up from row 0 releases focus to the overhang, which is the failure the walk
-        // must never provoke.
-        if (device.row === 0) device.leftHome = true;
-        else device.row -= 1;
-      }
-    }, latencyMs);
+    setTimeout(
+      () => {
+        if (key === 'Down') device.row = Math.min(device.row + 1, ROW_COUNT - 1);
+        if (key === 'Up') {
+          // Up from row 0 releases focus to the overhang, which is the failure the walk
+          // must never provoke.
+          if (device.row === 0) device.leftHome = true;
+          else device.row -= 1;
+        }
+      },
+      latencies[device.presses.length - 1] ?? latencyMs,
+    );
   });
+  getFocusedNode.mockImplementation(async () => ({
+    found: true,
+    node: { subtype: 'HomeRows' },
+    keyPath: device.leftHome ? '#overhang.#tabBar' : '#viewTarget.#homeRows',
+  }));
   getValues.mockImplementation(async ({ requests }) => ({
     results: Object.fromEntries(
       Object.keys(requests).map((k, i) => [k, i === 0 ? { found: true, value: 'HomeRows' } : {}]),
@@ -120,5 +132,32 @@ describe('focusHomeRow against a device slower than a poll tick', () => {
     const device = installDevice({ latencyMs: PRESS_LATENCY_MS, startRow: 1 });
     await walkTo(1);
     expect(device.presses).toEqual([]);
+  });
+});
+
+describe('focusHomeRow against a key slower than the drop wait', () => {
+  // The first key answers in 1100 ms, past `STEPPED_DROP_WAIT_MS`, so the walk re-sends it
+  // and both copies land. These cases are what the walk does about the surplus one.
+
+  it('walks back when the late copy carries focus a row too far', async () => {
+    const device = installDevice({ latencyMs: PRESS_LATENCY_MS, latencies: [1100] });
+    await walkTo(1);
+    expect(device.presses).toEqual(['Down', 'Down', 'Up']);
+    expect(device.row).toBe(1);
+  });
+
+  it('fails naming the row list when the late copy leaves Home from row 0', async () => {
+    const device = installDevice({
+      latencyMs: PRESS_LATENCY_MS,
+      latencies: [1100],
+      startRow: 1,
+    });
+    await expect(walkTo(0)).rejects.toThrow(/focus still inside #homeRows/);
+    expect(device.leftHome).toBe(true);
+  });
+
+  it('times out naming the drop wait when every key is that slow', async () => {
+    installDevice({ latencyMs: 1100 });
+    await expect(walkTo(1)).rejects.toThrow(/STEPPED_DROP_WAIT_MS/);
   });
 });

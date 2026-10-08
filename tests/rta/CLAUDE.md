@@ -85,7 +85,8 @@ toward a target, you are writing this bug; reach for the helper.
 `walkHomeRowsTo`'s ROW half was the holdout, and a stale-read loop double-pressed there too. A
 burst is the wrong cure for it, because a surplus Up from row 0 leaves Home, so it uses
 `scrollFocus` with `stepped: true`. Use `stepped` for any axis where a stray key does damage a
-retry cannot undo.
+retry cannot undo, and pass `within`, the list the walk must not leave. The walk ends by
+checking focus is still there, because the index keeps its last value after a key leaves.
 
 **A guarded re-press must re-send the key that is actually still owed.** `waitOsdUp` re-sends
 `Up` until the OSD is up; `focusOverhangIcon` pressed `Up` once and then re-sent `Right`, which
@@ -172,7 +173,7 @@ a contract.
 | `ACT` `action:` retry loops | 6 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
 | `SETTLE` Plain field settle | 72 | The primitive could apply; it is ruled out below. |
 | `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is RESOLVED rather than named. Unclassifiable from syntax, so each carries a rule disable naming the reason and the argument lives in its docblock. |
-| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 35 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
+| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 36 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
 | `FOCUS_SUBTYPE` Focus containment by subtype (`waitFocusInHomeContent`) | 5 | Same absence of a primitive. Separate row because the QUESTION differs: Home's content is whichever of `HomeRows` / `FavoritesRows` the selected tab put in the scene, so it cannot be asked by container id at all. |
 | `FOCUS_IDENTITY` Focus identity (`waitFocused`) | 18 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
 
