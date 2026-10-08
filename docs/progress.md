@@ -828,6 +828,12 @@ Home opens on the Favorites tab, so the spec's Home-tab gate times out (`tab "ho
 
 `SubtitlePanel.shouldOfferPerfectMatchFilter()` ([`components/subtitles/SubtitlePanel.bs`](../components/subtitles/SubtitlePanel.bs)) decides whether the "perfect matches only" toggle appears: kept while the filter is on, hidden when the result set fits on screen, and offered only when some but not all results are hash matches. It has no test. Its only coverage was the removed `remoteSubtitles.hasAnyHashMatch` spec, which tested a helper the panel no longer called (removed in the #1072 cleanup). The function is not declared in the component's interface, so a spec cannot call it as is. Closing it means moving the rule into `remoteSubtitles` as a pure function of the results, the filter state and `subtitleLayout.VISIBLE_ROWS` that the panel calls, then a spec for each case.
 
+#### The stepped RTA walk's drop wait rests on one device's measured key delay `[fid: stepped-walk-drop-wait-one-device]` `[captured 2026-10-08]`
+
+`STEPPED_DROP_WAIT_MS` (`tests/rta/lib/steps.js`, 1000 ms) is how long `scrollFocus`'s stepped mode waits for an index to move before it re-sends a key as dropped. It rests on measurements from one device: on `.177` (Stick 4K, Roku OS 15.3.4, 2026-10-08) a Down or Up took 350-444 ms to show in Home's `rowItemFocused`, and a Right or Left 372-405 ms in the Movies grid's `itemFocused`. If another device answers slower than the wait, a slow key reads as dropped and the re-press is the overshoot the stepped mode exists to stop. Neither the 512 MB `.176` nor the Ultra `.178` has been measured.
+
+Closes when the same press-to-index delay has been measured on `.176` and `.178` (a scratch ODC script that presses one key and polls the index until it changes, for both Home rows and a library grid). Then either confirm the wait still has headroom, or set it from the slowest device and record that measurement next to the constant. Came from the row-walk and grid-walk fixes on `fix/rta-row-walk-step`.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
