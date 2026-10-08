@@ -1228,15 +1228,20 @@ async function focusGridTile(target) {
   // press Right at whatever actually holds focus. Same precondition as the Home walk.
   await waitFocusInside('#itemGrid');
   if (target <= 0) return;
-  // Press Right until the grid reports the target tile focused (robust to a
-  // dropped keypress — only presses while focus is still short of the target).
-  await waitFor('#itemGrid.itemFocused', (v) => v === target, {
+  // One Right at a time, each awaited until the index moves (`scrollFocus`'s stepped mode).
+  // A read-then-press loop on a fixed tick double-presses whenever a key shows later than
+  // the tick, and an extra Right opens the wrong tile. `getVal` stays the reader, as it was:
+  // it is scene-rooted like the `waitFocusInside` gate above, so the two resolve `#itemGrid`
+  // the same way.
+  await scrollFocus({
+    keyPath: '#itemGrid.itemFocused',
+    target,
+    forwardKey: ecp.Key.Right,
+    backKey: ecp.Key.Left,
+    read: getVal,
+    stepped: true,
+    interval: 150,
     timeout: 15000,
-    interval: 500,
-    action: async () => {
-      const cur = await getVal('#itemGrid.itemFocused');
-      if (typeof cur === 'number' && cur < target) await press(ecp.Key.Right);
-    },
     label: `grid focus -> tile ${target}`,
   });
 }

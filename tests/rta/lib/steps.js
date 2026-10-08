@@ -548,7 +548,7 @@ export async function waitFocusInside(
  * window instead.
  *
  * This is also why the skip lives HERE rather than in `waitFor`: an eager first action is
- * *correct* for the focus WALKS (`focusGridTile`, `findHomeLibraryTile`, `focusOverhangIcon`),
+ * *correct* for the focus WALKS (`findHomeLibraryTile`, `focusOverhangIcon`),
  * which want to start moving immediately. Only a resend needs to wait and see.
  *
  * @param {string} key - an `ecp.Key` value to re-send
@@ -652,7 +652,7 @@ export function resendUntilFocused(key, arrived) {
  * Those sit out the first tick because their caller has ALREADY pressed and needs a
  * window to see whether it landed. This one has pressed nothing, so waiting a tick
  * would only add an interval of latency to every walk. Same distinction
- * `resendIfSwallowed` documents for `focusGridTile` / `focusOverhangIcon`.
+ * `resendIfSwallowed` documents for `focusOverhangIcon`.
  *
  * ## The guard is the overshoot protection
  *

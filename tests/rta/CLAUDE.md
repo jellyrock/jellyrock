@@ -169,7 +169,7 @@ a contract.
 |---|---|---|
 | `FN` Function `keyPath` | 21 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
 | `ABS` Waits for absence | 1 | The node is gone. A departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument on behalf of the ten dialog-dismiss sites that route through it. |
-| `ACT` `action:` retry loops | 7 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
+| `ACT` `action:` retry loops | 6 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
 | `SETTLE` Plain field settle | 72 | The primitive could apply; it is ruled out below. |
 | `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is RESOLVED rather than named. Unclassifiable from syntax, so each carries a rule disable naming the reason and the argument lives in its docblock. |
 | `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 35 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
