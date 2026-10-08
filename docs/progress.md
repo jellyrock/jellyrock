@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-07
+last-updated: 2026-10-08
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-08: update(manifest): Require Roku OS 15.1 and SceneGraph 1.3
 - 2026-10-07: chore(catchup): Filter CI runs locally, drop the prose banner rules
 - 2026-10-07: chore(journal-sync): Write Recently shipped bullets without em-dashes
 - 2026-10-07: docs(voice): Add a writing style guide, its gate and a plugin catalog
@@ -76,16 +77,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-24 — fix: Recover stalled Live TV and close a failed channel's live stream
 - 2026-09-24 — fix: Stop restarting a Live TV channel that keeps ending without playing
 - 2026-09-24 — fix: Keep screens loading when the app hits its Task-thread limit
-- 2026-09-23 — ci: Prove a stopped Task thread frees its slot under Roku's thread cap
-- 2026-09-23 — fix: Stop a late playback report replacing a dialog you opened meanwhile
-- 2026-09-23 — fix: Stop the playback info report reopening itself after you close it
-- 2026-09-23 — fix: Keep Home rows refreshing when you return to Home as a load finishes
-- 2026-09-23 — `no-task-fanout` now follows a loop's same-file helper calls one hop (decision `task-fanout-follows-helpers`); a helper that keeps one run live states its bound on its launch line, as `HomeRows`' section loads and `ExtrasRowList.startRun` do. Closes the followup that the gate did not see launches in helpers.
-- 2026-09-23 — feat: Browse a movie or TV library's collections on Jellyfin 12
-- 2026-09-23 — fix: Always apply a subtitle track change, and stop the caption timer
-- 2026-09-23 — feat: Filter a movie library by audio and subtitle language on Jellyfin 12
-- 2026-09-23 — chore(skills): Don't let a refactor hide a fix from the PR title
-- 2026-09-23 — ci: Gate `creditRowKinds()` against the `PersonKind` enum
 
 ## Open followups
 
