@@ -1250,6 +1250,8 @@ describe('formatRunSummary', () => {
       }),
     );
     expect(lines.join('\n')).toMatch(/crossed the top of the hour \(14:52→15:04 UTC\)/);
+    expect(lines.join('\n')).toContain('user settings and watch history');
+    expect(lines.join('\n')).toContain('re-run it inside one hour before debugging it');
   });
 
   it('tags each line with the RUN KIND, not with the RTA harness', () => {

@@ -79,6 +79,7 @@ import { withTimeout } from './timeout.js';
 import {
   crossesHourBoundary,
   FAILURE_KINDS,
+  HOURLY_RESET_NOTE,
   isUnknownKind,
   recordFailure,
   runIsCumulative,
@@ -463,7 +464,7 @@ export async function diagnosedError(message, { kind, label, waitedMs, observed 
     afterHourBoundary,
   });
   const reset = afterHourBoundary
-    ? '\n        ↳ this run has crossed the top of the hour — the demo server resets then, changing its own content and any state this run created through the app'
+    ? `\n        ↳ this run has crossed the top of the hour: ${HOURLY_RESET_NOTE}`
     : '';
   return new Error(`${message}\n${formatState(state, observed)}${reset}`);
 }
