@@ -1292,8 +1292,11 @@ async function focusGridTile(target) {
 export async function focusDetailButton(buttonId, { maxButtons = 12, timeout = 8000 } = {}) {
   const ids = [];
   let targetIndex = -1;
+  // Read from the ACTIVE view: a covered ItemDetails stays in the tree (every route
+  // suspends with "show"), and several components declare a `buttons` node, so a
+  // scene-rooted `#buttons` can resolve to a screen the viewer is not on.
   for (let i = 0; i < maxButtons; i++) {
-    const id = await getVal(`#buttons.${i}.id`);
+    const id = await getActiveVal(`#buttons.${i}.id`);
     if (id === undefined) break;
     ids.push(id);
     if (id === buttonId) {
@@ -1328,7 +1331,7 @@ export async function focusDetailButton(buttonId, { maxButtons = 12, timeout = 8
     interval: 300,
     action: walkFocusInto(ecp.Key.Down, '#buttons'),
   });
-  const groupIndex = await getVal('#buttons.buttonFocused');
+  const groupIndex = await getActiveVal('#buttons.buttonFocused');
   if (typeof groupIndex !== 'number') {
     throw await diagnosedError(`cannot read #buttons.buttonFocused (got ${groupIndex})`, {
       kind: FAILURE_KINDS.DETAIL_BUTTON_NOT_FOUND,
@@ -1347,7 +1350,7 @@ export async function focusDetailButton(buttonId, { maxButtons = 12, timeout = 8
   // this: the group has settled by then and focus reads as the wanted button
   // whether or not that is where a press would have landed.
   const pressedOn = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-  const pressedIndex = await getVal('#buttons.buttonFocused');
+  const pressedIndex = await getActiveVal('#buttons.buttonFocused');
   return { pressedOn, pressedIndex, wantedIndex: targetIndex };
 }
 

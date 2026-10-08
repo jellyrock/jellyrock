@@ -66,6 +66,7 @@ end function
 ' Router: a previously-suspended view has returned to the top of the stack (goBack
 ' uncovered it). Re-publish it as the active routed view, then restore via onScreenShown.
 function onViewResume(_params = {} as object) as dynamic
+  m.isCoverPending = false
   m.global.activeRoutedView = m.top
   m.isShowFocusPending = true
   onScreenShown()
@@ -74,11 +75,26 @@ end function
 
 ' Router: a new view is being pushed on top of this one (still alive).
 ' Save focus the same way SceneManager.pushScene does so it can be restored.
+'
+' The view is still on screen here: every route suspends with "show", and the incoming view
+' opens several message-loop turns later. So onScreenHidden waits for hideCovered, which
+' JRScene calls in the step the incoming view opens; anything it changes on screen then
+' changes in the same render pass as the swap.
 function onViewSuspend(_params = {} as object) as dynamic
   saveLastFocus()
-  onScreenHidden()
+  m.isCoverPending = true
   return promises.resolve(invalid)
 end function
+
+' JRScene's screen swap: the view that covers this one has opened. Hide this view and, if the
+' router suspended it, run onScreenHidden. A view the router CLOSED instead (back, a cleared
+' stack) already ran onScreenHidden in beforeViewClose, so it is only hidden.
+sub hideCovered()
+  m.top.visible = false
+  if m.isCoverPending <> true then return
+  m.isCoverPending = false
+  onScreenHidden()
+end sub
 
 ' Router: this view is about to be permanently destroyed.
 function beforeViewClose(_params = {} as object) as dynamic

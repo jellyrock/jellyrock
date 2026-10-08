@@ -44,6 +44,9 @@ function begin(kind as string, label as string) as object
     launchedFrom.opacity = 0
     entry.hidden = launchedFrom
     holdFocus(launchedFrom)
+    ' The overhang goes with the screen, in the same render pass: it shows the screen's parts,
+    ' and the player this start goes to hides it anyway.
+    setOverhangShown(false)
   end if
   m.waits[key] = entry
   promises.onFinally(promise, sub(ctx as object)
@@ -80,7 +83,10 @@ sub endWait(key as string)
   if not isValid(entry) then return
   m.waits.delete(key)
   if isValid(entry.hidden) and not appWaits.hides(m.waits, entry.hidden) then entry.hidden.opacity = 1
-  if appWaits.hiding(m.waits).count() = 0 then releaseFocus()
+  if appWaits.hiding(m.waits).count() = 0
+    setOverhangShown(true)
+    releaseFocus()
+  end if
   if entry.promise.promiseState = "rejected"
     reason = ""
     result = entry.promise.promiseResult
@@ -89,6 +95,20 @@ sub endWait(key as string)
   end if
   armLimit()
   publish()
+end sub
+
+' Shows or hides the scene's overhang while a start hides a screen. By opacity, for the reason
+' the screen is: JRScene's overhang controller owns the overhang's `visible` (a player hides it),
+' so neither can undo the other. Looked up when first needed: the overhang is declared after
+' this host in JRScene.xml.
+sub setOverhangShown(shown as boolean)
+  if not isValid(m.overhang) then m.overhang = m.top.getScene().findNode("overhang")
+  if not isValid(m.overhang) then return
+  if shown
+    m.overhang.opacity = 1
+  else
+    m.overhang.opacity = 0
+  end if
 end sub
 
 ' Back reached JRScene's arbiter with no navigation in flight: cancel every wait that hides the

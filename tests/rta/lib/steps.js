@@ -715,8 +715,10 @@ export function walkFocusInto(key, containerId) {
  * **It does not explain why focus left the search view, and it is not known to fix that
  * run.** Two mechanisms were proposed for the 2026-09-09 failure and BOTH were disproved
  * rather than left hanging: a stale suspended `SearchResults` satisfying the results gate
- * is impossible, because `/search` is routed `suspendMode: "detach"`
- * (`components/JRScene.bs`) so a covered SearchResults leaves the tree entirely; and the
+ * was impossible, because `/search` was then routed `suspendMode: "detach"`
+ * (`components/JRScene.bs`) so a covered SearchResults left the tree entirely (since
+ * 2026-10-07 every route suspends with "show", so a covered view stays in the tree, hidden;
+ * see docs/architecture/navigation.md "The screen swap"); and the
  * dump's `rowItemFocused: [0,1]` is NOT evidence the walk moved Home's index, because
  * `rowItemFocused` retains its last value while a list is unfocused — the very property
  * `scrollFocus` is written around.
