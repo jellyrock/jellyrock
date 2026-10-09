@@ -7,7 +7,7 @@ related-files:
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-09-21
+last-reviewed: 2026-10-09
 ---
 
 # Testing
@@ -64,6 +64,7 @@ end namespace
 `tests.BaseTestSuite` (in `tests/source/BaseTestSuite.spec.bs`) extends `rooibos.BaseTestSuite` and provides:
 
 - **`m.global` initialization** — pulls a real global node from the test scene, populates app/device/server/user content nodes, loads en_US translations. Rooibos runs `setup()` once per **`@describe` group**, not once per suite, so this is per-test-group work: the server/user mock data and en_US translations are re-applied for every group (that re-application is what isolates groups from each other), while `setGlobals()` runs only once per test session — its `m.global.addFields` writes leave existing fields untouched, so repeating it only built nodes to discard
+- **Device reset**: `m.global.device` is put back to the fields `setGlobals()` gave it before every test (`resetDevice()`), so a test's `loadTestDevice()` or direct write never reaches the next test or suite. A device fixture goes in `beforeEach()`, not `setup()`
 - **Registry teardown** — between tests, clears `test-*` sections so each test starts fresh (only if `m.needsRegistrySetup = true`)
 - **Test mode flag** — sections start with `test-` so production migration code skips real user data
 
