@@ -1058,6 +1058,18 @@
       ]
     },
     {
+      "name": "Fields",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Ids",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
       "name": "ImageTypeLimit",
       "sourceFiles": [
         "source/api/ApiClient.bs"
@@ -3288,14 +3300,14 @@
     },
     "counts": {
       "endpoints": 78,
-      "requestFields": 47,
+      "requestFields": 49,
       "responseFields": 223,
       "unresolvedEndpointSinks": 2
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 393
+        "line": 395
       },
       {
         "sourceFile": "source/utils/subtitles.bs",
