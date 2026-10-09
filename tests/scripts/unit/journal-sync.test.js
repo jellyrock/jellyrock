@@ -183,10 +183,10 @@ describe('applyShipEdit', () => {
     const r = applyShipEdit(before, { prTitle: 'feat: ship widget', today: '2026-05-10' });
     expect(r.changed).toBe(true);
     expect(r.idempotent).toBe(false);
-    expect(r.content).toContain('- 2026-05-10 — feat: ship widget');
+    expect(r.content).toContain('- 2026-05-10: feat: ship widget');
     expect(r.content).toContain('last-updated: 2026-05-10');
     // Older shipment still there, after the new entry
-    const newIdx = r.content.indexOf('- 2026-05-10 — feat: ship widget');
+    const newIdx = r.content.indexOf('- 2026-05-10: feat: ship widget');
     const oldIdx = r.content.indexOf('- 2026-05-01 — older shipment');
     // "Still there" is the claim, so it is asserted rather than implied: `indexOf`
     // answers -1 for a pruned bullet, and -1 is less than every real index, so the
@@ -204,7 +204,7 @@ describe('applyShipEdit', () => {
     });
     // today 2026-05-21, 14-day window → cutoff 2026-05-07: recent kept, ancient pruned.
     const r = applyShipEdit(before, { prTitle: 'feat: new thing', today: '2026-05-21' });
-    expect(r.content).toContain('- 2026-05-21 — feat: new thing'); // just-prepended, always kept
+    expect(r.content).toContain('- 2026-05-21: feat: new thing'); // just-prepended, always kept
     expect(r.content).toContain('- 2026-05-20 — recent shipment');
     expect(r.content).not.toContain('ancient shipment');
   });
@@ -266,10 +266,29 @@ describe('applyShipEdit', () => {
     const r2 = applyShipEdit(r1.content, { prTitle: 'fix: beta crash', today: '2026-05-10' });
     expect(r2.changed).toBe(true);
     expect(r2.idempotent).toBe(false);
-    expect(r2.content).toContain('- 2026-05-10 — fix: beta crash');
-    expect(r2.content).toContain('- 2026-05-10 — feat: alpha widget');
+    expect(r2.content).toContain('- 2026-05-10: fix: beta crash');
+    expect(r2.content).toContain('- 2026-05-10: feat: alpha widget');
     // Newest (r2) appears before older (r1) in the file
     expect(r2.content.indexOf('beta crash')).toBeLessThan(r2.content.indexOf('alpha widget'));
+  });
+
+  it('recognizes a today bullet in the new colon form as already written', () => {
+    const before = progressTemplate({
+      running: '',
+      shipped: ['2026-05-10: feat: ship widget'],
+    });
+    const r = applyShipEdit(before, { prTitle: 'feat: ship widget', today: '2026-05-10' });
+    expect(r.idempotent).toBe(true);
+    expect(r.content).toBe(before);
+  });
+
+  it('recognizes a today bullet in the old em-dash form as already written', () => {
+    const before = progressTemplate({
+      running: '',
+      shipped: ['2026-05-10 \u2014 feat: ship widget'],
+    });
+    const r = applyShipEdit(before, { prTitle: 'feat: ship widget', today: '2026-05-10' });
+    expect(r.idempotent).toBe(true);
   });
 
   it('throws on empty content (refuses to write blind)', () => {
@@ -288,6 +307,24 @@ describe('pruneRecentlyShipped', () => {
     expect(out).toContain('- 2026-05-07 — keep edge');
     expect(out).not.toContain('drop old');
     expect(out).toContain('Newest first'); // intro line preserved
+  });
+
+  it('prunes by date for both the old em-dash form and the new colon form', () => {
+    const before = progressTemplate({
+      shipped: [
+        '2026-05-20 \u2014 keep old form',
+        '2026-05-20: keep new form',
+        '2026-05-07: keep new form edge',
+        '2026-05-06 \u2014 drop old form',
+        '2026-05-06: drop new form',
+      ],
+    });
+    const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+    expect(out).toContain('- 2026-05-20 \u2014 keep old form');
+    expect(out).toContain('- 2026-05-20: keep new form');
+    expect(out).toContain('- 2026-05-07: keep new form edge');
+    expect(out).not.toContain('drop old form');
+    expect(out).not.toContain('drop new form');
   });
 
   it('only prunes the Recently shipped section — dated bullets elsewhere survive', () => {
@@ -349,7 +386,7 @@ last-updated: 2026-05-01
       );
       const r = applyShipEdit(before, { prTitle: 'feat: new thing', today: '2026-05-21' });
       expect(shippedSection(r.content)).toBe(
-        `\n${INTRO}\n\n- 2026-05-21 — feat: new thing\n- 2026-05-19 — hand added\n- 2026-05-18 — older\n`,
+        `\n${INTRO}\n\n- 2026-05-21: feat: new thing\n- 2026-05-19 — hand added\n- 2026-05-18 — older\n`,
       );
     });
 
@@ -402,7 +439,7 @@ describe('CLI: ship', () => {
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^shipped:/);
     const after = readFileSync(join(fix.dir, 'docs/progress.md'), 'utf8');
-    expect(after).toContain(`- ${TODAY} — feat(catchup): auto-maintain signals`);
+    expect(after).toContain(`- ${TODAY}: feat(catchup): auto-maintain signals`);
     expect(after).toContain(`last-updated: ${TODAY}`);
   });
 
@@ -466,7 +503,7 @@ describe('CLI: ship', () => {
       { cwd: fix.dir },
     );
     expect(exitCode).toBe(0);
-    expect(stdout).toContain(`- ${TODAY} — feat: dry run check`);
+    expect(stdout).toContain(`- ${TODAY}: feat: dry run check`);
     // File on disk is untouched
     expect(readFileSync(join(fix.dir, 'docs/progress.md'), 'utf8')).toBe(before);
   });
@@ -547,7 +584,7 @@ describe('checkBulletAgainstDictionary', () => {
       runner,
     });
     expect(result.ok).toBe(true);
-    expect(captured).toBe('- 2026-05-22 — feat(catchup): auto-maintain signals\n');
+    expect(captured).toBe('- 2026-05-22: feat(catchup): auto-maintain signals\n');
   });
 
   it('surfaces runner failure verbatim (the caller writes the user message)', () => {

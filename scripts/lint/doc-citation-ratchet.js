@@ -71,6 +71,26 @@
 //
 // Issue #959 drained the grandfathered 55 to an empty baseline, so every file is
 // now held at zero.
+//
+// THE HOUSE VOICE (second ratchet, same walk)
+// -------------------------------------------
+// The same per-file ratchet holds the mechanical rules of docs/dev/writing-style.md:
+// em dashes, filler words, capitals used for emphasis, `→` outside a bold UI path,
+// and "e.g." / "i.e.". Each file has a count per category in
+// `.doc-voice-baseline.json`; a file absent from it is allowed zero, so a new doc
+// starts clean while the old ones are rewritten phase by phase.
+//
+// Its scope is wider than the citation gate's: every markdown file, including the
+// README, CONTRIBUTING, `.github/` and append-only records (a ratchet never forces
+// a rewrite, it only stops new hits). Out of scope: CHANGELOG.md (CI writes it from
+// PR titles), `locale/` (translations) and `components/vendor/` (third-party).
+// Inline code, link targets, URLs and a table cell holding only `—` (the "none"
+// marker) are stripped as well as fenced blocks: none of them is prose.
+//
+// Two flags keep the baseline honest. `--init-voice-baseline` writes the current
+// counts, and refuses when a baseline exists. `--lower-voice-baseline` lowers each
+// allowance to the current count and never raises one, so a rewrite locks its gain
+// in without hand-editing the file.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -78,6 +98,26 @@ import path from 'node:path';
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const BASELINE_REL = '.doc-citation-baseline.json';
 const JSON_MODE = process.argv.includes('--json');
+const VOICE_BASELINE_REL = '.doc-voice-baseline.json';
+const INIT_VOICE = process.argv.includes('--init-voice-baseline');
+const LOWER_VOICE = process.argv.includes('--lower-voice-baseline');
+
+// The house-voice categories (docs/dev/writing-style.md). Each regex runs over prose
+// with code, link targets and URLs already removed; `prose-arrow` also has bold
+// removed first, because a bold UI path (**Settings → Playback**) is the allowed use.
+const VOICE_RULES = [
+  { id: 'em-dash', re: /—/g },
+  {
+    id: 'filler',
+    re: /\b(?:load-bearing|deliberately|genuinely|crucially|simply|just|note that)\b/gi,
+  },
+  { id: 'caps-emphasis', re: /(?<![\w-])(?:NOT|ONLY|NEVER|MUST|ALWAYS|EVERY)(?![\w-])/g },
+  { id: 'prose-arrow', re: /→/g, withoutBold: true },
+  { id: 'latin-abbrev', re: /\b(?:e\.g\.|i\.e\.)/gi },
+];
+
+// Out of the voice gate's scope (see the header): generated, translated or vendored.
+const VOICE_EXCLUDED_RELS = ['CHANGELOG.md', 'locale', 'components/vendor'];
 
 // A path-looking token ending in a code extension, then `:digits`, optionally a
 // `-digits` range. Leading char class avoids matching mid-word.
@@ -124,9 +164,14 @@ function stripFencedBlocks(text) {
     .join('\n');
 }
 
-/** Every tracked markdown file this gate governs. */
+/**
+ * Every tracked markdown file either gate governs, as `{ rel, citation, voice }`:
+ * whether the line-citation ratchet and the voice ratchet each apply to it.
+ */
 function collectDocs(rootDir) {
   const found = [];
+  const voiceExcluded = (rel) =>
+    VOICE_EXCLUDED_RELS.some((x) => rel === x || rel.startsWith(`${x}/`));
   function walk(dir, insideClaude) {
     let entries;
     try {
@@ -138,9 +183,8 @@ function collectDocs(rootDir) {
       const full = path.join(dir, e.name);
       if (e.isDirectory()) {
         if (SKIP_DIRS.has(e.name)) continue;
-        // `.claude` is the one dot-dir in scope; skip the rest (.github etc. hold
-        // no prose this gate governs).
-        if (e.name.startsWith('.') && e.name !== '.claude') continue;
+        // `.claude` and `.github` are the dot-dirs that hold prose; skip the rest.
+        if (e.name.startsWith('.') && e.name !== '.claude' && e.name !== '.github') continue;
         const rel = path.relative(rootDir, full).split(path.sep).join('/');
         if (EPHEMERAL_RELS.includes(rel)) continue;
         // A directory with its own `.git` (a file for a worktree, a directory for a
@@ -150,15 +194,20 @@ function collectDocs(rootDir) {
         walk(full, insideClaude || e.name === '.claude');
         continue;
       }
-      if (!e.name.endsWith('.md') || SKIP_FILES.has(e.name)) continue;
+      if (!e.name.endsWith('.md')) continue;
       const rel = path.relative(rootDir, full).split(path.sep).join('/');
-      const governed =
-        rel.startsWith('docs/') || insideClaude || e.name === 'CLAUDE.md' || e.name === 'AGENTS.md';
-      if (governed) found.push(rel);
+      const citation =
+        !SKIP_FILES.has(e.name) &&
+        (rel.startsWith('docs/') ||
+          insideClaude ||
+          e.name === 'CLAUDE.md' ||
+          e.name === 'AGENTS.md');
+      const voice = !voiceExcluded(rel);
+      if (citation || voice) found.push({ rel, citation, voice });
     }
   }
   walk(rootDir, false);
-  return found.sort();
+  return found.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 }
 
 function countCitations(relPath) {
@@ -167,24 +216,112 @@ function countCitations(relPath) {
   return [...(prose.match(CITATION_RE) ?? []), ...(prose.match(SHORTHAND_RE) ?? [])];
 }
 
-const baselinePath = path.join(ROOT_DIR, BASELINE_REL);
-let baseline = {};
-if (fs.existsSync(baselinePath)) {
-  try {
-    baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
-  } catch (e) {
-    console.error(`doc-citation-ratchet: ${BASELINE_REL} is not valid JSON — ${e.message}`);
+/** Prose only: fenced blocks, inline code, link targets and URLs removed. */
+function voiceProse(text) {
+  return (
+    stripFencedBlocks(text)
+      .replace(/``[^`]*``/g, '')
+      .replace(/`[^`\n]*`/g, '')
+      .replace(/\]\([^)]*\)/g, ']')
+      .replace(/^\s*\[[^\]]+\]:\s*\S+.*$/gm, '')
+      .replace(/<https?:\/\/[^>]*>/g, '')
+      .replace(/https?:\/\/\S+/g, '')
+      // A table cell holding only a dash is the table's "none" marker, not prose.
+      .replace(/(?<=\|)[ \t]*—[ \t]*(?=\|)/g, ' ')
+  );
+}
+
+/** `{ category: [hits] }` for one file, only the categories with hits. */
+function countVoice(relPath) {
+  const prose = voiceProse(fs.readFileSync(path.join(ROOT_DIR, relPath), 'utf8'));
+  const withoutBold = prose.replace(/\*\*[^*\n]+\*\*/g, '');
+  const hits = {};
+  for (const rule of VOICE_RULES) {
+    const found = (rule.withoutBold ? withoutBold : prose).match(rule.re);
+    if (found) hits[rule.id] = found;
+  }
+  return hits;
+}
+
+/** Read a JSON baseline, or exit 1 with a clear message. */
+function readBaseline(rel, missingHint) {
+  const abs = path.join(ROOT_DIR, rel);
+  if (!fs.existsSync(abs)) {
+    console.error(`doc-citation-ratchet: missing baseline file ${rel}${missingHint}`);
     process.exit(1);
   }
-} else {
-  console.error(`doc-citation-ratchet: missing baseline file ${BASELINE_REL}`);
-  process.exit(1);
+  try {
+    return JSON.parse(fs.readFileSync(abs, 'utf8'));
+  } catch (e) {
+    console.error(`doc-citation-ratchet: ${rel} is not valid JSON — ${e.message}`);
+    process.exit(1);
+  }
+}
+
+const sortKeys = (obj) =>
+  Object.fromEntries(Object.entries(obj).sort(([a], [b]) => (a < b ? -1 : 1)));
+const writeJson = (rel, obj) =>
+  fs.writeFileSync(path.join(ROOT_DIR, rel), JSON.stringify(obj, null, 2) + '\n');
+
+const docs = collectDocs(ROOT_DIR);
+
+const voiceActual = {};
+for (const d of docs) {
+  if (!d.voice) continue;
+  const hits = countVoice(d.rel);
+  if (Object.keys(hits).length) voiceActual[d.rel] = hits;
+}
+const voiceCounts = (hits) =>
+  Object.fromEntries(Object.entries(hits).map(([cat, h]) => [cat, h.length]));
+
+if (INIT_VOICE) {
+  if (fs.existsSync(path.join(ROOT_DIR, VOICE_BASELINE_REL))) {
+    console.error(
+      `doc-citation-ratchet: ${VOICE_BASELINE_REL} already exists. --init-voice-baseline only ` +
+        `creates it; use --lower-voice-baseline to lock in a gain.`,
+    );
+    process.exit(1);
+  }
+  const init = {};
+  for (const [rel, hits] of Object.entries(voiceActual)) init[rel] = sortKeys(voiceCounts(hits));
+  writeJson(VOICE_BASELINE_REL, sortKeys(init));
+  console.log(
+    `doc-citation-ratchet: wrote ${VOICE_BASELINE_REL} for ${Object.keys(init).length} file(s).`,
+  );
+  process.exit(0);
+}
+
+const baseline = readBaseline(BASELINE_REL, '');
+let voiceBaseline = readBaseline(
+  VOICE_BASELINE_REL,
+  '. Create it once with `node scripts/lint/doc-citation-ratchet.js --init-voice-baseline`.',
+);
+
+if (LOWER_VOICE) {
+  const lowered = {};
+  let changed = 0;
+  for (const [rel, allowances] of Object.entries(voiceBaseline)) {
+    const now = voiceActual[rel] ? voiceCounts(voiceActual[rel]) : {};
+    const kept = {};
+    for (const [cat, allowed] of Object.entries(allowances)) {
+      const next = Math.min(allowed, now[cat] ?? 0);
+      if (next !== allowed) changed++;
+      if (next > 0) kept[cat] = next;
+    }
+    if (Object.keys(kept).length) lowered[rel] = kept;
+  }
+  writeJson(VOICE_BASELINE_REL, sortKeys(lowered));
+  console.log(
+    `doc-citation-ratchet: lowered ${changed} voice allowance(s) in ${VOICE_BASELINE_REL}.`,
+  );
+  voiceBaseline = lowered;
 }
 
 const actual = {};
-for (const rel of collectDocs(ROOT_DIR)) {
-  const hits = countCitations(rel);
-  if (hits.length) actual[rel] = hits;
+for (const d of docs) {
+  if (!d.citation) continue;
+  const hits = countCitations(d.rel);
+  if (hits.length) actual[d.rel] = hits;
 }
 
 const over = [];
@@ -197,12 +334,50 @@ for (const rel of new Set([...Object.keys(baseline), ...Object.keys(actual)])) {
   else if (hits.length < allowed) under.push({ file: rel, allowed, count: hits.length });
 }
 
+const voiceOver = [];
+const voiceUnder = [];
+for (const rel of new Set([...Object.keys(voiceBaseline), ...Object.keys(voiceActual)])) {
+  const allowances = voiceBaseline[rel] ?? {};
+  const hits = voiceActual[rel] ?? {};
+  for (const cat of new Set([...Object.keys(allowances), ...Object.keys(hits)])) {
+    const allowed = allowances[cat] ?? 0;
+    const found = hits[cat] ?? [];
+    if (found.length > allowed)
+      voiceOver.push({
+        file: rel,
+        category: cat,
+        allowed,
+        count: found.length,
+        samples: found.slice(0, 4),
+      });
+    else if (found.length < allowed)
+      voiceUnder.push({ file: rel, category: cat, allowed, count: found.length });
+  }
+}
+
+const sum = (obj) => Object.values(obj).reduce((n, v) => n + v, 0);
 const total = Object.values(actual).reduce((n, h) => n + h.length, 0);
-const allowedTotal = Object.values(baseline).reduce((n, v) => n + v, 0);
+const allowedTotal = sum(baseline);
+const voiceTotal = Object.values(voiceActual).reduce((n, h) => n + sum(voiceCounts(h)), 0);
+const voiceAllowedTotal = Object.values(voiceBaseline).reduce((n, a) => n + sum(a), 0);
+const failed = over.length > 0 || voiceOver.length > 0;
 
 if (JSON_MODE) {
-  process.stdout.write(JSON.stringify({ total, allowedTotal, over, under }) + '\n');
-  process.exit(over.length > 0 ? 1 : 0);
+  process.stdout.write(
+    JSON.stringify({
+      total,
+      allowedTotal,
+      over,
+      under,
+      voice: {
+        total: voiceTotal,
+        allowedTotal: voiceAllowedTotal,
+        over: voiceOver,
+        under: voiceUnder,
+      },
+    }) + '\n',
+  );
+  process.exit(failed ? 1 : 0);
 }
 
 if (over.length > 0) {
@@ -219,8 +394,25 @@ if (over.length > 0) {
     console.error(`  ${o.file}: ${o.count} (allowed ${o.allowed}) — e.g. ${o.samples.join(', ')}`);
   }
   console.error('');
-  process.exit(1);
 }
+
+if (voiceOver.length > 0) {
+  console.error(
+    `doc-citation-ratchet: ${voiceOver.length} house-voice count(s) went up.\n\n` +
+      `Reword the new text; never raise the baseline. em-dash: use a period, comma,\n` +
+      `colon or parentheses. filler: cut the word. caps-emphasis: restructure the\n` +
+      `sentence instead of shouting. prose-arrow: say what happens, or bold the UI\n` +
+      `path. latin-abbrev: write "for example" or "that is".\n` +
+      `See docs/dev/writing-style.md.\n`,
+  );
+  for (const o of voiceOver) {
+    const shown = [...new Set(o.samples)].map((x) => `"${x}"`).join(', ');
+    console.error(`  ${o.file}: ${o.category} ${o.count} (allowed ${o.allowed}): ${shown}`);
+  }
+  console.error('');
+}
+
+if (failed) process.exit(1);
 
 if (under.length > 0) {
   console.error(
@@ -235,10 +427,17 @@ if (under.length > 0) {
     console.error(line);
   }
   console.error('');
-  process.exit(0);
+}
+
+if (voiceUnder.length > 0) {
+  console.error(
+    `doc-citation-ratchet: ${voiceUnder.length} house-voice count(s) under the baseline. ` +
+      `Lock the gain in:\n  node scripts/lint/doc-citation-ratchet.js --lower-voice-baseline\n`,
+  );
 }
 
 console.log(
-  `doc-citation-ratchet: OK — ${total} line-number citation(s) in tracked docs, at the committed baseline.`,
+  `doc-citation-ratchet: OK — ${total} line-number citation(s), ${voiceTotal} house-voice ` +
+    `hit(s) in tracked docs, within the committed baselines.`,
 );
 process.exit(0);

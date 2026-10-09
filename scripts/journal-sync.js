@@ -6,7 +6,7 @@
 // tech-debt, followups) stay on the user-driven /pr → /log path.
 //
 // What it does:
-//   1. Prepends "- YYYY-MM-DD — <pr-title>" to ## Recently shipped.
+//   1. Prepends "- YYYY-MM-DD: <pr-title>" to ## Recently shipped.
 //   2. Clears ## Currently running when its text overlaps the PR title
 //      (>=2 shared content tokens). Otherwise leaves the cursor alone.
 //   3. Bumps frontmatter last-updated: to today.
@@ -286,7 +286,7 @@ export function applyShipEdit(content, { prTitle, today }) {
   //    which puts the intro back on top and the newest bullet directly under it.
   let next = content.replace(
     /(##\s+Recently shipped[^\n]*\n)/,
-    (_match, header) => `${header}\n- ${today} — ${prTitle}\n`,
+    (_match, header) => `${header}\n- ${today}: ${prTitle}\n`,
   );
 
   // 2. Clear Currently running if appropriate. `[^\n]*\n` after the heading
@@ -335,11 +335,12 @@ function isoDaysBefore(isoDate, days) {
   return d.toISOString().slice(0, 10);
 }
 
-// Removes "- YYYY-MM-DD — …" bullets older than `maxAgeDays` from the Recently
-// shipped section ONLY, then rebuilds the section's shape (see below). Scoped by the
-// section regex so dated bullets elsewhere (e.g. Open followups) are untouched. ISO
-// dates compare lexically = chrono, so a string >= is a correct date comparison.
-// Bullets within the window and any non-bullet lines are kept. Exported for tests.
+// Removes "- YYYY-MM-DD: …" (or the older "- YYYY-MM-DD — …") bullets older than
+// `maxAgeDays` from the Recently shipped section ONLY, then rebuilds the section's
+// shape (see below). Scoped by the section regex so dated bullets elsewhere (e.g. Open
+// followups) are untouched. ISO dates compare lexically = chrono, so a string >= is a
+// correct date comparison. Bullets within the window and any non-bullet lines are
+// kept. Exported for tests.
 //
 // The rebuilt shape is: heading, blank, the "Newest first" intro wherever it was
 // found, blank, everything else in its existing order, and one blank before the next
@@ -358,7 +359,7 @@ export function pruneRecentlyShipped(content, today, maxAgeDays) {
         .split('\n')
         .filter((line) => line.trim() !== '')
         .filter((line) => {
-          const m = line.match(/^- (\d{4}-\d{2}-\d{2}) /);
+          const m = line.match(/^- (\d{4}-\d{2}-\d{2})\b/);
           return !m || m[1] >= cutoff;
         });
       const introAt = lines.findIndex((line) => line.startsWith('Newest first'));
@@ -439,7 +440,7 @@ export function defaultSpellRunner(content, repoRoot) {
  * would lint cleanly. Pure over its `runner` arg.
  */
 export function checkBulletAgainstDictionary({ today, prTitle, repoRoot, runner }) {
-  const bullet = `- ${today} — ${prTitle}\n`;
+  const bullet = `- ${today}: ${prTitle}\n`;
   return runner(bullet, repoRoot);
 }
 

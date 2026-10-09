@@ -1918,6 +1918,16 @@ Home's Next Up row shows a series only once a regular (non-special) episode of i
 
 Ruled out: **Two rounds after Next Up** (lookups, then checks): +776 ms. **Sending the lookups ahead of queued requests:** no gain (p = 0.68); nothing was queued when they went out. **Leaner lookup requests, without the fields the request builder adds:** −67 ms at n = 20, under the ~120 ms the method can detect. **Showing what the server returns**, as `jellyfin-web` and `jellyfin-androidtv` do. It offers an episode before the one the user is on, and the row then depends on the server version. **One `hasWatchedRegularEpisode()` request per series:** exact, but N requests on every Home load. **Series counts alone:** they include specials, so a series with only a special played would keep its first episode. **Dropping the `DisableFirstEpisode` gate now that the client filters:** on 10.8–10.10 with Max Days off it would download every series' first episode only to discard them (39 items, about 60 KB, on a local 10.8.13). Re-evaluate if a Jellyfin release restores the filter on the server.
 
+## decision-id: router-focus-left-notice
+
+**date**: 2026-10-08
+**status**: accepted
+**related-files**: `components/JRScreen.bs`, `components/home/Home.bs`, `components/ItemGrid/BaseGridView.bs`, `components/video/PlayerHostView.bs`
+
+`JRScreen.handleFocus` ignores the focus-left notice from sgRouter: the call `sgrouter_onFocusChildChanged` makes with `routerFocused: false` when focus leaves the outlet for the overhang, a dialog or `AppWaitHost`. It still takes focus when a show is pending (set by `onViewOpen` / `onViewResume`) or when focus is stranded on the bare scene. Screens override `restoreScreenFocus`, never `handleFocus`, so the rule lives in one place. Before this, Home's late `setFocus` occasionally pulled focus back from the tab bar. Measured 2026-10-08 on a Stick 4K (Roku OS 15.3.4), 371 router focus calls over 7 RTA specs: the post-show call carried `routerFocused: false` 81 times, and it is what focuses the player while `AppWaitHost` holds focus (8 of 8); the notice recovered stranded focus 26 of 33 times.
+
+Ruled out: skipping every `routerFocused: false` call, which leaves the player unfocused; ignoring the notice outright, which drops the stranded-focus recovery; patching sgRouter, which forks upstream logic and needs `postinstall` reordered, since `ropm copy` runs before `patch-package`; and fixing Home only, which leaves every other screen exposed. Revisit when an sgRouter upgrade changes who calls `handleFocus` or the `navigationInProgress` guard.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

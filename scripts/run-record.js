@@ -597,6 +597,16 @@ export function runProvenance() {
  * Epoch-hour flooring is UTC, which is correct for a top-of-hour reset regardless
  * of the server's own timezone: `:00` is the same instant in every whole-hour zone.
  */
+/**
+ * What the hourly reset does, worded once for every message that warns about it: the run
+ * summary below and each failure's message (tests/rta/lib/diagnostics.js). The advice is the
+ * point: a failure past the reset is the known fixture problem, so nobody should debug it.
+ */
+export const HOURLY_RESET_NOTE =
+  'the demo server resets then, wiping its user settings and watch history (favorites ' +
+  'included) and any state this run created through the app. A failure past the reset is ' +
+  'the known fixture problem, not the app: re-run it inside one hour before debugging it';
+
 export function crossesHourBoundary(fromIso, toIso) {
   const a = Date.parse(fromIso);
   const b = Date.parse(toIso);
@@ -1051,11 +1061,7 @@ export function formatRunSummary(summary, file = failuresPath()) {
     );
   }
   if (flagHour) {
-    lines.push(
-      `${tag} this run crossed the top of the hour (${window}) — the demo server resets then, ` +
-        'changing its own content and any state this run created through the app, so a ' +
-        'mid-run failure here may be the fixture, not the app.',
-    );
+    lines.push(`${tag} this run crossed the top of the hour (${window}): ${HOURLY_RESET_NOTE}.`);
   }
   if (recoveries.length) {
     // Printed even on a PASSING run — that is the whole point. A recovery leaves no

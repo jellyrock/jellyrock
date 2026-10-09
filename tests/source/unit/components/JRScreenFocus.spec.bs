@@ -1,0 +1,106 @@
+namespace tests
+
+  ' JRScreen.handleFocus against the real component, mounted in the test scene: focus only moves
+  ' between nodes in the scene. The router's "focus left the outlet" notice must not steal focus
+  ' from another node, but must still recover a stranded focus.
+  @suite("JRScreen - handleFocus and the router's focus-left notice")
+  class JRScreenFocusTests extends tests.BaseTestSuite
+
+    private mountedIn as object
+    private screen as object
+    private child as object
+    private overlay as object
+    private previousView as object
+
+    ' beforeEach, not setup: every test moves focus (tests/CLAUDE.md).
+    protected override sub beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("activeRoutedView") then m.global.addField("activeRoutedView", "node", false)
+      m.previousView = m.global.activeRoutedView
+
+      m.mountedIn = m.top.getScene()
+      m.screen = CreateObject("roSGNode", "JRScreen")
+      m.child = m.screen.createChild("Group")
+      m.child.focusable = true
+      m.overlay = CreateObject("roSGNode", "Group")
+      m.overlay.focusable = true
+      m.mountedIn.appendChildren([m.screen, m.overlay])
+    end sub
+
+    protected override sub afterEach()
+      m.mountedIn.removeChildren([m.screen, m.overlay])
+      m.global.activeRoutedView = m.previousView
+      m.previousView = invalid
+      m.screen = invalid
+      m.child = invalid
+      m.overlay = invalid
+      m.mountedIn = invalid
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("handleFocus — the focus-left notice (routerFocused false)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves the focus on another node and reports it did not take it")
+    function _()
+      m.overlay.setFocus(true)
+      taken = m.screen.callFunc("handleFocus", { routerFocused: false })
+      m.assertFalse(taken)
+      m.assertTrue(m.overlay.hasFocus())
+    end function
+
+    @it("takes the focus when it is stranded on the scene")
+    function _()
+      m.mountedIn.setFocus(true)
+      taken = m.screen.callFunc("handleFocus", { routerFocused: false })
+      m.assertTrue(taken)
+      m.assertTrue(m.screen.isInFocusChain())
+      m.assertFalse(m.mountedIn.hasFocus())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("handleFocus — right after the view is shown")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes the focus after onViewOpen, once (the player case)")
+    function _()
+      m.screen.callFunc("onViewOpen", {})
+      m.overlay.setFocus(true)
+      m.assertTrue(m.screen.callFunc("handleFocus", { routerFocused: false }))
+      m.assertTrue(m.screen.isInFocusChain())
+
+      m.overlay.setFocus(true)
+      m.assertFalse(m.screen.callFunc("handleFocus", { routerFocused: false }))
+      m.assertTrue(m.overlay.hasFocus())
+    end function
+
+    @it("takes the focus after onViewResume")
+    function _()
+      m.screen.callFunc("onViewResume", {})
+      m.overlay.setFocus(true)
+      m.assertTrue(m.screen.callFunc("handleFocus", { routerFocused: false }))
+      m.assertTrue(m.screen.isInFocusChain())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("handleFocus — callers that ask for the focus")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes the focus when routerFocused is absent (AppWaitHost.releaseFocus)")
+    function _()
+      m.overlay.setFocus(true)
+      m.assertTrue(m.screen.callFunc("handleFocus", {}))
+      m.assertTrue(m.screen.isInFocusChain())
+    end function
+
+    @it("takes the focus when routerFocused is true (the router's setFocus)")
+    function _()
+      m.overlay.setFocus(true)
+      m.assertTrue(m.screen.callFunc("handleFocus", { routerFocused: true }))
+      m.assertTrue(m.screen.isInFocusChain())
+    end function
+
+  end class
+
+end namespace

@@ -171,6 +171,129 @@ describe('catchup-state', () => {
     expect(p).toEqual(c);
   });
 
+  it('--typed prints the typed lines, then one === STATE === line, then the same JSON', () => {
+    fix = setupFixture();
+    mkdirSync(join(fix.dir, '.claude/handoffs'), { recursive: true });
+    writeFileSync(join(fix.dir, '.claude/handoffs/issue-1.md'), 'paused');
+    fix.commit('seed', {
+      'docs/signals-backlog.md':
+        `---\nlast-updated: ${TODAY}\n---\n# Signals\n\n## Watching\n\n` +
+        `### ahead: label\n\n- **latest_upstream**: 2.0.0\n- **latest_acknowledged**: 1.0.0\n- **last_checked**: ${TODAY}\n- **status**: watching\n`,
+    });
+    const { exitCode, stdout } = runAggregator(fix.dir, ['--typed', '--pretty']);
+    expect(exitCode).toBe(0);
+    const lines = stdout.split('\n');
+    const at = lines.indexOf('=== STATE ===');
+    expect(at).toBeGreaterThan(0);
+    expect(lines.slice(0, at)).toEqual([
+      'BANNER\tsignals-stale\tsignals-backlog: ahead needs attention (upstream 2.0.0, acknowledged 1.0.0)\treview the upstream change, then /done ahead',
+      'BANNER\thandoff-pending\tpending handoff .claude/handoffs/issue-1.md (0d old)\tread it and follow the skill that wrote it',
+    ]);
+    const typed = JSON.parse(lines.slice(at + 1).join('\n'));
+    const plain = JSON.parse(runAggregator(fix.dir, ['--pretty']).stdout);
+    delete typed.meta.generated_at;
+    delete plain.meta.generated_at;
+    expect(typed).toEqual(plain);
+  });
+
+  it('--typed asks gh for the run id and routes a failing run to /ci-triage with it; the JSON alone does not', () => {
+    fix = setupFixture();
+    fix.commit('seed');
+    // a gh stand-in: run list answers with the fields it was asked for, everything else is empty
+    const bin = join(fix.dir, '.stub-bin');
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, 'gh'),
+      '#!/bin/sh\ncase "$*" in\n' +
+        '  "run list --limit 100"*databaseId*) echo \'[{"headBranch":"main","status":"completed","conclusion":"failure","name":"Build","createdAt":"2026-10-06T10:00:00Z","event":"push","databaseId":37560200942}]\' ;;\n' +
+        '  "run list --limit 100"*) echo \'[{"headBranch":"main","status":"completed","conclusion":"failure","name":"Build","createdAt":"2026-10-06T10:00:00Z","event":"push"}]\' ;;\n' +
+        "  *) echo '[]' ;;\nesac\n",
+      { mode: 0o755 },
+    );
+    const env = { PATH: `${bin}:${process.env.PATH}` };
+    const typed = spawnScript(SCRIPT, ['--typed'], { cwd: fix.dir, env });
+    expect(typed.stdout.split('\n')).toContain(
+      'BANNER\tci-failing\tCI run "Build" failure (2026-10-06T10:00:00Z)\t/ci-triage 37560200942',
+    );
+    const plain = JSON.parse(spawnScript(SCRIPT, [], { cwd: fix.dir, env }).stdout);
+    expect(plain._errors).toEqual({});
+    expect(Object.keys(plain.ci.current_branch_runs[0]).sort()).toEqual([
+      'conclusion',
+      'createdAt',
+      'event',
+      'name',
+      'status',
+    ]);
+  });
+
+  // a gh stand-in for the unfiltered run list: answers `run list --limit 100` with the
+  // given runs, everything else (a --branch query included) with an empty list
+  function ghRunList(dir, runs) {
+    const bin = join(dir, '.stub-bin');
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, 'gh'),
+      `#!/bin/sh\ncase "$*" in\n  "run list --limit 100"*) echo '${JSON.stringify(runs)}' ;;\n  *) echo '[]' ;;\nesac\n`,
+      { mode: 0o755 },
+    );
+    return { PATH: `${bin}:${process.env.PATH}` };
+  }
+  const ghRun = (headBranch, name, createdAt) => ({
+    headBranch,
+    status: 'completed',
+    conclusion: 'success',
+    name,
+    createdAt,
+    event: 'push',
+  });
+
+  it('ci reads the 100 newest runs and keeps the first 3 on the checked-out branch, without --branch', () => {
+    fix = setupFixture();
+    fix.commit('seed');
+    const env = ghRunList(fix.dir, [
+      ghRun('feat/x', 'Other', '2026-10-07T12:00:00Z'),
+      ghRun('main', 'A', '2026-10-07T11:00:00Z'),
+      ghRun('main', 'B', '2026-10-07T10:00:00Z'),
+      ghRun('feat/x', 'Other', '2026-10-07T09:00:00Z'),
+      ghRun('main', 'C', '2026-10-07T08:00:00Z'),
+      ghRun('main', 'D', '2026-10-07T07:00:00Z'),
+    ]);
+    const { ci, _errors } = JSON.parse(spawnScript(SCRIPT, [], { cwd: fix.dir, env }).stdout);
+    expect(_errors).toEqual({});
+    expect(ci.current_branch_runs.map((r) => r.name)).toEqual(['A', 'B', 'C']);
+    expect(Object.keys(ci.current_branch_runs[0]).sort()).toEqual([
+      'conclusion',
+      'createdAt',
+      'event',
+      'name',
+      'status',
+    ]);
+    expect(ci.note).toBeUndefined();
+  });
+
+  it('a branch with no run among the 100 newest gets a note and an INFO line, never silence', () => {
+    fix = setupFixture();
+    fix.commit('seed');
+    const env = ghRunList(fix.dir, [ghRun('feat/x', 'Other', '2026-10-07T12:00:00Z')]);
+    const { stdout } = spawnScript(SCRIPT, ['--typed'], { cwd: fix.dir, env });
+    expect(stdout.split('\n')).toContain(
+      'INFO\tci-none\tno CI runs for main among the 100 newest runs',
+    );
+    const { ci } = JSON.parse(stdout.slice(stdout.indexOf('=== STATE ===') + 14));
+    expect(ci).toEqual({
+      current_branch_runs: [],
+      note: 'no CI runs for main among the 100 newest runs',
+    });
+  });
+
+  it('without --typed there are no typed lines and no STATE line', () => {
+    fix = setupFixture();
+    fix.commit('seed');
+    const { stdout } = runAggregator(fix.dir, ['--pretty']);
+    expect(stdout).not.toContain('=== STATE ===');
+    expect(() => JSON.parse(stdout)).not.toThrow();
+  });
+
   it('handoffs section returns empty pending + 0 pruned when dir absent', () => {
     fix = setupFixture();
     fix.commit('seed');

@@ -15,7 +15,7 @@ work come out consistently shaped.
 1. Fork and clone the repo.
 2. Install dependencies with `npm install`. (If npm scripts are disabled in your
    environment, run `npm run ropm` manually to pull the Roku dependencies.) You
-   need [`node`](https://nodejs.org) 16 or later.
+   need [`node`](https://nodejs.org) 22 (22.22.1 or later), 24, or 26 and later.
 3. Build the app with `npm run build` (or `npm run build:prod`).
 4. Lint everything with `npm run lint`, and run the Node-side tooling tests with
    `npm run test:scripts` — neither needs a device.
