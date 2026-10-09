@@ -10,283 +10,157 @@ related-files:
   - source/utils/tasks.bs
   - manifest
   - scripts/harden-prod-manifest.js
-last-reviewed: 2026-09-24
+last-reviewed: 2026-10-09
 ---
 
-# Debug Flags & Toast Testing
+# Debug flags and toast testing
 
-## Overview
+How to see an error path or a toast on a device without waiting for the real failure. There are two tools:
 
-JellyRock includes a compile-time debug system for testing error paths, toast notifications, and edge cases that are difficult to reproduce naturally. The system has **zero presence in production builds** — the BrighterScript compiler removes all debug code when `bs_const=debug=false`.
+- **`testToast`**, a field on the scene that shows any toast. It is in every build.
+- **Debug flags**, fields on `m.global.debug` that force a failure in one code path. They exist only in a debug build.
 
-**Two tools are available:**
+## Make a debug build
 
-1. **`testToast`** — Trigger any toast directly from the BrightScript console (always available)
-2. **`DebugFlags`** — Inject failures into specific code paths to test real error flows (debug builds only)
+1. In `manifest`, change `bs_const=debug=false` to `bs_const=debug=true`. Don't commit this change.
+2. Build and sideload with `make build-dev install` ([DEVGUIDE](DEVGUIDE.md)).
+3. In the console (`telnet <roku-ip> 8085`), look for `[DEBUG] DebugFlags node initialized on m.global.debug` at startup. It lists the flags.
 
----
+## Use the console
 
-## Quick Start
+The BrightScript console runs a command only while the app is paused. Press Ctrl-C in the console to pause it. The `Brightscript Debugger>` prompt appears, and `c` resumes the app.
 
-### Test a Toast Visually (Cheat Code — currently unreliable)
+Ctrl-C pauses whichever thread was running, so check the location the debugger prints:
 
-Enter **up, up, down, down** on the d-pad within 2 seconds. Each activation cycles through error → success → warning → info toast types. This requires a debug build (`bs_const=debug=true`).
+- **On the main thread** (`pkg:/source/main.brs`), `m.top` is invalid. `Main()` keeps the scene in `m.scene`.
+- **On a component thread** (any `pkg:/components/` path), reach the scene with `m.top.getScene()`.
 
-> **Known limitation (verified on-device 2026-07):** the sequence no longer registers on routed screens — Roku built-ins (`RowList`) consume key-releases for keys they handle, and the sgRouter `Outlet` consumes every release that bubbles out of a routed view, so the key-ups never reach `JRScene`. It only fires while focus is outside the outlet subtree (e.g. the overhang). Prefer the `testToast` paths below.
+`m.global` works from both.
 
-### Test a Toast Visually (Console)
+## Show a toast
 
-From the BrightScript console (telnet to port 8085) — **only works when app is paused at a breakpoint**:
+Set `testToast` on the scene to `"type|message"`. The type is `error`, `success`, `warning` or `info`; with no `|`, the whole value is an `error` message.
+
+From the console, paused on the main thread:
+
+```brightscript
+m.scene.testToast = "success|Item saved"
+```
+
+Paused on a component thread:
 
 ```brightscript
 m.top.getScene().testToast = "error|Something went wrong"
-m.top.getScene().testToast = "success|Item saved"
-m.top.getScene().testToast = "info|Loading..."
-m.top.getScene().testToast = "Just a message"          ' defaults to error type
 ```
 
-### Trigger an Error Path
-
-1. Set `bs_const=debug=true` in the `manifest` file
-2. Build and sideload the app
-3. From the BrightScript console:
-
-```brightscript
-m.global.debug.shouldForceFiltersFail = true
-```
-
-1. Navigate to a movie library — the filter task takes the failure branch, and a toast appears
-2. Turn it off:
-
-```brightscript
-m.global.debug.shouldForceFiltersFail = false
-```
-
----
-
-## Toast Testing
-
-### Cheat Code (currently unreliable — see Quick Start note)
-
-In a debug build, enter **up, up, down, down** on the d-pad within 2 seconds to trigger a test toast. Each activation cycles through error → success → warning → info. **Currently only fires while focus is outside the router outlet subtree** (e.g. the overhang) — key-releases from routed content are consumed before they reach `JRScene` (`RowList` + sgRouter `Outlet`; see the comment above `onKeyEvent` in `components/JRScene.bs`).
-
-**Compiled out in production** via `#if debug`.
-
-### RTA / ODC (live, no breakpoint)
-
-With an RTA build deployed (`npm run test:rta` family), the on-device component can set the `testToast` scene field while the app runs normally:
+Without pausing the app, from an RTA build ([`rta-tests.md`](rta-tests.md)), set it through the on-device component:
 
 ```js
 await odc.setValue({ base: 'scene', keyPath: 'testToast', value: 'success|Item saved' });
 ```
 
-### `testToast` Field (Console Fallback)
+If `testToast` shows nothing, the fault is in the toast component, not in the code you are testing.
 
-The `testToast` field on `JRScene` provides programmatic toast triggering. It is always available (not behind `#if debug`) because it has negligible footprint and the BrightScript console is only accessible on side loaded dev builds anyway.
+### The up-up-down-down code
 
-**Important:** The BrightScript console (both VS Code and telnet port 8085) can only evaluate expressions when the app is **paused at a breakpoint**. For live testing, use the key combo above.
+A debug build also shows a test toast when you press **Up, Up, Down, Down** with no more than 2 seconds between presses. Each use shows the next type: error, success, warning, info. It rarely works: `JRScene` sees the key releases only while the focus is outside the router outlet, because `RowList` and the outlet consume them (the comment above `JRScene.onKeyEvent()` explains why). Use `testToast` instead.
 
-**Format:** `"type|message"` where type is `error`, `success`, `warning`, or `info`. If no pipe is found, defaults to `error`.
+## Force a failure
 
-**Use for:** Programmatic toast testing from breakpoints or automated test scripts.
-
----
-
-## `DebugFlags` System (Option C)
-
-### Architecture
-
-```text
-manifest: bs_const=debug=true
-    |
-    v
-globals.bs: initDebugFlags()          <-- #if debug, compiled out in prod
-    |
-    v
-m.global.debug (DebugFlags node)      <-- does not exist in prod builds
-    |
-    v
-Task code: #if debug check flag       <-- entire block compiled out in prod
-    |
-    v
-Simulated failure --> toast
-```
-
-### Components
-
-| File | Purpose |
-| ------ | --------- |
-| `components/data/DebugFlags.xml` | Node definition with boolean fields for each injectable failure |
-| `source/utils/globals.bs` | Creates and attaches the `DebugFlags` node to `m.global.debug` inside `#if debug` |
-
-### Production Safety
-
-The system uses `#if debug` conditional compilation:
-
-- `bs_const=debug=false` (manifest default) — the `#if debug` blocks are **compiled out**. No dead code, no runtime checks, no node creation. The `DebugFlags` XML component exists in the package but is never instantiated.
-- `bs_const=debug=true` (set during development) — all debug code is active.
-
-**Which compiler does that matters, and it is not `bsc`.** BrighterScript passes `#if` through untouched — the directives appear verbatim in the emitted `.brs`, and **Roku's on-device compiler** evaluates them at load time against the `bs_const` line in the *shipped manifest*. Two consequences: grepping `build/**/*.brs` to confirm a flag is off proves nothing (the block is always there — read `build/manifest` instead), and `bsconfig.json`'s `manifest.bs_const` cannot enforce it (it only rewrites BrighterScript's in-memory copy). See [build-and-tooling.md → Compile-time flags](../architecture/build-and-tooling.md#compile-time-flags-bs_const).
-
-Enforcement is therefore a build step: [`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) forces `debug` off in `build/manifest` as the final step of `npm run build:prod`, so no release artifact can carry it. That is the guarantee to rely on — a `debug=true` flip has reached `main` twice (`27d99141`, `dc05db8d`), each reverted the same day, so commit-time convention alone has not held.
-
-### Available Flags
-
-| Flag | What It Does | Where to Test |
-| ------ | ------------- | --------------- |
-| `shouldForceFiltersFail` | Skips the API call in `GetFiltersTask` and simulates a failure response | Navigate to any library with dynamic filters (e.g., Movies) |
-| `shouldForceFavoriteFail` | Forces the favorite toggle API response to appear failed | Press the favorite button on any `ItemDetails` screen |
-| `shouldForceWatchedFail` | Forces the watched toggle API response to appear failed | Press the watched button on any `ItemDetails` screen |
-| `extraButtonCount` | Appends N spare buttons to the `ItemDetails` and OSD button rows, so the #788 overflow cap and its `More` menu can be reached | Set it, then open any `ItemDetails` screen or the playback OSD (the row is built on open, so re-enter the screen) |
-
-#### `extraButtonCount` — why a count, and why it exists at all
-
-This is the only flag that is not an error injection, and the only one without
-which a feature cannot be seen at all.
-
-Both button rows cap at what fits before the thing to their right — 8 on
-`ItemDetails` (the logo), 10 on the OSD (the pinned playback-info button) — and
-**neither row can reach its cap from real item data**. The busiest `ItemDetails`
-types top out at exactly 8, and the OSD at 7. So the `More` button and its menu
-are unreachable on a device without help.
-
-Reaching even the *boundary* is awkward: the 8th `ItemDetails` button is Trailer,
-and the check behind it is `BuildGetLocalTrailersRequest` — a trailer **file** in
-the library, not a `RemoteTrailers` URL.
-
-It is a count rather than a toggle because the number you need **depends on the
-item**: `More` appears the moment a row exceeds its cap, and how many buttons a
-row already has varies by type (a `Person` may carry 3, a Series with a trailer
-and delete rights carries 8; the OSD carries 4 on a bare live channel and 7 on a
-rich local file).
-
-So work it empirically — the row is built when the screen opens, so change the
-flag and then **re-enter the screen**:
-
-- **`8` overflows both surfaces for every item type**, which is the value to use
-  if you just want to see `More` and the menu.
-- To find the **boundary** instead — a full row sitting exactly at its cap with
-  no `More` — lower the value one at a time until `More` disappears. The last
-  value that still showed it is one past the cap.
-- Raise it to lengthen the menu; past 8 rows the list scrolls, which is worth
-  seeing at least once.
-
-The spare buttons carry a label and an icon so the row — and the menu rows they
-become — look the way they would with genuine content. They do nothing when
-pressed.
-
----
-
-## Adding a New Debug Flag
-
-**If the failure you want is an API request failing or timing out, don't add a flag.** On-device
-specs make any pooled request fail with one mechanism, `rtaFailRequests` — see
-[`rta-tests.md`](rta-tests.md#making-requests-fail-or-slow-rtafailrequests). A flag per code path
-duplicates it once per screen. The steps below are for failures that are not a request.
-
-Follow these steps when adding error injection to a new feature:
-
-### Step 1: Add the field to DebugFlags.xml
-
-```xml
-<!-- components/data/DebugFlags.xml -->
-<interface>
-  <field id="shouldForceFiltersFail" type="boolean" value="false" />
-  <field id="shouldForceMyNewThingFail" type="boolean" value="false" />  <!-- ADD -->
-</interface>
-```
-
-### Step 2: Add the injection guard in the task
-
-Place the `#if debug` block **before** the real API call so it short-circuits early:
+Set a flag from the console, then do what the table says:
 
 ```brightscript
-sub myTask()
-  ' Debug error injection — compiled out in production (bs_const=debug=false)
-  #if debug
-    if isValid(m.global.debug) and m.global.debug.shouldForceMyNewThingFail
-      m.top.error = "[DEBUG] Forced failure"
-      m.top.result = {}    ' or whatever the failure shape is
-      return
-    end if
-  #end if
-
-  ' Real implementation follows...
-end sub
+m.global.debug.shouldForceFavoriteFail = true
+' resume with c, press the favorite button, see the error toast
+m.global.debug.shouldForceFavoriteFail = false
 ```
 
-### Step 3: Update the Available Flags table above
+| Flag | What it does | How to see it |
+| --- | --- | --- |
+| `shouldForceFiltersFail` | `BaseGridView.loadFilters()` skips the request and reports a failure | Open a library with filters, such as Movies |
+| `shouldForceFavoriteFail` | `ItemDetails.toggleFavorite()` treats the server's answer as a failure, which reverts the button and shows an error toast | Press the favorite button on an item's details screen |
+| `shouldForceWatchedFail` | `ItemDetails.toggleWatched()` does the same for the watched button | Press the watched button on an item's details screen |
+| `extraButtonCount` | Adds this many spare buttons to the button rows on the details screen and the playback OSD | Set it, then open (or reopen) a details screen or the OSD |
 
-Add your flag to the table in this document so other developers know it exists.
+The flags default to off, and a flag is read where its code path starts, so a change applies the next time that path runs.
 
-### Step 4: Test it
+### `extraButtonCount`: seeing the More button
+
+A button row holds what fits before the element to its right: 8 buttons on the details screen and 10 on the OSD. Past that, the extra buttons move into a **More** menu. Real items never fill either row: the details screen tops out at 8 and the OSD at 7. So without this flag, nobody can see **More** on a device.
+
+It is a count, not a switch, because rows start at different lengths. A person has 3 buttons on the details screen; a series with a trailer, for a user who may delete it, has 8. A row is built when its screen opens, so reopen the screen after a change.
+
+- **Use `8`** to see **More** and its menu on every item type.
+- **To find the edge**, where a row is exactly full and shows no **More**, lower the count one at a time until **More** disappears.
+
+The spare buttons have a label and an icon, so the row and the menu look as they would with real buttons. They do nothing when pressed.
+
+## Add a flag
+
+**If the failure is an API request failing or timing out, don't add a flag.** On-device specs can fail any pooled request with `rtaFailRequests` ([`rta-tests.md`](rta-tests.md#making-requests-fail-or-slow-rtafailrequests)). A flag for each code path would repeat that once per screen.
+
+For any other failure:
+
+1. Add a field to [`DebugFlags.xml`](../../components/data/DebugFlags.xml), default `false` (or `0` for a count):
+
+   ```xml
+   <field id="shouldForceMyThingFail" type="boolean" value="false" />
+   ```
+
+2. Add it to the `[DEBUG]` lines `setGlobalNodes()` prints in [`globals.bs`](../../source/utils/globals.bs), so the console lists it.
+3. Check the flag where the code path starts, inside `#if debug`, before the real work. `BaseGridView.loadFilters()` is the model:
+
+   ```brightscript
+   #if debug
+     if isValid(m.global.debug) and m.global.debug.shouldForceMyThingFail
+       deliverResult({}, "[DEBUG] Forced failure")
+       return
+     end if
+   #end if
+   ```
+
+4. Add a row to the table above.
+5. Make a debug build, set the flag from the console and watch the failure path run.
+
+The rules for every flag:
+
+- **Inside `#if debug`.** Every line that reads a flag sits inside `#if debug` and `#end if`.
+- **Check `isValid(m.global.debug)` first.** The node does not exist in a release build or in test builds.
+- **`[DEBUG]` on injected messages,** so a forced failure is easy to tell from a real one in a toast or a log.
+- **Simulate failures only.** Never put real behavior behind a flag. `extraButtonCount` is the one flag that adds something, and it adds only inert buttons.
+
+## Why a release build has none of this
+
+`#if debug` is resolved by the Roku device, not by `bsc`. BrighterScript copies the directives into the `.brs` it emits, and the device compiles them against the `bs_const` line in the installed manifest. So a release build loads none of the debug code and never creates the `DebugFlags` node. Two consequences:
+
+- To check whether a build has debug on, read `build/manifest`. The `.brs` files always contain the `#if debug` blocks.
+- `manifest.bs_const` in a `bsconfig` file cannot turn debug off; it changes only BrighterScript's own copy of the manifest. See [Compile-time flags](../architecture/build-and-tooling.md#compile-time-flags-bs_const).
+
+[`harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) is what guarantees it. It runs last in `npm run build:prod` and forces `debug`, `ENABLE_RTA` and `perfTiming` off in `build/manifest`, so no release can ship with them on. A committed `debug=true` has reached `main` twice (`27d99141`, `dc05db8d`), so a convention alone was not enough.
+
+## What else a debug build gives you
+
+### `rawApiData`: what the server sent for an item
+
+Every item node that `JellyfinDataTransformer` builds carries the server's original `BaseItemDto` on its `rawApiData` field ([`JellyfinBaseItem.xml`](../../components/data/jellyfin/JellyfinBaseItem.xml)). Nothing in the app reads it. It answers one question at a breakpoint: is a tile wrong because of our transform, or because of what the server sent?
 
 ```brightscript
-' From BrightScript console (port 8085):
-m.global.debug.shouldForceMyNewThingFail = true
-' Navigate to the feature, verify the error path fires
-m.global.debug.shouldForceMyNewThingFail = false
-```
-
----
-
-## Other things a debug build gives you
-
-`#if debug` carries more than the flags above. These are not toggles — they are simply present in any build compiled with `bs_const=debug=true`.
-
-### `rawApiData` — the server's payload, attached to the item
-
-Every node `JellyfinDataTransformer` produces carries the **raw `BaseItemDto` the server sent**, on the `rawApiData` field ([`JellyfinBaseItem.xml`](../../components/data/jellyfin/JellyfinBaseItem.xml)). Nothing in the app reads it; it exists purely for a human at a breakpoint asking *"why is this tile rendering wrong — is our transform wrong, or did the server send that?"*
-
-```brightscript
-' From a paused BrightScript console, with an item node in hand:
 print node.rawApiData
 print node.rawApiData.UserData
 ```
 
-**When to prefer `curl` instead.** For most questions the payload is easier to get from outside the app: the firmware's `[http]` console trace prints the full request URL *and* the auth token, so re-fetching any response is a one-liner and the result is diffable and repeatable. `rawApiData`'s advantage is narrow but real — it is the payload bound to *this specific node*, so you skip working out which request produced which tile.
+`curl` is often easier. The console's `[http]` trace prints each request's URL and auth token, so you can fetch the same response again and compare. `rawApiData` saves you working out which request produced which node.
 
-**Not reachable from RTA.** ODC can read node fields, but `npm run test:rta` flips `ENABLE_RTA` only — the committed manifest keeps `debug=false`, so `rawApiData` reads `invalid` in any normal RTA run. Automated/agent-driven inspection wants `curl`.
+An RTA build cannot read it: `npm run test:rta` turns on `ENABLE_RTA` only, so `debug` stays off and `rawApiData` is `invalid`.
 
-**Cost.** Measured on three device tiers (n=10 each, `debug=true` with and without the assignment): no difference in Home's first paint distinguishable at that sample size, and available-memory differences under 700 `kB`, inside the noise of the reading itself. That bounds it below roughly 120 ms — the smallest effect that experiment could resolve — rather than proving it free.
+### The Task-thread readout
 
-### The Task-thread ledger
+`printTaskThreads()` prints how many Task threads are live. See [`debug-tools.md`](../architecture/debug-tools.md#task-thread-readout--printtaskthreads).
 
-`printTaskThreads()` and `m.global.taskLedger` — see [`debug-tools.md`](../architecture/debug-tools.md).
-
-> ⚠️ **A debug build is not a performance-representative build.** The two items above measurably slow Home's first paint on weaker hardware (+178 ms on a 512 MB Stick, +121 ms on a Stick 4K; both significant at n=10). Never take a perf baseline from one — see [`home-first-paint-performance.md`](home-first-paint-performance.md).
-
----
-
-## Rules
-
-1. **All debug code must be inside `#if debug` / `#end if`** — this is the compile-time guarantee
-2. **Always check `isValid(m.global.debug)`** before reading a flag — the node does not exist in production and may not exist in test harnesses
-3. **Default all flags to `false`** in the XML — flags are opt-in, never accidentally on
-4. **Prefix injected error messages with `[DEBUG]`** so they are immediately distinguishable from real errors in the toast UI and logs
-5. **One boolean field per injectable failure** — keep it simple, no complex configuration
-6. **Never gate real functionality behind debug flags** — they are strictly for simulating failures
-
----
+**Never measure performance on a debug build.** Measured 2026-08-04 at n=10, a debug build painted Home 178 ms slower on a 512 MB Stick and 121 ms slower on a Stick 4K. See [`home-first-paint-performance.md`](home-first-paint-performance.md).
 
 ## Troubleshooting
 
-### "m.global.debug is invalid"
-
-You are running a production build (`bs_const=debug=false`). Set `bs_const=debug=true` in the manifest and rebuild.
-
-### Flag is set but nothing happens
-
-1. Verify the flag name matches exactly (case-sensitive)
-2. Check the task has the `#if debug` guard for that specific flag
-3. Make sure you rebuilt after changing the manifest — `bs_const` is a compile-time constant
-
-### Toasts not appearing
-
-Use `testToast` to verify the toast component itself works:
-
-```brightscript
-m.top.getScene().testToast = "error|Test"
-```
-
-If this doesn't show a toast, the issue is in the Toast component, not the debug system.
+- **`m.global.debug` is invalid.** The build has `debug=false`. Check `build/manifest`, then rebuild.
+- **`Interface not a member of BrightScript Component` (`&hf3`) on `m.top`.** The console is paused on the main thread. Use `m.scene` (see [Use the console](#use-the-console)).
+- **A flag is set but nothing happens.** Check the name's spelling against `DebugFlags.xml`. Then run the path again: a flag is read when its path starts, and a button row is built when its screen opens.

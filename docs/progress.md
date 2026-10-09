@@ -621,6 +621,25 @@ Measured 2026-09-21 on a Stick 4K while the TV guide scrolled at 400 ms per row:
 
 (found 2026-10-01, not yet seen in the app). POSTing the device profile a Roku Ultra builds to the 10.7.7 test server returns HTTP 400, `$.DeviceProfile.CodecProfiles[34].Conditions[1].Property ... could not be converted to MediaBrowser.Model.Dlna.ProfileConditionValue`, which is the `VideoRangeType` condition on the `h264` codec profile. 10.7 has no `VideoRangeType` (`docs/dev/jellyfin-server-versioning.md`), and nothing found strips it for `apiVersion` 1. Identical with and without the TrueHD/DTS fix. **Next step:** play any video against the 10.7.7 test server in the app; if it fails, drop `VideoRangeType` conditions for 10.7, the way `dropConditionsUnevaluableOnAudioFiles` does for audio files.
 
+#### A promise rejection from a transport failure has no `reason`, so 26 `.catch` handlers log INVALID `[fid: promise-rejection-missing-reason]` `[captured 2026-10-09]`
+
+Found 2026-10-09 while rewriting `docs/dev/promises.md` (docs-voice, Phase C) and taken through `/snag`.
+
+**Root cause:** `fetchAsync` rejects with two shapes. Only the adapter-built error (`buildApiPromiseError()`, used for a timeout and for an unavailable pool) carries `reason`. When the pool's own response comes back with `statusCode` 0 or below, or with no `statusCode`, `settleApiPromiseIn()` in `source/api/apiPromise.bs` rejects with that response itself, which has no `reason`. All 26 `.catch` handlers log `err.reason`: `ItemDetails` 8, `SubtitlePanel` 7, `UserSelect` 5, `BaseGridView` 2, `VideoPlayerView` 2, `Home` 1, `schedule` 1. The logger prints a missing value as `INVALID`, so a network failure's cause is lost. Nothing branches on `reason`; every use is a log argument. The form dates from #624 (2026-06-06) and was copied by every later conversion to `fetchAsync`.
+
+**Options:**
+
+- `reason` (recommended): before `settleApiPromiseIn()` rejects with the pool's response, set `res.reason = apiResponse.jsonFailure(res)` ("network error -28", "not sent", "timed out", "abandoned"), so every rejection carries a `reason`. Add a case to `tests/source/unit/api/apiPromise.spec.bs` that asserts the transport-failure rejection's `reason`. Then fix the "What lands where" text in `docs/dev/promises.md`, which says `reason` can be missing. The 26 handlers stay as they are. This fixes the contract in one place and needs low upkeep. Risk: it changes `source/api/` (a shared mechanism), so run the spec on a Roku with `test:tdd`.
+- `callers`: add `err.statusCode` to all 26 log calls. This doesn't fix the contract, and new callers would copy the old form.
+- `helper`: add `apiPromiseFailureText(err)` and change all 26 sites to use it. This makes a second way to read a rejection.
+
+Filed `later` because it is a runtime change in the API layer, which should not ride in the docs-only voice PR.
+
+**Not checked:**
+
+- I haven't seen the `INVALID` line on a device.
+- My earlier count of 27 included a comment in `apiPromise.bs`; the real count is 26.
+
 ### tests
 
 #### Re-derive what actually reddened PR #800 — the device-contention explanation is REFUTED. `[fid: pr-800-red-cause-rederive]` `[captured 2026-08-10]`
