@@ -9,27 +9,27 @@ related-files:
   - components/api/ApiTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
-last-reviewed: 2026-10-08
+last-reviewed: 2026-10-09
 ---
 
-# API Request Patterns
+# API request patterns
 
-All API calls must run on Task threads. The render thread and main thread (Main.bs event loop) must **never** block on an HTTP request.
+Every API call runs on a Task thread. The render thread and the main thread (the event loop in `main.bs`) never wait on an HTTP request.
 
-## Infrastructure
+## How requests run
 
-JellyRock uses a two-tier API task pool:
+JellyRock runs API requests on two tiers of persistent Task threads:
 
-- **Tier 1 (`ApiTask` pool)**: persistent workers (`apiPool0` …, one per pool slot; the width is [chosen per device class](../architecture/api.md#pool-width)) coordinated by `ApiQueueTask` FIFO coordinator. Handles all GET/query requests.
-- **Tier 2 (`SideEffectTask`)**: Single persistent worker running a FIFO children-as-vehicle queue for fire-and-forget writes (POST/DELETE). Requests execute serially on its one thread.
+- **Tier 1, the `ApiTask` pool**, handles every request whose answer the app needs, which is mostly reads (GET). Its workers (`apiPool0` and up) take requests in order from the `ApiQueueTask` coordinator. The pool's width is [chosen per device class](../architecture/api.md#pool-width).
+- **Tier 2, `SideEffectTask`**, handles fire-and-forget writes (POST, DELETE). It is one thread, so writes run one at a time in the order they were sent.
 
-**Both tiers** use `ApiResultNode` per-request routing (a fresh child node per request), immune to SceneGraph event coalescing. Tier 2 adopted this in #744 — the earlier single shared `request` field could coalesce two back-to-back submits and silently drop one. The shared HTTP execution (auth header, timeout, Content-Type) lives once in `baseRequest.bs`'s `executeHttpRequest()`, called by both `ApiTask` and `SideEffectTask`.
+Both tiers carry each request on its own new `ApiResultNode`, so two requests sent back to back can never merge into one field change. Both send the request through `executeHttpRequest()` in `baseRequest.bs`, which adds the auth header, the timeout and the content type.
 
 ## Patterns
 
-### Pattern 1: `submitApiRequest` (single non-blocking request)
+### Pattern 1: `submitApiRequest` (one request, without waiting)
 
-Submits a request to the API pool from the render thread and returns immediately. The render thread observes the result via a callback.
+Send a request to the pool from the render thread, and handle the result in a callback.
 
 ```brighterscript
 m.resultNode = submitApiRequest(GetApi().BuildGetXRequest(...), "myReq")
@@ -47,13 +47,13 @@ sub onMyReqDone()
 end sub
 ```
 
-The render thread does NOT make the HTTP call. `submitApiRequest()` creates an `ApiResultNode`, appends it to the coordinator, and returns (~microseconds). The actual HTTP runs on an `ApiTask` pool thread.
+The render thread never makes the HTTP call. `submitApiRequest()` creates an `ApiResultNode`, hands it to the coordinator and returns at once. An `ApiTask` thread makes the call.
 
-**Use when**: Single API call with a trivial callback (set a boolean, read one value). NO data transforms, NO array loops.
+**Use it when** you need one call and the callback does something small, such as setting a flag or reading one value. Don't transform data or loop over arrays in the callback.
 
-### Pattern 2: Orchestrator Task (multi-call or transforms)
+### Pattern 2: Orchestrator Task (several calls, or transforms)
 
-Create a Task component that calls `fetchRes()`/`fetchJson()` internally. The caller creates the task, sets input fields, observes output.
+Write a Task component that calls `fetchRes()` or `fetchJson()` itself. The caller creates the task, sets its input fields and observes its output.
 
 ```brighterscript
 m.myTask = CreateObject("roSGNode", "MyOrchestrator")
@@ -62,11 +62,9 @@ m.myTask.observeField("output", "onMyTaskDone")
 m.myTask.control = "RUN"
 ```
 
-**Use when**: Multiple sequential/conditional API calls, data transformation (`JellyfinDataTransformer`), or large array processing.
+**Use it when** you make several calls in sequence or by condition, transform the data (`JellyfinDataTransformer`), or process large arrays. Examples: `LoadItemsTask`, `SearchTask`, `QuickPlayTask`.
 
-Examples: `LoadItemsTask`, `SearchTask`, `QuickPlayTask`
-
-**One request that doesn't need an earlier one's answer** can go out first, so the two waits overlap instead of adding up. Send it with `submitApiRequest(req, id, port)`, do the blocking `fetchRes()`, then collect it with `collectApiRequest(node, port)`. A caller with its own deadline passes the most it will wait as a third argument. If you end up not needing the answer, call `dropApiRequest(node)`, which releases it so the pool can skip it. `LoadItemsTask.keepStartedSeries` is the reference.
+**Overlap a request that doesn't depend on another one's answer.** Send it first with `submitApiRequest(req, id, port)`, make the blocking `fetchRes()` call, then collect the first answer with `collectApiRequest(node, port)`. The two waits then overlap instead of adding up. If your task has its own deadline, pass the longest you will wait as the third argument. If you turn out not to need the answer, call `dropApiRequest(node)` so the pool can skip it. `LoadItemsTask.keepStartedSeries()` is the reference.
 
 ### Pattern 3: `SubmitSideEffect` (fire-and-forget writes)
 
@@ -74,25 +72,21 @@ Examples: `LoadItemsTask`, `SearchTask`, `QuickPlayTask`
 SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(itemId))
 ```
 
-Non-blocking, serialized, no response observed.
+It returns at once, runs after any writes sent before it, and gives no response.
 
-**Use when**: POST/DELETE where response isn't needed (mark watched, favorite, delete, playstate).
+**Use it when** you write (POST, DELETE) and don't need the response: marking an item played or a favorite, deleting, reporting playback state.
 
-### Pattern 4: Dedicated Task (non-API)
+### Pattern 4: Dedicated Task (not the Jellyfin API)
 
-Standalone Task for non-Jellyfin HTTP, binary downloads, or timer-driven loops.
+Write a standalone Task for HTTP that isn't the Jellyfin API, for binary downloads, or for a loop that runs on a timer. Examples: `LoadCaptionTask` and `ServerDiscoveryTask` (`roUrlTransfer`), `FontDownloadTask` (`rr_Requests()`).
 
-Use `roUrlTransfer` + `port.WaitMessage()` for the HTTP request. **Do NOT use `rr_Requests()` in Tasks with active render-thread timers or frequent field observers.** `rr_Requests_run()` is a standalone function whose `m` resolves to the component's shared `m` AA; its busy-polling loop reads `m.top` thousands of times per second from the task thread, racing with any render-thread code that also reads `m`. This data race corrupts the AA's internal state and causes intermittent crashes.
+**Keep the fetch and any render-thread work in separate components.** A component's `m` is shared between its Task thread and its render-thread code. Captions used to be one component that fetched the file and also ran a render-thread caption timer, and that shared `m` caused an `&hf3` crash. Now `LoadCaptionTask` only fetches, and `CaptionRenderer` (a `Group`, with no Task function) only draws, so the race cannot happen. Build anything new in that shape.
 
-`FontDownloadTask` still uses `rr_Requests()` safely because it has no render-thread timers — the collision window is negligible.
+**If one component must do both, make the request with `roUrlTransfer` and `port.WaitMessage()`, not `rr_Requests()`.** `rr_Requests_run()` runs with the component's shared `m`, and its loop reads `m.top` constantly from the Task thread while it waits. Render-thread code reading `m` at the same time (a timer, a field observer) races with it, which corrupts `m` and crashes the app at random. `FontDownloadTask` still uses `rr_Requests()` because nothing on the render thread runs in that component.
 
-**The stronger fix is to not share the component at all.** Captions used to be one `captionTask` holding both the VTT fetch and a 100 ms render-thread caption timer, and that shared `m` is what produced the `&hf3` crash this warning is about. It is now split — `LoadCaptionTask` (fetch only, no render-thread state) and `CaptionRenderer` (a `Group`, no Task function) — so the race is structurally impossible rather than avoided by picking the right HTTP client. Prefer that shape for anything new; the rule above is for a component that genuinely must be both.
+### Pattern 5: `apiPipeline` (many independent requests, one thread)
 
-Examples: `LoadCaptionTask` (`roUrlTransfer` + `WaitMessage`), `FontDownloadTask` (rr_Requests), `ServerDiscoveryTask` (`roUrlTransfer` + wait)
-
-### Pattern 5: `apiPipeline` (N independent requests, one thread)
-
-Inside an orchestrator Task (Pattern 2), when the calls are independent of each other rather than sequential. Keeps one request per pool slot in flight without adding a thread per request.
+Use it inside an orchestrator Task (pattern 2) when the calls don't depend on each other. It keeps one request per pool slot in flight without starting a thread per request.
 
 ```brighterscript
 entries = []
@@ -108,37 +102,38 @@ while isValid(result)
 end while
 ```
 
-**Use when**: an orchestrator has N independent requests where N scales with server data (per library, per season). Never spawn a Task per request for this — that's the fan-out behind the `&h29` crashes (#728).
+**Use it when** an orchestrator makes one request per library, per season or per anything else the server's data decides. Never start a Task per request for this: that fan-out caused the `&h29` crashes in #728.
 
-Results arrive in completion order. `budgetMs` is one budget for the whole run, so a dead server can't cost N × `API_WAIT_MS`; it is charged only while the run is inside `apiPipelineNext`, so your own per-result work never uses it up. `res = invalid` means **no answer** (never submitted, or the budget ran out) — an HTTP error is a valid `res` with `ok = false`, so don't treat the two the same when deciding whether to clear UI.
+Results arrive in the order they finish. `budgetMs`, the second argument to `apiPipelineBegin()`, is one time budget for the whole run, so a server that doesn't answer can't cost one full timeout per request. The budget only runs down while you are inside `apiPipelineNext()`, so your own work on each result doesn't use it up.
 
-Example: `LoadLatestRowsTask`
+`res = invalid` means no answer: the request was never sent, or the budget ran out. An HTTP error is a valid `res` with `ok = false`. Tell the two apart when you decide whether to clear what the screen shows.
 
-## Decision Tree
+Example: `LoadLatestRowsTask`.
 
-1. Write operation, don't need response? --> **Pattern 3** (SubmitSideEffect)
-2. Single GET, callback just sets a field? --> **Pattern 1** (submitApiRequest)
-3. Multiple calls, branching logic, or data transforms? --> **Pattern 2** (Orchestrator Task)
-4. Non-API HTTP or binary download? --> **Pattern 4** (Dedicated Task)
-5. Inside an orchestrator, N *independent* calls that scale with server data? --> **Pattern 5** (apiPipeline)
+## Which pattern to use
+
+1. A write whose response you don't need: pattern 3, `SubmitSideEffect`.
+2. One read whose callback sets a field: pattern 1, `submitApiRequest`.
+3. Several calls, branching, or data transforms: pattern 2, an orchestrator Task.
+4. HTTP that isn't the Jellyfin API, or a binary download: pattern 4, a dedicated Task.
+5. Inside an orchestrator, independent calls whose number depends on the server's data: pattern 5, `apiPipeline`.
 
 ## Rules
 
-- **NEVER** call `fetchRes()`/`fetchJson()` from the render thread or main thread (they block with `wait()`)
-- **NEVER** call legacy `GetApi().GetX()` execute-and-return methods from any thread (deprecated)
-- **NEVER** instantiate `roUrlTransfer` outside a Task thread
-- New components should **NOT** add cases to `LoadItemsTask` -- create component-owned tasks instead
-- Existing `LoadItemsTask` cases remain; migrate to component-owned tasks over time
+- Never call `fetchRes()` or `fetchJson()` from the render thread or the main thread. They block until the answer arrives.
+- Don't add calls to the synchronous `GetApi().Get*()` methods (those without `Build` in the name). They make the HTTP call on the calling thread. The few that remain are on the sign-in path ([api.md](../architecture/api.md)).
+- Never create an `roUrlTransfer` outside a Task thread.
+- Don't add cases to `LoadItemsTask` for new components. Give the component its own Task instead. Existing cases stay until they are moved.
 
-## Key Files
+## Key files
 
 | File | Purpose |
-| ------ | ------- |
+| --- | --- |
 | `source/api/apiPool.bs` | `fetchRes()`, `fetchJson()`, `submitApiRequest()`, `collectApiRequest()`, `dropApiRequest()`, `SubmitSideEffect()` |
-| `source/api/apiPipeline.bs` | `apiPipelineBegin()` / `apiPipelineNext()` — N independent requests on one Task thread |
+| `source/api/apiPipeline.bs` | `apiPipelineBegin()` and `apiPipelineNext()`: many independent requests on one Task thread |
 | `source/api/apiIds.bs` | `apiIds.chunks()`: splits a lookup's `Ids=` list so each request line stays short |
-| `source/api/ApiClient.bs` | `Build*Request()` methods that create request AAs |
-| `components/api/ApiQueueTask.bs` | FIFO coordinator for the pool |
-| `components/api/ApiTask.bs` | Pool worker that executes HTTP requests |
-| `components/api/ApiResultNode.xml` | Per-request vehicle (request in, result out) |
-| `components/tasks/QuickPlayTask.bs` | Orchestrator for quickplay/Play All/Instant Mix/Trailer |
+| `source/api/ApiClient.bs` | The `Build*Request()` methods that create request AAs |
+| `components/api/ApiQueueTask.bs` | The coordinator that hands requests to the pool in order |
+| `components/api/ApiTask.bs` | A pool worker that makes the HTTP calls |
+| `components/api/ApiResultNode.xml` | Carries one request in and its result out |
+| `components/tasks/QuickPlayTask.bs` | Orchestrator for Quick Play, **Play All**, **Instant Mix** and trailers |

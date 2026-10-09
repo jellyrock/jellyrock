@@ -634,11 +634,6 @@
     "latin-abbrev": 1,
     "prose-arrow": 9
   },
-  "docs/dev/api-patterns.md": {
-    "caps-emphasis": 6,
-    "em-dash": 7,
-    "filler": 2
-  },
   "docs/dev/code-style.md": {
     "em-dash": 26,
     "filler": 1,
