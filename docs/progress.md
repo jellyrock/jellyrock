@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-09: fix: Change screens and the overhang in one frame
 - 2026-10-08: test(rta): Walk Home rows and the library grid one key at a time
 - 2026-10-08: fix(focus): Stop screens taking focus back when it leaves the router
 - 2026-10-08: test(rta): Say what the hourly demo reset wipes, and not to debug past it
@@ -74,12 +75,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-25 — fix: Stop a song crashing when its details fail to load
 - 2026-09-25 — test(api): Make API requests fail on purpose in on-device tests
 - 2026-09-25 — fix: Stop Play crashing on a song's details screen
-- 2026-09-24 — fix(video): Keep the resume point when a video fails before it plays
-- 2026-09-24 — chore: Place changelog entries by PR title type, and check it in CI
-- 2026-09-24 — fix: Stop subtitles crashing on short or comma timestamps, and hide cue ids and notes
-- 2026-09-24 — fix: Recover stalled Live TV and close a failed channel's live stream
-- 2026-09-24 — fix: Stop restarting a Live TV channel that keeps ending without playing
-- 2026-09-24 — fix: Keep screens loading when the app hits its Task-thread limit
 
 ## Open followups
 
