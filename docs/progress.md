@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-09: chore(lint): Hold code comments to the house voice
 - 2026-10-09: build(bsc): Let a debug build compile past the `dead-code` rule
 - 2026-10-09: build(make): Package the zip that `make install` uploads
 - 2026-10-09: fix(home): Hide pilots of not-yet-started series from Next Up
