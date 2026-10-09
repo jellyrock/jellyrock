@@ -1942,6 +1942,14 @@ The old note's case against a burst still holds, and it is why the mode is stepp
 
 The walk also guards against a key it took as dropped that was only late. Once it has re-sent a key, reaching the target is followed by one quiet `STEPPED_DROP_WAIT_MS` window, and the walk goes back if the index moves: the late copy was sent one drop wait after the first, so it lands inside that window. Every stepped walk names `within`, the list it may not leave, and ends with `waitFocusInside` on it, because a surplus Up from Home's row 0, or a Left that reaches `BaseGridView.onKeyEvent` from the grid, moves focus out while the index keeps its last value. A device slower than the drop wait on every key cannot finish, and the timeout names `STEPPED_DROP_WAIT_MS`. Adapting the wait at runtime was rejected because it would hide the slow device that followup `stepped-walk-drop-wait-one-device` exists to find. Hardware-free tests on 2026-10-08, with a first key at 1100 ms, showed the walk without these guards returning success with focus one row too far, and with focus out of Home after a walk to row 0.
 
+## decision-id: voice-gate-covers-code-comments
+
+**date**: 2026-10-09
+**status**: accepted
+**related-files**: `scripts/lint/doc-citation-ratchet.js`, `.doc-voice-baseline.json`, `docs/dev/writing-style.md`, `.github/workflows/_lint-docs.yml`
+
+Code comments follow the house voice, and the voice ratchet enforces the five mechanical categories in them per file, beside the docs in `.doc-voice-baseline.json`. Comments are read by a parser per language so a quote or `//` inside a string never counts; shell has no parser here, so only whole-line `#` comments are read. Ruled out: a guide change with no gate, because a marker with an em dash landed the day the gap was noticed; and counting developer-facing strings too, because a script cannot tell a string that must keep its dash (test data, a parser's accepted separator) from prose. Strings can follow once the comment gate has run for a while.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
