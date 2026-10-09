@@ -1479,10 +1479,7 @@
     "prose-arrow": 6
   },
   "docs/dev/registry-migrations.md": {
-    "caps-emphasis": 9,
-    "filler": 2,
-    "latin-abbrev": 8,
-    "prose-arrow": 8
+    "filler": 1
   },
   "docs/dev/rta-tests.md": {
     "caps-emphasis": 6,
