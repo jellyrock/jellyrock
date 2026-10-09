@@ -635,11 +635,6 @@
     "latin-abbrev": 5,
     "prose-arrow": 4
   },
-  "docs/dev/crash-reports.md": {
-    "em-dash": 29,
-    "latin-abbrev": 1,
-    "prose-arrow": 5
-  },
   "docs/dev/debug-flags.md": {
     "em-dash": 39,
     "filler": 2,
