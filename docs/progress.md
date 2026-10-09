@@ -879,6 +879,19 @@ Same rule [ADR 0033](adr/0033-contextual-doc-freshness.md) applies to `en_US.jso
 
 (#750 follow-up): `playbackAudioLanguageCustom` and `playbackSubtitleLanguageCustom` are `type: "alpha"` settings whose description literally reads *"Enter a 3-letter ISO 639-2 language code (e.g., eng, jpn, fra, deu, spa)"* — the user has to know ISO codes and type them on a remote. [`components/settings/LanguagePicker`](../components/settings/LanguagePicker.bs) already solves this (type-to-filter `DynamicMiniKeyboard` + `RadioButtonList`, 8 rows, matches on `name`/`nativeName`/`code`) but is wired to exactly one consumer: the sign-in-screen UI locale, with `settings.init()` hard-coding `m.languagePicker.languages = m.availableLanguages` from `locale/languages.json`. Fix: add a `languageSource` field to the setting definition so `settings.bs` can pick the list, and feed these two a media-language list (3-letter ISO 639-2 codes, matching `MediaStream.Language`) built from the local [`languages.bs`](../source/utils/languages.bs) map — no network call needed. #750 proves the second-consumer path by reusing the same component unchanged for the subtitle-search picker; this closes the loop so all three language pickers in the app look and behave identically. Kept out of #750 per `isolate-the-fix` — the subtitle feature doesn't need it.
 
+#### Setting descriptions on the TV are outside the house voice, and the settings docs copy them from a second source that has drifted `[fid: in-app-settings-copy]` `[captured 2026-10-09]`
+
+The setting text on the TV comes from `locale/custom/en_US.json` (each entry's `titleKey` and `descriptionKey`), but `docs/user/app-settings.md` is generated from the `description` copies in `settings/settings.json`. The two have drifted: on 2026-10-09, 2 of 74 descriptions differed (`uiTheme` and Custom Theme Colors). The docs-voice project left these strings alone, because changing them changes what users see in the app and what translators must redo.
+
+To close it, as its own project:
+
+- Add rules for TV text to `docs/dev/writing-style.md` (length, casing, tone), building on the casing convention in `locale/CLAUDE.md`.
+- Rewrite the setting descriptions in `en_US.json`. Change values, never keys: a renamed key drops its translations. Settings are saved under `settingName`, so a wording change needs no registry migration.
+- Have `scripts/generate/settings-docs.cjs` read the English text from `en_US.json` through `descriptionKey`, so the docs show what the TV shows, and drop the duplicate `description` fields.
+- Check the new text on a Roku for fit, and confirm what Weblate does to existing translations when an English value changes.
+
+`settingName`, `type` and the generated-file note stay on the page: it serves users and contributors alike (decided 2026-10-09).
+
 ### claude
 
 #### Exercise `/dep-major` end-to-end on the next real Renovate major PR — validate the changelog→call-site mapping and the on-device `test:unit`+`test:rta` gate run inside the skill flow (mechanics validated at build time, but the full orchestration on a real major bump is not yet exercised). `[fid: dep-major-end-to-end-exercise]` `[captured 2026-06-28]`

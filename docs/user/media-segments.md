@@ -14,7 +14,7 @@ JellyRock is tested with **Chapter Segments Provider** and **Intro Skipper**. An
 
 For each segment type, you choose to skip it, show a skip button or do nothing. You set this in the Jellyfin web client.
 
-To change it for one Roku, go to **Settings → Playback → Media Segments** in JellyRock. See [App Settings](app-settings.md#playback-media-segments).
+To change it for one Roku, go to **Settings → Playback → Media Segments** in JellyRock. See [App settings](app-settings.md#playback-media-segments).
 
 ## Troubleshooting
 

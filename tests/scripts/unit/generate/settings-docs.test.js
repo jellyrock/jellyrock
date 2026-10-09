@@ -27,7 +27,8 @@ describe('settings-docs', () => {
     const { exitCode } = spawnScript(SCRIPT, [], { cwd: dir });
     expect(exitCode).toBe(0);
     const out = readFileSync(join(dir, 'docs', 'user', 'app-settings.md'), 'utf8');
-    expect(out).toMatch(/<h1 id="top">JellyRock App Settings<\/h1>/);
+    expect(out).toMatch(/<h1 id="top">App settings<\/h1>/);
+    expect(out).toMatch(/Generated from `settings\/settings.json`/);
     expect(out).toMatch(/## Playback/);
     expect(out).toMatch(/Playback options\./);
   });
