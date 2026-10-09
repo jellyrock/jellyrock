@@ -1942,6 +1942,16 @@ The old note's case against a burst still holds, and it is why the mode is stepp
 
 The walk also guards against a key it took as dropped that was only late. Once it has re-sent a key, reaching the target is followed by one quiet `STEPPED_DROP_WAIT_MS` window, and the walk goes back if the index moves: the late copy was sent one drop wait after the first, so it lands inside that window. Every stepped walk names `within`, the list it may not leave, and ends with `waitFocusInside` on it, because a surplus Up from Home's row 0, or a Left that reaches `BaseGridView.onKeyEvent` from the grid, moves focus out while the index keeps its last value. A device slower than the drop wait on every key cannot finish, and the timeout names `STEPPED_DROP_WAIT_MS`. Adapting the wait at runtime was rejected because it would hide the slow device that followup `stepped-walk-drop-wait-one-device` exists to find. Hardware-free tests on 2026-10-08, with a first key at 1100 ms, showed the walk without these guards returning success with focus one row too far, and with focus out of Home after a walk to row 0.
 
+## decision-id: dead-code-debug-console-keep
+
+**date**: 2026-10-09
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/dead-code.cjs`, `source/utils/tasks.bs`, `tests/scripts/unit/bsc-plugins/dead-code.test.js`
+
+The dead-code rule ([ADR 0047](adr/0047-dead-code-gate.md)) gains a sixth keep kind, `debug-console`, for code that only a developer calls, from the BrightScript console in a debug build. `printTaskThreads()` is the first use. It had no kind that fit, so every `debug=true` build failed from the day the rule landed. Nothing builds with `debug=true` automatically, so nobody noticed. A valid `debug-console` marker inside a `#if` block is also exempt from the "not directly above a declaration" check. A `debug=false` build leaves the block out, but the plugin reads markers from the raw text, so the marker has nothing under it there.
+
+Ruled out: asking `bsc` which blocks it excluded, which is exact but depends on internals of an alpha `bsc` that nobody has verified expose this; and moving `printTaskThreads()` out of `#if debug`, which ships it to release builds and contradicts `debug-tools.md`. The cost: a `debug-console` marker that drifts off its function inside a `#if` is caught only by a debug build. Revisit if the drift turns out to matter, or once something builds `debug=true` automatically.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
