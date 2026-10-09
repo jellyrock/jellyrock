@@ -275,6 +275,7 @@
 (?:FHD)\.
 (?:filesystem)\.
 (?:flac)\.
+(?:FLAC)\.
 (?:fns)\.
 (?:focusable)\.
 (?:followup)\.
@@ -313,6 +314,7 @@
 (?:Hardcoding)\.
 (?:HD)\.
 (?:HDR)\.
+(?:HEVC)\.
 (?:HIG)\.
 (?:HK-specific)\.
 (?:HLS)\.
@@ -648,6 +650,7 @@
 (?:superset)\.
 (?:SVG)\.
 (?:SVGs)\.
+(?:Tasker)\.
 (?:TCP)\.
 (?:teardown)\.
 (?:templated)\.

@@ -1,96 +1,64 @@
-# Jellyfin Server Feature Support Matrix
+# Jellyfin server feature matrix
 
-This document shows which JellyRock features require specific Jellyfin server versions.
+Some JellyRock features need a newer Jellyfin server. This page shows which server version each one needs.
 
-## Quick Reference
+Features that need a server plugin are in [Jellyfin server plugins](jellyfin-server-plugins.md).
 
-| Server Version    | API Version |
-| ----------------- | ----------- |
-| 10.7.0 - 10.8.x   | 1           |
-| 10.9.0+           | 2           |
+## Features by server version
 
-## Version-Specific Features
+| Feature | 10.7.x | 10.8.x | 10.9.x | 10.10.x–10.11.x | 12.0+ | What you get |
+| --- | --- | --- | --- | --- | --- | --- |
+| Trickplay thumbnails | ❌ | ❌ | ✅ | ✅ | ✅ | Preview images while you scrub through a video |
+| Quick Connect | ✅ | ✅ | ✅ | ✅ | ✅ | Sign in with a code instead of a password |
+| Media segments | ❌ | ❌ | ❌ | ✅ | ✅ | Skip intros, outros, recaps and more |
+| Song lyrics | ❌ | ❌ | ✅ | ✅ | ✅ | Lyrics your library already has |
+| Collections row | ❌ | ❌ | ❌ | ❌ | ✅ | The collections an item is in, on its details page |
+| Collections view | ❌ | ❌ | ❌ | ❌ | ✅ | Browse one library's collections from its **View** menu |
+| Language filters | ❌ | ❌ | ❌ | ❌ | ✅ | Filter a library by audio or subtitle language |
 
-| Feature                  | 10.7.x | 10.8.x | 10.9.x | 10.10.x–10.11.x | 12.0+ | Notes                                              |
-| ------------------------ | ------ | ------ | ------ | --------------- | ----- | -------------------------------------------------- |
-| **Trickplay Thumbnails** | ❌     | ❌     | ✅     | ✅              | ✅    | Video preview scrubbing                            |
-| **Quick Connect**        | ✅     | ✅     | ✅     | ✅              | ✅    | Auto-dispatches per server API                     |
-| **Media Segments**       | ❌     | ❌     | ❌     | ✅              | ✅    | Skip intro/outro/recap/etc.                        |
-| **Song Lyrics**          | ❌     | ❌     | ✅     | ✅              | ✅    | Lyrics your library already has                    |
-| **Collections row**      | ❌     | ❌     | ❌     | ❌              | ✅    | The collections an item is in, on its details page |
-| **Collections view**     | ❌     | ❌     | ❌     | ❌              | ✅    | Browse one library's collections from its View menu |
-| **Language filters**     | ❌     | ❌     | ❌     | ❌              | ✅    | Filter a library by audio or subtitle language      |
+✅ means the feature works on that version. ❌ means it is not available.
 
-## Legend
+## Quick Connect
 
-| Symbol | Meaning                       |
-| ------ | ----------------------------- |
-| ✅     | Fully supported               |
-| ❌     | Not available on this version |
+Quick Connect works on every server version JellyRock supports.
 
-## Important Notes
+On Jellyfin 10.8 and later, JellyRock hides the **Quick Connect** button when your server has the feature turned off. On 10.7 the button always shows, and a dialog tells you if Quick Connect is unavailable.
 
-### Quick Connect
+## Media segments
 
-Quick Connect works on every supported Jellyfin version. JellyRock auto-detects
-the server version and uses the right request shape.
+Media segments let JellyRock skip intros, outros, recaps, previews and commercials. They need Jellyfin 10.10 or later; 10.9 and earlier do not have the feature.
 
-- **10.7.x**: ✅ Works — uses `Token` body field on `AuthenticateWithQuickConnect`
-- **10.8.x**: ✅ Works — uses `Secret` body field; `Initiate` is `GET`
-- **10.9.0+**: ✅ Works — uses `Secret` body field; `Initiate` is `POST`
+Your server also needs a media segment provider plugin to find the segments. See [Media segments](media-segments.md) for the plugins JellyRock is tested with, how to choose what happens for each segment type, and troubleshooting.
 
-The Quick Connect button is hidden when the server explicitly reports the
-feature disabled (10.8+ via `/QuickConnect/Enabled`); on 10.7 the button is
-always shown and a clear dialog appears if Quick Connect is unavailable.
+## Collections row
 
-### Media Segments
+An item's details page lists the collections it belongs to, so you can open a collection from any movie, series or episode in it. It needs Jellyfin 12.0 or later; 10.11 and earlier do not have the feature.
 
-Media Segments enable skip functionality for detected intros, outros, recaps, previews, and commercials during video playback.
+Only collections the item was added to directly are listed. An episode shows the collections that episode is in, not the ones its series is in.
 
-- **10.9 and below**: ❌ Not available (the API endpoint does not exist)
-- **10.10+**: ✅ Fully supported
+## Collections view
 
-Requires a media segment provider plugin on the server to detect the segments. See [Media Segments](media-segments.md) for the plugins JellyRock is tested with, how to choose what happens for each segment type, and troubleshooting.
+A movie or TV library's **View** menu gains a **Collections** entry that lists the collections in that library. Opening one shows what it contains, the same as opening it from the top-level **Collections** library.
 
-### Collections row
+It needs Jellyfin 12.0 or later. On 10.11 and earlier, JellyRock does not offer it: those servers ignore which library was asked about, so the list would mix in collections from your other libraries.
 
-An item's details page lists the collections it belongs to, so you can open a collection from any movie, series or episode in it.
+Playlists are not listed here. A playlist belongs to you, not to a library, and can hold items from several libraries. It stays in the top-level **Playlists** library.
 
-- **10.11 and below**: ❌ Not available (the API endpoint does not exist)
-- **12.0+**: ✅ Fully supported
+## Language filters
 
-Only collections the item was added to directly are listed — an episode shows the collections that episode is in, not the ones its series is in.
+A movie library's **Filter** menu gains **Audio Language** and **Subtitle Language**, which list the languages that library has.
 
-### Collections view
+They need Jellyfin 12.0 or later. On 10.11 and earlier, JellyRock does not offer them: those servers accept the filter and then ignore it, so you would get your whole library back.
 
-A movie or TV library's View menu gains a **Collections** entry, listing the collections that live in that library. Opening one shows what it contains, the same as opening it from the top-level Collections library.
+A language spelled two ways in your files is one entry in the list, and picking it finds both. For example, Jellyfin knows French as both `fra` and `fre`.
 
-- **10.11 and below**: ❌ Not offered (the server ignores which library was asked about, so the list would mix in collections from your other libraries)
-- **12.0+**: ✅ Fully supported
+## Which version to run
 
-Playlists are not listed here. A playlist is yours rather than a library's, and can hold items from several libraries at once, so it stays in the top-level Playlists library.
+- **Minimum:** Jellyfin 10.7.0. Every essential feature works.
+- **Recommended:** Jellyfin 10.10.0 or later, for media segments. Trickplay thumbnails and song lyrics need 10.9.0 or later.
 
-### Language filters
-
-A movie library's Filter menu gains **Audio Language** and **Subtitle Language**, listing the languages that library actually has.
-
-- **10.11 and below**: ❌ Not offered (the server accepts the filter and then ignores it, which would hand back your whole library)
-- **12.0+**: ✅ Fully supported
-
-A language spelled two ways in your files (Jellyfin knows French as both `fra` and `fre`) is one entry in the list, and picking it finds both.
-
-## Upgrade Recommendations
-
-**Minimum**: 10.7.0 (all essential features work)
-
-**Recommended**: 10.10.0+ (enables Trickplay thumbnails and Media Segments)
-
-JellyRock will continue supporting 10.7.x indefinitely.
+JellyRock will keep supporting Jellyfin 10.7.x.
 
 ---
 
-_For contributors: the machine-readable map of which endpoints require which
-server version (and how JellyRock copes on older servers) lives in
-[`docs/dev/jellyfin-endpoint-availability.yml`](../dev/jellyfin-endpoint-availability.yml),
-consumed by the server-upgrade-automation pipeline. This user-facing table is the
-plain-language mirror._
+_For contributors: [`docs/dev/jellyfin-endpoint-availability.yml`](../dev/jellyfin-endpoint-availability.yml) maps each endpoint to the server version it needs and how JellyRock copes on older servers. [Jellyfin server versioning](../dev/jellyfin-server-versioning.md) explains how JellyRock picks its request shape for each version. This page is the plain-language version._

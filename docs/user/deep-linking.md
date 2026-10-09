@@ -1,170 +1,125 @@
-# Deep linking & casting to JellyRock
+# Deep linking and casting to JellyRock
 
-Open or play anything on your JellyRock from somewhere else — a browser bookmark, a
-shell script, a Home Assistant automation, a phone shortcut, a voice routine. You send
-your Roku one short command and JellyRock jumps straight to the item, or starts playing
-it, without you touching the remote.
+You can open or play anything in JellyRock from another device: a browser bookmark, a shell script, a Home Assistant automation, a phone shortcut or a voice routine. You send your Roku one short command, and JellyRock goes to the item or starts playing it. You don't touch the remote.
 
-Unlike some Roku clients, **you only need the item's ID.** You don't have to tell
-JellyRock whether it's a movie, an album, a show, or a folder — it looks that up from your
-server and does the right thing. Just the ID (and, optionally, _what_ to do with it).
+You only need the item's ID. Some Roku clients also make you say whether the item is a movie, an album, a show or a folder. JellyRock looks that up on your server. You send the ID and, if you like, what to do with it.
 
-> This works over your **local network** using Roku's built-in External Control Protocol
-> (ECP). Your Roku and the device sending the command need to be on the same network.
+> This works on your local network, through Roku's built-in External Control Protocol (ECP). Your Roku and the device sending the command must be on the same network.
 
----
+## Quick start
 
-## The 10-second version
-
-Open an item on a JellyRock that's already running:
+To open an item in a JellyRock that is already running:
 
 ```bash
 curl -d '' "http://<roku-ip>:8060/input?contentId=<itemId>"
 ```
 
-Want it to start _playing_ instead of just opening? Add an action:
+To start playing it instead, add an action:
 
 ```bash
 curl -d '' "http://<roku-ip>:8060/input?contentId=<itemId>|action%3Dplay"
 ```
 
-That's the whole idea. The rest of this guide is: finding those two pieces, the other
-things you can do besides "play," casting to a specific server, and ready-made automation
-recipes.
+The rest of this guide covers how to find those two values, the other actions, casting to a specific server, and ready-made recipes.
 
----
+## Actions
 
-## What you can do (actions)
-
-The `action` says what to do with the item. Leave it off and it defaults to `open`.
+The `action` says what to do with the item. Without one, JellyRock uses `open`.
 
 | Action | What it does | Works well on |
-|---|---|---|
-| `open` _(default)_ | Jump to the item's page. A library, folder, genre, or collection opens **into its grid** instead. | Anything |
-| `play` | Start playing. A movie/episode **resumes where you left off**; a show **smart-resumes its next-up episode**; an album, playlist, or season plays in order. | Movie, Episode, Series, Season, Album, Playlist, Audio, live channel, Photo |
-| `shuffle` | Shuffle-play — the same as pressing **Shuffle** in the app. | Album, Playlist, Artist, library |
-| `trailer` | Play the item's trailer. | Movie, Series |
-| `instantmix` | Start an **Instant Mix** seeded from the item. | Song, Album, Artist |
+| --- | --- | --- |
+| `open` _(default)_ | Goes to the item's page. A library, folder, genre or collection opens into its grid instead. | Anything |
+| `play` | Starts playing. A movie or episode resumes where you left off. A show resumes its next-up episode. An album, playlist or season plays in order. | Movie, Episode, Series, Season, Album, Playlist, Audio, live channel, Photo |
+| `shuffle` | Shuffle-plays, the same as pressing **Shuffle** in the app. | Album, Playlist, Artist, library |
+| `trailer` | Plays the item's trailer. | Movie, Series |
+| `instantmix` | Starts an **Instant Mix** based on the item. | Song, Album, Artist |
 
-Picked an action JellyRock doesn't recognize? It safely falls back to `open` — so a command
-written for a newer version never breaks an older one.
-
----
+If JellyRock doesn't recognize the action, it uses `open`. A command written for a newer version never breaks an older one.
 
 ## What you need
 
 ### 1. Your Roku's IP address
 
-On the Roku: **Settings → Network → About** (or find it in your router's device list). It
-looks like `192.168.1.50`. Everywhere below, `<roku-ip>` means this.
+On the Roku, go to **Settings → Network → About**, or find it in your router's device list. It looks like `192.168.1.50`. In this guide, `<roku-ip>` means this address.
 
 ### 2. The item's ID
 
-Open the item in the **Jellyfin web app** in a browser. The address bar will read
-something like:
+Open the item in the Jellyfin web app in a browser. The address bar reads something like:
 
 ```text
 https://your-server/web/#/details?id=4f9c...&serverId=de50...
 ```
 
-Copy the value after `id=` — that's your `<itemId>`. (The `serverId` next to it is only
-needed if you're casting to a _different_ server — see
-[Casting to a specific server](#casting-to-a-specific-server).)
+Copy the value after `id=`. That is your `<itemId>`. You need the `serverId` next to it only to cast to a different server (see [Casting to a specific server](#casting-to-a-specific-server)).
 
-### 3. (Cold start only) JellyRock's channel ID
+### 3. JellyRock's channel ID, to start it from closed
 
-JellyRock's Roku channel ID is **`819325`**. You only need it for the `/launch` form below —
-the one that starts JellyRock when it isn't already open. (You can list the channels
-installed on a Roku any time with `curl "http://<roku-ip>:8060/query/apps"`.)
-
----
+JellyRock's Roku channel ID is `819325`. You need it only for the `/launch` form below, which starts JellyRock when it isn't open. To list the channels installed on a Roku, run `curl "http://<roku-ip>:8060/query/apps"`.
 
 ## Two ways to send a deep link
 
 | Form | Use it when |
-|---|---|
-| `.../input?contentId=...` | JellyRock is **already open** on the Roku |
-| `.../launch/819325?contentId=...` | JellyRock might be **closed** — this starts it, then opens the item |
+| --- | --- |
+| `.../input?contentId=...` | JellyRock is already open on the Roku. |
+| `.../launch/819325?contentId=...` | JellyRock might be closed. This starts it, then opens the item. |
 
-Both take the exact same `contentId`. If you're scripting something that should "just work"
-no matter what's on screen, prefer `/launch`.
+Both take the same `contentId`. For a script that should work whatever is on screen, use `/launch`.
 
-### A note on URL formatting
+### Formatting the URL
 
-A bare item ID is a clean URL — nothing to encode:
+A bare item ID needs no encoding:
 
 ```bash
 curl -d '' "http://<roku-ip>:8060/input?contentId=<itemId>"
 ```
 
-The **one** character you must encode is the `=` inside `action=...` (or `serverId=...`): write
-it `%3D`. Roku's ECP returns **404** and does nothing for a literal `=` in the query, so
-`action=play` is sent as `action%3Dplay`. Everything else stays readable — the `|` separators
-are fine as-is, and you can drop the `id=` prefix (a leading bare value is taken as the ID):
+Encode one character: the `=` inside `action=...` or `serverId=...`. Write it as `%3D`, so `action=play` becomes `action%3Dplay`. Roku's ECP returns 404 and does nothing when the query holds a literal `=`.
+
+Everything else stays readable. The `|` separators work as they are. You can leave off the `id=` prefix, because a bare value at the start is taken as the ID:
 
 ```bash
 curl -d '' "http://<roku-ip>:8060/input?contentId=<itemId>|action%3Dplay"
 ```
 
-_(The `-d ''` makes `curl` send a `POST`, which ECP requires — a `GET` returns 404.)_
-
----
+The `-d ''` makes `curl` send a `POST`, which ECP requires. A `GET` returns 404.
 
 ## Casting to a specific server
 
-JellyRock supports more than one server, and a deep link can target one of them by adding
-`serverId` — the Jellyfin **server ID** (a GUID, the `serverId=` value from the web URL),
-**not** a server URL.
+JellyRock supports more than one server. A deep link can target one of them with `serverId`. This is the Jellyfin server ID (a GUID, the `serverId=` value from the web URL), not a server URL.
 
 ```bash
 curl -d '' "http://<roku-ip>:8060/input?contentId=<itemId>|serverId%3D<serverGuid>|action%3Dplay&itemName=The%20Matrix"
 ```
 
-- The server must be one you've **already added to this device** — JellyRock won't connect
-  to a server it doesn't know.
-- If JellyRock is **already running** and signed into a _different_ server, it shows a
-  confirmation on the TV — _"Play 'The Matrix' on '\<server\>'? You'll switch servers…"_ —
-  does a quick reachability check (so an offline server can't strand you), then switches and
-  plays. The optional `itemName` is only there to put the title in that prompt.
-- On a **cold start**, there's no session to interrupt, so it just signs you into the
-  target server and opens the item — no prompt.
-- A `serverId` for a server you _haven't_ added shows a toast and does nothing else.
+- The server must already be added on this Roku. JellyRock won't connect to a server it doesn't know.
+- If JellyRock is running and signed in to a different server, the TV asks you to confirm: _"Play 'The Matrix' on '\<server\>'? You'll switch servers…"_. JellyRock then checks that the server is reachable, so an offline server can't strand you. Then it switches and plays. The optional `itemName` only puts the title in that prompt.
+- If JellyRock starts from closed, there is no session to interrupt. It signs you in to the target server and opens the item, with no prompt.
+- A `serverId` for a server you haven't added shows a message and does nothing else.
 
-Omit `serverId` entirely (the common case) and JellyRock uses whatever server you're
-currently signed into.
-
----
+Leave out `serverId`, as most links do, and JellyRock uses the server you're signed in to.
 
 ## If you're signed out
 
-A deep link that arrives while you're signed out isn't lost. JellyRock **remembers it**,
-shows _"Sign in to open your content."_, and opens it automatically the moment you finish
-signing in.
+A deep link that arrives while you're signed out isn't lost. JellyRock remembers it, shows _"Sign in to open your content."_, and opens it as soon as you sign in.
 
----
+## What you see on the TV
 
-## What you'll see on the TV
-
-| You sent... | The TV shows... |
-|---|---|
-| Any deep link | A brief spinner while JellyRock looks the item up |
-| `play` / `shuffle` / `trailer` / `instantmix` | _"Playing \<title\>"_ when playback actually starts |
-| An ID that doesn't exist (or can't be reached) | _"This content isn't available."_ — and **nothing else changes** |
+| You sent | The TV shows |
+| --- | --- |
+| Any deep link | A short spinner while JellyRock looks up the item |
+| `play`, `shuffle`, `trailer` or `instantmix` | _"Playing \<title\>"_ when playback starts |
+| An ID that doesn't exist or can't be reached | _"This content isn't available."_, and nothing else changes |
 | A confirmed server switch | _"Switching to '\<server\>'…"_ |
 | A link while signed out | _"Sign in to open your content."_ |
 | A dismissed server-switch prompt | _"Cast canceled."_ |
 
-Crucially, an unknown or junk ID **never disturbs what you're already watching** — JellyRock
-checks the ID _before_ it navigates anywhere, so a bad command is just a toast.
-
----
+An unknown or junk ID never interrupts what you're watching. JellyRock checks the ID before it goes anywhere, so a bad command only shows a message.
 
 ## Recipes
 
-All of these are the same command in different clothes — point any tool that can send an
-HTTP POST at the ECP URL.
+Each recipe sends the same command. Any tool that can send an HTTP POST to the ECP URL works.
 
-**A shell script** — play an item, with the item ID as an argument:
+**Shell script.** Play an item, with the item ID as an argument:
 
 ```bash
 #!/usr/bin/env bash
@@ -173,15 +128,13 @@ ROKU_IP="192.168.1.50"
 curl -d '' "http://${ROKU_IP}:8060/input?contentId=${1}|action%3Dplay"
 ```
 
-**A browser bookmark** — bookmark this URL (filled in) to open an item with one click from
-your computer:
+**Browser bookmark.** Bookmark this URL, filled in, to play an item with one click from your computer:
 
 ```text
 http://192.168.1.50:8060/input?contentId=<itemId>|action%3Dplay
 ```
 
-**Home Assistant** — a starting-point `rest_command` you can call from an automation or a
-dashboard button (adjust to your setup):
+**Home Assistant.** A starting `rest_command` to call from an automation or a dashboard button. Adjust it to your setup:
 
 ```yaml
 rest_command:
@@ -190,45 +143,31 @@ rest_command:
     method: POST
 ```
 
-**Phone shortcuts** (iOS Shortcuts, Tasker, etc.) — any "send an HTTP POST request" action
-pointed at the same URL works the same way.
-
----
+**Phone shortcuts.** In iOS Shortcuts, Tasker or similar apps, any "send an HTTP POST request" action pointed at the same URL works.
 
 ## When it doesn't work
 
-| Symptom | Likely cause / fix |
-|---|---|
-| Nothing happens at all | JellyRock wasn't running — use the `/launch/819325` form instead of `/input`. Also double-check the Roku IP and that both devices are on the same network. |
-| _"This content isn't available."_ | The ID is wrong, belongs to a _different_ server (add `serverId`), or the item was deleted. |
-| It asks to switch servers when you didn't expect it | Your `serverId` points at a different server than the one you're signed into — drop `serverId` to use the current one. |
-| A toast about a server you haven't added | Add that server in JellyRock first, then retry. |
-| It opens but doesn't play | You sent `open` (the default). Add `\|action%3Dplay` to the `contentId`. |
-| `/launch` opens the app but not the item | Check that the `=` in `action=...` is encoded as `%3D` — ECP returns 404 (and does nothing) for a literal `=` in the query. The item ID and `\|` separators stay as-is. |
+| Symptom | Likely cause and fix |
+| --- | --- |
+| Nothing happens | JellyRock wasn't running. Use the `/launch/819325` form instead of `/input`. Also check the Roku IP, and that both devices are on the same network. |
+| _"This content isn't available."_ | The ID is wrong, belongs to a different server (add `serverId`), or the item was deleted. |
+| It asks to switch servers when you didn't expect it | Your `serverId` points at a different server than the one you're signed in to. Remove `serverId` to use the current one. |
+| A message about a server you haven't added | Add that server in JellyRock first, then try again. |
+| It opens but doesn't play | You sent `open`, the default. Add `\|action%3Dplay` to the `contentId`. |
+| `/launch` opens the app but not the item | Check that the `=` in `action=...` is encoded as `%3D`. ECP returns 404 and does nothing when the query holds a literal `=`. The item ID and the `\|` separators stay as they are. |
 
-To verify playback from a script, ask the Roku what it's doing:
+To check playback from a script, ask the Roku what it's playing:
 
 ```bash
 curl "http://<roku-ip>:8060/query/media-player"
 ```
 
----
+## Safety and privacy
 
-## Safety & privacy
-
-- **Local network only.** ECP isn't exposed to the internet; only devices on your network
-  can send these commands.
-- **A bad command can't hurt anything.** JellyRock validates every ID before acting, so a
-  random or malformed command shows a harmless toast and leaves your current session
-  untouched.
-- **Nothing is published.** JellyRock is a self-hosted client — it doesn't advertise your
-  library to Roku's search or anywhere else. Deep links are something _you_ send, not a
-  catalog you expose.
-
----
+- **Local network only.** ECP isn't exposed to the internet. Only devices on your network can send these commands.
+- **A bad command can't hurt anything.** JellyRock checks every ID before it acts. A random or malformed command shows a harmless message and leaves your current session alone.
+- **Nothing is published.** JellyRock is a client for your own server. It doesn't list your library in Roku's search or anywhere else. A deep link is something you send, not a catalog you expose.
 
 ## Full reference
 
-This guide covers the everyday cases. For the complete parameter contract, the exact
-parsing rules, the security model, and how it all works under the hood, see the
-[developer reference](../dev/deep-linking.md).
+This guide covers everyday use. For the full parameter list, the parsing rules, the security model and how it works inside the app, see the [developer reference](../dev/deep-linking.md).

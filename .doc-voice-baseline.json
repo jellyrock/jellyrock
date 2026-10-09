@@ -762,10 +762,10 @@
     "latin-abbrev": 1
   },
   "docs/progress.md": {
-    "caps-emphasis": 40,
-    "em-dash": 482,
-    "filler": 57,
-    "latin-abbrev": 10,
+    "caps-emphasis": 39,
+    "em-dash": 473,
+    "filler": 56,
+    "latin-abbrev": 9,
     "prose-arrow": 35
   },
   "docs/screenshots/README.md": {
@@ -784,24 +784,8 @@
     "em-dash": 1,
     "latin-abbrev": 2
   },
-  "docs/user/deep-linking.md": {
-    "em-dash": 27,
-    "filler": 6
-  },
-  "docs/user/jellyfin-server-feature-matrix.md": {
-    "em-dash": 4
-  },
-  "docs/user/manage-subtitles.md": {
-    "em-dash": 14,
-    "filler": 5
-  },
-  "docs/user/media-segments.md": {
-    "em-dash": 3
-  },
   "docs/user/playback-troubleshooting.md": {
-    "filler": 2,
-    "latin-abbrev": 4,
-    "prose-arrow": 1
+    "filler": 1
   },
   "resources/icons/README.md": {
     "caps-emphasis": 1,
