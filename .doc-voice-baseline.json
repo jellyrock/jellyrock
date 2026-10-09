@@ -274,14 +274,6 @@
     "filler": 4,
     "prose-arrow": 17
   },
-  "CONTRIBUTING.md": {
-    "em-dash": 16,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
-  "SECURITY.md": {
-    "em-dash": 1
-  },
   "components/CLAUDE.md": {
     "caps-emphasis": 6,
     "em-dash": 84,
@@ -299,20 +291,6 @@
     "em-dash": 10,
     "filler": 1,
     "prose-arrow": 2
-  },
-  "docs/admin/changelog.md": {
-    "em-dash": 4,
-    "prose-arrow": 1
-  },
-  "docs/admin/releases.md": {
-    "em-dash": 5,
-    "filler": 3,
-    "latin-abbrev": 1,
-    "prose-arrow": 1
-  },
-  "docs/admin/translations.md": {
-    "em-dash": 12,
-    "latin-abbrev": 1
   },
   "docs/adr/0001-triage-opus-inline-investigation.md": {
     "prose-arrow": 1
