@@ -21,8 +21,9 @@ name: lint-docs
 # with --no-verify bypass that hook entirely. Running them in CI closes
 # the gap.
 #
-# Note: the underlying scripts use only Node stdlib (fs, path), so no
-# `npm ci` step is needed.
+# `npm ci` is needed because doc-citation-ratchet.js reads code comments with
+# the BrighterScript lexer, espree and yaml. The other scripts use only the
+# Node standard library.
 
 on:
   workflow_call:
@@ -69,6 +70,9 @@ jobs:
         if: steps.detect.outputs.relevant == 'true'
         with:
           node-version: "lts/*"
+          cache: "npm"
+      - if: steps.detect.outputs.relevant == 'true'
+        run: npm ci
       - name: Followup journal format
         if: steps.detect.outputs.relevant == 'true'
         run: bash .claude/skills/log/journal.sh check
