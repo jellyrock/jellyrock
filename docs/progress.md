@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-08
+last-updated: 2026-10-09
 ---
 
 # Progress
@@ -498,6 +498,12 @@ A live `PlaybackInfo` now waits up to `timeouts.LIVE_OPEN_MS` (120 s) and keeps 
 #### AV1 is not a transcode video target, so converting an AV1 file's audio re-encodes its video too. `[fid: av1-not-transcode-target]` `[captured 2026-10-01]`
 
 `getTranscodingProfiles` lists only `h264` / `hevc` (and `vp9` / `mpeg2video` where supported) as transcode video codecs, so when the server must convert the audio of an AV1 file it cannot keep the video. Measured 2026-10-01: switching a 4K AV1 Dolby Vision movie to its DTS 7.1 track reloads as a full 4K re-encode, 19 s to the first segment on the home server, then about 4.1 s per 6 s segment. Jellyfin carries AV1 in HLS only in `mp4` segments (from 10.9, per `getTranscodingProfiles`' notes). **Next step:** before adding `av1` to the `mp4` transcode profile, measure on a Roku that audio converted into `mp4`-segment HLS plays with sound, since DTS copied into that format played silent (#821) and #573 records silent `mp4`-segment transcodes.
+
+#### `activeRoutedView`'s observer fires many times per navigation although the field does not always notify, and nobody knows why. `[fid: active-routed-view-observer-refires]` `[captured 2026-10-09]`
+
+`JRScene.onActiveRoutedViewChanged()` ran 23 to 46 times for one navigation (measured 2026-10-07 on a Streaming Stick 4K, while building PR #1137). The field is declared `addField("activeRoutedView", "node", false)` in `source/utils/globals.bs`, so a write of the same node should not notify, and only `JRScreen.onViewOpen()`, `JRScreen.onViewResume()` and `JRScene.resetRouter()` write it. PR #1137 made the handler return early when the node has not changed, so nothing breaks, but the cause is unknown and may mean something else fires too often too.
+
+**Fix shape:** probe on device which writes or events reach the observer (log `m.global.activeRoutedView` and the caller per fire), then record the cause in `docs/architecture/navigation.md` beside the measured count, and fix it if it is a real excess.
 
 ### source
 

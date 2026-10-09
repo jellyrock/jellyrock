@@ -749,23 +749,22 @@ sub resetRouter()
   if isValid(m.overhang) then m.overhang.visible = false
 end sub
 
-' Run beforeViewClose (→ onScreenHidden + onDestroy) on every mounted routed view — the active
-' one in viewTarget and every suspended keepAlive view in keepAliveViewTarget — before the router
-' is destroyed under them. The target Groups live inside the outlet and survive destroy(); only
-' their children (the views) are torn down here. beforeViewClose is the same permanent-close entry
-' sgRouter drives on a normal close, so re-running onScreenHidden on an already-suspended keepAlive
-' view matches the existing contract (suspend already fired it once; it must be idempotent).
+' Run beforeViewClose (→ onScreenHidden + onDestroy) on every mounted routed view before the
+' router is destroyed under them. All of them are children of the outlet's viewTarget: the
+' active view and every covered one, since every route suspends with "show". A "detach" view
+' would sit in the router's detach store instead, out of this loop's reach. viewTarget lives
+' inside the outlet and survives destroy(); only its children (the views) are torn down here.
+' beforeViewClose is the same permanent-close entry sgRouter drives on a normal close, so
+' re-running onScreenHidden on a covered view (hideCovered already ran it once) matches the
+' existing contract: it must be idempotent.
 sub teardownRoutedViews()
   outlet = m.top.findNode("routerOutlet")
   if not isValid(outlet) then return
-  for each targetId in ["viewTarget", "keepAliveViewTarget"]
-    target = outlet.findNode(targetId)
-    if isValid(target)
-      for each view in target.getChildren(-1, 0)
-        if isValid(view) and view.isSubType("JRScreen")
-          view.callFunc("beforeViewClose", {})
-        end if
-      end for
+  target = outlet.findNode("viewTarget")
+  if not isValid(target) then return
+  for each view in target.getChildren(-1, 0)
+    if isValid(view) and view.isSubType("JRScreen")
+      view.callFunc("beforeViewClose", {})
     end if
   end for
 end sub

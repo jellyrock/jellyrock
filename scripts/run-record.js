@@ -712,6 +712,12 @@ export const FAILURE_KINDS = Object.freeze({
    * rows verify nothing is a real signal rather than a thin fixture.
    */
   GENRE_ROWS_UNVERIFIED: 'genre-rows-unverified',
+  /**
+   * A screen loaded and the router's `viewTarget` did not show exactly one view. Every
+   * route suspends with `"show"`, so only `JRScene`'s screen swap hides a covered view;
+   * a second view showing means the swap did not run for it. See `assertOneScreenShowing`.
+   */
+  SCREENS_STACKED: 'screens-stacked',
 });
 
 const KNOWN_KINDS = new Set(Object.values(FAILURE_KINDS));

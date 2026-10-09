@@ -21,6 +21,7 @@ import {
   assertSeedTookEffect,
 } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
+import { assertOneScreenShowing } from '../lib/steps.js';
 import { firstUnmetRequirement, SCREENS } from '../screens.js';
 import { captureRawUI } from '../capture.js';
 import { recordAssertion } from '../../../scripts/run-record.js';
@@ -99,6 +100,9 @@ for (const screen of SCREENS) {
     await hardRelaunch();
     await assertSeedTookEffect(expectedServer, screen.name);
     if (screen.nav) await screen.nav(ctx); // nav's waitFor gates assert "loaded"
+    // Loaded is not enough: the screen it covers must also be gone. Every route suspends
+    // with "show", so a view that skips JRScene's screen swap leaves it showing underneath.
+    await assertOneScreenShowing(screen.name);
     if (screen.assert) {
       // A content assertion that returns a NUMBER is reporting how much it actually
       // checked; record it. Green says the invariant held, not that it held over
