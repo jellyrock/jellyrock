@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-08
+last-updated: 2026-10-09
 ---
 
 # Progress
@@ -26,6 +26,8 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-09: fix: Change screens and the overhang in one frame
+- 2026-10-08: test(rta): Walk Home rows and the library grid one key at a time
 - 2026-10-08: fix(focus): Stop screens taking focus back when it leaves the router
 - 2026-10-08: test(rta): Say what the hourly demo reset wipes, and not to debug past it
 - 2026-10-08: update(manifest): Require Roku OS 15.1 and SceneGraph 1.3
@@ -73,12 +75,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-25 — fix: Stop a song crashing when its details fail to load
 - 2026-09-25 — test(api): Make API requests fail on purpose in on-device tests
 - 2026-09-25 — fix: Stop Play crashing on a song's details screen
-- 2026-09-24 — fix(video): Keep the resume point when a video fails before it plays
-- 2026-09-24 — chore: Place changelog entries by PR title type, and check it in CI
-- 2026-09-24 — fix: Stop subtitles crashing on short or comma timestamps, and hide cue ids and notes
-- 2026-09-24 — fix: Recover stalled Live TV and close a failed channel's live stream
-- 2026-09-24 — fix: Stop restarting a Live TV channel that keeps ending without playing
-- 2026-09-24 — fix: Keep screens loading when the app hits its Task-thread limit
 
 ## Open followups
 
@@ -287,10 +283,6 @@ Proven on device 2026-08-09 (`.178`, `tasks/probes/genre-truncation.mjs`): with 
 #### `SearchResults` activates its keyboard by setting a field the node does not have. `[fid: search-results-keyboard-missing-field]` `[captured 2026-08-14]`
 
 Every search open prints `Tried to set nonexistent field "active" of a "DynamicMiniKeyboard" node` from the first-show branch of `SearchResults.onScreenShown` — captured on `.177` 2026-08-14 while probing the search screen for the readiness ledger, so the device is the source, not a reading of the docs. `m.searchAlphabox.active = true` is therefore a silent no-op, and whatever it was meant to buy (a keyboard that takes input immediately on first show) is being delivered by the `setFocus(true)` on the line above it instead — search does work. **Fix shape:** confirm on device that first-show typing is unaffected and delete the line, or find the field that genuinely activates a `DynamicMiniKeyboard`. Pre-existing and unrelated to measurement; deliberately not folded into the search instrumentation.
-
-#### `teardownRoutedViews` cannot reach a detached view, so a screen suspended at sign-out never runs `onDestroy`. `[fid: teardown-routed-views-detached-view]` `[captured 2026-08-15]`
-
-It walks `["viewTarget", "keepAliveViewTarget"]` under the outlet ([`JRScene.bs`](../components/JRScene.bs)), but `keepAliveViewTarget` does not exist in sgRouter 0.1.4 — the `Outlet` declares only `viewTarget`, and a `suspendMode: "detach"` view is held in `m.__router_detachedViews`, an associative array on the Router's `m`. That loop iteration finds nothing, so `sgrouter.destroy()` `removeNode`s the store's residents without running their lifecycle: sign out from a detail and the library suspended beneath it keeps its `LoadItemsTask`, its ~40 observers and its in-flight promises. **Predates [ADR 0029](adr/0029-destroy-routed-screens-on-pop.md) and is narrowed by it** — the store no longer accumulates for the session, so at most the currently-covered views are stranded rather than every view the session ever visited. **Fix shape:** iterate the store via the router's public `getDetachedViews` alongside the view target. Surfaced in review of #816 and deliberately not folded in per `isolate-the-fix`: it is a separate defect, and nothing in the new leak spec would have caught it either, since every walk there ends on Home rather than at sign-out. The gap is documented in [`navigation.md`](architecture/navigation.md)'s `resetRouter` row.
 
 #### `setServer`'s `savedOnly` variant fires when there were no saved servers EITHER, so it names a third workload as the second. `[fid: set-server-saved-only-variant-misnamed]` `[captured 2026-08-15]`
 
@@ -501,6 +493,12 @@ A live `PlaybackInfo` now waits up to `timeouts.LIVE_OPEN_MS` (120 s) and keeps 
 #### AV1 is not a transcode video target, so converting an AV1 file's audio re-encodes its video too. `[fid: av1-not-transcode-target]` `[captured 2026-10-01]`
 
 `getTranscodingProfiles` lists only `h264` / `hevc` (and `vp9` / `mpeg2video` where supported) as transcode video codecs, so when the server must convert the audio of an AV1 file it cannot keep the video. Measured 2026-10-01: switching a 4K AV1 Dolby Vision movie to its DTS 7.1 track reloads as a full 4K re-encode, 19 s to the first segment on the home server, then about 4.1 s per 6 s segment. Jellyfin carries AV1 in HLS only in `mp4` segments (from 10.9, per `getTranscodingProfiles`' notes). **Next step:** before adding `av1` to the `mp4` transcode profile, measure on a Roku that audio converted into `mp4`-segment HLS plays with sound, since DTS copied into that format played silent (#821) and #573 records silent `mp4`-segment transcodes.
+
+#### `activeRoutedView`'s observer fires many times per navigation although the field does not always notify, and nobody knows why. `[fid: active-routed-view-observer-refires]` `[captured 2026-10-09]`
+
+`JRScene.onActiveRoutedViewChanged()` ran 23 to 46 times for one navigation (measured 2026-10-07 on a Streaming Stick 4K, while building PR #1137). The field is declared `addField("activeRoutedView", "node", false)` in `source/utils/globals.bs`, so a write of the same node should not notify, and only `JRScreen.onViewOpen()`, `JRScreen.onViewResume()` and `JRScene.resetRouter()` write it. PR #1137 made the handler return early when the node has not changed, so nothing breaks, but the cause is unknown and may mean something else fires too often too.
+
+**Fix shape:** probe on device which writes or events reach the observer (log `m.global.activeRoutedView` and the caller per fire), then record the cause in `docs/architecture/navigation.md` beside the measured count, and fix it if it is a real excess.
 
 ### source
 
@@ -827,6 +825,28 @@ Home opens on the Favorites tab, so the spec's Home-tab gate times out (`tab "ho
 #### `SubtitlePanel.shouldOfferPerfectMatchFilter()` has no test `[fid: perfect-match-filter-rule-untested]` `[captured 2026-10-04]`
 
 `SubtitlePanel.shouldOfferPerfectMatchFilter()` ([`components/subtitles/SubtitlePanel.bs`](../components/subtitles/SubtitlePanel.bs)) decides whether the "perfect matches only" toggle appears: kept while the filter is on, hidden when the result set fits on screen, and offered only when some but not all results are hash matches. It has no test. Its only coverage was the removed `remoteSubtitles.hasAnyHashMatch` spec, which tested a helper the panel no longer called (removed in the #1072 cleanup). The function is not declared in the component's interface, so a spec cannot call it as is. Closing it means moving the rule into `remoteSubtitles` as a pure function of the results, the filter state and `subtitleLayout.VISIBLE_ROWS` that the panel calls, then a spec for each case.
+
+#### The stepped RTA walk's drop wait rests on one device's measured key delay `[fid: stepped-walk-drop-wait-one-device]` `[captured 2026-10-08]`
+
+`STEPPED_DROP_WAIT_MS` (`tests/rta/lib/steps.js`, 1000 ms) is how long `scrollFocus`'s stepped mode waits for an index to move before it re-sends a key as dropped. It rests on measurements from one device: on `.177` (Stick 4K, Roku OS 15.3.4, 2026-10-08) a Down or Up took 350-444 ms to show in Home's `rowItemFocused`, and a Right or Left 372-405 ms in the Movies grid's `itemFocused`. If another device answers slower than the wait, a slow key reads as dropped and the re-press is the overshoot the stepped mode exists to stop. Neither the 512 MB `.176` nor the Ultra `.178` has been measured.
+
+Closes when the same press-to-index delay has been measured on `.176` and `.178` (a scratch ODC script that presses one key and polls the index until it changes, for both Home rows and a library grid). Then either confirm the wait still has headroom, or set it from the slowest device and record that measurement next to the constant. Came from the row-walk and grid-walk fixes on `fix/rta-row-walk-step`.
+
+#### The release RTA job has never passed in CI: a 25-minute limit on a suite that now takes over half an hour, and the rest of its setup needs redoing with it `[fid: release-rta-never-passes-in-ci]` `[captured 2026-10-08]` `[prompt: /start-project]` `[pinned]`
+
+The `rta` job in `.github/workflows/rta-functional-tests.yml` has `timeout-minutes: 25`, set in #772 (2026-08-06) when a full pass took 10-15 min. The suite has since grown from 10 tests in 5 spec files (2026-08-14) to 62 in 21 (2026-10-04), and a full pass now takes 35-44 min locally (RTA ledger, early October: `.178` Ultra 35, `.177` Stick 4K 35-42, `.176` 43-44). Every release run where the job started (15 since 2026-08-07) failed or was canceled, most at the limit; run 37243742270 (release-2.35.0) reports `The job has exceeded the maximum execution time of 25m0s` and uploaded no run record. Releases still showed green because the path gate skips the job on release pushes that touch no app or test paths. The "10-15 min" figure is repeated in `tests/rta/CLAUDE.md`, `docs/dev/rta-tests.md`, `docs/architecture/build-and-tooling.md` (twice), ADR 0031 and the workflow's header comment.
+
+Do this as one project, not piecemeal, because the parts depend on each other:
+
+- **Suite audit:** decide whether all 62 tests earn their device time, or whether some were written during implementation and never retired. The audit sets the run time, which sets the limit.
+- **Server:** the workflow sets no `RTA_SERVER_URL`, so `tests/rta/config.js` falls back to the public demo server, unless the self-hosted runner's per-user env file overrides it. The operator believes that file has not changed since the runner was set up, so it probably does not, but this needs verifying on the runner. Decide which server the release run should target. Cases that need data the demo server wipes hourly (the Favorites cases in `home-failure.spec.js` need a favorite Movie) either seed it themselves (the app uses `POST /UserFavoriteItems/{id}`; RTA already writes to the demo server when it signs in and authorizes Quick Connect) or wait for the new demo server.
+- **Limit:** raise `timeout-minutes` with headroom over the audited run time, and replace the "10-15 min" figure with a scale plus the command that shows it live.
+- **Loud failure:** a skipped or canceled `rta` job should show on the release as "RTA did not run". Read the release flow first.
+- **Optional trim:** move measurement-style specs (leaks, task-thread peak) to an on-demand job.
+
+Options weighed on the /snag screen: `limit` (raise to 60 min, fix the docs), `trim` (limit plus move measurement specs out), `loud` (limit plus a visible did-not-run signal). Recommended `limit` as the first step; the operator chose to defer and do all of it together.
+
+Not checked: whether the 2026-08-07 and 2026-08-17 failures would pass today; whether anything in the release flow reads this job's result; the CI device's actual run time (assumed to match `.177`, the same model); whether a single spec got slower, since the ledger has no per-spec times; the self-hosted runner's env file.
 
 ### docs
 

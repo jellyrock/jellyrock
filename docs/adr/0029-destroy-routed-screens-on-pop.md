@@ -5,6 +5,10 @@
 
 **related-files**: `components/JRScene.bs`, `components/ItemGrid/BaseGridView.bs`, `components/search/SearchResults.bs`, `docs/architecture/navigation.md`, `tests/rta/specs/leaks.spec.js`
 
+> Partially superseded by [ADR 0050](0050-same-frame-screen-swap.md): routes now suspend with
+> `"show"` and JellyRock hides the covered view, instead of `"detach"`. The `keepAlive` and
+> destroy-on-pop rules below still stand.
+
 > Amends an aside in [ADR 0027](0027-screen-readiness-ledger.md), which describes the details
 > route as `keepAlive`. Its argument (one ledger per mount, since each navigation is a fresh
 > component) is unaffected — that follows from the absence of `allowReuse`, not from `keepAlive`.

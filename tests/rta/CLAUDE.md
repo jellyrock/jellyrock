@@ -80,10 +80,13 @@ reading taken before the press can catch this** — the press has to be brackete
 So a walk presses through [`scrollFocus`](lib/steps.js), which sends the exact distance as
 one burst and re-presses ONLY for a key it can prove was dropped (the index unchanged across
 a whole tick, then re-armed). If you are writing a loop that reads an index and presses
-toward a target, you are writing this bug; reach for the helper. The one deliberate holdout
-is `walkHomeRowsTo`'s ROW half, because `Home.onKeyEvent` releases focus to the overhang on
-Up from row 0 — there an overshoot leaves Home rather than landing on the wrong tile, so it
-was not converted on the strength of a column measurement.
+toward a target, you are writing this bug; reach for the helper.
+
+`walkHomeRowsTo`'s ROW half was the holdout, and a stale-read loop double-pressed there too. A
+burst is the wrong cure for it, because a surplus Up from row 0 leaves Home, so it uses
+`scrollFocus` with `stepped: true`. Use `stepped` for any axis where a stray key does damage a
+retry cannot undo, and pass `within`, the list the walk must not leave. The walk ends by
+checking focus is still there, because the index keeps its last value after a key leaves.
 
 **A guarded re-press must re-send the key that is actually still owed.** `waitOsdUp` re-sends
 `Up` until the OSD is up; `focusOverhangIcon` pressed `Up` once and then re-sent `Right`, which
@@ -167,10 +170,10 @@ a contract.
 |---|---|---|
 | `FN` Function `keyPath` | 21 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
 | `ABS` Waits for absence | 1 | The node is gone. A departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument on behalf of the ten dialog-dismiss sites that route through it. |
-| `ACT` `action:` retry loops | 8 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
+| `ACT` `action:` retry loops | 6 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
 | `SETTLE` Plain field settle | 72 | The primitive could apply; it is ruled out below. |
 | `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is RESOLVED rather than named. Unclassifiable from syntax, so each carries a rule disable naming the reason and the argument lives in its docblock. |
-| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 35 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
+| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 36 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
 | `FOCUS_SUBTYPE` Focus containment by subtype (`waitFocusInHomeContent`) | 5 | Same absence of a primitive. Separate row because the QUESTION differs: Home's content is whichever of `HomeRows` / `FavoritesRows` the selected tab put in the scene, so it cannot be asked by container id at all. |
 | `FOCUS_IDENTITY` Focus identity (`waitFocused`) | 18 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
 
@@ -496,7 +499,7 @@ once drifts into fiction.
 | `createChild` / `removeNode` | The four bench specs create a measurement node under the scene and tear it down again; `capture-screenshots.js` creates one too. Paired on purpose — a bench that leaves its node behind would be caught by the leak gate as an app defect. |
 | `readRegistry` / `writeRegistry` / `deleteRegistrySections` | [`lib/registry.js`](lib/registry.js)'s snapshot / verified-restore, and [`lib/seed.js`](lib/seed.js)'s session seeds. |
 | `getRootsCount` / `getAllCount` | The leak gate's two censuses (`specs/leaks.spec.js`). `getRoots()` is the assertion; `getAll()` is recorded but not asserted — see that file for why both. |
-| `storeNodeReferences` | [`lib/resolution.js`](lib/resolution.js)'s node-resolution audit — one whole-scene census per audited read, behind `RTA_AUDIT_RESOLUTION=1`, report-only. |
+| `storeNodeReferences` | [`lib/resolution.js`](lib/resolution.js)'s node-resolution audit — one whole-scene census per audited read, behind `RTA_AUDIT_RESOLUTION=1`, report-only. Also `assertOneScreenShowing` ([`lib/steps.js`](lib/steps.js)), one census per screen in `screens.spec.js`, which throws unless the router's `viewTarget` shows exactly one view. |
 | `writeFile` | `capture-screenshots.js` pushing an image to the device. The only filesystem call this repo makes. |
 
 ### Evaluated and rejected (8)
@@ -522,7 +525,7 @@ Grouped, because the argument is per family rather than per method.
 
 **Responsiveness testing — `startResponsivenessTesting`, `getResponsivenessTestingData`, `stopResponsivenessTesting`.** Undocumented in the library README (they exist in the client but have no section), and this repo already has a purpose-built measurement stack — `scripts/measure*.js`, the task-ledger benches, and the app's own instrumentation — whose numbers are comparable across the historical record. Adopting a second, undocumented one would fork that record.
 
-**Node-reference lifecycle — `assignElementIdOnAllNodes`, `deleteNodeReferences`, `convertKeyPathToSceneKeyPath`.** The audit takes its census under one fixed `nodeRefKey`, and the device *replaces* that array on each call (`processStoreNodeReferencesRequest` clears before it walks), so references cannot accumulate and there is nothing to delete between censuses. The obvious worry — that a census left holding nodes would inflate the leak gate's roots count — was **measured on `.177` 2026-09-08 and does not occur: 108 nodes stored, roots 14 → 14 → 14, zero inflation**, because `buildTree` walks from `m.top.getScene()` and can therefore only capture *parented* nodes, which `getRoots()` excludes by definition. What that does NOT cover is a census taken while a view is open and the view then closed, which would leave the array holding an unparented node; in the leak gate that ordering is prevented by the `hardRelaunch()` at the head of each measurement and by the walk ending on Home. **If the audit is ever asserted on, or its 200-census budget is raised so it can exhaust mid-walk, `deleteNodeReferences` becomes owed.** `assignElementIdOnAllNodes` serves `base: 'elementId'`, which nothing here uses, and `convertKeyPathToSceneKeyPath` converts `appUI` paths, which nothing here produces.
+**Node-reference lifecycle — `assignElementIdOnAllNodes`, `deleteNodeReferences`, `convertKeyPathToSceneKeyPath`.** The audit takes its census under one fixed `nodeRefKey` (and `assertOneScreenShowing` under its own, `screenSwap`), and the device *replaces* that array on each call (`processStoreNodeReferencesRequest` clears before it walks), so references cannot accumulate and there is nothing to delete between censuses. The obvious worry — that a census left holding nodes would inflate the leak gate's roots count — was **measured on `.177` 2026-09-08 and does not occur: 108 nodes stored, roots 14 → 14 → 14, zero inflation**, because `buildTree` walks from `m.top.getScene()` and can therefore only capture *parented* nodes, which `getRoots()` excludes by definition. What that does NOT cover is a census taken while a view is open and the view then closed, which would leave the array holding an unparented node; in the leak gate that ordering is prevented by the `hardRelaunch()` at the head of each measurement and by the walk ending on Home. **If the audit is ever asserted on, or its 200-census budget is raised so it can exhaust mid-walk, `deleteNodeReferences` becomes owed.** `assignElementIdOnAllNodes` serves `base: 'elementId'`, which nothing here uses, and `convertKeyPathToSceneKeyPath` converts `appUI` paths, which nothing here produces.
 
 **Coordinate hit-testing — `findNodesAtLocation`.** Answers "what is at x,y". A Roku is driven by a directional remote, not a pointer, so a test that asserted by screen position would assert something no user can do and would break on every layout change. The suite's whole input model is *walk focus with real presses*.
 

@@ -1370,6 +1370,7 @@ The 30 sites naming Home's row list by `#id` are converted to zero, and the gate
 
 **date**: 2026-09-08
 **status**: accepted
+**partially-superseded-by**: `rta-row-walk-stepped` (the row half's read-then-press loop)
 **related-files**: `tests/rta/lib/nav.js`, `tests/rta/lib/nav.test.js`
 
 `walkHomeRowsTo` walks the COLUMN axis through `scrollFocus` and the ROW axis with a read-then-press loop, and that asymmetry stays — the row half is instrumented rather than converted. The symmetry argument is the obvious one and it is wrong, which is why this is recorded: `scrollFocus` computes one burst from a SINGLE index read, so a stale base sends several presses at once. On the column axis the row's own ends bound that. On the row axis they do not — past row 0 the burst walks into the overhang and leaves Home, while `rowItemFocused` keeps RETAINING its last value, so the recovery loop cannot see that focus left the list. The current loop presses at most one key before re-reading. Converting would trade a detectable failure for an undetectable one.
@@ -1927,6 +1928,19 @@ Ruled out: **Two rounds after Next Up** (lookups, then checks): +776 ms. **A sec
 `JRScreen.handleFocus` ignores the focus-left notice from sgRouter: the call `sgrouter_onFocusChildChanged` makes with `routerFocused: false` when focus leaves the outlet for the overhang, a dialog or `AppWaitHost`. It still takes focus when a show is pending (set by `onViewOpen` / `onViewResume`) or when focus is stranded on the bare scene. Screens override `restoreScreenFocus`, never `handleFocus`, so the rule lives in one place. Before this, Home's late `setFocus` occasionally pulled focus back from the tab bar. Measured 2026-10-08 on a Stick 4K (Roku OS 15.3.4), 371 router focus calls over 7 RTA specs: the post-show call carried `routerFocused: false` 81 times, and it is what focuses the player while `AppWaitHost` holds focus (8 of 8); the notice recovered stranded focus 26 of 33 times.
 
 Ruled out: skipping every `routerFocused: false` call, which leaves the player unfocused; ignoring the notice outright, which drops the stranded-focus recovery; patching sgRouter, which forks upstream logic and needs `postinstall` reordered, since `ropm copy` runs before `patch-package`; and fixing Home only, which leaves every other screen exposed. Revisit when an sgRouter upgrade changes who calls `handleFocus` or the `navigationInProgress` guard.
+
+## decision-id: rta-row-walk-stepped
+
+**date**: 2026-10-08
+**status**: accepted
+**partially-supersedes**: `rta-row-walk-instrumented-not-converted` (the row half's read-then-press loop)
+**related-files**: `tests/rta/lib/nav.js`, `tests/rta/lib/steps.js`, `tests/rta/lib/nav-row-walk.test.js`, `tests/rta/lib/nav-grid-walk.test.js`
+
+`walkHomeRowsTo`'s row half now goes through `scrollFocus` in a stepped mode: one key in flight, the next chosen only after the index has moved off the value it had before the press, and a re-press only after `STEPPED_DROP_WAIT_MS` with no movement. The old note kept a read-then-press loop because it "presses at most one key before re-reading", but the re-read was of a lagging field. On `.177` (Stick 4K, Roku OS 15.3.4) a Down or Up took 350-444 ms to show in `rowItemFocused` (measured 2026-10-08, two runs of 24 presses), and the loop re-read about 390-410 ms after each press, so a late key drew a second one. The RTA ledger run of 2026-10-08 (commit `295fadab`) caught it: "Favorites: People failing alone" aimed at row 1 and opened an Audio item on row 2. `focusHomeRow` bypasses the drift instrument, so this surfaced as a wrong outcome rather than a drift record.
+
+The old note's case against a burst still holds, and it is why the mode is stepped: a surplus Up from row 0 leaves Home while `rowItemFocused` keeps its last value. Two alternatives were rejected. Settling on the target and correcting still sends the surplus key, and a late Up at row 0 leaves Home. A longer tick only out-waits one measured device. The cost is a row step of about one device delay instead of a 350 ms tick. The drift instrument in `navHomeLibraryTile` stays.
+
+The walk also guards against a key it took as dropped that was only late. Once it has re-sent a key, reaching the target is followed by one quiet `STEPPED_DROP_WAIT_MS` window, and the walk goes back if the index moves: the late copy was sent one drop wait after the first, so it lands inside that window. Every stepped walk names `within`, the list it may not leave, and ends with `waitFocusInside` on it, because a surplus Up from Home's row 0, or a Left that reaches `BaseGridView.onKeyEvent` from the grid, moves focus out while the index keeps its last value. A device slower than the drop wait on every key cannot finish, and the timeout names `STEPPED_DROP_WAIT_MS`. Adapting the wait at runtime was rejected because it would hide the slow device that followup `stepped-walk-drop-wait-one-device` exists to find. Hardware-free tests on 2026-10-08, with a first key at 1100 ms, showed the walk without these guards returning success with focus one row too far, and with focus out of Home after a walk to row 0.
 
 ## Migrated to ADRs
 

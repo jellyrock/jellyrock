@@ -26,11 +26,13 @@ const getValues = vi.fn();
 const getFocusedNode = vi.fn();
 const getValue = vi.fn();
 const sendKeypress = vi.fn();
+const storeNodeReferences = vi.fn();
 vi.mock('roku-test-automation', () => ({
   odc: {
     getValues: (...a) => getValues(...a),
     getValue: (...a) => getValue(...a),
     getFocusedNode: (...a) => getFocusedNode(...a),
+    storeNodeReferences: (...a) => storeNodeReferences(...a),
   },
   // `Key` carries the REAL values (verified against the installed package), not invented
   // ones — a helper that sends `ecp.Key.Up` must be asserted against what the device would
@@ -87,6 +89,8 @@ const {
   CELL_REPORT_COUNTERS,
   axisEnd,
   sweepBudget,
+  showingRoutedViews,
+  assertOneScreenShowing,
 } = await import('./steps.js');
 // The closed set the failure records group by. Imported from its owning module
 // rather than through `diagnostics.js` so a test asserting a slug cannot agree
@@ -1125,6 +1129,113 @@ describe('scrollFocus', () => {
     // Nothing left in flight, so the index the walk reported is the index that stands.
     expect(inFlight).toHaveLength(0);
     expect(index).toBe(3);
+  });
+
+  describe('stepped', () => {
+    // A device whose index shows up some time after each press: `latencyMs` for every key,
+    // or `latencies[n]` for the n-th key sent. Up from index 0 leaves the list, as Up from
+    // Home's row 0 releases focus to the overhang, and the index keeps its last value.
+    // On the fake clock, because the walk's decisions are about elapsed time and the
+    // delays that matter are device-sized (around a second).
+    function slowDevice({ latencyMs, latencies = [], dropPress = 0, start = 0 }) {
+      const device = { index: start, sent: [], escaped: false };
+      sendKeypress.mockImplementation(async (key) => {
+        device.sent.push(key);
+        const n = device.sent.length;
+        if (n === dropPress) return; // the swallowed key
+        setTimeout(
+          () => {
+            if (key === 'Up' && device.index === 0) device.escaped = true;
+            else device.index += key === 'Down' ? 1 : -1;
+          },
+          latencies[n - 1] ?? latencyMs,
+        );
+      });
+      getValue.mockImplementation(async () => ({ found: true, value: device.index }));
+      getFocusedNode.mockImplementation(async () => ({
+        node: { subtype: 'MarkupGrid' },
+        keyPath: device.escaped ? '#overhang' : '#scene.#g',
+      }));
+      return device;
+    }
+
+    const stepTo = (opts) =>
+      onFakeClock(() =>
+        scrollFocus({
+          keyPath: '#g.itemFocused',
+          forwardKey: 'Down',
+          backKey: 'Up',
+          stepped: true,
+          within: '#g',
+          interval: 150,
+          dropWaitMs: 1000,
+          ...opts,
+        }),
+      );
+
+    it('sends one press per step to a device slower than the poll interval', async () => {
+      // 400 ms against a 150 ms poll: a read-then-press loop sees the old index on two
+      // ticks and presses again. The stepped walk waits for the index to move.
+      const device = slowDevice({ latencyMs: 400 });
+      const walk = await stepTo({ target: 2 });
+      expect(walk).toEqual({ from: 0, to: 2, pressed: 2, recovered: 0 });
+      expect(device.sent).toEqual(['Down', 'Down']);
+      expect(device.index).toBe(2);
+    });
+
+    it('re-presses a dropped key once and counts it in recovered', async () => {
+      const device = slowDevice({ latencyMs: 100, dropPress: 2 });
+      const walk = await stepTo({ target: 3 });
+      expect(walk).toEqual({ from: 0, to: 3, pressed: 3, recovered: 1 });
+      expect(device.sent).toEqual(['Down', 'Down', 'Down', 'Down']);
+      expect(device.index).toBe(3);
+    });
+
+    it('walks back with backKey, one press per step', async () => {
+      const device = slowDevice({ latencyMs: 200, start: 3 });
+      const walk = await stepTo({ target: 1 });
+      expect(walk).toEqual({ from: 3, to: 1, pressed: 2, recovered: 0 });
+      expect(device.sent).toEqual(['Up', 'Up']);
+    });
+
+    it('presses nothing when already on the target', async () => {
+      const device = slowDevice({ latencyMs: 100, start: 2 });
+      const walk = await stepTo({ target: 2, backKey: undefined });
+      expect(walk).toEqual({ from: 2, to: 2, pressed: 0, recovered: 0 });
+      expect(device.sent).toEqual([]);
+    });
+
+    it('waits out a re-sent key that was only late, and walks back when it lands', async () => {
+      // The first Down takes 1100 ms, past the 1000 ms drop wait, so the walk re-sends it.
+      // Both copies land. Without a settle the walk returns on the first one, and the
+      // second leaves the index one past the target.
+      const device = slowDevice({ latencyMs: 400, latencies: [1100] });
+      const walk = await stepTo({ target: 1 });
+      expect(device.sent).toEqual(['Down', 'Down', 'Up']);
+      expect(walk).toMatchObject({ from: 0, to: 1, recovered: 1 });
+      expect(device.index).toBe(1);
+    });
+
+    it('fails naming the list when a late key leaves it', async () => {
+      // Up from 0 leaves the list and the index keeps reading 0, so only a focus check
+      // can see it.
+      const device = slowDevice({ latencyMs: 400, latencies: [1100], start: 1 });
+      await expect(stepTo({ target: 0 })).rejects.toThrow(/focus still inside #g/);
+      expect(device.escaped).toBe(true);
+    });
+
+    it('times out naming the drop wait on a device slower than it', async () => {
+      const device = slowDevice({ latencyMs: 1100 });
+      await expect(stepTo({ target: 1, timeout: 8000 })).rejects.toThrow(
+        /re-sent \d+ key.*STEPPED_DROP_WAIT_MS/,
+      );
+      expect(device.escaped).toBe(false);
+    });
+
+    it('refuses a stepped walk that does not name the list it must stay in', async () => {
+      slowDevice({ latencyMs: 100 });
+      await expect(stepTo({ target: 1, within: undefined })).rejects.toThrow(/within/);
+    });
   });
 
   it('presses once per STRIDE, not once per index — a grid row is numColumns items', async () => {
@@ -2384,5 +2495,110 @@ describe('readHomeRows — one snapshot describes one frame', () => {
       ],
       results: { favorites: { status: 'ok', count: 2 } },
     });
+  });
+});
+
+/**
+ * The screen-swap check: exactly one routed view showing once a screen has loaded.
+ *
+ * The census is a fixture in the shape `storeNodeReferences` returns (`ref`, `parentRef`,
+ * `id`, `subtype`, `visible`, `opacity`; the root's `parentRef` is -1). What needs a real
+ * Roku is whether the app keeps the property, which `screens.spec.js` checks on device.
+ */
+describe('assertOneScreenShowing — one routed view on screen', () => {
+  /** scene -> routerOutlet -> viewTarget -> one child per `[subtype, extra]` view. */
+  const census = (views, { withTarget = true } = {}) => {
+    const nodes = [
+      { ref: 0, parentRef: -1, id: '', subtype: 'JRScene', visible: true },
+      { ref: 1, parentRef: 0, id: 'routerOutlet', subtype: 'Outlet', visible: true },
+    ];
+    if (withTarget)
+      nodes.push({ ref: 2, parentRef: 1, id: 'viewTarget', subtype: 'Group', visible: true });
+    views.forEach(([subtype, extra = {}], i) =>
+      nodes.push({
+        ref: 3 + i,
+        parentRef: 2,
+        id: `v${i}`,
+        subtype,
+        visible: true,
+        opacity: 1,
+        ...extra,
+      }),
+    );
+    return nodes;
+  };
+
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rta-steps-swap-'));
+    process.env.RTA_RECORD_DIR = tmpDir;
+    storeNodeReferences.mockReset();
+  });
+
+  afterEach(() => {
+    delete process.env.RTA_RECORD_DIR;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const lastRecord = () =>
+    JSON.parse(
+      fs
+        .readFileSync(path.join(tmpDir, 'failures.jsonl'), 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .at(-1),
+    );
+
+  it('counts a covered view the swap hid as not showing', () => {
+    const tree = census([['Home', { visible: false }], ['ItemDetails']]);
+    expect(showingRoutedViews(tree).map((n) => n.subtype)).toEqual(['ItemDetails']);
+  });
+
+  it('counts only direct children of viewTarget, not nodes inside a view', () => {
+    const tree = census([['ItemDetails']]);
+    tree.push({ ref: 99, parentRef: 3, id: 'buttons', subtype: 'JRButtonGroup', visible: true });
+    expect(showingRoutedViews(tree)).toHaveLength(1);
+  });
+
+  it('counts a view AppWaitHost faded by opacity as showing, since only visible is the swap', () => {
+    // A playback start hides the ACTIVE screen by opacity; that screen is still the one view.
+    const tree = census([
+      ['Home', { visible: false }],
+      ['ItemDetails', { opacity: 0 }],
+    ]);
+    expect(showingRoutedViews(tree)).toHaveLength(1);
+  });
+
+  it('answers null when the scene has no viewTarget', () => {
+    expect(showingRoutedViews(census([], { withTarget: false }))).toBeNull();
+  });
+
+  it('passes when exactly one view shows', async () => {
+    storeNodeReferences.mockResolvedValue({
+      flatTree: census([['Home', { visible: false }], ['ItemDetails']]),
+    });
+    await expect(assertOneScreenShowing('movie details')).resolves.toBeUndefined();
+  });
+
+  it('throws screens-stacked naming every view showing when a covered view was left up', async () => {
+    storeNodeReferences.mockResolvedValue({ flatTree: census([['Home'], ['ItemDetails']]) });
+
+    await expect(assertOneScreenShowing('movie details')).rejects.toThrow(
+      'movie details: 2 routed views showing, expected 1 (Home, ItemDetails)',
+    );
+    const record = lastRecord();
+    expect(record.kind).toBe(FAILURE_KINDS.SCREENS_STACKED);
+    expect(record.kindUnknown).toBeUndefined();
+  });
+
+  it('throws when no view shows at all', async () => {
+    storeNodeReferences.mockResolvedValue({ flatTree: census([['Home', { visible: false }]]) });
+    await expect(assertOneScreenShowing('home')).rejects.toThrow('0 routed views showing');
+  });
+
+  it('throws when the census has no viewTarget, rather than passing on nothing', async () => {
+    storeNodeReferences.mockResolvedValue({ flatTree: census([], { withTarget: false }) });
+    await expect(assertOneScreenShowing('home')).rejects.toThrow('no viewTarget in the scene');
   });
 });

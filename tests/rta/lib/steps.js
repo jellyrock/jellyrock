@@ -99,8 +99,8 @@ export async function getVal(keyPath) {
 
 /**
  * Like getVal, but scoped to the ACTIVE routed view (`m.global.activeRoutedView`)
- * rather than a recursive scene-root find. A view suspended under sgRouter's default
- * `suspendMode: "hide"` (Home, /settings, /photo, /audio) stays in the scene tree, so a
+ * rather than a recursive scene-root find. A covered view stays in the scene tree,
+ * hidden (every route suspends with `"show"`; see JRScene.initRouter), so a
  * recursive `#id` lookup (getVal) can resolve to ITS node when ids aren't unique — e.g.
  * every ItemDetails has `#extrasGrid`, and several components declare `#options`.
  * Anchoring to activeRoutedView (the app's own "view the user is on", set on open/resume
@@ -117,6 +117,45 @@ export async function getActiveVal(keyPath) {
  */
 export async function getGlobalVal(keyPath) {
   return (await readOnce({ base: 'global', keyPath })).value;
+}
+
+/**
+ * The routed views a census shows: children of the router's `viewTarget` whose `visible`
+ * is not false. `null` when the census has no `viewTarget`. Pure, so it has tests that
+ * need no device.
+ *
+ * `visible`, not `opacity`: the screen swap hides a covered view by `visible`
+ * (`JRScreen.hideCovered`), and `opacity` belongs to `AppWaitHost`, which hides a screen
+ * that is still the active one while a playback start runs.
+ */
+export function showingRoutedViews(flatTree) {
+  const nodes = flatTree ?? [];
+  const target = nodes.find((n) => n.id === 'viewTarget');
+  if (!target) return null;
+  return nodes.filter((n) => n.parentRef === target.ref && n.visible !== false);
+}
+
+/**
+ * Throws unless exactly one routed view is showing. Call it once a screen has loaded.
+ *
+ * Every route suspends with `"show"`, so sgRouter leaves a covered view on screen and only
+ * `JRScene.onActiveRoutedViewChanged()` hides it, when the incoming view publishes itself as
+ * `activeRoutedView`. A view that never publishes (one that overrides `onViewOpen`, or does
+ * not extend `JRScreen`) would leave the screen it covers showing beneath it, and every gate
+ * that reads the active view would still pass. One census answers it, from the same call
+ * the resolution audit uses (`lib/resolution.js`).
+ */
+export async function assertOneScreenShowing(label) {
+  const census = await odc.storeNodeReferences({ nodeRefKey: 'screenSwap' });
+  const showing = showingRoutedViews(census?.flatTree);
+  if (showing?.length === 1) return;
+  const subtypes = showing ? showing.map((n) => n.subtype) : null;
+  throw await diagnosedError(
+    showing
+      ? `${label}: ${showing.length} routed views showing, expected 1 (${subtypes.join(', ')})`
+      : `${label}: no viewTarget in the scene`,
+    { kind: FAILURE_KINDS.SCREENS_STACKED, label, observed: { showing: subtypes } },
+  );
 }
 
 /**
@@ -548,7 +587,7 @@ export async function waitFocusInside(
  * window instead.
  *
  * This is also why the skip lives HERE rather than in `waitFor`: an eager first action is
- * *correct* for the focus WALKS (`focusGridTile`, `findHomeLibraryTile`, `focusOverhangIcon`),
+ * *correct* for the focus WALKS (`findHomeLibraryTile`, `focusOverhangIcon`),
  * which want to start moving immediately. Only a resend needs to wait and see.
  *
  * @param {string} key - an `ecp.Key` value to re-send
@@ -652,7 +691,7 @@ export function resendUntilFocused(key, arrived) {
  * Those sit out the first tick because their caller has ALREADY pressed and needs a
  * window to see whether it landed. This one has pressed nothing, so waiting a tick
  * would only add an interval of latency to every walk. Same distinction
- * `resendIfSwallowed` documents for `focusGridTile` / `focusOverhangIcon`.
+ * `resendIfSwallowed` documents for `focusOverhangIcon`.
  *
  * ## The guard is the overshoot protection
  *
@@ -715,8 +754,10 @@ export function walkFocusInto(key, containerId) {
  * **It does not explain why focus left the search view, and it is not known to fix that
  * run.** Two mechanisms were proposed for the 2026-09-09 failure and BOTH were disproved
  * rather than left hanging: a stale suspended `SearchResults` satisfying the results gate
- * is impossible, because `/search` is routed `suspendMode: "detach"`
- * (`components/JRScene.bs`) so a covered SearchResults leaves the tree entirely; and the
+ * was impossible, because `/search` was then routed `suspendMode: "detach"`
+ * (`components/JRScene.bs`) so a covered SearchResults left the tree entirely (since
+ * 2026-10-07 every route suspends with "show", so a covered view stays in the tree, hidden;
+ * see docs/architecture/navigation.md "The screen swap"); and the
  * dump's `rowItemFocused: [0,1]` is NOT evidence the walk moved Home's index, because
  * `rowItemFocused` retains its last value while a list is unfocused — the very property
  * `scrollFocus` is written around.
@@ -1311,6 +1352,24 @@ export async function stopPlayback() {
 export const SCROLL_KEY_INTERVAL_MS = 150;
 
 /**
+ * How long a stepped walk waits for the index to leave its pre-press value before it
+ * concludes the key was dropped and sends it again.
+ *
+ * A Limit: it has to clear the device's slowest honest answer, or a slow key reads as a
+ * dropped one and the re-press is the overshoot the stepped mode exists to prevent. On a
+ * Stick 4K (`.177`, Roku OS 15.3.4) a Down or Up took 350-444 ms to show in Home's
+ * `rowItemFocused`, measured 2026-10-08 with a scratch ODC script over two runs of 24
+ * presses (medians 397 and 409 ms). A Right or Left took 372-405 ms to show in a Movies
+ * grid's `itemFocused`, measured the same day. 1000 ms is more than twice the worst case.
+ *
+ * A genuinely dropped key costs this long once. A late key that it misreads as dropped is
+ * caught by the walk's settle and focus check (see `steppedWalk`), and a device slower than
+ * this on every key fails the walk with a message naming this constant. That device is a
+ * fact to re-measure, not a number to raise quietly.
+ */
+export const STEPPED_DROP_WAIT_MS = 1000;
+
+/**
  * Drive a focus INDEX to `target` by bursting keypresses at remote cadence, then gating on
  * the index actually arriving.
  *
@@ -1350,6 +1409,25 @@ export const SCROLL_KEY_INTERVAL_MS = 150;
  * the moment the gate opened, not the one that was requested — they are equal by the gate's
  * own predicate, and reporting the observed one keeps that an assertion rather than a claim.
  *
+ * ## `stepped` — when a stray extra key is not survivable
+ *
+ * A burst is fast and its reconciliation is exact, but it still has several keys in flight
+ * at once. Use `stepped: true` where a surplus key does damage a retry cannot undo, which is
+ * Home's ROW axis: Up from row 0 releases focus to the overhang, and the field this walk
+ * reads keeps RETAINING its last value after that, so a wrong press can leave the screen
+ * without anything reading as wrong. A stepped walk presses ONE key, then waits for the
+ * index to leave its pre-press value before it decides anything, so a press is never sent
+ * while an earlier one is still unseen. It re-presses only when the index has stayed put for
+ * `dropWaitMs`, well beyond the device's measured delay (see `STEPPED_DROP_WAIT_MS`), and
+ * counts that in `recovered`. The cost is one round trip of waiting per index unit instead
+ * of `keyIntervalMs`, which is why it is opt-in: a scripted scroll that must run fast stays
+ * on the burst.
+ *
+ * A stepped walk must name `within`, the list it may not leave, and it ends by checking that
+ * focus is still there: an index that keeps its last value cannot show that a key left. A
+ * walk that re-sent a key also settles for one quiet `dropWaitMs` before it returns, in case
+ * the key was late rather than dropped and its copy is still on the way.
+ *
  * ## `stride` — one press is not always one index
  *
  * MEASURED on `.177`, 2026-08-20, because the first version of this assumed otherwise and
@@ -1371,9 +1449,15 @@ export const SCROLL_KEY_INTERVAL_MS = 150;
  *                                     `[row, item]` pair, `itemFocused` is the index itself)
  * @param {(k:string)=>Promise<any>} [opts.read] `getVal` (default) or `getActiveVal`
  * @param {string} [opts.label]      what to call this walk in waits, warnings and the report
+ * @param {boolean} [opts.stepped]   press ONE key at a time instead of a burst; see below
+ * @param {string} [opts.within]     stepped only, and required there: the id of the list
+ *                                   focus must still be inside when the walk ends
+ * @param {number} [opts.dropWaitMs] stepped only: how long an unmoved index is taken as a
+ *                                   dropped key; defaults to `STEPPED_DROP_WAIT_MS`
  * @param {number} [opts.keyIntervalMs] burst cadence; defaults to `SCROLL_KEY_INTERVAL_MS`
- * @param {number} [opts.timeout]    budget for the reconciliation, once the burst is sent
- * @param {number} [opts.interval]   poll interval of the reconciliation
+ * @param {number} [opts.timeout]    burst: budget for the reconciliation, once the burst is
+ *                                   sent. Stepped: budget for the whole walk.
+ * @param {number} [opts.interval]   poll interval of the reconciliation, or of each step
  * @returns {Promise<{from:number, to:number, pressed:number, recovered:number}>}
  */
 export async function scrollFocus({
@@ -1388,8 +1472,17 @@ export async function scrollFocus({
   keyIntervalMs = SCROLL_KEY_INTERVAL_MS,
   timeout = 25000,
   interval = 400,
+  stepped = false,
+  within,
+  dropWaitMs = STEPPED_DROP_WAIT_MS,
 }) {
   const name = label || `${keyPath} -> ${target}`;
+  if (stepped && !within) {
+    // Fail-fast, cause named: stepped mode exists because a stray key can leave the list,
+    // so it has to know which list that is.
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+    throw new Error(`${name}: a stepped walk needs \`within\`, the list it must not leave`);
+  }
   // The precondition, gated rather than assumed: `itemFocused` / `rowItemFocused` read as
   // their retained value (or as undefined) until the list holds focus, and a burst sent at
   // that moment goes to whatever does. This is `waitFocusInside`'s rule applied to the field
@@ -1423,6 +1516,22 @@ export async function scrollFocus({
         `${stride}-unit presses — the list cannot stop there`,
     );
   }
+  if (stepped) {
+    return steppedWalk({
+      name,
+      keyPath,
+      from,
+      target,
+      forwardKey,
+      backKey,
+      select,
+      read,
+      within,
+      timeout,
+      interval,
+      dropWaitMs,
+    });
+  }
   for (let i = 0; i < Math.abs(delta) / stride; i++) {
     await press(key);
     await sleep(keyIntervalMs);
@@ -1452,6 +1561,102 @@ export async function scrollFocus({
     },
   });
   return { from, to: select(landed), pressed: Math.abs(delta) / stride, recovered };
+}
+
+/**
+ * `scrollFocus`'s `stepped` mode: one key in flight at a time. The reasoning is in
+ * `scrollFocus`'s docblock; this is the loop.
+ *
+ * Each press is followed by reads until the index differs from the value it had BEFORE the
+ * press. Only then is the next key chosen, from the index just observed. If the index has not
+ * moved after `dropWaitMs`, the key is taken as dropped and sent again (counted as
+ * `recovered`).
+ *
+ * A re-sent key may have been late rather than dropped, and then both copies land. So once
+ * the walk has re-sent anything, arriving on the target is not the end: it watches for one
+ * quiet `dropWaitMs` and walks back if the index moves. The late copy was sent `dropWaitMs`
+ * after the first, so it lands within `dropWaitMs` of the first one showing. Last, focus must
+ * still be inside `within`, because a surplus key can leave the list while the index keeps
+ * its last value.
+ *
+ * Throws when `timeout` is spent, naming what the walk last saw and how many keys it re-sent.
+ */
+async function steppedWalk({
+  name,
+  keyPath,
+  from,
+  target,
+  forwardKey,
+  backKey,
+  select,
+  read,
+  within,
+  timeout,
+  interval,
+  dropWaitMs,
+}) {
+  const start = Date.now();
+  let cur = from;
+  let pressed = 0;
+  let recovered = 0;
+
+  // Poll until the index leaves `at`. Given a `key`, re-send it each time the index stays put
+  // for `dropWaitMs`; without one, return `undefined` after one quiet `dropWaitMs`.
+  const nextIndex = async (at, key) => {
+    let quietSince = Date.now();
+    for (;;) {
+      await sleep(interval);
+      const seen = select(await read(keyPath));
+      if (typeof seen === 'number' && seen !== at) return seen;
+      if (Date.now() - start >= timeout) {
+        throw await diagnosedError(
+          `nav timed out waiting for ${name} (stepped; at ${at}, last=${JSON.stringify(seen)})` +
+            (recovered
+              ? ` — re-sent ${recovered} key(s); the device may answer slower than ` +
+                `STEPPED_DROP_WAIT_MS (${dropWaitMs} ms)`
+              : ''),
+          {
+            kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+            label: name,
+            waitedMs: Date.now() - start,
+            observed: { keyPath, target, pressed, recovered },
+          },
+        );
+      }
+      if (Date.now() - quietSince >= dropWaitMs) {
+        if (!key) return undefined;
+        recovered++;
+        await press(key);
+        quietSince = Date.now();
+      }
+    }
+  };
+
+  for (;;) {
+    if (cur === target) {
+      if (!recovered) break;
+      const moved = await nextIndex(cur);
+      if (moved === undefined) break;
+      cur = moved;
+      continue;
+    }
+    const key = cur < target ? forwardKey : backKey;
+    if (!key) {
+      // Fail-fast, cause named: the index moved past the target and no key was given back.
+      // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+      throw new Error(`${name}: at ${cur}, target ${target}, but no key was given for that way`);
+    }
+    await press(key);
+    pressed++;
+    cur = await nextIndex(cur, key);
+  }
+
+  await waitFocusInside(within, {
+    timeout: dropWaitMs,
+    interval,
+    label: `${name}: focus still inside ${within} after the walk`,
+  });
+  return { from, to: cur, pressed, recovered };
 }
 
 /**

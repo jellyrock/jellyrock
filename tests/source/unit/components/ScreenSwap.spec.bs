@@ -1,0 +1,82 @@
+namespace tests
+
+  ' The screen's half of JRScene's screen swap. Every route suspends with "show", so a covered
+  ' screen must stay on screen, unchanged, until JRScene calls hideCovered in the step the
+  ' screen covering it opens. Hiding it or running onScreenHidden any earlier shows the viewer
+  ' the old screen going away before the new one arrives.
+  '
+  ' ItemDetails stands in for any screen: its onScreenHidden leaves a trace a test can read
+  ' (it marks its extras row's texture manager "hidden"). JRScene's half, hiding the previous
+  ' view once per change of active view, runs in the app's scene, which a spec cannot host.
+  @suite("Screen swap - a covered screen stays on screen until hideCovered")
+  class ScreenSwapTests extends tests.BaseTestSuite
+
+    private screen as object
+    private extrasContent as object
+
+    ' beforeEach, not setup: every test drives the screen's lifecycle (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.screen = CreateObject("roSGNode", "ItemDetails")
+      m.extrasContent = CreateObject("roSGNode", "ContentNode")
+      m.extrasContent.addField("textureManagerState", "string", false)
+      m.extrasContent.textureManagerState = "active"
+      m.screen.findNode("extrasGrid").content = m.extrasContent
+    end function
+
+    protected override function afterEach()
+      m.extrasContent = invalid
+      m.screen = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("suspend")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves the screen visible and does not run onScreenHidden")
+    function _()
+      m.screen.callFunc("_onViewSuspend", {})
+
+      m.assertTrue(m.screen.visible)
+      m.assertEqual(m.extrasContent.textureManagerState, "active")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hideCovered()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hides a suspended screen and runs its onScreenHidden")
+    function _()
+      m.screen.callFunc("_onViewSuspend", {})
+      m.screen.callFunc("hideCovered")
+
+      m.assertFalse(m.screen.visible)
+      m.assertEqual(m.extrasContent.textureManagerState, "hidden")
+    end function
+
+    @it("runs onScreenHidden once for one suspend")
+    function _()
+      m.screen.callFunc("_onViewSuspend", {})
+      m.screen.callFunc("hideCovered")
+      m.extrasContent.textureManagerState = "active"
+      m.screen.callFunc("hideCovered")
+
+      m.assertEqual(m.extrasContent.textureManagerState, "active")
+    end function
+
+    @it("only hides a screen the router closed rather than suspended")
+    function _()
+      m.screen.callFunc("hideCovered")
+
+      m.assertFalse(m.screen.visible)
+      m.assertEqual(m.extrasContent.textureManagerState, "active")
+    end function
+
+  end class
+
+end namespace

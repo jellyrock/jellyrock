@@ -571,10 +571,10 @@
   },
   "docs/architecture/navigation.md": {
     "caps-emphasis": 1,
-    "em-dash": 115,
+    "em-dash": 108,
     "filler": 9,
     "latin-abbrev": 5,
-    "prose-arrow": 27
+    "prose-arrow": 26
   },
   "docs/architecture/playback.md": {
     "em-dash": 181,
@@ -763,7 +763,7 @@
   },
   "docs/progress.md": {
     "caps-emphasis": 40,
-    "em-dash": 492,
+    "em-dash": 482,
     "filler": 57,
     "latin-abbrev": 10,
     "prose-arrow": 35
@@ -837,7 +837,7 @@
   },
   "tests/rta/CLAUDE.md": {
     "caps-emphasis": 9,
-    "em-dash": 151,
+    "em-dash": 150,
     "filler": 13,
     "latin-abbrev": 1,
     "prose-arrow": 6
