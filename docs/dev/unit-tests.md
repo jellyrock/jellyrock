@@ -2,120 +2,36 @@
 topic: unit-tests
 related-files:
   - tests/source/BaseTestSuite.spec.bs
+  - tests/source/shared/MockDataLoader.bs
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
   - bsconfig-tests-complete.json
   - scripts/run-roku-tests.js
-last-reviewed: 2026-05-01
+last-reviewed: 2026-10-09
 ---
 
-# Unit Testing Guide (Rooibos Framework)
+# Unit tests
 
-## Overview
+How to write a Rooibos test for JellyRock's BrighterScript code. Tests run on a Roku: `npm run test:unit`, `test:integration` or `test:all`. To run one spec while you work on it, see [`unit-tests-tdd.md`](unit-tests-tdd.md). For how the test build and runner fit together, see [`testing.md`](../architecture/testing.md). The rules for `tests/` are in [`tests/CLAUDE.md`](../../tests/CLAUDE.md).
 
-JellyRock uses the Mocha-inspired Rooibos framework for robust unit and integration testing of Roku/BrighterScript components.
+This guide covers what JellyRock's tests use. Rooibos has more (mocks, stubs, node tests, async tests); [Rooibos also has](#rooibos-also-has) lists them.
 
-**What you'll learn:**
+## Write a test
 
-- Writing unit tests with Rooibos framework
-- Using JellyRock's `BaseTestSuite` and helper methods
-- Testing with mocks, stubs, and async patterns
-- Testing Scene Graph components
-- Best practices for Roku/BrightScript testing
-
-**See also:** [TDD Workflow Guide](unit-tests-tdd.md) for focused development and rapid iteration
-
----
-
-## Quick Start
-
-### Your First Test
+A spec file is a `.bs` file named `<Thing>.spec.bs`. Put a unit test under `tests/source/unit/` (no I/O) and one that reads or writes the registry under `tests/source/integration/`. The unit and integration builds each leave out the other's folder.
 
 ```brighterscript
 namespace tests
 
-  @suite("My First Test")
-  class MyFirstTest extends tests.BaseTestSuite
-
-    @it("validates a simple function")
-    function _()
-      result = isValid("hello")
-      m.assertTrue(result)
-    end function
-
-  end class
-
-end namespace
-```
-
-### Running Tests
-
-Build and deploy tests using VSCode `Run and Debug` and select the desired build.
-
-To manually build the unit tests:
-
-```bash
-npm run build:tests              # Build all tests (unit + integration)
-npm run build:tests-unit         # Build unit tests only
-npm run build:tests-integration  # Build integration tests only
-npm run build:tdd                # Build in watch mode for TDD
-```
-
-**💡 For rapid development workflow:** See the [TDD Workflow Guide](unit-tests-tdd.md) for focused test execution and faster iteration.
-
----
-
-## Test Structure
-
-### Hierarchy
-
-```text
-Suite (@suite)
-  └── Describe Block (@describe)
-      └── Test Case (@it)
-          └── Parameterized Test (@params)
-```
-
-### File Requirements
-
-All tests in JellyRock:
-
-- **MUST** be written in BrighterScript (`.bs` files)
-- **SHOULD** follow naming: `ComponentName.spec.bs`
-- **MUST** be inside a `namespace tests` block
-- **MUST** extend `tests.BaseTestSuite`
-
-### Essential Annotations
-
-| Annotation | Purpose | Example |
-| ----------- | --------- | --------- |
-| `@suite("name")` | Define test suite (required) | `@suite("User Tests")` |
-| `@describe("name")` | Group related tests | `@describe("Authentication")` |
-| `@it("description")` | Individual test case | `@it("validates input")` |
-| `@params(a, b, c)` | Parameterized test data | `@params(1, 2, 3)` |
-| `@only` | Run only this test/suite | `@only @it("debug this")` |
-| `@ignore` | Skip this test/suite | `@ignore @it("broken")` |
-| `@SGNode("Type")` | Run test in component context | `@SGNode("ItemGrid")` |
-
-### Complete Test Example
-
-```brighterscript
-namespace tests
-
-  @suite("isValid utility functions")
+  @suite("isValid")
   class IsValidTests extends tests.BaseTestSuite
-
-    protected override function setup()
-      super.setup()  ' ALWAYS call parent setup!
-      m.testData = [1, 2, 3]
-    end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("isValid()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns true for valid strings")
+    @it("returns true for a string")
     function _()
       m.assertTrue(isValid("hello"))
     end function
@@ -125,570 +41,256 @@ namespace tests
       m.assertFalse(isValid(invalid))
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Parameterized example")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("handles strings correctly")
-    @params("hello", true)
-    @params("", false)
-    @params("   ", false)
-    function _(input, expected)
-      m.assertEqual(isValidAndNotEmpty(input), expected)
-    end function
-
   end class
 
 end namespace
 ```
 
-**Style Notes:**
+Every spec file follows four rules:
 
-- Use `+++++++++++++` around `@describe` blocks for readability
-- Function names can be anything (Rooibos renames them) - `_()` is common
-- Both `function` and `sub` work for test cases
+- **Put the class in `namespace tests`.**
+- **Extend `tests.BaseTestSuite`**, never `rooibos.BaseTestSuite`. The base class sets up `m.global` the way the app does (see [What `BaseTestSuite` gives you](#what-basetestsuite-gives-you)).
+- **Write one `@suite` per file.** A second suite in the same file builds cleanly, then crashes the runner on the device. To split a suite, keep the base name and add the aspect: `misc.spec.bs` and `miscAudioStreams.spec.bs`.
+- **Name each test with `@it`.** Rooibos renames the function, so `_()` is the convention. A `sub` works as well as a `function`.
 
----
+Group tests with `@describe`. The `'+++` comment lines around it are the house style, so a group stands out in a long file.
 
-## Assertions
+## Run one input through many cases
 
-All assertions are called on `m`: `m.assertSomething(actual, expected)`.
-
-### Most Common Assertions
-
-| Assertion | Purpose | Example |
-| ----------- | --------- | --------- |
-| `assertTrue(val)` | Assert true | `m.assertTrue(isValid(obj))` |
-| `assertFalse(val)` | Assert false | `m.assertFalse(isEmpty)` |
-| `assertEqual(act, exp)` | Values equal | `m.assertEqual(result, 42)` |
-| `assertNotEqual(act, exp)` | Values not equal | `m.assertNotEqual(userId, "")` |
-| `assertInvalid(val)` | Value is invalid | `m.assertInvalid(errorObj)` |
-| `assertNotInvalid(val)` | Value is not invalid | `m.assertNotInvalid(user)` |
-| `assertArrayCount(arr, n)` | Array has N items | `m.assertArrayCount(items, 5)` |
-| `assertArrayContains(arr, val)` | Array contains value | `m.assertArrayContains(genres, "Action")` |
-| `assertAAHasKey(aa, key)` | AA has key | `m.assertAAHasKey(user, "id")` |
-| `assertAAContainsSubset(aa, sub)` | AA contains subset | `m.assertAAContainsSubset(user, {id: "123"})` |
-| `assertNodeCount(node, n)` | Node has N children | `m.assertNodeCount(parent, 5)` |
-| `assertNodeContainsFields(node, fields)` | Node has fields | `m.assertNodeContainsFields(item, {id: "123"})` |
-
-**For complete assertion reference:** [Rooibos API Documentation](https://rokucommunity.github.io/rooibos/module-BaseTestSuite.html)
-
----
-
-## Parameterized Tests
-
-Test the same logic with different inputs to reduce code duplication.
+`@params` runs the same test once per line. The function takes one argument per value:
 
 ```brighterscript
-@it("validates multiple input types")
-@params(true, true)
-@params(false, true)
-@params(invalid, false)
+@it("treats blank strings as empty")
 @params("hello", true)
+@params("", false)
+@params("   ", false)
 function _(input, expected)
-  result = isValid(input)
-  m.assertEqual(result, expected)
+  m.assertEqual(isValidAndNotEmpty(input), expected)
 end function
 ```
 
-**Rules:** Function **MUST** accept same number of parameters as `@params` entries. Up to 6 parameters per line, unlimited lines.
+Use it when the cases differ only in their data. When they need different setup or different assertions, write separate tests.
 
-**Control execution:** Use `@onlyParams(a, b)` to run only specific params, or `@ignoreParams(a, b)` to skip them.
+## Set up state per test
 
----
+Rooibos has four hooks, and they run at different times:
 
-## `BaseTestSuite` (JellyRock-Specific)
+| Hook | Runs |
+| --- | --- |
+| `setup()` and `teardown()` | Once per `@describe` group |
+| `beforeEach()` and `afterEach()` | Once per test |
 
-All test suites **MUST** extend `tests.BaseTestSuite`, which provides:
+Build anything a test changes in `beforeEach()`. A node made in `setup()` is shared by every test in its group, so each test gets whatever the last one left behind. `setup()` is for fixtures no test changes. The reasoning and the incident behind it are in [`tests/CLAUDE.md`](../../tests/CLAUDE.md#lifecycle-hooks--setup-is-per-describe-group-beforeeach-is-per-test).
 
-- Automatic initialization of `m.global` with proper ContentNode structure
-- The default mock server and user applied to `m.global` before every test (Configuration and Policy through the same transformers `user.Login()` uses)
-- Helper methods for common testing patterns
-
-### Helper Methods
-
-| Method | Purpose |
-| -------- | --------- |
-| `loadSettingsFromRegistry(userId)` | Load a user's registry section into a fresh settings node the way `user.Login()` does |
-| `setTestDisplaySetting(libId, key, val)` | Set single display setting for testing |
-| `getTestServer()` | Get local server reference (minimizes rendezvous) |
-| `getTestUser()` | Get local user reference |
-| `getTestUserSettings()` | Get local settings reference |
-| `resetServer()` | Reset server to XML defaults |
-| `resetUser()` | Reset user to XML defaults |
-
-### Mock Data Files
-
-Mock data is stored in `tests/source/mocks/`:
-
-- `servers/` - Server configurations (e.g., `default.json`)
-- `users/` - User records (`default.json`, `admin.json`)
-- `api/` - API responses
-
-**Mock User JSON Structure:** a user record as the server returns it: `id`, `name`, and the `Configuration` and `Policy` objects.
-
-**Key points:** User settings are not part of the mock. To test settings loaded from the registry, write them to a test user's registry section and call `m.loadSettingsFromRegistry(userId)`; it converts each stored string to the field's type through `user.settings.Save()`, as `user.Login()` does. Display settings use dot notation `"display.libraryId.settingKey"`; set one with `m.setTestDisplaySetting()`.
-
-### ✅ DO: Use Mock Data Files
+`BaseTestSuite` overrides all four hooks, so call the parent in each one you override. This is `JRDialog.spec.bs`:
 
 ```brighterscript
-@it("tests with proper mock data")
-function _()
-  mockData = MockDataLoader.LoadItem("movie-quickplay-basic")
-  result = someFunction(mockData)
-  m.assertEqual(result, expectedValue)
+protected override function beforeEach()
+  super.beforeEach()
+  m.dialog = CreateObject("roSGNode", "JRDialog")
+end function
+
+protected override function afterEach()
+  parent = m.dialog.getParent()
+  if isValid(parent) then parent.removeChild(m.dialog)
+  m.dialog = invalid
+  super.afterEach()
 end function
 ```
 
-### ❌ DON'T: Hardcode Mock Data
+To check a suite is isolated, reverse the order of its tests and run it again. A suite that passes only in declaration order shares state.
+
+## Assert
+
+Call every assertion on `m`. The ones JellyRock's tests use most:
+
+| Assertion | Passes when |
+| --- | --- |
+| `m.assertTrue(value)`, `m.assertFalse(value)` | `value` is `true` or `false` |
+| `m.assertEqual(actual, expected)` | The two are equal (see below) |
+| `m.assertNotEqual(actual, expected)` | They are not equal |
+| `m.assertInvalid(value)`, `m.assertNotInvalid(value)` | `value` is or is not `invalid` |
+| `m.assertArrayCount(array, n)` | `array` has `n` items |
+| `m.assertArrayContains(array, value)` | `array` holds `value` |
+| `m.assertAAHasKey(aa, key)` | `aa` has `key` |
+| `m.assertAAContainsSubset(aa, subset)` | Every key in `subset` is in `aa` with the same value |
+| `m.assertNodeCount(node, n)` | `node` has `n` children |
+| `m.assertNodeContainsFields(node, subset)` | Every field in `subset` is on `node` with the same value |
+
+The full list is in the [Rooibos docs](https://github.com/rokucommunity/rooibos/blob/master/docs/index.md#full-list-of-asserts).
+
+`assertEqual` compares this way:
+
+- **Different types are never equal.** `m.assertEqual("true", true)` fails, and so does `m.assertEqual(1, 1.0)`.
+- **Associative arrays and arrays compare by content**, key by key and item by item.
+- **Nodes compare by identity** (`isSameNode`). Two nodes with the same fields are not equal; compare the fields instead.
+
+To assert a type, use the base class's helpers: `m.isStringType()`, `m.isBooleanType()`, `m.isIntegerType()` and `m.isFloatType()`. Each accepts both forms of its type (`String` and `roString`, for example), so a boxed value does not fail the check.
 
 ```brighterscript
-' ❌ BAD - Bypasses ContentNode creation and transformers
-m.global.user = { settings: {...} }  ' This will fail!
+m.assertTrue(m.isStringType(registryValue))
 ```
 
-**Why this breaks:** Bypasses ContentNode field definitions, production transformers, observer patterns, and causes type mismatches.
+## What `BaseTestSuite` gives you
 
----
+[`BaseTestSuite.spec.bs`](../../tests/source/BaseTestSuite.spec.bs) runs the app's own start-up code, so `m.global` looks as it does in a signed-in session:
 
-## Mocking and Stubbing
+- `m.global.constants`, `app` and `device` from `setGlobals()`, once per run.
+- The en_US translations, reloaded for every `@describe` group.
+- `m.global.server` and `m.global.user`, reset to their XML defaults for every group, then filled from the `default` server and user mocks. The user's `Configuration` and `Policy` go through the same transformers `user.Login()` uses.
+- `m.global.sceneManager`, a `MockSceneManager` whose functions do nothing, so code that navigates does not crash.
 
-Isolate code under test by replacing dependencies with controlled implementations.
+Don't assign an associative array to a content node field such as `m.global.user.settings`. The field expects a node, and an AA skips the field types and the transformers the app uses.
 
-**When to use:** Testing API calls, Task nodes, external dependencies, complex objects.
+### Helpers
 
-### Enabling Mocking
+| Method | What it does |
+| --- | --- |
+| `m.getTestServer()`, `m.getTestUser()`, `m.getTestUserSettings()` | Return the global node, so you read it into a local once |
+| `m.resetServer()`, `m.resetUser()` | Reset a node to its XML defaults; `resetUser()` also gives it a fresh settings node |
+| `m.loadSettingsFromRegistry(userId)` | Load a user's registry section into a fresh settings node, converting each stored string to the field's type the way `user.Login()` does |
+| `m.setTestDisplaySetting(libraryId, key, value)` | Set one per-library display setting |
+| `m.loadTestDevice(name)` | Apply a mock device from `mocks/devices/` to `m.global.device` |
 
-Add to `bsconfig.json`:
+**`loadTestDevice()` is not undone.** Nothing resets `m.global.device`, so the mock device stays in place for the suites that run after yours.
 
-```json
-{
-  "rooibos": {
-    "isGlobalMethodMockingEnabled": true,
-    "isGlobalMethodMockingEfficientMode": true
-  }
-}
-```
-
-### Mock Example (Verify Method Called)
+Read a global node into a local before you use it more than once. Each `m.global` read crosses a thread boundary, which is slow on a Roku:
 
 ```brighterscript
-@it("verifies API call")
-function _()
-  apiClient = { callApi: function(endpoint) return invalid }
-
-  m.mock(apiClient, "callApi")
-  m.expect(apiClient, "callApi", ["users"], {users: [{id: "1"}]})
-
-  result = apiClient.callApi("users")
-
-  m.assertEqual(result.users.Count(), 1)
-  m.assertMocks()  ' Verify expectations met
-end function
+localUser = m.getTestUser()
+userId = localUser.id
+userName = localUser.name
 ```
 
-### Stub Example (Replace Return Value)
+## Use mock data
+
+Mock JSON lives in `tests/source/mocks/`, and `MockDataLoader` in [`tests/source/shared/MockDataLoader.bs`](../../tests/source/shared/MockDataLoader.bs) reads it. Pass the file name without `.json`:
+
+| Folder | Holds | Loader |
+| --- | --- | --- |
+| `servers/` | Server records | `MockDataLoader.LoadServer(name)` |
+| `users/` | User records as the server returns them | `MockDataLoader.LoadUser(name)` |
+| `devices/` | Device info for one Roku model or locale | `MockDataLoader.LoadDevice(name)`, or `m.loadTestDevice(name)` |
+| `api/items/` | Item responses from the server | `MockDataLoader.LoadItem(name)` |
+| `api/deviceProfiles/` | Device profiles | `MockDataLoader.LoadDeviceProfile(name)` |
+| `registry/userSettings/` | A user's stored settings | `MockDataLoader.LoadRegistryUserSettings(name)` |
 
 ```brighterscript
-@it("stubs Task node")
-function _()
-  task = CreateObject("roSGNode", "LoadItemsTask")
-  m.stub(task, "control")  ' Prevent actual execution
-
-  ' Simulate completion
-  task.output = {items: [{id: "1"}]}
-
-  m.assertEqual(task.output.items.Count(), 1)
-end function
+mockData = MockDataLoader.LoadItem("movie-quickplay-basic")
 ```
 
-### Mock Expectations
+A loader returns `invalid` when the file is missing or the JSON does not parse. Assert the result is valid first, so a typo fails at the load and not three lines later.
+
+User settings are not in the user mock. To test settings as they are stored, write them to the registry and load them with `m.loadSettingsFromRegistry()` (see the next section).
+
+## Test the registry
+
+A test that touches the registry is an integration test. It goes under `tests/source/integration/` and follows two rules:
+
+- **Name every section you write `test-<something>`.** That keeps tests away from a real user's data, even on your own Roku.
+- **Set `m.needsRegistrySetup = true` before `super.setup()`.** The base class then deletes every `test-` section after each test. Without it, sections leak into the next suite.
+
+This is `RoundTripConversion.spec.bs`, shortened:
 
 ```brighterscript
-m.expectOnce(obj, "method", [args], returnValue)  ' Called once
-m.expectNone(obj, "method")                       ' Never called
-m.expect(obj, "method", [args], returnValue, N)   ' Called N times
-m.assertMocks()                                   ' Verify (MUST call at end)
-```
+@suite("Type Conversion - Registry Round-Trip Tests")
+@tags("registry")
+class RoundTripConversionTests extends tests.BaseTestSuite
 
----
+  protected override sub setup()
+    m.needsRegistrySetup = true
+    super.setup()
+  end sub
 
-## Async Testing
+  @it("round-trip boolean true")
+  function _()
+    testUserId = "test-roundtrip-bool-true-001"
+    m.global.user.id = testUserId
+    setUserSetting("uiDesignHideClock", true)
 
-Wait for asynchronous operations (Task nodes, field observers).
+    settings = m.loadSettingsFromRegistry(testUserId)
 
-### `assertAsyncField()`
-
-```brighterscript
-@it("waits for task completion")
-function _()
-  task = CreateObject("roSGNode", "LoadItemsTask")
-  task.control = "RUN"
-
-  ' Wait for field to change (500ms intervals, 10 retries = 5s timeout)
-  m.assertAsyncField(task, "state")
-
-  m.assertEqual(task.state, "DONE")
-  m.assertNotInvalid(task.output)
-end function
-```
-
-**Syntax:** `m.assertAsyncField(node, fieldName, timeout, retries)`
-
-**Parameters:** timeout (ms, default: 500), retries (default: 10)
-
----
-
-## Component Testing (@SGNode)
-
-Test Scene Graph components in their proper node context.
-
-**Requirements:** `compilerOptions.autoImportComponentScript: true` — every config inherits it from `bsconfig-base.json`
-
-```brighterscript
-namespace tests
-
-  @suite("ItemGrid Component Tests")
-  @SGNode("ItemGrid")  ' Creates test in ItemGrid context
-  class ItemGridTests extends tests.BaseTestSuite
-
-    @it("initializes with default values")
-    function _()
-      ' m.node references the ItemGrid instance
-      m.assertNotInvalid(m.node)
-      m.assertEqual(m.node.subtype(), "ItemGrid")
-      m.assertEqual(m.node.numColumns, 6)
-    end function
-
-  end class
-
-end namespace
-```
-
-**Note:** `m.top` and `m.node` refer to the same component instance.
-
----
-
-## Test Lifecycle
-
-```text
-@describe group A
-  Setup (override setup())
-      └── BeforeEach (override beforeEach())
-          └── Test 1
-      └── AfterEach (override afterEach())
-      └── BeforeEach
-          └── Test 2
-      └── AfterEach
-  TearDown (override teardown())
-@describe group B
-  Setup … TearDown again
-```
-
-`setup()` and `teardown()` run once per `@describe` group, not once per suite (`rooibos-roku`
-`TestGroup.runSync`). Tests inside one group share the state `setup()` built — see the lifecycle
-rule in [`tests/CLAUDE.md`](../../tests/CLAUDE.md).
-
-### Suite-Level Lifecycle
-
-```brighterscript
-class MyTests extends tests.BaseTestSuite
-
-  protected override function setup()
-    super.setup()  ' ⚠️ ALWAYS call in JellyRock!
-    m.sharedData = loadExpensiveData()
-  end function
-
-  protected override function teardown()
-    m.sharedData = invalid
-  end function
-
-  protected override function beforeEach()
-    m.testCounter = 0
-  end function
-
-  protected override function afterEach()
-    m.testCounter = invalid
+    m.assertEqual(type(settings.uiDesignHideClock), "roBoolean")
+    m.assertEqual(settings.uiDesignHideClock, true)
   end function
 
 end class
 ```
 
-### Describe-Level Lifecycle
+`@tags` puts a suite in a group a build can include or leave out. JellyRock uses three:
+
+| Tag | Marks | Which builds run it |
+| --- | --- | --- |
+| `registry` | A suite that reads and writes real registry sections | `test:complete`, or `test:tdd` with the spec listed |
+| `migration` | A suite that runs a registry migration end to end | The same |
+| `measurement` | A suite that records a platform rate and cannot fail on the number | The same |
+
+The other builds leave these out, `test:all` and `test:integration` included. Before you tag a suite, check which build will run it ([`tests/CLAUDE.md`](../../tests/CLAUDE.md#running-tests)).
+
+## Test a component
+
+Create the component with `CreateObject("roSGNode", ...)` in `beforeEach()`, then set its fields and read them back. Most of JellyRock's component tests work this way. See the `JRDialog.spec.bs` hooks in [Set up state per test](#set-up-state-per-test):
 
 ```brighterscript
-@describe("Feature group")
-
-@setup
-function featureSetup()
-  m.featureData = loadFeatureData()
-end function
-
-@tearDown
-function featureTearDown()
-  m.featureData = invalid
-end function
-
-@it("tests something")
+@it("defaultButtonIndex defaults to 0")
 function _()
-  ' m.featureData is available
+  m.assertEqual(m.dialog.defaultButtonIndex, 0)
 end function
 ```
 
----
+A test that appends the node to the scene removes it again, in the test or in `afterEach()`.
 
-## Controlling Test Execution
+## Wait for something to happen
 
-### Recommended: Use TDD Mode for Focus
-
-**For daily development**, use TDD mode (see [TDD Workflow Guide](unit-tests-tdd.md)) to run only specific test files. This is cleaner and faster than annotation-based filtering.
-
-### Use @only for Temporary Debugging
-
-When debugging a specific test within your TDD session:
+An observer callback does not fire during an ordinary test. To wait for a field, observe it on a port and read the port. This is `apiPoolCollect.spec.bs`:
 
 ```brighterscript
-@only  ' Temporarily run only this test
-@it("debug this test")
+@it("returns the response of a request that already answered, without waiting")
 function _()
+  port = CreateObject("roMessagePort")
+  node = CreateObject("roSGNode", "ApiResultNode")
+  node.request = { method: "GET", url: "http://example.invalid/items" }
+  node.observeField("isDone", port)
+  node.result = { ok: true, statusCode: 200, json: { Items: [] } }
+  node.isDone = true
+
+  res = collectApiRequest(node, port)
+
+  m.assertEqual(res.statusCode, 200)
+  m.assertTrue(res.ok)
 end function
 ```
 
-**⚠️ CRITICAL: Remove all `@only` annotations before committing!**
+Give every wait a time limit, so a test that never gets its event fails instead of hanging the run.
 
-**Note:** `@only` can be used on `@suite`, `@describe`, or `@it` to focus execution at any level.
+## Focus or skip a test
 
-### Avoid @ignore During Development
+To run one spec while you work, list it in your TDD config ([`unit-tests-tdd.md`](unit-tests-tdd.md)). That changes nothing in the test code.
 
-**❌ Don't use `@ignore` to skip tests during development** - use TDD file filtering instead.
+Rooibos also has annotations for this. Don't commit them:
 
-**✅ Only use `@ignore` for permanently disabled tests:**
+- `@only` runs only the marked suite, group or test.
+- `@ignore` skips it. The runner counts it under `Ignored` and lists it under `IGNORED TESTS:` at the end of the run.
+- `@noCatch` stops Rooibos catching the test's errors, so a crash stops on the line that caused it.
 
-```brighterscript
-@ignore  ' TODO: Fix in ticket #123 - API endpoint deprecated
-@it("calls legacy endpoint")
-function _()
-end function
-```
+## Troubleshoot
 
-**Best practice:** Always include a comment explaining why the test is ignored and reference a ticket/issue number. An ignored test is counted under `Ignored` and listed under `IGNORED TESTS:` at the end of every device run, so it stays visible.
+| Symptom | Cause and fix |
+| --- | --- |
+| `User not initialized in test` | `setTestDisplaySetting()` found no user or settings node. The suite does not extend `tests.BaseTestSuite`, or an overridden `setup()` skips `super.setup()`. |
+| `assertEqual` fails on values that print the same | The types differ: a string `"8000"` is not the integer `8000`. Check `type(value)`. |
+| `assertEqual` fails on two nodes with the same fields | Nodes compare by identity. Compare their fields. |
+| A test passes alone and fails in the full run, or the reverse | State leaks between tests. Move what the test changes from `setup()` into `beforeEach()`. |
+| `ERROR RETRIEVING TEST SUITE DATA`, then the runner crashes | The file has more than one `@suite`. Split it. |
+| A `MockDataLoader` call returns `invalid` | The name has a typo or a `.json` suffix, or the JSON does not parse. |
+| A registry test sees another suite's data | The suite does not set `m.needsRegistrySetup = true`, or a section name lacks the `test-` prefix. |
 
-### Debug Mode
+The run itself (deploy, credentials, a debugger holding the device) is covered in [`unit-tests-tdd.md`](unit-tests-tdd.md).
 
-```brighterscript
-@noCatch  ' Crash with stack trace on failure
-@it("debug this")
-function _()
-end function
-```
+## Rooibos also has
 
-Or configure globally: `"throwOnFailedAssertion": true, "failFast": true`
+No JellyRock test uses these yet. Read the Rooibos docs before you add the first:
 
----
-
-## Best Practices
-
-### 1. Always Extend tests.BaseTestSuite and Call super.setup()
-
-```brighterscript
-' ✅ GOOD
-namespace tests
-  @suite("My Tests")
-  class MyTests extends tests.BaseTestSuite
-    protected override function setup()
-      super.setup()  ' Critical!
-    end function
-  end class
-end namespace
-
-' ❌ BAD
-class MyTests extends rooibos.BaseTestSuite  ' Wrong base class
-```
-
-### 2. Use Descriptive Test Names
-
-```brighterscript
-' ✅ GOOD
-@it("returns defaultValue when library doesn't exist in displaySettings")
-
-' ❌ BAD
-@it("test 1")
-```
-
-### 3. Test Both Success and Edge Cases
-
-```brighterscript
-@it("retrieves stored setting")
-@it("returns defaultValue when key doesn't exist")
-@it("returns defaultValue when library doesn't exist")
-@it("handles invalid input gracefully")
-```
-
-### 4. Use Parameterized Tests for Similar Cases
-
-```brighterscript
-' ✅ GOOD - One test, many cases
-@it("validates various inputs")
-@params(true, "valid")
-@params(false, "valid")
-@params(invalid, "invalid")
-function _(input, expected)
-  m.assertEqual(validateInput(input), expected)
-end function
-
-' ❌ BAD - Repeated tests
-@it("validates true")
-@it("validates false")
-@it("validates invalid")
-```
-
-### 5. Minimize Rendezvous with m.global
-
-```brighterscript
-' ✅ GOOD - Single rendezvous
-localUser = m.getTestUser()
-userId = localUser.id
-userName = localUser.name
-
-' ❌ BAD - Multiple rendezvous (slow!)
-userId = m.global.user.id       ' Rendezvous 1
-userName = m.global.user.name   ' Rendezvous 2
-```
-
-### 6. Use Helper Methods, Not Hardcoded Data
-
-```brighterscript
-' ✅ GOOD
-m.setTestDisplaySetting("library1", "sortField", "DateCreated")
-
-' ❌ BAD
-m.global.user.settings = {...}  ' Wrong type!
-```
-
-### 7. Use TDD Mode for Focused Development
-
-**For rapid iteration during development**, use the [TDD Workflow](unit-tests-tdd.md) with file-based filtering instead of `@ignore` annotations. This keeps your codebase clean and builds faster.
-
----
-
-## Troubleshooting
-
-### Test Crashes with "User not initialized"
-
-**Solution:** Ensure test extends `tests.BaseTestSuite` and calls `super.setup()`.
-
-### Assertions Pass But Shouldn't
-
-**Causes:**
-
-1. Comparing object references: Use `m.assertEqual(obj1.id, obj2.id)` not `m.assertEqual(obj1, obj2)`
-2. Type mismatch: `m.assertEqual("true", true)` passes due to coercion. Verify type first: `m.assertTrue(Type(value) = "roBoolean")`
-3. Async timing: Use `m.assertAsyncField(task, "output")` instead of immediately checking `task.output`
-
-### Mock Expectations Not Met
-
-**Solution:** Verify code actually calls the mocked method before `m.assertMocks()`.
-
-### Tests Run Slowly
-
-**Solutions:**
-
-1. Disable code coverage: `"isRecordingCodeCoverage": false`
-2. Use `@only` to focus
-3. Check for unnecessary Task node usage
-4. Use `"failFast": true`
-
-### Type Mismatch Errors
-
-**Solution:** Use `user.settings.Save()` or `m.setTestDisplaySetting()` instead of direct assignment. Direct assignment bypasses the settings node's type conversion.
-
-### Mock Data Not Loading
-
-**Checklist:**
-
-- File exists in `tests/source/mocks/users/`?
-- Filename correct (without `.json`)?
-- JSON valid?
-
-### Rendezvous Tracking Warnings
-
-**Solution:** Disable in `.vscode/launch.json`: `"rendezvousTracking": false`
-
----
-
-## Quick Reference
-
-### Test Template
-
-```brighterscript
-namespace tests
-
-  @suite("My Feature Tests")
-  class MyFeatureTests extends tests.BaseTestSuite
-
-    protected override function setup()
-      super.setup()
-    end function
-
-    @describe("Feature area")
-
-    @it("does something")
-    function _()
-      m.assertTrue(true)
-    end function
-
-    @it("handles edge case")
-    @params(1, "expected1")
-    @params(2, "expected2")
-    function _(input, expected)
-      result = myFunction(input)
-      m.assertEqual(result, expected)
-    end function
-
-  end class
-
-end namespace
-```
-
-### Common Assertions
-
-```brighterscript
-m.assertTrue(val)
-m.assertFalse(val)
-m.assertEqual(actual, expected)
-m.assertInvalid(val)
-m.assertNotInvalid(val)
-m.assertArrayCount(arr, n)
-m.assertArrayContains(arr, val)
-m.assertAAHasKey(aa, "key")
-m.assertNodeCount(node, n)
-m.assertAsyncField(node, "field")
-m.assertMocks()
-```
-
-### `BaseTestSuite` Helpers
-
-```brighterscript
-settings = m.loadSettingsFromRegistry("test-user-id")
-m.setTestDisplaySetting("libId", "key", value)
-server = m.getTestServer()
-user = m.getTestUser()
-settings = m.getTestUserSettings()
-```
-
-### Build Commands
-
-```bash
-npm run build:tests              # Build all tests
-npm run build:tests-unit         # Build unit tests only
-npm run build:tests-integration  # Build integration tests only
-npm run build:tdd                # Build with TDD config (see TDD guide)
-```
-
-**💡 TDD Workflow:** For focused test execution and rapid iteration, see the [TDD Workflow Guide](unit-tests-tdd.md).
-
-### Resources
-
-- [Rooibos Documentation](https://github.com/rokucommunity/rooibos/blob/master/docs/index.md)
-- [Rooibos API Reference](https://rokucommunity.github.io/rooibos/module-BaseTestSuite.html)
-- [`BaseTestSuite` Implementation](../../tests/source/BaseTestSuite.spec.bs)
+- **[Mocks and stubs](https://github.com/rokucommunity/rooibos/blob/master/docs/index.md#using-mocks-and-stubs)** replace a method on an associative array: `m.stub()`, `m.expect()`, `m.expectOnce()`, `m.expectNone()`, checked by `m.assertMocks()`. The third argument of `m.expect()` is how many calls to expect, and the arguments come after it. Mocking a global function needs `isGlobalMethodMockingEnabled`, which is off in every JellyRock config.
+- **[Node tests](https://github.com/rokucommunity/rooibos/blob/master/docs/index.md#testing-nodes)** run a suite inside a component with `@SGNode`.
+- **[Async tests](https://github.com/rokucommunity/rooibos/blob/master/docs/index.md#async-tests)** use `@async` and `m.done()`. `m.assertAsyncField(node, field)` waits for the field to change, not to reach a value, so it returns on the first change (a Task's `state` moving to `run`, say).
