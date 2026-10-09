@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (home) Hide pilots of not-yet-started series from Next Up ([#1124](https://github.com/jellyrock/jellyrock/pull/1124))
 - Change screens and the overhang in one frame ([#1137](https://github.com/jellyrock/jellyrock/pull/1137))
 - (focus) Stop screens taking focus back when it leaves the router ([#1138](https://github.com/jellyrock/jellyrock/pull/1138))
 - Clearer subtitle track names; dropdowns keep short text on pick ([#1121](https://github.com/jellyrock/jellyrock/pull/1121))
