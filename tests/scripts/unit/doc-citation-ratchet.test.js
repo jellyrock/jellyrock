@@ -428,3 +428,143 @@ describe('doc-citation-ratchet — the house-voice ratchet', () => {
     expect(out.voice.over[0]).toMatchObject({ file: 'docs/a.md', category: 'em-dash', count: 1 });
   });
 });
+
+// The same five categories, counted in code comments. The parsers decide what a comment
+// is, so each language gets a case where a naive regex over raw source would be wrong:
+// the comment marker or an em dash sitting inside a string.
+describe('doc-citation-ratchet — house voice in code comments', () => {
+  const DASH_COMMENT = {
+    'source/a.bs': "sub main()\n  x = 1 ' one — two\nend sub\n",
+    'source/b.brs': 'REM one — two\nsub main()\nend sub\n',
+    'scripts/a.js': '// one — two\nexport const x = 1;\n',
+    'scripts/b.cjs': '/* one — two */\nmodule.exports = 1;\n',
+    'scripts/c.mjs': '/**\n * one — two\n */\nexport const x = 1;\n',
+    'components/a.xml': '<?xml version="1.0"?>\n<!-- one — two -->\n<component name="A" />\n',
+    '.github/workflows/a.yml': '# one — two\non: push\n',
+    'config/a.yaml': 'a: 1 # one — two\n',
+    'scripts/a.sh': '#!/usr/bin/env bash\n# one — two\necho hi\n',
+    '.husky/pre-x': '#!/usr/bin/env sh\n# one — two\necho hi\n',
+  };
+
+  it.each(Object.entries(DASH_COMMENT))('counts an em dash in a comment of %s', (rel, body) => {
+    const res = run(makeRoot({ [rel]: body }));
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain(`${rel}: em-dash 1 (allowed 0) in comments`);
+  });
+
+  it.each([
+    ['source/a.bs', 'sub main()\n  x = "it\'s — fine"\n  y = "REM — fine"\nend sub\n'],
+    ['scripts/a.js', 'export const x = "a // b — c";\nexport const y = `d /* e — f */`;\n'],
+    ['scripts/a.cjs', 'module.exports = "a // b — c";\n'],
+    ['.github/workflows/a.yml', 'a: "x # y — z"\nb: http://example.com/#frag—ment\n'],
+    ['components/a.xml', '<component name="A" desc="a — b" />\n'],
+    ['scripts/a.sh', 'echo "a # b — c"\necho x # trailing — dash\n'],
+  ])('does not count an em dash that is not in a comment (%s)', (rel, body) => {
+    expect(run(makeRoot({ [rel]: body })).exitCode).toBe(0);
+  });
+
+  it('skips inline code and URLs inside a comment', () => {
+    const r = makeRoot({
+      'source/a.bs':
+        "sub main()\n  ' Run `just build` or `a — b`; see https://x.test/just—NOT\nend sub\n",
+      'scripts/a.js': '// Use `e.g.` literally, see https://x.test/e.g.\nexport const x = 1;\n',
+    });
+    expect(run(r).exitCode).toBe(0);
+  });
+
+  it.each([
+    ['filler', "' This is just a test."],
+    ['caps-emphasis', "' Do NOT edit this."],
+    ['latin-abbrev', "' Pick a name, e.g. a slug."],
+    ['prose-arrow', "' launch → home"],
+  ])('counts %s in a BrightScript comment', (category, comment) => {
+    const res = run(makeRoot({ 'source/a.bs': `sub main()\n${comment}\nend sub\n` }));
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain(`source/a.bs: ${category} 1 (allowed 0) in comments`);
+  });
+
+  it('does not count a shebang line as a comment', () => {
+    const r = makeRoot({
+      'scripts/a.js': '#!/usr/bin/env node\nexport const x = 1;\n',
+      'scripts/a.sh': '#!/usr/bin/env bash — a shebang, not a comment\necho hi\n',
+    });
+    expect(run(r).exitCode).toBe(0);
+  });
+
+  it('fails loudly, naming the file, when a JS file does not parse', () => {
+    const res = run(makeRoot({ 'scripts/broken.js': 'const = ;\n' }));
+    expect(res.exitCode).not.toBe(0);
+    expect(res.stderr).toContain('scripts/broken.js');
+  });
+
+  it('ignores vendored and generated code', () => {
+    const r = makeRoot({
+      'components/vendor/x/a.xml': '<!-- one — two -->\n<c />\n',
+      'roku_modules/x/a.bs': "' one — two\n",
+      'node_modules/x/a.js': '// one — two\n',
+      'build/a.js': '// one — two\n',
+      'out/a.brs': "' one — two\n",
+    });
+    expect(run(r).exitCode).toBe(0);
+  });
+
+  it('ignores a nested checkout', () => {
+    const r = makeRoot({
+      '.claude/worktrees/w/.git': 'gitdir: /elsewhere\n',
+      '.claude/worktrees/w/source/a.bs': "' one — two\n",
+    });
+    expect(run(r).exitCode).toBe(0);
+  });
+
+  it('passes at the allowance, fails over it, and advises lowering under it', () => {
+    const files = { 'source/a.bs': "sub main()\n' one — two — three\nend sub\n" };
+    const at = run(makeRoot(files, {}, { 'source/a.bs': { 'em-dash': 2 } }));
+    expect(at.exitCode).toBe(0);
+    rmSync(root, { recursive: true, force: true });
+    const over = run(makeRoot(files, {}, { 'source/a.bs': { 'em-dash': 1 } }));
+    expect(over.exitCode).toBe(1);
+    expect(over.stderr).toContain('source/a.bs: em-dash 2 (allowed 1) in comments');
+    rmSync(root, { recursive: true, force: true });
+    const under = run(makeRoot(files, {}, { 'source/a.bs': { 'em-dash': 5 } }));
+    expect(under.exitCode).toBe(0);
+    expect(under.stderr).toContain('--lower-voice-baseline');
+  });
+
+  it('--lower-voice-baseline lowers a code file allowance', () => {
+    const r = makeRoot(
+      { 'source/a.bs': "sub main()\n' one — two\nend sub\n" },
+      {},
+      { 'source/a.bs': { 'em-dash': 4, filler: 2 } },
+    );
+    expect(run(r, ['--lower-voice-baseline']).exitCode).toBe(0);
+    expect(readVoice(r)).toEqual({ 'source/a.bs': { 'em-dash': 1 } });
+  });
+});
+
+describe('doc-citation-ratchet — --init-comment-baseline', () => {
+  const files = {
+    'docs/a.md': 'A doc — with a dash.\n',
+    'source/a.bs': "sub main()\n' one — two — three\nend sub\n",
+    'scripts/a.js': '// just this\nexport const x = 1;\n',
+  };
+
+  it('seeds code-file entries only and keeps the doc entries', () => {
+    const r = makeRoot(files, {}, { 'docs/a.md': { 'em-dash': 1 } });
+    expect(run(r, ['--init-comment-baseline']).exitCode).toBe(0);
+    expect(readVoice(r)).toEqual({
+      'docs/a.md': { 'em-dash': 1 },
+      'scripts/a.js': { filler: 1 },
+      'source/a.bs': { 'em-dash': 2 },
+    });
+  });
+
+  it('refuses a second time and leaves the baseline alone', () => {
+    const r = makeRoot(files, {}, { 'docs/a.md': { 'em-dash': 1 } });
+    expect(run(r, ['--init-comment-baseline']).exitCode).toBe(0);
+    const before = readFileSync(join(r, '.doc-voice-baseline.json'), 'utf8');
+    const res = run(r, ['--init-comment-baseline']);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain('already has code-file entries');
+    expect(readFileSync(join(r, '.doc-voice-baseline.json'), 'utf8')).toBe(before);
+  });
+});

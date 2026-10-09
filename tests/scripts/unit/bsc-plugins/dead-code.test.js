@@ -439,6 +439,15 @@ describe('dead-code — keeping code on purpose', () => {
     expect(diagnosticsByCode(diagnostics, KEEP)).toEqual([]);
   });
 
+  it('honors a keep marker written with a colon between kind and reason', () => {
+    const diagnostics = run({
+      'source/api.bs':
+        "' bsc-disable-next-line dead-code keep: api: first caller lands later\nsub publicApi()\nend sub",
+    });
+    expect(deadNames(diagnostics)).toEqual([]);
+    expect(diagnosticsByCode(diagnostics, KEEP)).toEqual([]);
+  });
+
   it('honors a keep marker on an XML declaration', () => {
     const diagnostics = run({
       'components/MainScene.xml': scene('Item'),
