@@ -27,29 +27,24 @@ Both tiers carry each request on its own new `ApiResultNode`, so two requests se
 
 ## Patterns
 
-### Pattern 1: `submitApiRequest` (one request, without waiting)
+### Pattern 1: `fetchAsync` (one request from the render thread)
 
-Send a request to the pool from the render thread, and handle the result in a callback.
+Send a request to the pool from the render thread and handle the answer in a promise callback.
 
 ```brighterscript
-m.resultNode = submitApiRequest(GetApi().BuildGetXRequest(...), "myReq")
-if isValid(m.resultNode)
-  m.resultNode.observeField("done", "onMyReqDone")
-end if
-
-sub onMyReqDone()
-  res = m.resultNode.result
-  m.resultNode.unobserveField("done")
-  m.resultNode = invalid
-  if isValid(res) and res.ok
-    m.top.someField = res.json.SomeValue  ' trivial assignment only
-  end if
-end sub
+req = GetApi().BuildGetLocalTrailersRequest(itemId)
+promises.chain(fetchAsync(req, "trailerCheck-" + itemId)).then(sub(res as object)
+  if res.ok then m.top.trailerAvailable = res.json.Count() > 0  ' trivial assignment only
+end sub).catch(sub(err as object)
+  m.top.trailerAvailable = false  ' the request never completed
+end sub)
 ```
 
-The render thread never makes the HTTP call. `submitApiRequest()` creates an `ApiResultNode`, hands it to the coordinator and returns at once. An `ApiTask` thread makes the call.
+The render thread never makes the HTTP call. `fetchAsync()` hands the request to the coordinator through `submitApiRequest()` and returns a promise at once. An `ApiTask` thread makes the call. The promise also times the request out, and is dropped when the component is destroyed.
 
-**Use it when** you need one call and the callback does something small, such as setting a flag or reading one value. Don't transform data or loop over arrays in the callback.
+**Use it when** you need one call and the callback does something small, such as setting a flag or reading one value. Don't transform data or loop over arrays in the callback. The [promises guide](promises.md) covers which outcomes reach `.then` and which reach `.catch`, and how to pass state to the callbacks.
+
+Don't observe the `ApiResultNode` that `submitApiRequest()` returns yourself: [`promise-ratchet.cjs`](../../scripts/lint/promise-ratchet.cjs) fails CI on any raw `observeField("isDone", …)` in app code.
 
 ### Pattern 2: Orchestrator Task (several calls, or transforms)
 
@@ -113,7 +108,7 @@ Example: `LoadLatestRowsTask`.
 ## Which pattern to use
 
 1. A write whose response you don't need: pattern 3, `SubmitSideEffect`.
-2. One read whose callback sets a field: pattern 1, `submitApiRequest`.
+2. One read from the render thread whose callback sets a field: pattern 1, `fetchAsync`.
 3. Several calls, branching, or data transforms: pattern 2, an orchestrator Task.
 4. HTTP that isn't the Jellyfin API, or a binary download: pattern 4, a dedicated Task.
 5. Inside an orchestrator, independent calls whose number depends on the server's data: pattern 5, `apiPipeline`.
@@ -129,6 +124,7 @@ Example: `LoadLatestRowsTask`.
 
 | File | Purpose |
 | --- | --- |
+| `source/api/apiPromise.bs` | `fetchAsync()`: one request from the render thread, as a promise |
 | `source/api/apiPool.bs` | `fetchRes()`, `fetchJson()`, `submitApiRequest()`, `collectApiRequest()`, `dropApiRequest()`, `SubmitSideEffect()` |
 | `source/api/apiPipeline.bs` | `apiPipelineBegin()` and `apiPipelineNext()`: many independent requests on one Task thread |
 | `source/api/apiIds.bs` | `apiIds.chunks()`: splits a lookup's `Ids=` list so each request line stays short |
