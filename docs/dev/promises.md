@@ -7,192 +7,158 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - tests/source/unit/api/apiPromise.spec.bs
-last-reviewed: 2026-09-25
+last-reviewed: 2026-10-09
 ---
 
-# Promises How-To & Style Guide
+# Promises
 
-How to do async work in JellyRock with `@rokucommunity/promises`, **when** to reach for a
-promise vs. blocking `fetchRes`, and the patterns to avoid. For the *why* and *shape* of the
-model (and how it layers over the task pool), see [`async.md`](../architecture/async.md).
+How to make an API request from the render thread with `@rokucommunity/promises`, when to block on `fetchRes` instead, and the mistakes to avoid. For why the async model is shaped this way and how it sits on the task pool, see [`async.md`](../architecture/async.md).
 
-> **The one-sentence rule:** on the **render thread**, prefer `fetchAsync(...).then(...)`; in a
-> **Task thread**, keep using blocking `fetchRes` / `fetchJson` for linear/branching control flow.
-> The full rationale is [ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md).
+**The rule:** on the render thread, use `fetchAsync(...)` and chain `.then(...)`. In a Task thread, use blocking `fetchRes` or `fetchJson`. [ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md) records why.
 
-## The canonical call shape
+## Make a request
 
-`fetchAsync(req, requestId)` submits a request to the existing task pool and returns a Promise
-node. Chain it with `promises.chain(...)`:
+`fetchAsync(req, requestId)` sends a request to the task pool and returns a promise. Chain it with `promises.chain(...)`. This is `VideoPlayerView.fetchNextEpisode()`, shortened:
 
-```brightscript
+```brighterscript
 import "pkg:/source/api/apiPromise.bs"
 
-sub loadNextEpisode()
-  req = GetApi().BuildGetNextEpisodeRequest(m.itemId)
-  promises.chain(fetchAsync(req, "nextEpisode-" + m.itemId)).then(sub(res as object)
-    ' Any HTTP response lands here — including 4xx/5xx. Inspect res.ok.
-    if res.ok then m.nextEpisode = res.json
+sub fetchNextEpisode()
+  req = GetApi().BuildGetEpisodesRequest(m.top.showID, { StartItemId: m.top.id, Limit: 2 })
+  promises.chain(fetchAsync(req, "nextEpisode-" + m.top.id)).then(sub(res as object)
+    ' Every HTTP response lands here, 4xx and 5xx included.
+    if not res.ok then return
+    ' ...use res.json
   end sub).catch(sub(err as object)
-    ' Only transport failures / timeouts land here (see "Error contract").
-    m.log.warn("next-episode fetch failed", err.reason)
+    ' Only a request that never completed lands here (see "What lands where").
+    m.log.warn("next-episode fetch failed", err.reason, err.statusCode)
   end sub)
 end sub
 ```
 
-> **No `_` line-continuation.** BrighterScript does not support the classic BrightScript `_`
-> continuation character. Chain by placing `.then(` / `.catch(` directly after the previous
-> callback's `end sub)` on the same line (as above) — not on a new line with a leading dot.
+- `req` is the request AA from any `GetApi().Build*Request()` method, the same input `fetchRes` takes.
+- `requestId` must be unique among requests in flight: it is the key the adapter files the request under. Two requests in flight with one id is a bug. `"<purpose>-<itemId>"` works well.
+- Keep each `.then(` and `.catch(` on the same line as the `end sub)` before it. A line that starts with `.catch(` is a syntax error, and `_` does not continue a line in BrighterScript.
 
-- `req` is the AA from any `GetApi().Build*Request()` method (same input `fetchRes` takes).
-- `requestId` is a **unique** string per in-flight request — it's the registry key and the id the
-  pool echoes back. Reusing an id across two concurrent requests is a bug (same as the pool's
-  existing contract). A `"<purpose>-<itemId>"` shape works well.
+`fetchAsync` is the whole surface. There are no per-endpoint `*Async()` wrappers; add one only when call sites need it.
 
-Defer per-endpoint `GetApi().*Async()` sugar — the single generic `fetchAsync` over the
-`Build*Request()` methods is the whole surface. Add wrappers only if call sites ask for them.
+### Pass state with a context
 
-## The error contract (decision #5 — `fetch()` convention)
+BrightScript has no closures. A callback runs with the calling component's `m`, so `m.top` works inside it. Anything else it needs goes in a context AA, passed as the second argument to `promises.chain` and handed to every callback. This is `ItemDetails.toggleFavorite()`, shortened:
 
-This mirrors the web `fetch()` convention so `.catch` stays meaningful:
+```brighterscript
+promises.chain(fetchAsync(req, "favoriteToggle-" + item.id), { button: favoriteButton, newState: newState }).then(sub(res as object, ctx as object)
+  if res.ok
+    ctx.button.isButtonSelected = ctx.newState
+  else
+    onFavoriteToggleFailed(ctx.button, ctx.newState)
+  end if
+end sub).catch(sub(err as object, ctx as object)
+  onFavoriteToggleFailed(ctx.button, ctx.newState)
+end sub)
+```
 
-| Outcome | Lands in | Why |
-|---|---|---|
-| `2xx` response | `.then(res)` | success; `res.ok = true` |
-| **`4xx` / `5xx` response** | **`.then(res)`** | an HTTP reply *did* arrive; inspect `res.ok` / `res.statusCode`. Expected `404` responses flow as data. |
-| Transport failure (no HTTP reply; `statusCode <= 0`) | `.catch(err)` | the request never completed |
-| Timeout (`apiTimeout.waitMs(req)` — `timeouts.API_WAIT_MS` unless the request sets `timeoutMs`) | `.catch(err)` | the pool slot never answered |
-| Pool unavailable / invalid `req` | `.catch(err)` | nothing was submitted |
+The context is also how a callback drops a stale answer. `ItemDetails.checkTrailerAvailability()` passes the item id it asked about and returns early when `ctx.itemId` no longer matches `m.top.itemId`.
 
-So **`.then` is not "success"** — it's "the server answered." Branch on `res.ok` inside `.then`
-for HTTP-level errors; reserve `.catch` for "the network/pool failed us." The reject value is an
-AA with `ok: false`, `statusCode: 0`, and a `reason` (`"timeout"` / `"pool-unavailable"`).
+## What lands where
 
-## Render-thread vs. in-Task consumption
+The adapter follows the web `fetch()` convention, so `.catch` fires only when the request never completed:
 
-- **Render thread (the common case):** chain `.then/.catch` as above. Delivery is automatic — the
-  library observes the promise on the render thread and fires your callbacks on the next tick. You
-  do **not** manage a message port.
-- **In a Task thread:** if you ever consume a promise inside a Task's run loop, use
-  `promises.setMessagePort(port)` + `promises.wait2(timeoutMs, port)` so promise events are pumped
-  alongside your other events. In practice you rarely need this — Task code should use blocking
-  `fetchRes` (see below), not promises.
-- **On the main thread (`main.bs`'s event loop): you can't call `fetchAsync` directly.** The
-  adapter bridges the pool via a *named-function* `observeField`, which Roku only dispatches inside
-  a SceneGraph component (the render thread). `main.bs`'s `Main()` runs on the main BrightScript
-  thread (`wait(0, m.port)`), so named observers never fire there — that's why every observation in
-  `main.bs` is port-based. **Delegate the async work to a render-thread component method via
-  `callFunc`** instead: `callFunc` rendezvouses to the node's render thread, so a `fetchAsync().then()`
-  inside that method runs where the adapter works. The canonical example is `loginRouter`
-  calling `m.scene.callFunc("routerNavigate", …)` (a router promise rather than `fetchAsync`; the
-  principle is identical — see Canonical examples below). Do **not** wire
-  `setMessagePort`/`wait2` into the `main.bs` loop for this — delegation is simpler and keeps the
-  one async vocabulary.
-  - **The delegated method MUST be declared in the component's `<interface>`** as
-    `<function name="routerNavigate" />` (as `JRScene.xml` does) — `callFunc` only dispatches to exposed functions, and a
-    missing declaration is a **silent no-op** the transpiler won't catch (it shipped a dead watched
-    toggle once). The `callfunc-interface` BSC plugin now makes this a build error; see
-    [`build-and-tooling.md`](../architecture/build-and-tooling.md).
+| Outcome | Lands in | What you get |
+| --- | --- | --- |
+| `2xx` response | `.then(res)` | `res.ok` is `true` |
+| `4xx` or `5xx` response | `.then(res)` | `res.ok` is `false`; read `res.statusCode`. An expected `404` arrives as data. |
+| No HTTP reply (`statusCode` 0 or below, or missing) | `.catch(err)` | The pool's response AA |
+| No answer within `apiTimeout.waitMs(req)` | `.catch(err)` | `{ requestId, ok: false, statusCode: 0, reason: "timeout" }` |
+| Pool not ready, or `req` invalid | `.catch(err)` | `{ requestId, ok: false, statusCode: 0, reason: "pool-unavailable" }` |
+
+So `.then` means "the server answered", not "it worked". Branch on `res.ok` inside `.then`.
+
+A rejection carries a `reason` only when the adapter built it (timeout, pool unavailable). When the pool's own response is rejected, `reason` is missing and `statusCode` tells you what happened. Every rejection has `ok` and `statusCode`.
+
+The timeout is the same wait `fetchRes` uses: `timeouts.API_WAIT_MS`, longer for a request that sets its own `timeoutMs`. A request that times out is also marked abandoned, so the pool skips it if it is still queued.
+
+## Which thread you are on
+
+- **Render thread.** Chain `.then` and `.catch` as above. The library delivers the result to your callbacks; you manage no message port.
+- **Main thread (`Main()` in `main.bs`).** You cannot call `fetchAsync` here. The adapter waits with a named-function `observeField`, and Roku only calls those inside a SceneGraph component. `Main()` waits on its own port, so every observer there is port-based. Hand the work to a render-thread component method with `callFunc`, and call `fetchAsync` inside that method. `loginRouter` does this with `m.scene.callFunc("routerNavigate", …)`. Don't add `promises.setMessagePort` and `promises.wait2` to the main loop instead.
+- **Task thread.** Use blocking `fetchRes` (see below). If a Task must consume a promise, pump it with `promises.setMessagePort(port)` and `promises.wait2(timeoutMs, port)` alongside its other events.
+
+A method you reach with `callFunc` must be declared in the component's `<interface>`, as `JRScene.xml` declares `<function name="routerNavigate" />`. Without it the call does nothing and reports nothing. The `callfunc-interface` BSC plugin makes a missing declaration a build error.
 
 ## Parallel requests
 
-Use `promises.all([...])` when requests are genuinely independent and you need all results:
+When requests do not depend on each other and you need every result, use `promises.all([...])`:
 
-```brightscript
+```brighterscript
 promises.chain(promises.all([
   fetchAsync(reqA, "a"),
   fetchAsync(reqB, "b")
 ])).then(sub(results as object)
-  ' results[0], results[1] — both resolved (any HTTP response resolves).
-  ' all() rejects on the FIRST transport failure / timeout.
+  ' results[0] answers reqA and results[1] answers reqB, whatever order they arrived in.
+end sub).catch(sub(err as object)
+  ' The first request to reject rejects the whole set.
 end sub)
 ```
 
-## When to use a promise vs. blocking `fetchRes` (the Option A rule)
+Inside a Task, run independent requests over `apiPipeline` instead: it keeps several in flight on one thread. See [pattern 5 in `api-patterns.md`](api-patterns.md#pattern-5-apipipeline-many-independent-requests-one-thread).
 
-Decision `promise-native-interface-fetchres-exception` keeps **two** async tools on purpose:
+## Promise or blocking `fetchRes`
 
-- **Promise (`fetchAsync`)** — the default for **render-thread** flows and any non-blocking work.
-  The render thread must never block, so a promise is the only correct tool there.
-- **Blocking `fetchRes` / `fetchJson`** — stays the tool for **Task-internal** control flow:
-  - the **bootstrap path** (login / server discovery, before the pool is up), and
-  - **linear or branching task orchestrators**. The worked example is `QuickPlayTask.doSeries`: a
-    3-branch resume→next-up→shuffle tree. Flattened onto `.then` chains it reads *worse* — you'd
-    thread `context.satisfied` guard flags through every stage. Task threads can block safely, so
-    blocking is the Roku-idiomatic, more-readable choice there. **Don't** rewrite hot, working
-    orchestrators (`QuickPlayTask` ~32 fetches, `LoadItemsTask` ~22, `items.bs`) into `wait2`
-    promise-loops — that's pure regression risk for negative readability.
+The app keeps two async tools ([ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md)):
 
-> Long-term: once BrighterScript ships **async/await**, `await fetchAsync(...)` restores linear
-> readability *with* the promise model and this two-tool split gets revisited. Until then, the
-> split is deliberate.
+- **A promise (`fetchAsync`)** for the render thread and any other work that must not block. The render thread must never block, so a promise is the only correct tool there.
+- **Blocking `fetchRes` or `fetchJson`** inside Task threads, for:
+  - the sign-in path (login and server discovery), which runs before the pool is up;
+  - Tasks whose requests run in sequence or branch. `QuickPlayTask.doSeries()` is the example: it tries resume, then next up, then shuffle. As a `.then` chain it would need a guard flag threaded through every step. A Task thread can block safely, so the blocking version reads better.
 
-## Collapsing a pure-fetch Task (decision #4)
+Don't rewrite a working Task orchestrator (`QuickPlayTask`, `LoadItemsTask`, `items.bs`) into a `wait2` loop. It reads worse and puts the app's busiest paths at risk.
 
-The biggest DX win is deleting Task components that exist only to move one `fetchRes` off the
-render thread. Collapse criteria:
+The split ends when BrighterScript ships async/await: `await fetchAsync(...)` reads like blocking code and keeps the promise model. The tech-debt entry [`two-async-model-split`](../architecture/tech-debt.md#two-async-model-split) tracks it.
 
-- **Collapse → render-thread promise:** a Task that does *pure I/O* (one or a few `fetchRes`, no
-  heavy transform) consumed via `createObject` + `observeField`. Replace with a
-  `fetchAsync(...).then(...)` at the call site and **delete** the `.xml` + `.bs` pair. Worked
-  example: `3a` below (`GetNextEpisodeTask` → `VideoPlayerView.fetchNextEpisode`).
-- **Keep as a Task:** a Task doing **array processing / heavy data transforms**. That work must
-  stay off the render thread — collapsing it would move the transform *onto* the render thread,
-  which the render-thread-protection rule forbids. The promise only moves the *I/O wait*, not the
-  CPU work.
+## Replace a Task that only fetches
 
-## Cancellation — you get it for free
+The biggest cleanup is deleting a Task that exists only to move one `fetchRes` off the render thread.
 
-A pending promise must never fire a callback into a destroyed node. You don't wire this by hand:
-the `auto-abandon-promises` BSC plugin injects `abandonApiPromises()` into your component's
-`onDestroy()` at build time (and **errors** if a `fetchAsync`-calling component has no
-`onDestroy`). Base `JRScreen.bs` / `JRGroup.bs` carry it as a floor. Just write your normal
-`onDestroy()`; abandon is added for you. See [`async.md`](../architecture/async.md#cancellation--auto-abandon)
-for the mechanism.
+- **Replace it with a promise** when the Task does only I/O (one or a few `fetchRes`, no heavy work on the result) and the caller creates it and observes its output. Call `fetchAsync(...).then(...)` where the caller started the Task, and delete the Task's `.xml` and `.bs`. Example `3a` below did this.
+- **Keep the Task** when it loops over arrays or reshapes data. That work must stay off the render thread ([render-thread rules](../../components/CLAUDE.md#render-thread-protection)). A promise moves only the wait, not the work.
 
-## Patterns to avoid
+A raw `observeField("isDone", …)` on a `submitApiRequest()` result is the pattern promises replace. [`promise-ratchet.cjs`](../../scripts/lint/promise-ratchet.cjs) counts those in app code against [`.promise-ratchet-baseline`](../../.promise-ratchet-baseline) and fails CI when the count rises. The baseline is `0`, so any new one fails.
 
-- **Treating `.then` as "success."** A 404/500 resolves. Branch on `res.ok` inside `.then`.
-- **Swallowing rejections in `.finally`.** As of `@rokucommunity/promises` **0.6.0**, `.finally()`
-  no longer suppresses a rejection — a rejection still propagates past `.finally`. Put real error
-  handling in `.catch`, not `.finally`.
-- **Forcing `wait2` into linear Task code.** If it's a Task orchestrator, use `fetchRes`.
-- **Reusing a `requestId`** across concurrent in-flight requests.
-- **Manually calling `abandonApiPromises()` and also relying on the plugin** — it's idempotent, but
-  the plugin already injects it; don't hand-write the call.
+## Cleanup when a component is destroyed
 
-## How to test promise-based code
+A pending promise must never call back into a destroyed component. You don't write this cleanup. The `auto-abandon-promises` BSC plugin adds `abandonApiPromises()` to the start of `onDestroy()` in any component that calls `fetchAsync`. A component that calls `fetchAsync` and has no `onDestroy()` fails the build (`auto-abandon-promises-needs-on-destroy`). `JRScreen.bs` and `JRGroup.bs` call it in their own `onDestroy()` for components that inherit it.
 
-Drive the adapter's resolve/reject decision and the abandon model directly — see
-[`tests/source/unit/api/apiPromise.spec.bs`](../../tests/source/unit/api/apiPromise.spec.bs) for the
-pattern. Key points:
+Write your `onDestroy()` as usual and don't call `abandonApiPromises()` yourself. How it works: [`async.md`](../architecture/async.md#cancellation--auto-abandon).
 
-- `apiPromiseShouldResolve(res)` is the pure resolve-vs-reject decision — assert it for the `2xx` /
-  `4xx` / `5xx` / transport / timeout cases with no pool or async pump needed.
-- For settle/abandon, populate a registry AA and call `settleApiPromiseIn(pending, requestId)` /
-  `abandonApiPromisesIn(pending)` (the registry is an explicit parameter precisely so it's testable
-  — bare calls from a Rooibos class method don't share the instance `m`). Assert the promise's
-  `promiseState` / `promiseResult` synchronously.
-- Run on hardware: `npm run test:tdd` (single spec) → `npm run test:unit` before commit.
+## Mistakes to avoid
 
-## Canonical examples (copy these)
+- **Treating `.then` as success.** A 404 or a 500 resolves. Branch on `res.ok`.
+- **Reading `err.reason` as always set.** It is missing when the pool's own response is rejected. Read `err.statusCode` too.
+- **Handling errors in `.finally`.** Since `@rokucommunity/promises` 0.6.0, `.finally()` no longer stops a rejection, so it still reaches the next `.catch`. Handle errors in `.catch`.
+- **Forcing `wait2` into a Task.** A Task that runs requests in sequence uses `fetchRes`.
+- **Reusing a `requestId`** for two requests in flight at once.
 
-The three Phase-3 reference migrations, each verified on hardware. They cover the three real
-shapes you'll hit:
+## Test promise code
 
-| # | Pattern | Where | What it shows |
-|---|---|---|---|
-| `3a` | **Collapse a pure-fetch Task** | [`VideoPlayerView.fetchNextEpisode`](../../components/video/VideoPlayerView.bs) | A whole `.xml`+`.bs` Task (`GetNextEpisodeTask`) deleted; one `fetchRes` becomes a render-thread `fetchAsync().then().catch()`. The biggest DX win. |
-| `3b` | **Render-thread `submitApiRequest`+`observeField` → promise** | [`ItemDetails.checkTrailerAvailability`](../../components/ItemDetails.bs) | Swaps a named-observer result node for `fetchAsync().then()`. Uses the **`context`** AA to drop a result that lands after the user navigated away (no closures in BS). |
-| `3c` | **Main-thread caller → render-thread promise via `callFunc`** | [`JRScene.routerNavigate`](../../components/JRScene.bs), invoked from [`loginRouter`](../../source/loginRouter.bs) | The main-thread caller (`loginRouter`) hands off via `m.scene.callFunc("routerNavigate", …)`; `navigateThenFocus` then consumes `sgrouter.navigateTo`'s promise with `promises.chain(...).then(...)` on the render thread. The favorite toggle (`ItemDetails.toggleFavorite`, now called directly on the render thread) exercises the **error contract** (revert button + toast when `res.ok` is false or on reject). |
-| `3d` | **A dependent SEQUENCE on the render thread** | [`UserSelect.startQuickConnect`](../../components/login/UserSelect.bs) | Three requests where each depends on the last (initiate → poll until approved → exchange the secret), driven by a `Timer` between the polls rather than a loop. Replaced a Task node that was `CreateObject`ed **per poll**. The classification of each poll is extracted to a pure module ([`source/utils/quickConnect.bs`](../../source/utils/quickConnect.bs)) so the decision table is unit-testable without a pool. |
+[`apiPromise.spec.bs`](../../tests/source/unit/api/apiPromise.spec.bs) shows the pattern. It tests the adapter's decisions directly, with no pool:
 
-> **The "two dependent calls" case, and why it stayed rare.** Dependent fetch *sequences* mostly
-> live inside the Task orchestrators (`QuickPlayTask`, `LoadItemsTask`, …) that decision #3
-> deliberately **keeps** as blocking `fetchRes`, and render-thread components almost always fire a
-> single request — which is why this table had no such example until `3d`. What made Quick Connect
-> the exception is that its middle step is a *wait on a human*, so it cannot block a thread at all:
-> the second request repeats on a timer for as long as the user takes to walk to another device.
-> A blocking orchestrator would have to hold a Task thread open for minutes. For the plain
-> chaining + error-propagation pattern, see the sequential-chain example under "Parallel requests"
-> above and the library's README (`auth → profile → image`).
+- `apiPromiseShouldResolve(res)` is the resolve-or-reject decision. Assert it for `2xx`, `4xx`, `5xx`, a transport failure and a missing response.
+- For settling and cleanup, fill a registry AA and call `settleApiPromiseIn(pending, requestId)`, `timeoutApiPromiseIn(pending, requestId)` or `abandonApiPromisesIn(pending)`. Then assert the promise's `promiseState` and `promiseResult`. These take the registry as a parameter because a bare call from a Rooibos class method does not share the component's `m`.
+
+Run one spec with `npm run test:tdd` ([TDD guide](unit-tests-tdd.md)), then `npm run test:unit` before you commit.
+
+## Examples to copy
+
+Each covers one shape you will meet:
+
+| # | Shape | Where | What it shows |
+| --- | --- | --- | --- |
+| `3a` | Replace a Task that only fetches | [`VideoPlayerView.fetchNextEpisode()`](../../components/video/VideoPlayerView.bs) | The `GetNextEpisodeTask` component was deleted. Its one `fetchRes` became `fetchAsync().then().catch()` on the render thread. |
+| `3b` | Replace a raw result observer | [`ItemDetails.checkTrailerAvailability()`](../../components/ItemDetails.bs) | A `submitApiRequest` result node and its `observeField` became `fetchAsync().then()`. The context drops an answer that lands after the user moved to another item. |
+| `3c` | Reach the render thread from the main thread | [`JRScene.routerNavigate()`](../../components/JRScene.bs), called from [`loginRouter`](../../source/loginRouter.bs) | `loginRouter` calls `m.scene.callFunc("routerNavigate", …)`. On the render thread, `navigateThenFocus()` chains the promise `sgrouter.navigateTo` returns. |
+| `3d` | Requests that depend on each other | [`UserSelect.startQuickConnect()`](../../components/login/UserSelect.bs) | Start, then poll until approved, then exchange the secret. A `Timer` spaces the polls. It replaced a Task created for every poll. Each poll's outcome is decided in [`quickConnect.bs`](../../source/utils/quickConnect.bs), which tests cover without a pool. |
+
+`ItemDetails.toggleFavorite()` shows the error path: it reverts the button and shows a toast when `res.ok` is false or the request rejects.
+
+Requests that depend on each other are rare on the render thread. Most such sequences live in the Task orchestrators that keep `fetchRes`, and render-thread components usually send one request. Quick Connect is the exception because its middle step waits on a person, which could keep a Task thread blocked for minutes. For a plain sequence, return the next promise from a `.then` callback and the chain waits for it; the library's [chaining example](https://github.com/rokucommunity/promises#chaining) shows the shape.

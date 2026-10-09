@@ -669,12 +669,6 @@
     "latin-abbrev": 10,
     "prose-arrow": 6
   },
-  "docs/dev/promises.md": {
-    "caps-emphasis": 1,
-    "em-dash": 24,
-    "filler": 3,
-    "prose-arrow": 6
-  },
   "docs/dev/registry-migrations.md": {
     "caps-emphasis": 9,
     "filler": 2,
