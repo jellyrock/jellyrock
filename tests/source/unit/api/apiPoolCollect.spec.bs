@@ -29,6 +29,21 @@ namespace tests
       m.assertTrue(res.ok)
     end function
 
+    @it("gives up at the caller's limit and abandons the request")
+    @params(1)
+    @params(0)
+    function _(maxWaitMs)
+      port = CreateObject("roMessagePort")
+      node = CreateObject("roSGNode", "ApiResultNode")
+      node.request = { method: "GET", url: "http://example.invalid/items" }
+      node.observeField("isDone", port)
+
+      res = collectApiRequest(node, port, maxWaitMs)
+
+      m.assertInvalid(res)
+      m.assertTrue(node.abandoned)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("dropApiRequest()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -16,7 +16,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-10-06
+last-reviewed: 2026-10-08
 ---
 
 # API Layer & Task Pool
@@ -348,7 +348,8 @@ The render thread does microseconds of work (create node, append, set wakeup fie
 > **One request that needs no answer from an earlier one** can ride the same bridge without a
 > pipeline: send it with `submitApiRequest(req, id, port)`, do the blocking `fetchRes` meanwhile, then
 > collect it with `collectApiRequest(node, port)` (the waits overlap instead of adding up). A caller
-> that ends up not needing it calls `dropApiRequest(node)`, which abandons it so the pool can skip it.
+> with its own deadline passes the most it will wait as a third argument. A caller that ends up not
+> needing it calls `dropApiRequest(node)`, which abandons it so the pool can skip it.
 > `LoadItemsTask.keepStartedSeries` is the reference.
 
 > **Prefer a promise for new render-thread call sites.** `fetchAsync(req, id).then(...)` wraps this
