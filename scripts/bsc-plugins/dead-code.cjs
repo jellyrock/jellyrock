@@ -78,7 +78,7 @@
  *
  * KEEPING CODE ON PURPOSE
  * -----------------------
- * Unused code is kept only as one of five recorded kinds:
+ * Unused code is kept only as one of six recorded kinds:
  *   design-system  a whole set kept deliberately, e.g. a color × size matrix
  *   api            built ahead of its first caller
  *   planned        scaffolding for a tracked feature; the reason must cite an
@@ -86,10 +86,12 @@
  *   platform       invoked by the Roku OS by a name this rule does not know
  *   test-infra     exists for the test suites (probe components the RTA and
  *                  Rooibos suites create by name)
+ *   debug-console  called by a developer from the BrightScript console in a
+ *                  debug build; nothing in the app calls it
  * One declaration is kept with a marker on the line above it (or on its own
  * line), stating the kind and the reason:
- *     ' bsc-disable-next-line dead-code keep: api — first caller lands with #288
- *     <!-- bsc-disable-next-line dead-code keep: planned — #1070 theme media -->
+ *     ' bsc-disable-next-line dead-code keep: api: first caller lands with #288
+ *     <!-- bsc-disable-next-line dead-code keep: planned: #1070 theme media -->
  * A whole set is kept by an entry in bsconfig.json's `deadCode.keep`:
  *     { "kind": "design-system", "files": ["components/ui/label/colors/**"],
  *       "names": ["*"], "reason": "…" }
@@ -147,7 +149,7 @@ const CODE = 'dead-code';
 const KEEP_CODE = 'dead-code-keep';
 const BASELINE_CODE = 'dead-code-baseline';
 
-const KEEP_KINDS = ['design-system', 'api', 'planned', 'platform', 'test-infra'];
+const KEEP_KINDS = ['design-system', 'api', 'planned', 'platform', 'test-infra', 'debug-console'];
 
 // Functions the Roku OS calls by name. Source: Roku's channel entry points
 // (Main / RunUserInterface / RunScreenSaver / RunScreenSaverSettings) and the
@@ -929,7 +931,10 @@ function parseBrsMarkers(file) {
   const byDeclLine = new Map();
   let fileLevel = null;
   const lines = (file.fileContents || '').split(/\r?\n/);
+  let ifDepth = 0;
   lines.forEach((text, i) => {
+    if (/^\s*#if\b/i.test(text)) ifDepth++;
+    else if (/^\s*#end\s*if\b/i.test(text)) ifDepth = Math.max(0, ifDepth - 1);
     const commentAt = text.indexOf("'");
     if (commentAt < 0) return;
     const comment = text.slice(commentAt);
@@ -937,7 +942,7 @@ function parseBrsMarkers(file) {
     const m = MARKER.exec(comment);
     if (!m) return;
     const target = m[1].toLowerCase() === 'next-line' ? i + 1 : i;
-    byDeclLine.set(target, { markerLine: i, file, ...parseKeep(m[2]) });
+    byDeclLine.set(target, { markerLine: i, file, inConditional: ifDepth > 0, ...parseKeep(m[2]) });
   });
   return { byDeclLine, fileLevel };
 }
@@ -1301,8 +1306,8 @@ function deadMessage(d, ctx, rootDir) {
     : deadHint(d, ctx, rootDir);
   const marker =
     d.kind === 'component' || d.kind === 'field' || d.kind === 'interfaceFunction'
-      ? '<!-- bsc-disable-next-line dead-code keep: <kind> — <reason> -->'
-      : "' bsc-disable-next-line dead-code keep: <kind> — <reason>";
+      ? '<!-- bsc-disable-next-line dead-code keep: <kind>: <reason> -->'
+      : "' bsc-disable-next-line dead-code keep: <kind>: <reason>";
   return (
     `The ${what} has no consumer in the app: no call, reference, string, XML attribute or packaged JSON that the app runs reaches it.${via} ` +
     `Delete it — or, if it is kept on purpose, say so above it: ${marker} (kinds: ${KEEP_KINDS.join(', ')}; a planned keep cites its issue). ` +
@@ -1371,6 +1376,9 @@ function reportKeepProblems({
       const d = declByMarker.get(marker);
       const location = markerLocation(marker);
       if (!d) {
+        // A debug-console function lives in an `#if debug` block that a release build
+        // excludes, so its marker has no declaration there. That is not drift.
+        if (marker.valid && marker.kind === 'debug-console' && marker.inConditional) continue;
         register({
           code: KEEP_CODE,
           message:
@@ -1380,7 +1388,7 @@ function reportKeepProblems({
       } else if (!marker.valid) {
         register({
           code: KEEP_CODE,
-          message: `This dead-code marker does not count: ${marker.problem}. Write it as "bsc-disable-next-line dead-code keep: <kind> — <reason>" (kinds: ${KEEP_KINDS.join(', ')}; a planned keep cites its issue).`,
+          message: `This dead-code marker does not count: ${marker.problem}. Write it as "bsc-disable-next-line dead-code keep: <kind>: <reason>" (kinds: ${KEEP_KINDS.join(', ')}; a planned keep cites its issue).`,
           location,
         });
       } else if (liveness(d, ctx).live) {

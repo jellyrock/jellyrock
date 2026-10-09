@@ -3,7 +3,8 @@ name: lint-docs
 # Validates doc references, generated indexes, and CI workflow sync:
 #   - lint:docs              — related-files paths, markdown links, tech-debt anchors
 #   - lint:doc-citations    — per-file ratchets on line-number citations and the
-#                              house voice in tracked markdown (see
+#                              house voice in tracked markdown and in the
+#                              comments of tracked code (see
 #                              .claude/rules/derive-dont-duplicate.md and
 #                              docs/dev/writing-style.md)
 #   - docs:dev-index:check   — drift on the auto-generated dev-guides index in
@@ -20,8 +21,9 @@ name: lint-docs
 # with --no-verify bypass that hook entirely. Running them in CI closes
 # the gap.
 #
-# Note: the underlying scripts use only Node stdlib (fs, path), so no
-# `npm ci` step is needed.
+# `npm ci` is needed because doc-citation-ratchet.js reads code comments with
+# the BrighterScript lexer, espree and yaml. The other scripts use only the
+# Node standard library.
 
 on:
   workflow_call:
@@ -43,6 +45,9 @@ jobs:
       - id: detect
         uses: ./.github/actions/changed-paths
         with:
+          # The code extensions and `.husky/` hooks are here because the same ratchet
+          # counts house-voice hits in code comments, so any code change can move it.
+          #
           # Mirrors the previous event-time paths filter (**/*.md, docs/**,
           # the four docs-related scripts, **/CLAUDE.md, AGENTS.md). The
           # \.md$ alternative covers **/CLAUDE.md and AGENTS.md by extension.
@@ -59,12 +64,15 @@ jobs:
           #      (`_test-scripts.yml` also matches package.json and its vitest
           #      suite asserts the same invariant — belt and braces, not the
           #      primary reason.)
-          pattern: '\.md$|^docs/|^scripts/lint/(docs-check|docs-stale|docs-stale-blocking|validate-deps-workflow-sync)\.cjs$|^scripts/lint/doc-citation-ratchet\.js$|^\.doc-citation-baseline\.json$|^\.doc-voice-baseline\.json$|^scripts/lint/ci-parity-check\.js$|^scripts/generate/dev-index\.cjs$|^\.github/workflows/_.*\.yml$|^package\.json$|^\.claude/skills/log/journal\.(sh|conf)$'
+          pattern: '\.md$|\.(bs|brs|js|cjs|mjs|xml|ya?ml|sh)$|^\.husky/[^/]+$|^docs/|^scripts/lint/(docs-check|docs-stale|docs-stale-blocking|validate-deps-workflow-sync)\.cjs$|^scripts/lint/doc-citation-ratchet\.js$|^\.doc-citation-baseline\.json$|^\.doc-voice-baseline\.json$|^scripts/lint/ci-parity-check\.js$|^scripts/generate/dev-index\.cjs$|^\.github/workflows/_.*\.yml$|^package\.json$|^\.claude/skills/log/journal\.(sh|conf)$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'
         with:
           node-version: "lts/*"
+          cache: "npm"
+      - if: steps.detect.outputs.relevant == 'true'
+        run: npm ci
       - name: Followup journal format
         if: steps.detect.outputs.relevant == 'true'
         run: bash .claude/skills/log/journal.sh check

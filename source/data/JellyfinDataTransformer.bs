@@ -349,7 +349,7 @@ class JellyfinDataTransformer
   ' Populate theme songs from a separate API call result.
   ' @param item - JellyfinBaseItem node (already transformed)
   ' @param response - Response from GET /Items/{id}/ThemeSongs
-  ' bsc-disable-next-line dead-code keep: planned — theme songs and videos, #1070
+  ' bsc-disable-next-line dead-code keep: planned: theme songs and videos, #1070
   sub populateThemeSongs(item as object, response as object)
     if not isValid(item) or not isValid(response)
       return
@@ -360,7 +360,7 @@ class JellyfinDataTransformer
   ' Populate theme videos from a separate API call result.
   ' @param item - JellyfinBaseItem node (already transformed)
   ' @param response - Response from GET /Items/{id}/ThemeVideos
-  ' bsc-disable-next-line dead-code keep: planned — theme songs and videos, #1070
+  ' bsc-disable-next-line dead-code keep: planned: theme songs and videos, #1070
   sub populateThemeVideos(item as object, response as object)
     if not isValid(item) or not isValid(response)
       return

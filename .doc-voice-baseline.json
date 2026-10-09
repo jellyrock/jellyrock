@@ -11,6 +11,32 @@
     "filler": 4,
     "latin-abbrev": 1
   },
+  ".claude/hooks/bsfmt-on-write.sh": {
+    "em-dash": 4,
+    "filler": 1
+  },
+  ".claude/hooks/check-progress-cursor.sh": {
+    "caps-emphasis": 2,
+    "em-dash": 2,
+    "filler": 1
+  },
+  ".claude/hooks/check-touched-lint.sh": {
+    "caps-emphasis": 2,
+    "em-dash": 2
+  },
+  ".claude/hooks/check-touched-related-files.sh": {
+    "caps-emphasis": 2,
+    "em-dash": 3,
+    "latin-abbrev": 1
+  },
+  ".claude/hooks/log-tool-use.sh": {
+    "caps-emphasis": 2,
+    "em-dash": 1
+  },
+  ".claude/hooks/session-start-nudge.sh": {
+    "caps-emphasis": 2,
+    "em-dash": 2
+  },
   ".claude/rules/american-spelling.md": {
     "filler": 1
   },
@@ -78,10 +104,16 @@
     "latin-abbrev": 1,
     "prose-arrow": 8
   },
+  ".claude/skills/catchup/catchup-state.sh": {
+    "em-dash": 2
+  },
   ".claude/skills/ci-triage/SKILL.md": {
     "caps-emphasis": 1,
     "em-dash": 8,
     "filler": 1
+  },
+  ".claude/skills/ci-triage/ci-triage-state.sh": {
+    "em-dash": 1
   },
   ".claude/skills/crash-backtrace/AUDIT-LOG.md": {
     "em-dash": 14,
@@ -156,6 +188,9 @@
     "filler": 1,
     "prose-arrow": 2
   },
+  ".claude/skills/log/journal.sh": {
+    "em-dash": 2
+  },
   ".claude/skills/new-api-version/SKILL.md": {
     "caps-emphasis": 2,
     "em-dash": 30,
@@ -186,6 +221,9 @@
     "filler": 2,
     "prose-arrow": 15
   },
+  ".claude/skills/pr/forge.sh": {
+    "em-dash": 1
+  },
   ".claude/skills/ramp/SKILL.md": {
     "caps-emphasis": 1,
     "em-dash": 6,
@@ -196,6 +234,9 @@
     "caps-emphasis": 4,
     "em-dash": 30,
     "filler": 2
+  },
+  ".claude/skills/resume-project/resume-state.sh": {
+    "em-dash": 2
   },
   ".claude/skills/runtime-triage/INVESTIGATION.md": {
     "caps-emphasis": 4,
@@ -212,6 +253,9 @@
   ".claude/skills/second-opinion/SKILL.md": {
     "caps-emphasis": 2,
     "em-dash": 10
+  },
+  ".claude/skills/second-opinion/review-run.sh": {
+    "em-dash": 3
   },
   ".claude/skills/server-upgrade/AUDIT-LOG.md": {
     "em-dash": 37,
@@ -238,10 +282,21 @@
     "filler": 7,
     "prose-arrow": 2
   },
+  ".claude/skills/sonnet/plan-run.sh": {
+    "em-dash": 2
+  },
   ".claude/skills/start-project/SKILL.md": {
     "caps-emphasis": 4,
     "em-dash": 25,
     "filler": 4
+  },
+  ".claude/skills/start-project/projects-dir.sh": {
+    "em-dash": 2
+  },
+  ".claude/skills/start-project/scaffold-project.sh": {
+    "caps-emphasis": 3,
+    "em-dash": 11,
+    "latin-abbrev": 1
   },
   ".claude/skills/tech-debt-scan/SKILL.md": {
     "caps-emphasis": 1,
@@ -262,6 +317,138 @@
     "em-dash": 2,
     "latin-abbrev": 1
   },
+  ".github/workflows/_lint-brightscript.yml": {
+    "em-dash": 7,
+    "latin-abbrev": 1
+  },
+  ".github/workflows/_lint-docs.yml": {
+    "em-dash": 7
+  },
+  ".github/workflows/_lint-floor-system.yml": {
+    "em-dash": 8
+  },
+  ".github/workflows/_lint-js.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/_lint-spelling.yml": {
+    "em-dash": 2
+  },
+  ".github/workflows/_smoke-test-deps.yml": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  ".github/workflows/_test-scripts.yml": {
+    "em-dash": 6,
+    "filler": 1
+  },
+  ".github/workflows/_validate-dependencies.yml": {
+    "caps-emphasis": 1,
+    "em-dash": 2,
+    "latin-abbrev": 1
+  },
+  ".github/workflows/copilot-setup-steps.yml": {
+    "caps-emphasis": 1
+  },
+  ".github/workflows/device-unit-tests.yml": {
+    "caps-emphasis": 7,
+    "em-dash": 15,
+    "filler": 1,
+    "prose-arrow": 8
+  },
+  ".github/workflows/docs-stale-tracker.yml": {
+    "caps-emphasis": 1,
+    "em-dash": 6,
+    "latin-abbrev": 2
+  },
+  ".github/workflows/jellyrock-bot.yml": {
+    "em-dash": 2,
+    "latin-abbrev": 1,
+    "prose-arrow": 4
+  },
+  ".github/workflows/journal-sync-precheck.yml": {
+    "em-dash": 2,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  ".github/workflows/journal-sync.yml": {
+    "caps-emphasis": 2,
+    "em-dash": 5,
+    "prose-arrow": 1
+  },
+  ".github/workflows/lint-brightscript.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/lint-docs.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/lint-floor-system.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/lint-issue-templates.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/lint-js.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/lint-json.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/lint-language-coverage.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/lint-markdown.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/lint-spelling.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/lint-translation-files.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/release-management.yml": {
+    "latin-abbrev": 1
+  },
+  ".github/workflows/roku-analysis.yml": {
+    "latin-abbrev": 1
+  },
+  ".github/workflows/roku-hardware-sync.yml": {
+    "caps-emphasis": 1,
+    "em-dash": 10,
+    "filler": 2
+  },
+  ".github/workflows/rta-functional-tests.yml": {
+    "caps-emphasis": 3,
+    "em-dash": 8,
+    "filler": 3
+  },
+  ".github/workflows/server-upgrade-tracker.yml": {
+    "caps-emphasis": 3,
+    "em-dash": 8,
+    "filler": 2,
+    "prose-arrow": 2
+  },
+  ".github/workflows/smoke-test-deps.yml": {
+    "em-dash": 1
+  },
+  ".github/workflows/test-scripts.yml": {
+    "em-dash": 1
+  },
+  ".husky/pre-commit": {
+    "em-dash": 2
+  },
+  ".husky/pre-push": {
+    "caps-emphasis": 9,
+    "em-dash": 28,
+    "latin-abbrev": 1
+  },
+  ".lintstagedrc.cjs": {
+    "em-dash": 11,
+    "prose-arrow": 11
+  },
+  ".spellcheckerrc.yaml": {
+    "caps-emphasis": 4,
+    "em-dash": 5
+  },
   "AGENTS.md": {
     "caps-emphasis": 4,
     "em-dash": 62,
@@ -274,6 +461,13 @@
     "filler": 4,
     "prose-arrow": 17
   },
+  "components/AppWaitHost.bs": {
+    "em-dash": 3,
+    "prose-arrow": 1
+  },
+  "components/Buttons/JRButtons.bs": {
+    "em-dash": 4
+  },
   "components/CLAUDE.md": {
     "caps-emphasis": 6,
     "em-dash": 84,
@@ -281,16 +475,633 @@
     "latin-abbrev": 3,
     "prose-arrow": 6
   },
+  "components/GetPlaybackInfoTask.bs": {
+    "em-dash": 4
+  },
+  "components/GetShuffleItemsTask.bs": {
+    "em-dash": 1
+  },
+  "components/ItemDetails.bs": {
+    "caps-emphasis": 12,
+    "em-dash": 195,
+    "filler": 9,
+    "latin-abbrev": 13,
+    "prose-arrow": 26
+  },
+  "components/ItemDetails.xml": {
+    "caps-emphasis": 3,
+    "em-dash": 9,
+    "filler": 5,
+    "latin-abbrev": 1,
+    "prose-arrow": 2
+  },
+  "components/ItemGrid/BaseGridView.bs": {
+    "caps-emphasis": 4,
+    "em-dash": 48,
+    "filler": 2,
+    "latin-abbrev": 4,
+    "prose-arrow": 4
+  },
+  "components/ItemGrid/BaseGridView.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 5,
+    "filler": 1
+  },
+  "components/ItemGrid/GridItem.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 35,
+    "filler": 2,
+    "latin-abbrev": 1,
+    "prose-arrow": 7
+  },
+  "components/ItemGrid/GridItem.xml": {
+    "em-dash": 1
+  },
+  "components/ItemGrid/ItemGridOptions.bs": {
+    "em-dash": 1
+  },
+  "components/ItemGrid/ItemGridOptions.xml": {
+    "em-dash": 1
+  },
+  "components/ItemGrid/LoadItemsTask2.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 31,
+    "filler": 3,
+    "latin-abbrev": 1
+  },
+  "components/ItemGrid/LoadItemsTask2.xml": {
+    "filler": 1
+  },
+  "components/ItemGrid/LoadVideoContentTask.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 30,
+    "filler": 2,
+    "latin-abbrev": 2,
+    "prose-arrow": 2
+  },
+  "components/JRGroup.bs": {
+    "em-dash": 2
+  },
+  "components/JRGroup.xml": {
+    "em-dash": 2
+  },
+  "components/JROverhang.bs": {
+    "em-dash": 11,
+    "latin-abbrev": 2,
+    "prose-arrow": 15
+  },
+  "components/JRScene.bs": {
+    "caps-emphasis": 5,
+    "em-dash": 46,
+    "filler": 3,
+    "latin-abbrev": 3,
+    "prose-arrow": 10
+  },
+  "components/JRScene.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 3
+  },
+  "components/JRScreen.bs": {
+    "em-dash": 3,
+    "filler": 2
+  },
+  "components/OverviewDialog.bs": {
+    "caps-emphasis": 5,
+    "em-dash": 39,
+    "filler": 10,
+    "latin-abbrev": 1
+  },
+  "components/OverviewDialog.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 7,
+    "filler": 1
+  },
+  "components/api/ApiQueueTask.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 19,
+    "filler": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 2
+  },
+  "components/api/ApiQueueTask.xml": {
+    "em-dash": 4
+  },
+  "components/api/ApiResultNode.xml": {
+    "em-dash": 2,
+    "prose-arrow": 2
+  },
+  "components/api/ApiTask.bs": {
+    "em-dash": 4,
+    "prose-arrow": 1
+  },
+  "components/api/ApiTask.xml": {
+    "em-dash": 2
+  },
+  "components/api/SideEffectTask.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 1
+  },
+  "components/api/SideEffectTask.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 4
+  },
+  "components/auth/AuthManager.bs": {
+    "em-dash": 5
+  },
+  "components/auth/AuthManager.xml": {
+    "filler": 1
+  },
+  "components/config/LoginScene.bs": {
+    "em-dash": 3,
+    "prose-arrow": 2
+  },
+  "components/config/ServerDiscoveryTask.bs": {
+    "em-dash": 1,
+    "latin-abbrev": 1
+  },
+  "components/config/ServerReachableTask.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  "components/config/ServerReachableTask.xml": {
+    "em-dash": 1,
+    "latin-abbrev": 1
+  },
+  "components/config/SetServerScreen.bs": {
+    "em-dash": 13,
+    "filler": 1,
+    "latin-abbrev": 3,
+    "prose-arrow": 1
+  },
   "components/data/CLAUDE.md": {
     "caps-emphasis": 2,
     "em-dash": 9,
     "latin-abbrev": 2
+  },
+  "components/data/DebugFlags.xml": {
+    "caps-emphasis": 2
+  },
+  "components/data/SceneManager.bs": {
+    "em-dash": 4
+  },
+  "components/data/jellyfin/JellyfinBaseItem.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 2
+  },
+  "components/data/jellyfin/JellyfinServer.xml": {
+    "em-dash": 1
+  },
+  "components/data/jellyfin/JellyfinUser.xml": {
+    "caps-emphasis": 2
+  },
+  "components/data/jellyfin/JellyfinUserConfiguration.xml": {
+    "caps-emphasis": 2
+  },
+  "components/data/jellyfin/JellyfinUserPolicy.xml": {
+    "caps-emphasis": 2
+  },
+  "components/data/jellyfin/JellyfinUserSettings.bs": {
+    "caps-emphasis": 1
+  },
+  "components/data/jellyfin/JellyfinUserSettings.xml": {
+    "caps-emphasis": 3
+  },
+  "components/dialogs/JRDialog.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 22,
+    "filler": 3,
+    "latin-abbrev": 1
+  },
+  "components/dialogs/JRDialog.xml": {
+    "caps-emphasis": 2,
+    "em-dash": 5
+  },
+  "components/dialogs/JRDialogPanel.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 3
+  },
+  "components/dialogs/JRDialogPanel.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 2
+  },
+  "components/dialogs/JRKeyboardDialog.bs": {
+    "em-dash": 1
+  },
+  "components/dialogs/JRKeyboardDialog.xml": {
+    "em-dash": 2
+  },
+  "components/dialogs/JRListDialog.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 18,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "components/dialogs/JRListDialog.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 5
+  },
+  "components/dialogs/JRListDialogRow.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 6
+  },
+  "components/dialogs/JRListDialogRow.xml": {
+    "caps-emphasis": 2,
+    "em-dash": 5
+  },
+  "components/dialogs/QuickConnectDialog.bs": {
+    "em-dash": 13,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "components/dialogs/QuickConnectDialog.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 9
+  },
+  "components/extras/ExtrasRowList.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 26,
+    "prose-arrow": 3
+  },
+  "components/extras/ExtrasRowList.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 2
+  },
+  "components/extras/LoadExtrasRowsTask.bs": {
+    "em-dash": 14,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "components/extras/LoadExtrasRowsTask.xml": {
+    "em-dash": 2
+  },
+  "components/home/FavoritesRows.bs": {
+    "em-dash": 10
+  },
+  "components/home/Home.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 31,
+    "filler": 2,
+    "latin-abbrev": 2,
+    "prose-arrow": 1
+  },
+  "components/home/HomeRows.bs": {
+    "caps-emphasis": 9,
+    "em-dash": 62,
+    "filler": 8,
+    "latin-abbrev": 2,
+    "prose-arrow": 3
+  },
+  "components/home/LoadItemsTask.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 8,
+    "filler": 1
+  },
+  "components/home/LoadItemsTask.xml": {
+    "filler": 1
+  },
+  "components/home/LoadLatestRowsTask.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 14,
+    "filler": 2
+  },
+  "components/home/LoadLatestRowsTask.xml": {
+    "em-dash": 1
+  },
+  "components/keyboards/AlphaKeyboard.bs": {
+    "em-dash": 1
+  },
+  "components/keyboards/HexKeyboard.bs": {
+    "em-dash": 1
+  },
+  "components/keyboards/IntegerKeyboard.bs": {
+    "em-dash": 2
+  },
+  "components/liveTv/LoadChannelsTask.bs": {
+    "em-dash": 2
+  },
+  "components/liveTv/LoadSheduleTask.bs": {
+    "em-dash": 2
+  },
+  "components/liveTv/ProgramDetails.bs": {
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "components/liveTv/RecordProgramTask.bs": {
+    "em-dash": 1
+  },
+  "components/liveTv/schedule.bs": {
+    "em-dash": 24,
+    "filler": 4,
+    "latin-abbrev": 1
+  },
+  "components/login/UserSelect.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 25,
+    "latin-abbrev": 1,
+    "prose-arrow": 4
+  },
+  "components/login/UserSelect.xml": {
+    "em-dash": 1
+  },
+  "components/manager/QueueManager.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 25,
+    "filler": 1
+  },
+  "components/music/AudioPlayerView.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 19,
+    "filler": 2
+  },
+  "components/options/FilterOptionNode.xml": {
+    "em-dash": 1
+  },
+  "components/photos/PhotoDetails.bs": {
+    "em-dash": 4,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "components/remotecontrol/RemoteControlTask.bs": {
+    "caps-emphasis": 7,
+    "em-dash": 40,
+    "filler": 1
+  },
+  "components/remotecontrol/RemoteControlTask.xml": {
+    "em-dash": 3
+  },
+  "components/search/SearchResults.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 28,
+    "filler": 6,
+    "latin-abbrev": 1
+  },
+  "components/search/SearchRow.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4
+  },
+  "components/search/SearchTask.bs": {
+    "em-dash": 6,
+    "filler": 1
+  },
+  "components/settings/LanguagePicker.bs": {
+    "em-dash": 3,
+    "latin-abbrev": 1
+  },
+  "components/settings/settings.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 22,
+    "filler": 3,
+    "latin-abbrev": 1
+  },
+  "components/subtitles/CurrentSubtitleRow.bs": {
+    "em-dash": 13,
+    "filler": 3,
+    "latin-abbrev": 1
+  },
+  "components/subtitles/CurrentSubtitleRow.xml": {
+    "caps-emphasis": 3,
+    "em-dash": 5,
+    "filler": 3
+  },
+  "components/subtitles/SubtitlePanel.bs": {
+    "caps-emphasis": 13,
+    "em-dash": 97,
+    "filler": 12
+  },
+  "components/subtitles/SubtitlePanel.xml": {
+    "caps-emphasis": 2,
+    "em-dash": 10
+  },
+  "components/subtitles/SubtitleResultRow.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 7,
+    "filler": 6
+  },
+  "components/subtitles/SubtitleResultRow.xml": {
+    "em-dash": 7,
+    "filler": 2
+  },
+  "components/testing/GaaProbeTask.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 4
+  },
+  "components/testing/MockSceneManager.bs": {
+    "filler": 1
+  },
+  "components/testing/ObserverProbeHost.xml": {
+    "em-dash": 1
+  },
+  "components/testing/ObserverProbeSubject.xml": {
+    "em-dash": 2
+  },
+  "components/testing/TaskLedgerBench.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 20,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "components/testing/TaskLedgerBench.xml": {
+    "em-dash": 2
+  },
+  "components/testing/TaskRelaunchProbeHost.bs": {
+    "em-dash": 3,
+    "filler": 2
+  },
+  "components/testing/TaskRelaunchProbeHost.xml": {
+    "em-dash": 1
+  },
+  "components/testing/TaskRelaunchProbeTask.bs": {
+    "em-dash": 1,
+    "filler": 1
+  },
+  "components/testing/TaskRelaunchProbeTask.xml": {
+    "em-dash": 1
+  },
+  "components/ui/Gradient.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 1,
+    "prose-arrow": 3
+  },
+  "components/ui/Gradient.xml": {
+    "em-dash": 1
+  },
+  "components/ui/button/IconButton.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 3
+  },
+  "components/ui/button/IconButton.xml": {
+    "em-dash": 1
+  },
+  "components/ui/button/JROverhangIcon.bs": {
+    "em-dash": 1
+  },
+  "components/ui/button/ResumeButton.bs": {
+    "em-dash": 3
+  },
+  "components/ui/button/TextButton.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 22,
+    "filler": 7
+  },
+  "components/ui/button/TextButton.xml": {
+    "em-dash": 7,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "components/ui/buttongroup/JRButtonGroup.bs": {
+    "em-dash": 1,
+    "latin-abbrev": 1
+  },
+  "components/ui/dropdown/JRDropdown.bs": {
+    "em-dash": 7,
+    "latin-abbrev": 1
+  },
+  "components/ui/dropdown/JRDropdownItem.bs": {
+    "em-dash": 1
+  },
+  "components/ui/dropdown/TrackDropdown.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 15,
+    "filler": 1
+  },
+  "components/ui/dropdown/TrackDropdown.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 2
+  },
+  "components/ui/dropdown/TrackDropdownRow.bs": {
+    "em-dash": 1
+  },
+  "components/ui/label/FocusableOverview.bs": {
+    "em-dash": 1
+  },
+  "components/ui/label/JRLabel.bs": {
+    "em-dash": 1
+  },
+  "components/ui/label/JRScrollingLabel.bs": {
+    "em-dash": 1
+  },
+  "components/ui/labellist/JRLabelList.bs": {
+    "em-dash": 2
+  },
+  "components/ui/placeholder/JRPlaceholder.bs": {
+    "prose-arrow": 2
+  },
+  "components/ui/placeholder/JRPlaceholder.xml": {
+    "em-dash": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 3
+  },
+  "components/ui/poster/JRPoster.bs": {
+    "em-dash": 4
+  },
+  "components/ui/poster/JRPoster.xml": {
+    "caps-emphasis": 2,
+    "em-dash": 3,
+    "filler": 1
+  },
+  "components/ui/progress/ProgressPill.xml": {
+    "em-dash": 1
+  },
+  "components/ui/rowitem/JRRowItem.bs": {
+    "caps-emphasis": 4,
+    "em-dash": 44,
+    "filler": 3,
+    "latin-abbrev": 7,
+    "prose-arrow": 9
+  },
+  "components/ui/rowitem/JRRowItem.xml": {
+    "em-dash": 3,
+    "latin-abbrev": 2
+  },
+  "components/ui/rowlist/JRRowList.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 12,
+    "latin-abbrev": 1
+  },
+  "components/ui/tabbar/JRTab.bs": {
+    "em-dash": 4
+  },
+  "components/ui/tabbar/JRTabBar.bs": {
+    "em-dash": 9,
+    "latin-abbrev": 3
+  },
+  "components/ui/tabbar/JRTabBar.xml": {
+    "latin-abbrev": 2
+  },
+  "components/ui/timegrid/JRTimeGrid.bs": {
+    "em-dash": 1
+  },
+  "components/ui/toast/Toast.bs": {
+    "em-dash": 4
   },
   "components/video/CLAUDE.md": {
     "caps-emphasis": 3,
     "em-dash": 10,
     "filler": 1,
     "prose-arrow": 2
+  },
+  "components/video/CaptionRenderer.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 9,
+    "latin-abbrev": 1
+  },
+  "components/video/LoadCaptionTask.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 5,
+    "filler": 1
+  },
+  "components/video/OSD.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 35,
+    "latin-abbrev": 7,
+    "prose-arrow": 3
+  },
+  "components/video/OSD.xml": {
+    "caps-emphasis": 1,
+    "em-dash": 2,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "components/video/PlayerHostView.bs": {
+    "caps-emphasis": 7,
+    "em-dash": 45,
+    "filler": 8,
+    "latin-abbrev": 2
+  },
+  "components/video/PlayerHostView.xml": {
+    "em-dash": 1
+  },
+  "components/video/TrickplayCarousel.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "components/video/TrickplayCarousel.xml": {
+    "filler": 1
+  },
+  "components/video/VideoNotification.bs": {
+    "em-dash": 3,
+    "latin-abbrev": 2
+  },
+  "components/video/VideoNotification.xml": {
+    "latin-abbrev": 1
+  },
+  "components/video/VideoPlayerView.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 94,
+    "filler": 12,
+    "latin-abbrev": 8,
+    "prose-arrow": 6
+  },
+  "components/video/VideoPlayerView.xml": {
+    "em-dash": 2
   },
   "docs/adr/0001-triage-opus-inline-investigation.md": {
     "prose-arrow": 1
@@ -508,7 +1319,7 @@
   },
   "docs/architecture/build-and-tooling.md": {
     "caps-emphasis": 7,
-    "em-dash": 276,
+    "em-dash": 274,
     "filler": 27,
     "latin-abbrev": 9,
     "prose-arrow": 10
@@ -642,12 +1453,22 @@
     "latin-abbrev": 3,
     "prose-arrow": 14
   },
+  "docs/dev/jellyfin-endpoint-availability.yml": {
+    "caps-emphasis": 6,
+    "em-dash": 7,
+    "filler": 1,
+    "prose-arrow": 3
+  },
   "docs/dev/jellyfin-server-versioning.md": {
     "caps-emphasis": 2,
     "em-dash": 26,
     "filler": 2,
     "latin-abbrev": 3,
     "prose-arrow": 5
+  },
+  "docs/dev/jellyfin-version-boundaries.yml": {
+    "em-dash": 6,
+    "prose-arrow": 1
   },
   "docs/dev/measuring-performance.md": {
     "caps-emphasis": 15,
@@ -708,6 +1529,12 @@
   "docs/user/playback-troubleshooting.md": {
     "filler": 1
   },
+  "eslint.config.js": {
+    "caps-emphasis": 2,
+    "em-dash": 17,
+    "filler": 3,
+    "prose-arrow": 1
+  },
   "resources/icons/README.md": {
     "caps-emphasis": 1,
     "em-dash": 26,
@@ -721,19 +1548,1110 @@
     "latin-abbrev": 1,
     "prose-arrow": 2
   },
+  "scripts/agent-telemetry-report.cjs": {
+    "em-dash": 1,
+    "prose-arrow": 2
+  },
+  "scripts/bsc-plugins/auto-abandon-promises.cjs": {
+    "caps-emphasis": 2,
+    "em-dash": 9,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "scripts/bsc-plugins/auto-destroyed-guard.cjs": {
+    "caps-emphasis": 3,
+    "em-dash": 12,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "scripts/bsc-plugins/button-row-bracket.cjs": {
+    "caps-emphasis": 2,
+    "em-dash": 14,
+    "filler": 3
+  },
+  "scripts/bsc-plugins/callfunc-interface.cjs": {
+    "em-dash": 18,
+    "filler": 2,
+    "latin-abbrev": 2
+  },
+  "scripts/bsc-plugins/dead-code.cjs": {
+    "caps-emphasis": 3,
+    "em-dash": 14,
+    "filler": 2,
+    "latin-abbrev": 1,
+    "prose-arrow": 3
+  },
+  "scripts/bsc-plugins/field-observer-wiring.cjs": {
+    "caps-emphasis": 4,
+    "em-dash": 21,
+    "filler": 2,
+    "prose-arrow": 1
+  },
+  "scripts/bsc-plugins/jrscreen-on-destroy.cjs": {
+    "em-dash": 4,
+    "latin-abbrev": 1
+  },
+  "scripts/bsc-plugins/no-direct-sdk.cjs": {
+    "em-dash": 2,
+    "latin-abbrev": 1
+  },
+  "scripts/bsc-plugins/no-hand-rolled-dialog.cjs": {
+    "caps-emphasis": 3,
+    "em-dash": 15
+  },
+  "scripts/bsc-plugins/no-raw-run.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 10,
+    "latin-abbrev": 1
+  },
+  "scripts/bsc-plugins/no-same-node-relaunch.cjs": {
+    "caps-emphasis": 3,
+    "em-dash": 26,
+    "filler": 5,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "scripts/bsc-plugins/no-task-fanout.cjs": {
+    "caps-emphasis": 4,
+    "em-dash": 38,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "scripts/bsc-plugins/observe-without-on-destroy.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 6,
+    "filler": 2,
+    "prose-arrow": 3
+  },
+  "scripts/bsc-plugins/print-locations.cjs": {
+    "em-dash": 8,
+    "filler": 1
+  },
+  "scripts/bsc-plugins/register-once-observer.cjs": {
+    "em-dash": 9,
+    "prose-arrow": 1
+  },
+  "scripts/bsc-plugins/roku-log.cjs": {
+    "em-dash": 5,
+    "prose-arrow": 2
+  },
+  "scripts/bsc-plugins/translation-keys.cjs": {
+    "em-dash": 3,
+    "latin-abbrev": 1
+  },
+  "scripts/bsc-plugins/unobserve-before-release.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 15,
+    "filler": 4,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "scripts/capture-screenshots.js": {
+    "caps-emphasis": 2,
+    "em-dash": 22,
+    "filler": 5,
+    "latin-abbrev": 2
+  },
+  "scripts/catchup-state.js": {
+    "caps-emphasis": 2,
+    "em-dash": 5,
+    "filler": 2,
+    "prose-arrow": 7
+  },
+  "scripts/changelog-syncer.js": {
+    "em-dash": 1,
+    "filler": 1
+  },
+  "scripts/crash-report.js": {
+    "caps-emphasis": 8,
+    "em-dash": 52,
+    "filler": 2,
+    "latin-abbrev": 4,
+    "prose-arrow": 12
+  },
+  "scripts/create-signed-package.cjs": {
+    "caps-emphasis": 3,
+    "em-dash": 9
+  },
+  "scripts/dead-code-accuracy.js": {
+    "em-dash": 2,
+    "prose-arrow": 2
+  },
+  "scripts/device-check.js": {
+    "em-dash": 6,
+    "filler": 1
+  },
+  "scripts/device-lock.js": {
+    "caps-emphasis": 11,
+    "em-dash": 46,
+    "filler": 9
+  },
+  "scripts/flake-baseline.js": {
+    "caps-emphasis": 3,
+    "em-dash": 20,
+    "filler": 4
+  },
+  "scripts/generate/api-usage-manifest.js": {
+    "em-dash": 12,
+    "filler": 4,
+    "latin-abbrev": 1,
+    "prose-arrow": 12
+  },
+  "scripts/generate/dev-index.cjs": {
+    "em-dash": 1,
+    "prose-arrow": 5
+  },
+  "scripts/generate/findings-candidates.js": {
+    "caps-emphasis": 5,
+    "em-dash": 30,
+    "filler": 6,
+    "latin-abbrev": 6,
+    "prose-arrow": 11
+  },
+  "scripts/generate/gradient-assets.js": {
+    "caps-emphasis": 1,
+    "em-dash": 2,
+    "prose-arrow": 2
+  },
+  "scripts/generate/icons-add.js": {
+    "caps-emphasis": 2,
+    "em-dash": 4,
+    "latin-abbrev": 5,
+    "prose-arrow": 1
+  },
+  "scripts/generate/icons-build.js": {
+    "em-dash": 9,
+    "filler": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 9
+  },
+  "scripts/generate/roku-hardware.js": {
+    "caps-emphasis": 4,
+    "em-dash": 26,
+    "filler": 4
+  },
+  "scripts/generate/sentence-final-dictionary.js": {
+    "caps-emphasis": 1,
+    "em-dash": 5,
+    "prose-arrow": 4
+  },
+  "scripts/generate/settings-docs.cjs": {
+    "em-dash": 2
+  },
+  "scripts/generate/spec-diff.js": {
+    "caps-emphasis": 1,
+    "em-dash": 10,
+    "filler": 1,
+    "prose-arrow": 2
+  },
+  "scripts/generate/spec-fingerprint.js": {
+    "em-dash": 2,
+    "filler": 2,
+    "latin-abbrev": 1,
+    "prose-arrow": 13
+  },
+  "scripts/harden-prod-manifest.js": {
+    "caps-emphasis": 3,
+    "em-dash": 8,
+    "filler": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 3
+  },
+  "scripts/jellyfin-matrix.js": {
+    "em-dash": 2,
+    "latin-abbrev": 1
+  },
+  "scripts/journal-sync.js": {
+    "caps-emphasis": 5,
+    "em-dash": 21,
+    "filler": 4,
+    "latin-abbrev": 2,
+    "prose-arrow": 2
+  },
+  "scripts/lib/bsc-rule.cjs": {
+    "caps-emphasis": 2,
+    "em-dash": 10,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "scripts/lib/catchup-typed.cjs": {
+    "em-dash": 1
+  },
+  "scripts/lib/changed-files.cjs": {
+    "em-dash": 3
+  },
+  "scripts/lib/endpoint-availability.cjs": {
+    "em-dash": 7,
+    "prose-arrow": 1
+  },
+  "scripts/lib/env-config.cjs": {
+    "em-dash": 4
+  },
+  "scripts/lib/fixture-probe.js": {
+    "caps-emphasis": 1,
+    "em-dash": 6,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "scripts/lib/frontmatter.cjs": {
+    "em-dash": 5,
+    "latin-abbrev": 1
+  },
+  "scripts/lib/git-safe.cjs": {
+    "em-dash": 1
+  },
+  "scripts/lib/lint-excludes.cjs": {
+    "em-dash": 8
+  },
+  "scripts/lib/load-env.cjs": {
+    "em-dash": 1
+  },
+  "scripts/lib/locale-files.cjs": {
+    "em-dash": 2,
+    "prose-arrow": 3
+  },
+  "scripts/lib/odc-probe.js": {
+    "caps-emphasis": 2,
+    "em-dash": 9,
+    "filler": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "scripts/lib/png-compare.js": {
+    "em-dash": 4,
+    "filler": 2,
+    "prose-arrow": 1
+  },
+  "scripts/lib/pr-title.js": {
+    "em-dash": 4,
+    "filler": 1
+  },
+  "scripts/lib/process-liveness.cjs": {
+    "caps-emphasis": 2,
+    "em-dash": 5,
+    "filler": 1
+  },
+  "scripts/lib/rooibos-summary.cjs": {
+    "em-dash": 2
+  },
+  "scripts/lib/signal-staleness.cjs": {
+    "em-dash": 2,
+    "prose-arrow": 6
+  },
+  "scripts/lib/signals-fetch.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 8,
+    "filler": 1
+  },
+  "scripts/lib/spec-fetch.cjs": {
+    "caps-emphasis": 2,
+    "em-dash": 4,
+    "filler": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 6
+  },
+  "scripts/lib/spec-path.cjs": {
+    "em-dash": 3,
+    "filler": 1
+  },
+  "scripts/lib/translation-formats.cjs": {
+    "em-dash": 6
+  },
+  "scripts/lib/version-boundaries.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 5,
+    "prose-arrow": 4
+  },
+  "scripts/lint/apiversion-consistency-check.js": {
+    "caps-emphasis": 1,
+    "em-dash": 2,
+    "prose-arrow": 1
+  },
+  "scripts/lint/check-touched-lint.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 9,
+    "latin-abbrev": 1
+  },
+  "scripts/lint/check-touched-related-files.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 3
+  },
+  "scripts/lint/ci-parity-check.js": {
+    "caps-emphasis": 3,
+    "em-dash": 15,
+    "filler": 2,
+    "prose-arrow": 1
+  },
+  "scripts/lint/decision-shape-nudge.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 5
+  },
+  "scripts/lint/dictionary-audit.cjs": {
+    "em-dash": 7,
+    "filler": 3,
+    "latin-abbrev": 3,
+    "prose-arrow": 3
+  },
+  "scripts/lint/doc-citation-ratchet.js": {
+    "em-dash": 11,
+    "filler": 3,
+    "latin-abbrev": 2,
+    "prose-arrow": 4
+  },
+  "scripts/lint/docs-check.cjs": {
+    "caps-emphasis": 3,
+    "em-dash": 22,
+    "filler": 7,
+    "latin-abbrev": 1,
+    "prose-arrow": 2
+  },
+  "scripts/lint/docs-stale-blocking.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 9,
+    "latin-abbrev": 1,
+    "prose-arrow": 4
+  },
+  "scripts/lint/docs-stale.cjs": {
+    "em-dash": 2,
+    "prose-arrow": 5
+  },
+  "scripts/lint/endpoint-availability-check.cjs": {
+    "caps-emphasis": 2,
+    "em-dash": 10,
+    "latin-abbrev": 2,
+    "prose-arrow": 2
+  },
+  "scripts/lint/eslint-rules/_shared.js": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 1
+  },
+  "scripts/lint/eslint-rules/ordering-asserts-presence.js": {
+    "caps-emphasis": 2,
+    "em-dash": 18,
+    "filler": 5
+  },
+  "scripts/lint/eslint-rules/rta-home-list-resolved.js": {
+    "em-dash": 14,
+    "prose-arrow": 1
+  },
+  "scripts/lint/eslint-rules/rta-sleep-budgeted.js": {
+    "caps-emphasis": 3,
+    "em-dash": 17,
+    "filler": 2,
+    "prose-arrow": 1
+  },
+  "scripts/lint/eslint-rules/rta-wait-justified.js": {
+    "caps-emphasis": 2,
+    "em-dash": 24,
+    "filler": 2,
+    "prose-arrow": 1
+  },
+  "scripts/lint/floor-coverage-check.js": {
+    "caps-emphasis": 1,
+    "em-dash": 9,
+    "filler": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 5
+  },
+  "scripts/lint/issue-templates-check.cjs": {
+    "em-dash": 3
+  },
+  "scripts/lint/language-coverage.cjs": {
+    "caps-emphasis": 3,
+    "em-dash": 17,
+    "filler": 4,
+    "prose-arrow": 8
+  },
+  "scripts/lint/log-manager-init-check.js": {
+    "caps-emphasis": 1,
+    "em-dash": 12,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "scripts/lint/pr-body-check.js": {
+    "caps-emphasis": 2,
+    "em-dash": 11,
+    "filler": 2
+  },
+  "scripts/lint/progress-cursor-nudge.cjs": {
+    "caps-emphasis": 3,
+    "em-dash": 12,
+    "filler": 2
+  },
+  "scripts/lint/promise-ratchet.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 12,
+    "latin-abbrev": 2,
+    "prose-arrow": 7
+  },
+  "scripts/lint/rta-capability-coverage.cjs": {
+    "em-dash": 10
+  },
+  "scripts/lint/rta-wait-inventory.js": {
+    "em-dash": 14,
+    "filler": 1
+  },
+  "scripts/lint/session-start-nudge.cjs": {
+    "caps-emphasis": 1,
+    "em-dash": 2
+  },
+  "scripts/lint/socket-auth-binding-check.js": {
+    "caps-emphasis": 2,
+    "em-dash": 11,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "scripts/lint/socket-thread-release-check.js": {
+    "caps-emphasis": 3,
+    "em-dash": 17,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "scripts/lint/update-translations.cjs": {
+    "em-dash": 10,
+    "prose-arrow": 3
+  },
+  "scripts/lint/validate-deps-workflow-sync.cjs": {
+    "em-dash": 2
+  },
+  "scripts/measure-args.js": {
+    "caps-emphasis": 2,
+    "em-dash": 31,
+    "filler": 4,
+    "prose-arrow": 4
+  },
+  "scripts/measure-arms.js": {
+    "caps-emphasis": 2,
+    "em-dash": 25,
+    "filler": 4
+  },
+  "scripts/measure-calibration.js": {
+    "caps-emphasis": 1,
+    "em-dash": 24,
+    "filler": 7
+  },
+  "scripts/measure-compare.js": {
+    "caps-emphasis": 7,
+    "em-dash": 62,
+    "filler": 7,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "scripts/measure-devices.js": {
+    "caps-emphasis": 4,
+    "em-dash": 33,
+    "filler": 12
+  },
+  "scripts/measure-loop.js": {
+    "caps-emphasis": 1,
+    "em-dash": 20,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "scripts/measure-matrix.js": {
+    "caps-emphasis": 3,
+    "em-dash": 33,
+    "filler": 9,
+    "latin-abbrev": 1
+  },
+  "scripts/measure-report.js": {
+    "caps-emphasis": 4,
+    "em-dash": 36,
+    "filler": 8
+  },
+  "scripts/measure-selection.js": {
+    "caps-emphasis": 3,
+    "em-dash": 30,
+    "filler": 2
+  },
+  "scripts/measure-signin.js": {
+    "caps-emphasis": 2,
+    "em-dash": 23,
+    "filler": 3,
+    "latin-abbrev": 1
+  },
+  "scripts/measure.js": {
+    "caps-emphasis": 12,
+    "em-dash": 103,
+    "filler": 12,
+    "latin-abbrev": 1,
+    "prose-arrow": 2
+  },
+  "scripts/measurement-guard.js": {
+    "caps-emphasis": 6,
+    "em-dash": 37,
+    "filler": 8,
+    "latin-abbrev": 1,
+    "prose-arrow": 2
+  },
+  "scripts/measurements.js": {
+    "caps-emphasis": 13,
+    "em-dash": 87,
+    "filler": 10,
+    "prose-arrow": 3
+  },
+  "scripts/roku-devices.js": {
+    "em-dash": 13,
+    "filler": 2
+  },
+  "scripts/ropm-hook.cjs": {
+    "caps-emphasis": 1
+  },
+  "scripts/rta-restore.js": {
+    "em-dash": 7,
+    "filler": 1
+  },
+  "scripts/rta-run.js": {
+    "caps-emphasis": 1,
+    "em-dash": 21,
+    "filler": 4
+  },
+  "scripts/run-record.js": {
+    "caps-emphasis": 13,
+    "em-dash": 112,
+    "filler": 19,
+    "prose-arrow": 2
+  },
+  "scripts/run-roku-tests.js": {
+    "em-dash": 3
+  },
+  "scripts/screenshots-index.js": {
+    "caps-emphasis": 1,
+    "em-dash": 7,
+    "filler": 2
+  },
+  "scripts/screenshots-store.js": {
+    "caps-emphasis": 1,
+    "em-dash": 4
+  },
+  "scripts/server-upgrade-tracker.js": {
+    "caps-emphasis": 2,
+    "em-dash": 10,
+    "prose-arrow": 11
+  },
+  "scripts/server-upgrade.js": {
+    "caps-emphasis": 5,
+    "em-dash": 22,
+    "filler": 3,
+    "latin-abbrev": 2,
+    "prose-arrow": 10
+  },
+  "scripts/translations-merge.js": {
+    "prose-arrow": 1
+  },
+  "scripts/translations-seed.js": {
+    "em-dash": 5,
+    "filler": 2,
+    "prose-arrow": 2
+  },
   "source/CLAUDE.md": {
     "em-dash": 10
+  },
+  "source/GridView/GridPresenterBase.bs": {
+    "caps-emphasis": 4,
+    "em-dash": 9,
+    "filler": 1,
+    "latin-abbrev": 5
+  },
+  "source/GridView/MoviePresenter.bs": {
+    "em-dash": 7
+  },
+  "source/GridView/MusicPresenter.bs": {
+    "em-dash": 1
+  },
+  "source/GridView/TVShowPresenter.bs": {
+    "em-dash": 1
+  },
+  "source/GridView/collectionsView.bs": {
+    "em-dash": 7,
+    "filler": 1
+  },
+  "source/GridView/gridPage.bs": {
+    "em-dash": 3
+  },
+  "source/GridView/gridPaging.bs": {
+    "em-dash": 6
+  },
+  "source/GridView/gridQuery.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 10
+  },
+  "source/api/ApiClient.bs": {
+    "caps-emphasis": 6,
+    "em-dash": 26,
+    "filler": 2,
+    "latin-abbrev": 6
   },
   "source/api/CLAUDE.md": {
     "caps-emphasis": 1,
     "em-dash": 11,
     "prose-arrow": 2
   },
+  "source/api/apiFaults.bs": {
+    "em-dash": 5
+  },
+  "source/api/apiPipeline.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 23,
+    "filler": 1
+  },
+  "source/api/apiPool.bs": {
+    "caps-emphasis": 6,
+    "em-dash": 28,
+    "filler": 1,
+    "prose-arrow": 2
+  },
+  "source/api/apiPromise.bs": {
+    "em-dash": 13,
+    "filler": 1,
+    "latin-abbrev": 2,
+    "prose-arrow": 8
+  },
+  "source/api/apiResponse.bs": {
+    "em-dash": 6
+  },
+  "source/api/baseRequest.bs": {
+    "em-dash": 3,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "source/api/items.bs": {
+    "caps-emphasis": 5,
+    "em-dash": 18,
+    "filler": 2,
+    "latin-abbrev": 3,
+    "prose-arrow": 1
+  },
+  "source/api/sdk.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 2,
+    "filler": 1
+  },
+  "source/api/sdkV1.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  "source/api/sdkV2.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  "source/api/userAuth.bs": {
+    "em-dash": 8,
+    "prose-arrow": 1
+  },
+  "source/constants/apiPool.bs": {
+    "em-dash": 3
+  },
+  "source/constants/itemAspectRatio.bs": {
+    "em-dash": 4
+  },
+  "source/constants/itemTypeOrder.bs": {
+    "em-dash": 3
+  },
+  "source/constants/subtitleLayout.bs": {
+    "caps-emphasis": 4,
+    "em-dash": 32,
+    "filler": 2
+  },
+  "source/constants/timeouts.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 3
+  },
+  "source/data/JellyfinDataTransformer.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 5,
+    "latin-abbrev": 3,
+    "prose-arrow": 2
+  },
+  "source/deepLink.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 2,
+    "filler": 1
+  },
+  "source/enums/LoadingKind.bs": {
+    "em-dash": 1
+  },
+  "source/enums/NextUpSeriesStart.bs": {
+    "em-dash": 1
+  },
+  "source/extras/extrasRows.bs": {
+    "em-dash": 14,
+    "filler": 1,
+    "latin-abbrev": 3
+  },
+  "source/home/homeRowFailure.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 5
+  },
+  "source/home/homeScreenLoad.bs": {
+    "em-dash": 5
+  },
+  "source/home/latestRows.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 14,
+    "filler": 3
+  },
+  "source/libraryViewFactory.bs": {
+    "em-dash": 1
+  },
+  "source/loginRouter.bs": {
+    "caps-emphasis": 7,
+    "em-dash": 39,
+    "filler": 4,
+    "latin-abbrev": 1,
+    "prose-arrow": 4
+  },
+  "source/main.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 14,
+    "filler": 1,
+    "prose-arrow": 1
+  },
+  "source/migrations.bs": {
+    "caps-emphasis": 3,
+    "prose-arrow": 5
+  },
+  "source/remotecontrol/remoteCommand.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 6,
+    "filler": 1
+  },
+  "source/remotecontrol/remoteDispatch.bs": {
+    "em-dash": 4,
+    "filler": 1
+  },
+  "source/remotecontrol/remoteProtocol.bs": {
+    "caps-emphasis": 6,
+    "em-dash": 13,
+    "filler": 4,
+    "latin-abbrev": 1
+  },
+  "source/replayRoute.bs": {
+    "caps-emphasis": 4,
+    "em-dash": 27,
+    "filler": 5,
+    "latin-abbrev": 2
+  },
   "source/utils/CLAUDE.md": {
     "caps-emphasis": 1,
     "em-dash": 11,
     "filler": 1,
     "prose-arrow": 3
+  },
+  "source/utils/appWaits.bs": {
+    "em-dash": 5
+  },
+  "source/utils/backdrop.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "source/utils/backoff.bs": {
+    "em-dash": 1
+  },
+  "source/utils/buttonOverflow.bs": {
+    "caps-emphasis": 8,
+    "em-dash": 36,
+    "filler": 5
+  },
+  "source/utils/cellLoad.bs": {
+    "caps-emphasis": 7,
+    "em-dash": 50,
+    "filler": 10,
+    "latin-abbrev": 2
+  },
+  "source/utils/chapterItems.bs": {
+    "em-dash": 1
+  },
+  "source/utils/conditional.bs": {
+    "em-dash": 2
+  },
+  "source/utils/config.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 24,
+    "filler": 4,
+    "latin-abbrev": 4,
+    "prose-arrow": 2
+  },
+  "source/utils/deviceCapabilities.bs": {
+    "caps-emphasis": 9,
+    "em-dash": 64,
+    "filler": 7,
+    "latin-abbrev": 8,
+    "prose-arrow": 5
+  },
+  "source/utils/dialogKeys.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 6,
+    "filler": 4
+  },
+  "source/utils/dialogLayout.bs": {
+    "caps-emphasis": 7,
+    "em-dash": 35,
+    "filler": 4
+  },
+  "source/utils/dialogNarration.bs": {
+    "caps-emphasis": 5,
+    "em-dash": 9,
+    "filler": 4
+  },
+  "source/utils/dialogResult.bs": {
+    "em-dash": 8,
+    "filler": 1
+  },
+  "source/utils/dialogReveal.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 6,
+    "filler": 1
+  },
+  "source/utils/dialogs.bs": {
+    "caps-emphasis": 8,
+    "em-dash": 44,
+    "filler": 5,
+    "latin-abbrev": 2
+  },
+  "source/utils/episodeQueue.bs": {
+    "em-dash": 8
+  },
+  "source/utils/fallbackFont.bs": {
+    "em-dash": 1
+  },
+  "source/utils/globals.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 13,
+    "filler": 1,
+    "latin-abbrev": 2,
+    "prose-arrow": 3
+  },
+  "source/utils/guidePrograms.bs": {
+    "em-dash": 7
+  },
+  "source/utils/infoRowFit.bs": {
+    "filler": 1
+  },
+  "source/utils/itemImageUrl.bs": {
+    "latin-abbrev": 2,
+    "prose-arrow": 7
+  },
+  "source/utils/languageFilters.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 13,
+    "filler": 2
+  },
+  "source/utils/languages.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 6,
+    "latin-abbrev": 4,
+    "prose-arrow": 3
+  },
+  "source/utils/listTheme.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "filler": 1
+  },
+  "source/utils/liveTv.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 9,
+    "filler": 2,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "source/utils/loadingStages.bs": {
+    "em-dash": 5
+  },
+  "source/utils/mediaDisplayTitle.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 9,
+    "filler": 1,
+    "latin-abbrev": 9,
+    "prose-arrow": 4
+  },
+  "source/utils/mediaSegments.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 3,
+    "filler": 1
+  },
+  "source/utils/mediaSources.bs": {
+    "em-dash": 5,
+    "filler": 1
+  },
+  "source/utils/misc.bs": {
+    "caps-emphasis": 6,
+    "em-dash": 27,
+    "filler": 3,
+    "latin-abbrev": 6,
+    "prose-arrow": 1
+  },
+  "source/utils/nodeHelpers.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 15,
+    "latin-abbrev": 1
+  },
+  "source/utils/nodeUtils.bs": {
+    "latin-abbrev": 2
+  },
+  "source/utils/paging.bs": {
+    "filler": 1
+  },
+  "source/utils/people.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 24,
+    "filler": 6,
+    "latin-abbrev": 1,
+    "prose-arrow": 5
+  },
+  "source/utils/placeholderImage.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 1,
+    "latin-abbrev": 2
+  },
+  "source/utils/playbackErrorInfo.bs": {
+    "caps-emphasis": 4,
+    "em-dash": 19,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "source/utils/playbackInfo.bs": {
+    "em-dash": 3,
+    "filler": 2,
+    "latin-abbrev": 3,
+    "prose-arrow": 2
+  },
+  "source/utils/playbackReport.bs": {
+    "caps-emphasis": 11,
+    "em-dash": 41,
+    "filler": 5,
+    "latin-abbrev": 1,
+    "prose-arrow": 4
+  },
+  "source/utils/quickConnect.bs": {
+    "caps-emphasis": 8,
+    "em-dash": 16,
+    "filler": 6
+  },
+  "source/utils/quickplay.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 1
+  },
+  "source/utils/remoteSubtitles.bs": {
+    "caps-emphasis": 6,
+    "em-dash": 31,
+    "filler": 8
+  },
+  "source/utils/rowItemImage.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 3,
+    "prose-arrow": 2
+  },
+  "source/utils/rowItemText.bs": {
+    "latin-abbrev": 3
+  },
+  "source/utils/rowListWrap.bs": {
+    "em-dash": 3,
+    "latin-abbrev": 1
+  },
+  "source/utils/screenReadiness.bs": {
+    "caps-emphasis": 6,
+    "em-dash": 47,
+    "filler": 5,
+    "latin-abbrev": 3
+  },
+  "source/utils/screenWaits.bs": {
+    "em-dash": 2
+  },
+  "source/utils/serverCapabilities.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 7
+  },
+  "source/utils/session.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 10,
+    "filler": 3,
+    "latin-abbrev": 6,
+    "prose-arrow": 1
+  },
+  "source/utils/skeleton.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 5,
+    "filler": 1
+  },
+  "source/utils/stillWatching.bs": {
+    "em-dash": 1
+  },
+  "source/utils/streamSelection.bs": {
+    "caps-emphasis": 4,
+    "em-dash": 10,
+    "filler": 1,
+    "latin-abbrev": 8,
+    "prose-arrow": 14
+  },
+  "source/utils/tasks.bs": {
+    "caps-emphasis": 4,
+    "em-dash": 46,
+    "filler": 5,
+    "latin-abbrev": 1
+  },
+  "source/utils/textureManager.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 22
+  },
+  "source/utils/trackPickerOptions.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 2
+  },
+  "source/utils/transcodeCause.bs": {
+    "caps-emphasis": 6,
+    "em-dash": 17,
+    "filler": 5
+  },
+  "source/utils/translate.bs": {
+    "em-dash": 6,
+    "filler": 1,
+    "latin-abbrev": 8
+  },
+  "source/utils/translateLocale.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 2,
+    "filler": 1,
+    "latin-abbrev": 9
+  },
+  "source/utils/trickplay.bs": {
+    "latin-abbrev": 2
+  },
+  "source/utils/url.bs": {
+    "filler": 2,
+    "latin-abbrev": 5
+  },
+  "source/utils/versionDisplay.bs": {
+    "em-dash": 4
+  },
+  "source/utils/versionLabels.bs": {
+    "caps-emphasis": 1
+  },
+  "source/utils/versionPick.bs": {
+    "em-dash": 2
+  },
+  "source/utils/versionResume.bs": {
+    "caps-emphasis": 4,
+    "em-dash": 36,
+    "filler": 7,
+    "latin-abbrev": 1
+  },
+  "source/utils/videoNotifications.bs": {
+    "em-dash": 2,
+    "prose-arrow": 1
+  },
+  "source/utils/voiceTransport.bs": {
+    "em-dash": 4,
+    "filler": 1
+  },
+  "source/utils/webvtt.bs": {
+    "em-dash": 4
   },
   "tests/CLAUDE.md": {
     "caps-emphasis": 7,
@@ -746,5 +2664,1154 @@
     "filler": 13,
     "latin-abbrev": 1,
     "prose-arrow": 6
+  },
+  "tests/rta/capture.js": {
+    "em-dash": 1
+  },
+  "tests/rta/config.js": {
+    "caps-emphasis": 4,
+    "em-dash": 17,
+    "filler": 3
+  },
+  "tests/rta/config.test.js": {
+    "em-dash": 8
+  },
+  "tests/rta/demos/run.mjs": {
+    "caps-emphasis": 3,
+    "em-dash": 19,
+    "filler": 3,
+    "latin-abbrev": 1
+  },
+  "tests/rta/demos/takes/cast-play.js": {
+    "em-dash": 1,
+    "prose-arrow": 2
+  },
+  "tests/rta/demos/takes/index.js": {
+    "em-dash": 1
+  },
+  "tests/rta/demos/takes/server-switch.js": {
+    "caps-emphasis": 1,
+    "em-dash": 10,
+    "prose-arrow": 10
+  },
+  "tests/rta/lib/diagnostics.js": {
+    "caps-emphasis": 5,
+    "em-dash": 39,
+    "filler": 4,
+    "prose-arrow": 1
+  },
+  "tests/rta/lib/diagnostics.test.js": {
+    "em-dash": 18,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "tests/rta/lib/driver.js": {
+    "caps-emphasis": 5,
+    "em-dash": 26,
+    "filler": 6,
+    "prose-arrow": 1
+  },
+  "tests/rta/lib/driver.test.js": {
+    "em-dash": 10,
+    "filler": 1
+  },
+  "tests/rta/lib/failRequests.js": {
+    "em-dash": 1
+  },
+  "tests/rta/lib/home-list.js": {
+    "caps-emphasis": 1,
+    "em-dash": 9,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "tests/rta/lib/home-list.test.js": {
+    "em-dash": 4,
+    "filler": 1
+  },
+  "tests/rta/lib/jellyfin.js": {
+    "caps-emphasis": 1,
+    "em-dash": 39,
+    "filler": 4,
+    "latin-abbrev": 5
+  },
+  "tests/rta/lib/jellyfin.test.js": {
+    "em-dash": 4,
+    "filler": 1
+  },
+  "tests/rta/lib/nav.js": {
+    "caps-emphasis": 26,
+    "em-dash": 130,
+    "filler": 25,
+    "latin-abbrev": 5
+  },
+  "tests/rta/lib/nav.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 23,
+    "filler": 2
+  },
+  "tests/rta/lib/registry-odc-bound.test.js": {
+    "em-dash": 4
+  },
+  "tests/rta/lib/registry.js": {
+    "caps-emphasis": 3,
+    "em-dash": 49,
+    "filler": 13,
+    "latin-abbrev": 1,
+    "prose-arrow": 6
+  },
+  "tests/rta/lib/registry.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 27,
+    "filler": 5,
+    "prose-arrow": 3
+  },
+  "tests/rta/lib/resolution.js": {
+    "caps-emphasis": 4,
+    "em-dash": 28,
+    "filler": 7
+  },
+  "tests/rta/lib/resolution.test.js": {
+    "em-dash": 8,
+    "filler": 1
+  },
+  "tests/rta/lib/seed.js": {
+    "caps-emphasis": 2,
+    "em-dash": 6,
+    "filler": 4,
+    "latin-abbrev": 1
+  },
+  "tests/rta/lib/steps.js": {
+    "caps-emphasis": 23,
+    "em-dash": 183,
+    "filler": 39,
+    "latin-abbrev": 7,
+    "prose-arrow": 3
+  },
+  "tests/rta/lib/steps.test.js": {
+    "caps-emphasis": 7,
+    "em-dash": 76,
+    "filler": 18
+  },
+  "tests/rta/lib/timeout.js": {
+    "em-dash": 3,
+    "filler": 1
+  },
+  "tests/rta/screens.js": {
+    "caps-emphasis": 8,
+    "em-dash": 27,
+    "filler": 5
+  },
+  "tests/rta/screens.test.js": {
+    "em-dash": 3,
+    "filler": 1
+  },
+  "tests/rta/setup/env-setup.js": {
+    "em-dash": 1
+  },
+  "tests/rta/setup/global-setup.js": {
+    "em-dash": 4
+  },
+  "tests/rta/specs/cell-load.spec.js": {
+    "caps-emphasis": 2,
+    "em-dash": 13,
+    "filler": 2
+  },
+  "tests/rta/specs/deeplink.spec.js": {
+    "caps-emphasis": 3,
+    "em-dash": 8,
+    "prose-arrow": 8
+  },
+  "tests/rta/specs/dialogs.spec.js": {
+    "caps-emphasis": 3,
+    "em-dash": 43,
+    "filler": 1
+  },
+  "tests/rta/specs/fail-requests.spec.js": {
+    "em-dash": 2
+  },
+  "tests/rta/specs/focus.spec.js": {
+    "em-dash": 1
+  },
+  "tests/rta/specs/gaa-thread-scope.spec.js": {
+    "em-dash": 3,
+    "filler": 1
+  },
+  "tests/rta/specs/genre-skeleton.spec.js": {
+    "caps-emphasis": 1,
+    "em-dash": 10,
+    "filler": 1
+  },
+  "tests/rta/specs/grid-paging.spec.js": {
+    "em-dash": 2
+  },
+  "tests/rta/specs/home-failure.spec.js": {
+    "em-dash": 10,
+    "filler": 1
+  },
+  "tests/rta/specs/leaks.spec.js": {
+    "caps-emphasis": 5,
+    "em-dash": 28,
+    "filler": 4
+  },
+  "tests/rta/specs/playback-advance.spec.js": {
+    "em-dash": 2
+  },
+  "tests/rta/specs/playback-notifications.spec.js": {
+    "em-dash": 2
+  },
+  "tests/rta/specs/playback-start.spec.js": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  "tests/rta/specs/quick-connect.spec.js": {
+    "caps-emphasis": 2,
+    "em-dash": 8,
+    "filler": 2
+  },
+  "tests/rta/specs/screens.spec.js": {
+    "caps-emphasis": 2,
+    "em-dash": 5,
+    "filler": 2
+  },
+  "tests/rta/specs/slow-search.spec.js": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  "tests/rta/specs/still-watching.spec.js": {
+    "em-dash": 4
+  },
+  "tests/rta/specs/task-ledger-bench.spec.js": {
+    "em-dash": 16,
+    "filler": 2
+  },
+  "tests/rta/specs/task-ledger-screen-cost.spec.js": {
+    "em-dash": 7
+  },
+  "tests/rta/specs/task-thread-peak.spec.js": {
+    "caps-emphasis": 1,
+    "em-dash": 12
+  },
+  "tests/scripts/setup/no-durable-writes.js": {
+    "em-dash": 14,
+    "filler": 4
+  },
+  "tests/scripts/unit/_helpers/git-env.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/_helpers/git-env.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/_helpers/run-plugin-with-temp-locale.js": {
+    "em-dash": 2,
+    "latin-abbrev": 1
+  },
+  "tests/scripts/unit/_helpers/run-plugin.js": {
+    "em-dash": 2,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "tests/scripts/unit/_helpers/spawn-script.js": {
+    "latin-abbrev": 1
+  },
+  "tests/scripts/unit/_helpers/temp-locale-fixture.js": {
+    "latin-abbrev": 1,
+    "prose-arrow": 2
+  },
+  "tests/scripts/unit/_helpers/transpile-with-plugin.js": {
+    "em-dash": 1,
+    "latin-abbrev": 2,
+    "prose-arrow": 4
+  },
+  "tests/scripts/unit/bsc-plugins/auto-destroyed-guard.test.js": {
+    "em-dash": 6
+  },
+  "tests/scripts/unit/bsc-plugins/button-row-bracket.test.js": {
+    "em-dash": 5,
+    "filler": 1
+  },
+  "tests/scripts/unit/bsc-plugins/callfunc-interface.test.js": {
+    "em-dash": 5
+  },
+  "tests/scripts/unit/bsc-plugins/dead-code.test.js": {
+    "em-dash": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "tests/scripts/unit/bsc-plugins/field-observer-wiring.test.js": {
+    "em-dash": 8,
+    "filler": 1
+  },
+  "tests/scripts/unit/bsc-plugins/jrscreen-on-destroy.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 4
+  },
+  "tests/scripts/unit/bsc-plugins/no-hand-rolled-dialog.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 8,
+    "filler": 1
+  },
+  "tests/scripts/unit/bsc-plugins/no-raw-run.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 2,
+    "filler": 1
+  },
+  "tests/scripts/unit/bsc-plugins/no-same-node-relaunch.test.js": {
+    "caps-emphasis": 2,
+    "em-dash": 5,
+    "filler": 2
+  },
+  "tests/scripts/unit/bsc-plugins/no-task-fanout.test.js": {
+    "caps-emphasis": 2,
+    "em-dash": 13,
+    "filler": 6
+  },
+  "tests/scripts/unit/bsc-plugins/observe-without-on-destroy.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 2
+  },
+  "tests/scripts/unit/bsc-plugins/register-once-observer.test.js": {
+    "em-dash": 2
+  },
+  "tests/scripts/unit/bsc-plugins/roku-log.test.js": {
+    "em-dash": 3,
+    "filler": 1
+  },
+  "tests/scripts/unit/bsc-plugins/unobserve-before-release.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 4
+  },
+  "tests/scripts/unit/catchup-state.test.js": {
+    "caps-emphasis": 2,
+    "em-dash": 1,
+    "prose-arrow": 5
+  },
+  "tests/scripts/unit/catchup-typed.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/changelog-syncer-pr-title.test.js": {
+    "filler": 1
+  },
+  "tests/scripts/unit/changelog-syncer.test.js": {
+    "prose-arrow": 1
+  },
+  "tests/scripts/unit/crash-report.test.js": {
+    "caps-emphasis": 5,
+    "em-dash": 11,
+    "prose-arrow": 18
+  },
+  "tests/scripts/unit/create-package.smoke.test.js": {
+    "em-dash": 1,
+    "filler": 2
+  },
+  "tests/scripts/unit/create-signed-package.test.js": {
+    "em-dash": 2
+  },
+  "tests/scripts/unit/device-check.test.js": {
+    "em-dash": 4
+  },
+  "tests/scripts/unit/device-lock.test.js": {
+    "em-dash": 20,
+    "filler": 6
+  },
+  "tests/scripts/unit/doc-citation-ratchet.test.js": {
+    "em-dash": 2
+  },
+  "tests/scripts/unit/endpoint-availability.test.js": {
+    "em-dash": 2
+  },
+  "tests/scripts/unit/fixture-probe.test.js": {
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/scripts/unit/flake-baseline.test.js": {
+    "em-dash": 9,
+    "filler": 1
+  },
+  "tests/scripts/unit/floor-coverage-check.test.js": {
+    "caps-emphasis": 1,
+    "prose-arrow": 4
+  },
+  "tests/scripts/unit/generate/api-usage-manifest.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/generate/findings-candidates.test.js": {
+    "prose-arrow": 8
+  },
+  "tests/scripts/unit/generate/icons-add.test.js": {
+    "em-dash": 2
+  },
+  "tests/scripts/unit/generate/icons-build.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 5,
+    "prose-arrow": 2
+  },
+  "tests/scripts/unit/generate/sentence-final-dictionary.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 3,
+    "filler": 2
+  },
+  "tests/scripts/unit/generate/settings-docs.test.js": {
+    "em-dash": 2
+  },
+  "tests/scripts/unit/generate/spec-fingerprint.test.js": {
+    "em-dash": 2,
+    "prose-arrow": 1
+  },
+  "tests/scripts/unit/harden-prod-manifest.test.js": {
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/scripts/unit/journal-sync.test.js": {
+    "em-dash": 8,
+    "filler": 1,
+    "prose-arrow": 2
+  },
+  "tests/scripts/unit/lib/bsc-rule.test.js": {
+    "em-dash": 2,
+    "filler": 1
+  },
+  "tests/scripts/unit/lib/env-config.test.js": {
+    "em-dash": 3
+  },
+  "tests/scripts/unit/lib/frontmatter.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/lib/lint-excludes.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/lib/locale-files.test.js": {
+    "em-dash": 1,
+    "prose-arrow": 1
+  },
+  "tests/scripts/unit/lib/png-compare.test.js": {
+    "em-dash": 2
+  },
+  "tests/scripts/unit/lib/pr-title.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/lib/process-liveness.test.js": {
+    "em-dash": 2,
+    "filler": 2
+  },
+  "tests/scripts/unit/lib/spec-fetch.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/lib/version-boundaries.test.js": {
+    "prose-arrow": 2
+  },
+  "tests/scripts/unit/lint/apiversion-consistency.test.js": {
+    "em-dash": 3
+  },
+  "tests/scripts/unit/lint/brightscript-trigger-parity.test.js": {
+    "em-dash": 5
+  },
+  "tests/scripts/unit/lint/bsconfig-inheritance.test.js": {
+    "em-dash": 2
+  },
+  "tests/scripts/unit/lint/check-touched-lint.smoke.test.js": {
+    "prose-arrow": 1
+  },
+  "tests/scripts/unit/lint/check-touched-related-files.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/scripts/unit/lint/ci-parity.test.js": {
+    "em-dash": 5
+  },
+  "tests/scripts/unit/lint/dictionary-audit.test.js": {
+    "em-dash": 4,
+    "filler": 1
+  },
+  "tests/scripts/unit/lint/docs-check.test.js": {
+    "caps-emphasis": 3,
+    "em-dash": 5,
+    "latin-abbrev": 1
+  },
+  "tests/scripts/unit/lint/docs-stale-blocking.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/lint/language-coverage.test.js": {
+    "em-dash": 4,
+    "filler": 2,
+    "prose-arrow": 3
+  },
+  "tests/scripts/unit/lint/log-manager-init.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/lint/ordering-asserts-presence.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 7,
+    "filler": 1
+  },
+  "tests/scripts/unit/lint/pr-body-check.test.js": {
+    "em-dash": 4,
+    "filler": 1
+  },
+  "tests/scripts/unit/lint/progress-cursor-nudge.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 5,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "tests/scripts/unit/lint/promise-ratchet.test.js": {
+    "em-dash": 2
+  },
+  "tests/scripts/unit/lint/rta-capability-coverage.test.js": {
+    "em-dash": 6,
+    "filler": 1
+  },
+  "tests/scripts/unit/lint/rta-home-list-resolved.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 10,
+    "filler": 1
+  },
+  "tests/scripts/unit/lint/rta-sleep-budgeted.test.js": {
+    "em-dash": 7,
+    "filler": 1
+  },
+  "tests/scripts/unit/lint/rta-wait-inventory.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 1
+  },
+  "tests/scripts/unit/lint/rta-wait-justified.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 7
+  },
+  "tests/scripts/unit/lint/socket-auth-binding.test.js": {
+    "em-dash": 3,
+    "filler": 1
+  },
+  "tests/scripts/unit/lint/socket-thread-release.test.js": {
+    "em-dash": 13,
+    "filler": 3,
+    "latin-abbrev": 1
+  },
+  "tests/scripts/unit/lint/spellchecker-config.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 15,
+    "filler": 1
+  },
+  "tests/scripts/unit/measure-args.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 9,
+    "prose-arrow": 2
+  },
+  "tests/scripts/unit/measure-arms.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 2
+  },
+  "tests/scripts/unit/measure-compare.test.js": {
+    "caps-emphasis": 3,
+    "em-dash": 27,
+    "filler": 7
+  },
+  "tests/scripts/unit/measure-loop.test.js": {
+    "caps-emphasis": 4,
+    "em-dash": 23,
+    "filler": 1
+  },
+  "tests/scripts/unit/measure-matrix.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 20,
+    "filler": 4
+  },
+  "tests/scripts/unit/measure-report.test.js": {
+    "caps-emphasis": 2,
+    "em-dash": 14,
+    "filler": 4
+  },
+  "tests/scripts/unit/measure-selection.test.js": {
+    "caps-emphasis": 2,
+    "em-dash": 10,
+    "filler": 2
+  },
+  "tests/scripts/unit/measurement-guard.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 13,
+    "filler": 4
+  },
+  "tests/scripts/unit/measurements.test.js": {
+    "caps-emphasis": 8,
+    "em-dash": 49,
+    "filler": 4
+  },
+  "tests/scripts/unit/no-durable-writes.test.js": {
+    "em-dash": 5,
+    "filler": 1
+  },
+  "tests/scripts/unit/roku-devices.test.js": {
+    "em-dash": 6
+  },
+  "tests/scripts/unit/roku-hardware.test.js": {
+    "em-dash": 8
+  },
+  "tests/scripts/unit/ropm-hook.test.js": {
+    "filler": 1,
+    "prose-arrow": 3
+  },
+  "tests/scripts/unit/run-record.test.js": {
+    "caps-emphasis": 4,
+    "em-dash": 56,
+    "filler": 7,
+    "prose-arrow": 2
+  },
+  "tests/scripts/unit/server-upgrade-tracker.test.js": {
+    "em-dash": 1,
+    "prose-arrow": 5
+  },
+  "tests/scripts/unit/server-upgrade.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 2,
+    "prose-arrow": 9
+  },
+  "tests/scripts/unit/settings-schema.test.js": {
+    "caps-emphasis": 1,
+    "em-dash": 6
+  },
+  "tests/scripts/unit/signal-staleness.test.js": {
+    "em-dash": 1
+  },
+  "tests/scripts/unit/signals-fetch.test.js": {
+    "em-dash": 2,
+    "prose-arrow": 1
+  },
+  "tests/scripts/unit/translations-seed.test.js": {
+    "em-dash": 1
+  },
+  "tests/source/BaseTestSuite.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "latin-abbrev": 3
+  },
+  "tests/source/integration/UserLoginCredentialPreservation.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  "tests/source/integration/migration/AudioCodecMigration.spec.bs": {
+    "caps-emphasis": 1,
+    "filler": 1
+  },
+  "tests/source/integration/migration/EmptyImageTagCleanup.spec.bs": {
+    "caps-emphasis": 1
+  },
+  "tests/source/integration/migration/GlobalSettingsCleanup.spec.bs": {
+    "caps-emphasis": 2
+  },
+  "tests/source/integration/migration/SettingsMigration.spec.bs": {
+    "caps-emphasis": 8,
+    "prose-arrow": 4
+  },
+  "tests/source/integration/migration/SplashSettingRemoval.spec.bs": {
+    "caps-emphasis": 1
+  },
+  "tests/source/integration/migration/TvSeasonStraightToEpisodesRemoval.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/integration/playbackStart.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/integration/queueArrival.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/integration/quickplay.spec.bs": {
+    "em-dash": 3,
+    "filler": 1
+  },
+  "tests/source/integration/registry/DisplaySettingsRegistry.spec.bs": {
+    "caps-emphasis": 1,
+    "filler": 1
+  },
+  "tests/source/integration/registry/GlobalSplashScreenRegistry.spec.bs": {
+    "caps-emphasis": 1
+  },
+  "tests/source/integration/registry/SavedServersRegistry.spec.bs": {
+    "em-dash": 3,
+    "latin-abbrev": 2
+  },
+  "tests/source/integration/registry/UserSettingsRegistry.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/source/shared/RegistryTestUtils.bs": {
+    "filler": 1
+  },
+  "tests/source/unit/GridView/GridPresenterBase.spec.bs": {
+    "em-dash": 4
+  },
+  "tests/source/unit/GridView/MoviePresenter.spec.bs": {
+    "em-dash": 3
+  },
+  "tests/source/unit/GridView/MoviePresenterCollections.spec.bs": {
+    "em-dash": 4
+  },
+  "tests/source/unit/GridView/collectionsView.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/GridView/gridPage.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/GridView/gridPaging.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/GridView/gridQuery.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/api/ApiClient.spec.bs": {
+    "em-dash": 3
+  },
+  "tests/source/unit/api/ItemsAudioHandling.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 3,
+    "latin-abbrev": 2,
+    "prose-arrow": 4
+  },
+  "tests/source/unit/api/ItemsDoviHandling.spec.bs": {
+    "caps-emphasis": 1
+  },
+  "tests/source/unit/api/ItemsPlaybackInfoSource.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/api/ItemsTranscodingParams.spec.bs": {
+    "em-dash": 8,
+    "filler": 1
+  },
+  "tests/source/unit/api/apiPipeline.spec.bs": {
+    "em-dash": 6
+  },
+  "tests/source/unit/api/apiPoolSkip.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/api/apiPromise.spec.bs": {
+    "em-dash": 5,
+    "filler": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 1
+  },
+  "tests/source/unit/api/apiResponse.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/api/apiResponseEnforceShape.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/api/apiResponseJsonFailure.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/api/apiResponseNoAnswer.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/api/buildAuthHeader.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 3
+  },
+  "tests/source/unit/api/quickConnectRequests.spec.bs": {
+    "em-dash": 2,
+    "filler": 1
+  },
+  "tests/source/unit/api/stopRemoteControlReceiver.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 1
+  },
+  "tests/source/unit/components/CurrentSubtitleRow.spec.bs": {
+    "em-dash": 6
+  },
+  "tests/source/unit/components/Gradient.spec.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/source/unit/components/ItemDetailsBoxSet.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/components/ItemDetailsButtonOverflow.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 5,
+    "filler": 1
+  },
+  "tests/source/unit/components/ItemDetailsEpisode.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/components/ItemDetailsPerson.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/components/ItemDetailsPlaylist.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  "tests/source/unit/components/ItemDetailsRowFocus.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/components/ItemDetailsTrackDropdowns.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/components/ItemDetailsVersionResume.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/components/ItemGrid/ItemGridOptionsFilters.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/components/JRDropdown.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/components/JellyfinServerResumePolicy.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4,
+    "filler": 1
+  },
+  "tests/source/unit/components/SubtitleResultRow.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/components/TrackDropdown.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "prose-arrow": 1
+  },
+  "tests/source/unit/components/callfunc-interface-inheritance.spec.bs": {
+    "em-dash": 5,
+    "filler": 1
+  },
+  "tests/source/unit/components/dialogs/JRDialog.spec.bs": {
+    "em-dash": 3
+  },
+  "tests/source/unit/components/dialogs/JRListDialog.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 9,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "tests/source/unit/components/dialogs/OverviewDialog.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 5
+  },
+  "tests/source/unit/components/dialogs/QuickConnectDialog.spec.bs": {
+    "em-dash": 4,
+    "filler": 2
+  },
+  "tests/source/unit/components/ui/IconButtonWidth.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  "tests/source/unit/components/video/CaptionRenderer.spec.bs": {
+    "em-dash": 3
+  },
+  "tests/source/unit/components/video/OSD.spec.bs": {
+    "prose-arrow": 1
+  },
+  "tests/source/unit/components/video/OSDButtonOverflow.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/source/unit/constants/apiPool.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/constants/subtitleLayout.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 16,
+    "filler": 2,
+    "latin-abbrev": 2
+  },
+  "tests/source/unit/data/Transformers.spec.bs": {
+    "em-dash": 2,
+    "filler": 1,
+    "latin-abbrev": 1,
+    "prose-arrow": 3
+  },
+  "tests/source/unit/extras/extrasRows.spec.bs": {
+    "em-dash": 2,
+    "filler": 1
+  },
+  "tests/source/unit/home/homeRowFailure.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/home/homeScreenLoad.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/home/latestRows.spec.bs": {
+    "em-dash": 5,
+    "filler": 4
+  },
+  "tests/source/unit/platform/ObserverRegistry.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 3,
+    "filler": 1
+  },
+  "tests/source/unit/platform/TaskRelaunch.spec.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 4,
+    "filler": 1
+  },
+  "tests/source/unit/platform/TaskRelaunchBlockModes.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/platform/TaskStopProgress.spec.bs": {
+    "caps-emphasis": 3,
+    "filler": 2
+  },
+  "tests/source/unit/platform/TaskThreadSlots.spec.bs": {
+    "em-dash": 3,
+    "filler": 2
+  },
+  "tests/source/unit/remotecontrol/remoteDispatch.spec.bs": {
+    "em-dash": 2,
+    "filler": 1
+  },
+  "tests/source/unit/remotecontrol/remoteProtocol.spec.bs": {
+    "em-dash": 3,
+    "filler": 1
+  },
+  "tests/source/unit/replayRoute.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/userSettings/PlaybackPreserveDovi.spec.bs": {
+    "caps-emphasis": 3
+  },
+  "tests/source/unit/utils/DeviceCapabilities.spec.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 8,
+    "filler": 2,
+    "latin-abbrev": 1,
+    "prose-arrow": 18
+  },
+  "tests/source/unit/utils/PlaybackReport.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 15,
+    "filler": 4,
+    "prose-arrow": 2
+  },
+  "tests/source/unit/utils/SessionIsAuthenticated.spec.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 5,
+    "filler": 1
+  },
+  "tests/source/unit/utils/SessionServerUrlToPersist.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/utils/TranscodeCause.spec.bs": {
+    "em-dash": 9,
+    "filler": 1
+  },
+  "tests/source/unit/utils/backgroundWriteIsStale.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/utils/buttonOverflow.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 9,
+    "filler": 1
+  },
+  "tests/source/unit/utils/cellLoad.spec.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 19,
+    "filler": 3
+  },
+  "tests/source/unit/utils/debugSpareButtons.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4
+  },
+  "tests/source/unit/utils/deviceCapabilities-audioDirectPlay.spec.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 9,
+    "filler": 1
+  },
+  "tests/source/unit/utils/deviceCapabilities-subtitleProfile.spec.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 3,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "tests/source/unit/utils/deviceCapabilities-transcodingProfile.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/source/unit/utils/dialogKeys.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/utils/dialogLayout.spec.bs": {
+    "em-dash": 15,
+    "filler": 2,
+    "latin-abbrev": 1
+  },
+  "tests/source/unit/utils/dialogNarration.spec.bs": {
+    "latin-abbrev": 1
+  },
+  "tests/source/unit/utils/dialogResult.spec.bs": {
+    "filler": 2
+  },
+  "tests/source/unit/utils/dialogReveal.spec.bs": {
+    "em-dash": 7,
+    "filler": 2
+  },
+  "tests/source/unit/utils/dialogs.spec.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 13,
+    "filler": 2
+  },
+  "tests/source/unit/utils/fallbackFont.spec.bs": {
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/source/unit/utils/getSettingKeysToDelete.spec.bs": {
+    "caps-emphasis": 1
+  },
+  "tests/source/unit/utils/languageFilters.spec.bs": {
+    "em-dash": 6,
+    "filler": 2
+  },
+  "tests/source/unit/utils/liveTv-getUpstreamHlsBlocker.spec.bs": {
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/source/unit/utils/liveTv-isHlsPlaylistResponse.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/utils/liveTv.spec.bs": {
+    "em-dash": 2,
+    "filler": 3,
+    "prose-arrow": 8
+  },
+  "tests/source/unit/utils/mediaSegments-skipEndsPlayback.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/utils/misc-disambiguatedTime.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/utils/misc-getApiVersionFromGlobal.spec.bs": {
+    "filler": 1
+  },
+  "tests/source/unit/utils/misc-meridianDiffers.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/utils/misc.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 3
+  },
+  "tests/source/unit/utils/miscAudioStreams.spec.bs": {
+    "em-dash": 2,
+    "latin-abbrev": 3,
+    "prose-arrow": 9
+  },
+  "tests/source/unit/utils/nodeHelpers.spec.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 8
+  },
+  "tests/source/unit/utils/people.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 4
+  },
+  "tests/source/unit/utils/playbackErrorInfo.spec.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 6,
+    "filler": 1
+  },
+  "tests/source/unit/utils/quickConnect.spec.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 5,
+    "filler": 1
+  },
+  "tests/source/unit/utils/remoteSubtitles.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1
+  },
+  "tests/source/unit/utils/remoteSubtitlesAutoSearch.spec.bs": {
+    "em-dash": 4,
+    "filler": 1
+  },
+  "tests/source/unit/utils/remoteSubtitlesResults.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/utils/remoteSubtitlesStreams.spec.bs": {
+    "em-dash": 2
+  },
+  "tests/source/unit/utils/resolveTranslationLocale.spec.bs": {
+    "caps-emphasis": 2
+  },
+  "tests/source/unit/utils/rowItemImage.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/utils/rowItemText.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "latin-abbrev": 1
+  },
+  "tests/source/unit/utils/rowListWrap.spec.bs": {
+    "prose-arrow": 5
+  },
+  "tests/source/unit/utils/screenReadiness.spec.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 16,
+    "filler": 1
+  },
+  "tests/source/unit/utils/serverCapabilities.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/utils/settingRange.spec.bs": {
+    "em-dash": 9,
+    "filler": 1
+  },
+  "tests/source/unit/utils/streamSelection.spec.bs": {
+    "prose-arrow": 2
+  },
+  "tests/source/unit/utils/tasks.spec.bs": {
+    "caps-emphasis": 3,
+    "em-dash": 32,
+    "filler": 1,
+    "latin-abbrev": 1
+  },
+  "tests/source/unit/utils/tasksLaunchQueue.spec.bs": {
+    "filler": 1
+  },
+  "tests/source/unit/utils/teardownGuardSemantics.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 1,
+    "filler": 1
+  },
+  "tests/source/unit/utils/textureManager.spec.bs": {
+    "caps-emphasis": 1,
+    "em-dash": 8,
+    "prose-arrow": 1
+  },
+  "tests/source/unit/utils/trackPickerOptions.spec.bs": {
+    "caps-emphasis": 2,
+    "em-dash": 2,
+    "filler": 1
+  },
+  "tests/source/unit/utils/translate.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/utils/versionChooseResumeSource.spec.bs": {
+    "em-dash": 7
+  },
+  "tests/source/unit/utils/versionLabels.spec.bs": {
+    "filler": 1
+  },
+  "tests/source/unit/utils/versionResume.spec.bs": {
+    "em-dash": 1,
+    "latin-abbrev": 1
+  },
+  "tests/source/unit/utils/versionResumeCarryGuard.spec.bs": {
+    "em-dash": 1
+  },
+  "tests/source/unit/utils/versionResumeDisplay.spec.bs": {
+    "em-dash": 3
+  },
+  "tests/source/unit/utils/versionResumeState.spec.bs": {
+    "em-dash": 3
+  },
+  "tests/source/unit/utils/versionSwitchTicks.spec.bs": {
+    "em-dash": 6
+  },
+  "tests/source/unit/utils/videoSourceSelectionById.spec.bs": {
+    "em-dash": 1
+  },
+  "vitest.config.js": {
+    "em-dash": 2,
+    "filler": 1
+  },
+  "vitest.rta.config.js": {
+    "em-dash": 3
   }
 }
