@@ -1453,13 +1453,6 @@
     "filler": 1,
     "prose-arrow": 3
   },
-  "docs/dev/jellyfin-server-versioning.md": {
-    "caps-emphasis": 2,
-    "em-dash": 26,
-    "filler": 2,
-    "latin-abbrev": 3,
-    "prose-arrow": 5
-  },
   "docs/dev/jellyfin-version-boundaries.yml": {
     "em-dash": 6,
     "prose-arrow": 1
