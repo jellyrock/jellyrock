@@ -91,9 +91,34 @@
 // counts, and refuses when a baseline exists. `--lower-voice-baseline` lowers each
 // allowance to the current count and never raises one, so a rewrite locks its gain
 // in without hand-editing the file.
+//
+// THE HOUSE VOICE IN CODE COMMENTS (third scope, same baseline file)
+// ------------------------------------------------------------------
+// The same five categories are counted in the comments of tracked code, per file, in
+// `.doc-voice-baseline.json` beside the docs. A file absent from it is allowed zero.
+// Only the comment text is read, never the code: an apostrophe or `//` inside a string
+// is not a comment, so each language goes through a real parser.
+//   - `.bs` / `.brs`: the BrighterScript lexer. It files comments (`'` and `REM`) as
+//     leading trivia of the next token, not as tokens of their own.
+//   - `.js` / `.mjs` / `.cjs`: espree with `comment: true`. A hashbang is skipped.
+//     A file that does not parse stops the run, naming the file.
+//   - `.yml` / `.yaml`: the `yaml` package's lexer, so a `#` inside a quoted value or
+//     a URL fragment is not a comment. A document with a parse error stops the run.
+//   - `.xml`: `<!-- -->` blocks, matched by regex (XML comments cannot nest).
+//   - `.sh` and the extensionless hooks directly under `.husky/`: whole-line `#`
+//     comments only. See `shellComments()` for why.
+// Inline code and URLs are stripped, as in docs. Vendored and generated code is out
+// of scope: `components/vendor/`, `roku_modules/`, `node_modules/`, `build/` and `out/`.
+//
+// `--init-comment-baseline` seeds the code-file entries once, into the existing file.
+// It refuses when the file already has any, because the allowances are then a
+// decision. `--lower-voice-baseline` covers code files as it does docs.
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { Lexer, TokenKind } from 'brighterscript';
+import * as espree from 'espree';
+import YAML from 'yaml';
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const BASELINE_REL = '.doc-citation-baseline.json';
@@ -101,6 +126,7 @@ const JSON_MODE = process.argv.includes('--json');
 const VOICE_BASELINE_REL = '.doc-voice-baseline.json';
 const INIT_VOICE = process.argv.includes('--init-voice-baseline');
 const LOWER_VOICE = process.argv.includes('--lower-voice-baseline');
+const INIT_COMMENT = process.argv.includes('--init-comment-baseline');
 
 // The house-voice categories (docs/dev/writing-style.md). Each regex runs over prose
 // with code, link targets and URLs already removed; `prose-arrow` also has bold
@@ -133,9 +159,24 @@ const SKIP_DIRS = new Set([
   'out',
   'tasks',
   '.git',
-  '.husky',
   'roku_modules',
 ]);
+
+// Dot-directories the walk enters. `.husky` holds the git hooks, which are shell
+// scripts without an extension; its generated `_` subdirectory is skipped below.
+const DOT_DIRS_WALKED = new Set(['.claude', '.github', '.husky']);
+
+// Code files whose comments the voice gate reads, by extension.
+const CODE_EXTS = new Set(['.bs', '.brs', '.js', '.cjs', '.mjs', '.xml', '.yml', '.yaml', '.sh']);
+
+/** The language of a code file, or null for a path the comment gate does not read. */
+function codeLang(rel) {
+  const ext = path.posix.extname(rel);
+  if (CODE_EXTS.has(ext)) return ext.slice(1);
+  // A git hook directly under .husky has no extension and is shell.
+  if (path.posix.dirname(rel) === '.husky' && ext === '') return 'sh';
+  return null;
+}
 
 // Ephemeral, GITIGNORED prose: a project PLAN, a triage handoff, a saved plan.
 // Each is archived, pruned or deleted when its work finishes, so a line ref
@@ -165,8 +206,9 @@ function stripFencedBlocks(text) {
 }
 
 /**
- * Every tracked markdown file either gate governs, as `{ rel, citation, voice }`:
- * whether the line-citation ratchet and the voice ratchet each apply to it.
+ * Every tracked markdown or code file a gate governs, as `{ rel, citation, voice, code }`:
+ * whether the line-citation ratchet and the voice ratchet each apply to it, and whether
+ * it is a code file (whose comments are read) rather than a doc.
  */
 function collectDocs(rootDir) {
   const found = [];
@@ -184,9 +226,10 @@ function collectDocs(rootDir) {
       if (e.isDirectory()) {
         if (SKIP_DIRS.has(e.name)) continue;
         // `.claude` and `.github` are the dot-dirs that hold prose; skip the rest.
-        if (e.name.startsWith('.') && e.name !== '.claude' && e.name !== '.github') continue;
+        if (e.name.startsWith('.') && !DOT_DIRS_WALKED.has(e.name)) continue;
         const rel = path.relative(rootDir, full).split(path.sep).join('/');
         if (EPHEMERAL_RELS.includes(rel)) continue;
+        if (rel === '.husky/_') continue;
         // A directory with its own `.git` (a file for a worktree, a directory for a
         // clone) is a separate checkout — `.claude/worktrees/<name>` holds a whole copy
         // of the repo — so its docs belong to its own branch's run, not this one.
@@ -194,8 +237,12 @@ function collectDocs(rootDir) {
         walk(full, insideClaude || e.name === '.claude');
         continue;
       }
-      if (!e.name.endsWith('.md')) continue;
       const rel = path.relative(rootDir, full).split(path.sep).join('/');
+      if (codeLang(rel)) {
+        if (!voiceExcluded(rel)) found.push({ rel, citation: false, voice: true, code: true });
+        continue;
+      }
+      if (!e.name.endsWith('.md')) continue;
       const citation =
         !SKIP_FILES.has(e.name) &&
         (rel.startsWith('docs/') ||
@@ -203,7 +250,7 @@ function collectDocs(rootDir) {
           e.name === 'CLAUDE.md' ||
           e.name === 'AGENTS.md');
       const voice = !voiceExcluded(rel);
-      if (citation || voice) found.push({ rel, citation, voice });
+      if (citation || voice) found.push({ rel, citation, voice, code: false });
     }
   }
   walk(rootDir, false);
@@ -231,9 +278,75 @@ function voiceProse(text) {
   );
 }
 
+/** Comment text only, with inline code and URLs removed. Comments hold no tables or links. */
+function commentProse(text) {
+  return text
+    .replace(/``[^`]*``/g, '')
+    .replace(/`[^`\n]*`/g, '')
+    .replace(/https?:\/\/\S+/g, '');
+}
+
+/** Stop the run, naming the file. A file we cannot read is never silently skipped. */
+function parseFailure(rel, e) {
+  console.error(`doc-citation-ratchet: cannot read the comments of ${rel}: ${e.message}`);
+  process.exit(2);
+}
+
+/**
+ * Whole-line `#` comments only, and never a `#!` line (the shebang). A trailing `#` can
+ * sit inside a string or a URL, and nothing here parses shell, so it is not counted.
+ */
+function shellComments(src) {
+  return src
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('#') && !line.startsWith('#!'));
+}
+
+/** Every comment in a code file, as a list of strings. */
+function extractComments(rel, src) {
+  const lang = codeLang(rel);
+  try {
+    switch (lang) {
+      case 'bs':
+      case 'brs': {
+        const out = [];
+        for (const token of Lexer.scan(src).tokens)
+          for (const trivia of token.leadingTrivia ?? [])
+            if (trivia.kind === TokenKind.Comment) out.push(trivia.text);
+        return out;
+      }
+      case 'js':
+      case 'mjs':
+      case 'cjs':
+        return espree
+          .parse(src, {
+            ecmaVersion: 'latest',
+            sourceType: lang === 'cjs' ? 'script' : 'module',
+            comment: true,
+          })
+          .comments.filter((c) => c.type !== 'Hashbang')
+          .map((c) => c.value);
+      case 'yml':
+      case 'yaml': {
+        const errors = YAML.parseDocument(src).errors;
+        if (errors.length) throw errors[0];
+        return [...new YAML.Lexer().lex(src)].filter((t) => t.startsWith('#'));
+      }
+      case 'xml':
+        return [...src.matchAll(/<!--([\s\S]*?)-->/g)].map((m) => m[1]);
+      default:
+        return shellComments(src);
+    }
+  } catch (e) {
+    return parseFailure(rel, e);
+  }
+}
+
 /** `{ category: [hits] }` for one file, only the categories with hits. */
-function countVoice(relPath) {
-  const prose = voiceProse(fs.readFileSync(path.join(ROOT_DIR, relPath), 'utf8'));
+function countVoice(relPath, isCode = false) {
+  const text = fs.readFileSync(path.join(ROOT_DIR, relPath), 'utf8');
+  const prose = isCode ? commentProse(extractComments(relPath, text).join('\n')) : voiceProse(text);
   const withoutBold = prose.replace(/\*\*[^*\n]+\*\*/g, '');
   const hits = {};
   for (const rule of VOICE_RULES) {
@@ -268,9 +381,10 @@ const docs = collectDocs(ROOT_DIR);
 const voiceActual = {};
 for (const d of docs) {
   if (!d.voice) continue;
-  const hits = countVoice(d.rel);
+  const hits = countVoice(d.rel, d.code);
   if (Object.keys(hits).length) voiceActual[d.rel] = hits;
 }
+const isCodeFile = (rel) => codeLang(rel) !== null;
 const voiceCounts = (hits) =>
   Object.fromEntries(Object.entries(hits).map(([cat, h]) => [cat, h.length]));
 
@@ -287,6 +401,26 @@ if (INIT_VOICE) {
   writeJson(VOICE_BASELINE_REL, sortKeys(init));
   console.log(
     `doc-citation-ratchet: wrote ${VOICE_BASELINE_REL} for ${Object.keys(init).length} file(s).`,
+  );
+  process.exit(0);
+}
+
+if (INIT_COMMENT) {
+  const existing = readBaseline(VOICE_BASELINE_REL, '');
+  if (Object.keys(existing).some(isCodeFile)) {
+    console.error(
+      `doc-citation-ratchet: ${VOICE_BASELINE_REL} already has code-file entries. ` +
+        `--init-comment-baseline seeds them once; use --lower-voice-baseline to lock in a gain.`,
+    );
+    process.exit(1);
+  }
+  const seeded = { ...existing };
+  for (const [rel, hits] of Object.entries(voiceActual))
+    if (isCodeFile(rel)) seeded[rel] = sortKeys(voiceCounts(hits));
+  writeJson(VOICE_BASELINE_REL, sortKeys(seeded));
+  console.log(
+    `doc-citation-ratchet: seeded ${Object.keys(seeded).length - Object.keys(existing).length} ` +
+      `code file(s) in ${VOICE_BASELINE_REL}.`,
   );
   process.exit(0);
 }
@@ -398,7 +532,8 @@ if (over.length > 0) {
 
 if (voiceOver.length > 0) {
   console.error(
-    `doc-citation-ratchet: ${voiceOver.length} house-voice count(s) went up.\n\n` +
+    `doc-citation-ratchet: ${voiceOver.length} house-voice count(s) went up (docs, or the\n` +
+      `comments of a code file).\n\n` +
       `Reword the new text; never raise the baseline. em-dash: use a period, comma,\n` +
       `colon or parentheses. filler: cut the word. caps-emphasis: restructure the\n` +
       `sentence instead of shouting. prose-arrow: say what happens, or bold the UI\n` +
@@ -407,7 +542,8 @@ if (voiceOver.length > 0) {
   );
   for (const o of voiceOver) {
     const shown = [...new Set(o.samples)].map((x) => `"${x}"`).join(', ');
-    console.error(`  ${o.file}: ${o.category} ${o.count} (allowed ${o.allowed}): ${shown}`);
+    const where = isCodeFile(o.file) ? ' in comments' : '';
+    console.error(`  ${o.file}: ${o.category} ${o.count} (allowed ${o.allowed})${where}: ${shown}`);
   }
   console.error('');
 }
@@ -438,6 +574,6 @@ if (voiceUnder.length > 0) {
 
 console.log(
   `doc-citation-ratchet: OK — ${total} line-number citation(s), ${voiceTotal} house-voice ` +
-    `hit(s) in tracked docs, within the committed baselines.`,
+    `hit(s) in tracked docs and code comments, within the committed baselines.`,
 );
 process.exit(0);

@@ -111,7 +111,7 @@ end function
 ' button row; more (or wider-than-panel labels, e.g. long translations) fall back
 ' to the scrollable list dialog. Either way the selection lands in
 ' result.optionIndex (-1 = cancelled), so callers don't care which route ran.
-' bsc-disable-next-line dead-code keep: api — the pick-one member of the dialog family (#288); no feature has needed it yet
+' bsc-disable-next-line dead-code keep: api: the pick-one member of the dialog family (#288); no feature has needed it yet
 function showChoiceDialog(title as string, message as string, choices as object, onResult = "" as string, defaultIndex = 0 as integer) as object
   if choicesFitAsButtons(choices)
     dialog = createObject("roSGNode", "JRDialog")

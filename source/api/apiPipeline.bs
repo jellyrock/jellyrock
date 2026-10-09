@@ -193,7 +193,7 @@ end function
 '
 ' A late pool response after this writes to an abandoned result node and is
 ' ignored, exactly as fetchRes's timeout path leaves its node behind.
-' bsc-disable-next-line dead-code keep: api — the early-exit half of the pipeline lifecycle; every current orchestrator drains its run
+' bsc-disable-next-line dead-code keep: api: the early-exit half of the pipeline lifecycle; every current orchestrator drains its run
 sub apiPipelineEnd(pipe as dynamic)
   if not isValid(pipe) then return
   for each requestId in pipe.pending

@@ -326,7 +326,7 @@ Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should 
 | `auto-abandon-promises` | ❌ | ❌ | ✅ | |
 | `button-row-bracket` | ❌ | ❌ | ✅ | File-scope only: the rule is about a whole function's shape, so a line-scoped opt-out would have no obvious line to sit on. No live suppression |
 | `auto-destroyed-guard` | ❌ | ❌ | ✅ | Suppresses BOTH the injection and the diagnostic |
-| `dead-code` | ✅ | ✅ | ❌ | **Deliberate.** Every marker must classify the keep — `keep: <kind> — <reason>` — or it is itself an error, and a file-level marker is rejected. XML takes the same text in a `<!-- … -->` comment. A whole deliberate set goes in `bsconfig.json`'s `deadCode.keep`. See [Dead code](#dead-code) |
+| `dead-code` | ✅ | ✅ | ❌ | **Deliberate.** Every marker must classify the keep as `keep: <kind>: <reason>`, or it is itself an error, and a file-level marker is rejected. XML takes the same text in a `<!-- … -->` comment. A whole deliberate set goes in `bsconfig.json`'s `deadCode.keep`. See [Dead code](#dead-code) |
 
 ### Dead code
 
@@ -349,7 +349,7 @@ Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should 
 **Keeping code on purpose.** Unused code stays only as one of six recorded kinds — `design-system` (a deliberate set), `api` (built ahead of its first caller), `planned` (must cite its issue), `platform` (called by the Roku OS by a name the rule does not know), `test-infra` (probe components the suites create by name), `debug-console` (called by a developer from the BrightScript console in a debug build):
 
 ```brightscript
-' bsc-disable-next-line dead-code keep: api — the early-exit half of the pipeline lifecycle
+' bsc-disable-next-line dead-code keep: api: the early-exit half of the pipeline lifecycle
 ```
 
 A whole set goes in `bsconfig.json` → `deadCode.keep` with its files, optional name patterns and reason. A marker without a kind and reason, a `planned` keep without an issue, a file-level marker, a marker on code that is used, and an allowlist entry matching nothing are each a `dead-code-keep` error — a keep that outlived its reason is a silent carve-out. **Code you intend to fix is not a keep**: it waits in the baseline.

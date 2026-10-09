@@ -1952,6 +1952,14 @@ The dead-code rule ([ADR 0047](adr/0047-dead-code-gate.md)) gains a sixth keep k
 
 Ruled out: asking `bsc` which blocks it excluded, which is exact but depends on internals of an alpha `bsc` that nobody has verified expose this; and moving `printTaskThreads()` out of `#if debug`, which ships it to release builds and contradicts `debug-tools.md`. The cost: a `debug-console` marker that drifts off its function inside a `#if` is caught only by a debug build. Revisit if the drift turns out to matter, or once something builds `debug=true` automatically.
 
+## decision-id: voice-gate-covers-code-comments
+
+**date**: 2026-10-09
+**status**: accepted
+**related-files**: `scripts/lint/doc-citation-ratchet.js`, `.doc-voice-baseline.json`, `docs/dev/writing-style.md`, `.github/workflows/_lint-docs.yml`
+
+Code comments follow the house voice, and the voice ratchet enforces the five mechanical categories in them per file, beside the docs in `.doc-voice-baseline.json`. Comments are read by a parser per language so a quote or `//` inside a string never counts; shell has no parser here, so only whole-line `#` comments are read. Ruled out: a guide change with no gate, because a marker with an em dash landed the day the gap was noticed; and counting developer-facing strings too, because a script cannot tell a string that must keep its dash (test data, a parser's accepted separator) from prose. Strings can follow once the comment gate has run for a while.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

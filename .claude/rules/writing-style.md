@@ -1,6 +1,6 @@
 # Write in the house voice
 
-Every doc you write or edit in this repo follows [`docs/dev/writing-style.md`](../../docs/dev/writing-style.md): READMEs, user and dev guides, architecture docs, ADRs, journal entries, PR text, and the agent files themselves (`CLAUDE.md`, skills, rules).
+Every doc you write or edit in this repo follows [`docs/dev/writing-style.md`](../../docs/dev/writing-style.md): READMEs, user and dev guides, architecture docs, ADRs, journal entries, PR text, the agent files themselves (`CLAUDE.md`, skills, rules), and code comments.
 
 **Why:** the docs read as machine-written, with em dashes, stacked qualifiers and paragraph-long sentences. People read every one of these files, including the agent files, which they read to improve them or to do a task by hand. One plain voice makes them all quicker to scan.
 

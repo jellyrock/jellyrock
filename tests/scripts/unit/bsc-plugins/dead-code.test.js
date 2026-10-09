@@ -439,17 +439,26 @@ describe('dead-code — keeping code on purpose', () => {
     expect(diagnosticsByCode(diagnostics, KEEP)).toEqual([]);
   });
 
+  it('honors a keep marker written with a colon between kind and reason', () => {
+    const diagnostics = run({
+      'source/api.bs':
+        "' bsc-disable-next-line dead-code keep: api: first caller lands later\nsub publicApi()\nend sub",
+    });
+    expect(deadNames(diagnostics)).toEqual([]);
+    expect(diagnosticsByCode(diagnostics, KEEP)).toEqual([]);
+  });
+
   it('honors a debug-console keep marker (code only a developer calls from the console)', () => {
     const diagnostics = run({
       'source/dbg.bs':
-        "' bsc-disable-next-line dead-code keep: debug-console — called from the BrightScript console in a debug build\nsub printThings()\nend sub",
+        "' bsc-disable-next-line dead-code keep: debug-console: called from the BrightScript console in a debug build\nsub printThings()\nend sub",
     });
     expect(deadNames(diagnostics)).toEqual([]);
     expect(diagnosticsByCode(diagnostics, KEEP)).toEqual([]);
   });
 
   it('does not report a debug-console marker whose #if block is excluded, but reports one outside any #if', () => {
-    const marker = "' bsc-disable-next-line dead-code keep: debug-console — console only\n";
+    const marker = "' bsc-disable-next-line dead-code keep: debug-console: console only\n";
     const excluded = run({
       'source/dbg.bs': `#if debug\n${marker}sub printThings()\nend sub\n#end if`,
     });

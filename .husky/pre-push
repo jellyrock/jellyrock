@@ -24,9 +24,9 @@
 #   9. npm run lint:docs          — ALWAYS. Validates related-files: paths and
 #                                    markdown links across every doc + CLAUDE.md.
 #                                    Cross-doc check; not file-scopable.
-#  9'. npm run lint:doc-citations — ALWAYS (about 0.1s). Per-file ratchets on
+#  9'. npm run lint:doc-citations: always (about a second). Per-file ratchets on
 #                                    line-number citations and the house voice
-#                                    (docs/dev/writing-style.md).
+#                                    in docs and code comments (docs/dev/writing-style.md).
 #  9a. npm run lint:markdown      — when any *.md changed. markdownlint style
 #                                    (MD022 blanks-around-headings, etc.). Backstop
 #                                    for the pre-commit auto-fix, which git skips on

@@ -90,8 +90,8 @@
  *                  debug build; nothing in the app calls it
  * One declaration is kept with a marker on the line above it (or on its own
  * line), stating the kind and the reason:
- *     ' bsc-disable-next-line dead-code keep: api — first caller lands with #288
- *     <!-- bsc-disable-next-line dead-code keep: planned — #1070 theme media -->
+ *     ' bsc-disable-next-line dead-code keep: api: first caller lands with #288
+ *     <!-- bsc-disable-next-line dead-code keep: planned: #1070 theme media -->
  * A whole set is kept by an entry in bsconfig.json's `deadCode.keep`:
  *     { "kind": "design-system", "files": ["components/ui/label/colors/**"],
  *       "names": ["*"], "reason": "…" }
@@ -1306,8 +1306,8 @@ function deadMessage(d, ctx, rootDir) {
     : deadHint(d, ctx, rootDir);
   const marker =
     d.kind === 'component' || d.kind === 'field' || d.kind === 'interfaceFunction'
-      ? '<!-- bsc-disable-next-line dead-code keep: <kind> — <reason> -->'
-      : "' bsc-disable-next-line dead-code keep: <kind> — <reason>";
+      ? '<!-- bsc-disable-next-line dead-code keep: <kind>: <reason> -->'
+      : "' bsc-disable-next-line dead-code keep: <kind>: <reason>";
   return (
     `The ${what} has no consumer in the app: no call, reference, string, XML attribute or packaged JSON that the app runs reaches it.${via} ` +
     `Delete it — or, if it is kept on purpose, say so above it: ${marker} (kinds: ${KEEP_KINDS.join(', ')}; a planned keep cites its issue). ` +
@@ -1388,7 +1388,7 @@ function reportKeepProblems({
       } else if (!marker.valid) {
         register({
           code: KEEP_CODE,
-          message: `This dead-code marker does not count: ${marker.problem}. Write it as "bsc-disable-next-line dead-code keep: <kind> — <reason>" (kinds: ${KEEP_KINDS.join(', ')}; a planned keep cites its issue).`,
+          message: `This dead-code marker does not count: ${marker.problem}. Write it as "bsc-disable-next-line dead-code keep: <kind>: <reason>" (kinds: ${KEEP_KINDS.join(', ')}; a planned keep cites its issue).`,
           location,
         });
       } else if (liveness(d, ctx).live) {
