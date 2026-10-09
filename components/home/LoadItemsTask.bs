@@ -1,7 +1,9 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/items.bs"
+import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
@@ -41,12 +43,23 @@ sub loadItems()
     userSettings = globalUser.settings
     params = buildHomeNextUpParams(m.global.server.version, userSettings.uiDetailsEnableRewatchingNextUp, userSettings.uiDetailsMaxDaysNextUp, CreateObject("roDateTime").AsSeconds())
 
+    ' Only a server not asked to drop unstarted series needs the client to (and to pay for
+    ' its lookups). The played-specials lookup does not need Next Up's answer, so it is sent
+    ' first and its wait overlaps Next Up's. Not sent while the pool is still coming up, and
+    ' the filter then goes without it (keepStartedSeries).
+    needsStartedFilter = nextUpNeedsStartedFilter(params)
+    specialsPort = CreateObject("roMessagePort")
+    specialsReq = invalid
+    if needsStartedFilter then specialsReq = submitApiRequest(GetApi().BuildGetItemsByQueryRequest(playedSpecialsQuery()), "nextUpPlayedSpecials", specialsPort)
     items = fetchRowItems(GetApi().BuildGetNextUpRequest(params), "nextUp")
     status = statusOf(items)
     if isValid(items)
+      if needsStartedFilter then items = keepStartedSeries(items, specialsReq, specialsPort)
       for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
+    else
+      dropApiRequest(specialsReq)
     end if
 
     ' Load Continue Watching
@@ -187,17 +200,7 @@ sub loadItems()
       ' No resumable episode — fall back to next unstarted episode, but only once a regular
       ' episode has been watched: a Resume button must never appear for an unwatched series.
       ' Checked here because Next Up's DisableFirstEpisode is ignored from Jellyfin 10.11 (#925).
-      playedData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-        ParentId: m.top.itemId,
-        Recursive: true,
-        IncludeItemTypes: "Episode",
-        IsPlayed: true,
-        SortBy: "ParentIndexNumber,IndexNumber",
-        SortOrder: "Descending",
-        Limit: 1,
-        EnableTotalRecordCount: false,
-        EnableImages: false
-      }), "seriesPlayed")
+      playedData = fetchJson(GetApi().BuildGetItemsByQueryRequest(watchedRegularEpisodeQuery(m.top.itemId)), "seriesPlayed")
       if hasWatchedRegularEpisode(playedData)
         nextUpData = fetchJson(GetApi().BuildGetNextUpRequest({ SeriesId: m.top.itemId, Limit: 1, Fields: "PrimaryImageAspectRatio" }), "seriesNextUp")
         if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
@@ -267,6 +270,54 @@ function fetchRowItems(req as dynamic, requestId as string) as dynamic
     return invalid
   end if
   return items
+end function
+
+' Drops the Next Up items whose series has no watched regular episode (classifyNextUpSeries).
+'
+' The played-specials lookup was sent alongside Next Up (specialsReq). Its answer splits the
+' series (planNextUpSeriesLookups), so the count lookups and the exact per-series checks go out
+' together and only one round of requests waits after Next Up's. The Next Up fetch before this
+' blocked on the pool, so the pool is up for apiPipeline.
+'
+' The whole filter gets one request's wait (timeouts.API_WAIT_MS), shared by collecting the
+' specials and the round, so a slow server holds the row back by that much at most. A lookup
+' with no answer, including the specials when they could not be sent early, keeps the items it
+' would have judged.
+function keepStartedSeries(items as object, specialsReq as dynamic, specialsPort as object) as object
+  seriesIds = nextUpSeriesIds(items)
+  if seriesIds.count() = 0
+    dropApiRequest(specialsReq)
+    return items
+  end if
+
+  clock = CreateObject("roTimespan")
+  found = newNextUpLookups()
+  playedSpecials = invalid
+  res = collectApiRequest(specialsReq, specialsPort, timeouts.API_WAIT_MS)
+  if isValid(res) and res.ok then playedSpecials = apiResponse.listFrom(res.json)
+  if not isValid(playedSpecials) then found.unanswered++
+
+  api = GetApi()
+  entries = nextUpLookupQueries(planNextUpSeriesLookups(seriesIds, playedSpecials))
+  for each entry in entries
+    entry.req = api.BuildGetItemsByQueryRequest(entry.query)
+  end for
+  pipe = apiPipelineBegin(entries, timeouts.API_WAIT_MS - clock.TotalMilliseconds())
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    foldNextUpLookup(found, result.entry, result.res)
+    result = apiPipelineNext(pipe)
+  end while
+
+  starts = classifyNextUpSeries(found.seriesItems)
+  starts.append(found.starts)
+  kept = keepStartedSeriesItems(items, starts)
+
+  specialsCount = -1
+  if isValid(playedSpecials) then specialsCount = playedSpecials.count()
+  if found.unanswered > 0 then m.log.warn("Next Up kept series it could not check", "unanswered lookups", found.unanswered)
+  m.log.debug("Next Up started-series filter", "dropped", items.count() - kept.count(), "series", seriesIds.count(), "played specials", specialsCount, "ms", clock.TotalMilliseconds())
+  return kept
 end function
 
 ' `status` for a Home row load from what fetchRowItems returned.

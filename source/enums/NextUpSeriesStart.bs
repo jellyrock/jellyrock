@@ -1,0 +1,5 @@
+' Whether a series in Home's Next Up has a watched regular episode — see classifyNextUpSeries().
+enum NextUpSeriesStart
+  STARTED = "started"
+  NOT_STARTED = "notStarted"
+end enum

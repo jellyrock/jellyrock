@@ -1,6 +1,9 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiIds.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/enums/NextUpSeriesStart.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
@@ -445,9 +448,10 @@ end function
 ' copy because Next Up's disableFirstEpisode param, which used to apply that rule for us, is
 ' ignored from Jellyfin 10.11 and removed in 12.0 (#925).
 '
-' The REST API has no "not equals" filter, so the caller fetches played episodes sorted
-' ParentIndexNumber,IndexNumber descending with Limit 1: specials (season 0) sort below
-' every regular season, so a special on top means no regular episode was watched.
+' The REST API has no "not equals" filter, so the caller fetches watchedRegularEpisodeQuery():
+' played episodes sorted ParentIndexNumber,IndexNumber descending with Limit 1. Specials
+' (season 0) sort below every regular season, so a special on top means no regular episode
+' was watched.
 '
 ' @param {dynamic} playedEpisodes - Items query result: { Items: [BaseItemDto] } or invalid
 ' @returns {boolean} - true if the top played episode is not a special
@@ -456,6 +460,203 @@ function hasWatchedRegularEpisode(playedEpisodes as dynamic) as boolean
   seasonNumber = playedEpisodes.Items[0].ParentIndexNumber
   if not isValid(seasonNumber) then return true
   return seasonNumber <> 0
+end function
+
+' watchedRegularEpisodeQuery: Items query params whose result hasWatchedRegularEpisode() reads.
+'
+' @param {string} seriesId - The series to check
+' @returns {object} - Params for BuildGetItemsByQueryRequest
+function watchedRegularEpisodeQuery(seriesId as string) as object
+  return {
+    ParentId: seriesId,
+    Recursive: true,
+    IncludeItemTypes: "Episode",
+    IsPlayed: true,
+    SortBy: "ParentIndexNumber,IndexNumber",
+    SortOrder: "Descending",
+    Limit: 1,
+    EnableTotalRecordCount: false,
+    EnableImages: false
+  }
+end function
+
+' nextUpSeriesIds: The series behind a Next Up response's items, each once, in response order.
+'
+' @param {dynamic} items - Next Up items: [BaseItemDto] or invalid
+' @returns {object} - Array of SeriesId strings
+function nextUpSeriesIds(items as dynamic) as object
+  ids = []
+  if not isValidAndNotEmpty(items) then return ids
+  seen = {}
+  for each item in items
+    seriesId = item.SeriesId
+    if isValidAndNotEmpty(seriesId) and not seen.DoesExist(seriesId)
+      seen[seriesId] = true
+      ids.push(seriesId)
+    end if
+  end for
+  return ids
+end function
+
+' playedSpecialsQuery: Items query params for every played special (season 0) in the library.
+'
+' Next Up's started-series filter reads it (planNextUpSeriesLookups). It does not depend on the
+' Next Up response, so it can be sent alongside it.
+'
+' @returns {object} - Params for BuildGetItemsByQueryRequest
+function playedSpecialsQuery() as object
+  return {
+    Recursive: true,
+    IncludeItemTypes: "Episode",
+    IsPlayed: true,
+    ParentIndexNumber: 0,
+    EnableImages: false,
+    EnableUserData: false,
+    EnableTotalRecordCount: false
+  }
+end function
+
+' planNextUpSeriesLookups: Splits Next Up's series between the two ways of deciding them.
+'
+' A series with a played special goes to the exact per-series check (hasWatchedRegularEpisode),
+' because its counts include that special. Every other series is decided by the batched count
+' lookup (classifyNextUpSeries). With no answer for the specials, every series is counted.
+'
+' @param {object} seriesIds - nextUpSeriesIds() result
+' @param {dynamic} playedSpecials - playedSpecialsQuery() items: [BaseItemDto] or invalid
+' @returns {object} - { counted: [SeriesId], exact: [SeriesId] }
+function planNextUpSeriesLookups(seriesIds as object, playedSpecials as dynamic) as object
+  hasPlayedSpecial = {}
+  if isValid(playedSpecials)
+    for each special in playedSpecials
+      if isValidAndNotEmpty(special.SeriesId) then hasPlayedSpecial[special.SeriesId] = true
+    end for
+  end if
+
+  plan = { counted: [], exact: [] }
+  for each seriesId in seriesIds
+    if hasPlayedSpecial.DoesExist(seriesId)
+      plan.exact.push(seriesId)
+    else
+      plan.counted.push(seriesId)
+    end if
+  end for
+  return plan
+end function
+
+' classifyNextUpSeries: Whether each Next Up series has a watched regular episode.
+'
+' From 10.11 the server offers a series' first episode once ANY of its episodes was started,
+' even with none finished: jellyfin/jellyfin#13687 dropped the filter that 10.10 applied with
+' DisableFirstEpisode (#973). The rule that filter applied is hasWatchedRegularEpisode()'s,
+' and this decides it from batched lookups instead of one request per series.
+'
+' It reads the series' own counts (Fields=RecursiveItemCount): nothing played means
+' NOT_STARTED, anything played means STARTED. Both counts skip folders and missing episodes, so
+' they are equal exactly when nothing is played. The counts include specials, which is why
+' planNextUpSeriesLookups() sends a series with a played special to its own exact check
+' instead. When the specials lookup got no answer, a series whose only played episode is a
+' special counts as STARTED: an unanswered lookup never removes an episode from the row.
+'
+' A series missing from the lookup, or without its counts, is left out.
+'
+' @param {object} seriesItems - Series lookup items: [BaseItemDto]
+' @returns {object} - AA of SeriesId -> NextUpSeriesStart value
+function classifyNextUpSeries(seriesItems as object) as object
+  starts = {}
+  for each series in seriesItems
+    total = series.RecursiveItemCount
+    unplayed = invalid
+    if isValid(series.UserData) then unplayed = series.UserData.UnplayedItemCount
+    if isValidAndNotEmpty(series.Id) and isValid(total) and isValid(unplayed)
+      if unplayed >= total
+        starts[series.Id] = NextUpSeriesStart.NOT_STARTED
+      else
+        starts[series.Id] = NextUpSeriesStart.STARTED
+      end if
+    end if
+  end for
+  return starts
+end function
+
+' nextUpLookupQueries: The lookups that decide the series in a plan, as pipeline entries.
+'
+' The counted series go out apiIds.PER_REQUEST to a request, so a long Next Up row cannot push
+' a request line past what a server or proxy accepts. Each exact series gets its own
+' watchedRegularEpisodeQuery(). Each entry carries `query` for BuildGetItemsByQueryRequest,
+' and `lookup` (with `seriesId` for a check) for foldNextUpLookup().
+'
+' @param {object} plan - planNextUpSeriesLookups() result
+' @returns {object} - Array of { requestId, query, lookup, seriesId? }
+function nextUpLookupQueries(plan as object) as object
+  entries = []
+  chunkIndex = 0
+  for each chunk in apiIds.chunks(plan.counted)
+    entries.push({
+      requestId: "nextUpSeries-" + chunkIndex.toStr(),
+      query: { Ids: chunk.join(","), Fields: "RecursiveItemCount", EnableImages: false, EnableTotalRecordCount: false },
+      lookup: "series"
+    })
+    chunkIndex++
+  end for
+  for each seriesId in plan.exact
+    entries.push({
+      requestId: "nextUpSeriesPlayed-" + seriesId,
+      query: watchedRegularEpisodeQuery(seriesId),
+      lookup: "check",
+      seriesId: seriesId
+    })
+  end for
+  return entries
+end function
+
+' newNextUpLookups: An empty tally for foldNextUpLookup().
+'
+' @returns {object} - { seriesItems: [BaseItemDto], starts: AA of SeriesId -> NextUpSeriesStart, unanswered: integer }
+function newNextUpLookups() as object
+  return { seriesItems: [], starts: {}, unanswered: 0 }
+end function
+
+' foldNextUpLookup: Adds one nextUpLookupQueries() answer to the tally.
+'
+' Series counts collect in `seriesItems` for classifyNextUpSeries(). A check decides its series
+' in `starts` directly. A lookup with no answer, an error, or a body that is not a list only
+' adds to `unanswered`, so its series stay undecided and keep their items.
+'
+' @param {object} found - newNextUpLookups() tally, updated in place
+' @param {object} entry - The nextUpLookupQueries() entry the answer belongs to
+' @param {dynamic} res - The pool response AA, or invalid when it never answered
+sub foldNextUpLookup(found as object, entry as object, res as dynamic)
+  if not isValid(res) or not res.ok
+    found.unanswered++
+    return
+  end if
+
+  answered = apiResponse.listFrom(res.json)
+  if not isValid(answered)
+    found.unanswered++
+  else if entry.lookup = "series"
+    found.seriesItems.append(answered)
+  else if hasWatchedRegularEpisode(res.json)
+    found.starts[entry.seriesId] = NextUpSeriesStart.STARTED
+  else
+    found.starts[entry.seriesId] = NextUpSeriesStart.NOT_STARTED
+  end if
+end sub
+
+' keepStartedSeriesItems: Drops the Next Up items whose series is NOT_STARTED, keeping order.
+'
+' @param {object} items - Next Up items: [BaseItemDto]
+' @param {object} starts - AA of SeriesId -> NextUpSeriesStart
+' @returns {object} - The kept items
+function keepStartedSeriesItems(items as object, starts as object) as object
+  kept = []
+  for each item in items
+    if not (isValid(item.SeriesId) and starts[item.SeriesId] = NextUpSeriesStart.NOT_STARTED)
+      kept.push(item)
+    end if
+  end for
+  return kept
 end function
 
 ' honorsDisableFirstEpisode: Whether a server acts on Next Up's DisableFirstEpisode parameter.
@@ -471,6 +672,20 @@ function honorsDisableFirstEpisode(serverVersion as string) as boolean
   return not versionChecker(serverVersion, "10.11.0")
 end function
 
+' nextUpNeedsStartedFilter: Whether Home's Next Up row must drop unstarted series itself.
+'
+' True unless the request asks the server to drop them, so only servers that leave them in
+' pay for the client's lookups (LoadItemsTask.keepStartedSeries). A server-side filter Jellyfin
+' adds later is a version-gated parameter that buildHomeNextUpParams sends, and is recognized
+' here next to DisableFirstEpisode.
+'
+' @param {object} params - buildHomeNextUpParams() result
+' @returns {boolean} - true when the client has to filter
+function nextUpNeedsStartedFilter(params as object) as boolean
+  serverFilters = params.DisableFirstEpisode
+  return not (isValid(serverFilters) and serverFilters = true)
+end function
+
 ' buildHomeNextUpParams: Query parameters for the Home Next Up row.
 '
 ' On 10.7–10.10, a user with no watch history inside the cutoff gets the first episode of
@@ -478,9 +693,11 @@ end function
 ' on 10.8–10.10 it also makes the server ignore NextUpDateCutoff. So it is sent only where
 ' it costs nothing: always on 10.7 (which has no cutoff), and on 10.8–10.10 only when Max
 ' Days is off. With Max Days on, those servers keep the cutoff and still add first episodes.
-' From 10.11 the server returns watch history only, so the parameter is not sent.
-' So a user with no history gets no Next Up row, except on 10.8–10.10 with Max Days on. That
-' is intended, and differs from jellyfin-web 10.10, which asks for the first episodes.
+' From 10.11 the parameter does nothing, and the server adds the first episode of every series
+' with an episode started but none finished. Wherever the parameter is not sent, LoadItemsTask
+' drops those itself (nextUpNeedsStartedFilter), so every version shows the same row and a
+' user with no finished episode gets no Next Up row. That is intended, and differs from
+' jellyfin-web, which shows those first episodes.
 '
 ' @param {string} serverVersion - Server version string, e.g. "10.10.7"
 ' @param {boolean} enableRewatching - uiDetailsEnableRewatchingNextUp

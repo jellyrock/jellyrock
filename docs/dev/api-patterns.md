@@ -9,7 +9,7 @@ related-files:
   - components/api/ApiTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
-last-reviewed: 2026-09-16
+last-reviewed: 2026-10-08
 ---
 
 # API Request Patterns
@@ -65,6 +65,8 @@ m.myTask.control = "RUN"
 **Use when**: Multiple sequential/conditional API calls, data transformation (`JellyfinDataTransformer`), or large array processing.
 
 Examples: `LoadItemsTask`, `SearchTask`, `QuickPlayTask`
+
+**One request that doesn't need an earlier one's answer** can go out first, so the two waits overlap instead of adding up. Send it with `submitApiRequest(req, id, port)`, do the blocking `fetchRes()`, then collect it with `collectApiRequest(node, port)`. A caller with its own deadline passes the most it will wait as a third argument. If you end up not needing the answer, call `dropApiRequest(node)`, which releases it so the pool can skip it. `LoadItemsTask.keepStartedSeries` is the reference.
 
 ### Pattern 3: `SubmitSideEffect` (fire-and-forget writes)
 
@@ -132,8 +134,9 @@ Example: `LoadLatestRowsTask`
 
 | File | Purpose |
 | ------ | ------- |
-| `source/api/apiPool.bs` | `fetchRes()`, `fetchJson()`, `submitApiRequest()`, `SubmitSideEffect()` |
+| `source/api/apiPool.bs` | `fetchRes()`, `fetchJson()`, `submitApiRequest()`, `collectApiRequest()`, `dropApiRequest()`, `SubmitSideEffect()` |
 | `source/api/apiPipeline.bs` | `apiPipelineBegin()` / `apiPipelineNext()` — N independent requests on one Task thread |
+| `source/api/apiIds.bs` | `apiIds.chunks()`: splits a lookup's `Ids=` list so each request line stays short |
 | `source/api/ApiClient.bs` | `Build*Request()` methods that create request AAs |
 | `components/api/ApiQueueTask.bs` | FIFO coordinator for the pool |
 | `components/api/ApiTask.bs` | Pool worker that executes HTTP requests |

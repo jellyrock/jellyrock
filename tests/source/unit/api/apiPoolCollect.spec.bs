@@ -1,0 +1,67 @@
+import "pkg:/source/api/apiPool.bs"
+
+namespace tests
+
+  @suite("apiPool.bs - collectApiRequest()")
+  class ApiPoolCollectTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("collectApiRequest()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid for a request that was not sent")
+    function _()
+      m.assertInvalid(collectApiRequest(invalid, CreateObject("roMessagePort")))
+    end function
+
+    @it("returns the response of a request that already answered, without waiting")
+    function _()
+      port = CreateObject("roMessagePort")
+      node = CreateObject("roSGNode", "ApiResultNode")
+      node.request = { method: "GET", url: "http://example.invalid/items" }
+      node.observeField("isDone", port)
+      node.result = { ok: true, statusCode: 200, json: { Items: [] } }
+      node.isDone = true
+
+      res = collectApiRequest(node, port)
+
+      m.assertEqual(res.statusCode, 200)
+      m.assertTrue(res.ok)
+    end function
+
+    @it("gives up at the caller's limit and abandons the request")
+    @params(1)
+    @params(0)
+    function _(maxWaitMs)
+      port = CreateObject("roMessagePort")
+      node = CreateObject("roSGNode", "ApiResultNode")
+      node.request = { method: "GET", url: "http://example.invalid/items" }
+      node.observeField("isDone", port)
+
+      res = collectApiRequest(node, port, maxWaitMs)
+
+      m.assertInvalid(res)
+      m.assertTrue(node.abandoned)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("dropApiRequest()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("abandons a sent request so the pool can skip it")
+    function _()
+      node = CreateObject("roSGNode", "ApiResultNode")
+      node.observeField("isDone", CreateObject("roMessagePort"))
+      dropApiRequest(node)
+      m.assertTrue(node.abandoned)
+    end function
+
+    @it("is a no-op for a request that was not sent")
+    function _()
+      dropApiRequest(invalid)
+      m.assertTrue(true)
+    end function
+
+  end class
+
+end namespace
