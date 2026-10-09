@@ -567,7 +567,7 @@ end function
   '
   ' Callable from a paused console the same way as the debug flags:
   '   printTaskThreads()
-  ' bsc-disable-next-line dead-code keep: debug-console — called from the BrightScript console, nothing in the app calls it
+  ' bsc-disable-next-line dead-code keep: debug-console: called from the BrightScript console, nothing in the app calls it
   sub printTaskThreads()
     ledger = []
     if isValid(m.global) and isValid(m.global.taskLedger) then ledger = m.global.taskLedger
