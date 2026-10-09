@@ -702,13 +702,6 @@
   "docs/dev/scripts-development.md": {
     "filler": 1
   },
-  "docs/dev/translations.md": {
-    "caps-emphasis": 1,
-    "em-dash": 10,
-    "filler": 2,
-    "latin-abbrev": 3,
-    "prose-arrow": 11
-  },
   "docs/dev/unit-tests.md": {
     "caps-emphasis": 5,
     "em-dash": 2,
