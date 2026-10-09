@@ -681,10 +681,6 @@
     "latin-abbrev": 3,
     "prose-arrow": 5
   },
-  "docs/dev/logging.md": {
-    "em-dash": 6,
-    "prose-arrow": 1
-  },
   "docs/dev/measuring-performance.md": {
     "caps-emphasis": 15,
     "em-dash": 225,

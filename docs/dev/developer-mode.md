@@ -4,29 +4,29 @@ related-files: []  # external Roku setup; no in-repo dependencies
 last-reviewed: 2026-05-01
 ---
 
-# Developer Mode for Roku Devices
+# Developer mode for Roku devices
 
-Developer mode allows you to install (sideload) and test custom apps (called "channels") on your Roku device.
+Developer mode lets you install (sideload) and test your own apps, which Roku calls "channels", on your Roku.
 
-## What You'll Need
+## What you need
 
-- A Roku account <https://my.roku.com>
-- A Roku device linked to your Roku account and connected to the internet
-- Enroll in the Developer Program <https://developer.roku.com>
+- A Roku account (<https://my.roku.com>).
+- A Roku linked to your Roku account and connected to the internet.
+- An account in the Roku Developer Program (<https://developer.roku.com>).
 
-## Enable Developer Mode
+## Turn on developer mode
 
-1. Press `🏠home` to exit out of any running application.
+1. Press `🏠home` to leave any running app.
 
-2. Press these buttons in order to open the secret menu.
+2. Press these buttons in order to open the hidden menu:
 
     `🏠home` `🏠home` `🏠home` `⬆️up` `⬆️up` `➡️right` `⬅️left` `➡️right` `⬅️left` `➡️right`
 
-3. Enable installer.
+3. Turn on the installer.
 
     <img src="images/developer-mode-install.png" width="400" alt="Developer Mode Install Screen" />
 
-4. Acknowledge security risk.
+4. Accept the security warning.
 
     <img src="images/developer-mode-security.png" width="400" alt="Developer Mode Security Warning" />
 
@@ -34,20 +34,20 @@ Developer mode allows you to install (sideload) and test custom apps (called "ch
 
     <img src="images/developer-mode-license-agreement.png" width="400" alt="Developer Mode License Agreement" />
 
-6. Create a password and **save it somewhere safe**. This password protects your device from unauthorized access to development features.
+6. Create a password and **keep it somewhere safe**. It stops others from using the development features on your Roku.
 
     <img src="images/developer-mode-webserver-password.png" width="400" alt="Developer Mode Webserver Password" />
 
 ## Troubleshooting
 
-### Button sequence not working
+### The button sequence does nothing
 
-Make sure you're on the Roku home page, verify you're pressing the buttons in the exact order shown, and try pointing the remote directly at your Roku device.
+Start from the Roku home screen and press the buttons in exactly the order shown. Point the remote straight at your Roku.
 
 ### I forgot my password
 
-Repeat the [Developer Mode](#enable-developer-mode) instructions to disable Developer Mode and start over with a new password.
+Follow [Turn on developer mode](#turn-on-developer-mode) again to turn developer mode off, then start over with a new password.
 
-### I forgot my device IP
+### I don't know my Roku's IP address
 
-On your Roku device, navigate to `Settings` > `Network` > `About`.
+On your Roku, go to **Settings → Network → About**.

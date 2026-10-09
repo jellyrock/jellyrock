@@ -7,52 +7,38 @@ related-files:
 last-reviewed: 2026-08-02
 ---
 
-# Logging Guide (roku-log)
+# Logging guide (roku-log)
 
-JellyRock uses roku-log for structured, flexible logging. Follow these steps to set up and use logging effectively.
+JellyRock logs through roku-log. To log from your code, import the mixin, create a logger, and call it at the right level. How the logging system works inside is in [architecture/logging.md](../architecture/logging.md).
 
-## 1. Initialization — already done; don't add your own call
+## 1. The log manager is already set up
 
-`JRScene.bs:init()` initializes the log manager for the whole app, and it must stay the **only**
-call. **Do not add `log.initializeLogManager` to your component** — `npm run lint:log-manager-init`
-fails the build if you do. A second call is at best a no-op (`addFields` ignores an existing field)
-and at worst a silent break, and the failure mode is invisible: a component built before the manager
-exists logs nothing, forever, at any level. Full mechanism in
-[architecture/logging.md](../architecture/logging.md).
+`JRScene.init()` sets up the log manager for the whole app, and it must stay the only place that does. Don't add `log.initializeLogManager` to your component: `npm run lint:log-manager-init` fails the build if you do. A second call does nothing at best (`addFields` ignores a field that exists). At worst it breaks logging without any sign: a component built before the manager exists logs nothing, at any level, for the rest of the run.
 
-**`JRScene.init()` is as early as the manager can possibly exist** — it's a platform constraint,
-not a style choice. `log_Log`'s own init creates a `Timer`, and Timer creation fails on the main
-thread before `m.screen.show()`. So there is a bootstrap window (everything in `setGlobals()`, plus
-`main.bs` up to `show()`) where **no logger works**. Use `print` there, as `main.bs` does. Details
-and the device measurements are in [architecture/logging.md](../architecture/logging.md).
+`JRScene.init()` is the earliest point the manager can exist, because of a platform limit. `log_Log` creates a `Timer` when it starts, and the main thread can't create a `Timer` before `m.screen.show()`. So no logger works during startup: everything in `setGlobals()`, and `main.bs` up to `show()`. Use `print` in `source/main.bs`. In `source/utils/globals.bs`, `print` is allowed only inside its `#if debug` block. The details and device measurements are in [architecture/logging.md](../architecture/logging.md).
 
-For reference, the arguments the manager takes:
+The manager takes these settings:
 
-- **Transports**: one or more of
+- **Transports**, one or more of:
   - `log_PrintTransport` (telnet output)
-  - `log_ScreenTransport` (overlay screen)
+  - `log_ScreenTransport` (on-screen overlay)
   - `log_NodeTransport` (RALE node)
   - `log_HTTPTransport` (HTTP endpoint)
-- **Log Level**: `0`=error, `1`=warn, `2`=info, `3`=verbose, `4`=debug. A call emits when its
-  level number is `<=` the configured level, so the app's prod default of `2` emits error, warn
-  and info, and suppresses only verbose and debug.
+- **Log level**: `0` error, `1` warn, `2` info, `3` verbose, `4` debug. A call is written when its level number is at most the configured level. The app's default of `2` writes error, warn and info, and drops verbose and debug.
 
-One gotcha the level alone doesn't tell you: **prod builds strip every `m.log.*` call site** at
-transpile (`bsconfig-prod.json` → `rokuLog.strip`, applied by the `roku-log` BSC plugin), so a
-prod build emits nothing regardless of level. If a log line you expect is missing, check whether
-you're on a prod build before you go hunting for a level or a filter.
+**Production builds remove every `m.log.*` call** when they compile (`rokuLog.strip` in `bsconfig-prod.json`, applied by the `roku-log` BrighterScript plugin). A production build logs nothing, whatever the level. If a log line you expect is missing, check whether you're on a production build before you look at levels or filters.
 
-## 2. Import the Logging Mixin
+## 2. Import the logging mixin
 
-In every `.bs` file that uses logging, import the mixin:
+Import the mixin in every `.bs` file that logs:
 
 ```brighterscript
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 ```
 
-## 3. Register a Logger in Each Component/Class
+## 3. Create a logger in each component or class
 
-In your component's `init()` method:
+In a component's `init()`:
 
 ```brighterscript
 sub init()
@@ -60,7 +46,7 @@ sub init()
 end sub
 ```
 
-Or your class's `new()` method:
+In a class's `new()`:
 
 ```brighterscript
 class AnalyticsManager
@@ -70,29 +56,27 @@ class AnalyticsManager
 end class
 ```
 
-## 4. Logging Methods
+## 4. Pick the level
 
-Use these methods for structured logging:
+| Method | Use it for | Examples |
+| --- | --- | --- |
+| `m.log.error` | Crashes and critical failures | Sign-in fails, the server can't be reached, a video won't play |
+| `m.log.warn` | Problems with a fallback | Missing data (using defaults), retries, deprecated calls |
+| `m.log.info` | Important user events | Major app state changes, video start and stop, successful sign-in |
+| `m.log.verbose` | Detailed operations | Function entry and exit, API calls, data processing |
+| `m.log.debug` | Variable values and logic | Loop contents, which branch ran, object dumps |
 
-| Level | Use For | Examples |
-| ------- | --------- | ---------- |
-| `m.log.error` | **Crashes & Critical Failures** | Auth failure, server unreachable, video won't play |
-| `m.log.warn` | **Issues with Fallbacks** | Missing data (using defaults), retry attempts, deprecated usage |
-| `m.log.info` | **Important User Events** | Major app state changes, video start/stop, login success, etc. |
-| `m.log.verbose` | **Detailed Operations** | function entry/exit, API calls, data processing |
-| `m.log.debug` | **Variable Values & Logic** | Loop contents, conditional branches, object dumps |
-
-All accept a message and up to 9 values:
+Each method takes a message and up to 9 values:
 
 ```brighterscript
 m.log.info("Received data", json.result, "http call", m.top.uri)
 ```
 
-No need to convert values to strings—roku-log handles this.
+roku-log converts the values to text, so you don't have to.
 
-## 5. Indentation for Readable Logs
+## 5. Indent related lines
 
-Use indentation helpers to group related log entries:
+Indent related log lines to group them:
 
 ```brighterscript
 m.log.increaseIndent("Fetching user data")
@@ -101,22 +85,16 @@ m.log.decreaseIndent()
 m.log.resetIndent()
 ```
 
-- `increaseIndent([title])`: Optional title for context
-- `decreaseIndent()`: Step out one level
-- `resetIndent()`: Clear all indentation
+- `increaseIndent([title])`: indents one level, with an optional title.
+- `decreaseIndent()`: goes back one level.
+- `resetIndent()`: removes all indentation.
 
-## Best Practices
+## Rules
 
-- **Don't initialize the manager yourself** — `JRScene.init()` owns it, and `lint:log-manager-init`
-  enforces that. A second call is either a no-op or, if it lands earlier, a silent break.
-- **Don't create a `log.Logger` in anything constructed before the scene exists** (`setGlobals()`,
-  early `main.bs`). It will cache `invalid` and no-op forever. Use `print`.
+- **Don't set up the log manager yourself.** `JRScene.init()` owns it, and `lint:log-manager-init` enforces that.
+- **Don't create a `log.Logger` in anything built before the scene exists** (`setGlobals()`, early `main.bs`). It stores `invalid` and never logs. Use `print` where it is allowed.
 - **Import the mixin** in every file that logs.
-- **Create a logger per component/class** for clear log sources.
-- **Use appropriate log levels** for filtering.
-- **Group related actions** with indentation for easier tracing.
-- **Never use print statements outside of `source/main.bs`**; always use `m.log.*`. (Enforced by the `print-locations` BSC plugin — see [build-and-tooling.md](../architecture/build-and-tooling.md).)
-
----
-
-This guide covers all essential steps and best practices for using roku-log in JellyRock.
+- **Create one logger per component or class**, so each line shows where it came from.
+- **Pick the level by the table above**, so filtering works.
+- **Group related lines** with indentation, so a sequence is easy to follow.
+- **Use `m.log.*`, not `print`.** `print` is allowed only in `source/main.bs` and in the `#if debug` block of `source/utils/globals.bs`. The `print-locations` BrighterScript plugin enforces this (see [build-and-tooling.md](../architecture/build-and-tooling.md)).
