@@ -25,157 +25,58 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-10-02
+last-reviewed: 2026-10-09
 ---
 
 # RTA functional tests (`tests/rta/`)
 
-On-device functional tests driven by **`roku-test-automation` (RTA)**: a Node process
-drives a real Roku from the dev machine via ECP (key presses) + ODC (Scene Graph
-queries), navigates to each screen, and asserts it loaded. The same library powers
-the store-screenshot generator, so a screen is defined once and reused for both.
+How to run, read and extend the on-device functional tests. A Node process drives a real Roku from outside through `roku-test-automation` (RTA): ECP for key presses, ODC for Scene Graph queries. It opens each screen and asserts it loaded. The store screenshots come from the same screen definitions, so a screen is defined once for both.
 
-This is a different paradigm from the Rooibos unit/integration tests
-([unit-tests.md](unit-tests.md)): Rooibos is BrightScript compiled **into** the app
-and asserts in-process; RTA is **Node-side** and drives the app from **outside**. So
-RTA tests live in `tests/rta/` (Node/ESM, like `tests/scripts/`), NOT under
-`tests/source/**` (which is compiled into the app), and run under **Vitest**, not
-`scripts/run-roku-tests.js`.
+These are not the Rooibos tests ([`unit-tests.md`](unit-tests.md)), which are compiled into the app and assert from inside it. RTA tests are Node code in `tests/rta/`, never under `tests/source/`, and run under Vitest, not `scripts/run-roku-tests.js`. The rules for writing them are in [`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md).
 
 ## Commands
 
-| Command | What |
-|---|---|
-| `npm run test:rta` | Build (dev) + deploy the RTA build + run all screen tests. The regression command. |
-| `npm run test:rta:tdd` | Watch mode — deploys once, re-runs specs on save. |
-| `npm run test:rta:fast` | `RTA_NO_DEPLOY=1` — skip the redeploy, run against the build already on the device (fastest inner loop). |
-| `npm run test:rta:capture` | Run the tests AND dump a raw UI screenshot per screen to `out/rta-captures/` (for viewing the GUI). |
-| `RTA_BENCH=1 npm run test:rta` | Additionally run the opt-in **measurement** specs (`task-ledger-bench`, `task-ledger-screen-cost`). Skipped by default — they report numbers rather than asserting, and `task-ledger-screen-cost` costs a `hardRelaunch` + seed + `waitHome` for a run that would gate nothing. |
-| `RTA_SERVER_URL=… RTA_SERVER_USER=… RTA_SERVER_PASS=… npm run test:rta` | Point the run at a richer fixture than the demo server. The demo server is a **control**, not a substitute — ~3 libraries against a real server's ~10, so anything that scales with library count reads LOW on it. **Pointing it elsewhere also needs the content knobs changed** — see below. |
-| `RTA_HERO_MOVIE=… RTA_SEEK_SECONDS=… npm run test:rta` | Change the CONTENT the suite expects to find. Also `RTA_TRICKPLAY_MOVIE`, `RTA_TRICKPLAY_SEEK_SECONDS`, `RTA_SEARCH_QUERY`; all documented in `.env.example` and resolved by `resolveContent()` in [`tests/rta/config.js`](../../tests/rta/config.js). The defaults name films in the PUBLIC DEMO's library, so a run against another server without these drives the wrong film. |
+| Command | What it does |
+| --- | --- |
+| `npm run test:rta` | Builds (dev), deploys the RTA build and runs every screen test. The regression command |
+| `npm run test:rta:tdd` | Watch mode: deploys once and re-runs specs on save |
+| `npm run test:rta:fast` | `RTA_NO_DEPLOY=1`: runs against the build already on the device |
+| `npm run test:rta:capture` | Also saves a raw screenshot per screen to `out/rta-captures/` |
+| `RTA_BENCH=1 npm run test:rta` | Also runs the measurement specs (`task-ledger-bench`, `task-ledger-screen-cost`), which report numbers and gate nothing |
+| `RTA_SERVER_URL=… RTA_SERVER_USER=… RTA_SERVER_PASS=… npm run test:rta` | Runs against another server. The demo server is a control, not a substitute: it has a few libraries where a real server has about ten, so anything that scales with library count reads low on it |
+| `RTA_HERO_MOVIE=… RTA_SEEK_SECONDS=… npm run test:rta` | Changes the content the suite expects. Also `RTA_TRICKPLAY_MOVIE`, `RTA_TRICKPLAY_SEEK_SECONDS`, `RTA_SEARCH_QUERY`, documented in `.env.example` and resolved by `resolveContent()` in [`tests/rta/config.js`](../../tests/rta/config.js). The defaults name films on the public demo server, so set them when you point the suite elsewhere |
 
-Credentials: `ROKU_IP` / `ROKU_PASSWORD` from the checkout's gitignored `.env` or the
-per-user `~/.config/jellyrock/env` (same as the Rooibos device tests). If no device is reachable, **say so** — don't claim a pass.
+Credentials are `ROKU_IP` and `ROKU_PASSWORD` from the checkout's `.env` or `~/.config/jellyrock/env`, as for the Rooibos device tests. Run `npm run device:check` first; if no device answers, say the probe failed and don't claim a pass.
 
 ## When CI runs it
 
-[`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml) runs the
-suite on the **release-prep branch** (`push` to `release-*.*.*`) and on
-`workflow_dispatch`. It is deliberately **not** a per-PR gate: there is one physical
-device, shared with the Rooibos device suite and with ad-hoc manual runs, and
-[`vitest.rta.config.js`](../../vitest.rta.config.js) pins single-fork by design, so a
-full pass is ~10–15 min of exclusive device time.
+[`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml) runs the suite on a push to a release branch (`release-*.*.*`) and on `workflow_dispatch`. It is not a gate on each PR: there is one CI device, shared with the Rooibos device suite, and the suite runs one test at a time. A full pass took 35 to 44 minutes locally in early October 2026 (the RTA ledger). The job's time limit has not caught up with that: the pinned followup `release-rta-never-passes-in-ci` in [`progress.md`](../progress.md) tracks it.
 
-Three guards keep it from firing on pushes that can't change what RTA observes:
+Three guards keep it from running on a push that can't change what it tests:
 
 | Guard | Why |
-|---|---|
-| [`changed-paths`](../../.github/actions/changed-paths/action.yml) | A screenshot / docs / `CHANGELOG` push to the release branch never spins the device. It resolves a `push`'s file list via the compare API over `before...after`; branch creation and `workflow_dispatch` fall back to running, so it can never *falsely* skip. |
-| `github.actor != 'jellyrock[bot]'` | [`release-management.yml`](../../.github/workflows/release-management.yml) pushes the version bump to this same branch as the bot, and that commit changes no observable behavior. Same guard [`device-unit-tests.yml`](../../.github/workflows/device-unit-tests.yml) uses. |
-| `concurrency` with `cancel-in-progress: **false**` | Not a typo, and not the usual choice. Concurrency is evaluated **before any job runs**, so with `true` a docs-only push would cancel an in-flight run started by an earlier *source* push and then skip — leaving that source change with no gate at all. A skipped run is a ~20-second `ubuntu-latest` no-op, so letting runs queue costs nothing. |
+| --- | --- |
+| [`changed-paths`](../../.github/actions/changed-paths/action.yml) | A push touching only screenshots, docs or `CHANGELOG.md` skips the device. Branch creation and a dispatch always run, so it can never skip wrongly |
+| `github.actor != 'jellyrock[bot]'` | The release workflow pushes its version bump to the same branch as the bot, and that commit changes nothing the suite sees |
+| `concurrency` with `cancel-in-progress: false` | Concurrency is decided before any job runs, so with `true` a docs push would cancel a run started by an earlier code push and then skip itself, leaving that code untested. A skipped run costs seconds |
 
-**The trade-off, stated plainly:** a release-only gate surfaces a regression after N
-merged PRs, so bisecting is harder than it would be with a per-PR gate. That is the
-price of one device. When a PR genuinely touches navigation, screens, or
-`tests/rta/**`, run `npm run test:rta` locally rather than waiting for the release
-branch to find it.
+The cost: a regression shows up only on the release branch, after several merged PRs, which makes it harder to bisect. When a PR touches navigation, screens or `tests/rta/`, run `npm run test:rta` yourself.
 
 ## How it works
 
-- **Deploy**: the RTA `device.deploy({ injectTestingFiles: true })` stages the build,
-  flips the manifest `bs_const ENABLE_RTA=false`→`true`, and injects the on-device
-  component. The `#if ENABLE_RTA` block in `source/main.bs` then creates
-  `RTA_OnDeviceComponent` at boot. This passthrough works for **both** dev and prod
-  builds. Deploy runs once per test run, from [`scripts/rta-run.js`](../../scripts/rta-run.js)
-  before Vitest starts; `RTA_NO_DEPLOY=1` skips it.
-  ⚠️ **Those are two separate jobs and only the injection is behind that option.** The
-  manifest rewrite sits outside it (the `createPackage` callback in `RokuDevice.createPackage()`) and runs on every deploy, so
-  `injectTestingFiles: false` does **not** give you a non-RTA build — it gives you an
-  `ENABLE_RTA=true` build whose component is missing, which still runs every `#if
-  ENABLE_RTA` block. Turning the flag off as well needs a `beforeZipCallback`; that is
-  what [`deployBuild`](../../tests/rta/lib/driver.js)'s `enableRta` parameter is for, and
-  only the ODC calibration wants it.
-- **Per worker**: `tests/rta/setup/env-setup.js` (Vitest `setupFiles`) configures the
-  RTA client singletons from `.env` in the test worker.
-- **Querying nodes by PROPERTY needs a reference store first.** `odc.getNodesWithProperties`
-  (and `getNodesInfo`) read from the snapshot that `odc.storeNodeReferences()` builds — call
-  them without it and they fail with `Invalid value supplied for 'nodeRefKey' param`, which
-  names the missing parameter rather than the missing call. Pair every such query with a
-  `storeNodeReferences()` before and a `deleteNodeReferences()` after, and remember the store is
-  a SNAPSHOT: nodes created after it was taken are not in it. For a one-off script, prefer
-  asserting on the SERVER response that fed the screen where that answers the question — it is
-  the same data the UI bound, it survives in a log, and it costs no round trip.
-- **Seeding, then `hardRelaunch()` — never `relaunch()`**: seeds write the device
-  registry, and a plain `relaunch()` (ECP `/launch/dev`) only *foregrounds* an
-  already-running channel. The app keeps its in-memory session and re-persists it
-  over everything just seeded. The suite then drives an app pointed at whatever
-  server it was already on, using the seeded server's item ids — which surfaces as
-  ~30 unrelated-looking timeouts, not as an obvious seeding error. `hardRelaunch()`
-  exits to the Roku home screen first, forcing a cold start that re-reads the
-  registry. `assertSeedTookEffect()` runs after each one and fails loudly if the
-  seed was discarded. Cost is `exitMs` (~4 s) per relaunch. **This applies to every
-  registry write, including `scripts/capture-screenshots.js`** — there the failure
-  is worse than a red test: it silently photographs the wrong server's library into
-  the store-listing set.
-- **Serial**: one real device, so `vitest.rta.config.js` pins single-fork, no
-  parallelism, long timeouts (OSD playback waits can take ~90 seconds).
-  `testTimeout` is deliberately set **above** the worst-case gate chain, not merely
-  above the longest single wait: a `waitFor` that gives up throws through
-  `diagnosedError` and reports the device state it saw, whereas a Vitest timeout
-  reports nothing — so a budget that lets Vitest fire first costs the suite its best
-  diagnostic exactly when a screen is failing. `screen "settings"` is the longest
-  chain (`hardRelaunch()` + `waitHome`'s login and rows phases + the row-0 walk + the
-  overhang focus walk + the version label). Re-do that arithmetic, in the config file's
-  own comment, whenever one of those gate timeouts moves.
-- **Assertions**: the `waitFor` / `waitFocused` steps poll real node state and THROW
-  on timeout — that throw IS the test failure (a descriptive message). Don't wrap them
-  in `expect`; use `expect` only for value checks (title text, focus subtype).
-- **"Grid loaded" is the app's own signal, not an inference**: `waitGridLoaded` polls
-  the `loadState` interface field on `BaseGridView` (`loading -> [skeleton ->] loaded | empty`)
-  via `getActiveVal` — one atomic read of state the view maintains, instead of the old
-  child-count + first-cell-type sniffing (two racing ODC reads that also re-declared the
-  skeleton sentinel string on the JS side and assumed row 0 filled ⇒ all rows filled).
-  Anything that needs "is this grid settled?" should read `loadState`, not content
-  internals.
-- **Scoping `#id` reads when a suspended view is still in the tree**: `getVal` resolves
-  `#id` by a recursive `findNode` **from the scene root**, but `id` is not unique across
-  components (every `ItemDetails` has `#extrasGrid`; several declare `#options`). A view
-  suspended under the router's default `suspendMode: "hide"` — Home, `/settings`,
-  `/photo`, `/audio` — stays in the tree, hidden and parked off-screen, so its nodes can
-  still win a recursive lookup: the observed case is a suspended Home's own `#options`
-  (an `OptionsSlider`, hidden) beating the active grid's options dialog. Views on
-  `"detach"` routes (`/library`, `/details`, `/search`) are removed from the tree while
-  suspended, so they are not the hazard — but scoping the read costs nothing and does not
-  depend on knowing which mode a route carries.
-  For value reads of such recurring ids, use `getActiveVal` (or `waitFor(..., { read:
-  getActiveVal })`), which scopes to `m.global.activeRoutedView` (the app's own "view the
-  user is on"). Focus-based assertions (`waitFocused`) are inherently unambiguous — there
-  is only one focused node — so prefer them when "did this open/land?" is the question.
-- **"Is focus inside X?" goes through `focusIsInside` / `waitFocusInside`, never a
-  hand-rolled `keyPath.includes(...)`.** One focused node makes the *reading* unambiguous;
-  it does not make the *predicate* unambiguous. RTA composes a `keyPath` as one segment per
-  ancestor — `"#" + node.id`, or the child index when the node has no id — so an id always
-  occupies a whole segment and a substring test is strictly weaker than the question being
-  asked. `#options` is a substring of `#optionsPanelOverlay` (the re-parenting host in
-  `components/JRScene.xml`), so the grid-options gate could have reported the dialog focused
-  for focus anywhere in that overlay: the north-star failure, succeeding early, with the
-  blame landing on whatever times out next. `focusIsInside` matches whole segments and
-  normalizes a missing `#`, and `waitFocusInside` takes `label` / `timeout` / `interval` /
-  `action`, so there is no call site that needs its own predicate.
+- **Deploy.** `device.deploy({ injectTestingFiles: true })` stages the build, sets `bs_const ENABLE_RTA=true` and adds the on-device component, which `source/main.bs` creates at boot under `#if ENABLE_RTA`. It works for dev and prod builds. [`scripts/rta-run.js`](../../scripts/rta-run.js) deploys once per run, before Vitest starts. The manifest rewrite happens on every deploy, outside `injectTestingFiles`, so `injectTestingFiles: false` gives an `ENABLE_RTA=true` build with no component. A build without RTA needs a `beforeZipCallback`, which is what `deployBuild`'s `enableRta` parameter in [`driver.js`](../../tests/rta/lib/driver.js) is for.
+- **Per worker,** `tests/rta/setup/env-setup.js` (Vitest `setupFiles`) configures the RTA clients from `.env`.
+- **Querying nodes by property needs a reference store.** `odc.getNodesWithProperties` and `getNodesInfo` read the snapshot `odc.storeNodeReferences()` builds; without it they fail with `Invalid value supplied for 'nodeRefKey' param`. Call `storeNodeReferences()` before and `deleteNodeReferences()` after, and remember nodes created later are not in the snapshot. In a one-off script, asserting on the server response that fed the screen is often simpler.
+- **After seeding, `hardRelaunch()`, never `relaunch()`.** A seed writes the device registry, and `relaunch()` (ECP `/launch/dev`) only brings a running channel to the front, which keeps its session and writes it back over the seed. The suite then drives the old server with the seeded server's item IDs, which shows as many unrelated timeouts. `hardRelaunch()` exits to the Roku home screen first, forcing a cold start, and `assertSeedTookEffect()` fails loudly if the seed was lost. This holds for every registry write, `scripts/capture-screenshots.js` included, where a lost seed photographs the wrong library into the store set.
+- **One test at a time.** There is one device, so `vitest.rta.config.js` runs a single fork with long timeouts. `testTimeout` sits above the longest chain of waits, not only the longest single wait: a wait that gives up throws through `diagnosedError` and reports the device's state, while a Vitest timeout reports nothing. `screen "settings"` has the longest chain; redo the sum in the comment in the config file whenever one of its timeouts changes.
+- **The waits are the assertions.** `waitFor` and `waitFocused` poll real node state and throw on timeout, and that throw is the failure. Don't wrap them in `expect`; use `expect` for value checks.
+- **"Grid loaded" is the app's own signal.** `waitGridLoaded` reads `BaseGridView`'s `loadState` field (`loading`, then optionally `skeleton`, then `loaded` or `empty`) through `getActiveVal`. Anything asking whether a grid has settled should read `loadState`.
+- **Scope `#id` reads to the active view.** `getVal` finds `#id` by searching from the scene root, and IDs repeat across components. A view suspended with the router's default `suspendMode: "hide"` (Home, `/settings`, `/photo`, `/audio`) stays in the tree, so its nodes can answer: a suspended Home's `#options` has beaten the active grid's options dialog. Use `getActiveVal`, or `waitFor(..., { read: getActiveVal })`, which searches `m.global.activeRoutedView`. A focus check (`waitFocused`) is unambiguous, so prefer it for "did this open?".
+- **"Is focus inside X?" goes through `focusIsInside` or `waitFocusInside`,** never `keyPath.includes(...)`. RTA builds a `keyPath` from one segment per ancestor (`#id`, or the child index), and `#options` is a substring of `#optionsPanelOverlay`, so a substring test passes for focus anywhere in that overlay. `focusIsInside` matches whole segments.
 
-## When a wait times out, it reports what it SAW
+## When a wait times out, it reports what it saw
 
-The waits are the assertions, so their messages are the only account of a failure
-anyone gets. Left to themselves they describe the **ask** — "nav timed out waiting
-for X" — which cannot be attributed to a cause afterwards. So every timeout in the
-harness throws through `diagnosedError`
-([`lib/diagnostics.js`](../../tests/rta/lib/diagnostics.js)), which attaches the
-state the device was actually in.
-
-Both samples below are **real captured output** from forced failures on `.177`, not
-illustrations — and they are kept verbatim rather than edited, so note that they
-**predate `readErrors=`** (see [below](#a-failed-read-and-an-unchanged-field-are-not-the-same-timeout)),
-which now prints beside `actionErrors=` on every dump. A detail screen first:
+A wait's message is the only account of a failure anyone gets, and "timed out waiting for X" says nothing about the cause. So every timeout in the harness throws through `diagnosedError` ([`lib/diagnostics.js`](../../tests/rta/lib/diagnostics.js)), which adds the device's state. Real output from forced failures (from before `readErrors=` was added):
 
 ```text
 nav timed out waiting for a detail row count that can never happen (last=3)
@@ -184,8 +85,6 @@ nav timed out waiting for a detail row count that can never happen (last=3)
         ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
 ```
 
-…and the same wait against a library grid:
-
 ```text
 nav timed out waiting for a grid item count that can never happen (last=11)
         ↳ view=BaseGridView#649e2164… loadState=loaded · focus=JRMarkupGrid@#routerOutlet.#viewTarget.#649e2164-….#itemGrid
@@ -193,98 +92,24 @@ nav timed out waiting for a grid item count that can never happen (last=11)
         ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
 ```
 
-## A green wait can still have read the wrong node (`RTA_AUDIT_RESOLUTION=1`)
+### Reading the dump
 
-Every section above is about a wait that FAILED. This one is about the opposite, and it
-is the harder case: `getVal('#homeRows…')` is `scene.findNode("homeRows")`, a recursive
-search of the whole scene rather than of the screen the test is standing on. So a read
-can succeed against something other than what the call site names, and nothing in the
-result says so — the gate goes green, there is no retry, no dump, no line to notice.
+**`loadState=—` on a detail screen is correct.** `loadState` exists only on `BaseGridView`. `ItemDetails` extends `JRScreen`, a sibling, so it has none; there the load signal is `detail=<n>`.
 
-Two ways it happens, and they are different defects:
+The app shell's fields answer on every screen. Each prints only when set:
 
-- **DUPLICATE** — several nodes carry the id, so which one answers is a property of tree
-  order rather than of the test. Seven components declare a node with id `buttons`.
-- **NOT PRESENTED** — exactly one node carries it, and it sits in a view sgRouter has
-  parked off-screen. `suspendMode` defaults to `"hide"`, which keeps a COVERED view in
-  the tree, so the read resolves happily against a screen nobody is looking at.
+| Printed | Field | Tells you |
+| --- | --- | --- |
+| `spinner=on("…")` | `isLoading` / `loadingText` | The app was still waiting on a fetch, and which |
+| `input=BLOCKED` | `isRemoteDisabled` | **The app was swallowing our key presses** |
+| `waits=[…]` | The active view's `loadingWaits` | The screen's own named waits still open (`screenWaits`). They show the spinner without `isLoading` |
+| `player=<state>` | The OS media player (`ecp.getMediaPlayer()`) | What the Roku player thinks is happening. `buffer` counts as playing while the app may still refuse to open the OSD |
+| `videoNode=<state>` | The app's Video node | The app's side, so a mismatch with `player` says which side an unopened OSD is stuck on |
+| `playerError=true` | The OS media player | The player itself faulted |
 
-**The second is the one that has actually bitten, and counting ids does not find it.**
-`waitHome()` passed from a library grid because a scene-rooted `#homeRows` read found a
-SUSPENDED Home — there was only ever one `#homeRows` — and
-the same mechanism ran across 30 more sites that named Home's row list by id. Those are
-converted now ([`lib/home-list.js`](../../tests/rta/lib/home-list.js)), but the audit is what
-found which of them actually executed against a suspended Home.
+`input=BLOCKED` is the most useful. `JRScene.onKeyEvent` returns `true` while `isRemoteDisabled` is set, so every key sent was consumed: the "we pressed before it was ready" failure [`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md) opens with.
 
-Set `RTA_AUDIT_RESOLUTION=1` and every scene-rooted read is checked against a census of
-the live scene ([`lib/resolution.js`](../../tests/rta/lib/resolution.js)). One
-`storeNodeReferences` call answers both questions — uniqueness by counting ids,
-whether it is presented by walking `parentRef` for a hidden ANCESTOR — so it costs one round trip,
-a median 30 ms on `.177`. Findings land in the run's `resolutions.jsonl` and fold onto the
-ledger line, and the run summary prints them **on a passing run**, which is the only time
-they can appear:
-
-```text
-[rta] 4 scene-rooted read(s) did not resolve to what the call site names, out of 538 audited.
-      The suite is green either way — that is the defect, not the reassurance.
-[rta]   OFF-SCREEN #homeRows.content.0.0.id (#homeRows) — hidden at #routerOutlet.#viewTarget.#d5e10d7e-…
-```
-
-Three things about it are deliberate and easy to get wrong on a second pass:
-
-- **It is REPORT-ONLY and throws nothing.** It runs inside the wait path of the only
-  per-PR feedback nav changes get, so it may not red a healthy suite until its
-  false-alarm rate is known — the same rule `probeFixture` was built under.
-- **The predicate is "presented", NOT "inside `activeRoutedView`".** `#jrDialog` — the
-  most-read id in the suite — is appended to the SCENE by `presentOverlayDialog`, and
-  `#imageFader` sits at scene level too. An active-view rule would false-fail both.
-- **A node hidden in its OWN right is not flagged, only one hidden by an ancestor.**
-  `waitFor('#osd.visible', v => v === false)` is a gate whose job is to wait until the
-  OSD is hidden; flagging it reports a node for the exact state the caller asserted. The
-  first audited suite produced 14 such false alarms out of 19 records.
-
-`waitFocusInside` is out of scope by construction: it tests the FOCUSED node's `keyPath`
-for a segment match, not a scene-rooted find, so it always names the real focus chain.
-
-### A failed read and an unchanged field are not the same timeout
-
-`getVal` / `getActiveVal` swallow a failed read to `undefined`. That is **correct for a
-poll** — the loop retries, and a persistent miss ends in the diagnosed timeout above — but
-on its own it makes two very different failures print identically as `last=undefined`:
-
-- the app never set the field (a real app or nav problem), and
-- **the device stopped answering** (an ODC timeout — the client's default is 10 s and
-  nothing here overrides it — or a transport error).
-
-So the waits now **count** reads that did not complete, exactly as they already count a
-throwing `action`, and name them:
-
-```text
-… (last=undefined) — 12 read(s) did not complete; the device may have stopped answering
-```
-
-`readErrors=<n>` also rides in the `observed` payload, so a flake baseline aggregates the
-same number a human reads. The distinction is real on the wire rather than guessed: ODC
-answers `found: false` for a `keyPath` it resolved and did not find, and only *rejects* when
-the request itself failed — so an ordinary "not there yet" timeout still reports
-`readErrors=0`.
-
-**Why it exists:** [#785](https://github.com/jellyrock/jellyrock/issues/785) recorded four
-back-to-back suites degrading into *"`last=undefined` ODC reads in different specs each
-run"* and could not attribute them — the harness had thrown the evidence away. This does
-not explain that episode, and is not claimed to; it makes the next one answerable.
-The per-tick swallow is unchanged, so nothing on the success path moves.
-
-### A screensaver looks exactly like a dead device
-
-Roku runs a screensaver in its **own BrightScript context**
-([Roku's screensaver guide](https://github.com/rokudev/dev-doc/blob/v2.0/docs/DEVELOPER/media-playback/screensavers.md)),
-and `roku-test-automation`'s README states that ODC communication is not possible while one
-is up. The app is still installed, still launched and still fine — but the ODC reads in the
-dump fail, so the record says `device did not answer ODC: …` and nothing in it separates
-that from a crashed app or a device off the network.
-
-So the capture also asks ECP what is actually in front:
+**A screensaver looks like a dead device.** A screensaver runs in its own BrightScript context, and ODC can't talk to the app while one is up, so the dump's ODC reads fail. The capture also asks ECP (`query/active-app`), which the OS answers, and prints this above the ODC line when one is up:
 
 ```text
 nav timed out waiting for home rows (last=undefined)
@@ -292,137 +117,26 @@ nav timed out waiting for home rows (last=undefined)
         ↳ device did not answer ODC: timed out after 5000ms
 ```
 
-It is read over **ECP, not ODC**, and that is the whole point: ECP answers from the OS
-rather than from inside the channel, so it keeps working exactly when ODC may not.
-Verified 2026-09-05 on `.178` — `query/active-app` named the running screensaver
-(`type="ssvr"`) while ODC requests to the same host were not completing. The line prints
-**only when one is actually up**, and prints **above** the ODC line, because it explains it.
+A screensaver starts only after the device's idle timeout, which a healthy run never reaches; it appears when a run has already stalled. The suite detects it rather than suppressing it ([`rta-screensaver-detect-not-suppress`](../decisions.md)).
 
-A screensaver only starts after the device's configured idle timeout — **10 minutes on both
-test devices** — which a healthy run never reaches, because the suite is sending key presses
-throughout. It becomes reachable when a run has *already* stalled (a hung ODC handshake, a
-long teardown), which is precisely when this dump is the only account of the failure anyone
-gets. The suite deliberately does **not** suppress the screensaver; that was weighed and
-declined — see [`decisions.md` → `rta-screensaver-detect-not-suppress`](../decisions.md).
+**A failed read and an unchanged field are different timeouts.** `getVal` and `getActiveVal` turn a failed read into `undefined`, which is right for a poll but makes "the app never set the field" and "the device stopped answering" both print `last=undefined`. So the waits count reads that did not complete and say so:
 
-### `loadState=—` on a detail screen is correct, not a broken capture
+```text
+… (last=undefined) — 12 read(s) did not complete; the device may have stopped answering
+```
 
-The difference between those two lines is the thing worth knowing before you read a
-failure record. **`loadState` is grid-only**: it is declared on `BaseGridView`
-([`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml)) alone, where it
-carries a real four-value vocabulary (`loading` / `skeleton` / `loaded` / `empty`).
-`ItemDetails` extends `JRScreen`, a *sibling* of `BaseGridView`, so it has no such
-field and the dump shows `—`. On a detail screen the load signal is `detail=<n>`
-and the shell fields below.
+`readErrors=<n>` is in the `observed` payload too. ODC answers `found: false` for a path it resolved and didn't find, and fails only when the request did, so an ordinary "not there yet" timeout reports `readErrors=0`.
 
-The universal signal — the one that answers on **every** screen — is the app
-shell's, read from the scene root:
+### Rules for the capture
 
-| Printed when | Field | What it tells you |
-|---|---|---|
-| `spinner=on("…")` | `isLoading` / `loadingText` | the app was still blocked on a fetch, and which one |
-| `input=BLOCKED` | `isRemoteDisabled` | **the app was swallowing our key presses** |
-| `waits=[…]` | the active view's `loadingWaits` | the screen's own named waits still open (`screenWaits`). They show the spinner without `isLoading`, so `spinnerVisible` in the record is what the viewer saw |
-| `player=<state>` | the OS media player's own state (`ecp.getMediaPlayer()`) | what the Roku video player thinks is happening, independent of the app. `buffer` counts as playing to `PLAYING_STATES` while the app still refuses to open the OSD — the gap between the two is the signal |
-| `videoNode=<state>` | the app's own Video node state | the app's side of the same story, so a `player`/`videoNode` mismatch narrows an OSD that never opened to one side or the other |
-| `playerError=true` | the OS media player reported an error | the player itself faulted, distinct from an app-level error |
+- **It runs only after a wait gives up**, at the throw site, so it costs nothing on the success path.
+- **It reads identity by named field**, never the whole node: `JellyfinUser` carries `authToken`, and a whole-node read would put a credential in an artifact.
+- **A new timeout throws through `diagnosedError`,** not `new Error`. An ESLint `no-restricted-syntax` rule in [`eslint.config.js`](../../eslint.config.js) fails `lint:js` on a bare `throw new …` in `lib/nav.js`, `lib/steps.js`, `screens.js`, `demos/` and `scripts/capture-screenshots.js`. A fail-fast that already names its cause can stay a plain throw, with the rule disabled on that line and a reason. The rule is a tripwire: `const e = new Error(…); throw e` passes it. A new lib file that grows a wait belongs in the rule's file list.
+- **In a demo take, use `ctx.waitFor`** rather than a hand-written poll, so the take gets the dump. A spec that polls until it gives up should use a shared wait or `diagnosedError` too: `waitMediaPlaying` in `lib/steps.js` is the example.
+- **A new wait needs a justified category.** The harness polls where RTA offers `onFieldChangeOnce`, so `jellyrock-rta/wait-justified` ([`rta-wait-justified.js`](../../scripts/lint/eslint-rules/rta-wait-justified.js)) fails a `waitFor` that fits none. It proves three categories from the call's shape; the fourth, a plain field settle, depends on how the app writes the field, so a `keyPath` must be listed in `VERIFIED_SETTLE_KEYPATHS`. The categories are in [`tests/rta/CLAUDE.md` → Why every wait polls](../../tests/rta/CLAUDE.md#why-every-wait-polls).
+- **Register a failure `kind` first,** in the frozen `FAILURE_KINDS` set in `diagnostics.js`. It is the key a flake baseline groups by; an unregistered one is kept as is and flagged in the run summary.
 
-`input=BLOCKED` is the highest-value field in the dump.
-[`JRScene.onKeyEvent`](../../components/JRScene.bs) does `if m.top.isRemoteDisabled
-then return true`, so a timeout carrying it means every key we sent was consumed and
-reported handled — the *"we acted before it could respond"* failure mode that
-[`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md) opens with, which until now could
-only be inferred. Both print **only when set**, so an ordinary failure stays as
-short as the samples above and the flag keeps its signal value.
-
-- **It costs nothing on the success path.** The capture runs *after* a poll loop
-  has given up, at the throw site, never inside a tick. That was originally hedged
-  against [#785](https://github.com/jellyrock/jellyrock/issues/785) replacing those
-  loops with `onFieldChangeOnce`; **that migration is not happening** — #785 is closed
-  and the observer was ruled out for the whole harness (see
-  [`tests/rta/CLAUDE.md` → Why every wait polls](../../tests/rta/CLAUDE.md#why-every-wait-polls)).
-  The placement is still right, now for its own reason rather than a hedge: keeping the
-  capture off the tick is what makes it free on the success path. At the boundary it is
-  four round-trips issued in parallel
-  (`getFocusedNode`, `getMediaPlayer()` and `getActiveApp()` each have no batch form;
-  everything else rides one `getValues` of 11 key paths).
-  **Measured at TWO round-trips: median 21 ms, 18–30 ms typical** on `.177` (n=20 on
-  `ItemDetails`), with occasional spikes to ~70 ms when the render thread is busy.
-  **That figure predates `getMediaPlayer()` and `getActiveApp()` and has not been
-  re-taken** — the three
-  shell fields it does cover were genuinely free (they ride the existing `getValues`),
-  but the third and fourth round-trips are unmeasured. The calls go out in parallel, so the
-  expectation is that the slowest one still sets the floor; that is an expectation,
-  not a reading. And it is the reading that matters here, because
-  [the platform cost model](../architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)
-  says the COUNT of crossings dominates the size of each — which makes going from two
-  to three exactly the kind of change that can move the number, not the kind that can
-  be waved through. Re-take it the way the original was taken (n=20 at a real throw
-  site) before quoting a figure for the current shape.
-- **The `observed` fields come free.** `rowTypes` / `rows` are retained from reads
-  the loop was already making, so "2 row(s) present" becomes "the two that landed
-  were Chapter and Person" — which is the difference between *Season is late* and
-  *Season is absent*, indistinguishable until now.
-- **Identity is read by named field**, never by dumping the node: `JellyfinUser`
-  carries `authToken`, and a whole-node read would put a live demo credential in an
-  artifact.
-- **A new TIMEOUT throws via `diagnosedError`**, not a bare `new Error` — otherwise
-  that failure mode is the one nobody can attribute. This is **gated**, not just
-  documented: an ESLint `no-restricted-syntax` rule in
-  [`eslint.config.js`](../../eslint.config.js) fails `lint:js` (pre-push *and* CI,
-  and it underlines live in your editor) on a bare `throw new …` in `lib/nav.js`,
-  `lib/steps.js` or anywhere under `demos/`. A fail-fast that is *not* a timeout and
-  already names its cause can stay a plain throw — disable the rule on that line
-  **with a reason**, as the ambiguous-library refusal in `nav.js` does.
-  - It matches any `new` in a `throw`, not just `Error`: `throw new TypeError(…)` in
-    a wait has the same problem, and a gate that reads as covering throws generally
-    should not have a hole in it. It is still only a **tripwire** — `const e = new
-    Error(…); throw e` slips it — so a green `lint:js` means "nobody wrote the
-    obvious shape", not "no unattributable timeout exists".
-  - The gate covers `lib/nav.js`, `lib/steps.js`, `screens.js`, **all of `demos/`**
-    and `scripts/capture-screenshots.js`. The other lib modules throw fail-fasts that
-    already name their cause (a snapshot from the wrong device, a seed that did not
-    take), so gating them would buy four disable comments and no signal. **A new lib
-    file that grows a wait belongs in that glob** — adding it is one reviewable line.
-    `capture-screenshots.js` is in it because it imports the same `waitFor` and drives
-    the same device, so a wait that hangs there burns a device run identically; it
-    lives outside `tests/rta/` only because its output is the store image set.
-  - `demos/` is in the glob on evidence, not symmetry: while it was outside, it
-    accumulated two unconverted waits — the runner's own playback timeout and a
-    take's 15 s dialog poll. It is also the directory that grows by adding
-    choreography, which is where new waits come from. Its handful of genuine
-    fail-fasts (an unknown server name, the non-demo-host refusal, a REST lookup
-    that came back empty) carry one-line disables with reasons.
-  - **In a take, prefer `ctx.waitFor` to a hand-rolled poll.** It already throws
-    through `diagnosedError`, so a take inherits the dump rather than re-deriving
-    it — and a take that rolls its own loop is exactly how both of the misses above
-    happened.
-  - Specs are outside the glob, because most spec-level throws are assertions rather
-    than timeouts. A spec that genuinely *polls until it gives up* should still use
-    `diagnosedError` — or better, one of the shared waits, which already do:
-    `waitMediaPlaying` lives in `lib/steps.js` and is shared by `deeplink.spec.js`
-    and the demo runner, because "media player never started" cannot otherwise
-    distinguish a stream that failed to open from a cast the app never routed.
-- **A new WAIT must land in a justified category**, and that is gated too. The harness
-  polls where `roku-test-automation` offers `onFieldChangeOnce`, so each wait says why
-  it deviates; `jellyrock-rta/wait-justified`
-  ([`scripts/lint/eslint-rules/rta-wait-justified.js`](../../scripts/lint/eslint-rules/rta-wait-justified.js))
-  fails `lint:js` on a `waitFor` that fits none of them. Three categories it proves from
-  the call's syntax (a function `keyPath`, a test for absence, an `action:` retry loop);
-  the fourth — a plain field settle — it cannot, because "this field is not a one-shot
-  pulse" is a fact about how the APP writes it. So it ratchets on the FIELD: a `keyPath` in
-  `VERIFIED_SETTLE_KEYPATHS` inherits its check, and one that is not there trips the gate
-  at exactly the moment the verification is owed. The categories and the argument behind
-  each are in
-  [`tests/rta/CLAUDE.md` → Why every wait polls](../../tests/rta/CLAUDE.md#why-every-wait-polls).
-- **Register the `kind` first.** It is the key a flake baseline aggregates by, so it
-  comes from the frozen `FAILURE_KINDS` set in `diagnostics.js`, never an inline
-  string. An unregistered slug is recorded as-is and called out in the run summary
-  (`⚠ N unregistered failure kind(s)`) rather than silently forking a bucket.
-
-Each failure also lands as a JSON line in the run's `failures.jsonl`, which
-[`endRun`](../../scripts/run-record.js) folds into `run-meta.json` after the suite
-exits, then summarizes:
+Each failure also lands as a line in the run's `failures.jsonl`, which [`endRun`](../../scripts/run-record.js) folds into `run-meta.json` when the suite exits, then summarizes:
 
 ```text
 [rta] 2 failure(s) captured with device state in this run → out/rta/failures.jsonl
@@ -430,100 +144,78 @@ exits, then summarizes:
 [rta]   00:56 probe C: forced timeout on a library grid — wait-for-timeout; view=BaseGridView loadState=loaded focus=JRMarkupGrid
 ```
 
-That fold is what finally gives `run-meta.json` a **reader** — it was written by
-four entry points and read by nothing, so lock provenance only ever lived in a
-terminal line that scrolls past. The parent stays the file's sole writer; the child appends to the
-JSONL and never touches run-meta.json.
+## A green wait can still have read the wrong node (`RTA_AUDIT_RESOLUTION=1`)
+
+`getVal('#homeRows…')` searches the whole scene, so a read can succeed against something other than the call site means, and a green gate says nothing. Two ways:
+
+- **Duplicate:** several nodes share the ID, so tree order picks the answer. Seven components declare a node with ID `buttons`.
+- **Not presented:** one node has the ID, in a view sgRouter has hidden. This is the one that has caused real false passes: `waitHome()` passed from a library grid by finding a suspended Home.
+
+Set `RTA_AUDIT_RESOLUTION=1` and every scene-rooted read is checked against a census of the live scene ([`lib/resolution.js`](../../tests/rta/lib/resolution.js)), at one extra round trip per read. Findings go to the run's `resolutions.jsonl` and the run summary, on a passing run, the only time they can appear:
+
+```text
+[rta] 4 scene-rooted read(s) did not resolve to what the call site names, out of 538 audited.
+      The suite is green either way — that is the defect, not the reassurance.
+[rta]   OFF-SCREEN #homeRows.content.0.0.id (#homeRows) — hidden at #routerOutlet.#viewTarget.#d5e10d7e-…
+```
+
+- **It only reports.** It may not fail a healthy suite until its false-alarm rate is known.
+- **It checks "presented", not "inside `activeRoutedView`".** `#jrDialog`, the most-read ID in the suite, is appended to the scene by `presentOverlayDialog`, as is `#imageFader`; an active-view rule would flag both.
+- **It flags a node hidden by an ancestor, not one hidden itself.** `waitFor('#osd.visible', v => v === false)` waits for exactly that state.
+
+`waitFocusInside` is outside it: it matches the focused node's own path.
+
+## Run records
 
 ### One record directory per run kind
 
-`writeRunMeta` is a full overwrite, and every entry point used to share
-`out/rta/run-meta.json`. Harmless while the file held only lock provenance —
-destructive once it carries folded failure records, because a `npm run test:unit`
-between two RTA runs silently ate the first one's. So the record directory is keyed
-on the run kind ([`runDir`](../../scripts/run-record.js)):
+`writeRunMeta` overwrites, so each kind of run writes its own directory ([`runDir`](../../scripts/run-record.js)), and one never erases another's record:
 
 | Run | Records to | Summary tag |
-|---|---|---|
-| `npm run test:rta` (+ `:tdd`, `:fast`, `:capture`) | `out/rta/` | `[rta]` |
+| --- | --- | --- |
+| `npm run test:rta` (and `:tdd`, `:fast`, `:capture`) | `out/rta/` | `[rta]` |
 | `npm run screenshots:capture` | `out/screenshots/` | `[screenshots]` |
 | `npm run demo` | `out/demo/` | `[demo]` |
-| `npm run test:unit` / `test:integration` / `test:all` (Rooibos) | `out/device/` | `[device]` |
-| `npm run measure` (on-device perf sample) | `out/measure/` | `[measure]` |
+| `npm run test:unit`, `test:integration`, `test:all` (Rooibos) | `out/device/` | `[device]` |
+| `npm run measure` | `out/measure/` | `[measure]` |
 
-The tag on each summary line names the **run kind**, derived from that same
-directory so there is no second mapping to drift. A Rooibos run prints `[device]`,
-not `[rta]` — this record is shared with that runner, and a line claiming the wrong
-harness is the same dishonesty the directory split removed.
+The tag comes from the directory, so the two can't disagree. Three files per kind; pick by the question:
 
-Three files per run kind. They overlap deliberately — pick by the question you are
-asking, not by which one you found first:
+| File | Where | Lifetime | Read it for |
+| --- | --- | --- | --- |
+| `run-meta.json` | `out/<kind>/` | This run, overwritten | One run whole: lock, time window, folded failures |
+| `failures.jsonl` | `out/<kind>/` | This run, emptied at start | Failures as they land, mid-run |
+| `runs.jsonl` | `.device-runs/<kind>/` | Never reset | Comparing across runs: the flake baseline reads this |
 
-| File | Where | Lifetime | Read it when you want… |
-|---|---|---|---|
-| `run-meta.json` | `out/<kind>/` | this run, **overwritten** | the whole of ONE run in one place — lock provenance, window, and the folded failures |
-| `failures.jsonl` | `out/<kind>/` | this run, **truncated at start** | to stream failures as they land, mid-run, before the fold |
-| `runs.jsonl` | **`.device-runs/<kind>/`** | **the ledger — never reset** | to aggregate ACROSS runs (this is the one a flake baseline reads) |
+**The ledger lives outside `out/`** because every `build*` script starts with `npx rimraf build/ out/`, and `test:rta` builds first: a ledger there would be deleted before each run that appends to it. [`run-record.test.js`](../../tests/scripts/unit/run-record.test.js) checks both halves.
 
-One run kind adds a fourth. `npm run measure` appends
-`.device-runs/measure/measurements.jsonl` — **one line per SERIES**, carrying the
-samples, the workload, and the provenance the sample was taken against. It uses
-[`ledgerPath()`](../../scripts/run-record.js) rather than the `dir` `beginRun` hands
-back, for the reason the ledger itself is not under `out/`: a series can cost an
-hour of exclusive device time and the next `npm run build` would `rimraf` it.
+`npm run measure` adds `.device-runs/measure/measurements.jsonl`, one line per series with its samples, workload and provenance ([`measuring-performance.md`](measuring-performance.md)). It is not joined to `runs.jsonl`:
 
-It is **not** a second run ledger, and the two files are deliberately not joinable:
+- It carries its own selection keys (`variant`, `commit`, `dirty`, `deviceKey`, `startedAt`) and its own `outcome`.
+- A run refused before it measured writes a `runs.jsonl` line with `outcome: "blocked"` and no measurement.
+- A `--nav` that fails partway keeps the launches already taken, with a `navFailure` saying why, and folds as `blocked`, so no comparison selects it.
+- `npm run measure:devices` writes one line per device ([more than one device](measuring-performance.md#more-than-one-device)).
 
-- `runs.jsonl` is a side effect of using `beginRun` for its lifecycle (lock
-  provenance, the process-exit net, the outcome). Nothing reads it for `measure`,
-  and a flake rate over measurement invocations would not mean anything.
-- `measurements.jsonl` is the aggregation surface, and it carries the selection keys
-  (`variant`, `commit`, `dirty`, `deviceKey`, `startedAt`) *itself* so a comparison
-  never has to join on a timestamp.
-- **Their cardinality differs by design.** A run refused by tier 1 writes a
-  `runs.jsonl` line with `outcome: "blocked"` and no measurement record at all — a
-  refused run is not a measurement. Each measurement line therefore carries its own
-  `outcome`, so a reader can tell a usable series from one that produced no sample
-  without consulting the other file.
-- **One exception, and it is not a refusal.** A `--nav` that fails PARTWAY abandons the
-  series but does write a record, carrying the launches the device had already taken and
-  a `navFailure` naming why the rest never happened. Those samples are real loads of a
-  real device and the only thing that made them unusable was a LATER failure; the series
-  still folds as `outcome: "blocked"` and no comparison selects it, so the choice is
-  between `3/30 cold samples` on disk and nothing on disk. A nav that fails on the FIRST
-  launch has nothing to keep and refuses exactly as tier 1 does.
-- **`npm run measure:devices` writes one line PER DEVICE**, all from the same invocation
-  — it runs `measure` once per Roku in `ROKU_DEVICES`, sequentially, in its own process
-  (`roku-test-automation` binds its client singletons to one host per process). See
-  [`measuring-performance.md`](measuring-performance.md#more-than-one-device).
+`capture-screenshots` tags each failure with its screen, locale and retry attempt, so a screen that recovered on attempt 2 isn't counted as a failure; demos tag each with the take's name.
 
-**The ledger is the Phase-3 surface.** Aggregating N back-to-back suites is a read
-of `.device-runs/rta/runs.jsonl`, not "remember to copy a file aside after each
-run" — each line is a complete `summarizeRun` including that run's failure records.
+### What each ledger line records
 
-**Scope a baseline by FILTERING, not by deleting.** Every line carries six keys
-for exactly that, and all six are always present (`null` when unknown, `[]` for
-`runnerArgs`) so a filter can never silently drop a row:
+A baseline is a filter over the ledger, never a deleted file. Each line carries these keys, always present (`null` when unknown, `[]` for `runnerArgs`), so a filter can't drop a row silently:
 
 | Key | Is | Why a baseline needs it |
-|---|---|---|
-| `variant` | the npm script that ran (`test:rta`, `test:rta:fast`, `test:unit`, …) | run kinds are SHARED — `:fast` skips the deploy, `:capture` adds per-screen PNG work, and `test:unit`/`test:all` are different suites. Pooling their durations compares incomparable runs |
-| `runnerArgs` | what the run FORWARDED to its test runner, verbatim — `[]` for a full suite | `variant` names the npm script, not the scope. `rta-run.js` passes its own passthrough through to Vitest, so `test:rta:fast -- -t "moviesLibraryGenres"` runs ONE test and, without this, appended a line identical in every other key to a full suite. Hit live 2026-08-12: three targeted single-screen runs each wrote a line a baseline would have counted as clean, and only a moved `HEAD` excluded them — by accident, not by design |
-| `commit` | short SHA at the start of the run | "are these N runs even the same code?" |
-| `dirty` | working tree not clean at that SHA (untracked files included — they get compiled in) | during RTA work the tree is usually dirty, and a bare SHA would over-claim reproducibility |
-| `deviceKey` | **which Roku** — the lock's own `sha256(device-id)`, not an address | there are three on this LAN and they are not interchangeable. A baseline is specified on one device, so `variant` and `commit` are IDENTICAL across its runs and cannot separate a stray run on another one. `null` on the degraded lock path, which never resolves a device |
-| `outcome` | `passed` / `failed` / `interrupted` / `crashed` / `blocked` — what became of the run | the other five describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one, and a run the fixture broke is indistinguishable from app flake |
+| --- | --- | --- |
+| `variant` | The npm script that ran (`test:rta`, `test:rta:fast`, `test:unit`, …) | `:fast` skips the deploy, `:capture` adds screenshots, and the Rooibos scripts are different suites |
+| `runnerArgs` | What the run passed to its test runner, verbatim; `[]` for a full suite | `test:rta:fast -- -t "moviesLibraryGenres"` runs one test, and without this its line matches a full suite's |
+| `commit` | Short SHA at the start of the run | Whether the runs tested the same code |
+| `dirty` | The tree was modified at that SHA, untracked files included | A bare SHA would claim more than it can |
+| `deviceKey` | Which Roku: the lock's `sha256(device-id)`, never an address | Devices are not interchangeable. `null` when the lock couldn't identify the device |
+| `outcome` | `passed`, `failed`, `interrupted`, `crashed` or `blocked` | The only key about the run itself, not the invocation |
 
-Plus one field that is **provenance, not a filter key**:
-
-| Key | Is | Why it is recorded |
-|---|---|---|
-| `assertions` | `{ <screen>: <count> }` — how many things each content assertion actually CHECKED. Omitted when nothing recorded one | a content assertion's strength is invisible from its result. `moviesLibraryGenres` verifies a subset relation over whatever the fixture holds, so it can check forty pairings or four and go green either way — and the day it can check zero it goes red, having weakened silently for months first. Never asserted on: a floor would redden runs over fixture churn, which is the false-red this is all here to remove. Watch the number across a series the way you would watch `durationMs` |
+`assertions` (`{ <screen>: <count> }`) records how much each content assertion checked. A content assertion can check forty pairings or four and pass either way, so watch the count across a series; nothing asserts a floor on it, because fixture churn would make that fail for the wrong reason.
 
 ### Reading a baseline out of it
 
-**`npm run flake-baseline`** — that is the whole recipe, and it is deliberately not a
-snippet to retype. Run it bare to see what the ledger holds, then name a series:
+Run `npm run flake-baseline`: bare to see what the ledger holds, then with a series named:
 
 ```console
 $ npm run flake-baseline
@@ -548,357 +240,110 @@ $ npm run flake-baseline -- --commit HEAD --device ac4701ca4a5d8a0b
   A clean series BOUNDS the rate, it does not measure 0% — …
 ```
 
-`--run run-roku-tests` reads the Rooibos ledger instead; `--variant a,b` overrides the
-variant set (defaulted only for the RTA ledger — see below).
+`--run run-roku-tests` reads the Rooibos ledger; `--variant a,b` overrides the variants. It is a command, not a filter to retype, because hand-written versions of it produced wrong numbers without an error ([`decisions.md`](../decisions.md), the `SAMPLE_OUTCOMES` entry).
 
-**Why a command and not four lines of `runs.filter(...)` you can read here.** Because
-that is what this was, and it was wrong three times in one PR cycle — each time
-producing a plausible number rather than an error. It filtered
-`variant === 'test:rta'` while the protocol says to use `test:rta:fast` from run 2, so
-it selected the first run of a six-run series and reported a one-sample baseline. It
-counted `outcome !== 'passed'` as a failure while the run summary told the operator to
-*exclude* a crashed run. And after the copy here was fixed, the copy in the project
-plan still carried the second bug. None of those were defects in the ledger; they were
-defects in a recipe a human retypes. What is left below is the part that genuinely
-needs a human reader — *why* the filter is shaped this way.
+How it chooses, and why:
 
-**The hour row is a WARNING, not a filter.** It is the one property that invalidates a
-series without changing any single run in it: a ~13-minute suite starting after roughly
-46 minutes past the hour has the demo server's reset land mid-run, so those samples ran against a fixture
-that changed underneath them. It is not excluded, for two reasons — whether it matters
-is the *proportion* (1 of 8 is noise, 5 of 8 is measuring the fixture, and only a human
-can make that call), and dropping them silently would shrink the population and widen
-the bound without saying why. An **absent** flag is counted separately rather than read
-as "did not cross": `summarizeRun` writes it on every close, so a missing one means a
-hand-edited or truncated line, and treating unknown as the good case is the move this
-whole field exists to prevent.
+- **Only `passed` and `failed` runs are samples.** A `crashed`, `interrupted` or `blocked` run never reached a verdict, so it says nothing about the app either way: counting it red inflates the rate and counting it green hides a failure. `SAMPLE_OUTCOMES` in [`run-record.js`](../../scripts/run-record.js) is that set, shared with the run summary's advice.
+- **`blocked` looks like an ordinary failed run,** but a request to the test server failed underneath it, so what went red after was not a fair test. `tests/rta/lib/jellyfin.js` records the failure where it happens, and it outranks `failed`. A `blocked` run in your series means the fixture failed you: take the run again.
+- **The rate reads `outcome`, never `failures.length`.** An empty `failures` list is true of a passed run, a run that failed somewhere the capture doesn't cover (a plain `expect()`, a Vitest error), and a run that never started. A run nobody closed is labeled `crashed`, and a run that didn't pass prints a line.
+- **A scoped run is excluded.** A `-t` run is not a weak sample of the suite but a sample of something else. It excludes on any passed argument, not a list of the narrowing ones, because Vitest's set of narrowing flags changes between versions; a harmless flag costs a sample loudly, with the arguments printed. There is no flag to include scoped runs. A line with no `runnerArgs` predates the key and counts as a full suite (checked against the ledger; see `flake-baseline.js`).
+- **Crossing the top of the hour is a warning, not an exclusion.** The demo server resets on the hour, so a run spanning it ran against a fixture that changed. Whether that matters depends on how many runs did, which only you can judge. A line missing the flag is counted separately, never read as "did not cross".
+- **A clean series bounds the rate; it doesn't show 0%.** Six clean runs bound it at 39%, ten at 26%, thirty at 10%, so report "consistent with fixed, upper bound X%". One red run is informative at once.
 
-**A scoped run is EXCLUDED, not warned — the opposite call from the hour row above,
-and for a reason that does not transfer.** An hour-crossing run *is* a sample of the
-whole suite, just a contaminated one, so how much it matters is a proportion only you
-can judge. A `-t` run is not a weak sample of the suite; it is a sample of something
-else. There is nothing to weigh.
+Taking a series:
 
-**It excludes on ANY forwarded argument, not on a list of the narrowing ones.** Vitest
-4.1.10 narrows scope eight ways — positional filters, `-t`, `--dir`, `--shard`,
-`--changed`, `--exclude`, `--project`, `--tagsFilter` — and that set MOVES between
-majors (`--tagsFilter` is new in v4; `--related` is gone). An allowlist in our code
-would be a list that silently stops matching, which is the exact failure `runnerArgs`
-exists to close. The conservative rule fails the other way instead: a purely
-non-narrowing flag (`--reporter=verbose`) costs you a sample **loudly**, with the args
-printed beside the count, and the fix is to re-take the run without it. Losing a
-visible sample beats counting an invisible one-test run as a clean suite. It also
-catches `--bail`, which truncates execution without narrowing intent — an allowlist
-would not have.
+- **Run one `test:rta`, then `test:rta:fast` for the rest,** so the series tests one binary. The tool includes both variants for the RTA ledger by default. Compare durations within one variant: `:fast` skips the deploy.
+- **Commit first.** A dirty tree is excluded, because `dirty` carries no content hash.
+- **Don't `git pull` during a series.** `commit` is stamped per run, so a pull splits one series into two, silently.
+- **Check `npm run device:status` between runs.** A failed registry restore is not in the run record: `rta-run` folds the record before it restores. A restore that doesn't converge spoils every later run, and those are the ones that look normal in the ledger.
 
-**There is deliberately no `--include-scoped`.** The recovery for a lost sample is one
-re-run; the recovery for a wrong number nobody questioned is nothing. Everything above
-about why this is a command rather than a snippet applies to selection knobs too.
+### Where a baseline runs
 
-**An absent `runnerArgs` counts as a full suite** — the opposite reading from an absent
-`outcome`, which is a non-sample. That is a checked backfill, not an assumption: every
-one of the 26 lines in the ledger on 2026-09-07 was a full suite, so nothing historical
-is being admitted that should not be, and treating them as unknown would instead
-invalidate every baseline taken to date. The `scope` row in describe mode shows them as
-`(unrecorded)` so the assumption stays visible rather than buried.
+| Device | Reached through | Can you deploy to it? |
+| --- | --- | --- |
+| Your device | `ROKU_IP` and `ROKU_PASSWORD` in your `.env` | Yes |
+| The CI device | The org secrets `ROKU_DEVICE_IP` and `ROKU_DEVICE_PASSWORD` | No |
 
-**The rate reads `outcome`, never `failures.length`** — see the three-way conflation
-below.
+**Take the series on your device, and cross-check on the CI device** by dispatching [`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml), which uploads the ledger. Not the other way round:
 
-**The outcomes are not peers; they partition into samples and non-samples.**
-A `passed` or `failed` run reached a verdict, so it is evidence: in the population,
-and in the numerator respectively. A `crashed`, `interrupted` or `blocked` run never
-reached one — a deploy that 401'd, an operator's Ctrl-C, a fixture server that
-stopped answering — so it is not evidence about the app in either direction. Counting
-it red inflates the rate; counting it green hides a real failure; the only correct
-move is to drop it from the population. `SAMPLE_OUTCOMES` in
-[`run-record.js`](../../scripts/run-record.js) is that set, shared by the selector and
-by the run summary's own operator advice so the two cannot drift — they did not agree
-on first cut.
+- **You can't deploy to the CI device.** Its password is an org secret, so the deploy fails with `401 Unauthorized`, after the lock is taken.
+- **Holding its lock blocks CI.** CI's device jobs only read the lock and fail rather than wait, so a long series would fail every PR's device check meanwhile. Running the series inside CI has the same problem: the one self-hosted runner takes one job at a time.
 
-**`blocked` is the one to understand, because it is the only non-sample that looks
-exactly like a sample.** The other two are obvious from outside: no suite ran, or a
-human stopped it. A blocked run ran its suite, failed tests, and exited non-zero —
-nothing about it reads as unusual. What separates it is that a request to the demo
-server failed underneath it, so whatever went red afterwards was never a fair test of
-the app. `tests/rta/lib/jellyfin.js` records that failure at the throw site and
-`rta-run.js` reads it back, because by the time it surfaces the cause is gone: a 401
-inside a helper arrives as an ordinary assertion failure several frames away.
+Six to eight runs on your device and about three dispatches answer whether the device matters at all; the CI arm is not a second baseline. `npm run device:status` prints the ledger key of the device you can reach, and bare `npm run flake-baseline` lists every key with runs, including the CI device's.
 
-It outranks `failed` when a run has both, deliberately — a broken dependency is a
-plausible cause of whatever else went red in the same run. On 2026-08-12 two runs went
-red on a content assertion whose real cause was a session evicted 66 seconds in; both
-would have entered a baseline as app flake. **A `blocked` run in your series is not
-noise to ignore — it means the fixture failed you, and the run needs re-taking.**
-
-**Do not `git pull` while a series is running.** `commit` is stamped per run, at its
-open, so a pull mid-series silently splits one series into two populations and
-`--commit HEAD` then selects only the runs taken after it. This is the ledger working
-as designed — it is exactly the miscount the key exists to prevent — but it is silent
-in the sense that both halves look like complete series. It happened on 2026-08-12:
-two CI journal commits landed between run 1 and run 2, and the two runs are keyed to
-different commits despite testing an identical binary (`test:rta:fast` rebuilds
-nothing). Take the series on a checkout you are not also updating.
-
-**A dirty tree is excluded, so commit before the series.** `dirty: true` records that
-the tree was modified but carries no content hash, so two dirty runs are not provably
-the same code — which is the one thing `commit` is in the filter to establish. This is
-why a series is taken on a merged, clean checkout, and why the tool reports
-`N dirty tree` as an exclusion rather than quietly returning fewer runs.
-
-**Both variants, not `test:rta` alone.** The protocol is one `test:rta` followed by
-`test:rta:fast` for runs 2..N, precisely so the whole series measures ONE binary
-instead of N rebuilds of it. Those runs land as `variant: 'test:rta:fast'`. The tool
-defaults to both for the RTA ledger and to *no* variant filter for any other, because
-the Rooibos ledger's variants (`test:unit` / `test:integration` / `test:all`) are
-different SUITES rather than one suite deployed two ways. Keep the two apart when
-comparing **durations** — that is what the `variant` row above is about, and `:fast`
-is ~30 s shorter by construction.
-
-**A clean series does not measure a 0% flake rate**, which is why the tool prints a
-bound beside the estimate rather than the estimate alone. Six clean runs bound the
-per-run probability at 39%, ten at 26%, thirty at 10% — so no affordable N proves
-"fixed", and the honest report is *"consistent with fixed, upper bound X%"*. A single
-red run, by contrast, is immediately informative — that asymmetry is what sizes the
-series (below).
-
-**`failures: []` is not an outcome.** The failure records come from the five RTA
-throw sites that capture device state; an empty list means *those* did not fire, and
-that is true of three different runs:
-
-1. the suite ran and passed;
-2. the suite ran and went red somewhere the diagnostics do not cover — a plain
-   `expect()` (the specs use them directly) or an error raised by Vitest itself;
-3. the suite **never ran at all** — the entry point died first.
-
-(3) is not hypothetical. `ROKU_IP=192.168.1.200 npm run test:rta` on 2026-08-12 threw
-out of `deployRtaBuild()` on a 401 and appended `durationMs: 621, failures: []`, on a
-clean tree — the *first* line ever to satisfy all four filter keys above, from a run
-where nothing executed. `outcome` is what separates them: the entry points set it from
-their exit, and the process-exit net labels a run nobody closed `crashed`. A
-non-`passed` run now also prints a line, because a run with no failures printed
-nothing at all, which is how that one reached the ledger unnoticed. The file is still append-only and
-nothing prunes it — `rm .device-runs/<kind>/runs.jsonl` throws the history away if you
-want that, but it is no longer the way you get a trustworthy number. (Size is a
-non-issue: a clean line is ~200 bytes, and one carrying 30 failure records with full
-device state is ~25 KB.)
-
-### Where a baseline runs: your device for the series, the CI device for a cross-check
-
-There are two Roku devices in play for any contributor, and they are not interchangeable:
-
-| | Reached via | You can deploy to it? |
-|---|---|---|
-| **your device** | `ROKU_IP` / `ROKU_PASSWORD` in your gitignored `.env` | yes — this is the one every `npm run` script drives |
-| **the CI device** | `secrets.ROKU_DEVICE_IP` / `secrets.ROKU_DEVICE_PASSWORD`, org-level secrets | **no** — see below |
-
-**Run the baseline series on YOUR device.** Cross-check on the CI device by dispatching
-[`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml), which
-uploads the ledger as an artifact. Two independent reasons it is not the other way round:
-
-- **You cannot deploy to the CI device.** `ROKU_PASSWORD` in `.env` is *your* device's
-  dev server password. Overriding `ROKU_IP` alone is not enough — the CI device's
-  password is an org secret, so the deploy fails with a `401 Unauthorized` from
-  `roku-deploy`, *after* the lock has been taken.
-- **Even with the password it would be the wrong move.** `acquireDeviceLock` has no wait
-  budget, and CI's device jobs only READ the lock (they run with no write token) — so
-  while a workstation holds the CI device's lock, those jobs **fail rather than queue**.
-  A multi-hour series would red every PR's device check for its whole duration.
-
-The same arithmetic rules out running the series *inside* CI. A suite measures ~13 min
-against `timeout-minutes: 25`, so exactly one fits per job; a loop would need the timeout
-at ~4.5 h, and a single self-hosted runner carries the `roku-device` label and takes one
-job at a time — so that is a hard block on all device CI for the duration, the same
-objection relocated. (A multi-run job would produce N ledger lines, not one: `runs.jsonl`
-is append-only and lives outside `out/` for exactly that reason. The timeout is the wall,
-not the record.)
-
-**So: N=6–8 on your device, and ~3 dispatches on the CI device.** The CI arm answers only
-*"is device identity a factor at all"* — it is not a second baseline. The ledger stores
-a device as a hash and never an address, so `deviceKey` has to be looked up rather than
-guessed: `npm run device:status` prints `device <ip> — ledger key <D>` for the device
-you can reach, and bare `npm run flake-baseline` lists every key that actually has runs
-— which is the one that works for the CI arm, whose device you cannot reach at all.
-
-**The decision rule matters more than the counts, because the obvious reading of a single
-red is wrong.** With 8 runs on one device and 3 on the other, if exactly one run in the 11
-is red, then under the null that both devices behave identically that red lands in the
-3-run group **3/11 ≈ 27%** of the time. So "1 of 3" has a better-than-one-in-four
-false-alarm rate *by construction*, and treating it as a signal is how a cross-check meant
-to stop early instead burns the most device time:
+**One red in three CI runs is not a signal.** With one red among 11 runs (8 and 3), it lands in the group of 3 about 27% of the time by chance:
 
 | CI-device result | Read it as |
-|---|---|
-| 0/3 | agreement — stop; device identity is not a factor |
-| 1/3 | **not separable.** Extend that arm to 6 before concluding anything |
-| 2+/3 | a real difference — chase it |
+| --- | --- |
+| 0/3 | Agreement: stop |
+| 1/3 | Not separable: extend that arm to 6 first |
+| 2+/3 | A real difference: chase it |
 
-**Why the ledger is not under `out/` with the others.** `out/` is the build output
-directory, and all eight `build*` npm scripts begin with `npx rimraf build/ out/`.
-`npm run test:rta` builds first — so a ledger under `out/` was deleted immediately
-before each run that was meant to append to it, and an N-run baseline would have
-ended with exactly one line, silently. The per-run files are safe there because
-`beginRun` truncates them anyway; a file whose contract is *never reset* is not.
-[`run-record.test.js`](../../tests/scripts/unit/run-record.test.js) gates both
-halves — that the ledger is outside `out/`, and that the build scripts really do
-wipe it — so this cannot quietly come back.
+### A run always closes, including on Ctrl-C
 
-The two entry points that are not Vitest get a label Vitest would otherwise supply:
-`capture-screenshots` tags each record with its screen, locale and **retry attempt**,
-so a screen that recovered on attempt 2 is not mistaken for a failure; `demos` tags
-each with its take name.
+`beginRun` returns a handle whose `close()` folds the run. It also arms a `process.on('exit')` handler that closes a run no entry point closed, because three of the four entry points exit through a signal handler ending in `process.exit()`. `close()` stays explicit where order matters: `rta-run` folds before the registry restore, so the summary survives a restore that throws. A subprocess test in [`run-record.test.js`](../../tests/scripts/unit/run-record.test.js) checks it.
 
-#### A run always closes, including when you Ctrl-C it
+On macOS, stdout from an `exit` handler is asynchronous for pipes, so a piped, interrupted run can lose its printed summary. The records are file writes and are unaffected: read `run-meta.json`.
 
-`beginRun` returns a handle whose `close()` folds the run — it carries the lock, the
-run kind, the origin and the watch-mode flag, so no entry point restates them and
-none can restate them wrongly. `beginRun` also arms a `process.on('exit')` net that
-closes any run whose entry point never got to.
+### The run's time window
 
-That net is not belt-and-braces. Three of the four entry points hand their exit to a
-signal handler ending in `process.exit()` — `armRestoreOnInterrupt`'s among them —
-so a hand-rolled fold in the happy path alone would skip exactly the interrupt a
-~15-minute matrix run is most likely to end with. It is legal because `endRun` is
-all-synchronous. `close()` stays explicit where output ORDER matters: `rta-run`
-folds before the registry restore, so the summary survives a restore that throws.
-The net is gated by a subprocess test in
-[`run-record.test.js`](../../tests/scripts/unit/run-record.test.js) — in-process it
-cannot be exercised at all, since emitting `exit` by hand proves only that the
-listener is attached.
+The summary reports the run's window and flags a run that crossed the top of the hour, when the demo server resets its content (playlists, and anything the run marked watched). A change landing mid-run fails as an unrelated nav timeout. Each failure carries `afterHourBoundary`, so you can tell which side of the reset it landed on.
 
-**Know where the record STOPS.** That same ordering is a boundary: `rta-run` folds
-before it restores, so **a failed registry restore is not in the run record or the
-ledger**. A run that left the device dirty appears in `runs.jsonl` as an ordinary
-run — clean, zero failures — and the signal that it stranded the device is the
-snapshot file it left behind (which `npm run device:status` reports), not the
-record. That matters for a Phase-3 baseline specifically: a restore that does not
-converge wedges every *subsequent* run — `snapshotRegistry()` restores from the kept
-file before taking its own — so the runs whose numbers it corrupts are the ones that
-look most normal in the ledger. The `authToken` re-mint that used to cause this is
-fixed ([`restore-compares-credentials-by-presence`](../decisions.md)), but any
-residual the loop cannot converge has the same shape. Check `device:status` between runs of a series; do not
-infer a clean device from a clean ledger line.
+In watch mode (`test:rta:tdd`) the window spans the whole session, so both the run flag and the per-failure stamp are off, and `afterHourBoundary` is absent rather than `false`: the reset may well have happened. `beginRun` writes `cumulative` into the record at open time so the Vitest child can see it.
 
-One bounded caveat: writes to stdout from an `exit` handler are synchronous on Linux
-for TTYs, files and pipes, but **asynchronous for pipes on macOS** — so a macOS
-contributor piping an interrupted run's output can lose the printed summary. Every
-durable record is an `fs` write and is unaffected; re-read `run-meta.json`.
+## Test hooks in RTA builds
 
-### The run's wall-clock window is part of the evidence
+RTA builds add fields on `m.global` under `#if ENABLE_RTA` in `setGlobalNodes()`, absent from dev and prod builds. Each lives in app memory, so the next relaunch clears it. Set them after relaunch, before navigating.
 
-The summary also reports the window, and flags a run that **crossed the top of the
-hour**. The demo server resets on the hour, which changes both its own content
-(playlists have come and gone) and anything a run marked watched through the app —
-so a ~13-minute suite (measured at 13.6 min on `.177`) starting after roughly 46 minutes
-past the hour can have that change land *mid-run* and fail as an unrelated-looking nav timeout.
-Individual failures carry `afterHourBoundary`, so a record says whether it landed on
-the far side of a reset. A green run that straddled the top of the hour is flagged too: its result
-was taken against a fixture that changed underneath it.
+### Driving intermediate load stages (`rtaSkeletonHoldMs`)
 
-The flag is **suppressed in watch mode** (`npm run test:rta:tdd`), where the record
-opens once at session start and folds once at exit: that window spans every
-iteration, so any session over an hour would trip it and a flag that always fires is
-one nobody reads. The summary says "this watch session" there.
-
-**The per-failure stamp is suppressed there too**, for the same reason and not only
-at the run level. The origin a failure is measured against is the *session's*, so
-past the first hour of a watch session every failure would carry
-`afterHourBoundary` — the identical always-fires noise. In a cumulative window the
-field is therefore **absent, not `false`**: the reset may well have happened, so
-`false` would be a claim the record cannot support, exactly as it is when no origin
-was stamped at all. The origin itself is still recorded either way. `beginRun`
-stamps `cumulative` into the record at *open* time so the Vitest child can see it
-mid-run — the closed summary's copy arrives too late to be of use to the process
-actually writing the failures.
-
-## Driving intermediate load stages (`rtaSkeletonHoldMs`)
-
-The Genres view has an interactive **skeleton stage** (structure drawn, samples pending)
-that lasts only a few hundred ms against the demo server — too narrow to exercise
-reliably. RTA builds compile in a test hook for it: an `rtaSkeletonHoldMs` field on `m.global`
-(added under `#if ENABLE_RTA` in `setGlobalNodes()`; the field does not exist in dev or
-prod builds). `LoadItemsTask2` holds the skeleton stage open that long, mimicking a slow
-server on the task thread. A spec sets it after relaunch, before navigating:
+The Genres view's skeleton stage (structure drawn, samples pending) lasts only a few hundred milliseconds against the demo server. `rtaSkeletonHoldMs` makes `LoadItemsTask2` hold it open, like a slow server:
 
 ```js
 await odc.setValue({ base: 'global', keyPath: 'rtaSkeletonHoldMs', value: 5000 });
 await openLibraryByType('movies', moviesId); // navLibraryByType minus the loaded-wait
 ```
 
-App-memory only — the next relaunch resets it, so no restore step. The consumer is
-`specs/genre-skeleton.spec.js`, which asserts the skeleton window's contracts (select is
-a no-op, scroll survives the fill, backdrop lands on the focused item). `openLibraryByType`
-is the press-into-the-library half of `navLibraryByType` for exactly this kind of spec —
-everything else should keep using `navLibraryByType`, which settles.
+`specs/genre-skeleton.spec.js` uses it. `openLibraryByType` is the press-into-the-library half of `navLibraryByType`, for specs like that one; everything else should use `navLibraryByType`, which waits for the grid to settle.
 
-## Paging a grid on a small library (`rtaGridPageSize`)
+### Paging a grid on a small library (`rtaGridPageSize`)
 
-A grid page is 100 items, and the demo server's libraries are smaller than that, so a paged
-load never happens there. RTA builds add an `rtaGridPageSize` field on `m.global` (same
-`#if ENABLE_RTA` block as the hook above); above 0, it is `LoadItemsTask2`'s page size. Set
-it after relaunch, before opening the grid — the task reads it when it is created:
+A grid page is 100 items, larger than the demo server's libraries, so paging never happens there. Above 0, `rtaGridPageSize` is `LoadItemsTask2`'s page size; the task reads it when created, so set it before opening the grid:
 
 ```js
 await odc.setValue({ base: 'global', keyPath: 'rtaGridPageSize', value: 4 });
 ```
 
-App-memory only, like the other hooks. `specs/fail-requests.spec.js` uses it to fail a later
-page.
+`specs/fail-requests.spec.js` uses it to fail a later page.
 
-## Asking "Are you still watching?" now (`rtaForceStillWatching`)
+### Asking "Are you still watching?" now (`rtaForceStillWatching`)
 
-The still-watching prompt normally needs an hour or more of unattended playback. RTA builds
-add an `rtaForceStillWatching` field on `m.global` (same `#if ENABLE_RTA` block); while it is
-`true`, `PlayerHostView` asks at every automatic advance. Set it after relaunch:
+The prompt normally needs an hour or more of unattended playback. While `rtaForceStillWatching` is `true`, `PlayerHostView` asks at every automatic advance:
 
 ```js
 await odc.setValue({ base: 'global', keyPath: 'rtaForceStillWatching', value: true });
 ```
 
-App-memory only, like the other hooks. `specs/still-watching.spec.js` uses it; when to ask is
-unit-tested instead (`tests/source/unit/utils/stillWatching.spec.bs`).
+`specs/still-watching.spec.js` uses it; when to ask is unit-tested in `tests/source/unit/utils/stillWatching.spec.bs`.
 
 ## Making requests fail or slow (`rtaFailRequests`)
 
-A screen's failure path — a timeout, a server error — cannot be reached against a healthy
-server, and its slow-server path cannot be reached against a fast one, so RTA builds let a
-spec make chosen API requests fail or answer slowly. Set rules after relaunch, through
-[`lib/failRequests.js`](../../tests/rta/lib/failRequests.js):
+A screen's failure path can't be reached against a healthy server, nor its slow path against a fast one. RTA builds let a spec fail or slow chosen requests, through [`lib/failRequests.js`](../../tests/rta/lib/failRequests.js):
 
 ```js
 await failRequests([{ prefix: 'itemQuery_usersItems', kind: 'timeout', times: 1 }]);
 await openLibraryByType('movies', moviesId);
 ```
 
-- `prefix` matches the start of the request id the app passes to `fetchRes` / `fetchAsync`
-  (`itemQuery_usersItems`, `itemMetaData`, `genreItems_<id>`, …). Find the id at the call
-  site you want to fail.
-- `kind: 'timeout'` answers the way `roku-requests` does when it gives up; `kind: 'http'`
-  needs a `status` of 400 or more.
-- `kind: 'slow'` needs `ms`: the request is sent, and its real answer is held until `ms` after
-  it was sent, with its pool slot busy the whole time — a slow server, without making the
-  test server slow. `{ …, kind: 'slow', ms: 20000, times: 1, after: 1 }` slows a grid's page 2.
-  `m.global.rtaHeldRequests` counts the answers held right now; read it with `getGlobalVal`
-  ([`lib/steps.js`](../../tests/rta/lib/steps.js)) to act only once a request is on a slot, and
-  to see its slot come back when the screen that asked is closed (a long request is stopped,
-  and its held answer let go, the moment its caller goes).
-  [`specs/slow-library.spec.js`](../../tests/rta/specs/slow-library.spec.js) is the reference.
-- `times` is how many matching requests the rule applies to; omit it for all of them. `times: 1` is how a
-  spec proves recovery: the first load fails, the next one reaches the server.
-- `after` is how many matching requests go through before the rule starts failing. It is for
-  an id that repeats faster than a spec can set a rule in between: a grid's page 2 follows
-  page 1 by a few hundred ms under the same id, so `{ …, times: 1, after: 1 }` fails page 2
-  alone.
-- A rule the app cannot honor exactly is dropped, not guessed at, so a typo fails your
-  assertions rather than some other request.
+- **`prefix`** matches the start of the request ID the app passes to `fetchRes` or `fetchAsync` (`itemQuery_usersItems`, `itemMetaData`, `genreItems_<id>`, …). Find it at the call site.
+- **`kind: 'timeout'`** answers the way `roku-requests` does when it gives up; **`kind: 'http'`** needs a `status` of 400 or more.
+- **`kind: 'slow'`** needs `ms`: the request is sent and its real answer held until `ms` after sending, with its pool slot busy all the while. `{ …, kind: 'slow', ms: 20000, times: 1, after: 1 }` slows a grid's page 2. `m.global.rtaHeldRequests` counts answers held now; read it with `getGlobalVal` ([`lib/steps.js`](../../tests/rta/lib/steps.js)) to act once a request is on a slot, and to see the slot freed when its screen closes. [`specs/slow-library.spec.js`](../../tests/rta/specs/slow-library.spec.js) is the reference.
+- **`times`** is how many matching requests the rule applies to (all when omitted). `times: 1` proves recovery: the first load fails and the next reaches the server.
+- **`after`** is how many matching requests pass first, for an ID that repeats faster than a spec can act: a grid's page 2 follows page 1 within a fraction of a second under the same ID, so `{ …, times: 1, after: 1 }` fails page 2 alone.
+- **A rule the app can't honor exactly is dropped,** so a typo fails your assertions, not another request.
 
-The API coordinator answers a failed request itself, with the response the pool delivers
-for that failure, and never sends it; a slowed one it sends and holds (see [`api.md`](../architecture/api.md#a-request-a-test-makes-fail-or-slow-rta-builds-only)).
-Only pooled requests are covered: the bootstrap-path sync calls (`getJson`) and
-`SideEffectTask` writes do not pass through the coordinator. Like `rtaSkeletonHoldMs` it is
-app-memory only, so a relaunch clears it. [`specs/fail-requests.spec.js`](../../tests/rta/specs/fail-requests.spec.js)
-is the reference use. Prefer this to a new `DebugFlags` flag whenever the failure is a
-request failing.
+The API coordinator answers a failed request itself and never sends it; a slowed one it sends and holds ([`api.md`](../architecture/api.md#a-request-a-test-makes-fail-or-slow-rta-builds-only)). Only pooled requests are covered, not the start-up sync calls (`getJson`) or `SideEffectTask` writes. [`specs/fail-requests.spec.js`](../../tests/rta/specs/fail-requests.spec.js) is the reference. When the failure you want is a request failing, use this rather than a new `DebugFlags` flag.
 
 ## Adding a screen
 
@@ -908,162 +353,69 @@ Add one entry to [`tests/rta/screens.js`](../../tests/rta/screens.js):
 { name: 'myScreen', state: 'home', nav: navMyScreen, capture: { eligible: true } }
 ```
 
-- `state`: `'home'` | `'userSelect'` | `'serverSelect'` (the seed-to-land state, via the
-  matching `seed*` in [`tests/rta/lib/seed.js`](../../tests/rta/lib/seed.js); add a branch in
-  BOTH `specs/screens.spec.js` and `scripts/capture-screenshots.js` for a new state).
-- `nav`: an async `(ctx) => {}` in [`tests/rta/lib/nav.js`](../../tests/rta/lib/nav.js)
-  that drives key presses and `waitFor`s the screen's loaded signal. The waits are the
-  assertion.
-- `assert`: optional — for seed-to-land screens with no `nav`, or extra checks.
-- `view`: optional `{ collectionType, landing }` for a library-dependent screen. Library
-  views are **sticky** in the registry (`display.<libraryId>.landing`, set by the grid options
-  dialog), so a screen that depends on a specific view must seed it deterministically rather
-  than inherit whatever is persisted. The `vw(name, nav, collectionType, landing)` helper in
-  `screens.js` builds these entries; `seedLibraryLanding` (called by the spec + orchestrator)
-  resolves the library id at RUNTIME from the stable `collectionType` (never a hardcoded id,
-  which would die if the library is recreated) and seeds the landing view. `seedHome` clears all sticky `display.*` keys first, so views
-  can't leak between screens.
-- `capture`: screenshot metadata (store generator + `RTA_CAPTURE` only):
-  `eligible` to capture, `store: true` to ALSO include in the curated Roku-store / homepage
-  set (see split below), `backdrop: true` to composite the in-film frame behind the OSD,
-  `scope: 'shared'` for language-agnostic screens (captured once, copied to all locales).
-- `requires`: optional `{ probe, reason }` — **or a list of them** — for a screen that needs
-  something the fixture may not provide. `probe` is a sync or async `(ctx) => boolean`; when
-  it answers false the screen skips with that gate's `reason`, in both
-  `specs/screens.spec.js` and `scripts/capture-screenshots.js`, instead of failing its nav.
-  Both consumers resolve it through the one exported `firstUnmetRequirement(screen, ctx)`
-  so they cannot drift on what "required" means — a screen gated in the suite but not the
-  orchestrator is a silent hole that burns a ~15-minute matrix run. It returns the failing
-  GATE rather than a boolean, which is what lets each gate keep its own precise reason.
-  Gates run in declared order and **short-circuit**, so a cheap local check can guard an
-  expensive request. A probe must throw on a failed request rather than answer false, so an
-  auth error can't masquerade as "not granted".
+- **`state`:** `'home'`, `'userSelect'` or `'serverSelect'`, the state to seed and land on, through the matching `seed*` in [`lib/seed.js`](../../tests/rta/lib/seed.js). A new state needs a branch in both `specs/screens.spec.js` and `scripts/capture-screenshots.js`.
+- **`nav`:** an async `(ctx) => {}` in [`lib/nav.js`](../../tests/rta/lib/nav.js) that presses keys and waits for the screen's loaded signal. The waits are the assertion.
+- **`assert`:** optional, for a screen with no `nav` or extra checks.
+- **`view`:** optional `{ collectionType, landing }` for a screen that depends on a library view. Views are remembered in the registry (`display.<libraryId>.landing`), so seed the view rather than inherit one. The `vw(name, nav, collectionType, landing)` helper builds these entries, and `seedLibraryLanding` finds the library by `collectionType` at runtime, never by a fixed ID. `seedHome` clears every `display.*` key first.
+- **`capture`:** screenshot settings. `eligible` captures it, `store: true` also puts it in the store set (below), `backdrop: true` puts the film frame behind the OSD, and `scope: 'shared'` captures a screen with no text once for every locale.
+- **`requires`:** optional `{ probe, reason }`, or a list of them, for a screen that needs something the server may not have. `probe` is a `(ctx) => boolean`, sync or async; when it answers false, the screen skips with that reason, in the suite and the screenshot run alike, through the one `firstUnmetRequirement(screen, ctx)`. Gates run in order and stop at the first that fails, so a cheap check can guard an expensive one. A probe throws on a failed request rather than answering false, so an auth error can't pass as "not available".
 
-  Three references, one per class of gap:
+  | Gate | Kind of gap | Skips when |
+  | --- | --- | --- |
+  | `manageSubtitlesOffered()` (`subtitlePanel`) | User or server capability | The user can't search subtitles, or no provider plugin is installed |
+  | `HERO_PRESENT` (`osd`, `trickplay`) | The configured content is missing | `RTA_HERO_MOVIE` names a film this server doesn't have |
+  | `trickplayAvailable()` (`trickplay`) | Data the server derives | The server extracted no trickplay images for that film |
 
-  | Gate | Class | Skips when |
-  |---|---|---|
-  | `manageSubtitlesOffered()` (`subtitlePanel`) | user/server CAPABILITY | the user may not search subtitles, or no provider plugin is installed |
-  | `HERO_PRESENT` (`osd`, `trickplay`) | the configured CONTENT is absent | `RTA_HERO_MOVIE` names a film this server does not have |
-  | `trickplayAvailable()` (`trickplay`) | derived server DATA | the server extracted no trickplay thumbnails for that film |
+  Without a gate, missing content passes falsely or fails like an app bug. A film `findMovie` doesn't find returns `{ index: 0, id: '' }`, so the seek is skipped and the screen passes without being driven; trickplay extraction is off by default on Jellyfin, so the trickplay screen fails as if the scrubber were broken. A "Generate Trickplay Images" task finishing cleanly is not evidence that images exist.
 
-  `HERO_PRESENT` exists because a missing film did not fail loudly: `findMovie` answers a
-  miss with `{ index: 0, id: '' }`, so `navOsd`'s seek (guarded on `ctx.heroId`) was skipped
-  and the suite reported a PASS for a screen it never drove to the position it asserts
-  about. Measured 2026-09-20: `Dracula` returns zero matches on the local 12.0 test server
-  and the suite went green anyway. A hollow pass is worse than a red one — it is
-  indistinguishable from a real one in the record. `trickplayAvailable()` is the same
-  lesson on data rather than content: `EnableTrickplayImageExtraction` is off by default,
-  measured 2026-09-20 as false on all nine local libraries with 0 of 151 movies carrying
-  trickplay data, so without the gate `trickplay` goes RED and reads like a broken scrubber
-  in the app. Note the "Generate Trickplay Images" task reporting a clean run is NOT
-  evidence that thumbnails exist.
+The new screen becomes a functional test (the spec loops over `SCREENS`) and, if `capture.eligible`, a screenshot.
 
-The new screen is automatically a functional test (the spec loops over `SCREENS`) and, if
-`capture.eligible`, a captured screenshot.
+A screen with a `view` skips itself, with a reason, when the server has no library of that `collectionType`: the demo server's libraries come and go, so a missing one says something about the fixture. That is why the spec is a plain `for` loop and not `it.each`, which passes no Vitest `TestContext` to skip with.
 
-A screen that declares a `view` is **content-dependent**: if the server has no library of
-that `collectionType`, the test skips itself at runtime with a printed reason rather than
-failing. The demo server's content is not a fixed contract — it resets and its libraries
-come and go — so a missing library says something about the fixture, not about the app.
-This is why the spec is a plain `for` loop instead of `it.each`: `it.each` passes only the
-case object, with no Vitest `TestContext`, so a case has no way to skip itself once
-`beforeAll` has learned what the server actually holds.
+### Workload entries
 
-### The other kind of registry entry: a WORKLOAD, not a screen
+Some entries are round trips that end where they started, not screens. They are in the registry because [`scripts/measure.js`](../../scripts/measure.js) resolves `--nav` from it:
 
-Some entries in `SCREENS` are not screens at all — they are round trips that end back where
-they started, and a screenshot of one would just show Home. They are in the registry because
-[`scripts/measure.js`](../../scripts/measure.js) resolves `--nav` out of it, so a measurement
-`nav` has nowhere else to live. Three families exist today:
+- **Round trips that keep a view:** `homeReturn`, `homeReturnAfterDetails`, `searchReturn`.
+- **Cell sweeps:** `cellSweepHome`, `cellSweepGrid`, `cellSweepExtras`, `cellSweepSearch`. Each opens a screen, moves a fixed distance, waits for its cell counters to stop, and leaves, which publishes them ([cell workloads](measuring-performance.md#cell-workloads--how-much-work-did-the-cells-do)).
+- **Grid paging:** `gridScroll`, a timed scroll (Down every 150 ms for 20 s) that can outrun the loaded rows; leaving prints the grid's paging line ([`home-first-paint-performance.md`](home-first-paint-performance.md#grid-paging-did-the-user-wait-at-the-last-loaded-row)).
 
-- **Retained-view round trips** — `homeReturn`, `homeReturnAfterDetails`, `searchReturn`.
-- **Cell sweeps** — `cellSweepHome`, `cellSweepGrid`, `cellSweepExtras`, `cellSweepSearch`.
-  Each opens a cell-bearing screen, travels a FIXED distance through it, waits for its
-  cell-load counters to stop moving, and leaves; leaving is what makes the counters publish.
-  See [measuring-performance.md](measuring-performance.md#cell-workloads--how-much-work-did-the-cells-do).
-- **Grid paging** — `gridScroll`. A TIMED scroll through the Movies grid (Down every 150 ms
-  for 20 s, not a walk), so it can out-run the loaded rows the way a user holding Down does;
-  leaving emits the grid's `item-grid paging` line. See
-  [home-first-paint-performance.md](home-first-paint-performance.md#grid-paging-did-the-user-wait-at-the-last-loaded-row).
+They have no `capture`, and they still run as functional tests, so a workload that can no longer reach its screen fails like any navigation regression. When writing one:
 
-They carry no `capture`, and they still become functional tests — which is a feature, since
-a workload that can no longer drive its screen is a navigation regression like any other.
-Two consequences for writing one:
+- **Fit the fixture; never refuse it.** They run against the small demo server too. A sweep that wants 12 steps and finds 4 rows takes 3 and says so.
+- **Home needs one more gate.** `waitHome()` is satisfied by skeleton rows, so `navCellSweepHome` waits on [`waitRowsSettled`](../../tests/rta/lib/steps.js) before reading its bounds. That gate is not why Home's counts vary between launches: the variation happens during page load, before the first key press ([why](measuring-performance.md#the-totals-are-cumulative--on-home-most-of-them-are-not-the-sweeps)).
+- **Add a `nav` rather than change one.** `measure` records the `nav`'s name, not its path, so changing its distances splits a series without saying so.
 
-- **Clamp to the fixture; never refuse it.** These run against the thin demo server as well
-  as against whatever server a measurement targets, and a red in this suite is supposed to
-  mean "the screen did not load". A sweep that wants 12 steps and finds 4 rows takes 3 and
-  says so on the console. Where the content is settled before the sweep reads it, that clamp
-  is deterministic — content, not timing, decided it.
-- **Home is the exception, and it needs a gate the others do not.** `waitHome()` is satisfied
-  by SKELETON rows, so a sweep that reads its row count and picks its widest row at that
-  moment could get a different itinerary on a later-arriving row. `navCellSweepHome` therefore
-  gates on [`waitRowsSettled`](../../tests/rta/lib/steps.js) before it reads its own bounds;
-  every other sweep reads a list that is complete before it starts. Do not describe a sweep as
-  deterministic without checking that its content stopped arriving first.
-- 🚨 **That gate is NOT why Home's counts move, and an earlier version of this bullet said it
-  was.** Two measurements refute it. The itinerary was byte-identical on all 40 launches of
-  the 2026-08-22 campaign, gated and ungated arms alike, and the gate moved no field's
-  dispersion. Then the 2026-08-24 before/after split showed the sweep's own contribution is
-  exactly constant (`binds` +16, `appearances` +75 on every launch) while the published total
-  spans 222–251 — so **all** of Home's run-to-run spread happens during PAGE LOAD, before the
-  first key press, and none of it is the sweep. See
-  [measuring-performance.md](measuring-performance.md#the-totals-are-cumulative--on-home-most-of-them-are-not-the-sweeps).
-  A `cellSweepHome` figure that moves is telling you about Home's load, not about scrolling.
-- **The console line is the only record of the distance.** `measure` writes down the `nav`'s
-  NAME, not its itinerary, so the travel constants are effectively frozen once a series
-  exists; changing one forks the series silently. Add a `nav` instead.
+## Screenshots
 
-## Store set vs website gallery (the `store` flag)
+### Store set vs website gallery (the `store` flag)
 
-The Roku store caps a listing at **6 screenshots**, but the captured set is larger — the
-extra screens feed the website's screenshot *gallery* (a UX preview) and may graduate to the
-store later. So `capture` has two levers:
+The Roku store takes 6 screenshots; the captured set is larger, and the rest feed the website's gallery.
 
-- `eligible` — captured at all: written to `docs/screenshots/<locale>/` (website gallery) and
-  dumped by `RTA_CAPTURE`.
-- `store` — ALSO part of the frozen Roku-store / homepage 6. Only these are bundled by
-  `npm run screenshots:store`, and the website homepage renders them (in registry order)
-  while the gallery page renders every `eligible` screen.
+- **`eligible`:** captured, written to `docs/screenshots/<locale>/` and saved by `RTA_CAPTURE`.
+- **`store`:** also one of the store and homepage 6. Only these go into `npm run screenshots:store`, and the homepage shows them in registry order.
 
-The manifest (`docs/screenshots/screenshots.json`) emits both lists: `screens` (full gallery)
-and `storeScreens` (the curated 6). Keep `store: true` on exactly the 6 that ship — adding a
-7th store screen is a Developer-Portal decision, not a code default.
+`docs/screenshots/screenshots.json` lists both: `screens` (the gallery) and `storeScreens`. Keep `store: true` on exactly the 6 that ship; a seventh is a Developer Portal decision.
 
-## Image format & footprint
+### Image format and size
 
-Committed images are **lossless WebP**. The device only outputs a fixed-quality **JPEG** (that's
-the quality ceiling regardless), so lossless adds nothing over the source while keeping every
-screen pixel-perfect — and it's still ~3× smaller than PNG, which after pruning got the committed
-set from ~160 MB to ~36 MB. (Lossless everywhere is deliberately simpler than mixing lossy +
-lossless — there's no per-screen "is this one lossy?" to reason about.)
+Committed images are lossless WebP. The device outputs a fixed-quality JPEG, so lossless loses nothing more and keeps the files several times smaller than PNG. Only the `galleryLocale` (en_US) folder holds every screen; other store locales hold only the store screens. The manifest records `format` and `galleryLocale` so the website can find `<locale>/<screen>.<format>`. The Developer Portal wants PNG, so `npm run screenshots:store` converts each store WebP to PNG in `out/store/<lang>/`.
 
-To keep the repo lean, only the **`galleryLocale`** (en_US) folder holds the full screen set;
-every other store locale holds **only the store screens** — a full per-language gallery isn't
-worth the weight. The manifest records `format` + `galleryLocale` so the website can resolve
-`<locale>/<screen>.<format>` and know which locale carries the full gallery. The Roku Developer
-Portal wants PNG, so `npm run screenshots:store` **decodes** each store WebP back to PNG into
-`out/store/<lang>/` (no extra loss) — WebP never reaches the store listing.
-
-## Two capture tiers
+### Two capture tiers
 
 | | `RTA_CAPTURE=1` (test runner) | `screenshots:capture` (store) |
-|---|---|---|
-| Output | `out/rta-captures/<screen>.png` (gitignored) | `docs/screenshots/<locale>/<screen>.webp` + `screenshots.json` |
-| Locales | en_US only | full matrix |
-| Build | dev | **prod** (release branding) |
-| OSD background | black (the video plane can't be captured — fine for GUI viewing) | real in-film frame composited via ffmpeg |
-| Purpose | view the GUI while designing UI | public store / website assets |
+| --- | --- | --- |
+| Output | `out/rta-captures/<screen>.png` (gitignored) | `docs/screenshots/<locale>/<screen>.webp` and `screenshots.json` |
+| Locales | en_US only | All of them |
+| Build | Dev | Prod, with release branding |
+| OSD background | Black: the video plane can't be captured | A real film frame, composited with ffmpeg |
+| For | Seeing the UI while you design it | Store and website images |
 
-Store screenshots default to the **prod** build (`npm run screenshots:capture` →
-`build:prod`), so they match what ships. `screenshots:capture:dev` and
-`screenshots:capture:fast` are the alternates. See
-[`scripts/capture-screenshots.js`](../../scripts/capture-screenshots.js).
+`screenshots:capture:dev` and `screenshots:capture:fast` are the alternatives ([`capture-screenshots.js`](../../scripts/capture-screenshots.js)).
 
-## Incremental capture — only the new screens
+### Capturing only new screens
 
-When you add screens, you do NOT need to regenerate the existing set — both axes subset:
+You don't need to regenerate the whole set:
 
 ```bash
 # Functional test, only the new screens (skip redeploy after the first full run):
@@ -1074,340 +426,88 @@ RTA_NO_DEPLOY=1 vitest run --config vitest.rta.config.js -t 'serverSelect|settin
 DEPLOY=1 node scripts/capture-screenshots.js --screens=serverSelect,settings
 ```
 
-`capture` writes one WebP per (screen × locale), so `--screens=` only overwrites those files —
-the existing store screens are never touched. `screenshots.json` + the README index are
-regenerated each run but are derived from the config, so they always reflect the full
-intended set regardless of the subset captured. `--languages=` narrows the locale set the
-same way.
+`--screens=` overwrites only those screens' files, and `--languages=` narrows the locales. `screenshots.json` and the README index are rebuilt from the config each run, so they always describe the full set.
 
-## Store languages
+### Store languages
 
-`screenshots:capture` writes every locale in `RTA_CONFIG.languages` (the full capture
-matrix — planned to grow to all locale files, to map the default-font blast radius). Only
-a curated subset actually **ships** in the Roku store listing: `RTA_CONFIG.storeLanguages`
-— the ONE hand-maintained "what's in the store" list (a subset of `languages`). To gather
-just those for upload:
-
-```bash
-npm run screenshots:store
-```
-
-It copies `docs/screenshots/<lang>/` for each `storeLanguages` entry into
-`out/store/<lang>/` (gitignored), ready to upload to the Roku Developer Portal — no hunting
-through the full locale set. Adding a store language = add it to `storeLanguages` and
-re-run. `storeLocales` is also emitted into `screenshots.json` so the website can tell the
-store set from the full capture set.
+`screenshots:capture` writes every locale in `RTA_CONFIG.languages`. Only `RTA_CONFIG.storeLanguages`, the one hand-kept list of what ships, goes in the store listing. `npm run screenshots:store` copies those into `out/store/<lang>/` for upload. To add a store language, add it to `storeLanguages` and run it again; `storeLocales` in `screenshots.json` tells the website which they are.
 
 ## Load windows, and testing on a second device
 
-A nav that presses a key immediately after triggering playback spends seconds pressing
-into a component designed to ignore input until it is ready. Measured on 2026-08-08, the
-press→playable window is **~5-7 s on every device tested** (Stick `3600X` 5.6/5.8 s,
-Ultra `4850X` 7.2 s) — it tracks stream start against the remote demo server, not device
-speed. So this is not a slow-device quirk to paper over with a longer timeout; it is a
-precondition every nav must respect. See the rule in
-[`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md).
+A nav that presses a key right after starting playback presses into a component that ignores input until it is ready. The window from press to playable was several seconds on every device tested, set by stream start on the demo server, not device speed. Every nav has to wait for it rather than lengthen a timeout; the rule is in [`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md).
 
-Two habits that came out of the same investigation:
+- **When a failure happens on one device only, power-cycle it and run again** before chasing it. Device state drifts.
+- **Before a release, run against the slowest supported device,** not only a fast one. A device with headroom hides rendering bugs and render-thread costs.
 
-- **When a failure is device-specific, power-cycle first and re-run.** Device state is
-  transient and does drift: on the `3600X` the same suite passed 58 s and 157 s after a power cycle,
-  failed at 240 s, and later recovered on its own. Establishing whether the failure even
-  reproduces right now costs five minutes and saves chasing a defect that isn't there.
-- **Run against the slowest supported device before a release, not only the fast one.**
-  In a single afternoon the stick surfaced a rendering bug (#777), a render-thread cost
-  regression, and this harness gap. A device with headroom hides all three.
+## "nothing is listening on <host>:9000": the run refused to start
 
-## "nothing is listening on <host>:9000" — the run refused to start
+Every RTA entry point checks the on-device component is there before its first ODC call, and stops within seconds when it isn't. Three things cause it, and they look the same from outside:
 
-Every RTA entry point now proves the on-device component is THERE before its first ODC
-call, and says so in those words when it is not. It is a precondition failure, not a
-timeout: the run stopped in about a second rather than doing anything to the device.
+- **The installed build has no ODC.** A Rooibos test build (`npm run test:unit`) and a `build:prod` both leave a working channel with no component. Deploy the dev build again; `npm run test:rta` does unless you set `RTA_NO_DEPLOY=1`.
+- **The channel is closed.** The component lives inside the app, so port 9000 goes quiet when the app exits. That is also why "ODC not answering" from `npm run device:check` is not on its own a reason to redeploy.
+- **The device is asleep or off, or `ROKU_IP` names another host.** Run `npm run device:check`.
 
-Three things produce it, and the message lists all three because they are indistinguishable
-from the outside:
+It is a gate rather than a longer timeout because a failed connect in `roku-test-automation` leaves a rejection nothing can catch, which ends the process at an unrelated point and loses the run record ([`scripts/lib/odc-probe.js`](../../scripts/lib/odc-probe.js); `rta-odc-gated-before-bounded` in [`decisions.md`](../decisions.md)). The gate waits longer than RTA's own connect retry, so a slow but working boot passes; if it fails on a device that is coming up, the gate has a bug.
 
-- **The resident build has no ODC.** A Rooibos test build (`npm run test:unit`) and a
-  `build:prod` both leave a perfectly working channel on the device with no component
-  inside it. Redeploy the dev build — `npm run test:rta` does it for you unless you passed
-  `RTA_NO_DEPLOY=1`.
-- **The channel is closed.** The component lives INSIDE the app, so port 9000 goes quiet
-  the moment the app exits, even with the RTA build still sideloaded. This is also why
-  `npm run device:check` reporting "ODC not answering" is never on its own a reason to
-  redeploy.
-- **The device is asleep, off, or `ROKU_IP` names another host.** Run
-  `npm run device:check`.
-
-**Why it is a gate and not a longer timeout.** Making the call anyway does not fail
-cleanly: `roku-test-automation` rejects the connect and then orphans its own rejection
-through an unattached `.finally()`, and an unhandled rejection is a hard `exit 1` — so a
-run that caught the error correctly still died, at whatever unrelated point the connect
-gave up, losing its run record. That orphan cannot be reached from our code, so the call
-has to not be made. Full mechanism in
-[`scripts/lib/odc-probe.js`](../../scripts/lib/odc-probe.js); the reasoning and the
-alternatives that were ruled out are in [`decisions.md`](../decisions.md) →
-`rta-odc-gated-before-bounded`.
-
-**The gate is deliberately more patient than what it replaces** — it polls for 30 s where
-RTA's own connect retry gives up at 10 s — so a slow-but-working boot cannot fail here. If
-you see this on a device that is genuinely coming up, that is a bug in the gate, not a
-device you need to wait longer for.
-
-A companion bound covers the case this gate cannot see: a port that is open while the
-component never answers. That one surfaces as *"the ODC port is open but the component
-never answered ... within 60 s"* and names
-[`signals-backlog.md`](../signals-backlog.md) → `rta-odc-connect-hang`, an upstream defect
-whose recovery is a kill plus a re-deploy.
+A port that is open while the component never answers is a separate case: *"the ODC port is open but the component never answered ... within 60 s"*, an upstream defect (`rta-odc-connect-hang` in [`signals-backlog.md`](../signals-backlog.md)). Kill the run and deploy again.
 
 ## Leaving the device as you found it
 
-Every RTA entry point drives a device someone actually uses, so the run owns the
-device's registry for its duration and is responsible for handing it back.
-[`scripts/rta-run.js`](../../scripts/rta-run.js) is that owner — it deploys, snapshots,
-runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast` /
-`:capture` / `:tdd`) all go through it.
+An RTA run drives a device someone uses, so it owns the device's registry for the run and hands it back. [`scripts/rta-run.js`](../../scripts/rta-run.js) is that owner: it deploys, snapshots, runs Vitest as a child process and restores. Every `test:rta` variant goes through it.
 
-- **The snapshot covers the whole registry**, every section and key — not a list of keys.
-  A list only ever covers what the *seeds* write, never what the *app* writes while
-  running under a seeded session, and never a whole section the seeds create.
-- **The restore is a diff, and it is verified.** Keys the run added are deleted,
-  sections the run created are dropped, changed values are put back — then the channel
-  is cold-restarted and the entire registry is compared against the snapshot. A
-  mismatch retries, then **throws** and names the differing keys.
-- **Two keys are compared on PRESENCE, not value** — `authToken` and
-  `primaryImageTag`, the credentials the app mints for itself. (`LastRunVersion` is
-  ignored outright; the app rewrites it about itself.) This is not a softening for
-  convenience: the verify step is a cold boot, `resolveUser()` re-authenticates when
-  the stored token has been rejected, and the app then persists a NEW one — so
-  byte-comparing them meant the restore could never converge, and the snapshot it
-  kept on failure wedged every later run. Presence still fails in both directions:
+- **The snapshot is the whole registry,** every section and key, not a list of what the seeds write: the app writes too.
+- **The restore is a diff, and it is checked.** Added keys are deleted, created sections dropped, changed values put back. Then the channel cold-starts and the whole registry is compared with the snapshot; a mismatch retries, then fails and names the keys.
+- **`authToken` and `primaryImageTag` are compared on presence, not value.** The check's cold start can make the app sign in again and save a new token, so comparing bytes would never match. `LastRunVersion` is ignored. Presence still fails both ways:
 
   | Snapshot | Device after restore | Verdict |
-  |---|---|---|
-  | has a token | has a *different* token | ✅ the app re-minted its own |
-  | has a token | has none | ❌ the session was destroyed |
-  | has none | has one | ❌ a credential was left behind |
+  | --- | --- | --- |
+  | Has a token | Has a different token | Passes: the app made its own |
+  | Has a token | Has none | Fails: the session was destroyed |
+  | Has none | Has one | Fails: a credential was left behind |
 
-  The restore still WRITES the user's own value back — the exemption is on the
-  compare only. Full rationale and the ruled-out alternatives:
-  [`restore-compares-credentials-by-presence`](../decisions.md).
-- **The snapshot is written to `.device-runs/registry-<host>.json` before any seeding**,
-  and deleted only on a verified restore. So a file still sitting there means the last
-  run did not put the device back.
-  - `npm run rta:restore` reapplies it on demand.
-  - The next run repairs the device automatically — it restores from the leftover file
-    *before* taking its own snapshot, so a stranded run can't become the new baseline.
-  - **Unless the run that wrote it is still alive**, which is the one case where the
-    repair above would be the damage. The file records an `ownerPid`, and a snapshot is
-    present for the *whole* of a healthy run — so "a file exists" and "a run is in
-    progress" look identical on disk. `snapshotRegistry()` therefore refuses outright
-    when that process is still alive, rather than reverting the registry underneath the
-    running suite (and rather than capturing *its* seeded state as your session, which is
-    the same corruption from the other end). The device lock normally keeps two runs
-    apart, but it degrades to advisory on `RTA_SKIP_LOCK=1`, on a missing GitHub token
-    and on an unreachable GitHub, so this is an ordinary local condition. If the recorded
-    process is gone but its number has been reused, `npm run rta:restore -- --force`
-    repairs and clears the file.
-  - **It is outside `out/` for the same reason the run ledger is**, and this one was a
-    live bug rather than a precaution: while it lived in `out/rta/`, the sequence
-    "abandon a run → re-run `npm run test:rta`" deleted the snapshot *before* the
-    repair above could use it, because `test:rta` builds first and every `build*`
-    opens with `npx rimraf build/ out/`. The run then captured the demo-server state
-    as the user's session and restored that from then on — exactly the compounding
-    failure the repair exists to prevent. `demo`, `test:rta:fast`, `test:rta:tdd` and
-    `rta:restore` never build, which is why it stayed invisible.
-  - Unlike the run-record directory, the snapshot path is deliberately **shared**
-    across entry points: a device stranded by `npm run demo` has to be repairable by
-    the next `npm run test:rta`, and `rta:restore` finds it with no arguments. The
-    record wants per-run isolation; the snapshot wants cross-run reach.
-  - **It is your real registry, so treat it as a secret at rest.** The file is the
-    *whole* registry of the device it was taken from — including `authToken` for
-    whatever server you were signed into. It is gitignored, and nothing here ever
-    prints its contents (only its path). But note the consequence of the move: it
-    used to be wiped incidentally by the next `npm run build`, and now **nothing
-    removes it but a verified restore or `npm run rta:restore`**. That matters
-    because the case that strands it is a restore that never converged
-    ([`restore-compares-credentials-by-presence`](../decisions.md) is the one that
-    used to), so a token-bearing file can sit there indefinitely. If a restore has
-    failed and you are done with the device, run `rta:restore`. If it *still* cannot
-    converge, `npm run rta:restore -- --accept` prints the differences it could not
-    restore and clears the snapshot anyway — use it rather than `rm`, which deletes
-    the device's only backup and tells you nothing about what was left wrong.
-    `--accept` does not claim the device is clean: it writes what you accepted to
-    `.device-runs/accepted-<host>.json` (redacted) and `npm run device:status` keeps
-    reporting it until you delete that file. Clearing the snapshot is what stops the
-    residual wedging later runs; the record is what stops the device going quietly
-    back to looking clean.
-  - **`npm run device:status` tells you one is sitting there.** It reports every
-    stranded snapshot with the host it belongs to and when it was taken, alongside
-    the lock line — "free" and "left dirty" are both true at once, and the second is
-    the one that costs you the next run. It globs the directory rather than checking
-    the host `ROKU_IP` names, because the case that bites is a snapshot for a device
-    you are *not* currently pointed at (stranded by `npm run demo` on one Roku, then
-    a run against another). Before this the file had no operator-facing surface at
-    all, which is how one got destroyed by an `rm -rf` aimed at the ledger beside it.
-  - **A snapshot on disk does not mean the device was stranded** — the file is
-    written before any seeding and removed only by a verified restore, so it is
-    present for the *whole* of a healthy run. `status` used to report a live
-    `test:rta` as "left mid-restore" and hand you `rta:restore`, which would have
-    put the registry back underneath the run and relaunched the channel mid-suite:
-    the exact inverse of the right move. The snapshot now records the `pid` that
-    wrote it, so `status` reports a live run as `IN PROGRESS` and withholds the
-    recovery command, and `rta:restore` refuses outright (`-- --force` overrides).
-    The device lock is deliberately *not* the signal used for this: a degraded run
-    holds no lock while very much running, and a stale lease outlives a run that
-    finished cleanly.
-    It reports accepted differences on the same terms, and that line matters more,
-    not less: accepting is what *cleared* the snapshot, so it is the one dirty state
-    no later run can rediscover on its own. Deleting `accepted-<host>.json` is how you
-    acknowledge it — safe, unlike deleting a snapshot, because the record is redacted
-    evidence rather than the recovery path.
-- **Ctrl-C is safe.** The interrupt stops the child, and the parent restores before
-  exiting (~30 s; press Ctrl-C again to abandon and recover later with
-  `npm run rta:restore`). This is why the lifecycle cannot live in Vitest: `afterAll`
-  never runs on a killed process, and Vitest's own SIGINT handler exits the process on
-  a 1 ms timer, so nothing armed inside it can finish a ~30 s restore.
-- **Don't run `vitest --config vitest.rta.config.js` directly** — `globalSetup` refuses
-  it, because that path takes no snapshot and performs no restore.
+  The restore still writes the user's own value back; only the comparison is relaxed ([`restore-compares-credentials-by-presence`](../decisions.md)).
+- **The snapshot is saved to `.device-runs/registry-<host>.json` before any seeding,** and deleted only by a checked restore. A file still there means the last run did not put the device back:
+  - `npm run rta:restore` applies it.
+  - The next run applies it automatically before taking its own snapshot, so a stranded state never becomes the new baseline.
+  - **Except while the run that wrote it is alive.** The file records the `pid` that wrote it, and it exists for the whole of a healthy run, so `snapshotRegistry()` refuses rather than revert a running suite's registry. The device lock usually keeps runs apart, but it is advisory under `RTA_SKIP_LOCK=1`, without a GitHub token, or with GitHub unreachable. If the process is gone and its number reused, `npm run rta:restore -- --force` repairs it.
+  - **It lives outside `out/`** for the ledger's reason: a build would delete it before the next run could use it to repair the device.
+  - **It is shared across entry points,** so a device stranded by `npm run demo` is repaired by the next `test:rta`, and `rta:restore` finds it with no arguments.
+  - **It is your real registry, `authToken` included,** so treat it as a secret. It is gitignored, and nothing prints its contents. Only a checked restore or `rta:restore` removes it, so it can sit there indefinitely. When a restore won't converge and you are done with the device, `npm run rta:restore -- --accept` prints what it couldn't restore and clears the snapshot; use it rather than `rm`, which deletes the device's only backup. What you accepted is written, redacted, to `.device-runs/accepted-<host>.json`, and `npm run device:status` reports it until you delete that file.
+  - **`npm run device:status` reports every snapshot on disk,** for any host, with when it was taken. It shows a live run as `IN PROGRESS` and withholds the repair command; `rta:restore` refuses then too (`-- --force` overrides). The lock is not the signal for this: a degraded run holds none, and a stale lease outlives a finished run.
+- **Ctrl-C is safe.** It stops the child, and the parent restores before exiting, which takes a while; press Ctrl-C again to abandon and repair later with `npm run rta:restore`. This is why the lifecycle can't live inside Vitest: `afterAll` never runs in a killed process, and Vitest's own interrupt handler exits too soon for a restore.
+- **Don't run `vitest --config vitest.rta.config.js` directly.** `globalSetup` refuses, because that path takes no snapshot.
 
 ### The second owner: `measure:devices --sign-in`
 
-`rta-run.js` is no longer the only entry point that owns a device's registry.
-**`npm run measure:devices -- --sign-in <url> --user <name>`** signs every device in
-`ROKU_DEVICES` into one server, measures it, and puts it back — because the matrix has
-always *asserted* that its devices share a server (the server is the workload) and could
-not *establish* it, which meant signing every device in by hand before every run.
+`npm run measure:devices -- --sign-in <url> --user <name>` signs every device in `ROKU_DEVICES` into one server, measures them, and puts them back, so a device matrix really does measure one server.
 
-The split of responsibility is the part worth knowing:
+- **Single-device `npm run measure` never writes the registry,** so a lone series measures the app as the device already has it. The sign-in lives in [`scripts/measure-signin.js`](../../scripts/measure-signin.js), one child process per device (`roku-test-automation` binds one host per process).
+- **It reuses the lifecycle above:** `snapshotRegistry()` from [`lib/registry.js`](../../tests/rta/lib/registry.js), `seedHome` from [`lib/seed.js`](../../tests/rta/lib/seed.js), then `npm run rta:restore`, with the same `VERIFIED CLEAN` check.
+- **`--sign-in <url>` implies `--server <url>`,** and the server is still checked on every device, so a sign-in that didn't take fails before a sample is written. Passing `--server` or `--no-server` with it is refused, and so is repeating a sign-in flag, because otherwise the last value would win silently.
+- **The sign-in takes the device lock;** the restore does not. The sign-in is the only part that writes the registry, so it is where a concurrent run could adopt the seed as a user's state. `rta:restore` is the repair for a dead run, so a dead run's lock must not block it; its one refusal keys on the snapshot's live `pid`.
+- **`hardRelaunch()` runs before the first registry read,** because an ODC read against a device not running the component hangs rather than fails, and RTA's request timeout doesn't cover a connect that never settles. The sign-in also has its own wall-clock limit, for a build with no ODC (a Rooibos test build, a `build:prod`), which `--deploy` doesn't fix because that deploy happens inside `measure`, after the sign-in.
+- **The restore always runs:** after a failed sign-in, a failed measurement or an interrupt. The driver handles `SIGINT`, `SIGTERM` and `SIGHUP` through `signalPolicy` in [`measure-matrix.js`](../../scripts/measure-matrix.js). The first signal stops the run and kills the child, unless the restore is running, which is left to finish. A second abandons it and prints the device at risk (`ROKU_IP=<host> npm run rta:restore`).
+- **A restore that didn't verify fails the whole run** and prints the repair command, even when every measurement succeeded.
+- **Every device is seeded in `RTA_CONFIG.languages[0]` (`en_US`),** so a matrix compares hardware, not languages. `measurements.jsonl` has no locale field, so a seeded series and a plain `measure` series on one device may differ in language without saying so; the driver prints it, and recording it is an open followup.
 
-- **Single-device `npm run measure` still never writes the registry**, and that invariant
-  is load-bearing — it is what lets a lone series measure the app exactly as the device
-  already has it. The seed lives on the DRIVER, in
-  [`scripts/measure-signin.js`](../../scripts/measure-signin.js), one child process per
-  device (`roku-test-automation` binds its client singletons to one host per process).
-- **It reuses this same lifecycle rather than a parallel one**: `snapshotRegistry()` from
-  [`lib/registry.js`](../../tests/rta/lib/registry.js) before any write, `seedHome` from
-  [`lib/seed.js`](../../tests/rta/lib/seed.js), and `npm run rta:restore` afterwards —
-  so every guarantee above applies unchanged, including `VERIFIED CLEAN`.
-- **`--sign-in <url>` implies `--server <url>`.** The seed is checked rather than trusted:
-  tier 1 still hard-asserts the server on every device, so a seed that silently did not
-  take fails before a sample is written. Passing `--server` (or `--no-server`) alongside
-  it is refused rather than merged — `measure` would take the last one, which would settle
-  a disagreement between the seed and the assert silently. **Repeating any sign-in flag is
-  refused for the same reason** (`--sign-in A --sign-in B` would seed and assert `B`
-  without a word).
-- **The sign-in step takes the device lock**, exactly as `measure` does for the series. It
-  is the only part of a matrix run that writes the registry, so it is the part where a
-  concurrent run's `snapshotRegistry()` would adopt *our seed* as that user's state and
-  then restore it faithfully forever. The restore afterwards deliberately does **not** take
-  the lock: `rta:restore` is the documented repair for a device stranded by a dead run, and
-  a repair tool blocked by that run's leftover lock fails exactly when you need it. That is
-  why its one refusal keys on the snapshot's owning `pid` rather than on the lock — a dead
-  run's leftover lock must not block the repair, while a live run must.
-- **`hardRelaunch()` runs before the first registry read**, and that ordering is not
-  stylistic: the on-device component lives INSIDE the app, so an ODC read against a device
-  that is not running it HANGS rather than failing, and presents like a network problem.
-  RTA *does* time out its requests, but `sendRequest` awaits `setupClientSocket()` first
-  and that promise only self-rejects on `ECONNREFUSED`/`EPIPE` — so a connect that neither
-  connects nor errors never settles, and passing a `timeout` to `readRegistry` would not
-  help. The sign-in therefore carries its own **3-minute wall clock** against a ~40–50 s
-  healthy run. `hardRelaunch()` covers the common cause; the timeout covers the other one —
-  a resident build with no ODC (a Rooibos test build, a `build:prod`), which `--deploy`
-  does **not** rescue because that deploy happens inside `measure`, after the seed.
-- **The restore runs whatever happened** — sign-in failure, measurement failure, or an
-  interrupt. The driver installs handlers for `SIGINT`/`SIGTERM`/`SIGHUP` for that reason:
-  the default handling would terminate it in the window between "seeded" and "restored".
-  The rules are a pure function (`signalPolicy` in
-  [`measure-matrix.js`](../../scripts/measure-matrix.js)) rather than inline in the driver,
-  because the first cut of them was dead code — recorded in a flag a synchronous
-  `spawnSync` loop never let a handler set — and there was nowhere to pin it. The driver
-  awaits its children asynchronously now, like `rta-run.js` does.
-  - the **first** signal stops the run and kills the child so a bare `kill` means what
-    Ctrl-C means — **except when the restore is running**, which is the child the whole
-    mechanism exists to buy time for, so that one is left to finish;
-  - a **second** signal abandons it and names the device at risk
-    (`ROKU_IP=<the actual host> npm run rta:restore`); the snapshot on disk is the repair.
-- **A restore that did not verify fails the whole run** and prints the repair command on
-  its own line, even when every measurement succeeded. A summary reporting three measured
-  devices while one is still signed into the matrix's server would be true and useless.
-- **Every device is seeded in `RTA_CONFIG.languages[0]` (`en_US`)**, and that is a pin
-  rather than an oversight: a matrix compares hardware, so a row measured in `fr` beside
-  one in `en_US` differs in workload as well as in silicon. The cost is that a seeded
-  series and a plain `npm run measure` series on one device need not have run in the same
-  language, and `measurements.jsonl` carries no locale field to say so — the driver and the
-  sign-in both print it, and carrying it in the record is an open followup.
-
-Use `MEASURE_SIGNIN_PASSWORD` in `.env` rather than a `--password` flag for an account
-that has one; blank is the common case on a LAN test server.
+For an account with a password, set `MEASURE_SIGNIN_PASSWORD` in `.env` rather than passing a flag.
 
 ## The device lock
 
-There are three Roku devices on this LAN, and **CI does not share one with a developer**
-— measured by an ECP sweep on 2026-08-10, not assumed:
+[`scripts/device-lock.js`](../../scripts/device-lock.js) keeps two runs off one device: `test:rta`, `test:unit`, `demo` and `screenshots:capture` can each take the same device from different terminals, and the Rooibos path has no snapshot to fall back on. CI has its own device, so the contention is between local runs; the lock keys on the device's identity, so it also covers a local run pointed at the CI device. Which device is which is in the header of `device-lock.js`.
 
-| Device | Model | Used by |
-|---|---|---|
-| `.177` | Streaming Stick 4K | local development (`.env` `ROKU_IP`) |
-| `.178` | Ultra | a personal device; occasional dev overflow |
-| `.200` | Streaming Stick 4K | **CI only** — the org-level `ROKU_DEVICE_IP` secret, read by both device workflows and by RTA |
+- **The lock is a git ref,** `refs/device-lock/<key>` in this repo. Creating a ref that exists fails with 422, which makes it a true compare-and-swap with no service to run. A tag object the ref points at holds the holder and the lease clock.
+- **The key is a hash of the device's identity,** `sha256(device-id)` cut to 16 hex characters. Ref names are public on a public repo, and a `device-id` partly encodes the serial. An address would be worse: a new DHCP lease would give each side a different key, and both would run. A run that can't identify the device over ECP says so instead of guessing.
+- **There is no check that CI is idle.** CI uses its own device, so waiting on CI would block you from your own hardware.
+- **A run that finds the device locked fails at once and names the holder.** No queue: another device on the network is usually free (`ROKU_IP=<other-ip> npm run test:rta`).
+- **Reads can be stale; the create is not.** A 422 followed by a read saying "free" means the read is wrong. Never decide the device is free from a read.
+- **The holder record names the run, not you:** `what`, a `pid`, and `local` or `ci`. No hostname, since the tag object is public while held.
+- **A crashed holder's lease expires after 15 minutes.** Live holders renew every 5 minutes, so a long `screenshots:capture` never expires. `npm run device:status` names the holder, and `npm run device:release` drops a stuck lock.
+- **`rta-restore.js` takes no lock,** since it is the repair for an abandoned run, which may have left one behind.
 
-So the contention [`scripts/device-lock.js`](../../scripts/device-lock.js) closes
-is **local-vs-local**: `test:rta`, `test:unit`, `demo` and `screenshots:capture`
-can each grab the same device from a different terminal, and the Rooibos path has
-no registry snapshot to fall back on. Because the lock keys on the device's own
-identity rather than on a role, it also covers a local run pointed at CI's `.200`
-— the only way local and CI can contend at all.
-
-- **The lock is a git ref** — `refs/device-lock/<key>`, held in this repo, where
-  `POST /git/refs` returns 422 on conflict. That is a real compare-and-swap, with
-  no new infrastructure and no daemon to keep alive (verified against this repo:
-  201, then 422, then 204 on delete). Holder identity and the lease clock come
-  from a tag object the ref points at.
-- **The key is a hash of the device's identity, not its address and not the raw
-  id.** The ref name is world-readable on a public repo via `git ls-remote`, and a
-  Roku's ECP `device-id` partially encodes its serial — so the key is
-  `sha256(device-id)` truncated to 16 hex chars. Keying on the *address* would be
-  worse than useless: a DHCP lease change would make each side compute a different
-  ref, each would read "no lock", and both would run. A run that can't identify
-  the device over ECP degrades loudly rather than inventing an address-shaped key.
-- **There is no CI-yield check, deliberately.** An earlier revision polled the
-  Actions API and refused to start while any device workflow was in flight. Its
-  real behavior was "you may not use `.177` because CI is busy on `.200`" —
-  blocking you from your own hardware to protect a device nobody was touching. It
-  is gone, along with the hardcoded workflow-filename list it needed.
-- **A contended run fails immediately and names the holder.** No queuing: you
-  want the answer now, and another Roku on the LAN is usually free
-  (`ROKU_IP=<other-ip> npm run test:rta`).
-- **Reads are eventually consistent — writes are not.** Measured 2026-08-10: a
-  read of an aged ref came back stale 2/24 times, while the CAS returned 422
-  reliably every time. So a 422 followed by a read saying "free" means the *read*
-  is wrong. Never infer that the device is free from a read.
-- **The holder record names the run, not you** — `what`, a `pid`, and `local`/`ci`.
-  No hostname: the tag object is public for as long as the lock is held.
-- **A crashed holder's lease expires after 15 minutes.** It is a lease, not a
-  time limit — every holder heartbeats every 5 minutes, so a long
-  `screenshots:capture` renews and never self-expires.
-  `npm run device:status` names the holder; `npm run device:release` drops a stuck
-  one.
-- **`rta-restore.js` deliberately takes no lock.** It is the repair path for an
-  abandoned run, and requiring a lock would block the repair in exactly the case
-  where a previous run leaked one.
-
-When GitHub is unreachable or you're not logged in, a run **warns and proceeds
-unlocked** rather than blocking your device work — but it records `locked: false`
-in the run's `run-meta.json`, because a warning line scrolls past and an exit code
-of 0 can't tell you the run was unverified. Set `RTA_REQUIRE_LOCK=1` to make that
-a hard failure instead, or `RTA_SKIP_LOCK=1` to deliberately bypass. CI does not
-set `RTA_REQUIRE_LOCK`: it is alone on `.200`, so there is no contention for the
-flag to protect against, and setting it would only trade a genuine green run for
-an `api.github.com` blip.
+When GitHub is unreachable or you aren't signed in, a run warns and proceeds without the lock, and records `locked: false` in `run-meta.json`. Set `RTA_REQUIRE_LOCK=1` to make that a failure, or `RTA_SKIP_LOCK=1` to bypass the lock on purpose. CI doesn't set `RTA_REQUIRE_LOCK`: it is alone on its device, so the flag would only turn a GitHub outage into a red run.
 
 ## Notes
 
-- Seeds write the **real** `JellyRock` registry (not a `test-*` section) because the
-  app reads real keys to choose a screen — inherent to driving the real app. This is
-  the accepted exception to the `test-*` isolation rule, which governs in-process
-  Rooibos tests. See "Leaving the device as you found it" below for what puts it back.
-- Demo server: the public `demo.jellyfin.org/stable` (license-clear content). It
-  resets hourly; navigation anchors on the `SortName` tile index, not the volatile Continue
-  Watching row.
+- **Seeds write the real `JellyRock` registry,** not a `test-` section, because the app reads real keys to choose a screen. This is the accepted exception to the `test-` rule, which is for Rooibos tests. [Leaving the device as you found it](#leaving-the-device-as-you-found-it) covers what puts it back.
+- **The demo server** is the public `demo.jellyfin.org/stable`, with license-clear content. It resets every hour, so navigation finds tiles by `SortName` index, never by the Continue Watching row.

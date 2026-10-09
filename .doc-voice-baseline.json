@@ -1461,10 +1461,7 @@
     "filler": 1
   },
   "docs/dev/rta-tests.md": {
-    "caps-emphasis": 6,
-    "em-dash": 214,
-    "filler": 29,
-    "prose-arrow": 9
+    "prose-arrow": 1
   },
   "docs/dev/scripts-development.md": {
     "filler": 1
