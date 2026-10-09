@@ -7,342 +7,197 @@ related-files:
   - source/utils/itemImageUrl.bs
   - source/api/items.bs
   - source/api/userAuth.bs
-last-reviewed: 2026-10-04
+last-reviewed: 2026-10-09
 ---
 
-# API Architecture Layering Guide
+# API layering guide
 
-This document defines the standardized approach for making API calls in JellyRock, ensuring consistent patterns across the codebase.
+JellyRock builds API requests and image URLs in three layers. Use the highest layer that does what you need: it handles more for you.
 
-## Overview
+| Layer | Where | What it adds |
+| --- | --- | --- |
+| 3: domain helpers | `source/utils/itemImageUrl.bs`, `source/utils/rowItemImage.bs`, `source/api/imageHelpers.bs` | Reads what it needs from a `JellyfinBaseItem` or `JellyfinUser` node, and falls back to other images |
+| 2: image URLs | `source/api/image.bs` | Checks the image tag, and sets default sizes and quality |
+| 1: API client | `source/api/ApiClient.bs` | Builds each endpoint's request for the server's API version, and adds default query parameters |
 
-The API architecture follows a **3-layer abstraction model**, where each layer builds upon the one below it. Developers should use the **highest-level layer** that meets their specific use case.
+## Layer 1: `ApiClient`
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Layer 3: Domain Helpers                                    │
-│  (source/utils/itemImageUrl.bs)                             │
-│  • Type-safe node wrappers                                  │
-│  • JellyfinUser, JellyfinBaseItem specific functions        │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│  Layer 2: Business Logic Utilities                          │
-│  (source/api/image.bs)                                      │
-│  • Validation + defaults + error handling                   │
-│  • Prevents 404s, sets standard dimensions                  │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│  Layer 1: Smart API Client                                  │
-│  (source/api/ApiClient.bs)                                  │
-│  • Direct API endpoint calls                                │
-│  • V1/V2 server version dispatch                            │
-│  • Smart defaults: image params, fields auto-augmentation   │
-└─────────────────────────────────────────────────────────────┘
-```
+Call it through `GetApi().<method>()`. `ApiClient` builds requests for the Jellyfin endpoints and picks the right form for the server's API version (`V1` or `V2`). See [Jellyfin server versioning](jellyfin-server-versioning.md) for what the versions mean.
 
-## Layer 1: `ApiClient` (Foundation)
+### Default parameters
 
-**File:** `source/api/ApiClient.bs`  
-**Access:** `GetApi().<method>()`
+Builders that fetch items pass your parameters through `injectApiParams()` (in `source/utils/misc.bs`), which adds:
 
-The `ApiClient` provides direct access to Jellyfin API endpoints with automatic `V1`/`V2` server version dispatch. It automatically injects image parameters and version-specific fields to ensure consistent, bulletproof item fetching across all Jellyfin server versions (10.7.0+).
+| Parameter | Default | Why |
+| --- | --- | --- |
+| `EnableImageTypes` | `"Primary,Backdrop,Logo,Thumb"` | Asks for every image type the app shows |
+| `ImageTypeLimit` | `1` | One image per type |
+| `fields` | Your fields, plus those below | The app needs them on every item |
 
-### Automatic Parameter Injection
+It adds these to `fields` when they are missing:
 
-The following defaults are automatically applied to item fetching endpoints:
+- `PrimaryImageAspectRatio`, which makes the server return `ImageTags`.
+- `Chapters`.
+- `Trickplay`, on `V2` servers (Jellyfin 10.9 and later).
 
-| Parameter          | Default Value                   | Purpose                      |
-|--------------------|---------------------------------|------------------------------|
-| `EnableImageTypes` | `"Primary,Backdrop,Logo,Thumb"` | Ensures images are requested |
-| `ImageTypeLimit`   | `1`                             | Limits images per type       |
-| `fields`           | Auto-augmented*                 | Adds required fields (below) |
+Your own values override the image defaults. `BuildGetItemRawRequest` skips all of this.
 
-**Auto-augmented fields appended to `fields` parameter:**
-
-- `PrimaryImageAspectRatio` - Always added (causes `ImageTags` to be returned)
-- `Chapters` - Always added
-- `Trickplay` - Added for `V2`+ servers (10.9+)
-
-These injections ensure consistent item data across all supported server versions without manual parameter management.
-
-**Endpoint-scoped injection:**
+One builder sets a default of its own:
 
 | Builder | Parameter | Default | Why |
-|---|---|---|---|
-| `BuildGetResumeItemsRequest` | `MediaTypes` | `"Video"` | `MediaTypes` is the only narrowing `/UserItems/Resume` accepts — it hardcodes `Recursive` / `OrderBy` / `IsResumable` server-side. Since Jellyfin 12.0 a folder also counts as resumable when a descendant is in progress, so an unfiltered query returns Seasons and Series alongside episodes ([#784](https://github.com/jellyrock/jellyrock/issues/784)). Override by passing a comma-separated **string**; an array is silently dropped by `buildParams` ([`buildparams-no-array-support`](../architecture/tech-debt.md#buildparams-no-array-support)) and falls back to the default. |
+| --- | --- | --- | --- |
+| `BuildGetResumeItemsRequest` | `MediaTypes` | `"Video"` | `MediaTypes` is the only filter `/UserItems/Resume` accepts. Since Jellyfin 12.0 a folder also counts as resumable when something inside it is in progress, so without the filter the results include seasons and series as well as episodes ([#784](https://github.com/jellyrock/jellyrock/issues/784)). To change it, pass a comma-separated string. `buildParams` drops an array ([`buildparams-no-array-support`](../architecture/tech-debt.md#buildparams-no-array-support)), which leaves the default. |
 
-### When to Use Layer 1
+### When to use layer 1
 
-- You need control over parameters (defaults can be overridden by passing your own values)
-- Building custom helper functions (Layers 2-3)
-- Working with non-standard endpoints
-- Need automatic image parameter injection for consistent item fetching
+- You need full control of the parameters. Values you pass override the defaults.
+- You are writing a layer 2 or layer 3 helper.
+- The endpoint has no helper above it.
 
-### Image Methods
+### Image URL methods
 
-| Method                                     | Purpose               | Example Endpoint                                                                   |
-|--------------------------------------------|-----------------------|------------------------------------------------------------------------------------|
-| `GetImageURL(id, type, index, params)`     | **Item images** only  | `/items/{id}/images/{type}/{index}`                                                |
-| `GetUserImageURL(id, type, index, params)` | **User avatars** only | `V1`: `/users/{id}/images/{type}/{index}`<br>`V2`: `/UserImage?userId={id}`        |
+The two methods add no defaults and check nothing. Use the one that matches what the image belongs to:
 
-⚠️ **Critical:** Always use the correct method for the resource type:
-
-- Use `GetUserImageURL()` for user avatars
-- Use `GetImageURL()` for items (movies, episodes, etc.)
-
-### Layer 1 Example
+| Method | For | Endpoint |
+| --- | --- | --- |
+| `GetImageURL(id, type, index, params)` | Items (movies, episodes and so on) | `/items/{id}/images/{type}/{index}` |
+| `GetUserImageURL(id, type, index, params)` | User avatars | `V1`: `/users/{id}/images/{type}/{index}`<br>`V2`: `/UserImage?userId={id}` |
 
 ```brighterscript
-' Direct API call with V1/V2 dispatch (image methods have no defaults)
 url = GetApi().GetUserImageURL(userId, "primary", 0, {
   maxHeight: 300,
   maxWidth: 300,
   quality: 90
 })
-' Returns: "http://server:8096/users/abc123/images/primary/0?maxHeight=300..." (V1)
-' Or:      "http://server:8096/UserImage?userId=abc123&type=primary..." (V2)
+' V1: "http://server:8096/users/abc123/images/primary/0?maxHeight=300..."
+' V2: "http://server:8096/UserImage?userId=abc123&type=primary..."
 ```
 
-## Layer 2: Business Logic (Validation & Defaults)
+## Layer 2: image URLs
 
-**File:** `source/api/image.bs`  
-**Import:** `import "pkg:/source/api/image.bs"`
+Import `pkg:/source/api/image.bs`. Its two functions return a URL string, or `""` when there is nothing to show.
 
-This layer adds:
+| Function | For | Defaults |
+| --- | --- | --- |
+| `ImageURL(id, version, params, serverURL)` | Item images | `maxHeight` 384, `maxWidth` 196, `quality` 90 |
+| `UserImageURL(id, params)` | User avatars | `maxHeight` 300, `maxWidth` 300, `quality` 90 |
 
-- **Tag validation:** Prevents `404` errors by checking if image tags exist/are valid
-- **Sensible defaults:** Standard dimensions and quality settings
-- **Error handling:** Returns empty string instead of invalid
+**Both check the tag.** If `params` has a `tag` (or `Tag`) that is invalid or empty, they return `""`, so the app never requests an image the server doesn't have. Both also return `""` when no server URL is set.
 
-### When to Use Layer 2
+`UserImageURL` calls layer 1's `GetUserImageURL`. `ImageURL` builds the item URL itself, and takes the server URL as its last argument when the caller already has it.
 
-- Loading images where you have raw IDs and tags
-- Need standard dimensions without node objects
-- Want 404 prevention without full helper wrapper
+### When to use layer 2
 
-### Layer 2 Functions
-
-| Function                               | Purpose      | Defaults                                           |
-|----------------------------------------|--------------|----------------------------------------------------|
-| `ImageURL(id, version, params)`        | Item images  | `maxHeight`: 384, `maxWidth`: 196, quality: 90     |
-| `UserImageURL(id, params)`             | User avatars | `maxHeight`: 300, `maxWidth`: 300, quality: 90     |
-
-### Key Feature: Tag Validation
-
-Both functions validate the `tag` parameter:
-
-- If `tag` is provided but invalid/empty → returns `""` (prevents broken image)
-- If `tag` is valid → proceeds with URL generation
-
-### Layer 2 Example
+- You have an ID and a tag, but no node.
+- You want the default sizes, or the tag check, without a layer 3 helper.
 
 ```brighterscript
-' With validation and defaults
 url = UserImageURL(userId, {
   tag: user.primaryImageTag,
   maxHeight: 36,
   maxWidth: 36
 })
-' Returns: "" if tag is invalid
-' Or: valid URL with defaults applied
+' "" when the tag is invalid, otherwise the URL with the defaults filled in
 ```
 
-## Layer 3: Domain Helpers (Type-Safe Wrappers)
+## Layer 3: domain helpers
 
-**Files:** `source/utils/itemImageUrl.bs` (items), `source/utils/rowItemImage.bs` (row cells), `source/api/imageHelpers.bs` (user avatar)
+These take a `JellyfinBaseItem` or `JellyfinUser` node, read the IDs and tags from it, and fall back to other images when the first choice is missing. Item helpers take a size from the `imageSize` namespace (`source/constants/imageSize.bs`).
 
-The highest-level layer provides **type-safe, node-specific functions** that extract data from Jellyfin content nodes automatically. Item helpers take a size from the `imageSize` namespace (`source/constants/imageSize.bs`).
+| Function | Takes | Tries, in order |
+| --- | --- | --- |
+| `getItemPosterUrl(item, size)` | `JellyfinBaseItem` | Item primary, parent primary, series primary |
+| `getItemWidePosterUrl(item, size)` | `JellyfinBaseItem` | Item thumb, item backdrop, parent thumb, parent backdrop |
+| `getItemThumbnailUrl(item, size)` | `JellyfinBaseItem` | Same as `getItemWidePosterUrl`, with a smaller default size |
+| `getItemBackdropUrl(item, size)` | `JellyfinBaseItem` | Item backdrop, parent backdrop |
+| `getItemParentWidePosterUrl(item, size)` | `JellyfinBaseItem` | Parent thumb, parent backdrop |
+| `getItemImageUrl(item, imageType, size)` | `JellyfinBaseItem` | Only the type you ask for, such as `"Logo"` |
+| `getProgramImageUrl(programItem, channelItem, size)` | Two `JellyfinBaseItem` nodes | The Live TV program's image, then its channel's |
+| `getRowItemImageUrl(item, slotWidth, posterHeight, userSettings, …)` | `JellyfinBaseItem` | Picks one of the above from the item type, the slot size and the user's settings |
+| `GetUserAvatarURL(user, maxHeight, maxWidth)` | `JellyfinUser` | Primary only, with the tag check |
 
-### When to Use Layer 3
+### When to use layer 3
 
-- Working with `JellyfinUser` or `JellyfinBaseItem` nodes
-- Need fallbacks (try the item's image, then its parent's, etc.)
-- Want simplest possible API for common operations
+- You have a `JellyfinBaseItem` or `JellyfinUser` node.
+- You want the fallbacks.
 
-### Layer 3 Functions
+## Which layer to use
 
-| Function                                   | Input              | Fallback Chain                                                   |
-|--------------------------------------------|--------------------|------------------------------------------------------------------|
-| `getItemPosterUrl(item, size)`             | `JellyfinBaseItem` | item primary → parent primary → series primary                   |
-| `getItemWidePosterUrl(item, size)`         | `JellyfinBaseItem` | item thumb → item backdrop → parent thumb → parent backdrop      |
-| `getItemThumbnailUrl(item, size)`          | `JellyfinBaseItem` | same as `getItemWidePosterUrl`, smaller default size             |
-| `getItemBackdropUrl(item, size)`           | `JellyfinBaseItem` | item backdrop → parent backdrop                                  |
-| `getItemParentWidePosterUrl(item, size)`   | `JellyfinBaseItem` | parent thumb → parent backdrop                                   |
-| `getItemImageUrl(item, imageType, size)`   | `JellyfinBaseItem` | the requested type only (e.g. `"Logo"`)                          |
-| `getRowItemImageUrl(item, w, h, settings)` | `JellyfinBaseItem` | picks one of the above by item type, slot size and user settings |
-| `GetUserAvatarURL(user, maxH, maxW)`       | `JellyfinUser`     | primary only (with validation)                                   |
+1. You have a `JellyfinBaseItem` or `JellyfinUser` node: layer 3.
+2. You have an ID and a tag, or you want the default sizes: layer 2.
+3. You need full control of the parameters, or you are writing a helper: layer 1.
 
-### Layer 3 Example
+## Examples
 
-```brighterscript
-' Simplest usage - handles everything
-userImage.uri = GetUserAvatarURL(m.global.user, 36, 36)
-' Returns: "" if no valid image
-' Or: valid URL with all validation and defaults
-```
-
-## Decision Tree
-
-Use this flowchart to determine which layer to use:
-
-```text
-┌──────────────────────────────┐
-│ Do you have a JellyfinUser   │
-│ or JellyfinBaseItem node?    │
-└──────────────────────────────┘
-              │
-      ┌───────┴───────┐
-      ▼               ▼
-    Yes              No
-      │               │
-      ▼               ▼
-┌─────────────┐  ┌──────────────────────────┐
-│ Use Layer 3 │  │ Do you have an image tag │
-│ (Helpers)   │  │ and want validation?     │
-└─────────────┘  └──────────────────────────┘
-                          │
-                  ┌───────┴───────┐
-                  ▼               ▼
-                Yes              No
-                  │               │
-                  ▼               ▼
-         ┌─────────────┐  ┌─────────────────────────┐
-         │ Use Layer 2 │  │ Do you need full param  │
-         │ (Image.bs)  │  │ control or custom logic?│
-         └─────────────┘  └─────────────────────────┘
-                               │
-                       ┌───────┴───────┐
-                       ▼               ▼
-                     Yes              No
-                       │               │
-                       ▼               ▼
-              ┌─────────────┐  ┌──────────────┐
-              │ Use Layer 1 │  │ Use Layer 2  │
-              │ (ApiClient) │  │ (Image.bs)   │
-              └─────────────┘  └──────────────┘
-```
-
-## Common Patterns
-
-### Loading User Avatar in a Component
+### A user's avatar
 
 ```brighterscript
 import "pkg:/source/api/imageHelpers.bs"
 
 sub loadUserImage()
-  ' Layer 3: Cleanest, handles validation
   userImage.uri = GetUserAvatarURL(m.global.user, 36, 36)
-  
   if userImage.uri = ""
-    ' No valid image - use fallback
-    userImage.uri = "pkg:/images/icons/person_36px.png"
+    ' No avatar: show the generic person icon
+    userImage.uri = "pkg:/images/icons/person_36px_$$RES$$.png"
   end if
 end sub
 ```
 
-### Loading Item Poster with Fallbacks
+### An item's poster, with fallbacks
 
 ```brighterscript
 import "pkg:/source/utils/itemImageUrl.bs"
 
 sub loadItemPoster(item as object)
-  ' Layer 3: Tries multiple image types automatically
   poster.uri = getItemPosterUrl(item, imageSize.POSTER_LG)
 end sub
 ```
 
-### Custom Image with Specific Requirements
+### A custom size, with the tag check
 
 ```brighterscript
 import "pkg:/source/api/image.bs"
 
 sub loadCustomImage(itemId, imageTag)
-  ' Layer 2: Custom size with validation
   url = ImageURL(itemId, "Primary", {
     tag: imageTag,
     maxHeight: 100,
     maxWidth: 100,
     quality: 85
   })
-  
   if url <> ""
     poster.uri = url
   end if
 end sub
 ```
 
-### Direct API Access (Rare)
+## Mistakes to avoid
+
+**Don't use the item endpoint for a user's image.** It requests the wrong resource.
 
 ```brighterscript
-' Layer 1: Image methods pass through without defaults
-url = GetApi().GetUserImageURL(userId, "primary", 0, {
-  maxHeight: 600,
-  maxWidth: 600,
-  quality: 95
-})
-```
-
-## Anti-Patterns to Avoid
-
-❌ **Don't use item endpoints for users:**
-
-```brighterscript
-' WRONG - uses item endpoint for user image
+' Wrong: item endpoint for a user image
 userImage.uri = GetApi().GetImageURL(userId, "primary", 0, params)
-```
 
-✅ **Correct:**
-
-```brighterscript
-' CORRECT - uses user endpoint
+' Right: the user endpoint, or better, the helper
 userImage.uri = GetApi().GetUserImageURL(userId, "primary", 0, params)
-' Or better: use helper
 userImage.uri = GetUserAvatarURL(user, 36, 36)
 ```
 
-❌ **Don't skip validation:**
+**Don't skip the tag check.** Layer 1 builds the URL even when the tag is invalid, and the server answers 404.
 
 ```brighterscript
-' WRONG - will 404 if tag is invalid
-params = { tag: possiblyInvalidTag }
-url = GetApi().GetImageURL(id, "primary", 0, params)
-```
+' Wrong: 404 when the tag is invalid
+url = GetApi().GetImageURL(id, "primary", 0, { tag: possiblyInvalidTag })
 
-✅ **Correct:**
-
-```brighterscript
-' CORRECT - validates tag first
+' Right: "" when the tag is invalid
 url = ImageURL(id, "primary", { tag: possiblyInvalidTag })
-if url <> ""
-  ' Safe to use
-end if
 ```
 
-## Testing
+## Tests
 
-When writing tests for image URL generation:
+- Layer 1: the endpoint paths for `V1` and `V2`, in `tests/source/unit/api/sdk.versioning.spec.bs`.
+- Layer 2: the tag check and the defaults, in `tests/source/unit/api/ImageURL.spec.bs`.
+- Layer 3: what each helper reads from the node, and its fallbacks.
 
-- **Layer 1 tests:** Verify correct endpoint paths for `V1/V2` (see `sdk.versioning.spec.bs`)
-- **Layer 2 tests:** Verify tag validation and defaults (see `ImageURL.spec.bs`)
-- **Layer 3 tests:** Verify node property extraction and fallback chains
-
-## Migration Guide
-
-If you encounter code using the wrong endpoint:
-
-1. **Identify the resource type** (user vs item)
-2. **Check for node availability** (`JellyfinUser`/`JellyfinBaseItem`)
-3. **Select appropriate layer** using decision tree above
-4. **Update imports** if needed
-5. **Test on both `V1` and `V2` servers**
-
-## References
-
-- `source/api/ApiClient.bs` - Layer 1: Raw API client
-- `source/api/image.bs` - Layer 2: Business logic utilities
-- `source/utils/itemImageUrl.bs`, `source/utils/rowItemImage.bs`, `source/api/imageHelpers.bs` - Layer 3: Domain helpers
-- `tests/source/unit/api/sdk.versioning.spec.bs` - `V1/V2` endpoint tests
-- `tests/source/unit/api/ImageURL.spec.bs` - Validation tests
-- `docs/dev/sdk-api-versioning.md` - `V1` vs `V2` API differences
+When you move code to the right layer, find what the image belongs to (a user or an item) and whether you have a node, pick the layer from the list above, and test against a `V1` and a `V2` server.

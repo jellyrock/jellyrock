@@ -629,11 +629,6 @@
     "latin-abbrev": 1,
     "prose-arrow": 30
   },
-  "docs/dev/api-layering-guide.md": {
-    "em-dash": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 9
-  },
   "docs/dev/code-style.md": {
     "em-dash": 26,
     "filler": 1,
