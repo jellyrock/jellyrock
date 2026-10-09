@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-09: fix(home): Hide pilots of not-yet-started series from Next Up
 - 2026-10-09: fix: Change screens and the overhang in one frame
 - 2026-10-08: test(rta): Walk Home rows and the library grid one key at a time
 - 2026-10-08: fix(focus): Stop screens taking focus back when it leaves the router
