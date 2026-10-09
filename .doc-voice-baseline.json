@@ -1464,13 +1464,6 @@
     "latin-abbrev": 1,
     "prose-arrow": 16
   },
-  "docs/dev/new-user-setting.md": {
-    "caps-emphasis": 7,
-    "em-dash": 6,
-    "filler": 2,
-    "latin-abbrev": 10,
-    "prose-arrow": 6
-  },
   "docs/dev/registry-migrations.md": {
     "filler": 1
   },

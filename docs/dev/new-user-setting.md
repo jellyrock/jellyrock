@@ -4,243 +4,39 @@ related-files:
   - settings/settings.json
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
+  - components/settings/settings.bs
   - source/utils/config.bs
   - source/utils/session.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-10-09
 ---
 
-# Adding User Settings Guide
+# Add a setting
 
-This guide documents the complete process for adding new user settings to JellyRock. Follow these steps carefully to ensure consistency, proper data flow, and avoid common pitfalls.
+How to add a setting to JellyRock's Settings screen: the entry in `settings/settings.json`, the field that holds it, its strings, and the code that reads it. To rename or remove a setting users already have, see [`registry-migrations.md`](registry-migrations.md). The [`/new-setting`](../../.claude/skills/new-setting/SKILL.md) skill walks an agent through the same steps.
 
-## Table of Contents
+## Three kinds of setting
 
-1. [Overview](#overview)
-2. [When to Add a Setting](#when-to-add-a-setting)
-3. [Settings Architecture](#settings-architecture)
-4. [Implementation Steps](#implementation-steps)
-5. [Testing Requirements](#testing-requirements)
-6. [Best Practices](#best-practices)
-7. [Common Pitfalls](#common-pitfalls)
-8. [Task Checklist](#task-checklist)
+| Kind | Where it lives | Applies to | Named |
+| --- | --- | --- | --- |
+| User setting | The user's registry section | One user | By area: `playback*`, `ui*`, `itemGrid*` |
+| Global setting | The `JellyRock` registry section | Everyone on the device | `global*` |
+| User configuration | The Jellyfin server | The user, on every client | Never stored by JellyRock |
 
----
+The prefix decides where a value is saved. When a setting changes, `onSettingChanged()` in `JellyfinUserSettings.bs` checks `isGlobalSetting()` (`source/utils/config.bs`: the name starts with `global`). A global setting goes to the global section and every other setting to the user's. Keep global settings for behavior that belongs to the device, such as **Remember Me?** (`globalRememberMe`).
 
-## Overview
+Add a setting when a user needs a different value on the Roku than on their other clients, or for a feature only JellyRock has. Don't add one for data the server owns, for state that lasts one session, or for something the app can detect on the device.
 
-JellyRock has three types of settings:
+## How a setting loads
 
-1. **User Settings** - Stored in registry per-user, managed by JellyRock (Settings → Playback, UI, etc.)
-2. **Global Settings** - Stored in global registry section, apply to all users on the device (Settings → Global)
-3. **User Configuration** - Server-authoritative from Jellyfin API, **NEVER** stored in registry
+1. At start-up, `user.settings.SaveDefaults()` fills every field from the `default` values in `settings/settings.json`, and `enableAutoSync` turns on saving.
+2. At sign-in, `user.Login()` (`source/utils/session.bs`) runs `SaveDefaults()` again, then loads each key in the user's registry section into the field with the same name. `user.settings.Save()` converts the stored string to the field's type. Global settings load through `user.settings.LoadGlobals()`.
+3. Code reads the value from `m.global.user.settings`.
 
-This guide covers **User Settings** and **Global Settings**.
+Only a value the user changed is written to the registry. A default stays in `settings.json`, so changing a default reaches every user who never changed the setting.
 
-**Key Principles:**
+## 1. Add the entry to `settings.json`
 
-- Default values come from `settings/settings.json` (single source of truth)
-- Defaults are **NEVER** written to registry (only user changes are saved)
-- Saved values are loaded at login by `user.Login()` (`source/utils/session.bs`)
-- All settings must have proper type safety and validation
-
-**Data Flow:**
-
-```text
-App Startup
-  → user.settings.SaveDefaults()  (loads ALL defaults from settings.json)
-  → enableAutoSync                 (turns on registry sync; the per-field observers exist from node creation)
-  → migrations run
-  → User logs in → user.Login() reads the user's registry section and overlays
-                   saved values on top of defaults (user.settings.Save() converts types)
-  → Application code reads from m.global.user.settings
-```
-
----
-
-## When to Add a Setting
-
-Add a **user setting** when:
-
-1. **Per-device preference**: Users need different values on Roku vs other Jellyfin clients
-2. **JellyRock specific feature**: Setting controls Roku-only functionality
-3. **Override server settings**: Users want to override web client preferences on Roku
-
-Add a **global setting** when:
-
-1. **Device-wide behavior**: Setting affects all users on the Roku device
-2. **Login/session behavior**: Setting controls authentication or user selection
-3. **Shared device configuration**: Setting should persist regardless of which user is logged in
-
-**Examples:**
-
-- ✅ "Remember Me?" (`globalRememberMe`) - Device-wide setting to remember active user
-- ✅ "Play Default Audio Track" - Per-user override of web client audio preference
-- ✅ "Cinema Mode" - Per-user enable/disable of Roku-specific pre-roll feature
-- ✅ "Custom Subtitles" - Per-user toggle of Roku-specific subtitle rendering
-
-**Do NOT add user settings for:**
-
-- ❌ Server-authoritative data (policy, configuration) - these come from API only
-- ❌ Temporary session data - use global variables instead
-- ❌ Device capabilities - these are detected automatically
-
----
-
-## Settings Architecture
-
-### File Locations
-
-```text
-jellyrock/
-├── settings/
-│   └── settings.json                              # Setting definitions & defaults
-├── components/data/jellyfin/
-│   └── JellyfinUserSettings.xml                   # ContentNode field definitions
-├── source/utils/
-│   └── session.bs                                 # user.Login() loads saved values
-└── tests/source/unit/
-    └── [feature]/[FeatureName].spec.bs           # Unit tests
-```
-
-### Setting Types
-
-| Type | Description | Example Values |
-| ------ | ------------- | ---------------- |
-| `bool` | Boolean toggle | `true`, `false` |
-| `integer` | Numeric value | `0`, `30`, `1920` |
-| `string` | Free-form text | `"auto"`, `"enabled"` |
-| `radio` | Single selection from options | `"webclient"`, `"enabled"`, `"disabled"` |
-| `text` | Free-form text input | `"FF5733"`, `"0D1117"` |
-
-**Note:** Radio buttons with options are the most common for override settings.
-
-### Conditional Visibility (`visibleWhen`)
-
-Any setting can declare a `visibleWhen` condition to only appear in the UI when another setting has a specific value. This is fully declarative in `settings.json` — no code changes needed.
-
-```json
-{
-  "settingName": "uiThemeColorPrimary",
-  "type": "text",
-  "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
-}
-```
-
-The setting above only appears when `uiTheme` equals `"custom"`. When the controlling setting changes, the menu automatically refreshes to show/hide dependent items.
-
-**How it works in code:**
-
-- `LoadMenu()` builds a `filteredChildren` array by evaluating each item's `visibleWhen` condition via `isSettingVisible()`
-- All menu index lookups use `filteredChildren[]` instead of `children[]` to ensure correct mapping
-- `radioSettingChanged()` calls `refreshCurrentMenu()` when the changed setting has dependent siblings (detected by `hasDependentVisibility()`)
-
-### Preset Values (`presetValues`)
-
-Radio options can declare `presetValues` — a map of setting names to values that are bulk-applied when that option is selected. This lets a single radio selection update multiple settings at once.
-
-```json
-{
-  "title": "Theme",
-  "settingName": "uiTheme",
-  "type": "radio",
-  "options": [
-    {
-      "title": "JellyRock",
-      "id": "jellyrock",
-      "presetValues": {
-        "uiThemeColorPrimary": "8B5CF6",
-        "uiThemeColorBackgroundPrimary": "0D1117"
-      }
-    },
-    {
-      "title": "Custom",
-      "id": "custom"
-    }
-  ]
-}
-```
-
-When a preset option is selected, all its `presetValues` are saved via `user.settings.Save()`. Options without `presetValues` (like "Custom" above) just set the radio value itself.
-
-### Global Settings vs User Settings
-
-#### Registry Storage Behavior (CRITICAL)
-
-Settings are automatically routed to different registry sections based on their `settingName` prefix:
-
-- **Global Settings** - Any setting with `settingName` starting with `"global"` (e.g., `globalRememberMe`)
-  - Stored in global registry section (`"JellyRock"` in production, `"test-global"` in tests)
-  - Apply to **ALL users** on the device
-  - Shared across user accounts
-  - Example: "Remember Me?" setting that persists the active user
-
-- **User Settings** - All other settings (e.g., `playbackCinemaMode`, `uiRowLayout`)
-  - Stored in user-specific registry section (user ID as section name)
-  - Apply to **one user** only
-  - Isolated per user account
-  - Example: Playback preferences, UI preferences
-
-**How It Works:**
-
-The routing is automatic based on the `settingName` prefix. When a setting field changes:
-
-1. `JellyfinUserSettings.bs` checks if the field name starts with `"global"`
-2. If yes → saves to global registry section (using `registryWrite()` directly with the global section name)
-3. If no → saves to user registry section (using `setUserSetting()` from `source/utils/config.bs`)
-
-**Naming Convention:**
-
-- Global settings: `global*` (e.g., `globalRememberMe`, `globalThemeName`)
-- User settings: `category*` (e.g., `playback*`, `ui*`, `itemGrid*`)
-
-**Use global settings sparingly** - only for settings that truly need to apply to all users on the device.
-
----
-
-## Implementation Steps
-
-### Step 1: Add Setting Definition to `settings/settings.json`
-
-Add your setting to the appropriate category (Playback, User Interface, etc.):
-
-```json
-{
-  "title": "Setting Display Name",
-  "description": "Clear description of what this setting does.",
-  "settingName": "categorySettingName",
-  "type": "radio",
-  "default": "defaultValue",
-  "options": [
-    {
-      "title": "Option 1 Display",
-      "id": "value1"
-    },
-    {
-      "title": "Option 2 Display",
-      "id": "value2"
-    }
-  ]
-}
-```
-
-**Optional Properties:**
-
-| Property | Description |
-| -------------- | ----------------------------------------------------------------- |
-| `visibleWhen` | Condition to show/hide this setting based on another setting's value. See [Conditional Visibility](#conditional-visibility-visiblewhen). |
-| `presetValues` | (Radio options only) Map of setting names to values applied when this option is selected. See [Preset Values](#preset-values-presetvalues). |
-
-**Naming Conventions:**
-
-- Use `camelCase` for `settingName`
-- Prefix with category: `playback*`, `ui*`, `itemGrid*`, `display*`
-- Be descriptive: `playbackPlayDefaultAudioTrack` not `playbackAudio`
-
-**Alphabetical Order:**
-
-Settings **MUST** be kept in alphabetical order by **`title`** (NOT `settingName`) within each category's `children` array. This ensures the UI settings list is always alphabetically sorted for users.
-
-**Example (Play Default Audio Track):**
+Put the entry in the right category's `children`, in order of `title`. This is `playbackPlayDefaultAudioTrack`:
 
 ```json
 {
@@ -250,122 +46,78 @@ Settings **MUST** be kept in alphabetical order by **`title`** (NOT `settingName
   "type": "radio",
   "default": "webclient",
   "options": [
-    {
-      "title": "Use Web Client Setting",
-      "id": "webclient"
-    },
-    {
-      "title": "Enabled",
-      "id": "enabled"
-    },
-    {
-      "title": "Disabled",
-      "id": "disabled"
-    }
-  ]
+    { "title": "Use Web Client Setting", "id": "webclient", "titleKey": "LabelUseWebClientSetting" },
+    { "title": "Enabled", "id": "enabled", "titleKey": "LabelEnabled" },
+    { "title": "Disabled", "id": "disabled", "titleKey": "LabelDisabled" }
+  ],
+  "titleKey": "LabelPlayDefaultAudioTrack",
+  "descriptionKey": "MessageOverrideWebClientAudioPreferenceWhen"
 }
 ```
 
-**Common Override Pattern:**
+- **`settingName`** is the field and registry key: `lowerCamelCase`, with its area's prefix, and specific (`playbackPlayDefaultAudioTrack`, not `playbackAudio`).
+- **`titleKey` and `descriptionKey`** name the strings the Settings screen shows, translated; so does each option's `titleKey`. **`title` and `description`** are the English text that [`docs/user/app-settings.md`](../user/app-settings.md) is generated from.
+- **`default`** is the value a user has until they change it.
 
-For settings that override web client behavior, use this three-option pattern:
+The types the Settings screen handles:
 
-- `"webclient"` (default) - Use server setting
-- `"enabled"` - Force enable
-- `"disabled"` - Force disable
+| `type` | The user | Field type |
+| --- | --- | --- |
+| `bool` | Turns it on or off | `boolean` |
+| `radio` | Picks one of `options` | `string` |
+| `integer` | Enters a number; with `min` and `max`, a value outside them asks for confirmation | `integer` |
+| `text` | Types a value, such as a hex color | `string` |
+| `alpha` | Types letters on the on-screen keyboard | `string` |
+| `languagePicker` | Picks a language | `string` |
 
-### Step 2: Add Field to `JellyfinUserSettings.xml`
+Two optional keys:
 
-Add a field definition in the appropriate section (Playback Settings, UI Settings, etc.):
+- **`visibleWhen`** shows an entry only while another setting has a value, with no code. The **Custom Theme Colors** group uses `"visibleWhen": { "settingName": "uiTheme", "value": "custom" }`. `LoadMenu()` in `components/settings/settings.bs` filters the menu with `isSettingVisible()`, and the menu redraws when the controlling setting changes.
+- **`presetValues`**, on a radio option, sets several settings at once when the user picks it. Each `uiTheme` option sets the theme's colors; options without it set only the radio's value.
 
-```xml
-<field id="categorySettingName" type="string" alwaysNotify="true" />
-```
+**An override of a web client setting** uses three options: `webclient` (the default: use the server's value), `enabled` and `disabled`.
 
-**Field Types:**
+## 2. Add the strings
 
-| Setting Type | XML Type |
-| ------------- | ---------- |
-| `bool` | `type="boolean"` |
-| `integer` | `type="integer"` |
-| `string` or `radio` | `type="string"` |
+Add each new `titleKey` and `descriptionKey` to `locale/custom/en_US.json`. The rules for keys and their order are in [`translations.md`](translations.md), and the [`/translation-add`](../../.claude/skills/translation-add/SKILL.md) skill applies them. `npm run lint:translations` checks the keys `settings.json` uses.
 
-**Important:**
+## 3. Add the field
 
-- Always use `alwaysNotify="true"` for settings
-- Field `id` must match `settingName` from settings.json
-- Do NOT set `value` attribute (defaults come from settings.json)
-- Keep fields organized by category with XML comments
-
-**Example:**
+Add a field to `components/data/jellyfin/JellyfinUserSettings.xml`, in its area's section:
 
 ```xml
-<!-- Playback Settings -->
-<field id="playbackBitrateMaxLimited" type="boolean" alwaysNotify="true" />
-<field id="playbackPlayNextEpisode" type="string" alwaysNotify="true" />
 <field id="playbackPlayDefaultAudioTrack" type="string" alwaysNotify="true" />
 ```
 
-### Step 3: Loading Needs No Code
+- **The `id` matches `settingName` exactly.** The value is saved under the field's `id` and loaded back by the same key.
+- **The type comes from the table above.** A `radio` setting stored in a `boolean` field never holds `"webclient"`.
+- **Give it no `value`.** The default comes from `settings.json`, and a second one here would disagree with it one day.
 
-`user.Login()` loads every saved value whose registry key names a field on `JellyfinUserSettings`, and `user.settings.Save()` converts the stored string to the field's XML type (`boolean`, `integer`, `float` or `string`). The field you added in Step 2 is picked up automatically, as are its registry observers in `JellyfinUserSettings.bs`. Global settings (`global*`) load separately, through `user.settings.LoadGlobals()`.
+Nothing else is needed to load or save it: `JellyfinUserSettings.bs` observes every field, and `user.Login()` loads every key that names one.
 
-Check only that the field `id` matches `settingName` in settings.json: the observer saves the value under the field `id`, and `user.Login()` loads it back by the same key.
+## 4. Use it
 
-### Step 4: Implement Setting Logic (If Needed)
-
-**Note:** Most simple settings (booleans, direct values) don't need helper functions. Helper functions are most commonly needed for settings that override web client behavior.
-
-If your setting requires complex resolution logic (e.g., choosing between JellyRock override and web client fallback), create a helper function:
+Read the node into a local once, then read the setting from it:
 
 ```brighterscript
-' resolveSettingName: Resolves the setting value
-'
-' Checks JellyRock override setting first, then falls back to web client setting.
-' Ensures a valid [type] is always returned.
-'
-' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
-' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
-' @returns {[type]} - Resolved setting value (guaranteed valid)
-function resolveSettingName(userSettings as object, userConfig as object) as [type]
-  ' Default to [safe value] if we can't determine the value
-  defaultValue = [safeDefault]
-
-  ' Try to get web client setting (type is guaranteed by XML field definition)
-  if isValid(userConfig) and isValid(userConfig.webClientFieldName)
-    defaultValue = userConfig.webClientFieldName
-  end if
-
-  ' Check for JellyRock override setting
-  if isValid(userSettings) and isValid(userSettings.categorySettingName) and userSettings.categorySettingName <> ""
-    if userSettings.categorySettingName = "enabled"
-      return [enabledValue]
-    else if userSettings.categorySettingName = "disabled"
-      return [disabledValue]
-      ' else "webclient" or other - use web client setting
-    end if
-  end if
-
-  return defaultValue
-end function
+localUser = m.global.user
+playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
 ```
 
-**Key Points:**
-
-- Provide safe defaults when values are invalid
-- Document the resolution logic clearly
-- **Type validation:** User config values are automatically type-validated by Roku's Scene Graph XML field definitions. Values in `JellyfinUserConfiguration` node are guaranteed to match their declared types, so additional runtime type checking is not required
-
-**Example (Play Default Audio Track):**
+A plain setting needs no more than `localUser.settings.<settingName>`. When a setting overrides a server value, write one function that decides between them, and call it everywhere. This is `resolvePlayDefaultAudioTrack()` in `source/utils/streamSelection.bs`:
 
 ```brighterscript
 function resolvePlayDefaultAudioTrack(userSettings as object, userConfig as object) as boolean
   ' Default to true if we can't determine the value
   defaultValue = true
 
-  ' Try to get web client setting (type is guaranteed by XML field definition)
+  ' Try to get web client setting
   if isValid(userConfig) and isValid(userConfig.playDefaultAudioTrack)
-    defaultValue = userConfig.playDefaultAudioTrack
+    ' Ensure it's actually a boolean before using it
+    valueType = Type(userConfig.playDefaultAudioTrack)
+    if valueType = "roBoolean" or valueType = "Boolean"
+      defaultValue = userConfig.playDefaultAudioTrack
+    end if
   end if
 
   ' Check for JellyRock override setting
@@ -374,7 +126,6 @@ function resolvePlayDefaultAudioTrack(userSettings as object, userConfig as obje
       return true
     else if userSettings.playbackPlayDefaultAudioTrack = "disabled"
       return false
-      ' else "webclient" or other - use web client setting
     end if
   end if
 
@@ -382,358 +133,25 @@ function resolvePlayDefaultAudioTrack(userSettings as object, userConfig as obje
 end function
 ```
 
-**Then use the helper consistently:**
+It returns a safe value when either node or field is missing. Search for every place the behavior lives (`git grep -n "<related term>" -- source components`), so the setting changes all of them.
 
-```brighterscript
-' Get user settings for audio selection
-localUser = m.global.user
+## 5. Test it
 
-' Resolve setting (JellyRock override or web client)
-playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
+Unit-test a resolving function in `tests/source/unit/<area>/`. `tests/source/unit/userSettings/PlaybackPreserveDovi.spec.bs` is an example, and [`unit-tests.md`](unit-tests.md) covers writing one. Cover:
 
-' Use resolved value
-selectedIndex = findBestAudioStreamIndex(mediaStreams, playDefault, preferredLanguage)
-```
+- each option (`enabled`, `disabled`, `webclient`);
+- the server's value when the override is `webclient` or empty;
+- `invalid` settings or configuration nodes, and an unexpected value.
 
-### Step 5: Update All Usage Sites
+Run the specs on a Roku: `npm run device:check`, then `npm run test:tdd` with your spec listed ([`unit-tests-tdd.md`](unit-tests-tdd.md)) or `npm run test:unit`.
 
-Search the codebase for where the setting should be used:
+Then on the device:
 
-```bash
-# Search for related functionality
-grep -r "oldRelatedCode" source/ components/
-```
+1. Open the setting in **Settings** and check its title, description and options.
+2. Change it, close the app, reopen it, and check the value stayed.
+3. Check the behavior changes for each value, and for each server value if it overrides one.
+4. Sign in as a user who never changed it, and check the default applies.
 
-**Update all locations:**
+**Reset User Settings** restores every user setting to its default through `SaveDefaults()`, so a new setting resets with no more code.
 
-1. Component logic that needs the setting
-2. Utility functions that use the setting
-3. Task nodes that process the setting
-4. Any hardcoded behavior that should now be configurable
-
-**Example locations to check:**
-
-- `components/ItemDetails.bs` — the universal item-details component (handles every item type: movies, episodes, series, audio, photos, live TV, …)
-- `source/utils/quickplay.bs` — quick-play dispatch
-- `components/ItemGrid/LoadVideoContentTask.bs` — background metadata + transcode-decision task
-- `components/manager/QueueManager.bs` / `components/video/PlayerHostView.bs` — playback queue + routed player host
-
-**Pattern:**
-
-```brighterscript
-' Get local reference (minimize rendezvous)
-localUser = m.global.user
-
-' Resolve setting
-resolvedValue = resolveSettingName(localUser.settings, localUser.config)
-
-' Use value
-doSomething(resolvedValue)
-```
-
----
-
-## Testing Requirements
-
-### Unit Tests for Helper Functions
-
-If you created a helper function, write unit tests. See the [Unit Testing Guide](unit-tests.md) for complete testing patterns and framework details.
-
-**File Location:** `tests/source/unit/[category]/[helperName].spec.bs`
-
-**Test Scenarios for User Settings:**
-
-1. **Override logic** - Test all override values work correctly (`"enabled"`, `"disabled"`, `"webclient"`)
-2. **Fallback logic** - Test web client setting is used when override is empty/`"webclient"`
-3. **Invalid inputs** - Test handles `invalid` settings/config objects gracefully
-4. **Edge cases** - Test empty strings, unexpected values, missing fields
-
-**Example test structure:**
-
-```brighterscript
-import "pkg:/source/utils/yourFile.bs"
-
-namespace tests
-
-  @suite("yourFile - resolveSettingName()")
-  class ResolveSettingNameTests extends tests.BaseTestSuite
-
-    protected override function setup()
-      super.setup()
-    end function
-
-    @describe("Override setting tests")
-    @it("returns enabled value when setting is 'enabled'")
-    @it("returns disabled value when setting is 'disabled'")
-    @it("uses web client value when setting is 'webclient' or empty")
-
-    @describe("Invalid input handling")
-    @it("returns safe default when both settings and config are invalid")
-    @it("returns safe default when config field is invalid")
-
-  end class
-
-end namespace
-```
-
-### Manual Testing Checklist
-
-Test the setting manually on a real Roku device:
-
-1. ✅ Navigate to Settings → [Category] → [Setting Name]
-2. ✅ Verify all options display correctly
-3. ✅ Change setting and verify change is saved (close app, reopen)
-4. ✅ Verify setting affects behavior as expected
-5. ✅ Test with web client setting at different values
-6. ✅ Verify default value works correctly for new users
-7. ✅ Check logs for any errors during setting load/save
-
----
-
-## Best Practices
-
-### 1. Setting Design
-
-- ✅ **DO** provide clear, user-friendly option titles
-- ✅ **DO** write helpful descriptions that explain what the setting does
-- ✅ **DO** use "Use Web Client Setting" as default for override settings
-- ✅ **DO** keep option IDs simple and consistent (`enabled`, `disabled`, `webclient`)
-- ❌ **DON'T** use technical jargon in user-facing text
-- ❌ **DON'T** create settings for features that should be automatic
-
-### 2. Code Organization
-
-- ✅ **DO** create helper functions for complex setting resolution logic
-- ✅ **DO** validate types before using values (prevent crashes)
-- ✅ **DO** minimize rendezvous by caching local references
-- ✅ **DO** use consistent naming across files (same name everywhere)
-- ❌ **DON'T** repeat resolution logic in multiple places (use DRY)
-- ❌ **DON'T** hardcode default values (they come from settings.json)
-- ❌ **DON'T** write defaults to registry (only user changes)
-
-### 3. Type Safety
-
-- ✅ **DO** provide safe defaults when values are invalid
-- ✅ **DO** use `??` operator for fallback values
-- ✅ **DO** trust XML field type validation for config/policy nodes
-- ❌ **DON'T** add redundant type checking for Scene Graph node fields (already validated by Roku)
-
-### 4. Documentation
-
-- ✅ **DO** document helper functions with clear JSDoc style comments
-- ✅ **DO** explain the resolution priority in comments
-- ✅ **DO** add inline comments for non-obvious logic
-- ✅ **DO** update relevant documentation when adding settings
-- ❌ **DON'T** include hardcoded counts in comments (e.g., "Playback Settings (13)") - they require manual updates and get outdated
-- ❌ **DON'T** leave outdated comments
-
-### 5. Testing
-
-- ✅ **DO** test all possible setting values
-- ✅ **DO** test invalid/missing values don't crash
-- ✅ **DO** test web client fallback works
-- ✅ **DO** verify setting persists across app restarts
-- ❌ **DON'T** skip edge case testing (empty strings, wrong types, etc.)
-
----
-
-## Common Pitfalls
-
-### 1. ❌ Hardcoding Default Values
-
-**Problem:**
-
-```xml
-<field id="categorySettingName" type="string" value="hardcodedDefault" alwaysNotify="true" />  <!-- ❌ WRONG! -->
-```
-
-**Why this fails:** Default should come from settings.json, not code. This creates two sources of truth.
-
-**Solution:**
-
-```xml
-<!-- No value attribute: the default comes from settings.json -->
-<field id="categorySettingName" type="string" alwaysNotify="true" />  <!-- ✅ CORRECT -->
-```
-
-### 2. ❌ Writing Defaults to Registry
-
-**Problem:**
-
-```brighterscript
-if not reg.exists("categorySettingName")
-  reg.write("categorySettingName", "defaultValue")  ' ❌ WRONG!
-end if
-```
-
-**Why this fails:** Defeats the purpose of having defaults in settings.json. Pollutes registry.
-
-**Solution:**
-
-```brighterscript
-' Don't write defaults! Only write when user changes the setting.
-' The transformer will pick up defaults from settings.json automatically.
-```
-
-### 3. ❌ Repeating Resolution Logic
-
-**Problem:**
-
-```brighterscript
-' MovieDetails.bs
-if userSettings.categorySettingName = "enabled"
-  value = true
-else if userSettings.categorySettingName = "disabled"
-  value = false
-else
-  value = userConfig.webClientField
-end if
-
-' TVListDetails.bs - SAME CODE REPEATED!
-if userSettings.categorySettingName = "enabled"
-  value = true
-...
-```
-
-**Why this fails:** Code duplication, maintenance nightmare, inconsistent behavior.
-
-**Solution:**
-
-```brighterscript
-' Create ONE helper function
-function resolveSetting(userSettings, userConfig) as boolean
-  ' ... resolution logic once ...
-end function
-
-' Use everywhere
-value = resolveSetting(localUser.settings, localUser.config)
-```
-
-### 4. ❌ Wrong XML Field Type
-
-**Problem:**
-
-```xml
-<!-- Setting is radio/string but using boolean type -->
-<field id="playbackPlayDefaultAudioTrack" type="boolean" alwaysNotify="true" />
-```
-
-**Why this fails:** Type mismatch between settings.json and XML causes errors.
-
-**Solution:**
-
-```xml
-<!-- Radio/string settings use string type -->
-<field id="playbackPlayDefaultAudioTrack" type="string" alwaysNotify="true" />
-```
-
-### 5. ❌ Forgetting to Update All Usage Sites
-
-**Problem:** Adding setting but only updating one of four places that need it.
-
-**Solution:** Always grep the codebase:
-
-```bash
-grep -r "relatedFunctionality" source/ components/
-```
-
-### 6. ❌ Not Testing Edge Cases
-
-**Problem:** Only testing happy path (`"enabled"`, `"disabled"`) but not invalid values.
-
-**Solution:** Test:
-
-- Empty strings
-- Unexpected values
-- Missing fields
-- Invalid user/config objects
-
----
-
-## Task Checklist
-
-When implementing a new user setting, use this checklist to ensure nothing is overlooked.
-
-> **Note:** Checklist states are for local tracking only. Please reset all checkboxes to `[ ]` before committing changes to this file.
-
-### Phase 1: Setting Definition
-
-- [ ] Add setting to appropriate category in `settings/settings.json`
-- [ ] Choose appropriate type (`bool`, `integer`, `string`, `radio`)
-- [ ] Write clear user-friendly title and description
-- [ ] Use `camelCase` naming with category prefix (e.g., `playback*`, `ui*`, `global*`)
-- [ ] Set appropriate default value (use `"webclient"` for override settings)
-- [ ] Define all options for radio type (with clear titles and simple IDs)
-- [ ] **IMPORTANT:** Insert setting in alphabetical order by `title` within the category's `children` array
-
-### Phase 2: Schema Definition
-
-- [ ] Add field to `components/data/jellyfin/JellyfinUserSettings.xml`
-- [ ] Use correct XML type (`boolean`, `integer`, or `string`)
-- [ ] Field `id` matches `settingName` from settings.json exactly
-- [ ] Add `alwaysNotify="true"` attribute
-- [ ] Do NOT set `value` attribute (defaults come from settings.json)
-- [ ] Place in appropriate category section with XML comments
-
-### Phase 3: Loading
-
-- [ ] Nothing to add: `user.Login()` loads the new field (confirm its `id` matches `settingName`)
-
-### Phase 4: Implementation Logic
-
-**Note:** Some settings don't need helper functions - they may just modify existing logic (e.g., adding to a condition). Skip helper-specific checkboxes if not applicable.
-
-- [ ] Create helper function if setting has complex resolution logic (most common for web client overrides) OR modify existing logic to use the setting
-- [ ] Provide safe defaults for invalid/missing values
-- [ ] Document implementation with clear comments
-- [ ] Use DRY principle - create ONE function, use everywhere (if applicable)
-- [ ] Update all usage sites to use the setting consistently
-- [ ] Search codebase for related code: `grep -r "relatedTerm" source/ components/`
-
-### Phase 5: Testing
-
-- [ ] Create unit test file in `tests/source/unit/[category]/[helperName].spec.bs` (if helper function exists)
-- [ ] Extend `tests.BaseTestSuite` with `super.setup()` call
-- [ ] Test all override values (`"enabled"`, `"disabled"`, `"webclient"`)
-- [ ] Test web client fallback when no override
-- [ ] Test invalid inputs (invalid objects, empty strings)
-- [ ] Test edge cases (unexpected values, missing fields)
-- [ ] Update existing comprehensive tests (e.g., `Transformers.spec.bs` settings coverage test)
-- [ ] Update test mock data files (e.g., `user-settings-all-new-names.json`)
-- [ ] Verify all tests pass: `npm run build:tests-unit`
-
-### Phase 6: Manual Testing
-
-- [ ] Test on real Roku device if possible
-- [ ] Navigate to setting in UI and verify it displays correctly
-- [ ] Change setting and verify change persists (close/reopen app)
-- [ ] Test all option values work as expected
-- [ ] Test with different web client setting values
-- [ ] Verify default value works for new users
-- [ ] Check logs for errors during load/save
-
-### Phase 7: Code Quality
-
-- [ ] Verify no new IDE errors introduced
-- [ ] Remove any debug code or console logs
-- [ ] Verify all comments are accurate and helpful
-
-### Phase 8: Documentation & Commit
-
-- [ ] Add descriptive commit message following conventional commits format
-- [ ] Update relevant documentation if needed
-- [ ] Reset this checklist to unchecked state before committing
-- [ ] Create PR with clear description of setting and behavior
-
----
-
-## Questions or Issues?
-
-If you encounter issues not covered in this guide:
-
-1. Check recent commits for similar settings: `git log --all --grep="setting"`
-2. Review existing settings in `settings/settings.json` for patterns
-3. Search for usage examples: `grep -r "userSettings\." source/ components/`
-4. Ask for clarification in PR reviews or team discussions
-
-**Remember:** When in doubt, validate types, avoid hardcoded defaults, and test edge cases thoroughly!
+After the change merges, the `jellyrock-bot` workflow regenerates `docs/user/app-settings.md` from `settings.json` (`npm run docs:settings` does the same locally). Never edit that file by hand.
