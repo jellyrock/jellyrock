@@ -23,7 +23,7 @@ Routing is by exception code **+ context**: `&h29`/`&h23` are the class regardle
 
 ## ⚠️ The 7-day dashboard window
 
-Roku's analytics dashboard retains only **7 days** of crash backtraces, one click per crash line-item, no bulk export. Enrichment must happen **within the report's window**. Whenever you ask the user to pull a backtrace, give the exact `<basename>.brs:<line>` **and** `date`, and only for crashes inside the current report window — anything older can never be enriched (file it unenriched, or hold it).
+Roku's analytics dashboard retains only **7 days** of crash backtraces, one click per crash line-item, no bulk export. Enrichment must happen **within the report's window**. Whenever you ask the user to pull a backtrace, give the exact `<basename>.brs:<line>` **and** `date`, and only for crashes inside the current report window — anything older can never be enriched (it stays held: the `file` phase never files a crash without a backtrace).
 
 ## Inputs
 
