@@ -67,33 +67,13 @@ namespace tests
     function _()
       ' Silicon Valley on a 12.0 server: S4E6 started at 320 s, nothing finished.
       series = [{ Id: "sv", RecursiveItemCount: 53, UserData: { UnplayedItemCount: 53 } }]
-      m.assertEqual(classifyNextUpSeries(series, []), { sv: NextUpSeriesStart.NOT_STARTED })
+      m.assertEqual(classifyNextUpSeries(series), { sv: NextUpSeriesStart.NOT_STARTED })
     end function
 
-    @it("marks a series with a played episode and no played special as started")
+    @it("marks a series with a played episode as started")
     function _()
       series = [{ Id: "rock", RecursiveItemCount: 142, UserData: { UnplayedItemCount: 141 } }]
-      specials = [{ SeriesId: "other", ParentIndexNumber: 0 }]
-      m.assertEqual(classifyNextUpSeries(series, specials), { rock: NextUpSeriesStart.STARTED })
-    end function
-
-    @it("asks for a per-series check when a played episode could be a special")
-    function _()
-      series = [{ Id: "sop", RecursiveItemCount: 98, UserData: { UnplayedItemCount: 97 } }]
-      specials = [{ SeriesId: "sop", ParentIndexNumber: 0 }]
-      m.assertEqual(classifyNextUpSeries(series, specials), { sop: NextUpSeriesStart.CHECK })
-    end function
-
-    @it("treats a played series as started when the specials lookup got no answer")
-    function _()
-      series = [{ Id: "rock", RecursiveItemCount: 142, UserData: { UnplayedItemCount: 141 } }]
-      m.assertEqual(classifyNextUpSeries(series, invalid), { rock: NextUpSeriesStart.STARTED })
-    end function
-
-    @it("still marks an unplayed series as not started when the specials lookup got no answer")
-    function _()
-      series = [{ Id: "sv", RecursiveItemCount: 53, UserData: { UnplayedItemCount: 53 } }]
-      m.assertEqual(classifyNextUpSeries(series, invalid), { sv: NextUpSeriesStart.NOT_STARTED })
+      m.assertEqual(classifyNextUpSeries(series), { rock: NextUpSeriesStart.STARTED })
     end function
 
     @it("leaves out a series whose counts are missing")
@@ -103,12 +83,12 @@ namespace tests
         { Id: "noTotal", UserData: { UnplayedItemCount: 10 } },
         { Id: "noUnplayed", RecursiveItemCount: 10, UserData: {} }
       ]
-      m.assertEqual(classifyNextUpSeries(series, []), {})
+      m.assertEqual(classifyNextUpSeries(series), {})
     end function
 
-    @it("returns nothing when the series lookup got no answer")
+    @it("returns nothing when no series counts arrived")
     function _()
-      m.assertEqual(classifyNextUpSeries(invalid, []), {})
+      m.assertEqual(classifyNextUpSeries([]), {})
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -127,7 +107,7 @@ namespace tests
       starts = {
         rock: NextUpSeriesStart.STARTED,
         sv: NextUpSeriesStart.NOT_STARTED,
-        sop: NextUpSeriesStart.CHECK
+        sop: NextUpSeriesStart.STARTED
       }
       kept = keepStartedSeriesItems(items, starts)
       m.assertEqual(kept.count(), 4)

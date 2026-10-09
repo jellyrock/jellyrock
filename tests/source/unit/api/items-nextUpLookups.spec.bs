@@ -1,0 +1,90 @@
+import "pkg:/source/api/items.bs"
+
+namespace tests
+
+  @suite("items.bs - Next Up started-series lookups")
+  class NextUpLookupsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextUpLookupQueries()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for the counted series' counts in one request, and one check per exact series")
+    function _()
+      entries = nextUpLookupQueries({ counted: ["rock", "sv"], exact: ["sop"] })
+      m.assertEqual(entries.count(), 2)
+      m.assertEqual(entries[0].lookup, "series")
+      m.assertEqual(entries[0].query.Ids, "rock,sv")
+      m.assertEqual(entries[0].query.Fields, "RecursiveItemCount")
+      m.assertEqual(entries[1].lookup, "check")
+      m.assertEqual(entries[1].seriesId, "sop")
+      m.assertEqual(entries[1].query, watchedRegularEpisodeQuery("sop"))
+    end function
+
+    @it("splits the counted series across requests, each with its own request id")
+    function _()
+      counted = []
+      for i = 1 to apiIds.PER_REQUEST + 1
+        counted.push("s" + i.toStr())
+      end for
+      entries = nextUpLookupQueries({ counted: counted, exact: [] })
+      m.assertEqual(entries.count(), 2)
+      m.assertEqual(entries[0].query.Ids.split(",").count(), apiIds.PER_REQUEST)
+      m.assertEqual(entries[1].query.Ids, "s" + (apiIds.PER_REQUEST + 1).toStr())
+      m.assertNotEqual(entries[0].requestId, entries[1].requestId)
+    end function
+
+    @it("sends no count request when every series goes to the exact check")
+    function _()
+      entries = nextUpLookupQueries({ counted: [], exact: ["sop"] })
+      m.assertEqual(entries.count(), 1)
+      m.assertEqual(entries[0].lookup, "check")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("foldNextUpLookup()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("collects series counts from every count request")
+    function _()
+      found = newNextUpLookups()
+      series = { lookup: "series" }
+      foldNextUpLookup(found, series, { ok: true, json: { Items: [{ Id: "a" }] } })
+      foldNextUpLookup(found, series, { ok: true, json: { Items: [{ Id: "b" }] } })
+      m.assertEqual(found.seriesItems.count(), 2)
+      m.assertEqual(found.unanswered, 0)
+    end function
+
+    @it("decides a checked series from its top played episode")
+    @params(1, "started")
+    @params(0, "notStarted")
+    function _(seasonNumber, expected)
+      found = newNextUpLookups()
+      foldNextUpLookup(found, { lookup: "check", seriesId: "sop" }, { ok: true, json: { Items: [{ ParentIndexNumber: seasonNumber }] } })
+      m.assertEqual(found.starts.sop, expected)
+    end function
+
+    @it("marks a checked series with no played episode as not started")
+    function _()
+      found = newNextUpLookups()
+      foldNextUpLookup(found, { lookup: "check", seriesId: "sv" }, { ok: true, json: { Items: [] } })
+      m.assertEqual(found.starts.sv, NextUpSeriesStart.NOT_STARTED)
+    end function
+
+    @it("counts a lookup with no answer, an error or an unreadable body, and decides nothing")
+    @params("series")
+    @params("check")
+    function _(lookup)
+      found = newNextUpLookups()
+      entry = { lookup: lookup, seriesId: "sop" }
+      foldNextUpLookup(found, entry, invalid)
+      foldNextUpLookup(found, entry, { ok: false, statusCode: 500 })
+      foldNextUpLookup(found, entry, { ok: true, json: invalid })
+      m.assertEqual(found.unanswered, 3)
+      m.assertEqual(found.seriesItems.count(), 0)
+      m.assertEqual(found.starts, {})
+    end function
+
+  end class
+
+end namespace

@@ -2,6 +2,4 @@
 enum NextUpSeriesStart
   STARTED = "started"
   NOT_STARTED = "notStarted"
-  ' A played episode exists but may be a special: hasWatchedRegularEpisode() decides.
-  CHECK = "check"
 end enum

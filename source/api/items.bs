@@ -1,4 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiIds.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/enums/NextUpSeriesStart.bs"
@@ -547,32 +549,21 @@ end function
 ' From 10.11 the server offers a series' first episode once ANY of its episodes was started,
 ' even with none finished: jellyfin/jellyfin#13687 dropped the filter that 10.10 applied with
 ' DisableFirstEpisode (#973). The rule that filter applied is hasWatchedRegularEpisode()'s,
-' and this decides it from batched lookups instead of one request per series:
+' and this decides it from batched lookups instead of one request per series.
 '
-' - The series' own counts (Fields=RecursiveItemCount): nothing played means NOT_STARTED.
-' - The played specials across the library: a played series with none of them is STARTED.
-'   Its counts include specials, so a series that has one played is CHECK, decided by
-'   hasWatchedRegularEpisode() on its own. planNextUpSeriesLookups() normally sends those
-'   straight to that check, so CHECK only comes back when the specials arrived late.
+' It reads the series' own counts (Fields=RecursiveItemCount): nothing played means
+' NOT_STARTED, anything played means STARTED. Both counts skip folders and missing episodes, so
+' they are equal exactly when nothing is played. The counts include specials, which is why
+' planNextUpSeriesLookups() sends a series with a played special to its own exact check
+' instead. When the specials lookup got no answer, a series whose only played episode is a
+' special counts as STARTED: an unanswered lookup never removes an episode from the row.
 '
-' A series missing from the lookup, or without its counts, is left out, and a played series
-' is STARTED when the specials lookup got no answer: an unanswered lookup never removes an
-' episode from the row.
+' A series missing from the lookup, or without its counts, is left out.
 '
-' @param {dynamic} seriesItems - Series lookup items: [BaseItemDto] or invalid (no answer)
-' @param {dynamic} playedSpecials - Played season-0 episodes: [BaseItemDto] or invalid (no answer)
+' @param {object} seriesItems - Series lookup items: [BaseItemDto]
 ' @returns {object} - AA of SeriesId -> NextUpSeriesStart value
-function classifyNextUpSeries(seriesItems as dynamic, playedSpecials as dynamic) as object
+function classifyNextUpSeries(seriesItems as object) as object
   starts = {}
-  if not isValid(seriesItems) then return starts
-
-  seriesWithPlayedSpecial = {}
-  if isValid(playedSpecials)
-    for each special in playedSpecials
-      if isValidAndNotEmpty(special.SeriesId) then seriesWithPlayedSpecial[special.SeriesId] = true
-    end for
-  end if
-
   for each series in seriesItems
     total = series.RecursiveItemCount
     unplayed = invalid
@@ -580,8 +571,6 @@ function classifyNextUpSeries(seriesItems as dynamic, playedSpecials as dynamic)
     if isValidAndNotEmpty(series.Id) and isValid(total) and isValid(unplayed)
       if unplayed >= total
         starts[series.Id] = NextUpSeriesStart.NOT_STARTED
-      else if seriesWithPlayedSpecial.DoesExist(series.Id)
-        starts[series.Id] = NextUpSeriesStart.CHECK
       else
         starts[series.Id] = NextUpSeriesStart.STARTED
       end if
@@ -590,10 +579,75 @@ function classifyNextUpSeries(seriesItems as dynamic, playedSpecials as dynamic)
   return starts
 end function
 
+' nextUpLookupQueries: The lookups that decide the series in a plan, as pipeline entries.
+'
+' The counted series go out apiIds.PER_REQUEST to a request, so a long Next Up row cannot push
+' a request line past what a server or proxy accepts. Each exact series gets its own
+' watchedRegularEpisodeQuery(). Each entry carries `query` for BuildGetItemsByQueryRequest,
+' and `lookup` (with `seriesId` for a check) for foldNextUpLookup().
+'
+' @param {object} plan - planNextUpSeriesLookups() result
+' @returns {object} - Array of { requestId, query, lookup, seriesId? }
+function nextUpLookupQueries(plan as object) as object
+  entries = []
+  chunkIndex = 0
+  for each chunk in apiIds.chunks(plan.counted)
+    entries.push({
+      requestId: "nextUpSeries-" + chunkIndex.toStr(),
+      query: { Ids: chunk.join(","), Fields: "RecursiveItemCount", EnableImages: false, EnableTotalRecordCount: false },
+      lookup: "series"
+    })
+    chunkIndex++
+  end for
+  for each seriesId in plan.exact
+    entries.push({
+      requestId: "nextUpSeriesPlayed-" + seriesId,
+      query: watchedRegularEpisodeQuery(seriesId),
+      lookup: "check",
+      seriesId: seriesId
+    })
+  end for
+  return entries
+end function
+
+' newNextUpLookups: An empty tally for foldNextUpLookup().
+'
+' @returns {object} - { seriesItems: [BaseItemDto], starts: AA of SeriesId -> NextUpSeriesStart, unanswered: integer }
+function newNextUpLookups() as object
+  return { seriesItems: [], starts: {}, unanswered: 0 }
+end function
+
+' foldNextUpLookup: Adds one nextUpLookupQueries() answer to the tally.
+'
+' Series counts collect in `seriesItems` for classifyNextUpSeries(). A check decides its series
+' in `starts` directly. A lookup with no answer, an error, or a body that is not a list only
+' adds to `unanswered`, so its series stay undecided and keep their items.
+'
+' @param {object} found - newNextUpLookups() tally, updated in place
+' @param {object} entry - The nextUpLookupQueries() entry the answer belongs to
+' @param {dynamic} res - The pool response AA, or invalid when it never answered
+sub foldNextUpLookup(found as object, entry as object, res as dynamic)
+  if not isValid(res) or not res.ok
+    found.unanswered++
+    return
+  end if
+
+  answered = apiResponse.listFrom(res.json)
+  if not isValid(answered)
+    found.unanswered++
+  else if entry.lookup = "series"
+    found.seriesItems.append(answered)
+  else if hasWatchedRegularEpisode(res.json)
+    found.starts[entry.seriesId] = NextUpSeriesStart.STARTED
+  else
+    found.starts[entry.seriesId] = NextUpSeriesStart.NOT_STARTED
+  end if
+end sub
+
 ' keepStartedSeriesItems: Drops the Next Up items whose series is NOT_STARTED, keeping order.
 '
 ' @param {object} items - Next Up items: [BaseItemDto]
-' @param {object} starts - classifyNextUpSeries() result, CHECK entries resolved where answered
+' @param {object} starts - AA of SeriesId -> NextUpSeriesStart
 ' @returns {object} - The kept items
 function keepStartedSeriesItems(items as object, starts as object) as object
   kept = []
