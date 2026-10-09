@@ -86,13 +86,13 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 
 | File | Topic |
 |---|---|
-| [`docs/dev/DEVGUIDE.md`](../dev/DEVGUIDE.md) | Dev Guide |
-| [`docs/dev/api-layering-guide.md`](../dev/api-layering-guide.md) | API Architecture Layering Guide |
-| [`docs/dev/api-patterns.md`](../dev/api-patterns.md) | API Request Patterns |
+| [`docs/dev/DEVGUIDE.md`](../dev/DEVGUIDE.md) | Dev guide |
+| [`docs/dev/api-layering-guide.md`](../dev/api-layering-guide.md) | API layering guide |
+| [`docs/dev/api-patterns.md`](../dev/api-patterns.md) | API request patterns |
 | [`docs/dev/code-style.md`](../dev/code-style.md) | Code Style Guide |
-| [`docs/dev/crash-reports.md`](../dev/crash-reports.md) | Weekly Roku crash-report workflow |
+| [`docs/dev/crash-reports.md`](../dev/crash-reports.md) | Weekly Roku crash reports |
 | [`docs/dev/debug-flags.md`](../dev/debug-flags.md) | Debug Flags & Toast Testing |
-| [`docs/dev/deep-linking.md`](../dev/deep-linking.md) | Deep Linking & Casting |
+| [`docs/dev/deep-linking.md`](../dev/deep-linking.md) | Deep linking and casting |
 | [`docs/dev/developer-mode.md`](../dev/developer-mode.md) | Developer mode for Roku devices |
 | [`docs/dev/home-first-paint-performance.md`](../dev/home-first-paint-performance.md) | Measuring orchestrator wait-vs-emit on device |
 | [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | JellyRock Versioning Systems Overview |
@@ -104,7 +104,7 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 | [`docs/dev/rta-tests.md`](../dev/rta-tests.md) | RTA functional tests (`tests/rta/`) |
 | [`docs/dev/scripts-development.md`](../dev/scripts-development.md) | Working in `scripts/` |
 | [`docs/dev/translations.md`](../dev/translations.md) | Translations |
-| [`docs/dev/unit-tests-tdd.md`](../dev/unit-tests-tdd.md) | Test-Driven Development (TDD) Workflow |
+| [`docs/dev/unit-tests-tdd.md`](../dev/unit-tests-tdd.md) | Test-driven development (TDD) |
 | [`docs/dev/unit-tests.md`](../dev/unit-tests.md) | Unit Testing Guide (Rooibos Framework) |
 | [`docs/dev/writing-style.md`](../dev/writing-style.md) | Writing style |
 
