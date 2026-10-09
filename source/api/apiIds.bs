@@ -1,0 +1,30 @@
+' Naming items by id in a query (`Ids=a,b,c`). The ids ride in the URL, so a long list has to
+' be split across requests to keep each request line short. Any lookup by a list of ids goes
+' through here, so they all stay under the same limit.
+namespace apiIds
+
+  ' How many ids one request names. Each costs 35 bytes of URL (32 hex + an encoded comma), so
+  ' 100 keeps a request near 3.5 KB, well inside common request-line limits.
+  const PER_REQUEST = 100
+
+  ' chunks: The ids split into runs of at most `size`, in order, one request each.
+  '
+  ' @param {object} ids - array of strings
+  ' @param {integer} size - the most ids in one run (at least 1)
+  ' @return {object} array of arrays
+  function chunks(ids as object, size = apiIds.PER_REQUEST as integer) as object
+    result = []
+    if size < 1 then size = 1
+    chunk = []
+    for each id in ids
+      chunk.push(id)
+      if chunk.count() = size
+        result.push(chunk)
+        chunk = []
+      end if
+    end for
+    if chunk.count() > 0 then result.push(chunk)
+    return result
+  end function
+
+end namespace

@@ -1,0 +1,55 @@
+import "pkg:/source/api/apiIds.bs"
+
+namespace tests
+
+  ' Splitting a lookup's ids across requests. The lookups that use it (mediaSources.byIds(),
+  ' Home's Next Up series counts) fetch, so they have no seam a unit test can reach; the rule
+  ' that decides how many requests they make is here.
+  @suite("apiIds - id chunking")
+  class ApiIdsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chunks()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("splits ids into runs of the given size, in order, the last one short")
+    function _()
+      runs = apiIds.chunks(["a", "b", "c", "d", "e"], 2)
+      m.assertEqual(runs.count(), 3)
+      m.assertEqual(runs[0].join(","), "a,b")
+      m.assertEqual(runs[1].join(","), "c,d")
+      m.assertEqual(runs[2].join(","), "e")
+    end function
+
+    @it("makes one run when every id fits, and none for no ids")
+    function _()
+      m.assertEqual(apiIds.chunks(["a", "b"], 2).count(), 1)
+      m.assertEqual(apiIds.chunks([], 2).count(), 0)
+    end function
+
+    @it("treats a size below one as one, rather than looping forever")
+    function _()
+      m.assertEqual(apiIds.chunks(["a", "b"], 0).count(), 2)
+    end function
+
+    @it("uses PER_REQUEST when no size is given")
+    function _()
+      ids = []
+      for i = 1 to apiIds.PER_REQUEST + 1
+        ids.push(i.toStr())
+      end for
+      runs = apiIds.chunks(ids)
+      m.assertEqual(runs.count(), 2)
+      m.assertEqual(runs[0].count(), apiIds.PER_REQUEST)
+    end function
+
+    @it("keeps a request inside the documented URL budget at the configured size")
+    function _()
+      ' PER_REQUEST exists to bound the request LINE, not the response: 100 ids at 35 bytes
+      ' each is about 3.5 KB. Pinned here so raising it has to be a deliberate edit.
+      m.assertEqual(apiIds.PER_REQUEST, 100)
+    end function
+
+  end class
+
+end namespace

@@ -862,7 +862,7 @@ or folder. **Playlists and collections are left alone** — the viewer put those
   episodes only. Anything else — a movie, a track (which has disc and track numbers), an
   unnumbered episode, a multi-episode file — is never grouped.
 - One copy is kept by the same pick → match → device rule as a version. Their `MediaSources` are
-  fetched only when copies exist, `COPY_IDS_PER_REQUEST` ids per request (each id costs 35 bytes
+  fetched only when copies exist, `apiIds.PER_REQUEST` ids per request (each id costs 35 bytes
   of URL), so a 12.0 queue costs nothing and a large series on an older server never builds an over-long
   request. When a copy's sources cannot be read, the server's first copy is kept.
 - **Watched state counts per episode, not per copy.** `QuickPlayTask.doSeason` finds the first
