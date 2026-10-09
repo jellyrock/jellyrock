@@ -571,10 +571,10 @@
   },
   "docs/architecture/navigation.md": {
     "caps-emphasis": 1,
-    "em-dash": 115,
+    "em-dash": 108,
     "filler": 9,
     "latin-abbrev": 5,
-    "prose-arrow": 27
+    "prose-arrow": 26
   },
   "docs/architecture/playback.md": {
     "em-dash": 181,

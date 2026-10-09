@@ -61,3 +61,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0047](0047-dead-code-gate.md) | Dead code is a build error, judged the way SceneGraph resolves names | Accepted | 2026-09-28 |
 | [0048](0048-translation-seeding-and-weblate-merge.md) | Missing translations are seeded from other Jellyfin clients, and release prep merges Weblate instead of overwriting | Accepted | 2026-10-04 |
 | [0049](0049-house-voice-ratchet.md) | Every doc is held to one house voice by a per-file ratchet | Accepted | 2026-10-07 |
+| [0050](0050-same-frame-screen-swap.md) | Screens change in one render pass: every route suspends with "show" and JellyRock drives the swap | Accepted | 2026-10-08 |

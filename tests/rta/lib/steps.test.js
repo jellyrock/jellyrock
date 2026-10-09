@@ -26,11 +26,13 @@ const getValues = vi.fn();
 const getFocusedNode = vi.fn();
 const getValue = vi.fn();
 const sendKeypress = vi.fn();
+const storeNodeReferences = vi.fn();
 vi.mock('roku-test-automation', () => ({
   odc: {
     getValues: (...a) => getValues(...a),
     getValue: (...a) => getValue(...a),
     getFocusedNode: (...a) => getFocusedNode(...a),
+    storeNodeReferences: (...a) => storeNodeReferences(...a),
   },
   // `Key` carries the REAL values (verified against the installed package), not invented
   // ones — a helper that sends `ecp.Key.Up` must be asserted against what the device would
@@ -87,6 +89,8 @@ const {
   CELL_REPORT_COUNTERS,
   axisEnd,
   sweepBudget,
+  showingRoutedViews,
+  assertOneScreenShowing,
 } = await import('./steps.js');
 // The closed set the failure records group by. Imported from its owning module
 // rather than through `diagnostics.js` so a test asserting a slug cannot agree
@@ -2491,5 +2495,110 @@ describe('readHomeRows — one snapshot describes one frame', () => {
       ],
       results: { favorites: { status: 'ok', count: 2 } },
     });
+  });
+});
+
+/**
+ * The screen-swap check: exactly one routed view showing once a screen has loaded.
+ *
+ * The census is a fixture in the shape `storeNodeReferences` returns (`ref`, `parentRef`,
+ * `id`, `subtype`, `visible`, `opacity`; the root's `parentRef` is -1). What needs a real
+ * Roku is whether the app keeps the property, which `screens.spec.js` checks on device.
+ */
+describe('assertOneScreenShowing — one routed view on screen', () => {
+  /** scene -> routerOutlet -> viewTarget -> one child per `[subtype, extra]` view. */
+  const census = (views, { withTarget = true } = {}) => {
+    const nodes = [
+      { ref: 0, parentRef: -1, id: '', subtype: 'JRScene', visible: true },
+      { ref: 1, parentRef: 0, id: 'routerOutlet', subtype: 'Outlet', visible: true },
+    ];
+    if (withTarget)
+      nodes.push({ ref: 2, parentRef: 1, id: 'viewTarget', subtype: 'Group', visible: true });
+    views.forEach(([subtype, extra = {}], i) =>
+      nodes.push({
+        ref: 3 + i,
+        parentRef: 2,
+        id: `v${i}`,
+        subtype,
+        visible: true,
+        opacity: 1,
+        ...extra,
+      }),
+    );
+    return nodes;
+  };
+
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rta-steps-swap-'));
+    process.env.RTA_RECORD_DIR = tmpDir;
+    storeNodeReferences.mockReset();
+  });
+
+  afterEach(() => {
+    delete process.env.RTA_RECORD_DIR;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const lastRecord = () =>
+    JSON.parse(
+      fs
+        .readFileSync(path.join(tmpDir, 'failures.jsonl'), 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .at(-1),
+    );
+
+  it('counts a covered view the swap hid as not showing', () => {
+    const tree = census([['Home', { visible: false }], ['ItemDetails']]);
+    expect(showingRoutedViews(tree).map((n) => n.subtype)).toEqual(['ItemDetails']);
+  });
+
+  it('counts only direct children of viewTarget, not nodes inside a view', () => {
+    const tree = census([['ItemDetails']]);
+    tree.push({ ref: 99, parentRef: 3, id: 'buttons', subtype: 'JRButtonGroup', visible: true });
+    expect(showingRoutedViews(tree)).toHaveLength(1);
+  });
+
+  it('counts a view AppWaitHost faded by opacity as showing, since only visible is the swap', () => {
+    // A playback start hides the ACTIVE screen by opacity; that screen is still the one view.
+    const tree = census([
+      ['Home', { visible: false }],
+      ['ItemDetails', { opacity: 0 }],
+    ]);
+    expect(showingRoutedViews(tree)).toHaveLength(1);
+  });
+
+  it('answers null when the scene has no viewTarget', () => {
+    expect(showingRoutedViews(census([], { withTarget: false }))).toBeNull();
+  });
+
+  it('passes when exactly one view shows', async () => {
+    storeNodeReferences.mockResolvedValue({
+      flatTree: census([['Home', { visible: false }], ['ItemDetails']]),
+    });
+    await expect(assertOneScreenShowing('movie details')).resolves.toBeUndefined();
+  });
+
+  it('throws screens-stacked naming every view showing when a covered view was left up', async () => {
+    storeNodeReferences.mockResolvedValue({ flatTree: census([['Home'], ['ItemDetails']]) });
+
+    await expect(assertOneScreenShowing('movie details')).rejects.toThrow(
+      'movie details: 2 routed views showing, expected 1 (Home, ItemDetails)',
+    );
+    const record = lastRecord();
+    expect(record.kind).toBe(FAILURE_KINDS.SCREENS_STACKED);
+    expect(record.kindUnknown).toBeUndefined();
+  });
+
+  it('throws when no view shows at all', async () => {
+    storeNodeReferences.mockResolvedValue({ flatTree: census([['Home', { visible: false }]]) });
+    await expect(assertOneScreenShowing('home')).rejects.toThrow('0 routed views showing');
+  });
+
+  it('throws when the census has no viewTarget, rather than passing on nothing', async () => {
+    storeNodeReferences.mockResolvedValue({ flatTree: census([], { withTarget: false }) });
+    await expect(assertOneScreenShowing('home')).rejects.toThrow('no viewTarget in the scene');
   });
 });

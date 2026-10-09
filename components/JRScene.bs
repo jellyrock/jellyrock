@@ -401,7 +401,7 @@ sub initRouter()
   guard = [m.global.AuthManager]
 
   sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })
-  sgrouter.addRoutes([
+  routes = [
     { pattern: "/", name: "home", component: "Home", clearStackOnResolve: true, allowReuse: true, canActivate: guard }
     ' Pre-login flow. No flags, NO guard — back is coordinator-driven and the cleanup of these
     ' views falls out of Home's clearStackOnResolve when login completes.
@@ -409,32 +409,15 @@ sub initRouter()
     { pattern: "/users", name: "users", component: "UserSelect" }
     { pattern: "/login", name: "login", component: "LoginScene" }
     { pattern: "/details/:type/:id/play", name: "play", component: "PlayerHostView", canActivate: guard }
-    ' The three routes below use `suspendMode: "detach"` and deliberately do NOT set
-    ' `keepAlive`. The two are independent knobs and it is worth being precise about which
-    ' does what, because the wrong one was set here and it leaked every screen the user
-    ' backed out of:
-    '
-    '   suspendMode governs how a view is held while it is COVERED (a new view pushed on
-    '     top). "detach" removes it from the tree into the router's detach store and
-    '     re-attaches it on goBack -- freeing its render/texture cost while it is not
-    '     visible. Every outgoing view is suspended this way regardless of keepAlive, and
-    '     _goBack resumes it via _onViewResume either way, so back navigation is unaffected.
-    '
-    '   keepAlive governs whether a view survives being POPPED. Upstream documents it as
-    '     "retained for later resumption" -- a session-lifetime, path-keyed view CACHE, so a
-    '     forward navigation to the same path resumes the old instance. That is a real
-    '     feature; it is just not one JellyRock wants. It is also unbounded: the only
-    '     eviction helper (sgrouter_collectDetachedViewsToDestroy) skips keepAlive views by
-    '     design, so nothing short of sgrouter.destroy() at sign-out ever releases them.
-    '
-    ' With keepAlive set, every DISTINCT path visited and backed out of stayed alive for the
-    ' session -- one BaseGridView per library, one ItemDetails per item. Those retained views
-    ' are not inert: onScreenHidden runs on suspend but onDestroy does not, and onDestroy is
-    ' where the real teardown lives (tasks stopped, ~40 observers dropped, textures freed,
-    ' promises abandoned). SearchResults.onDestroy is also what releases the firmware's global
-    ' voice route, which is why /search must not be keepAlive either.
-    '
-    ' Dropping keepAlive restores the intended shape: covered => suspended, popped => closed.
+    ' No route sets `keepAlive`. It governs whether a view survives being POPPED: upstream
+    ' documents it as "retained for later resumption", a session-lifetime, path-keyed view
+    ' CACHE, so a forward navigation to the same path resumes the old instance. It is also
+    ' unbounded: the only eviction helper (sgrouter_collectDetachedViewsToDestroy) skips
+    ' keepAlive views by design, so nothing short of sgrouter.destroy() at sign-out releases
+    ' them. With it set, every distinct library and item visited stayed alive for the session,
+    ' and onDestroy (tasks stopped, observers dropped, textures freed, promises abandoned, and
+    ' SearchResults releasing the firmware's voice route) never ran. Without it: covered =>
+    ' suspended, popped => closed.
     '
     ' NO allowReuse: JellyRock has always created a FRESH ItemDetails per navigation (the
     ' old SceneManager world pushScene'd a new one every time, including detail->detail).
@@ -444,24 +427,31 @@ sub initRouter()
     ' flags, which is the path ItemDetails.onRouteUpdate serves.
     '
     ' detail -> /play still restores the launching detail on back: the detail is COVERED by
-    ' the player, not popped, so it suspends and resumes exactly as before.
-    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", suspendMode: "detach", canActivate: guard }
-    { pattern: "/library/:id", name: "library", component: "BaseGridView", suspendMode: "detach", canActivate: guard }
-    { pattern: "/search", name: "search", component: "SearchResults", suspendMode: "detach", canActivate: guard }
+    ' the player, not popped, so it suspends and resumes.
+    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", canActivate: guard }
+    { pattern: "/library/:id", name: "library", component: "BaseGridView", canActivate: guard }
+    { pattern: "/search", name: "search", component: "SearchResults", canActivate: guard }
     { pattern: "/settings", name: "settings", component: "Settings", canActivate: guard }
     ' Photo viewer / slideshow. A fresh PhotoDetails per launch (the launch data arrives as
     ' route context), destroyed on goBack — the router equivalent of the old SceneManager
-    ' pushScene/popScene. No suspendMode, so it defaults to "hide": kept in the tree and
-    ' parked off-screen while covered, rather than detached. It sets isOverhangVisible=false,
-    ' so the overhang hides while it's the active routed view, and the library/detail beneath
-    ' it suspends (focus saved) and resumes (focus restored) on back, like the video player.
+    ' pushScene/popScene. It sets isOverhangVisible=false, so the overhang hides while it's the
+    ' active routed view, and the library/detail beneath it suspends (focus saved) and resumes
+    ' (focus restored) on back, like the video player.
     { pattern: "/photo", name: "photo", component: "PhotoDetails", canActivate: guard }
     ' Music player. A fresh AudioPlayerView per launch (it self-loads from the queue),
-    ' destroyed on goBack, "hide" while covered for the same reason as /photo. It suspends
-    ' the detail beneath (focus saved / restored on back) instead of rendering over it — the
-    ' same behavior as the video player.
+    ' destroyed on goBack. It suspends the detail beneath (focus saved / restored on back)
+    ' instead of rendering over it, the same behavior as the video player.
     { pattern: "/audio", name: "audio", component: "AudioPlayerView", canActivate: guard }
-  ])
+  ]
+  ' Every route suspends with "show": the router leaves a covered view on screen, and
+  ' onActiveRoutedViewChanged hides it when the incoming view opens. Any other mode hides the
+  ' outgoing view several message-loop turns before the incoming one is shown, which leaves
+  ' the screen empty under the old overhang for that long. Set here so a new route cannot
+  ' miss it.
+  for each route in routes
+    route.suspendMode = "show"
+  end for
+  sgrouter.addRoutes(routes)
 end sub
 
 ' Back-arbiter helper: is the router mid-navigation right now? Reads the public routerState
@@ -759,23 +749,22 @@ sub resetRouter()
   if isValid(m.overhang) then m.overhang.visible = false
 end sub
 
-' Run beforeViewClose (→ onScreenHidden + onDestroy) on every mounted routed view — the active
-' one in viewTarget and every suspended keepAlive view in keepAliveViewTarget — before the router
-' is destroyed under them. The target Groups live inside the outlet and survive destroy(); only
-' their children (the views) are torn down here. beforeViewClose is the same permanent-close entry
-' sgRouter drives on a normal close, so re-running onScreenHidden on an already-suspended keepAlive
-' view matches the existing contract (suspend already fired it once; it must be idempotent).
+' Run beforeViewClose (→ onScreenHidden + onDestroy) on every mounted routed view before the
+' router is destroyed under them. All of them are children of the outlet's viewTarget: the
+' active view and every covered one, since every route suspends with "show". A "detach" view
+' would sit in the router's detach store instead, out of this loop's reach. viewTarget lives
+' inside the outlet and survives destroy(); only its children (the views) are torn down here.
+' beforeViewClose is the same permanent-close entry sgRouter drives on a normal close, so
+' re-running onScreenHidden on a covered view (hideCovered already ran it once) matches the
+' existing contract: it must be idempotent.
 sub teardownRoutedViews()
   outlet = m.top.findNode("routerOutlet")
   if not isValid(outlet) then return
-  for each targetId in ["viewTarget", "keepAliveViewTarget"]
-    target = outlet.findNode(targetId)
-    if isValid(target)
-      for each view in target.getChildren(-1, 0)
-        if isValid(view) and view.isSubType("JRScreen")
-          view.callFunc("beforeViewClose", {})
-        end if
-      end for
+  target = outlet.findNode("viewTarget")
+  if not isValid(target) then return
+  for each view in target.getChildren(-1, 0)
+    if isValid(view) and view.isSubType("JRScreen")
+      view.callFunc("beforeViewClose", {})
     end if
   end for
 end sub
@@ -786,7 +775,19 @@ end sub
 sub onActiveRoutedViewChanged()
   newView = m.global.activeRoutedView
 
-  if isValid(m.previousRoutedView) and not m.previousRoutedView.isSameNode(newView)
+  ' This observer fires many times per navigation while the field still holds the same node,
+  ' so act only when the node changes.
+  if isValid(newView) and isValid(m.previousRoutedView) and m.previousRoutedView.isSameNode(newView) then return
+
+  ' The screen swap. Routes suspend with "show", so the router leaves the outgoing view on
+  ' screen; hiding it here puts it in the same render pass as the incoming view appearing and
+  ' the overhang below switching.
+  if isValid(m.previousRoutedView)
+    if m.previousRoutedView.isSubType("JRScreen")
+      m.previousRoutedView.callFunc("hideCovered")
+    else
+      m.previousRoutedView.visible = false
+    end if
     unregisterOverhangData(m.previousRoutedView)
   end if
 

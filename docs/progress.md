@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-08
+last-updated: 2026-10-09
 ---
 
 # Progress
@@ -289,10 +289,6 @@ Proven on device 2026-08-09 (`.178`, `tasks/probes/genre-truncation.mjs`): with 
 
 Every search open prints `Tried to set nonexistent field "active" of a "DynamicMiniKeyboard" node` from the first-show branch of `SearchResults.onScreenShown` — captured on `.177` 2026-08-14 while probing the search screen for the readiness ledger, so the device is the source, not a reading of the docs. `m.searchAlphabox.active = true` is therefore a silent no-op, and whatever it was meant to buy (a keyboard that takes input immediately on first show) is being delivered by the `setFocus(true)` on the line above it instead — search does work. **Fix shape:** confirm on device that first-show typing is unaffected and delete the line, or find the field that genuinely activates a `DynamicMiniKeyboard`. Pre-existing and unrelated to measurement; deliberately not folded into the search instrumentation.
 
-#### `teardownRoutedViews` cannot reach a detached view, so a screen suspended at sign-out never runs `onDestroy`. `[fid: teardown-routed-views-detached-view]` `[captured 2026-08-15]`
-
-It walks `["viewTarget", "keepAliveViewTarget"]` under the outlet ([`JRScene.bs`](../components/JRScene.bs)), but `keepAliveViewTarget` does not exist in sgRouter 0.1.4 — the `Outlet` declares only `viewTarget`, and a `suspendMode: "detach"` view is held in `m.__router_detachedViews`, an associative array on the Router's `m`. That loop iteration finds nothing, so `sgrouter.destroy()` `removeNode`s the store's residents without running their lifecycle: sign out from a detail and the library suspended beneath it keeps its `LoadItemsTask`, its ~40 observers and its in-flight promises. **Predates [ADR 0029](adr/0029-destroy-routed-screens-on-pop.md) and is narrowed by it** — the store no longer accumulates for the session, so at most the currently-covered views are stranded rather than every view the session ever visited. **Fix shape:** iterate the store via the router's public `getDetachedViews` alongside the view target. Surfaced in review of #816 and deliberately not folded in per `isolate-the-fix`: it is a separate defect, and nothing in the new leak spec would have caught it either, since every walk there ends on Home rather than at sign-out. The gap is documented in [`navigation.md`](architecture/navigation.md)'s `resetRouter` row.
-
 #### `setServer`'s `savedOnly` variant fires when there were no saved servers EITHER, so it names a third workload as the second. `[fid: set-server-saved-only-variant-misnamed]` `[captured 2026-08-15]`
 
 `SetServerScreen.onScanForServersComplete` stamps `discovered` when SSDP returned anything and `savedOnly` otherwise — but that else-branch covers two different runs: "discovery found nothing and the registry had the picker's content all along" (the measured case) and "there was nothing anywhere" — a first-run device, empty picker, focus falling through to the manual-entry field, and neither merge pass doing any work at all. By the variant's own justification (a run that cannot say which workload it was cannot be compared against one that can, per ADR 0028), that is a third population wearing the second's name. **Unreachable on any device that has ever been signed in**, because Change server clears `server` but preserves `saved_servers` — which is why all 18 launches of the n=15 series stamped `savedOnly` correctly, and why this is a latent naming bug rather than a wrong number. **Fix shape:** a three-way stamp (`discovered` / `savedOnly` / `empty`) keyed on the count of saved entries the picker was actually built from — `savedServers.serverList.Count()` is already in scope at the paint site. **Deliberately NOT folded into the `feat/measure-server-select` branch**: it is the only finding from that branch's review that touches app code, and merging it would mean the shipped build is no longer the build the n=15 numbers were taken on. Costs a re-measure to land honestly, so it belongs with the next `setServer` series rather than ahead of it.
@@ -502,6 +498,12 @@ A live `PlaybackInfo` now waits up to `timeouts.LIVE_OPEN_MS` (120 s) and keeps 
 #### AV1 is not a transcode video target, so converting an AV1 file's audio re-encodes its video too. `[fid: av1-not-transcode-target]` `[captured 2026-10-01]`
 
 `getTranscodingProfiles` lists only `h264` / `hevc` (and `vp9` / `mpeg2video` where supported) as transcode video codecs, so when the server must convert the audio of an AV1 file it cannot keep the video. Measured 2026-10-01: switching a 4K AV1 Dolby Vision movie to its DTS 7.1 track reloads as a full 4K re-encode, 19 s to the first segment on the home server, then about 4.1 s per 6 s segment. Jellyfin carries AV1 in HLS only in `mp4` segments (from 10.9, per `getTranscodingProfiles`' notes). **Next step:** before adding `av1` to the `mp4` transcode profile, measure on a Roku that audio converted into `mp4`-segment HLS plays with sound, since DTS copied into that format played silent (#821) and #573 records silent `mp4`-segment transcodes.
+
+#### `activeRoutedView`'s observer fires many times per navigation although the field does not always notify, and nobody knows why. `[fid: active-routed-view-observer-refires]` `[captured 2026-10-09]`
+
+`JRScene.onActiveRoutedViewChanged()` ran 23 to 46 times for one navigation (measured 2026-10-07 on a Streaming Stick 4K, while building PR #1137). The field is declared `addField("activeRoutedView", "node", false)` in `source/utils/globals.bs`, so a write of the same node should not notify, and only `JRScreen.onViewOpen()`, `JRScreen.onViewResume()` and `JRScene.resetRouter()` write it. PR #1137 made the handler return early when the node has not changed, so nothing breaks, but the cause is unknown and may mean something else fires too often too.
+
+**Fix shape:** probe on device which writes or events reach the observer (log `m.global.activeRoutedView` and the caller per fire), then record the cause in `docs/architecture/navigation.md` beside the measured count, and fix it if it is a real excess.
 
 ### source
 

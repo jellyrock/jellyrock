@@ -99,8 +99,8 @@ export async function getVal(keyPath) {
 
 /**
  * Like getVal, but scoped to the ACTIVE routed view (`m.global.activeRoutedView`)
- * rather than a recursive scene-root find. A view suspended under sgRouter's default
- * `suspendMode: "hide"` (Home, /settings, /photo, /audio) stays in the scene tree, so a
+ * rather than a recursive scene-root find. A covered view stays in the scene tree,
+ * hidden (every route suspends with `"show"`; see JRScene.initRouter), so a
  * recursive `#id` lookup (getVal) can resolve to ITS node when ids aren't unique — e.g.
  * every ItemDetails has `#extrasGrid`, and several components declare `#options`.
  * Anchoring to activeRoutedView (the app's own "view the user is on", set on open/resume
@@ -117,6 +117,45 @@ export async function getActiveVal(keyPath) {
  */
 export async function getGlobalVal(keyPath) {
   return (await readOnce({ base: 'global', keyPath })).value;
+}
+
+/**
+ * The routed views a census shows: children of the router's `viewTarget` whose `visible`
+ * is not false. `null` when the census has no `viewTarget`. Pure, so it has tests that
+ * need no device.
+ *
+ * `visible`, not `opacity`: the screen swap hides a covered view by `visible`
+ * (`JRScreen.hideCovered`), and `opacity` belongs to `AppWaitHost`, which hides a screen
+ * that is still the active one while a playback start runs.
+ */
+export function showingRoutedViews(flatTree) {
+  const nodes = flatTree ?? [];
+  const target = nodes.find((n) => n.id === 'viewTarget');
+  if (!target) return null;
+  return nodes.filter((n) => n.parentRef === target.ref && n.visible !== false);
+}
+
+/**
+ * Throws unless exactly one routed view is showing. Call it once a screen has loaded.
+ *
+ * Every route suspends with `"show"`, so sgRouter leaves a covered view on screen and only
+ * `JRScene.onActiveRoutedViewChanged()` hides it, when the incoming view publishes itself as
+ * `activeRoutedView`. A view that never publishes (one that overrides `onViewOpen`, or does
+ * not extend `JRScreen`) would leave the screen it covers showing beneath it, and every gate
+ * that reads the active view would still pass. One census answers it, from the same call
+ * the resolution audit uses (`lib/resolution.js`).
+ */
+export async function assertOneScreenShowing(label) {
+  const census = await odc.storeNodeReferences({ nodeRefKey: 'screenSwap' });
+  const showing = showingRoutedViews(census?.flatTree);
+  if (showing?.length === 1) return;
+  const subtypes = showing ? showing.map((n) => n.subtype) : null;
+  throw await diagnosedError(
+    showing
+      ? `${label}: ${showing.length} routed views showing, expected 1 (${subtypes.join(', ')})`
+      : `${label}: no viewTarget in the scene`,
+    { kind: FAILURE_KINDS.SCREENS_STACKED, label, observed: { showing: subtypes } },
+  );
 }
 
 /**
@@ -715,8 +754,10 @@ export function walkFocusInto(key, containerId) {
  * **It does not explain why focus left the search view, and it is not known to fix that
  * run.** Two mechanisms were proposed for the 2026-09-09 failure and BOTH were disproved
  * rather than left hanging: a stale suspended `SearchResults` satisfying the results gate
- * is impossible, because `/search` is routed `suspendMode: "detach"`
- * (`components/JRScene.bs`) so a covered SearchResults leaves the tree entirely; and the
+ * was impossible, because `/search` was then routed `suspendMode: "detach"`
+ * (`components/JRScene.bs`) so a covered SearchResults left the tree entirely (since
+ * 2026-10-07 every route suspends with "show", so a covered view stays in the tree, hidden;
+ * see docs/architecture/navigation.md "The screen swap"); and the
  * dump's `rowItemFocused: [0,1]` is NOT evidence the walk moved Home's index, because
  * `rowItemFocused` retains its last value while a list is unfocused — the very property
  * `scrollFocus` is written around.
