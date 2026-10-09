@@ -448,6 +448,25 @@ describe('dead-code — keeping code on purpose', () => {
     expect(diagnosticsByCode(diagnostics, KEEP)).toEqual([]);
   });
 
+  it('honors a debug-console keep marker (code only a developer calls from the console)', () => {
+    const diagnostics = run({
+      'source/dbg.bs':
+        "' bsc-disable-next-line dead-code keep: debug-console: called from the BrightScript console in a debug build\nsub printThings()\nend sub",
+    });
+    expect(deadNames(diagnostics)).toEqual([]);
+    expect(diagnosticsByCode(diagnostics, KEEP)).toEqual([]);
+  });
+
+  it('does not report a debug-console marker whose #if block is excluded, but reports one outside any #if', () => {
+    const marker = "' bsc-disable-next-line dead-code keep: debug-console: console only\n";
+    const excluded = run({
+      'source/dbg.bs': `#if debug\n${marker}sub printThings()\nend sub\n#end if`,
+    });
+    expect(diagnosticsByCode(excluded, KEEP)).toEqual([]);
+    const drifted = run({ 'source/dbg.bs': `${marker}\nsub other()\nend sub` });
+    expect(diagnosticsByCode(drifted, KEEP)).toHaveLength(1);
+  });
+
   it('honors a keep marker on an XML declaration', () => {
     const diagnostics = run({
       'components/MainScene.xml': scene('Item'),

@@ -346,7 +346,7 @@ Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should 
 
 **Tests.** One exception to "tests don't count": a test's `callFunc` — Rooibos `callFunc("x")` / `@.x`, or an RTA quoted `funcName: 'x'` (`deadCode.exposureConsumers`) — keeps an interface function's declaration alive, because a test needs the exposure to drive a live component. It does so only while the app itself still runs the function behind it, and it keeps nothing else alive: `QueueManager.pop`, called only by a spec's cleanup, is dead.
 
-**Keeping code on purpose.** Unused code stays only as one of five recorded kinds — `design-system` (a deliberate set), `api` (built ahead of its first caller), `planned` (must cite its issue), `platform` (called by the Roku OS by a name the rule does not know), `test-infra` (probe components the suites create by name):
+**Keeping code on purpose.** Unused code stays only as one of six recorded kinds — `design-system` (a deliberate set), `api` (built ahead of its first caller), `planned` (must cite its issue), `platform` (called by the Roku OS by a name the rule does not know), `test-infra` (probe components the suites create by name), `debug-console` (called by a developer from the BrightScript console in a debug build):
 
 ```brightscript
 ' bsc-disable-next-line dead-code keep: api: the early-exit half of the pipeline lifecycle

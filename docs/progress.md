@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-09: build(bsc): Let a debug build compile past the `dead-code` rule
 - 2026-10-09: build(make): Package the zip that `make install` uploads
 - 2026-10-09: fix(home): Hide pilots of not-yet-started series from Next Up
 - 2026-10-09: fix: Change screens and the overhang in one frame
@@ -249,6 +250,14 @@ A state reader should only read. Every run rewrites `latest_upstream` and `last_
 #### Check whether the seeded vi and fa `LabelProfile` values mean a codec profile or a personal profile `[fid: labelprofile-vi-fa-meaning-check]` `[captured 2026-10-04]`
 
 The seeded `LabelProfile` values for `vi` (`Hồ sơ`) and `fa` (`نمایه`) came from the `jellyfin-web` key `MediaInfoProfile` (a codec profile, e.g. H.264 High). Both words can also mean a personal profile, which is how that key reads in its `ja`, `ko`, `ar` and `ta` translations; those four were excluded in `locale/seed/keymap.yml` with reasons, but nobody on #931 could judge `vi` or `fa`. Close by having a Vietnamese and a Persian speaker check the two values. If either reads as a personal profile, delete it from `locale/custom/vi.json` / `fa.json` (or have a translator delete it in Weblate): the seed ledger (`locale/seed/seeded.json`) keeps the seeder from refilling it, and the next release's three-way merge carries the deletion to the other side. Also add it to that entry's `exclude:` with the reason, so the refusal is recorded next to the mapping.
+
+#### Nothing builds with `debug=true` automatically, so a break in `#if debug` code goes unseen `[fid: debug-build-never-built-automatically]` `[captured 2026-10-09]`
+
+Found 2026-10-09: every `debug=true` build had failed since the dead-code rule landed (#1073, 2026-09-29), because `printTaskThreads()` had no keep kind. Nobody noticed for ten days because no hook or CI workflow builds with `debug=true`; `.github/workflows/` never sets it. The fix (decision `dead-code-debug-console-keep`) unblocked the build but not the blind spot. Any later rule or change that breaks only `#if debug` code fails the same way, as does a `debug-console` marker that drifts inside a `#if`.
+
+**Recommended:** a CI step (or pre-push step) that runs the BrighterScript validate with `debug` on, and makes no package. A manifest edit inside the build directory, or a `bsconfig` `manifest.bs_const` override, could do it; `bsc` honors that override for its own validation, though it never reaches the artifact (see `harden-prod-manifest.js`). Cost: one more full validate per run, which took about 10 s locally on 2026-10-09.
+
+**Alternative the operator raised:** turn `debug` on by default in the committed manifest, with `harden-prod-manifest.js` (which already forces `debug`, `perfTiming` and `ENABLE_RTA` off) keeping releases clean. Every dev build, hook and CI run would then build the debug code. The conflict to settle first: `build-and-tooling.md` keeps `perfTiming` separate from `debug` because a debug build attaches `rawApiData` inside the `emit` timing, and a debug build painted Home 178 ms slower on a 512 MB Stick (measured 2026-08-04). So debug-by-default would make every dev build's perf numbers unrepresentative. Also not checked: whether `debug` raising the log level from 2 to 4 makes the everyday console too noisy.
 
 ### components
 
