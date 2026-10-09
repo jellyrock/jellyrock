@@ -985,7 +985,7 @@ they started, and a screenshot of one would just show Home. They are in the regi
 - **Grid paging** — `gridScroll`. A TIMED scroll through the Movies grid (Down every 150 ms
   for 20 s, not a walk), so it can out-run the loaded rows the way a user holding Down does;
   leaving emits the grid's `item-grid paging` line. See
-  [home-first-paint-performance.md](home-first-paint-performance.md#grid-paging--did-the-user-wait-at-the-last-loaded-row).
+  [home-first-paint-performance.md](home-first-paint-performance.md#grid-paging-did-the-user-wait-at-the-last-loaded-row).
 
 They carry no `capture`, and they still become functional tests — which is a feature, since
 a workload that can no longer drive its screen is a navigation regression like any other.

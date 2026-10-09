@@ -42,7 +42,7 @@ two quantities that share a name.
 | *When did this SCREEN become usable, and how does that differ across devices?* | **this doc** — the `screen-load` family, every screen in [`tests/rta/screens.js`](../../tests/rta/screens.js) |
 | *How much work did a screen's CELLS do, and how much of it was waste?* | **this doc** — the [`cell-load` family](#cell-workloads--how-much-work-did-the-cells-do) |
 | *Where did the time go INSIDE one orchestrator — waiting on the network, or working on its own thread?* | [`home-first-paint-performance.md`](home-first-paint-performance.md) — the `home-latest-rows` and `item-grid` families |
-| *Did scrolling a library grid leave the user waiting at the last loaded row?* | [`home-first-paint-performance.md`](home-first-paint-performance.md#grid-paging--did-the-user-wait-at-the-last-loaded-row) — the `item-grid-paging` family |
+| *Did scrolling a library grid leave the user waiting at the last loaded row?* | [`home-first-paint-performance.md`](home-first-paint-performance.md#grid-paging-did-the-user-wait-at-the-last-loaded-row) — the `item-grid-paging` family |
 | *What does the API pool's COORDINATOR spend per request, deciding and dispatching?* | [`api.md`](../architecture/api.md#a-request-nobody-is-waiting-for) — the `api-dispatch` family |
 
 The split is the same one [`scripts/measurements.js`](../../scripts/measurements.js) draws
@@ -710,7 +710,7 @@ stable before the first key press (`settled in 1983–2048 ms`, the `quietMs` fl
 poll). `binds` still spans **235–255**. So Home binds a different number of cells over an
 identical ITINERARY, and the question belongs to `HomeRows` / `JRRowItem`, not to
 `tests/rta/`. **Part of that has since been attributed app-side** — see
-[`size recompute by`](home-first-paint-performance.md#size-recompute-by--which-call-site-spent-them),
+[`size recompute by`](home-first-paint-performance.md#size-recompute-by-which-call-site-spent-them),
 which names what fires on the high launches and, more usefully, shows it is a rider rather
 than the cause. Read it before opening this question again. ⚠️ **An earlier draft said "identical, settled workload" and that is now known
 to be wrong** — [the before/after split](#the-totals-are-cumulative--on-home-most-of-them-are-not-the-sweeps)
@@ -943,7 +943,7 @@ finished. It is [`npm run measure:report`](#the-matrix--every-screen-every-tier)
 Every number above is taken on a device holding an **RTA build**, because identity is read
 over ODC and ODC exists only in one. That makes the on-device component resident for the
 whole session, which is an unmeasured variable in every measurement this tooling produces
-— and the reason the [baselines below](home-first-paint-performance.md#baselines-2026-08-04), taken on plain builds, may
+— and the reason the plain-build [baselines](home-first-paint-performance.md#reading-a-result) may
 not be compared against a `measure` series.
 
 `npm run measure:calibrate` answers it, on one device, in one command:
