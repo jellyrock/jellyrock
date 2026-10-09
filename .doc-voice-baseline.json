@@ -705,10 +705,7 @@
     "prose-arrow": 9
   },
   "docs/dev/scripts-development.md": {
-    "em-dash": 21,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 3
+    "filler": 1
   },
   "docs/dev/translations.md": {
     "caps-emphasis": 1,
