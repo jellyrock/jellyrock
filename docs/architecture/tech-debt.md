@@ -407,8 +407,14 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `buildparams-no-array-support`
 
 - **area**: `source/api/baseRequest.bs` (`buildParams`)
-- **issue**: `buildParams` skips `roArray` values silently — there's a `' TODO handle array params` placeholder branch with no implementation. Callers that need to pass arrays as query parameters (e.g., comma-separated `Fields=` lists) join the array into a string before calling.
-- **direction**: Implement array handling per the actual server-side conventions used by Jellyfin (most array params are comma-separated; some use repeated keys). Then audit callers to remove the workarounds where each call site joins arrays into strings before invoking.
+- **issue**: `buildParams` mishandles every value type except strings, integers, long integers and booleans. Measured 2026-10-10 on a Streaming Stick 4K, Roku OS 15.3.4, with a throwaway Rooibos spec:
+  - A decimal is truncated by `stri(int(v))`: `1.5` sends `k=1`, and so does `3 / 2`, since `/` always gives a decimal.
+  - An `roArray` is dropped: its branch is a `TODO`.
+  - `invalid` sends the text `k=null`.
+  - An AA crashes the app: it falls to `EncodeUriComponent()` on a non-string.
+
+  No caller sends an array, a decimal or an AA today (a sweep of the `buildURL`, `buildParams`, `ImageURL` and `injectDefaults` callers on the same date; `m.global.device.uiResolution` measured as `roInt`). Callers join lists into comma strings first (`mediaSources.byIds()`, `nextUpLookupQueries()`, `gridQuery`, `BuildGetResumeItemsRequest`). A list passed as `Fields` crashes earlier, in `injectApiParams()` (`misc.bs`), on `fields.inStr()`.
+- **direction**: Harden `buildParams`, as its own PR from `main`: a decimal keeps its fraction, a list is comma-joined (check each endpoint against Jellyfin's spec for the comma or repeated-key form), and an unknown type is logged and skipped instead of crashing. Add a unit test per type, and the `Fields` list case in `injectApiParams`. Then remove the callers' workarounds.
 
 #### `testtoast-in-production-builds`
 

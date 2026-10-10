@@ -1323,9 +1323,9 @@
   },
   "docs/architecture/tech-debt.md": {
     "caps-emphasis": 25,
-    "em-dash": 421,
+    "em-dash": 420,
     "filler": 36,
-    "latin-abbrev": 10,
+    "latin-abbrev": 9,
     "prose-arrow": 30
   },
   "docs/architecture/testing.md": {
