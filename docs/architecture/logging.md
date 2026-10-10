@@ -4,81 +4,65 @@ related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-08-15
+last-reviewed: 2026-10-10
 ---
 
 # Logging
 
-How JellyRock logs (`roku-log`), the initialization story, and the per-component pattern. Debug-time tooling lives in `debug-tools.md`. Test infrastructure lives in `testing.md`.
+How JellyRock's logging works inside: the two parts of roku-log, where and when the log manager starts, and why that point cannot move. To log from your code, see the how-to in [`docs/dev/logging.md`](../dev/logging.md). Debug tooling is in [`debug-tools.md`](debug-tools.md), test setup in [`testing.md`](testing.md).
 
 ## roku-log
 
-JellyRock uses **roku-log** (`log` ropm package) for all logging. It supports multiple transports (telnet, on-screen overlay), structured logging with named loggers, and per-logger log levels.
+JellyRock logs through roku-log (the `log` ropm package): named loggers, per-logger levels and a choice of transports. The app uses one transport, `log_PrintTransport`, which writes to the debug console.
 
-### "roku-log" is TWO artifacts, and only one of them is ours
+### "roku-log" is two artifacts, and only one of them is ours
 
-Say which one you mean. They fail differently, and a bug in the second reads like a bug in the first:
+Say which one you mean. They fail differently, and a bug in the second reads like a bug in the first.
 
 | | What | Who owns it |
 |---|---|---|
-| **Runtime library** | `source/roku_modules/log/` + `components/roku_modules/log/` — `Logger`, the transports, `initializeLogManager` | **Upstream, stock.** `npm:roku-log@0.11.1`, vendored by ropm, which mechanically prefixes every symbol (`Logger` → `log_Logger`, `"Log"` → `"log_Log"`) |
-| **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs) — `strip` / `insertPkgPath` / `guard` / `removeComments` | **Ours outright.** Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BSC v1 broke. Nothing upstream to sync from |
+| **Runtime library** | `source/roku_modules/log/` and `components/roku_modules/log/`: `Logger`, the transports, `initializeLogManager` | **Upstream, unchanged.** `npm:roku-log@0.11.1`, vendored by ropm, which prefixes every symbol (`Logger` becomes `log_Logger`, `"Log"` becomes `"log_Log"`) |
+| **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs): `strip`, `insertPkgPath`, `guard`, `removeComments` | **Ours.** Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BrighterScript v1 broke. There is nothing upstream to sync from |
 
-**Never hand-edit the vendored runtime files.** `roku_modules` is gitignored ([`.gitignore`](../../.gitignore)), so those files are untracked and regenerated on every install — an edit there is not a change to the project, it is a change that disappears at the next `npm i` with nothing to show it was ever made. The only differences between the installed copy and the npm package are the prefixes ropm adds; verify with
-`diff node_modules/log/dist/source/LogMixin.brs source/roku_modules/log/LogMixin.brs`.
+**Never hand-edit the vendored runtime files.** `roku_modules` is gitignored, so those files are regenerated on every install: an edit there disappears at the next `npm i` and leaves no trace. The installed copy differs from the npm package only by the prefixes ropm adds. To check:
 
-So when logging misbehaves, ask which artifact first. The plugin REWRITES your source before the compiler sees it, which means it can inject a statement your file never contained — see the guard rule below.
+```bash
+diff node_modules/log/dist/source/LogMixin.brs source/roku_modules/log/LogMixin.brs
+```
+
+So when logging misbehaves, first ask which artifact is at fault. The plugin rewrites your source before the compiler sees it, so it can add a statement your file never contained (see the next section).
 
 ### The `guard` transform only knows `m.log`
 
-With `guard` on, the plugin wraps `m.log.<level>()` calls in `if m.__le = true then …` and injects
-`m.__le = m.log.enabled` after `m.log = new log.Logger(…)` to cache the check.
+With `guard` on, the plugin wraps each `m.log.<level>()` call in `if m.__le = true then …`. To feed that check, it adds `m.__le = m.log.enabled` after every `m.log = new log.Logger(…)`.
 
-**Both halves are hardcoded to `m.log`, and the injection is deliberately restricted to that target.**
-A logger kept under any other name gets no cache line — nothing would read it (its calls are not
-guarded), and the read itself dots into an `m.log` the scope need not have. That is not theoretical:
-[`source/utils/screenReadiness.bs`](../../source/utils/screenReadiness.bs) keeps its logger on
-`m.screenLoadLog`, and the injection crashed the app at launch (`&hec`, `'Dot' Operator ... invalid`)
-the first time the ledger was called from **main-thread** `source/loginRouter.bs` — a scope with no
-`m.log` of its own. Every instrumented *component* sets `m.log` in `init()`, which is why the coupling
-stayed hidden until a main-thread caller existed.
+**Both halves are written for `m.log` only, and the added line is limited to that target on purpose.** A logger kept under another name gets no cache line: nothing would read it, since its calls are not guarded, and the line itself reads an `m.log` the scope may not have. That once crashed the app at launch. [`source/utils/screenReadiness.bs`](../../source/utils/screenReadiness.bs) keeps its logger in `m.screenLoadLog`, and the added line faulted (`&hec`, `'Dot' Operator ... invalid`) the first time main-thread code in `source/loginRouter.bs` called it, a scope with no `m.log`. Every component sets `m.log` in `init()`, which hid the coupling until a main-thread caller existed.
 
-Practical consequence: **a component-style `m.log` is not a prerequisite for logging from `source/`
-main-thread code**, but a second logger in one scope will not get guard caching. Regression coverage
-lives in [`tests/scripts/unit/bsc-plugins/roku-log.test.js`](../../tests/scripts/unit/bsc-plugins/roku-log.test.js).
+So `source/` code on the main thread can log without a component-style `m.log`, but a second logger in one scope gets no guard caching. The regression tests are in [`tests/scripts/unit/bsc-plugins/roku-log.test.js`](../../tests/scripts/unit/bsc-plugins/roku-log.test.js).
 
-### Initialization
+## Starting the log manager
 
-`JRScene.bs:init()` initializes the log manager **once**, with different default log levels per build:
+`JRScene.init()` starts the log manager once. The level depends on the `debug` compile-time constant in `manifest`, which is `false` as committed:
 
-```brightscript
-sub init()
-  #if debug
-    log.initializeLogManager(["log_PrintTransport"], 4)   ' debug: everything
-  #else
-    log.initializeLogManager(["log_PrintTransport"], 2)   ' prod: error+warn+info
-  #end if
-end sub
+```brighterscript
+#if debug
+  log.initializeLogManager(["log_PrintTransport"], 4) ' Debug: everything
+#else
+  log.initializeLogManager(["log_PrintTransport"], 2) ' Production: error + warn + info
+#end if
 ```
 
-**Initialization order is load-bearing.** `log.Logger.new()` resolves `m.global.rLog` **once** and
-caches it; every level method then opens with `if m.rLog = invalid then return`. A component whose
-`init()` runs before the manager exists therefore logs **nothing, forever, at any level, on any
-build** — silently, with no error (the `NO LOGGER FOUND` fallback lives on `m.log`, which the level
-methods never reach).
+A call is written when its level number is at most the manager's level: `0` error, `1` warn, `2` info, `3` verbose, `4` debug. So a normal sideloaded build writes error, warn and info. Seeing verbose or debug lines means building with `debug=true`, which changes other behavior too (tech-debt entry `log-level-welded-to-debug-const`). A production build removes every `m.log` call at compile time (`strip`), so it logs nothing at any level.
 
-This used to live in `JRScreen.init()` on the assumption that a screen always initializes first. That
-assumption was false: `setGlobalNodes()` runs before the first screen mounts, so `JRScene` itself plus
-`RemoteControlTask`, `SceneManager`, `QueueManager` and `SideEffectTask` never emitted a single log
-line. `JRScreen` no longer initializes the manager at all.
+### Why the start must come first
 
-#### Why it can't move earlier — the node-creation constraint before `show()`
+`new log.Logger()` looks up `m.global.rLog` once and keeps it, and every level method starts with `if m.rLog = invalid then return`. So a component whose `init()` runs before the manager exists logs nothing, ever, at any level, with no error. The `NO LOGGER FOUND` fallback in the library is never reached by the level methods.
 
-`JRScene.init()` is not merely a convenient early hook, it is **the earliest point in the app that
-can create the manager**. `initializeLogManager` creates a `log_Log` node, and that node's own
-`init()` unconditionally creates a `Timer` (`components/roku_modules/log/Log.brs`). Creating a
-`Timer` on the **main thread before `m.screen.show()`** fails — verified on device (Streaming Stick
-4K, OS 15.2.4):
+The start used to live in `JRScreen.init()`, on the assumption that a screen always starts first. It does not: `setGlobalNodes()` runs before the first screen mounts, so `JRScene` itself, `RemoteControlTask`, `SceneManager`, `QueueManager` and `SideEffectTask` never wrote a log line. `JRScreen` no longer starts the manager, and `npm run lint:log-manager-init` ([`log-manager-init-check.js`](../../scripts/lint/log-manager-init-check.js)) keeps it that way: one call, in `JRScene.bs`, as the first statement of its `init()`. No unit test can catch this: the test suites skip `Main()` and set up their own `rLog`.
+
+### Why it cannot start earlier
+
+`JRScene.init()` is the earliest point in the app that can create the manager. `initializeLogManager` creates a `log_Log` node, whose own `init()` always creates a `Timer` (`components/roku_modules/log/Log.brs`). Creating a `Timer` on the main thread before `m.screen.show()` fails. Measured 2026-08-02 on a Streaming Stick 4K, Roku OS 15.2.4:
 
 ```text
 [probe] bare Timer pre-show   → type=Invalid
@@ -88,13 +72,9 @@ can create the manager**. `initializeLogManager` creates a `log_Log` node, and t
 [probe] log_Log   post-show   → type=roSGNode        ✅
 ```
 
-This is a **lifecycle** constraint, not a thread one, and it confirms the note in
-[`globals.bs`](../../source/utils/globals.bs) that "`roSGNode`s must be created after `m.screen` is
-shown" — plain `ContentNode`s tolerate earlier creation (which is why `setGlobals()` works where
-`Main()` calls it, before `m.screen.show()`), SceneGraph node types like `Timer` do not. `JRScene.init()` runs on the **render
-thread**, where node creation is unrestricted, which is why it works there.
+The limit is about when, not which thread. It matches the note in [`globals.bs`](../../source/utils/globals.bs) that SceneGraph nodes must be created after `m.screen` is shown. A plain `ContentNode` can be created earlier, which is why `setGlobals()` works where `Main()` calls it, before `m.screen.show()`; a `Timer` cannot. `JRScene.init()` runs on the render thread after the screen exists, so it can create both.
 
-Measured availability of `m.global.rLog` on the main thread (3/3 identical cold starts):
+When `m.global.rLog` becomes valid on the main thread, measured on the same date and device over three cold starts with the same result:
 
 | Point in `main.bs` | `rLog` valid? |
 |---|---|
@@ -102,72 +82,18 @@ Measured availability of `m.global.rLog` on the main thread (3/3 identical cold 
 | after `CreateScene("JRScene")` | ❌ |
 | after `m.screen.show()` | ✅ |
 
-So `m.screen.show()` is the synchronization point — it does not return until `JRScene.init()` has
-completed.
+So `m.screen.show()` is the point to sync on: it does not return until `JRScene.init()` has finished.
 
-#### Known consequence: the bootstrap window has no logger
+### The startup window has no logger
 
-Nodes created in `setGlobals()` (called from `Main()`) are constructed **before any manager can exist**, so
-their `m.log` is permanently dead. Today that is `JellyfinUserSettings` — its `init()` line and the
-bootstrap `enableAutoSync` call are lost. It is not visible at runtime because
-`user.Login()` creates a **fresh** `JellyfinUserSettings` at login, and
-that instance (created after the scene is up) logs normally.
+Nodes created in `setGlobals()`, which `Main()` calls, are built before any manager can exist, so their `m.log` never writes. Today that is `JellyfinUserSettings`: its `init()` line and the startup `enableAutoSync` call are lost. Nothing shows it at run time, because `user.Login()` creates a new `JellyfinUserSettings` after the scene is up, and that one logs normally.
 
-**Rule: do not construct a `log.Logger` in anything created before the scene exists.** Use `print`
-there, as `main.bs` does. If you add a component that logs from a global node, verify its output
-on-device — a silent logger looks identical to a quiet one.
+**Do not create a `log.Logger` in anything built before the scene exists.** Use `print` there, as `main.bs` does. `lint:log-manager-init` fails on a new one; `JellyfinUserSettings` is its one recorded exception. If you add a global node that logs, check its output on a device: a silent logger looks the same as a quiet one.
 
-Levels — the number is the value passed to `initializeLogManager`, and a call emits when
-`levelNum <= logLevel`:
+## Where `print` is allowed
 
-| Level | Number | When to use |
-|---|---|---|
-| `error` | 0 | Crashes, critical failures (auth fail, server unreachable, playback error) |
-| `warn` | 1 | Issues with fallbacks (missing data, retry attempts) |
-| `info` | 2 | Important user events (login, video start/stop, major state transitions) |
-| `verbose` | 3 | Detailed operations (function entry/exit, API calls, data flow) |
-| `debug` | 4 | Variable values, loop bodies, conditional branches |
-
-So the production default (`2`) emits error, warn **and info**; it suppresses only verbose and debug,
-keeping telnet output readable on real devices without losing the important user events.
-
-### Per-component pattern
-
-Every `.bs` file that logs follows the same setup:
-
-```brightscript
-import "pkg:/source/roku_modules/log/LogMixin.brs"
-
-sub init()
-  m.log = new log.Logger("ComponentName")
-end sub
-
-sub doStuff()
-  m.log.info("Starting work")
-  m.log.debug("Variable value", someVar, "another", anotherVar)
-  m.log.warn("Falling back to default", defaultValue)
-  m.log.error("Failed to load", err.code, err.message)
-end sub
-```
-
-The `Logger` constructor takes a name that's prefixed onto every log line, so telnet output looks like:
-
-```text
-[INFO][SceneManager] setBackgroundImage called http://server/image/abc.jpg true false
-[DEBUG][QueueManager] setCurrentStartingPoint queuePosition 0 ticks 12345678 queueCount 5
-```
-
-Helpful structured methods:
-
-- `m.log.increaseIndent("Section")` / `m.log.decreaseIndent()` — visually nest a series of related log lines
-- The `info`/`warn`/etc. methods accept arbitrary positional args, formatted into a single line
-
-### `print` statements
-
-`print` is **only allowed in `source/main.bs`** (early bootstrap before the log manager initializes). Everywhere else, use `roku-log` instead. The `print` statements in `globals.bs` debug-block initialization are an exception — they exist to help developers find the debug toggle instructions in the console.
-
-`docs/dev/logging.md` has the canonical guide.
+The `print-locations` plugin flags a `print` wherever an `m.log` is available: any function in a component, and any class method. It allows `print` where no logger can exist: `source/main.bs`, the `#if debug` block in `source/utils/globals.bs`, and free functions in `source/`, which have no `m` to hold one. Unlike `m.log` calls, a `print` is not stripped from a production build.
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for logging entries.
+Tracked in [`tech-debt.md`](tech-debt.md): `log-level-welded-to-debug-const`, `no-lint-for-mlog-without-logger` and `ropm-hook-fails-silently`.

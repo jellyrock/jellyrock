@@ -1336,11 +1336,6 @@
     "em-dash": 22,
     "prose-arrow": 1
   },
-  "docs/architecture/logging.md": {
-    "em-dash": 17,
-    "filler": 2,
-    "prose-arrow": 2
-  },
   "docs/architecture/navigation.md": {
     "caps-emphasis": 1,
     "em-dash": 108,
