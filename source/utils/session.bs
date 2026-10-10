@@ -649,20 +649,17 @@ namespace user
             userNode.config[configFieldKey] = jsonResponse.CustomPrefs[customPrefsKey]
           end if
         end for
-
-        ' Resolve post-login locale: user registry override > server preference > device locale
-        serverLanguage = ""
-        if isValid(jsonResponse.CustomPrefs["language"])
-          serverLanguage = jsonResponse.CustomPrefs["language"]
-        end if
-        resolvedLocale = resolveTranslationLocale(true, serverLanguage)
-        if resolvedLocale <> m.global.translationLocale
-          loadTranslations(resolvedLocale)
-        end if
       else
         print "LoadUserPreferences: No valid CustomPrefs from server, using defaults"
         user.SaveUserHomeSections(user.getDefaultHomeSections())
       end if
+    end if
+
+    ' Resolve the post-login locale whether or not the request worked, so the
+    ' user's own Display Language still applies when the server is unreachable.
+    resolvedLocale = resolvePostLoginLocale(jsonResponse)
+    if resolvedLocale <> m.global.translationLocale
+      loadTranslations(resolvedLocale)
     end if
   end sub
 
