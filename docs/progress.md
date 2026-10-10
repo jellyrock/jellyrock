@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-10: fix: Stop the sign-in screen flashing back after a deep-link sign-in
 - 2026-10-10: fix(locale): Apply the user's language when preferences fail
 - 2026-10-10: fix: Stop a crash on options in a stopped video's playback info
 - 2026-10-10: fix(overhang): Reset the clock when the screensaver ends
@@ -923,6 +924,12 @@ Not checked: whether the 2026-08-07 and 2026-08-17 failures would pass today; wh
 #### `MockDataLoader` has two loaders for a mock folder that does not exist `[fid: mockdataloader-roku-loaders-no-mocks]` `[captured 2026-10-10]`
 
 `MockDataLoader.LoadRokuDeviceInfo()` and `MockDataLoader.LoadRokuCapabilities()` in `tests/source/shared/MockDataLoader.bs` read from `tests/source/mocks/roku/`, which does not exist, and no spec calls either (`git grep -n -E 'LoadRokuDeviceInfo|LoadRokuCapabilities'` finds only their definitions). The old `docs/dev/registry-migrations.md` listed them with mock names that were never created; the rewrite (`f2c8bc2b`) dropped them. Close it by deleting both loaders, or by adding the mocks when a spec needs them.
+
+#### No automated test covers the post-login deep-link flash `[fid: post-login-deeplink-flash-untested]` `[captured 2026-10-10]`
+
+The `fix(deeplink)` commit that keeps the sign-in screen hidden until Home mounts (it showed again for about 100 ms under the spinner when signing in with a deep link stashed) was checked only with a throwaway on-device console probe. Polling over ODC cannot see a state that short, and a Rooibos test of the sequence guard in `JRScene.resolveDeepLink` cannot see render order, so nothing stops it coming back. Not done now: it needs a design for an on-device recorder.
+
+Closes when an RTA spec covers it: for example an `ENABLE_RTA`-only timeline in `JRScene.onIsLoadingChanged` and `onActiveRoutedViewChanged` (`isLoading`, `isRemoteDisabled`, the active view) that the spec reads after a Quick Connect sign-in with a stashed deep link, asserting no pre-login view is visible with the remote enabled before Home is active.
 
 ### docs
 

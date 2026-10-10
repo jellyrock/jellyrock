@@ -586,7 +586,37 @@ end sub
 sub resolveDeepLink(args as object)
   if not isValid(args) or not isValidAndNotEmpty(args.itemId) then return
   initRouter()
-  if args.homeFirst then sgrouter.navigateTo("/")
+  ' Every call and every cancel bumps the sequence, so a deferred start (below) that arrives after
+  ' either one sees a stale number and does nothing.
+  m.deepLinkResolveSeq = (m.deepLinkResolveSeq ?? 0) + 1
+
+  ' `= true`, not a bare `if`: a missing or invalid flag is a Type Mismatch in a bare `if`, and here
+  ' takes the synchronous path instead.
+  if args.homeFirst = true
+    ' Wait for Home's nav to settle before starting the resolve. The resolve raises the content
+    ' spinner and re-enables the remote, which re-shows the outgoing sign-in view for a frame if
+    ' Home has not mounted yet (the #677 login flash; see createAndShowHomeGroup). Until then the
+    ' blocking sign-in spinner stays up. A rejected nav still starts the resolve, so the link is
+    ' never dropped.
+    promises.chain(sgrouter.navigateTo("/"), { args: args, seq: m.deepLinkResolveSeq }).then(sub(_result as object, ctx as object)
+      startDeepLinkResolve(ctx.args, ctx.seq)
+    end sub).catch(sub(err as object, ctx as object)
+      ' Start before logging, and log err whole: reading `.message` crashes when a rejection is not
+      ' an AA, which would leave the blocking sign-in spinner up for good.
+      startDeepLinkResolve(ctx.args, ctx.seq)
+      m.log.warn("deep-link Home nav failed; resolving anyway", err)
+    end sub)
+    return
+  end if
+
+  startDeepLinkResolve(args, m.deepLinkResolveSeq)
+end sub
+
+' Raise the spinner and launch the metadata fetch for a deep link. `seq` is the sequence number
+' resolveDeepLink took when it was called; a different current value means a cancel or a newer
+' call came first, so this start is stale and is dropped.
+sub startDeepLinkResolve(args as object, seq as integer)
+  if seq <> m.deepLinkResolveSeq then return
 
   m.deepLinkResolveArgs = args
   ' Spinner = feedback during the fetch; don't block the remote (a runtime cast shouldn't freeze
@@ -608,6 +638,7 @@ end sub
 ' pending. Reused by the back arbiter (a back during the resolve aborts the cast) and resetRouter
 ' (sign-out tears the resolve down with the router).
 sub cancelDeepLinkResolve()
+  m.deepLinkResolveSeq = (m.deepLinkResolveSeq ?? 0) + 1
   stopDeepLinkResolveTask()
   m.deepLinkResolveArgs = invalid
   m.top.isLoading = false
