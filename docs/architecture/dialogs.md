@@ -18,7 +18,7 @@ related-files:
   - source/utils/dialogKeys.bs
   - source/utils/dialogResult.bs
   - source/utils/dialogNarration.bs
-last-reviewed: 2026-10-02
+last-reviewed: 2026-10-10
 ---
 
 # The dialog family
@@ -243,7 +243,7 @@ a button row does not.
 |---|---|---|---|---|
 | `JRDialog` | step the button row (wraps) | step the row **only when stacked**; otherwise swallowed | resolve with the focused button | canceled result |
 | `JRListDialog` | — | step rows, wrapping both ways | commit the row | dismiss (the only exit — there is no Cancel button) |
-| `OverviewDialog` | — | scroll the body; past the end, move to OK | dismiss (or move focus to OK) | dismiss |
+| `OverviewDialog` | swallowed | scroll the body; past the end, move to OK | dismiss (or move focus to OK) | dismiss |
 | `QuickConnectDialog` | no-ops — a one-button row steps back onto itself | swallowed | canceled result | canceled result |
 | `JRDialog` with `anyKeyResolves` | resolve | resolve | resolve | resolve — **every** key answers |
 
@@ -251,6 +251,10 @@ a button row does not.
 prompt (`showStillWatchingDialog`), where any press is the answer and making the viewer
 find a particular button would defeat it. It is a flag on the same model
 (`buttonDialogKeyAction`), not a second dialog.
+
+`OverviewDialog` runs `overviewDialogKeyAction` and consumes every pressed key, like
+the others: it is appended to the scene, so a key it let through would reach
+`JRScene.onKeyEvent` and act on the screen behind it.
 
 `QuickConnectDialog` runs the same `buttonDialogKeyAction` model as `JRDialog`;
 with one button, `cancel` and `resolve` are the same outcome and the two step

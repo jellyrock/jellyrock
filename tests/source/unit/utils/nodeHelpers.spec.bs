@@ -698,6 +698,31 @@ namespace tests
       m.assertFalse(queueItem.DoesExist("startingPointIsExact"))
     end function
 
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("findOptionsPanel(group)")
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the options node of a view that owns one")
+    function _()
+      view = createObject("roSGNode", "Group")
+      panel = createObject("roSGNode", "Group")
+      panel.id = "options"
+      view.appendChild(panel)
+
+      m.assertTrue(view.findNode("options").isSameNode(nodeHelpers.findOptionsPanel(view)))
+    end function
+
+    ' PlayerHostView reports isOptionsAvailable and has no options node.
+    @it("returns invalid for a view with no options node")
+    function _()
+      m.assertInvalid(nodeHelpers.findOptionsPanel(createObject("roSGNode", "Group")))
+    end function
+
+    @it("returns invalid when there is no view")
+    function _()
+      m.assertInvalid(nodeHelpers.findOptionsPanel(invalid))
+    end function
+
   end class
 
 end namespace

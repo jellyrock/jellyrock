@@ -5,6 +5,7 @@ import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/translate.bs"
 ' JRScene is a Scene (not a sgrouter_View), so it does NOT inherit the router scripts from
 ' sgrouter_View.xml. Import them here so JRScene.bs can call the sgrouter.* / promises.*
@@ -342,10 +343,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
   else if key = "options"
     group = getActiveView()
     if isValid(group) and isValid(group.isOptionsAvailable) and group.isOptionsAvailable
-      group.lastFocus = group.focusedChild
-      panel = group.findNode("options")
-      panel.visible = true
-      panel.findNode("panelList").setFocus(true)
+      ' A view can report isOptionsAvailable without owning a panel (PlayerHostView), and the
+      ' key still arrives from an overlay dialog over it, so there may be nothing to show.
+      panel = nodeHelpers.findOptionsPanel(group)
+      if isValid(panel)
+        group.lastFocus = group.focusedChild
+        panel.visible = true
+        panel.findNode("panelList").setFocus(true)
+      end if
     end if
     return true
   end if
