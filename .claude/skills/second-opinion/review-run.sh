@@ -22,6 +22,8 @@
 #       last output count; output is n/a when any message has no line with a final stop_reason, as
 #       in a transcript that kept only stream-start usage), logged in
 #       $XDG_STATE_HOME/second-opinion/costs.tsv (a review recorded again replaces its line)
+# A heading-like line inside a fenced code block (CommonMark) is text, not a heading: the rule is
+# ../log/md-skip.awk (the log skill's), which this script reads; without it every command exits 3.
 # Exit: check  0 ok; 1 problems (each a PROBLEM line); 3 an unreadable brief
 #       split  0 written; 1 the brief fails check (nothing written); 3 unreadable, or no folder
 #       cost   0 recorded; 3 no id, or no transcript for it
@@ -32,6 +34,12 @@ set -uo pipefail
 
 die() { printf 'ERROR: %s\n' "$2"; exit "$1"; }
 
+# MD_LIB: the awk function md_skip, the one rule for what is not a heading (CommonMark fenced code),
+# read from the log skill's md-skip.awk, which every script that reads headings shares.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -r "$here/../log/md-skip.awk" ] || die 3 "cannot read $here/../log/md-skip.awk: the log skill is incomplete"
+MD_LIB="$(cat "$here/../log/md-skip.awk")"$'\n'
+
 # brief_awk <mode> <brief>: one parser for every reading of a brief. The file is read twice: the
 # first pass collects the item labels, the second checks or prints.
 #   check     PROBLEM lines, then "ok: N items" or "N problems"
@@ -39,7 +47,7 @@ die() { printf 'ERROR: %s\n' "$2"; exit "$1"; }
 #   criteria  the context fields and the Standards, as written
 #   items     the items in the order given (-v order="2 1"), headed by the neutral labels (-v neutral)
 brief_awk() {
-  awk -v mode="$1" -v order="${ORDER:-}" -v neutral="${NEUTRAL:-}" '
+  awk -v mode="$1" -v order="${ORDER:-}" -v neutral="${NEUTRAL:-}" "$MD_LIB"'
     function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
     function blank(s) { return s ~ /^[[:space:]]*$/ || s ~ /^[[:space:]]*<[^>]*>[[:space:]]*$/ }
     function problem(s) { if (mode == "check") print "PROBLEM: " s; nprob++ }
@@ -66,14 +74,17 @@ brief_awk() {
       for (i = 1; i <= nf; i++) field[F[i]] = 1
     }
     # pass 1: the item labels
+    FNR == 1 { md_fm = 0; md_fn = 0 }
     NR == FNR {
-      if ($0 ~ /^## /) { h = trim(substr($0, 4)); if (h in field) in1 = (h == "Items") }
-      if (in1 && $0 ~ /^### Item:/) { n1++; lab1[n1] = tolower(trim(substr($0, 10))) }
+      sk = md_skip($0, 0)
+      if (!sk && $0 ~ /^## /) { h = trim(substr($0, 4)); if (h in field) in1 = (h == "Items") }
+      if (!sk && in1 && $0 ~ /^### Item:/) { n1++; lab1[n1] = tolower(trim(substr($0, 10))) }
       next
     }
     # pass 2
     {
-      if (sec != "Standards" && $0 ~ /^## /) {
+      sk = md_skip($0, 0)
+      if (!sk && sec != "Standards" && $0 ~ /^## /) {
         h = trim(substr($0, 4))
         if (h in field) {
           if (h in seen) problem("duplicate field: " h)
@@ -84,12 +95,12 @@ brief_awk() {
         if (sec != "Items") { problem("not a brief field: " h); sec = "?"; next }
       }
       if (sec == "Standards") {
-        if ($0 ~ /^## /) { h = trim(substr($0, 4)); if (h in field && h != "Standards") late[h] = 1 }
+        if (!sk && $0 ~ /^## /) { h = trim(substr($0, 4)); if (h in field && h != "Standards") late[h] = 1 }
         if (!blank($0)) filled[sec] = 1
         if (mode == "criteria") print
         next
       }
-      if (sec == "Items" && $0 ~ /^### Item:/) {
+      if (!sk && sec == "Items" && $0 ~ /^### Item:/) {
         cur = ++ni; label[cur] = trim(substr($0, 10))
         if (label[cur] == "") problem("an item with no label (line " FNR ")")
         if (tolower(label[cur]) in lab) problem("duplicate item: " label[cur])

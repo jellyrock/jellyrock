@@ -65,7 +65,7 @@ issue comment;<N> --body-file <file>;text: the comment's URL;Comment on an issue
 issue close;<N> --reason completed|not-planned|duplicate;text;Close an issue.
 label list;;JSON: $F_LABEL_LIST;Every label (up to 500).
 label create;<name> --description <text>;text;Create a label.
-run list;[--branch <b>] [--status <s>] [--limit <n>];JSON: $F_RUN_LIST;CI runs.
+run list;[--branch <b>] [--status <s>] [--limit <n>];JSON: $F_RUN_LIST;CI runs, newest first (--branch is filtered here, among the newest max(100, limit) runs).
 run view;<id>;JSON: $F_RUN_VIEW;One CI run with its jobs and steps.
 run log;<id>;text: the log;The log of the run's failed steps.
 run rerun;<id>;text;Re-run the run's failed jobs."
@@ -488,8 +488,26 @@ case "$cmd" in
   "label list")          gh_run label list --limit 500 --json "$F_LABEL_LIST" ;;
   "label create")        gh_run label create "$n" --description "$opt_description" ;;
   "run list")
-    optional --branch "$opt_branch"; optional --status "$opt_status"; optional --limit "$opt_limit"
-    gh_run run list "${extra[@]}" --json "$F_RUN_LIST" ;;
+    if [ -z "$opt_branch" ]; then
+      optional --status "$opt_status"; optional --limit "$opt_limit"
+      gh_run run list "${extra[@]}" --json "$F_RUN_LIST"
+    fi
+    # The branch is filtered here, not by gh's --branch: GitHub's branch-filtered run list was served
+    # stale on cold calls, and no response header marks a stale list. --status stays server-side (it
+    # keeps the window deep); the branch is read from env so a name is data, never jq code.
+    n_want="${opt_limit:-20}"; win=100; [ "$n_want" -le "$win" ] || win="$n_want"
+    optional --status "$opt_status"
+    out="$(FORGE_RUN_BRANCH="$opt_branch" FORGE_RUN_LIMIT="$n_want" gh run list "${extra[@]}" --limit "$win" \
+      --json "$F_RUN_LIST,headBranch" --jq '[.[] | select(env.FORGE_RUN_BRANCH == .headBranch)][:(env.FORGE_RUN_LIMIT | tonumber)] as $m | (length | tostring), ($m | length | tostring), ($m | map(del(.headBranch)) | tojson)' 2>"$err")" \
+      || { cat "$err" >&2; exit 1; }
+    cat "$err" >&2
+    { read -r fetched; read -r kept; read -r json; } <<<"$out"
+    printf '%s\n' "$json"
+    if [ "$fetched" = "$win" ] && [ "$kept" -lt "$n_want" ]; then
+      printf "%s: run list: %s run(s) on '%s' among the newest %s%s; older runs were not read\n" \
+        "$prog" "$kept" "$opt_branch" "$win" "${opt_status:+ with status $opt_status}" >&2
+    fi
+    exit 0 ;;
   "run view")            gh_run run view "$n" --json "$F_RUN_VIEW" ;;
   "run log")             gh_run run view "$n" --log-failed ;;
   "run rerun")           gh_run run rerun "$n" --failed ;;

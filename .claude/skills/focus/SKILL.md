@@ -144,6 +144,8 @@ Scope the research to the areas the change will touch: skim the three to five fi
 
 **Enumerate chain and pass-through edit sites mechanically.** When the change threads a field, column or parameter parallel to an existing sibling along a chain, list the edit sites with `grep -rln '<sibling token>' <tree>` or by tracing the reference graph edge by edge; the plan's Critical files come from that enumeration, not a hand-picked subset.
 
+**Find the tests that pin the behavior being changed**, even on a one-file fix: when the change alters what a command does (a refusal, an output, an exit code), search the repo's tests for that command or message (`grep -rln '<command or message>' <test tree>`); each test that asserts the old behavior goes in Critical files with its edit, never in Verification as passing unchanged.
+
 Sub-agents are an escape hatch: at most three Explore sub-agents in parallel, one per area (they inherit the session's model on purpose: their research shapes the plan), only when the work spans more than three areas each with conventions that need several files read. Each prompt ends with the capture sentence — `End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of …; omit the section if there are none, and never write to journals yourself.` — its types spelled out from [this repo's capture types](../../../AGENTS.md#capture-types), since an Explore sub-agent loads no instruction files. Hold the captures they report for Step 6.
 
 ### Step 5 — Draft internally; ask the forks in chat
@@ -172,10 +174,11 @@ Draft with this structure:
 | File | Change |
 |---|---|
 | `<path>` | <Create / Edit / Delete: one line> |
+| `<dir>/` | <Create / Edit / Delete: a directory; its path ends in `/`, and every file under it is in the plan> |
 
 ## Verification
 
-<Numbered checks: which command, what evidence, what must pass — this repo's verification commands, never bare runners, and any standing gotcha they name that this change touches. An exact count or output comes from a dry run against the current files while drafting, never from memory.>
+<Numbered checks: which command, what evidence, what must pass — this repo's verification commands, never bare runners, and any standing gotcha they name that this change touches. An expected count or output comes from the command whose rule defines it (the engine's or checker's own), run against the current files while drafting, never from memory or a stand-in such as a grep. When that command does not exist yet, the count is an estimate: name the method and what it misses, and say what a different count does — before a bulk or hard-to-undo step, stop and show the list; otherwise, report it in the ready-to-push message.>
 
 ## Landing & closeout
 
@@ -211,14 +214,14 @@ Your choices are made at the fork questions (Step 5), with the Always ask call; 
    For the judgment-grade tier: "Plan saved → `<path>` (needs the judgment-grade tier: <one-line reason>). Paste this in a fresh session:"
 
    ```text
-   Implement the plan at <plan path>/focus-YYYY-MM-DD-<task-slug>.md, then after the commit and before pushing, run bash .claude/skills/sonnet/plan-run.sh land on it
+   Implement the plan at <plan path>/focus-YYYY-MM-DD-<task-slug>.md. Before any edit, note the starting commit (git rev-parse HEAD). After the work commit, run the plan's steps that come after its commit step; then, before pushing, run bash .claude/skills/sonnet/plan-run.sh land on the plan with --commit set to the work commit and --base set to the starting commit
    ```
 
-   The line carries the landing record because that route never runs `/sonnet`'s steps; keep it even when `**Project:**` is `n/a`. The user may paste the other variant: the tier is a default, not a lock.
+   The line carries the landing record because that route never runs `/sonnet`'s steps; keep it even when `**Project:**` is `n/a`. It follows the order of `/sonnet`'s Step 4: the work commit named, so a followup close committed after it is never recorded as the landing, and the starting commit, so the scope check sees every commit; when that order changes, change this line with it. The user may paste the other variant: the tier is a default, not a lock.
 4. **If this session is project-tracked** (it began with `/resume-project` or `/start-project`), it still ends with `/end-session`, typed by the user, never invoked here. On the Sonnet route, say so after the push and leave it to the user (they may take another pick first); on the judgment-grade tier, print `/end-session` alone in its own block right after the hand-off block. This session's PLAN log keeps the design narrative, and on the Sonnet route the landing too.
 
 Never implement in this session's own context: the sub-agent, or the fresh session, does.
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent, the parent passes: `Read .claude/skills/focus/SKILL.md and follow Steps 1-2 only: report the Step 2 block (the recommendation, its rule and route, the alternatives) in full. Do not enter plan mode, do not print or run any hand-off, do not write to the plan path. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link. Sub-agents never enter plan mode and never write to journals.
+To invoke from a sub-agent, the parent passes: `Read .claude/skills/focus/SKILL.md and follow Steps 1-2 only: report the Step 2 block (the recommendation, its rule and route, the alternatives) in full. Do not enter plan mode, do not print or run any hand-off, do not write to the plan path. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link. A sub-agent this section starts never enters plan mode and never writes to journals.

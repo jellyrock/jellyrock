@@ -15,9 +15,10 @@
 #       no plan named: the plans in that folder whose Critical files are all here, newest first
 #   … scope <plan> <base>
 #       after the run: every file changed in <base>..HEAD with its lines added and removed, and
-#       any left uncommitted, against the plan's Critical files (the project PLAN's landing record
-#       is expected, not out of plan); and where a push goes: the branch, its upstream, and how far
-#       ahead and behind it is as of the last fetch (this script never fetches)
+#       any left uncommitted, against the plan's Critical files (a row ending in / covers every file
+#       under it; the project PLAN's landing record is expected, not out of plan); and where a push
+#       goes: the branch, its upstream, and how far ahead and behind it is as of the last fetch
+#       (this script never fetches)
 #   … gate <plan> <base>
 #       after a supervised run's review: whether it may push without asking. Only when the Landing
 #       section of the repo's AGENTS.md gives level `gated`, the plan's Landing & closeout says
@@ -37,6 +38,7 @@
 #       land   0 recorded, already recorded, nothing to record, or left to /end-session (with --base: scope's
 #              exit, 0 matches the plan, 1 differs); 2 cannot record (the message says the fix);
 #              3 an unreadable plan, or a --base that is not a commit; 4 the --floor failed, nothing recorded
+# Any command: exit 3 when the log skill's md-skip.awk is missing beside this skill (the rule for what is not a heading).
 # Judgment stays with the caller: BANNER lines are what to raise, NOTE lines inform.
 # PLAN_RUN_TODAY (YYYY-MM-DD) dates the landing line in tests.
 
@@ -49,6 +51,17 @@ resume="$here/../resume-project/resume-state.sh"
 section() { printf '\n=== %s ===\n' "$1"; }
 die() { printf 'ERROR: %s\n' "$2"; exit "$1"; }
 
+# MD_LIB: the awk function md_skip, the one rule for what is not a heading (frontmatter, CommonMark
+# fenced code), read from the log skill's md-skip.awk, which every script that reads headings shares.
+[ -r "$here/../log/md-skip.awk" ] || die 3 "cannot read $here/../log/md-skip.awk: the log skill is incomplete"
+MD_LIB="$(cat "$here/../log/md-skip.awk")"$'\n'
+
+# has_heading <file> <ERE> <fmok> [i]: some line outside frontmatter (only when fmok is 1) and code
+# blocks matches the pattern (case ignored with i)
+has_heading() {
+  awk -v re="$2" -v fm="$3" -v ci="${4:-}" "$MD_LIB"'{ if (!md_skip($0, fm + 0) && (ci != "" ? tolower($0) ~ tolower(re) : $0 ~ re)) found = 1 } END { exit !found }' "$1"
+}
+
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die 3 "not inside a git repository"
 
 # abs <path>: the path made absolute from where the caller stands (before any cd)
@@ -58,7 +71,8 @@ abs() { case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$PWD" "$1" ;; es
 # backticked path. Read cell by cell, never by one anchored pattern: a File cell may carry prose
 # after its path, and a row the parser cannot read must be reported, not dropped from the vote.
 crit_rows() {
-  awk -F'|' '
+  awk -F'|' "$MD_LIB"'
+    { if (md_skip($0, 0)) next }
     /^## Critical files/ { f = 1; next }
     f && /^## / { exit }
     !f || !/^[[:space:]]*[|]/ || NF < 3 { next }
@@ -78,7 +92,7 @@ label() { local k="$1"; printf '%s%s' "${k:0:1}" "$(printf '%s' "${k:1}" | tr '[
 # project_line <plan> -> the **Project:** value from the header (before the first ## section), so
 # a body that quotes the line is never mistaken for it; nothing when there is none
 project_line() {
-  awk '/^## / { exit } /^\*\*Project:\*\*/ { v = $0; sub(/^\*\*Project:\*\*[ \t]*/, "", v); sub(/[ \t].*$/, "", v); print v; exit }' "$1"
+  awk "$MD_LIB"'{ if (md_skip($0, 0)) next } /^## / { exit } /^\*\*Project:\*\*/ { v = $0; sub(/^\*\*Project:\*\*[ \t]*/, "", v); sub(/[ \t].*$/, "", v); print v; exit }' "$1"
 }
 
 frontmatter() { awk -v f="$2" 'NR==1 && $0!="---" { exit } NR>1 && $0=="---" { exit } NR>1 && $1==f":" { print $2; exit }' "$1"; }
@@ -177,9 +191,9 @@ do_check() {
 
   section "SECTIONS"
   for want in Context Approach 'Critical files' Verification 'Landing & closeout' 'does NOT do'; do
-    if grep -qiE "^## .*$want" "$plan"; then echo "present: $want"; else echo "MISSING: $want"; fi
+    if has_heading "$plan" "^## .*$want" 0 i; then echo "present: $want"; else echo "MISSING: $want"; fi
   done
-  grep -qiE '^## .*Verification' "$plan" || echo "BANNER: no Verification section: the plan has no regression floor; run this repo's verification commands as the tail"
+  has_heading "$plan" '^## .*Verification' 0 i || echo "BANNER: no Verification section: the plan has no regression floor; run this repo's verification commands as the tail"
 
   section "PROJECT"
   resolve "$(project_line "$plan")"
@@ -227,11 +241,20 @@ do_scope() {
 
   section "COMMITTED SINCE $(git -C "$root" rev-parse --short "$base")"
   local add del size
+  # a planned key ending in / is a directory row: it covers every file under it, and is seen once one matches
+  under_dir() {
+    local key
+    for key in "${!planned[@]}"; do
+      case "$key" in */) [[ "$1" == "$key"* ]] && { seen["$key"]=1; return 0; } ;; esac
+    done
+    return 1
+  }
   while IFS=$'\t' read -r add del path; do
     [ -n "$path" ] || continue
     seen["$path"]=1
     if [ "$add" = - ]; then size="binary"; else size="+$add -$del"; fi
     if [ -n "${planned[$path]:-}" ]; then echo "in plan: $path ($size)"
+    elif under_dir "$path"; then echo "in plan: $path ($size)"
     elif [ "$path" = "$landing" ]; then echo "landing record: $path ($size)"
     else echo "NOT IN PLAN: $path ($size)"; diff=1; fi
   done < <(git -C "$root" diff --numstat --no-renames "$base" HEAD)
@@ -257,7 +280,8 @@ do_scope() {
 # when it gives none or two different ones; a level written anywhere else never counts
 landing_level() {
   [ -f "$root/AGENTS.md" ] || { echo "unknown (no AGENTS.md)"; return; }
-  awk '
+  awk "$MD_LIB"'
+    { if (md_skip($0, 0)) next }
     /^## / { f = ($0 ~ /^## Landing[[:space:]]*$/); next }
     f && match($0, /Level: `[a-z-]+`/) { v = substr($0, RSTART + 8, RLENGTH - 9); if (!(v in seen)) { seen[v] = 1; n++; last = v } }
     END { print (n == 1 ? last : "unknown") }' "$root/AGENTS.md"
@@ -266,7 +290,8 @@ landing_level() {
 # always_ask <plan> -> the plan's **Always ask:** value inside its Landing & closeout section;
 # nothing when there is none
 always_ask() {
-  awk '
+  awk "$MD_LIB"'
+    { if (md_skip($0, 0)) next }
     /^## / { f = ($0 ~ /^## Landing & closeout/); next }
     f && /^\*\*Always ask:\*\*/ { v = $0; sub(/^\*\*Always ask:\*\*[ \t]*/, "", v); print v; exit }' "$1"
 }
@@ -328,7 +353,7 @@ do_land() {
   if [ "$ignored" -eq 0 ] && [ -n "$(git -C "$root" status --porcelain -- "$PPLAN")" ]; then
     die 2 "$rel has uncommitted edits; commit or set them aside first, because this commits the PLAN on its own"
   fi
-  grep -qE '^## .*Session log' "$PPLAN" || die 2 "$rel has no Session log section to append to"
+  has_heading "$PPLAN" '^## .*Session log' 1 || die 2 "$rel has no Session log section to append to"
   today="${PLAN_RUN_TODAY:-$(date +%F)}"
   line="- $today — **Landed from a /focus plan, outside a project session:** \`$sha\` $subject (plan \`$(basename "$plan")\`). Status and the kickoff were not updated; /resume-project reconciles them against git log."
   if [ "$dry" = 1 ]; then printf 'would append to %s:\n%s\n' "$rel" "$line"; exit 0; fi
@@ -336,12 +361,12 @@ do_land() {
   # the line goes after the Session log's last non-blank line (the section ends at the next # or ##
   # heading); an empty log gets a blank line, then the line. last-updated changes in the frontmatter only.
   tmp="$(mktemp)"
-  LINE="$line" TODAY="$today" awk '
-    { l[NR] = $0 }
+  LINE="$line" TODAY="$today" awk "$MD_LIB"'
+    { l[NR] = $0; sk[NR] = md_skip($0, 1) }
     END {
-      for (i = 1; i <= NR; i++) if (l[i] ~ /^## .*Session log/) { s = i; break }
+      for (i = 1; i <= NR; i++) if (!sk[i] && l[i] ~ /^## .*Session log/) { s = i; break }
       e = NR + 1
-      for (i = s + 1; i <= NR; i++) if (l[i] ~ /^##? /) { e = i; break }
+      for (i = s + 1; i <= NR; i++) if (!sk[i] && l[i] ~ /^##? /) { e = i; break }
       first = s + 1; past = NR + 1
       at = e; while (at > s + 1 && l[at - 1] ~ /^[[:space:]]*$/) at--
       fm = (l[1] == "---"); done = 0
