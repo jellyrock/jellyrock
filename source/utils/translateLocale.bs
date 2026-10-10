@@ -43,6 +43,20 @@ function resolveTranslationLocale(isPostLogin = false as boolean, serverLanguage
   return "en_US"
 end function
 
+' Resolve the locale to load after sign-in from a DisplayPreferences response.
+' The response is invalid when the request failed. The user's own setting and the
+' device locale still apply then, so only the server language is skipped.
+' @param {dynamic} jsonResponse - Parsed DisplayPreferences response, or invalid
+' @return {string} Resolved locale code in standard format
+function resolvePostLoginLocale(jsonResponse as dynamic) as string
+  serverLanguage = ""
+  if isValid(jsonResponse) and isValid(jsonResponse.CustomPrefs)
+    language = jsonResponse.CustomPrefs["language"]
+    if isValid(language) then serverLanguage = language
+  end if
+  return resolveTranslationLocale(true, serverLanguage)
+end function
+
 ' Convert Roku's locale format to our standard format.
 ' Roku sends underscore format (e.g. "en_US", "fr_CA", "zh_CN").
 ' Most pass through directly since they already match our convention,
