@@ -1295,9 +1295,7 @@
     "prose-arrow": 8
   },
   "docs/architecture/async.md": {
-    "em-dash": 37,
-    "filler": 7,
-    "prose-arrow": 3
+    "filler": 2
   },
   "docs/architecture/bootstrap.md": {
     "em-dash": 53,

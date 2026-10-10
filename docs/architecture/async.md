@@ -7,191 +7,87 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/lint/promise-ratchet.cjs
-last-reviewed: 2026-09-25
+last-reviewed: 2026-10-10
 ---
 
-# Async & Promises
+# Async and promises
 
-The shape of asynchronous work in JellyRock: a `Promise` as the universal async **interface**,
-layered over the *existing* task-pool engine. For how-to and style (call shape, when to use,
-patterns to avoid), see [`../dev/promises.md`](../dev/promises.md). For the pool itself, see
-[`api.md`](./api.md).
+How asynchronous work is shaped in JellyRock: a `Promise` as the one async interface, laid over the task-pool engine that already existed. For how to write it (call shape, when to use it, what to avoid), see [`promises.md`](../dev/promises.md). The pool itself is in [`api.md`](./api.md).
 
 ## Why this exists
 
-Before promises, render-thread async meant **observer spaghetti**: `submitApiRequest` returns an
-`ApiResultNode`, you `observeField("isDone", "someGlobalHandler")`, the handler reads `result`,
-and you unobserve on teardown — repeated across a 1,300-line `main.bs` god-loop and a fleet of
-bespoke one-fetch Task components. A `Promise` replaces that calling convention with one async
-vocabulary: `fetchAsync(req, id).then(...).catch(...)`.
+Before promises, async work on the render thread meant a tangle of observers: `submitApiRequest` returned an `ApiResultNode`, you called `observeField("isDone", "someGlobalHandler")`, the handler read `result`, and you unobserved on teardown. That pattern repeated across the `main.bs` event loop, then over 1,300 lines, and a fleet of one-fetch Task components. A `Promise` replaces it with one async vocabulary: `fetchAsync(req, id).then(...).catch(...)`.
 
-The key architectural decision ([ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md))
-is that the promise is **only the interface**. The pool
-engine — the `ApiQueueTask` coordinator, the children-as-vehicles coalescing dodge, the
-ready-cascade, the `ApiTask` pool — is the cleverest, most regression-sensitive code in
-the app and is **orthogonal** to promises. It is *not* rewritten. Promises sit on top.
+The key decision ([ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md)) is that the promise is only the interface. The pool engine (the `ApiQueueTask` coordinator, the result nodes delivered as children to dodge coalescing, the startup ready cascade and the `ApiTask` pool) is the most delicate code in the app, and it has nothing to do with promises. It was not rewritten; promises sit on top of it.
 
-## The adapter — `apiPromise.bs`
+## The adapter: `apiPromise.bs`
 
-[`source/api/apiPromise.bs`](../../source/api/apiPromise.bs) is the bridge. `fetchAsync` wraps
-`submitApiRequest` (which already returns an `ApiResultNode` firing `isDone` on the render thread —
-the natural bridge point) and solves the five things the promises library does **not** solve for
-us:
+[`source/api/apiPromise.bs`](../../source/api/apiPromise.bs) is the bridge. `fetchAsync()` wraps `submitApiRequest()`, whose `ApiResultNode` already fires `isDone` on the render thread, and solves five things the promises library does not:
 
-1. **No-closure observer→promise bridge.** Render-thread `observeField` calls a *global-named*
-   handler with no closure, so you can't capture the promise in the callback. Instead each pending
-   request is held in a registry on the owning component's `m` (`m.__apiPromisePending`, keyed by
-   `requestId`), and a shared global handler (`__onApiPromiseDone`) looks the entry up and resolves
-   it. The handler runs in the component's `m` because that's where `observeField` was called.
-2. **Timeout.** `submitApiRequest` has *no* deadline (unlike `fetchRes`). A Timer per request
-   rejects after the same wait `fetchRes` uses, `apiTimeout.waitMs(req)` — `timeouts.API_WAIT_MS`
-   unless the request carries its own `timeoutMs` — so a never-answered slot can't hang forever.
-3. **Reject-vs-resolve.** The `fetch()`-convention error contract (decision #5) — any HTTP response
-   resolves; transport failure / timeout rejects. Isolated as the pure `apiPromiseShouldResolve(res)`
-   (`statusCode > 0` → resolve).
-4. **Cleanup.** On settle: unobserve `isDone`, stop + unobserve the timer, drop the registry entry,
-   release the nodes. No per-request leak. Idempotent (entry removed first), so a timeout firing
-   just after `isDone` is a no-op.
-5. **Cancellation.** Each pending entry is owned by the component's `m`, so teardown can abandon
-   them — see below.
+1. **An observer with no closure.** A render-thread `observeField` calls a handler by name, with no closure, so the callback cannot capture the promise. Instead each pending request is kept in a registry on the calling component's `m` (`m.__apiPromisePending`, keyed by request id), and one shared handler (`__onApiPromiseDone`) looks the entry up and settles it. The handler runs with the component's `m` because that is where `observeField` was called.
+2. **A timeout.** `submitApiRequest()` has no deadline, unlike `fetchRes()`. A Timer per request rejects after the wait `fetchRes()` uses, `apiTimeout.waitMs(req)`: `timeouts.API_WAIT_MS`, unless the request carries its own `timeoutMs`. So a slot that never answers cannot hang a promise forever.
+3. **Resolve or reject.** Like `fetch()`, any HTTP response resolves, and a transport failure or a timeout rejects. That rule is the pure `apiPromiseShouldResolve(res)`: a `statusCode` above 0 resolves.
+4. **Cleanup.** Settling unobserves `isDone`, stops and unobserves the timer, drops the registry entry and releases the nodes, so nothing leaks per request. The entry is removed first, so a timeout that fires just after `isDone` does nothing.
+5. **Cancellation.** The component's `m` owns each pending entry, so teardown can abandon them (next section).
 
-The registry-mutating logic is split into `settleApiPromiseIn(pending, id)` /
-`abandonApiPromisesIn(pending)` cores that take the registry explicitly, with thin `m`-bound
-wrappers (`settleApiPromise` / `abandonApiPromises`) for the production handlers. The split exists
-because bare global calls from a Rooibos **class method** don't share the instance `m`, so the
-explicit-registry cores are what the unit tests drive. [`apiPipeline.bs`](../../source/api/apiPipeline.bs)
-is split the same way and for the same reason — its slot accounting, take and drain are pure over an
-explicitly-passed state AA, with only submit / wait / unobserve in the shell.
+The code that changes the registry takes it as an argument: `settleApiPromiseIn(pending, id)`, `timeoutApiPromiseIn(pending, id)` and `abandonApiPromisesIn(pending)`. The handlers pass their component's `m.__apiPromisePending`, and `abandonApiPromises()` is the one wrapper bound to `m`. The split exists because a bare global call from a Rooibos class method does not share the instance's `m`, so the unit tests drive the versions that take the registry. [`apiPipeline.bs`](../../source/api/apiPipeline.bs) is split the same way for the same reason: its slot accounting, take and drain are pure functions over a state AA passed in, with only submit, wait and unobserve in the shell.
 
-## Cancellation — auto-abandon
+## Cancellation: auto-abandon
 
-A pending promise must never fire a callback into a destroyed node. `abandonApiPromises()` removes
-the observer on every pending request, stops its timer, and clears the registry — after which a late
-pool response settles nothing. It also marks each request abandoned, so one still waiting in the pool's queue
-is skipped rather than sent ([api.md](api.md#a-request-nobody-is-waiting-for)); a promise that times
-out does the same.
+A pending promise must never run a callback in a destroyed node. `abandonApiPromises()` removes the observer on every pending request, stops its timer and clears the registry, so a late pool response settles nothing. It also marks each request abandoned, so one still waiting in the pool's queue is skipped instead of sent ([api.md](api.md#a-request-nobody-is-waiting-for)); a promise that times out does the same.
 
-**The non-obvious part:** SceneGraph component `onDestroy` does **not** chain to a base class.
-`SceneManager` tears down via `group.callFunc("onDestroy")`, which dispatches to the *most-derived*
-`onDestroy`, and no subclass calls `super.onDestroy()`. So abandon can't simply live in a base
-`onDestroy` — for every screen that overrides it (essentially all of them) that base call never
-runs.
+**The part that is easy to miss:** a SceneGraph component's `onDestroy` does not chain to its base. The router closes a routed view through `JRScreen.beforeViewClose()`, which calls `onDestroy()`; that runs the most-derived `onDestroy`, and no screen calls its parent's. So abandoning cannot live in a base `onDestroy`: for every screen that overrides it, nearly all of them, the base never runs.
 
-The mechanism (decision `auto-abandon-promises-bsc-plugin`) is therefore a **BSC plugin**,
-[`scripts/bsc-plugins/auto-abandon-promises.cjs`](../../scripts/bsc-plugins/auto-abandon-promises.cjs),
-modeled on `roku-log.cjs`'s transpile-time injection:
+So the mechanism (decision `auto-abandon-promises-bsc-plugin`, [ADR 0013](../adr/0013-auto-abandon-promises-bsc-plugin.md)) is a BSC plugin, [`scripts/bsc-plugins/auto-abandon-promises.cjs`](../../scripts/bsc-plugins/auto-abandon-promises.cjs), built like `roku-log.cjs`'s compile-time insertion:
 
-- **Injects** `abandonApiPromises()` as the first statement of `onDestroy()` in any codebehind that
-  calls `fetchAsync` (idempotent). Developers write nothing.
-- **Errors** at build time (`auto-abandon-promises-needs-on-destroy`, severity 1, `bsc-disable-file`
-  escape hatch) when a *component* codebehind calls `fetchAsync` but has no `onDestroy` to inject
-  into — a guaranteed leak, made impossible to ship.
-- Wired into `bsconfig` / `bsconfig-prod` / `bsconfig-analysis` (the app configs, same as
-  `roku-log`; the test configs deliberately exclude transforming plugins).
+- **It inserts** `abandonApiPromises()` as the first statement of `onDestroy()` in any codebehind that calls `fetchAsync`, once. Developers write nothing.
+- **It fails the build** (`auto-abandon-promises-needs-on-destroy`, an error, with `bsc-disable-file` as the way out) when a component codebehind calls `fetchAsync` but has no `onDestroy` to insert into: that is a certain leak, so it cannot ship.
+- **It runs in the app configs**, `bsconfig.json` and `bsconfig-prod.json` (which `bsconfig-analysis.json` extends), as `roku-log` does. The test configs leave out plugins that rewrite code, on purpose.
 
-Base [`JRScreen.bs`](../../components/JRScreen.bs) and the minimal
-[`JRGroup.bs`](../../components/JRGroup.bs) carry `abandonApiPromises()` in their `onDestroy` as a
-readable floor for the rare components that *don't* override `onDestroy` (which inherit the base).
+[`JRScreen.bs`](../../components/JRScreen.bs) and the minimal [`JRGroup.bs`](../../components/JRGroup.bs) also call `abandonApiPromises()` in their own `onDestroy`, as a floor for the few components that do not override it and so inherit the base.
 
-## The two-model split (and when it ends)
+## Two models, on purpose (and when that ends)
 
-JellyRock deliberately runs **two** async models at once:
+JellyRock runs two async models at once:
 
-- **Promises** on the render thread (and wherever non-blocking is required).
-- **Blocking `fetchRes` / `fetchJson`** inside Task threads for the bootstrap path and
-  linear/branching orchestrators (Task threads can block safely; flattening branching orchestrators
-  onto `.then` chains reads worse).
+- **Promises** on the render thread, and wherever a call must not block.
+- **Blocking `fetchRes()` and `fetchJson()`** on Task threads, for the startup path and for orchestrators whose steps branch. A Task thread can block safely, and branching steps read worse as a flat `.then` chain.
 
-This is **Option A** (not "promises everywhere"). The split is a tracked, deliberate trade-off —
-re-open it when BrighterScript **async/await** ships, at which point `await fetchAsync(...)` makes
-the single-model convergence the right call. Both the interface decision ([ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md))
-and the abandon-mechanism decision ([ADR 0013](../adr/0013-auto-abandon-promises-bsc-plugin.md)) live in [`../adr/`](../adr/README.md).
+This is Option A in [ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md), not "promises everywhere". Reopen it when BrighterScript ships async and await: `await fetchAsync(...)` would make one model the right answer. The abandon mechanism's decision is [ADR 0013](../adr/0013-auto-abandon-promises-bsc-plugin.md).
 
-### Where `fetchAsync` can be called from — render thread only
+### Where `fetchAsync` can be called: the render thread only
 
-`fetchAsync` bridges the pool with a **named-function** `observeField("isDone", "...")`, which Roku
-only dispatches inside a SceneGraph component (the render thread). So:
+`fetchAsync` connects to the pool with an `observeField("isDone", "...")` that names a function, and Roku delivers those only inside a SceneGraph component, on the render thread. So:
 
-- **Render-thread component code** (init, observer handlers, `callFunc` methods) — call `fetchAsync`
-  directly. The common case.
-- **`main.bs`'s `Main()` loop runs on the main BrightScript thread** (`wait(0, m.port)`), where named
-  observers never fire — which is why every observation there is port-based. It **cannot** consume
-  `fetchAsync` directly. A main-thread caller **delegates to a render-thread component method via
-  `callFunc`** (which rendezvouses to the render thread); the canonical example is `loginRouter`
-  calling `m.scene.callFunc("routerNavigate", …)` → `JRScene.routerNavigate`, whose
-  `navigateThenFocus` consumes `sgrouter.navigateTo`'s promise on the render thread. This is preferred over wiring `promises.setMessagePort`/`wait2` into the main loop —
-  delegation needs no foundation change and keeps the one async vocabulary.
-- **Task threads** — don't use promises. Blocking `fetchRes` (above) is the default; when a Task has
-  N *independent* requests, [`apiPipeline`](../../source/api/apiPipeline.bs) keeps several in flight
-  on that one thread without spawning a Task per request (call pattern 5 — see
-  [api.md](./api.md)). Both are blocking-shaped from the caller's point of view, which is why
-  neither needs promises. If you genuinely must consume a promise on a Task thread, that's the
-  `setMessagePort` + `wait2` path.
+- **Render-thread component code** (`init()`, observer handlers, `callFunc` methods) calls `fetchAsync` directly. This is the common case.
+- **`Main()` in `main.bs` runs on the main thread** (`wait(0, m.port)`), where observers by name never fire, which is why every observer there uses the port. It cannot use `fetchAsync` directly. A main-thread caller hands the work to a render-thread component method through `callFunc`, which crosses to the render thread. The reference is `loginRouter` calling `m.scene.callFunc("routerNavigate", …)`: `JRScene.routerNavigate()`'s `navigateThenFocus()` consumes the promise from `sgrouter.navigateTo` on the render thread. That is preferred over adding `promises.setMessagePort` and `wait2` to the main loop: it changes nothing underneath and keeps one async vocabulary.
+- **Task threads** do not use promises. Blocking `fetchRes()` is the default. When a Task has several independent requests, [`apiPipeline`](../../source/api/apiPipeline.bs) keeps several in flight on that one thread without a Task per request (pattern 5 in [api.md](./api.md)). Both look blocking to the caller, which is why neither needs promises. A Task that truly must consume a promise uses `setMessagePort` and `wait2`.
 
-## Crossing the thread boundary costs a rendezvous — budget CROSSINGS, not bytes
+<a id="crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes"></a>
 
-Every time one thread touches a node another thread owns — a Task writing a field on a
-render-thread node, appending a child to it, or `callFunc`-ing into a component — SceneGraph
-performs a **rendezvous**: the caller parks until the owning thread reaches a safe point, then the
-data is marshaled across. It is priced by **how often you cross** first and how much you carry
-second, and both are far more expensive than the same operation done thread-locally.
+## Crossing a thread boundary costs a rendezvous: count the crossings, not the bytes
 
-**Which side of the boundary you are on is decided by who OWNS the node.** Nodes are render-owned
-by default — `m.global` and every Task node included — so render-thread code pays nothing, and the
-identical read from a Task thread costs ~46× more. The measured per-operation table (and the
-corollary that removing a rendezvous still leaves ~20 µs/entry of interpreter cost) lives in
-[threading.md](threading.md#measured-findings).
+Every time one thread touches a node another thread owns (a Task writing a field on a render-thread node, adding a child to one, or calling `callFunc` on a component), SceneGraph performs a rendezvous. The caller waits until the owning thread reaches a safe point, then the data is copied across. The price depends first on how often you cross and only second on how much you carry, and both cost far more than the same operation on one thread.
 
-That is the reason behind rules stated elsewhere without their price tag: cache `m.global.user`
-in a local instead of re-reading it per item ([components/CLAUDE.md](../../components/CLAUDE.md)),
-prefer `node.setFields({...})` to a run of individual assignments, and use
-`transformBaseItemArray` over a per-item `transformBaseItem` (which re-reads
-`m.global.server.version` — one rendezvous per item). `translate()` belongs on the same list: it
-reads `m.global.translations`, which from a Task copies the whole translations table across the
-boundary on every call, so resolve a label once per batch rather than once per item.
+**Who owns the node decides which side you are on.** Nodes belong to the render thread by default, `m.global` and every Task node included, so render-thread code pays nothing, and the same read from a Task thread costs about 46 times as much. The measured table, and the finding that removing a rendezvous still leaves about 20 µs per entry of interpreter work, are in [threading.md](threading.md#measured-findings).
 
-**Worked example, measured on a Streaming Stick 4K.** The item grid's Genres view delivers N rows
-of ~7 item nodes. Delivered as ONE `m.top.content` write it costs ~220 ms of task-thread `emit`.
-Re-shaped to deliver each row as it arrived — same total data, same nodes, just **8 crossings
-instead of 1** — `emit` went to ~734 ms, and `task` from 520 ms to 1403 ms. Reverting to a single
-batched handoff put `emit` back to ~235 ms. The payload never changed; only the crossing count did.
+That is the reason behind several rules stated elsewhere without their price: cache `m.global.user` in a local instead of reading it per item ([components/CLAUDE.md](../../components/CLAUDE.md)), prefer `node.setFields({...})` to a run of single assignments, and use `transformBaseItemArray()` over a `transformBaseItem()` per item, which reads `m.global.server.version` each time, one rendezvous per item. `translate()` belongs on the list: it reads `m.global.translations`, which from a Task copies the whole translation table across on every call. Resolve a label once per batch, not once per item.
 
-Practical consequences when designing a Task → UI handoff:
+**A worked example, measured 2026-08-08 on a Streaming Stick 4K.** The item grid's Genres view delivers several rows of about 7 item nodes each. Delivered as one `m.top.content` write, the Task thread's `emit` took about 220 ms. Delivered a row at a time as each arrived (the same data and nodes, but 8 crossings instead of 1), `emit` rose to about 734 ms, and the whole Task from 520 ms to 1403 ms. Going back to one write brought `emit` back to about 235 ms. The data never changed; only the number of crossings did.
 
-- **Batch the delivery.** Per-item or per-row handoffs are the expensive shape. Accumulate and hand
-  over once, unless progressive display is worth a measured price.
-- **Send the cheapest thing that works.** Strings and small AAs marshal far more cheaply than node
-  trees. The grid ships `[{ id, title }]` and lets the render thread build its own skeleton
-  `ContentNode`s — shipping the built nodes instead cost ~136 ms for that single crossing.
-  `HomeRows.createSkeletonRows()` is the same split.
-- **Expect a busy render thread to slow the Task down**, not just the other way round. In the same
-  experiment the pipeline's *network* wait grew ~200 ms purely because the render thread was laying
-  out rows during the run instead of after it. Under continuous interaction it is far worse: while
-  the TV guide scrolled at 400 ms per row, every Task crossing waited on the animating grid, so a
-  program transform that crossed twice per item went from 1.4 s to 51.8 s (Stick 4K, 2026-09-21;
-  row in [threading.md](threading.md#measured-findings)). A per-item crossing that is harmless on an
-  idle screen becomes the whole cost the moment the user is moving.
-- Where a handoff must be frequent, `apiQueue`'s children-as-vehicle pattern is the shape to copy —
-  it exists for correctness under coalescing (see [api.md](./api.md)), and it does **not** make the
-  crossings free.
+What that means when you design a hand-off from a Task to the UI:
 
-## Risk & coexistence
+- **Deliver in one batch.** Delivering per item or per row is the expensive shape. Collect, then hand over once, unless showing results as they arrive is worth a measured price.
+- **Send the cheapest thing that works.** Strings and small AAs copy far more cheaply than node trees. The grid sends `[{ id, title }]` and lets the render thread build its own placeholder `ContentNode`s; sending the built nodes instead cost about 136 ms for that one crossing. `HomeRows.createSkeletonRows()` splits the work the same way.
+- **Expect a busy render thread to slow the Task down too.** In the same experiment the pipeline's network wait grew about 200 ms only because the render thread was laying out rows during the run instead of after it. Under constant interaction it is far worse. While the TV guide scrolled at one row per 400 ms, every Task crossing waited on the moving grid, so a program transform that crossed twice per item went from 1.4 s to 51.8 s (measured 2026-09-21 on a Stick 4K; the row is in [threading.md](threading.md#measured-findings)). A crossing per item that costs nothing on an idle screen becomes the whole cost once the user is moving.
+- **Where a hand-off must be frequent,** copy the API queue's pattern of delivering each result as a child node. It exists to stay correct when SceneGraph merges field changes (see [api.md](./api.md)); it does not make the crossings free.
 
-The pool engine is untouched, so the blast radius of promise adoption is the *interface* layer
-only. Observer-based and promise-based call sites **coexist** during migration — expected and fine.
-Worst case for any migration batch: revert it; the pool keeps working.
+## Risk and coexistence
 
-### Anti-backslide ratchet
+The pool engine is untouched, so adopting promises can only break the interface layer. Observer-based and promise-based call sites live side by side during migration, which is expected. At worst, a migration batch is reverted and the pool keeps working.
 
-While the two paradigms coexist, the danger is *net-new* spaghetti. [`scripts/lint/promise-ratchet.cjs`](../../scripts/lint/promise-ratchet.cjs)
-counts the banned signature — a raw `.observeField("isDone", …)` on a `submitApiRequest` result, in
-app code, excluding the pool engine + adapter — and fails (blocking in the `lint-brightscript` CI
-workflow; advisory at pre-push) when the count rises above the committed integer in
-[`.promise-ratchet-baseline`](../../.promise-ratchet-baseline). The count only moves **down**: each
-migration batch lowers the baseline. When it reaches `0` the ratchet is automatically a hard
-grep-zero guard. The baseline never names which files are "done" — it's a pure count.
+### The ratchet against new observer code
 
-> **Historical note.** This paragraph used to read "fails in `npm run lint`, so CI-blocking." That
-> inference was wrong — CI never runs the `npm run lint` aggregate — so the ratchet blocked nothing
-> from the day it landed until it was wired into `lint-brightscript`. `npm run lint:ci-parity` now
-> fails the build if any aggregate member loses its CI home again.
+While both styles coexist, the risk is new observer code. [`scripts/lint/promise-ratchet.cjs`](../../scripts/lint/promise-ratchet.cjs) counts the banned shape, a raw `.observeField("isDone", …)` on a `submitApiRequest()` result in app code, leaving out the pool engine and the adapter. It fails when the count rises above the number committed in [`.promise-ratchet-baseline`](../../.promise-ratchet-baseline): CI's `_lint-brightscript.yml` blocks on it, and the pre-push hook only warns. The count only goes down, since each migration batch lowers the baseline, and at `0` the ratchet becomes a plain ban. The baseline names no files; it is just a count.
+
+> **History.** This section used to say the ratchet "fails in `npm run lint`, so CI-blocking". That was wrong: CI never runs the `npm run lint` aggregate, so the ratchet blocked nothing until it was added to `lint-brightscript`. `npm run lint:ci-parity` now fails the build if any member of the aggregate loses its CI home again.

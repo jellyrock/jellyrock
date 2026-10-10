@@ -129,7 +129,7 @@ A raw `observeField("isDone", …)` on a `submitApiRequest()` result is the patt
 
 A pending promise must never call back into a destroyed component. You don't write this cleanup. The `auto-abandon-promises` BSC plugin adds `abandonApiPromises()` to the start of `onDestroy()` in any component that calls `fetchAsync`. A component that calls `fetchAsync` and has no `onDestroy()` fails the build (`auto-abandon-promises-needs-on-destroy`). `JRScreen.bs` and `JRGroup.bs` call it in their own `onDestroy()` for components that inherit it.
 
-Write your `onDestroy()` as usual and don't call `abandonApiPromises()` yourself. How it works: [`async.md`](../architecture/async.md#cancellation--auto-abandon).
+Write your `onDestroy()` as usual and don't call `abandonApiPromises()` yourself. How it works: [`async.md`](../architecture/async.md#cancellation-auto-abandon).
 
 ## Mistakes to avoid
 
