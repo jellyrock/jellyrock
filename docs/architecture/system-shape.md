@@ -14,146 +14,176 @@ related-files:
   - .claude/skills/ramp/SKILL.md
   - .claude/skills/tech-debt-scan/SKILL.md
   - .claude/skills/pr/SKILL.md
+  - .husky/pre-push
   - scripts/catchup-state.js
   - scripts/journal-sync.js
   - scripts/lint/docs-check.cjs
+  - scripts/lint/docs-stale-blocking.cjs
+  - scripts/lint/decision-shape-nudge.cjs
+  - scripts/lint/pr-body-check.js
   - scripts/lint/progress-cursor-nudge.cjs
   - scripts/lint/session-start-nudge.cjs
   - .github/workflows/journal-sync.yml
-last-reviewed: 2026-10-03
+  - .github/workflows/journal-sync-precheck.yml
+  - .github/workflows/_lint-docs.yml
+  - .github/workflows/docs-stale-tracker.yml
+last-reviewed: 2026-10-10
 ---
 
-# System shape — how this repo's dev-process is structured and why
+# System shape
 
-High-level orientation for a human or agent landing in this repo and asking "why is the dev-process / journal / skill system shaped like this?" The ground-truth artifacts are the load-bearing rules in [`CLAUDE.md`](../../CLAUDE.md), the four journals at [`docs/`](../), the skills at [`.claude/skills/`](../../.claude/skills/), and the lint at [`scripts/lint/docs-check.cjs`](../../scripts/lint/docs-check.cjs). This doc names the shape those pieces compose into so a reader understands the pattern, not just the parts.
+How this repo records and surfaces project state (the journals, the skills that write them and the checks that keep them honest), and why it is shaped that way. It covers the dev process, not the app. For the app, start at the [topic map](README.md).
 
-This doc is about the *meta* layer (how project state is captured and surfaced), not about JellyRock's product code. For the latter, start with [`README.md`](README.md)'s topic map.
+The rules themselves live in [`CLAUDE.md`](../../CLAUDE.md), the journals under [`docs/`](../), the skills in [`.claude/skills/`](../../.claude/skills/) and the checks in [`scripts/lint/`](../../scripts/lint/). This doc names the pattern those parts make up.
 
-## What this is, in one paragraph
+## In one paragraph
 
-A solo + AI-collaborative engineering journal: four append-mostly journal files for the four categories of project state that decay at different rates, three skills for the daily ritual of capture / completion / catchup, an information architecture (Diátaxis-lite) for the static knowledge, and an enforcement layer (pre-push hooks + CI lint + post-tool-use advisory hooks) that closes drift loops automatically rather than depending on memory. The whole thing is tuned for **one developer + AI agents** as the primary audience, with a thin OSS-readability surface on top.
+The system is an engineering journal for one developer working with AI agents. It has four pillars:
+
+1. An information architecture for static knowledge, loosely after Diátaxis.
+2. Five journal surfaces, one per kind of project state, grouped by how fast that state goes out of date.
+3. Skills for the daily work of capturing, closing and catching up.
+4. Hooks, pre-push checks and CI that close drift loops so nobody has to remember to.
+
+[ADR 0002](../adr/0002-four-pillar-journal-reshape.md) records its adoption from a sister project.
 
 ## The four pillars
 
-### 1. Information architecture — Diátaxis-lite
+### 1. Information architecture (Diátaxis-lite)
 
-Static project knowledge lives under [`docs/`](../) in four buckets borrowed loosely from Daniele Procida's [Diátaxis framework](https://diataxis.fr):
+Static knowledge lives in four folders under [`docs/`](../), borrowed loosely from Daniele Procida's [Diátaxis framework](https://diataxis.fr):
 
-| Bucket | Diátaxis equivalent | What lives here |
+| Folder | Diátaxis type | What lives here |
 |---|---|---|
-| [`docs/architecture/`](../architecture/) | explanation | The *why* and *shape* of each subsystem (api, navigation, playback, etc.). Includes this doc + [`tech-debt.md`](tech-debt.md). All have `last-reviewed:` frontmatter; CI-blocked when stale + territory touched. |
-| [`docs/dev/`](../dev/) | how-to + tutorial mixed | Task-oriented guides ("how to add a setting", "how to write a migration") and zero-to-running tutorials ([`DEVGUIDE.md`](../dev/DEVGUIDE.md), [`unit-tests-tdd.md`](../dev/unit-tests-tdd.md)). Pragmatic blend; no strict separation. |
-| [`docs/user/`](../user/) | reference | End-user reference (auto-generated app settings, server feature matrix). |
-| [`docs/admin/`](../admin/) | process reference | Release / changelog / translation-ops reference for maintainers. |
+| [`docs/architecture/`](../architecture/) | Explanation | The why and the shape of each subsystem, plus this doc and [`tech-debt.md`](tech-debt.md). Every doc but the topic map carries `last-reviewed:`, and CI blocks a PR that touches a stale doc's territory. |
+| [`docs/dev/`](../dev/) | How-to and tutorial, mixed | Task guides ("add a setting", "write a migration") and setup guides ([`DEVGUIDE.md`](../dev/DEVGUIDE.md), [`unit-tests-tdd.md`](../dev/unit-tests-tdd.md)). |
+| [`docs/user/`](../user/) | Reference and how-to | Pages for people using the app: the generated app settings list, the server feature matrix, and guides such as subtitles and deep linking. |
+| [`docs/admin/`](../admin/) | Process reference | Releases, the changelog and translations, for maintainers. |
 
-This is **Diátaxis-lite**, not strict Diátaxis: there's no `docs/tutorial/` bucket because [`DEVGUIDE.md`](../dev/DEVGUIDE.md) already serves that role and splitting `docs/dev/` by Diátaxis type would force users to know which bucket they want before they can navigate. The cost of strict purity is higher than the value at JellyRock's current scale.
+It is not strict Diátaxis. There is no tutorial folder, because `DEVGUIDE.md` already plays that role. Splitting `docs/dev/` by type would make a reader pick a folder before they can find anything, which costs more than purity is worth at this size.
 
 ### 2. Five surfaces for project state
 
-| File | Job | Decay rate | Update via |
+| File | Job | Goes stale in | Written by |
 |---|---|---|---|
-| [`docs/progress.md`](../progress.md) | Live state cursor — currently running, recently shipped, open followups | Hours / days | `/log followup` (auto-bumps), `/done` (auto-prepends shipped on `main`; on a branch `journal-sync` writes it post-merge) |
-| [`docs/adr/`](../adr/README.md) | Numbered, immutable Architecture Decision Records — architectural / hard-to-reverse / cross-component decisions (Context / Decision / Consequences / Status) | Never — the body is superseded, not edited; the supersede ritual flips the predecessor's `**Status:**` | `/log decision` (ADR-grade) |
-| [`docs/decisions.md`](../decisions.md) | Append-only **sub-ADR notes** — narrow / single-component / implementation-level decisions below the ADR bar | Never for note *prose* that is still TRUE; the supersede ritual is the sanctioned field edit to an older note, and `/log decision --revise=<slug>` is the sanctioned prose edit for a note whose prose is wrong about what shipped | `/log decision` (sub-threshold) |
-| [`docs/signals-backlog.md`](../signals-backlog.md) | External version-watching (Jellyfin, Roku OS, BrighterScript, deps) — slow-decay, one row per upstream | Slow | `/log signal`, `/done <slug>` |
-| [`docs/architecture/tech-debt.md`](tech-debt.md) | Internal refactor candidates (severity-classified, slug-based) | Slow | [`/tech-debt-scan`](../../.claude/skills/tech-debt-scan/SKILL.md) (handles both add + remove) |
+| [`docs/progress.md`](../progress.md) | The live cursor: currently running, recently shipped, open followups | Hours to days | `/log followup` and `/log running`; `/done`, which adds a Recently shipped line on `main` (on a branch, `journal-sync` writes it after the merge) |
+| [`docs/adr/`](../adr/README.md) | Numbered architecture decision records for choices that are architectural, hard to reverse or cross-component | Never. A record is superseded, not edited: the supersede updates the older record's `**Status:**` line. | `/log decision` (ADR grade) |
+| [`docs/decisions.md`](../decisions.md) | Append-only notes for narrow, single-component decisions below the ADR bar | Never while the note is true. A supersede is the one field edit to an older note; `/log decision --revise=<slug>` corrects a note whose text is wrong about what shipped. | `/log decision` (below the bar) |
+| [`docs/signals-backlog.md`](../signals-backlog.md) | Upstream version watching (Jellyfin, Roku OS, BrighterScript, dependencies), one row per upstream | Slowly | `/log signal`, `/done <slug>` |
+| [`docs/architecture/tech-debt.md`](tech-debt.md) | Internal refactor candidates, each with a slug and a severity | Slowly | [`/tech-debt-scan`](../../.claude/skills/tech-debt-scan/SKILL.md), which adds and removes entries |
 
-Each file has **one job**. When a file does multiple jobs, every update prompts "what else needs updating?" and the friction kills the cadence. One job per file = bounded update friction.
+Each file has one job. A file with several jobs makes every update raise "what else needs changing?", and that friction kills the habit of updating it.
 
-ADR pattern follows Michael Nygard's [original 2011 essay](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions). Backlog patterns are GTD-flavored ([Getting Things Done](https://gettingthingsdone.com), David Allen) — append-only queues with status enums and named blockers.
+The ADRs follow Michael Nygard's [2011 essay](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions). The backlogs borrow from [Getting Things Done](https://gettingthingsdone.com) (David Allen): queues with a status per entry and a named blocker.
 
-GitHub issues remain JellyRock's primary backlog for issue-shaped work (bugs, features, public-facing requests). The four journals hold work that's *not* yet issue-shaped: ADRs, deferred internal followups, external watch state, and slow-decay debt.
+GitHub issues stay the backlog for issue-shaped work: bugs, features and public requests. The journals hold what is not issue-shaped yet: decisions, deferred internal work, upstream watching and debt.
 
-### 3. Skills for the daily ritual
+### 3. Skills for the daily work
 
-The central principle: **rules without skills drift**, because every rule that requires "remember to update X file at Y moment" eventually fails. Four skills cover the journal ritual:
+Rules without skills drift. A rule that says "remember to update file X at moment Y" fails sooner or later, so each such moment has a skill:
 
 | Skill | When | What it does |
 |---|---|---|
-| [`/catchup`](../../.claude/skills/catchup/SKILL.md) | Start of session, after multi-day gap, "what's the state of the world?" | Runs the shared state reader (git, the followup journal, projects), which runs the [`scripts/catchup-state.js`](../../scripts/catchup-state.js) aggregator (GitHub, signals, decisions, tech debt) from `catchup.conf` and ranks both readers' banners in one list: a stale journal, stale signal rows, failing CI, etc. |
-| [`/focus`](../../.claude/skills/focus/SKILL.md) | Same moments as `/catchup`, but when multiple things look actionable and you want help picking | Same readers; ranks what is actionable by a fixed order, recommends one next move with the rule that picked it and 1–3 alternatives, and prints the one command to take it (`/resume-project`, `/issue-triage`, `/ci-triage`, `/done`, `/log`, …); an ad-hoc fix becomes a saved plan a Sonnet sub-agent runs. Opus (judgment-heavy) |
-| [`/log <type>`](../../.claude/skills/log/SKILL.md) | Any new entry: `decision`, `followup`, `signal`, `running` — plus `decision --revise=<slug>` to correct one note in place | Routes to the right journal with templated format; a followup is a `####` entry with a permanent `fid`, written by `.claude/skills/log/journal.sh`, which also bumps `last-updated:`. Mechanical types (`followup` / `signal` / `running`) apply directly — the corrective loop for systematic wrongness is auditing the skill's runs, not a prompt every session; only `decision` diff-and-confirms, because there the gate is a significance + routing *judgment*. `decision --revise=<slug>` is a narrow non-append write: a note whose prose is wrong about what shipped cannot be fixed by a supersede, because superseding asserts a decision that never happened and leaves the false text as the first thing a reader hits. It corrects the record and must not touch `status` or add a pointer — nothing about the decision's standing changed. Changing your mind is still a supersede. |
-| [`/done <slug>`](../../.claude/skills/done/SKILL.md) | Any work landing: followup completed, signal resolved, cursor manually closed | A followup by its `fid`: `journal.sh close` removes the entry, and on `main` a line goes to "Recently shipped"; for signals: flips status → `completed`; bumps `last-updated:`. The `running` cursor close-loop normally fires automatically via [`journal-sync.yml`](../../.github/workflows/journal-sync.yml); manual `/done running` is the bypass path. |
-| [`/pr`](../../.claude/skills/pr/SKILL.md) | Ship moment — opening a PR | Bundles the four-pillar judgment passes (tech-debt scan, decision-shape detect, followup capture from PR body) so journal hygiene lands in the same change set as the code |
+| [`/catchup`](../../.claude/skills/catchup/SKILL.md) | The start of a session, after a gap of days, or "what is the state of things?" | Runs the shared state reader (git, the followup journal, projects). That reader runs [`scripts/catchup-state.js`](../../scripts/catchup-state.js), named in `catchup.conf`, for GitHub, signals, decisions and tech debt. It ranks both readers' warnings in one list: a stale journal, stale signal rows, failing CI. |
+| [`/focus`](../../.claude/skills/focus/SKILL.md) | The same moments, when several things look actionable and you want one picked | Uses the same readers and ranks what is actionable by a fixed order. It recommends one next move with the rule that picked it and one to three alternatives, then prints the one command to take it. An ad-hoc fix becomes a saved plan that a Sonnet sub-agent runs. Pinned to Opus, since picking is judgment. |
+| [`/log <type>`](../../.claude/skills/log/SKILL.md) | Any new entry: `decision`, `followup`, `signal` or `running` | Writes the entry to the right journal in its template. A followup is a `####` entry with a permanent id (`fid`), written by `.claude/skills/log/journal.sh`, which also bumps `last-updated:`. The mechanical types apply directly. Only `decision` shows a diff and asks first, because routing a decision is a judgment. |
+| [`/done <slug>`](../../.claude/skills/done/SKILL.md) | Work landed: a followup finished, a signal handled, the cursor closed by hand | Proves the work landed, then closes the entry with no confirm step. A followup goes through `journal.sh close`, which removes it. A signal flips to `completed`, except the three auto-managed rows, which record the acknowledged version and go back to `watching`. The `running` cursor normally closes itself through [`journal-sync.yml`](../../.github/workflows/journal-sync.yml); `/done running` is the manual path. |
+| [`/pr`](../../.claude/skills/pr/SKILL.md) | Opening a PR | Runs the three judgment passes (tech-debt scan, decision-shape check, followup capture) so journal updates land in the same change set as the code. |
 
-Plus area-scoped variant [`/ramp <area>`](../../.claude/skills/ramp/SKILL.md) which uses the same aggregator with `--area=<name>` and adds area-specific reads (scoped CLAUDE.md, matching architecture doc, the area's recent commits). Plus [`/tech-debt-scan`](../../.claude/skills/tech-debt-scan/SKILL.md) which handles the tech-debt journal independently and is invoked by `/pr` as part of the ship ritual.
+`/log decision --revise=<slug>` exists because a supersede cannot fix a note whose text was wrong from the start. A supersede asserts a decision that never happened and leaves the false text as the first thing a reader sees. A revise corrects the record and leaves `status` alone, since the decision's standing did not change. Changing your mind is still a supersede.
 
-The full skill index is at [`.claude/skills/README.md`](../../.claude/skills/README.md). Skill authoring conventions are in [`.claude/skills/CLAUDE.md`](../../.claude/skills/CLAUDE.md).
+[`/ramp <area>`](../../.claude/skills/ramp/SKILL.md) is the area-scoped variant: it runs the same aggregator with `--area=<name>` and adds the area's scoped `CLAUDE.md`, architecture doc and recent commits. `/pr` starts `/tech-debt-scan` as part of shipping.
 
-### 4. Enforcement (so rules don't depend on memory)
+The full index is [`.claude/skills/README.md`](../../.claude/skills/README.md), and authoring conventions are in [`.claude/skills/CLAUDE.md`](../../.claude/skills/CLAUDE.md).
 
-Six layers, fastest feedback first:
+### 4. Enforcement, so rules don't depend on memory
 
-- **Session-start (`SessionStart` hook)**: [`session-start-nudge.sh`](../../.claude/hooks/session-start-nudge.sh) (calls [`scripts/lint/session-start-nudge.cjs`](../../scripts/lint/session-start-nudge.cjs)) prints a single advisory line at session start when local state is actionable (pending handoffs, stale `progress.md`, schema-broken journals); silent on clean state. Local-only — no network calls so it stays cheap and offline-tolerant. Surfaces the catchup-discipline rule at the one moment it applies.
-- **Edit-time (Stop hook)**: three sibling hooks fire at end-of-turn — [`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) (architecture-doc **and dev guide** reminder), [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) (file-scoped lint surface), and [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh) (stale `progress.md` + Currently-running cursor that overlaps with shipped commits). All three are advisory; never block.
-- **Pre-push (husky)**: [`.husky/pre-push`](../../.husky/pre-push) runs the full validate / lint suite scoped to the push range PLUS two advisory nudges — [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (decision-shape commits without a `docs/adr/` or `decisions.md` change) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (same checks as the Stop hook). Check steps abort the push; nudges never do.
-- **PR-time (GitHub Action)**: [`journal-sync-precheck.yml`](../../.github/workflows/journal-sync-precheck.yml) runs two checks on `opened`/`edited`/`synchronize` — it spell-checks the candidate `progress.md` bullet the PR title will become, and [`pr-body-check.js`](../../scripts/lint/pr-body-check.js) FAILs a PR whose title has no known type, whose description is still an unfilled template, or that writes another repo's issue as the shorthand `repo#N`, which GitHub leaves unlinked (a bare `#N` always links to this repo, so it can't be judged from text; `/pr` resolves those with `--list-refs` before posting). Both exist because the repo merges **squash-only**, with the PR title as the commit's first line and `squash_merge_commit_message=PR_BODY`: the title's type is what places the change in `CHANGELOG.md` (the types are defined once in [`scripts/lib/pr-title.js`](../../scripts/lib/pr-title.js), which `changelog-syncer.js` reads too), and the description is the permanent commit message, so a blank section lands in `git log` forever. The spell-check and the description check skip on the predicate `journal-sync` uses (bot authors, `dependencies` / `documentation` labels); the title check skips only bot PRs and generated release branches, because a `documentation` PR's title still reaches the changelog. The job (`precheck`) is a required status check on `main`. `edited` is the load-bearing trigger: a title or body fixed in the GitHub UI re-runs the gate with no new push.
-- **Post-merge (GitHub Action)**: [`journal-sync.yml`](../../.github/workflows/journal-sync.yml) fires on PR merge to main and runs [`scripts/journal-sync.js`](../../scripts/journal-sync.js) — the *mechanical* close-loop side. Prepends a Recently shipped bullet, conditionally clears the Currently-running cursor (token-overlap heuristic), bumps `last-updated:`. Skips on `dependencies` / `documentation` / `ci` / `automated` labels and Renovate/Dependabot/bot authors. This layer is what turns the four-pillar pattern from "remember to invoke `/done running`" into automatic — judgment-bearing entries (decisions, tech-debt, followups) still flow through `/pr` → `/log`.
-- **CI**: [`.github/workflows/lint-docs.yml`](../../.github/workflows/_lint-docs.yml) re-runs [`docs-check.cjs`](../../scripts/lint/docs-check.cjs) (broken refs + `progress-frontmatter` *structural* check + `signals-schema-invalid`) and [`docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs) (architecture-doc territory gate). Hard pressure at PR time. **`progress.md` temporal staleness is intentionally NOT gated here** — it's a property of `main`, not of the PR under review, so it moved to the weekly tracker below (the old blocking `progress-stale` gate false-failed unrelated dependency/docs PRs).
-- **Weekly (GitHub Action)**: [`docs-stale-tracker.yml`](../../.github/workflows/docs-stale-tracker.yml) runs Mondays on `main` and maintains a single `docs:stale`-labeled issue for `docs/progress.md` cursor freshness (>7 days + non-maintenance commits since, via [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) `--json` — the same computation the local nudges use). Non-blocking backstop for "nobody's touched the cursor in a while"; the active developer already gets it at edit/pre-push time. It does **not** track architecture/dev-doc `last-reviewed` freshness: that is contextual only (the Stop hook above + the 120-day PR gate), because a calendar-driven backlog asks for a cold re-read with no triggering work. `npm run docs:stale` reports the cadence on demand.
+Seven layers, fastest feedback first:
 
-Specifically for the journal layer:
+| Layer | What runs | What it does |
+|---|---|---|
+| Session start | [`session-start-nudge.sh`](../../.claude/hooks/session-start-nudge.sh), a `SessionStart` hook calling [`session-start-nudge.cjs`](../../scripts/lint/session-start-nudge.cjs) | Prints one advisory line when local state needs action (pending handoffs, a stale `progress.md`, a broken journal schema). Silent on clean state. It makes no network calls, so it stays cheap and works offline. |
+| End of turn | Three `Stop` hooks: [`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh), [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh), [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh) | Name the architecture docs and dev guides that claim a touched file, the lint that covers it, and a stale `progress.md` or a Currently running cursor that shipped commits overlap. All advisory. |
+| Pre-push | [`.husky/pre-push`](../../.husky/pre-push) | Runs validation and lint scoped to the push range, plus two nudges: [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (a decision-shaped commit with no `docs/adr/` or `decisions.md` change) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (the same check as the `Stop` hook). Checks abort the push; nudges never do. |
+| PR | [`journal-sync-precheck.yml`](../../.github/workflows/journal-sync-precheck.yml), job `precheck`, a required check on `main` | Spell-checks the Recently shipped line the PR title will become, and runs [`pr-body-check.js`](../../scripts/lint/pr-body-check.js). See below. |
+| Post-merge | [`journal-sync.yml`](../../.github/workflows/journal-sync.yml) running [`journal-sync.js`](../../scripts/journal-sync.js) | The mechanical close: adds a Recently shipped line, clears the Currently running cursor when at least two of its words appear in the PR title, bumps `last-updated:` and prunes Recently shipped lines older than 14 days. |
+| CI | [`lint-docs.yml`](../../.github/workflows/lint-docs.yml), which calls [`_lint-docs.yml`](../../.github/workflows/_lint-docs.yml) | The journal and doc gates. See below. |
+| Weekly | [`docs-stale-tracker.yml`](../../.github/workflows/docs-stale-tracker.yml), Mondays on `main` | Keeps one `docs:stale` issue open while the `progress.md` cursor is more than 7 days old with non-maintenance commits since, from `progress-cursor-nudge.cjs --json`, the same computation as the local nudges. |
 
-- `progress.md` staleness gate — `docs-check.cjs` FAILs when `last-updated` is >7 days old AND there are commits since (the territory-touched logic is implicit: any commit means the cursor moved). The post-merge auto-sync layer is what keeps this gate quiet — without it, `last-updated:` only moves when the user remembers to invoke `/log` or `/done`.
-- `signals-backlog.md` schema validator — `docs-check.cjs` FAILs on missing required bullets, invalid `status` enum, malformed `last_checked` ISO date, or non-positive `staleness_days`.
-- `docs/adr/` and `decisions.md` don't get a staleness gate (immutable / append-only — staleness is meaningless), but their body links + tech-debt anchors are validated by `docs-check.cjs`.
-- `decisions.md` supersede-chain validator — `docs-check.cjs` FAILs on a duplicate slug, a field declared twice, an invalid `status` enum, a pointer that doesn't resolve within the file, an asymmetric full **or** partial supersede pair, a `superseded` note naming no successor, a `withdrawn` note used at either end of a supersede, or a self-pointer. The ritual is a multi-part hand edit, so a half-applied one would otherwise leave the chain quietly lying. The ADR tier expresses the same relationship as prose and is deliberately **not** machine-checked.
+**The PR check exists because the repo merges squash-only.** The PR title becomes the commit's first line and the description becomes its body. The title's type places the change in `CHANGELOG.md`: the types are defined once in [`scripts/lib/pr-title.js`](../../scripts/lib/pr-title.js), which `changelog-syncer.js` reads too. So `pr-body-check.js` fails a title with no known type, a description that is still the unfilled template, and a `repo#N` reference to another repo, which GitHub leaves unlinked. A bare `#N` always links to this repo, so text alone can't judge it; `/pr` resolves those with `--list-refs` before posting. The workflow runs on `opened`, `edited`, `synchronize` and `reopened`. `edited` matters most: a title or description fixed in the GitHub UI re-runs the check with no new push.
+
+The spell-check and description check skip the PRs `journal-sync` skips (`shouldSkip()` in `journal-sync.js`): bot authors, the `dependencies`, `documentation`, `docs-only`, `ci`, `automated` and `chore-only` labels, and dependency-bump, Weblate translation and `chore(agents):` titles. The title check skips only bot PRs and release branches, because a `documentation` PR's title still reaches the changelog.
+
+**The CI layer** runs, in order:
+
+- `journal.sh check`, the followup format in `progress.md`.
+- [`docs-check.cjs`](../../scripts/lint/docs-check.cjs), the doc reference and journal schema checks listed below.
+- `doc-citation-ratchet.js`, the line-number and house-voice ratchet ([writing style](../dev/writing-style.md#what-the-gate-checks)).
+- The check that the generated `docs/dev/` table in the [topic map](README.md) matches the folder.
+- [`docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs), which fails a PR that touches a stale architecture doc's territory without updating the doc.
+- Two workflow-consistency checks: the dependency workflow sync and the check that CI runs every `npm run lint` member.
+
+**`progress.md` staleness is not a PR gate.** How old its date is says something about `main`, not about the PR under review, so a gate on it failed unrelated dependency and docs PRs. The weekly tracker carries it instead. `docs-check.cjs` checks only that `last-updated:` is present and well formed.
+
+**Doc freshness is contextual.** The `Stop` hook and the 120-day PR gate fire when you touch a doc's territory, which is when re-reading it is cheap. There is no calendar backlog of old docs, since that asks for a cold re-read with no work behind it. `npm run docs:stale` lists the review cadence on demand. [ADR 0033](../adr/0033-contextual-doc-freshness.md) records the decision.
+
+`docs-check.cjs` checks the journals like this:
+
+- **`signals-backlog.md`:** every row has its required bullets, a valid `status`, an ISO `last_checked` date and a positive `staleness_days`.
+- **`docs/adr/` and `decisions.md`:** links and tech-debt anchors resolve. No staleness check, since both are immutable or append-only.
+- **The `decisions.md` supersede chain:** it fails on a duplicate slug, a missing or repeated field, an invalid `status`, a pointer that does not resolve in the file, a one-sided full or partial supersede pair, a full supersede whose target is not `superseded`, a `partially-*` value without its scope, a `superseded` note naming no successor, a `withdrawn` note at either end of a supersede, or a note pointing at itself. A supersede is a hand edit in several places, and a half-applied one would leave the chain wrong without anyone noticing. ADRs state the same relationship in prose, which nothing checks.
 
 ## The principles
 
-Distilled from the source-project's audit + reshape that preceded JellyRock's adoption:
+**Shape:**
 
-**Architecture (the shape):**
+- **One job per file.** A file with several jobs gathers update friction and goes stale.
+- **Group by how fast things go stale.** A fast-changing section in a slow file doesn't get updated, and a slow section in a fast file gets overwritten by accident.
+- **One source of truth per fact.** A copy drifts.
+- **Journals move forward.** History is append-only, with a supersede link instead of an edit. A supersede is for a decision that changed. A record that was wrong from the start gets `/log decision --revise`, because moving forward protects history, not misinformation.
 
-- **One job per file** — multi-job files accumulate update-friction and silently rot.
-- **Group by decay rate** — fast-decay sections in slow-decay files don't get updated; slow-decay in fast-decay get accidentally rewritten.
-- **Single source of truth per concept** — duplication = drift.
-- **Forward-only journals** — append-only history with `superseded by` linkage; don't retro-edit the prose. The supersede ritual is the sanctioned exception for a decision that CHANGED, and it's machine-checked precisely because a half-applied edit is worse than none. A record that was wrong about reality from the start is a different case and gets `/log decision --revise` — forward-only protects history, not misinformation.
+**Use:**
 
-**UX (how you interact):**
+- **One way in for capture** (`/log`) and **one for state** (`/catchup`).
+- **Capture and closing are different moments:** `/log` for new entries, `/done` for existing ones.
+- **Retrieval leans to action:** `/catchup` names what can ship today and flags drift, not only the current state.
 
-- **Single capture entry point** (`/log`) — one ritual routes any kind of write.
-- **Single retrieval entry point** (`/catchup`) — one ritual surfaces all state.
-- **Capture and completion are different moments** — `/log` for new, `/done` for closing existing.
-- **Action bias on retrieval** — `/catchup` surfaces ship-today candidates and banners drift, not just current state.
+**Enforcement:**
 
-**Enforcement (what makes it stick):**
+- **Automation closes loops; rules that need memory drift.**
+- **Friction at the cause, not the symptom:** a pre-push nudge on a decision-shaped commit, not a quarterly cleanup.
+- **Drift shows at retrieval,** as warnings, not as sentences buried in a file.
+- **Confirmation goes where the judgment is.** `/log decision` shows a diff and waits, because whether and where to record a decision is a judgment. Mechanical captures and proven closures apply directly. When they go wrong, the fix is auditing the skill's runs, not a prompt in every session.
+- **Two scripts write journals outside the skills, both mechanically.** `journal-sync.yml` writes the post-merge close to `progress.md` from merged-PR data. `catchup-state.js` writes `last_checked` and `latest_upstream` on the three auto-managed signal rows from the upstream versions it fetches. Neither makes a judgment, so neither carries the risk of an invented entry.
 
-- **Automation closes loops; memory-dependent rules drift** — every rule the source-project's audit found broken was memory-dependent.
-- **Friction at the cause-point, not the symptom** — pre-push nudge for decision-shaped commits, not a quarterly cleanup.
-- **Drift surfaces visibly at retrieval** — banners, not buried sentences.
-- **Agent tools NEVER auto-apply captures; CI mechanical sync is the sole exception** — `/log` and `/done` always surface a diff and wait. The journals are load-bearing project state, and a hallucinated entry written without confirmation is silent corruption. The post-merge [`journal-sync.yml`](../../.github/workflows/journal-sync.yml) workflow is the only non-skill writer to `progress.md` — it performs only the mechanical close-loop (deterministic, not judgment-bearing) using merged-PR metadata as input. The "no agent text-corruption" risk that motivated the diff-and-wait rule doesn't apply to deterministic CI on stable input.
+**Iteration:**
 
-**Meta (the iteration discipline):**
+- **Build less first:** fewer files, sharper roles.
+- **Don't defer enforcement.** Deferred things get forgotten, which is the drift this system exists to stop.
+- **Sub-agents capture through their parent.** A sub-agent surfaces an entry for the parent to write with `/log`. The one exception is a `/sonnet` sub-agent its parent supervises, which carries out the journal writes its saved plan names.
 
-- **Build less first** — fewer files, sharper roles.
-- **Don't defer enforcement** — the pattern that caused drift is "deferred things get forgotten."
-- **Sub-agent capture rule** — delegated work has the same capture discipline; sub-agents NEVER write to journals directly, always surface for the parent to invoke `/log`.
+## Lineage
 
-## Lineage — what we borrow from
+None of this is new. It combines established patterns with an emerging layer for working with agents:
 
-This system isn't novel; it's a hybrid of established patterns plus an emerging agent-collaborative layer:
+- **ADRs** for decisions: Michael Nygard, 2011 ([essay](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)).
+- **Diátaxis** for static knowledge: Daniele Procida ([diataxis.fr](https://diataxis.fr)).
+- **Docs as code** for the lint, CI and versioning.
+- **GTD and personal knowledge management** for queues and next actions: David Allen's [Getting Things Done](https://gettingthingsdone.com), Tiago Forte's [Building a Second Brain (PARA)](https://www.buildingasecondbrain.com), Niklas Luhmann's Zettelkasten.
+- **Project memory for agents:** `CLAUDE.md`, `AGENTS.md`, Cursor rules and skills as encoded workflows. It has no settled name yet.
 
-- **ADRs** for the decisions log — Michael Nygard, 2011 ([essay](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions))
-- **Diátaxis** for the static-knowledge IA — Daniele Procida ([diataxis.fr](https://diataxis.fr))
-- **Docs-as-code** for the lint + CI + versioning discipline — broad GitOps-adjacent movement
-- **GTD / PKM** for the backlog / queue / "next action" patterns — David Allen's [Getting Things Done](https://gettingthingsdone.com), Tiago Forte's [Building a Second Brain (PARA)](https://www.buildingasecondbrain.com), Niklas Luhmann's Zettelkasten
-- **Agent-collaborative project memory** — emerging convention; `CLAUDE.md` / `AGENTS.md` / Cursor rules / skills as encoded workflows. No canonical name yet.
+In one phrase: an agent-collaborative engineering journal with ADRs, Diátaxis and skill-driven capture and closing.
 
-If forced to label the union in one phrase: **"agent-collaborative engineering journal with ADR + Diátaxis + skill-driven capture/completion."** The shorter shape: **"four-journal + skill-driven workflow."**
+## Who it is tuned for
 
-## Audience tuning
+The system is tuned for one developer and their AI agents. The dense terms, the large `CLAUDE.md` tree and the missing tutorial folder would be wrong for a project with many active contributors. They are right here because the audience is one person and their agents.
 
-This shape is optimized for **one developer + AI agents** (the maintainer + Claude Code + sub-agents). The compressed jargon, the heavy CLAUDE.md tree, the lack of a strict tutorial bucket — all of these would be wrong for an open-source project with multiple active contributors. They're right here because the audience is one human and their AI collaborators, not a public team.
+JellyRock is public, but few outside contributors arrive today. If more do, add an onboarding layer on top and keep the internals: a friendlier [`CONTRIBUTING.md`](../../CONTRIBUTING.md), and a tutorial that takes a newcomer from `git clone` to a first build and a first PR. The public changelog already exists: `CHANGELOG.md` is generated from PR titles ([changelog](../admin/changelog.md)).
 
-JellyRock IS public OSS, but the contributor flow is currently low. If outside-contributor pressure shows up, the right move is **add an onboarding surface on top, don't replace the internals**: a more contributor-friendly `CONTRIBUTING.md`, at least one strict-tutorial walkthrough taking a stranger from `git clone` → first successful build → first PR, and possibly a public-facing `CHANGELOG.md` distinct from the internal "Recently shipped" prose. Internals stay solo+AI optimized.
+## Why this doc is in `architecture/`
 
-## Why this doc lives in `architecture/`
+`docs/architecture/` holds explanation: the why and shape of subsystems. The journal system is a subsystem that happens to work on prose files instead of BrightScript. Living here gives it the same freshness checks as every other architecture doc.
 
-`docs/architecture/` is for *explanation* (Diátaxis terminology) — the why and shape of subsystems. The dev-process journal system IS a subsystem; it just happens to operate on prose files instead of BrightScript. Living here means it gets the same `last-reviewed` freshness gate as other architecture docs.
+## When to update this doc
 
-## When this doc is wrong
-
-When the system shape changes, this doc changes in the same commit. Specifically: adding / retiring a journal, reshaping the skill triplet, adding / removing a load-bearing pillar, or changing the lineage citations. Tactical edits (adding a workflow-specific skill, tightening a lint check) don't require updating here — the per-skill READMEs and root [`CLAUDE.md`](../../CLAUDE.md) cover those.
-
-`last-reviewed` frontmatter triggers `npm run docs:stale` WARN at 90 days and the CI-blocking gate at 120 days when this file's territory is touched.
+Change this doc in the same commit as a change to the system's shape: adding or retiring a journal surface, changing the core skills, adding or removing a pillar or an enforcement layer, or changing the lineage. A tactical change (a workflow-specific skill, a tighter lint check) does not need it; the skill's own docs and the root [`CLAUDE.md`](../../CLAUDE.md) cover those.

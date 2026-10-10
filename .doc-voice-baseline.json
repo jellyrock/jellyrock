@@ -1341,12 +1341,6 @@
     "latin-abbrev": 7,
     "prose-arrow": 33
   },
-  "docs/architecture/system-shape.md": {
-    "caps-emphasis": 3,
-    "em-dash": 51,
-    "filler": 8,
-    "prose-arrow": 4
-  },
   "docs/architecture/tech-debt.md": {
     "caps-emphasis": 25,
     "em-dash": 421,
