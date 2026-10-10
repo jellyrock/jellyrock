@@ -1337,12 +1337,6 @@
   "docs/architecture/testing.md": {
     "filler": 1
   },
-  "docs/architecture/user-journey.md": {
-    "em-dash": 70,
-    "filler": 2,
-    "latin-abbrev": 1,
-    "prose-arrow": 40
-  },
   "docs/decisions.md": {
     "caps-emphasis": 19,
     "em-dash": 500,

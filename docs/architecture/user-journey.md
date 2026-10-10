@@ -9,322 +9,269 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-10-02
+last-reviewed: 2026-10-10
 ---
 
-# The User Journey
+# The user journey
 
-The spine of the app: app launch → server pick → user pick → auth → home → library browse → item detail → press Play → video player. This is the path users take 95% of the time and the path most code lives along.
+The main path through the app: launch, pick a server, pick a user, sign in, Home, a library, an item's details, Play, the video player. Most of the code lives along it, and this doc traces what runs at each step and what state changes.
 
-As of #550 every screen on this path — pre-login *and* post-login — is a router view in `JRScene`'s outlet. Navigation goes through `sgrouter.navigateTo` / `goBack`, not a `SceneManager` stack. See `navigation.md` for the router model and `bootstrap.md` for the unified event loop.
+Every screen on the path, before and after sign-in, is a route in `JRScene`'s outlet (#550). Navigation goes through `sgrouter.navigateTo` and `goBack`. [`navigation.md`](navigation.md) covers the router, and [`bootstrap.md`](bootstrap.md) covers start-up and the event loop.
 
 ## At a glance
 
-```text
-1. App launch         ← Roku invokes Main(args) in source/main.bs
-2. reenterLogin()     ← source/loginRouter.bs coordinates the routed pre-login flow
-   ├── /server  → SetServerScreen   (if no saved/valid server)
-   ├── /users   → UserSelect        (public + saved users)
-   └── /login   → LoginScene        (token / no-password / password / Quick Connect)
-3. finishLogin()      ← per-user font bootstrap → loadHomeScreen()
-4. createAndShowHomeGroup() → replayAfterLogin() navigates "/" (Home); clearStackOnResolve
-                              drops the pre-login views
-5. Browse             ← Home → /library/:id (BaseGridView) → /details/:type/:id (ItemDetails)
-6. Play press         ← ItemDetails clears + populates the queue, then navigates /details/:type/:id/play
-7. PlayerHostView     ← routed host mounts VideoPlayerView for the current queue item
-8. Playback           ← Roku Video node, with OSD/trickplay/notification overlays
-```
+| Step | What runs | Where |
+|---|---|---|
+| 1. Launch | `Main(args)`: global setup, then `reenterLogin()` | `source/main.bs` ([`bootstrap.md`](bootstrap.md#entry-point)) |
+| 2. Sign-in | `beginLogin()` tries the saved server and token; otherwise `/server`, `/users` or `/login` | `source/loginRouter.bs` |
+| 3. Bring up Home | `finishLogin()`, then `loadHomeScreen()`, then `replayAfterLogin()` | `loginRouter.bs`, `main.bs`, `replayRoute.bs` |
+| 4. Home | Rows of items; a pick navigates, a Play press starts playback | `components/home/Home.bs` |
+| 5. Library | `/library/:id`, one grid for every library type | `components/ItemGrid/BaseGridView.bs` |
+| 6. Details | `/details/:type/:id`, buttons, track menus and extras | `components/ItemDetails.bs` |
+| 7. Start playback | The queue is built, then a launch request is set | `components/manager/QueueManager.bs` |
+| 8. Player | `/details/:type/:id/play` mounts the video player | `components/video/PlayerHostView.bs` |
 
-Each step below traces what code runs and what state changes.
+## Sign-in
 
-## 1. App launch
+`loginRouter.bs` coordinates sign-in from the main thread. The three sign-in screens (`SetServerScreen`, `UserSelect`, `LoginScene`) are routed views that own their UI. Each reports what the user asked for by setting `m.scene.preLoginIntent` to an action name, with the details on its own `m.top` fields. `Main()` observes `preLoginIntent`, and `handlePreLoginIntent()` runs the sign-in API calls (synchronous calls are allowed on the main thread) and picks the next route.
 
-`Main(args)` in `source/main.bs` runs the bootstrap sequence (see `bootstrap.md`):
+`reenterLogin()` is the entry point, at cold start and on every sign-out or change of user. It loads the sign-in locale, then `beginLogin()` tries the saved server and saved token with no UI and returns a decision. `enterDecision()` acts on it:
 
-- `setGlobals()` → typed nodes, translations, migrations, constants
-- `m.screen.show()` → root scene visible
-- `setGlobalNodes()` → `sceneManager`, `AuthManager`, `activeRoutedView` + launch-request fields, `queueManager`, `audioPlayer`, API pool
+| Decision | Next |
+|---|---|
+| `success` | `finishLogin()`: already signed in |
+| `server` | `/server` |
+| `users` | `/users`, with the user list |
+| `login` | `/login`, with the username filled in |
 
-At this point the user sees the `JRScene` backdrop (initially blank) and the `loadingText` "Loading…" centered. The overhang is hidden because no routed view has been mounted yet.
+`routerNav()` asks the scene to navigate (`routerNavigate` through `callFunc`), since the `sgrouter` namespace resolves only on the render thread.
 
-## 2. The routed pre-login flow — `source/loginRouter.bs`
+### What each screen asks for
 
-The old `LoginFlow()` `goto-label` state machine in `showScenes.bs` (three blocking `wait()` loops) is replaced by `loginRouter.bs`, a **main-thread coordinator**. The pre-login screens (`SetServerScreen` / `UserSelect` / `LoginScene`) are self-contained **routed views**: they own their UI and emit a high-level INTENT (`m.scene.preLoginIntent = "<action>"` with the payload on their own `m.top` fields). `main.bs` observes `preLoginIntent` on the main thread and dispatches to `handlePreLoginIntent`, which runs the (synchronous, main-thread-permitted) bootstrap API calls and drives the next navigation.
+| Screen | Action | Handler, and what it does |
+|---|---|---|
+| `/server` (`SetServerScreen`) | `serverSubmitted` | `onServerSubmitted()` connects to `enteredUrl`, saves the server (`server`, and `saved_servers` through `SaveServerList()`), clears saved credentials when the server changed, then picks the user step |
+| `/users` (`UserSelect`) | `userSelected` | `onUserSelected()` tries the user's saved token, then a sign-in with no password, else opens `/login` with the username |
+| | `manualLogin` | Opens `/login` with no username |
+| | `userBack` | `onUserBack()` forgets the server and opens `/server` |
+| | `quickConnectAuthenticated` | `onQuickConnectAuthenticated()` runs `user.Login` on the session Quick Connect returned, then `finishLogin()` |
+| `/login` (`LoginScene`) | `credentialsSubmitted` | `onCredentialsSubmitted()` gets a token, runs `user.Login`, then `finishLogin()` |
+| | `loginBack` | `onLoginBack()` returns to `/users` when the server has public users, else to `/server` |
 
-`reenterLogin()` is the entry point (called at cold start *and* on every session reset). It re-resolves the pre-login locale, then `beginLogin()` runs the saved-server resolution + saved-token validation **with no interactive UI** and returns a decision. `enterDecision` brings the router up on the right route:
+`SetServerScreen` finds servers on the LAN by SSDP or takes a typed URL. Back from `/server` on a fresh install reaches the router root, which asks whether to exit ([`navigation.md`](navigation.md#the-back-arbiter--exit-confirmation)).
 
-- `{ status: "success" }` → `finishLogin()` (already authenticated — fast path)
-- `{ status: "server" }` → `routerNav("/server")`
-- `{ status: "users", users }` → `routerNav("/users", { users })`
-- `{ status: "login", username }` → `routerNav("/login", { username })`
+`UserSelect` shows public users (`/Users/Public`) merged with the users saved for this server (`buildPublicUserList()`), a **Manual Login** button, and a **Quick Connect** button when the server has it enabled (`m.global.server.isQuickConnectEnabled`).
 
-`routerNav` is a thin bridge: `m.scene.callFunc("routerNavigate", path, context)` (the `sgrouter` namespace resolves on the render thread, which the main loop can't call directly).
+### Quick Connect
 
-### `2a`. Server selection — `/server` (`SetServerScreen`)
+Pressing **Quick Connect** sets no action. Its three steps (start, wait for approval, exchange the secret) are network calls with no navigation between them, so `UserSelect` runs them on the render thread as `fetchAsync` promises, and only the finished session goes to the coordinator. `QuickConnectDialog` only shows the code and a **Cancel** button. `UserSelect` owns the poll timer, the `showConfirmDialog` that asks whether to save credentials, and the teardown.
 
-When `beginLogin` can't connect to a saved server, it navigates `/server`. `SetServerScreen` offers:
+The start request is `GET /QuickConnect/Initiate` on Jellyfin 10.7 and 10.8 and `POST` from 10.9 (`ApiClient.BuildInitiateQuickConnectRequest`). All three requests go through the API pool, so the poll can read `res.statusCode`: a `404` from `/QuickConnect/Connect` means the secret expired or is unknown. That is the only way to tell a dead code from one nobody has approved yet.
 
-- **SSDP discovery** — broadcasts a Jellyfin server lookup on the LAN, populates a list of found servers
-- **Manual URL entry** — text box for entering `http://yourserver:8096`
+### What a sign-in writes
 
-On submit, the view sets `preLoginIntent = "serverSubmitted"` (URL on `view.enteredUrl`); `onServerSubmitted` connects, persists to `server`/`serverList`, resets stale credentials on a server change, then resolves the user step. Back from `/server` at a fresh install bottoms out at the router root → exit confirmation (see `navigation.md`).
+There are four ways in: a saved token (checked with `AboutMe`), an empty password for a public user, a typed password, and Quick Connect. Each ends in `user.Login` (`source/utils/session.bs`), which writes:
 
-### `2b`. User selection — `/users` (`UserSelect`)
+- **On `m.global.user`:** `id`, `name` and `authToken`. The auth guard reads `authToken` before every route after sign-in ([`navigation.md`](navigation.md#the-auth-guard--componentsauthauthmanager)).
+- **In the user's registry section:** `serverId` always; `authToken`, `username` and `primaryImageTag` only when the user chose to save credentials.
+- **In the global registry section:** `active_user`, only when the **Remember Me** setting (`globalRememberMe`) is on. It picks the user at the next launch.
 
-When there's no active user, `buildPublicUserList()` merges public users (`GetPublicUsers` → `/Users/Public`) with saved users for this server id into `PublicUserData` nodes, and navigates `/users`. `UserSelect` is a grid of avatars plus a **Quick Connect** button (gated on `m.global.server.isQuickConnectEnabled`). Components in `components/login/`: `UserSelect`, `UserRow`, `UserItem`.
+`user.Login` builds a fresh settings node, applies the defaults from `settings.json` (`SaveDefaults()`), then applies the user's registry section over them. `m.global.user.config` and `m.global.user.policy` come from the server's user response through `SessionDataTransformer`. The server owns them, and the app never writes them back.
 
-Intents from this view: `userSelected` (→ `onUserSelected`: tries saved token, then no-password login, else navigates `/login` with the username populated), `userBack` (→ delete server, navigate `/server`), `quickConnectAuthenticated` (→ `onQuickConnectAuthenticated`: `user.Login` on the handed-over `AuthenticationResult`, then `finishLogin`).
+## Bringing up Home
 
-**Quick Connect emits no intent when the button is pressed.** Its first three steps — initiate, poll for approval, exchange the secret — are network calls with no navigation between them, so they run on the render thread in `UserSelect` as `fetchAsync` promises, and only the finished session crosses to the coordinator. `QuickConnectDialog` is a pure view on the scene overlay channel: it shows the code and a Cancel button, and `UserSelect` owns the poll timer, the `showConfirmDialog` that asks whether to save credentials, and the teardown.
+`finishLogin()` first checks that `user.Login` left a signed-in session (`user.IsAuthenticated()`). If it did not, it stops the spinner, clears the half-written user, shows a toast and returns to `/users` or `/login`. It never forgets the server here: nobody asked it to. Otherwise it starts the fallback-font download when the user needs one (`initializeFallbackFont()`) and calls `loadHomeScreen()`.
 
-### `2c`. Authentication — `/login` (`LoginScene`)
+`loadHomeScreen()` waits for that download when one is running, then calls `createAndShowHomeGroup()`, which calls `replayAfterLogin()`:
 
-`LoginScene` presents the password keyboard (username populated when arriving from `/users`). On submit it sets `preLoginIntent = "credentialsSubmitted"` (username/password/`saveCredentials` on the view); `onCredentialsSubmitted` calls `getToken` and, on success, `user.Login` + persists per-user credentials (when "save credentials" is checked), then `finishLogin`. `loginBack` returns to `/users` if there were public users, else to `/server`.
+- **A stashed deep link** goes to `JRScene.resolveDeepLink` with `homeFirst`. Home opens first, so it is the bottom of the back stack, and the item opens from there ([`bootstrap.md`](bootstrap.md#deep-links)).
+- **Otherwise** `buildReplayRoutes()` turns the route the auth guard stashed, if any, into a chain for `JRScene.replayRoutedDeepLink`. With nothing stashed the chain is Home alone.
 
-Across all paths, the four auth modes are unchanged: **token** (validate saved `authToken` via `AboutMe`), **no-password** (empty password for public users), **password** (keyboard), and **Quick Connect** (server returns an `AccessToken` for whichever user approved the code; bypasses user-pick + password). The Quick Connect endpoint is version-dispatched: `GET /QuickConnect/Initiate` on Jellyfin 10.7–10.8, `POST` on 10.9+ (routed by `ApiClient.BuildInitiateQuickConnectRequest`). All three Quick Connect requests go through the API pool, so the poll can read `res.statusCode` — a `404` from `/QuickConnect/Connect` is an expired or unknown secret, and is the only thing distinguishing a dead code from one nobody has approved yet.
+The Home route has `clearStackOnResolve`, so opening it drops the sign-in screens from the back stack. Home loads its own rows when it opens.
 
-Successful login writes:
+## Home
 
-- `m.global.user.id`, `name`, `authToken` (in-memory) — and, critically, the `authToken` is what the `AuthManager` `canActivate` guard checks on every post-login route (see `navigation.md`)
-- Per-user registry section keys: `authToken`, `username`, `primaryImageTag`
-- Global registry: `active_user` (the user ID for next launch's auto-resume)
+`components/home/Home.xml` extends `JRScreen`. Its children are a `VoiceTextEditBox` for voice search, `HomeRows` (the rows) and an `OptionsSlider` (the side menu). Its overhang tabs are **Home**, which shows `HomeRows`, and **Favorites**, which shows `FavoritesRows`.
 
-The `m.global.user.settings` node is repopulated by `SessionDataTransformer` reading the per-user registry section + applying `settings.json` defaults for missing keys. `m.global.user.config` and `m.global.user.policy` come from the `/Users/{userId}` API response — server-authoritative, never written back.
+`HomeRows` builds rows for Continue Watching, Next Up, On Now, My Media, Active Recordings and "Recently Added in" each library, in the order the user's home sections set. Each section loads through its own `LoadItemsTask` (started with `replaceTask`), except the "Recently Added in" rows, which `LoadLatestRowsTask` loads together over `apiPipeline`. `HomeRow` is a `ContentNode`: the data for one row, not a view.
 
-## 3. Finish login & bring up Home
+### Picking an item
 
-`finishLogin()` (`loginRouter.bs`) runs the post-login bootstrap and brings up Home:
+Each parent observes the field on its child and handles it. Nothing passes up on its own:
 
-```brightscript
-sub finishLogin()
-  initializeFallbackFont()    ' optional fallback-font download (subs-custom / uiFontFallback)
-  loadHomeScreen()
-end sub
-```
+1. `HomeRows` observes its own `rowItemSelected`. `HomeRows.itemSelected()` sets `selectedItem` to the item, then to `invalid`.
+2. `Home` observes `selectedItem` on the active tab's rows and navigates in `onRowItemSelected()`.
 
-`loadHomeScreen()` → `createAndShowHomeGroup()` (both in `main.bs`), which calls `replayAfterLogin()` (`source/replayRoute.bs`). That reads + clears any stashed deep link and navigates the router via `JRScene.replayRoutedDeepLink`:
+The view navigates because it runs on the render thread, where `sgrouter` resolves. `routeForItem(item)` (`source/utils/misc.bs`) picks the route: a container type (`CollectionFolder`, `UserView`, `Folder`, `Genre`, `Studio` and others) goes to `library`, a `Chapter` returns `invalid` (it is playback, not navigation), and anything else goes to `details`. The view passes the item as route context, so the next screen does not fetch it again.
 
-- no deep link → `["/"]` (plain Home — the navigation that used to be a `pushScene`)
-- a deferred/cold-start play deep link → `["/", details, play]` so back unwinds Player → Details → Home (decision #3)
+A Play press is separate. `HomeRows` sets `quickPlayNode`, `Home.onQuickPlayNode()` copies it onto Home's own `quickPlayNode`, and Home's own observer (`onQuickPlayLaunch`) sends it to the queue manager ([Starting playback](#starting-playback)).
 
-Navigating `/` resolves Home with `clearStackOnResolve: true`, which drops the pre-login views from the router stack so Home becomes the back-stack root — no explicit `clearScenes` step. When UI fallback fonts are enabled, `loadHomeScreen` defers `createAndShowHomeGroup` until `FontDownloadTask` completes (handled in the event loop). Home self-loads its libraries in its own `onViewOpen`.
+## Library grid
 
-## 4. Home screen
+`components/ItemGrid/BaseGridView.bs` is the grid for every library type. A presenter in `source/GridView/` sets what differs by type: the backdrop, the grid's shape, the view, sort and filter options, and how metadata reads. The grid has no ladder of library types.
 
-`components/home/Home.xml/.bs` is the central hub. It extends `JRScreen` and contains:
+The route sets `presenterType` (`loadLibraryFromRoute()`), and `onPresenterTypeChanged()` creates the presenter and calls its `onInit()`:
 
-```xml
-<component name="Home" extends="JRScreen">
-  <children>
-    <VoiceTextEditBox id="homeVoiceBox" />        <!-- voice search trigger -->
-    <HomeRows id="homeRows" />                    <!-- the row-based content -->
-    <OptionsSlider id="options" />                <!-- settings/menu side panel -->
-  </children>
-  <interface>
-    <field id="selectedItem" type="node" alwaysNotify="true" />  <!-- bubbles up library + item picks -->
-    <field id="quickPlayNode" type="node" />                     <!-- bubbles up Play presses -->
-    <field id="voiceQuery" type="string" alwaysNotify="true" />
-    <field id="userMenuAction" type="string" alwaysNotify="true" />
-  </interface>
-</component>
-```
+| `presenterType` | Presenter |
+|---|---|
+| `movie` | `MoviePresenter` |
+| `tvshow` | `TVShowPresenter` |
+| `music` | `MusicPresenter` |
+| `photo` | `PhotoPresenter` |
+| `livetv` | `LiveTVPresenter` |
+| anything else | `GenericPresenter` |
 
-The overhang (which `JRScene`'s overhang controller wires up automatically when the router makes Home the active view) shows: logo, current user, search icon, settings gear, and the library tabs (Movies, Shows, Music, etc.).
+A new library type needs a presenter, not a change to the grid. The same folder holds the grid's paging and query helpers (`gridPaging`, `gridPage`, `gridQuery`).
 
-### Two main tab content components
+Picking an item calls `routeForItem()` and navigates in `BaseGridView.onLibrarySelection()`: details for an item, another `/library/:id` for a nested folder or genre.
 
-- **`HomeRows.xml/.bs`** — default tab. Horizontal-scrolling rows: "Continue Watching", "Next Up", "Latest Movies", "Latest Shows", per-library "Recently Added", etc. Each row is a `HomeRow.xml`.
-- **`FavoritesRows.xml/.bs`** — alternate tab. Rows of items the user has marked as favorites.
+### Covered, then back
 
-Data is fetched by `LoadItemsTask.bs` (`components/home/`), an orchestrator Task that issues several API calls in parallel and assembles the row content.
+Like every route, `/library/:id` uses `suspendMode: "show"`. Opening an item leaves the grid in the outlet, hidden, with its focus, and Back shows it again with the cursor where the user left it. On that return it checks `m.scene.contentVersion` and loads again if an item was deleted meanwhile, so a deleted item does not stay in the grid.
 
-### How "select something" propagates
+Backing out of the library destroys the grid ([ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md)). Opening it again loads from the start, with a spinner and the first tile focused. The view, sort and filter choice survives, because it lives in the registry (`getLibraryDisplaySetting`). A saved view applies only while the presenter still offers it (`gridQuery.resolveView`), since the same library on an older server may not have it. The fallback stays in memory only, so the saved choice comes back when the server offers it again.
 
-When the user clicks a library section header or an individual row item:
+### Loading pages
 
-1. The grid item bubbles up `selectedItem` on its parent row.
-2. The row bubbles `selectedItem` to `HomeRows`.
-3. `HomeRows` bubbles to `Home`.
-4. `Home` observes its **own** `selectedItem` (a self-observer; `Home.bs:onRowItemSelected`) and navigates the router directly — the `main.bs` relay that used to catch this is gone.
+The grid loads the rows near the user, not the whole library. Every loaded item costs memory (on the 512 MB devices), a server query and render-thread time. So `gridPaging` asks for a page only when the loaded rows below the focused row would run out before a page could arrive. It measures how long pages take and how fast the user moves, and at rest it keeps one screen of rows ahead. This replaced loading every page in the background (#444).
 
-The view does the navigation itself because it runs on the render thread, where the `sgrouter` namespace resolves. The route is computed by the pure helper `routeForItem(item)` (in `source/utils/misc.bs`): library/grid container types (`CollectionFolder`, `UserView`, `Folder`, `Genre`, `Studio`, …) map to `{ name: "library", params: { id } }`; everything else maps to `{ name: "details", params: { type, id } }`; `Chapter` returns `invalid` (it's playback, not navigation). The view then calls `sgrouter.navigateTo(route, { context: { item: item } })`, passing the rich node as route context so the destination needn't re-fetch.
+- **The total is counted once,** on the first page. Later pages skip it (`EnableTotalRecordCount=false`), because the count is most of a page's cost on a slow server.
+- **Reaching the last loaded row** while a page is on its way shows a "Loading more…" pill (`ProgressPill`) after a short delay, so a fast page never flashes it.
+- **The "#" letter filter** is two ranges of sort names, before "a" and from "{" on (`gridPage.hashRanges`), paged as one list. With A to Z they hold every item once ([`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md)).
 
-Playback presses are separate: a row's Play button (or a Live TV channel) sets `quickPlayNode`, which the view's own `onQuickPlayLaunch` self-observer forwards to `QueueManager` (see step 6). This is still BS's "bubbling field" pattern (`alwaysNotify="true"` fields rise to each parent until one handles them) — what changed is that the *handler* is now the routed view itself, not `main.bs`.
+### A failed load
 
-## 5. Library browse — `BaseGridView`
+A failed load is not an empty library. `LoadItemsTask2` publishes `status` (`ok` or `failed`) beside its `content` and logs why the query failed; the view never learns the cause.
 
-`components/ItemGrid/BaseGridView.xml/.bs` is the polymorphic grid view used for **every library type**: Movies, Shows, Music, Photos, Live TV, Mixed Folders. The component itself is generic; behavior is parameterized via the **presenter pattern**.
+- **A failed first page** (or Genres list) shows a message and a **Try again** button in place of the grid, and `loadState` reads `failed`, not `empty`. It never retries on its own: the failed query may still be running on the server.
+- **A failed later page** keeps the items already shown and the total, shows one toast until a page succeeds, and asks again by the same rule the next time focus moves or the user comes back to the grid.
+- **While another screen covers the grid,** it neither toasts nor moves focus.
+- **A "#" page** fails whole if either of its two requests fails.
 
-```text
-source/GridView/
-├── GridPresenterBase.bs       ← abstract base
-├── MoviePresenter.bs          ← movie-specific layout, sorting, filters
-├── TVShowPresenter.bs
-├── MusicPresenter.bs
-├── PhotoPresenter.bs
-├── LiveTVPresenter.bs
-└── GenericPresenter.bs        ← fallback for unknown library types
-```
+Focus follows what the grid shows, not the event that got there; see `BaseGridView`'s Focus Handling section, and [navigation.md](navigation.md#focus-management) for why a covered view cannot ask `hasFocus()`.
 
-Each presenter declares: backdrop mode (fullscreen / presentation panel / none), grid translation/rows/columns, available options (view modes, sort options, filter facets), and how to format metadata. `BaseGridView.setPresenter(presenter)` is called immediately after creation to specialize the screen.
+### A slow server
 
-This pattern keeps `BaseGridView.xml/.bs` clean — there's no `if libraryType = "movie"` ladder. Adding a new library type means writing a presenter, not editing the grid view.
+A page gets `timeouts.GRID_PAGE_MS` (60 s), where an ordinary request gets `timeouts.HTTP_MS` (10 s). A large library on a server whose database is not optimized took about 40 s to answer its first page (measured 2026-09-24 on Jellyfin 10.11.11 with 8,643 movies, #869). The spinner shows no text for 8 s, then "Still loading…", then from 30 s says the server is slow to answer. Each is spoken to Audio Guide users (`narrateStatus`). The grid owns the scene's spinner while it loads, so backing out takes it down. The long wait is safe only because backing out also frees the page's pool slot at once ([api.md](api.md#a-long-request-already-on-a-slot)).
 
-`BaseGridView` is a **`suspendMode: "detach"`** route (`/library/:id`): when the user drills into an item, the grid is *suspended* out of the tree (its node + focus saved) rather than destroyed, and *resumed* on back — so the cursor returns to the exact item the user left. It is deliberately **not** `keepAlive`: backing out of the library entirely destroys it, so re-entering that library is a fresh load rather than a resumed cache — a spinner and tile 0, not the item you left. The view / sort / filter selection still survives, because that lives in the registry (`getLibraryDisplaySetting`), not on the view — with one qualification since a view can be server-gated: a saved view is honored only while the presenter still offers it (`gridQuery.resolveView`), because the same library opened against an older server may have no such view. The fallback is in memory only, so the saved choice comes back when the server does. See [ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md) for the accepted cost. `BaseGridView.onLibrarySelection` computes `routeForItem(item)` and calls `sgrouter.navigateTo(route, { context: { item } })` itself (it routes to `/details/:type/:id` for an item, or to another `/library/:id` for a nested folder/genre). On resume it re-checks `m.scene.contentVersion` and re-fetches if a delete happened beneath it, so a deleted item can't linger in the resumed grid (see `JRScene.xml`'s `contentVersion` field).
+## Details
 
-**The grid loads the rows near the user, not the whole library.** Every loaded item costs memory (the 512 MB devices), a server query and render-thread time as it lands, so a page is asked for only when the loaded rows left below the focused row would run out before a page could arrive — "keep a runway" (`gridPaging`). How long a page takes to arrive and how fast the user is moving down the rows are both measured as the grid is used; at rest, one screen of rows is kept ahead. The library's total is counted once, on the first page: later pages ask without it (`EnableTotalRecordCount=false`), because the count is most of a page's cost on a slow server and an uncounted reply's total is only that page's size. When the user does reach the last loaded row while the next page is on its way, a "Loading more…" pill (`ProgressPill`) says so after a short delay, so a fast page never flashes it. The "#" letter filter is two ranges of sort names, before "a" and from "{" on (`gridPage.hashRanges`), paged as one list; together with A–Z they hold every item exactly once, verified across the server versions (see [jellyfin-server-versioning.md](../dev/jellyfin-server-versioning.md)). This replaced loading every page in the background (#444), whose reason — only visible rows hold textures — covered texture memory, not the item nodes themselves.
+`components/ItemDetails.bs` is the largest file in the codebase. It shows the details of every item type.
 
-**A failed load is not an empty library.** `LoadItemsTask2` publishes `status` (`ok` / `failed`) beside its `content`, and logs why a query failed (`apiResponse.jsonFailure()`); the view never learns the cause. A failed **first page** (or Genres list) shows its own state in place of the grid — a message and a **Try again** button that reruns the same query — and `loadState` reads `failed`, not `empty`. It never retries on its own: the query that failed may still be running on the server, and asking again unprompted would stack another. A failed **later page** leaves the items already shown and the known total in place, raises one toast until a page succeeds, and is asked for again by the same runway rule — the next time focus moves or the user comes back to the grid from another screen (`gridPaging` holds these rules). While another screen covers the grid it neither toasts nor moves focus: that screen is the user's now. Focus on this screen follows what it shows rather than the event that got there — see `BaseGridView`'s Focus Handling section, and [navigation.md → Focus management](navigation.md#focus-management) for why a suspended view cannot ask `hasFocus()`. A "#" letter-filter page fails whole if either of its two requests does, rather than showing half its names.
+### The title block
 
-**A slow server is waited for, and says so.** A page gets `timeouts.GRID_PAGE_MS` (60 s) where an ordinary request gets 10 s, because a large library on a server whose database is not optimized can take ~40 s to answer its first page (#869). The spinner says nothing for 8 s — a normal first page arrives well inside that — then "Still loading…", and from 30 s that the server is taking a while to answer, each also spoken to Audio Guide users (`narrateStatus`, as "Loading more…" is); the grid owns the scene's spinner while it loads, so backing out takes it down. The wait is safe only because backing out also gives the page's pool slot back at once, rather than leaving it busy for the rest of the minute ([api.md → A long request already on a slot](api.md#a-long-request-already-on-a-slot)).
+Under the title are a row of chips (year, rating, runtime and others), a row of details (genres, episode code and series, studio and others) and a credits row (`Created by …`, then `Directed by …`). The credits row takes no space when the item has no credits. It is driven by the item's own `People`, not its type, and nothing is looked up from a parent. A Series' creators arrive from Jellyfin 12.0, and a Season can carry directors on every version. Credits have their own row because a credit list has no natural length limit; sharing a row with the genres, it was always the first thing cut.
 
-## 6. Item Detail — `components/ItemDetails.bs`
+- **No text reaches the logo.** `layoutDetailsText()` gives each line (the title, the three rows, the description) its own width from where the logo is. A line above the logo runs to the right edge (`LOGO_RIGHT_ANCHOR_X`), and one beside it stops `LOGO_TEXT_CLEARANCE` short of the logo ([`infoRowFit.textLineWidth()`](../../source/utils/infoRowFit.bs)). The description stops a further `focusableOverview.FOCUS_OUTSET` short, so its focus border lands on the same line. Line positions are computed (`detailsLineBottoms()`), since the block has not laid out yet; a debug build checks them against the real layout.
+- **The logo's place is known before its image arrives.** A first request for a resized image can take seconds while the server makes it (measured 2026-09-22 on a LAN server: 0.26 s median, 3 s worst). So `setLogoImage()` also asks for the image's original size (`GetItemImageInfos`), and [`logoLayout.bs`](../../source/utils/logoLayout.bs) turns it into the drawn box, with the same arithmetic that places the loaded bitmap. A placeholder, or a server with no size recorded, waits for the bitmap.
+- **The text paints once.** Until the logo's place is known, the title, rows and description are held at opacity 0 and then shown already fitted (`holdDetailsText()`, `setLogoBox()`). `textHoldTimer` caps the wait at 0.5 s. Past it, the text is fitted to the widest possible logo (`logoLeftmostX()`) and not refitted when the logo lands. After the text shows, only a logo that reaches further than the one it was fitted to (a Season swapping in its series logo) refits it.
+- **A row that is still too long is cut** by `fitInfoRow()`: it narrows the item that crosses the width so the `Label` ends it with an ellipsis, and drops what follows. A rating chip is never narrowed, only dropped. It runs again when row 1 changes (`Ends at` each minute, a Playlist's item count).
+- **The title stays one line.** With extras open, the block is pinned above the extras pane and grows upward, and a second title line put its top outside Roku's action-safe zone.
+- **Cuts are by character,** never `ellipsizeOnBoundary`. On a `Label` that does not wrap, cutting on whole words drops a single word too wide for the space and shows a bare `...` (#798).
 
-The largest single file in the codebase. It handles the detail view for *every* item type — movies, episodes, series, seasons, audio, music videos, photos, live TV programs, recordings, mixed folders.
+### Buttons
 
-The component contains:
+The button row (node id `buttons`, `m.buttonGrp` in code) is built from the item's type and state. The main ones:
 
-- A title block with metadata (year, runtime, rating, genres, credits, tagline, overview). Under the title, one row of chips (year, rating, runtime, …), one row of details (genres, episode code and series, studio, …) and a **credits row** (`Created by …`, then `Directed by …`), which is empty — so takes no space — for an item with no credits. The row is driven by the item's own `People`, not its type: whichever credits the server sends appear, on any item type (a Series' creators arrive from Jellyfin 12.0; a Season can carry directors on every version), and nothing is looked up from a parent. Credits get a row of their own because a credit list is the one item on these rows with no natural length limit; sharing a row with the genres, it was always the first thing cut.
-  - **No text reaches the logo, and text uses the room the logo leaves.** `layoutDetailsText()` gives each line — the title, all three rows and the description — its own width from where the logo actually is: a line ending above the logo runs to the right edge (`LOGO_RIGHT_ANCHOR_X`), one beside it stops `LOGO_TEXT_CLEARANCE` short of the logo's left edge ([`infoRowFit.textLineWidth()`](../../source/utils/infoRowFit.bs)). The description's text stops a further `focusableOverview.FOCUS_OUTSET` short, so its focus border lands on the same line. Line positions are computed (`detailsLineBottoms()`), not read, because the block has not laid out when this runs; a debug build checks them against the real layout.
-  - **The logo's place is known before its image arrives.** A first request for a resized image can take seconds while the server makes it (measured 2026-09-22 on a LAN server: 0.26 s median, 3 s worst). So `setLogoImage()` also asks for the image's original size (`GetItemImageInfos`, on every supported server), and [`logoLayout.bs`](../../source/utils/logoLayout.bs) turns it into the served size and the drawn box — the same arithmetic that places the loaded bitmap, which is then drawn in the predicted box. A placeholder, or a server with no size recorded, waits for the bitmap instead.
-  - **The text paints once.** Until the logo's place is known, the title, rows and description are held at opacity 0 — nothing else is — and then shown already fitted (`holdDetailsText()` / `setLogoBox()`). `textHoldTimer` caps the wait at 0.5 s; past it the text shows fitted to the widest logo possible (`logoLeftmostX()`, safe for any logo) and is not refitted when the logo lands. After the text shows, only a logo that reaches *further* than the one it was fitted to (a Season swapping in its series logo) refits it.
-  - `fitInfoRow()` cuts a row that is still too long: it narrows the item that crosses its width so the `Label` cuts it with an ellipsis, and drops what follows; a rating chip is never narrowed, only dropped. It runs again on row 1 when its text changes later (`Ends at` each minute, a Playlist's item count). The title stays **one line**: with extras open, this block is pinned above the extras pane and grows upward, and a second title line put its top outside Roku's action-safe zone.
-  - **Cuts are by character, never `ellipsizeOnBoundary`.** On a `Label` that doesn't wrap, cutting on whole words drops a single word too wide for the space and renders a bare `...` (#798).
-- A button row (`buttonGrp`) — buttons are dynamically generated based on item type and play state:
-  - **Play** — primary action
-  - **Resume** — replaces Play if the item has playback progress. On Jellyfin 12.0+ an item with alternate versions resumes per version: Resume follows the version selected in the Video dropdown and can load that version's position behind a loading button (see [`playback.md`](playback.md#alternate-versions-and-resume--sourceutilsversionresumebs))
-  - **Series Play** — for series, plays from next-up episode
-  - **Shuffle** — for collections and playlists
-  - **Trailer** — if a remote trailer URL is available
-  - **Mark Watched / Unwatched**, **Mark Favorite / Unfavorite**
-  - The row is **capped at what fits before the logo** (8 buttons today — see [`buttonOverflow.bs`](../../source/utils/buttonOverflow.bs)). Past the cap the last slot becomes a **More** button and the remainder move to an off-layout stash, reachable through a `showListDialog` menu whose rows carry the same label and glyph. Nothing overflows at present: the busiest item types reach exactly 8.
-- An inline **`TrackDropdown` cluster** (`trackCluster`) — three side-by-side dropdowns for Video / Audio / Subtitle source selection, replacing the older modal `ItemOptions` popup. Track titles localize via the `languages.bs` 3-tier resolver (alias → `translationKey` → English fallback). A slot with a single choice renders as static text that cannot take focus, and the Video slot is hidden for audio items and items with no `MediaSources`. It offers every version, whatever its `VideoType` (an ISO or disc folder included), because the version it selects and the one the player offers can be any of them. Version labels, and the `· In progress` mark on the version being resumed (12.0+), come from `versionLabels` (see [`playback.md`](playback.md#version-labels--sourceutilsversionlabelsbs)). On 12.0+ the Video slot's own selection can MOVE after the screen has drawn: the first pick is made from the server's source order alone, then re-run as each version's position arrives so it names the version that would actually resume — until the viewer picks one, which freezes it (see [`playback.md`](playback.md#alternate-versions-and-resume--sourceutilsversionresumebs)).
-- An "extras" panel (revealed by pressing DOWN) — `extrasGrid` shows related items: cast, episodes (for series), parts (for split media), recommendations, similar items
-- A **subtitle management panel** (`SubtitlePanel`, #750), opened by the **Manage Subtitles** button on a Movie or Episode the server lets this user search. It slides up in the extras pane's region (the two are mutually exclusive) and is self-contained: it owns its API calls, focus and keys, targets the **selected version** (a `MediaSource` is its own item), and hands back only `subtitlesChanged` — which makes `ItemDetails` re-fetch, because adding or deleting a subtitle renumbers every stream index the track dropdowns hold
+| Button | When |
+|---|---|
+| **Play** | Every playable item. On a `Series`, `Season`, `BoxSet`, `MusicArtist`, `MusicAlbum` or `Playlist` it plays them all. |
+| **Resume** | Before **Play**, and focused, when the item has progress. On a Series it plays the next-up episode. On Jellyfin 12.0+ an item with several versions resumes the version picked in the Video menu ([`playback.md`](playback.md#alternate-versions-and-resume--sourceutilsversionresumebs)). |
+| **Shuffle** | `Series`, `Season`, `BoxSet`, `MusicArtist`, `MusicAlbum`, `Playlist` and `PhotoAlbum` |
+| **Trailer** | When the server has local trailers for the item (`checkTrailerAvailability`) |
+| **Watched**, **Favorite** | Toggles |
 
-There are two distinct launch shapes in `ItemDetails`:
+Others appear by type: **Instant Mix**, **Manage Subtitles**, **Delete**, **Refresh**, **Record**, **Watch Channel**, **Go to Series**, **Go to Album**, **Go to Artist**, **Go to Channel**, **View Photo** and **Slideshow**.
 
-**Single-item play** (Play / Resume / Trailer / next-up episode) goes through `ItemDetails.launchQueueItemToPlay(queueItem, routeType, routeId, versionPreference)`: it clears the queue, records the viewer's explicit Video-menu pick for it when there is one, pushes, then navigates the play route directly:
+The row holds only what fits before the logo, 8 buttons ([`buttonOverflow.bs`](../../source/utils/buttonOverflow.bs)). Past that, the last slot becomes **More**, and the rest open from it in a `showListDialog` menu with the same labels and icons.
+
+### Track menus, extras and subtitles
+
+- **`TrackDropdown` menus** (`trackCluster`): Video, Audio and Subtitle, side by side. Track titles go through the `languages.bs` resolver ([`translations.md`](translations.md#track-language-name-resolution)). A menu with one choice shows as text that cannot take focus, and the Video menu is hidden for audio and for items with no `MediaSources`. It offers every version, whatever its `VideoType`. Version labels, and the `· In progress` mark on the version being resumed (12.0+), come from `versionLabels` ([`playback.md`](playback.md#version-labels--sourceutilsversionlabelsbs)). On 12.0+ the Video menu's choice can change after the screen draws: the first pick follows the server's order, then runs again as each version's position arrives, until the user picks one.
+- **Extras** (`extrasGrid`), shown by pressing **Down**: rows of related items, which depend on the item's type (`components/extras/ExtrasRowList.bs`, loaded by `LoadExtrasRowsTask`).
+- **Manage Subtitles** opens `SubtitlePanel` (#750) on a Movie or Episode the server lets this user search. It slides up where the extras pane is (only one shows at a time), owns its API calls, focus and keys, and works on the selected version. It reports only `subtitlesChanged`, and `ItemDetails` then fetches the item again, because adding or deleting a subtitle renumbers the stream indexes the track menus hold.
+
+### How Play starts here
+
+**One item** (Play, Resume, the next-up episode) goes through `ItemDetails.launchQueueItemToPlay()`. It fills the queue first, then opens the play route:
 
 ```brightscript
+m.global.queueManager.callFunc("beginPlaybackStart", "")
 m.global.queueManager.callFunc("clear")
 if isValid(versionPreference) then m.global.queueManager.callFunc("setVersionPreference", versionPreference)
 m.global.queueManager.callFunc("push", queueItem)
 sgrouter.navigateTo("/details/" + routeType + "/" + routeId + "/play")
 ```
 
-The pick is what the items the queue arrives at next keep to (see [playback.md → Items a queue arrives at](playback.md#items-a-queue-arrives-at)); a version the screen chose on its own is not recorded.
+`PlayerHostView` reads the queue when it mounts, so the route's `:type` and `:id` only name the item for deep links; the queue decides what plays. The version preference is recorded only when the user picked one in the Video menu, and the items the queue reaches next keep to it ([playback.md](playback.md#items-a-queue-arrives-at)).
 
-The queue is populated **before** navigation — `PlayerHostView` reads it on mount, so the route `:type`/`:id` are just a deep-link identity; the queue is the source of truth.
+**Several items** (Play on a type `isPlayAllType()` accepts) go to `QueueManager.launchQuickPlayAction` with a `playAll` action, and its `QuickPlayTask` builds the queue. Shuffle uses `launchShuffle`, or `launchPhotoAlbum` for a photo album. **Trailer** uses `launchQuickPlayAction` with `loadTrailers`.
 
-**Multi-item play** (Play on a `Series`, `Season`, `BoxSet`, `MusicArtist`, `MusicAlbum` or `Playlist` — `isPlayAllType()`) hands the expansion to the queue manager: `onDetailNavButton` calls `QueueManager.launchQuickPlayAction({ action: "playAll" + type, … })`, whose `QuickPlayTask` builds the queue (step 7). Shuffle goes the same way through `launchShuffle` (`launchPhotoAlbum` for a photo album).
-
-**An extras item with no route of its own** sets `quickPlayNode`: `onExtrasItemSelected` writes the selected node, and the remote's Play key on a focused tile writes the focused one, then clears it:
+**An extras tile** navigates when `routeForItem()` gives it a route; otherwise `onExtrasItemSelected()` sets `quickPlayNode`. The remote's **Play** key on a focused tile always sets it:
 
 ```brightscript
 m.top.quickPlayNode = m.extrasGrid.focusedItem
 m.top.quickPlayNode = invalid              ' set-then-clear (see below)
 ```
 
-`ItemDetails` observes its **own** `quickPlayNode` (registered in `init()`) and forwards it to `onQuickPlayLaunch` → `QueueManager.launchItem` — the `main.bs` relay that used to read it is gone, because the launch now happens on the render thread where `sgrouter` resolves.
+`ItemDetails` observes its own `quickPlayNode` (registered in `init()`) and sends it to the queue manager in `onQuickPlayLaunch()`.
 
 ### The set-then-clear pattern
 
-Writing a field and then `invalid` makes the next write of the same value a change, so its observer fires. Roku needs this only on a field declared without `alwaysNotify`: by default observers are notified only when the value changes, while `alwaysNotify="true"` notifies them every time the field is set. `ItemDetails` declares `quickPlayNode` with `alwaysNotify="true"`, so a repeat selection fires either way — `onExtrasItemSelected` relies on that and does not clear, and the Play-key path's clear is redundant. The self-observer reads `msg.getData()` (the value at event-queue time), not the field, which a clear has already reset to `invalid`. Which other `quickPlayNode` writers still depend on the clear is tracked in tech-debt [`quickplaynode-set-then-clear`](tech-debt.md#quickplaynode-set-then-clear).
+Writing a field and then `invalid` makes the next write of the same value a change, so its observer fires. Roku needs this only on a field declared without `alwaysNotify`: by default an observer runs only when the value changes, while `alwaysNotify="true"` runs it on every write. `ItemDetails` declares `quickPlayNode` with `alwaysNotify="true"`, so a repeat pick fires either way: `onExtrasItemSelected()` does not clear, and the **Play** key's clear is redundant. The observer reads `msg.getData()` (the value when the event was queued), not the field, which the clear has already reset. Which other `quickPlayNode` writers still need the clear is tracked in [`quickplaynode-set-then-clear`](tech-debt.md#quickplaynode-set-then-clear).
 
-## 7. Quickplay dispatch — `QueueManager.launchItem`
+## Starting playback
 
-The `quickPlayNode` self-observers across `Home` / `BaseGridView` / `SearchResults` / `ItemDetails` all forward the node to `m.global.queueManager.callFunc("launchItem", node)`. `launchItem` (`components/manager/QueueManager.bs`) — **not** `main.bs` anymore — classifies the item by `type` and builds the queue, using the helpers in `source/utils/quickplay.bs`:
+`Home`, `BaseGridView`, `SearchResults` and `ItemDetails` each observe their own `quickPlayNode` and call `m.global.queueManager.callFunc("launchItem", node)`.
 
-```brightscript
-sub launchItem(itemNode)
-  itemType = LCase(itemNode.type)
-  if itemType = "photo" or itemType = "photoalbum"
-    failPendingPlaybackStart("replaced by a photo launch")
-    startLoadingSpinner()      ' a photo viewer is not a play session: the plain spinner
-  else
-    beginPlaybackStart("")     ' the playback-start wait, which the player ends
-  end if
-  clear()
-  resetShuffle()
+### `QueueManager.launchItem`
 
-  if itemType = "chapter"
-    ' Chapter: start parent video at chapter position
-    queueItem.type = itemNode.parentType
-    queueItem.startingPoint = itemNode.playbackPositionTicks
-    push(queueItem) : playQueue()
-  else if itemType = "episode" or = "recording" or = "movie" or = "video" or = "musicvideo"
-    quickplay.video(itemNode) : playQueue()
-  else if itemType = "audio"
-    quickplay.audio(itemNode) : playQueue()
-  else if itemType = "photo"
-    quickplay.photo(itemNode)              ' photo viewer; no playQueue
-  else if itemType = "tvchannel"
-    quickplay.tvChannel(itemNode) : playQueue()
-  else if itemType = "program"
-    quickplay.program(itemNode) : playQueue()
-  else
-    ' Series, season, album, playlist, etc. — need API calls to expand into a multi-item queue
-    launchQuickPlayAction({ action: itemType, id: itemNode.id, seriesId: ..., ... })
-  end if
-end sub
-```
+`launchItem()` returns at once for an item with no id or type. Otherwise it opens the playback-start wait (`beginPlaybackStart`), or the plain spinner for a photo, which opens a viewer rather than a play session. It clears the queue and the shuffle, then builds the queue by type with the helpers in `source/utils/quickplay.bs`:
 
-The split is "synchronous types" vs "async types":
+| Item type | Builds the queue with | Then |
+|---|---|---|
+| `chapter` | A queue item of the parent's type that starts at the chapter (`nodeHelpers.setExactStart`) | `playQueue()` |
+| `episode`, `recording`, `movie`, `video`, `musicvideo` | `quickplay.video` | `playQueue()` |
+| `audio` | `quickplay.audio` | `playQueue()` |
+| `photo` | `quickplay.photo`, which opens the photo viewer | nothing |
+| `tvchannel` | `quickplay.tvChannel` | `playQueue()` |
+| `program` | `quickplay.program` | `playQueue()` |
+| anything else | `runQuickPlayAction()`, which runs a `QuickPlayTask` | the Task finishes the queue |
 
-- **Synchronous**: a single item has all the info needed to play. Wrap in queue format, push, play.
-- **Async**: requires API expansion (e.g., "play this whole series" → fetch all episodes in order). `launchQuickPlayAction` spawns a `QuickPlayTask` which writes results to its `output` field and finishes the queue setup. A read that searches a whole library (Play on a library, folder or collection tile) or every library for one person or artist gets `timeouts.QUICKPLAY_LIBRARY_MS` (60 s) as a grid page does, because a large library on a slow server answers it long after 10 s (#811); the playback start's spinner says it is still loading meanwhile, and Back stops the Task, which gives the request's pool slot back.
+The types in the table carry everything needed to play. Anything else (a series, a season, an album, a playlist, a library) needs API calls to expand into a queue, so `QuickPlayTask` runs them. `runQuickPlayAction` is used here, not `launchQuickPlayAction`, because `launchItem()` has already opened the playback start. A read that searches a whole library (Play on a library, folder or collection tile) or every library for one person or artist gets `timeouts.QUICKPLAY_LIBRARY_MS` (60 s), as a grid page does (#811). The spinner says it is still loading meanwhile, and **Back** stops the Task, which frees the request's pool slot.
 
-## 8. QueueManager.playQueue() — `components/manager/QueueManager.bs`
+### `QueueManager.playQueue`
 
-`playQueue` looks at `getCurrentItem()`, classifies its type, and **signals a launch** by setting `m.global.playbackLaunchRequest` — it does not instantiate a player or navigate (a data node has no router chain):
+`playQueue()` asks for a player by setting `m.global.playbackLaunchRequest`. It neither creates a player nor navigates, since a data node has no router. It reads the current item's type:
 
-```brightscript
-sub playQueue()
-  m.isPlaying = true
-  nextItem = getCurrentItem()
-  if not isValid(nextItem) then return
-  nextItemMediaType = getItemType(nextItem)
+- **`audio` or `audiobook`:** a request with `media: "audio"`.
+- **A video type** (`musicvideo`, `video`, `movie`, `episode`, `recording`, `chapter`, `trailer`, `program`, `tvchannel`): a request with the item's type and id.
+- **An empty queue, an item with no type, or any other type:** no request; it ends the playback-start wait with the reason (`failPendingPlaybackStart`).
 
-  if nextItemMediaType = "audio" or = "audiobook"
-    m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id, media: "audio" }
-  else if videoTypes.DoesExist(nextItemMediaType)   ' video/movie/episode/recording/chapter/trailer/program/tvchannel/musicvideo
-    m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id }
-  end if
-end sub
-```
+A photo never reaches `playQueue()`: `quickplay.photo` sets `m.global.photoLaunchRequest`.
 
-(Note: photo launches go through `m.global.photoLaunchRequest` from `quickplay.photo`, not `playQueue`.)
+## Player
 
-## 9. Player launch — `JRScene` → `PlayerHostView`
+`JRScene.onPlaybackLaunchRequested()` turns the request into a route on the render thread: audio opens `/audio` (`AudioPlayerView`), and every video type opens `/details/<type>/<id>/play` (`PlayerHostView`).
 
-`JRScene.onPlaybackLaunchRequested()` observes `playbackLaunchRequest` and turns it into a route on the render thread: audio → `/audio` (the routed `AudioPlayerView`), every video-family type → `/details/<type>/<id>/play` (the `PlayerHostView`).
+`VideoPlayerView` extends Roku's `Video` node, so it cannot be a routed view. `PlayerHostView` is the routed `JRScreen` that holds it. On `onScreenShown()`, `mountPlayer()` creates the player hidden (to avoid a black flash while it loads), wires its observers, sets the backdrop and appends it. The player reads the current queue item, fetches its media details, builds the stream URL and starts playback. The playback info report's `GetPlaybackInfoTask` is created only when the user opens the report. See [`playback.md`](playback.md) for the whole picture.
 
-`PlayerHostView` is the **routed host** for video: `VideoPlayerView` extends Roku's native `Video` node and can't itself be a router view, so this thin `JRScreen` wrapper mounts it as a runtime child. On `onScreenShown` → `mountPlayer()` it instantiates `VideoPlayerView` (visible=false during loading to avoid a black flash), wires observers, updates the backdrop, and `appendChild`s the player. The playback report's `GetPlaybackInfoTask` is created per fetch, only once the user opens the report (`onSelectPlaybackInfoPressed`). It reads the already-built queue (`getCurrentItem`) — the queue is the source of truth. The `VideoPlayerView` itself fetches media metadata, builds the URL, and starts the underlying `Video` node. See `playback.md` for the full picture.
+While a video plays, `VideoPlayerView` reports the position to Jellyfin every 10 s (`reportPlayback("update")` through the side-effect task), the OSD hides after 5 s without a key press, and trickplay shows preview images while seeking.
 
-## 10. Playback running
+### When a video ends
 
-While the video plays:
+When the player's state becomes `finished`, `PlayerHostView.onPlayerStateChange()` decides what happens next. Moving through the queue happens inside the host: it destroys the player and mounts a new one, with no route change.
 
-- `VideoPlayerView` runs a periodic timer that fires `reportPlayback("update")` every ~10 seconds, sending position to Jellyfin via the side-effect task.
-- The OSD shows for 5 seconds when the user interacts, then hides.
-- Trickplay (seek scrubbing) shows a thumbnail carousel of preview images.
-- "Next episode" notification appears near the end of an episode if the queue has another item.
+| Case | What happens |
+|---|---|
+| A Live TV channel | `restartLiveChannel()` mounts the same channel again, unless it keeps ending without playing; then the playback error shows ([`playback.md`](playback.md)) |
+| More items in the queue | The queue manager's `advanceTo` moves to the next item, then `playCurrentQueueItem()` mounts it from its start. After enough videos with no key press, the next one plays under an "Are you still watching?" prompt ([`playback.md`](playback.md#are-you-still-watching)) |
+| The queue is done | `exitPlayback()` calls `sgrouter.goBack()`, and the details screen that started it, or Home, shows again |
 
-When the video finishes (`state = "finished"`), `PlayerHostView.onPlayerStateChange` decides what to do (queue advancement is **host-internal** — destroy + remount the player child, not pop/push):
+Two `finished` states are not the end of playback and return before any of that: a Dolby Vision fallback retry (`isRetrying`), and an error dialog that owns the exit (`errorDialogOwnsExit`). Both reach this handler because the player itself called `stop`, and that stop arrived as `finished` rather than `stopped`. [`playback.md`](playback.md) covers the second.
 
-- **Live TV channel** — `restartLiveChannel()` (restart the same channel by remounting), unless it keeps ending without playing: then the playback error shows instead (see [`playback.md`](./playback.md))
-- **More items in queue** — `advanceTo(position + 1)` → `playCurrentQueueItem()` (remount for the next item, which starts from its beginning). After enough unattended videos the next one plays under an "Are you still watching?" prompt that any key answers; unanswered, the video pauses ([`playback.md`](./playback.md#are-you-still-watching))
-- **Queue exhausted** — `exitPlayback()` → `sgrouter.goBack()` (the suspended launching detail, or Home, resumes)
-
-Two `finished` states are *not* the end of playback and bail before any of that: a DoVi
-fallback retry (`isRetrying`) and an error dialog holding the exit (`errorDialogOwnsExit`),
-both of which reach this handler only because the player itself called `stop` and that stop
-surfaced as `finished` rather than `stopped`. See [`playback.md`](./playback.md) for the
-second one and for what is and is not measured about it.
-
-Whether the user backs out (router `goBack` → `beforeViewClose` → `onDestroy`) or the queue exhausts, `PlayerHostView.destroyPlayer()` sets `m.view.control = "stop"` so Jellyfin records the stop before the player node is destroyed.
+Whether the user backs out (`goBack`, then `beforeViewClose`, then `onDestroy`) or the queue ends, `PlayerHostView.destroyPlayer()` sets the player's `control` to `"stop"`, so Jellyfin records the stop before the player is destroyed.
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for `ItemDetails`, `loginRouter`, or login-flow entries.
+Tracked in [`tech-debt.md`](tech-debt.md); search by `area` for `ItemDetails`, `loginRouter` or the sign-in entries.
