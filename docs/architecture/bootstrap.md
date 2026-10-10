@@ -218,7 +218,7 @@ Both carry a `contentId` and may carry a `mediaType` and an `itemName`. `content
 
 Back from the player then goes to details, then Home.
 
-A route the auth guard stashed while signed out is a separate path. It is stored on `AuthManager.stashedRoute` and replayed by `buildReplayRoutes()` as Home, then the route, with the details screen between them for a `/play` route ([`navigation.md`](navigation.md#deferred-deep-links)).
+A route the auth guard stashed while signed out is a separate path. It is stored on `AuthManager.stashedRoute` and replayed by `buildReplayRoutes()` as Home, then the route, with the details screen between them for a `/play` route ([`navigation.md`](navigation.md#replaying-a-stashed-route)).
 
 ## Known cruft
 

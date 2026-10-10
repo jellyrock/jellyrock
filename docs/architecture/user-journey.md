@@ -72,7 +72,7 @@ The start request is `GET /QuickConnect/Initiate` on Jellyfin 10.7 and 10.8 and 
 
 There are four ways in: a saved token (checked with `AboutMe`), an empty password for a public user, a typed password, and Quick Connect. Each ends in `user.Login` (`source/utils/session.bs`), which writes:
 
-- **On `m.global.user`:** `id`, `name` and `authToken`. The auth guard reads `authToken` before every route after sign-in ([`navigation.md`](navigation.md#the-auth-guard--componentsauthauthmanager)).
+- **On `m.global.user`:** `id`, `name` and `authToken`. The auth guard reads `authToken` before every route after sign-in ([`navigation.md`](navigation.md#the-auth-guard)).
 - **In the user's registry section:** `serverId` always; `authToken`, `username` and `primaryImageTag` only when the user chose to save credentials.
 - **In the global registry section:** `active_user`, only when the **Remember Me** setting (`globalRememberMe`) is on. It picks the user at the next launch.
 
