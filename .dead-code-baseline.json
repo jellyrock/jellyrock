@@ -9,7 +9,6 @@
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.memoryTotal",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.videoCodecs",
     "field components/data/jellyfin/JellyfinBaseItem.xml JellyfinBaseItem.lyricsData",
-    "function components/JROverhang.bs resetTime",
     "function components/data/UserData.bs removeFromRegistry",
     "function source/showScenes.bs SendPerformanceBeacon",
     "function source/utils/displaySettings.bs deleteLibraryDisplaySettings",
