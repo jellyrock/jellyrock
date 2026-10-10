@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-09
+last-updated: 2026-10-10
 ---
 
 # Progress
@@ -259,6 +259,14 @@ Found 2026-10-09: every `debug=true` build had failed since the dead-code rule l
 **Recommended:** a CI step (or pre-push step) that runs the BrighterScript validate with `debug` on, and makes no package. A manifest edit inside the build directory, or a `bsconfig` `manifest.bs_const` override, could do it; `bsc` honors that override for its own validation, though it never reaches the artifact (see `harden-prod-manifest.js`). Cost: one more full validate per run, which took about 10 s locally on 2026-10-09.
 
 **Alternative the operator raised:** turn `debug` on by default in the committed manifest, with `harden-prod-manifest.js` (which already forces `debug`, `perfTiming` and `ENABLE_RTA` off) keeping releases clean. Every dev build, hook and CI run would then build the debug code. The conflict to settle first: `build-and-tooling.md` keeps `perfTiming` separate from `debug` because a debug build attaches `rawApiData` inside the `emit` timing, and a debug build painted Home 178 ms slower on a 512 MB Stick (measured 2026-08-04). So debug-by-default would make every dev build's perf numbers unrepresentative. Also not checked: whether `debug` raising the log level from 2 to 4 makes the everyday console too noisy.
+
+#### `measure:devices` same-model refusal gives a false reason `[fid: measure-matrix-same-model-false-reason]` `[captured 2026-10-10]`
+
+`sameDeviceRefusal()` in `scripts/measure-matrix.js` (its printed message and its doc comment, and the comment above the `'refuses two distinct devices of the same model…'` test in `tests/scripts/unit/measure-matrix.test.js`) says `measurements.jsonl` "identifies a device by model / model number / RAM tier and by nothing else". That has been false since 2026-08-11: every series carries `deviceKey` (run ledger since `8794b2873`; a `measure:compare` selector since #810), and `measure-report.js` lists `device` in `PROVENANCE_AXES`. The text came with #802 (2026-08-10), when it was true, and was not updated. The refusal itself may still be right: two same-model devices would land in one `measure:report` column and pool with only a disclosure.
+
+Options weighed on the /snag screen: `reword` (keep the refusal; state the true reason in the message, doc comment and test comment, name both escapes, `--arm` per device or `--select device=<key>` afterwards; then delete the warning box in `docs/dev/measuring-performance.md`, section "More than one device"), or `allow` (drop the same-model refusal and let `measure:report` disclose the pooling; a behavior change needing a design call, possibly re-keying columns on `device`). Recommended `reword`; read `measure-report.js` first to confirm the column claim. Ships as its own PR from `main`.
+
+Not checked: whether `measure:report` really keys its columns by model and tier (taken from the old guide's wording, not read in `measure-report.js`); whether pooling two same-model devices in one cell is a problem worth refusing, or just a disclosure. Nobody has run the refusal on real hardware: you have one device of each model.
 
 ### components
 
