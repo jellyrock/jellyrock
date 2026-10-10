@@ -1297,12 +1297,6 @@
   "docs/architecture/async.md": {
     "filler": 2
   },
-  "docs/architecture/bootstrap.md": {
-    "em-dash": 53,
-    "filler": 2,
-    "latin-abbrev": 4,
-    "prose-arrow": 8
-  },
   "docs/architecture/build-and-tooling.md": {
     "caps-emphasis": 7,
     "em-dash": 274,

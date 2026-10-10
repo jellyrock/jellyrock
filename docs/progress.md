@@ -517,6 +517,29 @@ A live `PlaybackInfo` now waits up to `timeouts.LIVE_OPEN_MS` (120 s) and keeps 
 
 **Fix shape:** probe on device which writes or events reach the observer (log `m.global.activeRoutedView` and the caller per fire), then record the cause in `docs/architecture/navigation.md` beside the measured count, and fix it if it is a real excess.
 
+#### Eight `DeviceInfo` fields are never read; `videoRefresh` and `videoBitDepth` are missing from #1072 `[fid: deviceinfo-unread-fields]` `[captured 2026-10-10]`
+
+`components/data/jellyfin/DeviceInfo.xml` declares eight fields that nothing in the app reads through `m.global.device`:
+
+- `canPlay4K`, `maxVideoHeight`, `maxVideoWidth`, `videoCodecs`, `audioCodecs` and `memoryTotal` are never written or read. Only `transformDeviceInfo` filled them, and #1103 removed it. They are already in `.dead-code-baseline.json` and in epic #1072's `DeviceInfo` Investigate item (which device fields to cache at startup and which to read live).
+- `videoRefresh` and `videoBitDepth` are written by `SaveDeviceToGlobal()` in `source/utils/globals.bs` and never read. They are in neither the baseline nor #1072.
+
+Only `ContentNodes.spec.bs` (field-assignment tests) and the mock device JSON files under `tests/source/mocks/devices/` use them. `docs/architecture/playback.md` claims Direct Play checks `m.global.device.videoBitDepth`. That is wrong, and the Phase D rewrite of that doc fixes it.
+
+Found 2026-10-10 while rewriting `global-state.md` (2dbe60d3), by `git grep` over every `.bs`, `.brs` and `.xml` file.
+
+Options weighed in a `/snag`:
+
+- `track` (recommended): add `videoRefresh` and `videoBitDepth` to #1072's `DeviceInfo` item as a comment, drafted and approved before posting, so the epic's one decision covers all eight fields.
+- `followup`: keep the finding here only.
+- `remove`: delete the two writes and their fields now. Rejected for now: it settles #1072's open startup-or-live question by hand, and Direct Play may want 10-bit detection.
+
+Not filed now because the comment is a public post that needs the operator's approval, and nothing breaks meanwhile.
+
+Not checked: why the dead-code plugin doesn't flag the two written-but-unread fields. I assume it counts a write as a use, but I haven't read the plugin.
+
+Closes when #1072's `DeviceInfo` item names all eight fields, or they are removed.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

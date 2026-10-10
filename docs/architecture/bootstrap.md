@@ -7,241 +7,219 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-09-27
+last-reviewed: 2026-10-10
 ---
 
-# Bootstrap & Lifecycle
+# Bootstrap and lifecycle
 
-How JellyRock starts, where the main event loop lives, and what runs on app suspend / resume / exit.
+How JellyRock starts, where the main event loop lives, and how the app handles device events, exit and deep links.
 
 ## Entry point
 
-`source/main.bs` defines the `Main(args)` function that Roku invokes when the channel launches. It is intentionally linear and procedural — no abstractions, just a script. The file is large; the focus here is the bootstrap prologue (everything up to the main event loop).
+Roku calls `Main(args)` in `source/main.bs` when the app launches. It is a plain linear script. Shortened, the start-up part reads:
 
 ```brightscript
 sub Main (args as dynamic) as void
-  printRegistry()                           ' Dev convenience: dump current registry
+  printRegistry()
   m.screen = CreateObject("roSGScreen")
   m.port = CreateObject("roMessagePort")
   m.screen.setMessagePort(m.port)
 
   m.global = m.screen.getGlobalNode()
-  setGlobals()                              ' Phase 1: non-node globals
+  setGlobals()                                    ' phase 1
 
-  loadTranslations(resolveTranslationLocale())   ' Pre-login locale (bootstrap, before first render)
+  loadTranslations(resolveTranslationLocale())    ' the locale before anyone signs in
   user.settings.SaveDefaults()
   m.global.user.settings.callFunc("enableAutoSync")
 
-  runGlobalMigrations()                     ' Registry schema migrations (safe to run pre-scene)
+  runGlobalMigrations()
   runRegistryUserMigrations()
-  if m.global.app.version <> m.global.app.lastRunVersion
-    setSetting("LastRunVersion", m.global.app.version)
-  end if
+  ' ... then LastRunVersion is written back
 
-  m.scene = m.screen.CreateScene("JRScene") ' Persistent root scene (the sgRouter host)
+  m.scene = m.screen.CreateScene("JRScene")
   m.screen.show()
+  ' ... #if ENABLE_RTA: the on-device test component
 
-  setGlobalNodes()                          ' Phase 2: node-based globals (require active screen)
+  setGlobalNodes()                                ' phase 2
 
-  ' #550 sgRouter: scene-field bridges observed ONCE on the main thread (m.global field +
-  ' port does NOT deliver — the relay defect — but a scene field + port does, like `exit`).
-  m.scene.observeField("userMenuAction", m.port)   ' routed Home: change user/server / sign out
+  m.scene.observeField("userMenuAction", m.port)  ' change server or user, sign out
   m.scene.observeField("exit", m.port)
-  m.scene.observeField("preLoginIntent", m.port)   ' routed pre-login views emit intents
+  m.scene.observeField("preLoginIntent", m.port)  ' the sign-in screens' requests
+  m.global.remoteControlTask.observeField("dispatchCommand", m.port)
 
-  ' #550 sgRouter: cold-start deep link — stash BEFORE entering login so it replays uniformly.
-  if isValid(args) and isValidAndNotEmpty(args.mediaType) and isValidAndNotEmpty(args.contentId)
-    stashDeepLinkPlay(args.contentId, args.mediaType)
-  end if
+  ' ... a cold-start deep link is stashed here (see Deep links)
 
-  ' Input + device events set up ONCE — they survive session resets (no app-loop restart).
-  input = CreateObject("roInput")
-  input.SetMessagePort(m.port)
-  input.EnableTransportEvents()             ' Roku voice transport (play/pause/seek/next/...)
-  device = CreateObject("roDeviceInfo")
-  device.setMessagePort(m.port)
-  ' ... device.Enable*Event(true) (see App lifecycle events) ...
+  input = CreateObject("roInput")                 ' voice transport commands
+  device = CreateObject("roDeviceInfo")           ' device events (see Device events)
+  ' ... both on m.port
 
-  reenterLogin()                            ' Routed pre-login flow (source/loginRouter.bs)
+  reenterLogin()                                  ' source/loginRouter.bs
 
   while true
-    msg = wait(0, m.port)                   ' ONE unified event loop, pre- AND post-login
+    msg = wait(0, m.port)                         ' the one event loop
     ...
   end while
 end sub
 ```
 
-There is **no `LoginFlow()` gate and no `clearScenes`** anymore. The whole app — pre-login and post-login — is routed through sgRouter (#550); `Main()` brings up `roInput` / `roDeviceInfo` once, stashes any cold-start deep link, then calls `reenterLogin()` and drops into a **single** event loop that serves both phases. Session resets (Change Server / User / Sign Out) re-enter the login flow *in place* via `reenterLogin()`, so `roInput`/`roDeviceInfo` are no longer recreated per login and there is no `appStart:` / `goto` restart.
+Every screen, before and after sign-in, is a route in sgRouter (#550). `Main()` sets up `roInput` and `roDeviceInfo` once and enters one event loop that serves the whole session. Changing the server or user, or signing out, calls `reenterLogin()` again from inside that loop, so nothing is recreated and the loop never restarts.
+
+`reenterLogin()` reloads the sign-in locale and runs `beginLogin()`, which tries the saved server and saved token with no UI. If both work, `finishLogin()` starts the fallback-font download when the user needs it and opens Home. Otherwise the router opens `/server`, `/users` or `/login`. [`user-journey.md`](user-journey.md) covers the sign-in screens.
 
 ## The two-phase global setup
 
-JellyRock initializes `m.global` in **two phases**, separated by `m.screen.show()`. This is not arbitrary — it's a Roku constraint: many `roSGNode` operations require an active scene.
+`m.global` is built in two phases, before and after `m.screen.show()`:
 
-### Phase 1 — `setGlobals()` *(before screen.show)*
+- **Phase 1, `setGlobals()`**, builds the data nodes: `server`, `user` and its three children, the translation fields, `constants`, `app` and `device`. It also declares the Task launch queue's two fields.
+- **Phase 2, `setGlobalNodes()`**, builds the long-running nodes: the Task launch queue, the API pool and its coordinator, the side-effect Task, `sceneManager`, `AuthManager`, the routing fields, `queueManager`, `audioPlayer` and the remote-control Task.
 
-Defined in `source/utils/globals.bs` (`setGlobals` function). Creates the data nodes that don't depend on the rendered scene:
+[`global-state.md`](global-state.md#the-shape-of-mglobal) lists every field and what it is for.
 
-- `m.global.appLoaded` (bool)
-- `m.global.server` — `JellyfinServer` content node (URL, name, version, id)
-- `m.global.user` — `JellyfinUser` content node, with three children created and parented:
-  - `user.settings` (`JellyfinUserSettings`) — the per-user config tree
-  - `user.config` (`JellyfinUserConfiguration`) — server-authoritative profile data
-  - `user.policy` (`JellyfinUserPolicy`) — server-authoritative permissions
-- `m.global.translations` (AA, populated by `loadTranslations()`)
-- `m.global.translationsFallback` (AA, always en_US)
-- `m.global.translationLocale` (string)
-- `m.global.constants` — `Constants` content node, populated by `setConstants()` → `loadThemeColorDefaults()` (reads theme colors from `settings/settings.json`)
-- `m.global.app` — `AppInfo` content node (`appId`, `version`, `isDev`, `lastRunVersion`) populated by `SaveAppToGlobal()`
-- `m.global.device` — `DeviceInfo` content node populated by `SaveDeviceToGlobal()` (model, OS version, locale, video mode parsed into height/width/refresh/bit-depth, `isLowMemoryDevice` flag, etc.)
+The order inside the phases matters in two places:
 
-### Phase 2 — `setGlobalNodes()` *(after screen.show)*
+- **Some nodes cannot be made on the main thread before the screen is shown.** A `Timer` comes back invalid there ([`threading.md`](threading.md#measured-findings)). The data nodes of phase 1 are made there without trouble; whether a Task node can be has not been tested, so Task nodes stay in phase 2.
+- **Phase 2 reads phase 1.** The API pool's width comes from `m.global.device.isLowMemoryDevice`, so `SaveDeviceToGlobal()` has to run first. The launch queue is created first in phase 2, before the pool slots start, so a launch past the thread watermark can wait instead of being refused.
 
-Defined in `source/utils/globals.bs` (`setGlobalNodes` function). Creates and starts the long-running nodes:
+`main.bs` also observes `sceneManager`'s `reloadHomeRequested` from phase 2 on.
 
-- `m.global.taskLaunchQueue` — `TaskLaunchQueue`, created FIRST so it exists before any launch below: where a Task launch waits while the app is at its thread watermark ([ADR 0041](../adr/0041-task-launch-queue.md)). Its fields are declared in `setGlobals()`, so until this line a launch past the watermark is refused
-- `m.global.apiPool0` … `apiPool<N-1>` — the `ApiTask` pool, each started with `launchTask()` to enter its infinite work loop. N is chosen here from the device class (`apiPool.widthFor(m.global.device.isLowMemoryDevice)`), which is why Phase 1's `SaveDeviceToGlobal()` must run first; it is stored as `m.global.apiPoolWidth`. See [api.md](api.md#pool-width)
-- `m.global.apiQueue` — `ApiQueueTask`, the FIFO coordinator that dispatches into the pool
-- `m.global.sideEffectTask` — `SideEffectTask`, `control = "RUN"` to enter its FIFO children-as-vehicle loop for fire-and-forget POST/DELETE
-- `m.global.sceneManager` — now a shared **service node** (backdrop, theme, overhang passthrough fields, and the `isDialogOpen` query — the scene-stack was removed in #550, see `navigation.md`); observed by `main.bs` for `reloadHomeRequested` events. It no longer *shows* dialogs: every dialog goes through `source/utils/dialogs.bs` and answers on its own node
-- `m.global.AuthManager` — the sgRouter `canActivate` auth guard, created **before** the router's `addRoutes` and registered by node reference on every post-login route (see `navigation.md`)
-- `m.global.activeRoutedView` — node field (default invalid); the currently-mounted router view. Published by `JRScreen`'s lifecycle bridge; read by `getActiveView()`, the overhang controller, and the playback/options/device branches of the event loop
-- `m.global.playbackLaunchRequest` / `m.global.photoLaunchRequest` — `assocarray` fields the queue/photo launchers set to request a route (`JRScene` observes them and navigates — see `playback.md` / `user-journey.md`)
-- `m.global.queueManager` — `QueueManager` node
-- `m.global.audioPlayer` — `AudioPlayer` node (extends `Video`, used as the audio playback engine)
-- `m.global.debug` — `DebugFlags` node, **only in `#if debug` builds** (compiled out in prod)
+## The root scene: `JRScene`
 
-Why split? The Tier-1 API pool and the service/manager nodes need to be live nodes attached to the running scene graph; trying to wire their observers before `screen.show()` produces undefined behavior on some firmware. The split is enforced by ordering, not by any abstraction.
-
-## The persistent root scene — `JRScene` (the sgRouter host)
-
-JellyRock has **one** scene for the entire lifetime of the channel. It is `components/JRScene.xml`, extending `Scene`, and it is the **router host** (#550): it initializes sgRouter over its outlet, registers the route table, drives the overhang from the router-active view, and confirms app exit. The XML structure:
+The app has one scene for its whole life, `components/JRScene.xml`, which extends `Scene`. It hosts the router. Its children, back to front:
 
 ```xml
 <JRScene extends="Scene">
-  <BackdropFader id="imageFader" />          <!-- behind everything: backdrop image with crossfade -->
-  <sgrouter_Outlet id="routerOutlet" />      <!-- the live nav surface: every routed view mounts here -->
-  <JROverhang id="overhang" />               <!-- top bar: logo, user, search, settings, tabs -->
-  <Group id="optionsPanelOverlay" />         <!-- options slider (renders above overhang for z-order) -->
-  <LabelPrimaryLarge id="loadingText" />
+  <AppWaitHost id="appWaitHost" />            <!-- holds app-wide waits; draws nothing -->
+  <BackdropFader id="imageFader" />           <!-- the backdrop image, with a crossfade -->
+  <sgrouter_Outlet id="routerOutlet" />       <!-- every routed view mounts here -->
+  <JROverhang id="overhang" />                <!-- top bar: logo, title, user, tabs, clock -->
+  <Group id="optionsPanelOverlay" />          <!-- the options panel, above the overhang -->
+  <LabelPrimaryLarge id="loadingText" />      <!-- text above the spinner -->
   <Spinner id="spinner" />
+  <LabelSecondaryMedium id="loadingStageText" />  <!-- how a long wait is going -->
+  <Timer id="loadingStageTimer" />
   <Toast id="toast" />
-  <Label id="defaultFont" /> <Label id="fallbackFont" />  <!-- used to compute m.global.user.fontScaleFactor -->
+  <Label id="defaultFont" /> <Label id="fallbackFont" />  <!-- measured for fontScaleFactor -->
 </JRScene>
 ```
 
-`<sgrouter_Outlet id="routerOutlet">` is the live navigation surface — every routed view (pre-login, content, playback) mounts here. The old `<Group id="content"/>` slot that `SceneManager` swapped screens into was removed along with the scene stack.
-
-Interface fields exposed for global control:
+### Interface fields
 
 | Field | Type | Purpose |
-|---|---|---|
-| `isLoading` | bool | Show/hide the scene's own spinner (`startLoadingSpinner`, a cast) + dim the active routed view. The spinner also shows the app waits its `AppWaitHost` child keeps (via `appWaits` — a playback start) and the active view's named waits (`loadingWaits`, via `screenWaits`), both of which leave this false — see [navigation.md → What kind of wait a spinner is](navigation.md#what-kind-of-wait-a-spinner-is) |
-| `isRemoteDisabled` | bool | Block all remote input while loading |
-| `loadingText` | string | The caller's text above the spinner |
-| `loadingKind` | string | `LoadingKind` of the scene's own spinner; decides the stage text under it (`loadingStages`) |
-| `backgroundImageUri` | string | Backdrop image URL — `BackdropFader` does the crossfade |
-| `shouldShowBackdrop` | bool | Lazily resolved from user settings on first backdrop request |
-| `exit` | bool | Setting this true exits the channel |
-| `userMenuAction` | string | Routed Home sets this (change user/server / sign out); `main.bs` observes it → `handleMenuAction` |
-| `preLoginIntent` | string | Routed pre-login views emit an intent string; `main.bs` observes it → `handlePreLoginIntent` |
-| `contentVersion` | int | Content-freshness token bumped on a content mutation (e.g. item delete); a grid suspended beneath the detail re-fetches on resume when it differs |
-| `testToast` | string | Debug-only test trigger (see `debug-tools.md`) |
+| --- | --- | --- |
+| `isLoading` | bool | Shows the scene's own spinner (`startLoadingSpinner()`). The spinner also shows app-wide waits and the active view's named waits, which leave this false. See [`navigation.md`](navigation.md#what-kind-of-wait-a-spinner-is). |
+| `isRemoteDisabled` | bool | While true, `JRScene` swallows every key press and the active routed view is hidden. Starts true. |
+| `loadingText` | string | The text above the scene's spinner. |
+| `loadingKind` | string | The `LoadingKind` of the scene's spinner, which picks the stage text under it. |
+| `backgroundImageUri` | string | The backdrop image. `BackdropFader` does the crossfade. |
+| `shouldShowBackdrop` | bool | Whether backdrops show. Worked out from the user's settings on the first backdrop request after sign-in. |
+| `exit` | bool | Set true to close the app. |
+| `userMenuAction` | string | Home's user menu sets it; `main.bs` passes it to `handleMenuAction()`. |
+| `preLoginIntent` | string | A sign-in screen sets it; `main.bs` passes it to `handlePreLoginIntent()`. |
+| `contentVersion` | int | Bumped when a view changes server content (an item delete). A grid suspended under it reloads on resume when the number differs. |
+| `testToast` | string | Shows a test toast when set from the console (see [`debug-tools.md`](debug-tools.md)). |
 
-`JRScene` also exposes router hooks called from `main.bs` / `loginRouter` on the main thread (the `sgrouter` namespace resolves on the render thread, so the main loop can't call it directly): `routerNavigate`, `replayRoutedDeepLink`, `reloadRoutedHome`, `resetRouter`, `routerGoBack`. Its `AppWaitHost` child keeps the waits the whole app is in: `appWaits.begin(kind, label)` opens one there and returns its Promise (`source/utils/appWaits.bs`).
+Its `callFunc` functions:
 
-`components/JRScene.bs` adds the controller logic:
+- `setBackgroundImage(uri, isAnimated, forceBackdrop)`, `refreshBackdropSetting()` and `showToast(message, type)`.
+- The router bridge, for main-thread code in `main.bs`, `loginRouter.bs` and `replayRoute.bs`: `routerNavigate`, `replayRoutedDeepLink`, `resolveDeepLink`, `reloadRoutedHome`, `resetRouter` and `routerGoBack`. Main-thread code cannot call the `sgrouter` functions itself, because they run on the render thread.
 
-- **Initializes the `roku-log` log manager** — first statement in `init()`, and the ordering is load-bearing: a `log.Logger` built before the manager exists caches `invalid` and silently no-ops forever. Doing it here is what gives the global singletons (`RemoteControlTask`, `SceneManager`, `QueueManager`, `SideEffectTask`) working loggers. It also cannot be done any earlier — `log_Log` creates a `Timer`, and Timer creation fails on the main thread before `m.screen.show()`, so `main.bs` can't stand the manager up itself. The corollary is a **bootstrap window with no logging**: everything created in `setGlobals()`, plus `main.bs` up to `show()`, must use `print`. See [logging.md](logging.md)
-- Initializes the loading spinner, toast, backdrop fader, and overhang references
-- Lazily resolves the user's "show backdrop" setting on first backdrop request (so the very first backdrop assignment after login picks up the user preference)
-- Implements `setBackgroundImage(uri, isAnimated, forceBackdrop)` with `forceBackdrop=true` used during the login splashscreen
-- **Owns the router**: `initRouter` (idempotent bring-up + route table + overhang/playback/photo observers), `routerNavigate` / `replayRoutedDeepLink` (navigation), `resetRouter` (`sgrouter.destroy` on session reset), and the overhang controller (`onActiveRoutedViewChanged` + `register/unregisterOverhangData`). Full detail in `navigation.md`
-- Handles the `back` key via the **router back arbiter**: a routed view's back is intercepted by the outlet first (`sgrouter.goBack`); a back key only reaches `JRScene.onKeyEvent` when `goBack` is a no-op at the router root (history depth ≤ 1), where it calls `showExitConfirmation()`. The `options` key opens the active routed view's options panel
-- Implements the up-up-down-down debug cheat code that cycles through toast types in `#if debug` builds
+### What `JRScene.bs` does
+
+- **Starts the `roku-log` log manager**, as the first statement of `init()`. A `log.Logger` made before the manager exists stays silent forever. It cannot start earlier: the manager creates a `Timer`, which fails on the main thread before `show()`. So everything made in `setGlobals()`, and `main.bs` up to `show()`, logs with `print`. See [`logging.md`](logging.md).
+- **Owns the router:** `initRouter()` brings it up on the first navigation, registers the routes and watches the active routed view to drive the overhang. `resetRouter()` tears it down on a session reset. [`navigation.md`](navigation.md) has the detail.
+- **Runs the spinner:** `onIsLoadingChanged()` and `showLoadingStage()` decide what the spinner and its two labels show.
+- **Shows backdrops:** `setBackgroundImage()` skips an unchanged image. `forceBackdrop` shows one whatever the setting, for the sign-in splash screen.
+- **Decides what Back does at the top of the app.** A routed view's Back goes to the router first. Back reaches `JRScene.onKeyEvent()` only when the router has nothing to go back to, or is busy. There, in order:
+  1. A deep link still being looked up is canceled.
+  2. A navigation in progress keeps the press.
+  3. A playback start that is hiding its screen is canceled.
+  4. Otherwise `showExitConfirmation()` asks whether to exit.
+- **Opens the options panel** on the Options key, when the active view has one.
+- **Cycles test toasts** on an Up, Up, Down, Down key sequence in a debug build. Routed views swallow key releases, so this rarely fires; use `testToast` instead.
 
 ## The main event loop
 
-`Main()` drops into **one unified event loop** that serves both the pre-login flow and the post-login session (#550 — there is no separate login loop anymore):
+`Main()` ends in one loop on `m.port`. Each branch handles a message only the main thread can act on: the blocking sign-in API calls, `roInput` and `roAppManager`, and the bridge to the router.
 
-```brightscript
-while true
-  msg = wait(0, m.port)
-  if type(msg) = "roSGScreenEvent" and msg.isScreenClosed()
-    return
-  else if isNodeEvent(msg, "exit")
-    return
-  else if isNodeEvent(msg, "preLoginIntent")           ' routed pre-login view emitted an intent
-  else if isNodeEvent(msg, "closeSidePanel")           ' options panel closed → restore focus
-  else if isNodeEvent(msg, "isFontDownloadCompleted")  ' fallback font finished downloading
-  else if isNodeEvent(msg, "searchValue") / "results"  ' search box → SearchTask
-  else if isNodeEvent(msg, "optionSelected")           ' OptionsSlider action → handleMenuAction
-  else if isNodeEvent(msg, "userMenuAction")           ' routed Home user dropdown → handleMenuAction
-  else if type(msg) = "roDeviceInfoEvent"              ' app lifecycle (see below)
-  else if type(msg) = "roInputEvent"                   ' deep link OR voice transport
-  else if isNodeEvent(msg, "result")                   ' a main-thread dialog resolved (server-switch confirm)
-  else if isNodeEvent(msg, "reloadHomeRequested")      ' theme/locale change → reloadRoutedHome
-  ' ...
-end while
-```
+| Message | What happens |
+| --- | --- |
+| screen closed, or `exit` | `Main()` returns and the app closes. |
+| `preLoginIntent` | `handlePreLoginIntent()` runs the sign-in step the screen asked for and opens the next route. |
+| `userMenuAction` | `handleMenuAction()`: change server, change user or sign out. |
+| `isFontDownloadCompleted` | The fallback font arrived: work out `fontScaleFactor`, then open Home if it was waiting. |
+| `reachable` | The server probe before a deep-link server switch answered (`onServerProbeDone()`). |
+| `result` | The deep-link server-switch dialog was answered (`onServerSwitchDialogResult()`). It is the one dialog `main.bs` handles; every other dialog answers in its own component. |
+| `dispatchCommand` | A remote-control command from `RemoteControlTask` (see [`remote-control.md`](remote-control.md)). |
+| `reloadHomeRequested` | A theme or language change: `JRScene.reloadRoutedHome()` opens a new Home. |
+| `roDeviceInfoEvent` | A device event (see the next section). |
+| `roInputEvent` | A runtime deep link, or a voice transport command passed to `remoteDispatch.dispatchTransport()`. |
 
-The loop is the central hub for cross-screen, main-thread-only actions (things the render thread can't do: blocking bootstrap API calls, `roInput`/`roAppManager`, the `sgrouter`-namespace bridge). Events are wired by `setGlobalNodes()` (e.g. `sceneManager.observeField("reloadHomeRequested", m.port)`), by the once-only scene-field observers set up in `Main()` (`preLoginIntent` / `userMenuAction` / `exit`), or by other code paths observing a node on the same port (the server-switch confirm dialog does this per instance).
+Play presses, item selection and the favorite and watched buttons are not here. Each routed view handles its own on the render thread ([`user-journey.md`](user-journey.md)).
 
-What is **no longer here** (moved to per-view render-thread handlers in #550):
+`handleMenuAction()` starts the spinner, tears down the router (`resetRouter`), signs out and calls `reenterLogin()`. Signing out also deletes the user's saved token. Changing server keeps it but forgets the saved server.
 
-- **`quickPlayNode`** — Play presses are no longer relayed through `main.bs`. Each routed view (`Home` / `BaseGridView` / `SearchResults` / `ItemDetails`) observes its *own* `quickPlayNode` and forwards it to `QueueManager.launchItem`; single-item plays navigate `/details/:type/:id/play` directly (see `user-journey.md`).
-- **`selectedItem`** — library/item selection is handled by each view's own `selectedItem` observer, which navigates the router via `routeForItem(item)` — not relayed to `main.bs`.
-- The favorite/watched toggles left this loop in #551; since #677 `ItemDetails` handles its own buttons and calls `toggleFavorite` / `toggleWatched` directly on the render thread, as `fetchAsync()` promises. Confirmation dialogs are no longer routed here at all: a component's dialog answers through a scoped observer in that component (`ItemDetails`, `settings`, and the **exit** confirm, which `JRScene` owns), and the one dialog `main.bs` still handles — the deep-link **server-switch** confirm — is observed per instance on `m.port` rather than through a shared field. No raw `submitApiRequest` + `observeField("isDone")` consumer remains in app code — the `promise-ratchet` lint is a hard grep-zero guard.
+## Device events
 
-Session-ending actions converge on `handleMenuAction(actionId)`: each tears down the routed Home (`m.scene.callFunc("resetRouter")` → `sgrouter.destroy`) and re-enters the login flow **in place** via `reenterLogin()` — no `goto appStart` (that path is gone).
+`Main()` turns on six `roDeviceInfo` events. The loop does this with them:
 
-## App lifecycle events
+| Event | What happens |
+| --- | --- |
+| Screensaver exited | Calls `onScreenShown()` on the active screen, so it refreshes. It also asks `sceneManager` to reset the overhang clock, but `JROverhang` does not declare `resetTime` in its interface, so that call does nothing. |
+| Audio guide changed | Updates `m.global.device.isAudioGuideEnabled`. |
+| Low general memory | Stores the level in `m.global.device.memoryLevel` and prints it. Nothing else reacts. |
+| Codec capability changed | Sends the server the device's new playback capabilities. |
+| App focus | Prints it. Roku sends it when a system overlay takes or returns focus. |
+| Link status | Prints it. The app does not show an offline state. |
 
-Early in `Main()`, several `roDeviceInfo` events are enabled on the same message port:
+The 512 MB memory measures (a narrower API pool, half-size trickplay tiles) do not wait for a memory event: they key off `isLowMemoryDevice`, set at start-up ([`global-state.md`](global-state.md#app-and-device-mglobalapp-mglobaldevice)).
 
-```brightscript
-device.EnableScreensaverExitedEvent(true)
-device.EnableAppFocusEvent(true)
-device.EnableLowGeneralMemoryEvent(true)
-device.EnableLinkStatusEvent(true)
-device.EnableCodecCapChangedEvent(true)
-device.EnableAudioGuideChangedEvent(true)
-```
+## App exit
 
-The event loop branches on each of these. Notable handling:
+There is no shutdown function. The app exits when the loop sees the screen close or the `exit` field set, and `Main()` returns. Roku then ends the process.
 
-- **`AppFocusEvent`** — fired on app suspend (user pressed Home) and resume. JellyRock uses this to know when it's coming back from background.
-- **`LowGeneralMemoryEvent`** — Roku has signaled memory pressure. JellyRock uses `m.global.device.isLowMemoryDevice` (computed at startup from a hard-coded prefix list of `512MB` models — see `LOW_MEMORY_DEVICE_PREFIXES` in `globals.bs`) to *preemptively* disable memory-heavy features like trickplay tile preloading on small devices.
-- **`LinkStatusEvent`** — network up/down. App can show offline state.
-- **`CodecCapChangedEvent`** — the device's codec capabilities changed (e.g., user toggled HDR mode in Roku settings).
-- **`ScreensaverExitedEvent`** — fires when the screensaver dismisses; lets the app refresh state.
-
-### App exit
-
-There is no explicit "shutdown" function. The app exits when:
-
-1. The event loop sees `roSGScreenEvent` with `isScreenClosed()` returning true, **or**
-2. Any code sets `m.scene.exit = true` (the `JRScene` interface field)
-
-The second path is reached via the **router back arbiter**: when a back key reaches `JRScene` at the router root (history depth ≤ 1, i.e. `sgrouter.goBack` had nothing to pop), `showExitConfirmation()` shows the confirm dialog. `JRScene` owns that dialog end to end — it is a component with its own script scope, so it reads the result through a scoped observer and sets `m.top.exit = true` itself; `main.bs` only sees the `exit` field it already observes (see `navigation.md`). The Roku OS handles the actual process teardown after `Main` returns.
+`exit` is set by `JRScene` itself. When Back reaches it at the top of the app, `showExitConfirmation()` opens the confirm dialog. `JRScene` reads the answer through its own observer and sets `exit` when the user confirms.
 
 ## Deep links
 
-`Main(args)` accepts an `args` AA from Roku. If launched via deep link it contains `mediaType` and `contentId`. The deep link is **stashed before the login flow runs** so it replays uniformly whether the user is already authenticated or has to sign in first:
+A deep link arrives two ways:
 
-```brightscript
-if isValid(args) and isValidAndNotEmpty(args.mediaType) and isValidAndNotEmpty(args.contentId)
-  stashDeepLinkPlay(args.contentId, args.mediaType)   ' seed queue + record play path on AuthManager.stashedRoute
-end if
-reenterLogin()
-```
+- **At launch**, in `Main(args)`.
+- **While running**, as an `roInputEvent`, from another app or a Jellyfin client casting to the Roku.
 
-`stashDeepLinkPlay` (`source/replayRoute.bs`) seeds the queue with the `contentId` and records a `/details/:type/:id/play` path on `m.global.AuthManager.stashedRoute`. After login, `createAndShowHomeGroup` → `replayAfterLogin()` reads + clears the stash and navigates the route chain via `JRScene.replayRoutedDeepLink`:
+Both carry a `contentId` and may carry a `mediaType` and an `itemName`. `contentId` holds the whole request in one string, `id=<itemId>|serverId=<serverGuid>|action=<verb>`, because it is the one field both paths deliver intact. A bare item id works too. `parseDeepLinkContentId()` in `source/replayRoute.bs` documents the format.
 
-- no deep link → `["/"]` (plain Home)
-- a play deep link → `["/", details, play]` so back unwinds **Player → Details → Home** (locked decision #3) — the user lands on Home if they back out of playback
+### Stashing
 
-A **runtime** deep link (another app hands JellyRock content while it's already running) arrives as an `roInputEvent` with `info.mediatype` / `info.contentid`. The `roInputEvent` branch calls `stashDeepLinkPlay` the same way, then — if already signed in — `replayAfterLogin()` immediately; otherwise the stash rides along until login completes. The voice-transport `roInputEvent` branch (`info.type = "transport"`) shares the same dispatcher; it sources the active view via `getActiveView()` and forwards `handleTransport` to `PlayerHostView` / `VideoPlayerView` / `AudioPlayerView` (see `playback.md`).
+`stashDeepLink()` parses the request and stores it on `m.global.AuthManager.stashedDeepLink`. The id and the media type go into a route path without URL encoding, so a value with characters outside a safe set is dropped or replaced first. An id that fails is discarded; a bad media type becomes `Video` and a bad action becomes `open`.
+
+### At launch
+
+1. `Main()` stashes the link. If it names a saved server, `steerColdStartDeepLinkServer()` points sign-in at that server.
+2. Sign-in runs as usual. If it needs the user, a toast says the content opens after they sign in.
+3. After sign-in, `replayAfterLogin()` opens Home first, so it is the bottom of the back stack. Then `JRScene.resolveDeepLink()` fetches the item.
+
+### While running
+
+- **Signed out:** the link is stashed and a toast says it opens after sign-in.
+- **For the current server, or none named:** `replayDeepLinkRuntime()` resolves it without opening Home first.
+  - On the item's details already, a playback action starts there.
+  - An `open` that would cover a playing video is dropped, because jellyfin-web sends one on every item a casting user browses.
+  - A playback action replaces an active player.
+- **For another saved server:** a dialog offers to switch. On yes, `ServerReachableTask` checks the server first, then the app signs out and signs in there with the link still stashed.
+- **For an unknown server:** a toast says the content is on a server JellyRock does not know, and the link is discarded.
+
+### Resolving
+
+`resolveDeepLink()` fetches the item before navigating, because the id came from outside. The remote stays live during the fetch, and Back cancels it.
+
+- **Not found:** a toast, and nothing navigates.
+- **A library or folder:** its grid opens directly.
+- **Anything else:** the details route opens with `?deeplink=<action>`. `ItemDetails` then shows the item for `open`, or starts the action (`play`, `shuffle`, `trailer`, `instantmix`).
+
+Back from the player then goes to details, then Home.
+
+A route the auth guard stashed while signed out is a separate path. It is stored on `AuthManager.stashedRoute` and replayed by `buildReplayRoutes()` as Home, then the route, with the details screen between them for a `/play` route ([`navigation.md`](navigation.md#deferred-deep-links)).
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for bootstrap / `main.bs` entries.
+Tracked in [`tech-debt.md`](tech-debt.md): search its `area` lines for `main.bs`, `loginRouter.bs` and `JRScene`.
