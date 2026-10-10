@@ -152,7 +152,7 @@ Don't assign an associative array to a content node field such as `m.global.user
 | `m.setTestDisplaySetting(libraryId, key, value)` | Set one per-library display setting |
 | `m.loadTestDevice(name)` | Apply a mock device from `mocks/devices/` to `m.global.device` |
 
-**`loadTestDevice()` is not undone.** Nothing resets `m.global.device`, so the mock device stays in place for the suites that run after yours.
+**Device changes last one test.** `beforeEach()` restores `m.global.device` (`resetDevice()`), so a mock device from `loadTestDevice()`, or any field a test writes, is gone by the next test. Set a device fixture in `beforeEach()`, not `setup()`.
 
 Read a global node into a local before you use it more than once. Each `m.global` read crosses a thread boundary, which is slow on a Roku:
 
