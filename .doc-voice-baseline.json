@@ -1288,12 +1288,6 @@
     "em-dash": 14,
     "prose-arrow": 1
   },
-  "docs/architecture/api.md": {
-    "em-dash": 85,
-    "filler": 6,
-    "latin-abbrev": 3,
-    "prose-arrow": 8
-  },
   "docs/architecture/async.md": {
     "filler": 2
   },
