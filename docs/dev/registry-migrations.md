@@ -114,7 +114,7 @@ After a rename, only the new name exists, so nothing may read the old one:
 
 ## Test it
 
-A migration test is an integration test under `tests/source/integration/migration/`, one spec per migration, named for it (`AudioCodecMigration.spec.bs`). The rules for registry tests are in [`unit-tests.md`](unit-tests.md#test-the-registry). For a migration:
+A migration test is an integration test under `tests/source/integration/migration/`, in a spec named for it (`AudioCodecMigration.spec.bs`). A migration that only cleans up keys an earlier one wrote can be tested in that one's spec, as the `HOMESECTION_CLEANUP_VERSION` cleanup is in `SettingsMigration.spec.bs`. The rules for registry tests are in [`unit-tests.md`](unit-tests.md#test-the-registry). For a migration:
 
 - **Tag the suite `@tags("migration")`** and set `m.needsRegistrySetup = true` before `super.setup()`.
 - **Name each section `test-<something>`**, unique to its test. In test mode the runner migrates only `test-` sections, so a real user's data is never touched.
