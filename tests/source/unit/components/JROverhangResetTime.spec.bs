@@ -1,0 +1,42 @@
+namespace tests
+
+  ' JROverhang.resetTime() forwards to its Clock child. The forward only works
+  ' when JROverhang.xml declares the function in its <interface>: callFunc to an
+  ' undeclared function is a silent no-op, so SceneManager.resetTime() did nothing.
+  @suite("JROverhang - resetTime callFunc interface")
+  class JROverhangResetTimeTests extends tests.BaseTestSuite
+
+    private overhang as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      ' Clock.init() returns early (no timer, no nodes) when the clock is hidden
+      m.global.user.settings.uiDesignHideClock = false
+      m.overhang = CreateObject("roSGNode", "JROverhang")
+    end function
+
+    protected override function afterEach()
+      m.overhang = invalid
+      super.afterEach()
+    end function
+
+    @describe("resetTime")
+
+    @it("reaches the Clock child through callFunc")
+    function _()
+      clock = m.overhang.findNode("clock")
+      m.assertNotInvalid(clock)
+
+      ' Sentinel no real hour can equal; only Clock.updateTime() overwrites it
+      clock.hours = -1
+
+      m.overhang.callFunc("resetTime")
+
+      now = CreateObject("roDateTime")
+      now.ToLocalTime()
+      m.assertEqual(clock.hours, now.GetHours())
+    end function
+
+  end class
+
+end namespace
