@@ -495,11 +495,12 @@ sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner
   end sub).catch(sub(err as object, ctx as object)
     ' navigateTo rejects when a nav is already in progress (transient) or the route isn't
     ' registered (a programming error). Re-assert focus so a rejected nav can't strand the remote,
-    ' and surface the reason instead of dropping it silently.
-    m.log.warn("navigateThenFocus failed; re-asserting focus", ctx.routePath, err.message)
+    ' and surface the reason instead of dropping it silently. Recover before logging, and log err
+    ' whole: reading `.message` crashes when a rejection is not an AA, which skips the recovery.
     ' Clear the spinner even on a rejected login nav so a failure can't strand it up.
     if ctx.clearSpinner then stopLoadingSpinner()
     sgrouter.setFocus({ focus: true })
+    m.log.warn("navigateThenFocus failed; re-asserting focus", ctx.routePath, err)
   end sub)
 end sub
 
@@ -550,10 +551,11 @@ sub navigateChainStep(routes as object, index as integer, clearLoginSpinnerOnEnd
   promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index, clearSpinner: clearLoginSpinnerOnEnd }).then(sub(_result as object, ctx as object)
     navigateChainStep(ctx.routes, ctx.index + 1, ctx.clearSpinner)
   end sub).catch(sub(err as object, ctx as object)
-    m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err.message)
     ' If this was the login replay, don't leave the blocking spinner stranded on a failed chain.
+    ' Recover before logging, and log err whole (`.message` crashes on a non-AA rejection).
     if ctx.clearSpinner then stopLoadingSpinner()
     sgrouter.setFocus({ focus: true })
+    m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err)
   end sub)
 end sub
 
@@ -724,9 +726,10 @@ sub onPlaybackLaunchRequested()
   ' onViewOpen bridge). The .catch is the point — a rejected nav (router busy / unknown route)
   ' would otherwise leave the populated queue with no player and nothing playing, silently.
   promises.chain(sgrouter.navigateTo(playPath), { playPath: playPath }).catch(sub(err as object, ctx as object)
-    m.log.warn("playback launch navigation failed", ctx.playPath, err.message)
     ' No player will mount to take the start, so end it here rather than at its time limit.
+    ' Recover before logging, and log err whole (`.message` crashes on a non-AA rejection).
     m.global.queueManager.callFunc("failPendingPlaybackStart", "navigation to the player failed")
+    m.log.warn("playback launch navigation failed", ctx.playPath, err)
   end sub)
 end sub
 
@@ -739,7 +742,8 @@ sub onPhotoLaunchRequested()
   ' PhotoDetails self-focuses on mount (onScreenShown); the .catch surfaces a rejected nav so a
   ' failed photo launch isn't silent.
   promises.chain(sgrouter.navigateTo("/photo", { context: req })).catch(sub(err as object)
-    m.log.warn("photo launch navigation failed", err.message)
+    ' Log err whole: reading `.message` crashes when a rejection is not an AA.
+    m.log.warn("photo launch navigation failed", err)
   end sub)
 end sub
 
