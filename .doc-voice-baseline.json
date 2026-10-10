@@ -1352,11 +1352,6 @@
     "filler": 2,
     "prose-arrow": 2
   },
-  "docs/architecture/migrations.md": {
-    "em-dash": 7,
-    "latin-abbrev": 2,
-    "prose-arrow": 1
-  },
   "docs/architecture/navigation.md": {
     "caps-emphasis": 1,
     "em-dash": 108,

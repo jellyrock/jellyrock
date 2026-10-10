@@ -2,119 +2,42 @@
 topic: migrations
 related-files:
   - source/migrations.bs
+  - source/main.bs
   - source/utils/config.bs
-last-reviewed: 2026-09-20
+last-reviewed: 2026-10-09
 ---
 
-# Registry Migrations
+# Registry migrations
 
-How JellyRock evolves its registry schema across versions: when a migration is needed, how version-gated migrations work, and the test-mode safeguards. The settings-loading mechanics that migrations slot into live in `settings.md`.
+How the registry migration runner in `source/migrations.bs` works: where it runs, how it decides which migrations a section needs, and which sections it never touches. To write a migration, and to learn when you need one, see [`registry-migrations.md`](../dev/registry-migrations.md). How settings load from the registry is in [`settings.md`](settings.md).
 
-## Migrations — `source/migrations.bs`
+## Where it runs
 
-Sometimes settings have to evolve: keys get renamed, values get transformed, options become deprecated. JellyRock handles this with **version-gated registry migrations**.
+`Main()` in `source/main.bs` calls `runGlobalMigrations()`, then `runRegistryUserMigrations()`. That happens after the globals and the setting defaults load, and before `Main()` creates the scene. So nothing that reads settings later, including `SessionDataTransformer` when a session loads, ever sees an old key name or value shape.
 
-### When to add a migration
+Each migration is a block guarded by a version constant from the top of the file. A block runs when the section was last used by a version older than its constant (`versionChecker(a, b)` is true when `a` is at least `b`). The blocks sit in version order, so a user several versions behind runs every block they missed, oldest first. A block that changed something sets `m.wasMigrated`, and `Main()` then prints the registry so the console shows the result.
 
-Yes:
+## Two version records
 
-- You renamed a setting (e.g. `playback.preferredAudioCodec` → `playbackPreferredMultichannelCodec`)
-- You changed the value format (e.g. an enum value got renamed)
-- You removed a setting that previously stored real user data
-- You restructured how data is persisted
+The runner reads a different `LastRunVersion` for each scope:
 
-No:
+- **Global:** the `LastRunVersion` key in the `JellyRock` section, read into `m.global.app.lastRunVersion` at startup. The global blocks run only when it exists, so a fresh install runs none. `Main()` writes the current version back after both runners finish, in every build.
+- **Per user:** the `LastRunVersion` key in each user's own section. A section without one gets `0.0.0` written, so every user block runs on it. The current version is written to the user's section after a login, and only in a production build (`m.global.app.isDev` false).
 
-- You added a new setting (defaults handle this automatically)
-- You changed a default value (changes only affect new installs that don't have a saved value)
-- You added a server-authoritative field
+The second rule is why every user block must be safe to run twice: on a sideloaded build, the user migrations run again at every launch.
 
-### Structure
+## Sections the user runner skips
 
-Two top-level functions:
+`runRegistryUserMigrations()` walks every registry section, or only the ones a caller passes in, and steps over three kinds:
 
-- `runGlobalMigrations()` — runs migrations on the `"JellyRock"` global section
-- `runRegistryUserMigrations(targetSections)` — runs migrations on every per-user section
+- **The global sections**, `JellyRock` and `test-global`. They belong to `runGlobalMigrations()`.
+- **Every non-test section, in test mode.** When any section's name starts with `test-`, only `test-` sections are migrated. Integration tests write `test-<id>` sections, so a test run on a personal device never changes a real user's data.
+- **A section with no `serverId` key.** `user.Login()` writes `serverId` whether or not the user saved their credentials, so a section without it never finished a login. The runner treats it as orphaned and prints that it skipped it.
 
-Both run early in `Main()` — before the scene is created, and so before `SessionDataTransformer` runs on session load (`source/utils/session.bs`). By the time settings are read back, only the new key names and new value shapes exist.
+## Tests
 
-A migration is gated by version constants:
-
-```brightscript
-const SETTINGS_MIGRATION_VERSION = "1.1.0"
-const AUDIO_CODEC_MIGRATION_VERSION = "1.1.5"
-const EMPTY_IMAGE_TAG_CLEANUP_VERSION = "1.4.0"
-const SPLASH_SETTING_REMOVAL_VERSION = "1.5.0"
-const GLOBAL_SETTINGS_CLEANUP_VERSION = "1.5.2"
-const MUSIC_VIEW_MIGRATION_VERSION = "1.10.0"
-const TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION = "2.0.0"
-const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
-const HOMESECTION_CLEANUP_VERSION = "2.13.0"   ' homeSection0-6 became server-authoritative
-```
-
-The constants list grows monotonically — the canonical list always lives in `source/migrations.bs`; the snippet above is illustrative of the shape, not exhaustive of current entries.
-
-Each migration runs only if the user is *upgrading past* that version:
-
-```brightscript
-appLastRunVersion = m.global.app.lastRunVersion       ' from registry, set on previous launch
-
-if isValid(appLastRunVersion) and not versionChecker(appLastRunVersion, SETTINGS_MIGRATION_VERSION)
-  ' last run version < 1.1.0 — apply this migration
-  m.wasMigrated = true
-  ' ...read old key, write new key, delete old key, reg.flush()
-end if
-```
-
-After all migrations finish, `Main()` writes the current version back to `LastRunVersion`:
-
-```brightscript
-if m.global.app.version <> m.global.app.lastRunVersion
-  setSetting("LastRunVersion", m.global.app.version)
-end if
-```
-
-So next launch knows what's already been migrated.
-
-### Test mode safety
-
-`runRegistryUserMigrations` includes a guard:
-
-```brightscript
-' Detect test mode: if ANY section starts with "test-", we're in test mode
-hasTestSections = false
-for each checkSection in regSections
-  if LCase(checkSection).left(5) = "test-"
-    hasTestSections = true
-    exit for
-  end if
-end for
-
-' In test mode, skip non-test user sections (don't touch real user data!)
-for each section in regSections
-  isTestSection = LCase(section).left(5) = "test-"
-  if hasTestSections and not isTestSection
-    continue for
-  end if
-  ' ...
-end for
-```
-
-This means integration tests can write `test-<id>` sections without ever touching real user data, even in a dev build deployed to a personal device.
-
-Two further skips apply to every run, test mode or not: the global sections (`JellyRock` and `test-global`) are stepped over inside the per-user loop, and a section with **no `serverId` key** is treated as orphaned or half-written and skipped. `serverId` is written by `user.Login()` regardless of whether credentials were saved, so its absence means the section never completed a login — a migration must not assume it will be reached for such a section.
-
-### Migration testing
-
-`tests/source/integration/migration/` has a test suite per migration. The pattern is:
-
-1. Set up registry state representing "old version" data
-2. Run the migration
-3. Assert the new state matches the expected schema
-4. Assert old keys are gone, new keys exist with correct values
-
-`docs/dev/registry-migrations.md` is the canonical guide for writing one. Read it before adding a migration.
+Each migration has an integration spec in `tests/source/integration/migration/`, named for it. The one exception is the `HOMESECTION_CLEANUP_VERSION` cleanup, which is tested inside `SettingsMigration.spec.bs` because it deletes the keys that spec's rename creates. The rules for writing one are in [`registry-migrations.md`](../dev/registry-migrations.md#test-it).
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for migration entries.
+Tracked in [`tech-debt.md`](tech-debt.md): `m-wasmigrated-global-flag`, the flag passed between the runner and `Main()` through `m`.
