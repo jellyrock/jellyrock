@@ -1338,11 +1338,7 @@
     "prose-arrow": 32
   },
   "docs/architecture/remote-control-longpoll-contract.md": {
-    "caps-emphasis": 6,
-    "em-dash": 34,
-    "filler": 3,
-    "latin-abbrev": 2,
-    "prose-arrow": 4
+    "caps-emphasis": 6
   },
   "docs/architecture/remote-control.md": {
     "caps-emphasis": 1,

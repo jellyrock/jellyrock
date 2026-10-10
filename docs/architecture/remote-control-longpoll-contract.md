@@ -5,84 +5,67 @@ related-files:
   - components/remotecontrol/RemoteControlTask.bs
   - source/remotecontrol/remoteCommand.bs
   - source/api/baseRequest.bs
-last-reviewed: 2026-07-21
+last-reviewed: 2026-10-10
 ---
 
-# Long-poll wire contract — HTTPS "Cast to JellyRock" (#667)
+# Long-poll wire contract: HTTPS "Cast to JellyRock" (#667)
 
-The **frozen** HTTP contract between JellyRock and the companion Jellyfin server plugin
-(`jellyfin-plugin-jellyrock`). It is the HTTPS counterpart to the `ws://` receiver
-([remote-control.md](remote-control.md), ADR 0021): Roku has no socket TLS, so a secure server can't push
-commands over `wss://`. Instead the plugin **queues** the same remote-control commands Jellyfin would push
-over the session socket, and JellyRock **pulls** them with a long-poll `GET` loop over TLS (`roUrlTransfer`).
+The fixed HTTP contract between JellyRock and the companion Jellyfin server plugin (`jellyfin-plugin-jellyrock`). It is the HTTPS counterpart to the `ws://` receiver ([remote-control.md](remote-control.md), ADR 0021). A Roku cannot open a TLS socket, so a secure server cannot push commands over `wss://`. Instead the plugin queues the remote-control commands Jellyfin would have pushed over the session socket, and JellyRock pulls them with a long-poll `GET` loop over TLS (`roUrlTransfer`).
 
-This contract is **published and versioned** (not an internal plugin detail) so any future client — including
-the official Roku app, which shares Roku's no socket TLS limitation — can consume it against a stable spec
-with no plugin rework.
+The contract is published and versioned, not an internal plugin detail, so any other client can use it against a stable spec without plugin changes. That includes the official Roku app, which has the same TLS socket limit.
 
-## Direction & scope
+## Direction and scope
 
-- **Server → client only.** The long-poll carries *inbound* remote-control commands to JellyRock.
-  JellyRock's *outbound* reporting (playback progress, capabilities POST, mark-played) stays on the normal
-  Jellyfin REST API — **unchanged**. This channel never carries client→server data beyond the poll request
-  itself.
-- One in-flight poll per JellyRock session. A session is identified by the authenticated device (below).
+- **Server to client only.** The long poll carries remote-control commands to JellyRock. JellyRock's own reporting (playback progress, the capabilities POST, marking items played) stays on the normal Jellyfin REST API, unchanged. The channel carries nothing from the client beyond the poll request itself.
+- **One poll in flight per JellyRock session.** The session is the authenticated device (below).
 
 ## Endpoints
 
-Both endpoints live under the plugin's MVC route prefix and require Jellyfin authentication (`[Authorize]`,
-`DefaultAuthorization` — any authenticated user with remote-control permission, matching the `ws` path).
-Authentication uses JellyRock's standard `Authorization: MediaBrowser …` header
-([`buildAuthHeader()`](../../source/api/baseRequest.bs)), which already carries `Client="JellyRock"`,
-`DeviceId="<serverDeviceName>"`, and `Token`. **The token is never placed in the URL** — an improvement over
-the `ws` path's token query param (`roUrlTransfer` can set headers; `BrightWebSocket` could not).
+Both endpoints live under the plugin's route prefix, `/JellyRock/RemoteControl`, and require Jellyfin authentication (`[Authorize]`, `DefaultAuthorization`): any authenticated user with remote-control permission, as on the `ws` path. JellyRock authenticates with its standard `Authorization: MediaBrowser …` header ([`buildAuthHeader()`](../../source/api/baseRequest.bs)), which carries `Client="JellyRock"`, `DeviceId="<serverDeviceName>"` and `Token`. **The token never goes in the URL**, unlike the `ws` path, which sends it as a query parameter (`remoteProtocol.buildSocketUrl()`).
 
-The server resolves the target `SessionInfo` from the authenticated request's `DeviceId` claim — the same
-device that binds JellyRock's REST session. Any `deviceId` query argument is diagnostic only and MUST NOT be
-trusted over the authenticated identity.
+The server finds the target `SessionInfo` from the authenticated request's `DeviceId`, the same device that holds JellyRock's REST session. A `deviceId` query argument is for diagnosis only and MUST NOT be trusted over the authenticated identity.
 
-### `GET /JellyRock/RemoteControl/info` — presence probe + version negotiation
+The plugin has a third route, `/pair`, for the cold-launch pairing report. It is not part of this versioned contract; [remote-control.md](remote-control.md#cold-launch-pairing-report-668) describes it.
 
-| | |
+### `GET /JellyRock/RemoteControl/info`: presence probe and version check
+
+| Status | Meaning |
 |---|---|
-| **200** | `{ "contractVersion": 1, "pluginVersion": "<x.y.z>" }` — plugin present. |
-| **404** | Plugin absent (route not registered). **This is JellyRock's presence signal** on an `https` server. |
-| **401** | Unauthenticated / expired token. |
+| **200** | `{ "contractVersion": 1, "pluginVersion": "<x.y.z>" }`: the plugin is installed. |
+| **404** | The plugin is absent (no such route). **This is how JellyRock learns** whether an `https` server has the plugin. |
+| **401** | Not authenticated, or the token expired. |
 
-JellyRock treats any non-200 as "no usable plugin" and stays dark on `https` (no cast target advertised).
-`contractVersion` lets JellyRock refuse a plugin that speaks a newer/older contract it can't handle.
+JellyRock treats any status but 200 as "no usable plugin" and stays dark on `https`: it advertises no cast target. It also stays dark when `contractVersion` is not exactly the version it implements (`CONTRACT_VERSION` in `remoteProtocol.bs`).
 
-### `GET /JellyRock/RemoteControl/poll?waitMs=<n>[&ack=1][&ackId=<guid>]` — the long-poll command channel
+### `GET /JellyRock/RemoteControl/poll?waitMs=<n>[&ack=1][&ackId=<guid>]`: the command channel
 
-Long-holds the request until a command is queued **or** `waitMs` elapses.
+The server holds the request until a command is queued or `waitMs` passes.
 
-| | |
+| Status | Meaning |
 |---|---|
-| **200** | JSON **array** of command envelopes (see below). One or more commands were queued. |
-| **204** | Hold window elapsed with no queued command. JellyRock re-polls immediately. |
-| **401** | Unauthenticated / expired token → JellyRock stops polling (session ended). |
-| **404** | Plugin uninstalled mid-session → JellyRock stops polling. |
+| **200** | A JSON array of command envelopes (below): one or more commands were queued. |
+| **204** | The hold ran out with nothing queued. JellyRock polls again at once. |
+| **401** | Not authenticated, or the token expired. JellyRock stops polling: the session ended. |
+| **404** | The plugin was uninstalled during the session. JellyRock stops polling. |
 
-`waitMs` is JellyRock's requested hold ceiling (e.g. `25000`). The server MAY cap it. JellyRock's own
-client-side timeout is set **longer** than `waitMs` (plus margin) so a `204` always arrives before the
-transfer times out.
+`waitMs` is the longest hold JellyRock asks for, and the server MAY shorten it. JellyRock sends `waitMs=25000` and gives the transfer a 35-second timeout, longer than the hold, so a `204` always arrives before its own request times out.
 
-`ack=1` and `ackId` are the **at-least-once acknowledgment** (see [At-least-once delivery](#at-least-once-delivery)),
-an additive, opt-in extension that does **not** bump `contractVersion`:
+`ack=1` and `ackId` are the at-least-once acknowledgment ([below](#at-least-once-delivery)), an optional addition that does not change `contractVersion`:
 
-- `ack=1` — the client's capability flag, present on **every** poll from an ack-aware client (including the
-  first). It tells the plugin "retain delivered commands until I confirm them." A plugin that predates this
-  ignores the flag and stays at-most-once; a client that omits it (an older build) likewise gets at-most-once.
-  So a new/old mix on either side degrades cleanly — neither regresses.
-- `ackId=<guid>` — the client's **cumulative** ack: the last `MessageId` it durably received. Omitted until
-  the client has received a command. The plugin drops every retained command up to and including this id and
-  **redelivers the rest** on this poll. An absent or unrecognized `ackId` acks nothing.
+- **`ack=1`** is the client's capability flag, sent on every poll from a client that acknowledges, the first included. It tells the plugin to keep delivered commands until the client confirms them. A plugin older than the flag ignores it and stays at-most-once, and a client that leaves it out gets at-most-once too. So an old and new pair, either way round, still works as before.
+- **`ackId=<guid>`** is the client's cumulative ack: the last `MessageId` it received. It is left out until the client has received a command. The plugin drops every kept command up to and including that id, and delivers the rest again on this poll. A missing or unknown `ackId` acknowledges nothing.
+
+### What JellyRock does on everything else
+
+`RemoteControlTask.runLongPollReceiver()` also:
+
+- **backs off** after any other status or a timeout, from 1 to 30 seconds, so an unreachable server cannot make it loop hot;
+- **waits out a fast empty answer**: a `204`, or a `200` that dispatched nothing, that came back in under a second is held to one second before the next poll. A plugin that honors the hold never triggers this;
+- **stops when the token changes** between polls (a server-side token rotation or a sign-out), as the `ws` path does.
 
 ## Command envelope
 
-Each element of the `200` array is the **exact `{ MessageType, Data }` shape Jellyfin pushes over the session
-socket**, so [`remoteCommand.parseMessage`](../../source/remotecontrol/remoteCommand.bs) consumes it
-**unchanged** — no new parser branch, no long-poll-specific normalization:
+Each element of a `200` array is the exact `{ MessageType, Data }` shape Jellyfin pushes over the session socket, so [`remoteCommand.parseMessage`](../../source/remotecontrol/remoteCommand.bs) reads it unchanged, with nothing specific to the long poll:
 
 ```json
 [
@@ -92,97 +75,52 @@ socket**, so [`remoteCommand.parseMessage`](../../source/remotecontrol/remoteCom
 ]
 ```
 
-- `MessageType` / `Data` — verbatim from the server's `ISessionController.SendMessage(name, messageId, data)`
-  fan-out. The full `Play` / `Playstate` / `GeneralCommand` mapping is documented once in
-  [remote-control.md](remote-control.md#command-mapping-jellyfin--jellyrock) and applies identically here.
-- **Enum values MUST serialize as their string names**, exactly as the `WebSocket` frames do —
-  `Playstate.Command` as `"Pause"` / `"NextTrack"` / `"Seek"`, `GeneralCommand.Name` as
-  `"DisplayContent"` / `"GoHome"`, `Play.PlayCommand` as `"PlayNow"` — **never as integers.** The client
-  matches these by string; numeric enums (the .NET `System.Text.Json` *default*) silently no-op every
-  command whose meaning rides on the `enum` value. `Play` is the misleading exception — it still plays
-  because its action defaults and the payload is `ItemIds` — so test a `Playstate` verb, not `Play`, when
-  validating serialization. (A plugin serializing `Data` with `System.Text.Json` needs a `JsonStringEnumConverter`.)
-  Field-name casing is free (the client reads case-insensitively); only the enum *values* are load-bearing.
-- `MessageId` — the server-assigned message GUID; the **ack key** for [at-least-once delivery](#at-least-once-delivery).
-  The client echoes the last id it received back as the next poll's cumulative `ackId`, and dedupes by it. A
-  client that doesn't ack simply ignores it (at-most-once). Always present on this channel.
-- **Batch semantics:** the queue drains **FIFO** into the array; commands that pile up between polls are
-  delivered in order in a single `200`. JellyRock dispatches them in array order.
-- **`KeepAlive` / `ForceKeepAlive` are not sent** on this channel — the poll request itself is the
-  keepalive (see liveness). A plugin MUST NOT enqueue them.
+- **`MessageType` and `Data`** are copied from the server's `ISessionController.SendMessage(name, messageId, data)`. The mapping of every `Play`, `Playstate` and `GeneralCommand` is documented once in [remote-control.md](remote-control.md#command-mapping-jellyfin--jellyrock) and applies here unchanged.
+- **Enum values MUST be sent as their string names**, as the socket frames send them: `Playstate.Command` as `"Pause"`, `"NextTrack"` or `"Seek"`, `GeneralCommand.Name` as `"DisplayContent"` or `"GoHome"`, and `Play.PlayCommand` as `"PlayNow"`. **Never as integers.** The client matches them as strings, so numeric enums, which are the default in .NET's `System.Text.Json`, quietly do nothing for every command whose meaning is in the enum. `Play` misleads here: it still plays, because its action has a default and the payload is `ItemIds`. So test a `Playstate` command, not `Play`, to check the serialization. A plugin that writes `Data` with `System.Text.Json` needs a `JsonStringEnumConverter`. Field-name case does not matter, since the client ignores it; only the enum values do.
+- **`MessageId`** is the server's message GUID and the key for [at-least-once delivery](#at-least-once-delivery). The client sends the last id it received back as the next poll's `ackId`, and skips an id it has already run. A client that does not acknowledge ignores it and gets at-most-once. It is always present on this channel.
+- **Batches are in order.** The queue drains first in, first out into the array, so commands that build up between polls arrive in order in one `200`, and JellyRock runs them in array order.
+- **`KeepAlive` and `ForceKeepAlive` are never sent** on this channel: the poll request is the keepalive (see [Liveness](#liveness-the-closed-app-requirement)). A plugin MUST NOT queue them.
 
 ## At-least-once delivery
 
-The plugin removes a batch from its queue to write it into the `200` response. HTTP gives the server no
-signal that the client actually received those bytes, so a client that disconnects between *drain* and
-*delivery* would lose that batch. `ack=1` + `ackId` close that gap; it is **opt-in and additive** (contract
-still `1`), realizing the hook the `MessageId` field was reserved for.
+The plugin takes a batch off its queue to write the `200` response, and HTTP tells the server nothing about whether the client received it. So a client that disconnects between the two loses the batch. `ack=1` and `ackId` close that gap. They are optional and additive (the contract is still version 1), and use the `MessageId` field that was kept for this.
 
-**Mechanism (cumulative ack + redelivery):**
+**How it works (cumulative ack, then redelivery):**
 
-1. An ack-aware client sends `ack=1` on every poll. The plugin then **retains** each delivered command
-   (delivered-but-unacked) instead of dropping it.
-2. When the client's poll response arrives, it records the last `MessageId` and sends it as `ackId` on the
-   **next** poll. The plugin drops everything up to and including that id.
-3. Anything still unacked is **redelivered** ahead of new commands. So a lost response self-heals on the next
-   poll: the commands the client never saw come back, keyed off an `ackId` that didn't advance past them.
+1. A client that acknowledges sends `ack=1` on every poll. The plugin then keeps each delivered command until it is acknowledged, instead of dropping it.
+2. When a poll's response arrives, the client notes the last `MessageId` and sends it as `ackId` on the next poll. The plugin drops everything up to and including that id.
+3. Anything still unacknowledged is delivered again, ahead of new commands. So a lost response repairs itself on the next poll: the commands the client never saw come back, because its `ackId` did not move past them.
 
-**The client MUST dedupe by `MessageId`.** At-least-once means a redelivered batch can contain a command the
-client already enacted (e.g. its ack was lost, or two polls briefly overlapped). Most commands are idempotent,
-but the **relative** transport verbs — `NextTrack`, `PreviousTrack`, `Rewind`, `FastForward` — are not:
-replaying one double-applies. JellyRock keeps a small ring of recently-dispatched ids and skips a repeat.
+**The client MUST skip a `MessageId` it already ran.** At-least-once means a repeated batch can hold a command the client already acted on, when its ack was lost or two polls briefly overlapped. Most commands are safe to repeat, but the relative transport commands (`NextTrack`, `PreviousTrack`, `Rewind`, `FastForward`) are not: running one twice moves twice. JellyRock remembers the last 64 ids it dispatched and skips a repeat.
 
-**Ordering & bounds:** redelivery preserves FIFO order. The retained buffer is bounded like the queue
-(oldest-dropped past a cap): a client that receives but never acks is buggy or gone — it is about to lapse
-out of the cast list anyway — so the plugin favors the newest commands rather than growing without limit.
+**Order and limits.** Commands delivered again keep their first-in, first-out order. The kept commands are capped like the queue, dropping the oldest past the cap: a client that receives but never acknowledges is broken or gone, and about to leave the cast list anyway, so the plugin keeps the newest commands instead of growing without limit.
 
-**Cumulative, not per-message:** the client acks the newest id it received, which implicitly acks everything
-before it. This is sufficient because the transport is whole-response-or-nothing (`roUrlTransfer` yields the
-full body or a timeout, never a partial array) and the client dispatches the array in strict order.
+**Cumulative, not per message.** Acknowledging the newest id acknowledges everything before it. That is enough because a response arrives whole or not at all (`roUrlTransfer` gives the full body or a timeout, never part of an array), and the client runs the array strictly in order.
 
-> A plugin or client that implements neither side of this stays at **at-most-once**, exactly as contract v1
-> shipped — the tiny drain→deliver window remains, and the user re-issues the rare lost command. Mixed
-> versions are safe in every direction.
+> A plugin or client that implements neither side stays at-most-once, as contract version 1 first shipped: the short window between taking and delivering a batch remains, and the user repeats the rare lost command. Any mix of versions is safe.
 
-## Liveness — the closed-app requirement
+## Liveness: the closed-app requirement
 
-Unlike the `ws` path, there is **no socket whose disconnect drops JellyRock from the cast list**. So liveness is
-tied to an **active poll**:
+Unlike the `ws` path, there is no socket whose disconnect drops JellyRock from the cast list. So whether JellyRock is live depends on an active poll:
 
-- Each poll request refreshes the session's server-side activity (`LogSessionActivity`) and records a
-  last-poll timestamp.
-- The plugin's attached controller reports `IsSessionActive` = "a poll arrived within the grace window"
-  (grace ≈ `waitMs` + margin). When JellyRock stops polling (app closed, or the poll loop dies without
-  reconnecting), the controller goes inactive and the plugin **revokes the media-control capability /
-  detaches**, so the server drops JellyRock from other clients' cast lists.
-- **JellyRock advertises `SupportsMediaControl: false` on `https`** ([deviceCapabilities.bs](../../source/utils/deviceCapabilities.bs));
-  the plugin owns the capability entirely on the secure path — forcing it `true` while a poll is live and
-  `false` when stale. This keeps the closed-app fix server-side (a closed client can't retract anything itself).
+- Each poll refreshes the session's activity on the server (`LogSessionActivity`) and records when it arrived.
+- The plugin's session controller reports `IsSessionActive` as "a poll arrived within the grace window", about `waitMs` plus a margin. When JellyRock stops polling (the app closed, or the poll loop died without reconnecting), the controller goes inactive and the plugin removes the media-control capability, so the server drops JellyRock from other clients' cast lists.
+- **JellyRock advertises `SupportsMediaControl: false` on `https`** ([`deviceCapabilities.bs`](../../source/utils/deviceCapabilities.bs)), and the plugin owns the capability on the secure path: `true` while a poll is live, `false` once it goes stale. That keeps the fix for a closed app on the server, since a closed client cannot take anything back itself.
 
-> The exact server mechanism that removes a stale session from the web cast list — whether flipping
-> `IsSessionActive` false suffices, or the raw `Capabilities.SupportsMediaControl` flag must also be cleared
-> and/or `OnSessionControllerDisconnected` called — is pinned by on-device verification against the target
-> server line (10.11.11), not assumed. See the plugin repo for the resolved mechanism.
+> The exact server mechanism that removes a stale session from the web client's cast list is settled by testing on a device against the target server line (10.11.11), not assumed: whether `IsSessionActive` going false is enough, or `Capabilities.SupportsMediaControl` must also be cleared, or `OnSessionControllerDisconnected` called. The plugin repo has the result.
 
-## JellyRock transport selection
+## Which transport JellyRock uses
 
-Consulted in [`RemoteControlTask.runReceiver`](../../components/remotecontrol/RemoteControlTask.bs), gating on
-`remoteProtocol.isHttpServer`:
+`RemoteControlTask.runReceiver()` picks by `remoteProtocol.isHttpServer()`:
 
 | Server URL | Transport |
 |---|---|
-| `http://…`  | `ws://` session socket (unchanged, #666). **No probe** — the shipped path is untouched. |
-| `https://…` + probe `200` | **Long-poll** (this contract). |
-| `https://…` + probe non-200 | Dark — no cast target advertised (unchanged behavior from before #667). |
+| `http://…` | The `ws://` session socket (#666), with no probe. |
+| `https://…`, probe `200` with this `contractVersion` | The long poll (this contract). |
+| `https://…`, anything else | Dark: no cast target, as before #667. |
 
 ## Versioning
 
-`contractVersion` starts at **1**. A backward-compatible addition (new optional field, new `MessageType`
-JellyRock already ignores) does not bump it. A breaking change (renamed field, changed status semantics)
-bumps it; JellyRock refuses a `contractVersion` it doesn't implement and stays dark rather than risk acting on a command it might misread.
+`contractVersion` starts at 1. A change that old clients can ignore (a new optional field, a new `MessageType` JellyRock already ignores) does not change it. A breaking change (a renamed field, a status with a new meaning) raises it, and JellyRock stays dark on a version it does not implement instead of acting on a command it might misread.
 
-The [at-least-once ack](#at-least-once-delivery) (`ack=1` / `ackId`) is a deliberate example of a
-version-**free** addition: the request params are optional, an unrecognized side just ignores them, and the
-guarantee degrades to the v1 at-most-once behavior on any mismatch. Both sides could therefore ship
-independently. Bumping to `2` would instead force a hard cutover — a client hard-gates on an exact version
-match and goes dark on a mismatch — which is unwarranted for a change this additive.
+The [at-least-once ack](#at-least-once-delivery) is a deliberate example of an addition that needs no new version: its parameters are optional, a side that does not know them ignores them, and any mismatch falls back to version 1's at-most-once behavior. So each side could ship on its own. Raising the version to 2 would have forced both to switch at once, since the client requires an exact match and goes dark otherwise, which a change this small does not justify.
