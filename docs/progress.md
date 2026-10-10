@@ -263,7 +263,7 @@ Found 2026-10-09: every `debug=true` build had failed since the dead-code rule l
 
 Options weighed on the /snag screen: `reword` (keep the refusal; state the true reason in the message, doc comment and test comment, name both escapes, `--arm` per device or `--select device=<key>` afterwards; then delete the warning box in `docs/dev/measuring-performance.md`, section "More than one device"), or `allow` (drop the same-model refusal and let `measure:report` disclose the pooling; a behavior change needing a design call, possibly re-keying columns on `device`). Recommended `reword`; read `measure-report.js` first to confirm the column claim. Ships as its own PR from `main`.
 
-Not checked: whether `measure:report` really keys its columns by model and tier (taken from the old guide's wording, not read in `measure-report.js`); whether pooling two same-model devices in one cell is a problem worth refusing, or just a disclosure. Nobody has run the refusal on real hardware: you have one device of each model.
+Not checked: whether `measure:report` really keys its columns by model and tier (taken from the old guide's wording, not read in `measure-report.js`); whether pooling two same-model devices in one cell is a problem worth refusing, or only a disclosure. Nobody has run the refusal on real hardware: you have one device of each model.
 
 ### components
 
