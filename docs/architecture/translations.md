@@ -177,9 +177,9 @@ No `zh.json` ships today, so that layer is skipped. A Hong Kong user gets Hong K
 
 | Step | Source | Before sign-in | After sign-in |
 |---|---|---|---|
-| 1 | The user's **Display language** setting (`translationLocale`, read with `getUserSetting`) | Skipped | Used |
+| 1 | The user's **Display Language** setting (`translationLocale`, read with `getUserSetting`) | Skipped | Used |
 | 2 | The server's language, `CustomPrefs.language`, through `normalizeLocaleCode()` (Jellyfin sends `zh-CN`, `pt-BR`) | Skipped | Used |
-| 3 | The device-wide sign-in language (`globalTranslationLocale`, read with `getSetting`) | Used | Skipped |
+| 3 | The device-wide **Sign-in Screen Language** setting (`globalTranslationLocale`, read with `getSetting`) | Used | Skipped |
 | 4 | The Roku's locale, through `mapRokuLocaleToTranslationLocale()` (`zh_CN` becomes `zh_Hans`, `zh_TW` becomes `zh_Hant`, `zh_HK` becomes `zh_Hant_HK`) | Used | Used |
 | 5 | `en_US` | Used | Used |
 

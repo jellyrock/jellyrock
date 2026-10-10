@@ -143,13 +143,13 @@ Locale files are named the way Weblate expects:
 2. English, `en_US.json`.
 3. The key itself, so a missing translation is easy to spot.
 
-A regional locale such as `fr_CA` is layered over its base language (`fr`), so users see as many translated strings as possible. Chinese locales load three layers: `zh`, then `zh_Hant`, then `zh_Hant_HK`.
+A regional locale such as `fr_CA` is layered over its base language (`fr`), so users see as many translated strings as possible. `zh_Hant_HK` is layered over `zh_Hant` the same way.
 
 ## Choosing the locale
 
 The app picks the locale at two points:
 
-- **Before sign-in:** the Roku's language, else `en_US`.
+- **Before sign-in:** the **Sign-in Screen Language** setting, else the Roku's language, else `en_US`.
 - **After sign-in:** the user's setting, else the Jellyfin server's language, else the Roku's, else `en_US`.
 
 `normalizeLocaleCode()` converts the server's language codes to the file names above: `zh-CN` becomes `zh_Hans`, and `pt-BR` becomes `pt_BR`.
