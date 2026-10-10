@@ -1451,11 +1451,7 @@
     "prose-arrow": 1
   },
   "docs/dev/measuring-performance.md": {
-    "caps-emphasis": 15,
-    "em-dash": 225,
-    "filler": 19,
-    "latin-abbrev": 1,
-    "prose-arrow": 16
+    "filler": 2
   },
   "docs/dev/registry-migrations.md": {
     "filler": 1

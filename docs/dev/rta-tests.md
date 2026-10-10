@@ -377,13 +377,13 @@ A screen with a `view` skips itself, with a reason, when the server has no libra
 Some entries are round trips that end where they started, not screens. They are in the registry because [`scripts/measure.js`](../../scripts/measure.js) resolves `--nav` from it:
 
 - **Round trips that keep a view:** `homeReturn`, `homeReturnAfterDetails`, `searchReturn`.
-- **Cell sweeps:** `cellSweepHome`, `cellSweepGrid`, `cellSweepExtras`, `cellSweepSearch`. Each opens a screen, moves a fixed distance, waits for its cell counters to stop, and leaves, which publishes them ([cell workloads](measuring-performance.md#cell-workloads--how-much-work-did-the-cells-do)).
+- **Cell sweeps:** `cellSweepHome`, `cellSweepGrid`, `cellSweepExtras`, `cellSweepSearch`. Each opens a screen, moves a fixed distance, waits for its cell counters to stop, and leaves, which publishes them ([cell workloads](measuring-performance.md#cell-workloads-how-much-work-did-the-cells-do)).
 - **Grid paging:** `gridScroll`, a timed scroll (Down every 150 ms for 20 s) that can outrun the loaded rows; leaving prints the grid's paging line ([`home-first-paint-performance.md`](home-first-paint-performance.md#grid-paging-did-the-user-wait-at-the-last-loaded-row)).
 
 They have no `capture`, and they still run as functional tests, so a workload that can no longer reach its screen fails like any navigation regression. When writing one:
 
 - **Fit the fixture; never refuse it.** They run against the small demo server too. A sweep that wants 12 steps and finds 4 rows takes 3 and says so.
-- **Home needs one more gate.** `waitHome()` is satisfied by skeleton rows, so `navCellSweepHome` waits on [`waitRowsSettled`](../../tests/rta/lib/steps.js) before reading its bounds. That gate is not why Home's counts vary between launches: the variation happens during page load, before the first key press ([why](measuring-performance.md#the-totals-are-cumulative--on-home-most-of-them-are-not-the-sweeps)).
+- **Home needs one more gate.** `waitHome()` is satisfied by skeleton rows, so `navCellSweepHome` waits on [`waitRowsSettled`](../../tests/rta/lib/steps.js) before reading its bounds. That gate is not why Home's counts vary between launches: the variation happens during page load, before the first key press ([why](measuring-performance.md#the-totals-are-cumulative-on-home-most-of-them-are-not-the-sweeps)).
 - **Add a `nav` rather than change one.** `measure` records the `nav`'s name, not its path, so changing its distances splits a series without saying so.
 
 ## Screenshots
