@@ -577,8 +577,7 @@
     "filler": 1
   },
   "components/api/ApiQueueTask.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 19,
+    "em-dash": 16,
     "filler": 1,
     "latin-abbrev": 1,
     "prose-arrow": 2
@@ -1301,7 +1300,7 @@
     "prose-arrow": 7
   },
   "docs/architecture/api.md": {
-    "em-dash": 87,
+    "em-dash": 85,
     "filler": 6,
     "latin-abbrev": 3,
     "prose-arrow": 8

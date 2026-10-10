@@ -1960,6 +1960,14 @@ Ruled out: asking `bsc` which blocks it excluded, which is exact but depends on 
 
 Code comments follow the house voice, and the voice ratchet enforces the five mechanical categories in them per file, beside the docs in `.doc-voice-baseline.json`. Comments are read by a parser per language so a quote or `//` inside a string never counts; shell has no parser here, so only whole-line `#` comments are read. Ruled out: a guide change with no gate, because a marker with an em dash landed the day the gap was noticed; and counting developer-facing strings too, because a script cannot tell a string that must keep its dash (test data, a parser's accepted separator) from prose. Strings can follow once the comment gate has run for a while.
 
+## decision-id: api-pool-plain-state-observer
+
+**date**: 2026-10-09
+**status**: accepted
+**related-files**: `components/api/ApiQueueTask.bs`, `docs/architecture/api.md`
+
+The API pool's caller watch keeps the plain `observeField` / `unobserveField` pair on a Task's `state`, for a new reason. [ADR 0043](adr/0043-pool-stops-long-reads-of-gone-callers.md) ruled out the scoped pair because it needs Roku OS 12 while the app supported 11. That reason went when #1126 raised the store floor to Roku OS 15.1. The pair stays out because its isolation is unproven on device: `unobserveFieldScoped` has removed another component's observer (#898, `components/CLAUDE.md`). The plain pair is safe while nothing else observes a Task's `state`, rechecked 2026-10-09. Followup `api-pool-watch-scoped-observer` measures the exact case before any swap.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -656,6 +656,16 @@ Filed `later` because it is a runtime change in the API layer, which should not 
 - I haven't seen the `INVALID` line on a device.
 - My earlier count of 27 included a comment in `apiPromise.bs`; the real count is 26.
 
+#### The API pool's caller watch drops every observer of a Task's `state`; measure whether the scoped pair isolates it on device `[fid: api-pool-watch-scoped-observer]` `[captured 2026-10-10]` `[pinned]`
+
+`ApiQueueTask`'s caller watch (`watchCaller()` / `forgetCaller()`) subscribes with `observeField("state", m.port)` and unsubscribes with `unobserveField("state")`, which drops every observer of the Task's `state`. It is safe only because nothing else observes a Task's `state` (the task ledger reads it instead). Rechecked 2026-10-09 by grepping every `observeField("state"`: the only other observed Task is `TrickplayCarousel`'s `tileLoader`, which does not use the pool.
+
+ADR 0043 ruled out the scoped pair (`observeFieldScopedEx` / `unobserveFieldScoped`) as needing Roku OS 12. That reason is gone since #1126 raised the floor to Roku OS 15.1. The true reason now is that scoped isolation is unproven on device: [`components/CLAUDE.md`](../components/CLAUDE.md) records `unobserveFieldScoped` removing a parent's observer (#898).
+
+**Work:** an on-device record test of this exact case (Task thread, message port, `observeFieldScopedEx` on another Task's `state`, plus a second plain observer from a render component; `unobserveFieldScoped`; does the other observer still fire?). If isolation holds, swap the two calls and drop the invariant; if not, keep the code and record why. Not now because it needs a new test component and device runs, and it ships as its own PR.
+
+First filed 2026-10-07 in `89c8185c`, which never reached `main` (PR #1126 merged without it). The docs-voice project states the true reason in [`api.md`](architecture/api.md#a-long-request-already-on-a-slot) and the `forgetCaller()` comment.
+
 ### tests
 
 #### Re-derive what actually reddened PR #800 — the device-contention explanation is REFUTED. `[fid: pr-800-red-cause-rederive]` `[captured 2026-08-10]`
