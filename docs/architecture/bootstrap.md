@@ -164,7 +164,7 @@ Play presses, item selection and the favorite and watched buttons are not here. 
 
 | Event | What happens |
 | --- | --- |
-| Screensaver exited | Calls `onScreenShown()` on the active screen, so it refreshes. It also asks `sceneManager` to reset the overhang clock, but `JROverhang` does not declare `resetTime` in its interface, so that call does nothing. |
+| Screensaver exited | Resets the overhang clock through `sceneManager`, and calls `onScreenShown()` on the active screen so it refreshes. |
 | Audio guide changed | Updates `m.global.device.isAudioGuideEnabled`. |
 | Low general memory | Stores the level in `m.global.device.memoryLevel` and prints it. Nothing else reacts. |
 | Codec capability changed | Sends the server the device's new playback capabilities. |
