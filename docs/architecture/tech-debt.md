@@ -8,7 +8,7 @@ last-reviewed: 2026-05-30
 
 A living inventory of known issues, plus a "recently removed" list (so future-you doesn't waste time searching for ghosts that have been deleted).
 
-For *what's good and shouldn't be casually reformed* — see the relevant topic doc in [`docs/architecture/`](./README.md#topic-map--load-by-purpose). Each topic doc explains its subsystem's design intent inline, where the context is fresh.
+For *what's good and shouldn't be casually reformed* — see the relevant topic doc in [`docs/architecture/`](./README.md#topic-map). Each topic doc explains its subsystem's design intent inline, where the context is fresh.
 
 Each refactor item has a stable slug for cross-referencing in commits, PRs, and GitHub issues. When a slug is filed as a GitHub issue, add the issue number as the `github` field. When the work is complete, remove the entry entirely (the closed GitHub issue becomes the historical record).
 

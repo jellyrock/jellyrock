@@ -1288,11 +1288,6 @@
     "em-dash": 14,
     "prose-arrow": 1
   },
-  "docs/architecture/README.md": {
-    "em-dash": 33,
-    "filler": 1,
-    "prose-arrow": 3
-  },
   "docs/architecture/api.md": {
     "em-dash": 85,
     "filler": 6,
