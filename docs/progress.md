@@ -884,6 +884,10 @@ Options weighed on the /snag screen: `limit` (raise to 60 min, fix the docs), `t
 
 Not checked: whether the 2026-08-07 and 2026-08-17 failures would pass today; whether anything in the release flow reads this job's result; the CI device's actual run time (assumed to match `.177`, the same model); whether a single spec got slower, since the ledger has no per-spec times; the self-hosted runner's env file.
 
+#### `MockDataLoader` has two loaders for a mock folder that does not exist `[fid: mockdataloader-roku-loaders-no-mocks]` `[captured 2026-10-10]`
+
+`MockDataLoader.LoadRokuDeviceInfo()` and `MockDataLoader.LoadRokuCapabilities()` in `tests/source/shared/MockDataLoader.bs` read from `tests/source/mocks/roku/`, which does not exist, and no spec calls either (`git grep -n -E 'LoadRokuDeviceInfo|LoadRokuCapabilities'` finds only their definitions). The old `docs/dev/registry-migrations.md` listed them with mock names that were never created; the rewrite (`f2c8bc2b`) dropped them. Close it by deleting both loaders, or by adding the mocks when a spec needs them.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
