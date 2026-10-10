@@ -157,11 +157,13 @@ Buttons, or rows, or a scroll area plus its dismiss button. Not a mixture. That 
 |---|---|---|---|---|
 | `JRDialog` | Step the button row (wraps) | Step the row only when stacked; otherwise consumed | Resolve with the focused button | Canceled result |
 | `JRListDialog` | None | Step rows, wrapping both ways | Commit the row | Dismiss (the only exit; there is no Cancel button) |
-| `OverviewDialog` | None | Scroll the body; past the end, move to OK | Dismiss (or move focus to OK) | Dismiss |
+| `OverviewDialog` | Consumed | Scroll the body; past the end, move to OK | Dismiss (or move focus to OK) | Dismiss |
 | `QuickConnectDialog` | Nothing: a one-button row steps back onto itself | Consumed | Canceled result | Canceled result |
 | `JRDialog` with `anyKeyResolves` | Resolve | Resolve | Resolve | Resolve: every key answers |
 
 `anyKeyResolves` exists for one question, "is anyone there?": the still-watching prompt (`showStillWatchingDialog`), where any press is the answer and making the viewer find a particular button would defeat it. It is a flag on the same model (`buttonDialogKeyAction`), not a second dialog.
+
+`OverviewDialog` runs `overviewDialogKeyAction` and consumes every pressed key, like the others: it is appended to the scene, so a key it let through would reach `JRScene.onKeyEvent` and act on the screen behind it.
 
 `QuickConnectDialog` uses the same `buttonDialogKeyAction` as `JRDialog`. With one button, cancel and resolve are the same outcome, and the step actions have nowhere to go. It uses the shared model rather than two hand-written lines, because consuming up and down to keep focus inside the dialog is a choice worth making in one place. It used to make that choice by accident.
 

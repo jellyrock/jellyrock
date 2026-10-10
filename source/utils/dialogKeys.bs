@@ -104,3 +104,49 @@ function buttonDialogKeyAction(key as string, stacked as boolean, anyKeyResolves
 
   return "consume"
 end function
+
+' What a key press means to the overview dialog: a scrolling body above one OK
+' button. The dialog is appended to the scene, so a key it does not consume
+' bubbles into JRScene and acts on the screen behind it. The model therefore
+' names every outcome, and "consume" is the answer to everything it does not act on.
+'
+'   BACK                         closes
+'   OK on the button             closes
+'   OK on the text               moves focus to the button
+'   DOWN on the button           consumed
+'   DOWN with text left below    scrolls down
+'   DOWN at the end of the text  moves focus to the button
+'   UP on the button             moves focus to the text, when there is text to scroll
+'   UP with text left above      scrolls up
+'   anything else                consumed
+'
+' @param {string} key - the key name from onKeyEvent
+' @param {boolean} okFocused - true when the OK button holds focus
+' @param {integer} scrollPosition - how far the text is scrolled
+' @param {integer} maxScroll - the furthest the text can scroll; 0 when it fits
+' @returns {string} - "close" | "focusOk" | "focusText" | "scrollDown" | "scrollUp" | "consume"
+function overviewDialogKeyAction(key as string, okFocused as boolean, scrollPosition as integer, maxScroll as integer) as string
+  if key = "back" then return "close"
+
+  if key = "OK"
+    if okFocused then return "close"
+    return "focusOk"
+  end if
+
+  if key = "down"
+    if okFocused then return "consume"
+    if maxScroll > 0 and scrollPosition < maxScroll then return "scrollDown"
+    return "focusOk"
+  end if
+
+  if key = "up"
+    if okFocused
+      if maxScroll > 0 then return "focusText"
+      return "consume"
+    end if
+    if scrollPosition > 0 then return "scrollUp"
+    return "consume"
+  end if
+
+  return "consume"
+end function

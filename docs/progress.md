@@ -26,6 +26,8 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-10: fix: Stop a crash on options in a stopped video's playback info
+- 2026-10-10: fix(overhang): Reset the clock when the screensaver ends
 - 2026-10-09: test(base): Restore `m.global.device` before every test
 - 2026-10-09: chore(lint): Hold code comments to the house voice
 - 2026-10-09: build(bsc): Let a debug build compile past the `dead-code` rule
@@ -72,14 +74,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-26 — feat: Say when search or cast is slow; keep search's spinner on search
 - 2026-09-26 — fix(audio): Show the right song's title and artwork after a skip
 - 2026-09-26 — perf(grid): Keep large libraries loading as fast as you scroll
-- 2026-09-25 — fix(grid): Wait for slow libraries, say so, and let Back stop the load
-- 2026-09-25 — fix: Load libraries as you scroll, say "Loading more", page "#" fully
-- 2026-09-25 — chore(skills): Move the capture sentence inside four sub-agent prompts
-- 2026-09-25 — fix: Show a library that failed to load as failed, and recover from it
-- 2026-09-25 — chore(skills): Label PRs by what the title and Overview say they deliver
-- 2026-09-25 — fix: Stop a song crashing when its details fail to load
-- 2026-09-25 — test(api): Make API requests fail on purpose in on-device tests
-- 2026-09-25 — fix: Stop Play crashing on a song's details screen
 
 ## Open followups
 
