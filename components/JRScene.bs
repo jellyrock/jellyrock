@@ -590,7 +590,9 @@ sub resolveDeepLink(args as object)
   ' either one sees a stale number and does nothing.
   m.deepLinkResolveSeq = (m.deepLinkResolveSeq ?? 0) + 1
 
-  if args.homeFirst
+  ' `= true`, not a bare `if`: a missing or invalid flag is a Type Mismatch in a bare `if`, and here
+  ' takes the synchronous path instead.
+  if args.homeFirst = true
     ' Wait for Home's nav to settle before starting the resolve. The resolve raises the content
     ' spinner and re-enables the remote, which re-shows the outgoing sign-in view for a frame if
     ' Home has not mounted yet (the #677 login flash; see createAndShowHomeGroup). Until then the
@@ -599,8 +601,10 @@ sub resolveDeepLink(args as object)
     promises.chain(sgrouter.navigateTo("/"), { args: args, seq: m.deepLinkResolveSeq }).then(sub(_result as object, ctx as object)
       startDeepLinkResolve(ctx.args, ctx.seq)
     end sub).catch(sub(err as object, ctx as object)
-      m.log.warn("deep-link Home nav failed; resolving anyway", err.message)
+      ' Start before logging, and log err whole: reading `.message` crashes when a rejection is not
+      ' an AA, which would leave the blocking sign-in spinner up for good.
       startDeepLinkResolve(ctx.args, ctx.seq)
+      m.log.warn("deep-link Home nav failed; resolving anyway", err)
     end sub)
     return
   end if
