@@ -4,313 +4,180 @@ related-files:
   - components/remotecontrol/RemoteControlTask.bs
   - components/remotecontrol/RemoteControlTask.xml
   - components/vendor/BrightWebSocket/WebSocketClient.xml
+  - components/vendor/BrightWebSocket/web_socket_client/WebSocketClient.brs
   - components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs
+  - components/vendor/BrightWebSocket/README.md
   - source/remotecontrol/remoteCommand.bs
   - source/remotecontrol/remoteProtocol.bs
   - source/utils/backoff.bs
   - source/remotecontrol/remoteDispatch.bs
+  - source/replayRoute.bs
   - source/utils/deviceCapabilities.bs
   - source/main.bs
   - source/utils/globals.bs
   - source/api/userAuth.bs
   - components/home/Home.bs
+  - scripts/lint/socket-thread-release-check.js
+  - scripts/lint/socket-auth-binding-check.js
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-09-26
+last-reviewed: 2026-10-10
 ---
 
-# Remote control — "Cast to JellyRock"
+# Remote control: cast to JellyRock
 
-Lets another Jellyfin client (web / mobile) drive playback on JellyRock via Jellyfin's
-**"Play On"** menu — cast an item, then pause / seek / next / previous / stop from the
-controlling client. This is the receiving half of Jellyfin's session remote-control protocol.
+Another Jellyfin client (web or mobile) can drive playback on JellyRock from Jellyfin's **Play On** menu: cast an item, then pause, seek, skip or stop it from that client. JellyRock is the receiving half of Jellyfin's session remote-control protocol.
 
-## The two-transport vision
+## Two transports, one command stream
 
-Jellyfin pushes remote-control commands (`Play` / `Playstate` / `GeneralCommand`) to a session
-over a **`WebSocket`** — there is no ECP/SSDP/DLNA path, and with no open socket the command is
-silently dropped server-side. A session shows up as a cast target only when its `Capabilities`
-report `SupportsMediaControl == true` **and** it has an active controller.
+Jellyfin pushes remote-control commands (`Play`, `Playstate`, `GeneralCommand`) to a session over a `WebSocket`. There is no ECP, SSDP or DLNA path: with no open socket, the server drops the command. A session shows up as a cast target only when its capabilities report `SupportsMediaControl = true` and it has an active controller. On the session, Jellyfin exposes that combination as `SupportsRemoteControl`, the field its cast-target filter reads.
 
-That gives two transports, one normalized command stream:
+So JellyRock has two transports that feed one normalized command stream:
 
-1. **`ws://` (#666)** — against a plain-**HTTP** server, JellyRock opens Jellyfin's
-   native session socket directly. **No server changes.** This is the shipped half.
-2. **HTTPS long-poll (#667)** — Roku has **no socket TLS** (`ifSocketOption` exposes no
-   TLS; there is no `wss://` on Roku), so a secure server can't use transport #1. Instead the
-   companion **JellyRock Companion** server plugin (repo `jellyfin-plugin-jellyrock`) queues the
-   same commands and JellyRock pulls them with an authenticated HTTP **long-poll** over TLS
-   (`roUrlTransfer`), sidestepping `wss://` entirely. The wire contract is frozen + versioned in
-   [`remote-control-longpoll-contract.md`](remote-control-longpoll-contract.md).
+1. **`ws://` (#666).** Against a plain HTTP server, JellyRock opens Jellyfin's own session socket. No server changes are needed.
+2. **HTTPS long-poll (#667).** Roku has no TLS on sockets (`ifSocketOption` offers none, so there is no `wss://`), so a secure server cannot use the first transport. Instead the **JellyRock Companion** server plugin (repo `jellyfin-plugin-jellyrock`) queues the same commands, and JellyRock pulls them with an authenticated HTTP long-poll over TLS (`roUrlTransfer`). The versioned wire contract is in [`remote-control-longpoll-contract.md`](remote-control-longpoll-contract.md).
 
-**Transport selection** happens in `RemoteControlTask.runReceiver`, gating on the server scheme
-(`remoteProtocol.isHttpServer`):
+`RemoteControlTask.runReceiver` picks the transport from the server scheme (`remoteProtocol.isHttpServer`):
 
-- `http://` → the `ws://` socket, unconditionally (no probe; the #666 path is untouched). The
-  receiver never downgrades an `https://` session's token onto cleartext `ws://`.
-- `https://` → probe the plugin (`GET /JellyRock/RemoteControl/info`): `200` → run the long-poll
-  loop; anything else → stay dark (no cast target advertised — unchanged from before #667).
+- **`http://`:** the `ws://` socket, with no probe.
+- **`https://`:** probe the plugin with `GET /JellyRock/RemoteControl/info`. A `200` whose body carries the expected `CONTRACT_VERSION` starts the long-poll loop. Anything else leaves JellyRock dark: no cast target is advertised. `buildSocketUrl` returns nothing for a non-HTTP server, so an `https://` session's token never goes out over cleartext `ws://`.
 
-On `https` the **plugin owns the `SupportsMediaControl` capability**: JellyRock keeps advertising it
-`false` (`deviceCapabilities.bs` is scheme-gated and unchanged), and the plugin forces it `true`
-while a poll is live, revoking it when polling stops. That revocation — driven by the plugin
-controller's **poll-freshness**, not `LastActivityDate` — is what drops a closed JellyRock from the
-cast list (the `ws://` path gets this free from a socket disconnect). Verified on device: with the app
-closed, `SupportsRemoteControl` flips false within the grace window even though other traffic keeps
-`LastActivityDate` warm.
+On HTTPS the plugin owns the capability. JellyRock advertises `SupportsMediaControl` as `false` there (`deviceCapabilities.bs` checks the scheme), and the plugin forces it `true` while a poll is live and revokes it when polling stops. That revocation follows the plugin's poll freshness, not `LastActivityDate`, and it is what drops a closed JellyRock from the cast list. The `ws://` path gets the same from the socket disconnect. Verified on a device: with the app closed, `SupportsRemoteControl` turned false within the grace window, though other traffic kept `LastActivityDate` recent.
 
-## Threading — Option B (Task owns the socket, main thread dispatches)
+## Threading: a Task owns the transport, the main thread dispatches
 
-The socket is I/O, so it lives on a **Task thread**; but the seams a command must drive
-(`stashDeepLink`, `onRuntimeDeepLink`, `getActiveView`, `roAppManager`, `m.scene.callFunc`) are
-**main-thread** only. So the flow splits cleanly:
+The socket is I/O, so it lives on a Task thread. But the seams a command drives (`stashDeepLink`, `onRuntimeDeepLink`, `getActiveView`, `roAppManager`, `m.scene.callFunc`) are main-thread code. So the flow splits:
 
 ```text
                 RemoteControlTask (Task thread)                     main thread (Main() loop)
  Jellyfin  ─ws─▶ WebSocketClient ─▶ remoteCommand.parseMessage ─▶ dispatchCommand field ─▶ remoteDispatch
    server        (vendored)          (pure normalize)              (observed by main.bs)     ├─ play     → stashDeepLink + onRuntimeDeepLink
                                                                                              ├─ navigate → stashDeepLink + onRuntimeDeepLink
+                                                                                             ├─ route / goback → m.scene.callFunc("routerNavigate" / "routerGoBack")
                                                                                              └─ transport→ getActiveView().handleTransport(evt)
 ```
 
-- **`RemoteControlTask`** ([.bs](../../components/remotecontrol/RemoteControlTask.bs)) owns the
-  vendored `WebSocketClient` node (a nested Task — see
-  [`components/vendor/BrightWebSocket/README.md`](../../components/vendor/BrightWebSocket/README.md)),
-  parses each frame, answers keepalive, reconnects with backoff, and marshals normalized commands
-  to the main thread. It **never** dispatches and **never** logs the socket URL (it carries the token).
-- **`remoteCommand.bs`** / **`remoteProtocol.bs`** are pure (no node, no socket, no `m.global`) and
-  unit-tested — the wire-protocol parser and the transport helpers (the HTTP gate, URL builder,
-  keepalive frame). The reconnect delay is the app's shared `backoff.nextDelayMs`
-  ([`source/utils/backoff.bs`](../../source/utils/backoff.bs)), which the TV guide's retries use too.
-- **`remoteDispatch.bs`** is the main-thread adapter — the single place the deep-link and player
-  seams are called for a remote command. `dispatchTransport` is **shared** with the voice path
-  (`main.bs`'s `roInputEvent` branch calls the same adapter), so voice and cast dispatch transport
-  identically.
+- **[`RemoteControlTask`](../../components/remotecontrol/RemoteControlTask.bs)** owns the vendored `WebSocketClient` node, itself a nested Task ([vendor README](../../components/vendor/BrightWebSocket/README.md)). It parses each frame, answers keepalive requests, reconnects with backoff and hands normalized commands to the main thread. It never dispatches, and it never logs the socket URL, which carries the token.
+- **`remoteCommand.bs` and `remoteProtocol.bs`** are pure: no node, no socket, no `m.global`. They hold the wire-protocol parser and the transport helpers (the HTTP check, URL builders, the keepalive frame), and have unit tests in `tests/source/unit/remotecontrol/`. The reconnect delay comes from the shared `backoff.nextDelayMs` ([`backoff.bs`](../../source/utils/backoff.bs)), which the TV guide's retries use too.
+- **`remoteDispatch.bs`** is the main-thread adapter, the one place a remote command calls the deep-link and player seams. Voice uses the same `dispatchTransport`: the `roInputEvent` branch in `main.bs` calls it, so voice and cast control the player identically.
 
-**Marshalling detail:** the command rides a field on the **task node** (`dispatchCommand`), observed
-by the main loop — a task-node field + port delivers, but an `m.global` field + port does **not**
-(the delivery defect noted in `main.bs`). That's why the field lives on the task, not on `m.global`.
+The command rides a field on the Task node, `dispatchCommand`, which the main loop observes. A Task-node field observed on a port delivers; an `m.global` field observed on a port does not (the delivery defect noted in `main.bs`). That is why the field lives on the Task.
 
 ## Lifecycle
 
-The task node is created on `m.global` in `setGlobalNodes` (Phase 2), but **not** started there —
-it needs the session token. It is:
+`setGlobalNodes` (phase 2) creates the Task node on `m.global` but does not start it, because it needs the session token.
 
-- **Started** (`control="RUN"`) post-login from `Home.isFirstRun` (alongside the capabilities POST and
-  the cold-launch pairing report — see below). `isFirstRun` is per-Home-instance, so it restarts on each
-  fresh login (including after a server switch). The node is app-wide and never replaced: `main.bs`
-  observes its `dispatchCommand` once at startup, so a new node would go unheard. A new Home instance
-  with no sign-out since the last one relaunches it while it runs, which Roku ignores, leaving the one
-  receiver listening — the `no-same-node-relaunch` suppression on that launch records this.
-- **Stopped** (`control="STOP"`) in `SignOut` (`source/api/userAuth.bs`) — the single logout +
-  server-switch chokepoint (a server switch runs `SignOut(false)` via `performServerSwitch`), so the
-  socket never survives a session teardown. Sign-out stops the receiver first, then the live
-  `WebSocketClient` child it publishes via the `socketNode` field — the external STOP kills the
-  receiver thread before its own `closeSocket()` cleanup can run, so the child needs its own stop.
-  `STOP` is not a join, so the child is read into a local before it is stopped (the receiver can
-  still be inside `closeSocket()` clearing that field, and a dot on `invalid` would crash the
-  caller mid-sign-out).
+- **Start:** `Home`'s first-run block launches it with `launchTask()` after sign-in, next to the capabilities POST and the pairing report ([below](#cold-launch-pairing-report-668)). First run is per Home instance, so the receiver restarts on each fresh sign-in, including after a server switch. The node is app-wide and never replaced: `main.bs` observes its `dispatchCommand` once at start-up, so a new node would go unheard. A new Home with no sign-out since the last one relaunches the node while it runs, which Roku ignores, and the one receiver keeps listening. The `no-same-node-relaunch` suppression on that launch records this.
+- **Stop:** `SignOut` in `source/api/userAuth.bs`, the one teardown point for sign-out and server switch (a switch reaches `SignOut(false)` once the new server answers its probe). So the socket never outlives a session. `StopRemoteControlReceiver()` stops the receiver, then the live `WebSocketClient` child the receiver publishes on `socketNode`. The child needs its own stop, because stopping the receiver kills its thread before its own `closeSocket()` cleanup can run. A STOP does not wait for the thread to end, so the child is copied into a local first: the receiver may still be clearing that field, and a dot on `invalid` would crash sign-out.
 
-**Socket-thread release** (the #728 leak class): each connect attempt creates a fresh
-`WebSocketClient` node whose Task thread must be released when that connection ends — a Task thread
-survives reference drops. Two complementary mechanisms cover it:
+### Releasing socket threads
 
-- `closeSocket()` STOPs the child after the connection goes terminal — this is the one that fires on
-  every reconnect, and it also covers an error raised while the socket is still OPEN, which the
-  loop's own exit never sees. It requests **no close frame**: by the time it runs the client has
-  already left `OPEN` on every path that reaches it, so there was nothing to send, and the `STOP`
-  would kill the delivering thread regardless. The teardown is abrupt by design — see
-  [`remotecontrol-socket-abrupt-teardown`](tech-debt.md#remotecontrol-socket-abrupt-teardown).
-- the vendored socket loop self-exits once its connection reaches CLOSED and its event port is
-  drained (single-connection contract; see the modification list in the vendor README) — this is
-  what reclaims a child orphaned by a receiver that died without running `closeSocket()`.
+Each connect attempt creates a fresh `WebSocketClient` node, and its Task thread must be released when the connection ends, since a Task thread survives dropped references (the #728 leak class). Two mechanisms cover it:
 
-The receiver wakes on `on_close` / `on_error`, but the vendored loop releases its thread on
-`ready_state = CLOSED`. Those are **different signals**, and they coincide only because every
-`_close()` path in the client happens to post one of the two — nothing enforces it, and no lint can
-see it (it is a property of the vendored *client*, not of the three files the guard reads). So the
-receiver also observes `ready_state` and treats `CLOSED` as terminal, gated on a socket that
-actually opened: `ready_state` is `CLOSED` before `open()` is ever called and the task seeds
-`m.top.ready_state` from it at startup, so an ungated test would race that seed and tear down every
-connection before it opened. `on_close`/`on_error` stays the fast path — an error raised while the
-socket is still `OPEN`/`CLOSING` lands ~30s before `_CLOSING_DELAY` would force it to `CLOSED`.
-Whichever signal arrives first wins; the outcome is identical.
+- **`closeSocket()` stops the child once the connection has ended.** It runs on every reconnect, and it also covers an error raised while the socket is still open, which the loop's own exit never sees. It sends no close frame: on every path that reaches it the client has already left `OPEN`, and the STOP would kill the sending thread anyway. The teardown is abrupt by design ([`remotecontrol-socket-abrupt-teardown`](tech-debt.md#remotecontrol-socket-abrupt-teardown)).
+- **The vendored socket loop exits by itself** once its connection reaches `CLOSED` and its event port is drained (a single-connection contract; see the modification list in the vendor README). This reclaims a child left behind by a receiver that died without running `closeSocket()`.
 
-Jellyfin ends a session by sending a `WebSocket` **CLOSE frame** (code `1000`, reason `System
-Shutdown`) rather than dropping the connection — measured against 10.11.11 with a raw upgrade
-mirroring the vendored client's. That is why `on_close`, not `on_error`, is the terminal event:
-a CLOSE frame raises no error, so the socket goes `OPEN → CLOSING` and only reaches CLOSED (emitting
-`on_close`) after `_CLOSING_DELAY`, by which point the event port is long idle. The vendored loop's
-exit test has to be ordered against that, or the receiver never learns the socket died.
+The receiver wakes on `on_close` or `on_error`, but the vendored loop releases its thread on `ready_state = CLOSED`. Those are different signals. They line up only because every `_close()` path in the client posts one of the two, and nothing enforces that. So the receiver also observes `ready_state` and treats `CLOSED` as the end, but only for a socket that opened: `ready_state` reads `CLOSED` before `open()` is called, and the Task seeds `m.top.ready_state` from it at start-up, so an ungated check would tear down every connection before it opened. `on_close` and `on_error` stay the fast path: an error raised while the socket is `OPEN` or `CLOSING` arrives up to `_CLOSING_DELAY` (30 seconds) before the client forces `CLOSED`. Whichever signal comes first wins, with the same result.
 
-Both mechanisms are keyed on a connection that *ends*. A connect that never completes is a weaker spot: Roku's
-`connect()` reports only that the attempt was initiated when the socket is non-blocking, and the
-vendored client never re-checks `isConnected()` / `eConnRefused()`, so it sits in CONNECTING until
-the handshake write fails. The receiver blocks on the same socket, so that costs one thread rather
-than accumulating. The ordering inside the vendored loop is load-bearing and unreachable by any test
-— `npm run lint:socket-thread-release` gates it.
+Jellyfin ends a session with a `WebSocket` close frame (code `1000`, reason `System Shutdown`), not by dropping the connection; measured against 10.11.11 with a raw upgrade that mirrors the vendored client's. That is why `on_close`, not `on_error`, is the terminal event. A close frame raises no error, so the socket goes from `OPEN` to `CLOSING` and reaches `CLOSED` (emitting `on_close`) only after `_CLOSING_DELAY`, by which time the event port is long idle. The vendored loop's exit test has to be ordered for that, or the receiver never learns the socket died.
 
-Reconnect is exponential backoff (`1s`→`30s` cap); it stops on a token rotation (re-read before each
-reconnect). `ForceKeepAlive` from the server sets a send interval (half the requested seconds), on
-which the receiver sends a `KeepAlive` so the session isn't reaped.
+Both mechanisms rely on a connection that ends. A connect that never completes is weaker. On a non-blocking socket, Roku's `connect()` reports only that the attempt started, and the vendored client never re-checks `isConnected()` or `eConnRefused()`, so it sits in `CONNECTING` until the handshake write fails. The receiver blocks on the same socket, so this costs one thread, not a growing number. No test can reach the ordering inside the vendored loop, so `npm run lint:socket-thread-release` checks it.
 
-**Anything the receiver SENDS on this socket must build its JSON with QUOTED keys.** BrightScript converts
-a bare identifier key to lower case, and — unlike Jellyfin's REST endpoints, which bind
-case-INsensitively — the socket path decodes with case-SENSITIVE options, so a lowercased
-`MessageType` binds to nothing, is dropped without a server-side log line, and the session is reaped
-~60 seconds after it connects. That asymmetry is why a casing mistake is survivable everywhere else in the
-app and fatal here; it cost every 10.11+ server a permanently churning socket until #934.
+Reconnects back off exponentially from 1 second to a 30-second cap. A connection that stayed up 30 seconds or more resets the backoff. The receiver re-reads the token before each reconnect and stops if it changed. When the server sends `ForceKeepAlive`, the receiver sends a `KeepAlive` at once and then every half of the requested interval, so the server does not reap the session.
+
+### Anything sent on the socket uses quoted JSON keys
+
+BrightScript turns a bare identifier key into lower case. Jellyfin's REST endpoints bind keys case-insensitively, but the socket path decodes case-sensitively. So a lowercased `MessageType` binds to nothing, is dropped with no server log line, and the session is reaped about 60 seconds after it connects. A casing slip that is harmless everywhere else in the app is fatal here: it left every 10.11 and later server with a socket that dropped and reconnected forever, until #934.
 
 ## Cold-launch pairing report (#668)
 
-So the companion plugin can wake a **closed** app via ECP `/launch` (the cast *producer*, ADR 0023),
-JellyRock reports its wake identity — `POST /JellyRock/RemoteControl/pair {rokuIps, appId, isDev}` —
-once per app open. This is **not** part of the receiver: it fires as a fire-and-forget `SubmitSideEffect`
-from `Home.isFirstRun` (next to the capabilities POST), composed by `remoteProtocol.buildPairRequest`.
-Firing it there — not from `RemoteControlTask` — keeps it **off the command channel's critical path**
-(a slow/stalled `/pair` can never delay the live receiver) and off the receiver Task thread (so it can't
-race the capabilities POST on the shared side-effect node). It's **transport-agnostic** (fires on
-`http` *and* `https` — the ECP wake is independent of the command transport). The body carries **no**
-`DeviceId`/`UserId`; identity is bound from the auth header the `SideEffectTask` attaches, so a hostile
-body can't spoof another device's pairing. (This depends on a **stable** `DeviceId` — see the
-`deviceid-suffix-gate-10.11` decision; on the `ws://` path an unstable `serverDeviceName` would split
-the phantom and the live socket into two sessions.)
+The companion plugin can wake a closed app through ECP `/launch` (the cast producer, [ADR 0023](../adr/0023-cold-launch-cast-producer.md)). For that, JellyRock reports its wake identity once per app open: `POST /JellyRock/RemoteControl/pair {rokuIps, appId, isDev}`.
 
-### How the `DeviceId` is actually bound (#743)
+This is not part of the receiver. `remoteProtocol.buildPairRequest` builds it, and `Home`'s first-run block sends it as a fire-and-forget `SubmitSideEffect`, next to the capabilities POST. Sending it from there keeps it off the receiver's Task thread, so a slow or stalled `/pair` can never delay the live receiver. It goes out on HTTP and HTTPS alike, because the ECP wake does not depend on the command transport. `SubmitSideEffect` queues each request as its own child node, so the two back-to-back calls from Home do not overwrite each other (#744).
 
-**Jellyfin resolves `DeviceId` from the `Authorization` header and nowhere else.** It never reads it
-from a query string, and when the header omits it the server silently substitutes the `DeviceId` the
-auth **token was minted under** (`AuthorizationContext.GetAuthorizationInfoFromDictionary`; identical
-in 10.7 → 12.0). A token's device row is fixed at mint time and is never rewritten afterwards — only
-`DeviceName` / `AppVersion` are.
+The body carries no `DeviceId` or `UserId`. The plugin binds identity from the auth header `SideEffectTask` attaches, so a hostile body cannot claim another device's pairing. This depends on the `DeviceId` the header carries; the next section explains how it is bound.
 
-That header rule governs the socket from **10.8.0** onward, where the upgrade is authenticated through
-`AuthorizationContext`. **10.7.x is the exception**: its `SessionWebSocketListener` binds the session
-from the query string alone, reading exactly `api_key` and `deviceId` — so on 10.7 both query params
-are load-bearing and the header is not consulted.
+### How the `DeviceId` is bound (#743)
 
-Two consequences the original `ws://` receiver got wrong (on 10.8.0+):
+**Jellyfin takes the `DeviceId` from the `Authorization` header.** When the header leaves it out, the server substitutes the `DeviceId` the auth token was minted under (`AuthorizationContext.GetAuthorizationInfoFromDictionary`, the same from 10.7 to 12.0). A token's device row is fixed when the token is minted; only `DeviceName` and `AppVersion` change afterwards.
 
-- The `&deviceId=` query parameter on the socket URL is **inert**. It looks like it binds the
-  socket, but the server ignores it.
-- A header-less upgrade therefore lands on the **token's** `DeviceId`, not the app's. On an install
-  upgraded from a build older than #721 that is the old suffixed id, so the socket sat on a
-  different session than the REST API, the capabilities POST and `/pair` — the cast target resolved
-  but commands were delivered where the app wasn't listening.
+The socket upgrade differs by server version:
 
-`RemoteControlTask` therefore sends `buildAuthHeader(false)` as an `Authorization` header on the
-upgrade handshake, which pins the socket to the same `DeviceId` everything else advertises. The
-device name is omitted (`false`) because the handshake is written as a raw string with no
-header-encoding layer and the server already has the name on the token's device row. The token also
-stays on the URL so a proxy that strips `Authorization` degrades to the old behavior instead of failing
-to connect. Its **parameter name is version-gated** (`remoteProtocol.buildSocketUrl`): `ApiKey` on
-10.8.0+, because `api_key` is *legacy authorization* — gated behind `EnableLegacyAuthorization` since
-10.11 and **disabled by default from Jellyfin 12.0** — so an `api_key` fallback would silently stop
-authenticating there; `api_key` on 10.7.x (and an unknown version), because that is the only name
-10.7's socket listener reads.
+| Server | How the socket binds its session |
+|---|---|
+| 10.7.x | From the query string alone: `api_key` and `deviceId`. The header is not read. |
+| 10.8 to 10.10 | The header authenticates, and a `deviceId` query parameter, when present, overrides the header's `DeviceId`. |
+| 10.11 and later | From the header only. A `deviceId` query parameter is ignored. |
 
-Session identity is keyed `GetSessionKey(client, deviceId)`, so "same `Client` + same `DeviceId`" is
-the whole invariant. Any future channel that opens a Jellyfin session must send this header.
+The original `ws://` receiver sent no header and relied on `&deviceId=`. From 10.11 that parameter is ignored, so a header-less upgrade lands on the token's `DeviceId`, not the app's. On an install upgraded from a build older than #721, that was the old suffixed id. The socket then sat on a different session from the REST API, the capabilities POST and `/pair`: the cast target resolved, but commands went where the app was not listening.
 
-**`/pair` is intentionally version-free** — unlike `/info`+`/poll`, which carry `CONTRACT_VERSION` and
-refuse a mismatch. It's a *registration*, not a *command*, so a misread is bounded (wrong/failed wake),
-and its skew-safety is the plugin's **HTTP status contract**, not a version field:
+So `RemoteControlTask` sends `buildAuthHeader(false)` as an `Authorization` header on the upgrade, which pins the socket to the `DeviceId` everything else advertises. `&deviceId=` stays on the URL with the same value, so every server version agrees. `npm run lint:socket-auth-binding` guards this. The device name is left out (`false`) because the handshake is written as a raw string with no header encoding, and the server already has the name on the token's device row.
 
-- Old plugin without the route → **404** → treated as producer-absent. Fail-safe.
-- A future **breaking** `/pair` change **must** `400` old clients (or move the route so they `404`) —
-  **never silently reinterpret a field**. The RESTful move is to version the *route*, not add a body field.
-- The body is **additive-only** (the plugin ignores unknown fields); identity is bound from the auth claim.
-- The client is fire-and-forget and **never reads the response**, so it cannot be version-confused by
-  construction. A `contractVersion` field would only duplicate what `400`/`404` already express.
+The token also stays on the URL, so a proxy that strips `Authorization` falls back to the old behavior instead of failing to connect. Its parameter name depends on the version (`remoteProtocol.buildSocketUrl`):
 
-## Capabilities — the gotcha
+- **`ApiKey` on 10.8.0 and later.** `api_key` is legacy authorization, behind `EnableLegacyAuthorization` since 10.11 and off by default from 12.0, so an `api_key` fallback would stop authenticating there.
+- **`api_key` on 10.7.x and on an unknown version**, because it is the only name 10.7's socket listener reads.
+
+Jellyfin keys a session on `Client` plus `DeviceId` (`GetSessionKey`), and from 12.0 on the user id too. Any future channel that opens a Jellyfin session must send this header.
+
+### Why `/pair` has no version
+
+The long-poll probe (`/info`) carries `CONTRACT_VERSION` and refuses a mismatch; `/pair` has no version field. It is a registration, not a command, so a misread costs at most a wrong or failed wake. Its safety across versions comes from the plugin's HTTP status codes:
+
+- An old plugin without the route answers **404**, which reads as no producer. Safe.
+- A future breaking change to `/pair` must answer old clients with **400**, or move the route so they get 404. It must never reinterpret a field silently. Version the route, not the body.
+- The body only grows: the plugin ignores unknown fields, and identity comes from the auth header.
+- The client never reads the response, so it cannot misread a new version. A `contractVersion` field would only repeat what 400 and 404 already say.
+
+## Capabilities: the trap
 
 `deviceCapabilities.bs` advertises the session as controllable:
 
-- **`SupportsMediaControl`** — `true` **only** when the server URL is `http://` (see the HTTP gate
-  above). This is what makes JellyRock appear in "Play On" and is what carries **transport** control
-  (pause / seek / next / …).
-- **`SupportedCommands`** — `getSupportedRemoteCommands()` and **must** contain only
-  `GeneralCommandType` values. **Putting `Playstate` verbs (Pause/Stop/Seek/…) here makes the whole
-  `POST /Sessions/Capabilities/Full` return 400**, so nothing sticks. Transport rides on
-  `SupportsMediaControl`, not `SupportedCommands`. The advertised set is the actionable navigation +
-  messaging commands: `DisplayContent`, `GoHome`, `GoToSearch`, `GoToSettings`, `Back`,
-  `DisplayMessage`. **The web only *sends* a `GeneralCommand` it sees advertised here** — so a
-  command we don't handle is simply never sent. Volume, directional D-pad, `SendKey`/`SendString`,
-  and screenshot are deliberately omitted (not actionable from an app on Roku today — see deferred work).
+- **`SupportsMediaControl`** is `true` only when the server URL is `http://` (see the transport choice above). It makes JellyRock appear in **Play On**, and it carries transport control: pause, seek, skip.
+- **`SupportedCommands`** comes from `getSupportedRemoteCommands()` and may contain only `GeneralCommandType` values. **A `Playstate` verb (Pause, Stop, Seek) in this list makes the whole `POST /Sessions/Capabilities/Full` return 400**, so none of the capabilities stick. Transport rides on `SupportsMediaControl` instead.
 
-## Command mapping (Jellyfin → JellyRock)
+The advertised commands are the navigation and messaging ones JellyRock acts on: `DisplayContent`, `GoHome`, `GoToSearch`, `GoToSettings`, `Back` and `DisplayMessage`. The web client sends display mirroring and shows its remote buttons only for commands it sees advertised, so a command JellyRock does not handle is not sent. Volume, the directional pad, `SendKey`, `SendString` and screenshots are left out (see [deferred work](#scope-and-deferred-work)).
 
-| Jellyfin frame | Normalized | JellyRock seam |
+## Command mapping
+
+| Jellyfin frame | Normalized | What JellyRock does |
 |---|---|---|
-| `Play` (`PlayNow`/Shuffle/`InstantMix`) | `play` | mint `contentId` `<itemIds[startIndex]>\|action=<verb>` → `stashDeepLink` + `onRuntimeDeepLink` (the deep-link play path) |
-| `GeneralCommand{DisplayContent}` | `navigate` | springboard the item (action `open`) via the same deep-link seam — **suppressed over active playback** (see the display-mirroring note below) |
-| `GeneralCommand{GoHome/GoToSearch/GoToSettings}` | `route` | `routerNavigate(<path>)` (`/`, `/search`, `/settings`); `/`'s `clearStackOnResolve` makes Home the back-stack root |
-| `GeneralCommand{Back}` | `goback` | `routerGoBack` (`sgRouter.goBack`; no-op at root, so it never exits the app) |
-| `GeneralCommand{DisplayMessage}` | `message` | `TimeoutMs` present → **toast** (`Header` + `Text`); absent → **dialog** (persistent, dismiss with OK) |
-| `Playstate{Pause/Unpause/Stop/NextTrack/PreviousTrack/Seek/Rewind/FastForward/PlayPause}` | `transport` | `getActiveView().handleTransport(evt)` on the active player |
-| `ForceKeepAlive` | `keepalive` | receiver answers with `KeepAlive` on the interval (never reaches the main thread) |
-| `GeneralCommand{volume/directional/SendKey/…}` / `KeepAlive` / `Sessions` / `RefreshProgress` / `UserDataChanged` / unknown | `ignore` | dropped — never an error, so a hostile/future/unrecognized frame can't break the receiver |
+| `Play` (`PlayNow`, `PlayShuffle`, `PlayInstantMix`, `PlayNext`, `PlayLast`) | `play` | Builds the `contentId` `<itemIds[startIndex]>\|action=<verb>`, then `stashDeepLink` and `onRuntimeDeepLink`, the deep-link play path |
+| `GeneralCommand{DisplayContent}` | `navigate` | Opens the item's detail screen (action `open`) through the same deep-link seam. **Dropped during playback** ([below](#displaycontent-during-playback)). |
+| `GeneralCommand{GoHome, GoToSearch, GoToSettings}` | `route` | `routerNavigate(<path>)` with `/`, `/search` or `/settings`. The `/` route's `clearStackOnResolve` makes Home the root of the back stack. |
+| `GeneralCommand{Back}` | `goback` | `routerGoBack`, which does nothing at the root, so it never exits the app |
+| `GeneralCommand{DisplayMessage}` | `message` | With `TimeoutMs`, a **toast** (`Header` and `Text`). Without it, a **dialog** that stays until the user presses OK. |
+| `Playstate{Pause, Unpause, Stop, NextTrack, PreviousTrack, Seek, Rewind, FastForward, PlayPause}` | `transport` | `getActiveView().handleTransport(evt)` on the active player |
+| `ForceKeepAlive` | `keepalive` | The receiver sends `KeepAlive` on the interval. Never reaches the main thread. |
+| `GeneralCommand{volume, directional, SendKey, …}`, `KeepAlive`, `Sessions`, `RefreshProgress`, `UserDataChanged`, anything unknown | `ignore` | Dropped, never an error, so a hostile, future or unknown frame cannot break the receiver |
 
-`Seek` carries an **absolute** `SeekPositionTicks` → `seekto` (distinct from voice's relative
-`seek`). Both players gained `previous` / `seekto` / `playpause` cases for the cast verbs.
+`Seek` carries an absolute `SeekPositionTicks` and becomes `seekto`, unlike voice's relative `seek`. Both players (`VideoPlayerView`, `AudioPlayerView`, reached through `PlayerHostView`) handle `previous`, `seekto` and `playpause` for the cast verbs.
 
-Note on `DisplayContent` vs active playback: jellyfin web's **Display Mirroring** feature
-(`enableDisplayMirroring`, `displayMirrorManager.ts`) fires a `DisplayContent` on **every** item-detail
-browse while JellyRock is the selected cast target — it does **not** check whether the target is
-already playing. Enacting each one would stack an `ItemDetails` screen on top of live playback (and
-browsing several items would stack several). So `navigate`/`open` is **dropped when the active routed
-view is a media player** — the controller's incidental browsing never yanks the cast target off the
-video (matches the standard cast model: the receiver only changes on an explicit *play*). This guard
-lives at the shared runtime deep-link seam (`replayRoute.wouldStackOverActivePlayer`, gating
-`replayDeepLinkRuntime`), so it equally covers a **Roku OS** `open` deep link arriving mid-playback,
-not just the cast path. A **playback** action (`play`/`shuffle`/`trailer`/`instantmix`) is exempt — it
-legitimately *replaces* the player. Idle mirroring (no player up) still opens the item as before.
+### `DisplayContent` during playback
 
-Note on seek: jellyfin web sends an absolute `Seek` from its **±N s jump buttons** (handled here as
-`seekto`, verified on device — the video jumps), but it sends **nothing** when the progress bar is
-dragged/scrubbed on a remote session. So "scrub-to-seek from the web" is a no-op — a jellyfin web
-behavior, not a JellyRock gap.
+The web client's display mirroring (`enableDisplayMirroring`, `displayMirrorManager.ts`) sends a `DisplayContent` on every item-detail page the controller browses while JellyRock is the cast target. It does not check whether the target is playing. Acting on each one would stack an `ItemDetails` screen on top of playback, one per item browsed.
 
-Note on `DisplayMessage`: the payload has no priority field, so `TimeoutMs` is the sender's intent
-signal — **present** means "show briefly then dismiss" (a **toast**: `Header` — `Text`), **absent**
-means "leave this up until acknowledged" (a **dialog** the user dismisses with OK). The dialog uses a
-JR-supplied provenance title (`LabelCastMessage` = "Message from another device"), so a bare message
-reads as an incoming cast message rather than a JR system prompt. Jellyfin's own contract is
-`Header` = title, `Text` = body, and the dialog honors that *role* without giving away the title
-slot: `Header` renders as the dialog's bold **subheading** above `Text`. Putting sender-supplied
-text in the title itself would make arbitrary LAN-supplied content indistinguishable from an
-app-native prompt. (A `Header` with no `Text` has nothing to lead, so it becomes the body —
-`remoteDispatch.castMessageParts`.) The toast is unchanged and still one line (`Header` — `Text`),
-because a toast is one line; the dialog has the room. `DisplayMessage` is **not** admin-only — the command endpoints require only
-`DefaultAuthorization` (any authenticated user with remote-control permission), so the sender could be
-you, a household member, or an admin; the static title avoids asserting otherwise. Resolving the
-actual sender name (`ControllingUserId` → username) is a followup. This is a trusted-LAN, authenticated
-sender, so a dialog interrupting the screen (e.g. "dinner's ready" from another household member) is
-acceptable; a user opt-out setting is deferred until there's evidence it's wanted.
+So `navigate` (action `open`) is dropped when the active routed view is a media player. The controller's browsing never pulls the cast target off the video, which matches the usual cast model: the receiver changes only on an explicit play. The guard sits at the shared runtime deep-link seam (`replayRoute.wouldStackOverActivePlayer`, which gates `replayDeepLinkRuntime`), so it also covers a Roku OS `open` deep link that arrives during playback. A playback action (`play`, `shuffle`, `trailer`, `instantmix`) is exempt, because it replaces the player on purpose. With no player up, mirroring still opens the item.
 
-## Scope (#666) and deferred work
+### Seek from the web client
 
-- **Single item.** A `Play` casts `itemIds[startIndex]` — the one item — through the deep-link seam.
-  The full `ItemIds` list / `StartIndex` / `StartPositionTicks` are parsed but not consumed.
-  Casting an **episode** still gives a navigable queue because the *player* builds its own
-  next-episode queue; casting a music **album** currently plays only the first track. Multi-item
-  queue casting (`PlayNext` / `PlayLast`, start-position) is the **queue-aware casting** followup.
-- **Navigation to an idle screen — verified working.** A cast `navigate`/`play` bottoms out in
-  `m.scene.callFunc("resolveDeepLink"/"routerNavigate", …)`, which runs on the render thread — the same
-  path Roku's own runtime deep links use. Device-checked (2026-07-12): with JellyRock sitting idle on
-  Home, a web-client cast to a movie opens it immediately, with no delay and no dropped first action. An
-  earlier hypothesis about a render-thread-wake lag on idle screens did **not** reproduce.
-- **HTTPS / remote servers.** Handled by the #667 plugin long-poll transport (see the two-transport
-  section above and [`remote-control-longpoll-contract.md`](remote-control-longpoll-contract.md)).
-- **More `GeneralCommand` types (deferred, not impossible).** The advertised set is navigation + messaging.
-  The rest are followups with a concrete mechanism, NOT platform dead-ends:
-  - *Track selection* (`SetAudioStreamIndex` / `SetSubtitleStreamIndex`) — feasible via the player's
-    existing track-switch APIs; needs player integration.
-  - *Live TV* (`ChannelUp` / `ChannelDown`; `Guide` has no route yet) — Live-TV-specific.
-  - *Queue modes* (`PlayNext` / `PlayLast` / `SetShuffleQueue` / `SetRepeatMode`) — folds into the
-    queue-aware casting followup.
-  - *Volume* (`SetVolume` / `VolumeUp/Down` / `Mute`) — a streaming player can't set system volume,
-    but a **Roku TV** exposes more OS API; worth a platform check before writing it off.
-  - *Directional D-pad + `SendKey` / `SendString` / `TakeScreenshot`* — not injectable into the
-    SceneGraph focus from inside the app, but doable via **ECP** (the transport the RTA tests use),
-    which would ride the planned #667 server plugin. Deferred to that effort.
+The web client sends an absolute `Seek` from its jump buttons, handled here as `seekto` (verified on a device: the video jumps). It sends nothing when you drag the progress bar for a remote session. So scrub-to-seek from the web does nothing, which is web-client behavior, not a JellyRock gap.
+
+### `DisplayMessage`: toast or dialog
+
+The payload has no priority field, so `TimeoutMs` signals what the sender wants. Present means show it briefly, so JellyRock shows a one-line toast reading `Header`, a dash, then `Text`. Absent means leave it up until acknowledged, so JellyRock shows a dialog the user dismisses with OK.
+
+The dialog's title is supplied by JellyRock (`LabelCastMessage`, "Message from another device"), so a message reads as coming from another device, not as an app prompt. Jellyfin's own contract is `Header` as title and `Text` as body. The dialog keeps that role without giving away the title: `Header` shows as a bold subheading above `Text`. Putting sender text in the title would make any message from the network look like an app prompt. A `Header` with no `Text` becomes the body (`remoteDispatch.castMessageParts`).
+
+`DisplayMessage` is not limited to admins. The command endpoints require only the default authorization, so any signed-in user with remote-control permission can send one: you, someone in your household or an admin. The fixed title makes no claim about who sent it. Showing the sender's name is followup `cast-display-message-sender-name`. The sender is authenticated and on your network, so a dialog that interrupts the screen ("dinner's ready") is acceptable. A setting to turn messages off waits for evidence that someone wants it.
+
+## Scope and deferred work
+
+- **One item per cast.** A `Play` casts `itemIds[startIndex]` through the deep-link seam. The full `ItemIds` list, `StartIndex` and `StartPositionTicks` are parsed but not used. Casting an episode still gives a queue to move through, because the player builds its own next-episode queue. Casting a music album plays only the first track. Multi-item casting is followup `queue-aware-multi-item-casting`.
+- **Casting to an idle screen works.** A cast `navigate` or `play` ends in `m.scene.callFunc("resolveDeepLink")` or `callFunc("routerNavigate")`, which runs on the render thread, the same path Roku's runtime deep links use. Checked on a device on 2026-07-12: with JellyRock idle on Home, a cast from the web client opened the movie at once, with no delay and no lost first action. An earlier guess about a lag waking the render thread on idle screens did not reproduce.
+- **HTTPS and remote servers** use the plugin long-poll transport (#667), described above and in [`remote-control-longpoll-contract.md`](remote-control-longpoll-contract.md).
+- **More `GeneralCommand` types.** These are deferred, each with a known way to build it, not platform dead ends:
+  - *Track selection* (`SetAudioStreamIndex`, `SetSubtitleStreamIndex`): possible through the player's existing track-switch functions; needs player work.
+  - *Live TV* (`ChannelUp`, `ChannelDown`; `Guide` has no route yet).
+  - *Queue modes* (`PlayNext`, `PlayLast`, `SetShuffleQueue`, `SetRepeatMode`): part of multi-item casting.
+  - *Volume* (`SetVolume`, `VolumeUp`, `VolumeDown`, `Mute`): a streaming player cannot set system volume, but a Roku TV exposes more of the OS. Worth a platform check before ruling it out.
+  - *Directional pad, `SendKey`, `SendString`, `TakeScreenshot`*: an app cannot inject these into SceneGraph focus, but ECP can (the transport the RTA tests use), which the companion plugin could send. Followup `cast-commands-platform-ecp`.
