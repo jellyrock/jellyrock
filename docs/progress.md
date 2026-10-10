@@ -622,6 +622,14 @@ Seen once per launch, 6/6 on `main` and 6/6 on a branch (Stick 4K, BATCAVE, 2026
 
 before treating the 6-channel DTS cap as settled. `DTS_MAX_DIRECT_PLAY_CHANNELS` caps DTS direct play at 6 channels per Roku's spec, after a DTS-HD MA + `DTS:X` 7.1 track failed on a Roku Ultra `4850X` (2026-10-01). Whether plain 7.1 DTS-HD MA also fails is unmeasured. The maintainer's library has such a file (DTS-HD MA 7.1 default, eac3 5.1, AV1 Dolby Vision), and AV1 Dolby Vision direct-plays on that Ultra (measured 2026-10-01). **Next step:** play it on its DTS track in the prod app, which still has the old profile, and record whether it starts and has sound. If it does, decide whether the cap should be narrowed to `DTS:X`; that would match on Jellyfin's audio profile label, not a channel count.
 
+#### Cold start loads translations twice `[fid: cold-start-loads-translations-twice]` `[captured 2026-10-10]`
+
+`Main()` in `source/main.bs` calls `loadTranslations(resolveTranslationLocale())` before the scene exists, and `reenterLogin()` in `source/loginRouter.bs` calls it again with the same pre-login locale moments later. So a cold start reads and parses `en_US.json`, and the active locale file, twice.
+
+Not investigated: whether the early load in `Main()` is needed for strings shown before `reenterLogin()` runs (migrations, the scene's init). Not fixed now because that needs a device check of the launch path. Closes when one of the two loads is removed with that check done, or the double load is shown to be needed and the reason is written beside it.
+
+Found 2026-10-10 by the `translations.md` fact-check (docs-voice project, session 9).
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
