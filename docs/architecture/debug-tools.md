@@ -50,7 +50,7 @@ Roku OS allows an app 100 threads at once and raises `&h29` past that, the crash
 
 ### The ledger is in every build
 
-`launchTask()` in `source/utils/tasks.bs` is the one place a Task thread starts; the `no-raw-run` BSC plugin makes a bare `control = "RUN"` anywhere else a build error. Every launch is recorded in `m.global.taskLedger`, in every build. ([`global-state.md`](global-state.md#task-thread-ledger--mglobaltaskledger) says why it lives in a node field and not the much cheaper `GetGlobalAA()`.) The count is worked out when needed, from each recorded node's `state`. A finished thread stops counting toward Roku's limit even though its node is still valid, so `state` is the true signal, and a `control = "STOP"` needs no bookkeeping of its own.
+`launchTask()` in `source/utils/tasks.bs` is the one place a Task thread starts; the `no-raw-run` BSC plugin makes a bare `control = "RUN"` anywhere else a build error. Every launch is recorded in `m.global.taskLedger`, in every build. ([`global-state.md`](global-state.md#task-thread-ledger-mglobaltaskledger) says why it lives in a node field and not the much cheaper `GetGlobalAA()`.) The count is worked out when needed, from each recorded node's `state`. A finished thread stops counting toward Roku's limit even though its node is still valid, so `state` is the true signal, and a `control = "STOP"` needs no bookkeeping of its own.
 
 Above `TASK_THREAD_WATERMARK` (50) live threads, `launchTask()` queues a launch until a thread frees ([ADR 0041](../adr/0041-task-launch-queue.md)), and refuses only once `TASK_QUEUE_CAP` launches already wait. `m.global.taskLaunchQueued`, the current queue depth, is in every build too.
 

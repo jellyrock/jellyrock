@@ -9,247 +9,191 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-10-04
+last-reviewed: 2026-10-10
 ---
 
-# Global State
+# Global state
 
-What hangs off `m.global`, when each piece is initialized, who mutates it.
+What hangs off `m.global`, when each piece is created, and who changes it.
 
 ## The shape of `m.global`
 
-`m.global` is Roku's app-wide global node — a single shared `roSGNode` reachable from every thread (render and Task). JellyRock builds a deep tree of typed `ContentNode` subclasses on it, so reads are typed at the BSC level and the structure is documented by the XML files in `components/data/jellyfin/`.
+`m.global` is Roku's app-wide node, one `roSGNode` that every thread can reach. JellyRock hangs typed nodes off it, each declared by an XML file in `components/data/` or `components/data/jellyfin/`. That XML is the schema: read it for the full field list. The tree below shows what each field is for and which phase creates it.
 
-```brightscript
-m.global  (the global roSGNode)
+```text
+m.global
 │
-├── appLoaded         bool                                  ← phase 1
-├── app               AppInfo node                          ← phase 1, populated by SaveAppToGlobal()
-│   ├── appId         string
-│   ├── version       string                                ← from manifest
-│   ├── isDev         bool
-│   └── lastRunVersion string                               ← read from registry, used by migrations
+│   Phase 1: setGlobals(), before the screen is shown
+├── appLoaded             bool
+├── server                JellyfinServer: URL, name, version, apiVersion, isConnected, and
+│   │                     the capabilities read later:
+│   ├── isQuickConnectEnabled   defaults to true; UserSelect's probe sets it false
+│   ├── subtitleProviderStatus  "" until Home's session check (serverCapabilities.bs)
+│   └── resumePolicy            invalid until ItemDetails first needs it (versionResume.bs)
+├── user                  JellyfinUser: id, name, authToken, fontScaleFactor
+│   ├── settings          JellyfinUserSettings, every per-user setting (see settings.md)
+│   ├── config            JellyfinUserConfiguration, the server's profile for the user
+│   └── policy            JellyfinUserPolicy, the server's permissions for the user
+├── translations          AA of the current locale's strings
+├── translationsFallback  AA, always en_US
+├── translationLocale     locale code, such as "fr_CA"
+├── taskLaunchQueue       field only; the node is created in phase 2
+├── taskLaunchQueued      integer, launches waiting right now
+├── constants             Constants: theme colors, alphas, font sizes, icon URIs
+├── app                   AppInfo from roAppInfo, plus lastRunVersion from the registry
+└── device                DeviceInfo from roDeviceInfo, plus isLowMemoryDevice
 │
-├── device            DeviceInfo node                       ← phase 1, populated by SaveDeviceToGlobal()
-│   ├── id, uuid      string                                ← roDeviceInfo.GetChannelClientID / GetRandomUUID
-│   ├── name, friendlyName, model, modelType, modelDetails
-│   ├── osVersion     assocarray
-│   ├── locale        string                                ← roDeviceInfo.GetCurrentLocale()
-│   ├── clockFormat   string
-│   ├── isAudioGuideEnabled, hasVoiceRemote                 bool
-│   ├── displayType, displayMode  string
-│   ├── uiResolution  array                                 ← [width, height]
-│   ├── videoMode     string                                ← raw from roDeviceInfo
-│   ├── videoHeight, videoWidth, videoRefresh, videoBitDepth integer
-│   └── isLowMemoryDevice bool                              ← computed from LOW_MEMORY_DEVICE_PREFIXES in globals.bs
+│   Phase 2: setGlobalNodes(), after the screen is shown
+├── taskLaunchQueue       TaskLaunchQueue node, created before any Task starts
+├── apiPoolWidth          integer, chosen per device class (api.md#pool-width)
+├── apiPool0 … apiPool<apiPoolWidth-1>   ApiTask, one persistent thread per slot
+├── apiQueue              ApiQueueTask, the FIFO coordinator
+├── sideEffectTask        SideEffectTask, the fire-and-forget queue
+├── sceneManager          SceneManager
+├── AuthManager           the sign-in guard on every post-login route
+├── deepLinkOpeningTitle  string, the title the player toasts on a deep-link launch
+├── activeRoutedView      node, the screen the router has mounted
+├── playbackLaunchRequest AA, QueueManager's request to open the player
+├── photoLaunchRequest    AA, a request to open the photo viewer
+├── queueManager          QueueManager
+├── audioPlayer           AudioPlayer, which extends Video
+├── remoteControlTask     RemoteControlTask, created here and started by Home after sign-in
+├── debug                 DebugFlags                  #if debug
+└── rtaSkeletonHoldMs, rtaFailRequests, …             #if ENABLE_RTA (test hooks)
 │
-├── server            JellyfinServer node                   ← phase 1
-│   ├── serverUrl, name, version, id, apiVersion, isConnected
-│   ├── isQuickConnectEnabled bool                          ← fail-open default true; UserSelect's probe sets false
-│   ├── subtitleProviderStatus string                       ← "" unknown / "available" / "unavailable"; Home's session check (serverCapabilities.bs)
-│   ├── resumePolicy  assocarray                            ← server resume thresholds; invalid until ItemDetails first needs them (versionResume.bs)
-│   └── ...
-│
-├── user              JellyfinUser node                     ← phase 1
-│   ├── id, name, authToken
-│   ├── settings      JellyfinUserSettings (child node)     ← THE per-user config — see "User settings" below
-│   ├── config        JellyfinUserConfiguration             ← server-authoritative profile (avatar URL, etc.)
-│   ├── policy        JellyfinUserPolicy                    ← server-authoritative permissions
-│   └── fontScaleFactor float                               ← computed from default-vs-fallback font widths if uiFontFallback=true
-│
-├── constants         Constants node                        ← phase 1, populated by setConstants() → loadThemeColorDefaults()
-│   ├── colorPrimary, colorSecondary, colorTextPrimary, ...  string  (theme — read from settings.json defaults)
-│   ├── colorYellow, colorTextError, colorSuccess, ...       string  (semantic, hard-coded)
-│   ├── alpha60, alpha40, ...                                 string  (alpha hex, append to colors)
-│   └── ...UI sizes, durations, etc. — see Constants.xml
-│
-├── translations          assoc array                       ← phase 1 (loaded by loadTranslations(locale))
-├── translationsFallback  assoc array                       ← always en_US
-├── translationLocale     string                            ← locale code (e.g. "fr_CA")
-│
-├── apiPoolWidth      integer                               ← phase 2 — chosen per device class (api.md#pool-width)
-├── apiPool0          ApiTask node                          ← phase 2 (control = "RUN")
-├── ...               one per slot, apiPool0 … apiPool<apiPoolWidth-1>
-├── apiQueue          ApiQueueTask node                     ← phase 2 (control = "RUN") — FIFO coordinator
-├── sideEffectTask    SideEffectTask node                   ← phase 2 (re-RUN per request)
-│
-├── sceneManager      SceneManager node                     ← phase 2
-├── queueManager      QueueManager node                     ← phase 2
-├── audioPlayer       AudioPlayer node (extends Video)      ← phase 2 — the audio playback engine
-├── remoteControlTask RemoteControlTask node                ← phase 2 (created, NOT started) — ws:// cast receiver, started post-login (see remote-control.md)
-│
-├── debug             DebugFlags node                       ← phase 2, ONLY in #if debug builds
-│   ├── shouldForceFiltersFail   bool
-│   ├── shouldForceFavoriteFail  bool
-│   └── shouldForceWatchedFail   bool
-│
-├── taskLedger                array of Task nodes          ← SHIPS. Every node launchTask() started, pruned to the live set on each launch. Created on FIRST launch, never declared in setGlobalNodes (see below)
-├── taskLedgerRefusals        integer                      ← ONLY in #if perfTiming builds — how many launches the watermark has refused
-├── taskLedgerFirstRefused    string                       ← ONLY in #if perfTiming builds — subtype of the FIRST node refused, i.e. the one that names the fan-out
-├── taskLaunchQueue           TaskLaunchQueue node         ← SHIPS. Where a launch waits past the watermark (ADR 0041). Field declared in setGlobals(), node created first thing in setGlobalNodes()
-├── taskLaunchQueued          integer                      ← SHIPS. Launches waiting right now; launchTask() queues behind them while it is non-zero
-├── taskLaunchQueuedTotal     integer                      ← ONLY in #if perfTiming builds — how many launches have waited
-└── taskLaunchQueuePeak       integer                      ← ONLY in #if perfTiming builds — the deepest the queue has been
+│   Created on first use, by source/utils/tasks.bs and TaskLaunchQueue.bs
+├── taskLedger            array of every Task node launchTask() started (every build)
+├── taskLedgerRefusals, taskLedgerFirstRefused        #if perfTiming
+├── taskLaunchQueuedTotal, taskLaunchQueuePeak        #if perfTiming
+└── taskLedgerUs, taskLedgerLaunches                  #if perfTiming (ledger cost probe)
 ```
 
-"Phase 1" and "Phase 2" refer to `setGlobals()` (before `screen.show()`) and `setGlobalNodes()` (after) respectively — see `bootstrap.md`.
+The two phases are described in [`bootstrap.md`](bootstrap.md#the-two-phase-global-setup). The `ENABLE_RTA` fields are explained beside their `addFields` call in `setGlobalNodes()`.
 
-## Why typed `ContentNode` subclasses
+## Why typed nodes
 
-Each XML file in `components/data/jellyfin/` declares a typed shape:
+Each XML file declares a component that extends `ContentNode` and lists its fields:
 
 ```xml
-<component name="JellyfinUser" extends="ContentNode">
+<component name="AppInfo" extends="ContentNode">
   <interface>
-    <field id="id" type="string" />
-    <field id="name" type="string" />
-    <field id="authToken" type="string" />
-    <field id="settings" type="node" />
-    <field id="config" type="node" />
-    <field id="policy" type="node" />
-    <field id="fontScaleFactor" type="float" />
-    ' ... etc
+    <field id="appId" type="string" />
+    <field id="isDev" type="boolean" />
+    <field id="version" type="string" />
+    <field id="lastRunVersion" type="string" />
   </interface>
 </component>
 ```
 
-This gives:
+The XML is the one place a reader finds every field and its type, without searching the code. It does not make the compiler check assignments: BrighterScript accepts a string written to a `boolean` field. Code that loads stored strings converts them itself, as `user.settings.Save()` does.
 
-- **BSC validation** — assigning the wrong type to a field is a compile error.
-- **Documentation** — the XML *is* the schema. Reading `JellyfinUser.xml` tells you exactly what's available without grepping the codebase.
-- **Auto-conversion** — Roku coerces strings to the declared field type on assignment.
-
-The full set is small enough to enumerate:
-
-| File | Purpose |
-|---|---|
+| File | Holds |
+| --- | --- |
 | `AppInfo.xml` | App metadata from `roAppInfo` |
 | `DeviceInfo.xml` | Device facts from `roDeviceInfo` |
-| `JellyfinBaseItem.xml` | The big one — fields for every Jellyfin item type (Movie, Episode, Audio, etc.) |
-| `JellyfinServer.xml` | Server identity and connection state |
-| `JellyfinUser.xml` | User identity + child-node references |
-| `JellyfinUserSettings.xml` | Per-user UI/playback settings — see below |
-| `JellyfinUserConfiguration.xml` | Server-side profile (avatar tag, display preferences, home section ordering) |
-| `JellyfinUserPolicy.xml` | Server-side permissions (can record, can sync, etc.) |
+| `JellyfinServer.xml` | Server identity, connection state and capabilities |
+| `JellyfinUser.xml` | User identity and the three child nodes |
+| `JellyfinUserSettings.xml` | Per-user settings, see [`settings.md`](settings.md) |
+| `JellyfinUserConfiguration.xml` | The server's profile for the user |
+| `JellyfinUserPolicy.xml` | The server's permissions for the user |
+| `JellyfinBaseItem.xml` | Every Jellyfin item type in one wide node |
 
-`JellyfinBaseItem.xml` is the largest because `Jellyfin`'s `BaseItemDto` is itself a polymorphic mega-shape — JellyRock represents that as one wide ContentNode with optional fields, populated by `source/data/JellyfinDataTransformer.bs`.
+`JellyfinBaseItem` is the largest because Jellyfin's `BaseItemDto` covers every item type in one shape. JellyRock mirrors that as one node with optional fields, filled by `JellyfinDataTransformer` in `source/data/JellyfinDataTransformer.bs`. It is not on `m.global`; screens hold their own items.
 
-## User settings — `m.global.user.settings`
+## The user: `m.global.user`
 
-The `JellyfinUserSettings` node is the runtime home for everything a user can change in Settings: theme colors, playback bitrate cap, subtitle preferences, UI behavior, etc.
+`setGlobals()` creates the `JellyfinUser` node with empty `settings`, `config` and `policy` children. `user.Login()` in `source/utils/session.bs` fills it at sign-in, and `user.Logout()` replaces all three children with new empty nodes.
 
-**Defaults do not live in the XML.** The XML field declarations omit `value=` attributes deliberately. Defaults are loaded at runtime from `settings/settings.json` via `user.settings.SaveDefaults()` during startup. This avoids drift between two sources of truth.
+- **`settings`** holds every per-user setting. Defaults come from `settings/settings.json`, saved values from the registry, and a write to a field is saved for you. [`settings.md`](settings.md) has the whole lifecycle.
+- **`config` and `policy`** come from the server's user record at sign-in (`transformUserConfiguration()` and `transformUserPolicy()`). JellyRock never writes them back.
+- **`fontScaleFactor`** is set by `calculateFontScaleFactor()` in `main.bs` when `uiFontFallback` is on. It scales text drawn in the downloaded fallback font, and `JRLabel`, `JRButtons` and the other `JR*` text components read it.
 
-Lifecycle:
+## Constants: `m.global.constants`
 
-1. **Phase 1** — `setGlobals()` creates the empty `JellyfinUserSettings` node and parents it under `m.global.user`.
-2. **Bootstrap** — `main.bs` calls `user.settings.SaveDefaults()`, which reads `settings/settings.json` and writes the default value of every setting onto the node.
-3. **Bootstrap** — `m.global.user.settings.callFunc("enableAutoSync")` turns on the auto-sync behavior: any subsequent write to a settings field automatically writes through to the user's registry section.
-4. **Login** — `user.Login()` (`source/utils/session.bs`) gives the user a fresh settings node with the defaults, reads the per-user registry section and overlays any saved values through `user.settings.Save()`.
-5. **Steady state** — Reads happen from `m.global.user.settings.<field>` directly. Writes go through the same field assignment, and the auto-sync observer persists them to the registry.
+`components/data/Constants.xml` holds the shared UI constants. Two kinds:
 
-`JellyfinUserSettings.bs` (the BS backing file) implements the auto-sync observer + the display/library-settings sync logic (`enableAutoSync`, `disableAutoSync`, `onSettingChanged`, `onDisplaySettingsChanged`, plus library-settings sync helpers — the observers themselves are registered once in its `init()`, and enable/disable only flip whether the handlers persist; see [settings.md](./settings.md#auto-sync-jellyfinusersettingsbs)). The settings-loading orchestration — `SaveDefaults`, `LoadGlobals`, etc. — lives separately in the `user.settings` namespace in `source/utils/session.bs`; calls like `user.settings.SaveDefaults()` from `main.bs` invoke those namespaced subs, not methods on the node. Settings are categorized by prefix:
+- **Theme colors** (`colorPrimary`, `colorSecondary`, `colorTextPrimary`, `colorTextSecondary`, `colorTextDisabled`, `colorBackgroundPrimary`, `colorBackgroundSecondary`) have no value in the XML. `loadThemeColorDefaults()` fills them from the defaults in `settings/settings.json`.
+- **Everything else** (`colorYellow`, `colorTextError`, `colorSuccess`, `colorBlack`, the `alpha*` steps, font sizes, icon URIs) has its value in the XML.
 
-| Prefix | Purpose |
-|---|---|
-| `global*` | Device-wide (e.g. `globalRememberMe`, `globalSplashScreen`) |
-| `playback*` | Video/audio playback (`playbackBitrateLimit`, `playbackCinemaMode`, `playbackPreserveDovi`, `playbackSubsCustom`, ...) |
-| `ui*` | UI behavior + theme (`uiTheme`, `uiThemeColorPrimary`, `uiFontFallback`, `displayShowTitles`, ...) |
-| `network*` | Network behavior (`networkRequirements`) |
-
-Read-only server-authoritative children — `user.config` and `user.policy` — are populated from `/Users/{userId}` API responses on login and never written back to.
-
-## Constants — `m.global.constants`
-
-`components/data/Constants.xml` is the central typed registry of UI constants. Two flavors:
-
-- **Theme colors** (`colorPrimary`, `colorSecondary`, `colorTextPrimary`, `colorTextSecondary`, `colorTextDisabled`, `colorBackgroundPrimary`, `colorBackgroundSecondary`) — declared with **no value**; populated at runtime by `loadThemeColorDefaults()` from `settings/settings.json`.
-- **Semantic / hard-coded colors and sizes** (`colorYellow`, `colorTextError`, `colorSuccess`, alphas, durations) — declared with their values inline.
-
-All colors are 6-hex (no alpha, no `0x` prefix in `settings.json`). At load time, `globals.bs` prepends `0x` and uppercases. Alpha is a separate constant (`alpha60`, `alpha40`, etc.) you concatenate at the use site:
+`settings.json` stores a color as six hex digits. `globals.bs` adds `0x` and uppercases it when loading. Alpha is a separate constant you append where you use it:
 
 ```brightscript
-node.color = m.global.constants.colorPrimary                          ' fully opaque
+node.color = m.global.constants.colorPrimary                             ' fully opaque
 node.color = m.global.constants.colorBlack + m.global.constants.alpha60  ' 60% black
 ```
 
-### Theme override flow
+Which theme color means what is in [`components/CLAUDE.md`](../../components/CLAUDE.md#theme-colors--which-one-means-what).
 
-When the user changes a theme color:
+### Changing the theme
 
-1. They write to a setting (e.g. `m.global.user.settings.uiThemeColorPrimary = "8b5cf6"`).
-2. The auto-sync observer persists it to registry.
-3. Nothing else happens automatically — the change isn't visible until something rebuilds the affected nodes.
-4. The Settings screen, on exit, calls `applyThemeColorOverrides(userSettings)` (in `globals.bs`) which reads valid hex values from settings and writes them onto `m.global.constants`. Then it calls `sceneManager.refreshThemeColors()` to walk the overhang tree and re-apply colors, and `sceneManager.reloadHome()` to trigger a home-screen rebuild.
+A theme color reaches the screen through three manual steps, all in `globals.bs` and `SceneManager`:
 
-This is a known wart — the cascade is manual, not declarative. Components that cache theme colors at construction time (rather than reading from `m.global.constants` in event handlers) won't pick up changes without a rebuild. See `tech-debt.md`.
+1. `applyThemeColorOverrides(userSettings)` copies each valid six-digit hex setting onto `m.global.constants`. An invalid value keeps the default.
+2. `sceneManager.callFunc("refreshThemeColors")` sets the scene background and re-colors the overhang.
+3. `sceneManager.callFunc("reloadHome")` tells `main.bs` to navigate back to a new Home, so every Home node is built with the new colors.
 
-## App + device info
+Three places run them:
 
-`m.global.app` is read from Roku's `roAppInfo` interface (`SaveAppToGlobal`). The `lastRunVersion` field comes from the registry — it's how `migrations.bs` decides which migrations to run on this launch.
+- **Leaving Settings** (`performSettingsExit()`) runs steps 1 and 2 if a theme color changed, then step 3 if a theme color or the language changed.
+- **Signing in** (`user.Login()`) runs steps 1 and 2.
+- **Signing out** (`user.Logout()`) runs `resetThemeColors()`, which reloads the defaults, then step 2.
 
-`m.global.device` is read from `roDeviceInfo` (`SaveDeviceToGlobal`). The most-consulted fields are:
+A component that copies a theme color when it is built keeps the old color until it is rebuilt. That is why Settings rebuilds Home. The manual chain is tracked as [`manual-theme-cascade`](tech-debt.md#manual-theme-cascade).
 
-- `model` — used by `checkIsLowMemoryDevice()` to set `isLowMemoryDevice` based on the hardcoded `LOW_MEMORY_DEVICE_PREFIXES` list of `512MB` models (Streaming Stick, Express, certain TVs).
-- `videoHeight` / `videoWidth` / `videoBitDepth` — used by `LoadVideoContentTask.bs` when computing transcode parameters.
-- `locale` — initial translation locale before login.
+## App and device: `m.global.app`, `m.global.device`
 
-`isLowMemoryDevice` is the gate for several memory-conserving paths: trickplay tile pre-fetching is reduced, large texture grids are downscaled, etc.
+`SaveAppToGlobal()` fills `m.global.app` from `roAppInfo`. Its `lastRunVersion` is read from the registry. `migrations.bs` uses it to pick which migrations run, and `main.bs` writes the current `version` back once they finish.
 
-## Manager nodes — `sceneManager`, `queueManager`, `audioPlayer`
+`SaveDeviceToGlobal()` fills `m.global.device` from `roDeviceInfo`. The fields other code reads most:
 
-All three are SceneGraph nodes. They expose their behavior via `callFunc("methodName", args)` rather than direct field manipulation:
+- **`isLowMemoryDevice`**: true when the model number starts with one of the `LOW_MEMORY_DEVICE_PREFIXES` in `globals.bs`, the 512 MB models. It narrows the API pool (`apiPool.widthFor()`), picks the smaller video buffer when transcode settings are worked out (`getDeviceBufferSize()`), and loads trickplay tiles at half size (`TrickplayCarousel`).
+- **`videoHeight` and `videoWidth`**: the resolution the Roku is set to output, parsed from `GetVideoMode()`. It can be lower than the TV supports. `canPlay4k()` and stream selection read the height and width; `LoadVideoContentTask` sizes trickplay from the width.
+- **`serverDeviceName`**: the `DeviceId` JellyRock sends Jellyfin. `user.SetServerDeviceName()` sets it after sign-in, and the auth header, the remote-control socket and the session lookups all read it.
+- **`locale`**: the Roku's locale, used to pick translations before anyone signs in.
+- **`memoryLevel`**: updated by `main.bs` when Roku sends a general memory event.
+
+## Manager nodes: `sceneManager`, `queueManager`, `audioPlayer`
+
+All three live for the whole app. `sceneManager` and `queueManager` are called through `callFunc`, so each method must be declared in the node's XML interface. `audioPlayer` extends Roku's `Video` node and is driven through its fields:
 
 ```brightscript
-m.global.sceneManager.callFunc("pushScene", myGroup)
+m.global.sceneManager.callFunc("reloadHome")
 m.global.queueManager.callFunc("push", queueItem)
 m.global.queueManager.callFunc("playQueue")
-m.global.audioPlayer.control = "play"          ' direct field, since audioPlayer extends Video
+m.global.audioPlayer.control = "play"
 ```
 
-`sceneManager` and `queueManager` are documented elsewhere (`navigation.md`, `playback.md`). `audioPlayer` is interesting: it's a globally-mounted `AudioPlayer` node (extends Roku's native `Video` for audio playback) that exists for the entire app lifetime. The visible "now playing" screen — `components/music/AudioPlayerView.xml` — references it indirectly. Having the player itself global allows audio to keep playing while the user navigates other screens.
+- **`sceneManager`** no longer moves between screens; the router does that ([`navigation.md`](navigation.md)). It keeps the theme refresh, `reloadHome`, the background image, the clock reset and the `isDialogOpen` query.
+- **`queueManager`** owns the play queue and starts playback ([`playback.md`](playback.md)).
+- **`audioPlayer`** is the one audio player. Because it sits on `m.global` and not on a screen, music keeps playing while the user moves around the app. `AudioPlayerView` reads it from `m.global.audioPlayer` and observes its `state` and `position`.
 
-## Debug flags — `m.global.debug`
+## Debug flags: `m.global.debug`
 
-Compiled out in production builds via `bs_const=debug=false`. In debug builds, `setGlobalNodes()` creates a `DebugFlags` node and prints helper instructions to the BrightScript console:
+The `DebugFlags` node exists only in a build with `debug=true`. `setGlobalNodes()` creates it and prints how to set its fields from the port 8085 console. The flags force failures (`shouldForceFiltersFail`, `shouldForceFavoriteFail`, `shouldForceWatchedFail`) or add spare buttons (`extraButtonCount`). [`debug-tools.md`](debug-tools.md) explains them and [`debug-flags.md`](../dev/debug-flags.md) is the how-to.
 
-```brightscript
-[DEBUG] DebugFlags node initialized on m.global.debug
-[DEBUG] Toggle flags from BrightScript console (port 8085):
-[DEBUG]   m.global.debug.shouldForceFiltersFail = true
-[DEBUG]   m.global.debug.shouldForceFavoriteFail = true
-[DEBUG]   m.global.debug.shouldForceWatchedFail = true
-```
+## Task-thread ledger: `m.global.taskLedger`
 
-Code paths that check these flags are wrapped in `#if debug` so they have zero runtime cost in production. See `debug-tools.md`.
+`launchTask()` in `source/utils/tasks.bs` records every Task node it starts in `m.global.taskLedger`, in every build. The live thread count is read from each node's `state` when needed. Above 50 live threads (`TASK_THREAD_WATERMARK`), a launch waits in `m.global.taskLaunchQueue` until a thread frees ([ADR 0041](../adr/0041-task-launch-queue.md)). How to read the ledger on a device is in [`debug-tools.md`](debug-tools.md#the-ledger-is-in-every-build).
 
-## Task-thread ledger — `m.global.taskLedger`
+Three facts about its storage decide how it must be written:
 
-**Changed 2026-08-23: it ships.** No longer `#if debug` — `launchTask()` now records every launch here, and above a watermark of 50 live threads it starts nothing. **Changed 2026-09-23:** such a launch now waits in `m.global.taskLaunchQueue` and starts when a slot frees, instead of being refused ([ADR 0041](../adr/0041-task-launch-queue.md)). A waiting node is not in the ledger until it starts, so the queue never counts against its own drain. The count is still **derived** by reading each node's `state` rather than tracked by a counter, which is what avoids an `observeField("state")` per launch.
+- **It has to be a node field.** `GetGlobalAA()` would be far cheaper, but it is scoped to one component, not one thread, so each component would count only its own launches. A field on `m.global` is the only storage every component shares. [ADR 0031](../adr/0031-task-thread-ceiling.md) has the measurements.
+- **Reading an array field returns a copy.** `m.global.taskLedger.push(x)` changes the copy and leaves the field as it was, with no error. Code must read the array, change it, and assign it back, as `recordTaskLaunch()` does.
+- **It is created on first use, not declared in `setGlobalNodes()`.** `setGlobalNodes()` starts the pool slots, `ApiQueueTask` and `SideEffectTask` before it could declare the field. A write to an undeclared field does nothing, so declaring it there lost those launches.
 
-It costs **555.7 µs per launch** at a ledger depth of 10 on a Stick 4K, render thread (see [threading.md](threading.md#measured-findings)), and that is the cheapest **correct** home rather than the cheapest home. `GetGlobalAA()` is ~500× cheaper — an append there is below the measurement floor — and **cannot be used: it is scoped per COMPONENT, not per thread.** Measured after an earlier probe got this wrong by varying thread and component together: launching and counting inside one component reads 1, while two components on the *same render thread* read each other as 0. A per-component ledger counts only its own component's launches, which is not a thread budget. A node field is the only cross-component storage SceneGraph has, so the cost buys the one property nothing else offers.
+A launch is refused, returning `false`, only when the queue already holds `TASK_QUEUE_CAP` launches or before `setGlobalNodes()` has created the queue. The `[TASKS] REFUSED` print is `#if debug`. The lasting trace is `taskLedgerRefusals` and `taskLedgerFirstRefused`, which are `#if perfTiming`: the committed `manifest` sets `perfTiming=true` and `harden-prod-manifest.js` turns it off for store builds. The first refused node is kept, not the latest, because it names the fan-out and every later refusal follows from it.
 
-⚠️ **Reading a node's array field yields a COPY, so mutating it in place is a silent no-op.** `m.global.taskLedger.push(x)` measured a plausible-looking 58 µs and left the field at its original length — 200 pushes, zero growth. It was caught only because the bench asserted the resulting length. Anything that appears to mutate a node's array field without assigning back is doing nothing; same family as the undeclared-field silent no-op below.
+### The real peak
 
-Unlike every other field above, it is **not declared in `setGlobalNodes()`** — it is created on first use. That is required, not stylistic: `setGlobalNodes()` starts its Task threads (the `ApiTask` pool slots, `ApiQueueTask`, `SideEffectTask`) before it would reach a declaration, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost them all.
+`tests/source/unit/utils/tasks.spec.bs` pins the safety bound: the watermark plus the threads the ledger cannot see stays under Roku's 100-thread limit. `tests/rta/specs/task-thread-peak.spec.js` measures the peak on a device while it walks the app.
 
-**A refusal — now only past the queue's cap, or before `setGlobalNodes()` — leaves a durable trace only under `#if perfTiming`.** The `print` in `launchTask()` is
-`#if debug`, and the committed manifest ships `debug=false`, so seeing a refusal that way costs a
-const flip and a rebuild — by which point you are no longer in the state that produced it.
-`perfTiming` ships **true** in that same manifest and is in `harden-prod-manifest.js`'s `FORCED_OFF`
-list, so `taskLedgerRefusals` and `taskLedgerFirstRefused` are present in every dev sideload, absent
-from every store build, and readable from the port-8085 console with no rebuild:
+The peak depends on the pool width and on the server's library count, so read it against the `libraryCount` its run artifact records:
 
-```brightscript
-?m.global.taskLedgerRefusals
-?m.global.taskLedgerFirstRefused
-```
+- **9 to 11 at the old fixed width of 3**, the band [ADR 0031](../adr/0031-task-thread-ceiling.md) set the watermark against. Recorded 2026-09-09: one device peaked at 10 with 4 libraries and another at 9 with 3. Device and library count both differed, so neither explains the gap.
+- **Per-device widths**, measured 2026-09-16 on the 4-library demo server: a Streaming Stick `3600X` at width 4 peaked at 8, an Ultra `4850X` at width 6 at 10, and a Streaming Stick 4K at width 6 at 11 the day before. The extra slots raise the idle floor (6 and 8 at Home) but kept the peak in the old band ([ADR 0036](../adr/0036-api-pool-width-by-device-class.md)).
 
-`FirstRefused` rather than most-recent on purpose: the node that tipped the app over the watermark
-names the fan-out, and every refusal after it is a consequence.
-
-It is the only `m.global` field holding node references in an array rather than a single node. `tests/source/unit/utils/tasks.spec.bs` pins the safety bound (watermark + untracked threads < Roku's 100-thread cap) so a future edit to either constant cannot quietly break it, and `tests/rta/specs/task-thread-peak.spec.js` gates the real peak on device (measured 9-11). **That band is conditional on the fixture's library count, which the spec records as `libraryCount` in its artifact and this sentence previously did not state.** The two readings behind it are not interchangeable: `.178` at 4 libraries peaked at 10, in the extras sweep; `.177` at 3 libraries peaked at 9, in the seven-screens phase. Device and library count both changed between them, so the difference is not attributable to either — read a peak against the `libraryCount` its own artifact records, and re-derive the band rather than assuming it if the demo server's library set moves again. **The band is also conditional on the pool width** (`apiPoolWidth`, one persistent thread per slot), and the 9-11 above was measured at the old fixed width of 3. With the per-device widths (2026-09-16, 4-library demo fixture): a Streaming Stick `3600X` at width 4 peaked at 8 and an Ultra `4850X` at width 6 at 10, and the previous day's width-6 test on a Streaming Stick 4K peaked at 11 — the widening adds its slots to the idle floor (boot/Home 6 and 8) without moving the journey peak outside the old band. Run-to-run, the same build on the same fixture moves by about two.
+The same build on the same server varies by about two from run to run. A peak well under the band most likely means the walk did not run, not that the app improved.
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for global-state / theme entries.
+Tracked in [`tech-debt.md`](tech-debt.md): search its `area` lines for `globals.bs` and `SceneManager`.

@@ -1317,11 +1317,6 @@
     "latin-abbrev": 1,
     "prose-arrow": 1
   },
-  "docs/architecture/global-state.md": {
-    "em-dash": 44,
-    "filler": 1,
-    "latin-abbrev": 2
-  },
   "docs/architecture/navigation.md": {
     "caps-emphasis": 1,
     "em-dash": 108,
