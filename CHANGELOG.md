@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Stop the sign-in screen flashing back after a deep-link sign-in ([#1156](https://github.com/jellyrock/jellyrock/pull/1156))
 - (locale) Apply the user's language when preferences fail ([#1155](https://github.com/jellyrock/jellyrock/pull/1155))
 - Stop a crash on options in a stopped video's playback info ([#1154](https://github.com/jellyrock/jellyrock/pull/1154))
 - (overhang) Reset the clock when the screensaver ends ([#1152](https://github.com/jellyrock/jellyrock/pull/1152))
