@@ -1331,11 +1331,6 @@
     "filler": 1,
     "latin-abbrev": 2
   },
-  "docs/architecture/list-grid-item-layout.md": {
-    "caps-emphasis": 1,
-    "em-dash": 22,
-    "prose-arrow": 1
-  },
   "docs/architecture/navigation.md": {
     "caps-emphasis": 1,
     "em-dash": 108,
