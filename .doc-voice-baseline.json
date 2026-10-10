@@ -1312,13 +1312,6 @@
     "latin-abbrev": 9,
     "prose-arrow": 10
   },
-  "docs/architecture/debug-tools.md": {
-    "caps-emphasis": 1,
-    "em-dash": 16,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 3
-  },
   "docs/architecture/dialogs.md": {
     "caps-emphasis": 1,
     "em-dash": 50,

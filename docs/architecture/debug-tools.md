@@ -6,170 +6,68 @@ related-files:
   - components/JRScene.xml
   - source/utils/globals.bs
   - source/utils/tasks.bs
-last-reviewed: 2026-09-23
+last-reviewed: 2026-10-10
 ---
 
-# Debug Tools
+# Debug tools
 
-The debug-only error injection system, the toast cheat code, the `testToast` field, and the Task-thread readout. Logging primitives live in `logging.md`. Test infrastructure lives in `testing.md`.
+How the debug-only tools are built: the failure switches on `m.global.debug`, the `testToast` field, the toast key sequence, and the Task-thread readout. To use them from the console, see [`debug-flags.md`](../dev/debug-flags.md). Logging is in [`logging.md`](logging.md), tests in [`testing.md`](testing.md).
 
-## Debug flags — `m.global.debug`
+## Debug flags: `m.global.debug`
 
-A compile-time error injection system for testing error paths. **Zero overhead in production** — `bs_const=debug=false` strips all the code.
+Switches that force an error path, so it can be seen on a device without a broken server. They exist only in a debug build (`bs_const=debug=true` in `manifest`; the committed value is `false`), and the device's compiler drops every `#if debug` block when building anything else, so a release build carries none of the code.
 
-### Setup
+`components/data/DebugFlags.xml` is a `ContentNode` whose fields are the switches. Most are booleans, one per failure it can force (`shouldForceFiltersFail`, `shouldForceFavoriteFail`, `shouldForceWatchedFail`). A field does not have to be either: `extraButtonCount` is an integer that pads a button row, so a feature real data cannot reach can be seen on a device. What every field shares is that it does nothing at its default and is compiled out of a release build.
 
-`components/data/DebugFlags.xml` is a `ContentNode` whose fields are the debug switches. Most are booleans, one per injectable failure; a field is **not required to be a failure injection or a boolean**, and `extraButtonCount` is neither — it is an integer that pads a button row so a feature unreachable from real data can be seen on a device. The shared contract is only that a field is inert at its default and compiled out of production, not that it breaks something:
+`setGlobalNodes()` in `globals.bs` creates the node, inside `#if debug`, and prints each switch to the debug console at startup. Code that honors a switch wraps the check in `#if debug` too:
 
-```xml
-<component name="DebugFlags" extends="ContentNode">
-  <interface>
-    <field id="shouldForceFiltersFail" type="boolean" value="false" />
-    <field id="shouldForceFavoriteFail" type="boolean" value="false" />
-    <field id="shouldForceWatchedFail" type="boolean" value="false" />
-
-    <field id="extraButtonCount" type="integer" value="0" />
-  </interface>
-</component>
-```
-
-`globals.bs:setGlobalNodes()` creates this node only in `#if debug` builds:
-
-```brightscript
+```brighterscript
 #if debug
-  debugNode = CreateObject("roSGNode", "DebugFlags")
-  m.global.addFields({ debug: debugNode })
-  print "[DEBUG] DebugFlags node initialized on m.global.debug"
-  print "[DEBUG] Toggle flags from BrightScript console (port 8085):"
-  print "[DEBUG]   m.global.debug.shouldForceFiltersFail = true"
-  print "[DEBUG]   m.global.debug.shouldForceFavoriteFail = true"
-  print "[DEBUG]   m.global.debug.shouldForceWatchedFail = true"
-  print "[DEBUG]   m.global.debug.extraButtonCount = 3"
+  if m.global.debug.shouldForceFiltersFail
+    m.top.getScene().testToast = "error|Filters failed (debug)"
+    return
+  end if
 #end if
 ```
 
-### Usage in code
+The list of switches, what each does and the steps to add one are in [`debug-flags.md`](../dev/debug-flags.md).
 
-Wrap injection sites in `#if debug`:
+## Toast testing: the `testToast` field
 
-```brightscript
-sub onFiltersLoaded()
-  #if debug
-    if m.global.debug.shouldForceFiltersFail
-      m.log.warn("Forcing filters failure for debug")
-      m.top.getScene().testToast = "error|Filters failed (debug)"
-      return
-    end if
-  #end if
+`JRScene` has a `testToast` string field (`alwaysNotify`). It is in every build, and `JRScene.init()` observes it in every build. Setting it shows a toast at once. The value is `"type|message"`, where the type is `error`, `success`, `warning` or `info`; without a `|`, the whole value is the message and the type is `error`.
 
-  ' ...normal handling
-end sub
-```
+`onTestToast()` splits the value and calls the same `showToast()` every real toast goes through, so what appears is what a user would see. Setting the field from the console depends on the thread the console paused on; the forms for each, and the RTA way to set it without pausing, are in [`debug-flags.md`](../dev/debug-flags.md#show-a-toast).
 
-### Triggering from the console
+## The Up, Up, Down, Down sequence (unreliable)
 
-Telnet to the device on port 8085, then:
+In a debug build, `JRScene.onKeyEvent()` shows the next test toast (error, then success, warning, info) when it sees Up, Up, Down, Down with no more than 2 seconds between presses. It counts key releases, because children in this app return `false` for a release so it can bubble up.
 
-```console
-> m.global.debug.shouldForceFiltersFail = true
-```
+That once worked anywhere. It no longer does on routed screens (checked on a device in 2026-07): Roku's built-in lists such as `RowList` keep the releases of keys they handle, and the router's `Outlet` keeps every release that bubbles out of a routed view. So the sequence registers only while the focus is outside the outlet, on the overhang for example. Use `testToast` instead.
 
-Next time the relevant code path runs, the failure fires.
+## Task-thread readout: `printTaskThreads()`
 
-### Adding a new flag
+Roku OS allows an app 100 threads at once and raises `&h29` past that, the crash behind epic #728. The Task-thread ledger answers "how many Task threads are live?" on a real device, so that limit is measured, not argued about.
 
-1. Add a `<field id="shouldForceXyzFail" type="boolean" value="false" />` to `DebugFlags.xml`
-2. Add a `print` line to `globals.bs` so developers see the new flag in the console boot message
-3. Wrap the injection site in `#if debug`
-4. Document in `docs/dev/debug-flags.md`
+### The ledger is in every build
 
-`docs/dev/debug-flags.md` has the full set of currently-defined flags and the expected behavior of each.
+`launchTask()` in `source/utils/tasks.bs` is the one place a Task thread starts; the `no-raw-run` BSC plugin makes a bare `control = "RUN"` anywhere else a build error. Every launch is recorded in `m.global.taskLedger`, in every build. ([`global-state.md`](global-state.md#task-thread-ledger--mglobaltaskledger) says why it lives in a node field and not the much cheaper `GetGlobalAA()`.) The count is worked out when needed, from each recorded node's `state`. A finished thread stops counting toward Roku's limit even though its node is still valid, so `state` is the true signal, and a `control = "STOP"` needs no bookkeeping of its own.
 
-## Toast testing — the `testToast` field
+Above `TASK_THREAD_WATERMARK` (50) live threads, `launchTask()` queues a launch until a thread frees ([ADR 0041](../adr/0041-task-launch-queue.md)), and refuses only once `TASK_QUEUE_CAP` launches already wait. `m.global.taskLaunchQueued`, the current queue depth, is in every build too.
 
-The root `JRScene` exposes a `testToast` string field (always present, in dev and prod, though primarily used in dev):
+### What each build shows
 
-```xml
-<field id="testToast" type="string" value="" alwaysNotify="true" />
-```
-
-Setting it from the telnet console immediately fires a toast:
-
-```console
-> m.top.getScene().testToast = "error|Something went wrong"
-> m.top.getScene().testToast = "success|Item saved"
-> m.top.getScene().testToast = "info|Loading filters..."
-> m.top.getScene().testToast = "Just a message"      ' defaults to error type
-```
-
-Format is `"type|message"` where `type` is one of `error`, `success`, `warning`, `info`. Without a `|`, the whole string is treated as the message and type defaults to `error`.
-
-The handler is in `JRScene.bs:onTestToast()`. It parses the format and calls the same `showToast` function that real toasts go through, so it's a faithful preview of what production looks like.
-
-## The up-up-down-down cheat code (currently unreliable)
-
-In `#if debug` builds, pressing **up, up, down, down** on the d-pad within 2 seconds cycles through the four toast types (error → success → warning → info) without needing the telnet console.
-
-> **Known limitation (verified on-device 2026-07):** the sequence relies on key-release events reaching `JRScene`, and on routed screens they no longer do — Roku built-ins (`RowList`) consume releases for keys they handle, and the sgRouter `Outlet` consumes every release that bubbles out of a routed view. The cheat only registers while focus is outside the outlet subtree (e.g. the overhang). Prefer `testToast` (console at a breakpoint, or live via RTA `odc.setValue` — see `docs/dev/debug-flags.md`).
-
-Implemented in `JRScene.bs:onKeyEvent()`:
-
-```brightscript
-function onKeyEvent(key as string, press as boolean) as boolean
-  #if debug
-    if not press                              ' key-release events (see limitation above)
-      now = CreateObject("roDateTime").asSeconds()
-      if now - m.debugLastKeyTime > 2
-        m.debugCodeProgress = 0               ' 2-second timeout resets progress
-      end if
-      m.debugLastKeyTime = now
-      if key = m.debugCodeSequence[m.debugCodeProgress]
-        m.debugCodeProgress++
-        if m.debugCodeProgress >= m.debugCodeSequence.count()
-          ' Sequence complete — fire next toast
-          m.debugCodeProgress = 0
-          debugToasts = [
-            { type: "error",   msg: "[DEBUG] Error toast test" },
-            { type: "success", msg: "[DEBUG] Success toast test" },
-            { type: "warning", msg: "[DEBUG] Warning toast test" },
-            { type: "info",    msg: "[DEBUG] Info toast test" }
-          ]
-          toast = debugToasts[m.debugToastIndex]
-          m.debugToastIndex = (m.debugToastIndex + 1) mod 4
-          showToast(toast.msg, toast.type)
-          return true
-        end if
-      else
-        m.debugCodeProgress = 0
-      end if
-    end if
-  #end if
-  ' ...normal key handling
-end function
-```
-
-Why key UP events: the JellyRock convention is for child components to return `false` for `press=false` so releases can bubble. That once guaranteed the sequence was tracked regardless of focus, but Roku built-ins and the sgRouter `Outlet` now consume most releases from routed content (see the limitation above), which is why the cheat is unreliable there.
-
-## Task-thread readout — `printTaskThreads()`
-
-Roku OS caps an app instance at 100 concurrent threads and raises `&h29` past it — the crash class behind epic #728. The readout answers "how many Task threads are live right now?" on a real device, so that bound is measured rather than argued about.
-
-`launchTask()` (`source/utils/tasks.bs`) is the one place a Task thread starts; the `no-raw-run` BSC plugin makes a bare `control = "RUN"` anywhere else a build error. Each launch is recorded into `m.global.taskLedger` (see [global-state.md](global-state.md#task-thread-ledger--mglobaltaskledger) for why that node field, and not the ~500× cheaper `GetGlobalAA()`), and the count is **derived** on demand by reading each tracked node's `state` — a terminated thread stops counting toward Roku's cap even though the node stays valid, so `state` is the authoritative signal and a `control = "STOP"` needs no bookkeeping call of its own.
-
-The ledger ships now rather than being `#if debug`. Above 50 live threads `launchTask()` **queues** a launch until a slot frees ([ADR 0041](../adr/0041-task-launch-queue.md)), and refuses only once `TASK_QUEUE_CAP` launches already wait. `printTaskThreads()` reads whichever thread's ledger the console is paused on — usually the render thread, which is where every screen launch happens.
-
-⚠️ **`printTaskThreads()` is `#if debug`, and the committed manifest ships `debug=false`** — so it, and the `[TASKS] REFUSED` print, are compiled out of a default dev sideload. Seeing either costs a const flip and a rebuild. What does NOT is the refusal record under `#if perfTiming`, which ships **true** by default and is forced off for production:
+**`printTaskThreads()` and the `[TASKS] REFUSED` print are `#if debug`**, so a normal sideload does not have them: seeing either takes `debug=true` and a rebuild. These fields need no rebuild. They are `#if perfTiming`, which is `true` in the committed `manifest`, and `harden-prod-manifest.js` turns it off for release builds:
 
 ```brightscript
 ?m.global.taskLaunchQueuedTotal   ' how many launches have waited in the queue
 ?m.global.taskLaunchQueuePeak     ' the deepest the queue has been
 ?m.global.taskLedgerRefusals      ' how many launches were refused (queue full, or no queue yet)
-?m.global.taskLedgerFirstRefused  ' subtype of the FIRST one, i.e. the node that names the fan-out
+?m.global.taskLedgerFirstRefused  ' the subtype of the FIRST refused node, the one that names the fan-out
 ```
 
-Reach for those first when asking "did the ceiling fire?" — they need no rebuild, and they survive the whole session rather than scrolling past in a console. A non-zero `taskLaunchQueuedTotal` already means the app hit the watermark: a queued launch is late, not lost, but something is fanning out. `?m.global.taskLaunchQueued` (the current depth) ships in every build.
+Check those first when asking whether the ceiling fired: they need no rebuild and last the whole session instead of scrolling past in the console. A `taskLaunchQueuedTotal` above zero already means the app reached the watermark. A queued launch is late, not lost, but something is launching too many Tasks.
 
-From the BrightScript console (port 8085), with the app paused at a breakpoint:
+In a debug build, from the BrightScript console with the app paused:
 
 ```brightscript
 printTaskThreads()
@@ -182,15 +80,17 @@ printTaskThreads()
 [TASKS] (app launches only — excludes main, render, and any thread not started via launchTask)
 ```
 
-The caveat in that last line matters when comparing against Roku's cap: the ledger sees the app's own launches, not the main and render threads or the vendored `WebSocketClient` that `RemoteControlTask` starts on its own thread. Add roughly three to the reported number for a total.
+It reads the ledger from whichever thread the console paused on, usually the render thread, where screens launch their Tasks.
 
-Two limits worth knowing before you trust a number:
+### What the number leaves out
 
-- **The ledger is best-effort; the count is exact.** Recording a launch is a read-modify-write of a shared `m.global` field, and launches happen on the main thread as well as the render thread (`setGlobalNodes`, `main.bs`'s font tasks, `replayRoute.performServerSwitch`). A race across those two can lose an entry, so the readout can be low by one. What it *does* guarantee is that anything it recorded is counted exactly — the count is a pure read of each node's `state`, with no counter to drift.
-- **A debug build is not a production build.** `#if debug` also attaches the full raw API payload to every transformed item (`JellyfinDataTransformer`), so a debug build's memory and per-item work are not representative. Don't read performance conclusions off a build you turned this readout on in — see [`home-first-paint-performance.md`](../dev/home-first-paint-performance.md).
+- **Threads the app did not start with `launchTask()`.** The ledger sees only those, not the main and render threads or the vendored `WebSocketClient` that `RemoteControlTask` starts on its own thread. Add about three for the total Roku counts.
+- **An entry lost to a race.** Recording a launch reads, changes and writes a shared `m.global` field, and launches happen on the main thread as well as the render thread (`setGlobalNodes`, the font tasks in `main.bs`, `replayRoute.performServerSwitch`). Two launches at once on different threads can lose an entry, so the count can be one low, and both can be admitted past the watermark. What the ledger did record, it counts exactly: the count is a read of each node's `state`, with no counter to drift.
 
-The ledger and the readout are both inside `#if debug`, so production pays nothing — the shell is excluded at load by the device's BrightScript compiler from `bs_const=debug=false`, exactly as the debug flags above are. The ledger *arithmetic* (`pruneTaskLedger`, `countLiveTaskThreads`, `taskThreadIsLive`) deliberately sits outside the gate as pure functions, because test builds compile with `debug=false` and anything inside the gate is unreachable from Rooibos.
+**Don't measure performance on a debug build.** `#if debug` also attaches the whole raw API answer to every transformed item (`JellyfinDataTransformer`), so a debug build does more work and holds more memory per item ([`home-first-paint-performance.md`](../dev/home-first-paint-performance.md)).
+
+The ledger's arithmetic (`pruneTaskLedger`, `countLiveTaskThreads`, `taskThreadIsLive`) is written as pure functions that take the ledger as an argument and touch no globals, so Rooibos can test it.
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for debug-tools / `JRScene` entries.
+Tracked in [`tech-debt.md`](tech-debt.md): search its `area` lines for `JRScene` and `tasks.bs`.

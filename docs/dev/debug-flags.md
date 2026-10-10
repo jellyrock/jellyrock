@@ -155,7 +155,7 @@ An RTA build cannot read it: `npm run test:rta` turns on `ENABLE_RTA` only, so `
 
 ### The Task-thread readout
 
-`printTaskThreads()` prints how many Task threads are live. See [`debug-tools.md`](../architecture/debug-tools.md#task-thread-readout--printtaskthreads).
+`printTaskThreads()` prints how many Task threads are live. See [`debug-tools.md`](../architecture/debug-tools.md#task-thread-readout-printtaskthreads).
 
 **Never measure performance on a debug build.** Measured 2026-08-04 at n=10, a debug build painted Home 178 ms slower on a 512 MB Stick and 121 ms slower on a Stick 4K. See [`home-first-paint-performance.md`](home-first-paint-performance.md).
 
