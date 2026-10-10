@@ -187,7 +187,7 @@ No `zh.json` ships today, so that layer is skipped. A Hong Kong user gets Hong K
 
 The sign-in locale is resolved in `reenterLogin()`, which runs at cold start and every time the sign-in flow is entered again. A changed `globalTranslationLocale` therefore applies at the next sign-out or change of user, with no restart, which is why picking it in Settings does not reload the current session.
 
-The signed-in locale is resolved in `user.LoadUserPreferences()`, inside the branch that runs when the server's display preferences come back with `CustomPrefs`. If that request fails or has no `CustomPrefs`, the session keeps the sign-in locale.
+The signed-in locale is resolved at the end of `user.LoadUserPreferences()` by `resolvePostLoginLocale()`, which runs whether or not the server's display preferences came back. If that request fails or has no `CustomPrefs.language`, only step 2 is skipped: the user's own setting, then the device, then `en_US` still apply. Translations reload only when the result differs from the locale already loaded.
 
 ## Track language name resolution
 
