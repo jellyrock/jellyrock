@@ -1293,12 +1293,6 @@
     "filler": 1,
     "prose-arrow": 3
   },
-  "docs/architecture/api-usage-manifest.md": {
-    "em-dash": 11,
-    "filler": 3,
-    "latin-abbrev": 6,
-    "prose-arrow": 7
-  },
   "docs/architecture/api.md": {
     "em-dash": 85,
     "filler": 6,
