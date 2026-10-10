@@ -17,7 +17,8 @@
 # Zero token cost, deterministic, regression-testable, runs for humans + bots.
 # Cost-rule dogfood: see .claude/rules/cost-efficiency.md.
 #
-# PORTABLE AS-IS — no slots to fill. The projects folder comes from projects-dir.sh
+# PORTABLE AS-IS — no slots to fill. It also reads ../log/md-skip.awk (the log skill's), the one rule
+# for what is not a heading. The projects folder comes from projects-dir.sh
 # beside this script (the one place every lifecycle script asks), and it assumes only
 # the two project-lifecycle conventions inside that folder:
 #   1. a project template at  _TEMPLATE.md
@@ -38,6 +39,12 @@
 set -euo pipefail
 
 die() { printf 'scaffold-project: %s\n' "$1" >&2; exit 1; }
+
+# MD_LIB: the awk function md_skip, the one rule for what is not a heading (CommonMark fenced code),
+# read from the log skill's md-skip.awk, which every script that reads headings shares.
+MD_SKIP="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../log/md-skip.awk"
+[ -r "$MD_SKIP" ] || die "cannot read $MD_SKIP: the log skill is incomplete"
+MD_LIB="$(cat "$MD_SKIP")"$'\n'
 
 CHECK=0
 if [ "${1:-}" = --check ]; then
@@ -185,11 +192,13 @@ sed -i \
 # its last table row, dropping a placeholder that says there are none (a
 # `_None active._` line, or a row whose first cell is `—`/`-`), and creating the
 # table when the section has none. The section ends at the next `## ` heading, so
-# the row can never land in a later table (e.g. Archived).
+# the row can never land in a later table (e.g. Archived). Lines inside a fenced code block are
+# copied through untouched: a heading-like line there ends no section and starts none.
 ROW="| [${DIRNAME}](${DIRNAME}/PLAN.md) | active | ${GOAL} |"
 tmp="$(mktemp)"
-awk -v row="$ROW" '
+awk -v row="$ROW" "$MD_LIB"'
   function add() { if (!seen) { print "| Project | Status | Goal |"; print "|---|---|---|" } print row; done=1 }
+  md_skip($0, 0)                                   { print; next }
   /^## Active projects/                            { active=1; print; next }
   active && /^## /                                 { if (!done) { add(); print "" } active=0; print; next }
   active && /^_[^_].*_[[:space:]]*$/ && !seen      { skipblank=1; next }

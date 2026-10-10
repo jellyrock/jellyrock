@@ -19,7 +19,7 @@
 #   prompt    optional: the command a future session should open with.
 #   pinned    optional: this followup outranks project work when the next move is picked.
 # Text between `## Open followups` and the first category, and between a category heading and its
-# first entry, is intro and is kept. Headings inside fenced blocks are text, not structure.
+# first entry, is intro and is kept. Headings inside fenced blocks (CommonMark: md-skip.awk beside this script) are text, not structure.
 #
 # Where the journal is. docs/cursor.md with a bold `**Last updated**:` line, unless journal.conf
 # beside this script says otherwise (key=value lines, `#` comments):
@@ -55,7 +55,8 @@
 #   commit --subject "<subject>" [--closes <fid>] [--body-file <p>] <path>…
 #                                            commit exactly these paths with this subject
 #   check                                    the format gate: every entry has a valid unique fid
-#                                            and captured date; nothing numbered outside entries
+#                                            and captured date; nothing numbered outside entries;
+#                                            no title opening with a closed marker
 #   migrate --plan                           the old numbered or `- ` items, one TSV row each,
 #                                            dated from git, existing fids kept (fill in the rest)
 #   migrate --apply <plan.tsv> [--dry-run]   convert them to entries, using the filled-in plan
@@ -69,6 +70,10 @@ set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 die()    { printf 'journal.sh: %s\n' "$*" >&2; exit 2; }
 refuse() { printf 'journal.sh: %s\n' "$*" >&2; exit 1; }
+# MD_LIB: the awk function md_skip, the one rule for what is not a heading (CommonMark fenced code),
+# read from md-skip.awk beside this script, which every script that reads headings shares.
+[ -r "$here/md-skip.awk" ] || die "cannot read $here/md-skip.awk: the log skill is incomplete"
+MD_LIB="$(cat "$here/md-skip.awk")"$'\n'
 usage()  { sed -n '/^# Usage:/,/^# setup error/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 FILE=docs/cursor.md; DATE=bold; COMMIT=yes; SUBJECT=cursor; REVIEW_DAYS=""
@@ -96,6 +101,8 @@ TODAY="${JOURNAL_TODAY:-$(date -u +%F)}"
 FID_RE='^[a-z0-9][a-z0-9-]*$'
 DATE_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
 MARKER_END_RE='\[(fid|captured|prompt|pinned)[^]]*\]`?[[:space:]]*$'
+# a title that opens with a closed marker: a strike-through, a check mark, [x], or uppercase RESOLVED as a whole word
+CLOSED_TITLE_RE='^[[:space:]]*(\*\*)?[[:space:]]*(~~|✅|\[[xX]\]|RESOLVED([^[:alnum:]_]|$))'
 
 # The journal intro that came before this script, and its replacement: literal Markdown
 # (backticks and all), handed to awk through the environment so nothing reinterprets it.
@@ -134,32 +141,30 @@ function heading(h,   t, g) {
   etitle = t
 }
 {
-  isfence = ($0 ~ /^[ \t]*(```|~~~)/)
+  sk = md_skip($0, 0)
   if (!insec) {
-    if (!fence && $0 ~ /^## Open followups[ \t]*$/) { nsec++; if (nsec == 1) { insec = 1; sstart = NR; next } }
-    if (isfence) fence = !fence
+    if (!sk && $0 ~ /^## Open followups[ \t]*$/) { nsec++; if (nsec == 1) { insec = 1; sstart = NR; next } }
     next
   }
-  if (!fence && $0 ~ /^##?[ \t]/) {
+  if (!sk && $0 ~ /^##?[ \t]/) {
     flush_cat(NR - 1); send = NR - 1; insec = 0
     if ($0 ~ /^## Open followups[ \t]*$/) nsec++
     next
   }
-  if (!fence && $0 ~ /^### /) {
+  if (!sk && $0 ~ /^### /) {
     flush_cat(NR - 1); cline = NR; ncatent = 0
     cname = $0; sub(/^### +/, "", cname); sub(/[ \t]+$/, "", cname); next
   }
-  if (!fence && $0 ~ /^#### /) {
+  if (!sk && $0 ~ /^#### /) {
     flush_entry(NR - 1); eline = NR; ecat = cname; heading($0)
     if (!cline) printf "P\037%d\037an entry before any ### category\n", NR
     next
   }
-  if (!eline && !fence && $0 ~ /^[0-9]+\.[ \t]/) printf "P\037%d\037a numbered item outside an entry (migrate it, or make it an entry)\n", NR
-  if (isfence) fence = !fence
+  if (!eline && !sk && $0 ~ /^[0-9]+\.[ \t]/) printf "P\037%d\037a numbered item outside an entry (migrate it, or make it an entry)\n", NR
 }
 END { if (insec) { flush_cat(NR); send = NR }; printf "S\037%d\037%d\037%d\n", nsec, sstart, send }
 '
-index_journal() { awk "$PARSE_AWK" "$J"; }
+index_journal() { awk "$MD_LIB$PARSE_AWK" "$J"; }
 
 need_journal() { # the journal exists and has exactly one Open followups section
   [ -f "$J" ] || die "no journal at $J (set file= in $conf if it lives elsewhere)"
@@ -215,7 +220,7 @@ bump_date() {
 }
 # body_ok <file>: no heading line outside a fenced block
 body_ok() {
-  awk '/^[ \t]*(```|~~~)/ { f = !f; next } !f && /^#+[ \t]/ { bad = 1 } END { exit bad }' "$1"
+  awk "$MD_LIB"'{ if (md_skip($0, 0)) next } /^#+[ \t]/ { bad = 1 } END { exit bad }' "$1"
 }
 # trimmed <file>: the file without leading or trailing blank lines
 trimmed() { awk 'NF { for (; blank > 0; blank--) print ""; started = 1; print; next } started { blank++ }' "$1"; }
@@ -229,6 +234,8 @@ writable() {
   git -C "$top" diff --quiet HEAD -- "$J" && return 0
   refuse "$FILE has uncommitted edits, which this write's commit would take along: commit or discard them first, or pass --allow-dirty to write anyway and leave this write uncommitted with them"
 }
+
+closed_title() { [[ $1 =~ $CLOSED_TITLE_RE ]]; } # <title> : it opens with a closed marker
 
 fid_ok() { # <fid> [--new] : refuse a bad or (with --new) used fid
   local f="$1"
@@ -333,7 +340,8 @@ case "$cmd" in
            elif [ -n "${seen[$d]:-}" ]; then problems+=("$FILE:$a: duplicate fid '$d' (also line ${seen[$d]})")
            else seen[$d]="$a"; fi
            [[ $e =~ $DATE_RE ]] || problems+=("$FILE:$a: no valid [captured YYYY-MM-DD] marker (found '${e}')")
-           [ -n "$g" ] || problems+=("$FILE:$a: an entry with no title") ;;
+           [ -n "$g" ] || problems+=("$FILE:$a: an entry with no title")
+           closed_title "$g" && problems+=("$FILE:$a: the title opens with a closed marker (~~, ✅, [x] or RESOLVED): close a finished followup with /done; if work remains, retitle it to say what is left") ;;
         C) nc=$((nc+1)); [ "$c" = 0 ] && problems+=("$FILE:$a: category '$d' has no entries (remove the heading)") ;;
         P) problems+=("$FILE:$a: $b") ;;
       esac
@@ -362,6 +370,7 @@ case "$cmd" in
     [ -n "$title" ] || refuse "add: the title is empty"
     [[ $title == *$'\n'* || $category == *$'\n'* ]] && refuse "add: the title and category must be one line"
     [[ $title =~ $MARKER_END_RE ]] && refuse "add: the title ends in something that reads as a marker ([fid|captured|prompt|pinned …]); reword the title"
+    closed_title "$title" && refuse "add: the title opens with a closed marker (~~, ✅, [x] or RESOLVED): close a finished followup with /done instead; if work remains, say what is left"
     [[ $category == '#'* ]] && refuse "add: the category is its name, without the ### "
     body_ok "$body" || refuse "add: the body has a heading line outside a fenced block; it would split the entry"
     need_journal; writable "$dirty"; fid_ok "$fid" --new
@@ -402,6 +411,7 @@ case "$cmd" in
     if [ -n "$title" ]; then
       [[ $title == *$'\n'* ]] && refuse "replace: the title must be one line"
       [[ $title =~ $MARKER_END_RE ]] && refuse "replace: the title ends in something that reads as a marker; reword it"
+      closed_title "$title" && refuse "replace: the title opens with a closed marker (~~, ✅, [x] or RESOLVED): close a finished followup with /done instead; if work remains, say what is left"
     else title="$old"; fi
     heading="#### $title$markers"
     if [ -n "$body" ]; then
@@ -476,7 +486,7 @@ case "$cmd" in
     esac
     dry=0; [ "${1:-}" = --dry-run ] && dry=1
     res="$(mktemp)"; sum="$(mktemp)"
-    PLANFILE="$planfile" SUMFILE="$sum" awk -v mode="${sub#--}" '
+    PLANFILE="$planfile" SUMFILE="$sum" awk -v mode="${sub#--}" "$MD_LIB"'
       function norm(s) { gsub(/\*\*/, "", s); gsub(/[ \t]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
       function boldend(s,   i, c, code) {
         for (i = 3; i < length(s); i++) { c = substr(s, i, 1)
@@ -492,30 +502,27 @@ case "$cmd" in
       { line[++n] = $0 }
       END {
         for (i = 1; i <= n; i++) {
-          s = line[i]; isf = (s ~ /^[ \t]*(```|~~~)/)
+          s = line[i]; sk = md_skip(s, 0)
           if (!insec) {
-            if (!fence && !sstart && s ~ /^## Open followups[ \t]*$/) { insec = 1; sstart = i; continue }
-            if (isf) fence = !fence
+            if (!sk && !sstart && s ~ /^## Open followups[ \t]*$/) { insec = 1; sstart = i; continue }
             continue
           }
-          if (!fence && s ~ /^##?[ \t]/) { send = i - 1; insec = 0; break }
-          if (!fence && s ~ /^### /) { nc++; cn[nc] = s; sub(/^### +/, "", cn[nc]); sub(/[ \t]+$/, "", cn[nc]); cur = 0; continue }
-          if (!fence && s ~ /^#### /) { nent++; continue }
-          if (nc && !fence && s ~ /^([0-9]+\.|-)[ \t]/ && s !~ /^- \(none\)[ \t]*$/) {
+          if (!sk && s ~ /^##?[ \t]/) { send = i - 1; insec = 0; break }
+          if (!sk && s ~ /^### /) { nc++; cn[nc] = s; sub(/^### +/, "", cn[nc]); sub(/[ \t]+$/, "", cn[nc]); cur = 0; continue }
+          if (!sk && s ~ /^#### /) { nent++; continue }
+          if (nc && !sk && s ~ /^([0-9]+\.|-)[ \t]/ && s !~ /^- \(none\)[ \t]*$/) {
             nit++; ic[nit] = nc; citems[nc]++; match(s, /^([0-9]+\.|-)[ \t]+/); w[nit] = RLENGTH
             first[nit] = substr(s, RLENGTH + 1); raw[nit] = first[nit]; line1[nit] = first[nit]; nb[nit] = 0; cur = nit
-            if (isf) fence = !fence
             continue
           }
           if (nc && !cur && s ~ /^[ \t]*(- )?\(none\)[ \t]*$/) continue
           if (cur) {
             t = s
             if (s ~ /^[ \t]/ || s == "") { k = 0; while (k < w[cur] && substr(t, 1, 1) == " ") { t = substr(t, 2); k++ } }
-            else if (!fence && !isf) loose[cur] = 1
+            else if (!sk) loose[cur] = 1
             b[cur, ++nb[cur]] = t; raw[cur] = raw[cur] " " s
           } else if (nc) ci[nc, ++nci[nc]] = s
           else si[++nsi] = s
-          if (isf) fence = !fence
         }
         if (insec) send = n
         if (!sstart) { print "STATUS\tnosection"; exit 3 }

@@ -73,6 +73,7 @@ Run `bash .claude/skills/resume-project/resume-state.sh <slug>`. It prints Statu
 ### Step 3 — Update Status: live state only
 
 - **Current phase** starts with the phase's id (`D — the build`), the one the kickoff will start at.
+- **Rewriting Status whole:** put it in place with `replace-section.sh` (Step 4 shows the call; the section name is `"Status"`), and before running `move-old-decisions.sh` below, since a later rewrite could undo its move.
 - **Phase progress:** one line per phase, ✅ / 🚧 / ⬜ first after the id. A finished phase is one line: `- C ✅ done (commits a1b2..c3d4) — <outcome in a clause>`, its range (first and last commit) taken from `git log --oneline`, never from memory; as a git range `a1b2..c3d4` leaves out `a1b2`, so a command built from it (a revert, a diff) says `a1b2^..c3d4` (a phase that made no commits says `no commits` and where its result lives); its detail moves to `## Reference` under a heading naming the phase.
 - **Decisions:** prepend today's, dated, a few lines each (the full reasoning lives in the commit message), skipping any `/log decision` already added this session. Then run `bash .claude/skills/end-session/move-old-decisions.sh <project-dir>/PLAN.md`: it keeps the newest few and moves the rest to `DECISIONS.md`, never deleting one. If it refuses (a duplicate, no decisions heading), fix what it names and run it again; never trim the list by hand.
 - **Open questions / blockers:** delete the ones this session answered. A blocker only a person or an outside event can clear is tagged `[external-gate: <reason, with a date when known>]`; remove the tag when it clears.
@@ -83,7 +84,7 @@ Run `bash .claude/skills/resume-project/resume-state.sh <slug>`. It prints Statu
 
 ### Step 4 — Rewrite the kickoff in the skeleton
 
-Overwrite the whole section in the template's shape, for a reader with no memory of this session:
+Write the whole section in the template's shape, for a reader with no memory of this session, then put it in place with the script below (the body only: the script keeps the heading):
 
 ```markdown
 **Starts at:** <Current phase's id> — <the step to start with>
@@ -108,6 +109,12 @@ Overwrite the whole section in the template's shape, for a reader with no memory
 
 - <a trap that bites inside this project, and how to avoid it>
 ```
+
+```text
+bash .claude/skills/end-session/replace-section.sh <project-dir>/PLAN.md "Next-session kickoff" <body file, or - for a quoted heredoc>
+```
+
+It replaces exactly one `## ` section and leaves the rest of the PLAN byte for byte; it refuses, writing nothing, a name that matches no section or several, an empty body, and a body with a `#` or `##` heading outside a code block. If it refuses, fix what it names and run it again; never splice a section by hand.
 
 - **Each fact has one owner.** What this session did is stated in Status and the log with its evidence (a commit, an artifact), not re-described here. A value that can change after the close goes in **Verify first** as `` `command` → `the line it printed` `` — only the ones the next work depends on. The command prints one line, and a note after the backticked value may say what each number in it means; a command cut down with `| tail` or `| grep` keeps that meaning in the note, since the next session cannot read a column whose header was cut off. Run each command first and copy what it printed: Step 8 runs every one again and fails a value that differs. Work that lands out of band (a plan executed by another session that never closes) is checked by an artifact: ✅ a symbol the change adds, a row it writes, a file it creates; ❌ a branch name (merges delete branches), a `git log -N` window (it slides past the commit), a commit-message trailer (not every landing carries one).
 - **Landmines carry forward.** Keep every one the last kickoff had unless it has stopped being true, and add the ones this session found. A trap that bites outside this project is not a landmine here: Step 6 routes it.
@@ -136,7 +143,7 @@ Default to `active`: no change, and no question, while phases are still in progr
 - **completed** — `status: completed`; move the project directory into the projects folder's `_archive/` (`git mv` where the folder is tracked, plain `mv` where it is gitignored); move its README row to the Archived list with a one-line closing summary and the date.
 - **abandoned** — as completed, plus a one-line reason in Status and on the archived row.
 
-For a terminal close, the kickoff becomes one line, `Project closed <date>: <why>`. After an archive move, search the whole repo (not only the docs) for the old path and re-point every hit in the same commit: a moved PLAN breaks links, registries and tests that name it. Decide this before Step 8 so every change lands in one commit.
+For a terminal close, the kickoff becomes one line, `Project closed <date>: <why>`, put in place with `replace-section.sh` as in Step 4. After an archive move, search the whole repo (not only the docs) for the old path and re-point every hit in the same commit: a moved PLAN breaks links, registries and tests that name it. Decide this before Step 8 so every change lands in one commit.
 
 ### Step 8 — Check the PLAN
 

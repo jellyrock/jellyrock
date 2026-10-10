@@ -3362,7 +3362,7 @@
   },
   "tests/source/unit/api/buildAuthHeader.spec.bs": {
     "caps-emphasis": 1,
-    "em-dash": 3
+    "em-dash": 2
   },
   "tests/source/unit/api/quickConnectRequests.spec.bs": {
     "em-dash": 2,

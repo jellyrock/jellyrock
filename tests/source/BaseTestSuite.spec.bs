@@ -40,6 +40,13 @@ namespace tests
         ' write, so a call that threw partway still retries in the next group.
         if not m.global.doesExist("device")
           setGlobals()
+          ' Save the device node's fields once per run, so resetDevice() can restore
+          ' them. This lives on m.global because every suite is a new BaseTestSuite
+          ' instance. The catch fallback makes device a plain AA, which needs no reset.
+          localDevice = m.global.device
+          if type(localDevice) = "roSGNode" and not m.global.doesExist("testDeviceSnapshot")
+            m.global.addFields({ testDeviceSnapshot: localDevice.getFields() })
+          end if
         end if
         ' Load en_US translations so component tests get resolved strings. This one DOES
         ' reset per group (setFields overwrites): translate.spec.bs installs its own
@@ -152,6 +159,10 @@ namespace tests
         })
       end if
 
+      ' Put the device node back to its startup fields, so a test that wrote locale or
+      ' called loadTestDevice() never leaks into the next group or suite.
+      m.resetDevice()
+
       ' Initialize roku-log if not already initialized
       ' The roku-log-bsc-plugin should auto-initialize, but we ensure it exists
       if isValid(m.global) and not isValid(m.global.rLog)
@@ -184,6 +195,10 @@ namespace tests
     end sub
 
     protected override function beforeEach()
+      ' Undo what the previous test did to m.global.device. setup() resets it per
+      ' group, and this covers every test inside a group.
+      m.resetDevice()
+
       ' Reset or verify server state before each test if needed
       ' This ensures tests don't interfere with each other
       if isValid(m.global) and isValid(m.global.server)
@@ -279,6 +294,27 @@ namespace tests
       localUser.settings = freshSettings
     end function
 
+    ' Restore m.global.device to the fields saved in setup(): remove fields a test
+    ' added, then set every saved field back in one call. Runs in setup() and
+    ' beforeEach(), so a subclass that overrides beforeEach() without super still
+    ' starts each group clean.
+    protected function resetDevice() as void
+      snapshot = m.global.testDeviceSnapshot
+      if not isValid(snapshot) then return
+
+      ' Get local reference to minimize rendezvous
+      localDevice = m.global.device
+      if type(localDevice) <> "roSGNode" then return
+
+      extraFields = []
+      for each fieldName in localDevice.getFields()
+        if not snapshot.doesExist(fieldName) then extraFields.push(fieldName)
+      end for
+      if extraFields.count() > 0 then localDevice.removeFields(extraFields)
+
+      localDevice.setFields(snapshot)
+    end function
+
     ' Get local reference to server (minimizes rendezvous)
     protected function getTestServer() as object
       return m.global.server
@@ -294,7 +330,8 @@ namespace tests
       return m.global.user.settings
     end function
 
-    ' Load and apply a specific mock device configuration
+    ' Load and apply a specific mock device configuration. The changes last until
+    ' the next test: beforeEach() restores the device node.
     ' @param deviceName - Name of device mock file (e.g., "roku-en-us", "roku-es-mx")
     protected function loadTestDevice(deviceName as string) as void
       ' Load mock device data
