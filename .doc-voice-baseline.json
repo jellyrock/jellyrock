@@ -1351,12 +1351,6 @@
   "docs/architecture/testing.md": {
     "filler": 1
   },
-  "docs/architecture/threading.md": {
-    "caps-emphasis": 4,
-    "em-dash": 34,
-    "filler": 5,
-    "prose-arrow": 1
-  },
   "docs/architecture/translations.md": {
     "em-dash": 75,
     "filler": 3,
