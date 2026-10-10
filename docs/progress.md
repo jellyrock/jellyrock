@@ -852,6 +852,12 @@ Options weighed on the /snag screen: `limit` (raise to 60 min, fix the docs), `t
 
 Not checked: whether the 2026-08-07 and 2026-08-17 failures would pass today; whether anything in the release flow reads this job's result; the CI device's actual run time (assumed to match `.177`, the same model); whether a single spec got slower, since the ledger has no per-spec times; the self-hosted runner's env file.
 
+#### No automated test covers the post-login deep-link flash `[fid: post-login-deeplink-flash-untested]` `[captured 2026-10-10]`
+
+The `fix(deeplink)` commit that keeps the sign-in screen hidden until Home mounts (it showed again for about 100 ms under the spinner when signing in with a deep link stashed) was checked only with a throwaway on-device console probe. Polling over ODC cannot see a state that short, and a Rooibos test of the sequence guard in `JRScene.resolveDeepLink` cannot see render order, so nothing stops it coming back. Not done now: it needs a design for an on-device recorder.
+
+Closes when an RTA spec covers it: for example an `ENABLE_RTA`-only timeline in `JRScene.onIsLoadingChanged` and `onActiveRoutedViewChanged` (`isLoading`, `isRemoteDisabled`, the active view) that the spec reads after a Quick Connect sign-in with a stashed deep link, asserting no pre-login view is visible with the remote enabled before Home is active.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
