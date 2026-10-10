@@ -1390,8 +1390,7 @@
     "prose-arrow": 30
   },
   "docs/architecture/testing.md": {
-    "em-dash": 25,
-    "filler": 2
+    "filler": 1
   },
   "docs/architecture/threading.md": {
     "caps-emphasis": 4,
