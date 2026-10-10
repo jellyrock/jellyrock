@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Stop a crash on options in a stopped video's playback info ([#1154](https://github.com/jellyrock/jellyrock/pull/1154))
 - (overhang) Reset the clock when the screensaver ends ([#1152](https://github.com/jellyrock/jellyrock/pull/1152))
 - (home) Hide pilots of not-yet-started series from Next Up ([#1124](https://github.com/jellyrock/jellyrock/pull/1124))
 - Change screens and the overhang in one frame ([#1137](https://github.com/jellyrock/jellyrock/pull/1137))
