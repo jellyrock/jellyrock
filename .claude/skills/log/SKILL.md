@@ -24,7 +24,7 @@ effort: low
 
 **Outputs.**
 
-- For a `/log followup`: a new entry in the followup journal, written by `journal.sh add` — a `####` heading carrying the title, a `[fid: …]` identity and a `[captured …]` date, with the body below it — and the journal's date line bumped. Or, when an open entry already covers the same thing, that entry extended instead.
+- For a `/log followup`: a new entry in the followup journal, written by `journal.sh add` — a `####` heading carrying the title, a `[fid: …]` identity and a `[captured …]` date, with the body below it — and the journal's date line bumped. Or, when an open entry already covers the same thing, that entry extended instead. For an item an agent proposed, Step 2's entry test may give a fix commit or a one-line drop in place of an entry.
 - For a `/log decision`: depending on the agent's routing, either a **new numbered ADR file** (`docs/adr/NNNN-*.md`, drafted from the captured content + session context), a dated line in the tracked project's decision list, or a one-line decline (written nowhere) — surfaced as a **diff-and-confirm** before writing, with the proposed routing shown so the human can override it in one tap.
 - A standalone path-restricted commit of just the written files, made by `journal.sh commit` — unless this repo commits journal writes together with the change that prompted them, which the script knows and says.
 - A one-line confirmation after the write (and after any commit), so the user has the new HEAD's short SHA or the equivalent confirmation that the entry landed.
@@ -37,6 +37,7 @@ effort: low
 - Every followup has an identity that never changes and is never reused: its fid. It is referred to by that fid everywhere — commits, other entries, code comments — never by its position, so closing one entry never changes what another reference points at.
 - The journal's format is the script's, not re-derived by the model: an entry the script did not write, or a hand edit that breaks the format, is caught by `journal.sh check`.
 - A followup is filed once: an open entry that already covers the same file, symbol or error is extended, not duplicated.
+- A followup an agent proposed passes the entry test first (fix, drop or file); only `file` writes an entry, and every outcome is reported with its why.
 - Path-restricted commits leave every other change in the working tree alone, including other uncommitted edits in the same file (the skill asks first when there are any).
 - The skill is pure local-file edits — no remote calls, no external API hits, no service restarts. Capture is fast and offline-safe.
 - When the type-specific flow needs information the user didn't supply AND can't be inferred (a category, a Requires field), the skill asks for it in chat (the choices and a recommendation) and waits. The bar is "genuinely ambiguous, multiple equally-valid choices" — not "any uncertainty." Routine captures with inferable fields don't earn a prompt.
@@ -51,6 +52,7 @@ effort: low
 - **ADR creep — auto-filing every decision as a numbered ADR.** A decision that isn't architectural, hard-to-reverse, or cross-component is NOT an ADR. If every decision becomes an ADR, the high-signal ones drown.
 - **Inventing missing fields when they're not inferable.** If the user said "log a followup" with no body or no inferable category, ask — don't pick a plausible-looking placeholder.
 - **Misrouting a followup as a decision (or vice versa).** A "remember to do X next session" is a `followup`; a "we chose X over Y because Z" is a `decision`. When the body is genuinely ambiguous between the two, ask rather than guess — the two land in different places with different gates.
+- **Filing a one-off as a followup.** A slip with no recurring shape, or a few-line fix that could be made now, filed as an entry, is noise every later triage reads past until someone closes it. The entry test drops or fixes it.
 - **Routing to the wrong type on ambiguous input.** When the first argument could plausibly be a type name OR the first word of the body ("decision on X is still open"), surface the ambiguity and ask.
 - **Folding a closure into a `/log` capture.** `/log` only adds (or extends) an entry. Don't close or mark done any entry during a `/log` run. Closure is `/done`'s job, as a separate invocation: finish the `/log`, then run `/done`.
 - **Committing more than the journal write.** Unrelated changes in the working tree MUST stay out of a journal commit — bundling them creates conflicts when the journal commit is later cherry-picked or deployed on its own. The same holds inside the file: if it already has uncommitted edits before the capture, say so and ask rather than sweep them in.
@@ -80,16 +82,22 @@ The first whitespace-separated token of the arguments is the type; the rest is t
 
 ### Step 2 — `followup`
 
-1. **Look for a duplicate first.** `journal.sh list` shows every open entry. Search the journal for the file, symbol or error text the new item is about (`grep -n '<file-or-symbol>' "$(bash .claude/skills/log/journal.sh path)"`). If an open entry already covers it, `journal.sh show <fid>`, then add what is new to that entry with `journal.sh replace <fid> --body-file <file>` instead of adding a second one.
-2. **Pick the category** from `list`: the area whose code the fix changes, not the work that surfaced it. Never file under a category named for a slice, a project or a session. A new category only for a durable area that none fits; ask in chat only when two fit equally.
-3. **Write the entry:**
+1. **Entry test, for an item an agent proposed** (a sub-agent's capture, an item in a skill's report, one you noticed yourself). Skip it when the user asked for this followup in their own words. Give the item exactly one outcome:
+   - **fix**: the fix is a few lines in one file of this repo and needs no new test. Make it now, as its own commit, in place of an entry.
+   - **drop**: nothing shows it will happen again (a one-off slip, already handled, or nothing anyone would act on). Write nothing.
+   - **file**: it will recur or matters later, and cannot be done now (it needs a test, a design choice, another repo, or the user). Go on to the next item, and say in the body why not now.
+
+   Report each outcome with its one-line why (in the caller's report, or in Step 5's confirmation), so a wrong `drop` or `fix` is seen and can be overridden: the user's override files it.
+2. **Look for a duplicate first.** `journal.sh list` shows every open entry. Search the journal for the file, symbol or error text the new item is about (`grep -n '<file-or-symbol>' "$(bash .claude/skills/log/journal.sh path)"`). If an open entry already covers it, `journal.sh show <fid>`, then add what is new to that entry with `journal.sh replace <fid> --body-file <file>` instead of adding a second one.
+3. **Pick the category** from `list`: the area whose code the fix changes, not the work that surfaced it. Never file under a category named for a slice, a project or a session. A new category only for a durable area that none fits; ask in chat only when two fit equally.
+4. **Write the entry:**
    - **Title** — one line naming the problem, readable on its own.
    - **Fid** — a few distinctive words from the title, lowercase and hyphenated, at most 64 characters. It is permanent and never reused; the script refuses one that is malformed, already in the journal, or ever used before in its history — then pick another.
    - **Body** — what + why + where, self-contained for a cold session: the evidence that surfaced it (commit, file, session) and the action that closes it. No heading lines in it.
    - **Prompt** (optional) — when the item is meant as a future session's opening command, pass it with `--prompt "/<command> <args>"`.
    - **Pin** (optional) — only when the user says this followup comes first: pass `--pinned`. A pinned followup outranks all project work when the next move is picked. To pin or unpin an existing entry: `journal.sh replace <fid> --pin` (or `--unpin`).
-4. **Add it.** Write the body to a temporary file with a quoted heredoc (`cat >"$tmp" <<'EOF'`) so nothing in it is escaped, then run `bash .claude/skills/log/journal.sh add --category "<category>" --fid <fid> --title "<title>" --body-file "$tmp"` (plus `--prompt` and `--pinned` when set). It stamps the entry's `captured` date and bumps the journal's date line.
-5. **Read it back** with `journal.sh show <fid>`: the Markdown must read as meant (a stray backslash from an escaped backtick is the usual fault).
+5. **Add it.** Write the body to a temporary file with a quoted heredoc (`cat >"$tmp" <<'EOF'`) so nothing in it is escaped, then run `bash .claude/skills/log/journal.sh add --category "<category>" --fid <fid> --title "<title>" --body-file "$tmp"` (plus `--prompt` and `--pinned` when set). It stamps the entry's `captured` date and bumps the journal's date line.
+6. **Read it back** with `journal.sh show <fid>`: the Markdown must read as meant (a stray backslash from an escaped backtick is the usual fault).
 
 Then Step 4.
 
@@ -126,4 +134,4 @@ If a hook refuses the commit, nothing was committed: fix what it names and commi
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent, the parent passes: `Read .claude/skills/log/SKILL.md and follow the steps with the arguments <type and body>; run journal.sh list to pick a category, then return the drafted entry and the exact journal.sh add command — never run add, replace or commit. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link. Sub-agents NEVER apply a journal write: the journal is what `/catchup` reads first every session, so an unconfirmed entry misleads every session after it. For `decision` the bar is higher still: a sub-agent surfaces the proposed routing + drafted record and waits; it never files an ADR, since a numbered ADR is a durable, supersede-only record.
+To invoke from a sub-agent, the parent passes: `Read .claude/skills/log/SKILL.md and follow the steps with the arguments <type and body>; run journal.sh list to pick a category, then return the drafted entry and the exact journal.sh add command — never run add, replace or commit. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link. A sub-agent this section starts NEVER applies a journal write: the journal is what `/catchup` reads first every session, so an unconfirmed entry misleads every session after it. The one grant is elsewhere: a `/sonnet` sub-agent its parent supervises carries out the journal writes its saved plan names, as the plan's own steps, and the parent reviews them before any push. For `decision` the bar is higher still: a sub-agent surfaces the proposed routing + drafted record and waits; it never files an ADR, since a numbered ADR is a durable, supersede-only record.

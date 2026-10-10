@@ -19,6 +19,8 @@
 #     Nothing gates a resume. Only --check exits non-zero on a finding, for the writer to fix.
 #   - A PLAN the check cannot read (no phase id, no phase marks, a kickoff older than the skeleton)
 #     gets a NOTE, never a failure at a resume.
+#   - Heading-like lines inside the frontmatter or a fenced code block are not headings (CommonMark
+#     fences; the same rule as /end-session's replace-section.sh).
 #   - Status and the kickoff are printed word for word: they are the prompt, not a summary.
 #   - It writes only its claim, outside the repo (under $XDG_STATE_HOME/project-claims): no project
 #     state, no commits. /end-session owns project state.
@@ -60,6 +62,11 @@ RELAUNCH_QUIET_S=10 # a launch settles to idle within about a second (seen: 186 
 
 section() { printf '\n=== %s ===\n' "$1"; }
 
+# MD_LIB: the awk function md_skip, the one rule for what is not a heading (frontmatter, CommonMark
+# fenced code), read from the log skill's md-skip.awk, which every script that reads headings shares.
+[ -r "$here/../log/md-skip.awk" ] || { echo "resume-state: cannot read $here/../log/md-skip.awk: the log skill is incomplete" >&2; exit 1; }
+MD_LIB="$(cat "$here/../log/md-skip.awk")"$'\n'
+
 # frontmatter <file> <field> -> the field's first word, read from the leading --- block only
 frontmatter() {
   awk -v f="$2" 'NR==1 && $0!="---" { exit } NR>1 && $0=="---" { exit } NR>1 && $1==f":" { print $2; exit }' "$1"
@@ -68,10 +75,11 @@ frontmatter() {
 # plan_section <file> <name> -> every `## ` section whose heading, after its leading emoji, starts
 # with <name> (case ignored), heading line included. The words are the contract; the emoji varies.
 plan_section() {
-  awk -v want="$2" '
-    /^## / { h=$0; sub(/^## /, "", h); sub(/^[^A-Za-z]*/, "", h)
+  awk -v want="$2" "$MD_LIB"'
+    { s = md_skip($0, 1) }
+    !s && /^## / { h=$0; sub(/^## /, "", h); sub(/^[^A-Za-z]*/, "", h)
              inside=(index(tolower(h), tolower(want))==1) }
-    /^# / { inside=0 }
+    !s && /^# / { inside=0 }
     inside { print }' "$1"
 }
 
@@ -102,7 +110,8 @@ phase_id() {
 # phase_marks <Status text on stdin> -> "id<TAB>mark" for each Phase progress line, the mark being
 # the first of ✅ 🚧 ⬜ on the line (later text may mention another)
 phase_marks() {
-  awk '/^\*\*Phase progress/ { p=1; next } p && (/^\*\*/ || /^## /) { p=0 }
+  awk "$MD_LIB"'{ s = md_skip($0, 0) } s { next }
+    /^\*\*Phase progress/ { p=1; next } p && (/^\*\*/ || /^## /) { p=0 }
     p && /^- / { l=substr($0, 3); sub(/^[Pp]hase /, "", l)
       if (!match(l, /^([A-Z][0-9]?|[0-9]+)/)) next
       id=substr(l, 1, RLENGTH); if (substr(l, RLENGTH+1, 1) ~ /[A-Za-z0-9]/) next
@@ -115,12 +124,12 @@ phase_marks() {
 bold_value() { awk -v l="**$1:**" 'index($0, l)==1 { v=substr($0, length(l)+1); sub(/^[ \t]+/, "", v); print v; exit }'; }
 
 # sub_section <text on stdin> <### heading> -> the lines under that ### heading, up to the next
-sub_section() { awk -v h="### $1" '/^### / { p=(index($0, h)==1); next } /^## / { p=0 } p'; }
+sub_section() { awk -v h="### $1" "$MD_LIB"'{ s = md_skip($0, 0) } !s && /^### / { p=(index($0, h)==1); next } !s && /^## / { p=0 } p'; }
 
 # landmine_keys <kickoff text on stdin> -> one key per Landmines bullet: its bold lead when it has
 # one, else its first 60 characters (so an edited explanation is not a dropped landmine)
 landmine_keys() {
-  sub_section "Landmines" | awk '/^- / { l=substr($0, 3)
+  sub_section "Landmines" | awk "$MD_LIB"'{ s = md_skip($0, 0) } !s && /^- / { l=substr($0, 3)
     if (substr(l, 1, 2) == "**" "") { k=substr(l, 3); e=index(k, "**"); if (e > 0+0) { print substr(k, 1, e-1); next } }
     if (substr(l, 1, 1) != "<" "") print substr(l, 1, 60) }'
 }
@@ -188,7 +197,7 @@ plan_check() {
   if [ "$how" = check ]; then
     rel="$(git -C "$(dirname "$plan")" ls-files --full-name -- "$(basename "$plan")" 2>/dev/null)"
     if [ -n "$rel" ] && prev="$(git -C "$(dirname "$plan")" show "HEAD:$rel" 2>/dev/null)"; then
-      local pk; pk="$(awk '/^## /{ h=$0; sub(/^## /, "", h); sub(/^[^A-Za-z]*/, "", h); p=(index(tolower(h), "next-session kickoff")==1) } /^# /{ p=0 } p' <<<"$prev")"
+      local pk; pk="$(awk "$MD_LIB"'{ s = md_skip($0, 1) } !s && /^## /{ h=$0; sub(/^## /, "", h); sub(/^[^A-Za-z]*/, "", h); p=(index(tolower(h), "next-session kickoff")==1) } !s && /^# /{ p=0 } p' <<<"$prev")"
       while IFS= read -r k; do
         [ -n "$k" ] && out+=("REVIEW: landmine dropped since the last commit: $k (say in the session log why it stopped being true)")
       done < <(grep -vxF -f <(landmine_keys <<<"$kick"; echo) <(landmine_keys <<<"$pk"))
@@ -404,13 +413,22 @@ else echo "NOTE: ${branch:-this branch} has no upstream; unpushed commits not ch
 # in this repo after it are the work the kickoff has not seen; those naming the project mean the
 # last session did not close with /end-session.
 # kickoff_overlap -> for each repo path the kickoff names in backticks (a `file:line` counts as its
-# file), the other work since the save that touched it: count and newest commit. Reads `since`,
-# `mine` and `plan` from CONTINUITY; prints nothing when no named path was touched.
+# file), the other work since the save that touched it: count and newest commit. A backticked
+# /<name> (a word after it ignored) counts as .claude/skills/<name>/ when that folder exists, and
+# its line says (as /<name>). Reads `since`, `mine` and `plan` from CONTINUITY; prints nothing
+# when no named path was touched.
 kickoff_overlap() {
-  local tok p cnt newest line hdr="" seen=$'\n'
+  local tok p as name cnt newest line hdr="" seen=$'\n'
   # shellcheck disable=SC2016  # a literal backtick pattern, nothing to expand
   while IFS= read -r tok; do
-    p="${tok%%:*}"; p="${p%%#*}"
+    as=""
+    if [ "${tok#/}" != "$tok" ]; then
+      name="${tok%% *}"; name="${name#/}"
+      case "$name" in ""|*[!a-z0-9-]*) continue ;; esac
+      p=".claude/skills/$name/"; as=" (as /$name)"
+    else
+      p="${tok%%:*}"; p="${p%%#*}"
+    fi
     case "$p" in ""|-*|*" "*|*'$'*|*'<'*) continue ;; esac
     case "$seen" in *$'\n'"$p"$'\n'*) continue ;; esac; seen+="$p"$'\n'
     [ -n "$(git -C "$top" ls-tree HEAD -- "$p" 2>/dev/null)" ] || continue
@@ -422,7 +440,7 @@ kickoff_overlap() {
     done < <(git -C "$top" log --format='%h %s' "${since[@]}" -- "$p" 2>/dev/null)
     [ "$cnt" -gt 0 ] || continue
     [ -n "$hdr" ] || { hdr=1; echo "other work on paths the kickoff names (check it against the kickoff):"; }
-    echo "  $p: $cnt commit(s), newest: $newest"
+    echo "  $p$as: $cnt commit(s), newest: $newest"
   done < <(plan_section "$plan" "Next-session kickoff" | grep -o '`[^`]*`' | tr -d '`')
 }
 
@@ -477,10 +495,11 @@ section "PLAN — OPEN PUNCH-LIST"
 punch="$(plan_section "$plan" "Punch-list")"
 if [ -z "$punch" ]; then echo "NOTE: this PLAN has no punch-list"
 else
-  open="$(grep -c '^- \[ \]' <<<"$punch")"; closed="$(grep -c '^- \[[xX]\]' <<<"$punch")"
+  open="$(awk "$MD_LIB"'{ s = md_skip($0, 0) } !s && /^- \[ \]/ { n++ } END { print n+0 }' <<<"$punch")"
+  closed="$(awk "$MD_LIB"'{ s = md_skip($0, 0) } !s && /^- \[[xX]\]/ { n++ } END { print n+0 }' <<<"$punch")"
   echo "$open open / $((open+closed)) total"
   # a ### heading only when an open item follows it
-  awk '/^### / { h=$0; next } /^- \[ \]/ { if (h!="") { print h; h="" } print }' <<<"$punch"
+  awk "$MD_LIB"'{ s = md_skip($0, 0) } !s && /^### / { h=$0; next } !s && /^- \[ \]/ { if (h!="") { print h; h="" } print }' <<<"$punch"
 fi
 
 if [ -n "$start" ]; then
@@ -504,7 +523,7 @@ section "PLAN — LAST SESSION LOG ENTRY"
 log="$(plan_section "$plan" "Session log")"
 if [ -z "$log" ]; then echo "ERROR: no \"Session log\" section — renamed? read it from the PLAN by its heading"
 else
-  entry="$(awk '/^- / { e=$0; next } /^[ \t]+[^ \t]/ && e!="" { e=e "\n" $0; next } END { if (e!="") print e }' <<<"$log")"
+  entry="$(awk "$MD_LIB"'{ s = md_skip($0, 0) } s { if (/^[ \t]+[^ \t]/ && e!="") e=e "\n" $0; next } /^- / { e=$0; next } /^[ \t]+[^ \t]/ && e!="" { e=e "\n" $0; next } END { if (e!="") print e }' <<<"$log")"
   echo "${entry:-NOTE: the session log has no entries yet}"
 fi
 

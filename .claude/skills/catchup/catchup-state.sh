@@ -63,7 +63,8 @@
 #
 # Usage: bash .claude/skills/catchup/catchup-state.sh   (from inside the repo)
 # CATCHUP_TODAY=YYYY-MM-DD overrides today's date (tests); dates are UTC, as journal.sh's are.
-# Exit: 0 read; 2 no journal to brief from, or not a git repository (the ERROR candidates say which).
+# Exit: 0 read; 2 no journal to brief from, or not a git repository (the ERROR candidates say which),
+# or the log skill's md-skip.awk is missing (said on stderr).
 
 set -uo pipefail # not -e: one failed section must not stop the rest
 
@@ -72,6 +73,10 @@ journal_sh="$here/../log/journal.sh"
 resolver="$here/../start-project/projects-dir.sh"
 resume_sh="$here/../resume-project/resume-state.sh"
 conf_file="$here/catchup.conf"
+# MD_LIB: the awk function md_skip, the one rule for what is not a heading (CommonMark fenced code),
+# read from the log skill's md-skip.awk, which every script that reads headings shares.
+[ -r "$here/../log/md-skip.awk" ] || { echo "catchup-state: cannot read $here/../log/md-skip.awk: the log skill is incomplete" >&2; exit 2; }
+MD_LIB="$(cat "$here/../log/md-skip.awk")"$'\n'
 rc=0
 TAB=$'\t'
 
@@ -286,7 +291,7 @@ else
 
     # every other `## ` section as written (blank lines dropped), with its item count; running work
     # and the cadence table are checked here: a check that fires is a \037-led "<id><TAB><text>" line
-    jout="$(awk -v today="$today" '
+    jout="$(awk -v today="$today" "$MD_LIB"'
       function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
       function flush(   i) {
         if (name == "") return
@@ -298,14 +303,14 @@ else
         if (items > 0 && low ~ /^in-flight/) print "\037slot-3"
         for (i = 1; i <= nban; i++) print ban[i]
       }
-      /^[ \t]*(```|~~~)/ { fence = !fence }
-      !fence && /^## / {
+      { s = md_skip($0, 0) }
+      !s && /^## / {
         flush(); name = trim(substr($0, 4)); items = 0; nb = 0; nban = 0; intable = 0; due = 0; ph = 0
         skip = (name == "Open followups"); cad = (tolower(name) ~ /^recurring cadences/)
         if (skip) name = ""
         next
       }
-      !fence && /^# / { flush(); name = ""; next }
+      !s && /^# / { flush(); name = ""; next }
       name == "" || /^[ \t]*$/ { next }
       { body[++nb] = $0 }
       /^[ \t]*([-*+]|[0-9]+\.)[ \t]/ { items++; intable = 0; next }
