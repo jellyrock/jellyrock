@@ -1337,12 +1337,6 @@
   "docs/architecture/testing.md": {
     "filler": 1
   },
-  "docs/architecture/translations.md": {
-    "em-dash": 75,
-    "filler": 3,
-    "latin-abbrev": 2,
-    "prose-arrow": 11
-  },
   "docs/architecture/user-journey.md": {
     "em-dash": 70,
     "filler": 2,

@@ -3,6 +3,8 @@ topic: translations
 related-files:
   - source/utils/translate.bs
   - source/utils/translateLocale.bs
+  - source/utils/languages.bs
+  - source/utils/mediaDisplayTitle.bs
   - source/utils/people.bs
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/lint/update-translations.cjs
@@ -16,76 +18,77 @@ related-files:
   - scripts/weblate-sync.js
   - scripts/lib/locale-files.cjs
   - scripts/lib/translation-formats.cjs
+  - .github/workflows/jellyrock-bot.yml
   - .github/workflows/release-management.yml
-last-reviewed: 2026-10-06
+last-reviewed: 2026-10-10
 ---
 
 # Translations (i18n)
 
-JellyRock's custom JSON translation system, the locale fallback cascade, and the BSC plugin that gives compile-time key safety.
+How JellyRock looks up translated strings, picks a locale, labels languages and people, keeps keys safe at compile time, and moves translations between `main` and Weblate. The how-to for adding a string is in [`docs/dev/translations.md`](../dev/translations.md).
 
 ## Why a custom system
 
-Roku ships a built-in `tr()` function that reads from a fixed XML format. JellyRock replaces it with a custom JSON-based system because:
+Roku's built-in `tr()` looks strings up in a `translations.xml` file in the package. JellyRock uses its own JSON system instead, for four reasons:
 
-- **Speed** — translations are loaded once into a flat `roAssociativeArray` for O(1) lookups. `tr()` parses the XML on every call.
-- **Fallback control** — JellyRock layers regional locales over base languages (e.g. `fr_CA` over `fr`) and falls back to en_US for any missing key, so users always see something.
-- **Build-time validation** — a custom BSC plugin generates `translationKeys` constants from `en_US.json` at compile time. Typos become build errors.
-- **Community workflow** — translations live in plain JSON files compatible with Weblate, the open-source translation platform.
-
-Many locale files live under `locale/custom/*.json` covering a wide range of languages.
+- **One lookup per string.** Each locale is loaded once into a flat `roAssociativeArray`, so a translation is a single key lookup.
+- **Fallback control.** A regional locale is layered over its base language (`fr_CA` over `fr`), and any key still missing falls back to `en_US`, so users always see text.
+- **Build-time key checks.** A BrighterScript plugin turns `en_US.json` into `translationKeys` constants, so a misspelled key fails the build.
+- **Community workflow.** The files are plain JSON, which Weblate reads and writes.
 
 ## File layout
 
 ```text
 locale/
-├── custom/                    ← one JSON file per locale
-│   ├── en_US.json             ← always loaded as fallback
+├── custom/                  one JSON file per locale
+│   ├── en_US.json           the source of truth, and always loaded as the fallback
 │   ├── fr.json
-│   ├── fr_CA.json             ← regional overlay on fr.json
-│   ├── zh.json
-│   ├── zh_Hans.json           ← Simplified Chinese (script code, not region)
-│   ├── zh_Hant.json           ← Traditional Chinese
-│   ├── zh_Hant_HK.json        ← Hong Kong Traditional (3-layer over zh + zh_Hant)
+│   ├── fr_CA.json           regional overlay on fr.json
+│   ├── zh_Hans.json         Simplified Chinese (a script code, not a region)
+│   ├── zh_Hant.json         Traditional Chinese
+│   ├── zh_Hant_HK.json      Hong Kong, layered over zh_Hant
 │   └── ...
-└── languages.json             ← list of supported languages for the in-app picker
+├── languages.json           the languages the in-app picker offers
+└── seed/                    sources, key map and ledger for seeding (see below)
 
 source/utils/
-├── translate.bs               ← translate(), translatePlural(), loadTranslations(), loadLocaleFile()
-└── translateLocale.bs         ← resolveTranslationLocale() — the fallback cascade
-                                  separated because it imports config.bs (only available in source/ scope)
+├── translate.bs             translate(), translateCached(), translatePlural(),
+│                            loadTranslations(), loadLocaleFile(), loadChineseLocaleFile()
+├── translateLocale.bs       resolveTranslationLocale(), mapRokuLocaleToTranslationLocale(),
+│                            normalizeLocaleCode()
+├── languages.bs             the media-language tables
+├── mediaDisplayTitle.bs     resolveLanguageName(), the media-language resolver
+└── people.bs                personCreditLabel() and the person-label tables
 
-scripts/
-└── bsc-plugin-translation-keys.cjs   ← BSC plugin: generates pkg:/source/translationKeys.bs
-                                        from en_US.json at build time
+scripts/bsc-plugins/
+└── translation-keys.cjs     generates pkg:/source/translationKeys.bs from en_US.json
 ```
 
-`languages.json` is a hand-maintained list with `{code, name, nativeName}` per entry. The first entry has `code: ""` and `name: "Automatic"`, meaning "use the device locale".
+Each `languages.json` entry is `{code, name, nativeName}`. The first has `code: ""` and `name: "Automatic"`, which means "use the device locale". `npm run update-translations` adds an entry for any locale file the list lacks, and the JellyRock bot runs it on every push to `main`.
 
 ## Lookup chain
 
-Two `roAssociativeArray` objects live on `m.global` for the lifetime of the app:
+Two translation tables live on `m.global` for the life of the app:
 
-- **`m.global.translations`** — the active locale (or en_US if no locale was selected)
-- **`m.global.translationsFallback`** — always en_US
+- **`m.global.translations`**: the active locale.
+- **`m.global.translationsFallback`**: always `en_US`.
 
-If the active locale is en_US, both reference the same AA (no double memory).
+When the active locale is `en_US`, `loadTranslations()` passes the same AA to both fields.
 
-`translate(key, params)` tries each in order:
+`translate(key, params)` tries the active locale, then `en_US`, then returns the key itself:
 
 ```brightscript
 function translate(key as string, params = invalid as object) as string
   if key = invalid or key = "" then return ""
 
-  value = m.global.translations[key]                ' 1. active locale
+  value = m.global.translations[key]
   if value = invalid
-    value = m.global.translationsFallback[key]      ' 2. en_US fallback
+    value = m.global.translationsFallback[key]
   end if
   if value = invalid
-    return key                                       ' 3. key itself (visible during dev)
+    return key
   end if
 
-  ' Substitute indexed placeholders {0}, {1}, etc.
   if params <> invalid and type(params) = "roArray" and params.Count() > 0
     for i = 0 to params.Count() - 1
       value = value.Replace("{" + i.toStr() + "}", params[i])
@@ -96,23 +99,23 @@ function translate(key as string, params = invalid as object) as string
 end function
 ```
 
-Returning the key itself when nothing is found is intentional — during development, an untranslated string shows up as `LabelEpisodeCount` in the UI, immediately visible.
+Returning the key makes a missing string visible: it shows up on screen as `LabelEpisodeCount`.
 
 ### Translating a batch on a Task thread: `translateCached()`
 
-From a Task thread each `translate()` copies `m.global.translations` across the thread boundary ([async.md](async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)), so code labeling many items on a Task goes through `translateCached(key, cache)`, which keeps each key's value for the rest of one batch. The caller picks the seed by how many distinct keys the batch needs:
+From a Task thread, each `translate()` copies `m.global.translations` across the thread boundary ([async.md](async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)). Code that labels many items on a Task calls `translateCached(key, cache)` instead, which keeps each key's value for the rest of one batch. The caller picks the seed by how many distinct keys the batch needs:
 
-- **An empty AA** when the batch needs a few keys: the cast labels in `people.bs` need four or five, and a full table copy cost more than those calls.
-- **`m.global.translations` itself, read once**, when it needs many: `sortSubtitles()` needs a language name per subtitle track, often dozens. A key missing from the locale still falls back through `translate()`, and the miss is written only into the local copy.
+- **An empty AA** when the batch needs only a few keys. The cast labels in `people.bs` need a handful, and copying the whole table cost more than those calls.
+- **`m.global.translations` itself, read once**, when it needs many. `sortSubtitles()` in `subtitles.bs` needs a language name per subtitle track, often dozens. A key missing from the locale still falls back through `translate()`, and the miss is written only into the local copy.
 
-The cache lives for one batch, never longer: the locale can change mid-session.
+The cache lives for one batch and no longer, because the locale can change mid-session.
 
-## Plurals — `translatePlural`
+## Plurals: `translatePlural()`
 
-Uses a Zero/One/Many suffix convention:
+A plural is three keys with the suffixes `Zero`, `One` and `Many`:
 
 ```brightscript
-function translatePlural(baseKey, count, params) as string
+function translatePlural(baseKey as string, count as integer, params = invalid as object) as string
   if count = 0
     suffix = "Zero"
   else if count = 1
@@ -124,9 +127,7 @@ function translatePlural(baseKey, count, params) as string
 end function
 ```
 
-So a `LabelEpisodeCount` translation needs three keys in en_US.json: `LabelEpisodeCountZero`, `LabelEpisodeCountOne`, `LabelEpisodeCountMany`. The convention is intentionally simpler than full Unicode CLDR plural rules — sufficient for English-speaking developers, may need refinement for languages with more plural forms (Russian, Polish, Arabic).
-
-Usage:
+So `LabelEpisodeCount` needs `LabelEpisodeCountZero`, `LabelEpisodeCountOne` and `LabelEpisodeCountMany` in `en_US.json`. This is simpler than Unicode's CLDR plural rules, so languages with more plural forms (Russian, Polish, Arabic) read approximately: [`plural-forms-zero-one-many-only`](tech-debt.md#plural-forms-zero-one-many-only).
 
 ```brightscript
 translate(translationKeys.ButtonPlay)
@@ -134,176 +135,128 @@ translate(translationKeys.MessageCouldNotReachServer, [serverUrl])
 translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])
 ```
 
-## Key naming convention
-
-Keys are PascalCase with a category prefix:
-
-| Prefix | For |
-|---|---|
-| `Button*` | Button labels (`ButtonPlay`, `ButtonResume`) |
-| `Label*` | UI labels and headings (`LabelEpisodeCount`, `LabelSelectAudio`) |
-| `Message*` | Longer descriptive text (`MessageVideoStartsIn`, `MessageAreYouSureYouWantTo`) |
-| `Error*` | Error messages (`ErrorImageTypeNotSupported`) |
-| `Setting*` | Setting titles and descriptions |
-| `Tab*` | Tab labels |
-| `Header*` | Section headers |
-| `Tooltip*` | Tooltip text |
-
-The convention is enforced by `npm run lint:translations` (see CI section below).
+Key names start with a prefix that says what kind of text they hold. The prefixes are listed in [the dev guide](../dev/translations.md#key-names); no lint checks them.
 
 ## Locale loading
 
-`loadTranslations(locale)` is called from `Main()` (with the device-resolved locale) and again after login (with the user-resolved locale). It:
+`loadTranslations(locale)` runs at four points:
+
+| Caller | When | Which locale |
+|---|---|---|
+| `Main()` in `main.bs` | Cold start, before the scene exists | The sign-in locale |
+| `reenterLogin()` in `loginRouter.bs` | Every entry to the sign-in flow: cold start, change server, change user, sign out | The sign-in locale |
+| `user.LoadUserPreferences()` in `session.bs` | After sign-in, from `user.Login()` | The signed-in locale, if it differs from the current one |
+| `onLanguagePickerSelected()` in `components/settings/settings.bs` | The user picks a display language | The picked locale, if it differs |
+
+It then:
 
 1. Loads `en_US.json` into the fallback AA.
-2. If `locale = "en_US"`, makes the active AA the same reference (no copy).
-3. Otherwise, calls `loadLocaleFile(locale)` — which handles regional and Chinese layering.
-4. Sets `m.global.translations`, `m.global.translationsFallback`, `m.global.translationLocale` atomically via `setFields`.
+2. For `en_US`, uses that same AA as the active one.
+3. Otherwise calls `loadLocaleFile(locale)`, which layers regional and Chinese locales. If no file is found, the active locale becomes `en_US`.
+4. Sets `translations`, `translationsFallback` and `translationLocale` on `m.global` in one `setFields` call.
 
-### Regional layering — `loadLocaleFile`
+### Regional layering: `loadLocaleFile()`
 
-For a locale like `fr_CA`:
+For a locale like `fr_CA`, `loadLocaleFile()` loads `fr.json`, then `fr_CA.json`, and appends the regional AA onto the base, so regional values win. If only one of the two files exists, that one is used. A `fr_CA` user sees Canadian French where translators provided it, base French elsewhere, and English for a key neither has.
 
-1. Load `fr.json` into a base AA.
-2. Load `fr_CA.json` into a regional AA.
-3. `baseAA.Append(regionalAA)` — regional values overwrite base values where they conflict.
-4. Return the merged AA.
+### Chinese layering: `loadChineseLocaleFile()`
 
-This means `fr_CA` users see Canadian French where translators provided it, falling back to base French elsewhere, and falling back to English in the active-translate function if neither has a key.
+Chinese locales use script codes (`Hans` for Simplified, `Hant` for Traditional) rather than regions, so `loadChineseLocaleFile()` layers them its own way. It always tries a base `zh.json` first, and `zh_Hant_HK` adds `zh_Hant` in the middle:
 
-### Chinese script layering — `loadChineseLocaleFile`
+| Locale | Files tried, in order |
+|---|---|
+| `zh_Hans` | `zh.json`, `zh_Hans.json` |
+| `zh_Hant` | `zh.json`, `zh_Hant.json` |
+| `zh_Hant_HK` | `zh.json`, `zh_Hant.json`, `zh_Hant_HK.json` |
 
-Chinese is special-cased because it uses script codes (Hans = Simplified, Hant = Traditional) rather than region codes:
+No `zh.json` ships today, so that layer is skipped. A Hong Kong user gets Hong Kong strings where they exist, then Traditional Chinese, then English.
 
-```text
-zh_Hans:    zh.json → zh_Hans.json    (2 layers)
-zh_Hant:    zh.json → zh_Hant.json    (2 layers)
-zh_Hant_HK: zh.json → zh_Hant.json → zh_Hant_HK.json  (3 layers)
-```
+## Locale resolution: `resolveTranslationLocale()`
 
-The layering means a Hong Kong user gets HK-specific translations where available, falls back to Traditional Chinese, then to base Chinese, then to English.
+`resolveTranslationLocale(isPostLogin, serverLanguage)` in `translateLocale.bs` picks the locale from the first source that has one:
 
-## Locale resolution cascade — `translateLocale.bs`
+| Step | Source | Before sign-in | After sign-in |
+|---|---|---|---|
+| 1 | The user's **Display language** setting (`translationLocale`, read with `getUserSetting`) | Skipped | Used |
+| 2 | The server's language, `CustomPrefs.language`, through `normalizeLocaleCode()` (Jellyfin sends `zh-CN`, `pt-BR`) | Skipped | Used |
+| 3 | The device-wide sign-in language (`globalTranslationLocale`, read with `getSetting`) | Used | Skipped |
+| 4 | The Roku's locale, through `mapRokuLocaleToTranslationLocale()` (`zh_CN` becomes `zh_Hans`, `zh_TW` becomes `zh_Hant`, `zh_HK` becomes `zh_Hant_HK`) | Used | Used |
+| 5 | `en_US` | Used | Used |
 
-`resolveTranslationLocale(isPostLogin, serverLanguage)` resolves which locale to use:
+`globalTranslationLocale` is the only thing that localizes the sign-in screens. It is skipped after sign-in, so a user's session follows their own setting, their server's language or the device, and never the device-wide sign-in default.
 
-1. **User setting** (post-login only) — `getUserSetting("translationLocale")`. If the user picked a language explicitly, use it.
-2. **Server language** (post-login only) — Jellyfin server `CustomPrefs.language`. Normalized via `normalizeLocaleCode()` because Jellyfin may send `zh-CN`, `pt-BR` (dashes), etc.
-3. **Global sign-in language** (pre-login only) — `getSetting("globalTranslationLocale")`, the device-wide twin of the per-user `translationLocale` (a `global*` setting, so it lives in the `JellyRock` registry section). Read via `getSetting` (not `getUserSetting`) so it resolves **with no signed-in user** — this is what localizes the pre-login server-select / user-select screens. **Deliberately skipped post-login:** a signed-in user's session is governed by their own setting / server pref / device locale, so a home screen never inherits the device-wide sign-in default.
-4. **Roku device locale** — `m.global.device.locale`. Mapped by `mapRokuLocaleToTranslationLocale()` which special-cases Chinese (Roku sends `zh_CN` → we use `zh_Hans`).
-5. **Hardcoded fallback** — `"en_US"`.
+The sign-in locale is resolved in `reenterLogin()`, which runs at cold start and every time the sign-in flow is entered again. A changed `globalTranslationLocale` therefore applies at the next sign-out or change of user, with no restart, which is why picking it in Settings does not reload the current session.
 
-Pre-login, only steps 3–5 run (no user context, so 1–2 are skipped) — `globalTranslationLocale` is the only lever that localizes the sign-in screens. Post-login, steps 1, 2, 4, 5 run and step 3 is skipped, so post-login resolution is **identical to the behavior before `globalTranslationLocale` existed** (the global sign-in default never reaches a signed-in session). The pre-login locale is resolved at the `appStart` login-flow entry in `main.bs` — reached both at cold start AND on re-entry from Sign Out / Change Server / Change User (which re-enter the login flow in place via `reenterLogin`) — so a changed `globalTranslationLocale` takes effect on the next sign-in **without an app restart**; a single resolution covers both the server-select and user-select screens, and the next reload is at `user.Login()`.
+The signed-in locale is resolved in `user.LoadUserPreferences()`, inside the branch that runs when the server's display preferences come back with `CustomPrefs`. If that request fails or has no `CustomPrefs`, the session keeps the sign-in locale.
 
-## Track language name resolution — `source/utils/languages.bs`
+## Track language name resolution
 
-A separate (and structurally distinct) localization concern: media stream language codes — what Jellyfin sends as `MediaStream.Language` for an audio or subtitle track — need to be displayed as the user's localized language name in the `TrackDropdown` cluster, OSD menus, and `ItemDetails`.
+Media stream language codes (what Jellyfin sends as `MediaStream.Language` for an audio or subtitle track) are shown as language names in the user's locale. The codes come in whatever form the container used, so one language can arrive as ISO 639-2/T (`fra`), ISO 639-2/B (`fre`), ISO 639-1 (`fr`) or with a region (`fr-CA`).
 
-The codes are messy: ffmpeg/Jellyfin pass through whatever the container says, so the same language can arrive as ISO 639-2/T (`fra`), 639-2/B (`fre`), or 639-1 (`fr`). `languages.bs` resolves these via a **3-tier cascade**:
+`resolveLanguageName()` in `mediaDisplayTitle.bs` resolves them against the tables in `languages.bs`:
 
-1. **Alias** — `mediaLanguageAliases()` maps 3-letter codes (`fra`, `fre`) to a canonical 2-letter base (`fr`).
-2. **Translation key** — `languageTranslationKeys()` maps the base code to a `LanguageX` translation key (`fr` → `LanguageFr`), which goes through `translate()` and renders in the user's UI locale.
-3. **English fallback** — `languageEnglishFallbacks()` covers ISO 639-2 codes the app doesn't have a UI translation for (e.g., `lat` Latin, `swa` Swahili). These display in English in any UI locale — translating thousands of less-common language names into every UI locale wasn't worth the maintenance cost.
+1. **Normalize.** Lowercase the code and drop any region. `und` ("undetermined") and `zxx` ("no linguistic content") return an empty label, since there is nothing to name. `mediaLanguageAliases()` then maps a 3-letter code (`fra`, `fre`) to its 2-letter base (`fr`).
+2. **Tier 1, translation key.** `languageTranslationKeys()` maps the base to a `LanguageX` key (`fr` to `LanguageFr`), translated in the user's locale.
+3. **Tier 2, English fallback.** `languageEnglishFallbacks()` covers codes the app has no translation key for, such as `lat` (Latin) and `swa` (Swahili). These show in English in every locale: translating thousands of rare language names into every locale was not worth the upkeep.
+4. **Tier 3, the raw code.** Anything else shows as it arrived.
 
-Track names tagged `und` ("undetermined") and `zxx` ("no linguistic content") are intentionally omitted from labels — there's nothing meaningful to localize.
+The callers are `ItemDetails.bs`, `SubtitlePanel.bs`, `PlayerHostView.bs`, and `sortSubtitles()` in `subtitles.bs` on `LoadVideoContentTask`.
 
-### Matching codes across forms — `languageBaseCode()` / `languagesMatch()`
+### Matching codes across forms: `languageBaseCode()` and `languagesMatch()`
 
-Track *selection* needs the same normalization for a different reason: a preference or an item's `OriginalLanguage` (ISO 639-1, `ko`) has to find a track tagged in another form (`kor`). `languageBaseCode()` reduces a code to one form through `mediaLanguageAliases()` and then `mediaLanguageMatchAliases()`, a second map holding only the ISO 639-2 codes the first leaves out.
+Track selection needs the same normalization for a different reason. A preference or an item's `OriginalLanguage` (ISO 639-1, `ko`) has to find a track tagged in another form (`kor`). `languageBaseCode()` reduces a code to one form through `mediaLanguageAliases()`, then `mediaLanguageMatchAliases()`, a second map holding only the ISO 639-2 codes the first leaves out.
 
-The two maps are kept apart on purpose. `mediaLanguageAliases()` covers only UI locales, and display depends on that gap: tier 3 is keyed by the 3-letter code, so aliasing `swa` → `sw` there would show Swahili as the raw `swa`. The matching map can therefore cover every language without touching labels. Which codes count as a match for a given track list — exact code first, same language only as a fallback — is selection policy, and lives with it in `streamSelection.bs` (`matchingLanguageCodes()`).
+The two maps stay apart on purpose. `mediaLanguageAliases()` covers only languages with a translation key, and the labels depend on that gap: tier 2 is keyed by the 3-letter code, so aliasing `swa` to `sw` in the display map would show Swahili as the raw `swa`. The matching map can therefore cover every language without changing any label. Which codes count as a match for a given track list (the exact code first, the same language only as a fallback) is selection policy, and lives with it in `streamSelection.bs` (`matchingLanguageCodes()`).
 
-### CI lint — `npm run lint:language-coverage`
+### CI lint: `npm run lint:language-coverage`
 
-`scripts/lint/language-coverage.cjs` catches several classes of silent regression in the resolver and in the person-label tables:
+`scripts/lint/language-coverage.cjs` catches gaps in these tables that type checks and unit tests pass and only a non-English user would see:
 
-1. An alias maps `tib` → `bo` but `bo` is missing from tiers 1 and 2 — user sees raw `bo`.
-2. A new `LanguageX` key is added to tier 1 but `xxx` → `x` alias coverage is forgotten — ffmpeg-tagged audio in that language falls through to the English fallback in every UI locale, **including the user's own**.
-3. An English fallback exists for a code that's already covered by a translation key — wasted maintenance, inconsistent output.
-4. The matching-only map overlaps the display alias map, or holds something other than a 3-letter → 2-letter code — one of the two copies is dead, and they can silently disagree.
-5. A `PersonKind` value has no label row, or a credit row names a kind no supported server sends — see Person role labels below.
+| Check | What fails it | What the user would see |
+|---|---|---|
+| 1 | A display alias points at a base in neither tier 1 nor tier 2 | The raw 2-letter code |
+| 2 | A tier 1 language lacks an alias for one of its 3-letter codes | That language in English in every locale, the user's own included |
+| 3 | A tier 1 key is missing from `en_US.json` | The key name |
+| `3b` | The matching map overlaps the display map, or holds something other than a 3-letter to 2-letter code | Nothing at first; the two copies can drift apart |
+| 4 | A `PersonKind` value has no label row, or a person-label row or credit line names a kind no supported server sends | See [Person role labels](#person-role-labels-sourceutilspeoplebs) |
 
-These all pass type-check and unit tests but produce silent gaps for non-English users — the lint is the only catch.
+The script's name predates check 4: [`language-coverage-script-misnamed`](tech-debt.md#language-coverage-script-misnamed).
 
-## Person role labels — `source/utils/people.bs`
+## Person role labels: `source/utils/people.bs`
 
-The third localization concern, and structurally a sibling of the language resolver above:
-`BaseItemPerson.Type` (a `PersonKind` enum value) and `.Role` (a TMDB job title, or an actor's
-character) arrive as raw English and are rendered as the Cast & Crew card's subtitle.
+The third localization concern is a sibling of the language resolver. `BaseItemPerson.Type` (a `PersonKind` enum value) and `.Role` (a TMDB job title, or an actor's character) arrive as raw English and become the subtitle on a Cast & Crew card.
 
-They have to be resolved **client-side, on every server version**. Jellyfin 12.0 added
-per-request localization via the `Accept-Language` header ([jellyfin#16488](https://github.com/jellyfin/jellyfin/pull/16488)),
-but it covers only the server's own resource strings — neither `PersonKind` values nor TMDB job
-names are among them, so no server will ever send these translated.
+They are resolved in the app on every server version. Jellyfin 12.0 added per-request localization through the `Accept-Language` header ([jellyfin#16488](https://github.com/jellyfin/jellyfin/pull/16488)), but it covers the server's own resource strings, and neither `PersonKind` values nor TMDB job names are among them.
 
-`personCreditLabel()` follows `jellyfin-web`'s `getPeopleRoleOrTypeLabel` rule:
+`personCreditLabel()` follows the rule of `jellyfin-web`'s `getPeopleRoleOrTypeLabel`:
 
-1. **Character** — an `Actor` or `GuestStar` with a `Role` renders `LabelPersonRoleAs` ("as {0}").
-2. **Type** — no `Role`, or a `Role` that merely restates the `Type`, renders the `LabelPersonKindX`
-   key for that enum value, or **nothing at all** when `unlabeledPersonKinds()` covers it. `Unknown`
-   is the only such kind today: it is the value the enum serializes by default, so it means "the server did
-   not say", which must read the same as no type at all rather than as the literal word. (`jellyfin-web`
-   translates it instead — a deliberate divergence.) A kind in neither table passes through verbatim,
-   which the gate below exists to stop.
-3. **Job** — anything else renders the `Role`, through `LabelPersonJobX` for the jobs we carry a
-   string for (`Screenplay`, `Novel` — the two the server files under `Writer`), and verbatim
-   otherwise. An untranslated real job beats a translated generic one, which is also what web does.
+1. **Character.** An `Actor` or `GuestStar` with a `Role` shows `LabelPersonRoleAs` ("as {0}").
+2. **Type.** With no `Role`, or a `Role` that only repeats the `Type`, it shows the `LabelPersonKindX` key for that kind, or nothing when `unlabeledPersonKinds()` lists the kind. `Unknown` is the only such kind today. It is the value the enum serializes by default, so it means "the server did not say", and it should read like no type at all rather than as the word. (`jellyfin-web` translates it; JellyRock differs on purpose.) A kind in neither table passes through as raw text, which the gate below prevents.
+3. **Job.** Anything else shows the `Role`: through `LabelPersonJobX` for the jobs with a string (`Screenplay` and `Novel`, the two the server files under `Writer`), and as raw text otherwise. An untranslated real job beats a translated generic one, which is also what web does.
 
-**The cache is keyed on the translation KEY, not on the credit.** That is the load-bearing detail:
-this resolver runs on a Task thread (`LoadExtrasRowsTask`), where each `translate()` reads
-`m.global.translations` — one rendezvous at ~93 µs against ~2 µs from the render thread, plus a
-second read of `m.global.translationsFallback` only when the key misses, which for `en_US` it never
-does (see
-[async.md](async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)).
-An actor's label differs per character, so a credit-keyed cache would miss on every actor and leave
-a large cast making one `translate()` per person. Resolving `"as {0}"` once and substituting the
-character thread-locally bounds a whole cast to at most one call per distinct key.
+**The cache is keyed on the translation key, not on the credit.** This resolver runs on a Task thread (`LoadExtrasRowsTask`), where each `translate()` crosses the thread boundary ([async.md](async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)). An actor's label differs per character, so a cache keyed on the credit would miss on every actor and make one `translate()` per person. Resolving "as {0}" once and filling in the character on the Task thread limits a whole cast to one call per distinct key.
 
 ### Coverage is gated, not remembered
 
-The kind table is **closed** — it is keyed off a server enum — so completeness is a checkable
-property, and `npm run lint:language-coverage` checks it: every `PersonKind` value in the committed
-[spec fingerprints](spec-fingerprints/) must appear in either `personKindTranslationKeys()` or
-`unlabeledPersonKinds()`, the two must be disjoint, and neither may carry a row for a value no
-supported server sends.
+The kind table is keyed off a server enum, so it is closed, and whether it is complete can be checked. `npm run lint:language-coverage` checks it:
 
-**The second `PersonKind` table in the same file is gated too, and it needed its own parser.**
-`creditRowKinds()` — the details screen's credits row, decision
-[`credit-row-kinds-in-people`](../decisions.md) — names `PersonKind` values as well, but it is
-ORDERED (the credit lines render in array order), so it is an array of AAs rather than an AA. The
-gate finds its tables by FUNCTION NAME *and* parses an AA, so for a while this one was invisible to
-it: nothing was parsed wrongly, but an upstream rename or removal of `Creator` would have silently
-emptied the "Created by" line with every check green. `parseAAArray()` reads the ordered shape, and
-the check holds every named kind to the committed fingerprints' enum and every `messageKey` to
-`en_US.json`.
+- Every `PersonKind` value in the committed [spec fingerprints](spec-fingerprints/) appears in `personKindTranslationKeys()` or `unlabeledPersonKinds()`.
+- The two tables do not overlap.
+- Neither has a row for a value no supported server sends.
 
-That parser distinguishes **absence from failure**, which is the whole reason the gap could exist
-unnoticed. A missing function, a missing array literal, an entry missing either field, and a literal
-holding content it reads no entries from are all loud; only a provably empty `[]` is quiet. Keying
-that "is it empty?" test on brace shape would have let a re-authoring to bare strings parse to zero
-entries and pass, so it keys on whether the literal holds any content at all. Without the split, a shape change to
-the table would disable the check silently — which is exactly how the table escaped the gate to
-begin with.
+The compiler cannot do this. It catches a misspelled key in a row that exists, but a value with no row has no expression to fail on. Values have shipped as raw English this way, and nothing else caught them.
 
-**This gate replaced a claim that was false.** The section used to argue no lint was needed because
-"a missing entry is a compile error (the key would not exist in `translationKeys`)". It is not. The
-compiler catches a *typo in a key that is in the map*; a value with **no row at all** has no
-expression to fail on. Nine of the twenty-six values shipped that way, rendering raw English, and
-nothing caught it — including a review and a full on-device test run. The count is deliberately not
-written down here: `lint:language-coverage` prints it, and a number in prose would only rot.
+`creditRowKinds()`, the details screen's credit lines (decision [`credit-row-kinds-in-people`](../decisions.md)), names `PersonKind` values too. Its lines render in array order, so it is an array of AAs rather than an AA, and `parseAAArray()` reads that shape. The check holds every kind it names to the fingerprints' enum and every `messageKey` to `en_US.json`. Without it, an upstream rename of `Creator` would empty the "Created by" line with every check green.
 
-The gate reads the fingerprints rather than `.api-watch/cache/`, because the cache is gitignored and
-so does not exist in CI. It takes the **union** across fingerprints, not the newest, since the app
-talks to 10.7 → 12.x simultaneously and a value on any supported line has to render. It fails loudly
-when no fingerprint defines the enum at all — a silent skip would be indistinguishable from full
-coverage, which is the exact failure being prevented.
+The parser tells an absent table from one it cannot read. A missing function, a missing array literal, an entry missing a field, or a literal with content but no entries it can read all fail the run. Only a literal that is provably empty (`[]`) passes quietly. The empty test looks at whether the literal holds any content, not at its braces, so rewriting the entries as bare strings fails rather than parsing to zero entries.
 
-The **job** table is not gated and cannot be: TMDB job strings are an open-ended space with no enum,
-so its fall-through to the raw `Role` is the design rather than a gap.
+The gate reads the fingerprints rather than `.api-watch/cache/`, which is gitignored and so missing in CI. It takes the union across all fingerprints, since the app talks to every server from 10.7 to 12.x and a value from any of them has to render. It fails when no fingerprint defines the enum at all, because a silent skip would look the same as full coverage.
 
-## Compile-time key safety — the BSC plugin
+The job table is not gated and cannot be: TMDB job names have no enum, so falling through to the raw `Role` is the design.
 
-`scripts/bsc-plugins/translation-keys.cjs` is a custom BrighterScript compiler plugin that generates a virtual `pkg:/source/translationKeys.bs` file at build time from `locale/custom/en_US.json`. The generated file looks like:
+## Compile-time key safety: the BSC plugin
+
+`scripts/bsc-plugins/translation-keys.cjs` is a BrighterScript compiler plugin. At build time it reads `locale/custom/en_US.json` and adds a virtual `pkg:/source/translationKeys.bs` to the program:
 
 ```brightscript
 namespace translationKeys
@@ -311,29 +264,30 @@ namespace translationKeys
   const ButtonResume = "ButtonResume"
   const LabelEpisodeCountZero = "LabelEpisodeCountZero"
   ' ...one constant per key in en_US.json
+
+  ' Plural base keys — use with translatePlural()
+  const LabelEpisodeCount = "LabelEpisodeCount"
 end namespace
 ```
 
-Application code calls `translate(translationKeys.ButtonPlay)` instead of `translate("ButtonPlay")`. Benefits:
+The plural base constants exist for each key whose `Zero`, `One` and `Many` forms are all present, so `translatePlural(translationKeys.LabelEpisodeCount, …)` is checked too.
 
-- **Typo detection** — `translate(translationKeys.BtuonPlay)` is a compile error, not a silent runtime failure.
-- **IDE autocomplete** — typing `translationKeys.` shows the full list.
-- **Refactoring safety** — renaming a key in `en_US.json` regenerates the constants; missed call sites become build errors.
+Code calls `translate(translationKeys.ButtonPlay)`, not `translate("ButtonPlay")`, which gives three things:
 
-The plugin uses `fs.watch` to detect `en_US.json` edits in the language server, because BrighterScript's `Program.setFile` doesn't trigger revalidation on JSON edits by default.
+- **A misspelled key fails the build** instead of showing the key on screen.
+- **The editor completes key names** after `translationKeys.`.
+- **A renamed key breaks every stale call site at build time.**
 
-The generated file is virtual (`program.setFile`) — never written to disk. The build artifact is what gets shipped.
+The file is never written to disk (`program.setFile`). In the editor's language server, the plugin watches `en_US.json` with `fs.watch`, because BrighterScript does not check the program again after a JSON edit by itself.
 
-## CI lint — `npm run lint:translations`
+## CI lint: `npm run lint:translations`
 
-`scripts/lint/update-translations.cjs` runs in lint and CI modes. It enforces:
+`scripts/lint/update-translations.cjs` checks `en_US.json`, the code's key references and every locale file. The full list is in [the dev guide's Checks](../dev/translations.md#checks). Two things it does not check:
 
-- **Sort order** — keys in `en_US.json` must be alphabetically sorted (canonical).
-- **Completeness** — every other locale file must have the same keys as en_US (or empty values for missing translations — but the keys must exist).
-- **Placeholder parity** — if `en_US` says `"Hello {0}, you have {1} items"`, every locale must have the same `{0}` and `{1}` placeholders.
-- **Coverage** — count untranslated strings per locale (reported, not enforced).
+- **Key prefixes.** The convention is not enforced.
+- **Completeness.** A locale file holds only the keys translated into it, and a missing key falls back to `en_US` at runtime. The script reports average coverage across the locale files and fails nothing on it.
 
-`npm run update-translations` (with `--fix`) auto-fixes sortable issues and removes orphaned keys.
+`npm run update-translations` runs it with `--fix`: it removes `en_US` keys no code uses, sorts `en_US.json`, and adds missing locales to `languages.json`. A key in a locale file that `en_US.json` no longer has is a warning.
 
 ## Weblate sync
 
@@ -341,19 +295,21 @@ Translations are crowdsourced on a self-hosted Weblate (`translate.jellyrock.app
 
 | When | Workflow | What moves |
 |---|---|---|
-| every push to `main` | `jellyrock-bot.yml` | `en_US.json` and `languages.json`, `main` → `weblate`, so translators see new keys |
-| release prep (push to `release-X.Y.Z`) | `release-management.yml` → `merge-translations` | every locale file, both ways |
+| Every push to `main`, except the bot's own | `jellyrock-bot.yml` | `en_US.json` and `languages.json`, from `main` to `weblate`, so translators see new keys |
+| Release prep (push to `release-X.Y.Z`) | `release-management.yml`, job `merge-translations` | Every locale file, both ways |
 
-**The `weblate` branch is always far "behind" `main`, and that is expected.** Nothing ever merges `main` into it: both workflows copy files, so `main`'s code commits never enter its history and GitHub's behind count only grows. Weblate reads only `locale/`, and that is what the two workflows keep in step; the rest of the branch is stale code that nothing builds. Re-cutting the branch from `main` to reset the count would also delete the `Translations-Release` marker the next merge needs (see [The merge rules](#the-merge-rules)).
+**The `weblate` branch is always far "behind" `main`, and that is expected.** Nothing ever merges `main` into it: both workflows copy files, so `main`'s commits never enter its history and GitHub's behind count only grows. Weblate reads only `locale/`, which the two workflows keep in step; the rest of the branch is old code that nothing builds. Re-cutting the branch from `main` to reset the count would also delete the `Translations-Release` marker the next merge needs (see [The merge rules](#the-merge-rules)).
 
 Release prep, in order:
 
-1. **Lock and flush Weblate** — `scripts/weblate-sync.js lock-and-flush` locks the component and makes Weblate commit and push what it holds, so the branch read next is complete and nothing lands on it mid-merge. It refuses a component that is already locked (by an admin, or by Weblate itself after a repository error), and fails without the `WEBLATE_TOKEN` secret: the push-back in step 5 is only safe under this lock.
+1. **Lock and flush Weblate.** `scripts/weblate-sync.js lock-and-flush` locks the component and makes Weblate commit and push what it holds, so the branch read next is complete and nothing lands on it mid-merge. It refuses a component that is already locked (by an admin, or by Weblate itself after a repository error), and fails without the `WEBLATE_TOKEN` secret: the push-back in step 5 is only safe under this lock.
 2. **Cherry-pick translator commits** (`Translated using Weblate (…)`), each keeping the `Co-authored-by` trailers Weblate wrote for its translators.
-3. **Merge key by key, three-way** — `npm run translations:merge -- release` (rules below).
-4. **Seed** whatever is still missing from other Jellyfin clients (next section). After the merge, so a translator's work always comes first. Optional: if a source can't be fetched, the release goes ahead without it.
-5. **Push the result back to `weblate`** — `npm run translations:merge -- push-back`, merged into the branch's *current* state, so Weblate receives every seeded or main-side translation and translators don't redo them. Its commit carries a `Translations-Release: X.Y.Z` trailer, which makes it the next run's ancestor.
-6. **Pull into Weblate and unlock** — runs whenever step 1's lock is ours, even after a failure, so a failed release can't leave translators locked out. It never runs otherwise, so it can't undo someone else's lock.
+3. **Merge key by key, three-way:** `npm run translations:merge -- release` (rules below).
+4. **Seed** whatever is still missing from other Jellyfin clients (next section). This comes after the merge, so a translator's work always wins. It is optional: if a source can't be fetched, the release goes ahead without it.
+5. **Push the result back to `weblate`:** `npm run translations:merge -- push-back`, merged into the branch's current state, so Weblate receives every seeded or main-side translation and translators don't redo them. Its commit carries a `Translations-Release: X.Y.Z` trailer, which makes it the next run's ancestor.
+6. **Pull into Weblate and unlock.** This runs whenever step 1's lock is ours, even after a failure, so a failed release can't leave translators locked out. It never runs otherwise, so it can't undo someone else's lock.
+
+The job also checks the branch, runs `lint:translations` and pushes the release branch before step 5.
 
 **Translator credit** needs nothing extra. Release PRs are squash-merged with the PR body as the message, and GitHub appends a `Co-authored-by` trailer for every author and co-author of the PR's commits, so each cherry-picked translator is credited on `main`. Checked 2026-10-04 on a throwaway repo with the same squash settings, merged both with `gh pr merge --squash` and from the web page.
 
@@ -363,37 +319,39 @@ Each key is compared with the **ancestor**, the last state the release and the `
 
 | On the release (`main`) | In Weblate | Result |
 |---|---|---|
-| unchanged | unchanged | kept |
-| changed, added or deleted | unchanged | the release's change |
-| unchanged | changed, added or deleted | the change made in Weblate |
-| changed | changed differently | **Weblate wins**, and the run lists it |
+| Unchanged | Unchanged | Kept |
+| Changed, added or deleted | Unchanged | The release's change |
+| Unchanged | Changed, added or deleted | The change made in Weblate |
+| Changed | Changed differently | **Weblate wins**, and the run lists it |
 
-Keys no longer in `en_US.json` are dropped, as the Weblate Cleanup add-on does; `en_US.json` itself is never merged (main owns it).
+Keys no longer in `en_US.json` are dropped, as the Weblate Cleanup add-on does. `en_US.json` itself is never merged: `main` owns it.
 
-The ancestor is the newest push-back commit on `weblate` (step 5) whose release shipped (tag `vX.Y.Z` exists) or is the release in progress. An abandoned release doesn't count: its push-back reached `weblate` but never `main`, so `main` would look as if it had deleted everything that release merged. With no such commit (the first release on this scheme, or a re-cut `weblate` branch), the merge falls back to the two-way union with Weblate winning, warns, and deletions start syncing from the next release.
+The ancestor is the newest push-back commit on `weblate` (step 5) whose release shipped (tag `vX.Y.Z` exists) or is the release in progress. An abandoned release doesn't count: its push-back reached `weblate` but never `main`, so `main` would look as if it had deleted everything that release merged. With no such commit (the first release on this scheme, or a re-cut `weblate` branch), the merge falls back to a two-way union with Weblate winning, warns, and deletions start syncing from the next release.
 
-**Why three-way.** Release prep used to run `git checkout origin/weblate -- locale/custom/`, and nothing sent main's locale files to `weblate`, so the `weblate` branch owned every non-English file and anything added on main was silently reverted at the next release. (The #531 CLDR seed survived only because the `weblate` branch happened to be re-cut from main right after it merged.) A two-way merge fixes additions but can't tell "deleted here" from "added there": a removed translation always came back, and a fix made on main lost to the older value in Weblate. Comparing both sides with the ancestor settles each key.
+A three-way merge is the only kind that tells "deleted here" from "added there", which is what lets a change on either side survive. [ADR 0048](../adr/0048-translation-seeding-and-weblate-merge.md) has the history: release prep used to overwrite `main`'s locale files with the copies from Weblate.
 
 ### Removing a translation
 
-Delete it, on `main` or in Weblate. The merge carries the deletion to the other side at the next release, and the seed ledger (`locale/seed/seeded.json`) stops the seeder from filling a cell it filled before. To stop a key from ever being seeded in a locale, add `exclude: { <locale>: <reason> }` to its `keymap.yml` entry.
+Delete it, on `main` or in Weblate. The merge carries the deletion to the other side at the next release, and the seed ledger (`locale/seed/seeded.json`) stops the seeder from filling a cell it filled before. To stop one source from seeding a key in a locale, add `exclude: { <locale>: <reason> }` under that source in the key's `keymap.yml` entry. The exclusion is per source, so another source mapped for the key can still fill the cell.
 
 ### Weblate token setup
 
-`WEBLATE_TOKEN` is a **project** API token, not a user account, so no bot login is needed. A project admin creates it in the `jellyrock` project's **API access** tab (Weblate docs: **Operations → Users**, then that tab) and adds it to a team whose only role is **Manage repository** (the default `VCS` team, if its role matches), which covers commit, push, update and lock. Check it read-only with `WEBLATE_TOKEN=… node scripts/weblate-sync.js check`, then store it with `gh secret set WEBLATE_TOKEN -R jellyrock/jellyrock`. If it expires, release prep stops at step 1 with these steps in the error.
+`WEBLATE_TOKEN` is a **project** API token, not a user account, so no bot login is needed. A project admin creates it in the `jellyrock` project's **API access** tab (Weblate docs: **Operations → Users**, then that tab). They add it to a team whose only role is **Manage repository** (the default `VCS` team, if its role matches), which covers commit, push, update and lock. Check it read-only with `WEBLATE_TOKEN=… node scripts/weblate-sync.js check`, then store it with `gh secret set WEBLATE_TOKEN -R jellyrock/jellyrock`.
+
+With the secret unset, release prep stops at step 1 and the error gives these steps. An expired or revoked token also stops it at step 1, with the `HTTP 401` reply from Weblate as the error; renew it the same way.
 
 ## Seeding from other Jellyfin clients
 
-`npm run translations:seed` fills missing translations from other open-source Jellyfin clients' community translations — `jellyfin-web`, `jellyfin-androidtv`, `jellyfin-roku`, `jellyfin-android`, Swiftfin, `streamyfin` and the Jellyfin server, in that priority order. The how-to is in [`docs/dev/translations.md`](../dev/translations.md#seeding-translations-from-other-jellyfin-clients); the shape and the constraints:
+`npm run translations:seed` fills missing translations from other open-source Jellyfin clients' community translations: `jellyfin-web`, `jellyfin-androidtv`, `jellyfin-roku`, `jellyfin-android`, Swiftfin, `streamyfin` and the Jellyfin server, in that priority order. The how-to is in [`docs/dev/translations.md`](../dev/translations.md#seeding-translations-from-other-jellyfin-clients). The shape and the constraints:
 
 - **Sources are config, not code** (`locale/seed/sources.yml`): repo, tag pinned to a commit SHA, license, file format, placeholder style, locale-code overrides. A new project is one entry, plus a parser in `scripts/lib/translation-formats.cjs` only when its file format is new.
-- **A reviewed map, never English-text matching** (`locale/seed/keymap.yml`). The same English means different things across projects — web's "Idle" is a process priority; the audio-channel "Channels" and the Live TV "Channels" are different words in French — and a source's own translation can be wrong for its key. Each entry records the English both sides had when it was reviewed, so it stops seeding when either changes; refused candidates are recorded with a reason.
-- **License allowlist: `GPL-2.0-only`, `GPL-2.0-or-later`, `MPL-2.0`.** JellyRock is `GPL-2.0-only`. `MPL-2.0` §1.12 names `GPL-2.0` a Secondary License, so `MPL` text may be combined unless a file is marked "Incompatible With Secondary Licenses", which the seeder refuses. `GPL-3.0` sources (`jellyfin-vue`, `jellyfin-kodi`, `findroid`) can never be added. The LICENSE file at the pinned commit is checked against the declared license on every fetch.
-- **Fill only, once per cell.** Every fill is recorded in `locale/seed/seeded.json` (locale → key → `source@commit`), and a recorded cell is never filled again, so a removal sticks. The ledger is also the provenance record: the seed commit's `Translation-Source:` lines do not survive a squash merge.
-- **Nothing the runtime would show anyway.** It never overwrites; it refuses a different placeholder set, new markup or line breaks, a value equal to the English, and a regional value equal to its base locale's (runtime layering already shows it, and a copy would shadow later fixes to the base).
-- **No re-casing.** Title Case is an English convention, and case tests misread unicameral scripts (Georgian letters upper-case to a separate all-caps alphabet). A lowercase-first translation in a cased script is flagged in the dry run for review instead.
+- **A reviewed map, never English-text matching** (`locale/seed/keymap.yml`). The same English means different things across projects: web's "Idle" is a process priority, and the audio-channel "Channels" and the Live TV "Channels" are different words in French. A source's own translation can also be wrong for its key. Each entry records the English both sides had when it was reviewed, so it stops seeding when either changes. Refused candidates are recorded with a reason.
+- **License allowlist: `GPL-2.0-only`, `GPL-2.0-or-later`, `MPL-2.0`.** JellyRock is `GPL-2.0-only`. `MPL-2.0` §1.12 names `GPL-2.0` a Secondary License, so `MPL` text may be combined unless a file is marked "Incompatible With Secondary Licenses", which the seeder refuses. `GPL-3.0` sources (`jellyfin-vue`, `jellyfin-kodi`, `findroid`) can never be added. Every run checks the LICENSE file at the pinned commit against the declared license.
+- **Fill only, once per cell.** Every fill is recorded in `locale/seed/seeded.json` (locale, then key, then `source@commit`), and a recorded cell is never filled again, so a removal sticks. The ledger is also the provenance record: the seed commit's `Translation-Source:` lines do not survive a squash merge.
+- **Nothing the runtime would show anyway.** It never overwrites. It refuses a different placeholder set, new markup or line breaks, a value equal to the English, and a regional value equal to its base locale's (runtime layering already shows it, and a copy would hide later fixes to the base).
+- **No re-casing.** Title Case is an English convention, and case tests misread scripts without letter case (Georgian letters upper-case to a separate all-caps alphabet). A lowercase-first translation in a cased script is still written, and the run's report lists it for review.
 - **Runs at every release prep** (step 4 above), so a newly mapped key, or a locale a source adds, fills without anyone remembering to.
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for translation entries.
+Tracked in [`tech-debt.md`](tech-debt.md): search by `area` for translation entries.
