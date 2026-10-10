@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-10: fix: Stop the sign-in screen flashing back after a deep-link sign-in
 - 2026-10-10: fix(locale): Apply the user's language when preferences fail
 - 2026-10-10: fix: Stop a crash on options in a stopped video's playback info
 - 2026-10-10: fix(overhang): Reset the clock when the screensaver ends
