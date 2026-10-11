@@ -24,7 +24,7 @@ name: lint-floor-system
 # spec fingerprint from the Jellyfin OpenAPI spec it fetches from api.jellyfin.org.
 # The gate above matches every source/**/*.bs, so reusing it would pay that fetch
 # on most PRs. The step has its own narrower filter (the `detect-fingerprints`
-# step) and only PRs that touch the fingerprints, the generator or the fetch
+# step) and only PRs that touch the fingerprints, the generator or the fetch helpers
 # helper run it. It is not in `npm run lint` or pre-push for the same reason.
 
 on:
@@ -51,7 +51,7 @@ jobs:
       - id: detect-fingerprints
         uses: ./.github/actions/changed-paths
         with:
-          pattern: '^docs/architecture/spec-fingerprints/|^scripts/generate/spec-fingerprint\.js$|^scripts/lib/spec-fetch\.cjs$'
+          pattern: '^docs/architecture/spec-fingerprints/|^scripts/generate/spec-fingerprint\.js$|^scripts/lib/spec-fetch\.cjs$|^scripts/lib/signals-fetch\.cjs$'
           force: ${{ inputs.force }}
       - name: Setup Node.js
         if: steps.detect.outputs.relevant == 'true' || steps.detect-fingerprints.outputs.relevant == 'true'
