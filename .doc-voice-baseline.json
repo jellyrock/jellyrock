@@ -2370,13 +2370,6 @@
   "tests/CLAUDE.md": {
     "filler": 2
   },
-  "tests/rta/CLAUDE.md": {
-    "caps-emphasis": 9,
-    "em-dash": 150,
-    "filler": 13,
-    "latin-abbrev": 1,
-    "prose-arrow": 6
-  },
   "tests/rta/capture.js": {
     "em-dash": 1
   },
