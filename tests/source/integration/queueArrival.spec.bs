@@ -36,6 +36,10 @@ namespace tests
       return { id: id, type: "Episode" }
     end function
 
+    private function track(id as string) as object
+      return { id: id, type: "Audio" }
+    end function
+
     private function item(index as integer) as object
       return m.queue.callFunc("getItemByIndex", index)
     end function
@@ -169,6 +173,38 @@ namespace tests
     function _()
       m.queue.callFunc("startCurrentFresh")
       m.assertEqual(m.queue.callFunc("getCount"), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shuffle")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the playing track current every time shuffle is switched back on")
+    ' The music player toggles shuffle off and on again while a track plays. Each shuffle-on has
+    ' to keep that track at the front, not only the first.
+    function _()
+      m.queue.callFunc("set", [m.track("a"), m.track("b"), m.track("c"), m.track("d"), m.track("e"), m.track("f"), m.track("g"), m.track("h")])
+      m.queue.callFunc("setPosition", 2)
+      m.queue.callFunc("playQueue")
+
+      m.queue.callFunc("toggleShuffle")
+      m.assertEqual(m.queue.callFunc("getCurrentItem").id, "c")
+
+      for round = 1 to 10
+        m.queue.callFunc("toggleShuffle")
+        ' As AudioPlayerView.shuffleClicked does: back to the playing track's place in the
+        ' unshuffled order.
+        unshuffled = m.queue.callFunc("getUnshuffledQueue")
+        index = 0
+        for i = 0 to unshuffled.count() - 1
+          if unshuffled[i].id = "c" then index = i
+        end for
+        m.queue.callFunc("setPosition", index)
+        m.assertEqual(m.queue.callFunc("getCurrentItem").id, "c")
+
+        m.queue.callFunc("toggleShuffle")
+        m.assertEqual(m.queue.callFunc("getCurrentItem").id, "c", "shuffle-on round " + round.toStr())
+      end for
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
