@@ -1,31 +1,31 @@
-// scripts/lint/endpoint-availability-check.cjs — validates the committed
+// scripts/lint/endpoint-availability-check.cjs: validates the committed
 // endpoint-availability registry (docs/dev/jellyfin-endpoint-availability.yml)
 // against current source + the API-usage manifest. Phase 6 of the
 // server-upgrade-automation pipeline (docs/architecture/server-upgrade-automation.md).
 //
 // The registry is the floor check's DISPOSITION LEDGER: an entry says "this
 // post-floor endpoint's absence from the 10.7.0 floor is known and handled this
-// way." That's only trustworthy if the CODE claim each entry makes still holds —
-// otherwise it's a blunt suppression that could hide a regression (e.g. someone
+// way." That's only trustworthy if the CODE claim each entry makes still holds.
+// Otherwise it's a blunt suppression that could hide a regression (for example someone
 // deletes the supportsMediaSegments() guard and the endpoint now really would 404
 // on old servers). This lint is that regression-safety gate:
 //
-//   - SCHEMA — the loader's validateRegistry() throws on any shape violation.
-//   - USED — every entry's endpoint must still exist in the manifest (an entry for
-//     an endpoint the app no longer calls is dead weight — remove it).
-//   - version-guard — the cited `symbol` must still appear in source/*.bs code
-//     (comments don't count). If the guard was removed, FAIL → the dev restores it or drops the entry, and the
-//     floor finding correctly resurfaces.
-//   - dispatch-sibling — the cited `sibling` path must still exist in the manifest
-//     with a floor-tier range (minApiVersion <= 1), i.e. the V1 fallback is real.
-//   - parameters — a query parameter whose server behavior changes by version.
+//   - SCHEMA: the loader's validateRegistry() throws on any shape violation.
+//   - USED: every entry's endpoint must still exist in the manifest (an entry for
+//     an endpoint the app no longer calls is dead weight: remove it).
+//   - version-guard: the cited `symbol` must still appear in the code of a .bs file
+//     under source/ (comments don't count). If the guard was removed, FAIL: the dev
+//     restores it or drops the entry, and the floor finding correctly resurfaces.
+//   - dispatch-sibling: the cited `sibling` path must still exist in the manifest
+//     with a floor-tier range (minApiVersion <= 1), so the V1 fallback is real.
+//   - parameters: a query parameter whose server behavior changes by version.
 //     Its endpoint must be in the manifest, its guard `symbol` must exist in
-//     source/, and EVERY .bs file under source/ or components/ whose code (not
+//     source/, and every .bs file under source/ or components/ whose code (not
 //     comments) names the parameter must also call the guard. A file that sends
 //     it without the guard FAILS. So does an entry no file sends any more (stale).
 //
-// NOT checked here (by design): "every floor finding has a registry entry." That
-// direction is enforced by the floor check itself — an unregistered post-floor
+// Not checked here (by design): "every floor finding has a registry entry." That
+// direction is enforced by the floor check itself: an unregistered post-floor
 // endpoint keeps flagging needsInvestigation, so it can't hide. The spec-derived
 // floor check is the comprehensive enumerator; this lint only keeps the ledger's
 // claims honest.
@@ -73,7 +73,7 @@ function readManifest(rootDir) {
   return JSON.parse(fs.readFileSync(path.join(rootDir, MANIFEST_REL), 'utf8'));
 }
 
-// Every .bs file under a directory, as { rel, text }. A missing directory → [].
+// Every .bs file under a directory, as { rel, text }. A missing directory gives [].
 function readBsFiles(rootDir, dirRel) {
   const root = path.join(rootDir, dirRel);
   if (!fs.existsSync(root)) return [];
@@ -157,7 +157,7 @@ function main() {
   const failures = [];
 
   for (const entry of entries) {
-    // USED — the endpoint must still be in the manifest.
+    // USED: the endpoint must still be in the manifest.
     const ep = findManifestEndpoint(manifest, entry.normalizedPath, entry.methodSet);
     if (!ep) {
       failures.push({

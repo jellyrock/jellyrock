@@ -1,22 +1,22 @@
-// scripts/lint/rta-wait-inventory.js — keeps the wait inventory in tests/rta/CLAUDE.md
+// scripts/lint/rta-wait-inventory.js: keeps the wait inventory in tests/rta/CLAUDE.md
 // honest against the waits that actually exist.
 //
 // WHY THIS EXISTS
 // ---------------
 // The inventory publishes a count per category, and those counts are the one part of that
-// doc nothing derived. `jellyrock-rta/wait-justified` gates the CATEGORIES — a wait may not
-// land outside them — but it never counts, so the numbers were maintained by hand against a
+// doc nothing derived. `jellyrock-rta/wait-justified` gates the CATEGORIES (a wait may not
+// land outside them), but it never counts, so the numbers were maintained by hand against a
 // suite that changes every time a nav is added.
 //
-// They have been wrong seven times. The doc's own note says five, then says the totals were
-// "derived from those known deltas rather than re-counted" — and that derivation missed the
-// settle site `waitOsdUp` had added earlier in the same branch, publishing 36 where the AST
-// says 37. A review pass found that, and found `docs/decisions.md` carrying a SECOND, larger
+// They were wrong seven times before this gate. The doc's note at the time said five, then
+// said the totals were "derived from those known deltas rather than re-counted", and that
+// derivation missed the settle site `waitOsdUp` had added earlier in the same branch,
+// publishing 36 where the AST said 37. A review pass found that, and found `docs/decisions.md` carrying a SECOND, larger
 // wrong figure (101) for the same population. Two documents, two different wrong numbers, in
-// one branch. That is not a proofreading failure — it is what an ungated number does.
+// one branch. That is not a proofreading failure: it is what an ungated number does.
 //
-// So the number stops being prose. This is the same answer, and deliberately the same shape,
-// as `rta-capability-coverage.cjs` one directory up: markers around the block, a `--check`
+// So the number stops being prose. This is the same answer, and on purpose the same shape,
+// as `rta-capability-coverage.cjs` in this directory: markers around the block, a `--check`
 // that fails on drift, a `npm run lint:*` entry and a CI home.
 //
 // WHY IT CHECKS RATHER THAN GENERATES
@@ -24,14 +24,14 @@
 // The table's value is its "Why a poll, not an observer" column, which is argued prose and
 // must stay hand-written. A generator would own the whole table and either clobber that or
 // need a templating layer to preserve it. Checking costs one regex and leaves the writing
-// alone — and a red gate naming the right number is as actionable as a rewrite.
+// alone, and a red gate naming the right number is as actionable as a rewrite.
 //
 // WHY IT DRIVES ESLINT RATHER THAN WALKING THE AST ITSELF
 // -------------------------------------------------------
 // The question is "how many waits does the GATE see", so the file set and the classification
 // both have to come from the gate. Running ESLint with the repo's own config gets the file
-// set for free — including the `tests/rta/**` + `capture-screenshots.js` scope and the
-// `*.test.js` exclusion — and `classifyWait` is imported from the rule module itself, so the
+// set for free (including the `tests/rta/**` + `capture-screenshots.js` scope and the
+// `*.test.js` exclusion), and `classifyWait` is imported from the rule module itself, so the
 // checker cannot classify a wait differently from the rule that polices it. A standalone
 // walker would be a second copy of both, and the first thing to drift.
 //
@@ -54,15 +54,15 @@ const END = '<!-- rta-wait-inventory:end -->';
 
 /**
  * The scope the wait gate covers, restated here because ESLint's `lintFiles` needs targets
- * rather than a config query. The CONFIG still decides what is linted — these are only the
- * directories walked — so a file excluded by `eslint.config.js` stays excluded.
+ * rather than a config query. The CONFIG still decides what is linted (these are only the
+ * directories walked), so a file excluded by `eslint.config.js` stays excluded.
  */
 const LINT_TARGETS = ['tests/rta', 'scripts/capture-screenshots.js'];
 
 /**
  * The two helpers that call `waitFocused` internally.
  *
- * A `waitFocused` inside one of these is that row's IMPLEMENTATION, not a site of its own —
+ * A `waitFocused` inside one of these is that row's IMPLEMENTATION, not a site of its own:
  * counting it would report the same wait twice, once under its own row and once under the
  * helper's. Excluding by enclosing function name keeps the published `waitFocused` figure
  * meaning "sites that chose `waitFocused` directly", which is what the row claims.
@@ -89,7 +89,7 @@ function calleeName(node) {
 
 /**
  * A counting ESLint rule. It reports every wait it finds as a message, which is how the
- * counts get out of ESLint without a second traversal of our own — the messages are the
+ * counts get out of ESLint without a second traversal of our own: the messages are the
  * tally, and `ruleId` filtering keeps them apart from the real gate's findings.
  */
 const counter = {
@@ -153,7 +153,7 @@ async function countWaits({ cwd = process.cwd(), targets = LINT_TARGETS } = {}) 
  * Keying on an explicit token rather than on the row's prose label is what makes this
  * robust: the label is documentation and should stay free to be reworded, while the token
  * is a contract. The tokens are the rule's own category names, which the gate's messages
- * and its header already speak in — so the table now names the thing that judges it.
+ * and its header already speak in, so the table now names the thing that judges it.
  */
 export function publishedCounts(block) {
   const published = {};
@@ -202,7 +202,7 @@ async function main() {
     return 2;
   }
 
-  // An UNVERIFIED wait is a gate failure, not a number to publish — `lint:js` fails on it
+  // An UNVERIFIED wait is a gate failure, not a number to publish: `lint:js` fails on it
   // first. Reported here anyway rather than silently folded into a row: if this ever runs
   // where the gate did not, a wait outside every category must not read as an inventory.
   const unverified = actual[WAIT_CATEGORIES.UNVERIFIED] ?? 0;

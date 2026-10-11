@@ -1,5 +1,5 @@
 /**
- * BrighterScript plugin — no raw `control = "RUN"` outside the launch chokepoint.
+ * BrighterScript plugin: no raw `control = "RUN"` outside the launch chokepoint.
  *
  * Starting a Task node consumes one of RokuOS's 100 concurrent threads per app
  * instance. Epic #728 (`&h29` "too many task threads") came from launch sites
@@ -10,25 +10,25 @@
  *
  * See `docs/architecture/tech-debt.md#task-thread-budget`.
  *
- * What is flagged — a write to a `control` member, in any of these forms:
+ * What is flagged: a write to a `control` member, in any of these forms:
  *   - `node.control = "RUN"`
  *   - `node["control"] = "RUN"`
  *   - `node.setField("control", "RUN")`
  *   - `node.control = someVariable`   (RHS not statically resolvable, so it
- *                                      may be "RUN" — flagged rather than
+ *                                      may be "RUN", so flagged rather than
  *                                      assumed safe)
  *
- * What is NOT flagged:
- *   - `node.control = "STOP"` — stopping needs no accounting. The ledger derives
+ * What is not flagged:
+ *   - `node.control = "STOP"`: stopping needs no accounting. The ledger derives
  *     the live count from each node's `state`, so a STOP is picked up for free.
  *   - Any other string literal. `control` is not a Task-only field: `Animation`
  *     takes "start"/"pause"/"resume" and `Video` takes "play"/"rewind"/"none",
- *     and the codebase has ~95 such writes. Only "RUN" starts a thread.
+ *     and the codebase has many such writes. Only "RUN" starts a thread.
  *
- * Known residual gap — `node.setFields(someVariable)` where the AA is not a
+ * Known residual gap: `node.setFields(someVariable)` where the AA is not a
  * literal. Only a literal AA can be inspected statically, and flagging every
  * non-literal `setFields` to chase soundness would false-positive broadly
- * (`setFields` is common and legitimate — see `source/utils/nodeUtils.bs`). The
+ * (`setFields` is common and legitimate: see `source/utils/nodeUtils.bs`). The
  * literal form IS covered, since that is the shape someone would actually
  * write.
  *
@@ -37,7 +37,8 @@
  *  - `components/vendor/**`    (vendored third-party code we don't author)
  *
  * Escape hatch:
- *  - `' bsc-disable-line no-raw-run` on the offending line.
+ *  - `' bsc-disable-line no-raw-run` on the offending line, or
+ *    `' bsc-disable-next-line no-raw-run` on the line above it.
  */
 'use strict';
 
@@ -102,13 +103,13 @@ class NoRawRunPlugin {
         });
       };
 
-      // Flag a `control` write when it starts a Task thread — i.e. the literal
-      // "RUN" — or when the assigned value cannot be resolved statically (a
+      // Flag a `control` write when it starts a Task thread (that is, the literal
+      // "RUN"), or when the assigned value cannot be resolved statically (a
       // variable, call, or concatenation could be "RUN" at runtime). Every other
       // string literal belongs to Animation / Video / Audio and is left alone.
       const startsAThread = (value) => {
         const literal = stringLiteralValue(value);
-        if (literal === undefined) return true; // unresolvable — assume the worst
+        if (literal === undefined) return true; // unresolvable: assume the worst
         return literal.toLowerCase() === RUN_VALUE;
       };
 
@@ -127,8 +128,8 @@ class NoRawRunPlugin {
           if (!startsAThread(statement.value)) return;
           report(statement);
         },
-        // node.setField("control", <value>) and node.setFields({ control: <value> })
-        // — the same write through ifSGNodeField.
+        // node.setField("control", <value>) and node.setFields({ control: <value> }):
+        // the same write through ifSGNodeField.
         CallExpression: (call) => {
           const callee = call?.callee;
           if (!brighterscript.isDottedGetExpression(callee)) return;

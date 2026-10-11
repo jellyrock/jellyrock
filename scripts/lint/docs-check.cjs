@@ -9,7 +9,7 @@
 //
 // When source files get renamed, moved, or removed, these references go
 // stale silently. Code review caught two such errors in the v2.15.0 doc
-// refresh — Constants.xml at a wrong path, and OSD timeout misattributed
+// refresh: Constants.xml at a wrong path, and OSD timeout misattributed
 // to OSD.xml when the literal lives in VideoPlayerView.xml. This script
 // would have caught both.
 //
@@ -30,7 +30,7 @@
 //     anchor in docs/architecture/tech-debt.md. This is the canonical
 //     form for citing a slug or section from outside; narrative-form
 //     mentions (a backtick-wrapped kebab string in prose) are
-//     intentionally NOT checked, because there's no syntactic signal to
+//     intentionally not checked, because there's no syntactic signal to
 //     distinguish them from any other backtick-wrapped kebab string in
 //     the codebase (plugin names, npm scripts, etc.) without a fragile
 //     proximity heuristic or a registry of false positives. The
@@ -45,7 +45,7 @@
 //     symmetric, `superseded` records its successor, `withdrawn` is
 //     terminal, and nothing points at itself. The supersede ritual is
 //     a three-part hand edit, so a half-applied one used to leave the
-//     chain silently lying — and `/log`'s SKILL.md claimed this was
+//     chain silently lying, and `/log`'s SKILL.md claimed this was
 //     already validated when no such logic existed.
 //
 // What it doesn't check (yet):
@@ -67,7 +67,7 @@
 //              --json). Exit code semantics unchanged.
 //
 // npm scripts:
-//   lint:docs  → run this check
+//   lint:docs  runs this check
 
 'use strict';
 
@@ -88,15 +88,15 @@ const JSON_MODE = process.argv.includes('--json');
 const VERBOSE = process.argv.includes('--verbose') && !JSON_MODE;
 
 // NOTE: progress.md `last-updated` *temporal staleness* (too many days old) is
-// deliberately NOT checked here. That's a property of the shared journal on
+// not checked here, by design. That's a property of the shared journal on
 // main, not of any one PR, so blocking a PR on it punished the wrong
 // contributor. The staleness signal now lives non-blocking in
 // scripts/lint/progress-cursor-nudge.cjs (Stop hook + pre-push) and
 // .github/workflows/docs-stale-tracker.yml (weekly main-branch tracking issue).
 // What DOES stay here is the *structural* frontmatter check below
-// (checkProgressFrontmatter): a well-formed `last-updated` is a per-PR property
-// — a PR that malforms it is at fault, and that field is load-bearing for the
-// tracker, /catchup, and journal-sync.
+// (checkProgressFrontmatter): a well-formed `last-updated` is a per-PR property.
+// A PR that malforms it is at fault, and the tracker, /catchup, and
+// journal-sync all read that field.
 
 // Signals-backlog row schema. Required bullets, valid status values,
 // optional `staleness_days` override (must be a positive integer when
@@ -117,7 +117,7 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DECISION_VALID_STATUSES = ['accepted', 'superseded', 'withdrawn'];
 
 // ────────────────────────────────────────────────────────────────────
-// Markdown link extraction — relative path links only.
+// Markdown link extraction: relative path links only.
 // Skips: http(s)://, mailto:, and a bare `#`.
 // Returns {target, fragment} where target is the path part (empty for a
 // same-file `#x` link) and fragment is the text after the first `#` (empty
@@ -141,16 +141,16 @@ function findMarkdownLinks(content) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Tech-debt anchor references — bulletproof check against a single
+// Tech-debt anchor references: bulletproof check against a single
 // canonical form: `tech-debt.md#<anchor>`. Validates that the anchor
 // resolves to an actual heading in tech-debt.md.
 //
-// We deliberately don't try to detect narrative-style slug citations
-// (e.g. "see `slug-name`") because there's no syntactic signal that
+// We don't try to detect narrative-style slug citations
+// (for example "see `slug-name`") because there's no syntactic signal that
 // disambiguates them from any other backtick-wrapped kebab-case
 // identifier in the codebase (plugin names, npm scripts, module IDs).
-// Any heuristic for that — proximity windows, registries of "known
-// non-slug strings", etc. — is fragile and accumulates maintenance
+// Any heuristic for that (proximity windows, registries of "known
+// non-slug strings", etc.) is fragile and accumulates maintenance
 // debt. The chosen design: declare anchor form canonical, document it
 // in tech-debt.md, and validate it strictly.
 // ────────────────────────────────────────────────────────────────────
@@ -350,13 +350,13 @@ function checkLinkFragment(docPath, link, fragment, target) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Journal-system checks — operate on specific files (progress.md,
+// Journal-system checks: operate on specific files (progress.md,
 // signals-backlog.md) rather than directory iteration. These are post-loop
 // because they're whole-file validations, not link / anchor checks.
 // ────────────────────────────────────────────────────────────────────
 
 // Structural (not temporal) validation of progress.md frontmatter. A
-// well-formed `last-updated: YYYY-MM-DD` is a per-PR property — it's the field
+// well-formed `last-updated: YYYY-MM-DD` is a per-PR property: it's the field
 // the tracker, /catchup, and journal-sync all parse, so a malformed one
 // silently breaks them. Temporal staleness (how OLD the date is) is handled
 // non-blocking elsewhere (see the note near the top).
@@ -380,7 +380,7 @@ function checkProgressFrontmatter() {
 // The supersede ritual is a THREE-part edit, applied by hand (or by /log
 // decision): the new note gets `**supersedes**: <old>`, and the old note's
 // `**status**` flips to `superseded` and gains `**superseded-by**: <new>`.
-// Miss any part and the chain lies — a note still reading `accepted` while a
+// Miss any part and the chain lies: a note still reading `accepted` while a
 // successor exists is worse than no record, because /catchup and every future
 // reader treat these journals as authoritative.
 //
@@ -391,9 +391,9 @@ function checkProgressFrontmatter() {
 // Two shapes are validated, mirroring what docs/adr/README.md and the ADR
 // records already do:
 //
-//   FULL     — the predecessor flips to `**status**: superseded` and gains
+//   FULL:      the predecessor flips to `**status**: superseded` and gains
 //              `**superseded-by**`; the successor declares `**supersedes**`.
-//   PARTIAL  — only some of the predecessor was replaced, so BOTH notes stay
+//   PARTIAL:   only some of the predecessor was replaced, so both notes stay
 //              `accepted` (both are still live) and the relationship is carried
 //              by `**partially-supersedes**` / `**partially-superseded-by**`,
 //              each annotated with the scope that moved. This mirrors ADR
@@ -405,14 +405,14 @@ function checkProgressFrontmatter() {
 // it can neither be superseded nor supersede anything.
 //
 // Pointers resolve within this file only. Cross-tier (note <-> ADR) references
-// are deliberately NOT fields — the house convention is a prose markdown link,
+// are not fields, by design: the house convention is a prose markdown link,
 // which checkBodyLinks already validates.
 function checkDecisionsSupersedeChain() {
   if (!fs.existsSync(DECISIONS_PATH)) return;
   const lines = fs.readFileSync(DECISIONS_PATH, 'utf8').split(/\r?\n/);
 
   // Matches ANY `**field**:` line. Used only to find where a note's header
-  // block ends, so it is deliberately wider than the set of fields we read.
+  // block ends, so it is intentionally wider than the set of fields we read.
   const FIELD_LINE_RE = /^\*\*[a-z-]+\*\*:/;
   const CHAIN_FIELD_RE =
     /^\*\*(status|supersedes|superseded-by|partially-supersedes|partially-superseded-by)\*\*:\s*(.+)$/;
@@ -420,7 +420,7 @@ function checkDecisionsSupersedeChain() {
   const unwrap = (s) => s.trim().replace(/^`|`$/g, '').trim();
 
   // `<slug> (<what was replaced>)`, slug optionally backticked. The scope
-  // annotation is required — a partial supersede that doesn't say WHICH part
+  // annotation is required: a partial supersede that doesn't say which part
   // moved isn't a usable record, and both ADR precedents carry one.
   const parsePartial = (raw) => {
     const m = /^`?([^`\s]+)`?\s+\((.+)\)$/.exec(raw.trim());
@@ -453,7 +453,7 @@ function checkDecisionsSupersedeChain() {
 
     // A note's fields are the contiguous run of `**field**:` lines following
     // its heading (blank lines allowed). The first line that is neither blank
-    // nor a field line closes the block — so body prose that happens to begin
+    // nor a field line closes the block, so body prose that happens to begin
     // with `**status**:` can never be read as a field.
     if (line.trim() === '') continue;
     if (!FIELD_LINE_RE.test(line)) {
@@ -476,7 +476,7 @@ function checkDecisionsSupersedeChain() {
       target: note.slug,
     });
 
-  // Duplicate slugs are reported, then the shadowed copy is skipped — carrying
+  // Duplicate slugs are reported, then the shadowed copy is skipped: carrying
   // both would misattribute every downstream pointer error to the wrong record.
   const bySlug = new Map();
   for (const note of notes) {
@@ -520,7 +520,7 @@ function checkDecisionsSupersedeChain() {
 
     // A `superseded` status with no successor recorded is the half-applied
     // ritual in its other direction: the note says it was replaced, but not by
-    // what — leaving a reader no way to find the record that supplanted it.
+    // what, leaving a reader no way to find the record that supplanted it.
     if (status?.value === 'superseded' && !supersededBy) {
       err(
         note,
@@ -608,7 +608,7 @@ function checkDecisionsSupersedeChain() {
     }
 
     // Partial supersede. Both notes stay `accepted` because both are still
-    // live, so this pair is deliberately exempt from the status-flip rule.
+    // live, so this pair is exempt from the status-flip rule.
     for (const [name, mirrorName] of [
       ['partially-supersedes', 'partially-superseded-by'],
       ['partially-superseded-by', 'partially-supersedes'],
@@ -789,7 +789,7 @@ checkDirOfMds(DEV_DIR);
 // YAML frontmatter, so related-files validation is a no-op for them)
 checkDirOfMds(ADR_DIR);
 
-// Decisions log (no frontmatter; just check body links + slug refs)
+// Decisions log (no frontmatter; check only body links + slug refs)
 if (fs.existsSync(DECISIONS_PATH)) {
   const content = fs.readFileSync(DECISIONS_PATH, 'utf8');
   const linkCount = checkBodyLinks(DECISIONS_PATH, content);
@@ -802,7 +802,7 @@ if (fs.existsSync(DECISIONS_PATH)) {
   }
 }
 
-// Progress journal — body links + tech-debt anchor refs only. `last-updated`
+// Progress journal: body links + tech-debt anchor refs only. `last-updated`
 // staleness is intentionally not gated here (see the note near the top).
 if (fs.existsSync(PROGRESS_PATH)) {
   const content = fs.readFileSync(PROGRESS_PATH, 'utf8');
@@ -816,7 +816,7 @@ if (fs.existsSync(PROGRESS_PATH)) {
   }
 }
 
-// Signals backlog — same. Schema gate runs post-loop in checkSignalsSchema().
+// Signals backlog: same. Schema gate runs post-loop in checkSignalsSchema().
 if (fs.existsSync(SIGNALS_PATH)) {
   const content = fs.readFileSync(SIGNALS_PATH, 'utf8');
   const linkCount = checkBodyLinks(SIGNALS_PATH, content);
@@ -829,7 +829,7 @@ if (fs.existsSync(SIGNALS_PATH)) {
   }
 }
 
-// CLAUDE.md files — root + every subdir-scoped one. These are the agent-context
+// CLAUDE.md files: root + every subdir-scoped one. These are the agent-context
 // rules; their cross-references to docs/architecture/ go stale the same way
 // and are equally important to validate.
 function findClaudeMds(rootDir) {
@@ -874,7 +874,7 @@ for (const file of findClaudeMds(ROOT_DIR)) {
   }
 }
 
-// BSC convention plugin sources — their JSDoc headers + diagnostic strings
+// BSC convention plugin sources: their JSDoc headers + diagnostic strings
 // frequently cite tech-debt slugs (the plugins enforce conventions documented
 // there). These are .cjs, not .md, but the slug-ref regex doesn't care.
 function findPluginScripts() {

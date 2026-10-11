@@ -1,17 +1,17 @@
-// scripts/lint/rta-capability-coverage.cjs — keeps the ODC capability inventory in
+// scripts/lint/rta-capability-coverage.cjs: keeps the ODC capability inventory in
 // tests/rta/CLAUDE.md honest against the roku-test-automation client actually installed.
 //
 // The charter bar this serves: "an unused primitive is fine when there is a recorded
-// reason, and a defect when there is not." That inventory was written once and went stale
-// — it accounted for 20 of the client's 47 public methods while claiming to be complete —
+// reason, and a defect when there is not." That inventory was written once and went stale:
+// it accounted for 20 of the client's 47 public methods while claiming to be complete,
 // which is the failure this exists to make impossible rather than to re-audit by hand.
 //
 // Two directions, and they catch different things:
 //
-//   - UNCOVERED — every public method on OnDeviceComponent must be named somewhere in the
+//   - UNCOVERED: every public method on OnDeviceComponent must be named somewhere in the
 //     inventory block. This is the one that fires on a library upgrade that ADDS a
 //     capability: it appears, nobody has judged it, the gate says so.
-//   - STALE — an identifier named in an inventory TABLE row must still exist on the
+//   - STALE: an identifier named in an inventory TABLE row must still exist on the
 //     client. This fires on a RENAME, which is a real event here: the library removed
 //     `getNodeReferences` and replaced it with `getNodesInfo` in a past release, and an
 //     inventory that still argued about the old name would read as current.
@@ -19,7 +19,7 @@
 // Only table rows are checked for staleness, not the family paragraphs. A table cell
 // exists to name a primitive, so an identifier there is a claim; prose is prose, and a
 // gate that made every inline-code word in a paragraph require an allowlist entry would
-// tax writing the argument — which is the part worth having.
+// tax writing the argument, which is the part worth having.
 //
 // The method list is read from the installed .d.ts rather than from a committed copy, on
 // purpose: a committed copy is a second thing to keep in sync, and would go stale in
@@ -57,12 +57,12 @@ function parseFlags(argv) {
 }
 
 /**
- * Public Promise-returning methods on the OnDeviceComponent class — the capability surface.
+ * Public Promise-returning methods on the OnDeviceComponent class: the capability surface.
  *
  * Parameter lists are matched by BALANCING parens rather than by a `\([^)]*\)` regex,
  * because at least one member's parameters contain parens of their own: `onFieldChange`
  * takes a `callback: (response: …) => …`, and the naive form stops at that inner `)` and
- * silently drops the method. That is the precise failure a coverage gate must not have —
+ * silently drops the method. That is the precise failure a coverage gate must not have:
  * it would under-report the surface and pass.
  *
  * Filtering on a `Promise` return is what separates capabilities from the client's own
@@ -82,7 +82,7 @@ function readClientMethods(dts) {
       if (dts[i] === '(') depth++;
       else if (dts[i] === ')' && --depth === 0) break;
     }
-    if (depth !== 0) continue; // unbalanced — not a signature we can trust
+    if (depth !== 0) continue; // unbalanced: not a signature we can trust
     if (/^\s*:\s*Promise\b/.test(dts.slice(i + 1, i + 40))) names.add(m[1]);
   }
   return names;
@@ -99,7 +99,7 @@ function extractBlock(doc) {
 const codeTokens = (s) => [...s.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]);
 const isIdentifier = (s) => /^[a-zA-Z][a-zA-Z0-9]*$/.test(s);
 
-/** Identifiers named in the first cell of a table row — each one is a claim. */
+/** Identifiers named in the first cell of a table row; each one is a claim. */
 function claimedInTables(block) {
   const claimed = new Set();
   for (const line of block.split('\n')) {

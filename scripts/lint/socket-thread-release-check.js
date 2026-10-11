@@ -1,34 +1,34 @@
-// scripts/lint/socket-thread-release-check.js — guards the release of the
+// scripts/lint/socket-thread-release-check.js: guards the release of the
 // ws:// socket Task thread (the `&h29` "Too many task threads" class, epic #728).
 //
 // WHY THIS EXISTS
 // ---------------
 // RokuOS caps concurrent Task threads at 50 (soft) / 100 (hard) per app, and a
-// Task thread is NOT released by dropping the node reference — the spawned
+// Task thread is not released by dropping the node reference: the spawned
 // function has to return, or something has to STOP the node. RemoteControlTask
 // creates a fresh `WebSocketClient` child per connect attempt, so before this
 // was fixed every reconnect stranded a thread for the life of the app.
 //
 // Three source-level facts keep it released, and none of them fails loudly when
-// broken. The app builds, connects, casts, and passes every test either way —
+// broken. The app builds, connects, casts, and passes every test either way;
 // the symptom is a crash days later on someone else's device, or a cast channel
 // that silently stops reconnecting.
 //
-// WHY NOT AN END-TO-END TEST
-// --------------------------
+// WHY NO END-TO-END TEST
+// -----------------------
 // Same unreachable path as socket-auth-binding-check.js: RTA drives an https://
 // demo server (tests/rta/config.js) and the ws:// receiver only runs against
 // http:// (remoteProtocol.isHttpServer, gated in RemoteControlTask.runReceiver),
 // so the socket loop never executes under test. Rooibos runs on-device but has
 // no way to hold a real socket open and drop it. Verifying this for real needs a
-// local http:// Jellyfin plus a forced mid-session disconnect — a manual
+// local http:// Jellyfin plus a forced mid-session disconnect, a manual
 // procedure. So this gates the source shape, and the paired Vitest test
 // (tests/scripts/unit/lint/socket-thread-release.test.js) executes a model of
 // the loop whose ordering is read back out of the real file.
 //
 // WHAT IT CHECKS
 // --------------
-//   1. The vendored task loop still has an `exit while` — without it, upstream's
+//   1. The vendored task loop still has an `exit while`. Without it, upstream's
 //      infinite loop is back and every connect attempt leaks a thread.
 //   2. That `exit while` sits BEFORE `m.ws.run()` in the loop body. This is the
 //      subtle one. `run()` is what performs the CLOSED transition AND posts the
@@ -37,29 +37,29 @@
 //      `run()` then enqueued. Testing it after `run()` exits with the terminal
 //      events still queued: m.top.on_close is never written, connectAndPump
 //      blocks forever, and the cast channel dies without reconnecting. Ordering
-//      is the entire invariant — the condition can look identical and be wrong.
+//      is the entire invariant: the condition can look identical and be wrong.
 //   3. The exit is guarded by the drained-port term (`msg = invalid`). That term
 //      is what proves the queue was flushed to m.top before the thread went away.
 //   4. The arming assignment sits AFTER `m.ws.run()` and is gated on
-//      `m.connect_requested` — ready_state is CLOSED before open() is ever
+//      `m.connect_requested`: ready_state is CLOSED before open() is ever
 //      called, so an un-opened node must keep waiting for its `open` event
 //      instead of releasing the thread immediately.
 //   5. RemoteControlTask publishes the child (`m.top.socketNode`), STOPs it in
 //      closeSocket(), and clears the field there. The publish is what lets SignOut
 //      reach a child whose owner thread is about to be killed; the STOP is what
-//      covers the case where `control = "STOP"` — not the loop's own exit — is the
+//      covers the case where `control = "STOP"` (not the loop's own exit) is the
 //      thing that has to release it; the clear is what stops the field naming a
 //      node that is already dead across the reconnect backoff.
-//   6. SignOut STOPs BOTH threads — the receiver and the published child — and
+//   6. SignOut STOPs both threads (the receiver and the published child), and
 //      reaches the child through a LOCAL SNAPSHOT, never by dotting through the
 //      field twice. `control = "STOP"` does not join the receiver thread, so it
 //      can still be inside closeSocket() clearing that field between the test and
 //      the use, and a dot on invalid crashes the calling thread mid-sign-out.
 //
-//      Rules 5 and 6 are deliberately written against the RESOLVED LOCALS rather
+//      Rules 5 and 6 are written against the RESOLVED LOCALS on purpose, rather
 //      than against the presence of an identifier. An earlier draft asked only
 //      whether the string `socketNode` appeared in SignOut, which passed a SignOut
-//      that cleared the field without ever stopping the child — i.e. it passed the
+//      that cleared the field without ever stopping the child; that is, it passed the
 //      precise regression it was written to catch. A guard nobody can test at
 //      runtime has to be adversarial about its own false-passes.
 //
@@ -67,7 +67,7 @@
 // documented in components/vendor/BrightWebSocket/README.md. A future upstream
 // re-sync is the single likeliest way they get reverted.
 //
-// Only Node stdlib — no npm ci needed.
+// Only Node stdlib, so no npm ci needed.
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -91,7 +91,7 @@ const RE_CONNECT_REQUESTED = /m\.connect_requested/;
  * Exported so the paired Vitest test can drive its loop model off the REAL
  * file instead of a hand-copied transcription that would drift.
  *
- * @param {string} wsTask — raw WebSocketClientTask.brs contents
+ * @param {string} wsTask raw WebSocketClientTask.brs contents
  * @returns {{hasExit: boolean, exitBeforeRun: boolean, exitGuardHasDrain: boolean,
  *            armAfterRun: boolean, exitGuardHasReadyState: boolean}}
  */
@@ -119,7 +119,7 @@ export function extractLoopShape(wsTask) {
   };
 }
 
-// True when `<name>.control = "STOP"` appears — the only form that actually
+// True when `<name>.control = "STOP"` appears: the only form that actually
 // releases a Task thread. `name` is a local the caller resolved from the source,
 // so this asks "is THIS binding stopped", not "does a STOP appear somewhere".
 function stopsControlOf(src, name) {
@@ -127,7 +127,7 @@ function stopsControlOf(src, name) {
 }
 
 /**
- * @param {{receiver: string, wsTask: string, signOut: string}} sources — file contents
+ * @param {{receiver: string, wsTask: string, signOut: string}} sources file contents
  * @returns {string[]} violations; empty means the invariant holds
  */
 export function check({ receiver, wsTask, signOut }) {
@@ -213,7 +213,7 @@ export function check({ receiver, wsTask, signOut }) {
 
   // ── 6. SignOut stops BOTH threads, and snapshots before dotting ─────────────
   //
-  // Presence of the identifier is NOT the rule — the rule is that each of the two
+  // Presence of the identifier is not the rule. The rule is that each of the two
   // threads is actually STOPped. Testing only for the word `socketNode` would let a
   // SignOut that merely clears the field pass, which is the exact regression this
   // rule exists to name. So resolve the locals the code binds and demand a STOP on
@@ -230,7 +230,7 @@ export function check({ receiver, wsTask, signOut }) {
     );
   }
 
-  // Order matters: the dots-through form DOES stop the child, just unsafely, and it
+  // Order matters: the dots-through form does stop the child, only unsafely, and it
   // leaves no local to resolve. Diagnosing it as "you never stopped the child" would
   // send the author looking for the wrong thing, so the anti-pattern is named first.
   const childLocal = /(\w+)\s*=\s*\w+\.socketNode\b/.exec(sx)?.[1];

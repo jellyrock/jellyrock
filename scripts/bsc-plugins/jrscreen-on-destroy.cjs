@@ -1,25 +1,26 @@
 /**
- * BrighterScript plugin — JRScreen `onDestroy()` discipline.
+ * BrighterScript plugin: JRScreen `onDestroy()` discipline.
  *
  * Flags any RSG component that extends `JRScreen` (transitively) and whose
  * codebehind BS file does not declare a top-level `onDestroy` function.
  *
- * Rationale: the base `onDestroy()` in `components/JRScreen.bs` is a no-op
- * virtual; forgetting to override it leaks observers and Tasks across
- * navigation. The companion `observe-without-on-destroy` plugin checks the
+ * Rationale: the base `onDestroy()` in `components/JRScreen.bs` only calls
+ * `abandonApiPromises()`; it releases no observers or Tasks, so forgetting to
+ * override it leaks them across navigation. The companion `observe-without-on-destroy` plugin checks the
  * body of each subclass's onDestroy() for matching unobserve calls.
  *
  * The function name check is case-sensitive (must be exactly `onDestroy`,
  * not `OnDestroy` / `ondestroy` / `destroy`) to enforce the lowerCamelCase
  * lifecycle-hook convention alongside the prefix rule.
  *
- * Skips `components/JRScreen.xml` itself (the no-op base lives there by design).
+ * Skips `components/JRScreen.xml` itself (the base `onDestroy()` lives in its
+ * codebehind).
  *
  * CROSS-FILE, so it runs on the shared scope lifecycle: the diagnostic anchors on
  * the XML's component name, but the verdict comes from the CODEBEHIND's function
  * list. BrighterScript clears a file's diagnostics by `location.uri` when that
  * file re-validates, so before this ran on a scope, adding the `onDestroy()` the
- * message asks for left the warning on screen until the XML was touched — the
+ * message asks for left the warning on screen until the XML was touched: the
  * author does exactly what the diagnostic says and the IDE keeps saying no. See
  * `scripts/lib/bsc-rule.cjs`.
  *
@@ -30,8 +31,8 @@
  *
  * Escape hatch:
  *  - `' bsc-disable-file jrscreen-on-destroy` anywhere in the XML or its codebehind
- *    (rare — only for components that legitimately extend JRScreen but never
- *    own observers/Tasks; e.g. a thin pass-through wrapper).
+ *    (rare: only for components that legitimately extend JRScreen but never
+ *    own observers/Tasks, for example a thin pass-through wrapper).
  */
 'use strict';
 
@@ -52,7 +53,7 @@ module.exports = () =>
       if (!componentName || componentName === TARGET_BASE) return;
       if (!descendsFromJRScreen(xmlFile)) return;
 
-      // The marker is honoured in EITHER half — the reason to exempt a component
+      // The marker is honored in EITHER half: the reason to exempt a component
       // may be stated where its interface is or where its code is. `report` only
       // ever inspects one file, so both are checked here rather than relying on it.
       if (isSuppressed(xmlFile, DIAGNOSTIC_CODE)) return;

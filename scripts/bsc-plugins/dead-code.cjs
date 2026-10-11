@@ -1,11 +1,11 @@
 /**
- * BrighterScript plugin — report code nothing in the app uses.
+ * BrighterScript plugin: report code nothing in the app uses.
  *
  * THE RULE
  * --------
- * Every declaration we own — function/sub, class, class method, const, enum and
- * enum member (in `source/` and `components/`), plus every XML component,
- * interface field and interface function — must have a consumer somewhere in the
+ * Every declaration we own (function/sub, class, class method, const, enum and
+ * enum member in `source/` and `components/`, plus every XML component,
+ * interface field and interface function) must have a consumer somewhere in the
  * app build. One that has none is an ERROR (`dead-code`), unless it is recorded
  * as kept on purpose (see KEEPING CODE ON PURPOSE).
  *
@@ -39,7 +39,7 @@
  *
  * Matching is case-insensitive (BrightScript is), and resolution follows scope:
  *   - A namespaced declaration is matched by its QUALIFIED name, or by a
- *     relative reference written inside that namespace — never by its short
+ *     relative reference written inside that namespace, never by its short
  *     name alone. `itemAspectRatio.SQUARE` and the live `rowSlotSize.SQUARE`
  *     share a short name; bare-name matching hid the first behind the second.
  *   - A function in a component codebehind is matched by name only inside the
@@ -63,8 +63,8 @@
  * handler), matched by column so a live element on the same line is unaffected,
  * and a script several components include once every one of them is dead.
  *
- * NEVER REPORTED
- * --------------
+ * EXEMPT
+ * ------
  *   - Roku entry points and lifecycle callbacks (ENTRY_POINTS).
  *   - Interface fields the Roku firmware writes into item / row-title / row
  *     decoration components (FIRMWARE_FIELDS), taken from Roku's list/grid node
@@ -79,7 +79,7 @@
  * KEEPING CODE ON PURPOSE
  * -----------------------
  * Unused code is kept only as one of six recorded kinds:
- *   design-system  a whole set kept deliberately, e.g. a color × size matrix
+ *   design-system  a whole set kept on purpose, such as a color × size matrix
  *   api            built ahead of its first caller
  *   planned        scaffolding for a tracked feature; the reason must cite an
  *                  issue (#123)
@@ -105,11 +105,11 @@
  * `deadCode.baseline` names a JSON file of findings awaiting removal. They are
  * not reported; an entry that no longer matches a finding IS (`dead-code-
  * baseline`), so the file cannot hold a stale entry. Nothing stops an entry
- * being ADDED — that is how a deliberate deferral is recorded — so an addition
+ * being ADDED (that is how a chosen deferral is recorded), so an addition
  * is a review decision, visible in the diff. Entries are keyed by kind, file and
- * qualified name — never by line — so unrelated edits do not churn it.
+ * qualified name, never by line, so unrelated edits do not churn it.
  * `DEAD_CODE_WRITE_BASELINE=1 npx bsc --noEmit` rewrites it from the current
- * findings; do that only to record findings you are deliberately deferring.
+ * findings; do that only to record findings you are choosing to defer.
  *
  * KNOWN LIMITS
  * ------------
@@ -334,7 +334,7 @@ function analyzeProgram(program, register, { explain = false } = {}) {
   reportKeepProblems({ decls, markers, fileLevelMarkers, keepEntries, ctx, program, register });
 
   // Explain mode (accuracy tooling, never the build): every live declaration's
-  // live references, so a check can ask why something is NOT reported.
+  // live references, so a check can ask why something is not reported.
   if (explain) {
     for (const d of decls) {
       if (d.dead || d.kept || d.alwaysLive) continue;
@@ -358,9 +358,9 @@ function buildReferenceIndex(program, files, brsFiles, xmlFiles) {
   const idx = {
     bare: new Map(), // identifier not after `.` / `@.`
     member: new Map(), // identifier after `.`
-    mTopMember: new Map(), // identifier after `m.top.` — always the file's own component
+    mTopMember: new Map(), // identifier after `m.top.`: always the file's own component
     aaKey: new Map(), // identifier before `:`
-    chain: new Map(), // every leading prefix of a dotted chain → occurrences (with ns)
+    chain: new Map(), // every leading prefix of a dotted chain to its occurrences (with ns)
     callFunc: new Map(), // callFunc("x") and node@.x
     str: new Map(), // exact string-literal value
     xmlTag: new Map(),
@@ -678,7 +678,7 @@ function relPath(file, rootDir) {
 
 function collectDeclarations(brsFiles, xmlFiles, rootDir) {
   const decls = [];
-  const markers = new Map(); // srcPath → Map(declLine → marker)
+  const markers = new Map(); // srcPath to Map(declLine to marker)
   const fileLevelMarkers = [];
 
   for (const file of brsFiles) {
@@ -1080,7 +1080,7 @@ function discount(occ, d, ctx) {
   return null;
 }
 
-// `collect`, when given, receives EVERY live reference instead of stopping at the
+// `collect`, when given, receives every live reference instead of stopping at the
 // first one (explain mode).
 function liveness(d, ctx, collect) {
   const reachedFrom = new Set();
@@ -1156,8 +1156,8 @@ function liveness(d, ctx, collect) {
       return result(
         anyLive(idx.member.get(lname), null, 'member') || anyLive(idx.str.get(lname), null, 'str'),
       );
-    // A component is named by an EXACT value — a tag, extends= / itemComponentName=,
-    // or a whole string (CreateObject, createChild, a route) — never by a word
+    // A component is named by an EXACT value (a tag, extends= / itemComponentName=,
+    // or a whole string: CreateObject, createChild, a route), never by a word
     // inside a longer string: "Registry section: " is not a use of Section, and
     // findNode("itemGrid") is not a use of ItemGrid.
     // Case-insensitive, although Roku documents component names as matched
@@ -1193,7 +1193,7 @@ function liveness(d, ctx, collect) {
       );
     }
     // Only a call reaches an interface function: `callFunc("x")` / `@.x`. A test's
-    // call keeps the exposure only while the app still runs a function behind it —
+    // call keeps the exposure only while the app still runs a function behind it:
     // an exposure of code the app never runs is dead with that code.
     case 'interfaceFunction': {
       if (anyLive(idx.callFunc.get(lname), null, 'callFunc')) return result(true);
@@ -1210,8 +1210,8 @@ function liveness(d, ctx, collect) {
 
 /**
  * A namespaced (or class / enum) declaration is referenced by a chain whose
- * leading part IS its qualified name — `imageSize.LOGO` or `imageSize.LOGO.width`
- * — or by a relative chain written inside an enclosing namespace: `LOGO` inside
+ * leading part IS its qualified name (`imageSize.LOGO` or `imageSize.LOGO.width`),
+ * or by a relative chain written inside an enclosing namespace: `LOGO` inside
  * `namespace imageSize`. Its transpiled `ns_name` spelling in a string is how a
  * callback names a namespaced function.
  */

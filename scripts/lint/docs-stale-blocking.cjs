@@ -1,42 +1,42 @@
 // Conditional hard gate for stale documentation.
 //
-// `docs-stale.cjs` is the soft signal — informational list of docs whose
+// `docs-stale.cjs` is the soft signal: an informational list of docs whose
 // `last-reviewed` frontmatter is past the threshold (90 days by default).
 // This script is the *blocking* counterpart, designed to run as a required
 // CI check on PRs.
 //
 // The design avoids the "blanket gate blocks every PR after 120 days" trap.
-// A blanket gate forces the next PR opened — regardless of what it touches —
+// A blanket gate forces the next PR opened, regardless of what it touches,
 // to land the audit, which is the wrong pressure direction. Instead this
 // script blocks only when:
 //
 //   1. A doc is stale (older than --days, default 120), AND
 //   2. The PR modifies a path that's in that doc's `related-files:`, AND
-//   3. The PR is NOT updating the doc itself in the same change
+//   3. The PR is not updating the doc itself in the same change
 //
 // Result: the audit cost lands on the next person to actually change the
 // affected subsystem. Unrelated PRs pass freely. PRs touching the affected
 // subsystem must either re-read + update the doc (bumping `last-reviewed`)
 // or, if no shape/why change occurred, bump the date as part of the same PR.
 //
-// Threshold rationale: 120 days is past the soft signal at 90 days, giving
-// a one-month grace period after the doc:stale tracker fires before the
-// gate kicks in. Adjustable via --days.
+// Threshold rationale: 120 days is past the soft signal at 90 days, so a doc
+// is listed by `npm run docs:stale` for about a month before the gate kicks
+// in. Adjustable via --days.
 //
 // Usage:
-//   node scripts/lint/docs-stale-blocking.cjs              → CI mode (default base origin/main)
-//   node scripts/lint/docs-stale-blocking.cjs --days 90   → custom threshold
-//   node scripts/lint/docs-stale-blocking.cjs --base main → custom base ref
-//   node scripts/lint/docs-stale-blocking.cjs --verbose   → print pass-through reasoning
+//   node scripts/lint/docs-stale-blocking.cjs              CI mode (default base origin/main)
+//   node scripts/lint/docs-stale-blocking.cjs --days 90    custom threshold
+//   node scripts/lint/docs-stale-blocking.cjs --base main  custom base ref
+//   node scripts/lint/docs-stale-blocking.cjs --verbose    print pass-through reasoning
 //
 // Env:
-//   BASE_REF  — used as default base (set by the CI workflow to the PR's base ref)
+//   BASE_REF: used as default base (set by the CI workflow to the PR's base ref)
 //
 // Exit codes:
-//   0 — no blocking violations (PR doesn't touch stale territory, or it does
-//       but is updating the doc, or no docs are stale)
-//   1 — at least one stale doc's territory is touched without a doc update
-//   2 — internal error (git diff failed, etc.)
+//   0: no blocking violations (PR doesn't touch stale territory, or it does
+//      but is updating the doc, or no docs are stale)
+//   1: at least one stale doc's territory is touched without a doc update
+//   2: internal error (git diff failed, etc.)
 
 'use strict';
 
@@ -70,13 +70,13 @@ const ROOT_DIR = '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 
 // Scope: architecture docs only. Dev/how-to guides (Diátaxis terminology)
-// document workflows, not subsystem shape — gating on their staleness
+// document workflows, not subsystem shape; gating on their staleness
 // creates noise for code changes that don't affect the workflow. Their
-// `related-files` overlap with architecture docs (e.g., `apiPool.bs`
+// `related-files` overlap with architecture docs (for example, `apiPool.bs`
 // appears in both `api.md` and `api-patterns.md`); blocking on the
 // dev-guide variant would force a `last-reviewed` bump on an unrelated
 // how-to. The soft signal in `docs:stale` continues to surface dev-guide
-// staleness — that's where the pressure for those lives.
+// staleness: that's where the pressure for those lives.
 
 function daysBetween(isoDate, today) {
   const d = new Date(isoDate + 'T00:00:00Z');

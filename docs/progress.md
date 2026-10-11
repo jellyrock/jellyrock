@@ -929,6 +929,18 @@ The `fix(deeplink)` commit that keeps the sign-in screen hidden until Home mount
 
 Closes when an RTA spec covers it: for example an `ENABLE_RTA`-only timeline in `JRScene.onIsLoadingChanged` and `onActiveRoutedViewChanged` (`isLoading`, `isRemoteDisabled`, the active view) that the spec reads after a Quick Connect sign-in with a stashed deep link, asserting no pre-login view is visible with the remote enabled before Home is active.
 
+#### Five test bsconfigs exclude `!source/Main.bs`, which matches nothing since the file became `main.bs` `[fid: test-bsconfigs-dead-main-exclusion]` `[captured 2026-10-11]`
+
+Five test bsconfigs (`bsconfig-tests-unit.json`, `bsconfig-tests.json`, `bsconfig-tests-complete.json`, `bsconfig-tests-integration.json`, `bsconfig-tdd-sample.json`) exclude `"!source/Main.bs"`, which has matched nothing since the 2026-04-06 rename (`git log --diff-filter=R -- source/main.bs`) renamed the file to `source/main.bs`; the match is case-sensitive on Linux. Found in phase G of docs-voice (s19).
+
+Root cause: The 2025-10-24 test-structure refactor (`git log -S'!source/Main.bs'`) added the line to keep the app's `Main` out, so the Rooibos plugin would generate its own `source/rooibosMain.brs`. Since the rename, `npm run build:tests-unit` produces `build/source/main.brs` with `Rooibos_init("RooibosScene")` injected first, and every test run since has used that. The `log-manager-init-check.js` header ("WHY A LINT GATE RATHER THAN A TEST") and its diagnostic message state the old reason ("Rooibos excludes source/Main.bs"); the conclusion still holds, because `keepAppOpen` defaults to true and `Rooibos_init` loops until the screen closes.
+
+Options: `drop` (recommended): delete the line from the five configs and correct the lint header and message; the build output doesn't change. `restore`: change it to `!source/main.bs` to return to the generated main; brings back warning 2213, changes the test environment, and needs `test:unit` and `test:integration` on a device. `leave`: fix only the lint text.
+
+Not checked: on a device, whether the app's `Main` code after `Rooibos_init` runs when the test screen closes, and whether that has any effect; whether any spec has come to depend on the app's `Main` being in the build.
+
+Closes when the line is gone from every tracked config, the lint text is corrected, and `npm run test:unit` passes. Ships as its own PR from `main`.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`

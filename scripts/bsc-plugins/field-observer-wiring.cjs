@@ -1,14 +1,14 @@
 /**
- * BrighterScript plugin — how an interface field is wired to its handler.
+ * BrighterScript plugin: how an interface field is wired to its handler.
  *
  * Five diagnostics. The first three are driven from a component's XML
  * `<field onChange="...">` declarations cross-referenced against its codebehind;
  * the last two from where the codebehind observes and unobserves `m.top`. Unlike the sibling
- * `observe-without-on-destroy` plugin, these are NOT scoped to `JRScreen`
+ * `observe-without-on-destroy` plugin, these are not scoped to `JRScreen`
  * subclasses: a duplicate registration is not screen-specific, and both known
  * instances were leaf widgets.
  *
- * 1. `duplicate-field-observer` (error) — a field wired BOTH by an XML
+ * 1. `duplicate-field-observer` (error): a field wired both by an XML
  *    `onChange` and by `m.top.observeField()`. Two observers are registered and
  *    the handler runs twice on every write. It is silent whenever the handler is
  *    idempotent, which is why `OSD.itemData` and `IconButton.isButtonSelected`
@@ -17,69 +17,69 @@
  *    AND the BrightScript call and left both wired, so a rename is where this
  *    class is born.
  *
- * 2. `ineffective-unobserve` (error) — a field whose ONLY registration is an XML
+ * 2. `ineffective-unobserve` (error): a field whose only registration is an XML
  *    `onChange`, which the codebehind nonetheless calls `unobserveField()` on.
  *    An XML `onChange` does not appear to be removable that way (see
  *    `components/CLAUDE.md`), and `unobserveField` returns `true` regardless, so
  *    nothing surfaces the mistake at runtime. The line reads as teardown
- *    protection and provides none — which is worse than not having it, because
+ *    protection and provides none, which is worse than not having it, because
  *    the next reader stops looking.
  *
- * 3. `undetachable-observer` (error) — a component that defines `onDestroy` and
+ * 3. `undetachable-observer` (error): a component that defines `onDestroy` and
  *    ALSO declares an XML `onChange` on an interface field. An `onDestroy` is the
  *    declaration that this component releases state at teardown; from that point
  *    any handler that can still run is a hazard, and an XML `onChange` is the one
  *    form that cannot be detached. So the two do not belong in the same component.
  *
  *    This is the STRUCTURAL version of a rule that used to be a judgment call
- *    ("can a writer of this field outlive onDestroy?" — true but undecidable by a
+ *    ("can a writer of this field outlive onDestroy?": true but undecidable by a
  *    linter, so it left every site needing a human). Keying on the presence of an
- *    `onDestroy` is blunter and provable: 42 of the 53 components using `onChange`
- *    have no `onDestroy` at all, release nothing, and are untouched by this.
+ *    `onDestroy` is blunter and provable: most components using `onChange` have
+ *    no `onDestroy` at all, release nothing, and are untouched by this.
  *
  *    It reports ONCE per component, listing the fields, because the fix is one
  *    edit to that component rather than one per field.
  *
- * 4. `top-unobserve-outside-ondestroy` (error) — `m.top.unobserveField()` or
+ * 4. `top-unobserve-outside-ondestroy` (error): `m.top.unobserveField()` or
  *    `m.top.unobserveFieldScoped()` anywhere but `onDestroy()`.
  *
  *    A registration is not private to the component that made it. On device
  *    (`tests/source/unit/platform/ObserverRegistry.spec.bs`), a component
- *    unobserving its own field — with either form — removed the plain observer
+ *    unobserving its own field (with either form) removed the plain observer
  *    its parent held on that field. That is how #898's "unobserve before observe"
  *    re-registration in `VideoPlayerView` removed `PlayerHostView`'s `state`
  *    observer, so no natural episode end ever reached the host. Mid-life, a
  *    component cannot know who else is listening; at teardown, the node is going
- *    away with its observers anyway. Both forms are banned alike, deliberately:
- *    how `observeFieldScoped` registrations behave is NOT understood beyond the one
+ *    away with its observers anyway. Both forms are banned alike, on purpose:
+ *    how `observeFieldScoped` registrations behave is not understood beyond the one
  *    configuration that spec records, so nothing here relies on it.
  *
- *    The field argument is NOT required to be a literal: which field is named does
+ *    The field argument is not required to be a literal: which field is named does
  *    not change who loses their observer (`JellyfinUserSettings.disableAutoSync`
- *    loops over `getFields()`).
+ *    once unobserved in a loop over `getFields()`, until #913).
  *
- * 5. `top-observer-outside-init` (error) — `m.top.observeField()` or
+ * 5. `top-observer-outside-init` (error): `m.top.observeField()` or
  *    `m.top.observeFieldScoped()` with a HANDLER NAME anywhere but `init()`.
  *
  *    The other half of the same lifecycle. Once (4) forbids de-duplicating with a
- *    mid-life unobserve, an observe in a function that runs more than once simply
- *    accumulates, and Roku runs the handler once per registration (#896, #898) —
- *    deleting the unobserve (4) flags is exactly how you would get there. `init()`
+ *    mid-life unobserve, an observe in a function that runs more than once
+ *    accumulates, and Roku runs the handler once per registration (#896, #898).
+ *    Deleting the unobserve (4) flags is exactly how you would get there. `init()`
  *    runs once per node, so placement there IS the single-registration guarantee.
  *
  *    Placement, not reachability: a helper called only from `init()` is still
  *    flagged, because nothing would notice the day it gains a second caller.
- *    Inline it. A MESSAGE-PORT observer is out of the population — the pool Tasks
+ *    Inline it. A message-port observer is out of the population: the pool Tasks
  *    observe their own request fields on a port inside the Task function, no
  *    handler runs in a component scope, and no defect is on record for the shape.
  *
  * All five attach to the BrightScript line that should change, matching
- * `observe-without-on-destroy`'s convention — the XML half is named in the
+ * `observe-without-on-destroy`'s convention: the XML half is named in the
  * message. The rule runs per component SCOPE, so editing either half re-derives
  * the verdict and a fix made on the XML side clears the diagnostic on the `.bs`
  * (see `scripts/lib/bsc-rule.cjs` for why that needs saying).
  *
- * KNOWN GAPS — all fall toward false negatives, none has an instance in the tree
+ * KNOWN GAPS: all fall toward false negatives, none has an instance in the tree
  * -----------------------------------------------------------------------------
  *  - A non-literal field argument (`JellyfinUserSettings` observes a computed
  *    name) or a registration reached through a helper.
@@ -87,17 +87,17 @@
  *    `<interface>` is read.
  *  - An `m.top` reached through a local alias (`top = m.top`); the sibling plugin
  *    does union-find aliasing, this one matches the written form. Applies to (4)
- *    and (5) too — `LoadCaptionTask`'s alias is the one instance, and it observes nothing.
+ *    and (5) too: `LoadCaptionTask`'s alias is the one instance, and it observes nothing.
  *  - (4) and (5) read the component's own codebehind only. An observe or unobserve
  *    on `m.top` inside a `source/` helper it imports is invisible; there is none today.
  *  - (5) treats a non-literal second argument as a port, since it cannot tell a
  *    variable holding a handler NAME from one holding a port.
- *  - Two PROGRAMMATIC observers of the same field, with no XML `onChange` — also
+ *  - Two programmatic observers of the same field, with no XML `onChange`: also
  *    a duplicate registration, but not this pairing.
  *  - `m.top.observeFieldScoped` + `m.top.unobserveField` suppresses
  *    `ineffective-unobserve` (a programmatic observe exists). Whether that plain
- *    unobserve removes the scoped registration is not established in general — it
- *    did in the one configuration `ObserverRegistry.spec.bs` records — so this
+ *    unobserve removes the scoped registration is not established in general (it
+ *    did in the one configuration `ObserverRegistry.spec.bs` records), so this
  *    diagnostic does not reason about mixed forms. Nothing goes silent:
  *    `duplicate-field-observer` still fires on the observe.
  *
@@ -135,8 +135,8 @@ module.exports = () =>
       const xmlName = baseName(xmlFile.srcPath);
 
       // A component that tears down state must be able to detach every observer,
-      // and an XML onChange cannot be detached. Anchored on `onDestroy` — the
-      // declaration that makes the rule apply — and reported once for the whole
+      // and an XML onChange cannot be detached. Anchored on `onDestroy` (the
+      // declaration that makes the rule apply) and reported once for the whole
       // component, since the fix is one edit rather than one per field.
       const onDestroy = findOnDestroy(brsFile);
       if (onDestroy?.location) {
@@ -180,7 +180,7 @@ module.exports = () =>
 /**
  * Diagnostics (4) and (5): every `m.top` observe outside `init()` that names a handler,
  * and every `m.top` unobserve outside `onDestroy()`, attributed to the TOP-LEVEL function
- * that contains it — a function literal nested inside `fetch()` runs on `fetch()`'s
+ * that contains it: a function literal nested inside `fetch()` runs on `fetch()`'s
  * schedule, not once per node, so it gets no pass.
  */
 function reportTopLifecycle(brsFile, report) {
@@ -250,7 +250,7 @@ function isVendored(brsFile) {
 }
 
 /**
- * Lower-cased field id → onChange handler name, for every `<field onChange="...">`
+ * Lower-cased field id to onChange handler name, for every `<field onChange="...">`
  * in the component's own `<interface>`.
  *
  * Keyed lower-case because BrightScript field names are case-insensitive:

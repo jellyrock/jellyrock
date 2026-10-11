@@ -1,5 +1,5 @@
 /**
- * BrighterScript plugin — observeField → unobserveField pairing in JRScreen subclasses.
+ * BrighterScript plugin: observeField to unobserveField pairing in JRScreen subclasses.
  *
  * For any RSG component whose codebehind extends `JRScreen` (transitively),
  * every `<target>.observeField("<field>", ...)` call must have a matching
@@ -15,7 +15,7 @@
  *   4. unobserve via `m`
  * matches without an opt-out.
  *
- * "Matching" requires the same field name. We deliberately don't require the
+ * "Matching" requires the same field name. We don't require the
  * unobserve to live inside `onDestroy()` because many codebases legitimately
  * unobserve in `onScreenHidden`, dedicated cleanup helpers, or tear-down on
  * tab switch. The intent is to catch the common bug of "I set up an observer
@@ -23,19 +23,19 @@
  *
  * Scoped/unscoped strictness: `observeField` pairs only with `unobserveField`,
  * and `observeFieldScoped` pairs only with `unobserveFieldScoped`. Whether a
- * mismatched pair releases the registration is not understood in general — one
+ * mismatched pair releases the registration is not understood in general (one
  * configuration is recorded in tests/source/unit/platform/ObserverRegistry.spec.bs,
- * and it did not release there when the target was another node — so the plugin
+ * and it did not release there when the target was another node), so the plugin
  * requires the forms to match rather than guessing, and keeps them in separate
  * maps. Matching them costs nothing.
  *
- * `X = releaseTask(X, "<field>")` counts as `X.unobserveField("<field>")` — it
+ * `X = releaseTask(X, "<field>")` counts as `X.unobserveField("<field>")`: it
  * is one (see recordReleaseTask). `replaceTask` does not count.
  *
  * Runs per component SCOPE (`scripts/lib/bsc-rule.cjs`). The JRScreen-ness half
  * of the verdict comes from the XML while the warning is anchored in the `.bs`,
- * so moving a component out of the JRScreen hierarchy has to clear its warnings
- * — which it did not when this ran off the file hook.
+ * so moving a component out of the JRScreen hierarchy has to clear its warnings,
+ * which it did not when this ran off the file hook.
  *
  * Escape hatch:
  *  - `' bsc-disable-line observe-without-on-destroy` on the observeField line
@@ -67,10 +67,10 @@ module.exports = () =>
       const aliases = new UnionFind();
       const observes = [];
       // Two separate maps so observeField and observeFieldScoped can't
-      // accidentally satisfy each other — see the header for why a mismatched
-      // pair is not trusted to release.
-      const unobserveByField = new Map(); // fieldName → Set<canonicalTarget>
-      const unobserveByFieldScoped = new Map(); // fieldName → Set<canonicalTarget>
+      // accidentally satisfy each other (see the header for why a mismatched
+      // pair is not trusted to release).
+      const unobserveByField = new Map(); // fieldName to Set<canonicalTarget>
+      const unobserveByFieldScoped = new Map(); // fieldName to Set<canonicalTarget>
 
       const visitor = brighterscript.createVisitor({
         AssignmentStatement: (stmt) => {
@@ -150,7 +150,7 @@ module.exports = () =>
 /**
  * `releaseTask(node, "field")` (source/utils/tasks.bs) is an unscoped
  * `node.unobserveField("field")` followed by a STOP, so it releases exactly what
- * a literal unobserve would. `replaceTask` is deliberately NOT counted: it
+ * a literal unobserve would. `replaceTask` is not counted, on purpose: it
  * releases the PREVIOUS node, so a file that only ever replaces still leaves the
  * last run's observer attached when the screen is destroyed.
  */

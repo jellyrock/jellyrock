@@ -1,11 +1,11 @@
 /**
- * BrighterScript plugin — auto-guard onKeyEvent against post-teardown key events.
+ * BrighterScript plugin: auto-guard onKeyEvent against post-teardown key events.
  *
  * sgRouter's closeView runs the view's `_beforeViewClose` hook (which reaches
  * JRScreen.beforeViewClose -> onScreenHidden() + onDestroy()) and only removes
  * the node once the returned promise resolves. Resolution goes through the
  * promise's observed `promiseState` field, so the removal lands on a LATER
- * message-loop turn — and the router deliberately leaves the view visible in
+ * message-loop turn, and the router leaves the view visible in
  * the meantime. For that turn the screen is still mounted and still in the
  * focus chain while its `onDestroy` has already set every node reference to
  * `invalid`, so the next key event dots into `invalid` and throws `&hec`
@@ -13,7 +13,7 @@
  * reference).
  *
  * A base-class fix is not available: SceneGraph `onDestroy` and `onKeyEvent`
- * do NOT chain to a base component (no `super`), which is the same constraint
+ * do not chain to a base component (no `super`), which is the same constraint
  * that made `auto-abandon-promises.cjs` an injecting plugin rather than a line
  * in `JRScreen`. So this plugin does it mechanically, for every component that
  * has both hooks:
@@ -28,24 +28,24 @@
  *     source location and are skipped) is already exactly the form above, so
  *     the guarantee the plugin makes is "the injected form opens every hook,
  *     ahead of anything the file itself does". Matching anything
- *     looser — "the body mentions `m.isDestroyed` somewhere" — silently opts a
+ *     looser ("the body mentions `m.isDestroyed` somewhere") silently opts a
  *     file out of the guard it most needs: an `onKeyEvent` that reads the flag
  *     only after dereferencing a node still crashes on the statements above the
  *     read, and an `onDestroy` that sets it inside an `if` may never set it at
  *     all. Injecting above a hand-written flag is harmless (the later statement
- *     simply wins, or repeats); skipping because of one is not. Files that must
+ *     wins, or repeats); skipping because of one is not. Files that must
  *     opt out have the escape hatch below, which is explicit and greppable.
  *
  *  2. ENFORCE (afterValidateFile): a component with `onDestroy` + `onKeyEvent`
  *     but NO `init()` is a build ERROR. The flag has to be initialised
  *     somewhere: Roku treats `invalid` as neither true nor false ("An
- *     `invalid` value is not considered false" — BrightScript reference), so
+ *     `invalid` value is not considered false", per the BrightScript reference), so
  *     an uninitialised flag turns a rare race into a guaranteed throw. The
  *     comparison form (`= true`) rather than a bare truthiness test is the
  *     second half of that belt-and-braces, mirroring roku-log's `m.__le` guard.
  *
  * Returning `false` from a destroyed screen's onKeyEvent is unambiguously
- * correct — the key belongs to whatever the router focuses next, not to a view
+ * correct: the key belongs to whatever the router focuses next, not to a view
  * that has released its nodes.
  *
  * Escape hatch: `' bsc-disable-file auto-destroyed-guard` anywhere in the
@@ -53,7 +53,7 @@
  *
  * Known limitation: keys on a top-level `onDestroy` in the component's own
  * codebehind. A screen that tears down via some other method name gets no
- * guard — `onDestroy` is the project-wide convention and the two teardown
+ * guard. `onDestroy` is the project-wide convention, and the other teardown
  * plugins already assume it.
  */
 'use strict';
@@ -85,7 +85,7 @@ class AutoDestroyedGuardPlugin {
     this.name = 'jellyrock-auto-destroyed-guard';
   }
 
-  // INJECT — wire the destroyed flag through init / onDestroy / onKeyEvent.
+  // INJECT: wire the destroyed flag through init / onDestroy / onKeyEvent.
   beforePrepareFile(event) {
     try {
       const file = event.file;
@@ -112,12 +112,12 @@ class AutoDestroyedGuardPlugin {
         prepend(event, onKeyEvent, makeGuardStatement());
       }
     } catch (_e) {
-      // Never crash the build — injection is best-effort; the diagnostic still
+      // Never crash the build: injection is best-effort; the diagnostic still
       // guards the uninitialised-flag case.
     }
   }
 
-  // ENFORCE — a guardable component with no init() has nowhere to initialise
+  // ENFORCE: a guardable component with no init() has nowhere to initialize
   // the flag, and an `invalid` flag would throw on every key press.
   afterValidateFile(event) {
     try {
@@ -136,7 +136,7 @@ class AutoDestroyedGuardPlugin {
 
       event.program.diagnostics.register({
         code: DIAGNOSTIC_CODE,
-        severity: 1, // Error — an uninitialised flag throws on EVERY key press.
+        severity: 1, // Error: an uninitialized flag throws on every key press.
         source: this.name,
         message: `This component declares '${ON_DESTROY}' and '${ON_KEY_EVENT}' but no top-level '${INIT}' function, so the destroyed-guard flag 'm.${FLAG}' cannot be initialised. A key event delivered after ${ON_DESTROY} nulls this component's node references crashes with &hec. Add 'sub ${INIT}()' — the auto-destroyed-guard plugin fills in the flag. Suppress with ' bsc-disable-file auto-destroyed-guard only if this component cannot receive a key event after teardown.`,
         location: location,
@@ -153,7 +153,7 @@ function isDisabled(brsFile) {
   return typeof contents === 'string' && DISABLE_FILE_MARKER.test(contents);
 }
 
-// Finds a top-level FunctionStatement by name (case-insensitive — BrightScript
+// Finds a top-level FunctionStatement by name (case-insensitive: BrightScript
 // identifiers are, and `onkeyevent` / `OnKeyEvent` both appear in the wild).
 function findFunction(brsFile, name) {
   const statements = brsFile?.parser?.ast?.statements;
@@ -212,7 +212,7 @@ function opensWithFlagAssignment(fnStmt, value) {
 
 // True when the function OPENS with exactly `if m.isDestroyed = true then return false`.
 //
-// Exact on purpose. The bare `if m.isDestroyed then return false` does NOT match:
+// Exact on purpose. The bare `if m.isDestroyed then return false` does not match:
 // it throws on an uninitialised flag (pinned in teardownGuardSemantics.spec.bs), so
 // the right response to finding one is to inject the safe form ABOVE it, which
 // makes the throwing form unreachable.
@@ -244,7 +244,7 @@ function isFlagOnM(obj, name) {
   );
 }
 
-// True if the brs file has a sibling component .xml (i.e. it's a codebehind).
+// True if the brs file has a sibling component .xml (that is, it's a codebehind).
 function hasSiblingComponentXml(program, brsFile) {
   if (!program || !brsFile) return false;
   const bases = [];

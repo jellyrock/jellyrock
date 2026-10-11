@@ -1,8 +1,8 @@
-// scripts/lint/apiversion-consistency-check.js — static cross-check that the
+// scripts/lint/apiversion-consistency-check.js: static cross-check that the
 // BrighterScript twin `resolveApiVersion()` agrees with the committed boundary
 // map (docs/dev/jellyfin-version-boundaries.yml).
 //
-// WHY: a new apiVersion tier touches two sources that MUST stay in lockstep —
+// WHY: a new apiVersion tier touches two sources that have to stay in lockstep:
 // the YAML map (what the server-upgrade tooling reads) and `resolveApiVersion()`
 // in source/utils/misc.bs (what the app runs to pick the tier). If they drift,
 // the dispatch is dead code or the tooling's tier-relevance analysis lies. This
@@ -62,7 +62,7 @@ function intLiteral(node) {
 // ── extraction ────────────────────────────────────────────────────────────────
 
 // Pull the ordered version guards + fallback tier out of resolveApiVersion's AST.
-// Returns { guards: [{ minVersion, tier }] (source order, top→bottom), fallback }.
+// Returns { guards: [{ minVersion, tier }] (source order, top to bottom), fallback }.
 // Exported for the unit tests (fed a parsed AST from a fixture .bs string).
 export function extractResolveApiVersion(ast) {
   let fnExpr = null;
