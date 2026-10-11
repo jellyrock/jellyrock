@@ -186,11 +186,7 @@
     "prose-arrow": 8
   },
   ".claude/skills/new-migration/SKILL.md": {
-    "caps-emphasis": 3,
-    "em-dash": 21,
-    "filler": 1,
-    "latin-abbrev": 2,
-    "prose-arrow": 4
+    "caps-emphasis": 1
   },
   ".claude/skills/new-setting/SKILL.md": {
     "caps-emphasis": 1
