@@ -1725,10 +1725,10 @@
   },
   "scripts/lint/docs-check.cjs": {
     "caps-emphasis": 3,
-    "em-dash": 22,
+    "em-dash": 21,
     "filler": 7,
     "latin-abbrev": 1,
-    "prose-arrow": 2
+    "prose-arrow": 1
   },
   "scripts/lint/docs-stale-blocking.cjs": {
     "caps-emphasis": 1,
