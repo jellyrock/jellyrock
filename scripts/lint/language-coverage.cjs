@@ -50,14 +50,15 @@
 
 const fs = require('fs');
 const path = require('path');
+const INPUTS = require('./language-coverage-inputs.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
-const LANGS_BS_PATH = path.join(ROOT_DIR, 'source/utils/languages.bs');
-const PEOPLE_BS_PATH = path.join(ROOT_DIR, 'source/utils/people.bs');
-const EN_US_PATH = path.join(ROOT_DIR, 'locale/custom/en_US.json');
+const LANGS_BS_PATH = path.join(ROOT_DIR, INPUTS.LANGS_BS);
+const PEOPLE_BS_PATH = path.join(ROOT_DIR, INPUTS.PEOPLE_BS);
+const EN_US_PATH = path.join(ROOT_DIR, INPUTS.EN_US);
 // Committed, network-free source of truth for server enums. `.api-watch/cache/` holds
 // the raw specs but is gitignored, so it does not exist in CI — these do.
-const FINGERPRINT_DIR = path.join(ROOT_DIR, 'docs/architecture/spec-fingerprints');
+const FINGERPRINT_DIR = path.join(ROOT_DIR, INPUTS.FINGERPRINT_DIR);
 
 // ============================================================
 // Reference: ISO 639-1 (2-letter) → ISO 639-2 (3-letter) variants.
