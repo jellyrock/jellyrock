@@ -1,9 +1,6 @@
 {
   ".claude/agents/log-reviewer.md": {
-    "caps-emphasis": 10,
-    "em-dash": 16,
-    "filler": 3,
-    "latin-abbrev": 1
+    "caps-emphasis": 1
   },
   ".claude/agents/pattern-finder.md": {
     "caps-emphasis": 6,
