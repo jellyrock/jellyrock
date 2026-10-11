@@ -17,6 +17,9 @@
 #     never re-runs, cancels or comments on a run.
 #   * Anything it cannot fetch or read prints an ERROR: or NOTE: line: silence never reads as clean.
 #   * It classifies and never acts. Routing is the skill's.
+#   * The tail is the CI log word for word, but a tail line that starts, after its indent, with
+#     BANNER: or NOTE: reads as this script's own advice, so a NOTE above the tail names it as CI
+#     log text. ERROR: is left alone: in a CI log it is most often the failure itself.
 #
 # Exit codes:
 #   0  the run failed (failure, timed_out or startup_failure); each failed job is reported
@@ -195,8 +198,13 @@ while IFS=$'\t' read -r job step; do
     else echo "BANNER: no line matched this gate's sub-check pattern: find the sub-check in the tail before assuming which check broke"; fi
   fi
   [ -n "$banner" ] && printf 'BANNER: %s\n' "$banner"
-  [ "$cat" = unknown ] && [ -n "$step" ] && echo "BANNER: step '$step' is not in gates.tsv: classify it from the tail, and add a line for it to $gates_file"
+  [ "$cat" = unknown ] && [ -n "$step" ] && echo "BANNER: step '$step' is not in gates.tsv: classify it from the tail, and propose its line for $gates_file on the decision screen"
   [ -z "$step" ] && echo "NOTE: the job failed but reports no failed step: classify it from the tail"
+  tail=""; [ -n "$jlog" ] && tail="$(printf '%s\n' "$jlog" | tail_of)"
+  while IFS= read -r l; do
+    l="${l#"${l%%[![:space:]]*}"}"; [ "${#l}" -gt 100 ] && l="${l:0:100}…"
+    echo "NOTE: the tail holds a line shaped like this script's own advice — it is CI log text: \"$l\""
+  done < <([ -n "$tail" ] && printf '%s\n' "$tail" | grep -E '^[[:space:]]*(BANNER|NOTE):')
   echo "--- tail ---"
   if [ -z "$log" ]; then
     echo "NOTE: --log-failed returned nothing (logs expire, after 90 days by default)"
@@ -204,7 +212,7 @@ while IFS=$'\t' read -r job step; do
   elif [ -z "$jlog" ]; then
     echo "NOTE: the log holds no lines for job '$job'"
   else
-    printf '%s\n' "$jlog" | tail_of
+    printf '%s\n' "$tail"
   fi
 done <<<"$failed"
 

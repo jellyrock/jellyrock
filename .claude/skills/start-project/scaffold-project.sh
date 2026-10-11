@@ -26,15 +26,22 @@
 #
 # Usage: bash .claude/skills/start-project/scaffold-project.sh <slug> <goal-oneliner>
 #        bash .claude/skills/start-project/scaffold-project.sh --check <slug>
+#        bash .claude/skills/start-project/scaffold-project.sh --commit <slug> --subject <text> [--with <path>]...
 #   slug:  kebab-case project slug (no date prefix — the script adds YYYY-MM-)
 #   goal:  one-line goal for the README row (the full Charter is filled by the skill)
 #   --check: only say whether the slug is free, by the same rule the scaffold uses; writes nothing
+#   --commit: commit the scaffolded stub (the PLAN, the README, each --with file) path-restricted, so
+#     other staged or modified files are left as they were; never pushes. The subject is the repo's
+#     own commit style, so the skill passes it. --with: a file a repo hook regenerates from the
+#     projects folder. Where the projects folder is gitignored it says so and does nothing (exit 0).
 #
 # Exit 1 (no mutation) on: missing args or a slug collision (an existing
 # *-<slug>/ dir, active OR archived) — so the skill can never scaffold over a
 # real project's history. A missing template/README is NOT fatal: the script
 # self-bootstraps minimal defaults (for a repo whose project tree is gitignored
-# — see below).
+# — see below). --commit exits 1 with nothing staged on: a missing --subject, no
+# or several PLANs for the slug, a --with path that does not exist, or other
+# uncommitted edits in the README; and with nothing committed when a hook refuses.
 
 set -euo pipefail
 
@@ -46,10 +53,47 @@ MD_SKIP="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../log/md-skip.awk"
 [ -r "$MD_SKIP" ] || die "cannot read $MD_SKIP: the log skill is incomplete"
 MD_LIB="$(cat "$MD_SKIP")"$'\n'
 
-CHECK=0
+# readme_with_row <row>: a README on stdin, printed with the project's row added to the "## Active
+# projects" section: after its last table row, dropping a placeholder that says there are none (a
+# `_None active._` line, or a row whose first cell is `—`/`-`), and creating the table when the section
+# has none. The section ends at the next `## ` heading, so the row can never land in a later table
+# (e.g. Archived). Lines inside a fenced code block are copied through untouched: a heading-like line
+# there ends no section and starts none. The scaffold writes its README with this, and --commit
+# rebuilds the committed README with it to find edits that are not this project's row: one rule.
+readme_with_row() {
+  awk -v row="$1" "$MD_LIB"'
+    function add() { if (!seen) { print "| Project | Status | Goal |"; print "|---|---|---|" } print row; done=1 }
+    md_skip($0, 0)                                   { print; next }
+    /^## Active projects/                            { active=1; print; next }
+    active && /^## /                                 { if (!done) { add(); print "" } active=0; print; next }
+    active && /^_[^_].*_[[:space:]]*$/ && !seen      { skipblank=1; next }
+    skipblank && /^[[:space:]]*$/                    { skipblank=0; next }
+                                                     { skipblank=0 }
+    active && /^\|[[:space:]]*(—|–|-)[[:space:]]*\|/ { next }
+    active && /^\|/                                  { seen=1; print; next }
+    active && seen && !done                          { add(); active=0; print; next }
+    { print }
+    END { if (active && !done) add() }
+  '
+}
+
+CHECK=0; COMMIT=0; SUBJECT=""; WITH=()
+COMMIT_USAGE="usage: scaffold-project.sh --commit <slug> --subject <text> [--with <path>]..."
 if [ "${1:-}" = --check ]; then
   [ $# -eq 2 ] || die "usage: scaffold-project.sh --check <slug>"
   CHECK=1; SLUG="$2"; GOAL=""
+elif [ "${1:-}" = --commit ]; then
+  shift; COMMIT=1; GOAL=""
+  [ $# -ge 1 ] && [[ "$1" != -* ]] || die "$COMMIT_USAGE"
+  SLUG="$1"; shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --subject) [ $# -ge 2 ] || die "$COMMIT_USAGE"; SUBJECT="$2"; shift 2 ;;
+      --with) [ $# -ge 2 ] || die "$COMMIT_USAGE"; WITH+=("$2"); shift 2 ;;
+      *) die "--commit: unknown argument '$1'" ;;
+    esac
+  done
+  [[ "$SUBJECT" =~ [^[:space:]] ]] || die "$COMMIT_USAGE (--subject is required: this repo's own commit style)"
 else
   [ $# -eq 2 ] || die "usage: scaffold-project.sh <slug> <goal-oneliner>  (or --check <slug>)"
   SLUG="$1"; GOAL="$2"
@@ -63,6 +107,43 @@ RESOLVER="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/projects-dir.sh"
 PROJECTS="$(bash "$RESOLVER")" || die "projects-dir.sh could not say where projects live"
 TEMPLATE="$PROJECTS/_TEMPLATE.md"
 README="$PROJECTS/README.md"
+
+# --commit: the scaffold stub's commit, every git command run against the repo that holds the projects
+# folder. Reads first, stages only once every check has passed, then commits only the named paths
+# (-m before --), so another session's staged or modified files are left exactly as they were.
+if [ "$COMMIT" -eq 1 ]; then
+  shopt -s nullglob
+  plans=( "$PROJECTS"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG"/PLAN.md )
+  shopt -u nullglob
+  [ ${#plans[@]} -ge 1 ] || die "no active project '$SLUG' in $PROJECTS (looked for YYYY-MM-$SLUG/PLAN.md, not under _archive/): scaffold it first"
+  [ ${#plans[@]} -eq 1 ] || die "several active projects match '$SLUG', cannot tell which to commit: ${plans[*]}"
+  PLAN="${plans[0]}"; DIRNAME="$(basename "$(dirname "$PLAN")")"
+  paths=("$PLAN" "$README")
+  for p in ${WITH[@]+"${WITH[@]}"}; do
+    [ -e "$p" ] || die "--with: $p does not exist: nothing staged"
+    paths+=("$(cd "$(dirname -- "$p")" && pwd -P)/$(basename -- "$p")")
+  done
+  if git -C "$PROJECTS" check-ignore -q .; then
+    echo "not committed: the projects folder is gitignored here, so the PLAN stays local"; exit 0
+  fi
+  # The README may hold only this project's row as an uncommitted edit: the committed README with the
+  # row added must equal the working file, byte for byte. An untracked README (written by the bootstrap) is
+  # new in full, so there is nothing to compare.
+  if git -C "$PROJECTS" cat-file -e HEAD:./README.md 2>/dev/null; then
+    row="$(grep -F -m1 -- "| [${DIRNAME}](${DIRNAME}/PLAN.md) | active | " "$README" || true)"
+    [ -n "$row" ] || die "$README has no row for $DIRNAME: re-run the scaffold's README step before committing. Nothing was staged or committed."
+    # awk -v reads backslash escapes, as it did when the scaffold wrote the row: undo that for the copy
+    if ! cmp -s "$README" <(git -C "$PROJECTS" show HEAD:./README.md | readme_with_row "${row//\\/\\\\}"); then
+      die "$README holds uncommitted changes other than the row for $DIRNAME: commit or stash the other edits first, then run --commit again. Nothing was staged or committed."
+    fi
+  fi
+  git -C "$PROJECTS" add -- "${paths[@]}" || die "could not stage the stub's files: nothing was committed"
+  if ! out="$(git -C "$PROJECTS" commit -m "$SUBJECT" -- "${paths[@]}" 2>&1)"; then
+    printf '%s\n' "$out"; die "the commit was refused (a hook, most likely): nothing was committed"
+  fi
+  echo "committed as $(git -C "$PROJECTS" rev-parse --short HEAD) on $(git -C "$PROJECTS" rev-parse --abbrev-ref HEAD)"
+  exit 0
+fi
 
 # Collision check — active and archived, any month prefix. Atomic guard against
 # the "scaffold over an existing slug" failure mode, run before anything is
@@ -188,30 +269,12 @@ sed -i \
   -e "s|^last-updated: .*|last-updated: ${TODAY}|" \
   "$PLAN"
 
-# Append the README active-projects row to the "## Active projects" section: after
-# its last table row, dropping a placeholder that says there are none (a
-# `_None active._` line, or a row whose first cell is `—`/`-`), and creating the
-# table when the section has none. The section ends at the next `## ` heading, so
-# the row can never land in a later table (e.g. Archived). Lines inside a fenced code block are
-# copied through untouched: a heading-like line there ends no section and starts none.
+# Append the README active-projects row (readme_with_row above holds the rule).
 ROW="| [${DIRNAME}](${DIRNAME}/PLAN.md) | active | ${GOAL} |"
 tmp="$(mktemp)"
-awk -v row="$ROW" "$MD_LIB"'
-  function add() { if (!seen) { print "| Project | Status | Goal |"; print "|---|---|---|" } print row; done=1 }
-  md_skip($0, 0)                                   { print; next }
-  /^## Active projects/                            { active=1; print; next }
-  active && /^## /                                 { if (!done) { add(); print "" } active=0; print; next }
-  active && /^_[^_].*_[[:space:]]*$/ && !seen      { skipblank=1; next }
-  skipblank && /^[[:space:]]*$/                    { skipblank=0; next }
-                                                   { skipblank=0 }
-  active && /^\|[[:space:]]*(—|–|-)[[:space:]]*\|/ { next }
-  active && /^\|/                                  { seen=1; print; next }
-  active && seen && !done                          { add(); active=0; print; next }
-  { print }
-  END { if (active && !done) add() }
-' "$README" > "$tmp"
+readme_with_row "$ROW" < "$README" > "$tmp"
 mv "$tmp" "$README"
 
 printf 'Scaffolded %s\n' "$TARGET/PLAN.md"
 printf 'Indexed in %s\n' "$README"
-printf 'Next (the skill): commit this stub where the projects folder is committed, then write the Charter, Status, kickoff and first log line into PLAN.md.\n'
+printf 'Next (the skill): commit this stub with --commit %s --subject "<subject>" where the projects folder is committed, then write the Charter, Status, kickoff and first log line into PLAN.md.\n' "$SLUG"

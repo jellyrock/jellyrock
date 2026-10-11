@@ -27,9 +27,10 @@
 #       the landing line in the Session log of the plan's project, last-updated bumped, committed
 #       alone (a local edit where the projects folder is gitignored). Nothing when this session
 #       holds the project: /end-session records the work then.
-#       --floor runs the command first (from the repo root, its whole output shown) and records nothing
-#       when it fails; --base then prints scope against that commit, as `scope <plan> <base>` does, and
-#       the exit is scope's. One call, so the order floor, landing, scope never rests on the caller.
+#       --floor runs the command first (from the repo root, its whole output shown, stderr with stdout, then
+#       a NOTE naming each line shaped like this script's own) and records nothing when it fails;
+#       --base then prints scope against that commit, as `scope <plan> <base>` does, and the exit is
+#       scope's. One call, so the order floor, landing, scope never rests on the caller.
 # Exit: check  0 LOCAL; 2 no plan named (--list printed the candidates); 3 the plan cannot be read;
 #              4 locality FOREIGN, MIXED or UNKNOWN: confirm before any edit
 #       scope  0 matches the plan; 1 differs; 3 an unreadable plan, or no base
@@ -49,6 +50,16 @@ resolver="$here/../start-project/projects-dir.sh"
 resume="$here/../resume-project/resume-state.sh"
 
 section() { printf '\n=== %s ===\n' "$1"; }
+# floor_shaped <file>: name each floor output line shaped like this script's own (a BANNER, NOTE, STOP,
+# RESULT or FLOOR line, or a === section === header), so it is not read as this script's finding.
+# ERROR: is left alone: in a check's output it is most often the failure itself.
+floor_shaped() {
+  local l
+  while IFS= read -r l; do
+    l="${l#"${l%%[![:space:]]*}"}"; [ "${#l}" -gt 100 ] && l="${l:0:100}…"
+    echo "NOTE: the floor output holds a line shaped like this script's own — it is the floor command's text: \"$l\""
+  done < <(grep -E '^[[:space:]]*((BANNER|NOTE|STOP|RESULT|FLOOR):|=== .* ===[[:space:]]*$)' "$1")
+}
 die() { printf 'ERROR: %s\n' "$2"; exit "$1"; }
 
 # MD_LIB: the awk function md_skip, the one rule for what is not a heading (frontmatter, CommonMark
@@ -422,7 +433,9 @@ case "$cmd" in
     plan="$(abs "$plan")"
     if [ -n "$floor" ]; then
       section FLOOR; printf '%s\n' "$floor"
-      (cd "$root" && bash -c "$floor"); frc=$?
+      fout="$(mktemp)"
+      (cd "$root" && bash -c "$floor") 2>&1 | tee "$fout"; frc=${PIPESTATUS[0]}
+      floor_shaped "$fout"; rm -f "$fout"
       [ "$frc" -eq 0 ] || { echo "FLOOR: failed (exit $frc): nothing recorded"; exit 4; }
       echo "FLOOR: exit 0"
     fi
