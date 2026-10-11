@@ -176,7 +176,7 @@ The button row (node id `buttons`, `m.buttonGrp` in code) is built from the item
 | Button | When |
 |---|---|
 | **Play** | Every playable item. On a `Series`, `Season`, `BoxSet`, `MusicArtist`, `MusicAlbum` or `Playlist` it plays them all. |
-| **Resume** | Before **Play**, and focused, when the item has progress. On a Series it plays the next-up episode. On Jellyfin 12.0+ an item with several versions resumes the version picked in the Video menu ([`playback.md`](playback.md#alternate-versions-and-resume--sourceutilsversionresumebs)). |
+| **Resume** | Before **Play**, and focused, when the item has progress. On a Series it plays the next-up episode. On Jellyfin 12.0+ an item with several versions resumes the version picked in the Video menu ([`playback.md`](playback.md#alternate-versions-and-resume)). |
 | **Shuffle** | `Series`, `Season`, `BoxSet`, `MusicArtist`, `MusicAlbum`, `Playlist` and `PhotoAlbum` |
 | **Trailer** | When the server has local trailers for the item (`checkTrailerAvailability`) |
 | **Watched**, **Favorite** | Toggles |
@@ -187,7 +187,7 @@ The row holds only what fits before the logo, 8 buttons ([`buttonOverflow.bs`](.
 
 ### Track menus, extras and subtitles
 
-- **`TrackDropdown` menus** (`trackCluster`): Video, Audio and Subtitle, side by side. Track titles go through the `languages.bs` resolver ([`translations.md`](translations.md#track-language-name-resolution)). A menu with one choice shows as text that cannot take focus, and the Video menu is hidden for audio and for items with no `MediaSources`. It offers every version, whatever its `VideoType`. Version labels, and the `· In progress` mark on the version being resumed (12.0+), come from `versionLabels` ([`playback.md`](playback.md#version-labels--sourceutilsversionlabelsbs)). On 12.0+ the Video menu's choice can change after the screen draws: the first pick follows the server's order, then runs again as each version's position arrives, until the user picks one.
+- **`TrackDropdown` menus** (`trackCluster`): Video, Audio and Subtitle, side by side. Track titles go through the `languages.bs` resolver ([`translations.md`](translations.md#track-language-name-resolution)). A menu with one choice shows as text that cannot take focus, and the Video menu is hidden for audio and for items with no `MediaSources`. It offers every version, whatever its `VideoType`. Version labels, and the `· In progress` mark on the version being resumed (12.0+), come from `versionLabels` ([`playback.md`](playback.md#version-labels)). On 12.0+ the Video menu's choice can change after the screen draws: the first pick follows the server's order, then runs again as each version's position arrives, until the user picks one.
 - **Extras** (`extrasGrid`), shown by pressing **Down**: rows of related items, which depend on the item's type (`components/extras/ExtrasRowList.bs`, loaded by `LoadExtrasRowsTask`).
 - **Manage Subtitles** opens `SubtitlePanel` (#750) on a Movie or Episode the server lets this user search. It slides up where the extras pane is (only one shows at a time), owns its API calls, focus and keys, and works on the selected version. It reports only `subtitlesChanged`, and `ItemDetails` then fetches the item again, because adding or deleting a subtitle renumbers the stream indexes the track menus hold.
 

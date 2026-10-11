@@ -219,7 +219,7 @@ item-grid load done - items 8 genreFetches 8 task 1060 wait 827 emit 211
 
 - **`handoff`** is the part of `emit` spent writing `status` and `content`, the crossing that carries the page to the view, so `emit − handoff` is building the nodes. Older lines lack it and still parse.
 - **`genreFetches`** says which shape ran. A plain grid load is one query and a transform loop (`genreFetches 0`). A **Genres** load is one query plus one fetch per genre, so the genre count is what makes it network-bound. To reach that view, seed `display.<libraryId>.landing` to `Genres` (`seedLibraryLanding`).
-- **On a 12.0 server, a page with alternate versions also pays a display-progress lookup** (up to two requests, once per run; [`playback.md`](../architecture/playback.md#what-a-tile-shows--versiondisplaycorrectdisplayprogress)). It counts as `wait`.
+- **On a 12.0 server, a page with alternate versions also pays a display-progress lookup** (up to two requests, once per run; [`playback.md`](../architecture/playback.md#what-a-tile-shows)). It counts as `wait`.
 
 The genre loop measured mostly `wait` (78% on 2026-08-04), the opposite of Home, so its fix was overlapping the fetches with `apiPipeline` rather than cutting `emit`. The before and after figures are in [`tech-debt.md`](../architecture/tech-debt.md) and the commit of #810.
 

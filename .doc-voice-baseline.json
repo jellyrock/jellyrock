@@ -325,7 +325,7 @@
     "em-dash": 7
   },
   ".github/workflows/_lint-floor-system.yml": {
-    "em-dash": 8
+    "em-dash": 7
   },
   ".github/workflows/_lint-js.yml": {
     "em-dash": 1
@@ -1297,12 +1297,6 @@
     "filler": 27,
     "latin-abbrev": 9,
     "prose-arrow": 10
-  },
-  "docs/architecture/playback.md": {
-    "em-dash": 181,
-    "filler": 18,
-    "latin-abbrev": 4,
-    "prose-arrow": 32
   },
   "docs/architecture/remote-control-longpoll-contract.md": {
     "caps-emphasis": 6

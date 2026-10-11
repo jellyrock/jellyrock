@@ -13,7 +13,7 @@ Video playback subsystem. See [docs/architecture/playback.md](../../docs/archite
 ## OSD
 
 - Single `OSD` instance per `VideoPlayerView`. Auto-hides after `5s` of inactivity (`inactiveTimeout="5"` on the instance in `VideoPlayerView.xml`).
-- Live TV / DVR recording mode adapts the OSD: `goToLive` button, hybrid behind-live math (in `source/utils/liveTv.bs`), wall-clock fallback when stream metadata is missing. See [docs/architecture/playback.md](../../docs/architecture/playback.md#live-tv--dvr-recording-mode).
+- Live TV / DVR recording mode adapts the OSD: `goToLive` button, hybrid behind-live math (in `source/utils/liveTv.bs`), wall-clock fallback when stream metadata is missing. See [docs/architecture/playback.md](../../docs/architecture/playback.md#live-tv-mode).
 
 ## Transcoding
 
