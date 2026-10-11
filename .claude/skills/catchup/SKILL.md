@@ -25,7 +25,7 @@ audit-span: read-only
 **Outputs.**
 
 - A single structured briefing rendered to conversation, with any urgent banners (failures, drift, pressure, queued attention) at the top and the routine session-state block below.
-- A short `Suggested next` line at the end naming exactly one concrete move, from the first line of the reader's ranked list, with the sibling skill that's the right next step (e.g., "investigate the failed pipeline via this repo's triage skill" or "pick up the project via `/resume-project <slug>`"). Choosing among options is `/focus`'s job: when that line is a pinned followup or a judgment slot, the one move is `/focus`.
+- A short `Suggested next` line at the end naming exactly one concrete move, from the first line of the reader's ranked list, with the sibling skill that's the right next step (e.g., "investigate the failed pipeline via this repo's triage skill" or "pick up the project via `/resume-project {{slug}}`"). Choosing among options is `/focus`'s job: when that line is a pinned followup or a judgment slot, the one move is `/focus`.
 - A `Captures for /log` tail listing anything journal-worthy that surfaced during the read but wasn't already captured, using the types `/log` records (for example, work noticed in passing, or recent commits that imply an unrecorded choice). Omit the tail if nothing surfaced; do not pad.
 
 **Success criteria.**
@@ -51,7 +51,7 @@ audit-span: read-only
 
 - You're mid-task and have a specific question — answer the question directly; don't dump a global briefing.
 - You're resuming after a coffee break, not a real gap. State hasn't moved; the briefing is noise.
-- You want one project's context in depth — that's `/resume-project <slug>`; `/catchup` is breadth across all of them.
+- You want one project's context in depth — that's `/resume-project {{slug}}`; `/catchup` is breadth across all of them.
 - You want the next move picked and routed, not just the state — that's `/focus`; `/catchup` briefs, it doesn't decide.
 - The user is asking "what shipped this week?" or any other periodic-digest question. That's a different skill (a weekly / digest companion, if this repo keeps one); this one is the daily entry point, not a retrospective.
 - The user is asking about one specific area or service in depth. That's a scoped ramp / deep-dive skill, not the global briefing; /catchup's value is breadth across all surfaces in one read.
@@ -71,7 +71,7 @@ Run the reader. Its exit code routes the skill:
 | `2` | no journal, or not a git repository (its `ERROR` lines say which) | Say so and stop; a missing journal is bootstrapped first (`/log` writes it). |
 | anything else | the reader itself failed | Show what it printed and stop: the fix is the reader, never a read by hand in its place. |
 
-Run it once and read what it printed. Never re-run its calls by hand, and never re-run the reader: if the Bash tool moves the call to the background, wait for it and read its output file. Don't read the journal file: followups are counted, not read (one entry is `bash .claude/skills/log/journal.sh show <fid>`, when needed), and every other journal section is already in the output.
+Run it once and read what it printed. Never re-run its calls by hand, and never re-run the reader: if the Bash tool moves the call to the background, wait for it and read its output file. Don't read the journal file: followups are counted, not read (one entry is `bash .claude/skills/log/journal.sh show {{fid}}`, when needed), and every other journal section is already in the output.
 
 ### Step 2 — Banners
 
@@ -101,13 +101,13 @@ The briefing is single-pass and read-only. If a banner fires, name what fired an
 
 Exactly one move, from the first line of the CANDIDATES block:
 
-- **`ERROR`** → fix what it names (followup counts n/a → the problems `journal.sh check` lists, or `journal.sh migrate` for an old journal; an own reader's failure or a `catchup.conf` problem → that reader or that file).
-- **`BANNER`** → its route, the line's last field (`<slug>` in it is the project's folder name without the `YYYY-MM-` prefix); an empty route → `/focus`.
+- **`ERROR`** → fix what it names: each line says its fix.
+- **`BANNER`** → its route, the line's last field (`{{slug}}` in it is the project's folder name without the `YYYY-MM-` prefix); an empty route → `/focus`.
 - **`PIN`** → `/focus`: it reads the followup and routes it.
-- **`SLOT 3`** → an item in the journal's in-flight section that no project tracks: resume or check on it. When every item there is a project's, take the next line instead.
+- **`SLOT 3`** → an item in the journal's in-flight section that no project tracks: resume or check on it. A line a `NOTE` names as journal text is not an item here: the `journal-shaped` FIX line already says to reword it. When every item there is a project's or so named, take the next line instead.
 - **`SLOT 5-6`** or **`SLOT 7`** → `/focus`: what comes next is judgment.
 
-Then, if anything journal-worthy surfaced during the read but wasn't already captured (work the user mentioned in passing, a commit that implies an unrecorded choice), append a `Captures for /log` tail with one `- <type>: <title> — <body>` bullet per item, where `<type>` is one of [this repo's capture types](../../../AGENTS.md#capture-types). The user invokes `/log` for each; `/catchup` itself never writes to journals.
+Then, if anything journal-worthy surfaced during the read but wasn't already captured (work the user mentioned in passing, a commit that implies an unrecorded choice), append a `Captures for /log` tail with one `- {{type}}: {{title}} — {{body}}` bullet per item, where `{{type}}` is one of [this repo's capture types](../../../AGENTS.md#capture-types). The user invokes `/log` for each; `/catchup` itself never writes to journals.
 
 ## Sub-agent invocation
 

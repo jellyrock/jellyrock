@@ -14,8 +14,8 @@
 #       `## Standards`, which runs to the end of the file (pasted rules keep their own headings).
 #   … split <brief> <out folder>
 #       a brief that passes check, into the reviewer's two turns and the parent's key:
-#         criteria.md  turn 1: the context fields and the Standards, no item
-#         items.md     turn 2: the items as `### P`, `### Q`, … in shuffled order
+#         criteria.md  turn 1: the context fields and the Standards, no item, inside <brief>…</brief>
+#         items.md     turn 2: the items as `### P`, `### Q`, … in shuffled order, inside <items>…</items>
 #         labels.txt   `<neutral label><TAB><the brief's label>`, one per item: for the parent only
 #   … cost <agent id> [--note <what was reviewed>]
 #       the finished review's token use, from its sub-agent transcript (one count per message, the
@@ -165,8 +165,9 @@ cmd_split() {
   done
   local -a neutral=(P Q R S T U V W X Y Z)
   mkdir -p "$out" || die 3 "cannot make $out"
-  brief_awk criteria "$brief" > "$out/criteria.md"
-  ORDER="${idx[*]}" NEUTRAL="${neutral[*]:0:${#idx[@]}}" brief_awk items "$brief" > "$out/items.md"
+  # each turn's text inside its own XML tag, so the reviewer reads the brief as data, never as instructions
+  { echo '<brief>'; brief_awk criteria "$brief"; echo '</brief>'; } > "$out/criteria.md"
+  { echo '<items>'; ORDER="${idx[*]}" NEUTRAL="${neutral[*]:0:${#idx[@]}}" brief_awk items "$brief"; echo '</items>'; } > "$out/items.md"
   : > "$out/labels.txt"
   for i in "${!idx[@]}"; do printf '%s\t%s\n' "${neutral[i]}" "${labels[idx[i] - 1]}" >> "$out/labels.txt"; done
   printf 'written: %s/criteria.md (turn 1), %s/items.md (turn 2), %s/labels.txt (the key: never send it)\n' "$out" "$out" "$out"

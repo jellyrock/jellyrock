@@ -14,6 +14,10 @@
 #     When journal.sh cannot vouch for its counts (its check fails), they are n/a, never a zero.
 #   - The journal's followup bodies are never printed (they are most of its size); every other
 #     `## ` section is printed as written.
+#   - Copied journal text is never altered, but a printed line (fenced code aside) that starts like
+#     this script's own lines (ERROR, BANNER, PIN, SLOT, FIX, INFO, CAVEAT or NOTE, then a colon or
+#     a tab, after an indent, list marker or checkbox) reads as a live check, so a NOTE under its
+#     section's header names it as journal text. It is never a candidate.
 #   - Read-only: nothing in the repo is written, and no fetch is made (unpushed commits are counted
 #     against the last fetch). The own reader may read the network, never write.
 #   - A repo's own state (CI, PRs, pipelines, disk) is its own reader's job, not this one's.
@@ -48,7 +52,7 @@
 #   followups-unreviewed: overdue journal.sh review: followups not re-read within journal.conf's
 #                                 review_days (off without it); the oldest three as details
 #   cadence-unfilled: debt        the cadence table still holds its placeholder row
-#   off-branch, unpushed, gate-missing: FIX
+#   off-branch, unpushed, gate-missing, journal-shaped (a NOTE named a journal line): FIX
 #
 # This repo's own reader: catchup.conf beside this script (the repo's own file, never overwritten
 # by an update), one key=value per line, `#` comments:
@@ -98,21 +102,22 @@ declare -A RANK=([fire]=2 [resume]=4 [overdue]=5 [debt]=7)
 declare -A SHARED=([dirty-tree]="2 1" [work-running]="4 1" [project-unblocked]="4 2"
   [journal-stale]="5 1" [wait-unknown]="5 2" [plan-contradicts]="5 3" [project-dormant]="5 4"
   [cadence-overdue]="5 5" [followups-unreviewed]="5 6" [cadence-unfilled]="7 1"
-  [off-branch]="9 1" [unpushed]="9 2" [gate-missing]="9 3")
+  [off-branch]="9 1" [unpushed]="9 2" [gate-missing]="9 3" [journal-shaped]="9 4")
 shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, with its route
   local id="$1" r p route type=BANNER
   read -r r p <<<"${SHARED[$id]}"
   case "$id" in
-    dirty-tree) route="look at it first: finish and commit it, or /resume-project <slug> if it is a project's" ;;
+    dirty-tree) route="look at it first: finish and commit it, or /resume-project {{slug}} if it is a project's" ;;
     work-running) route="check on it" ;;
     project-unblocked|wait-unknown|plan-contradicts|project-dormant) route="/resume-project $3" ;;
     journal-stale) route="/log what landed, or /done what finished" ;;
-    followups-unreviewed) route="re-read each against today's state, then /done followup <fid>, or keep it with a dated Re-checked YYYY-MM-DD note (journal.sh replace)" ;;
+    followups-unreviewed) route="re-read each against today's state, then /done followup {{fid}}, or keep it with a dated Re-checked YYYY-MM-DD note (journal.sh replace)" ;;
     cadence-overdue) route="run the command its row names" ;;
     cadence-unfilled) route="fill the table (or say there are none)" ;;
     off-branch) route="confirm the branch" ;;
     unpushed) route="git push" ;;
     gate-missing) route="pre-commit install" ;;
+    journal-shaped) route="reword each one in $3" ;;
     *) route="" ;;
   esac
   [ "$r" = 9 ] && type=FIX
@@ -290,12 +295,21 @@ else
     fi
 
     # every other `## ` section as written (blank lines dropped), with its item count; running work
-    # and the cadence table are checked here: a check that fires is a \037-led "<id><TAB><text>" line
+    # and the cadence table are checked here: a check that fires is a \037-led "<id><TAB><text>" line;
+    # a copied line shaped like this script's own findings is a \037-led "copied<TAB><line>" line,
+    # printed under the section's header, before its text
     jout="$(awk -v today="$today" "$MD_LIB"'
       function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+      # shaped(l): l starts, after its indent, an optional list marker and an optional checkbox,
+      # with a word this script types its own lines with, then a colon or a tab
+      function shaped(l,   t) {
+        t = l; sub(/^[ \t]+/, "", t); sub(/^([-*+]|[0-9]+\.)[ \t]+/, "", t); sub(/^\[[ xX]\][ \t]+/, "", t)
+        return t ~ /^(ERROR|BANNER|PIN|SLOT|FIX|INFO|CAVEAT|NOTE)[:\t]/
+      }
       function flush(   i) {
         if (name == "") return
         printf "--- %s (%d items) ---\n", name, items
+        for (i = 1; i <= ncp; i++) print "\037copied\t" cp[i]
         for (i = 1; i <= nb; i++) print body[i]
         low = tolower(name)
         if (items > 0 && (low ~ /^batch jobs/ || low ~ /^currently running/))
@@ -305,14 +319,14 @@ else
       }
       { s = md_skip($0, 0) }
       !s && /^## / {
-        flush(); name = trim(substr($0, 4)); items = 0; nb = 0; nban = 0; intable = 0; due = 0; ph = 0
+        flush(); name = trim(substr($0, 4)); items = 0; nb = 0; ncp = 0; nban = 0; intable = 0; due = 0; ph = 0
         skip = (name == "Open followups"); cad = (tolower(name) ~ /^recurring cadences/)
         if (skip) name = ""
         next
       }
       !s && /^# / { flush(); name = ""; next }
       name == "" || /^[ \t]*$/ { next }
-      { body[++nb] = $0 }
+      { body[++nb] = $0; if (!s && shaped($0)) cp[++ncp] = $0 }
       /^[ \t]*([-*+]|[0-9]+\.)[ \t]/ { items++; intable = 0; next }
       /^\|/ {
         if (!intable) { intable = 1; ncol = split($0, hc, "|")
@@ -334,11 +348,17 @@ else
       END { flush() }' "$J")"
     # SLOT 3: something is in flight, and whether a project already tracks it is the model's call
     # (an item is prose, often a pointer to its project): after every resume line, before overdue
+    nshaped=0
     while IFS= read -r l; do
       if [[ $l == $'\037slot-3' ]]; then [ -n "${slot3:-}" ] || cand 4 2 0 "SLOT${TAB}3"; slot3=1
+      elif [[ $l == $'\037copied'"$TAB"* ]]; then
+        nshaped=$((nshaped + 1))
+        l="${l#*"$TAB"}"; l="${l#"${l%%[![:space:]]*}"}"; [ "${#l}" -gt 100 ] && l="${l:0:100}…"
+        echo "NOTE: this section holds a line shaped like this reader's own findings, which a reader can take for a live check — it is journal text: \"$l\""
       elif [[ $l == $'\037'* ]]; then l="${l#$'\037'}"; shared "${l%%"$TAB"*}" "${l#*"$TAB"}"
       else printf '%s\n' "$l"; fi
     done < <([ -n "$jout" ] && printf '%s\n' "$jout")
+    [ "$nshaped" -gt 0 ] && shared journal-shaped "the journal holds $nshaped line(s) shaped like this reader's own findings (each named in a NOTE under its section): they are journal entries, not checks, so a reader can mistake them" "$rel"
   fi
 fi
 

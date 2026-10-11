@@ -4,7 +4,9 @@
 # session's claim on it, prints the PLAN sections a resume needs in full (Status, the open
 # punch-list, the kickoff, the last session-log entry), resolves what the project waits on, and runs
 # the continuity checks and the PLAN check, so the model orients instead of gathering. Sections are
-# labeled `=== NAME ===` and read top to bottom. The same PLAN check, run by /end-session before it
+# labeled `=== NAME ===` and read top to bottom; text copied from the PLAN, git or the operator's
+# words sits inside an XML tag (`<kickoff>`…`</kickoff>`), so it reads as data, never as this
+# script's own BANNER, NOTE or ERROR lines, which stay outside every tag. The same PLAN check, run by /end-session before it
 # commits (--check), is the gate that keeps a kickoff from contradicting its own Status.
 # Shared code: maintained upstream and updated in place. A local edit is not overwritten
 # silently — it is reviewed (kept, or taken upstream) at the next update.
@@ -22,8 +24,16 @@
 #   - Heading-like lines inside the frontmatter or a fenced code block are not headings (CommonMark
 #     fences; the same rule as /end-session's replace-section.sh).
 #   - Status and the kickoff are printed word for word: they are the prompt, not a summary.
+#   - Copied PLAN text is never altered, but a printed line (Status, the open punch-list, the
+#     kickoff, the last session-log entry; fenced code aside) that starts like this script's own
+#     findings (BANNER:, NOTE:, ERROR:, FAIL:, REVIEW:, WARN:, after an indent, list marker or
+#     checkbox) is itself a PLAN check finding: it reads as a live check, so it is named outside
+#     the tags, and --check fails it for the writer to reword.
 #   - It writes only its claim, outside the repo (under $XDG_STATE_HOME/project-claims): no project
-#     state, no commits. /end-session owns project state.
+#     state, no commits. /end-session owns project state. A resume fetches the branch's remote
+#     first (remote-tracking refs only, under a timeout, RESUME_FETCH_SECONDS, default 10), unlike
+#     /catchup and /sonnet's readers: it loads the PLAN a session works from, and a checkout behind
+#     its remote loads an old one. No timeout command, or a failed fetch: a NOTE, then the last fetch.
 #
 # Usage (from inside the repo):
 #   bash .claude/skills/resume-project/resume-state.sh [<slug> [<starting point>…]]
@@ -83,10 +93,32 @@ plan_section() {
     inside { print }' "$1"
 }
 
-# print_section <file> <name> <label>: the section in full, or an ERROR line naming it
+# punch_open_items <Punch-list section on stdin> -> what the resume prints of it: each open item,
+# under its ### heading
+punch_open_items() {
+  awk "$MD_LIB"'{ s = md_skip($0, 0) } !s && /^### / { h=$0; next } !s && /^- \[ \]/ { if (h!="") { print h; h="" } print }'
+}
+
+# last_log_entry <Session log section on stdin> -> its last entry, with the indented lines after it
+last_log_entry() {
+  awk "$MD_LIB"'{ s = md_skip($0, 0) } s { if (/^[ \t]+[^ \t]/ && e!="") e=e "\n" $0; next } /^- / { e=$0; next } /^[ \t]+[^ \t]/ && e!="" { e=e "\n" $0; next } END { if (e!="") print e }'
+}
+
+# shaped_lines <text on stdin> -> each line (outside fenced code) that starts, after its indent, an
+# optional list marker and an optional checkbox, with a prefix this script's own findings use
+shaped_lines() {
+  awk "$MD_LIB"'{ s = md_skip($0, 0) } s { next }
+    { t = $0; sub(/^[ \t]+/, "", t); sub(/^([-*+]|[0-9]+\.)[ \t]+/, "", t); sub(/^\[[ xX]\][ \t]+/, "", t)
+      if (t ~ /^(BANNER|NOTE|ERROR|FAIL|REVIEW|WARN):/) print }'
+}
+
+# tagged <tag> <text>: the text between a <tag> line and a </tag> line
+tagged() { printf '<%s>\n%s\n</%s>\n' "$1" "$2" "$1"; }
+
+# print_section <file> <name> <tag>: the section in full inside its tag, or an ERROR line naming it
 print_section() {
   local body; body="$(plan_section "$1" "$2")"
-  if [ -n "$body" ]; then printf '%s\n' "$body"
+  if [ -n "$body" ]; then tagged "$3" "$body"
   else echo "ERROR: no \"$2\" section — renamed? read it from the PLAN by its heading"; fi
 }
 
@@ -143,18 +175,28 @@ plan_check() {
   note() { out+=("NOTE: $1"); }
   # The writer's gate runs each Verify first command from the repo and compares its one printed
   # line with the backticked value: a value written before its command ran is caught here, not at
-  # the next resume. A resume never runs one.
+  # the next resume. A resume never runs one. The value is a code span: a value whose text holds a
+  # backtick is written in double backticks.
   verify_first() {
     local line="$1" cmd val got rc lines t="${RESUME_VERIFY_TIMEOUT:-60}"
-    [[ "$line" =~ ^-\ \`([^\`]+)\`\ →\ \`([^\`]*)\` ]] \
-      || { fail "a Verify first value is not in backticks (write \`command\` → \`what it printed\`): $line"; return; }
-    cmd="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
+    # A value holding a backtick is a double-backtick code span (CommonMark): it ends at the first
+    # run of exactly two, and one space is stripped from each end when both ends have one.
+    local dbl=0 hint=""
+    if [[ "$line" =~ ^-\ \`([^\`]+)\`\ →\ \`\`(([^\`]|\`[^\`])*)\`\`([^\`]|$) ]]; then
+      dbl=1; val="${BASH_REMATCH[2]}"
+      [[ "$val" == " "*" " && "$val" == *[!\ ]* ]] && { val="${val# }"; val="${val% }"; }
+    elif [[ "$line" =~ ^-\ \`([^\`]+)\`\ →\ \`([^\`]*)\` ]]; then val="${BASH_REMATCH[2]}"
+    else fail "a Verify first value is not in backticks (write \`command\` → \`what it printed\`): $line"; return; fi
+    cmd="${BASH_REMATCH[1]}"
     if command -v timeout >/dev/null; then got="$(timeout "$t" bash -c "$cmd" 2>&1)"; rc=$?
     else got="$(bash -c "$cmd" 2>&1)"; rc=$?; fi
     [ "$rc" = 124 ] && { fail "Verify first: \`$cmd\` did not finish in ${t}s"; return; }
     lines="$(grep -c '' <<<"$got")"; got="${got%"${got##*[![:space:]]}"}"
     if [ "$lines" -gt 1 ]; then fail "Verify first: \`$cmd\` printed $lines lines: narrow it to the one line the value is"
-    elif [ "$got" != "$val" ]; then fail "Verify first: \`$cmd\` printed \`$got\`, the kickoff says \`$val\`"; fi
+    elif [ "$got" != "$val" ]; then
+      [ "$dbl" = 0 ] && [[ "$got" == *\`* ]] && hint="; the output holds a backtick: write the value in double backticks (\`\` … \`\`)"
+      fail "Verify first: \`$cmd\` printed \`$got\`, the kickoff says \`$val\`$hint"
+    fi
   }
   st="$(frontmatter "$plan" status)"
   if [ "$st" = completed ] || [ "$st" = abandoned ]; then
@@ -194,6 +236,21 @@ plan_check() {
     elif [ -z "$sa" ]; then note "no phase id at the start of the kickoff's Starts at: not compared with Status"
     elif [ -n "$cur" ] && [ "$sa" != "$cur" ]; then fail "the kickoff starts at $sa, but Status's Current phase is $cur"; fi
   fi
+  # A resume prints these sections word for word, so a PLAN line shaped like this script's own
+  # findings (BANNER:, NOTE:, …) reads as a live check. Name each one here, outside the tags.
+  local lbl sec l
+  for lbl in "Status" "the open punch-list" "the kickoff" "the last session-log entry"; do
+    case "$lbl" in
+      Status) sec="$status" ;;
+      "the open punch-list") sec="$(plan_section "$plan" "Punch-list" | punch_open_items)" ;;
+      "the kickoff") sec="$kick" ;;
+      *) sec="$(plan_section "$plan" "Session log" | last_log_entry)" ;;
+    esac
+    while IFS= read -r l; do
+      l="${l#"${l%%[![:space:]]*}"}"; [ "${#l}" -gt 100 ] && l="${l:0:100}…"
+      fail "$lbl holds a line shaped like this script's own findings, which a reader can take for a live check — it is PLAN text: \"$l\""
+    done < <(shaped_lines <<<"$sec")
+  done
   if [ "$how" = check ]; then
     rel="$(git -C "$(dirname "$plan")" ls-files --full-name -- "$(basename "$plan")" 2>/dev/null)"
     if [ -n "$rel" ] && prev="$(git -C "$(dirname "$plan")" show "HEAD:$rel" 2>/dev/null)"; then
@@ -246,7 +303,7 @@ waits_report() {
     esac
   done < <(tr ',' '\n' <<<"$v")
   [ "$total" -gt 0 ] && [ "$met" = "$total" ] && echo "BANNER: every wait is met — remove waits-on at the next /end-session"
-  [ "$unknown" -gt 0 ] && echo "BANNER: $unknown wait(s) name nothing found here — fix waits-on"
+  [ "$unknown" -gt 0 ] && echo "BANNER: $unknown wait(s) name nothing found here — fix waits-on at the next /end-session"
   return 0
 }
 
@@ -351,10 +408,12 @@ if [ -n "$slug" ]; then
          fi
        fi
        echo "ERROR: no project matches '$slug'"
-       for p in "$dir"/_archive/*-"$slug"/PLAN.md; do
-         [ -e "$p" ] && echo "archived: $(basename "$(dirname "$p")") (closed; not resumable)"; done
+       arch_hit=0; for p in "$dir"/_archive/*-"$slug"/PLAN.md; do
+         [ -e "$p" ] && { arch_hit=1; echo "archived: $(basename "$(dirname "$p")") (closed; not resumable)"; }; done
        echo "active projects:"; active_list | sed 's/^/  /'
-       echo "BANNER: '$slug' did not resolve — ask which"; exit 2 ;;
+       # a closed project is not a slug to ask about: a terminal /end-session reads this on purpose
+       if [ "$arch_hit" = 1 ]; then echo "BANNER: '$slug' is closed (archived): nothing to resume"
+       else echo "BANNER: '$slug' did not resolve — ask which"; fi; exit 2 ;;
     *) echo "BANNER: '$slug' matches ${#hits[@]} projects — ask which"
        for p in "${hits[@]}"; do echo "  $(basename "$(dirname "$p")")"; done; exit 2 ;;
   esac
@@ -402,6 +461,17 @@ case "$plan" in
   *) echo "NOTE: the projects folder is outside this repo: a PLAN edit never shows above" ;;
 esac
 if up="$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null)"; then
+  # Fetch first: a checkout behind its remote would load an old PLAN and kickoff with no word of
+  # it. Bounded, never prompting; a fetch that fails or cannot be bounded is said, never a stop.
+  remote="$(git config "branch.$branch.remote" 2>/dev/null)"; secs="${RESUME_FETCH_SECONDS:-10}"
+  if [ "${remote:-.}" = . ]; then :
+  elif ! command -v timeout >/dev/null; then
+    echo "NOTE: no timeout command here: not fetched, so the checks below are as of the last fetch"
+  elif GIT_TERMINAL_PROMPT=0 timeout "$secs" git fetch -q "$remote" >/dev/null 2>&1 </dev/null; then
+    echo "fetched $remote"
+  else echo "NOTE: could not fetch $remote within $secs s: the checks below are as of the last fetch"; fi
+  behind="$(git rev-list --count 'HEAD..@{upstream}' 2>/dev/null)"
+  [ "${behind:-0}" -gt 0 ] && echo "BANNER: $behind commit(s) on $up not in this checkout — pull before trusting this PLAN or running its Verify first commands: both are as of the old checkout"
   unpushed="$(git log --oneline '@{upstream}..HEAD' 2>/dev/null)"
   if [ -n "$unpushed" ]; then
     echo "BANNER: $(wc -l <<<"$unpushed") commit(s) not pushed to $up — a branch cut now carries them"
@@ -489,7 +559,7 @@ section "PLAN — STATUS"
 # past about 15KB it costs every resume more than the rest of the read does.
 sbytes="$(plan_section "$plan" "Status" | wc -c)"
 [ "$sbytes" -gt 15000 ] && echo "BANNER: Status is $((sbytes/1000))KB, which makes every resume expensive — trim it at the next /end-session"
-print_section "$plan" "Status"
+print_section "$plan" "Status" plan_status
 
 section "PLAN — OPEN PUNCH-LIST"
 punch="$(plan_section "$plan" "Punch-list")"
@@ -499,36 +569,37 @@ else
   closed="$(awk "$MD_LIB"'{ s = md_skip($0, 0) } !s && /^- \[[xX]\]/ { n++ } END { print n+0 }' <<<"$punch")"
   echo "$open open / $((open+closed)) total"
   # a ### heading only when an open item follows it
-  awk "$MD_LIB"'{ s = md_skip($0, 0) } !s && /^### / { h=$0; next } !s && /^- \[ \]/ { if (h!="") { print h; h="" } print }' <<<"$punch"
+  items="$(punch_open_items <<<"$punch")"
+  [ -z "$items" ] || tagged punch_list "$items"
 fi
 
 if [ -n "$start" ]; then
   section "START (from the arguments: this session starts here; the kickoff below is context)"
   if [[ "$start" =~ ^(fid:)?[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
     f="${start#fid:}"
-    if [ ! -f "$journal" ]; then echo "NOTE: no journal.sh beside this skill: '$start' is taken as words"; echo "words: $start"
-    elif msg="$(bash "$journal" show "$f" 2>&1)"; then echo "fid: $f"; printf '%s\n' "$msg"
+    if [ ! -f "$journal" ]; then echo "NOTE: no journal.sh beside this skill: '$start' is taken as words"; tagged operator_words "$start"
+    elif msg="$(bash "$journal" show "$f" 2>&1)"; then echo "fid: $f"; tagged followup "$msg"
     elif [[ "$msg" == *"is not open"* ]]; then
       echo "NOTE: followup '$f' is closed: ${msg#*: }"
       c="${msg##* commit }"; c="${c%% *}"; git log -1 --format='  %h %s' "$c" 2>/dev/null
-      echo "words: $start"
-    else echo "NOTE: '$start' is not an open followup: taken as the operator's words"; echo "words: $start"; fi
-  else echo "words: $start"; fi
+      tagged operator_words "$start"
+    else echo "NOTE: '$start' is not an open followup: taken as the operator's words"; tagged operator_words "$start"; fi
+  else tagged operator_words "$start"; fi
 fi
 
 section "PLAN — NEXT-SESSION KICKOFF (word for word: this is the prompt)"
-print_section "$plan" "Next-session kickoff"
+print_section "$plan" "Next-session kickoff" kickoff
 
 section "PLAN — LAST SESSION LOG ENTRY"
 log="$(plan_section "$plan" "Session log")"
 if [ -z "$log" ]; then echo "ERROR: no \"Session log\" section — renamed? read it from the PLAN by its heading"
 else
-  entry="$(awk "$MD_LIB"'{ s = md_skip($0, 0) } s { if (/^[ \t]+[^ \t]/ && e!="") e=e "\n" $0; next } /^- / { e=$0; next } /^[ \t]+[^ \t]/ && e!="" { e=e "\n" $0; next } END { if (e!="") print e }' <<<"$log")"
-  echo "${entry:-NOTE: the session log has no entries yet}"
+  entry="$(last_log_entry <<<"$log")"
+  if [ -n "$entry" ]; then tagged session_log_entry "$entry"; else echo "NOTE: the session log has no entries yet"; fi
 fi
 
 section "RECENT COMMITS"
-git log --oneline -10 2>/dev/null || echo "ERROR: git log failed"
+if commits="$(git log --oneline -10 2>/dev/null)"; then tagged recent_commits "$commits"; else echo "ERROR: git log failed"; fi
 
 section "END"
 echo "PLAN: $plan ($(wc -c <"$plan") bytes). Read any other section by its heading, never the whole file."
