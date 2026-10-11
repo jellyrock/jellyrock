@@ -1952,9 +1952,6 @@
     "filler": 2,
     "prose-arrow": 2
   },
-  "source/CLAUDE.md": {
-    "em-dash": 10
-  },
   "source/GridView/GridPresenterBase.bs": {
     "caps-emphasis": 4,
     "em-dash": 9,
