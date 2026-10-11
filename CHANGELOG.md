@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (music) Keep the playing track when shuffle is switched on again ([#1159](https://github.com/jellyrock/jellyrock/pull/1159))
 - (navigation) Recover from a failed navigation before logging it ([#1157](https://github.com/jellyrock/jellyrock/pull/1157))
 - Stop the sign-in screen flashing back after a deep-link sign-in ([#1156](https://github.com/jellyrock/jellyrock/pull/1156))
 - (locale) Apply the user's language when preferences fail ([#1155](https://github.com/jellyrock/jellyrock/pull/1155))
