@@ -231,3 +231,22 @@ describe('the committed package.json + workflows', () => {
     expect(staleTestCoverage).toEqual([]);
   });
 });
+
+// docs:spec-fingerprints:check is outside the `npm run lint`
+// aggregate (it fetches specs over the network), so the aggregate gate above
+// cannot see it. This pins its CI home on its own.
+describe('the spec-fingerprint drift gate', () => {
+  it('is run by a CI workflow', () => {
+    const scripts = JSON.parse(readFileSync(resolve(REPO_ROOT, 'package.json'), 'utf8')).scripts;
+    const dir = resolve(REPO_ROOT, '.github/workflows');
+    const workflows = readdirSync(dir)
+      .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+      .map((f) => ({ name: f, text: readFileSync(resolve(dir, f), 'utf8') }));
+    const name = 'docs:spec-fingerprints:check';
+    const { missing } = check({
+      scripts: { lint: `npm run ${name}`, [name]: scripts[name] },
+      workflows,
+    });
+    expect(missing.map((m) => m.name)).toEqual([]);
+  });
+});

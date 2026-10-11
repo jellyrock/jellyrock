@@ -15,10 +15,17 @@ name: lint-floor-system
 #     (parses the .bs with the BrighterScript AST). Catches a half-built apiVersion
 #     tier — the YAML and the dispatch twin drifting — without any Roku hardware.
 #
-# All three are offline Node tooling (no build, no network, no hardware), so running
-# them behind one path gate is cheap. Combining them ALSO gives
-# lint:endpoint-availability its only CI home — it otherwise ran only in the local
-# `npm run lint` aggregate.
+# The three lints and the API usage manifest check are offline Node tooling (no
+# build, no network, no hardware), so running them behind one path gate is cheap.
+# Combining them also gives lint:endpoint-availability its only CI home, since it
+# otherwise ran only in the local `npm run lint` aggregate.
+#
+# One step is not offline: docs:spec-fingerprints:check re-derives each committed
+# spec fingerprint from the Jellyfin OpenAPI spec it fetches from api.jellyfin.org.
+# The gate above matches every source/**/*.bs, so reusing it would pay that fetch
+# on most PRs. The step has its own narrower filter (the `detect-fingerprints`
+# step) and only PRs that touch the fingerprints, the generator or the fetch
+# helper run it. It is not in `npm run lint` or pre-push for the same reason.
 
 on:
   workflow_call:
@@ -41,14 +48,19 @@ jobs:
         with:
           pattern: '^source/.*\.bs$|^components/.*\.bs$|^docs/architecture/api-usage-manifest\.json$|^docs/architecture/spec-fingerprints/jellyfin-|^docs/dev/jellyfin-version-boundaries\.yml$|^docs/dev/jellyfin-endpoint-availability\.yml$|^\.api-watch/suppressions\.yml$|^scripts/lint/floor-coverage-check\.js$|^scripts/lint/endpoint-availability-check\.cjs$|^scripts/lint/apiversion-consistency-check\.js$|^scripts/generate/findings-candidates\.js$|^scripts/generate/api-usage-manifest\.js$|^scripts/lib/version-boundaries\.cjs$|^scripts/lib/endpoint-availability\.cjs$'
           force: ${{ inputs.force }}
+      - id: detect-fingerprints
+        uses: ./.github/actions/changed-paths
+        with:
+          pattern: '^docs/architecture/spec-fingerprints/|^scripts/generate/spec-fingerprint\.js$|^scripts/lib/spec-fetch\.cjs$'
+          force: ${{ inputs.force }}
       - name: Setup Node.js
-        if: steps.detect.outputs.relevant == 'true'
+        if: steps.detect.outputs.relevant == 'true' || steps.detect-fingerprints.outputs.relevant == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "lts/*"
           cache: "npm"
       - name: Install dependencies
-        if: steps.detect.outputs.relevant == 'true'
+        if: steps.detect.outputs.relevant == 'true' || steps.detect-fingerprints.outputs.relevant == 'true'
         run: npm ci
       - name: Validate endpoint-availability ledger
         if: steps.detect.outputs.relevant == 'true'
@@ -66,3 +78,8 @@ jobs:
       - name: Check API usage manifest drift
         if: steps.detect.outputs.relevant == 'true'
         run: npm run docs:api-manifest:check
+      # Fetches specs from api.jellyfin.org, so it has its own path filter (see the
+      # header). The fetch lands in the gitignored .api-watch/cache/.
+      - name: Check spec fingerprint drift
+        if: steps.detect-fingerprints.outputs.relevant == 'true'
+        run: npm run docs:spec-fingerprints:check
