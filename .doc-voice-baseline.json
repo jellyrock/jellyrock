@@ -396,18 +396,6 @@
     "caps-emphasis": 4,
     "em-dash": 5
   },
-  "AGENTS.md": {
-    "caps-emphasis": 4,
-    "em-dash": 62,
-    "filler": 4,
-    "prose-arrow": 17
-  },
-  "CLAUDE.md": {
-    "caps-emphasis": 4,
-    "em-dash": 62,
-    "filler": 4,
-    "prose-arrow": 17
-  },
   "components/AppWaitHost.bs": {
     "em-dash": 3,
     "prose-arrow": 1
