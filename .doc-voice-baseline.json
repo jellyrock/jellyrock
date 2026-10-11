@@ -2158,12 +2158,6 @@
     "filler": 5,
     "latin-abbrev": 2
   },
-  "source/utils/CLAUDE.md": {
-    "caps-emphasis": 1,
-    "em-dash": 11,
-    "filler": 1,
-    "prose-arrow": 3
-  },
   "source/utils/appWaits.bs": {
     "em-dash": 5
   },
