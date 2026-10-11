@@ -1295,11 +1295,7 @@
     "caps-emphasis": 6
   },
   "docs/architecture/tech-debt.md": {
-    "caps-emphasis": 25,
-    "em-dash": 420,
-    "filler": 36,
-    "latin-abbrev": 9,
-    "prose-arrow": 30
+    "filler": 3
   },
   "docs/architecture/testing.md": {
     "filler": 1
