@@ -216,7 +216,7 @@ That is one launch, shortened and wrapped here; the real line is one row of abou
 
 #### Home's spread is the app's page load, not the harness
 
-A 40-launch campaign held every harness quantity fixed (the same path on every launch, the same items, the rows already settled before the first press) and Home still bound a different number of cells each time (`1a8c5e9e7`). So the question belongs to `HomeRows` and `JRRowItem`, not `tests/rta/`, and the variation happens during page load, before the first key press. Neither harness change tried moved it. Part of it is now traced app-side: see [`size recompute by`](home-first-paint-performance.md#size-recompute-by-which-call-site-spent-them), which shows what fires on the high launches and that it rides along with the cause rather than being it.
+A 40-launch campaign held every harness quantity fixed (the same path on every launch, the same items, the rows already settled before the first press) and Home still bound a different number of cells each time (`1a8c5e9e7`). So the question belongs to `HomeRows` and `JRRowItem`, not `tests/rta/`, and the variation happens during page load, before the first key press. Neither harness change tried moved it. Part of it is now traced app-side: [`size recompute by`](home-first-paint-performance.md#size-recompute-by-which-call-site-spent-them) describes the log lines, and [`home-row-size-recompute-per-row`](../architecture/tech-debt.md#home-row-size-recompute-per-row) has what their readings showed.
 
 ### Reading cell figures
 
