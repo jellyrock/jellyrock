@@ -1311,13 +1311,6 @@
     "filler": 1,
     "latin-abbrev": 5
   },
-  "scripts/CLAUDE.md": {
-    "caps-emphasis": 6,
-    "em-dash": 29,
-    "filler": 3,
-    "latin-abbrev": 1,
-    "prose-arrow": 2
-  },
   "scripts/agent-telemetry-report.cjs": {
     "em-dash": 1,
     "prose-arrow": 2
