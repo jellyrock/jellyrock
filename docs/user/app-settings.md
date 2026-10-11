@@ -1,13 +1,15 @@
 <!-- markdownlint-disable -->
 
-<h1 id="top">JellyRock App Settings</h1>
+<h1 id="top">App settings</h1>
 
 <!--
-  THIS FILE IS AUTO-GENERATED. DO NOT EDIT BY HAND.
-  Run: npm run docs:settings
+  Generated file: edit settings/settings.json, then run npm run docs:settings.
+  Changes made here by hand are lost on the next run.
 -->
 
-This page documents all configurable settings available in the JellyRock app.
+Every setting you can change in JellyRock, grouped as in the app's **Settings** screen. Each entry shows its default, its options and the name JellyRock stores it under.
+
+_Generated from `settings/settings.json` by `npm run docs:settings`. To change this page, edit that file and run the command._
 
 
 - [Global](#global)

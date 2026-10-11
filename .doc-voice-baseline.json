@@ -1,15 +1,10 @@
 {
   ".claude/agents/log-reviewer.md": {
-    "caps-emphasis": 10,
-    "em-dash": 16,
-    "filler": 3,
-    "latin-abbrev": 1
+    "caps-emphasis": 1
   },
   ".claude/agents/pattern-finder.md": {
-    "caps-emphasis": 6,
-    "em-dash": 20,
-    "filler": 4,
-    "latin-abbrev": 1
+    "caps-emphasis": 1,
+    "filler": 1
   },
   ".claude/hooks/bsfmt-on-write.sh": {
     "em-dash": 4,
@@ -44,10 +39,6 @@
     "caps-emphasis": 2,
     "em-dash": 12,
     "filler": 2
-  },
-  ".claude/rules/derive-dont-duplicate.md": {
-    "em-dash": 14,
-    "filler": 3
   },
   ".claude/rules/dogfood-changes.md": {
     "caps-emphasis": 2,
@@ -85,24 +76,15 @@
     "em-dash": 8,
     "filler": 1
   },
-  ".claude/skills/CLAUDE.md": {
-    "caps-emphasis": 1,
-    "em-dash": 9,
-    "filler": 3,
-    "latin-abbrev": 2
-  },
   ".claude/skills/README.md": {
-    "caps-emphasis": 3,
-    "em-dash": 18,
-    "filler": 3,
-    "prose-arrow": 16
+    "caps-emphasis": 1
   },
   ".claude/skills/catchup/SKILL.md": {
     "caps-emphasis": 3,
     "em-dash": 30,
     "filler": 3,
     "latin-abbrev": 1,
-    "prose-arrow": 8
+    "prose-arrow": 6
   },
   ".claude/skills/catchup/catchup-state.sh": {
     "em-dash": 2
@@ -124,9 +106,7 @@
     "prose-arrow": 3
   },
   ".claude/skills/crash-report/SKILL.md": {
-    "caps-emphasis": 2,
-    "em-dash": 31,
-    "prose-arrow": 16
+    "caps-emphasis": 1
   },
   ".claude/skills/create-issue/SKILL.md": {
     "caps-emphasis": 1,
@@ -134,21 +114,14 @@
     "prose-arrow": 3
   },
   ".claude/skills/dep-major/SKILL.md": {
-    "caps-emphasis": 6,
-    "em-dash": 33,
-    "filler": 1,
-    "latin-abbrev": 6,
-    "prose-arrow": 11
+    "caps-emphasis": 1
   },
   ".claude/skills/docs-lint/SKILL.md": {
-    "caps-emphasis": 3,
-    "em-dash": 25,
-    "filler": 4,
-    "latin-abbrev": 1,
-    "prose-arrow": 11
+    "caps-emphasis": 1,
+    "filler": 1
   },
   ".claude/skills/done/SKILL.md": {
-    "caps-emphasis": 5,
+    "caps-emphasis": 4,
     "em-dash": 22,
     "filler": 2,
     "prose-arrow": 22
@@ -178,7 +151,7 @@
     "filler": 1
   },
   ".claude/skills/log/SKILL.md": {
-    "caps-emphasis": 7,
+    "caps-emphasis": 3,
     "em-dash": 40,
     "filler": 7,
     "prose-arrow": 15
@@ -192,22 +165,13 @@
     "em-dash": 2
   },
   ".claude/skills/new-api-version/SKILL.md": {
-    "caps-emphasis": 2,
-    "em-dash": 30,
-    "filler": 4,
-    "latin-abbrev": 1,
-    "prose-arrow": 8
+    "caps-emphasis": 1
   },
   ".claude/skills/new-migration/SKILL.md": {
-    "caps-emphasis": 3,
-    "em-dash": 21,
-    "filler": 1,
-    "latin-abbrev": 2,
-    "prose-arrow": 4
+    "caps-emphasis": 1
   },
   ".claude/skills/new-setting/SKILL.md": {
-    "caps-emphasis": 4,
-    "em-dash": 23
+    "caps-emphasis": 1
   },
   ".claude/skills/pr/AUDIT-LOG.md": {
     "caps-emphasis": 3,
@@ -225,30 +189,18 @@
     "em-dash": 1
   },
   ".claude/skills/ramp/SKILL.md": {
-    "caps-emphasis": 1,
-    "em-dash": 6,
-    "filler": 1,
-    "prose-arrow": 5
+    "caps-emphasis": 1
   },
   ".claude/skills/resume-project/SKILL.md": {
     "caps-emphasis": 4,
-    "em-dash": 30,
+    "em-dash": 25,
     "filler": 2
   },
   ".claude/skills/resume-project/resume-state.sh": {
     "em-dash": 2
   },
-  ".claude/skills/runtime-triage/INVESTIGATION.md": {
-    "caps-emphasis": 4,
-    "em-dash": 27,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
   ".claude/skills/runtime-triage/SKILL.md": {
-    "caps-emphasis": 1,
-    "em-dash": 13,
-    "filler": 1,
-    "prose-arrow": 2
+    "caps-emphasis": 1
   },
   ".claude/skills/second-opinion/SKILL.md": {
     "caps-emphasis": 2,
@@ -299,15 +251,10 @@
     "latin-abbrev": 1
   },
   ".claude/skills/tech-debt-scan/SKILL.md": {
-    "caps-emphasis": 1,
-    "em-dash": 18,
-    "filler": 2,
-    "prose-arrow": 2
+    "caps-emphasis": 1
   },
   ".claude/skills/translation-add/SKILL.md": {
-    "caps-emphasis": 2,
-    "em-dash": 21,
-    "filler": 1
+    "caps-emphasis": 1
   },
   ".github/hooks/README.md": {
     "em-dash": 5,
@@ -325,7 +272,7 @@
     "em-dash": 7
   },
   ".github/workflows/_lint-floor-system.yml": {
-    "em-dash": 8
+    "em-dash": 7
   },
   ".github/workflows/_lint-js.yml": {
     "em-dash": 1
@@ -449,26 +396,6 @@
     "caps-emphasis": 4,
     "em-dash": 5
   },
-  "AGENTS.md": {
-    "caps-emphasis": 4,
-    "em-dash": 62,
-    "filler": 4,
-    "prose-arrow": 17
-  },
-  "CLAUDE.md": {
-    "caps-emphasis": 4,
-    "em-dash": 62,
-    "filler": 4,
-    "prose-arrow": 17
-  },
-  "CONTRIBUTING.md": {
-    "em-dash": 16,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
-  "SECURITY.md": {
-    "em-dash": 1
-  },
   "components/AppWaitHost.bs": {
     "em-dash": 3,
     "prose-arrow": 1
@@ -585,8 +512,7 @@
     "filler": 1
   },
   "components/api/ApiQueueTask.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 19,
+    "em-dash": 16,
     "filler": 1,
     "latin-abbrev": 1,
     "prose-arrow": 2
@@ -641,11 +567,6 @@
     "filler": 1,
     "latin-abbrev": 3,
     "prose-arrow": 1
-  },
-  "components/data/CLAUDE.md": {
-    "caps-emphasis": 2,
-    "em-dash": 9,
-    "latin-abbrev": 2
   },
   "components/data/DebugFlags.xml": {
     "caps-emphasis": 2
@@ -1047,12 +968,6 @@
   "components/ui/toast/Toast.bs": {
     "em-dash": 4
   },
-  "components/video/CLAUDE.md": {
-    "caps-emphasis": 3,
-    "em-dash": 10,
-    "filler": 1,
-    "prose-arrow": 2
-  },
   "components/video/CaptionRenderer.bs": {
     "caps-emphasis": 2,
     "em-dash": 9,
@@ -1110,20 +1025,6 @@
   },
   "components/video/VideoPlayerView.xml": {
     "em-dash": 2
-  },
-  "docs/admin/changelog.md": {
-    "em-dash": 4,
-    "prose-arrow": 1
-  },
-  "docs/admin/releases.md": {
-    "em-dash": 5,
-    "filler": 3,
-    "latin-abbrev": 1,
-    "prose-arrow": 1
-  },
-  "docs/admin/translations.md": {
-    "em-dash": 12,
-    "latin-abbrev": 1
   },
   "docs/adr/0001-triage-opus-inline-investigation.md": {
     "prose-arrow": 1
@@ -1311,149 +1212,17 @@
     "em-dash": 14,
     "prose-arrow": 1
   },
-  "docs/architecture/README.md": {
-    "em-dash": 33,
-    "filler": 1,
-    "prose-arrow": 3
-  },
-  "docs/architecture/api-usage-manifest.md": {
-    "em-dash": 11,
-    "filler": 3,
-    "latin-abbrev": 6,
-    "prose-arrow": 7
-  },
-  "docs/architecture/api.md": {
-    "em-dash": 87,
-    "filler": 6,
-    "latin-abbrev": 3,
-    "prose-arrow": 8
-  },
   "docs/architecture/async.md": {
-    "em-dash": 37,
-    "filler": 7,
-    "prose-arrow": 3
-  },
-  "docs/architecture/bootstrap.md": {
-    "em-dash": 53,
-    "filler": 2,
-    "latin-abbrev": 4,
-    "prose-arrow": 8
-  },
-  "docs/architecture/build-and-tooling.md": {
-    "caps-emphasis": 7,
-    "em-dash": 274,
-    "filler": 27,
-    "latin-abbrev": 9,
-    "prose-arrow": 10
-  },
-  "docs/architecture/debug-tools.md": {
-    "caps-emphasis": 1,
-    "em-dash": 16,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 3
-  },
-  "docs/architecture/dialogs.md": {
-    "caps-emphasis": 1,
-    "em-dash": 50,
-    "filler": 4,
-    "latin-abbrev": 1,
-    "prose-arrow": 1
-  },
-  "docs/architecture/global-state.md": {
-    "em-dash": 44,
-    "filler": 1,
-    "latin-abbrev": 2
-  },
-  "docs/architecture/list-grid-item-layout.md": {
-    "caps-emphasis": 1,
-    "em-dash": 22,
-    "prose-arrow": 1
-  },
-  "docs/architecture/logging.md": {
-    "em-dash": 17,
-    "filler": 2,
-    "prose-arrow": 2
-  },
-  "docs/architecture/migrations.md": {
-    "em-dash": 7,
-    "latin-abbrev": 2,
-    "prose-arrow": 1
-  },
-  "docs/architecture/navigation.md": {
-    "caps-emphasis": 1,
-    "em-dash": 108,
-    "filler": 9,
-    "latin-abbrev": 5,
-    "prose-arrow": 26
-  },
-  "docs/architecture/playback.md": {
-    "em-dash": 181,
-    "filler": 18,
-    "latin-abbrev": 4,
-    "prose-arrow": 32
-  },
-  "docs/architecture/remote-control-longpoll-contract.md": {
-    "caps-emphasis": 6,
-    "em-dash": 34,
-    "filler": 3,
-    "latin-abbrev": 2,
-    "prose-arrow": 4
-  },
-  "docs/architecture/remote-control.md": {
-    "caps-emphasis": 1,
-    "em-dash": 67,
-    "filler": 5,
-    "latin-abbrev": 1,
-    "prose-arrow": 14
-  },
-  "docs/architecture/server-upgrade-automation.md": {
-    "caps-emphasis": 2,
-    "em-dash": 138,
-    "filler": 11,
-    "latin-abbrev": 7,
-    "prose-arrow": 33
-  },
-  "docs/architecture/settings.md": {
-    "em-dash": 31,
-    "filler": 2,
-    "latin-abbrev": 1,
-    "prose-arrow": 3
-  },
-  "docs/architecture/system-shape.md": {
-    "caps-emphasis": 3,
-    "em-dash": 51,
-    "filler": 8,
-    "prose-arrow": 4
-  },
-  "docs/architecture/tech-debt.md": {
-    "caps-emphasis": 25,
-    "em-dash": 421,
-    "filler": 36,
-    "latin-abbrev": 10,
-    "prose-arrow": 30
-  },
-  "docs/architecture/testing.md": {
-    "em-dash": 25,
     "filler": 2
   },
-  "docs/architecture/threading.md": {
-    "caps-emphasis": 4,
-    "em-dash": 34,
-    "filler": 5,
-    "prose-arrow": 1
+  "docs/architecture/remote-control-longpoll-contract.md": {
+    "caps-emphasis": 6
   },
-  "docs/architecture/translations.md": {
-    "em-dash": 75,
-    "filler": 3,
-    "latin-abbrev": 2,
-    "prose-arrow": 11
+  "docs/architecture/tech-debt.md": {
+    "filler": 3
   },
-  "docs/architecture/user-journey.md": {
-    "em-dash": 70,
-    "filler": 2,
-    "latin-abbrev": 1,
-    "prose-arrow": 40
+  "docs/architecture/testing.md": {
+    "filler": 1
   },
   "docs/decisions.md": {
     "caps-emphasis": 19,
@@ -1462,129 +1231,31 @@
     "latin-abbrev": 1,
     "prose-arrow": 30
   },
-  "docs/dev/DEVGUIDE.md": {
-    "em-dash": 1,
-    "latin-abbrev": 1
-  },
-  "docs/dev/api-layering-guide.md": {
-    "em-dash": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 9
-  },
-  "docs/dev/api-patterns.md": {
-    "caps-emphasis": 6,
-    "em-dash": 7,
-    "filler": 2
-  },
-  "docs/dev/code-style.md": {
-    "em-dash": 26,
-    "filler": 1,
-    "latin-abbrev": 5,
-    "prose-arrow": 4
-  },
-  "docs/dev/crash-reports.md": {
-    "em-dash": 29,
-    "latin-abbrev": 1,
-    "prose-arrow": 5
-  },
-  "docs/dev/debug-flags.md": {
-    "em-dash": 39,
-    "filler": 2,
-    "latin-abbrev": 3,
-    "prose-arrow": 7
-  },
-  "docs/dev/deep-linking.md": {
-    "caps-emphasis": 1,
-    "em-dash": 27,
-    "filler": 2,
-    "latin-abbrev": 3,
-    "prose-arrow": 9
-  },
-  "docs/dev/home-first-paint-performance.md": {
-    "caps-emphasis": 8,
-    "em-dash": 153,
-    "filler": 13,
-    "latin-abbrev": 3,
-    "prose-arrow": 14
-  },
   "docs/dev/jellyfin-endpoint-availability.yml": {
     "caps-emphasis": 6,
     "em-dash": 7,
     "filler": 1,
     "prose-arrow": 3
   },
-  "docs/dev/jellyfin-server-versioning.md": {
-    "caps-emphasis": 2,
-    "em-dash": 26,
-    "filler": 2,
-    "latin-abbrev": 3,
-    "prose-arrow": 5
-  },
   "docs/dev/jellyfin-version-boundaries.yml": {
     "em-dash": 6,
     "prose-arrow": 1
   },
-  "docs/dev/logging.md": {
-    "em-dash": 6,
-    "prose-arrow": 1
-  },
   "docs/dev/measuring-performance.md": {
-    "caps-emphasis": 15,
-    "em-dash": 225,
-    "filler": 19,
-    "latin-abbrev": 1,
-    "prose-arrow": 16
-  },
-  "docs/dev/new-user-setting.md": {
-    "caps-emphasis": 7,
-    "em-dash": 6,
-    "filler": 2,
-    "latin-abbrev": 10,
-    "prose-arrow": 6
-  },
-  "docs/dev/promises.md": {
-    "caps-emphasis": 1,
-    "em-dash": 24,
-    "filler": 3,
-    "prose-arrow": 6
+    "filler": 2
   },
   "docs/dev/registry-migrations.md": {
-    "caps-emphasis": 9,
-    "filler": 2,
-    "latin-abbrev": 8,
-    "prose-arrow": 8
-  },
-  "docs/dev/rta-tests.md": {
-    "caps-emphasis": 6,
-    "em-dash": 214,
-    "filler": 29,
-    "prose-arrow": 9
-  },
-  "docs/dev/scripts-development.md": {
-    "em-dash": 21,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 3
-  },
-  "docs/dev/translations.md": {
-    "caps-emphasis": 1,
-    "em-dash": 10,
-    "filler": 2,
-    "latin-abbrev": 3,
-    "prose-arrow": 11
-  },
-  "docs/dev/unit-tests-tdd.md": {
-    "em-dash": 8,
     "filler": 1
   },
-  "docs/dev/unit-tests.md": {
-    "caps-emphasis": 5,
-    "em-dash": 2,
-    "latin-abbrev": 1
+  "docs/dev/rta-tests.md": {
+    "prose-arrow": 1
+  },
+  "docs/dev/scripts-development.md": {
+    "filler": 1
   },
   "docs/progress.md": {
     "caps-emphasis": 38,
-    "em-dash": 461,
+    "em-dash": 452,
     "filler": 56,
     "latin-abbrev": 9,
     "prose-arrow": 35
@@ -1601,28 +1272,11 @@
     "prose-arrow": 2
   },
   "docs/user/app-settings.md": {
-    "caps-emphasis": 1,
     "em-dash": 1,
     "latin-abbrev": 2
   },
-  "docs/user/deep-linking.md": {
-    "em-dash": 27,
-    "filler": 6
-  },
-  "docs/user/jellyfin-server-feature-matrix.md": {
-    "em-dash": 4
-  },
-  "docs/user/manage-subtitles.md": {
-    "em-dash": 14,
-    "filler": 5
-  },
-  "docs/user/media-segments.md": {
-    "em-dash": 3
-  },
   "docs/user/playback-troubleshooting.md": {
-    "filler": 2,
-    "latin-abbrev": 4,
-    "prose-arrow": 1
+    "filler": 1
   },
   "eslint.config.js": {
     "caps-emphasis": 2,
@@ -1635,13 +1289,6 @@
     "em-dash": 26,
     "filler": 1,
     "latin-abbrev": 5
-  },
-  "scripts/CLAUDE.md": {
-    "caps-emphasis": 6,
-    "em-dash": 29,
-    "filler": 3,
-    "latin-abbrev": 1,
-    "prose-arrow": 2
   },
   "scripts/agent-telemetry-report.cjs": {
     "em-dash": 1,
@@ -2240,9 +1887,6 @@
     "filler": 2,
     "prose-arrow": 2
   },
-  "source/CLAUDE.md": {
-    "em-dash": 10
-  },
   "source/GridView/GridPresenterBase.bs": {
     "caps-emphasis": 4,
     "em-dash": 9,
@@ -2277,11 +1921,6 @@
     "em-dash": 26,
     "filler": 2,
     "latin-abbrev": 6
-  },
-  "source/api/CLAUDE.md": {
-    "caps-emphasis": 1,
-    "em-dash": 11,
-    "prose-arrow": 2
   },
   "source/api/apiFaults.bs": {
     "em-dash": 5
@@ -2427,12 +2066,6 @@
     "em-dash": 27,
     "filler": 5,
     "latin-abbrev": 2
-  },
-  "source/utils/CLAUDE.md": {
-    "caps-emphasis": 1,
-    "em-dash": 11,
-    "filler": 1,
-    "prose-arrow": 3
   },
   "source/utils/appWaits.bs": {
     "em-dash": 5
@@ -2749,9 +2382,7 @@
     "em-dash": 4
   },
   "tests/CLAUDE.md": {
-    "caps-emphasis": 7,
-    "em-dash": 32,
-    "filler": 3
+    "filler": 2
   },
   "tests/rta/CLAUDE.md": {
     "caps-emphasis": 9,

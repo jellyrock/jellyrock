@@ -51,14 +51,20 @@ async function main() {
   parts.push('<!-- markdownlint-disable -->');
   parts.push('');
   // Use HTML H1 with id="top" instead of Markdown H1 + separate anchor
-  parts.push('<h1 id="top">JellyRock App Settings</h1>');
+  parts.push('<h1 id="top">App settings</h1>');
   parts.push('');
   parts.push('<!--');
-  parts.push('  THIS FILE IS AUTO-GENERATED. DO NOT EDIT BY HAND.');
-  parts.push('  Run: npm run docs:settings');
+  parts.push('  Generated file: edit settings/settings.json, then run npm run docs:settings.');
+  parts.push('  Changes made here by hand are lost on the next run.');
   parts.push('-->');
   parts.push('');
-  parts.push('This page documents all configurable settings available in the JellyRock app.');
+  parts.push(
+    "Every setting you can change in JellyRock, grouped as in the app's **Settings** screen. Each entry shows its default, its options and the name JellyRock stores it under.",
+  );
+  parts.push('');
+  parts.push(
+    '_Generated from `settings/settings.json` by `npm run docs:settings`. To change this page, edit that file and run the command._',
+  );
   parts.push('');
 
   // Top-level Table of Contents (only top-level groups) — no header to match other TOCs

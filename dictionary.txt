@@ -284,6 +284,7 @@ ffmpeg-tagged
 FHD
 filesystem
 flac
+FLAC
 fns
 focusable
 followup
@@ -322,6 +323,7 @@ hardcodes
 Hardcoding
 HD
 HDR
+HEVC
 HIG
 HK-specific
 HLS
@@ -560,6 +562,8 @@ regen
 regenerable
 rekey
 rekeying
+remux
+remuxes
 remuxing
 renderer
 renderers
@@ -657,6 +661,7 @@ supersampling
 superset
 SVG
 SVGs
+Tasker
 TCP
 teardown
 templated

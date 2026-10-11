@@ -4,36 +4,29 @@ related-files:
   - package.json
   - Makefile
   - .vscode/settings.json
-last-reviewed: 2026-05-01
+last-reviewed: 2026-10-09
 ---
 
-# Dev Guide
+# Dev guide
 
-Follow the steps below to install the app on your personal Roku device. This will enable you to write code for the app, install the latest beta release, as well as provide app logs to the developers if you encounter a bug.
+This guide gets JellyRock's source code running on your own Roku. With it set up, you can change the code, try a build before it is released, and send the developers logs when you hit a bug.
 
-## Developer Mode
+## Developer mode
 
-Put your Roku device in [developer mode](developer-mode.md). Write down your Roku's IP address and the password you create: you need both later.
+Put your Roku in [developer mode](developer-mode.md). Write down your Roku's IP address and the password you create, because the steps below ask for both.
 
-## Clone the GitHub Repo
+## Get the code
 
-Navigate to where you'd like to install the app then copy the application files:
+Clone the repository, then open its folder:
 
 ```bash
 git clone https://github.com/jellyrock/jellyrock.git
-```
-
-Open up the new folder:
-
-```bash
 cd jellyrock
 ```
 
-## Install Dependencies
+## Install dependencies
 
-You need [`node`](https://nodejs.org) 22 (22.22.1 or later), 24, or 26 and later.
-
-Then, use `npm` to install dependencies
+You need [`node`](https://nodejs.org) 22 (22.22.1 or later), 24, or 26 and later. Then install the dependencies:
 
 ```bash
 npm install
@@ -41,26 +34,25 @@ npm install
 
 ## Method 1: Visual Studio Code
 
-We recommend using Visual Studio Code when working on this project. The [BrightScript Language extension](https://marketplace.visualstudio.com/items?itemName=RokuCommunity.brightscript) provides a rich debugging experience, including in-editor syntax checking, debugging/breakpoint support, variable inspection at runtime, auto-formatting, an integrated remote control mode, and [much more](https://rokucommunity.github.io/vscode-brightscript-language/features.html).
+We recommend Visual Studio Code for this project. Its [BrightScript Language extension](https://marketplace.visualstudio.com/items?itemName=RokuCommunity.brightscript) checks your code as you type, and lets you set breakpoints, inspect variables while the app runs, format code and drive the Roku from the editor. See its [feature list](https://rokucommunity.github.io/vscode-brightscript-language/features.html) for more.
 
-### Install VSCode
+### Set up Visual Studio Code
 
-1. Download and install [Visual Studio Code](https://code.visualstudio.com/)
-2. Install the **BrightScript Language** extension within VSCode in the _Extensions_ panel or by downloading it from the [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=RokuCommunity.brightscript).
-3. Install the other extensions VSCode recommends for this workspace (listed in `.vscode/extensions.json`). **Prettier** and **ESLint** matter most if you edit JavaScript or JSON: the workspace formats those files with Prettier on save, the same way the pre-commit hook does.
+1. Install [Visual Studio Code](https://code.visualstudio.com/).
+2. Install the **BrightScript Language** extension from the **Extensions** panel, or from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=RokuCommunity.brightscript).
+3. Install the other extensions the workspace recommends (listed in `.vscode/extensions.json`). If you edit JavaScript or JSON, **Prettier** and **ESLint** matter most: the workspace formats those files with Prettier on save, as the pre-commit hook does.
 
-### Usage
+### Run the app
 
-1. Open the `jellyrock` folder in VSCode
-2. Press `F5` on your keyboard or click `Run` -> `Start Debugging` from the VSCode menu. ![image](https://user-images.githubusercontent.com/2544493/170696233-8ba49bf4-bebb-4655-88f3-ac45150dda02.png)
+1. Open the `jellyrock` folder in Visual Studio Code.
+2. Press `F5`, or choose **Run → Start Debugging**. ![The Run menu with Start Debugging highlighted](https://user-images.githubusercontent.com/2544493/170696233-8ba49bf4-bebb-4655-88f3-ac45150dda02.png)
+3. When asked, enter your Roku's IP address and developer password.
 
-3. Enter your Roku IP address and developer password when prompted
+Visual Studio Code builds the app, installs it on your Roku and starts it.
 
-That's it! VSCode will auto-package the project, sideload it to the specified device, and the channel is up and running. (assuming you remembered to put your device in [developer mode](#developer-mode))
+### Save your Roku's address and password
 
-### Hardcoding Roku Information
-
-Out of the box, the BrightScript extension will prompt you to pick a Roku device (from devices found on your local network) and enter a password on every launch. If you'd prefer to hardcode this information rather than entering it every time, you can set these values in your VSCode user settings:
+By default the extension asks for the Roku and its password on every run. To skip that, set them in your Visual Studio Code user settings:
 
 ```json
 {
@@ -69,71 +61,53 @@ Out of the box, the BrightScript extension will prompt you to pick a Roku device
 }
 ```
 
-Example:
-![image](https://user-images.githubusercontent.com/2544493/170485209-0dbe6787-8026-47e7-9095-1df96cda8a0a.png)
+![The two settings in a user settings file](https://user-images.githubusercontent.com/2544493/170485209-0dbe6787-8026-47e7-9095-1df96cda8a0a.png)
 
-## Method 2: Command Line
+Put them in your user settings, not in `.vscode/launch.json`, so your password stays out of the repository.
 
-### Workflow
+## Method 2: Command line
 
-Modify code -> `make build-dev install` -> Use Roku remote to test changes -> `telnet ${ROKU_DEV_TARGET} 8085` -> `CTRL + ]` -> `quit + ENTER`
+You need [`make`](https://www.gnu.org/software/make) and [`curl`](https://curl.se).
 
-You will need to use telnet to see log statements, warnings, and error reports. You won't always need to telnet into your device but the workflow above is typical when you are new to BrightScript or are working on tricky code.
+### Install on your Roku
 
-### Install Command Line Dependencies
-
-You'll need [`make`](https://www.gnu.org/software/make) and [`curl`](https://curl.se).
-
-Build the package
-
-```bash
-make build-dev
-```
-
-This will create a zip in `out/jellyrock.zip`, that you can upload on your Roku's device via your browser.
-Or you can continue with the next steps to do it via the command line.
-
-### Deploy
-
-Run this command - replacing the IP and password with your Roku device IP and dev password from the first step:
+Tell `make` which Roku to use, with the IP address and password from [developer mode](#developer-mode):
 
 ```bash
 export ROKU_DEV_TARGET=192.168.1.234
 export ROKU_DEV_PASSWORD=password
 ```
 
-Package up the application, send it to your Roku, and launch the channel:
+Then build the app, install it and start it:
 
 ```bash
-make install
+make build-dev install
 ```
 
-Note: You only have to run this command once if you are not a developer. The JellyRock channel will still be installed after rebooting your Roku device.
+Run this after every change. Plain `make install` installs whatever is already in `out/jellyrock.zip`, so it skips your latest changes once a build exists.
 
-### Bug/Crash Reports
+If you only want to run the latest code, not change it, you need to install once. The app stays on your Roku after a restart.
 
-Did the app crash? Find a nasty bug? Use this command to view the error log and [report it to the developers](https://github.com/jellyrock/jellyrock/issues):
+### Bug/crash reports
+
+When the app crashes or misbehaves, open the Roku's debug log to see what went wrong:
 
 ```bash
 telnet ${ROKU_DEV_TARGET} 8085
 ```
 
-To exit telnet: `CTRL + ]` and then type `quit + ENTER`
+To leave telnet, press `Ctrl + ]`, then type `quit` and press Enter.
 
-You can also take a screenshot of the app to augment the bug report.
+To add a picture of the screen to your report, take a screenshot. It is saved as `screenshot.jpg` in the project folder:
 
 ```bash
 make screenshot
 ```
 
+Then [open an issue](https://github.com/jellyrock/jellyrock/issues) with the log and the screenshot.
+
 ## Committing
 
-The `.husky/pre-push` hook runs the full lint suite (validate, markdown,
-spelling, JSON, doc-references) on the files in your push range and
-auto-fixes formatting + translations. You don't need to run `npm run lint`
-manually — the IDE catches BS issues live, and the hook is the backstop
-at push time.
+Git hooks check your work, so you rarely need to run the linters yourself. Before each commit, the pre-commit hook formats, lints and spell-checks the files you staged. Before each push, the pre-push hook runs the checks that need the whole project (the BrighterScript compile and lint, the docs checks and the script tests) for the files in the push. It also regenerates the translation keys and the index of these dev guides, and commits them for you. CI runs the same checks on every pull request.
 
-If you do want to debug a specific failure locally before pushing, run
-the targeted script (e.g. `npm run lint:translations`) rather than the
-whole suite.
+To debug one failure before you push, run that check's script, for example `npm run lint:translations`, rather than the whole `npm run lint`.

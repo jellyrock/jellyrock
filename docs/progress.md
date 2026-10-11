@@ -249,6 +249,14 @@ Found 2026-10-09: every `debug=true` build had failed since the dead-code rule l
 
 **Alternative the operator raised:** turn `debug` on by default in the committed manifest, with `harden-prod-manifest.js` (which already forces `debug`, `perfTiming` and `ENABLE_RTA` off) keeping releases clean. Every dev build, hook and CI run would then build the debug code. The conflict to settle first: `build-and-tooling.md` keeps `perfTiming` separate from `debug` because a debug build attaches `rawApiData` inside the `emit` timing, and a debug build painted Home 178 ms slower on a 512 MB Stick (measured 2026-08-04). So debug-by-default would make every dev build's perf numbers unrepresentative. Also not checked: whether `debug` raising the log level from 2 to 4 makes the everyday console too noisy.
 
+#### `measure:devices` same-model refusal gives a false reason `[fid: measure-matrix-same-model-false-reason]` `[captured 2026-10-10]`
+
+`sameDeviceRefusal()` in `scripts/measure-matrix.js` (its printed message and its doc comment, and the comment above the `'refuses two distinct devices of the same model…'` test in `tests/scripts/unit/measure-matrix.test.js`) says `measurements.jsonl` "identifies a device by model / model number / RAM tier and by nothing else". That has been false since 2026-08-11: every series carries `deviceKey` (run ledger since `8794b2873`; a `measure:compare` selector since #810), and `measure-report.js` lists `device` in `PROVENANCE_AXES`. The text came with #802 (2026-08-10), when it was true, and was not updated. The refusal itself may still be right: two same-model devices would land in one `measure:report` column and pool with only a disclosure.
+
+Options weighed on the /snag screen: `reword` (keep the refusal; state the true reason in the message, doc comment and test comment, name both escapes, `--arm` per device or `--select device=<key>` afterwards; then delete the warning box in `docs/dev/measuring-performance.md`, section "More than one device"), or `allow` (drop the same-model refusal and let `measure:report` disclose the pooling; a behavior change needing a design call, possibly re-keying columns on `device`). Recommended `reword`; read `measure-report.js` first to confirm the column claim. Ships as its own PR from `main`.
+
+Not checked: whether `measure:report` really keys its columns by model and tier (taken from the old guide's wording, not read in `measure-report.js`); whether pooling two same-model devices in one cell is a problem worth refusing, or only a disclosure. Nobody has run the refusal on real hardware: you have one device of each model.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
@@ -501,6 +509,29 @@ A live `PlaybackInfo` now waits up to `timeouts.LIVE_OPEN_MS` (120 s) and keeps 
 
 **Fix shape:** probe on device which writes or events reach the observer (log `m.global.activeRoutedView` and the caller per fire), then record the cause in `docs/architecture/navigation.md` beside the measured count, and fix it if it is a real excess.
 
+#### Eight `DeviceInfo` fields are never read; `videoRefresh` and `videoBitDepth` are missing from #1072 `[fid: deviceinfo-unread-fields]` `[captured 2026-10-10]`
+
+`components/data/jellyfin/DeviceInfo.xml` declares eight fields that nothing in the app reads through `m.global.device`:
+
+- `canPlay4K`, `maxVideoHeight`, `maxVideoWidth`, `videoCodecs`, `audioCodecs` and `memoryTotal` are never written or read. Only `transformDeviceInfo` filled them, and #1103 removed it. They are already in `.dead-code-baseline.json` and in epic #1072's `DeviceInfo` Investigate item (which device fields to cache at startup and which to read live).
+- `videoRefresh` and `videoBitDepth` are written by `SaveDeviceToGlobal()` in `source/utils/globals.bs` and never read. They are in neither the baseline nor #1072.
+
+Only `ContentNodes.spec.bs` (field-assignment tests) and the mock device JSON files under `tests/source/mocks/devices/` use them. `docs/architecture/playback.md` claims Direct Play checks `m.global.device.videoBitDepth`. That is wrong, and the Phase D rewrite of that doc fixes it.
+
+Found 2026-10-10 while rewriting `global-state.md` (2dbe60d3), by `git grep` over every `.bs`, `.brs` and `.xml` file.
+
+Options weighed in a `/snag`:
+
+- `track` (recommended): add `videoRefresh` and `videoBitDepth` to #1072's `DeviceInfo` item as a comment, drafted and approved before posting, so the epic's one decision covers all eight fields.
+- `followup`: keep the finding here only.
+- `remove`: delete the two writes and their fields now. Rejected for now: it settles #1072's open startup-or-live question by hand, and Direct Play may want 10-bit detection.
+
+Not filed now because the comment is a public post that needs the operator's approval, and nothing breaks meanwhile.
+
+Not checked: why the dead-code plugin doesn't flag the two written-but-unread fields. I assume it counts a write as a use, but I haven't read the plugin.
+
+Closes when #1072's `DeviceInfo` item names all eight fields, or they are removed.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -589,6 +620,14 @@ Seen once per launch, 6/6 on `main` and 6/6 on a branch (Stick 4K, BATCAVE, 2026
 
 before treating the 6-channel DTS cap as settled. `DTS_MAX_DIRECT_PLAY_CHANNELS` caps DTS direct play at 6 channels per Roku's spec, after a DTS-HD MA + `DTS:X` 7.1 track failed on a Roku Ultra `4850X` (2026-10-01). Whether plain 7.1 DTS-HD MA also fails is unmeasured. The maintainer's library has such a file (DTS-HD MA 7.1 default, eac3 5.1, AV1 Dolby Vision), and AV1 Dolby Vision direct-plays on that Ultra (measured 2026-10-01). **Next step:** play it on its DTS track in the prod app, which still has the old profile, and record whether it starts and has sound. If it does, decide whether the cap should be narrowed to `DTS:X`; that would match on Jellyfin's audio profile label, not a channel count.
 
+#### Cold start loads translations twice `[fid: cold-start-loads-translations-twice]` `[captured 2026-10-10]`
+
+`Main()` in `source/main.bs` calls `loadTranslations(resolveTranslationLocale())` before the scene exists, and `reenterLogin()` in `source/loginRouter.bs` calls it again with the same pre-login locale moments later. So a cold start reads and parses `en_US.json`, and the active locale file, twice.
+
+Not investigated: whether the early load in `Main()` is needed for strings shown before `reenterLogin()` runs (migrations, the scene's init). Not fixed now because that needs a device check of the launch path. Closes when one of the two loads is removed with that check done, or the double load is shown to be needed and the reason is written beside it.
+
+Found 2026-10-10 by the `translations.md` fact-check (docs-voice project, session 9).
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -620,6 +659,35 @@ Measured 2026-09-21 on a Stick 4K while the TV guide scrolled at 400 ms per row:
 #### Video `PlaybackInfo` may be rejected outright by Jellyfin 10.7 `[fid: playbackinfo-rejected-jellyfin-10-7]` `[captured 2026-10-01]`
 
 (found 2026-10-01, not yet seen in the app). POSTing the device profile a Roku Ultra builds to the 10.7.7 test server returns HTTP 400, `$.DeviceProfile.CodecProfiles[34].Conditions[1].Property ... could not be converted to MediaBrowser.Model.Dlna.ProfileConditionValue`, which is the `VideoRangeType` condition on the `h264` codec profile. 10.7 has no `VideoRangeType` (`docs/dev/jellyfin-server-versioning.md`), and nothing found strips it for `apiVersion` 1. Identical with and without the TrueHD/DTS fix. **Next step:** play any video against the 10.7.7 test server in the app; if it fails, drop `VideoRangeType` conditions for 10.7, the way `dropConditionsUnevaluableOnAudioFiles` does for audio files.
+
+#### A promise rejection from a transport failure has no `reason`, so 26 `.catch` handlers log INVALID `[fid: promise-rejection-missing-reason]` `[captured 2026-10-09]`
+
+Found 2026-10-09 while rewriting `docs/dev/promises.md` (docs-voice, Phase C) and taken through `/snag`.
+
+**Root cause:** `fetchAsync` rejects with two shapes. Only the adapter-built error (`buildApiPromiseError()`, used for a timeout and for an unavailable pool) carries `reason`. When the pool's own response comes back with `statusCode` 0 or below, or with no `statusCode`, `settleApiPromiseIn()` in `source/api/apiPromise.bs` rejects with that response itself, which has no `reason`. All 26 `.catch` handlers log `err.reason`: `ItemDetails` 8, `SubtitlePanel` 7, `UserSelect` 5, `BaseGridView` 2, `VideoPlayerView` 2, `Home` 1, `schedule` 1. The logger prints a missing value as `INVALID`, so a network failure's cause is lost. Nothing branches on `reason`; every use is a log argument. The form dates from #624 (2026-06-06) and was copied by every later conversion to `fetchAsync`.
+
+**Options:**
+
+- `reason` (recommended): before `settleApiPromiseIn()` rejects with the pool's response, set `res.reason = apiResponse.jsonFailure(res)` ("network error -28", "not sent", "timed out", "abandoned"), so every rejection carries a `reason`. Add a case to `tests/source/unit/api/apiPromise.spec.bs` that asserts the transport-failure rejection's `reason`. Then fix the "What lands where" text in `docs/dev/promises.md`, which says `reason` can be missing. The 26 handlers stay as they are. This fixes the contract in one place and needs low upkeep. Risk: it changes `source/api/` (a shared mechanism), so run the spec on a Roku with `test:tdd`.
+- `callers`: add `err.statusCode` to all 26 log calls. This doesn't fix the contract, and new callers would copy the old form.
+- `helper`: add `apiPromiseFailureText(err)` and change all 26 sites to use it. This makes a second way to read a rejection.
+
+Filed `later` because it is a runtime change in the API layer, which should not ride in the docs-only voice PR.
+
+**Not checked:**
+
+- I haven't seen the `INVALID` line on a device.
+- My earlier count of 27 included a comment in `apiPromise.bs`; the real count is 26.
+
+#### The API pool's caller watch drops every observer of a Task's `state`; measure whether the scoped pair isolates it on device `[fid: api-pool-watch-scoped-observer]` `[captured 2026-10-10]` `[pinned]`
+
+`ApiQueueTask`'s caller watch (`watchCaller()` / `forgetCaller()`) subscribes with `observeField("state", m.port)` and unsubscribes with `unobserveField("state")`, which drops every observer of the Task's `state`. It is safe only because nothing else observes a Task's `state` (the task ledger reads it instead). Rechecked 2026-10-09 by grepping every `observeField("state"`: the only other observed Task is `TrickplayCarousel`'s `tileLoader`, which does not use the pool.
+
+ADR 0043 ruled out the scoped pair (`observeFieldScopedEx` / `unobserveFieldScoped`) as needing Roku OS 12. That reason is gone since #1126 raised the floor to Roku OS 15.1. The true reason now is that scoped isolation is unproven on device: [`components/CLAUDE.md`](../components/CLAUDE.md) records `unobserveFieldScoped` removing a parent's observer (#898).
+
+**Work:** an on-device record test of this exact case (Task thread, message port, `observeFieldScopedEx` on another Task's `state`, plus a second plain observer from a render component; `unobserveFieldScoped`; does the other observer still fire?). If isolation holds, swap the two calls and drop the invariant; if not, keep the code and record why. Not now because it needs a new test component and device runs, and it ships as its own PR.
+
+First filed 2026-10-07 in `89c8185c`, which never reached `main` (PR #1126 merged without it). The docs-voice project states the true reason in [`api.md`](architecture/api.md#a-long-request-already-on-a-slot) and the `forgetCaller()` comment.
 
 ### tests
 
@@ -849,6 +917,10 @@ Options weighed on the /snag screen: `limit` (raise to 60 min, fix the docs), `t
 
 Not checked: whether the 2026-08-07 and 2026-08-17 failures would pass today; whether anything in the release flow reads this job's result; the CI device's actual run time (assumed to match `.177`, the same model); whether a single spec got slower, since the ledger has no per-spec times; the self-hosted runner's env file.
 
+#### `MockDataLoader` has two loaders for a mock folder that does not exist `[fid: mockdataloader-roku-loaders-no-mocks]` `[captured 2026-10-10]`
+
+`MockDataLoader.LoadRokuDeviceInfo()` and `MockDataLoader.LoadRokuCapabilities()` in `tests/source/shared/MockDataLoader.bs` read from `tests/source/mocks/roku/`, which does not exist, and no spec calls either (`git grep -n -E 'LoadRokuDeviceInfo|LoadRokuCapabilities'` finds only their definitions). The old `docs/dev/registry-migrations.md` listed them with mock names that were never created; the rewrite (`f2c8bc2b`) dropped them. Close it by deleting both loaders, or by adding the mocks when a spec needs them.
+
 #### No automated test covers the post-login deep-link flash `[fid: post-login-deeplink-flash-untested]` `[captured 2026-10-10]`
 
 The `fix(deeplink)` commit that keeps the sign-in screen hidden until Home mounts (it showed again for about 100 ms under the spinner when signing in with a deep link stashed) was checked only with a throwaway on-device console probe. Polling over ODC cannot see a state that short, and a Rooibos test of the sequence guard in `JRScene.resolveDeepLink` cannot see render order, so nothing stops it coming back. Not done now: it needs a design for an on-device recorder.
@@ -884,6 +956,19 @@ Same rule [ADR 0033](adr/0033-contextual-doc-freshness.md) applies to `en_US.jso
 #### Replace the free-text language-code settings with the existing `LanguagePicker` `[fid: free-text-language-codes-use-picker]` `[captured 2026-09-14]`
 
 (#750 follow-up): `playbackAudioLanguageCustom` and `playbackSubtitleLanguageCustom` are `type: "alpha"` settings whose description literally reads *"Enter a 3-letter ISO 639-2 language code (e.g., eng, jpn, fra, deu, spa)"* — the user has to know ISO codes and type them on a remote. [`components/settings/LanguagePicker`](../components/settings/LanguagePicker.bs) already solves this (type-to-filter `DynamicMiniKeyboard` + `RadioButtonList`, 8 rows, matches on `name`/`nativeName`/`code`) but is wired to exactly one consumer: the sign-in-screen UI locale, with `settings.init()` hard-coding `m.languagePicker.languages = m.availableLanguages` from `locale/languages.json`. Fix: add a `languageSource` field to the setting definition so `settings.bs` can pick the list, and feed these two a media-language list (3-letter ISO 639-2 codes, matching `MediaStream.Language`) built from the local [`languages.bs`](../source/utils/languages.bs) map — no network call needed. #750 proves the second-consumer path by reusing the same component unchanged for the subtitle-search picker; this closes the loop so all three language pickers in the app look and behave identically. Kept out of #750 per `isolate-the-fix` — the subtitle feature doesn't need it.
+
+#### Setting descriptions on the TV are outside the house voice, and the settings docs copy them from a second source that has drifted `[fid: in-app-settings-copy]` `[captured 2026-10-09]`
+
+The setting text on the TV comes from `locale/custom/en_US.json` (each entry's `titleKey` and `descriptionKey`), but `docs/user/app-settings.md` is generated from the `description` copies in `settings/settings.json`. The two have drifted: on 2026-10-09, 2 of 74 descriptions differed (`uiTheme` and Custom Theme Colors). The docs-voice project left these strings alone, because changing them changes what users see in the app and what translators must redo.
+
+To close it, as its own project:
+
+- Add rules for TV text to `docs/dev/writing-style.md` (length, casing, tone), building on the casing convention in `locale/CLAUDE.md`.
+- Rewrite the setting descriptions in `en_US.json`. Change values, never keys: a renamed key drops its translations. Settings are saved under `settingName`, so a wording change needs no registry migration.
+- Have `scripts/generate/settings-docs.cjs` read the English text from `en_US.json` through `descriptionKey`, so the docs show what the TV shows, and drop the duplicate `description` fields.
+- Check the new text on a Roku for fit, and confirm what Weblate does to existing translations when an English value changes.
+
+`settingName`, `type` and the generated-file note stay on the page: it serves users and contributors alike (decided 2026-10-09).
 
 ### claude
 

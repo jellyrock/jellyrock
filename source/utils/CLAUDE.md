@@ -1,38 +1,38 @@
 # Rules for `source/utils/`
 
-Cross-cutting utilities. See related architecture docs for the *why* of each:
+Cross-cutting utilities. The architecture docs hold the *why* of each:
 
-- [translations.md](../../docs/architecture/translations.md) — `translate.bs`, `translateLocale.bs`, `languages.bs`
-- [settings.md](../../docs/architecture/settings.md) — `config.bs`, `globals.bs`
-- [bootstrap.md](../../docs/architecture/bootstrap.md) — `globals.bs` setup phases
+- [translations.md](../../docs/architecture/translations.md): `translate.bs`, `translateLocale.bs`, `languages.bs`, `mediaDisplayTitle.bs`
+- [settings.md](../../docs/architecture/settings.md): `config.bs`, `globals.bs`
+- [bootstrap.md](../../docs/architecture/bootstrap.md): the two setup phases in `globals.bs`
 
 ## Translations
 
-- Use `translate(translationKeys.X)` — never hard-code a string ID. The `translationKeys.X` constants are generated at build time by the BSC plugin from `locale/custom/en_US.json`; typos become compile errors.
-- `translatePlural(baseKey, count, params)` for Zero/One/Many forms. The `Zero`/`One`/`Many` keys must all exist in `en_US.json`.
-- For media stream language codes (audio/subtitle track labels), use the 3-tier resolver in `languages.bs` (alias → `translationKey` → English fallback). The `lint:language-coverage` script validates the cascade.
+- Use `translate(translationKeys.X)`, never a hard-coded string ID. The BSC plugin generates the `translationKeys` constants from `locale/custom/en_US.json` at build time, so a typo is a compile error.
+- Use `translatePlural(translationKeys.X, count, params)` for Zero/One/Many forms, where `X` is the base key without a suffix. `npm run lint:translations` fails when the `Zero`, `One` or `Many` key is missing from `en_US.json`.
+- For media stream language codes (audio and subtitle track labels), use `resolveLanguageName()` in `mediaDisplayTitle.bs`. It normalizes the code through the aliases in `languages.bs`, then tries a translation key, then an English name, then shows the raw code. `npm run lint:language-coverage` checks that the aliases and tiers agree.
 
-## Config / registry
+## Config and registry
 
-- Read globals: `getSetting(key, default)` (the `JellyRock` registry section).
-- Read user setting: `getUserSetting(key)` (the `<userId>` section). For typed reads after login, prefer `m.global.user.settings.<field>` directly — the auto-sync observer persists writes back to registry automatically.
-- Write user setting: usually just assign to `m.global.user.settings.<field>` — auto-sync handles persistence.
-- Direct registry helpers: `registryRead/Write/Delete(key, section)`, `RegistryReadAll(section)`. Section-scoped; default section is `"JellyRock"` (global).
-- Test mode: section names starting with `"test-"` mark test data. The migration runner skips non-test sections when any `test-*` section is present.
+- Read a global setting: `getSetting(key, default)`, from the `JellyRock` registry section (`test-global` while a test user is signed in).
+- Read a user setting: `getUserSetting(key)`, from the section named by the user's ID. After sign-in, prefer reading `m.global.user.settings.<field>`.
+- Write a user setting: assign to `m.global.user.settings.<field>`. `JellyfinUserSettings` observes every setting field and writes the change to the registry once auto-sync is on.
+- Direct registry helpers: `registryRead`, `registryWrite` and `registryDelete(key, section)`, and `RegistryReadAll(section)`. Each needs a section: with none, a read returns `invalid` and a write or delete does nothing.
+- Test mode: a section name starting with `test-` marks test data. When any `test-` section exists, the migration runner migrates only `test-` sections.
 
 ## Globals
 
-- `setGlobals()` runs in **Phase 1** (before `m.screen.show()`) — non-node globals. `setGlobalNodes()` runs in **Phase 2** (after) — Task-backed nodes that need a live scene. Both are in `globals.bs`. Don't move work between phases without understanding why; Roku has firmware-specific issues with observers wired before `screen.show()`.
-- Theme color override: `applyThemeColorOverrides(userSettings)` writes to `m.global.constants`. Then call `sceneManager.refreshThemeColors()` and `sceneManager.reloadHome()` to re-render. The cascade is manual (see [`manual-theme-cascade`](../../docs/architecture/tech-debt.md#manual-theme-cascade)).
+- `setGlobals()` runs before `m.screen.show()` and builds the data nodes. `setGlobalNodes()` runs after it and builds the long-running nodes: the Task launch queue, the API pool and `sceneManager`, among others. Both are in `globals.bs`. Read [bootstrap.md](../../docs/architecture/bootstrap.md#the-two-phase-global-setup) before moving work between them: some nodes can't be created on the main thread before the screen shows.
+- Theme color override: `applyThemeColorOverrides(userSettings)` writes `m.global.constants`. Then call `refreshThemeColors` and `reloadHome` on `m.global.sceneManager` through `callFunc` to redraw. Each caller runs this chain by hand (see [`manual-theme-cascade`](../../docs/architecture/tech-debt.md#manual-theme-cascade)).
 
 ## Common patterns
 
-- **`isValid(x)`** — never compare to `invalid` directly with `=`.
-- **`isValidAndNotEmpty(x)`** — common for strings.
-- **`LCase(s)`** for case-insensitive type/state comparisons.
-- **`stri(n).trim()`** for clean integer→string conversions in user-visible text.
+- **`isValid(x)`**: never compare to `invalid` with `=`.
+- **`isValidAndNotEmpty(x)`**: common for strings.
+- **`LCase(s)`** for case-insensitive type and state comparisons.
+- **`stri(n).trim()`** to turn an integer into a string for user-visible text.
 
-## What NOT to do
+## What not to do
 
-- Don't write directly to registry for settings that have a `JellyfinUserSettings` field; write to the field and let auto-sync persist.
-- Don't change the test-mode prefix from `"test-"` — migration safety depends on it.
+- Don't write the registry directly for a setting that has a `JellyfinUserSettings` field. Write the field and let auto-sync persist it.
+- Don't change the `test-` prefix. Migration safety and the test-mode global section depend on it.

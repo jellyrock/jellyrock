@@ -374,12 +374,13 @@ end sub
 ' Ends this entry's part in the watch watchCaller started, if any, and the subscription with
 ' it once no other long request of the same Task is still on a slot.
 '
-' unobserveField drops EVERY observer of the field, not only this loop's — which is why the
-' subscription is one per Task, not one per request (apiPool.bs, "Stopping a request nobody
-' is waiting for"). Dropping observers that are not ours is safe because nothing else
-' observes a Task's `state` — the task ledger reads it instead, by design
-' (source/utils/tasks.bs) — and the scoped pair that would drop only this one,
-' observeFieldScopedEx / unobserveFieldScoped, needs Roku OS 12.
+' unobserveField drops every observer of the field, not only this loop's, so the subscription
+' is one per Task, not one per request (apiPool.bs, "Stopping a request nobody is waiting
+' for"). Dropping observers that are not ours is safe because nothing else observes a Task's
+' `state`: the task ledger reads it instead, by design (source/utils/tasks.bs). The scoped
+' pair, observeFieldScopedEx / unobserveFieldScoped, should drop only this one, but on device
+' unobserveFieldScoped has removed another component's observer (#898, components/CLAUDE.md),
+' so it is not used until this case is measured (followup api-pool-watch-scoped-observer).
 sub forgetCaller(entry as object)
   caller = entry.watchedCaller
   if not isValid(caller) then return

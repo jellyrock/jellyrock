@@ -1,130 +1,87 @@
-# Manage Subtitles
+# Manage subtitles
 
-The **Manage Subtitles** button on a movie or episode searches your Jellyfin
-server's subtitle providers and downloads a subtitle onto the item, without
-leaving the detail screen.
+The **Manage Subtitles** button on a movie or episode searches your Jellyfin server's subtitle providers and downloads a subtitle onto the item. You stay on the details screen.
 
-It needs a subtitle provider plugin on your server — see
-[Jellyfin Server Plugins](jellyfin-server-plugins.md) for the ones JellyRock is
-tested with and how to install them.
+It needs a subtitle provider plugin on your server. [Jellyfin server plugins](jellyfin-server-plugins.md) lists the ones JellyRock is tested with and how to install them.
 
 ## What you need
 
-A subtitle provider plugin installed on the server **and given credentials**.
+You need a subtitle provider plugin on the server, signed in to its provider account.
 
-JellyRock is tested with **Open Subtitles**. Any Jellyfin subtitle provider
-should work: JellyRock never talks to a provider directly — it asks your server,
-and the server searches every installed provider together and merges the
-results.
+JellyRock is tested with **Open Subtitles**. Any Jellyfin subtitle provider should work. JellyRock never talks to a provider itself: it asks your server, which searches every installed provider and merges the results.
 
-**If no subtitle provider plugin is installed, JellyRock hides the Manage
-Subtitles button** — the server reports which plugins it has, so the app does
-not offer a search that can never find anything. JellyRock checks this once each
-time you sign in. If you install a provider while JellyRock is open, sign out and
-back in (or restart the app) to see the button.
+If no subtitle provider plugin is installed, JellyRock hides the **Manage Subtitles** button. Your server reports which plugins it has, so JellyRock doesn't offer a search that can never find anything. JellyRock checks this each time you sign in. If you install a provider while JellyRock is open, sign out and back in, or restart the app, to see the button.
 
-A provider plugin that is installed but never signed in *does* show the button,
-because the server cannot tell JellyRock whether a plugin has credentials — and
-it returns results for nobody. See the warning below about why that is hard to
-tell apart from "there genuinely are no subtitles".
+A provider plugin that is installed but never signed in still shows the button. The server can't tell JellyRock whether a plugin has an account, and that plugin returns no results for anyone. See [Why "no subtitles found" can mean several things](#why-no-subtitles-found-can-mean-several-things) for why this is hard to tell apart from a search with no matches.
 
 ## Who can use it
 
-Subtitle permissions in Jellyfin are not obvious, and JellyRock deliberately does
-not simply mirror the permission checkbox.
+Jellyfin's subtitle permissions are not obvious, so JellyRock does not follow the permission checkbox alone.
 
-**On Jellyfin 10.7 and 10.8**, any signed-in user can search and download — the
-`Enable subtitle management` permission does not exist on those versions.
+On Jellyfin 10.7 and 10.8, any signed-in user can search and download. The `Enable subtitle management` permission does not exist on those versions.
 
-**On Jellyfin 10.9 and newer** (measured against a live 10.11.11 server):
+On Jellyfin 10.9 and later (checked on Jellyfin 10.11.11):
 
-| Account | `Enable subtitle management` | Search & download | Delete |
+| Account | `Enable subtitle management` | Search and download | Delete |
 | --- | --- | --- | --- |
-| Administrator | not ticked (**the default**) | ✅ | ✅ |
-| Administrator | ticked | ✅ | ✅ |
-| Regular user | not ticked (**the default**) | ❌ | ❌ |
-| Regular user | ticked | ✅ | ❌ |
+| Administrator | Off (the default) | ✅ | ✅ |
+| Administrator | On | ✅ | ✅ |
+| Regular user | Off (the default) | ❌ | ❌ |
+| Regular user | On | ✅ | ❌ |
 
-Two things worth knowing:
+Two things to know:
 
-- **`Enable subtitle management` is off by default for every account, including
-  administrators** — but administrators are allowed through regardless, because
-  Jellyfin's permission check short-circuits for admins. So if you are an admin
-  and have never touched that checkbox, subtitle search still works for you. (An
-  app that gated purely on the checkbox would hide the feature from most
-  self-hosted installs.)
-- **Deleting a subtitle always requires an administrator account**, on every
-  supported server version. It is a separate, stricter check than searching —
-  granting a regular user `Enable subtitle management` lets them search and
-  download, but not delete.
+- `Enable subtitle management` is off by default for every account, administrators included. Jellyfin lets administrators through anyway. If you are an administrator and have never changed the checkbox, subtitle search still works for you. An app that relied on the checkbox alone would hide the feature on most home servers.
+- Deleting a subtitle always needs an administrator account, on every supported server version. It is a separate, stricter check than searching. Turning on `Enable subtitle management` for a regular user lets them search and download, but not delete.
 
-If you cannot delete, the delete affordance simply does not appear on the row.
+If you can't delete a subtitle, its row has no delete option.
 
 ## What it works on
 
-Subtitle search is offered for **movies and episodes only**. Jellyfin's search
-endpoint has no meaningful answer for a collection, a series or an album, so the
-button is not shown for them.
+Subtitle search is offered for movies and episodes only. Jellyfin's search has no useful answer for a collection, a series or an album, so the button doesn't show for them.
 
-Jellyfin also only searches **single video files**. For a disc rip stored as an
-ISO image or a DVD / Blu-ray folder, the server returns no results on every
-version, whatever providers are installed.
+Jellyfin also searches single video files only. For a disc rip stored as an ISO image or a DVD or Blu-ray folder, the server finds nothing on every version, whatever providers are installed.
 
-## ⚠️ Why "no subtitles found" can mean several different things
+## Why "no subtitles found" can mean several things
 
-Jellyfin's subtitle search returns an **empty list**, with a success status, for
-all of these (a server with no provider plugin at all does not get this far — the
-button is hidden):
+Jellyfin's subtitle search returns an empty result, reported as a success, in all of these cases:
 
-- a provider is installed but has no credentials
-- the credentials are wrong
-- the provider genuinely has no subtitles for this release
-- the item is a disc rip (ISO image or DVD / Blu-ray folder) rather than a single
-  video file
+- A provider is installed but not signed in.
+- The provider account details are wrong.
+- The provider has no subtitles for this release.
+- The item is a disc rip (an ISO image or a DVD or Blu-ray folder), not a single video file.
 
-The server does not distinguish them, so **JellyRock cannot either** — the
-message you see says no subtitles were found and suggests checking your provider
-setup, because that is the honest limit of what is knowable from the response.
+A server with no provider plugin never gets this far, because the button is hidden.
 
-If searching returns nothing for a well-known film, suspect the provider
-configuration before you suspect the film.
+The server does not tell these cases apart, so JellyRock can't either. The message says no subtitles were found and suggests checking your provider setup. That is all the server's answer reveals.
 
-## ⚠️ Downloads report success even when they fail
+If a search finds nothing for a well-known film, check the provider setup first.
 
-Jellyfin's download endpoint returns the same "accepted" response whether the
-download succeeded, failed, or was rejected because the provider's **daily
-download limit** was reached. JellyRock therefore does not trust that response:
-after asking for a download it re-checks the item and looks for the subtitle to
-actually appear, and only then tells you it was added.
+## Downloads report success even when they fail
 
-That is why a download reports one of three outcomes:
+Jellyfin's download returns the same "accepted" answer when the download worked, when it failed, and when the provider's daily download limit stopped it. So JellyRock doesn't trust that answer. After a download, it checks the item again and waits for the subtitle to appear. Only then does it tell you the subtitle was added.
 
-- **Added** — the subtitle is confirmed present on the item.
-- **Still processing** — the server accepted it but the file had not appeared
-  within about 15 seconds. It may still arrive: wait a moment, then press
-  **Refresh** on the detail screen to reload the item's subtitles.
-- **Couldn't add** — the request itself was rejected.
+A download ends in one of three ways:
 
-Most free provider accounts have a daily download cap. Hitting it looks like a
-download that never arrives.
+- **Added:** the subtitle is on the item.
+- **Still processing:** the server accepted the download, but the file did not appear within about 15 seconds. It may still arrive. Wait a moment, then press **Refresh** on the details screen to reload the item's subtitles.
+- **Couldn't add:** the server rejected the request.
+
+Most free provider accounts have a daily download limit. Reaching it looks like a download that never arrives.
 
 ## Choosing a language
 
-The language list comes from your server, and JellyRock sends the regional code
-rather than a generic three-letter one — so Traditional and Simplified Chinese,
-or Brazilian and European Portuguese, search as the distinct languages they are
-rather than collapsing together.
+The language list comes from your server. JellyRock sends the regional language code, not a generic three-letter one. So Traditional and Simplified Chinese, or Brazilian and European Portuguese, are searched as separate languages.
 
-The language the panel starts on comes from your Jellyfin subtitle language
-preference.
+The panel starts on your Jellyfin subtitle language preference.
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 | --- | --- |
-| No **Manage Subtitles** button on a movie or episode | No subtitle provider plugin installed on the server; or, on 10.9+, a regular user without `Enable subtitle management` |
-| No **Manage Subtitles** button on a series, collection or album | Expected — search supports movies and episodes only |
-| Subtitle search always returns nothing | Provider plugin has no, or invalid, credentials |
-| Subtitle search returns nothing for one item only | The item is a disc rip (ISO image or DVD / Blu-ray folder), or the provider has nothing for it |
-| Subtitle downloads never appear | Provider daily download limit reached |
-| No delete affordance on a downloaded subtitle | Deleting requires an administrator account |
+| No **Manage Subtitles** button on a movie or episode | No subtitle provider plugin is installed on the server. Or, on 10.9 and later, you are a regular user without `Enable subtitle management`. |
+| No **Manage Subtitles** button on a series, collection or album | This is expected. Search covers movies and episodes only. |
+| Subtitle search always finds nothing | The provider plugin is not signed in, or its account details are wrong. |
+| Subtitle search finds nothing for one item only | The item is a disc rip (an ISO image or a DVD or Blu-ray folder), or the provider has nothing for it. |
+| Subtitle downloads never appear | The provider's daily download limit was reached. |
+| No delete option on a downloaded subtitle | Deleting needs an administrator account. |

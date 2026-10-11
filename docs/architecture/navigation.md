@@ -5,10 +5,12 @@ related-files:
   - components/JRScene.xml
   - components/JRScreen.bs
   - components/JRScreen.xml
+  - components/JRGroup.bs
   - components/JRGroup.xml
   - components/auth/AuthManager.bs
   - components/auth/AuthManager.xml
   - components/data/SceneManager.bs
+  - components/data/SceneManager.xml
   - components/OverviewDialog.bs
   - source/utils/dialogs.bs
   - source/replayRoute.bs
@@ -18,171 +20,144 @@ related-files:
   - source/utils/screenWaits.bs
   - source/utils/appWaits.bs
   - components/AppWaitHost.bs
-last-reviewed: 2026-10-08
+  - components/AppWaitHost.xml
+last-reviewed: 2026-10-10
 ---
 
 # Navigation (sgRouter)
 
-How JellyRock moves between screens, where focus lives during transitions, and how the persistent overhang stays in sync.
+How JellyRock moves between screens, where focus goes on the way, and how the shared top bar (the overhang) follows the active screen.
 
-As of #550 the **whole app is routed through [`@rokucommunity/sgrouter`](https://github.com/rokucommunity/sgrouter)**. There is no longer a `SceneManager` scene-stack; `pushScene`/`popScene`/`clearScenes` are gone. Every screen — pre-login, content, and playback — is a router *view* mounted into a single outlet on `JRScene`. `SceneManager` survives only as a shared **service node** (dialogs, backdrop, theme, overhang passthrough fields).
+Every screen is a view of [`@rokucommunity/sgrouter`](https://github.com/rokucommunity/sgrouter), mounted into one outlet on `JRScene`: the pre-login screens, the content screens and the players. There is no scene stack. `SceneManager` survives as a shared service node for dialogs, the backdrop and the theme ([below](#scenemanager-is-a-service-node)). The router source is vendored in `components/roku_modules/sgrouter/` and `source/roku_modules/sgrouter/`.
 
 ## The component triad
 
-Three base classes form the screen hierarchy. Every UI component inherits from one of them.
+Every UI component inherits from `JRGroup`, and every full-screen view from `JRScreen`:
 
-```brightscript
-roSGNode
-  └─ Group
-      └─ JRGroup           ← components/JRGroup.xml (interface only, no .bs)
-          ├─ <any sub-panel or dialog>
-          └─ sgrouter_View
-              └─ JRScreen  ← components/JRScreen.xml/.bs (full-screen routed views)
-                  ├─ Home
-                  ├─ ItemDetails
-                  ├─ BaseGridView
-                  ├─ SearchResults
-                  ├─ Settings
-                  ├─ PlayerHostView
-                  ├─ AudioPlayerView
-                  ├─ PhotoDetails
-                  ├─ SetServerScreen / UserSelect / LoginScene  (pre-login)
-                  └─ ...
+```text
+Group
+  └─ sgrouter_View          (the router's view base)
+      └─ JRGroup            components/JRGroup.xml + .bs
+          ├─ sub-panels and dialogs (ExtrasSlider, JRDialog, OverviewDialog, ...)
+          └─ JRScreen       components/JRScreen.xml + .bs
+              ├─ Home, ItemDetails, BaseGridView, SearchResults, Settings
+              ├─ PlayerHostView, AudioPlayerView, PhotoDetails
+              └─ SetServerScreen, UserSelect, LoginScene (pre-login)
 
 Scene
-  └─ JRScene               ← components/JRScene.xml/.bs (the router HOST; one for the app's lifetime)
+  └─ JRScene                components/JRScene.xml + .bs (the router host)
 ```
 
-`JRScreen` extends `sgrouter_View` (the router's view base), so every full-screen component is a router view with no per-screen wiring — `JRScreen.bs` bridges the router lifecycle to JellyRock's existing `onScreen*` contract (see "`JRScreen` lifecycle bridge" below). `JRScene` is a plain `Scene`, so it does **not** inherit `sgrouter_View`'s scripts; it imports the `sgrouter`/`promises` namespaces directly (the `import` lines at the top of `JRScene.bs`) to drive the router.
+`JRGroup` extends `sgrouter_View`, so every `JRScreen` is a router view with no per-screen wiring. Sub-panels and dialogs inherit the router's view interface too, but it stays inert for them: the router drives only the views it mounts in its outlet.
 
-### `JRGroup` — `components/JRGroup.xml`
+### `JRGroup`
 
-Pure interface declaration. No BrighterScript backing file. Adds these fields to every group:
+`JRGroup.xml` declares the fields a view uses to describe itself:
 
 | Field | Type | Purpose |
 |---|---|---|
-| `lastFocus` | node | The element that had focus when this group was last shown/suspended |
-| `overhangTitle` | string | Title to display in the top bar |
+| `lastFocus` | node | The element that had focus when the view was last suspended |
+| `overhangTitle` | string | Title in the top bar |
 | `overhangTabs` | array | Tab definitions for the top bar |
-| `selectedTabId` | string (alwaysNotify) | Currently selected tab |
-| `isOverhangVisible` | bool (default: true) | Hide the top bar (e.g., during video playback) |
-| `isLogoVisible` | bool (default: false) | Show the JellyRock logo in the overhang |
-| `shouldShowIcons` | bool (default: false) | Show the search + settings icons (gated also on a current user) |
-| `shouldShowUserDropdown` | bool (default: false) | Show the current-user dropdown (controller derives the name from the global user) |
-| `isOptionsAvailable` | bool (default: true) | Whether the options key opens a panel for this group |
+| `selectedTabId` | string, `alwaysNotify` | The selected tab |
+| `isOverhangVisible` | bool, default true | Show the top bar (false during playback) |
+| `isLogoVisible` | bool, default false | Show the JellyRock logo in the top bar |
+| `shouldShowIcons` | bool, default false | Show the search and settings icons (only with a signed-in user) |
+| `shouldShowUserDropdown` | bool, default false | Show the current-user dropdown |
+| `isOptionsAvailable` | bool, default true | Whether the options key opens a panel for this view |
+| `loadingWaits` | `assocarray` | The view's open content waits ([below](#what-kind-of-wait-a-spinner-is)) |
 
-`JRScene`'s overhang controller reads these fields when the router mounts/switches the active view (see "Overhang controller" below). `JRGroup` is still the base for sub-panels and dialogs, and still carries the overhang interface surface.
+`JRGroup.bs` holds one function: an `onDestroy()` that calls `abandonApiPromises()`, so a late API response cannot fire into a destroyed panel.
 
-### `JRScreen` — `components/JRScreen.xml/.bs`
+### `JRScreen`
 
-Extends `sgrouter_View` (via `JRGroup`). Declares three lifecycle virtual functions that subclasses override:
+Screens implement three functions, and `JRScreen.bs` supplies the defaults:
 
-```brightscript
-sub onScreenShown()       ' Called when this view becomes active (open, or resume from suspend)
-sub onScreenHidden()      ' Called when this view is suspended or being closed
-sub onDestroy()           ' Called when this view is permanently destroyed
-```
-
-The base implementations are minimal:
-
-- `onScreenShown()` restores focus from `lastFocus` (or sets focus on the view itself)
-- `onScreenHidden()` is a no-op
-- `onDestroy()` calls `abandonApiPromises()` so a late pool response can't fire into a destroyed node (this is the floor for screens that *don't* override `onDestroy`; screens that do get `abandonApiPromises()` injected by the `auto-abandon-promises` BSC plugin — `SG-component` `onDestroy` does not chain to this base, so each override must carry its own cleanup)
-
-The `roku-log` log manager is initialized in `JRScene.bs:init()` (debug builds: level 4; prod: level 2), so every component has logging available without each one having to call `initializeLogManager`. `JRScreen.bs` deliberately has no `init()` — it must not initialize the manager, because global nodes are constructed before the first screen, and `JRScene.init()` is already the earliest point the manager can exist. See [logging.md](logging.md).
-
-#### `JRScreen` lifecycle bridge
-
-sgRouter drives the views it mounts through a promise-native lifecycle (`onViewOpen` / `onViewResume` / `onViewSuspend` / `beforeViewClose`) and asks them to take focus via `handleFocus()`. JellyRock screens implement `onScreenShown` / `onScreenHidden` / `onDestroy`. `JRScreen.bs`'s router hooks (`onViewOpen()`, `onViewResume()`, `onViewSuspend()`, `beforeViewClose()`, `handleFocus()`) bridge the two so every existing screen works under the router with **no per-screen changes**:
-
-| Router callback | `JRScreen` bridge (`JRScreen.bs`) |
-|---|---|
-| `onViewOpen` (first activation) | publishes `m.global.activeRoutedView = m.top`, then `onScreenShown()` |
-| `onViewResume` (suspended view back on top) | publishes `m.global.activeRoutedView = m.top`, then `onScreenShown()` |
-| `onViewSuspend` (a new view pushed on top, this one kept alive) | `saveLastFocus()` (walk to deepest focused descendant → `m.top.lastFocus`), then marks the screen covered. The screen is still on screen here, so `onScreenHidden()` waits for `hideCovered()` |
-| (the screen swap in `JRScene`) `hideCovered()` | hides the screen, and runs `onScreenHidden()` if the router suspended it. See [The screen swap](#the-screen-swap) |
-| `beforeViewClose` (permanent destroy) | `onScreenHidden()` + `onDestroy()` |
-| `handleFocus` (router asks for remote focus) | `restoreScreenFocus()`: restore `m.top.lastFocus` if valid, else focus `m.top`. Skipped for a focus-left notice (see Focus management) |
-
-Publishing `activeRoutedView` *before* `onScreenShown` matters: `JRScene`'s overhang controller and `main.bs`'s playback/options/device code all resolve "what's on screen" via `getActiveView()`, which now simply returns `m.global.activeRoutedView` (`getActiveView()` in `source/utils/misc.bs`).
-
-> **Locked invariant — never set `m.top.id` on a routed view.** sgRouter uses the view node's `id` as its history-node id; clobbering it breaks `goBack`.
-
-### `JRScene` — `components/JRScene.xml/.bs`
-
-The router **host**. One scene for the entire lifetime of the channel. See `bootstrap.md` for its full child layout and interface fields. Relevant here: it owns a `<sgrouter_Outlet id="routerOutlet">` (the live navigation surface — every routed view mounts here) and a `<JROverhang id="overhang">` driven by `JRScene`'s overhang controller.
-
-> The old `<Group id="content"/>` slot that `SceneManager` swapped screens into was **removed** along with the scene stack — `JRScene.xml` now declares only the `<sgrouter_Outlet>` as the navigation surface. Don't reintroduce a content slot; use the router.
-
-## The router host — `components/JRScene.bs`
-
-`JRScene` initializes the router, registers the route table, drives the overhang from the router-active view, and confirms app exit. Navigation is driven from the **main thread** (`main.bs` / `loginRouter`) via `callFunc` into `JRScene`'s render-thread functions, because the `sgrouter` namespace resolves on the render thread and the main loop can't call it directly.
-
-### `JRScene.initRouter()` — idempotent bring-up
-
-A no-op if a router already exists (`sgrouter.getRouter()`). Otherwise it:
-
-1. Registers the overhang controller — `m.global.observeField("activeRoutedView", "onActiveRoutedViewChanged")`.
-2. Registers the playback launch bridge — `m.global.observeField("playbackLaunchRequest", "onPlaybackLaunchRequested")`. `QueueManager.playQueue` can't navigate (no router chain), so it sets this field and `JRScene` turns it into a route.
-3. Registers the photo launch bridge — `m.global.observeField("photoLaunchRequest", "onPhotoLaunchRequested")`.
-4. Builds the auth guard reference — `guard = [m.global.AuthManager]` (the same node created on `m.global` in `setGlobalNodes`, registered by **node reference**).
-5. `sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })` then `sgrouter.addRoutes([...])`.
-
-`initRouter()` does **not** navigate. The first `routerNavigate` / `replayRoutedDeepLink` call brings the router up. It is re-callable after `resetRouter()` (sign-out → re-login): `sgrouter.initialize` creates a fresh router when none exists.
-
-### The route table (`sgrouter.addRoutes([…])` in `JRScene.initRouter()`)
-
-Registered exactly as below. Pre-login routes carry **no guard** (their redirect target, `/login`, is one of them); every post-login route carries the `AuthManager` `canActivate` guard.
-
-| Pattern | Component | Flags |
+| Function | When it runs | Default |
 |---|---|---|
-| `/` | `Home` | `clearStackOnResolve: true`, `allowReuse: true`, `canActivate` |
-| `/server` | `SetServerScreen` | (pre-login — none) |
-| `/users` | `UserSelect` | (pre-login — none) |
-| `/login` | `LoginScene` | (pre-login — none) |
-| `/details/:type/:id/play` | `PlayerHostView` | `canActivate` |
-| `/details/:type/:id` | `ItemDetails` | `canActivate` — **no `allowReuse`** |
-| `/library/:id` | `BaseGridView` | `canActivate` |
-| `/search` | `SearchResults` | `canActivate` |
-| `/settings` | `Settings` | `canActivate` |
-| `/photo` | `PhotoDetails` | `canActivate` |
-| `/audio` | `AudioPlayerView` | `canActivate` |
+| `onScreenShown()` | The view opens, or comes back on top | Restores focus from `lastFocus`, else focuses the view |
+| `onScreenHidden()` | The view is covered or closed | Nothing |
+| `onDestroy()` | The view is closed for good | `abandonApiPromises()` |
 
-Every route also gets `suspendMode: "show"`, set by a loop after the table so a new route cannot miss it. See [The screen swap](#the-screen-swap).
+SceneGraph does not chain an override to the base `onDestroy()`. For a screen that calls `fetchAsync`, the `auto-abandon-promises` BSC plugin injects `abandonApiPromises()` into the screen's own `onDestroy()`, and fails the build when the screen has none. A screen that reaches the API pool through a shared `source/` helper is not detected; its header lists that limit.
 
-> **No route sets `keepAlive`, and none should.** See the flag notes below — it is a
-> session-lifetime view cache, not a "stay alive while covered" switch.
+`JRScreen.bs` has no `init()`. `JRScene.init()` starts the `roku-log` log manager, at level 4 in debug builds and 2 otherwise, so every component can log ([logging.md](logging.md)).
+
+#### The `JRScreen` lifecycle bridge
+
+sgRouter drives its views through `onViewOpen`, `onViewResume`, `onViewSuspend` and `beforeViewClose`, and asks one to take focus through `handleFocus()`. `JRScreen.bs` overrides those and calls the screen's own functions, so no screen implements a router hook ([ADR 0019](../adr/0019-jrscreen-lifecycle-bridge.md)):
+
+| Router callback | What `JRScreen` does |
+|---|---|
+| `onViewOpen` (first time on top) | Sets `m.global.activeRoutedView` to itself, then `onScreenShown()` |
+| `onViewResume` (back on top after being covered) | The same |
+| `onViewSuspend` (covered by a new view) | `saveLastFocus()` stores the deepest focused node in `lastFocus`, then marks the view covered. The view is still visible, so `onScreenHidden()` waits for `hideCovered()` |
+| `hideCovered()` (called by `JRScene`, not the router) | Hides the view, and runs `onScreenHidden()` if it was covered ([the screen swap](#the-screen-swap)) |
+| `beforeViewClose` (closed for good) | `onScreenHidden()`, then `onDestroy()` |
+| `handleFocus` | `restoreScreenFocus()`, unless the call is only a notice ([focus management](#focus-management)) |
+
+`activeRoutedView` is set before `onScreenShown()` runs, because the overhang controller, the playback code and the options key all find the screen on show through it. `getActiveView()` in `source/utils/misc.bs` returns it.
+
+> **Never set `m.top.id` on a routed view.** sgRouter uses the view's `id` as its history id, and changing it breaks `goBack`.
+
+## The router host: `JRScene`
+
+`JRScene` is the app's one scene ([bootstrap.md](bootstrap.md#the-root-scene-jrscene) has its children and fields). It owns `<sgrouter_Outlet id="routerOutlet">`, where every routed view mounts, and `<JROverhang id="overhang">`. There is no other content slot: add a screen as a route.
+
+The `sgrouter` namespace resolves only on the render thread, so the main thread (`main.bs`, `loginRouter.bs`, `replayRoute.bs`) navigates by `callFunc` into `JRScene`. `JRScene` is a plain `Scene`, not a `sgrouter_View`, so `JRScene.bs` imports the router and promise scripts itself.
+
+### `initRouter()`
+
+`JRScene.initRouter()` does nothing when a router exists. Otherwise it:
+
+1. Observes `m.global.activeRoutedView` (the overhang controller), `playbackLaunchRequest` and `photoLaunchRequest` (the launch bridges, below). Each observer is removed before it is added, so a second sign-in does not double it.
+2. Builds the guard list from the `AuthManager` node on `m.global`.
+3. Calls `sgrouter.initialize()` with the outlet, sets `suspendMode: "show"` on every route in a loop, then calls `sgrouter.addRoutes()`.
+
+It does not navigate. Each entry point that navigates calls it first (`routerNavigate`, `replayRoutedDeepLink`, `resolveDeepLink`, `replayDeepLinkReplacingPlayer`), so it runs again after `resetRouter()` at sign-out.
+
+### The route table
+
+| Name | Pattern | Component | Flags |
+|---|---|---|---|
+| `home` | `/` | `Home` | `clearStackOnResolve`, `allowReuse`, guard |
+| `server` | `/server` | `SetServerScreen` | none |
+| `users` | `/users` | `UserSelect` | none |
+| `login` | `/login` | `LoginScene` | none |
+| `play` | `/details/:type/:id/play` | `PlayerHostView` | guard |
+| `details` | `/details/:type/:id` | `ItemDetails` | guard |
+| `library` | `/library/:id` | `BaseGridView` | guard |
+| `search` | `/search` | `SearchResults` | guard |
+| `settings` | `/settings` | `Settings` | guard |
+| `photo` | `/photo` | `PhotoDetails` | guard |
+| `audio` | `/audio` | `AudioPlayerView` | guard |
+
+"Guard" is the `AuthManager` `canActivate` check ([below](#the-auth-guard)). The pre-login routes have none, because `/login` is where the guard sends a signed-out user. Every route also gets `suspendMode: "show"` ([the screen swap](#the-screen-swap)). Code that builds a route by name, such as `JRScene.onDeepLinkResolved` checking for `library`, depends on the names.
 
 What the flags mean:
 
-- **`clearStackOnResolve`** (Home) — resolving `/` clears the visible router stack so Home becomes the back-stack root. This is how the pre-login screens fall away once login completes, and how a theme/locale reload rebuilds Home from scratch.
-  > **Locked invariant — session reset MUST use `resetRouter` (`sgrouter.destroy`), not `clearStackOnResolve`.** `clearStackOnResolve` runs `beforeViewClose` on the view target's children and on the detach store's non-`keepAlive` residents (`sgrouter_collectDetachedViewsToDestroy`), but only `destroy()` guarantees the store is emptied and the router itself released. Signing out with `clearStackOnResolve` alone leaves the router live under a signed-out session.
-- **`allowReuse`** (Home only) — lets the router reuse the existing Home instance instead of recreating it. Deliberately **omitted** on `/details/:type/:id`: JellyRock has always created a fresh `ItemDetails` per navigation (detail→detail included). `allowReuse` would force an in-place `onRouteUpdate` reuse the component was never built for.
-  > `allowReuse` does **not** govern a *same-path* navigation. The router reuses the active view whenever `isSamePath` (`Router.brs` `_navigateTo`), independent of every flag — that is the path `ItemDetails.onRouteUpdate` serves when a cast re-targets the item already showing.
-- **`suspendMode: "show"`** (every route) governs how a view is held while it is **covered** by a view pushed on top. With `"show"` the router leaves it on screen, and `JRScene` hides it when the covering view opens (see [The screen swap](#the-screen-swap)). A covered view stays in the outlet's `viewTarget`, hidden, until it is resumed or closed. `_goBack` resumes it through `_onViewResume`, which is what lets detail to `/play` restore the launching detail on back instead of bubbling a spurious Exit dialog.
-- **`keepAlive` — do not use it.** It looks like the flag that means "don't destroy while covered". It is not. Upstream documents it as *"retained for later resumption"*: a session-lifetime, **path-keyed view cache**, so a view that is **popped** is kept rather than closed, and a later forward navigation to the same path resumes the old instance. It is also **unbounded** — the only eviction helper (`sgrouter_collectDetachedViewsToDestroy`) skips `keepAlive` views by design, so nothing short of `sgrouter.destroy()` at sign-out releases them.
-  > **Why this matters, measured.** These three routes carried `keepAlive` until the retained-view fix. Because the cache is keyed by `route.path`, every *distinct* path visited and backed out of stayed alive for the session — one `BaseGridView` per library, one `ItemDetails` per item. A retained view is **not** an inert node tree: `onScreenHidden` runs on suspend but `onDestroy` does not, and `onDestroy` is where the teardown lives (tasks stopped, ~40 observers dropped, textures freed, promises abandoned, and for `SearchResults` the firmware's global voice route released). An on-device census — browse six items, back out of each, return Home — measured **1,936 unparented roots against a 519-root cold-Home baseline**, growing monotonically (946 → 1,884 across the six round trips). Removing the flag brought the same walk to **458**, flat. (`getRootsCount` counts nodes with *no parent* — the ones held only by a BrightScript reference — not every live node. The load-bearing result is the flatness across round trips; the absolute figure landing under the cold-Home baseline is not a like-for-like comparison, since cold Home and returned-to Home are different app states.)
-- **Photo and audio** set `isOverhangVisible = false`, so the overhang hides while they're active, and the view beneath suspends (focus saved) and resumes (focus restored) on back, like the video player.
+- **`clearStackOnResolve`** (Home): navigating to `/` clears the router's stack, so Home becomes the root. That is how the pre-login screens go once sign-in finishes, and how a theme or language change rebuilds Home.
+- **`allowReuse`** (Home only): the router keeps the existing Home instead of building a new one. Details leaves it off: every navigation to details builds a new `ItemDetails`, which is what the component is written for. A navigation to the path already on screen reuses the view anyway, whatever the flags (`isSamePath` in the router's `_navigateTo`); `ItemDetails.onRouteUpdate` handles that case, when a cast targets the item already showing.
+- **`suspendMode: "show"`** (every route): a covered view stays in the outlet, and `JRScene` hides it. `goBack` resumes it through `onViewResume`, which is how Back from `/play` returns to the details it was launched from.
+- **`keepAlive`: never.** It reads like "keep alive while covered" and means "keep after it is closed": a cache of views by path, for the whole session, which nothing short of `sgrouter.destroy()` empties. A kept view never runs `onDestroy()`, so its Tasks, observers and textures stay. [ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md) has the measurement that removed it.
+
+> **A session reset uses `resetRouter()`, not `clearStackOnResolve`.** Only `sgrouter.destroy()` empties the router's stores and releases the router itself. Signing out by navigating Home would leave the router live under a signed-out session.
 
 ### The screen swap
 
-Going forward, the old screen, the new screen and the overhang change in one render pass. sgRouter does not promise that. Its documented order runs the outgoing view's suspend (hide it, then `onViewSuspend`) and the incoming view's `onViewOpen` as separate promise steps, several message-loop turns apart. With the router's `"hide"` or `"detach"`, the old screen vanished that many turns before the new one appeared, and the old overhang stayed on an empty screen. Measured 2026-10-07 on a Streaming Stick 4K: 122 to 161 ms going forward, against 2 to 16 ms going back.
+Going forward, the old screen, the new screen and the overhang change in one render pass. sgRouter does not promise that: it runs the outgoing view's suspend and the incoming view's `onViewOpen` as separate promise steps, several message-loop turns apart, so with `"hide"` or `"detach"` the old screen vanished before the new one appeared. [ADR 0050](../adr/0050-same-frame-screen-swap.md) has the decision and the timings. So every route suspends with `"show"`, and `JRScene` drives the swap:
 
-So every route suspends with `"show"`, which sgRouter documents for "a cross-fade you drive yourself", and JellyRock drives the swap:
+1. The router suspends the outgoing view and leaves it visible. `onViewSuspend()` saves its focus and marks it covered.
+2. The router shows the incoming view and calls its `onViewOpen()`, which sets `m.global.activeRoutedView`.
+3. `JRScene.onActiveRoutedViewChanged()` runs inside that write ([overhang controller](#overhang-controller)). It hides the previous view through `hideCovered()` and shows the new view's overhang.
 
-1. The router suspends the outgoing view. It stays on screen. `JRScreen.onViewSuspend()` saves focus and marks it covered.
-2. The router shows the incoming view and calls its `onViewOpen`, which writes `m.global.activeRoutedView`.
-3. `JRScene.onActiveRoutedViewChanged()` runs inside that write. It calls `hideCovered()` on the previous view (hide it, then run its `onScreenHidden()`), and projects the new view's overhang.
+Steps 2 and 3 run in one synchronous call, so nothing renders between them. Going back, the router closes the outgoing view instead of suspending it, so `hideCovered()` only hides it: `beforeViewClose` already ran `onScreenHidden()`.
 
-Steps 2 and 3 run in one synchronous call, so nothing renders between them. Going back, the router closes the outgoing view rather than suspending it, so `hideCovered()` only hides it: `beforeViewClose` already ran `onScreenHidden()`.
+`onScreenHidden()` runs at the swap, not at suspend, because the screen is still visible at suspend. Anything it changes on screen, such as a backdrop, would change before the new screen arrives.
 
-`onScreenHidden()` runs at the swap, not at suspend, because the screen is still visible at suspend. Anything it changes on screen (a backdrop, an indicator) would otherwise change before the new screen arrives.
+### The auth guard
 
-### The auth guard — `components/auth/AuthManager`
-
-`AuthManager` is created on `m.global` in `setGlobalNodes()` (`source/utils/globals.bs`) **before** `addRoutes`, and registered by node reference as the `canActivate` guard on every post-login route. The router invokes it on the render thread once per guarded navigation.
-
-`canActivate(currentRequest)` (`AuthManager.canActivate()`) is a cheap **synchronous** token check — no network (launch-time `AboutMe` re-validation stays in the login flow):
+`setGlobalNodes()` (`source/utils/globals.bs`) creates `AuthManager` on `m.global` before the routes are added, and the same node is the `canActivate` guard on every post-login route. The router calls it on the render thread for each guarded navigation. It checks the token only, with no network call; the sign-in flow validates the token against the server.
 
 ```brightscript
 function canActivate(currentRequest as object) as dynamic
@@ -194,249 +169,203 @@ function canActivate(currentRequest as object) as dynamic
 end function
 ```
 
-On a present token it returns `true` (allow). On absence it **stashes the requested path** on `m.top.stashedRoute` and returns `{ path: "/login" }` — a redirect command. The router treats any AA with a non-empty `path` as a redirect (`Router.brs` `sgrouter_runGuardChecks`), the same shape `sgrouter.createRedirectCommand("/login")` produces, without pulling the whole router namespace into the guard node. Registering the *same* instance that lives on `m.global` is the point: the stashed path is readable by the main-thread replay helper after login (see "Deferred deep links" below and `bootstrap.md`).
+With no token, it stores the requested path on `stashedRoute` and returns `{ path: "/login" }`. The router treats any associative array with a non-empty `path` as a redirect (`sgrouter_runGuardChecks`), the shape `sgrouter.createRedirectCommand("/login")` builds, so the guard node does not need the router namespace. Registering the node that lives on `m.global` is what lets the main thread read the stash after sign-in.
 
-### Navigation helpers on `JRScene`
+#### Replaying a stashed route
 
-| Function | What it does |
+After sign-in, `main.bs` `createAndShowHomeGroup()` calls `replayAfterLogin()` (`source/replayRoute.bs`). A stashed deep link (`AuthManager.stashedDeepLink`) goes first, through `JRScene.resolveDeepLink`: [bootstrap.md](bootstrap.md#deep-links) owns that path. Otherwise it reads and clears `stashedRoute`, and passes `buildReplayRoutes(stashed)` to `JRScene.replayRoutedDeepLink`:
+
+| Stash | Route chain |
 |---|---|
-| `routerNavigate(path, context, clearSpinner)` | `initRouter()` then `navigateThenFocus(path, context, clearSpinner)`. The main-thread entry point for single navigation calls (pre-login flow + transition to Home). `context` carries route data (e.g. a populated username for `/login`). `clearSpinner` (login paths only) — see "Loading spinners across navigation" below. |
-| `navigateThenFocus(path, context, clearSpinner)` | The shared navigate tail: `sgrouter.navigateTo` → on settle, `sgrouter.setFocus` → on reject, warn + re-assert focus (never strand the remote). Centralizes the navigate/focus/catch trio reused by `routerNavigate`, the final step of `navigateChainStep`, and the deep-link resolve calls. `path` is a string or a named-route AA. When `clearSpinner` is set, it `stopLoadingSpinner()`s at settle (`NavigationEnd`) / on reject — used to carry a blocking login spinner across the async nav (see below). |
-| `replayRoutedDeepLink(routes)` | `initRouter()` then `navigateChainStep(routes, 0, true)` — a *sequential* route chain for post-login replay (each step waits for the previous to settle). Defaults to `["/"]`. Passes `clearLoginSpinnerOnEnd = true` so the blocking login spinner is cleared only when the final route mounts. |
-| `navigateChainStep(routes, index, clearLoginSpinnerOnEnd)` | Navigates `routes[index]`, then chains to the next once it settles (`navigateTo`'s promise resolves at `NavigationEnd`). The final step takes remote focus (and clears the login spinner when `clearLoginSpinnerOnEnd` is set). The runtime-cast caller (`replayDeepLinkReplacingPlayer`) leaves it `false` — no login spinner is up there. |
-| `onPlaybackLaunchRequested()` | Reads `m.global.playbackLaunchRequest`; audio → `/audio`, every video-family type → `/details/<type>/<id>/play`. The queue is the source of truth for what plays. |
-| `onPhotoLaunchRequested()` | Reads `m.global.photoLaunchRequest`; navigates `/photo` carrying the launch AA through as route context (`PhotoDetails` reads it on mount). |
-| `reloadRoutedHome()` | `sgrouter.navigateTo("/")` — a fresh Home render after theme/locale change (Home's `clearStackOnResolve` rebuilds it, picking up new theme constants / translations). |
-| `routerGoBack()` | Main-thread wrapper for `sgrouter.goBack()` (e.g. after a delete confirmation leaves the now-deleted detail). |
-| `resetRouter()` | Removes the overhang/playback/photo observers, drives `beforeViewClose` (→ `onScreenHidden` + `onDestroy`) on the mounted routed views (`teardownRoutedViews`), then `sgrouter.destroy()`, clears `m.global.activeRoutedView`, hides the overhang. Called on sign-out / change-user / change-server before `reenterLogin`. The explicit teardown is required because `sgrouter.destroy()` removes the view *nodes* without running their lifecycle — without it a view suspended at sign-out leaks its Tasks/observers and never abandons in-flight API promises. |
+| empty | `["/"]`: Home |
+| a plain route | `["/", route]`: Home, then the route |
+| a `/play` route | `["/", detailsPath, playPath]`, so Back goes Player, Details, Home |
 
-> **`teardownRoutedViews` reaches covered views because no route detaches them.** It walks the outlet's `viewTarget`, where a view suspended with `"show"` stays. A `"detach"` view would sit in the router's detach store instead (`m.__router_detachedViews`, an associative array), which this loop cannot see, and `sgrouter.destroy()` then removes it without running `onDestroy`. Measured 2026-10-07 on a Streaming Stick (3600X), resetting with Home, a library and a detail on the stack: with details and library on `"detach"`, the library never got `beforeViewClose`; with every route on `"show"`, all three did. Keep that in mind before giving any route `"detach"` or `keepAlive` again.
+`AuthManager.canActivate` is the only writer of `stashedRoute`.
 
-### Loading spinners across navigation
+### Navigation functions on `JRScene`
 
-The scene-level loading spinner is toggled by `JRScene.onIsLoadingChanged` (fired by `startLoadingSpinner()` / `stopLoadingSpinner()` in `misc.bs`, which set `isLoading` + `isRemoteDisabled` on the scene). Crucially it also toggles the active view: `activeRoutedView.visible = not isRemoteDisabled`. So a **blocking** spinner (`isRemoteDisabled = true`) hides the current view; stopping it shows the current view again.
+The main thread reaches the ones in `JRScene.xml`'s interface by `callFunc`.
 
-**Convention: a routed destination screen owns its own load spinner.** The screen that loads data on open starts the spinner when its fetch begins and stops it when the data arrives; callers just `navigateTo`. This is the pattern the sgRouter migration established, and where a spinner "goes missing" it's almost always a screen that didn't get the memo.
+| Function | What it does | Called from |
+|---|---|---|
+| `routerNavigate(path, context, clearSpinner)` | `initRouter()`, then `navigateThenFocus()` | `loginRouter.routerNav()` (the pre-login routes) and the remote-control commands Home, Search and Settings (`remoteDispatch.dispatchRoute()`) |
+| `navigateThenFocus(path, context, clearSpinner)` | `sgrouter.navigateTo()`; when it settles, `sgrouter.setFocus()`; when it fails, logs and takes focus again so the remote is never stranded. With `clearSpinner`, stops the spinner at either end ([spinners](#loading-spinners-across-navigation)) | `routerNavigate`, the last step of `navigateChainStep`, deep-link resolve |
+| `replayRoutedDeepLink(routes)` | `initRouter()`, then `navigateChainStep(routes, 0, true)`. Defaults to `["/"]` | `replayAfterLogin()` |
+| `navigateChainStep(routes, index, clearLoginSpinnerOnEnd)` | Navigates one route and, when its promise settles, the next. The last step takes focus and, if asked, clears the sign-in spinner | `replayRoutedDeepLink`, `replayDeepLinkReplacingPlayer` |
+| `resolveDeepLink(args)` | Fetches the item before navigating, then `onDeepLinkResolved` routes to it ([bootstrap.md](bootstrap.md#resolving)). `cancelDeepLinkResolve()` stops the fetch | `replayAfterLogin()`, `replayDeepLinkRuntime()` |
+| `replayDeepLinkReplacingPlayer(targetRoute)` | Replaces a playing player ([below](#replacing-an-active-player)) | `onDeepLinkResolved`, for a playback cast over a player |
+| `onPlaybackLaunchRequested()` | Observer of `m.global.playbackLaunchRequest`: audio goes to `/audio`, every video type to `/details/<type>/<id>/play`. The queue decides what plays | `QueueManager.playQueue`, which cannot navigate |
+| `onPhotoLaunchRequested()` | Observer of `m.global.photoLaunchRequest`: navigates to `/photo` with the request as route context | `QueueManager.onQuickPlayTaskOutput()`, `quickplay.bs` |
+| `reloadRoutedHome()` | `sgrouter.navigateTo("/")`; `clearStackOnResolve` rebuilds Home with the new theme or language | `main.bs`, on `SceneManager.reloadHomeRequested` |
+| `routerGoBack()` | `sgrouter.goBack()` | The remote-control Back command (`remoteDispatch.dispatchGoBack()`) |
+| `resetRouter()` | Removes the three observers, closes the mounted views (`teardownRoutedViews`), drops the screen's waits, cancels a deep-link fetch, calls `sgrouter.destroy()`, clears `activeRoutedView` and hides the overhang | Sign-out, change user and change server in `main.bs`, and `replayRoute.onServerProbeDone` for a cast to another server |
 
-- **Self-starting screens** — `BaseGridView` (`loadInitialItems` → `prepareDataLoad`), `SearchResults` (`searchMedias`), the Live TV schedule: start *and* stop their own spinner.
-- **Launcher-started** — photo / player: `QueueManager.launchItem` (and the play/quickplay paths) start the spinner; the destination (`PhotoDetails` on mount, the player when content loads) stops it.
-- **`ItemDetails`** — starts the spinner in `onItemIdChanged` (right before the metadata fetch task), stops it in `onDetailsLoaded`. Its start used to live in the removed `showScenes.CreateItemDetailsGroup` factory; the migration didn't re-home it, so item opens showed no spinner until this was restored. `itemId`'s `onChange` is a synchronous scoped observer, so the spinner is up before the empty springboard renders a frame; the complete-context (deep-link) early-return shows no spinner for an already-loaded item.
+`resetRouter()` closes the views itself because `sgrouter.destroy()` removes the view nodes without running their lifecycle. Without it, a view covered at sign-out would keep its Tasks and observers and never abandon its API promises.
 
-**Login is the one cross-screen exception.** The login coordinator starts a **blocking** spinner on the *outgoing* pre-login view (`onUserSelected` / `onCredentialsSubmitted`), then navigates to a **different** view. Because `navigateTo` is async (it resolves at `NavigationEnd`), `activeRoutedView` is still the outgoing view for the duration of the nav. Stopping the spinner synchronously *before* the nav settles resets `isRemoteDisabled` and re-shows that stale outgoing view for a frame before the destination mounts — the visible "login flash" #677 introduced. The fix is to **keep the spinner up across the nav and clear it at settle** via the `clearSpinner` flag on `navigateThenFocus` (login→Home rides it through `replayRoutedDeepLink` → `navigateChainStep`; the password-required `/login` hop rides it through `routerNavigate`). This mirrors the launcher-started pattern — the destination's mount is what clears the spinner, never a synchronous stop mid-transition.
+> **`teardownRoutedViews` reaches covered views because no route detaches them.** It walks the outlet's `viewTarget`, where a `"show"` view stays when covered. A `"detach"` view would sit in the router's detach store (`m.__router_detachedViews`), which this loop cannot see, and `sgrouter.destroy()` would remove it without `onDestroy()`. Measured 2026-10-07 on a Streaming Stick (3600X), resetting with Home, a library and a details screen on the stack: with details and library on `"detach"` the library never got `beforeViewClose`; with every route on `"show"`, all three did. Check this before giving any route `"detach"` or `keepAlive`.
 
-#### What kind of wait a spinner is
+## Loading spinners across navigation
 
-The spinner is one widget, but the waits it covers are not alike, and each kind has its own rules for what the viewer is told and what Back does. The kinds are `LoadingKind` (`source/enums/LoadingKind.bs`), and what the spinner shows is `loadingStages` (`source/utils/loadingStages.bs`). Decision and the alternatives ruled out: [ADR 0044](../adr/0044-spinner-by-kind-of-wait.md).
+`startLoadingSpinner()` and `stopLoadingSpinner()` (`source/utils/misc.bs`) set the scene's `isLoading` and `isRemoteDisabled`. `JRScene.onIsLoadingChanged()` shows the spinner and also sets `activeRoutedView.visible = not isRemoteDisabled`, so a blocking spinner hides the screen and stopping it shows the screen again.
+
+**A screen that loads data on open owns its spinner.** Callers only navigate. When a spinner goes missing, the destination screen is the first place to look.
+
+| Screen | Starts | Stops |
+|---|---|---|
+| `BaseGridView` | `prepareDataLoad()`, from `loadInitialItems()` | `stopGridSpinner()` |
+| Live TV schedule (`schedule.bs`) | `startLoading()`, `reloadChannels()` | `onChannelsLoaded()`, `onChannelPageFailed()` |
+| `ItemDetails` | `onItemIdChanged()`, before the metadata fetch | `onDetailsLoaded()` |
+| `SearchResults` | a content wait, `screenWaits.begin()` in `searchMedias()` | `screenWaits.finish()` |
+| `PhotoDetails` | `QueueManager.launchItem()` | `showPhoto()` |
+
+`ItemDetails` starts the spinner from its `itemId` observer, which runs before the empty screen draws a frame. When the route context already holds the full item, as from a resolved deep link, it shows no spinner. Every other item type that `launchItem()` handles opens a playback start instead of a spinner ([below](#what-kind-of-wait-a-spinner-is)).
+
+**Sign-in is the one spinner that crosses screens.** `loginRouter.bs` starts a blocking spinner on the outgoing pre-login screen (`onServerSubmitted`, `onUserSelected`, `onCredentialsSubmitted`), then navigates to a different screen. `navigateTo` settles only at `NavigationEnd`, so until then `activeRoutedView` is still the outgoing screen. Stopping the spinner before that resets `isRemoteDisabled` and shows the outgoing screen again for a frame before the next one mounts: the "login flash" of #677. So the spinner stays up across the navigation and is cleared when it settles, through `clearSpinner` on `navigateThenFocus`. The step to `/login` passes it through `routerNavigate`, and the step to Home through `replayRoutedDeepLink` and `navigateChainStep`. When a deep link is stashed, `resolveDeepLink` takes the spinner over and `onDeepLinkResolved` clears it.
+
+### What kind of wait a spinner is
+
+The spinner is one widget, but the waits it covers are not alike, and each kind has its own rules for what the viewer is told and what Back does. The kinds are `LoadingKind` (`source/enums/LoadingKind.bs`), and the text under the spinner comes from `loadingStages` (`source/utils/loadingStages.bs`). The decision and the alternatives ruled out: [ADR 0044](../adr/0044-spinner-by-kind-of-wait.md).
 
 | Kind | The wait | Back | Text under the spinner |
 |---|---|---|---|
-| **Content load** — `screenWaits.begin(m.top, name)` | A screen waiting on the server for the data it shows | Leaves the screen, and its waits go with it; the pool skips a queued read nobody is waiting for any more, and stops a long one already sent ([ADR 0043](../adr/0043-pool-stops-long-reads-of-gone-callers.md)) (see [api.md](api.md#a-request-nobody-is-waiting-for)) | "Still loading…" from 8 s, "The server is taking a while to answer." from 30 s |
-| **Playback start** — `QueueManager.beginPlaybackStart(label)` | From the press to the player holding a stream: a queue build (Play all, shuffle), the server opening a play session (`PlaybackInfo`, a live stream) | Before a player exists, cancels the start, stops the queue build and shows the screen Play was pressed on again; leaving that screen any other way fails it too. After, the player's teardown fails it, and a live open still in flight is allowed to finish so its stream is closed ([ADR 0045](../adr/0045-live-stream-open-handed-off-by-stage.md)) | Same stages, under the channel label on a channel switch |
-| **Buffering** — *not built yet* | The player refilling mid-playback | The player's own handling | None: the wait is not a server answer |
-| **Session change** — *not built yet* | Sign in or out, switching user or server, the server scan, the boot-time font download | Blocked on purpose | None |
+| **Content load**, `screenWaits.begin(m.top, name)` | A screen waiting on the server for the data it shows | Leaves the screen, and its waits go with it. The pool skips a queued read nobody waits for and stops a long one already sent ([api.md](api.md#a-request-nobody-is-waiting-for), [ADR 0043](../adr/0043-pool-stops-long-reads-of-gone-callers.md)) | "Still loading…" from 8 s, "The server is taking a while to answer." from 30 s |
+| **Playback start**, `QueueManager.beginPlaybackStart(label)` | From the press to the player holding a stream: a queue build (Play all, shuffle), the server opening a play session (`PlaybackInfo`, a live stream) | Before a player exists, cancels the start, stops the queue build and shows the screen Play was pressed on. After, the player's teardown fails it, and a live stream still opening is allowed to finish so it is closed ([ADR 0045](../adr/0045-live-stream-open-handed-off-by-stage.md)) | The same stages, under the channel name on a channel switch |
+| **Buffering**, not built yet | The player refilling mid-playback | The player's own handling | None: the wait is not a server answer |
+| **Session change**, not built yet | Sign in or out, switching user or server, the server scan, the boot-time font download | Blocked | None |
 
-**Plain** (`startLoadingSpinner()`) is a spinner no call site has assigned a kind yet: the spinner and the caller's own text, nothing else. It stays today's behavior, so a call site moves to a kind only when it meets that kind's rules.
+**Plain** (`startLoadingSpinner()`) is a spinner no call site has given a kind yet: the spinner and the caller's text, nothing else. A call site moves to a kind only when it meets that kind's rules.
 
-- **A screen's waits live on the screen, by name.** `screenWaits.begin(m.top, "results")` opens a wait in the screen's `loadingWaits` field and `screenWaits.finish(m.top, "results")` ends it. `JRScene.bindLoadingWaits()` follows the active routed view's field, the way `registerOverhangData()` follows its overhang fields, so a screen's waits show only while it is the active view: they go when it closes, hide while another view is on top, and show again when it returns, still counting from when each began. A screen can end only its own waits, so a late answer to a screen the viewer has left cannot stop the spinner of the one they are on, and the spinner stays until the last of several waits ends. Beginning a wait that is open restarts it (a new query supersedes the last); finishing one that is not open does nothing, so every exit path can call it. Don't stop a screen's own data wait with `stopLoadingSpinner()` — that is the scene's spinner, not the screen's.
-- **The scene's own spinner shows over a screen's waits.** `startLoadingSpinner()` and the cast resolve are waits the whole app is in; while one is up it owns the spinner, and the screen's waits show again when it stops. Its stop still ends whatever scene spinner is up — the reason each call site moves to a named kind.
-- **App waits outlive the screen that started them, and each is a Promise.** A playback start runs from a press on one screen to a player on another, so it cannot live on either. `appWaits.begin(kind, label)` (`source/utils/appWaits.bs`) asks the scene's `AppWaitHost` (only through `callFunc`) for a Promise; the scene shows the wait until that Promise settles, over the active screen's waits. The first settle wins and later ones do nothing, so every exit path ends it without checking — and code holding one start can never end another, which a wait ended by name could not promise (the player a channel switch replaces used to need an `isSwitchingChannel` flag not to end the next channel's spinner). `QueueManager` opens every playback start (`beginPlaybackStart`) and hands it to the player that mounts (`takePlaybackStart`); the player resolves it when its stream loads and fails it on a failed load or teardown. A wait nobody ends is failed at its kind's time limit (`timeouts.PLAYBACK_START_LIMIT_MS`) and logged as an error. A playback start hides the screen it was pressed on, and the overhang with it in the same call (both by `opacity`, which neither the router nor the overhang controller touches), until it ends, and holds the remote focus meanwhile: the host sits outside the router outlet, so the hidden screen takes no keys, Back reaches `JRScene`'s Back arbiter, which cancels the start and shows that screen again (`AppWaitHost.cancelOnBack`), and every other key waits. A Back while the router is navigating is swallowed, as it always is, so the navigation that mounts the player finishes. When no start hides a screen, the active screen takes the focus back (`handleFocus`, restoring the `lastFocus` the host saved). A screen that plays declares `isPlaybackScreen` (`JRScreen`), and reaching it is the one screen change that does not fail a start still waiting for its player (`appWaits.leftBehind`).
-- **Text is only ever true.** "The server is taking a while" is shown only by kinds whose wait is a server answer; a kind whose wait is not (buffering, a LAN scan, local teardown) gets no stage text rather than a wording that would be wrong for it. The stage text has its own line under the spinner (`#loadingStageText`), so a caller's text above it (a channel name, "Downloading fallback font") is never replaced. With several waits open, it counts from the oldest one with stages: that is how long the viewer has waited.
-- **Why 8 s.** A normal wait never shows text: even a 512 MB Stick draws a large library's first page in about 3.4 s from a server that keeps up (measured 2026-09-24), and the usual guideline is that a wait of around 10 s needs feedback and a way out.
-- **The stages only reach the viewer for a wait allowed to run long.** A screen whose wait is one request on the default limit gives up at `timeouts.API_WAIT_MS`, so it shows "Still loading…" only briefly and never the 30 s stage; search makes four requests in sequence, so a slow search can reach it. A content load that can legitimately take longer needs a longer limit on its request as well as this kind.
+- **A screen's waits live on the screen, by name.** `screenWaits.begin(m.top, "results")` opens a wait in the screen's `loadingWaits` field, and `screenWaits.finish(m.top, "results")` ends it. `JRScene.bindLoadingWaits()` follows the active view's field, so a screen's waits show only while it is the active view. They go when it closes, hide while another view covers it, and show again when it returns, still counting from when each began. A screen can end only its own waits, so a late answer for a screen the viewer has left cannot stop the spinner of the one they are on. The spinner stays until the last open wait ends. Beginning an open wait restarts it (a new query replaces the last), and finishing one that is not open does nothing, so every exit path can call it. Don't end a screen's wait with `stopLoadingSpinner()`: that is the scene's spinner.
+- **The scene's own spinner shows over a screen's waits.** `startLoadingSpinner()` and a deep-link fetch are waits the whole app is in. While one is up it owns the spinner, and the screen's waits show again when it stops. Its stop ends whatever scene spinner is up, which is why each call site moves to a named kind.
+- **App waits outlive the screen that started them, and each is a Promise.** A playback start runs from a press on one screen to a player on another, so it cannot live on either. `appWaits.begin(kind, label)` (`source/utils/appWaits.bs`) asks the scene's `AppWaitHost` for a Promise, by `callFunc`, and the scene shows the wait until it settles, over the active screen's waits. The first settle wins and later ones do nothing, so every exit path ends it without checking, and code holding one start cannot end another.
+- **How a playback start runs.** `QueueManager` opens it (`beginPlaybackStart`) and hands it to the player that mounts (`takePlaybackStart`). The player resolves it when its stream loads and fails it on a failed load or teardown. One nobody ends fails at `timeouts.PLAYBACK_START_LIMIT_MS` and is logged as an error. While it waits, it hides the screen Play was pressed on, and the overhang with it, by `opacity`, which neither the router nor the overhang controller touches. `AppWaitHost` holds the remote focus meanwhile. It sits outside the router outlet, so the hidden screen takes no keys; Back reaches `JRScene`'s [back arbiter](#the-back-arbiter--exit-confirmation), which cancels the start and shows the screen again (`AppWaitHost.cancelOnBack`), and other keys wait. When no start hides a screen, `AppWaitHost.releaseFocus` gives the focus back through the screen's `handleFocus`. A screen that plays sets `isPlaybackScreen` (`JRScreen.xml`), and reaching it is the one screen change that does not fail a start still waiting for its player (`appWaits.leftBehind`, from `AppWaitHost.failLeftBehind`).
+- **The text is only ever true.** "The server is taking a while" shows only for kinds whose wait is a server answer. A kind whose wait is not (buffering, a LAN scan, local teardown) gets no stage text rather than wrong text. The stage text has its own line under the spinner (`#loadingStageText`), so a caller's text above it (a channel name, "Downloading fallback font") stays. With several waits open, it counts from the oldest one with stages: that is how long the viewer has waited.
+- **Why 8 s.** A normal wait never shows text: even a 512 MB Stick draws a large library's first page in about 3.4 s from a server that keeps up (measured 2026-09-24). The usual guideline is that a wait of around 10 s needs feedback and a way out.
+- **The stages reach the viewer only on a wait allowed to run long.** A screen whose wait is one request on the default limit gives up at `timeouts.API_WAIT_MS`, so it shows "Still loading…" briefly and never the 30 s stage. Search makes four requests in sequence, so a slow search can reach it. A content load that can take longer needs a longer limit on its request as well as this kind.
 - **A direct write to the scene's `isLoading` resets its kind to plain when the spinner stops**, so a later direct start that names no kind cannot inherit one.
 
 ## The back arbiter & exit confirmation
 
-Because the whole app is routed, a routed view's `back` is intercepted by the **outlet first** (`sgrouter.goBack`). A back key only bubbles up to `JRScene.onKeyEvent` when `goBack` is a no-op — i.e. the router is at history root (depth ≤ 1). That is `JRScene`'s cue to confirm exit (the `key = "back"` branch of `JRScene.onKeyEvent()`):
+The outlet takes a routed view's Back first and calls `sgrouter.goBack()`. Back reaches `JRScene.onKeyEvent()` only when `goBack` did nothing. That happens at the root of the history, and also while a navigation is running, because sgRouter refuses `goBack` mid-transition. `JRScene` then decides, in this order:
 
-```brightscript
-if key = "back"
-  showExitConfirmation()   ' router is at root; nothing left to pop
-  return true
-```
+| Check | Then |
+|---|---|
+| The remote is disabled (`isRemoteDisabled`, a blocking spinner) | Swallow every key |
+| A deep-link fetch is running | Cancel it (`cancelDeepLinkResolve()`): Back aborts the cast |
+| `isRouterNavigating()` | Swallow: the navigation that is settling owns this Back |
+| A playback start hides the screen (`AppWaitHost.cancelOnBack`) | Cancel the start and show the screen again |
+| Otherwise | `showExitConfirmation()` |
 
-`showExitConfirmation()` shows a standard `showConfirmDialog` and owns the whole exchange itself. `JRScene` is a component with its own script scope, so it reads the answer through a scoped observer (`onExitConfirmResult`) and sets `m.top.exit = true` on confirm; `main.bs` sees only the `exit` field it already observes. Routing the dialog through `main.bs`'s message port instead would cross the thread boundary for every field write and buy nothing.
+`isRouterNavigating()` reads the router's `routerState.type` field. No router, an empty type, `NavigationEnd`, `NavigationError` or `NavigationCancel` means idle; anything else means a navigation is running. The field is read, never observed: a `routerState` observer coalesces quick writes and drops the final `NavigationEnd`, which once left a mirrored "navigating" flag stuck true so Back never offered to exit. A read always sees the latest value.
 
-To distinguish the two reasons a back bubbles up — at history root (confirm exit) vs. a navigation still in flight (the settling nav owns the back) — the arbiter calls `isRouterNavigating()`, which reads the router's public `routerState.type` field **directly**. A non-terminal type means a nav is in flight (swallow the back); a terminal type (`NavigationEnd`/`NavigationError`/`NavigationCancel`), or no router yet, means idle (confirm exit). The field is **read**, never observed: a `routerState` observer *coalesces* rapid writes and reliably drops the terminal `NavigationEnd` (proven on device — a mirrored `navInProgress` flag wedged true and ate back→exit), but a field *read* never coalesces, so the field always holds the true latest state.
+`showExitConfirmation()` shows a `showConfirmDialog` and handles the answer itself, in the scoped observer `onExitConfirmResult`, which sets `m.top.exit = true` on yes. `main.bs` sees only the `exit` field it already observes. Answering on `main.bs`'s message port instead would cross threads for every field write and gain nothing.
 
-The `options` key (the `key = "options"` branch of `JRScene.onKeyEvent()`) opens the active routed view's options panel: it resolves the view via `getActiveView()`, checks `isOptionsAvailable`, saves `lastFocus`, and focuses the panel's list.
+The options key opens the active view's options panel when the view's `isOptionsAvailable` is true and `nodeHelpers.findOptionsPanel()` finds a panel. It sets `lastFocus` to the view's `focusedChild`, shows the panel and focuses its list.
 
-## Replacing an active player (cast-over-player)
+## Replacing an active player
 
-A playback cast can arrive while a media player is already active (`replayDeepLinkReplacingPlayer`): the old content must tear down and the new content launch. The flow is two steps:
+A playback cast can arrive while a player is on screen. `replayDeepLinkRuntime()` (`source/replayRoute.bs`) hands it to `JRScene.resolveDeepLink`, and once the item is fetched `onDeepLinkResolved` calls `replayDeepLinkReplacingPlayer(detailsRoute)`. That does two things:
 
-1. `teardownForDeepLink()` on the active view — stop decoding + report to the server synchronously, so nothing keeps playing during the transition.
-2. `navigateChainStep(["/", targetRoute], 0)` — navigate **Home first**, then the target. Navigating `"/"` tears the player host down (Home is `clearStackOnResolve`, so the whole stack — player host included — clears and Home re-mounts) and its `navigateTo` promise resolves at `NavigationEnd`; the chain then mounts the target, which auto-launches. Back lands Player → Details → Home — the intended deep-link shape — with no stale prior item left behind.
+1. Calls `teardownForDeepLink()` on the active view, which stops playback at once, so nothing keeps playing. `PlayerHostView` destroys its player, which reports the stop to the server; `AudioPlayerView` stops the audio node and leaves the rest to its `onDestroy()`.
+2. `navigateChainStep(["/", targetRoute], 0)`: Home first, then the target. Home's `clearStackOnResolve` clears the stack, the player included. When its `navigateTo` promise settles, the chain mounts the target, which starts playback. Back then goes Player, Details, Home, with nothing of the old item left.
 
-This rides `navigateTo`'s **promise** (via the shared `navigateChainStep`, exactly as post-login deep-link replay does). The promise resolves reliably through the router's internal chain — **not** the coalescing `routerState` field observer — so the navigation can't strand. An earlier design (ADR 0020) instead `goBack()`-popped the player and waited for a `routerState`-observer "settle" event before navigating; that was proven on device to strand every cast, because the observer coalesces and drops the terminal `NavigationEnd` it waited on (`goBack` also returns a bare Boolean, with no promise to chain). See [ADR 0020](../adr/0020-router-settle-primitive.md) for the full postmortem.
+The chain follows `navigateTo`'s promise, which the router always settles, not the `routerState` observer. An earlier design popped the player with `goBack()` and waited for that observer to report `NavigationEnd`. It stranded every cast on device, because the observer drops that value and `goBack` returns a Boolean with no promise to wait on ([ADR 0020](../adr/0020-router-settle-primitive.md)).
 
-**The complement — a non-playback `open` over an active player is *dropped*, not stacked.** Only a *playback* cast replaces the player (above). A `navigate`/`open` deep link arriving while a player is active — e.g. jellyfin web's Display Mirroring emitting a `DisplayContent` on every item-detail browse while JellyRock is the cast target — would otherwise plain-push `ItemDetails` on top of live playback. `replayDeepLinkRuntime` guards this via `wouldStackOverActivePlayer` (drop when `activeRoutedView` is a media player), so the controller's incidental browsing never yanks the cast target off the video. The same guard covers a Roku OS `open` deep link arriving mid-playback. See [remote-control.md](remote-control.md).
+**Any other deep link over a player is dropped.** Display mirroring in `jellyfin-web` sends an `open` for every item a casting user browses, which would push `ItemDetails` over the video. `replayDeepLinkRuntime()` drops an `open` when `wouldStackOverActivePlayer()` finds a player active. The same check covers a Roku `open` deep link during playback. See [remote-control.md](remote-control.md).
 
 ## Focus management
 
-sgRouter is **hands-off about focus** — views own their own focus; `JRScene` only asks a view to take focus via the router's `setFocus`, which routes to `JRScreen.handleFocus`. The save/restore dance is now driven by the `JRScreen` lifecycle bridge:
+sgRouter leaves focus to the views. `JRScene` asks a view to take focus through `sgrouter.setFocus()`, which reaches `JRScreen.handleFocus()`, and the lifecycle bridge does the rest:
 
-1. **On suspend** (`onViewSuspend`) — `saveLastFocus()` walks the focus chain to the *deepest* focused descendant and stores it in `m.top.lastFocus`. (Lifted from the old `SceneManager.pushScene` focus-save loop.)
-2. **On resume / open** (`onViewResume` / `onViewOpen`) — `onScreenShown()` runs; its default reads `m.top.lastFocus` and `.setFocus(true)`. Subclasses can override to re-fetch data first, then focus.
-3. **On `handleFocus`** — same rule through `restoreScreenFocus()`: restore `lastFocus`, else focus the view root. A screen that restores differently overrides `restoreScreenFocus`, never `handleFocus`.
+1. **On suspend**, `saveLastFocus()` walks to the deepest focused node and stores it in `lastFocus`.
+2. **On open or resume**, `onScreenShown()` restores `lastFocus`. A screen can override it to fetch data first, then focus.
+3. **On `handleFocus`**, `restoreScreenFocus()` restores `lastFocus`, else focuses the view. A screen that restores focus some other way overrides `restoreScreenFocus()`, never `handleFocus()`.
 
-Preserving the *deepest* focused element (not just `focusedChild`) matters for nested panels (a list inside a tab inside a screen) so back navigation lands the cursor exactly where the user left it. For suspended views, this is what makes suspend→resume feel seamless: the cursor returns to its exact prior position. The `lastFocus` mechanism is one of the things JellyRock gets reliably right — as long as what `lastFocus` names is still what the view shows on return, and nothing takes focus it should not. Three facts decide when that fails:
+Saving the deepest node, not only `focusedChild`, is what returns the cursor to the right row of a list inside a tab inside a screen. It works as long as `lastFocus` still names what the view shows on return, and nothing takes focus it should not. Three facts decide when it fails:
 
-- **The router calls `handleFocus` AFTER `onScreenShown`** (`sgrouter_showView` runs `_handleFocus` in the `finally` of the resume/open promise), and the base restores `lastFocus` again. So a screen that decides focus on return from anything but `lastFocus` overrides `restoreScreenFocus`, the one function both hooks reach, or the second undoes the first. `Home.restoreHomeFocus` (the overhang-icon case) and `BaseGridView.restoreGridFocus` (a load that failed or finished while suspended) are the two that do.
-- **`handleFocus` has three callers, and the third is a notice, not a request.** The first is `JRScene`'s `sgrouter.setFocus` (`routerFocused: true`). The second is the call right after `onViewOpen` / `onViewResume` (`routerFocused` is the router's own flag, often `false`; this is the call that focuses the player, so it must take focus). The third is `sgrouter_onFocusChildChanged`, when focus LEAVES the router outlet: always `routerFocused: false`. `AppWaitHost.releaseFocus` also calls it directly, with no `routerFocused`, and that must take focus. Taking focus on the third call steals it back from the overhang (a sibling of the outlet), a dialog or `AppWaitHost`. So `JRScreen.handleFocus` returns without moving focus when no show is pending (`m.isShowFocusPending`, set by `onViewOpen` / `onViewResume` and cleared by the next `handleFocus`), `routerFocused` is `false`, and another node holds focus (`isFocusHeldElsewhere`). Focus stranded on the bare scene still takes focus, because there the call is the recovery path.
-- **A suspended `"detach"` view's own nodes still report focus.** Measured 2026-09-25 on an Ultra (Roku OS 15.3.4), with `BaseGridView` detached under an `ItemDetails`: `setFocus(true)` on its grid returned `true`, and afterwards the grid's `hasFocus()` and the view's `isInFocusChain()` both read `true` — while the real focus stayed on the detail's Play button, which kept answering keys, and `lastFocus` won on return. So focusing inside a suspended view is harmless, but **`hasFocus()` / `isInFocusChain()` cannot answer "is the user here?"** for a view that can be suspended. A timer or observer that would act on the user's behalf (narration, a toast) checks a flag the view keeps from `onScreenShown` / `onScreenHidden` instead — `BaseGridView.m.isShown`, `Schedule.m.isShown`.
+- **The router calls `handleFocus` after `onScreenShown`.** `sgrouter_showView` runs it in the `finally` of the open or resume promise, so the base restores `lastFocus` a second time. A screen that chooses focus on return from anything but `lastFocus` overrides `restoreScreenFocus()`, the function both paths reach, or the second call undoes the first. `Home.restoreHomeFocus()` (focus left on an overhang icon) and `BaseGridView.restoreGridFocus()` (a load that failed or finished while covered) do.
+- **`handleFocus` has four callers, and one is only a notice.**
+
+  | Caller | `routerFocused` | Takes focus |
+  |---|---|---|
+  | `JRScene`'s `sgrouter.setFocus()` | `true` | Yes |
+  | The router, right after `onViewOpen` or `onViewResume` | the router's own flag, often `false` | Yes: this is the call that focuses the player |
+  | `AppWaitHost.releaseFocus` | not set | Yes |
+  | `sgrouter_onFocusChildChanged`, when focus leaves the outlet | `false` | No |
+
+  Taking focus on the last call would pull it back from the overhang (outside the outlet), a dialog or `AppWaitHost`. So `JRScreen.handleFocus()` leaves focus alone when no show is pending (`m.isShowFocusPending`, set by `onViewOpen` and `onViewResume`, cleared by the next `handleFocus`), `routerFocused` is `false`, and another node holds focus (`isFocusHeldElsewhere()`). Focus stranded on the bare scene still gets restored, because there the call is the recovery path.
+- **A detached view's nodes still report focus.** Measured 2026-09-25 on an Ultra (Roku OS 15.3.4), with `BaseGridView` detached under an `ItemDetails`: `setFocus(true)` on its grid returned `true`, and the grid's `hasFocus()` and the view's `isInFocusChain()` both read `true`, while the real focus stayed on the details Play button, which kept answering keys. Routes no longer detach, but the rule stands: `hasFocus()` and `isInFocusChain()` cannot tell whether the viewer is on a view that can be covered. A timer or observer that acts for the viewer (narration, a toast) checks a flag the view keeps from `onScreenShown` and `onScreenHidden` instead: `m.isShown` in `BaseGridView` and `schedule.bs`.
 
 ## Overhang controller
 
-`JROverhang` is the persistent top bar (logo, current user info, search icon, settings icon, library tabs, clock). It lives in `JRScene` and is **not** part of any individual view. Each view *describes* what it wants in the overhang via its `JRGroup` fields (`isOverhangVisible`, `overhangTitle`, `overhangTabs`, `selectedTabId`, `isLogoVisible`, `shouldShowIcons`, `shouldShowUserDropdown`) — the controller projects them onto the shared `JROverhang` atomically on view-change, so the whole top bar updates in one frame (no transition flicker). Views **declare** these (typically in `init()`); they never poke the `JROverhang` node directly.
+`JROverhang` is the top bar: logo, current user, search and settings icons, library tabs and clock. It belongs to `JRScene`, not to any view. A view describes what it wants in its `JRGroup` fields, usually in `init()`, and never touches `JROverhang` directly. The controller copies those fields onto the overhang when the active view changes, so the whole bar changes in one frame.
 
-The controller **now lives on `JRScene`** (lifted verbatim from the deleted `SceneManager` register/`unregister` pair) and is driven by the router's active view rather than a stack. When the router mounts or switches the active view, `m.global.activeRoutedView` changes and `JRScene.onActiveRoutedViewChanged()` re-points the binding:
+`JRScene.onActiveRoutedViewChanged()` runs whenever `m.global.activeRoutedView` is written:
 
-```brightscript
-sub onActiveRoutedViewChanged()
-  newView = m.global.activeRoutedView
-  if isValid(newView) and isValid(m.previousRoutedView) and m.previousRoutedView.isSameNode(newView) then return
-  if isValid(m.previousRoutedView)
-    m.previousRoutedView.callFunc("hideCovered") ' the screen swap
-    unregisterOverhangData(m.previousRoutedView)
-  end if
-  if isValid(newView) and newView.isSubType("JRGroup")
-    registerOverhangData(newView)
-  end if
-  bindLoadingWaits(newView)
-  m.appWaitHost.callFunc("failLeftBehind", newView)
-  m.previousRoutedView = newView
-end sub
-```
+1. If the field still holds the same node, it returns. The observer fires many times per navigation for one write (measured 2026-10-07: 23 to 46 times).
+2. The previous view is hidden: `hideCovered()` for a `JRScreen`, `visible = false` for anything else ([the screen swap](#the-screen-swap)). Its overhang observers are removed (`unregisterOverhangData`).
+3. If the new view is a `JRGroup`, `registerOverhangData()` copies and observes its fields.
+4. `bindLoadingWaits()` follows the new view's `loadingWaits`, and `AppWaitHost.failLeftBehind` fails a playback start the viewer has left.
 
-The observer fires many times per navigation while the field still holds the same node (measured 2026-10-07: 23 to 46 times for one write), so the handler returns early unless the node changed.
+`registerOverhangData()` keeps three behaviors:
 
-`JRScene.registerOverhangData(view)` wires the field observers, preserving two behaviors carried over from the stack era:
+- **Tabs before title.** It sets `overhang.tabs` before `overhang.title`, so `onTabsChanged` can hide the title before it draws, with no flash from title to tabs.
+- **`selectedTabId` both ways.** When the viewer changes tab in the overhang, `JRScene.onOverhangTabSelected()` writes the view's `selectedTabId`, which the view observes to swap its content. Home uses it for its Home and Favorites tabs.
+- **Logo, icons and user dropdown.** `isLogoVisible`, `shouldShowIcons` and `shouldShowUserDropdown` are copied and observed with the tabs and title, so the bar settles in one frame. `shouldShowUserDropdown` is a boolean because the controller takes the name from the signed-in user (`applyOverhangUserDropdown`): a view says only whether the dropdown shows.
 
-- **Tabs before title** — `m.overhang.tabs` is set *before* `m.overhang.title` so `onTabsChanged` can hide the title before it renders with text, preventing a visible title→tab transition flash.
-- **Bidirectional `selectedTabId`** — when the user changes tabs in the overhang, `JRScene.onOverhangTabSelected()` writes back into the active routed view's `selectedTabId`, which the view observes to swap content. Home uses this for the home/favorites tab swap.
-- **Logo / icons / dropdown projection** — `isLogoVisible`, `shouldShowIcons` and `shouldShowUserDropdown` are projected (and observed) alongside tabs/title so the whole overhang settles in one frame. `shouldShowUserDropdown` is intentionally a boolean: the controller derives the displayed name from the global user (`applyOverhangUserDropdown`), so a view only declares *whether* the dropdown shows, not the name. This replaced the older pattern where each post-login screen poked `isLogoVisible` / `currentUser` / `shouldShowIcons` imperatively in `onScreenShown` (across multiple frames → a visible overhang flicker on Home↔detail transitions).
+## `SceneManager` is a service node
 
-## `SceneManager` is now a service node
+`components/data/SceneManager.bs` holds no navigation stack. It lives at `m.global.sceneManager` and keeps:
 
-`components/data/SceneManager.bs` no longer manages a navigation stack. The stack methods (`pushScene` / `popScene` / `getActiveScene` / `clearScenes` / `clearPreviousScene` / `deleteSceneAtIndex` / `settings`) and `SceneManager`'s own overhang-sync helpers were **deleted** in #550. It survives as a shared **service node** at `m.global.sceneManager`:
+| Member | What it is |
+|---|---|
+| `isDialogOpen` | Whether a dialog is on screen, on either channel: Roku's modal `m.scene.dialog` and the overlays (`isOverlayDialogOpen`). The OSD inactivity hide (`OSD.inactiveCheck`), `VideoPlayerView` and `VideoNotification` ask it before acting |
+| `setBackgroundImage` | Passes through to `JRScene.setBackgroundImage` |
+| `refreshThemeColors` | Walks the overhang and applies `m.global.constants` again |
+| `currentUser` | A field whose `onChange` handler, `updateUser`, updates the overhang |
+| `resetTime` | Resets the overhang clock |
+| `reloadHome` | Sets `reloadHomeRequested`; `main.bs` observes it and calls `JRScene.reloadRoutedHome` |
 
-- **The one dialog QUERY** — `isDialogOpen`. `SceneManager` no longer *shows* dialogs at all: `userMessage`, `showConfirmationDialog`, `dismissDialog`, `standardDialog`, `radioDialog`, the shared `returnData` / `isDataReturned` fields and the `isPending*` flags are all **deleted**, along with the `StandardDialog` / `RadioDialog` components. Every dialog goes through `source/utils/dialogs.bs` (see below). What survives is the query, because it has to answer for BOTH channels at once — Roku's modal channel (`m.scene.dialog`) and the scene-appended overlays (via `isOverlayDialogOpen`) — which is what the OSD inactivity auto-hide and the player's end-of-playback teardown ask before acting.
-- **Backdrop** — `setBackgroundImage` (passthrough to `JRScene.setBackgroundImage`).
-- **Theme** — `refreshThemeColors` (walks the overhang tree, re-applies `m.global.constants`).
-- **Overhang passthrough fields** — `updateUser`, `resetTime`.
-- **Reload-home signal** — `reloadHome` sets `reloadHomeRequested = true`; `main.bs` observes it and calls `JRScene.reloadRoutedHome`.
-
-> The long-overview overlay was the last `SceneManager.pushScene` user, and then the last hand-rolled scene append. `FocusableOverview.openOverviewDialog` now goes through `showInfoDialog` like every other overlay, passing itself as `returnFocusTo`; `OverviewDialog` removes itself and restores focus on close. The hand-rolled version worked, but it never stamped the shared overlay id — so `isOverlayDialogOpen` / `isDialogOpen` / `cancelOpenDialog` were all blind to it, and `OverviewDialog.cancelDialog()` was unreachable on that path.
+`SceneManager` shows no dialogs: every dialog goes through `source/utils/dialogs.bs`. `isDialogOpen` stays on it because it answers for both channels at once.
 
 ### The standard dialog system (`source/utils/dialogs.bs`)
 
-The canonical way to show a dialog. Helpers create the node, present it, and return it;
-the result arrives on that **dialog instance's own `result` field**, so there is no shared
-global to cross-fire (the failure mode of `SceneManager.returnData`).
+Each helper creates a dialog, presents it and returns it. The answer arrives on that dialog's own `result` field, so there is no shared field for two dialogs to overwrite. [dialogs.md](dialogs.md) is the standard for how a dialog looks and behaves; this section covers the helpers, the result and how dialogs relate to navigation.
 
-| Helper | Component | Presentation |
+| Helper | Component | Channel |
 |---|---|---|
-| `showAlertDialog` / `showConfirmDialog` / `showChoiceDialog` | `JRDialog` | Scene-appended overlay (`OverviewDialog` mechanics). `showAlertDialog` takes an optional SECONDARY button beside OK (`result.buttonIndex` 1) — for an action that does not leave the alert's subject, like `[Details]` on a playback error. Two *answers* to a question are `showConfirmDialog` |
-| `showListDialog` | `JRListDialog` | Scene-appended overlay. Takes an optional `icons` array paired with `items` — a leading glyph per row, for ACTION lists (a `More` overflow menu) rather than pickers, which use that gutter for the current-option check |
-| `showInfoDialog` | `OverviewDialog` | Scene-appended overlay |
-| `showReportDialog` | `OverviewDialog` | Scene-appended overlay; structured label/value body instead of a paragraph, and **re-settable** — see below |
-| `showQuickConnectDialog` | `QuickConnectDialog` | Scene-appended overlay |
-| `showKeyboardDialog` | `JRKeyboardDialog` | Roku modal channel (`m.scene.dialog`) — the OS owns the keyboard |
+| `showAlertDialog` | `JRDialog` | Overlay. An optional second button beside OK (`result.buttonIndex` 1) is for an action that stays on the alert's subject, such as **Details** on a playback error. Two answers to a question are `showConfirmDialog` |
+| `showConfirmDialog` | `JRDialog` | Overlay |
+| `showChoiceDialog` | `JRDialog` when the choices fit as buttons (`choicesFitAsButtons`), else `JRListDialog` through `showListDialog` | Overlay |
+| `showStillWatchingDialog` | `JRDialog` with `anyKeyResolves`: any key answers | Overlay |
+| `showListDialog` | `JRListDialog`. An optional `icons` array puts a glyph beside each row, for action lists; pickers use that space for the check on the current choice | Overlay |
+| `showOverflowMenu` | `JRListDialog` anchored to a button, sized to its rows, with no title ([dialogs.md](dialogs.md#presenting-and-tearing-down)) | Overlay |
+| `showInfoDialog` | `OverviewDialog` | Overlay |
+| `showReportDialog` | `OverviewDialog`, with label and value rows. Setting its `sections` again with the same row ids rewrites the values in place ([dialogs.md](dialogs.md#a-read-only-body-can-be-a-paragraph-or-rows)) | Overlay |
+| `showQuickConnectDialog` | `QuickConnectDialog` | Overlay |
+| `showKeyboardDialog` | `JRKeyboardDialog` | Roku's modal channel (`m.scene.dialog`): the OS owns the keyboard |
 
-#### One chrome, one flow
+From a component, pass `onResult` (a function name in your scope) and the helper wires a scoped observer. From main-thread code, leave it out and observe the dialog on your message port. The result has the same shape either way: `{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value, externallyCancelled }`. `externallyCancelled` is true when code closed the dialog (`cancelOpenDialog`, or a newer overlay replacing it) and false when the viewer did, Back included. Only a handler that acts on its result needs it ([dialogs.md](dialogs.md#presenting-and-tearing-down)).
 
-`showReportDialog` is the one helper whose dialog keeps being written to after it opens.
-Assigning `sections` again **reconciles**: rows matched by `id` have their text rewritten in
-place, and nothing is created or destroyed, so the panel height, the scroll position and
-focus all stay put. A structurally different array rebuilds instead. That is what lets the
-playback report refresh its live figures without the "set every text field BEFORE
-presenting" rule biting — the rule exists because a dialog never re-*lays out* after mount,
-and an in-place rewrite of a single-line value does not change any height.
-
-`JRDialog`, `JRListDialog`, `OverviewDialog` and `QuickConnectDialog` all draw the same
-chrome — dimmed backdrop, panel, 3px edge, title, and the short `colorSecondary` accent rule
-under it — from **`JRDialogPanel`**, and all four get their geometry from
-**`source/utils/dialogLayout.bs`**, which is pure and unit-tested.
-
-That is not tidiness. The three each owned a private copy of both, and when the #757 review
-restyled `JRDialog` the other two silently kept the old look, so the app shipped two dialog
-languages with every gate green — nothing asserted a position, gap, color or asset. The
-module exists so "one dialog language" is a test rather than a claim, including a gate on the
-multiples-of-6 spacing scale that keeps values integral through the 720p downscale.
-
-A dialog supplies its own body and footer and nothing else, and there is exactly ONE layout
-shape: the footer flows inside the panel and the panel is derived from its content. The
-fixed-panel and outside-footer modes both existed for `OverviewDialog` alone and are both
-gone — see [`dialogs.md`](./dialogs.md#3-the-footer-flows-inside-the-panel) for the capture
-that settled it and for the second ceiling the outside footer used to need.
-
-**The full dialog standard — footer placement, per-type key models, when a bespoke dialog is
-legitimate, spacing and color rules, narration — lives in
-[`dialogs.md`](./dialogs.md).** What stays here is how dialogs relate to navigation: the
-helper table above, the result contract, teardown across a routed view's destruction, and
-the one-overlay invariant below.
-
-From a component, pass `onResult` (a function name in your scope) and the helper wires the
-scoped observer. From main-thread code, omit it and observe with your message port. The
-result shape is identical either way:
-`{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value, externallyCancelled }`.
-`externallyCancelled` distinguishes a close made by code — `cancelOpenDialog`, or
-`presentOverlayDialog` superseding an incumbent — from the user pressing Back, which
-`cancelled` deliberately cannot. Only a handler that ACTS on its result needs it.
-
-Overlay dialogs are appended to the **scene**, not to the opening screen, so they outlive a
-routed view that is destroyed while one is open — a screen that opens a dialog is
-responsible for its own teardown. Two verbs do that, and the difference between them is
-whether the dialog's OWNER is told:
+**Overlays are appended to the scene, not to the screen that opened them**, so one outlives a routed view destroyed under it. A screen that opens a dialog tears it down itself:
 
 | Verb | Delivers | Use when |
 |---|---|---|
-| `abandonDialog(dialog)` | nothing | **You** own it and your scope is being torn down (`onDestroy`) — there is nobody left to receive a result |
-| `cancelOpenDialog()` | a canceled result | **Someone else** owns it and is still alive, holding state until it answers (a main-thread flow such as the deep-link server switch). Indistinguishable from the user pressing `Back` |
+| `abandonDialog(dialog)` | nothing | You own it and your scope is being torn down (`onDestroy`): nobody is left to receive a result |
+| `cancelOpenDialog()` | a canceled result, on either channel | Someone else owns it, is still alive and waits on its answer (a main-thread flow such as the deep-link server switch). It looks the same as the viewer pressing Back |
 
-`PlayerHostView`'s end-of-playback teardown calls both, in that order, for exactly that
-reason: its own picker is abandoned, anything else on screen is canceled.
+`PlayerHostView.prepareToLeaveMount()` uses both at the end of playback: it abandons its own dialogs (the error dialog, the playback report, the track picker, the still-watching prompt), then cancels whatever else is open.
 
 ### Exactly one overlay dialog
 
-Roku's modal channel (`m.scene.dialog`) is **single-slot** — the OS replaces whatever was
-there. The overlay channel is not, so when the main-thread flows moved off the modal channel
-in the #288 phase-3 migration that invariant had to be restored explicitly. Two overlays
-stacked would share the `jrDialog` id, leaving `findNode` resolving to the corpse and the
-lower dialog visible but deaf behind the upper one.
+Roku's modal channel holds one dialog: the OS replaces whatever was there. The overlay channel does not, so JellyRock keeps it to one. Two overlays would share the `jrDialog` id, so `findNode` would find the wrong one, and the lower dialog would stay visible but take no keys.
 
-`presentOverlayDialog` therefore **supersedes**: an incumbent overlay is canceled — through
-its own once-only resolve guard, so its owner receives the same `canceled` result the user
-pressing `Back` would have produced — before the newcomer is appended. Safe at every call
-site, because all ten `result.confirmed` consumers in app code gate positively: a superseded
-confirm is a no-op, never a half-action. The warning log stays, because two overlays racing
-is still a signal about something upstream (two casts in flight).
+`presentOverlayDialog` therefore replaces: it cancels the overlay on screen through that dialog's own resolve guard, so its owner gets the canceled result Back would have produced, then appends the new one. That is safe at every call site: the replaced dialog's owner gets what Back would give it, and every handler acts on a yes only when `confirmed` is true. It still logs a warning, because two overlays racing points at something upstream, such as two casts at once.
 
-Two consequences worth knowing:
-
-- **A main-thread owner needs no code of its own.** Port delivery is asynchronous, so the
-  superseded dialog's result reaches `Main()` only at the next `wait(0, m.port)` — after the
-  flow has re-pointed at its new dialog, so its identity check rejects the old one. Written
-  out at `replayRoute.onServerSwitchDialogResult`.
-- **The MODAL channel is deliberately not superseded.** `cancelOpenDialog()` covers both
-  channels; the supersede covers only the overlay. Canceling an open keyboard dialog is
-  action-safe but discards what the user has typed (`ConfigList` and `SetServerScreen` both
-  apply their value only on `confirmed`), which is a materially worse trade than closing a
-  yes/no prompt. The two channels can still be open at once; nothing arbitrates between them.
-
-## Deferred deep links
-
-A deep link launched while signed out is stashed (by the guard, or by the cold-start / runtime handlers in `main.bs`) and replayed after login. The stash producer seeds the queue and sets `m.global.AuthManager.stashedRoute` to a play path; after login, `replayAfterLogin()` (`source/replayRoute.bs`) reads + clears the stash and hands the route chain from `buildReplayRoutes(stashed)` to `JRScene.replayRoutedDeepLink`:
-
-- empty stash → `["/"]` (plain Home)
-- a plain route → `["/", route]` (Home → destination)
-- a `/play` route → `["/", detailsPath, playPath]` so back unwinds Player → Details → Home
-
-This Home → `ItemDetails` → Player back-stack is **locked decision #3**. Full bootstrap/deep-link mechanics live in `bootstrap.md`; the pre-login coordinator that drives the routed login flow is in `user-journey.md`.
+- **A main-thread owner needs no code for this.** Its message port delivers the canceled result only at the next `wait(0, m.port)`, after the flow has moved on to its new dialog, so its identity check rejects the old one. `replayRoute.onServerSwitchDialogResult` is the example.
+- **The modal channel is never replaced.** `cancelOpenDialog()` closes both channels, but `presentOverlayDialog` replaces only an overlay. Canceling an open keyboard throws away what the viewer typed (`ConfigList` and `SetServerScreen` apply the value only when `confirmed`), which is a worse trade than closing a yes-or-no question. The two channels can be open at once, and nothing arbitrates between them.
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for navigation / `sgRouter` / `SceneManager` entries.
-</content>
-</invoke>
+Tracked in [`tech-debt.md`](tech-debt.md): search by `area` for navigation, `sgRouter` and `SceneManager` entries.

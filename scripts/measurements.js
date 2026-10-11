@@ -314,7 +314,7 @@ export const MEASUREMENTS = Object.freeze([
   Object.freeze({
     id: 'item-grid',
     title: 'Item grid / genres load',
-    doc: 'docs/dev/home-first-paint-performance.md#the-grids-genre-loop--the-same-method-the-opposite-answer',
+    doc: 'docs/dev/home-first-paint-performance.md#the-grids-genre-loop',
     // NULL, deliberately, and not an oversight: `LoadItemsTask2` backs EVERY library
     // grid because they are all `BaseGridView`, so this family says nothing about
     // which library was open — and a movies grid and a shows grid are different
@@ -357,7 +357,7 @@ export const MEASUREMENTS = Object.freeze([
   Object.freeze({
     id: 'item-grid-paging',
     title: 'Item grid paging while scrolling (stalls)',
-    doc: 'docs/dev/home-first-paint-performance.md#grid-paging--did-the-user-wait-at-the-last-loaded-row',
+    doc: 'docs/dev/home-first-paint-performance.md#grid-paging-did-the-user-wait-at-the-last-loaded-row',
     // NULL for the same reason as `item-grid`: `BaseGridView` backs every library grid. The
     // workload that drives it (`--nav gridScroll`) is what says which grid and how it moved.
     screen: null,
