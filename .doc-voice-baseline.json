@@ -396,13 +396,6 @@
   "components/Buttons/JRButtons.bs": {
     "em-dash": 4
   },
-  "components/CLAUDE.md": {
-    "caps-emphasis": 6,
-    "em-dash": 84,
-    "filler": 4,
-    "latin-abbrev": 3,
-    "prose-arrow": 6
-  },
   "components/GetPlaybackInfoTask.bs": {
     "em-dash": 4
   },
