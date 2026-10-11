@@ -217,17 +217,8 @@
   ".claude/skills/resume-project/resume-state.sh": {
     "em-dash": 2
   },
-  ".claude/skills/runtime-triage/INVESTIGATION.md": {
-    "caps-emphasis": 4,
-    "em-dash": 27,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
   ".claude/skills/runtime-triage/SKILL.md": {
-    "caps-emphasis": 1,
-    "em-dash": 13,
-    "filler": 1,
-    "prose-arrow": 2
+    "caps-emphasis": 1
   },
   ".claude/skills/second-opinion/SKILL.md": {
     "caps-emphasis": 2,

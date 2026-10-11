@@ -1,142 +1,142 @@
-# Investigation contract — runtime triage
+# Investigation contract: runtime triage
 
-This is the contract followed in main thread once `/runtime-triage` has done its prep. The skill ran on opus; the prep packet was written to `.claude/handoffs/runtime-<timestamp>.md` and is also in conversation context (until compaction). You're investigating: read the code, name the root cause, either implement a controlled fix or surface architectural tradeoffs.
+The main conversation follows this contract once `/runtime-triage` has done its preparation. The skill ran on opus, and the preparation packet is in `.claude/handoffs/runtime-<timestamp>.md` and in the conversation (until compaction). You are investigating: read the code, name the root cause, then either make a controlled fix or lay out the architectural options.
 
-## Where the prep lives
+## Where the preparation lives
 
-If conversation context is intact, the prep is right there (parsed log, classification, file context list). If the conversation has compacted or you're resuming in a fresh session, `Read .claude/handoffs/runtime-<timestamp>.md` for the consolidated packet. The packet has the shape:
+If the conversation is intact, the preparation is right there (the parsed log, the classification, the files to read). After compaction, or in a fresh session, read `.claude/handoffs/runtime-<timestamp>.md` for the packet. It has this shape:
 
 ```text
 Runtime failure
 Source: pasted log / crash report
 
 Classification: render-thread-crash | task-crash | api-error | registry-corruption | nav-error | unknown
-Probable area: <e.g., components/video, source/api>
+Probable area: <for example components/video, source/api>
 Initial file context:
-  - <path>:<line range> — <one-line why-relevant>
+  - <path> (<function or whole file>): <why it is relevant, in one line>
   - ...
 
-Failure signal (relevant log excerpt, not the full paste):
-  <key error line + 5-10 lines of surrounding context>
+Failure signal (relevant log excerpt):
+  <the error line and 5 to 10 lines around it>
 
 Full pasted log (untruncated):
-  <...>
+<the paste, verbatim>
 ```
 
-Do NOT re-parse or re-classify — the prep is authoritative. If the classification is clearly wrong (e.g., the skill called it `api-error` but the log shows a render-thread null deref), surface that and stop — don't paper over it.
+Don't parse or classify again: the preparation stands. If the classification is clearly wrong (the skill called it `api-error` but the log shows a render-thread crash on an invalid reference), say so and stop. Don't paper over it.
 
-## Failure category playbook
-
-Different categories reward different first-look strategies:
+## Where to look first, by category
 
 ### `render-thread-crash`
 
-Symptoms: BrightScript error like "Sub or function not found", null reference (Type Mismatch, Member Function Not Found), array-index-out-of-bounds, "BRIGHTSCRIPT_ERR_*". Often the render thread halts or the screen freezes.
+Symptoms: a `runtime error &hXX` line in a component file, such as `&hec` (a `.` on an invalid reference) or `&he4`. The screen often freezes or the app exits.
 
-First-look: the log line names the sub/function and roughly the line. Search for that symbol in the cited area. Common shapes:
+First look: the error line names the file and line. Find the function there. Common shapes:
 
-- **Direct API call from component code** — render-thread-unsafe; should route through Task Node. See [`source/api/CLAUDE.md`](../../source/api/CLAUDE.md).
-- **Field access on a not-yet-initialized node** — usually a race against an `observeField` callback before the field was set; check the `init()` ordering.
-- **Type mismatch** — usually the API returned a different shape than expected (Live TV channels often return null where Movies return arrays, etc.).
+- **A synchronous HTTP call on the render thread.** Component code reaches the server through `fetchAsync`; see [`source/api/CLAUDE.md`](../../../source/api/CLAUDE.md).
+- **A field read on a node that isn't set up yet**, usually an observer firing before the field was set: check the order in `init()`.
+- **A key event or an observer after teardown**, on a reference `onDestroy` already released: see the teardown rules in [`components/CLAUDE.md`](../../../components/CLAUDE.md).
+- **A value of an unexpected type**, usually an API answer with a different shape than the code assumed (a field that is missing or `invalid` for one item type).
 
 ### `task-crash`
 
-Symptoms: Task Node thread died; an `ApiTask` / `SideEffectTask` / `GetPlaybackInfoTask` log line shows it failed to dispatch or threw mid-execution.
+Symptoms: a Task stopped mid-run, or a `runtime error &hXX` line in a Task's file (`components/api/ApiTask.bs`, `SideEffectTask.bs`, `components/GetPlaybackInfoTask.bs` and the like).
 
-First-look: the log line names the Task. Look at the Task's BS file (`source/api/`-shaped, runs in Task thread). Common shapes:
+First look: open the Task's file the log names. Common shapes:
 
-- **Auth token expired** — server returned 401; the Task should have triggered a refresh.
-- **Network unavailable** — server unreachable; the Task should have surfaced a retry-friendly error rather than crashing.
-- **Result-node corruption** — `ApiResultNode` field shape doesn't match what the caller expected (often a per-call shape regression after an API client refactor).
+- **The server rejected the request** (401 or 403): the token is no longer valid or the user lacks the permission. Nothing in the app refreshes a token, so check how the caller handles the rejection.
+- **The server is unreachable:** the Task should hand back an error the caller can retry, not crash.
+- **A response of an unexpected shape:** the `ApiResultNode` (or the response AA) doesn't hold what the caller expected, often after a change to the API client. A list endpoint must use `listReq` ([`source/api/CLAUDE.md`](../../../source/api/CLAUDE.md)).
 
 ### `api-error`
 
-Symptoms: HTTP 4xx/5xx in the log, a Jellyfin-API path with a non-200 response, or a timeout.
+Symptoms: an HTTP error status (`4xx` or `5xx`) in the log, a Jellyfin API path with a non-200 answer, or a timeout.
 
-First-look: identify the path and method. Cross-reference with the Jellyfin server feature matrix at [`docs/user/jellyfin-server-feature-matrix.md`](../../docs/user/jellyfin-server-feature-matrix.md) — sometimes the error is "this Jellyfin server version doesn't support this endpoint." Common shapes:
+First look: identify the path and method. Check [`docs/user/jellyfin-server-feature-matrix.md`](../../../docs/user/jellyfin-server-feature-matrix.md): sometimes the server version doesn't have the endpoint. Common shapes:
 
-- **400/422** — request shape regression (likely client-side, recent change).
-- **401/403** — token expired or insufficient permissions.
-- **404** — endpoint missing on this server version (matrix issue) OR resource genuinely gone.
-- **500** — server-side; outside our scope, but surface to the user.
-- **Timeout** — hardcoded `30s` API timeout in our client (per a `decisions.md` entry); consider whether the call shape is legitimately slow.
+- **400 or 422:** the request's shape changed, most likely in a recent client change.
+- **401 or 403:** the token is no longer valid, or the user lacks the permission.
+- **404:** the endpoint doesn't exist on this server version (see the matrix), or the item is really gone.
+- **500:** the server failed. Outside the app's control, but tell the user.
+- **A timeout:** the limits are constants in `source/constants/timeouts.bs` (`HTTP_MS` for one request). Check whether the call is slow for a real reason before raising one.
 
 ### `registry-corruption`
 
-Symptoms: settings read failure, default-value used unexpectedly, migration-related error in log.
+Symptoms: a setting reads its default when the user had changed it, a read fails, or a migration line in the log looks wrong.
 
-First-look: settings live in the Roku registry under `test-*` (test mode) and named sections (production). Reference [`docs/dev/registry-migrations.md`](../../docs/dev/registry-migrations.md). Common shapes:
+First look: global settings live in the `JellyRock` registry section, and each user's in a section named by the user's ID; tests use `test-` sections. See [`docs/dev/registry-migrations.md`](../../../docs/dev/registry-migrations.md). Common shapes:
 
-- **Migration ran but left bad state** — check `source/migrations.bs` for the relevant version's migration logic.
-- **Section name typo** — registry section name is one character off, write succeeded but read returns default.
-- **User on stale version** — they've installed a newer JellyRock, but their existing registry section assumes the old schema.
+- **A migration ran but left a bad state:** check its block in `source/migrations.bs`.
+- **A key or section name off by one character:** the write succeeded, but the read returns the default.
+- **A field `id` that differs from the registry key:** `user.Login()` loads a key only into the settings field with the same name.
 
 ### `nav-error`
 
-Symptoms: focus is in an unexpected place, `onKeyEvent` fired but nothing happened, OSD timeout misbehaved, dialog dismissal stuck.
+Symptoms: focus is somewhere unexpected, `onKeyEvent` fired but nothing happened, the OSD doesn't hide, a dialog won't close.
 
-First-look: the log usually doesn't show much — runtime behavior surfaces visually, not in print output. Lean on the issue body / repro steps. Common shapes:
+First look: the log usually shows little, since this kind of failure shows on screen, not in the console. Lean on the user's steps to reproduce it. Common shapes:
 
-- **`onKeyEvent` returning the wrong boolean** — false means the event bubbles to the parent; true means it stops. Inverted return value is a common cause of "the back button does nothing."
-- **`SceneManager` stack mismatch** — pushing a scene without popping; `JRGroup` fields out of sync.
-- **OSD `inactiveTimeout` regression** — recent change to OSD timing affecting auto-hide.
+- **`onKeyEvent` returning the wrong value:** `false` lets the key bubble to the parent, `true` stops it. An inverted return is a common cause of "Back does nothing".
+- **A routed view left in the wrong state:** navigation runs through the router (see [`navigation.md`](../../../docs/architecture/navigation.md)); check the route and the view's `onScreenShown` and `onScreenHidden`.
+- **A dialog not torn down:** see the dialog rules in [`components/CLAUDE.md`](../../../components/CLAUDE.md).
+- **The OSD timeout (`inactiveTimeout`):** check recent changes to how the OSD is timed.
 
-## Step 1 — Validate the diagnosis
+## Step 1: Validate the diagnosis
 
-Read the cited code in light of the failure signal. Answer three questions:
+Read the cited code against the failure signal, and answer three questions:
 
-1. **Does the log line actually point at this file/function?** Sometimes the skill's keyword classifier latched onto a generic word ("playback") that's in many places. Confirm or correct.
-2. **Is this reproducible from the user's setup?** If the log shows a state the test harness can't reproduce (specific Roku model, specific server version, transient network condition), name that constraint up front.
-3. **Has this been fixed already?** Search recent commits + closed issues for the same area / failure shape. If a fix landed but the user is on an older JellyRock build, the answer is upgrade — not a new fix.
+1. **Does the log line really point at this file and function?** The classifier may have matched a word that appears in many places ("playback"). Confirm or correct it.
+2. **Can it be reproduced here?** If the log shows a state the test harness can't reproduce (a specific Roku model, server version or network condition), say so first.
+3. **Has it been fixed already?** Search recent commits and closed issues for the same area and shape. If a fix landed and the user runs an older build, the answer is to update, not a new fix.
 
-Surface your validation in 3-5 sentences before diving into root cause.
+Give your validation in three to five sentences before going into the root cause.
 
-## Step 2 — Root-cause analysis
+## Step 2: Find the root cause
 
-Identify the underlying cause. Not "function returned null" — "the API endpoint returns null for Live TV channels but the call site assumes the array shape Movies use." If the same root cause likely exists elsewhere in the codebase, search to confirm.
+Name the underlying cause: not "the function returned invalid" but "the endpoint answers `invalid` for this item type and the caller assumes a list". If the same cause probably exists elsewhere, search to confirm.
 
-Honor the JellyRock-specific lenses (render-thread safety, Task Node patterns, fields-as-vehicle, global-state, registry migrations). Cite [`source/api/CLAUDE.md`](../../source/api/CLAUDE.md), [`components/video/CLAUDE.md`](../../components/video/CLAUDE.md), etc. as appropriate.
+Apply JellyRock's lenses: render-thread safety, how Tasks are started and replaced, requests traveling as child nodes, global state, registry migrations. Cite [`source/api/CLAUDE.md`](../../../source/api/CLAUDE.md), [`components/video/CLAUDE.md`](../../../components/video/CLAUDE.md) and the others as they apply.
 
-## Step 3 — Implement (semi-auto path) OR present options
+## Step 3: Make the fix, or present options
 
-Default to **semi-auto** for clear, isolated fixes:
+For a clear, contained fix, take the **semi-auto** path:
 
-1. Apply the code change via `Edit`.
-2. Write or update tests where they apply (`npm run test:tdd` for hardware, `npm run test:scripts` for BSC plugin / Node tooling).
-3. Run the test. Report the result honestly: pass, fail, or "hardware not reachable."
-4. Stop before committing. Show: one-line summary, diff (or `git diff` summary), test output, deferred follow-ups (if any).
-5. Ask: "Review the diff and let me know if you want changes. When ready, commit and `/pr` separately."
+1. Make the change with `Edit`.
+2. Write or update the tests that apply (`npm run test:tdd` on a Roku, `npm run test:scripts` for a BSC plugin or Node tooling). Run `npm run device:check` before a device test.
+3. Run them, and report the result as it is: pass, fail, or the device probe failed.
+4. Stop before committing. Show a one-line summary, the diff (or a `git diff` summary), the test output and any deferred follow-ups.
+5. Ask: "Review the diff and tell me what to change. When it's ready, commit and run `/pr` separately."
 
-Drop into **architectural-decision path** if the failure crosses seams:
+Take the **architectural-decision** path when the failure crosses boundaries between subsystems:
 
-1. Present 2-3 options. Each: approach, pros/cons cited against JellyRock conventions, complexity, impact, tests/migrations.
-2. Make a recommendation with reasoning.
-3. Wait. Don't implement until the user picks.
+1. Present two or three options, each with its approach, pros and cons against JellyRock's conventions, complexity, impact, and the tests or migrations it needs.
+2. Recommend one, with the reasoning.
+3. Wait. Don't build anything until the user picks.
 
 ## Capture deferred follow-ups
 
-If the failure reveals scope beyond this fix, surface as a `tech-debt.md` slug candidate:
+If the failure shows work beyond this fix, route it by `AGENTS.md`'s followup-discipline rule. For internal debt, offer a `tech-debt.md` slug:
 
 > **Out of scope for this fix** (suggest filing as tech-debt slug `<kebab-name>`):
-> <one-paragraph description of the remaining work and why it was deferred>
+> <one paragraph: the remaining work and why it was deferred>
 
-## Critical constraints
+## Constraints
 
-Repo-wide rules in root [`CLAUDE.md`](../../../CLAUDE.md) still apply (CHANGELOG is CI-controlled, no `tasks/` leakage in shared artifacts, hardware-reachable claim discipline, pre-push hook discipline). Flow-specific constraints:
+The root [`CLAUDE.md`](../../../CLAUDE.md) rules still apply: `CHANGELOG.md` is CI-controlled, no gitignored path is cited in a shared artifact, a device claim needs a probe, and the git hooks run. For this flow:
 
-- NEVER commit, push, or open a PR. The user owns those steps.
-- NEVER suggest solutions that violate render-thread requirements.
-- NEVER blanket-add logging. If a fix would benefit from a single targeted log on a critical-error path, propose it; otherwise invoke `log-reviewer` for an audit.
+- Never commit, push or open a PR. The user owns those steps.
+- Never suggest a fix that breaks the render-thread rules.
+- Never blanket-add logging. If a fix would gain from one targeted log on a critical-error path, propose it; otherwise ask the `log-reviewer` agent for an audit.
 
 ## When you're done
 
-Summarize at the end:
+End with this summary:
 
 > Runtime failure investigation complete.
 >
-> - Category: <render-thread-crash / task-crash / api-error / registry-corruption / nav-error>
-> - Diagnosis: <one-line root cause>
-> - Action: <fix applied locally / options presented / report invalid>
-> - Tests: <pass / fail / hardware unavailable>
-> - Next: <user reviews diff / picks option / requests user clarification on the report>
-> - Cleanup: if `.claude/handoffs/runtime-*.md` exists for this triage, `rm` it to clear the pending marker (otherwise it'll surface in `/catchup` until the 30-day auto-prune).
+> - Category: <the category from the packet>
+> - Diagnosis: <the root cause, in one line>
+> - Action: <fix made locally / options presented / report invalid>
+> - Tests: <pass / fail / device probe failed>
+> - Next: <user reviews the diff / picks an option / clarifies the report>
+> - Cleanup: if `.claude/handoffs/runtime-*.md` exists for this triage, `rm` it to clear the pending marker; otherwise it shows in `/catchup` until it is pruned after 30 days.
