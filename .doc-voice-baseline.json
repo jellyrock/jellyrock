@@ -109,9 +109,7 @@
     "prose-arrow": 3
   },
   ".claude/skills/crash-report/SKILL.md": {
-    "caps-emphasis": 2,
-    "em-dash": 31,
-    "prose-arrow": 16
+    "caps-emphasis": 1
   },
   ".claude/skills/create-issue/SKILL.md": {
     "caps-emphasis": 1,
