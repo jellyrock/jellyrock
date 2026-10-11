@@ -45,10 +45,6 @@
     "em-dash": 12,
     "filler": 2
   },
-  ".claude/rules/derive-dont-duplicate.md": {
-    "em-dash": 14,
-    "filler": 3
-  },
   ".claude/rules/dogfood-changes.md": {
     "caps-emphasis": 2,
     "em-dash": 8,
