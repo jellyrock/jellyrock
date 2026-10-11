@@ -1,5 +1,5 @@
 /**
- * BrighterScript plugin — a register-once observer must only be detached at teardown.
+ * BrighterScript plugin: a register-once observer must only be detached at teardown.
  *
  * For a member bound from `m.top.findNode()` inside `init()`, observed EXACTLY ONCE
  * (that once being in `init()`), every `unobserveField` on that member must live in
@@ -9,34 +9,34 @@
  *
  * ## Why this shape, and not the naive check that was rejected
  *
- * `components/CLAUDE.md` sanctions exactly two wirings for a long-lived node — REGISTER
+ * `components/CLAUDE.md` sanctions exactly two wirings for a long-lived node: REGISTER
  * ONCE (observe in `init()`, unobserve in `onDestroy()`, drive with `control`) and
  * BALANCED TOGGLE (observe on the way in, unobserve on every exit). An earlier attempt to
  * gate this asked "is there a preceding `unobserveField` of the same field in the same
- * function", which flagged 143 sites, 16 after narrowing to long-lived receivers, and 3 of
- * 3 spot-checked were false positives — legitimate toggles paired across an `if`/`else`,
+ * function", which flagged 143 sites on 2026-09-10, 16 after narrowing to long-lived receivers, and 3 of
+ * 3 spot-checked were false positives: legitimate toggles paired across an `if`/`else`,
  * across a handler boundary, or in `start`/`stop` helper pairs.
  *
  * This rule asks a different question: it identifies the REGISTER-ONCE SHAPE first, and
  * only then checks where the detach lives. Toggles never enter the population, because
- * their observe is not a lone call inside `init()` — `VideoPlayerView.bufferCheckTimer` is
+ * their observe is not a lone call inside `init()`. `VideoPlayerView.bufferCheckTimer` is
  * the reference toggle and is invisible to this rule for exactly that reason.
  *
- * Measured over 292 `.bs` files, before the `playbackTimer` fix that motivated this: 53
- * register-once members pass, 20 toggle-shaped members are ignored, 2 are flagged — the
+ * Measured 2026-09-10 over 292 `.bs` files, before the `playbackTimer` fix that motivated this: 53
+ * register-once members pass, 20 toggle-shaped members are ignored, 2 are flagged: the
  * defect itself and `ResumeButton.buttonIcon`. With the defect fixed, the tree flags one
  * site, suppressed.
  *
  * ## Why there is no carve-out for a self-detaching one-shot
  *
  * A handler that unobserves ITSELF after a one-time event (`loadStatus` reaching `ready`)
- * is a legitimate third shape — but inside THIS rule's population it occurs exactly once
+ * is a legitimate third shape, but inside THIS rule's population it occurs exactly once
  * in the tree (`ResumeButton.buttonIcon`). A general clause admitting every self-detach
  * would buy one known-good site and silently admit every future one, including the wrong
  * ones: a handler CAN detach on a path where further notifications were still needed,
  * which is this rule's own bug wearing a different hat. What makes `ResumeButton` safe is
- * a set of facts no linter can see — the node is created and destroyed per use rather than
- * recycled, and its icon URI is static — so it carries an explicit suppression instead.
+ * a set of facts no linter can see (the node is created and destroyed per use rather than
+ * recycled, and its icon URI is static), so it carries an explicit suppression instead.
  *
  * Escape hatch:
  *  - `' bsc-disable-line register-once-observer` on the unobserveField line
@@ -63,7 +63,7 @@ function topLevelFunctions(brsFile) {
   return out;
 }
 
-/** `m.<member> = m.top.findNode(...)` → the member name, else null. */
+/** `m.<member> = m.top.findNode(...)` to the member name, else null. */
 function findNodeBinding(stmt) {
   if (!brighterscript.isDottedSetStatement(stmt)) return null;
   if (referenceText(stmt.obj) !== 'm') return null;
@@ -151,7 +151,7 @@ module.exports = () =>
       for (const u of unobserves) {
         if (u.fn.toLowerCase() === ON_DESTROY.toLowerCase()) continue;
         const registrations = observesByKey.get(keyOf(u));
-        // Not register-once (absent, or a toggle) — outside this rule's population.
+        // Not register-once (absent, or a toggle): outside this rule's population.
         if (!registrations || registrations.length !== 1) continue;
         if (registrations[0].fn.toLowerCase() !== INIT.toLowerCase()) continue;
 

@@ -1,7 +1,7 @@
 // Validates .github/ISSUE_TEMPLATE/*.yml against GitHub's issue-forms schema.
 //
 // Why this exists: GitHub silently drops issue templates that fail schema
-// validation — they don't appear on /issues/new/choose, no error surfaced
+// validation: they don't appear on /issues/new/choose, no error surfaced
 // anywhere. We hit this when an editor save normalized `title: '[Bug]: '`
 // to `title: ""` across all three templates; an empty title violates the
 // schema's `minLength: 1` constraint and the chooser went blank.
@@ -10,8 +10,8 @@
 // config.yml (which has its own separate schema not covered here yet) is
 // parsed and validated against the vendored schema at
 // scripts/lint/issue-forms.schema.json. The schema is the JSON-Schema-Store
-// mirror of GitHub's official one (https://json.schemastore.org/github-issue-forms.json)
-// — re-fetch it when GitHub announces new field types or constraints.
+// mirror of GitHub's official one (https://json.schemastore.org/github-issue-forms.json).
+// Re-fetch it when GitHub announces new field types or constraints.
 //
 // Exits 1 on any validation error, 0 when clean.
 
@@ -43,7 +43,7 @@ function main() {
 
   const schema = JSON.parse(fs.readFileSync(SCHEMA_PATH, 'utf8'));
   // The schema is Draft-07, which both ajv 6 and ajv 8 support natively.
-  // Don't pass `schemaId` (ajv 6-only) or addMetaSchema — npm hoisting may
+  // Don't pass `schemaId` (ajv 6-only) or addMetaSchema: npm hoisting may
   // resolve a different ajv major than what's pinned at the top level
   // (eslint and other devDeps pull ajv transitively).
   const ajv = new Ajv({ allErrors: true });

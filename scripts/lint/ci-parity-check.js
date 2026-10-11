@@ -1,4 +1,4 @@
-// scripts/lint/ci-parity-check.js — reconciles the `npm run lint` aggregate
+// scripts/lint/ci-parity-check.js: reconciles the `npm run lint` aggregate
 // against what CI actually runs.
 //
 // WHY THIS EXISTS
@@ -27,27 +27,27 @@
 //
 // This is the same failure `validate-deps-workflow-sync.cjs` guards one level
 // down ("if a new reusable is added without a matching entry here, dep bumps
-// that break it will silently land green") — applied to the layer above it.
+// that break it will silently land green"), applied to the layer above it.
 //
 // WHAT IT CHECKS
 // --------------
 // Expands `npm run lint` recursively to its leaf scripts, then asserts each
-// leaf is invoked by some workflow under .github/workflows/ — either as
+// leaf is invoked by some workflow under .github/workflows/, either as
 // `npm run <name>` or, for node-based scripts, as a direct `node scripts/...`
 // call (several workflows invoke the script path rather than the npm alias).
 // Comment lines are stripped first, so a mention of a check never counts as a
-// run of it — see executableText() below.
+// run of it (see executableText() below).
 //
 // A second, indirect CI home is recognised: a Vitest repo-drift-gate test that
 // shells the real check against the real repo, run in CI by `npm run
-// test:scripts`. That is how the two asset generators gate — see
-// COVERED_BY_TEST below. It is verified, not trusted.
+// test:scripts`. That is how the two asset generators gate (see
+// COVERED_BY_TEST below). It is verified, not trusted.
 //
-// SCOPE — what this does NOT prove
+// SCOPE: what this does not prove
 // --------------------------------
-//   - That the hosting workflow's `paths` filter matches the files the check
-//     reads. A too-narrow filter passes here and never fires on the PR that
-//     needed it. Tracked as `ci-path-filters-unverified` in tech-debt.md.
+//   - That the hosting workflow's path filter (its `changed-paths` regex) matches
+//     the files the check reads. A too-narrow filter passes here and never
+//     fires on the PR that needed it. Tracked as `ci-path-filters-unverified` in tech-debt.md.
 //   - For a COVERED_BY_TEST entry: that the cited test asserts against the REAL
 //     repo rather than a temp fixture. It proves the test invokes the script in
 //     --check mode and that CI runs the suite; the assertion's target is the
@@ -55,20 +55,20 @@
 //   - That the hosting workflow's status-check context is a REQUIRED check on
 //     main. A check in a non-required context runs but does not block a merge.
 //     Branch protection lives outside the repo and needs admin scope to read,
-//     so it can't be gated here — the invariant is documented in
-//     build-and-tooling.md's "adding a new reusable workflow" note instead.
+//     so it can't be gated here. The invariant is documented in the "Dependency
+//     updates" section of build-and-tooling.md instead.
 //
 // Deliberate local-only entries live in LOCAL_ONLY below, each with a REASON.
 // An allowlist entry is a decision on the record, not a silent exemption.
 //
-// Only Node stdlib — no npm ci needed.
+// Only Node stdlib, so no npm ci needed.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// Aggregate members deliberately NOT run in CI. Key = npm script name,
-// value = why. Anything not listed here MUST have a CI home.
+// Aggregate members kept out of CI on purpose. Key = npm script name,
+// value = why. Anything not listed here needs a CI home.
 export const LOCAL_ONLY = {
   'lint:bs':
     'bslint is declared as a BSC plugin in bsconfig.json, and CI runs `npm run validate` ' +
@@ -78,8 +78,8 @@ export const LOCAL_ONLY = {
 
 // Aggregate members whose CI home is a Vitest repo-drift-gate test rather than a
 // workflow `run:` line. Key = npm script name, value = the test file that gates
-// it. These DO block a merge — `_test-scripts.yml`'s job id is `vitest`, and
-// `vitest / vitest` is a required context on main — so they are not exemptions
+// it. These DO block a merge (`_test-scripts.yml`'s job id is `vitest`, and
+// `vitest / vitest` is a required context on main), so they are not exemptions
 // and must not be listed in LOCAL_ONLY.
 //
 // The indirection is verified on every run: the cited test must exist, must
@@ -132,17 +132,17 @@ function scriptPathOf(cmd) {
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// Workflow text with comment lines removed — a MENTION of a check must never
+// Workflow text with comment lines removed: a MENTION of a check must never
 // count as a RUN of it. That distinction is the whole point: the bug this
 // script was written to catch was `npm run lint` appearing in .github/workflows/
 // exactly once, inside a comment. Dropping `#` lines is correct in both
-// contexts a match can occur — at step level it is a YAML comment, and inside a
+// contexts a match can occur: at step level it is a YAML comment, and inside a
 // `run: |` block it is a shell comment. Neither executes.
 //
-// Deliberately line-based rather than YAML-parsed: _lint-docs.yml runs this
-// script with no `npm ci` step, so it must stay Node-stdlib-only (no js-yaml).
+// Line-based rather than YAML-parsed on purpose, so the script stays
+// Node-stdlib-only (no js-yaml) and runs without `npm ci`.
 // Line-based also survives multi-line `run: |` blocks, which this repo uses
-// heavily — a stricter "only lines carrying a run: key" filter would silently
+// heavily; a stricter "only lines carrying a run: key" filter would silently
 // report a false MISSING for any check invoked inside a block scalar.
 function executableText(files, commentRe = /^\s*#/) {
   return files
@@ -202,7 +202,7 @@ export function check({ scripts, workflows, tests = [] }) {
     .map((leaf) => ({ name: leaf.name, cmd: leaf.cmd }));
 
   // An allowlist entry for a script that IS now in CI (or no longer in the
-  // aggregate) is stale — drop it so the list stays a real decision record.
+  // aggregate) is stale: drop it so the list stays a real decision record.
   const leafNames = new Set(leaves.map((l) => l.name));
   const staleAllowlist = Object.keys(LOCAL_ONLY).filter(
     (n) => !leafNames.has(n) || covers(leaves.find((l) => l.name === n)),
@@ -229,13 +229,13 @@ function main() {
     workflows = readdirSync(dir)
       .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
       .map((f) => ({ name: f, text: readFileSync(path.join(dir, f), 'utf8') }));
-    // Only the files COVERED_BY_TEST actually names — reading the whole suite
+    // Only the files COVERED_BY_TEST actually names: reading the whole suite
     // would cost more and prove nothing extra.
     tests = [...new Set(Object.values(COVERED_BY_TEST))].flatMap((rel) => {
       try {
         return [{ name: rel, text: readFileSync(path.join(rootDir, rel), 'utf8') }];
       } catch {
-        return []; // absent → check() reports the leaf MISSING, with the reason
+        return []; // absent, so check() reports the leaf MISSING, with the reason
       }
     });
   } catch (err) {

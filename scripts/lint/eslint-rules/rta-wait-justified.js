@@ -1,4 +1,4 @@
-// scripts/lint/eslint-rules/rta-wait-justified.js — every RTA `waitFor` must fall in a
+// scripts/lint/eslint-rules/rta-wait-justified.js: every RTA `waitFor` must fall in a
 // justified category.
 //
 // WHY THIS EXISTS
@@ -7,17 +7,17 @@
 // harness polls instead. That is a deviation from the library's documented practice, so
 // the project's bar is that every wait either follows that practice or carries a written
 // justification for why it deviates. Four categories carry those justifications (see
-// `tests/rta/CLAUDE.md` → "Why every wait polls"); this rule makes it impossible for a
-// wait to land in NONE of them without someone noticing.
+// `tests/rta/CLAUDE.md`, section "Why every wait polls"); this rule makes it impossible
+// for a wait to land in none of them without someone noticing.
 //
 // The failure it guards is specific and quiet: a poll can only miss a state that is a
-// one-shot PULSE — entered and left inside one interval. Such a wait does not fail
+// one-shot PULSE, entered and left inside one interval. Such a wait does not fail
 // loudly, it fails RARELY, and the timeout blames whatever it was watching. That is the
 // symptom #785 recorded as unattributable, which is why "it works" was ruled out as a
 // justification in the first place.
 //
-// WHAT IT CHECKS, AND WHAT IT DELIBERATELY CANNOT
-// -----------------------------------------------
+// WHAT IT CHECKS, AND WHAT IT CANNOT
+// ----------------------------------
 // Three categories prove themselves from the call's own syntax:
 //
 //   FN     first argument is a function keyPath (`...getChildCount()`, `subtype()`).
@@ -30,25 +30,25 @@
 //          watch for a key that never landed.
 //
 // The fourth cannot. "This field is not a pulse" is a claim about how the APP writes it,
-// which no parser can see — it is established by reading the app source. So the rule
+// which no parser can see: it is established by reading the app source. So the rule
 // ratchets on the FIELD rather than on the call site: a keyPath in
 // `VERIFIED_SETTLE_KEYPATHS` has been checked and inherits that check for free, and a
 // keyPath that has not trips the gate.
 //
-// That asymmetry is the point. Adding a sixth `#osd.visible` wait costs nothing, because
+// That asymmetry is the point. Adding another `#osd.visible` wait costs nothing, because
 // the expensive part was verifying `#osd.visible` once. Adding a wait on a field nobody
 // has checked is exactly when the verification is owed, and that is when this fires.
 //
 // A wait whose keyPath is a runtime value cannot be classified here at all; its
 // justification belongs in the JSDoc of the helper that owns it, and the call site
-// disables this rule with a reason — the same escape hatch `no-restricted-syntax` uses
+// disables this rule with a reason: the same escape hatch `no-restricted-syntax` uses
 // for a named fail-fast in these files.
 
 import { calleeName, walkAst } from './_shared.js';
 
 /**
  * KeyPaths whose target states have been read in the app source and found to be
- * non-transient at the poll intervals these waits use — each is either TERMINAL (held
+ * non-transient at the poll intervals these waits use. Each is either TERMINAL (held
  * until the next user action) or RECURRENT (re-entered if a tick misses it). Neither can
  * be missed by a poll; only a one-shot pulse can.
  *
@@ -56,14 +56,14 @@ import { calleeName, walkAst } from './_shared.js';
  * worth naming because they could plausibly have gone the other way and did not:
  *
  *   - `...#buttonBorder.blendColor` is assigned DIRECTLY on focus change
- *     (`components/ui/button/TextButton.bs`) — no interpolator, so the focus/idle colors
+ *     (`components/ui/button/TextButton.bs`), with no interpolator, so the focus/idle colors
  *     are step values that hold, not frames of an animation a poll could sample between.
  *   - `#scrollContent.translation` is likewise a direct assignment
  *     (`components/OverviewDialog.bs`), and the predicate reads "has scrolled at all"
  *     (`t[1] < 0`), which stays true once true.
  *
  * `state` is the RECURRENT one: Roku's `Video.state` re-enters `playing` after a
- * mid-stream rebuffer, so it is not terminal — but a tick that misses it gets another.
+ * mid-stream rebuffer, so it is not terminal, but a tick that misses it gets another.
  *
  * The one state in the suite that IS a pulse is `loadState === 'skeleton'`, and it is not
  * waited for bare: `genre-skeleton.spec.js` widens the window first through the
@@ -74,15 +74,15 @@ import { calleeName, walkAst } from './_shared.js';
  *
  * TO ADD AN ENTRY: read where the app writes the field, confirm the target state is
  * terminal or recurrent rather than a pulse, and say which in a comment if it is not
- * obvious. Do not add a keyPath you have not read the app source for — an unverified
+ * obvious. Do not add a keyPath you have not read the app source for: an unverified
  * entry is worse than a failing lint, because it looks like it was checked.
  */
 const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#buttons.buttonFocused',
   // `ItemDetails.bs` assigns `m.extrasGrid.type = item.type` on content load and on an
-  // explicit extras refresh, and never clears it — terminal for the life of that
+  // explicit extras refresh, and never clears it: terminal for the life of that
   // content, so a poll cannot miss it. Read against the app source 2026-09-06, both
-  // assignment sites. Note it is NOT set when `item.type = "Person"` (both sites branch
+  // assignment sites. It is not set when `item.type = "Person"` (both sites branch
   // to `loadPersonVideos` instead); the only gate using it is
   // `openFirstGridTileDetail`, whose three callers open Series / MusicAlbum |
   // MusicArtist / Playlist, so that branch is unreachable from it.
@@ -95,37 +95,37 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // explicitly suggests an OBSERVER ("set an observer so that when the field value
   // changes to ready, an action can be triggered"). The poll is justified not because an
   // observer could not work, but because `ready` is terminal, so the two are equivalent
-  // here — and the call site treats the whole wait as best-effort (`.catch(() => {})`),
+  // here, and the call site treats the whole wait as best-effort (`.catch(() => {})`),
   // since a backdrop that never decodes should not fail a screenshot run.
   '#rtaBackdrop.loadStatus',
   '#extrasGrid.rowItemFocused',
   '#imageFader.uri',
   // `ItemDetails.openSubtitlePanel` sets it true before raising `isOpen`, and
-  // `SubtitlePanel.openPanel` sets it true again on open; the ONLY write back to false
+  // `SubtitlePanel.openPanel` sets it true again on open; the only write back to false
   // is `SubtitlePanel.onPanelAnimeStateChanged`, at the end of the close slide. So
-  // `true` holds for as long as the panel is open — terminal until the user backs out,
+  // `true` holds for as long as the panel is open: terminal until the user backs out,
   // not a pulse. Read against the app source 2026-09-10, all three write sites. Its one
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
-  // `JRScene.showToast` sets it and nothing ever clears it — dismissal hides the toast but
+  // `JRScene.showToast` sets it and nothing ever clears it. Dismissal hides the toast but
   // leaves `message` holding the last text. Terminal, not a pulse. Read against the app
   // source 2026-09-25 (JRScene.showToast, Toast.onShouldShow).
   '#toast.message',
   // `BaseGridView.onLoadingMoreDue` sets it true and `updateLoadingMore` is the only write
   // back to false, when the page lands (or fails, or the view is hidden). `true` holds for as
-  // long as the user waits at the last loaded row, and `false` until the next wait — neither
+  // long as the user waits at the last loaded row, and `false` until the next wait: neither
   // is a pulse. Read against the app source 2026-09-25, both write sites.
   '#loadingMore.isShown',
   // The scene's spinner text. Written by `startLoadingSpinner` / `stopLoadingSpinner`
   // (source/utils/misc.bs) and, for a library grid's slow first page, by
   // `BaseGridView.onSlowLoadDue` at its two stages. Each value holds until the next stage or
-  // the end of the load — seconds apart — so none is a pulse. Read against the app source
+  // the end of the load, seconds apart, so none is a pulse. Read against the app source
   // 2026-09-25, all three write sites.
   'loadingText',
   // The scene's spinner and the stage text under it. Both are written only by
   // `JRScene.showLoadingStage`, when a wait starts or ends, the active view changes, or a stage
-  // comes due (8 s, 30 s). Each value holds until the next of those — seconds apart — so
+  // comes due (8 s, 30 s). Each value holds until the next of those, seconds apart, so
   // neither is a pulse. Read against the app source 2026-09-25, the one write site of each.
   '#spinner.visible',
   '#loadingStageText.text',
@@ -205,7 +205,7 @@ function testsForAbsence(node) {
 /**
  * The categories a `waitFor` can land in, in the order they are tested.
  *
- * `UNVERIFIED` is the failing residual — the rule reports it, and a passing lint run
+ * `UNVERIFIED` is the failing residual: the rule reports it, and a passing lint run
  * therefore has none. That is what lets the inventory checker treat a non-zero count as
  * its own bug rather than as a number to print.
  */
@@ -222,14 +222,14 @@ export const WAIT_CATEGORIES = Object.freeze({
  * Which category does this `CallExpression` fall in? `null` when it is not a `waitFor`
  * call at all.
  *
- * EXPORTED, and the rule below is one of its two callers — the other is
+ * EXPORTED, and the rule below is one of its two callers. The other is
  * `scripts/lint/rta-wait-inventory.js`, which counts the categories the wait inventory in
  * `tests/rta/CLAUDE.md` publishes. They must not be able to answer differently: a checker
  * with its own copy of this ladder would drift from the gate, and the doc would then be
  * verified against something other than the rule it claims to describe. Same argument, and
  * the same fix, as `scripts/lib/process-liveness.cjs` and `_shared.js` in this directory.
  *
- * The ORDER is load-bearing and is the rule's, not a convenience: `ACT` holds whatever the
+ * The ORDER matters and is the rule's, not a convenience: `ACT` holds whatever the
  * keyPath looks like, and a dynamic keyPath cannot be classified further.
  */
 export function classifyWait(node) {
@@ -238,20 +238,20 @@ export function classifyWait(node) {
   const [keyPathArg, predicateArg] = node.arguments;
   const options = node.arguments.length > 2 ? node.arguments[2] : null;
 
-  // ACT — the per-tick re-press is the mechanism. Checked first because it holds
+  // ACT: the per-tick re-press is the mechanism. Checked first because it holds
   // whatever the keyPath looks like.
   if (hasActionOption(options)) return { category: WAIT_CATEGORIES.ACT, keyPath: null };
 
   const keyPath = staticString(keyPathArg);
   if (keyPath === null) return { category: WAIT_CATEGORIES.DYN, keyPath: null };
 
-  // FN — ODC observes a field, and a function call is not one.
+  // FN: ODC observes a field, and a function call is not one.
   if (keyPath.includes('()')) return { category: WAIT_CATEGORIES.FN, keyPath };
 
-  // ABS — the node is gone; there is nothing left to observe.
+  // ABS: the node is gone; there is nothing left to observe.
   if (testsForAbsence(predicateArg)) return { category: WAIT_CATEGORIES.ABS, keyPath };
 
-  // SETTLE — the residual, justified per FIELD rather than per site.
+  // SETTLE: the residual, justified per FIELD rather than per site.
   if (VERIFIED_SETTLE_KEYPATHS.has(keyPath)) return { category: WAIT_CATEGORIES.SETTLE, keyPath };
 
   return { category: WAIT_CATEGORIES.UNVERIFIED, keyPath };
@@ -289,8 +289,8 @@ export default {
   create(context) {
     return {
       CallExpression(node) {
-        // The ladder itself lives in `classifyWait` so the inventory checker shares it —
-        // see that function. Only the two REPORTING categories are handled here; the four
+        // The ladder itself lives in `classifyWait` so the inventory checker shares it
+        // (see that function). Only the two REPORTING categories are handled here; the four
         // justified ones are silence, exactly as before.
         const verdict = classifyWait(node);
         if (!verdict) return;

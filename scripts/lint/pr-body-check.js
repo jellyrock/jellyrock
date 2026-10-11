@@ -7,14 +7,14 @@
  * The title becomes the first line of the squash commit, and its type (`fix:`, `feat:`
  * …) is what places the change in CHANGELOG.md (`scripts/lib/pr-title.js`). A title
  * without one lands in Changed whatever it is, so it is held to the form here, while
- * the author can still retitle. This runs for every PR a person writes — a
- * `documentation`-labelled PR skips the description check below but its title still
- * reaches the changelog — and skips only bot PRs and generated release branches.
+ * the author can still retitle. This runs for every PR a person writes (a
+ * `documentation`-labeled PR skips the description check below but its title still
+ * reaches the changelog), and skips only bot PRs and generated release branches.
  *
  * ## Why this is a gate rather than a review habit
  *
  * The repo merges squash-only with `squash_merge_commit_message=PR_BODY`, so a PR
- * description is not a courtesy to reviewers — it is the **permanent commit message**
+ * description is not a courtesy to reviewers: it is the **permanent commit message**
  * of everything that lands on `main`. An unfilled template therefore does not produce
  * a thin PR page that someone might nag about; it produces a commit whose whole body
  * reads `-` and `[ ] None`, forever, and nothing downstream can recover what the
@@ -24,9 +24,9 @@
  * the loss only surfaces months later when someone runs `git log` against a line they
  * do not understand. A red check at PR time is the only point where it is cheap.
  *
- * ## What it does NOT do
+ * ## What it does not do
  *
- * It does not judge prose quality, length, or whether the description is *true* — a
+ * It does not judge prose quality, length, or whether the description is *true*: a
  * lint cannot, and pretending otherwise would make it a nuisance that gets skipped.
  * It asserts only that each section the template ships was actually answered, which
  * is the part a machine can check and the part that actually goes blank.
@@ -36,7 +36,7 @@
  * GitHub links a bare `#N` to THIS repo's issue N, and links another repo's only as
  * `owner/repo#N` (or a URL). So the shorthand `jellyfin#17107` renders as plain text
  * (#940, #1000, #1002) and `jellyfin-roku-legacy PR #669` links to our unrelated #669
- * (#1016) — both permanently, in the squash commit. The shorthand is decidable from the
+ * (#1016), both permanently, in the squash commit. The shorthand is decidable from the
  * text alone, so it FAILS here. Whether a bare `#N` means ours is a judgment, so it
  * does not: `--list-refs` (run by the `/pr` skill, or by hand) resolves every reference
  * against GitHub and prints each one's title for a person to confirm.
@@ -45,8 +45,8 @@
  *
  * Bot PRs (Renovate, the release app) and generated release branches skip both checks:
  * nobody typed their title or description. The description check also reuses
- * `shouldSkip` from `scripts/journal-sync.js` — the same predicate that decides whether
- * a PR reaches `progress.md` — so `dependencies`/`documentation` PRs are exempt from it.
+ * `shouldSkip` from `scripts/journal-sync.js` (the same predicate that decides whether
+ * a PR reaches `progress.md`), so `dependencies`/`documentation` PRs are exempt from it.
  *
  * Usage:
  *   PR_BODY="$BODY" node scripts/lint/pr-body-check.js \
@@ -69,7 +69,7 @@ const SKIP_HEAD_REF_PATTERNS = [/^release[-/]/i, /^renovate\//i, /^dependabot\//
 /**
  * The template's sections and what "answered" means for each.
  *
- * `rule` is deliberately per-section: a bare `-` is a filled Overview's worth of
+ * `rule` is per-section on purpose: a bare `-` is a filled Overview's worth of
  * nothing under Changes. One generic "is it non-empty" test would pass it.
  *
  * An optional section may be left out, and `/pr` leaves out any it has nothing for.
@@ -111,7 +111,7 @@ const SECTIONS = [
   },
 ];
 
-/** Strip HTML comments, including multi-line ones — they are prompts, not answers. */
+/** Strip HTML comments, including multi-line ones: they are prompts, not answers. */
 export function stripComments(text) {
   return String(text ?? '').replace(/<!--[\s\S]*?-->/g, '');
 }
@@ -121,14 +121,14 @@ export function stripComments(text) {
  * Returns null when the heading is absent, which is itself a finding.
  *
  * "Any level" rather than the usual markdown "same or higher": the template's sections
- * are peers in intent but not in level — `# Overview` is an h1 and every other section
+ * are peers in intent but not in level: `# Overview` is an h1 and every other section
  * is an h2. Under the markdown rule an h2 does not close an h1, so Overview swallowed
  * the entire rest of the document and could never be reported empty (it inherited
- * whatever `Follow-ups` said). Caught by the template test below, which is the case
- * that test exists for.
+ * whatever `Follow-ups` said). Caught by the shipped-template test in
+ * `tests/scripts/unit/lint/pr-body-check.test.js`, which is the case that test exists for.
  *
  * The cost of the flat rule is that a `###` subheading also closes a section, so only
- * the prose ABOVE it counts. That is harmless here — this asks whether a section was
+ * the prose ABOVE it counts. That is harmless here: this asks whether a section was
  * answered at all, and an answer that begins with a subheading and no lead-in is not a
  * shape worth supporting.
  */
@@ -142,7 +142,7 @@ export function sectionBody(body, heading) {
 }
 
 const RULES = {
-  // Any non-blank line. "None" counts — it is a real answer to Follow-ups and Issues.
+  // Any non-blank line. "None" counts: it is a real answer to Follow-ups and Issues.
   prose: (s) => s.split('\n').some((l) => l.trim().length > 0),
   // A dash followed by actual content. The template ships a bare "-", which must not pass.
   bullets: (s) => s.split('\n').some((l) => /^\s*[-*]\s+\S/.test(l)),
@@ -152,14 +152,14 @@ const RULES = {
  * The text GitHub can turn into an issue link. Code, HTML comments, markdown links,
  * bare URLs and HTML entities are removed: a reference inside any of them is either
  * already a link, not a reference (`CHANGELOG.md#399`, Renovate's escaped
- * `#&#8203;433`), or deliberately literal.
+ * `#&#8203;433`), or literal on purpose.
  *
  * Code is a fence of three or more backticks or tildes (a backtick fence's info string
  * has no backticks, or the line is an inline span; closed by a run of the same
  * character at least as long, or by the end of the text), an inline span of any
  * backtick run length that does not cross a blank line, and a `<pre>` or `<code>`
  * element. An indented code block is
- * NOT removed: a four-space-indented paragraph under a list item looks the same to a
+ * not removed: a four-space-indented paragraph under a list item looks the same to a
  * regex and GitHub does link inside it, so removing both would hide real references.
  */
 export function referenceText(text) {

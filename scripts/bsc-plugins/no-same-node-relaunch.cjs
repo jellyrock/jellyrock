@@ -1,5 +1,5 @@
 /**
- * BrighterScript plugin — no relaunch of a Task node that may still be running.
+ * BrighterScript plugin: no relaunch of a Task node that may still be running.
  *
  * Three findings, one code, each with its own section below:
  *   1. STOP then relaunch of the same node in one function (a race).
@@ -14,13 +14,13 @@
  * pinned by tests/source/unit/platform/TaskRelaunch.spec.bs): writing
  * `control = "STOP"` to a Task node whose function is still running, then
  * `launchTask()` on that same node in the same callback, is a race. The launch
- * is sometimes ignored — nothing starts and nothing errors — and sometimes
+ * is sometimes ignored (nothing starts and nothing errors) and sometimes
  * honored. Neither outcome can be relied on. A NEW node launched in that
  * callback always starts, and the stopped function makes no further progress.
  * So a run that can be restarted while the previous one is in flight must get a
  * new node; `ExtrasRowList.startRun` is the reference.
  *
- * What is flagged — a `launchTask(X)` call, in a function that earlier (in
+ * What is flagged: a `launchTask(X)` call, in a function that earlier (in
  * source order):
  *   - writes `X.control = "STOP"` (any casing; also `X["control"] = "STOP"`,
  *     `X.setField("control", "STOP")` and a literal `X.setFields({ control: "STOP" })`), or
@@ -29,8 +29,8 @@
  *     same-file helper hop below would never see inside them; they are named here
  *     instead. `m.x = replaceTask(m.x, …)` is the fix and is not flagged: the
  *     assignment lands after the call it wraps. A bare `replaceTask(m.x, …)` whose
- *     result is dropped, then `launchTask(m.x)`, IS flagged — that relaunches the
- *     node the call just stopped. Or
+ *     result is dropped, then `launchTask(m.x)`, IS flagged: that relaunches the
+ *     node the call has only now stopped. Or
  *   - calls a function or sub declared in the SAME file that STOPs `X` and does
  *     not assign `X` (or a parent of it) afterwards, where `X` is an `m.` path
  *     (one hop: `prepareDataLoad()` then `launchTask(m.loadItemsTask)`). A
@@ -42,17 +42,17 @@
  * neither its STOPs, its launches nor its assignments belong to the function
  * that wrote it.
  *
- * What is NOT flagged:
- *   - A STOP after the launch (a timeout that stops the task it just started).
+ * What is not flagged:
+ *   - A STOP after the launch (a timeout that stops the task it has started).
  *   - A launch after `X`, or a parent of it, is assigned between the STOP and the
- *     launch — that is the new-node fix. All three write spellings count:
+ *     launch: that is the new-node fix. All three write spellings count:
  *     `X = …` / `m.x = …`, the literal-key `m["x"] = …`, and a literal-AA
  *     `setFields` / `addFields`. Assigning `invalid` counts too: launching
  *     `invalid` fails every time rather than racing, and `launchTask` reports it.
  *   - A STOP in a different function from the launch, other than the one-hop
- *     helper above (e.g. a STOP in a completion handler, then a launch from a later
- *     callback). Those run in different callbacks, and a relaunch from a later
- *     callback is reliable.
+ *     helper above (for example a STOP in a completion handler, then a launch
+ *     from a later callback). Those run in different callbacks, and a relaunch
+ *     from a later callback is reliable.
  *
  * Known residual gaps, stated rather than chased:
  *   - Source order is not control flow. A STOP in one branch and the launch in
@@ -68,8 +68,8 @@
  *     name. Measured 2026-09-17 before leaving it: following dotted `m.<name>()`
  *     calls as well found the same 16 sites and no others, so closing it would
  *     have to be justified by a future site, not a present one. Closing it
- *     properly means resolving BOTH directions by scope — bare to free
- *     functions, `m.x()` to methods of the enclosing class — or a bare call
+ *     properly means resolving BOTH directions by scope (bare to free
+ *     functions, `m.x()` to methods of the enclosing class), or a bare call
  *     inherits a same-named method's STOPs, which is the same defect mirrored.
  *   - Paths are compared as written. A STOP through a local alias
  *     (`t = m.task` then `t.control = "STOP"`) followed by `launchTask(m.task)`
@@ -90,8 +90,8 @@
  * a same-file function that assigns `X` counts, one hop, as for STOPs above.
  * Writing an input field (`m.x.itemId = …`) is not an assignment of `m.x`.
  *
- * A launch that provably cannot overlap a running one — the only launch a node
- * ever gets, or a site that returns unless `X.state = "stop"` — is suppressed on
+ * A launch that provably cannot overlap a running one (the only launch a node
+ * ever gets, or a site that returns unless `X.state = "stop"`) is suppressed on
  * the line with the reason. Sites not yet audited are in PENDING_MIGRATIONS.
  *
  * Gaps: only `m.`-rooted paths are checked, since a local was assigned somewhere
@@ -105,7 +105,7 @@
  * `isCurrentTaskEvent(event, X)`: otherwise a replaced run's event reads the new
  * node's empty output. Flagged: `X.observeField("field", "handler")` where the
  * file assigns `X = replaceTask(…)`, the handler is a function in the same file,
- * and its first statement — `m.log.*` calls and `print` aside — does not call
+ * and its first statement (`m.log.*` calls and `print` aside) does not call
  * `isCurrentTaskEvent`. A handler in another file (`MoviePresenter`'s, reached
  * through `BaseGridView.onPresenterLogoLoaded`) is not followed.
  *
@@ -115,14 +115,14 @@
  *
  * Sites that predate the rule are listed in PENDING_MIGRATIONS below rather than
  * suppressed inline, so there is no marker to copy onto a new site. The list can
- * only shrink, and that is enforced rather than hoped for: EVERY state an entry
+ * only shrink, and that is enforced rather than hoped for: each state an entry
  * can be in produces an actionable error except the one where it matches its site.
  * The two halves of that live in different hooks, split by where the fix is made:
  *
- *   afterValidateFile    — a fault in the CODE: the entry's function is there
+ *   afterValidateFile    (a fault in the CODE): the entry's function is there
  *                          and does not relaunch that node. Anchored on the
  *                          function, so BSC clears it when that file re-validates.
- *   afterValidateProgram — a fault in the LIST: the entry cannot be checked. Its
+ *   afterValidateProgram (a fault in the LIST): the entry cannot be checked. Its
  *                          file may be absent from the build, be one this rule
  *                          never inspects, not be BrightScript, or be spelled in
  *                          a different case; the entry may be listed twice, or
@@ -133,7 +133,7 @@
  * Keep that split when adding a state. A diagnostic the file hook anchors
  * outside its own file is never cleared by BSC, so it outlives the fix; and most
  * list faults are invisible to the file hook anyway, which never runs for such a
- * file — without the program half the entry AND the site under it go quiet.
+ * file. Without the program half the entry AND the site under it go quiet.
  *
  * An entry that matched nothing yields ONE claim, and never a second one
  * contradicting it about the same node. The plugin sees only what the code does
@@ -144,7 +144,7 @@
  * Escape hatch, for a relaunch that is intended (state the reason after the code):
  *  - `' bsc-disable-next-line no-same-node-relaunch <reason>` on the line above
  *    the launch, or `' bsc-disable-line …` on it. `bsc-disable-file` is
- *    deliberately NOT honored, as with `no-raw-run` and `no-task-fanout`.
+ *    not honored, by intent, as with `no-raw-run` and `no-task-fanout`.
  */
 'use strict';
 
@@ -167,8 +167,8 @@ const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-same-node-relau
 /**
  * Sites that relaunched a node before this rule flagged them, each awaiting an
  * audit and, where a run can overlap, a move to a new node per run
- * (docs/progress.md, same-node relaunch followup). File → [function, launched
- * path]. An entry covers the first launch of that path in that function, and every
+ * (docs/progress.md, same-node relaunch followup). Maps a file to [function,
+ * launched path]. An entry covers the first launch of that path in that function, and every
  * finding at it; a second launch is still flagged. Delete an entry
  * when its site is migrated, or suppressed with its reason once audited safe; the
  * build fails until you do.
@@ -214,8 +214,8 @@ function aaKey(element) {
 }
 
 /**
- * The lowercased dotted path an expression names — `task`, `m.loadtask`,
- * `m.view.task` — or undefined for anything else (an index, a call). Lowercased
+ * The lowercased dotted path an expression names (`task`, `m.loadtask`,
+ * `m.view.task`), or undefined for anything else (an index, a call). Lowercased
  * because BrightScript identifiers and AA keys are case-insensitive.
  */
 function refPath(expression) {
@@ -366,7 +366,7 @@ function isRebound(path, rebound) {
 
 /**
  * Replay `events` in order and call `onLaunch(event, via)` for each launch of a
- * node that is still stopped — stopped, and not assigned anew since. A call to a
+ * node that is still stopped: stopped, and not assigned anew since. A call to a
  * function in `helperStops` stops the paths it lists. Returns the paths still
  * stopped at the end, which is what a helper hands its caller.
  */
@@ -394,7 +394,7 @@ function trackStops(events, helperStops, onLaunch) {
 
 /**
  * Replay `events` in order and call `onLaunch(event)` for each launch of an `m.`
- * path this function has not assigned (nor a parent of it) before the launch — a
+ * path this function has not assigned (nor a parent of it) before the launch: a
  * node that may be the one launched last time. A call to a function in
  * `helperRebinds` assigns the paths it lists.
  */
@@ -439,7 +439,7 @@ function isLoggingStatement(statement) {
 /**
  * The statement a replaced node's handler must open with, or undefined when it
  * already does: the first statement other than logging, when that statement does
- * not call `isCurrentTaskEvent`. For an `if`, only its CONDITION counts — a guard
+ * not call `isCurrentTaskEvent`. For an `if`, only its CONDITION counts: a guard
  * inside its body runs too late to protect the condition.
  */
 function unguardedOpening(func) {
@@ -488,9 +488,9 @@ function pendingEntryLocation(destPath, entry) {
 /**
  * The PENDING_MIGRATIONS key naming `destPath`, ignoring case, or undefined.
  * Matched case-INSENSITIVELY on purpose: `program.getFile` already is, so an exact
- * lookup here would have the two disagree — the key would find its file (no
+ * lookup here would have the two disagree: the key would find its file (no
  * missing-file error) while its entries silently matched nothing. The casing is
- * still wrong, and `auditPendingList` reports it; it just does not break the gate
+ * still wrong, and `afterValidateProgram` reports it; it does not break the gate
  * while it is wrong.
  */
 function pendingKeyFor(pending, destPath) {
@@ -502,7 +502,7 @@ function pendingKeyFor(pending, destPath) {
  * One file's entries, as a Map of lowercased `function|path` -> the entry AS
  * WRITTEN (original casing, which is what locates it in this file's source and
  * what a message should echo back). A repeated tuple collapses here and is
- * reported by `auditPendingList`.
+ * reported by `afterValidateProgram`.
  */
 function entriesFor(pending, destPath) {
   const entries = new Map();
@@ -525,7 +525,7 @@ function duplicateEntries(pending, key) {
 }
 
 /**
- * True when the rule does not inspect `destPath` at all — the launch wrapper
+ * True when the rule does not inspect `destPath` at all: the launch wrapper
  * itself, or vendored code we do not author. Shared so the audit can tell when a
  * listed file is one the file hook will silently skip.
  */
@@ -598,7 +598,7 @@ class NoSameNodeRelaunchPlugin {
         if (paths.length) helperRebinds.set(fn.name, new Set(paths));
       }
 
-      // An entry covers ONE launch — the first one found — and every finding at
+      // An entry covers ONE launch (the first one found) and every finding at
       // it: the STOP finding and the unassigned-launch finding of that launch both
       // answer to it, while a second launch of the same path is still flagged.
       const listed = entriesFor(this.pending, destPath);
@@ -691,9 +691,9 @@ class NoSameNodeRelaunchPlugin {
 
   /**
    * The whole-program half of the ledger: whether each entry CAN be checked at
-   * all. Most of these are invisible to `afterValidateFile` — a key whose file
+   * all. Most of these are invisible to `afterValidateFile`: a key whose file
    * never reaches the rule never gets reconciled, so without this the entry (and
-   * the real violation under it) would simply go quiet. A missing function is
+   * the real violation under it) would go quiet. A missing function is
    * visible there, but it is a fault in the list, so it is reported here with
    * the rest.
    *
@@ -788,7 +788,7 @@ class NoSameNodeRelaunchPlugin {
   /**
    * A listed entry whose function is here but does not relaunch that node. The
    * plugin sees only what the code does NOW, so it CANNOT tell a finished
-   * migration from an entry that never matched — so the message claims neither.
+   * migration from an entry that never matched, so the message claims neither.
    * It reports what it checked and leaves the judgment to the reader.
    *
    * Anchored on the function, in the file being validated, so BSC clears it when

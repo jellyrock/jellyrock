@@ -1,18 +1,18 @@
-// scripts/lint/eslint-rules/rta-sleep-budgeted.js — the RTA suite's arbitrary waits are a
+// scripts/lint/eslint-rules/rta-sleep-budgeted.js: the RTA suite's arbitrary waits are a
 // fixed, declared inventory, and this rule keeps them that way.
 //
 // WHY THIS EXISTS
 // ---------------
 // `roku-test-automation`'s README says arbitrary waiting "is almost never needed", and
 // `tests/rta/CLAUDE.md`'s north star says it more sharply: a flake is never to be papered
-// over with a longer timeout or a fixed `sleep`, because the wait was not timing out — it
+// over with a longer timeout or a fixed `sleep`, because the wait was not timing out: it
 // was succeeding too early. Every surviving `sleep()` in this suite therefore carries an
 // argument for why no signal was available to gate on instead (see
-// `tests/rta/CLAUDE.md` → "Why the surviving sleeps are not arbitrary waits").
+// `tests/rta/CLAUDE.md`, section "Why the surviving sleeps are not arbitrary waits").
 //
 // The failure guarded is a process failure, not a code shape: someone hits a flake at
 // 5pm, adds `await sleep(2000)`, and the suite goes green. Nothing in review distinguishes
-// that from the ten legitimate paint settles it sits next to — they are the same three
+// that from the legitimate paint settles it sits next to: they are the same three
 // tokens. What separates them is whether anyone argued the case, and an argument is
 // exactly what a diff does not show.
 //
@@ -20,8 +20,8 @@
 // --------------
 // A `sleep()` lexically inside a loop is a POLL TICK, not an arbitrary wait: the loop
 // exits on its own predicate and the interval only sets sampling cadence. Those prove
-// themselves from syntax and are never counted — which is also why `lib/steps.js`, the
-// file that owns the wait primitives, has a budget of zero while containing seven
+// themselves from syntax and are never counted. That is also why `lib/steps.js`, the
+// file that owns the wait primitives, has a budget of zero while containing
 // `sleep()` calls.
 //
 // Every OTHER `sleep()` is a bare arbitrary wait and is counted against its file's entry
@@ -31,15 +31,15 @@
 // ------------------------------------------------
 // The sibling rule (`rta-wait-justified`) ratchets on the FIELD, because "this field is
 // not a pulse" is a reusable fact: verify `#osd.visible` once and every wait on it
-// inherits the check. Arbitrary waits have no such key — the argument is a property of
+// inherits the check. Arbitrary waits have no such key: the argument is a property of
 // the call site's PURPOSE, and most of the sites are anonymous spec arrows with no
 // stable name to hang an allowlist on. The alternative was a `// sleep: <category>` tag
 // on every one, and Phase 3 had already rejected that shape for the settle waits:
 // annotations that say nothing a reader of the code needs.
 //
 // A count is the cheapest thing that still fires at the right moment. It cannot say WHICH
-// argument a site claims — the prose in `tests/rta/CLAUDE.md` does that, per category —
-// but it makes adding a thirty-third arbitrary wait a deliberate act with a second file
+// argument a site claims (the prose in `tests/rta/CLAUDE.md` does that, per category),
+// but it makes adding one more arbitrary wait a deliberate act with a second file
 // to edit and a reviewer-visible diff, which is the whole failure being guarded.
 //
 // The match is EXACT, not a ceiling. A stale-high budget would silently re-permit a sleep
@@ -56,11 +56,11 @@ const DOC = 'tests/rta/CLAUDE.md → "Why the surviving sleeps are not arbitrary
  * 2026-09-05. Each file's sites are argued by category in the doc above; the categories
  * are summarised here only far enough to say why the number is not zero.
  *
- * A file absent from this table has a budget of ZERO — a new file that needs an arbitrary
- * wait has to be added here deliberately, which is the point.
+ * A file absent from this table has a budget of zero. A new file that needs an arbitrary
+ * wait has to be added here on purpose, which is the point.
  *
  * TO CHANGE A NUMBER: say which category the new site falls in, and if it falls in none,
- * that is the finding — gate on a signal instead. Adding a row here to silence a flake is
+ * that is the finding: gate on a signal instead. Adding a row here to silence a flake is
  * the exact move this rule exists to make visible.
  */
 export const BUDGETS = new Map([
@@ -70,7 +70,7 @@ export const BUDGETS = new Map([
 
   // Paint/texture settle after a `waitFor` gate has already passed, on navs SHARED with
   // the store-screenshot path. The app's only load-completion signal is the `cellLoad*`
-  // counter family, which is `#if perfTiming` — and `scripts/harden-prod-manifest.js`
+  // counter family, which is `#if perfTiming`, and `scripts/harden-prod-manifest.js`
   // forces that const off in `build:prod`, which is what `screenshots:capture` runs. So
   // on the path these serve there is provably no field to read.
   //
@@ -80,29 +80,29 @@ export const BUDGETS = new Map([
   // the app's precondition for accepting that key.
   // Plus 2 measurement windows (see that category below): `navGridScroll`'s rest before its
   // timed scroll and its drain after, which fix the workload the `item-grid-paging` line is
-  // read against — gating either on a signal would change what is measured.
+  // read against. Gating either on a signal would change what is measured.
   ['tests/rta/lib/nav.js', 12],
   ['scripts/capture-screenshots.js', 1],
 
   // Timer-window waits: out-wait a period to prove a NON-EVENT (a dialog that must
   // survive its own 5 s auto-hide, a deep link that must not re-navigate) or to catch a
-  // periodic refresh. Ungateable by construction — the only signal would be the very
+  // periodic refresh. Ungateable by construction: the only signal would be the very
   // thing being disproven.
   ['tests/rta/specs/deeplink.spec.js', 2],
   ['tests/rta/specs/genre-skeleton.spec.js', 1],
-  // A search answer delivered to a hidden screen must NOT end the details spinner; no app
+  // A search answer delivered to a hidden screen must not end the details spinner; no app
   // field reports a delivery that did not happen.
   ['tests/rta/specs/slow-search.spec.js', 1],
-  // A start the viewer backed out of must NOT reach a player once its answer lands; no app
+  // A start the viewer backed out of must not reach a player once its answer lands; no app
   // field reports a launch that did not happen.
   ['tests/rta/specs/playback-start.spec.js', 1],
 
   // Timer-window non-events only, since Phase 6b: a dialog that must survive its own 5 s
   // auto-hide, and a Back that must not exit before it. The four pre-action settles that
-  // shared this entry are gone — two through `waitOsdUp`, two through `waitFocusInside`.
+  // shared this entry are gone: two through `waitOsdUp`, two through `waitFocusInside`.
   ['tests/rta/specs/dialogs.spec.js', 2],
 
-  // Asynchronous teardown that no app field reports — see `retainedAfter`'s docblock.
+  // Asynchronous teardown that no app field reports: see `retainedAfter`'s docblock.
   ['tests/rta/specs/leaks.spec.js', 1],
 
   // Measurement windows: the dwell IS the quantity being measured, so gating it on a
@@ -127,9 +127,9 @@ const LOOP_TYPES = new Set([
  * Is this call lexically inside a loop, and therefore a poll tick rather than an
  * arbitrary wait?
  *
- * Deliberately does NOT stop at a function boundary. A `sleep()` inside a callback that
+ * Does not stop at a function boundary, on purpose. A `sleep()` inside a callback that
  * is itself inside a loop is still paced by that loop, and the suite has no case where
- * the distinction would change the answer — treating it as bare would count a tick.
+ * the distinction would change the answer. Treating it as bare would count a tick.
  */
 function insideLoop(ancestors) {
   return ancestors.some((a) => LOOP_TYPES.has(a.type));
@@ -181,7 +181,7 @@ export default {
         const name = calleeName(node);
         if (name !== 'sleep') return;
 
-        // A poll tick proves itself from syntax — the loop owns the exit condition.
+        // A poll tick proves itself from syntax: the loop owns the exit condition.
         const ancestors = sourceCode.getAncestors ? sourceCode.getAncestors(node) : [];
         if (insideLoop(ancestors)) return;
 
@@ -193,7 +193,7 @@ export default {
       'Program:exit'(program) {
         const budget = BUDGETS.get(file);
 
-        // The overwhelmingly common case — a file with no arbitrary waits and no entry.
+        // The overwhelmingly common case: a file with no arbitrary waits and no entry.
         if (bare.length === 0 && budget === undefined) return;
 
         const data = { file, actual: String(bare.length), budget: String(budget ?? 0) };

@@ -1,5 +1,5 @@
 /**
- * BrighterScript plugin — button-row overflow bracket discipline.
+ * BrighterScript plugin: button-row overflow bracket discipline.
  *
  * A surface whose button row can overflow (#788) keeps its spilled buttons in an
  * off-layout stash, because a LayoutGroup reserves a slot for an invisible child
@@ -13,8 +13,8 @@
  *
  * This flags a function that mutates the row without both halves.
  *
- * WHY A PLUGIN AND NOT A CONVENTION. The bracket is a no-op today — ItemDetails
- * sits at exactly 8 buttons against a cap of 8, the OSD at 7 against 10 — so a
+ * WHY A PLUGIN RATHER THAN A CONVENTION. The bracket is a no-op today (ItemDetails
+ * sits exactly at its cap, the OSD below its own), so a
  * forgotten bracket changes nothing observable, fails no test, and logs nothing.
  * It becomes a bug on the day someone adds the button that pushes a row over its
  * cap: a different PR, usually by a different person, who then reasonably
@@ -23,7 +23,7 @@
  * that catches it in the change that introduces it.
  *
  * The row's structure was touched by 10 commits in the 12 months before this
- * landed — roughly one a month — so a tenth mutator is a matter of when.
+ * landed (roughly one a month), so a tenth mutator is a matter of when.
  *
  * SELF-CONFIGURING, so a third surface adopting the pattern is covered with no
  * edit here: the target node is read out of each file's own `unsplitButtons()`,
@@ -31,7 +31,7 @@
  * call. A file that does not define both bracket halves is not an overflow
  * surface and is ignored entirely.
  *
- * SCOPE — what this does NOT prove:
+ * SCOPE. What this does not prove:
  *   - That the bracket halves are in the right ORDER, or that the mutation sits
  *     between them. It proves both are called in a function that mutates the row.
  *     Ordering is visible in review; presence is what gets forgotten.
@@ -45,17 +45,17 @@
  *   1. HELPER-MEDIATED. A function handed the row as an argument can mutate it
  *      without the call site naming a mutator at all. Not hypothetical:
  *      `appendDebugSpareButtons(m.buttonGrp)` does `group.appendChild(...)`, and
- *      both of its call sites are invisible here. Neither is a bug — both sit
+ *      both of its call sites are invisible here. Neither is a bug: both sit
  *      inside already-bracketed functions (`setupButtons`, `setButtonStates`),
  *      and both are `#if debug`, compiled out of production and test builds.
  *   2. LOCAL ALIAS. `grp = m.buttonGrp : grp.removeChild(x)` is not matched.
  *      ZERO instances in the codebase; the house style is uniformly
  *      `m.buttonGrp.<mutator>()`.
  *
- * Neither is closed, deliberately. (1) needs interprocedural analysis to do
+ * Neither is closed, on purpose. (1) needs interprocedural analysis to do
  * properly; approximating it by flagging "row passed as an argument" false-
- * positives on read-only helpers — `osdRowSpacing(m.buttonMenuLeft)` is called
- * from the unbracketed `osdRowGeometry()` — and a false positive on an
+ * positives on read-only helpers (`osdRowSpacing(m.buttonMenuLeft)` is called
+ * from the unbracketed `osdRowGeometry()`), and a false positive on an
  * ERROR-level gate blocks correct work, which is strictly worse than the false
  * negative it replaces. (2) is easy but would be machinery for a shape nobody
  * writes. Both would also add code to a plugin scheduled for deletion (below).
@@ -69,9 +69,9 @@
  *
  * Escape hatch:
  *  - `' bsc-disable-file button-row-bracket` at the top of the codebehind, for a
- *    surface that genuinely mutates the row outside the bracket. There is no such
- *    case today — all 38 mutation sites in ItemDetails.bs and all 5 in OSD.bs are
- *    already inside a bracketed function.
+ *    surface that does mutate the row outside the bracket. There is no such
+ *    case today: every mutation site in ItemDetails.bs and OSD.bs is already
+ *    inside a bracketed function.
  */
 'use strict';
 
@@ -83,7 +83,7 @@ const RESTORE_FN = 'restoreOverflowedButtons';
 const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+button-row-bracket\b/i;
 
 // Child-list writes. A read (getChild / findNode / getChildCount) cannot corrupt
-// the row on its own, so it is deliberately not here.
+// the row on its own, so it is left out on purpose.
 const ROW_MUTATORS = new Set([
   'insertchild',
   'removechild',
@@ -94,7 +94,7 @@ const ROW_MUTATORS = new Set([
   'removechildren',
 ]);
 
-// The bracket halves themselves. Exempt because they ARE the bracket — each one
+// The bracket halves themselves. Exempt because they are the bracket: each one
 // legitimately mutates the row without calling the other. The menu-close helper
 // they call needs no exemption: it cancels a dialog and never touches the row.
 const EXEMPT_FUNCTIONS = new Set([UNSPLIT_FN.toLowerCase(), APPLY_FN.toLowerCase()]);
@@ -118,7 +118,7 @@ class ButtonRowBracketPlugin {
       }
 
       const target = rowNodeName(functions.get(UNSPLIT_FN.toLowerCase()));
-      if (!target) return; // unrecognised bracket shape — say nothing rather than guess
+      if (!target) return; // unrecognized bracket shape: say nothing rather than guess
 
       for (const [lowerName, fn] of functions) {
         if (EXEMPT_FUNCTIONS.has(lowerName)) continue;
@@ -133,7 +133,7 @@ class ButtonRowBracketPlugin {
 
         event.program.diagnostics.register({
           code: 'button-row-bracket-required',
-          severity: 1, // Error — a forgotten bracket is silent until the row overflows.
+          severity: 1, // Error: a forgotten bracket is silent until the row overflows.
           source: this.name,
           message:
             `'${fn.tokens?.name?.text}' mutates the overflow-managed row 'm.${target}' but does not call ${missing.join(' or ')}. ` +
@@ -144,7 +144,7 @@ class ButtonRowBracketPlugin {
         });
       }
     } catch (_e) {
-      // Never crash the build — a plugin fault must not block a contributor.
+      // Never crash the build: a plugin fault must not block a contributor.
     }
   }
 }

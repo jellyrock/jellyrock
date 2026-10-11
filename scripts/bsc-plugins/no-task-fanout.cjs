@@ -1,8 +1,8 @@
 /**
- * BrighterScript plugin — no Task fan-out from a loop.
+ * BrighterScript plugin: no Task fan-out from a loop.
  *
  * `no-raw-run` forces every Task launch through `launchTask()` so the live
- * thread count stays derivable. It does NOT stop someone launching a thread
+ * thread count stays derivable. It does not stop someone launching a thread
  * per item: `for each library ... launchTask(<a fresh node>)` passes it
  * cleanly, and that is precisely the shape that produced epic #728's `&h29`
  * "too many task threads".
@@ -19,7 +19,7 @@
  * `onDestroy` rule: **that code already had correct teardown.**
  * `cleanupLatestMediaTasks()` stopped and unobserved every task, both before a
  * new run and on destroy. The crash was concurrent launches *within a single
- * Home load*, not threads leaked across navigation — so teardown discipline
+ * Home load*, not threads leaked across navigation, so teardown discipline
  * would not have prevented it, and a bound on simultaneous launches would.
  *
  * `tech-debt.md#task-thread-budget` direction (2) records a 2026-08-02 sweep
@@ -30,31 +30,31 @@
  *
  * A `launchTask(<arg>)` call lexically inside a `for` / `for each` / `while`
  * body, unless `<arg>` is a stable field path rooted at `m` that the loop body
- * does not rebind — see below.
+ * does not rebind (see below).
  *
  * And, one hop out, a call inside such a body to a same-file `function` / `sub`
- * that launches — the same fan-out one call away. The helper's body is judged
+ * that launches: the same fan-out one call away. The helper's body is judged
  * exactly as a loop body is, as if inlined: flagged when its launch argument is
  * not a stable slot, or is one the helper or the calling loop rebinds. The
  * diagnostic lands on the CALL, where the repetition is. See "A helper that
  * bounds itself" below for how such a helper says it is safe.
  *
- * ── What is NOT flagged, and why ───────────────────────────────────────────
+ * ── What is not flagged, and why ───────────────────────────────────────────
  *
- * `launchTask(m.SomeTask)` and `launchTask(m.view.someTask)` — a dotted path
+ * `launchTask(m.SomeTask)` and `launchTask(m.view.someTask)`: a dotted path
  * rooted at `m`, with no indexing, that the loop does not rebind. That names ONE
  * node however many times the loop turns, so the thread count is bounded by the
  * number of distinct field paths written in the source, not by the collection
  * being iterated.
  *
- * An indexed step anywhere in the path (`m.tasks[i]`) IS flagged — a computed
+ * An indexed step anywhere in the path (`m.tasks[i]`) IS flagged: a computed
  * index is a per-iteration node wearing an `m.` prefix. A literal key
  * (`m["loader"]`) is every bit as stable as `m.loader` but is flagged too: the
  * rule reads dotted steps only, and that shape appears nowhere in the codebase.
  * Suppress the one line if it ever does.
  *
- * Note the deliberate asymmetry with `slotsAssignedIn`, which DOES resolve a
- * literal key. It is not an oversight — both halves err the same way, toward
+ * The asymmetry with `slotsAssignedIn`, which DOES resolve a literal key, is
+ * intended. It is not an oversight: both halves err the same way, toward
  * reporting. Resolving the key on the write side makes the rule stricter (one
  * more way to catch a rebind); declining to resolve it on the launch side also
  * makes it stricter (a stable slot loses its exemption). Were either reversed,
@@ -70,20 +70,20 @@
  *     end for
  *
  * Nothing STOPs the node the previous turn launched and the loop never waits, so
- * N threads start inside one pass — #728's property exactly, wearing the shape
+ * N threads start inside one pass: #728's property exactly, wearing the shape
  * that would otherwise earn the stable-slot exemption. That matters more than it
  * looks: hoisting a flagged local into an `m.` field is the first thing someone
  * reaches for to clear the diagnostic, it is idiomatic here (`QueueManager` and
  * `JRScene` both build Task nodes straight into an `m.` slot at a call site),
  * and it preserves the bug.
  *
- * So a stable slot loses its exemption when the loop body assigns that path — or
+ * So a stable slot loses its exemption when the loop body assigns that path, or
  * any prefix of it, since `m.view = <fresh>` then `launchTask(m.view.task)` is
  * the same trick one level up.
  *
  * Deliberate trade: a lazily-initialized singleton (`if not isValid(m.loader)
  * then m.loader = ...` inside the loop) builds one node and is flagged anyway.
- * Rare, absent from the codebase, and one suppression comment away — the rule
+ * Rare, absent from the codebase, and one suppression comment away: the rule
  * would rather over-report a launch than reason about which branch ran.
  *
  * ── A helper that bounds itself ─────────────────────────────────────────────
@@ -91,14 +91,14 @@
  * A helper that builds a new node per call (`m.x = replaceTask(m.x, …)` then
  * `launchTask(m.x)`, as ADR 0037 requires of any run that can restart) is
  * flagged when a loop calls it, even though it may keep at most one run live
- * however often it is called — by returning early while a run is in flight
+ * however often it is called, by returning early while a run is in flight
  * (`HomeRows`' section loads), or by stopping the previous run first
  * (`ExtrasRowList.startRun`). Recognizing those guards structurally is ruled
  * out as heuristic (decision `relaunch-gate-no-stop-shapes`), so the author
  * states the bound instead, with a suppression on the helper's LAUNCH line.
  * That suppression means "this launch keeps at most one run live, however often
  * its function is called", and every caller inherits it. It sits beside the
- * guard it depends on, so deleting the guard means walking past the claim —
+ * guard it depends on, so deleting the guard means walking past the claim,
  * which a suppression at each call site, pointing at a guard in another
  * function, would not give. A call-site suppression is still honored.
  *
@@ -108,7 +108,7 @@
  * analysis this plugin family does not do:
  *
  *  1. A launch more than one hop from the loop. Helpers are followed one hop,
- *     within one file, by bare name — the same reach as `no-same-node-relaunch`.
+ *     within one file, by bare name: the same reach as `no-same-node-relaunch`.
  *     A helper that calls another helper which launches, a helper in another
  *     file, and a class method reached as `m.helper()` are all missed.
  *  2. A local aliased to a slot around the loop, in either direction. On the
@@ -117,7 +117,7 @@
  *     `g.addFields({ loader: ... })` inside the loop) the rebind of
  *     `m.global.loader` is missed, because the write never names that path. One
  *     limitation, two faces. Contrived, absent from the codebase, and the escape
- *     hatch covers the false-positive face — `observe-without-on-destroy` pays
+ *     hatch covers the false-positive face. `observe-without-on-destroy` pays
  *     real complexity for alias-awareness because its false positives are
  *     routine; here they are hypothetical.
  *
@@ -133,7 +133,7 @@
  * ── The sanctioned fix ─────────────────────────────────────────────────────
  *
  * One orchestrator Task servicing every item, keeping a bounded number of
- * requests in flight on the shared API pool — `LoadLatestRowsTask` is the
+ * requests in flight on the shared API pool. `LoadLatestRowsTask` is the
  * reference implementation, `source/api/apiPipeline.bs` the mechanism.
  * Mechanism is chosen per orchestrator from a measured wait/emit split, never
  * carried across; see `docs/architecture/tech-debt.md#task-thread-budget`.
@@ -146,7 +146,7 @@
  *  - `' bsc-disable-line no-task-fanout` on the offending line
  *  - `' bsc-disable-next-line no-task-fanout` on the line above
  *  - for a helper called from a loop, either one on the helper's launch line
- *    (preferred — see "A helper that bounds itself")
+ *    (preferred: see "A helper that bounds itself")
  */
 'use strict';
 
@@ -163,7 +163,7 @@ const SELF_REFERENCE = 'm';
 
 /**
  * The lowercased dotted path `expression` names when it is rooted at the `m`
- * scope object and every step is a plain dotted step — `"m"`, `"m.a"`,
+ * scope object and every step is a plain dotted step: `"m"`, `"m.a"`,
  * `"m.a.b"`. Returns undefined for anything else: an indexed step
  * (`m.tasks[i]`), a bare local, a call result.
  */
@@ -184,7 +184,7 @@ function mPath(expression) {
 }
 
 /**
- * The lowercased key of a literal-string index — `"loader"` for `m["loader"]`.
+ * The lowercased key of a literal-string index: `"loader"` for `m["loader"]`.
  * Returns undefined for a computed index (`m[key]`), whose target is not
  * knowable statically, and for a non-string literal (`m[3]`).
  *
@@ -192,13 +192,13 @@ function mPath(expression) {
  * `m["Loader"]` and `m.loader` are the same field and must collide here.
  *
  * Two of the four checks here are redundant against today's AST, established by
- * mutation rather than assumed — removing either alone leaves the suite green:
+ * mutation rather than assumed (removing either alone leaves the suite green):
  * a computed index is already rejected by the `typeof raw !== 'string'` check
  * (its token carries `name`, not `value`), and a non-string literal like `m[3]`
  * is rejected by the quote check AND, independently, by the length guard
  * (`"3".slice(1, -1)` is empty). They are kept as type preconditions so the
  * function is correct by construction rather than by that coincidence, and
- * because this mirrors `no-raw-run.cjs`'s `stringLiteralValue` — a reader
+ * because this mirrors `no-raw-run.cjs`'s `stringLiteralValue`: a reader
  * comparing the two plugins should find the same idiom, not a subtly pruned
  * variant of it.
  */
@@ -212,11 +212,11 @@ function literalIndexKey(expression) {
 }
 
 /**
- * The path of a stable field slot — an `m.` path with at least one dotted step.
+ * The path of a stable field slot: an `m.` path with at least one dotted step.
  * A bare `m` is the scope object, not a task node, so it is not a slot.
  *
  * Such a path resolves to the same node on every turn of a loop *provided the
- * loop does not rebind it* — see `slotIsReboundIn`.
+ * loop does not rebind it* (see `slotIsReboundIn`).
  */
 function stableSlotPath(expression) {
   const path = mPath(expression);
@@ -224,28 +224,28 @@ function stableSlotPath(expression) {
 }
 
 /**
- * Every `m.` path assigned anywhere inside `loop`'s subtree, e.g. `m.loader` for
- * `m.loader = createObject(...)`.
+ * Every `m.` path assigned anywhere inside `loop`'s subtree, such as `m.loader`
+ * for `m.loader = createObject(...)`.
  *
- * Both spellings of a write are collected — `m.loader = ...` and the
- * literal-key indexed form `m["loader"] = ...` — because they name the same
+ * Both spellings of a write are collected (`m.loader = ...` and the
+ * literal-key indexed form `m["loader"] = ...`), because they name the same
  * field and mixing them across the write and the launch would otherwise slip
- * the check. That mixed form has no call site today (every one of the ~50
- * bracket writes in the app targets a plain AA — `params`, `headers` — never
- * `m`), so this buys robustness rather than a caught bug; it costs a few lines
- * and, since a literal key is statically known, cannot false-positive.
+ * the check. That mixed form has no call site today (every bracket write in
+ * the app targets a plain AA such as `params` or `headers`, never `m`), so this
+ * buys robustness rather than a caught bug; it costs a few lines and, since a
+ * literal key is statically known, cannot false-positive.
  *
  * The third spelling is a literal-AA `setFields` / `addFields`
- * (`m.global.addFields({ loader: <fresh> })`). That one has real precedent —
- * `globals.bs:120` and `:163` park Task nodes exactly that way — so a loop doing
- * it is the likeliest of the three to be written. Covering it also lines this
- * plugin up with `no-raw-run.cjs`, which already inspects literal-AA
- * `setFields`, so the two Task rules read the same set of write spellings.
+ * (`m.global.addFields({ loader: <fresh> })`). That one has real precedent:
+ * `setGlobalNodes()` in `globals.bs` parks Task nodes exactly that way, so a
+ * loop doing it is the likeliest of the three to be written. Covering it also
+ * lines this plugin up with `no-raw-run.cjs`, which already inspects
+ * literal-AA `setFields`, so the two Task rules read the same set of write spellings.
  *
- * Two forms are deliberately NOT collected, both because the target is not
+ * Two forms are not collected, by intent, both because the target is not
  * knowable statically and treating them as rebinding every slot would flag
  * correct code to guard a shape nobody writes: a COMPUTED key
- * (`m[someVar] = ...`), and a non-literal `setFields(someVariable)` — the same
+ * (`m[someVar] = ...`), and a non-literal `setFields(someVariable)`: the same
  * limitation `no-raw-run` documents, for the same reason. They stay accepted
  * gaps, on the same footing as the interprocedural ones.
  */
@@ -260,7 +260,7 @@ function slotsAssignedIn(loop) {
         if (base === undefined || !field) return;
         assigned.add(`${base}.${field.toLowerCase()}`);
       },
-      // m["loader"] = <value> — the same field, spelled the other way.
+      // m["loader"] = <value>: the same field, spelled the other way.
       IndexedSetStatement: (statement) => {
         const indexes = statement.indexes || [];
         if (indexes.length !== 1) return;
@@ -269,7 +269,7 @@ function slotsAssignedIn(loop) {
         if (base === undefined || field === undefined) return;
         assigned.add(`${base}.${field}`);
       },
-      // m.view.setFields({ task: <value> }) / m.global.addFields({ ... }) —
+      // m.view.setFields({ task: <value> }) / m.global.addFields({ ... }):
       // the same write through ifSGNodeField. Only a literal AA can be read;
       // see the docblock on the non-literal form.
       CallExpression: (call) => {
@@ -293,8 +293,8 @@ function slotsAssignedIn(loop) {
 }
 
 /**
- * True when the loop rebinds `slotPath` itself or any parent of it — `m.view =
- * <fresh>` makes `m.view.task` a different node each turn just as surely as
+ * True when the loop rebinds `slotPath` itself or any parent of it: `m.view =
+ * <fresh>` makes `m.view.task` a different node each turn as surely as
  * `m.task = <fresh>` does.
  */
 function slotIsReboundIn(slotPath, assignedPaths) {
@@ -321,10 +321,10 @@ const LOOP_VISITORS = ['ForStatement', 'ForEachStatement', 'WhileStatement'];
  * Two kinds of launch are left out. A launch inside one of the helper's own
  * loops is already reported where it is, so a caller is not blamed for it
  * twice. And a SUPPRESSED launch is one whose author has stated how it stays at
- * one live run however often its function is called — a guard that skips while
- * a run is in flight, or a cancel before the new node — so its callers inherit
+ * one live run however often its function is called (a guard that skips while
+ * a run is in flight, or a cancel before the new node), so its callers inherit
  * that bound rather than restating it. A launch inside an inline callback the
- * helper registers is NOT left out: N calls register N callbacks, each of which
+ * helper registers is not left out: N calls register N callbacks, each of which
  * launches, so deferring a launch does not bound it (the direct rule walks into
  * inline functions in a loop for the same reason).
  *
@@ -420,7 +420,7 @@ class NoTaskFanoutPlugin {
         return line > 0 && DISABLE_NEXT_LINE_MARKER.test(sourceLines[line - 1] ?? '');
       };
 
-      // A call inside nested loops is reached once per enclosing loop —
+      // A call inside nested loops is reached once per enclosing loop,
       // measured, not assumed: the walk hits an inner `launchTask` twice at an
       // identical position. Reports are keyed by position to keep one
       // diagnostic per site.
@@ -463,10 +463,10 @@ class NoTaskFanoutPlugin {
       };
 
       // Walk the body of each loop for launch calls, rather than walking every
-      // call and reconstructing its ancestry — the AST carries no parent links.
+      // call and reconstructing its ancestry: the AST carries no parent links.
       const inspectLoopBody = (loop) => {
         // Collected at most once per loop, and only once a stable-slot launch
-        // is actually found — the vast majority of loops contain no launch at
+        // is actually found. The vast majority of loops contain no launch at
         // all, and this hook runs per keystroke in the language server.
         let reboundSlots;
         const loopRebinds = (slot) => {
@@ -487,7 +487,7 @@ class NoTaskFanoutPlugin {
               }
               const args = call.args || [];
               // A launch with no argument, or a computed/multi-arg form, cannot
-              // be shown stable — report rather than assume it is safe.
+              // be shown stable: report rather than assume it is safe.
               if (args.length !== 1) {
                 report(call, directMessage());
                 return;

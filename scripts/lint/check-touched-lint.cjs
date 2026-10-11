@@ -3,36 +3,36 @@
 // The agent's blind spot: CLAUDE.md tells it not to run `npm run lint:*`
 // manually (the IDE handles `.bs` live, the pre-push hook is the catch-all
 // backstop). That rule means the agent gets *no* live feedback for lint
-// categories the IDE doesn't cover — markdown, spelling, JSON. Failures
+// categories the IDE doesn't cover: markdown, spelling and JSON. Failures
 // surface only at `git push` time, after the agent has already reported
 // "done." The user has to debug instead of the agent.
 //
 // This script closes the gap. It runs the lint categories that the IDE
 // doesn't cover, *scoped to files the agent actually changed in this
 // session*, and surfaces failures so the agent sees them in the next
-// turn's context — in time to fix before reporting done.
+// turn's context, in time to fix before reporting done.
 //
 // Why this hook is non-blocking (exit 0 always):
 //   - Hard enforcement is the pre-push hook + CI workflows. They will
 //     refuse the push if anything fails.
 //   - At the agent harness level, blocking creates a worse failure mode:
-//     the agent can't iterate cheaply on a false-positive (e.g., a
-//     legitimate new technical word that needs to be added to
+//     the agent can't iterate cheaply on a false positive (for example, a
+//     real new technical word that needs to be added to
 //     dictionary.txt). A soft surface lets the agent decide.
 //   - Mirrors the design rationale of check-touched-related-files.cjs.
 //
 // Why scoped to changed files (not whole-repo):
-//   - Speed — repo-wide spell + markdown lint takes seconds; per-file is
+//   - Speed: repo-wide spell + markdown lint takes seconds; per-file is
 //     near-instant.
-//   - Signal — the agent only cares about issues it caused, not pre-
+//   - Signal: the agent only cares about issues it caused, not pre-
 //     existing repo-wide ones (those are the pre-push hook's problem).
 //
-// What it does NOT cover:
-//   - lint:bs / validate / check-formatting — IDE handles these live.
-//   - lint:docs — already covered by check-touched-related-files.cjs
-//     (the architecture-doc reminder) plus the CI gate at PR time.
-//   - lint:translations / lint:language-coverage — niche; only relevant
-//     when locale files / a few specific BS files change. Cost of adding
+// What it does not cover:
+//   - lint:bs, validate, check-formatting: the IDE handles these live.
+//   - lint:docs: the pre-push hook and CI run it on every push, and
+//     check-touched-related-files.cjs gives the related-doc reminder.
+//   - lint:translations, lint:language-coverage: only relevant when
+//     locale files or a few specific BS files change. Cost of adding
 //     them is low if needed later, but they'd run for almost no PRs.
 //
 // Output: human-readable summary to stdout. One section per failing tool.
@@ -40,7 +40,6 @@
 //
 // Usage:
 //   node scripts/lint/check-touched-lint.cjs
-//   node scripts/lint/check-touched-lint.cjs --base main
 //   node scripts/lint/check-touched-lint.cjs --quiet  (no output if all pass)
 
 'use strict';
@@ -102,7 +101,7 @@ function runBin(name, runArgs) {
   };
 }
 
-// Working-tree-only — committed files are pre-commit's job, so this hook
+// Working tree only: committed files are pre-commit's job, so this hook
 // focuses on what `lint-staged` couldn't have seen yet (uncommitted work
 // + untracked files). Avoids redundant work.
 const touched = workingTreeFiles();
@@ -158,7 +157,7 @@ if (mdLintTargets.length > 0 && binExists('markdownlint-cli2')) {
 // ────────────────────────────────────────────────────────────────────
 //
 // jshint's CLI defaults to JS files; --extra-ext lets it accept .json.
-// Per-file invocation is fine — fast and avoids the package.json script's
+// Per-file invocation is fine: fast, and it avoids the package.json script's
 // project-wide excludes scan.
 
 const jsonTargets = jsonFiles.filter((f) => !isJsonExcluded(f));

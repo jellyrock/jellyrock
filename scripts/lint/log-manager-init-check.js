@@ -1,4 +1,4 @@
-// scripts/lint/log-manager-init-check.js — guards the roku-log manager's single
+// scripts/lint/log-manager-init-check.js: guards the roku-log manager's single
 // initialization site.
 //
 // WHY THIS EXISTS
@@ -6,8 +6,8 @@
 // `log.Logger.new()` resolves `m.global.rLog` ONCE and caches it, and every level
 // method then opens with `if m.rLog = invalid then return`. A component built
 // before the manager exists therefore logs NOTHING, forever, at any level, on any
-// build — silently, with no error and no fallback output. That is the worst shape
-// a defect can have: the app builds, runs, passes every test, and simply stops
+// build, silently, with no error and no fallback output. That is the worst shape
+// a defect can have: the app builds, runs, passes every test, and quietly stops
 // producing a class of log line.
 //
 // It already happened once. `initializeLogManager` lived in `JRScreen.init()` on
@@ -17,11 +17,11 @@
 // Nobody noticed until someone tried to observe the ws:// receiver on-device and
 // found `print` emitting where `m.log.info` did not.
 //
-// WHY A LINT GATE AND NOT A TEST
-// ------------------------------
+// WHY A LINT GATE RATHER THAN A TEST
+// ----------------------------------
 // There is no test that can catch it. `bsconfig-tests-unit.json` excludes
 // `source/Main.bs`, so the bootstrap ordering never runs under Rooibos, and
-// `BaseTestSuite` provisions its own `rLog` before any node mounts — so a broken
+// `BaseTestSuite` provisions its own `rLog` before any node mounts, so a broken
 // app-side init is invisible to the suite. A static gate is the only instrument
 // available. See docs/architecture/logging.md.
 //
@@ -34,12 +34,12 @@
 //      constructs a Logger ahead of it (including JRScene's own `m.log`) gets
 //      the dead-logger behavior.
 //   3. Nothing constructed during the bootstrap window builds a `log.Logger`.
-//      Nodes created in `setGlobals()` exist before the manager CAN exist —
+//      Nodes created in `setGlobals()` exist before the manager CAN exist:
 //      `log_Log`'s init creates a `Timer`, and Timer creation fails on the main
 //      thread before `m.screen.show()` (verified on device, OS 15.2.4). Their
 //      loggers are permanently dead, so they must use `print`.
 //
-// Only Node stdlib — no npm ci needed.
+// Only Node stdlib, so no npm ci needed.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -48,25 +48,25 @@ import { pathToFileURL } from 'node:url';
 export const SCENE_REL = 'components/JRScene.bs';
 export const GLOBALS_REL = 'source/utils/globals.bs';
 
-// Rule 3 exceptions — nodes created in setGlobals() that DO build a Logger, where
+// Rule 3 exceptions: nodes created in setGlobals() that DO build a Logger, where
 // the dead logger is known and accepted rather than a new mistake.
 //
 // JellyfinUserSettings: its bootstrap instance loses its init() line and the
-// bootstrap `enableAutoSync` call. Accepted because the instance is short-lived —
+// bootstrap `enableAutoSync` call. Accepted because the instance is short-lived:
 // user.Login() creates a FRESH JellyfinUserSettings at login (source/utils/session.bs),
 // after the scene is up, and that one logs normally. Fixing it would need either a
 // second, lazy logging idiom for one node or a bootstrap reorder; neither is worth
-// two startup lines. This is a platform limitation, not tech debt — `print` is the
+// two startup lines. This is a platform limitation, not tech debt: `print` is the
 // correct tool in the bootstrap window. Documented in docs/architecture/logging.md.
 export const BOOTSTRAP_LOGGER_ALLOWLIST = new Set(['JellyfinUserSettings']);
 
-// Components created in setGlobals() — i.e. BEFORE m.screen.show(), so before the
+// Components created in setGlobals(), that is, BEFORE m.screen.show(), so before the
 // log manager can exist. Derived from globals.bs at runtime rather than hardcoded
 // so adding a node to setGlobals() is covered automatically.
 export const BOOTSTRAP_SCAN_DIRS = ['components'];
 
 // Strip whole-line BrightScript comments so prose mentioning a pattern can't
-// satisfy or trip a rule — this file's own subject matter is quoted in comments
+// satisfy or trip a rule: this file's own subject matter is quoted in comments
 // in every file it scans.
 function stripComments(src) {
   return src
@@ -78,7 +78,7 @@ function stripComments(src) {
 /** Extract the node type names created inside `sub setGlobals()`. */
 export function bootstrapNodeTypes(globalsSrc) {
   const src = stripComments(globalsSrc);
-  // NB: `[ \t]*` not `\s*` — `\s` matches newlines, so `^\s*sub` would match starting
+  // NB: `[ \t]*` not `\s*`, because `\s` matches newlines, so `^\s*sub` would match starting
   // at a preceding blank line and throw off every offset computed from the index.
   const start = src.search(/^[ \t]*sub[ \t]+setGlobals[ \t]*\([ \t]*\)/m);
   if (start < 0) return null;
@@ -95,7 +95,7 @@ export function bootstrapNodeTypes(globalsSrc) {
 
 /**
  * @param {{ files: Map<string,string>, globals: string, scene: string }} input
- *   files — every scanned .bs file, keyed by repo-relative path.
+ *   files: every scanned .bs file, keyed by repo-relative path.
  * @returns {string[]} problems
  */
 export function check({ files, globals, scene }) {

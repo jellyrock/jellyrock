@@ -1,10 +1,11 @@
-// scripts/lint/doc-citation-ratchet.js — anti-backslide ratchet for
-// line-number citations in tracked documentation.
+// scripts/lint/doc-citation-ratchet.js: anti-backslide ratchet for
+// line-number citations in tracked documentation, and for the house voice
+// (docs/dev/writing-style.md) in docs and in code comments.
 //
 // WHY THIS EXISTS
 // ---------------
 // A doc that says `ItemDetails.bs:623` names a location the code can move. It
-// rots on ANY edit above line 623 — not just an edit to the thing described —
+// rots on ANY edit above line 623, not only an edit to the thing described,
 // so it decays faster than any review or freshness gate can catch. Measured
 // 2026-09-17 across the 14-ref sample that prompted this: `IconButton.bs:36`
 // and `ItemDetails.bs:4271` pointed PAST end-of-file, and `user-journey.md`
@@ -14,11 +15,11 @@
 // drifted, which is exactly why the contextual doc-freshness gates (ADR 0033)
 // cannot cover this class.
 //
-// The fix is not "keep the numbers fresh" — it is to stop storing them. Cite
+// The fix is not "keep the numbers fresh": it is to stop storing them. Cite
 // the SYMBOL instead (`ItemDetails.launchQueueItemToPlay()`), which is strictly
 // better rather than merely more durable: a reader or an agent can GREP a
 // symbol, and nobody can grep a line number. The full convention, including
-// what to do when a number genuinely is the point, is
+// what to do when a number really is the point, is
 // `.claude/rules/derive-dont-duplicate.md`.
 //
 // THE METRIC
@@ -26,7 +27,7 @@
 // Occurrences, in tracked markdown, of two forms:
 //   - the full form `<path>.<code-ext>:<digits>` (optionally a `-<digits>` range);
 //   - the SHORTHAND `:<digits>` standing alone, after a space, a backtick, `[` or
-//     `(` — "the comment at `:25-28`", `RokuDevice.js:63-70 / :71-76`, a link
+//     `(`: "the comment at `:25-28`", `RokuDevice.js:63-70 / :71-76`, a link
 //     whose text is `[:60]`. It leans on a file named nearby and rots the same way.
 // Deliberate choices:
 //   - Fenced code blocks are STRIPPED before matching. A block showing what a
@@ -43,7 +44,7 @@
 //     words instead ("46 minutes past the hour", "port 8102"), and the failure
 //     message says so.
 //
-// SCOPE — tracked docs only
+// SCOPE: tracked docs only
 // -------------------------
 // `docs/**` (minus `docs/projects/**`), every `CLAUDE.md` / `AGENTS.md`, and
 // `.claude/**` (rules + skills). `docs/projects/**` is GITIGNORED: a project
@@ -54,7 +55,7 @@
 // PER-FILE BASELINE, not one total
 // --------------------------------
 // The baseline is a per-file map, which is where this departs from
-// `promise-ratchet.cjs`'s single integer — deliberately. It started with ~55
+// `promise-ratchet.cjs`'s single integer, on purpose. It started with ~55
 // refs over 13 files, where one global total would let a PR add three fresh refs
 // to a new doc while an unrelated cleanup removed three elsewhere, and the gate
 // would sit green. That is the "silently refill the slack" failure
@@ -63,11 +64,11 @@
 //
 // FAIL POLICY (mirrors promise-ratchet)
 // -------------------------------------
-//   count >  allowance → FAIL (exit 1). Net-new line citation — cite the symbol.
-//   count <  allowance → PASS (exit 0) + LOUD advisory to lower the baseline, so
-//                        the gain is locked in rather than left as slack.
-//   count == allowance → PASS, one-line OK.
-//   allowance == 0     → an automatic hard guard for that file.
+//   count >  allowance: FAIL (exit 1). Net-new line citation: cite the symbol.
+//   count <  allowance: PASS (exit 0) + LOUD advisory to lower the baseline, so
+//                       the gain is locked in rather than left as slack.
+//   count == allowance: PASS, one-line OK.
+//   allowance == 0:     an automatic hard guard for that file.
 //
 // Issue #959 drained the grandfathered 55 to an empty baseline, so every file is
 // now held at zero.
@@ -76,7 +77,7 @@
 // -------------------------------------------
 // The same per-file ratchet holds the mechanical rules of docs/dev/writing-style.md:
 // em dashes, filler words, capitals used for emphasis, `→` outside a bold UI path,
-// and "e.g." / "i.e.". Each file has a count per category in
+// and `e.g.` / `i.e.`. Each file has a count per category in
 // `.doc-voice-baseline.json`; a file absent from it is allowed zero, so a new doc
 // starts clean while the old ones are rewritten phase by phase.
 //
@@ -185,7 +186,7 @@ function codeLang(rel) {
 const EPHEMERAL_RELS = ['docs/projects', '.claude/handoffs', '.claude/plans'];
 
 // Append-only dated records. A skill's AUDIT-LOG entry says what a given run saw
-// on a given date, so a line number in one is a historical measurement — the one
+// on a given date, so a line number in one is a historical measurement: the one
 // form the rule explicitly allows (clause 3). Rewriting it would falsify the
 // record rather than repair it.
 const SKIP_FILES = new Set(['AUDIT-LOG.md']);
@@ -225,14 +226,14 @@ function collectDocs(rootDir) {
       const full = path.join(dir, e.name);
       if (e.isDirectory()) {
         if (SKIP_DIRS.has(e.name)) continue;
-        // `.claude` and `.github` are the dot-dirs that hold prose; skip the rest.
+        // Walk only the dot-dirs in `DOT_DIRS_WALKED`; skip the rest.
         if (e.name.startsWith('.') && !DOT_DIRS_WALKED.has(e.name)) continue;
         const rel = path.relative(rootDir, full).split(path.sep).join('/');
         if (EPHEMERAL_RELS.includes(rel)) continue;
         if (rel === '.husky/_') continue;
         // A directory with its own `.git` (a file for a worktree, a directory for a
-        // clone) is a separate checkout — `.claude/worktrees/<name>` holds a whole copy
-        // of the repo — so its docs belong to its own branch's run, not this one.
+        // clone) is a separate checkout (`.claude/worktrees/<name>` holds a whole copy
+        // of the repo), so its docs belong to its own branch's run, not this one.
         if (fs.existsSync(path.join(full, '.git'))) continue;
         walk(full, insideClaude || e.name === '.claude');
         continue;
