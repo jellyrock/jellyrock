@@ -102,7 +102,7 @@
     "em-dash": 30,
     "filler": 3,
     "latin-abbrev": 1,
-    "prose-arrow": 8
+    "prose-arrow": 6
   },
   ".claude/skills/catchup/catchup-state.sh": {
     "em-dash": 2
@@ -148,7 +148,7 @@
     "prose-arrow": 11
   },
   ".claude/skills/done/SKILL.md": {
-    "caps-emphasis": 5,
+    "caps-emphasis": 4,
     "em-dash": 22,
     "filler": 2,
     "prose-arrow": 22
@@ -178,7 +178,7 @@
     "filler": 1
   },
   ".claude/skills/log/SKILL.md": {
-    "caps-emphasis": 7,
+    "caps-emphasis": 3,
     "em-dash": 40,
     "filler": 7,
     "prose-arrow": 15
@@ -232,7 +232,7 @@
   },
   ".claude/skills/resume-project/SKILL.md": {
     "caps-emphasis": 4,
-    "em-dash": 30,
+    "em-dash": 25,
     "filler": 2
   },
   ".claude/skills/resume-project/resume-state.sh": {
