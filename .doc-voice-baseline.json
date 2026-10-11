@@ -633,11 +633,6 @@
     "latin-abbrev": 3,
     "prose-arrow": 1
   },
-  "components/data/CLAUDE.md": {
-    "caps-emphasis": 2,
-    "em-dash": 9,
-    "latin-abbrev": 2
-  },
   "components/data/DebugFlags.xml": {
     "caps-emphasis": 2
   },
