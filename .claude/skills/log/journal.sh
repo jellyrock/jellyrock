@@ -39,6 +39,8 @@
 #   list [--tsv]                             every entry: category, fid, captured, age, prompt, title,
 #                                            pinned
 #   show <fid>                               print one entry
+#   history <fid>                            when the entry opened and closed: date, commit, event,
+#                                            subject, oldest first; then "open now" or "closed in …"
 #   stats                                    count and oldest age (days), per category and TOTAL
 #   date                                     the date on the journal's date line (YYYY-MM-DD)
 #   review                                   unreviewed entries, oldest first: fid, category,
@@ -61,8 +63,10 @@
 #                                            dated from git, existing fids kept (fill in the rest)
 #   migrate --apply <plan.tsv> [--dry-run]   convert them to entries, using the filled-in plan
 # add, replace and close bump the date line, and take [--allow-dirty]: where this repo commits
-# journal writes (journal.conf commit=yes, the default), each refuses a journal that already has
-# uncommitted edits, which the commit after it would take along; --allow-dirty writes anyway. Exit: 0 done · 1 refused, with the reason · 2 usage or
+# journal writes (journal.conf commit=yes, the default), each refuses a journal holding uncommitted
+# edits journal.sh did not write, which the commit after it would take along (its own earlier
+# writes are fine: several writes, one commit); --allow-dirty writes anyway, and commit then
+# refuses until those edits are committed or discarded. Exit: 0 done · 1 refused, with the reason · 2 usage or
 # setup error. JOURNAL_TODAY=YYYY-MM-DD overrides today's date (tests).
 
 set -uo pipefail
@@ -174,12 +178,32 @@ need_journal() { # the journal exists and has exactly one Open followups section
 }
 entry_rec() { awk -F'\037' -v f="$1" '$1=="E" && $5==f "" { print; exit }' <<<"$IDX"; }
 line_of()   { sed -n "$1p" "$J"; }
+# has_entry <rev> <fid>: the journal as of that commit has an entry with this fid, parsed as the
+# reader parses it (a fid only cited in a body, or inside a fence, is no entry)
+has_entry() {
+  git -C "$top" show "$1:$FILE" 2>/dev/null | awk "$MD_LIB$PARSE_AWK" \
+    | awk -F'\037' -v f="$2" '$1=="E" && $5==f "" { found = 1 } END { exit !found }'
+}
+# fid_events <fid>: the commits that opened or closed the entry, oldest first, one
+# "<date>\t<sha>\topened|closed\t<subject>" line each. A commit is a candidate when its diff adds or
+# removes a line with the marker; it is an event only when the entry is there on one side and not
+# the other, so a retitle, a body edit or another entry citing the fid is none.
+fid_events() {
+  local sha date subj before after
+  git -C "$top" ls-files --error-unmatch -- "$FILE" >/dev/null 2>&1 || return 0
+  while IFS=$'\t' read -r sha date subj; do
+    before=0; has_entry "$sha^" "$1" && before=1
+    after=0; has_entry "$sha" "$1" && after=1
+    [ "$before" = "$after" ] && continue
+    if [ "$after" = 1 ]; then printf '%s\t%s\topened\t%s\n' "$date" "$sha" "$subj"
+    else printf '%s\t%s\tclosed\t%s\n' "$date" "$sha" "$subj"; fi
+  done < <(git -C "$top" log --reverse --format='%h%x09%cs%x09%s' -G"\[fid: $1\]" -- "$FILE")
+}
 # not_open <fid>: refuse, telling a fid that was closed (it left the journal in some commit) from one
 # that never existed
 not_open() {
-  local last=""
-  git -C "$top" ls-files --error-unmatch -- "$FILE" >/dev/null 2>&1 \
-    && last="$(git -C "$top" log -1 --format='%h (%cs)' -S"[fid: $1]" -- "$FILE")"
+  local last
+  last="$(fid_events "$1" | awk -F'\t' '$3 == "closed" { l = $2 " (" $1 ")" } END { print l }')"
   [ -z "$last" ] || refuse "fid '$1' is not open: it left $FILE in commit $last"
   refuse "no entry with fid '$1' in $FILE"
 }
@@ -218,6 +242,9 @@ bump_date() {
     END { if (!done) print "NOTE: no date line to bump (date=" mode ")" > "/dev/stderr" }' "$J" >"$tmp" && cat "$tmp" >"$J"
   rm -f "$tmp"
 }
+# body_copy <file>: reads the body once into BODY (a temp file, removed on exit), since body_ok
+# and trimmed each read it and a stream (/dev/stdin, a pipe) gives its text only to the first read
+body_copy() { BODY="$(mktemp)"; trap 'rm -f "$BODY"' EXIT; cat -- "$1" >"$BODY" || die "cannot read --body-file $1"; }
 # body_ok <file>: no heading line outside a fenced block
 body_ok() {
   awk "$MD_LIB"'{ if (md_skip($0, 0)) next } /^#+[ \t]/ { bad = 1 } END { exit bad }' "$1"
@@ -225,13 +252,35 @@ body_ok() {
 # trimmed <file>: the file without leading or trailing blank lines
 trimmed() { awk 'NF { for (; blank > 0; blank--) print ""; started = 1; print; next } started { blank++ }' "$1"; }
 
+# The own-writes record. After each write, a file in this worktree's git dir (never committed)
+# holds the journal's fingerprint as the write left it, and whether every uncommitted edit in it
+# is a journal.sh write. So a run of writes before one commit is no reason to refuse, while edits
+# journal.sh did not make (by hand, or already there when a write ran with --allow-dirty) are.
+# journal_state: sets JSTATE to untracked (no HEAD, or git does not track the journal yet), clean,
+# own (only journal.sh's writes since HEAD, the file unchanged since the last) or foreign, and
+# STATE to the record's path (`--git-path`, since .git is a file in a linked worktree)
+journal_state() {
+  local f h o
+  STATE="$(git -C "$top" rev-parse --git-path journal-sh.state)"; [[ $STATE == /* ]] || STATE="$top/$STATE"
+  if ! git -C "$top" rev-parse -q --verify HEAD >/dev/null || ! git -C "$top" ls-files --error-unmatch -- "$J" >/dev/null 2>&1; then
+    JSTATE=untracked
+  elif git -C "$top" diff --quiet HEAD -- "$J"; then JSTATE=clean
+  elif [ -r "$STATE" ] && IFS=$'\t' read -r f h o <"$STATE" && [ "$f" = "$FILE" ] && [ "$o" = 1 ] \
+       && [ "$h" = "$(git -C "$top" hash-object -- "$J")" ]; then JSTATE=own
+  else JSTATE=foreign; fi
+}
+# remember: after a write, record the journal as it left it; own unless written over foreign edits
+remember() {
+  [ "$JSTATE" = untracked ] && return 0
+  local o=1; [ "$JSTATE" = foreign ] && o=0
+  printf '%s\t%s\t%s\n' "$FILE" "$(git -C "$top" hash-object -- "$J")" "$o" >"$STATE" 2>/dev/null \
+    || printf 'NOTE: cannot record this write in %s, so its commit will be refused\n' "$STATE" >&2
+}
 # writable <allow-dirty 0|1>: refuse a write that its commit would mix with uncommitted journal
-# edits. Never where writes ride with the change (commit=no), nor for a journal git does not track yet.
+# edits journal.sh did not make. Never where writes ride with the change (commit=no).
 writable() {
-  [ "$COMMIT" = yes ] && [ "$1" = 0 ] || return 0
-  git -C "$top" rev-parse -q --verify HEAD >/dev/null || return 0
-  git -C "$top" ls-files --error-unmatch -- "$J" >/dev/null 2>&1 || return 0
-  git -C "$top" diff --quiet HEAD -- "$J" && return 0
+  journal_state
+  [ "$COMMIT" = yes ] && [ "$1" = 0 ] && [ "$JSTATE" = foreign ] || return 0
   refuse "$FILE has uncommitted edits, which this write's commit would take along: commit or discard them first, or pass --allow-dirty to write anyway and leave this write uncommitted with them"
 }
 
@@ -262,6 +311,18 @@ case "$cmd" in
       tsv { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $4, $5, $6, age($6), $7, $8, ($9 ? "pinned" : ""); next }
       $4 != last "" { print $4; last = $4 }
       { printf "  %s  %s  %sd  %s%s%s\n", $5, $6, age($6), $8, ($7 != "" ? "  [prompt: " $7 "]" : ""), ($9 ? "  [pinned]" : "") }' <<<"$IDX"
+    ;;
+
+  history)
+    [ -n "${1:-}" ] || die "history needs a fid"; fid_ok "$1"
+    [ -f "$J" ] || die "no journal at $J (set file= in $conf if it lives elsewhere)"
+    git -C "$top" ls-files --error-unmatch -- "$FILE" >/dev/null 2>&1 || refuse "$FILE is not tracked by git: it has no history"
+    ev="$(fid_events "$1")"
+    [ -n "$ev" ] || refuse "no entry with fid '$1' in the history of $FILE (an entry from before the #### format may have had no fid: search a phrase from its title, git log -S'<phrase>' -- $FILE)"
+    printf '%s\n' "$ev"
+    need_journal
+    if [ -n "$(entry_rec "$1")" ]; then echo "open now"
+    else echo "closed in $(awk -F'\t' '$3 == "closed" { l = $2 " (" $1 ")" } END { print l }' <<<"$ev")"; fi
     ;;
 
   show)
@@ -367,6 +428,7 @@ case "$cmd" in
     [ -n "$category" ] || die "add needs --category"; [ -n "$fid" ] || die "add needs --fid"
     [ -n "$body" ] || die "add needs --body-file (use /dev/null for a title-only entry)"
     [ -r "$body" ] || die "add: cannot read --body-file $body"
+    body_copy "$body"; body="$BODY"
     [ -n "$title" ] || refuse "add: the title is empty"
     [[ $title == *$'\n'* || $category == *$'\n'* ]] && refuse "add: the title and category must be one line"
     [[ $title =~ $MARKER_END_RE ]] && refuse "add: the title ends in something that reads as a marker ([fid|captured|prompt|pinned …]); reword the title"
@@ -384,7 +446,7 @@ case "$cmd" in
       b="$(trimmed "$body")"; [ -n "$b" ] && printf '\n%s\n' "$b"
       [ "$to" -lt "$total" ] && echo; } >"$new"
     replace_lines "$((last+1))" "$to" "$new"; rm -f "$new"
-    bump_date
+    bump_date; remember
     echo "added $fid under '$category' in $FILE"
     ;;
 
@@ -416,13 +478,14 @@ case "$cmd" in
     heading="#### $title$markers"
     if [ -n "$body" ]; then
       [ -r "$body" ] || die "replace: cannot read --body-file $body"
+      body_copy "$body"; body="$BODY"
       body_ok "$body" || refuse "replace: the body has a heading line outside a fenced block"
       text="$(trimmed "$body")"
     else text="$(sed -n "$((a+1)),${b}p" "$J" | trimmed /dev/stdin)"; fi
     new="$(mktemp)"
     { printf '%s\n' "$heading"; [ -n "$text" ] && printf '\n%s\n' "$text"; [ "$b" -lt "$(wc -l <"$J")" ] && echo; } >"$new"
     replace_lines "$a" "$b" "$new"; rm -f "$new"
-    bump_date
+    bump_date; remember
     echo "replaced $fid in $FILE"
     ;;
 
@@ -437,7 +500,7 @@ case "$cmd" in
     IFS=$'\037' read -r _ ca cb cn _ <<<"$crec"
     if [ "${cn:-0}" -le 1 ] && [ -n "$ca" ]; then a="$ca"; b="$cb"; fi
     empty="$(mktemp)"; replace_lines "$a" "$b" "$empty"; rm -f "$empty"
-    bump_date
+    bump_date; remember
     echo "closed $fid in $FILE"
     ;;
 
@@ -462,6 +525,15 @@ case "$cmd" in
     if [ "$COMMIT" = no ]; then
       echo "not committed: this repo commits journal writes with the change that prompted them (journal.conf: commit=no)"; exit 0
     fi
+    # a path that is or holds the journal: refuse if it holds edits journal.sh did not write
+    for p in "${paths[@]}"; do
+      hit=0
+      while IFS= read -r -d '' n; do [ "$n" = "$FILE" ] && hit=1; done < <(git ls-files -z --full-name -- "$p")
+      [ "$hit" = 1 ] || continue
+      journal_state
+      [ "$JSTATE" = foreign ] && refuse "$FILE has edits journal.sh did not write (by hand, or already there when a write ran with --allow-dirty), which this commit would take along: nothing was committed. They are not this commit's to take: show them (git diff HEAD -- $FILE) and leave committing them to whoever made them"
+      break
+    done
     for p in "${paths[@]}"; do
       git ls-files --error-unmatch -- "$p" >/dev/null 2>&1 || git add -- "$p" || die "commit: cannot stage $p"
     done

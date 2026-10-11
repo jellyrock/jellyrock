@@ -20,7 +20,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh run view:*), Bash(bash .clau
 
 **Inputs.** The arguments are a run id or a run URL (the id is the number after `/runs/`); with none, the skill lists the newest failed runs on the current branch and asks which. It reads the run through `ci-triage-state.sh`, the step map and banners in this skill's `gates.tsv` (the repo's own file), each gate's local command in this skill's `## This repo`, and the code and history the failure points at.
 
-**Outputs.** The state read's report in the conversation; for a transient failure, the re-run command for the user to run; otherwise `/snag`'s decision screen, then on the user's pick either a fix (its test, one commit on a `fix/ci-<run id>` branch when it started on the default branch, and `/snag`'s report) or a filed followup. A step `gates.tsv` did not know gets its line proposed.
+**Outputs.** The state read's report in the conversation; for a transient failure, the re-run command for the user to run; otherwise `/snag`'s decision screen, then on the user's pick either a fix (its test, one commit on a `fix/ci-{{run id}}` branch when it started on the default branch, and `/snag`'s report) or a filed followup. A step `gates.tsv` did not know gets its line proposed.
 
 **Success criteria.**
 
@@ -64,27 +64,27 @@ None on this branch: say so, and offer the same list for the default branch (`ba
 ### Step 2 — The state read
 
 ```sh
-bash .claude/skills/ci-triage/ci-triage-state.sh <run id>
+bash .claude/skills/ci-triage/ci-triage-state.sh {{run id}}
 ```
 
 | Exit | Meaning | Do |
 |---|---|---|
 | `0` | the run failed; each failed job is reported | Step 3 |
 | `2` | the run did not fail, or has not finished | Say which, and stop. |
-| `3` | the run could not be fetched or read | Read its `forge.sh said:` or `jq said:` lines: a missing `### Forge` slot, a rejected field or an expired token reads nothing like a bad id. Stop. |
+| `3` | the run could not be fetched or read | Say what its `ERROR:` and `BANNER:` lines name, and stop. |
 
 Never re-fetch what it printed with your own `forge.sh` calls. Its output is the evidence the decision screen cites.
 
 ### Step 3 — Read each failed job
 
-For each `FAILED JOB` section: the step, the category, the sub-check when the gate wraps several checks in one step (the sub-check, not the step name, is the finding), any `BANNER:` line, and the tail. A banner outranks the obvious fix; follow it. Several failed jobs often share one cause (a build failure that fails every job after it): name which, and diagnose the cause once. A step reported `unknown`: classify it from the tail, and carry the line `gates.tsv` should get into the decision screen.
+For each `FAILED JOB` section: the step, the category, the sub-check when the gate wraps several checks in one step (the sub-check, not the step name, is the finding), any `BANNER:` line, and the tail. A banner outranks the obvious fix; follow it. Several failed jobs often share one cause (a build failure that fails every job after it): name which, and diagnose the cause once.
 
 ### Step 4 — Transient or code?
 
 Transient: a platform outage, a runner that never started, a network fetch or tool install that failed upstream, a device or service the job needs that was unreachable, or a time limit hit with nothing in the tail pointing at code. Then print the re-run command alone in its own block, say why it looks transient, and stop: triage it only if it fails again.
 
 ```text
-bash .claude/skills/pr/forge.sh run rerun <run id>
+bash .claude/skills/pr/forge.sh run rerun {{run id}}
 ```
 
 Anything else is code or configuration: continue.
@@ -98,8 +98,8 @@ Run the gate's local command from this skill's `## This repo`; with none there, 
 Read the file and line the tail names, and the change that brought it in:
 
 ```sh
-git log --oneline -10 -- <path>
-git diff "origin/$(bash .claude/skills/pr/forge.sh repo default-branch)...HEAD" -- <path>
+git log --oneline -10 -- {{path}}
+git diff "origin/$(bash .claude/skills/pr/forge.sh repo default-branch)...HEAD" -- {{path}}
 ```
 
 For a failing test, read the test and the code it covers. Ask whether the diagnostic is the cause or a symptom of one upstream (a type error at a call site whose contract changed), and name the cause at a file and line.
@@ -108,12 +108,12 @@ For a failing test, read the test and the code it covers. Ask whether the diagno
 
 Read `.claude/skills/snag/SKILL.md` and follow its Steps 2 to 7, carrying in what Steps 2 to 6 here found (the reproduction and the root cause are done; finish its Step 2 with the history, what depends on the code, and at least two fixes). Three differences:
 
-- The screen's first line is `**CI run:** <workflow> <run id>: <job> / <step> (<category>)`, with one such line per failed job, and its options include the `gates.tsv` line a step reported `unknown` needs.
-- Before its Step 5 builds anything on the default branch, create the fix branch: `git switch -c fix/ci-<run id>`. On any other branch, commit there.
+- The screen's first line is `**CI run:** {{workflow}} {{run id}}: {{job}} / {{step}} ({{category}})`, with one such line per failed job, and its options include the `gates.tsv` line a step reported `unknown` needs.
+- Before its Step 5 builds anything on the default branch, create the fix branch: `git switch -c fix/ci-{{run id}}`. On any other branch, commit there.
 - Its report ends with one more line, by [this repo's forge](../../../AGENTS.md#forge) `prs:` value: `always` gives **Next:** push the branch (`/pr` opens its pull request); the push re-runs the workflow. `on-request` gives **Next:** push as this repo's Landing says (`/pr` when you want a pull request); the push re-runs the workflow.
 
 ## Sub-agent invocation
 
 A parent that wants a failed run diagnosed without the conversation starts a sub-agent with `model: "opus"` and this Task prompt; the parent then shows `/snag`'s decision screen itself:
 
-`Read .claude/skills/ci-triage/SKILL.md and follow Steps 2 to 6 for run <run id>. Edit nothing, commit nothing, and do not re-run the run or push. Report each failed job with its step, category, sub-check and banners; whether the failure looks transient and why; the reproduction command and what it showed, or why it could not run; the root cause at a file and line with the evidence; and at least two candidate fixes with their footprint and risk. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link.
+`Read .claude/skills/ci-triage/SKILL.md and follow Steps 2 to 6 for run {{run id}}. Edit nothing, commit nothing, and do not re-run the run or push. Report each failed job with its step, category, sub-check and banners; whether the failure looks transient and why; the reproduction command and what it showed, or why it could not run; the root cause at a file and line with the evidence; and at least two candidate fixes with their footprint and risk. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link.

@@ -7,7 +7,7 @@ Uniform enforcement with no carve-out is the better decade default. When you ado
 **The operative test:** when you're about to exempt a case, ask *"is the rule genuinely wrong here, or am I just avoiding work?"* Only "the rule is wrong here" justifies a carve-out. Then classify and record it as exactly one of:
 
 - **justified-permanent** — the rule's default is wrong for this case; record the reason *at the exception site* (an allowlist entry with a comment, not a blanket disable).
-- **tracked-for-removal** — a temporary exception; file a followup so it's eliminated, not forgotten.
+- **tracked-for-removal** — a temporary exception; file a followup so it's eliminated, not forgotten. Other work can meet its removal condition, so re-measure the condition rather than only re-reading its followup.
 - **deferred-pending-evidence** — not yet worth adopting here; leave a one-line note, escalate when evidence of value arrives.
 
 A carve-out that fits none of these is a defect. Prefer a positive opt-in allowlist (enable exactly these) over enable-everything-then-silently-ignore-some — the allowlist makes every non-adoption an explicit choice.
