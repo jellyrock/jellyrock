@@ -1007,12 +1007,6 @@
   "components/ui/toast/Toast.bs": {
     "em-dash": 4
   },
-  "components/video/CLAUDE.md": {
-    "caps-emphasis": 3,
-    "em-dash": 10,
-    "filler": 1,
-    "prose-arrow": 2
-  },
   "components/video/CaptionRenderer.bs": {
     "caps-emphasis": 2,
     "em-dash": 9,
