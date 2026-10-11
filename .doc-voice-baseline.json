@@ -219,10 +219,7 @@
     "em-dash": 1
   },
   ".claude/skills/ramp/SKILL.md": {
-    "caps-emphasis": 1,
-    "em-dash": 6,
-    "filler": 1,
-    "prose-arrow": 5
+    "caps-emphasis": 1
   },
   ".claude/skills/resume-project/SKILL.md": {
     "caps-emphasis": 4,
