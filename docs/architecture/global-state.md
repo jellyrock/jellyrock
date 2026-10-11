@@ -122,7 +122,7 @@ node.color = m.global.constants.colorPrimary                             ' fully
 node.color = m.global.constants.colorBlack + m.global.constants.alpha60  ' 60% black
 ```
 
-Which theme color means what is in [`components/CLAUDE.md`](../../components/CLAUDE.md#theme-colors--which-one-means-what).
+Which theme color means what is in [`components/CLAUDE.md`](../../components/CLAUDE.md#theme-colors-which-one-means-what).
 
 ### Changing the theme
 

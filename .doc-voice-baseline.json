@@ -121,14 +121,14 @@
     "filler": 1
   },
   ".claude/skills/done/SKILL.md": {
-    "caps-emphasis": 4,
-    "em-dash": 22,
+    "caps-emphasis": 2,
+    "em-dash": 20,
     "filler": 2,
     "prose-arrow": 22
   },
   ".claude/skills/end-session/SKILL.md": {
-    "caps-emphasis": 2,
-    "em-dash": 35,
+    "caps-emphasis": 1,
+    "em-dash": 34,
     "filler": 1,
     "prose-arrow": 1
   },
@@ -157,7 +157,6 @@
     "prose-arrow": 15
   },
   ".claude/skills/log/jellyrock.md": {
-    "em-dash": 1,
     "filler": 1,
     "prose-arrow": 2
   },
@@ -181,9 +180,9 @@
   },
   ".claude/skills/pr/SKILL.md": {
     "caps-emphasis": 1,
-    "em-dash": 37,
+    "em-dash": 34,
     "filler": 2,
-    "prose-arrow": 15
+    "prose-arrow": 7
   },
   ".claude/skills/pr/forge.sh": {
     "em-dash": 1
@@ -214,13 +213,6 @@
     "filler": 3,
     "prose-arrow": 11
   },
-  ".claude/skills/server-upgrade/SKILL.md": {
-    "caps-emphasis": 4,
-    "em-dash": 77,
-    "filler": 7,
-    "latin-abbrev": 8,
-    "prose-arrow": 16
-  },
   ".claude/skills/snag/SKILL.md": {
     "caps-emphasis": 2,
     "em-dash": 8,
@@ -229,8 +221,8 @@
     "prose-arrow": 4
   },
   ".claude/skills/sonnet/SKILL.md": {
-    "caps-emphasis": 4,
-    "em-dash": 25,
+    "caps-emphasis": 2,
+    "em-dash": 23,
     "filler": 7,
     "prose-arrow": 2
   },
@@ -238,8 +230,8 @@
     "em-dash": 2
   },
   ".claude/skills/start-project/SKILL.md": {
-    "caps-emphasis": 4,
-    "em-dash": 25,
+    "caps-emphasis": 2,
+    "em-dash": 24,
     "filler": 4
   },
   ".claude/skills/start-project/projects-dir.sh": {
@@ -402,13 +394,6 @@
   },
   "components/Buttons/JRButtons.bs": {
     "em-dash": 4
-  },
-  "components/CLAUDE.md": {
-    "caps-emphasis": 6,
-    "em-dash": 84,
-    "filler": 4,
-    "latin-abbrev": 3,
-    "prose-arrow": 6
   },
   "components/GetPlaybackInfoTask.bs": {
     "em-dash": 4
@@ -2383,13 +2368,6 @@
   },
   "tests/CLAUDE.md": {
     "filler": 2
-  },
-  "tests/rta/CLAUDE.md": {
-    "caps-emphasis": 9,
-    "em-dash": 150,
-    "filler": 13,
-    "latin-abbrev": 1,
-    "prose-arrow": 6
   },
   "tests/rta/capture.js": {
     "em-dash": 1
