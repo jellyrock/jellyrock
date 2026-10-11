@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-11: ci(lint): Check markdown link anchors against GitHub's heading slugs
 - 2026-10-11: ci(lint): Run language coverage when `people.bs` or a fingerprint changes
 - 2026-10-11: fix(music): Keep the playing track when shuffle is switched on again
 - 2026-10-11: ci(server-upgrade): Run the spec fingerprint drift check in CI
