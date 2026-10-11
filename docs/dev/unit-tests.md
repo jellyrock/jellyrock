@@ -80,7 +80,7 @@ Rooibos has four hooks, and they run at different times:
 | `setup()` and `teardown()` | Once per `@describe` group |
 | `beforeEach()` and `afterEach()` | Once per test |
 
-Build anything a test changes in `beforeEach()`. A node made in `setup()` is shared by every test in its group, so each test gets whatever the last one left behind. `setup()` is for fixtures no test changes. The reasoning and the incident behind it are in [`tests/CLAUDE.md`](../../tests/CLAUDE.md#lifecycle-hooks--setup-is-per-describe-group-beforeeach-is-per-test).
+Build anything a test changes in `beforeEach()`. A node made in `setup()` is shared by every test in its group, so each test gets whatever the last one left behind. `setup()` is for fixtures no test changes. The reasoning and the incident behind it are in [`tests/CLAUDE.md`](../../tests/CLAUDE.md#lifecycle-hooks-setup-runs-per-describe-group-beforeeach-per-test).
 
 `BaseTestSuite` overrides all four hooks, so call the parent in each one you override. This is `JRDialog.spec.bs`:
 

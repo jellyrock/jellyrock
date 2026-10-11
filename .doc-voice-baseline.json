@@ -2414,9 +2414,7 @@
     "em-dash": 4
   },
   "tests/CLAUDE.md": {
-    "caps-emphasis": 7,
-    "em-dash": 32,
-    "filler": 3
+    "filler": 2
   },
   "tests/rta/CLAUDE.md": {
     "caps-emphasis": 9,
