@@ -2,7 +2,7 @@
 name: end-session
 model: opus
 effort: medium
-description: This skill should be used when the user explicitly types "/end-session" — the mandatory final step of any session started or resumed with /start-project or /resume-project, which the agent prints alone in its own block as the session's last line for the user to type, never invoking it directly. It updates the active project's PLAN.md (Status, kickoff, log), checks the PLAN against itself, and commits+pushes. Do NOT auto-invoke on vague phrases mid-session.
+description: "This skill should be used when the user explicitly types \"/end-session\": the mandatory final step of any session started or resumed with /start-project or /resume-project, which the agent prints alone in its own block as the session's last line for the user to type, never invoking it directly. It updates the active project's PLAN.md (Status, kickoff, log), checks the PLAN against itself, and commits+pushes. Do not auto-invoke on vague phrases mid-session."
 ---
 
 # End Session

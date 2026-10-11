@@ -1,4 +1,4 @@
-# /log — jellyrock's own types and decision routing
+# /log: JellyRock's own types and decision routing
 
 Read by [SKILL.md](SKILL.md)'s `## This repo`. Pure local edits; commit nothing.
 
