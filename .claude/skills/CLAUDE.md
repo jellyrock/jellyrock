@@ -1,38 +1,37 @@
-# `.claude/skills/CLAUDE.md` — rules for authoring + editing skills
+# Rules for authoring and editing skills
 
-Loaded automatically when working in `.claude/skills/`. The full authoring conventions (frontmatter shape, body structure, helper-script co-location, README index update, sub-agent invocation pattern) live in [`README.md`](README.md). This file pins the load-bearing rules an agent MUST internalize before editing or creating any SKILL.md — the kind of mistakes that look fine to a human reviewer but rot the agent contract.
+Loaded automatically when working in `.claude/skills/`. The skill index and the steps for adding a skill (frontmatter shape, body structure, README row, sub-agent test) are in [`README.md`](README.md). This file holds the rules an agent has to know before editing or creating any `SKILL.md`: mistakes that look fine to a human reviewer but break the agent's contract.
 
-## Audience-driven formatting
+## Formatting for an agent reader
 
-SKILL.md files are consumed by **agents**, not humans. That changes the formatting calculus:
+An agent runs a `SKILL.md`; a person reads it to improve it or to do the task by hand. Format for both:
 
-- **Don't hard-wrap paragraphs.** Prose runs as long flowing lines. Hard wrapping at ~72/80 chars adds extra `\n` tokens that don't aid agent comprehension and only exist as a human-readability affordance the audience doesn't need. Markdownlint's MD013 line-length rule is disabled across the project; respect that.
-- **One-line "Sub-agent invocation" tail.** The closing section is a single sentence ending with the backticked invocation string and a brief follow-up. Never wrap the backticked instruction across multiple source lines — it's a literal blob the parent passes verbatim to the Task tool.
-- **Code fences and bullets stay structural.** Don't fold them into prose just because "no hard wrap" — they convey intent the agent uses for parsing.
+- **Don't hard-wrap paragraphs.** Each paragraph is one long line. Wrapping at 72 or 80 characters adds line breaks that help neither reader, and markdownlint doesn't check line length here (`MD013` is off).
+- **Keep the sub-agent prompt on one source line.** A skill that can run from a sub-agent ends with a `## Sub-agent invocation` section holding the prompt a parent passes word for word. Never wrap that prompt across lines.
+- **Code fences and bullets stay structural.** Don't fold them into prose to avoid line breaks: the agent reads the structure.
 
-The same rule applies to other agent-targeted markdown in this tree: nested `CLAUDE.md` files, hook documentation comments, and agent definitions under [`.claude/agents/`](../agents/).
+The same rules apply to the other agent files in this tree: nested `CLAUDE.md` files and the agent definitions under [`.claude/agents/`](../agents/).
 
 ## Before adding a new skill
 
-Read the [How to add a new skill](README.md#how-to-add-a-new-skill) section in this directory's README. The frontmatter shape, body structure, README index update, and sub-agent test are all covered there. Don't try to derive the conventions from a single existing skill — sample at least three (the body shape varies by skill type).
+Read [How to add a new skill](README.md#how-to-add-a-new-skill) in this directory's README. Don't derive the conventions from a single existing skill: sample at least three, since the body shape varies by skill type.
 
-## Model-fit hygiene
+## Model fit
 
-Every skill pins a model in frontmatter (`model: opus | sonnet | haiku`). The choice should track the actual reasoning load, not aspiration. Procedural workflows (mechanical checklists, structured runbooks like `/pr`, `/log`, `/new-setting`) belong on sonnet; judgment-heavy skills (`/runtime-triage`, `/ci-triage`) belong on opus; pure data assembly with no judgment seams could go on haiku (none currently in JellyRock). After a few real invocations, audit the skill's runs to check whether the assigned model still fits.
+Every skill pins a model in frontmatter (`model: opus | sonnet | haiku`). The choice tracks the actual reasoning load. Procedural workflows (checklists and step-by-step recipes such as `/pr`, `/log` and `/new-setting`) belong on sonnet. Judgment-heavy skills (`/runtime-triage`, `/ci-triage`) belong on opus. Pure data assembly with no judgment could go on haiku; no skill here uses it. After a few real runs, check whether the assigned model still fits.
 
 ## When you change a skill
 
-- New helper script under `.claude/skills/<name>/`? Allowlist `Bash(node .claude/skills/<name>/<script>:*)` (or whichever bash shape the helper introduces) in `.claude/settings.json` in the same change set. Project-level settings benefit all contributors; user-local overrides go in `.claude/settings.local.json`.
-- New bash shape the skill invokes (e.g., a `gh` subcommand not already in the allowlist)? Same — add it to `.claude/settings.json` so the prompt doesn't fire mid-skill.
-- Changed a step's intent? Mirror the change in the at-a-glance row + per-skill detail in [`README.md`](README.md).
-- The change is audit-driven (came out of an audit of the skill's runs)? Append a section to the audited skill's `AUDIT-LOG.md` per the per-skill audit-log convention. Only invoke `/log decision` if the audit produced an architectural-grade change (new agent, model change, new helper script, hook change, or load-bearing-rule change in `CLAUDE.md`).
-- Touched a file listed in any architecture doc's `related-files:` frontmatter? Read [`/CLAUDE.md`'s Doc maintenance discipline section](../../CLAUDE.md#doc-maintenance-discipline) — same rule applies here. The skills tree is its own subsystem and lives outside the architecture-doc tree, but if you touched an architecture-doc-territory file as part of a skill change (e.g., updated a validator referenced by `/docs-lint`), the architecture-doc rule fires.
+- A new helper script under `.claude/skills/<name>/`? `Bash(node .claude/skills/*)` in `.claude/settings.json` already allows a Node helper. For any other command shape the helper introduces (a `bash` script, a `gh` subcommand), add an allow rule to `.claude/settings.json` in the same change, so the permission prompt doesn't fire mid-skill. Project settings reach every contributor; personal overrides go in `.claude/settings.local.json`.
+- Changed a step's intent? Update the skill's row in [`README.md`](README.md).
+- Did an audit of the skill's runs drive the change? Append a dated section to that skill's `AUDIT-LOG.md`. Invoke `/log decision` only when the audit produced an architectural change: a new agent, a model change, a new helper script, a hook change, or a rule change in a `CLAUDE.md`.
+- Touched a file listed in an architecture doc's `related-files:` frontmatter? The [Doc maintenance discipline](../../CLAUDE.md#doc-maintenance-discipline) in the root `CLAUDE.md` applies. The skills tree is not architecture-doc territory itself, but a skill change can touch a file that is (a validator `/docs-lint` runs, for example).
 
 ## When you retire a skill
 
-1. Confirm it's actually obsolete — judgment call. Inbound usage dropped to zero, the workflow it codifies has been automated elsewhere, or repeated audits of its runs show it never surfaces useful friction.
-2. Search for inbound references: `grep -rn "/skill-name" CLAUDE.md docs/ .claude/` — fix or remove every backtick reference.
+1. Confirm it's obsolete, which is a judgment call: nobody invokes it any more, its workflow is automated elsewhere, or audits of its runs show it never finds anything useful.
+2. Find every reference: `grep -rn "/<name>" CLAUDE.md docs/ .claude/`. Fix or remove each one.
 3. `git rm -r .claude/skills/<name>/`.
-4. Remove the row from [`README.md`](README.md)'s at-a-glance table + the per-skill detail section.
-5. Invoke `/log decision` with slug `retire-<name>-skill` to capture the rationale. Mandated by the Capture-discipline rule in root [`CLAUDE.md`](../../CLAUDE.md).
-6. Run `npm run lint:docs` to confirm no orphan references remain.
+4. Remove its row from [`README.md`](README.md).
+5. Invoke `/log decision` with slug `retire-<name>-skill` to record why. The Capture-discipline rule in the root [`CLAUDE.md`](../../CLAUDE.md) requires it.
+6. Run `npm run lint:docs`. It catches a broken link to the removed files; only the grep in step 2 catches a plain mention.

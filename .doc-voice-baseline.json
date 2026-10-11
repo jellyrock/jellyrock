@@ -85,12 +85,6 @@
     "em-dash": 8,
     "filler": 1
   },
-  ".claude/skills/CLAUDE.md": {
-    "caps-emphasis": 1,
-    "em-dash": 9,
-    "filler": 3,
-    "latin-abbrev": 2
-  },
   ".claude/skills/README.md": {
     "caps-emphasis": 3,
     "em-dash": 18,
