@@ -126,11 +126,8 @@
     "prose-arrow": 11
   },
   ".claude/skills/docs-lint/SKILL.md": {
-    "caps-emphasis": 3,
-    "em-dash": 25,
-    "filler": 4,
-    "latin-abbrev": 1,
-    "prose-arrow": 11
+    "caps-emphasis": 1,
+    "filler": 1
   },
   ".claude/skills/done/SKILL.md": {
     "caps-emphasis": 4,
