@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-10
+last-updated: 2026-10-11
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-11: ci(server-upgrade): Run the spec fingerprint drift check in CI
 - 2026-10-10: fix(navigation): Recover from a failed navigation before logging it
 - 2026-10-10: fix: Stop the sign-in screen flashing back after a deep-link sign-in
 - 2026-10-10: fix(locale): Apply the user's language when preferences fail
@@ -68,15 +69,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-27 — fix(playback): Back cancels a start, keys wait; slow starts say still loading
 - 2026-09-27 — chore(editor): Load two language-server projects; format JS and JSON with Prettier
 - 2026-09-27 — fix(audio): Transcode Opus in `ogg` music instead of hanging
-- 2026-09-26 — fix: Release live streams left mid-open, and wait for slow channels
-- 2026-09-26 — fix(home): Tell a failed Favorites load from an empty one; OK retries
-- 2026-09-26 — fix(home): Tell failed Home rows from empty ones; OK retries
-- 2026-09-26 — fix: Close a Live TV stream that never started playing
-- 2026-09-26 — test(grid): Make the grid scroll stall measurement repeatable
-- 2026-09-26 — refactor(details): Give a Season's series fetch its own Task per run
-- 2026-09-26 — feat: Say when search or cast is slow; keep search's spinner on search
-- 2026-09-26 — fix(audio): Show the right song's title and artwork after a skip
-- 2026-09-26 — perf(grid): Keep large libraries loading as fast as you scroll
 
 ## Open followups
 
