@@ -1291,13 +1291,6 @@
   "docs/architecture/async.md": {
     "filler": 2
   },
-  "docs/architecture/build-and-tooling.md": {
-    "caps-emphasis": 7,
-    "em-dash": 274,
-    "filler": 27,
-    "latin-abbrev": 9,
-    "prose-arrow": 10
-  },
   "docs/architecture/remote-control-longpoll-contract.md": {
     "caps-emphasis": 6
   },
@@ -1342,7 +1335,7 @@
   },
   "docs/progress.md": {
     "caps-emphasis": 38,
-    "em-dash": 461,
+    "em-dash": 452,
     "filler": 56,
     "latin-abbrev": 9,
     "prose-arrow": 35
