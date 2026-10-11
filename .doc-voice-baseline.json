@@ -285,10 +285,7 @@
     "latin-abbrev": 1
   },
   ".claude/skills/tech-debt-scan/SKILL.md": {
-    "caps-emphasis": 1,
-    "em-dash": 18,
-    "filler": 2,
-    "prose-arrow": 2
+    "caps-emphasis": 1
   },
   ".claude/skills/translation-add/SKILL.md": {
     "caps-emphasis": 1
