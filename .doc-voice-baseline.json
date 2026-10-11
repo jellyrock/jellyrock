@@ -3,10 +3,8 @@
     "caps-emphasis": 1
   },
   ".claude/agents/pattern-finder.md": {
-    "caps-emphasis": 6,
-    "em-dash": 20,
-    "filler": 4,
-    "latin-abbrev": 1
+    "caps-emphasis": 1,
+    "filler": 1
   },
   ".claude/hooks/bsfmt-on-write.sh": {
     "em-dash": 4,
