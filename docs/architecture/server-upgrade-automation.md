@@ -8,6 +8,7 @@ related-files:
   - scripts/server-upgrade.js
   - scripts/server-upgrade-tracker.js
   - .github/workflows/server-upgrade-tracker.yml
+  - .github/workflows/_lint-floor-system.yml
   - .claude/skills/server-upgrade/SKILL.md
   - .api-watch/suppressions.yml
   - docs/dev/jellyfin-endpoint-availability.yml
@@ -17,6 +18,7 @@ related-files:
   - scripts/lint/apiversion-consistency-check.js
   - scripts/lib/spec-fetch.cjs
   - scripts/lib/signals-fetch.cjs
+  - scripts/lib/signal-staleness.cjs
   - scripts/lib/version-boundaries.cjs
   - .claude/skills/new-api-version/SKILL.md
   - docs/architecture/api-usage-manifest.json
@@ -26,1004 +28,301 @@ related-files:
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-09-23
+last-reviewed: 2026-10-10
 ---
 
-# Jellyfin Server-Upgrade Automation
+# Jellyfin server-upgrade automation
 
-The design of record for turning Jellyfin server upgrades from reactive manual
-catchup into a proactive, mostly-automated pipeline: when a new server version
-ships, mechanically detect every API change that intersects code JellyRock
-actually ships, have an agent investigate the real impact, and file/triage GitHub
-issues — while staying silent about the churn that doesn't affect us.
-
-> **Status (2026-05-30):** Phases 0 + 0.5 + 1 + 2 + 3 + 4 + 5 + 6 are built and
-> verified (the API-usage manifest with `apiVersion` tiers; the supply+diff
-> layer: version-boundary map, spec fetch/cache, fingerprint generator with
-> committed floor/baseline anchors, and the structural diff engine; the
-> join+classify layer: `findings-candidates.js` with the forward + backward +
-> coverage-symmetry checks, tier-relevance filtering, `.api-watch` suppression,
-> and the Phase-6 endpoint-availability ledger; the `/server-upgrade` skill +
-> `scripts/server-upgrade.js` filer that investigate the report, edit the
-> per-version digest, and file per-finding sub-issues, human-gated; and the
-> proactive-CI tracker: `scripts/server-upgrade-tracker.js` +
-> `.github/workflows/server-upgrade-tracker.yml` maintaining one PER-VERSION
-> release-triage digest with the ephemeral-computed mechanical report). Phase 6
-> replaced the per-finding issue burst + single rolling tracker with the
-> per-version digest model (one auto-opened digest per release; CI opens-then-
-> closes a clean release as a record; `/server-upgrade` edits the digest with
-> verdicts + files sub-issues; never CI-closed once it bears a candidate) and
-> added the endpoint-availability registry — a validated disposition ledger that
-> resolves the recurring floor findings (`MediaSegments` 10.10, Lyrics 10.9,
-> `QuickConnect` 10.8, …) at the source so they stop reappearing every release. See
-> the [roadmap](#roadmap) and the Phase 5 + 6 build records below.
+When Jellyfin ships a new server version, this pipeline finds every API change that touches code JellyRock ships, and stays quiet about the rest. Scripts find the changes. An agent, run by a maintainer through `/server-upgrade`, decides which ones matter. CI opens one GitHub issue per release to say a triage is due.
 
 ## Why this exists
 
-JellyRock's Jellyfin client is **hand-written** — there is no codegen from the
-Jellyfin OpenAPI spec (see [`api.md`](api.md)). Today, detecting that a new
-server version dropped is automated (the `jellyfin-server-stable` row in
-[`signals-backlog.md`](../signals-backlog.md), fetched by
-[`scripts/lib/signals-fetch.cjs`](../../scripts/lib/signals-fetch.cjs)), but
-**assessing impact is entirely manual**: download the spec, eyeball the diff,
-guess whether anything we touch changed. That's slow, easy to get wrong in both
-directions (miss a real break; waste time on an irrelevant hotfix), and it
-repeats every release forever.
+JellyRock's Jellyfin client is hand-written, with no code generated from the OpenAPI spec (see [`api.md`](api.md)). Before this pipeline, knowing that a release had shipped was automatic (the `jellyfin-server-stable` row in [`signals-backlog.md`](../signals-backlog.md)), but judging its impact was manual: download the spec, read the diff, guess whether anything we use changed. That is slow, it fails both ways (a missed break, or an afternoon lost on a hotfix that touches nothing we use), and it repeats every release.
 
-The goal is to save maintainer time and energy: never miss a breaking change,
-never burn an afternoon on a security hotfix that touches nothing we use.
+## How it works: a script finds, an agent judges
 
-## Core principle: a deterministic *report*, then an investigative *agent*
+The pipeline splits at one line. Scripts do the mechanical work and never decide whether a change is a real problem: they list every change that intersects code we ship, with where it came from. The agent reads the code each change touches and decides whether it breaks and what to do. A last script does the GitHub writes.
 
-The load-bearing architectural seam is the line between **mechanical** and
-**judgment** work:
+This split is what makes it trustworthy. The scripts are deterministic and fixture-tested, and the agent's reasoning is reviewable one finding at a time.
 
-```text
-┌─ SCRIPT (deterministic, tested, cacheable) ─────────────┐   ┌─ AGENT (judgment) ─┐   ┌─ SCRIPT ─┐
- manifest  →  spec fetch  →  diff  →  join+classify  ──────────►  investigate repo  ──►  gh issues
- (demand)     (supply)      (delta)   findings-candidates.json     per candidate         (plan/execute,
-                                       = THE DATA REPORT           → verdict + draft       dedup, labels)
-└─────────────────────────────────────────────────────────┘   └────────────────────┘   └──────────┘
-```
-
-- The **script** never decides "is this a real problem." It decides "here is
-  every change that intersects code we ship, with full provenance." Fully
-  unit-testable, deterministic, cacheable.
-- The **agent** decides "given how we actually use it, does it break, and what
-  should we do." Judgment-heavy, auditable per finding.
-- A final **script** does the mechanical `gh` issue create/dedup/label.
-
-This seam is what makes the system both trustworthy (the script is testable to
-the byte; the agent's reasoning is reviewable per finding) and low-maintenance.
-
-## The generalized version model (`V1` → `VN`)
-
-JellyRock dispatches endpoints by server-API tier with `if m.getApiVersion() >= N`
-(`V1` = server 10.7–10.8, `V2` = 10.9+; a future `V3` nests the same way). Two
-facts shape everything:
-
-1. **Old server lines are frozen.** 10.8.13 is the last 10.8 release that will
-   ever exist. An endpoint that targets a frozen tier therefore *cannot* be
-   broken by an upstream change — there will never be another upstream for it.
-2. **JellyRock supports the oldest servers (10.7.0) indefinitely.** The floor
-   never rises. So `V1` usage is permanent and intentional, and new features may
-   legitimately *add* `V1` calls. "Legacy endpoint usage" is not debt here.
-
-Consequences:
-
-- Each endpoint in the manifest records the tier range it serves as
-  `minApiVersion`/`maxApiVersion` (see
-  [`api-usage-manifest.md`](api-usage-manifest.md)). A spec change at tier T is a
-  breaking candidate **only** for endpoints whose range includes T.
-- **Frozen-tier immunity falls out of range math** — no special-casing, no
-  allowlist. Because the latest release is always the top (active) tier, frozen
-  tiers never appear in a delta, and any `V1` calls added later self-exclude.
-- A small committed **version-boundary map** ties tiers to server-version ranges
-  and is the single source of truth that makes the model `V3`-ready:
-
-  ```text
-  tiers:  1: { server: "10.7.0–10.8.13", status: frozen }
-          2: { server: "10.9.0–",         status: active }
-          # 3: added here when V3 lands, alongside the >= 3 dispatch in code
-  floor:  "10.7.0"   # minimum supported, indefinitely
-  ```
-
-## Two-directional validation
-
-Because support is indefinite, the oldest spec is a permanent validation anchor,
-which enables a check that has no anchor otherwise:
-
-| Direction    | Question                                          | Spec compared                  | Catches                                              |
-| ------------ | ------------------------------------------------- | ------------------------------ | --------------------------------------------------- |
-| **Forward**  | Did something we use change in the new release?   | delta: acknowledged → latest   | Breakage on **modern** servers                      |
-| **Backward** | Do we use something the floor server lacks?       | absolute: manifest → 10.7.0    | A new feature silently broken on the **oldest** servers (used a too-new endpoint with no dispatch/guard) |
-| **Symmetry** | Is an op we gate modern-only also served on the floor? | absolute: manifest → 10.7.0 | An operation wired for one tier only that's plausibly missing a low-tier fallback — the mirror image of the backward check (see Phase 5) |
-
-The **backward** and **symmetry** checks partition the manifest by the *same*
-predicate (`does the endpoint's tier range include the floor tier?`): backward
-owns the floor-included endpoints and flags the ones *absent* from the floor
-spec; symmetry owns the modern-only endpoints and flags the ones *present* in
-the floor spec. They can never double-report a given endpoint, and a genuinely
-modern-only endpoint (absent from the floor — a real 10.9+ feature) is flagged
-by neither. Both over-capture in a known way the agent dispositions (backward via
-capability guards; symmetry via an unlinked V1 dispatch sibling).
-
-## Known limitations — what this pipeline cannot catch
-
-Everything above compares **signatures**: which endpoints exist, which params and
-schema fields they declare, what those fields are typed as. That is the pipeline's
-reach, and two whole classes of breakage fall outside it. Both are structural, not
-bugs to be fixed — knowing where the wall is beats trusting a clean report too far.
-
-**1. Behavior changes behind an unchanged signature.** A release can keep an
-endpoint's parameter list byte-identical and still change what it *returns*. The
-fingerprint sees nothing, the diff emits nothing, and CI reports the release as
-mechanically clean.
-
-The worked example is [#784](https://github.com/jellyrock/jellyrock/issues/784).
-`GET /UserItems/Resume` declares the same 15 parameters in 10.11.8 and 12.0-rc4 —
-no additions, no removals, no retypes across the release that broke us. (The floor
-is not identical: 10.7.0 serves the same endpoint at `/Users/{userId}/Items/Resume`
-with 14 parameters — no `excludeActiveSessions` — and types the three array params
-as `array<string>` rather than the `BaseItemKind` / `MediaType` enums. That is a
-signature change, and the pipeline does see it. The 12.0 break is the one it can't.)
-The server-side `IsResumable` predicate changed from "this item has playback position
-> 0" to "…or this *folder* has an in-progress descendant", so Continue Watching went
-from 4 items to 253, and the series Resume button started targeting a Season instead
-of an episode. A clean spec diff was a true statement about the signature and a
-useless one about the app.
-
-The same wall has two more shapes, both from the 10.11.8 → 12.0 triage:
-
-- **A default authentication policy.** 12.0 sets `EnableLegacyAuthorization=false` on upgrade
-  (jellyfin/jellyfin#15559), so `?api_key=`, `X-Emby-Token` and the `Emby` scheme stop
-  authenticating. The spec's `components.securitySchemes` is byte-identical in 10.11.8 and
-  12.0, and the change is server *configuration*, not a declared contract, so the diff
-  cannot see it. It broke our remote-control socket's header-less fallback, fixed in
-  [#920](https://github.com/jellyrock/jellyrock/pull/920).
-- **A param that stops working long before it disappears.** 10.11.0 marked
-  `GET /Shows/NextUp`'s `disableFirstEpisode` `[ParameterObsolete]` and stopped reading it,
-  but kept it in the spec, so the diff for that release was clean. The break only surfaced
-  when 12.0 deleted the dead param and the diff finally reported a removal
-  ([#925](https://github.com/jellyrock/jellyrock/issues/925)): every 10.11+ server had been
-  showing a Resume button on series nobody had started. This is why the skill checks the
-  FROM-version controller before calling a removal "cleanup". A removal with no behavior
-  change in *this* release can still expose an app that relied on the param in an *earlier*
-  one.
-
-**2. How we call an endpoint, as opposed to which ones we call.**
-[`api-usage-manifest.json`](api-usage-manifest.json) does record a `requestFields`
-list, but two properties of it keep the obvious check out of reach. It is **flat and
-repo-wide** — `{name, sourceFiles}` with no endpoint association — so it can say
-"something, somewhere sends `MediaTypes`" but never "this endpoint is sent these
-params". And its scan scope is narrower than the endpoint scan's: `REQUEST_FIELD_GLOBS`
-is **`source/api/**/*.bs` only**, so a param set anywhere else — `source/data/`,
-`source/utils/`, or any `components/` call site — is not in the manifest at all. All
-four of #784's call sites live under `components/`. Nothing in the pipeline can
-therefore compare the params we *send* against the params an endpoint *declares*, in
-either direction:
-
-- **Params we send that don't exist.** The four call sites in #784 each sent
-  `recursive`, `SortBy`, `SortOrder` and `Filters` to an endpoint that has never
-  accepted any of them (the server hardcodes all four internally, identically from
-  10.7.0 through master). Harmless, but they read as load-bearing for years and
-  sent every reader looking in the wrong place.
-- **Narrowing params we omit.** The same endpoint's `mediaTypes` is the only filter
-  a client controls there. Every other Jellyfin client passes it; we didn't, which
-  is precisely what left us exposed when the default widened.
-
-Making both of these checks possible needs two changes together: bind request fields to
-the endpoint they're sent to, and widen the scan past `source/api/**` to the component
-call sites. That's the obvious next phase if this class recurs. It hasn't yet — #784 is
-one data point, so this is recorded rather than built.
-
-**What actually catches these:** running the app against a pre-release server. The
-[pre-release channels](#pre-release-channels-rc--unstablemaster) section covers
-fetching RC and master specs; #784 was found by pointing a client at a real 12.0-rc4
-server, not by reading one. Treat a mechanically-clean report as "no *signature*
-changed", and keep a pre-release server in the loop for the rest.
-
-## Data-flow pipeline
-
-| Stage | What | Script/Agent | Output |
+| Stage | What happens | Done by | Output |
 | --- | --- | --- | --- |
-| **0. Demand** | API-usage manifest (endpoints + request/response fields + `apiVersion` tiers, with provenance) | script | `docs/architecture/api-usage-manifest.json` (committed) |
-| **1. Supply** | Fetch acknowledged/latest/floor specs; build reduced fingerprints | script | raw specs (gitignored cache) + fingerprints (committed) |
-| **2. Diff** | Structural diff between two specs/fingerprints | script | `spec-diff.json` (cache) |
-| **3. Join + classify** | Intersect diff with manifest; tier-relevance filter; forward + backward; suppression | script | `findings-candidates.json` (cache) — **the data report** |
-| **4. Investigate** | Per candidate: read cited code, determine real impact, draft issue | agent | verdicts + draft issues |
-| **5. File** | `gh` issue create/comment/reopen with dedup + labels (plan/execute) | script | GitHub issues |
+| 0. Demand | Lists the endpoints and fields the app uses, each with its `apiVersion` tier range ([`api-usage-manifest.md`](api-usage-manifest.md)) | [`api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js) | `api-usage-manifest.json` (committed) |
+| 1. Supply | Fetches a version's spec and reduces it to a fingerprint | [`spec-fetch.cjs`](../../scripts/lib/spec-fetch.cjs), [`spec-fingerprint.js`](../../scripts/generate/spec-fingerprint.js) | Raw specs (gitignored cache), fingerprints (committed) |
+| 2. Diff | Compares two fingerprints structurally | [`spec-diff.js`](../../scripts/generate/spec-diff.js) | A list of changes |
+| 3. Join and classify | Matches the changes against the manifest and runs [the three checks](#the-three-checks) | [`findings-candidates.js`](../../scripts/generate/findings-candidates.js) (`npm run api-watch:findings`) | `findings-candidates-<from>..<to>.json` (gitignored cache): [the data report](#the-data-report) |
+| 4. Investigate | Reads the code each candidate cites and writes a verdict | The [`/server-upgrade`](../../.claude/skills/server-upgrade/SKILL.md) skill | Filled verdicts |
+| 5. File | Creates, comments on or reopens issues, deduplicated | [`server-upgrade.js`](../../scripts/server-upgrade.js) (`npm run api-watch:file`) | Sub-issues of [the release digest](#the-release-digest) |
 
-### The data report: `findings-candidates.json`
-
-The deterministic contract between the two halves. Each candidate is
-self-describing so the agent (and a human) can act without re-deriving anything:
-
-```jsonc
-{
-  "type": "breaking | opportunity | coverage-gap | symmetry-advisory",
-  "change": { "kind": "endpoint-removed | field-removed | field-retyped | enum-changed | param-changed | endpoint-added",
-              "path": "/Items/{}", "detail": "RunTimeTicks: int64 → int32",
-              // param-removed / field-removed also carry renameCandidates (always
-              // present, possibly []): same-scope additions that could be the rename,
-              // same-signature first. [] ⇒ likely-genuine removal. The diff surfaces
-              // candidates; the agent confirms rename-vs-removal (see /server-upgrade).
-              "renameCandidates": [{ "name": "newName", "sameSignature": true }],
-              "fromVersion": "10.11.8", "toVersion": "10.11.10" },
-  "appUsage": { "used": true, "apiVersionRange": [2, null],
-                "sites": ["source/api/ApiClient.bs:59", "source/data/JellyfinDataTransformer.bs:96"] },
-  "relevance": "active-tier | frozen-skip | floor-coverage | floor-symmetry",
-  "severityGuess": "high",      // mechanical first guess; the agent overrides
-  "needsInvestigation": true,
-  "suppressed": false           // by .api-watch ignore rules
-}
-```
-
-### What the agent investigates (why this can't be a script)
-
-The agent turns each candidate into a verdict `{ real, severity, recommendedAction,
-draftIssueBody, labels }` by reading the cited `appUsage.sites`. The edge cases
-it resolves:
-
-1. **A spec-contract break is not always a runtime break** — a retype
-   (int→long) or nullable change is usually a no-op given the `?? default`
-   pattern and dynamic typing; sometimes a silent break. Read the site to decide.
-2. **Used-with-a-fallback** — endpoint "removed" but a dispatch branch / capability
-   guard (e.g. `supportsMediaSegments()`) covers the affected range → not breaking.
-3. **Spec regeneration artifacts** — cosmetic diffs (reordering, descriptions,
-   schema refactors) that aren't real changes.
-4. **Enum changes** — value added/removed on an enum the app switches on
-   (`BaseItemKind`, stream `Type`).
-5. **Graceful degradation** vs genuine break when a field disappears.
-6. **Opportunity worth it?** — a new endpoint maps to a real feature gap, or not.
-7. **Symmetry advisory** — an operation wired for only one tier may be missing on
-   the rest of the supported range (accounting for intentionally-modern-only
-   guarded features).
-
-The **graduated trust ratchet** lives here: per finding-*class*, the verdict
-either auto-files or waits for one batch approval (see decisions below).
-
-## Artifact & caching strategy
-
-| Artifact | Lives | Why |
-| --- | --- | --- |
-| `api-usage-manifest.json` (demand) | **committed** | diffable in review, drift-gated |
-| version-boundary map | **committed** (small) | source of truth; changes only at tier boundaries |
-| raw specs (~2 MB each) | **gitignored cache** (`.api-watch/cache/`) | the upstream archive is permanent — refetch is free |
-| baseline + floor **spec fingerprints** | **committed** (small) | reduced structural surface (paths/params/schema-props/types/enums, descriptions stripped) — reproducible, offline, diffable diff anchors without 2 MB blobs |
-| `spec-diff.json` + `findings-candidates.json` | **gitignored cache** | fully regenerable; transient per-run |
-| **decisions** (what we reviewed, what we filed) | **GitHub issues + `signals-backlog.md`** | the persistent ledger already exists |
-
-The Jellyfin OpenAPI archive (`api.jellyfin.org/openapi/stable/`) serves **every**
-version back to 10.7.0 at permanent URLs, so there is no need to mirror specs into
-a separate repo — refetch + cache is sufficient, and committed fingerprints give
-reproducibility without repo bloat.
-
-## Issue automation & proactivity
-
-- **Plan/execute split** (mirrors the `crash-report` skill): plan mode produces
-  the report with no GitHub writes; execute mode does `gh issue create / comment
-  / reopen` with dedup and labels.
-- **Human-gated initially**, per the trust-ratchet decision below. The cost is
-  one batch approval per release (~monthly), not per finding.
-- **CI tracker-issue** (proactive, autonomous, zero-judgment): a scheduled
-  workflow maintains ONE issue — *"10.x available; N breaking candidates, M
-  opportunities; run `/server-upgrade` to triage"* — mirroring
-  `docs-stale-tracker.yml`. The stale-signal route in `signals-backlog.md` is
-  rewired to point at `/server-upgrade`. **Built in Phase 4** — see the build
-  record below.
-
-## Decisions
-
-- **No dedicated spec-mirror repo.** Jellyfin's own archive is a complete,
-  permanent mirror (served from a CDN) back to 10.7.0; a second repo with its own
-  CI and token plumbing would add complexity for zero availability gain. Use the
-  archive plus a gitignored cache and committed fingerprints instead.
-- **Committed fingerprints, not raw specs.** Reproducible, diffable baselines
-  without committing 2 MB vendor JSON that grows on every bump.
-- **Graduated trust ratchet, not full autonomy.** JellyRock has a small
-  team/community tracker, so false-positive issues erode shared trust. Automate
-  all investigation + drafting; gate per-finding creation initially; graduate
-  specific finding-classes to auto-file once their false-positive rate is proven
-  low. (The CI tracker-issue is the one fully-autonomous surface.)
-- **Stable releases only** for GitHub issue-filing. RCs and master/unstable builds
-  have a proactive **local** triage path (see "Pre-release channels" below) — they
-  never file issues; the durable filing is the stable flow when the final ships.
-- **`apiVersion` tiers inferred, not hand-listed.** Because old-version support is
-  indefinite and new `V1` calls are legitimate, an inferred range annotation that
-  self-suppresses frozen tiers is strictly better than a hand-maintained
-  legacy-endpoint allowlist that would drift.
-- **AST extraction, not grep**, for the manifest — durable against formatting and
-  ~95% complete vs grep's ~80%.
-- **Diff anchor vs. resolved-through are decoupled** (the `latest_acknowledged`
-  baseline-gap fix; [issue #632](https://github.com/jellyrock/jellyrock/issues/632)).
-  `latest_acknowledged` is two things that diverge once releases auto-resolve
-  clean: (1) the **diff anchor** — the `from` version `computeReport` diffs
-  against, which must have a committed fingerprint and is *safer* the wider it is
-  (the diff is point-to-point, so a trailing anchor costs nothing); and (2) the
-  **review cursor** that should drive the "needs attention" nag. A mechanically-
-  clean release auto-closes its digest **without** bumping `latest_acknowledged`
-  (CI never writes the journals — the only journal writer is the post-merge
-  `journal-sync.yml`), so the anchor legitimately trails the newest release. We
-  keep the anchor frozen at the last *deep* review (a real `/server-upgrade`
-  triage, which commits a fresh fingerprint + bumps the row) and **derive**
-  "resolved-through" from the digest issues rather than persisting it:
-  - The CI tracker passes the digest list to the renderer (`--tracker-issues`),
-    which computes `clearedThroughFrom()` and adds a **"Mechanically cleared
-    through `<X>`"** header line — so a trailing anchor reads as progress, not
-    staleness. The "Acknowledged baseline" header row was renamed **"Diff
-    baseline (last full review)"** to match.
-  - The `/catchup` aggregator's staleness for the `jellyfin-server-stable` row
-    is now **"is there an OPEN tracker digest?"** (`signalStaleness()` in
-    [`scripts/lib/signal-staleness.cjs`](../../scripts/lib/signal-staleness.cjs),
-    fed by a one-shot `gh` query; offline → falls back to the string compare).
-    Clean releases close their digest, so they no longer false-nag; only a
-    candidate-bearing release leaves an open digest, and the `/catchup` + `/focus`
-    banners route it to `/server-upgrade #N`. Rejected: having CI commit the
-    machine-built fingerprint + bump the row (full auto-acknowledge) — it adds a
-    *silent, self-perpetuating* baseline-corruption path (a transient partial
-    spec fetch → false "clean" → bad fingerprint baked in as the trusted anchor),
-    crosses the "CI never writes journals" + "committed fingerprint = a human
-    reviewed it" invariants, and buys only a cosmetically-tidier file value.
-
-## Pre-release channels (RC + unstable/master)
-
-The mechanical pipeline is version-string-agnostic, so the same fetch→diff→join
-machinery runs against pre-release builds — letting a maintainer react to an
-upcoming release (or master) **before it ships**, and re-diff as it evolves. This
-is a manual, maintainer-initiated surface; the daily CI tracker stays stable-only.
-
-**Archive channels** (verified live):
-
-| Channel | Dir | Filename | Mutability |
-| --- | --- | --- | --- |
-| stable + RC | `/openapi/stable/` | `jellyfin-openapi-<X.Y[.Z]>.json`, `…-rcN.json` (10.x: `10.11.8`; 12.0 line: `12.0`, `12.0-rc4`) | immutable per build |
-| unstable/master | `/openapi/unstable/` | `jellyfin-openapi-<datestamp>.json` (e.g. `20240402201942`) | immutable per build |
-| rolling pointers | `/openapi/` root | `jellyfin-openapi-unstable.json` | **mutable** — never pinned |
-
-**Design choices** (locked):
-
-- **Manual trigger, not CI.** The proactive RC/master triage is run by hand via
-  `/server-upgrade <rc-or-unstable>`. The scheduled tracker keeps acting on stable
-  only — proactive pre-release work is opt-in, not a daily nag.
-- **Ephemeral baselines, nothing committed.** Pre-release fingerprints are built
-  in-memory from the permanent archive (`findings-candidates.js --fetch`, the same
-  path the Phase-4 tracker uses). Committing ~20,000-line fingerprints for throwaway
-  RC/master builds would be pure churn, and it keeps the "committed fingerprint =
-  reviewed **stable** anchor" invariant intact. Re-diff (`rc1 → rc2`, or
-  `datestampA → datestampB`) just refetches — the archive is permanent per build.
-- **Pin immutable builds, never the rolling pointer.** The `unstable`/`master`
-  convenience token (`findings-candidates.js <from> unstable`) resolves via
-  `signals-fetch.cjs`'s `fetchLatestUnstable()` to the latest **datestamped** build
-  and records that concrete datestamp (reproducible + re-diffable). The mutable
-  `jellyfin-openapi-unstable.json` root pointer is never pinned as a baseline.
-- **Local output, not GitHub.** Pre-release runs write a `.claude/handoffs/` note
-  with per-finding verdicts + a "fix proactively" list; they file no issues. The
-  RC re-diff baseline is carried in the `jellyfin-server-rc` signal's
-  `latest_acknowledged`; the master datestamp lives in the handoff (master moves
-  too fast for a daily acknowledged cursor).
-
-**Tier resolution.** `version-boundaries.cjs` `serverToTier` resolves an RC to its
-base release's tier (suffix stripped) and a datestamp to the **active** tier (the
-bleeding edge is, by definition, the top tier). This keeps forward tier-relevance
-honest for pre-release `to` versions.
-
-**When pre-release triage warrants a new tier.** If a breaking shift in an RC/master
-build needs a new `if m.getApiVersion() >= N` dispatch level, the follow-up is the
-[`/new-api-version`](../../.claude/skills/new-api-version/SKILL.md) skill, which
-keeps [`jellyfin-version-boundaries.yml`](../dev/jellyfin-version-boundaries.yml)
-and its BrightScript twin `resolveApiVersion()` in lockstep — and that lockstep is
-machine-enforced **offline** by `npm run lint:apiversion-consistency`
-([`apiversion-consistency-check.js`](../../scripts/lint/apiversion-consistency-check.js),
-in the floor-system CI lint), which parses `resolveApiVersion()` with the same
-BrighterScript AST the manifest generator uses and fails if its guards drift from the
-boundary map. No Roku hardware is needed to verify a tier split. A **cross-major jump**
-(Jellyfin dropping the `10.` prefix) needs no tier special-casing: version comparison
-is numeric-per-segment and the active tier is unbounded above, so the new major lands
-in the active tier and diffs against the prior stable normally. What it DID need is
-format tolerance: the 12.0 line publishes **two-segment** labels (`12.0`, not `12.0.0`).
-Every check on a Jellyfin version therefore goes through one predicate,
-`signals-fetch.cjs` `isReleaseVersionBase` (MAJOR.MINOR[.PATCH], datestamp builds excluded).
-A private three-segment regex anywhere in the pipeline fails silently rather than
-loudly — `serverToTier('12.0')` returning `null` turned every breaking change on a
-`[1, ∞)` endpoint into `frozen-skip`, hiding it from the digest. RCs can still
-change, so re-run `/server-upgrade` against the FINAL stable when it ships.
-
-## Roadmap
-
-- **Phase 0 — Demand manifest** ✅ *done.* Endpoints + request/response fields +
-  provenance, via the BrighterScript AST; drift-gated; cross-checked against the
-  real 10.11.10 spec.
-- **Phase 0.5 — `apiVersion` tiers** ✅ *done.* `minApiVersion`/`maxApiVersion`
-  per endpoint, generalized to nested `V3`.
-- **Phase 1 — Supply + diff.** ✅ *done.* Version-boundary map
-  ([`jellyfin-version-boundaries.yml`](../dev/jellyfin-version-boundaries.yml) +
-  [`version-boundaries.cjs`](../../scripts/lib/version-boundaries.cjs) loader),
-  spec fetch/cache ([`spec-fetch.cjs`](../../scripts/lib/spec-fetch.cjs) →
-  gitignored `.api-watch/cache/`), fingerprint generator
-  ([`spec-fingerprint.js`](../../scripts/generate/spec-fingerprint.js); committed
-  floor 10.7.0 + baseline 10.11.8 anchors under
-  [`spec-fingerprints/`](spec-fingerprints/); drift-gated), and the structural
-  diff engine ([`spec-diff.js`](../../scripts/generate/spec-diff.js)). Script;
-  fixture-tested; fully offline.
-- **Phase 2 — Join + classify.** ✅ *done.* Produce `findings-candidates.json`
-  with forward and backward checks, tier-relevance filtering, and `.api-watch`
-  suppression ([`findings-candidates.js`](../../scripts/generate/findings-candidates.js);
-  fixture-tested; offline). *At the end of Phase 2 the full report runs by hand.*
-- **Phase 3 — `/server-upgrade` skill.** ✅ *done.* Agent investigation over the
-  report ([`SKILL.md`](../../.claude/skills/server-upgrade/SKILL.md)) +
-  scaffold/plan/execute issue automation
-  ([`server-upgrade.js`](../../scripts/server-upgrade.js); human-gated),
-  dedup/reopen/labels. Fixture-tested; the GH writes live behind the human
-  `execute` gate.
-- **Phase 4 — Proactive CI.** ✅ *done.* Scheduled tracker-issue
-  ([`server-upgrade-tracker.js`](../../scripts/server-upgrade-tracker.js) plus
-  [`server-upgrade-tracker.yml`](../../.github/workflows/server-upgrade-tracker.yml)),
-  with the `signals-backlog` route rewired to `/server-upgrade`. Counts are
-  computed from an ephemeral in-CI fingerprint (no repo write); fixture-tested
-  offline.
-- **Phase 5 — Maturation.** ✅ *done.* Coverage-symmetry advisory
-  (`symmetryFindings` in
-  [`findings-candidates.js`](../../scripts/generate/findings-candidates.js), the
-  mirror of the backward check; surfaced in the filer's title/labels +
-  the CI tracker counts); auto-file graduation **policy + mechanism** locked (no
-  class graduated — the ratchet stays human-gated until observed false-positive
-  data justifies a config flip); plus a `--fetch`/`--manifest` dry-run on the join
-  step (preview any release's full report without committing a fingerprint).
-  Fixture-tested; offline. See the build record below.
-- **Phase 6 — Release-triage digest model + endpoint-availability ledger.** ✅
-  *done.* Replaced the per-finding issue burst + single rolling tracker with
-  **one auto-opened digest per server version** carrying the rendered report as a
-  checklist + discussion hub. CI opens-then-closes a **mechanically-clean**
-  release as a persistent audit record (the only CI close — a judgment-free
-  claim); a digest that bears a candidate is closed by a human/the skill, never by
-  CI on a "caught-up" signal (Phase 4's caught-up-close is removed).
-  `/server-upgrade` *edits* the digest with verdicts and files `file` verdicts as
-  native GitHub **sub-issues** (`findingKey` dedup intact), inline-noting skip/
-  monitor — so per-finding issues are opt-in promotions for work worth standalone
-  tracking. The autonomous surface is the per-version *summary* (no judgment);
-  *judgment* (real vs skip) stays human-gated. Also added the **endpoint-
-  availability registry** (the committed [`jellyfin-endpoint-availability.yml`](../dev/jellyfin-endpoint-availability.yml),
-  its [`endpoint-availability.cjs`](../../scripts/lib/endpoint-availability.cjs)
-  loader, and the [`endpoint-availability-check.cjs`](../../scripts/lint/endpoint-availability-check.cjs)
-  validation lint): a validated disposition ledger that resolves the recurring
-  floor findings at the source (the `V1`/`V2` tier model can't express sub-tier
-  introduction versions). Revised Phase 3 (filer output) + Phase 4 (tracker
-  lifecycle). See the Phase 6 build record below + [ADR 0011](../adr/0011-server-upgrade-phase6.md)
-  (supersedes the per-finding-default part of [ADR 0008](../adr/0008-server-upgrade-issue-filing.md)).
-
-## Phase 1 — implementation notes (built; kept as the build record)
-
-> **Built 2026-05-29.** This section is now a record of *how* Phase 1 was
-> implemented rather than a to-do; the next session picks up at **Phase 2 —
-> join + classify** (intersect [`spec-diff.js`](../../scripts/generate/spec-diff.js)
-> output against the API-usage manifest, apply tier-relevance via
-> [`version-boundaries.cjs`](../../scripts/lib/version-boundaries.cjs), emit
-> `findings-candidates.json`). The notes below still describe the supply+diff
-> layer's shape accurately.
-
-Concrete guidance for Phase 1 (supply + diff). All of it is offline — no GitHub
-writes — so it is safe to build and validate in isolation. Follow
-`scripts/CLAUDE.md`: top-level CLI scripts are ESM `.js`, no new runtime deps
-(`js-yaml` is already available if the version map is YAML).
-
-1. **Version-boundary map** — a small committed file (the source of truth tying
-   tiers to server versions). Shape: `{ tiers: { 1: {minServer, maxServer,
-   status}, 2: {…} }, floor: "10.7.0" }`. Keep it next to
-   [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) and
-   cross-check the boundaries against that guide.
-2. **Spec fetch + cache** — reuse the HTTP helper in
-   [`scripts/lib/signals-fetch.cjs`](../../scripts/lib/signals-fetch.cjs) (it
-   already GETs `api.jellyfin.org/openapi/stable/`). Fetch
-   `jellyfin-openapi-<version>.json`; cache to a gitignored `.api-watch/cache/`
-   (add it to `.gitignore`). The archive is permanent, so historical versions
-   need no TTL; only "latest" lookups do.
-3. **Fingerprint generator** — reduce a 2 MB spec to its structural surface and
-   nothing else: per path+method, the parameters (name + in + type + required,
-   resolving `$ref` to `components.parameters` — the real spec uses refs
-   heavily), request-body property names+types, response schema ref; per
-   component schema, property names + types + enum values. **Strip descriptions,
-   summaries, examples** — that is what neutralizes Jellyfin's cosmetic
-   regeneration churn. Output a small deterministic JSON; commit the fingerprints
-   for the acknowledged baseline + the 10.7.0 floor; drift-gate them with the
-   same write/`--check` pattern as the manifest.
-4. **Diff engine** — a pure function `(fingerprintA, fingerprintB) → diff`
-   emitting the `change` objects defined in the `findings-candidates.json` schema
-   above (paths/params/schema-props/enums added/removed/changed). Keep field
-   names exactly as the spec spells them; case-folding for the join is **Phase
-   2's** concern, not the diff's (both sides here are Jellyfin specs, same
-   casing).
-5. **Tests** — exercise every diff kind with **tiny hand-written fixture specs**,
-   never the 2 MB real ones. Vitest under `tests/scripts/unit/`, mirroring the
-   manifest test layout (direct import for pure fns, `spawnScript` for the CLI).
-
-The diff output (`spec-diff.json`, gitignored cache) is the input to Phase 2's
-join against the manifest. Carry forward the documented lesson: the **join must
-be case-insensitive on field names** (the app sends PascalCase, the spec defines
-camelCase) — see the manifest's `coverage.knownGaps`.
-
-## Phase 2 — implementation notes (built; kept as the build record)
-
-> **Built 2026-05-29.** A record of *how* Phase 2 was implemented. The next
-> session picks up at **Phase 3 — the `/server-upgrade` skill** (agent
-> investigation over `findings-candidates.json` + plan/execute issue automation).
-
-[`findings-candidates.js`](../../scripts/generate/findings-candidates.js) is the
-deterministic join+classify step. It is a pure, offline transform over committed
-inputs — no network, no GitHub writes — so it is fully fixture-tested.
-
-1. **Anchor strategy (Phase 1's open question, decided here): committed
-   fingerprints.** The join reads the committed `from`/`to`/`floor` fingerprints
-   and computes the forward diff in-process via the already-exported
-   `diffFingerprints()`. "Fetch latest + commit its fingerprint" stays the
-   existing separate step (`spec-fingerprint.js <version>`). Rejected
-   fetch-latest-on-demand because it would make the join network-dependent and
-   less reproducible — at odds with the pipeline's deterministic/cacheable/offline
-   principle, and committing the latest fingerprint is a natural part of the
-   release trigger anyway. CLI:
-   `node scripts/generate/findings-candidates.js <from> <to> [--floor <v>] [--root <dir>] [--no-opportunities] [--stdout]`
-   (npm: `api-watch:findings`); writes the gitignored
-   `.api-watch/cache/findings-candidates-<from>..<to>.json`.
-2. **Forward check** intersects the diff with the manifest. Endpoints join via
-   the manifest's `normalized` form (the script mirrors the manifest's
-   `normalizePath` exactly — `{x}`→`{}`, lowercased, trailing slash stripped,
-   idempotent), keyed by **normalized-path + method** because the same path can
-   appear under several entries with different methods *and* tier ranges (e.g.
-   `/items/{}` has a `V1` `DELETE` and a `V2` `GET`). A method recorded as `UNKNOWN`
-   (verb not statically resolvable) falls back to a path-level match. Fields join
-   **case-insensitively by name** — the load-bearing carry-forward lesson.
-   Tier-relevance: the change's tier is `serverToTier(diff.toVersion)`; an
-   endpoint whose `[minApiVersion, maxApiVersion]` range includes it →
-   `active-tier` (investigate), otherwise `frozen-skip` (`needsInvestigation:
-   false`). Frozen-tier immunity falls out of this range math — no allowlist.
-3. **Backward floor-coverage check** flags a `coverage-gap` for every manifest
-   endpoint whose range includes the floor tier yet is absent from the floor
-   fingerprint. Modern-only endpoints (`minApiVersion > 1`) are intentionally not
-   flagged. NOTE: the manifest's known coarseness (an endpoint guarded by a
-   capability check rather than a `getApiVersion()` branch tags `[1,∞)`, e.g.
-   `/audio/{}/lyrics`) means some coverage-gaps are *expected* and the Phase 3
-   agent (pipeline stage 4, "Investigate") dispositions them via the capability
-   guard — that is the intended seam, not a bug.
-4. **Classification.** Breaking = the removed/changed kinds on a used surface;
-   `opportunity` = an `endpoint-added` the app does not already use (gate off with
-   `--no-opportunities`); purely additive kinds (`param-added`, `field-added`) and
-   unused changes are dropped (counted in the run summary, never silently). For
-   `enum-changed` there is no field name, so the schema name of the enum joins
-   against consumed field names (catches `MediaType`-style enums; misses
-   `BaseItemKind`-style — acceptable over/under-capture, the agent resolves).
-5. **Suppression.** [`.api-watch/suppressions.yml`](../../.api-watch/suppressions.yml)
-   (committed; the cache subdir is the only gitignored part of `.api-watch/`)
-   holds accepted-churn rules (kind/path/method/schema/name predicates, ALL must
-   match, first-match-wins), mirroring `.crash-report/known-noise.yml`. A
-   suppressed candidate stays in the report flagged `suppressed: true` +
-   `suppressedBy`, forced `needsInvestigation: false` — nothing vanishes silently.
-6. **Tests** ([`findings-candidates.test.js`](../../tests/scripts/unit/generate/findings-candidates.test.js))
-   exercise every path with tiny hand-written manifests + fingerprints (direct
-   import for the pure builders, `spawnScript` for the CLI), mirroring
-   `spec-diff.test.js`.
-
-## Phase 3 — implementation notes (built; kept as the build record)
-
-> **Built 2026-05-29.** A record of *how* Phase 3 was implemented. The next
-> session picks up at **Phase 4 — proactive CI** (scheduled tracker-issue +
-> `signals-backlog` wiring).
-
-Phase 3 is the two-halves seam in code: the judgment half is the
-[`/server-upgrade`](../../.claude/skills/server-upgrade/SKILL.md) opus skill
-(pipeline stage 4, "Investigate"); the mechanical half is
-[`server-upgrade.js`](../../scripts/server-upgrade.js) (stage 5, "File"), which
-mirrors `scripts/crash-report.js`'s plan/execute split. The filer never decides
-"is this a real problem"; the skill never touches GitHub.
-
-1. **Three filer commands bridge the agent seam.** `scaffold` is a pure read of
-   the data report → a verdict-template JSON listing the candidates the report
-   flagged `needsInvestigation` (so suppressed + frozen-skip self-exclude),
-   keyed by a stable `findingKey` the *script* derives. The agent fills judgment
-   fields in place (`real`, `severity`, `recommendedAction ∈ {file, skip,
-   monitor}`, `labels`, `rationale`, `draftIssueBody`). `plan` joins the filled
-   verdicts back by `findingKey`, runs the GitHub dedup search (reads only), and
-   reconciles into `create | comment | reopen | skip | monitor | missing-verdict
-   | invalid-verdict`. `execute` is the only path that writes to GitHub + writes
-   a run-summary handoff to `.claude/handoffs/`. npm: `api-watch:file`.
-2. **Decision (a) — version-independent dedup key.** `findingKey` =
-   `kind + locator` (normalized path+method, or `Schema.field`, or enum schema),
-   never the version. The same structural concern recurring in a later release
-   maps to the same key → comment/reopen instead of a duplicate. This is
-   load-bearing for the recompute-every-run classes (every `coverage-gap` and
-   symmetry advisory is derived from manifest×floor, so a version-scoped key
-   would re-file the identical issue every release). The title carries the
-   readable locator; dedup confirms by the version-independent
-   `<kindLabel>: <locator>` substring (mirrors crash-report's stable substring +
-   `[server-upgrade]` title-prefix confirm). Base labels by type: breaking +
-   coverage-gap → `server-upgrade`+`bug`; opportunity + symmetry →
-   `server-upgrade`+`enhancement`; the agent may append. Only `server-upgrade`
-   is created during preflight.
-3. **Decision (b) — the script owns the verdict template.** The script derives
-   `findingKey` so the agent can't drift keys, and `scaffold` enumerates *every*
-   investigation candidate so `plan` surfaces any candidate left without a
-   verdict as `missing-verdict` rather than dropping it silently. Both silent
-   failure modes (a verdict whose key doesn't match, a missed candidate) are
-   closed for the price of one small pure command.
-4. **Decision (c) — all finding-classes human-gated (the trust ratchet).**
-   Running `execute` IS the per-release batch approval (one approval ~monthly,
-   not per finding). `AUTO_FILE_CLASSES` is empty and every action carries
-   `autoFileEligible: false`, so Phase 5 graduates a low-false-positive class by
-   config, not a rewrite. Coverage-gap is the *worst* auto-file candidate today
-   — the manifest's capability-guard coarseness (`/audio/{}/lyrics` tagged
-   `[1, ∞)`) is a known structural false-positive source the agent dispositions
-   by reading the guard, so it stays gated.
-5. **Tests** ([`server-upgrade.test.js`](../../tests/scripts/unit/server-upgrade.test.js))
-   exercise every pure part — stable identity, title draft + dedup confirm
-   (incl. kind disambiguation on a shared locator), scaffold, verdict
-   validation, reconciliation across all action classes, plan counts, the
-   `executePlan` write branches via an injected `gh` mock, and the run-summary
-   render — plus the CLI scaffold/plan path with `--no-dedup` (no network).
-
-## Phase 4 — implementation notes (built; kept as the build record)
-
-> **Built 2026-05-30.** A record of *how* Phase 4 was implemented. The next
-> session picks up at **Phase 5 — maturation** (coverage-symmetry advisory;
-> graduate auto-file per finding-class once false-positive rates are proven
-> low — the ratchet's `AUTO_FILE_CLASSES` is already wired, see Phase 3 note 4).
-
-Phase 4 is the proactive, fully-autonomous, zero-judgment surface: a scheduled
-workflow that maintains ONE tracker issue nudging a human to run
-`/server-upgrade`. The judgment + filing halves (Phases 3) stay human-gated; the
-tracker only *announces* and never files per-finding issues. Two artifacts plus
-one journal rewire:
-[`server-upgrade-tracker.js`](../../scripts/server-upgrade-tracker.js) (the
-testable compute core) and
-[`server-upgrade-tracker.yml`](../../.github/workflows/server-upgrade-tracker.yml)
-(the `gh` plumbing, mirroring `docs-stale-tracker.yml`).
-
-1. **Decision (a) — the fingerprint problem: ephemeral in-CI, never committed.**
-   The tracker's counts need the `to` (latest) fingerprint, which is normally a
-   human-committed, drift-gated, *reviewed* anchor. Rather than auto-commit it
-   (an autonomous repo write that would decouple "committed" from "reviewed" —
-   a bot would leave orphan anchors for versions nobody triaged) the tracker
-   builds the `to` fingerprint **in memory** from the fetched spec
-   (`buildFingerprint`) and runs the Phase-2 `buildReport` against the committed
-   `from`/`floor` fingerprints. Nothing touches the working tree; the human
-   commits the `to` fingerprint when they run `/server-upgrade`
-   (`spec-fingerprint.js <latest>` is that skill's documented prerequisite).
-   Counts are a transient nudge, not a durable artifact, so they need no stored
-   reproducibility — anyone can rebuild them from the immutable archive spec.
-   When the spec fetch fails or a baseline fingerprint is absent, the tracker
-   **degrades to announce-only** (the rejected option c, kept as the
-   fallback) so it still nudges rather than hard-failing. The tracker reuses
-   `findings-candidates.js`'s exact committed-input readers
-   (`readFingerprint`/`readManifest`/`readSuppressions`, exported for this) so
-   CI counts can't drift from a local `api-watch:findings` run.
-2. **Decision (b) — one persistent issue, found by a dedicated label.** The
-   tracker issue carries `server-upgrade:tracker`, deliberately DISTINCT from
-   the `server-upgrade` label the Phase-3 *filer* puts on per-finding issues —
-   reusing that label would make the tracker's `gh issue list` collide with real
-   findings. The workflow finds the one open tracker by label and edits it in
-   place each run (the title carries the version, the body the counts), mirroring
-   `docs-stale-tracker.yml`. **What closes it:** the scheduled run itself, when
-   `latest_stable == latest_acknowledged` — i.e. after the human runs
-   `/done jellyfin-server-stable` post-triage, the next run detects "caught up"
-   and closes. If the human closes it manually while still behind, the next run
-   reopens (no open issue → create), which is the intended "still needs triage"
-   behavior.
-3. **Decision (c) — schedule + guards.** Daily `cron: '0 12 * * *'` +
-   `workflow_dispatch` with a `version` override for testing. Daily (not weekly):
-   Jellyfin can ship more than one (hot)fix in a week, so weekly could miss a
-   release for up to 7 days. Daily is cheap because a run short-circuits to a
-   sub-second version-compare when caught up — the spec fetch + report compute
-   only happen when a genuinely newer stable exists. Detection fetches the live latest **stable** via
-   `fetchJellyfinVersions().stable` (RCs are excluded by that fetcher's own
-   rule — RCs are tracked by the separate `jellyfin-server-rc` signal and never
-   generate issues) and compares against `latest_acknowledged` read from the
-   file — robust whether or not `/catchup` has refreshed `latest_upstream`. The
-   workflow is read-only on the repo (`contents: read`, `issues: write`) and
-   **never touches the journals** — `latest_upstream`/`last_checked` stay
-   `/catchup`'s job; the tracker strictly comments/closes one issue.
-4. **The script/workflow seam.** All judgment-free decisions (parse the signal
-   row, decide announce vs caught-up, render the title + body) are pure named
-   exports in the script; the workflow YAML only does `gh` plumbing and reads a
-   one-line decision JSON the script prints to `stdout` (body written to a file).
-   The title is single-sourced from that JSON so the YAML never re-derives it.
-5. **Tests** ([`server-upgrade-tracker.test.js`](../../tests/scripts/unit/server-upgrade-tracker.test.js))
-   exercise the pure parts (signal parse incl. fence/next-row skipping, the
-   announce/caught-up/placeholder decision matrix, title + body render with and
-   without counts) and the count-compute + CLI path **fully offline** via
-   `--latest` + `--to-file` (an injected `to` spec) against tiny hand-written
-   committed inputs — including the graceful-degradation branch (a missing
-   baseline fingerprint → announce-only). No network, no GitHub writes.
-
-## Phase 5 — implementation notes (built; kept as the build record)
-
-> **Built 2026-05-30.** A record of *how* Phase 5 was implemented. Phase 5 is the
-> pipeline's maturation: a new directional check (coverage-symmetry) and the
-> locked policy for graduating the trust ratchet. Two independent sub-features.
-
-### (1) Coverage-symmetry advisory
-
-`symmetryFindings` in
-[`findings-candidates.js`](../../scripts/generate/findings-candidates.js) is the
-exact **complement** of the backward floor-coverage check, and the two are the
-two branches of one predicate — `rangeIncludes(min, max, floorTier)`:
-
-| Check | Tier filter | Floor-spec test | Meaning |
-| --- | --- | --- | --- |
-| backward `coverage-gap` | floor *in* range (`min == 1`) | op **ABSENT** from floor | we call it; the oldest server lacks it → break on old servers |
-| `symmetry-advisory` (new) | floor *excluded* (`min > 1`) | op **PRESENT** in floor | the oldest server *serves* it, yet we wire it modern-only → plausibly a missing low-tier fallback |
-
-1. **Mechanical signal (decision a).** Script-side, fixture-testable — not
-   agent-only. A modern-only endpoint whose operation is *present* in the floor
-   fingerprint (path+method, with the same UNKNOWN-verb→path-level fallback the
-   backward check uses) emits a `symmetry-advisory` candidate with
-   `change.kind: "coverage-symmetry"`, `relevance: "floor-symmetry"`,
-   `severityGuess: "low"`, joining by path+method+tier exactly like
-   `coverage-gap`. **Boundary vs coverage-gap:** the two partition the manifest
-   by `min == 1` vs `min > 1`, so they can never double-report; a genuinely
-   modern-only endpoint (absent from the floor — a real 10.9+ feature) is flagged
-   by neither, which is what "accounting for intentionally-modern-only guarded
-   features" means mechanically. On the real committed manifest this fires on
-   exactly **one** candidate — `GET /items`, served on the floor but gated to V2+
-   because the V1 dispatch branch uses the `/Users/{}/Items` sibling. That's the
-   *expected* coarseness false-positive the agent dispositions (via the unlinked
-   sibling), exactly mirroring how it dispositions capability-guarded
-   coverage-gaps. A future feature that adds a call gated to `V2`+ *without* a
-   `V1` dispatch branch is the new bug class this catches.
-2. **Surfacing.** `KIND_LABEL['coverage-symmetry'] = 'coverage symmetry'` in the
-   filer gives advisories a readable title + a stable, version-independent dedup
-   identity; `BASE_LABELS_BY_TYPE['symmetry-advisory']` was already
-   `[server-upgrade, enhancement]`. The Phase-4 tracker body gained a
-   coverage-symmetry count line. The report `counts` block gained
-   `symmetry-advisory`.
-3. **Tests.** `findings-candidates.test.js` exercises fires/skips/partition/
-   method-specificity/UNKNOWN-fallback; `server-upgrade.test.js` covers the
-   symmetry `findingKey`/title/labels (still human-gated);
-   `server-upgrade-tracker.test.js` covers the count line.
-
-### (2) Auto-file graduation — policy + mechanism (no class graduated)
-
-The mechanism was wired in Phase 3 (`AUTO_FILE_CLASSES`, `isAutoFileEligible`,
-`autoFileEligible` on every action), so graduation is config, not a rewrite.
-Phase 5 locks the *policy*; it graduates **nothing**.
-
-1. **Decision (b) — graduate nothing yet; what graduation means.** No class has
-   an *observed* false-positive rate — the pipeline has filed zero issues — so
-   graduating any class would be on faith, which the ratchet decision forbids.
-   When a class does graduate, it **relaxes the per-class batch-approval gate
-   inside a human-run `/server-upgrade execute`** (that class's `create` actions
-   skip the Step-4 confirmation). It does **not** add an autonomous auto-file path
-   to the Phase-4 CI tracker: the tracker stays the *one* fully-autonomous
-   surface and only announces. Auto-filing a mechanically-derived candidate in CI
-   *without* the agent's per-finding disposition would file precisely the
-   false-positives the disposition exists to catch (coverage-gap's
-   capability-guard coarseness and symmetry's unlinked sibling coarseness are both
-   structural FP sources the agent resolves by reading code).
-2. **Decision (c) — ship (1) fully; (2) is policy/docs only.** No measurement
-   command was built — it would query an issue corpus that doesn't exist yet and
-   couldn't be validated. The graduation procedure below preserves its *design*
-   at zero dead-code cost.
-
-#### Graduation procedure (for a future maintainer, once real data exists)
-
-A finding-class graduates when its false-positive rate — *issues filed for that
-class that were later closed as not-a-real-problem* ÷ *total filed for that
-class* — is proven low across enough releases. Suggested bar: **≥ ~8 filed in the
-class across ≥ 3 releases, FP rate < ~10%.** Tune with judgment; the point is a
-real track record, not a single clean release.
-
-Measuring the rate (read-only; run when `[server-upgrade]` issues exist):
+The join is offline by default: it reads the committed fingerprints of the `from`, `to` and floor versions ([ADR 0007](../adr/0007-server-upgrade-anchor-strategy.md)). Two options reach the network. `--fetch` builds a missing fingerprint in memory from the fetched spec, to preview a release before committing its fingerprint. The `unstable` (or `master`) token in place of a version resolves the newest master build. `--manifest <path>` reads a different manifest, for a what-if run.
 
 ```bash
-# All filed server-upgrade issues, by state. Closed-as-"not planned" is the
-# false-positive signal (the /server-upgrade run that skipped should NOT have
-# filed); closed-as-completed = a real finding we fixed.
+node scripts/generate/findings-candidates.js <from> <to> [--floor <v>] [--root <dir>] [--manifest <path>] [--fetch] [--no-opportunities] [--stdout]
+```
+
+## Version tiers and the floor
+
+JellyRock picks endpoints by server API tier with `if m.getApiVersion() >= N`. [`jellyfin-version-boundaries.yml`](../dev/jellyfin-version-boundaries.yml) maps each tier to server versions, and [`version-boundaries.cjs`](../../scripts/lib/version-boundaries.cjs) reads it:
+
+| Tier | Servers | Status |
+| --- | --- | --- |
+| 1 | 10.7.0 to 10.8.13 | Frozen |
+| 2 | 10.9.0 and later | Active |
+
+Two facts shape the design:
+
+- **Old server lines are frozen.** 10.8.13 is the last 10.8 release, so no upstream change can break an endpoint used only on tier 1.
+- **The floor never rises.** JellyRock supports 10.7.0 for good, so tier 1 calls are intended, and a new feature may add one. Old-endpoint usage is not debt here.
+
+Each manifest endpoint records the tiers it serves as `minApiVersion` and `maxApiVersion`, inferred from the code's dispatch branches. A change in a release counts only for endpoints whose range includes that release's tier. Because every new release lands in the active tier, a frozen tier never appears in a diff, and no allowlist is needed.
+
+`serverToTier()` resolves a release candidate to its base release's tier and a master datestamp to the active tier. Every check on a version string goes through one predicate, `isReleaseVersionBase()` in [`signals-fetch.cjs`](../../scripts/lib/signals-fetch.cjs), which accepts two segments (`12.0`) and three (`10.11.8`). A private three-segment regex once made `serverToTier('12.0')` return `null`, and every breaking change on a `[1, ∞)` endpoint was hidden as `frozen-skip` (fixed in #924). A Jellyfin major-version jump needs no special case beyond that: the active tier has no upper bound.
+
+Adding a tier is the [`/new-api-version`](../../.claude/skills/new-api-version/SKILL.md) skill's job. It keeps the boundary map and its BrightScript twin `resolveApiVersion()` (in `source/utils/misc.bs`) in step, and `npm run lint:apiversion-consistency` fails when they disagree. That lint parses the `.bs` with the BrighterScript AST, so no Roku is needed.
+
+## The three checks
+
+| Check | Question | Compares | Catches |
+| --- | --- | --- | --- |
+| Forward | Did something we use change in this release? | The diff from the last reviewed version to the new one | A break on current servers |
+| Backward (`coverage-gap`) | Do we call something the floor server lacks? | The manifest against the 10.7.0 fingerprint | A new feature that fails on the oldest servers because it has no guard or dispatch branch |
+| Symmetry (`symmetry-advisory`) | Do we gate an operation to newer tiers that the floor also serves? | The manifest against the 10.7.0 fingerprint | An operation wired for one tier only, which may be missing its old-server fallback |
+
+The backward and symmetry checks split the manifest on one test (`rangeIncludes()` for the floor tier). Backward takes the endpoints whose range includes the floor and flags those absent from the floor spec. Symmetry takes the newer-tier endpoints and flags those present in it. So they never report the same endpoint, and an endpoint that is newer-tier and absent from the floor (a real 10.9+ feature) is flagged by neither.
+
+Both over-report in known ways, which the agent resolves by reading code. A capability guard such as `supportsMediaSegments()` is not a version branch, so the manifest tags its endpoint `[1, ∞)` and the backward check flags it. A tier 2 endpoint whose tier 1 twin is a different path (`GET /items` against `/Users/{}/Items`) trips the symmetry check. The recurring cases of both are recorded in [the endpoint-availability ledger](#the-endpoint-availability-ledger) so they stop reappearing.
+
+How the forward check matches:
+
+- Endpoints match on normalized path plus method, because one path can appear with different methods and tier ranges (`/items/{}` has a tier 1 `DELETE` and a tier 2 `GET`). A method the manifest records as `UNKNOWN` matches on path alone. Normalization is `normalizeSpecPath()` in `scripts/lib/spec-path.cjs`, shared with the filer.
+- Fields match by name without regard to case: the app sends PascalCase and the spec defines camelCase.
+- An enum change has no field name, so the schema name of the enum is matched against the field names we read. That catches `MediaType`-style enums and misses `BaseItemKind`-style ones; the agent covers the gap.
+- Breaking kinds are `endpoint-removed`, `param-removed`, `param-changed`, `requestbody-changed`, `response-changed`, `field-removed`, `field-retyped` and `enum-changed`. An `endpoint-added` the app does not use is an `opportunity` (off with `--no-opportunities`). Purely additive kinds (`param-added`, `field-added`) and changes to things we don't use are dropped and counted in the run summary.
+
+[`.api-watch/suppressions.yml`](../../.api-watch/suppressions.yml) holds accepted-churn rules. Every predicate in a rule must match, and the first matching rule wins. A suppressed candidate stays in the report with `suppressed: true` and `suppressedBy`, and `needsInvestigation: false`, so nothing disappears without a trace.
+
+## The data report
+
+`findings-candidates.json` is the contract between the scripts and the agent. Each candidate carries enough to act on without re-deriving anything:
+
+| Field | Values and meaning |
+| --- | --- |
+| `type` | `breaking`, `opportunity`, `coverage-gap` or `symmetry-advisory` |
+| `change.kind` | One of the diff kinds above, or `coverage-gap` or `coverage-symmetry` for the floor checks |
+| `change` locator | `path` and `method` for an endpoint change; `schema` and `name` for a field; `name` and `in` for a parameter |
+| `change.detail` | A readable summary; a field retype reads `<Schema>.<field>: <old type> → <new type>` |
+| `change.renameCandidates` | On `param-removed` and `field-removed` only, always an array: additions in the same scope that could be the rename, same-signature ones first. An empty array suggests a real removal; the agent decides. |
+| `appUsage` | `used`, `apiVersionRange` and `sites`, the source files that use it |
+| `relevance` | `active-tier`, `frozen-skip`, `floor-coverage`, `floor-symmetry`, or `floor-known` for a finding the ledger resolves (with `floorHandling`) |
+| `severityGuess` | The script's first guess; the agent overrides it |
+| `needsInvestigation` | Whether the agent must look at it |
+| `suppressed`, `suppressedBy` | Set by a suppression rule |
+
+## What the agent judges
+
+The agent reads each candidate's `appUsage.sites` and resolves the cases a script cannot:
+
+1. **A contract break is not always a runtime break.** A retype or a nullable change is usually harmless given the `?? default` pattern and dynamic typing, but sometimes it breaks silently.
+2. **A fallback may cover it.** An endpoint "removed" can be covered by a dispatch branch or a capability guard for the affected servers.
+3. **Spec regeneration artifacts.** Reordering and schema refactors that change nothing.
+4. **Enum changes** on an enum the app switches on (`BaseItemKind`, stream `Type`).
+5. **Graceful degradation or a real break** when a field disappears.
+6. **Whether an opportunity is worth it:** a new endpoint that fills a real feature gap, or not.
+7. **Symmetry advisories:** whether a one-tier operation is missing its fallback, or is a newer-server feature on purpose.
+8. **A removal can expose an older behavior change.** Before calling a removal cleanup, the skill reads the server's controller at the `from` version: a parameter can stop working releases before it leaves the spec (see [Known limitations](#known-limitations-what-this-pipeline-cannot-catch)).
+
+## Filing: scaffold, plan, execute
+
+[`server-upgrade.js`](../../scripts/server-upgrade.js) bridges the agent and GitHub in three commands, so the agent never touches GitHub and the script never judges:
+
+```bash
+node scripts/server-upgrade.js scaffold --report <findings-candidates.json> [--out <verdict-template.json>]
+node scripts/server-upgrade.js plan --report <findings-candidates.json> --verdicts <filled.json> [--plan-out <plan.json>] [--no-dedup]
+node scripts/server-upgrade.js execute --plan <plan.json> [--digest <issue#>] [--close-digest] [--handoff-dir <dir>]
+```
+
+| Command | What it does | Writes to GitHub |
+| --- | --- | --- |
+| `scaffold` | Lists every candidate with `needsInvestigation` in a verdict template, each keyed by a `findingKey` the script derives. The agent fills `real`, `severity`, `recommendedAction` (`file`, `skip` or `monitor`), `labels`, `rationale` and `draftIssueBody`. | No |
+| `plan` | Joins the verdicts back by `findingKey`, searches GitHub for existing issues (read-only) and sorts each finding into `create`, `comment`, `reopen`, `skip`, `monitor`, `missing-verdict` or `invalid-verdict` | No |
+| `execute` | Creates, comments on or reopens the issues, links each as a sub-issue of the digest, rewrites the digest with the verdict checklist and adds `server-upgrade:triaging`. With `--close-digest` it closes the digest, but only when no `missing-verdict` or `invalid-verdict` is left. It writes a run summary to `.claude/handoffs/`. | Yes |
+
+Why it is shaped this way ([ADR 0008](../adr/0008-server-upgrade-issue-filing.md)):
+
+- **The dedup key never includes the version.** `findingKey` is the kind plus the locator (normalized path and method, `Schema.field`, or the enum schema). A concern that comes back in a later release comments on or reopens its issue. Every `coverage-gap` and symmetry advisory is recomputed on every run, so a version-scoped key would refile the same issue each release. The issue title reads `[server-upgrade] <kind label>: <locator>`, and dedup confirms a match on that part.
+- **The script owns the verdict template**, so the agent cannot invent a key that doesn't match, and a candidate left without a verdict shows up as `missing-verdict` in place of vanishing.
+- **Labels by type:** `breaking` and `coverage-gap` get `server-upgrade` and `bug`; `opportunity` and `symmetry-advisory` get `server-upgrade` and `enhancement`. The agent can add more. The skill's first step creates the three `server-upgrade` labels if they are missing.
+
+### The trust ratchet
+
+Every finding class is human-gated: running `execute` is the batch approval, once per release. `AUTO_FILE_CLASSES` in `server-upgrade.js` is empty, and every action carries `autoFileEligible: false`. A false-positive issue costs a small project's tracker trust, so a class graduates only on a measured track record ([ADR 0010](../adr/0010-server-upgrade-phase5-maturation.md)).
+
+Graduating a class lets its `create` actions skip the confirmation inside a human-run `execute`. It never adds auto-filing to CI: a candidate filed without the agent's reading would be exactly the false positive the reading exists to catch.
+
+The suggested bar is at least 8 issues filed in the class across at least 3 releases, with a false-positive rate under 10%. As of 2026-10-10 two finding issues have been filed (#925, #926), both closed as completed, so no class is near the bar. For the rate to mean anything, close a false alarm as **Close as not planned**, never as completed. This query measures it:
+
+```bash
 gh issue list --label server-upgrade --state all --limit 200 \
-  --json number,title,state,stateReason,labels,closedAt \
+  --json number,title,stateReason \
   | jq '
-    map(select(.title | startswith("[server-upgrade]"))) as $all
+    map(select(.title | startswith("[server-upgrade]")) | select(.title | test("release triage") | not)) as $all
     | ($all | length) as $total
-    | ($all | map(select(.stateReason == "not_planned")) | length) as $fp
+    | ($all | map(select((.stateReason // "") | ascii_downcase == "not_planned")) | length) as $fp
     | { total: $total, falsePositives: $fp,
         fpRate: (if $total == 0 then null else ($fp / $total) end) }'
 ```
 
-To break the rate down per class, partition by the title's kind-label prefix
-(`endpoint removed:`, `floor coverage gap:`, `coverage symmetry:`, `new
-endpoint:`, …) before the ratio. Note the convention to establish *first*: when
-a maintainer closes a `[server-upgrade]` issue because it was a false alarm, they
-must close it **as "not planned"** (not "completed") — that state-reason is the
-load-bearing signal this query keys on. (A `false-positive` label is a fine
-belt-and-suspenders but the query above keys on `stateReason`.)
+To split it by class, group on the kind label that follows `[server-upgrade]` in the title (`endpoint removed:`, `floor coverage gap:`, `coverage symmetry:`, `new endpoint:` and the rest of `KIND_LABEL`). Graduating a class is one line, `export const AUTO_FILE_CLASSES = new Set(['<class>']);`, plus a `/log decision` with the measured rate. `opportunity` is the safest first candidate, since a wrong enhancement does little harm. `coverage-gap` is the worst, because capability guards make it over-report.
 
-Once the bar is met for a class, graduation is one line:
-`export const AUTO_FILE_CLASSES = new Set(['<class>']);` in
-[`server-upgrade.js`](../../scripts/server-upgrade.js) — plus a `/log decision`
-recording the observed rate that justified it. `opportunity` is the most natural
-*first* candidate (an over-filed enhancement is low-harm vs a wrong `bug`);
-`coverage-gap` is the *worst* (the `/audio/{}/lyrics` capability-guard coarseness
-is a structural FP source), and `symmetry-advisory` is brand-new with no track
-record. None graduate today.
+## The release digest
 
-### (3) Dry-run / preview (`--fetch`, `--manifest`)
+The [tracker workflow](../../.github/workflows/server-upgrade-tracker.yml) runs daily at noon UTC, or by hand with a `version` input. It runs [`server-upgrade-tracker.js`](../../scripts/server-upgrade-tracker.js) and keeps one digest issue per server version, titled `[server-upgrade] Jellyfin <version> — release triage` and labeled `server-upgrade:tracker`. Daily, because Jellyfin can ship more than one hotfix in a week, and a caught-up run stops after a version compare.
 
-[`findings-candidates.js`](../../scripts/generate/findings-candidates.js) gained two
-CLI flags so a maintainer (or a validation pass) can run the full report against
-*any* inputs without mutating the committed tree:
+The script compares the latest stable release (`fetchJellyfinVersions().stable`, which excludes release candidates) with `latest_acknowledged` in the `jellyfin-server-stable` signal row. When a newer stable exists, it builds that version's fingerprint in memory and runs the same report the join does, reading the same committed fingerprints, manifest, suppression rules and ledger, so CI's counts match a local run. It writes nothing to the repo.
 
-- `--fetch` — for any version lacking a committed fingerprint, build one
-  IN-MEMORY from the fetched spec (`resolveFingerprint` prefers the committed
-  anchor, falls back to `fetchSpec` + `buildFingerprint` — the same ephemeral path
-  the Phase-4 tracker uses). Lets you preview a brand-new release's *full* report
-  (not just the tracker's counts) before committing its fingerprint. Only the
-  gitignored raw-spec cache is touched.
-- `--manifest <path>` — read the demand manifest from an explicit path instead of
-  the committed one. For what-if / historical simulation (e.g. reconstructing the
-  manifest as it was before the V2 split — the `/Users/{userId}/*` family
-  unbounded as `V1` code would have had it — to confirm the system would have
-  flagged those removals at the 10.9.0 release: it does, as 18 active-tier
-  `endpoint-removed` candidates). Production always uses the committed manifest
-  (current code).
+| Action | When | What the workflow does |
+| --- | --- | --- |
+| `none` | No stable release newer than `latest_acknowledged` | Nothing |
+| `clean` | Newer release, and no candidate needs investigation | Opens the digest, comments that it is clean, and closes it, as a record. This is the only digest CI closes. |
+| `triage` | Newer release with at least one candidate to investigate, or the report could not be built | Opens the digest, or refreshes its body while it is open and not yet triaged |
 
-These are the same primitives Phase 6's CI reuses to render the per-version
-report ephemerally.
+A `clean` release can still carry `floor-known`, `frozen-skip` or suppressed candidates: only `needsInvestigation` counts. When the spec fetch fails or a committed fingerprint is missing, the digest says so and announces the release without counts, because it cannot claim the release is clean.
 
-## Phase 6 — implementation notes (built; kept as the build record)
+The workflow finds this version's digest by its exact title among all `server-upgrade:tracker` issues, open or closed, since `gh --search` would mangle the brackets and dash in the title. Once `/server-upgrade` adds `server-upgrade:triaging`, CI leaves the digest alone. A candidate-bearing digest is closed only by a person or by `execute --close-digest`. If someone closes it before triage, CI leaves it closed. Clean digests outlive the 90-day retention of GitHub Actions logs, so each release keeps a record of what the mechanical pass found ([ADR 0011](../adr/0011-server-upgrade-phase6.md)).
 
-> **Built 2026-05-30.** A record of *how* Phase 6 was implemented. Phase 6 is the
-> issue-model maturation: the per-finding issue burst + single rolling tracker
-> become ONE per-version release-triage *digest* with per-finding *sub-issues*,
-> and the recurring floor findings self-resolve via a validated availability
-> ledger. Two independent sub-features.
+The workflow authenticates as the JellyRock GitHub App, so the installation's permissions apply. The workflow's `permissions:` block (`contents: read`, `issues: write`) records the intent. The workflow never writes the journals; `/catchup` updates `latest_upstream` and `last_checked`.
 
-### (1) The endpoint-availability registry (the recurring-floor-findings fix)
+### The diff anchor trails clean releases
 
-The backward + symmetry checks fire on **5 standing floor findings every run** on
-the real manifest — `GET /audio/{}/lyrics`, `GET /mediasegments/{}`,
-`GET /quickconnect/enabled`, `GET,POST /quickconnect/initiate`, and the
-`GET /items` symmetry advisory. An audit confirmed **none are bugs** (all degrade
-gracefully or are version-guarded), yet they recur forever because the `V1`/`V2`
-two-tier model is too coarse to express sub-tier introduction versions
-(`MediaSegments` lands at 10.10, Lyrics at 10.9, `QuickConnect` at 10.8 — all *inside*
-the `V2` tier), and the AST manifest tags each `[1, ∞)` because there is no literal
-`getApiVersion() >= N` branch around it. The decisive proof: **`MediaSegments` has a
-real `supportsMediaSegments()` guard and still flagged** — because the guard lives
-in Layer 2, not an `ApiClient` version branch.
+`latest_acknowledged` is the diff anchor: the last version a maintainer triaged with `/server-upgrade`, which commits that version's fingerprint and moves the signal row. A clean release closes its digest without moving it, so the anchor can sit several releases behind. That costs nothing, because the diff is point to point. Two things keep the gap from reading as neglect ([ADR 0015](../adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md)):
 
-1. **A validated disposition ledger, not a catalog.** The committed
-   [`jellyfin-endpoint-availability.yml`](../dev/jellyfin-endpoint-availability.yml)
-   records, per post-floor endpoint, its `minServer` (documentary) + the old-server
-   `handling` (`version-guard` | `dispatch-sibling` | `sdk-dispatch` |
-   `graceful-degradation`). The floor check (`applyFloorAvailability` in
-   [`findings-candidates.js`](../../scripts/generate/findings-candidates.js))
-   marks a registered coverage-gap/symmetry `relevance: floor-known`,
-   `needsInvestigation: false` — it stays in the report as an audit trail but drops
-   out of the actionable set (mirrors suppression, but distinct: `suppressed`
-   stays false). The 5 are floor-known now; steady-state floor noise is **zero**.
-2. **Completeness without relying on docs.** The docs are NOT the source of
-   completeness (they're not comprehensive — versioning §4 listed only
-   `MediaSegments`). The **spec-derived floor check is the enumerator** (a
-   coverage-gap *is* "an endpoint we use absent from the floor spec"); the registry
-   is the disposition ledger. An UNREGISTERED post-floor endpoint keeps flagging
-   `needsInvestigation`, so a new one can't hide — and it surfaces in the next
-   per-version digest as a normal candidate, blocking its clean auto-close.
-   Handling/`minServer` are sourced from the **code audit** (authoritative), docs
-   only as cross-reference.
-3. **Regression-safe via a lint, not a blunt mute.** Suppressing these via
-   `suppressions.yml` was rejected — a permanent mute would *hide a regression*
-   (e.g. someone deletes the `supportsMediaSegments()` guard → the endpoint really
-   would 404 on old servers). Instead
-   [`endpoint-availability-check.cjs`](../../scripts/lint/endpoint-availability-check.cjs)
-   (npm `lint:endpoint-availability`, in the main lint chain) validates each
-   entry's CODE claim: `version-guard` → the symbol must exist in `source/*.bs`;
-   `dispatch-sibling` → the sibling path must be a floor-tier manifest endpoint;
-   plus every entry's endpoint must still be in the manifest (no dead entries). If
-   a guard is removed, the lint FAILS in CI → restore it or drop the entry, and the
-   floor finding correctly resurfaces. (Reconciles with the `apiVersion tiers
-   inferred, not hand-listed` decision: the manifest stays purely inferred from the
-   AST; the ledger is a *separate*, hand-maintained-but-CI-validated input to the
-   floor check, never written into the manifest.)
-4. **Why not finer manifest tiers / app-code guards.** The two-tier model can't
-   express "10.10+", and adding explicit guards to the 3 unguarded-but-graceful
-   endpoints (Lyrics, `QuickConnect` ×2) would either change *deliberate* fail-open
-   behavior (`QuickConnect`) or need on-hardware testing — out of scope for a
-   tooling-only PR. The ledger clears all 5 with no app/behavior change.
-   **Shipped (post-Phase-6):** the proactive PR-time floor lint
-   ([`floor-coverage-check.js`](../../scripts/lint/floor-coverage-check.js), npm
-   `lint:floor-coverage`) now catches a *new* floor gap from our own commits without
-   waiting for a Jellyfin release. It reuses the same `backwardFindings` /
-   `symmetryFindings` / `applySuppressions` / `applyFloorAvailability` functions as the
-   digest, so its residual == the digest's floor actionable set: an unregistered
-   `coverage-gap` FAILs the PR (exit 1), a `symmetry-advisory` only warns. It runs in
-   CI via the combined [`_lint-floor-system.yml`](../../.github/workflows/_lint-floor-system.yml)
-   reusable, which ALSO gives `lint:endpoint-availability` its first CI home (it had
-   previously run only in the local `npm run lint` aggregate).
-   **Update (post-Phase-6):** Lyrics was subsequently given a real
-   `supportsLyrics()` version-guard (`source/api/items.bs`), so its ledger entry is
-   now `version-guard` (CI-validated), not `graceful-degradation` — leaving
-   `QuickConnect` ×2 as the remaining deliberate graceful/fail-open cases (their
-   handling is correct as-is; see the Quick Connect analysis in
-   [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md)).
-5. **Version-gated parameters (added 2026-09-17).** The spec diff sees a parameter
-   only when it is added or removed. It cannot see a server that stops ACTING on
-   one: 10.11 ignored Next Up's `DisableFirstEpisode` for a whole release while the
-   parameter stayed in the spec, and the digest only noticed when 12.0 deleted it
-   (#925). The ledger's `parameters:` section records such a parameter, the servers
-   that act on it, and its `version-guard` symbol. The lint makes a stronger claim
-   for a parameter than for an endpoint: every `.bs` file under `source/` or
-   `components/` whose code (not comments) names the parameter must also call the
-   guard, and an entry nothing sends any more fails as stale. The reason is that
-   request parameters are built outside the API layer, where the manifest does not
-   look (`requestFields` covers `source/api/` body keys only). The floor check does
-   not read this section; it is a lint-only ledger. `npm run jellyfin:matrix` is the
-   tool for the live half of verifying one. The rule for adding one is in
-   [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) §4.
-   **The name-based lint is also what bounds the section.** It works while the name
-   is specific to the behavior, and it cannot hold a gate on a COMBINATION of
-   otherwise-ordinary parameters — 12.0 started honoring `parentId` for
-   `IncludeItemTypes=BoxSet` queries, and registering either name would fail nearly
-   every file in the app, which sends both for unrelated and always-correct reasons.
-   Such a gate is recorded in §4's table with its guard symbol and left out of the
-   ledger; expressing it would need the lint to match a call SITE rather than a name.
+- The tracker passes the digest list to the renderer (`--tracker-issues`). `clearedThroughFrom()` finds the newest closed digest below this release, and the body shows a "Mechanically cleared through `<X>`" line under the "Diff baseline (last full review)" row.
+- `/catchup` calls the `jellyfin-server-stable` row stale only while an open digest exists (`signalStaleness()` in [`signal-staleness.cjs`](../../scripts/lib/signal-staleness.cjs)), so clean releases never nag. Offline, it falls back to comparing the version strings.
 
-### (2) The per-version release-triage digest model
+## The endpoint-availability ledger
 
-Replaces Phase 3's per-finding issue burst + Phase 4's single rolling tracker.
-Digest renderers + sub-issue mechanics live in
-[`server-upgrade.js`](../../scripts/server-upgrade.js) (the filer, the natural home
-for issue-body rendering); the Phase-4 tracker imports them.
+The two-tier model cannot say "10.10 and later", so the floor checks would flag the same handled endpoints on every run. [`jellyfin-endpoint-availability.yml`](../dev/jellyfin-endpoint-availability.yml) records, for each endpoint newer than the floor, how the app handles old servers. `applyFloorAvailability()` marks a listed finding `floor-known` with `needsInvestigation: false`: it stays in the report for the record and leaves the to-do list. An endpoint that is not listed keeps flagging, so the spec-derived floor check, not the ledger, decides what is found.
 
-1. **Two issue kinds, one trust seam.** The **per-version digest** (label
-   `server-upgrade:tracker`, found by its version-stamped title) is CI's
-   autonomous, judgment-free summary surface. The **per-finding promotion** (label
-   `server-upgrade`, the existing version-independent `findingKey` dedup) is the
-   opt-in durable work item, filed by the human-gated skill as a native GitHub
-   **sub-issue** of the digest (`gh api .../sub_issues`, resolving the child's db
-   id first; best-effort — a link failure is recorded, never aborts). Skip/monitor
-   verdicts become inline checked-off notes on the digest.
-2. **Lifecycle (decided + confirmed this session).** `none` (caught up) → do
-   nothing; **Phase 4's close-on-caught-up is removed** (acknowledging ≠ work
-   done). `clean` (0 candidates) → CI opens-then-closes the digest as a persistent
-   audit record (the ONLY CI close — a judgment-free claim). `triage` (≥1
-   candidate, or degraded) → CI opens/refreshes the digest body until first triage,
-   detected by the `server-upgrade:triaging` label the skill adds, then HANDS OFF
-   (never overwrites or closes). A candidate-bearing digest is closed only by a
-   human/the skill (and the filer's `--close-digest` refuses to close while any
-   `missing-verdict`/`invalid-verdict` remains). Digests STACK per version as a
-   per-release audit trail; in steady state the close-plus-`/done` ritual prevents
-   pile-up, and a backlog shows each newer digest as a forward superset of the prior.
-3. **Open-then-close clean (decided this session): persistent audit records.**
-   Clean releases get a closed digest rather than staying silent — these issues are
-   the durable audit trail of what the mechanical pass found for each release,
-   surviving GitHub Actions' 90-day log retention.
-4. **The script/workflow seam.** The tracker
-   ([`server-upgrade-tracker.js`](../../scripts/server-upgrade-tracker.js)) computes
-   the full report ephemerally (now passing the availability ledger so CI counts
-   match a local run) and emits a decision JSON (`action ∈ none|clean|triage` +
-   title + body-file); the workflow
-   ([`server-upgrade-tracker.yml`](../../.github/workflows/server-upgrade-tracker.yml))
-   does the open/refresh/close + triaged-hands-off `gh` plumbing, matching the digest
-   by exact title (not `--search`, which would mangle the bracketed/em-dash title).
-5. **Tests.** `endpoint-availability.test.js` (loader schema + the lint's
-   guard/sibling/stale checks, offline via `spawnScript`); `floor-coverage-check.test.js`
-   (the proactive PR-time lint, offline via `spawnScript`: registered-clean,
-   unregistered-gap-fails, symmetry-warns-not-fails, suppression clears, `--json` shape,
-   missing-floor-fingerprint → exit 2); `findings-candidates.test.js`
-   (`applyFloorAvailability` floor-known + unregistered-still-flags + `floorKnown`
-   counts); `server-upgrade.test.js` (digest identity + both body renders +
-   `attachSubIssue` + `executePlan` with a digest: sub-issue attach, the
-   `server-upgrade:triaging` label edit, close-guard); `server-upgrade-tracker.test.js` (the none/clean/triage
-   decision matrix + the CLI emitting each, fully offline). No network, no GitHub.
+| Endpoint | `minServer` | `handling` |
+| --- | --- | --- |
+| `GET /mediasegments/{}` | 10.10.0 | `version-guard` (`supportsMediaSegments`) |
+| `GET /audio/{}/lyrics` | 10.9.0 | `version-guard` (`supportsLyrics`) |
+| `GET /items/{}/collections` | 12.0.0 | `version-guard` (`supportsItemCollections`) |
+| `GET /quickconnect/enabled` | 10.8.0 | `graceful-degradation`: a 404 on 10.7 leaves the Quick Connect button visible, on purpose |
+| `GET,POST /quickconnect/initiate` | 10.8.0 | `sdk-dispatch`: `ApiClient.BuildInitiateQuickConnectRequest()` picks the method by tier |
+| `GET /items` | 10.9.0 | `dispatch-sibling`: tier 1 uses `/Users/{}/Items` |
 
-### Migration note (single rolling tracker → per-version digests)
+The file itself is authoritative; this table is a summary of it on 2026-10-10. `minServer` is context, not something the lint checks.
 
-Code-only — there was **no live issue to migrate**. The Phase-4 tracker workflow
-only ever existed on the `feat/server-upgrade-automation` branch, never on `main`,
-so scheduled CI never ran it and no rolling tracker issue exists in the repo.
+`npm run lint:endpoint-availability` ([`endpoint-availability-check.cjs`](../../scripts/lint/endpoint-availability-check.cjs)) checks each entry's claim about the code: a `version-guard` symbol must exist in `source/` code (comments do not count), a `dispatch-sibling` must be a floor-tier manifest endpoint, and every entry's endpoint must still be in the manifest. If someone removes a guard, the lint fails, and the floor finding comes back. That is why the ledger is not a suppression rule: a mute would hide the regression. The manifest stays purely inferred from the code; the ledger is a separate input to the floor check.
+
+### Parameters whose meaning changed
+
+A spec diff sees a parameter only when it is added or removed, not when a server stops acting on it. 10.11 ignored Next Up's `DisableFirstEpisode` for a whole release while the spec still listed it, and the pipeline noticed only when 12.0 deleted it (#925). The ledger's `parameters:` section records such a parameter, the servers that honor it and its `version-guard` symbol.
+
+The lint holds a parameter to a stronger rule than an endpoint. Every `.bs` file under `source/` or `components/` whose code names the parameter must also call the guard, and an entry nothing sends any more fails as stale. Request parameters are built outside the API layer, where the manifest does not look. The floor check does not read this section. `npm run jellyfin:matrix` checks the live half against real servers, and [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md#parameters-whose-meaning-changed) has the rule for adding one.
+
+A name-based lint works only while the name is specific to the behavior. 12.0 started honoring `parentId` for `IncludeItemTypes=BoxSet` queries, and listing either name would fail nearly every file in the app, which sends both for unrelated reasons. A gate on a combination like that is listed in the guide's [endpoint table](../dev/jellyfin-server-versioning.md#endpoints-newer-than-107) with its guard, and kept out of the ledger.
+
+### The floor check on every PR
+
+`npm run lint:floor-coverage` ([`floor-coverage-check.js`](../../scripts/lint/floor-coverage-check.js)) runs the backward and symmetry checks against our own commits, without waiting for a Jellyfin release. It reuses `backwardFindings()`, `symmetryFindings()`, `applySuppressions()` and `applyFloorAvailability()`, so what it reports is exactly the floor part of a digest. An unlisted `coverage-gap` fails the PR (exit 1), a symmetry advisory only warns, and a missing floor fingerprint exits 2.
+
+CI runs it, with `lint:endpoint-availability`, `lint:apiversion-consistency` and the manifest drift check, in [`_lint-floor-system.yml`](../../.github/workflows/_lint-floor-system.yml), when a PR touches code or the pipeline's inputs.
+
+## Artifacts and caching
+
+| Artifact | Where | Why |
+| --- | --- | --- |
+| `api-usage-manifest.json` | Committed | A reviewer sees each change as a diff; `docs:api-manifest:check` fails on drift |
+| Version-boundary map | Committed | The source of truth for tiers; changes only when a tier is added |
+| Raw specs (about a megabyte each) | `.api-watch/cache/`, ignored by git | Jellyfin's archive keeps every version, so a refetch is always possible |
+| Spec fingerprints | Committed under [`spec-fingerprints/`](spec-fingerprints/): the 10.7.0 floor, 10.11.8 and 12.0 | The diff anchors, reproducible offline |
+| Diff and data report | The same cache | Rebuilt on every run |
+| What was reviewed and filed | GitHub issues and `signals-backlog.md` | The ledger that already exists |
+
+A fingerprint keeps a spec's structure and drops the rest: for each operation, its parameters (name, location, type, required, with `$ref`s resolved), the type signatures of its request body and of its success response; for each component schema, its property names, types and enum values. Descriptions, summaries and examples are stripped, which removes Jellyfin's cosmetic churn between releases. `npm run docs:spec-fingerprints:check` rebuilds each committed fingerprint from its spec (fetching it if it isn't cached) and fails on drift.
+
+A committed fingerprint means a person reviewed that version. Only a `/server-upgrade` triage of a stable release commits one (`spec-fingerprint.js <version>`); CI and pre-release runs build theirs in memory.
+
+Jellyfin's archive serves every version back to 10.7.0 at a permanent URL, so there is no mirror repo: the cache and the committed fingerprints are enough.
+
+## Pre-release channels (RC + unstable/master)
+
+The pipeline does not care what a version string means, so a maintainer can run it against a release candidate or a master build before the release ships, and diff again as it changes. This is manual (`/server-upgrade <rc-or-unstable>`); the daily tracker stays on stable releases.
+
+| Channel | Archive folder | File name | Changes? |
+| --- | --- | --- | --- |
+| Stable and RC | `/openapi/stable/` | `jellyfin-openapi-<version>.json`, with `-rcN` for a candidate (`10.11.8`, `12.0`, `12.0-rc4`) | Never, per build |
+| Unstable (master) | `/openapi/unstable/` | `jellyfin-openapi-<datestamp>.json` | Never, per build |
+| Rolling pointer | `/openapi/` | `jellyfin-openapi-unstable.json` | Yes: never used as a baseline |
+
+- **Nothing is committed.** Pre-release fingerprints are built in memory (`findings-candidates.js --fetch`), which keeps a committed fingerprint meaning "a reviewed stable release".
+- **Builds are pinned, never the pointer.** The `unstable` or `master` token resolves through `fetchLatestUnstable()` to the newest datestamped build and records that datestamp, so a run can be repeated and diffed again.
+- **No GitHub issues.** A pre-release run writes a handoff note in `.claude/handoffs/` with its verdicts and a "fix proactively" list. The RC baseline for the next diff is `latest_acknowledged` in the `jellyfin-server-rc` signal row; a master datestamp lives in the handoff note, since master moves too fast for a signal row.
+- **Run it again on the final release.** A release candidate can still change, and the stable run is the one that files issues.
+
+If a pre-release shows a break that needs a new tier, see [Version tiers and the floor](#version-tiers-and-the-floor).
+
+## Known limitations: what this pipeline cannot catch
+
+The pipeline compares signatures: which endpoints exist, which parameters and fields they declare, and their types. Two kinds of break fall outside that, by its nature. A clean report means no signature changed, nothing more.
+
+**1. A behavior change behind an unchanged signature.** A release can keep an endpoint's parameters identical and change what it returns. The diff shows nothing and CI calls the release clean.
+
+The worked example is [#784](https://github.com/jellyrock/jellyrock/issues/784). `GET /UserItems/Resume` declares the same 15 parameters in 10.11.8 and 12.0. In 12.0 the server's `IsResumable` test widened from "this item has a playback position" to "or this folder has an in-progress item inside it". Continue Watching went from 4 items to 253, and the series **Resume** button started pointing at a season in place of an episode. (The floor does differ: 10.7.0 serves the endpoint at `/Users/{userId}/Items/Resume` with 14 parameters, and the pipeline does see that. The 12.0 change is the one it can't.)
+
+Two more cases from the 10.11.8 to 12.0 triage:
+
+- **A changed default policy.** 12.0 sets `EnableLegacyAuthorization=false` on upgrade (jellyfin/jellyfin#15559), so `?api_key=`, `X-Emby-Token` and the `Emby` scheme stop authenticating. The spec's `components.securitySchemes` is identical in 10.11.8 and 12.0: the change is server configuration, not a declared contract. It broke our remote-control socket's header-less fallback, fixed in [#920](https://github.com/jellyrock/jellyrock/pull/920).
+- **A parameter that stops working long before it disappears.** 10.11.0 marked Next Up's `disableFirstEpisode` obsolete and stopped reading it, but kept it in the spec. The break surfaced only when 12.0 deleted it ([#925](https://github.com/jellyrock/jellyrock/issues/925)): every 10.11 and later server had shown a **Resume** button on series nobody had started. This is why the skill reads the `from` version's controller before calling a removal cleanup, and why the ledger has a [parameters section](#parameters-whose-meaning-changed).
+
+**2. How we call an endpoint, as opposed to which ones we call.** The manifest's `requestFields` list is flat and repo-wide (`{name, sourceFiles}`, no endpoint), and it scans only `source/api/**/*.bs` (`REQUEST_FIELD_GLOBS`). So nothing can compare the parameters we send with the parameters an endpoint declares. All four of #784's call sites live under `components/`. Two consequences:
+
+- **Parameters we send that don't exist.** Each of #784's call sites sent `recursive`, `SortBy`, `SortOrder` and `Filters` to an endpoint that has never accepted them (the server sets all four itself, the same from 10.7.0 through master). Harmless, but for years they sent readers looking in the wrong place.
+- **Narrowing parameters we leave out.** That endpoint's `mediaTypes` is the only filter a client controls. The web client asks for videos only; we sent nothing, which is what exposed us when the server's default widened.
+
+Closing this needs request fields bound to their endpoint and a scan wider than `source/api/`. It is recorded as tech-debt [`api-usage-manifest-no-per-endpoint-binding`](tech-debt.md#api-usage-manifest-no-per-endpoint-binding), not built, because #784 is one case so far.
+
+**What catches these:** running the app against a pre-release server. #784 was found by pointing a client at a real 12.0 release candidate, not by reading its spec. Keep a pre-release server in the loop for what the report cannot see.
+
+## Decisions
+
+Each decision's alternatives and reasons are in its ADR.
+
+| Decision | Why | Record |
+| --- | --- | --- |
+| The join diffs committed fingerprints, not a live fetch | Reproducible and offline; committing the newest fingerprint is part of acknowledging a release anyway | [ADR 0007](../adr/0007-server-upgrade-anchor-strategy.md) |
+| Committed fingerprints, not raw specs | Anchors a reviewer can diff, without committing a megabyte of vendor JSON per version | This doc |
+| No spec-mirror repo | Jellyfin's archive is already a permanent, complete mirror; a second repo adds CI and token plumbing for no gain | This doc |
+| `apiVersion` tiers inferred from the code, not listed by hand | Old-server support is permanent and new tier 1 calls are legitimate, so a hand-kept legacy list would drift | This doc |
+| The manifest is built with the BrighterScript parser, not grep | Formatting does not change the result | [`api-usage-manifest.md`](api-usage-manifest.md) |
+| Version-independent dedup, a script-owned verdict template, every class human-gated | No duplicate issues across releases, no silently dropped candidate, no false positives filed on faith | [ADR 0008](../adr/0008-server-upgrade-issue-filing.md) |
+| Issues are filed for stable releases only | A release candidate still changes; the stable run files | This doc |
+| Graduating a class relaxes the human gate, never adds CI filing | CI cannot read code, and reading code is what removes false positives | [ADR 0010](../adr/0010-server-upgrade-phase5-maturation.md) |
+| One digest per release with sub-issues, and the ledger for floor findings | A record per release, opt-in issues for real work, and floor findings resolved at the source without hiding a regression | [ADR 0011](../adr/0011-server-upgrade-phase6.md), replacing parts of ADRs 0008 and 0009 |
+| The diff anchor and the "cleared through" line are separate | CI never writes the journals or commits a fingerprint, so the anchor trails clean releases and progress is derived from the digests | [ADR 0015](../adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md) |
+
+## History
+
+Phases 0 to 6 shipped together in #597; later additions have their own PRs.
+
+| Phase | Added | Record |
+| --- | --- | --- |
+| 0 and 0.5 | The API-usage manifest and its `apiVersion` tiers | [`api-usage-manifest.md`](api-usage-manifest.md) |
+| 1 | The boundary map, spec fetch and cache, fingerprints and the diff engine | This doc |
+| 2 | The join: forward and backward checks, tier filtering, suppression rules | [ADR 0007](../adr/0007-server-upgrade-anchor-strategy.md) |
+| 3 | The `/server-upgrade` skill and the filer | [ADR 0008](../adr/0008-server-upgrade-issue-filing.md) |
+| 4 | The CI tracker, first as one rolling issue | [ADR 0009](../adr/0009-server-upgrade-proactive-ci.md) |
+| 5 | The symmetry check, the graduation policy, `--fetch` and `--manifest` | [ADR 0010](../adr/0010-server-upgrade-phase5-maturation.md) |
+| 6 | Per-release digests with sub-issues, and the endpoint-availability ledger | [ADR 0011](../adr/0011-server-upgrade-phase6.md) |
+| Later | The PR-time floor lint (#607); pre-release channels and the tier consistency lint (#610); the anchor split; the ledger's `parameters:` section (#955); two-segment versions (#924) | [ADR 0015](../adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md) for the anchor split |
+
+The rolling tracker of Phase 4 never ran: its workflow reached `main` together with Phase 6, so every `server-upgrade:tracker` issue is a per-release digest.
 
 ## Related
 
-- [`api-usage-manifest.md`](api-usage-manifest.md) — the demand-side manifest
-  (Phase 0/0.5), built.
-- [`api.md`](api.md) — the API client + task pool the manifest is extracted from.
-- [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md)
-  — the version-policy guide; the version-boundary map lives alongside it.
-- [`signals-backlog.md`](../signals-backlog.md) — upstream version watching; the
-  trigger and acknowledgment ledger for this pipeline.
+- [`api-usage-manifest.md`](api-usage-manifest.md): the demand side, what the app calls.
+- [`api.md`](api.md): the API client and task pool the manifest is read from.
+- [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md): the version policy, the tiers and the guards.
+- [`signals-backlog.md`](../signals-backlog.md): upstream version watching, and the acknowledged baselines this pipeline diffs from.

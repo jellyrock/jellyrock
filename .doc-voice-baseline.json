@@ -1307,13 +1307,6 @@
   "docs/architecture/remote-control-longpoll-contract.md": {
     "caps-emphasis": 6
   },
-  "docs/architecture/server-upgrade-automation.md": {
-    "caps-emphasis": 2,
-    "em-dash": 138,
-    "filler": 11,
-    "latin-abbrev": 7,
-    "prose-arrow": 33
-  },
   "docs/architecture/tech-debt.md": {
     "caps-emphasis": 25,
     "em-dash": 420,
