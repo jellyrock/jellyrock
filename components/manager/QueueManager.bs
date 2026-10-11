@@ -568,10 +568,12 @@ end sub
 ' Replace play queue with passed array
 sub set(items)
   ' set() replaces the contents — a shuffle toggle reorders through it — so the viewer's
-  ' version pick stays; a NEW queue starts with clear(), which forgets it.
+  ' version pick and the playing state stay; a new queue starts with clear(), which forgets them.
   versionPreference = m.versionPreference
+  isPlaying = m.isPlaying
   clear()
   m.versionPreference = versionPreference
+  m.isPlaying = isPlaying
   m.queue = items
   for each item in items
     m.queueTypes.push(getItemType(item))
