@@ -196,8 +196,7 @@
     "prose-arrow": 4
   },
   ".claude/skills/new-setting/SKILL.md": {
-    "caps-emphasis": 4,
-    "em-dash": 23
+    "caps-emphasis": 1
   },
   ".claude/skills/pr/AUDIT-LOG.md": {
     "caps-emphasis": 3,
