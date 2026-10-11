@@ -17,8 +17,14 @@
 //   - Every `related-files:` path in docs/architecture/*.md frontmatter
 //     resolves to an existing file (or directory) in the repo.
 //   - Every relative markdown link in docs/architecture/*.md, docs/dev/*.md,
-//     docs/adr/*.md, and docs/decisions.md resolves (skipping http(s):,
-//     mailto:, anchor-only).
+//     docs/adr/*.md, and docs/decisions.md resolves (skipping http(s): and
+//     mailto:). A link with a `#fragment`, to another .md file or to the
+//     same file (`#x`), must also name a heading or an explicit anchor
+//     (`<a id>`, `<a name>`, `<hN id>`) that exists in the target, using
+//     GitHub's slug rule (see headingToAnchor). Line anchors such as `#L12`
+//     and `#L12-L20` are not checked. The same-file check covers the
+//     CLAUDE.md files this script scans, which markdownlint MD051 does not
+//     lint. Files under .claude/ are not scanned.
 //   - Every tech-debt anchor reference (anywhere in scanned files) of
 //     the form `tech-debt.md#<anchor>` resolves to a real heading
 //     anchor in docs/architecture/tech-debt.md. This is the canonical
@@ -54,8 +60,8 @@
 //   --verbose  per-file counts on stdout
 //   --json     emit a single JSON object on stdout: {filesChecked, errorsCount,
 //              errors: [{category, file, message, target}]} where category is
-//              one of "broken-related-file", "broken-link", "stale-anchor",
-//              "progress-frontmatter", "signals-schema-invalid", or
+//              one of "broken-related-file", "broken-link", "broken-anchor",
+//              "stale-anchor", "progress-frontmatter", "signals-schema-invalid", or
 //              "decisions-supersede-chain".
 //              Mutually exclusive with --verbose (verbose is a no-op under
 //              --json). Exit code semantics unchanged.
@@ -112,8 +118,10 @@ const DECISION_VALID_STATUSES = ['accepted', 'superseded', 'withdrawn'];
 
 // ────────────────────────────────────────────────────────────────────
 // Markdown link extraction — relative path links only.
-// Skips: http(s)://, mailto:, #anchor-only.
-// Handles trailing #anchor on relative links (strips before checking).
+// Skips: http(s)://, mailto:, and a bare `#`.
+// Returns {target, fragment} where target is the path part (empty for a
+// same-file `#x` link) and fragment is the text after the first `#` (empty
+// when there is none).
 // ────────────────────────────────────────────────────────────────────
 
 function findMarkdownLinks(content) {
@@ -121,13 +129,13 @@ function findMarkdownLinks(content) {
   const re = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
   let m;
   while ((m = re.exec(content)) !== null) {
-    let target = m[1];
-    if (target.startsWith('http://') || target.startsWith('https://')) continue;
-    if (target.startsWith('mailto:')) continue;
-    if (target.startsWith('#')) continue;
-    target = target.split('#')[0];
-    if (!target) continue;
-    links.push(target);
+    const raw = m[1];
+    if (raw.startsWith('http://') || raw.startsWith('https://')) continue;
+    if (raw.startsWith('mailto:')) continue;
+    const hash = raw.indexOf('#');
+    const target = hash === -1 ? raw : raw.slice(0, hash);
+    if (!target && !raw.slice(hash + 1)) continue;
+    links.push({ target, fragment: hash === -1 ? '' : raw.slice(hash + 1) });
   }
   return links;
 }
@@ -150,37 +158,94 @@ function findMarkdownLinks(content) {
 // Reference form: any URL or path ending in `tech-debt.md#<anchor>`.
 // The anchor capture is permissive (anything after the # up to a word
 // boundary or markdown delimiter) so we catch both slug-style anchors
-// (kebab-case) and section-heading anchors (which may have multiple
-// consecutive hyphens from punctuation in the heading text).
-const ANCHOR_REF_RE = /\btech-debt\.md#([a-z0-9][a-z0-9-]*)(?=[)\s.,;'"`]|$)/gim;
+// (kebab-case) and section-heading anchors, which keep a double hyphen
+// where the heading has punctuation between two spaces, and keep
+// underscores.
+const ANCHOR_REF_RE = /\btech-debt\.md#([a-z0-9][a-z0-9_-]*)(?=[)\s.,;'"`]|$)/gim;
+
+// GitHub's line anchors (`#L12`, `#L12-L20`, `#L12C3-L14C5`) address lines in
+// a file view, not headings, so they are never looked up among the anchors.
+const LINE_ANCHOR_RE = /^L\d+(?:C\d+)?(?:-L\d+(?:C\d+)?)?$/;
+
+// Explicit anchors: `<a id="x">`, `<a name="x">` and `<hN id="x">`.
+const EXPLICIT_ANCHOR_RE = /<(?:a|h[1-6])\b[^>]*?\b(?:id|name)\s*=\s*["']([^"']+)["']/gi;
 
 /**
- * Extract the set of valid anchors from tech-debt.md by hashing each
- * heading text via an approximation of GitHub's heading-to-anchor rule:
- * lowercase, strip backticks/emphasis/most punctuation, replace spaces
- * with hyphens. Conservative — handles the heading shapes used in
- * tech-debt.md today (plain prose + backtick-wrapped slugs).
+ * Turn heading text into the anchor GitHub gives it (github-slugger's rule):
+ * lowercase, drop every character that is not a letter, mark, number,
+ * connector punctuation (which includes `_`), space or hyphen, then turn
+ * each space into a hyphen. Spaces are not collapsed, so "a & b" becomes
+ * "a--b". Inline markup is removed first because GitHub slugs the rendered
+ * text: link syntax keeps its label, HTML tags go, and backticks and `*`
+ * disappear while an underscore is kept. Repeated headings are numbered by
+ * the caller (see extractAnchors).
  */
-function extractTechDebtAnchors(techDebtPath) {
-  if (!fs.existsSync(techDebtPath)) return null;
-  const content = fs.readFileSync(techDebtPath, 'utf8');
+function headingToAnchor(text) {
+  return text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // [label](url) -> label
+    .replace(/<[^>]*>/g, '') // inline HTML tags
+    .replace(/[`*]/g, '') // code span and emphasis markers
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, '')
+    .replace(/ /g, '-');
+}
+
+/**
+ * Collect every anchor a markdown file offers: one per heading (numbered
+ * `-1`, `-2`, ... for repeats, as GitHub does) plus explicit ids and names.
+ * Frontmatter and fenced code blocks are skipped, so a heading-shaped line in
+ * an example is not a target.
+ */
+function extractAnchors(content) {
   const anchors = new Set();
-  const headingRe = /^#+\s+(.+?)\s*$/gm;
-  let m;
-  while ((m = headingRe.exec(content)) !== null) {
-    const anchor = headingToAnchor(m[1]);
-    if (anchor) anchors.add(anchor);
+  const seen = new Map();
+  const prose = [];
+  let fence = null;
+  // GitHub renders YAML frontmatter as a table, so its `#` comments are not headings.
+  const body = content.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
+  for (const line of body.split('\n')) {
+    const f = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fence) {
+      if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
+      continue;
+    }
+    if (f) {
+      fence = f[1];
+      continue;
+    }
+    prose.push(line);
+    const h = line.match(/^ {0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/);
+    if (!h) continue;
+    const base = headingToAnchor(h[1].trim());
+    let slug = base;
+    while (seen.has(slug)) {
+      seen.set(base, seen.get(base) + 1);
+      slug = `${base}-${seen.get(base)}`;
+    }
+    seen.set(slug, 0);
+    anchors.add(slug);
   }
+  let m;
+  const visible = prose.join('\n');
+  EXPLICIT_ANCHOR_RE.lastIndex = 0;
+  while ((m = EXPLICIT_ANCHOR_RE.exec(visible)) !== null) anchors.add(m[1]);
   return anchors;
 }
 
-function headingToAnchor(text) {
-  return text
-    .toLowerCase()
-    .replace(/[`*_~]/g, '') // strip backticks + emphasis chars
-    .replace(/[^a-z0-9\s-]/g, '') // keep only alnum, whitespace, hyphens
-    .trim()
-    .replace(/\s+/g, '-'); // whitespace runs → single hyphen
+const anchorCache = new Map();
+
+/** Anchors of a markdown file, read once per run. */
+function anchorsOf(filePath) {
+  const key = path.resolve(filePath);
+  if (!anchorCache.has(key)) {
+    anchorCache.set(key, extractAnchors(fs.readFileSync(key, 'utf8')));
+  }
+  return anchorCache.get(key);
+}
+
+function extractTechDebtAnchors(techDebtPath) {
+  if (!fs.existsSync(techDebtPath)) return null;
+  return anchorsOf(techDebtPath);
 }
 
 function checkAnchorRefs(filePath, content) {
@@ -240,18 +305,48 @@ function checkRelatedFiles(docPath, content) {
 
 function checkBodyLinks(docPath, content) {
   const links = findMarkdownLinks(content);
-  for (const link of links) {
-    const target = path.resolve(path.dirname(docPath), link);
-    if (!fs.existsSync(target)) {
+  for (const { target: link, fragment } of links) {
+    // A same-file link has no path part; its target is the doc itself.
+    const target = link ? path.resolve(path.dirname(docPath), link) : path.resolve(docPath);
+    if (link && !fs.existsSync(target)) {
       pushError({
         category: 'broken-link',
         file: docPath,
         message: `markdown link target does not exist: ${link}`,
         target: link,
       });
+      continue;
     }
+    checkLinkFragment(docPath, link, fragment, target);
   }
   return links.length;
+}
+
+// A link to a .md file, or to the same file, must land on an anchor that file
+// has. Links to tech-debt.md from elsewhere are left to checkAnchorRefs so one
+// stale slug is not reported twice; a same-file link inside tech-debt.md is
+// checked here, since checkAnchorRefs only sees `tech-debt.md#` references.
+function checkLinkFragment(docPath, link, fragment, target) {
+  if (!fragment || (link && !link.endsWith('.md'))) return;
+  if (LINE_ANCHOR_RE.test(fragment)) return;
+  if (link && path.resolve(TECH_DEBT_PATH) === target) return;
+  if (!fs.statSync(target).isFile()) return;
+  let decoded = fragment;
+  try {
+    decoded = decodeURIComponent(fragment);
+  } catch {
+    // malformed percent-encoding: compare the fragment as written
+  }
+  const anchors = anchorsOf(target);
+  if (anchors.has(decoded) || anchors.has(decoded.toLowerCase())) return;
+  pushError({
+    category: 'broken-anchor',
+    file: docPath,
+    message:
+      `markdown link anchor does not exist: ${link}#${fragment} — ` +
+      `no heading or explicit anchor "${decoded}" in ${path.relative(ROOT_DIR, target)}.`,
+    target: `${link}#${fragment}`,
+  });
 }
 
 // ────────────────────────────────────────────────────────────────────

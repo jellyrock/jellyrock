@@ -315,7 +315,7 @@ a budget of zero. Poll ticks prove themselves from syntax and are never counted.
 inherits the check. An arbitrary wait has no such key: the argument is a property of the
 call site's purpose, and most of the sites are anonymous spec arrows with no stable name
 to key on. The alternative was a `// sleep: <category>` tag on every one, which is the shape
-[Phase 3 already rejected](#the-37-plain-field-waits-and-the-gate-that-keeps-them-honest)
+[Phase 3 already rejected](#the-36-plain-field-waits-and-the-gate-that-keeps-them-honest)
 for the settle waits — annotations that say nothing a reader of the code needs.
 
 A count cannot say WHICH argument a site claims; the table above does that per category.
