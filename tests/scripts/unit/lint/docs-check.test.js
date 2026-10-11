@@ -157,6 +157,190 @@ describe('docs-check', () => {
   });
 });
 
+describe('docs-check — GitHub heading anchors', () => {
+  let dir;
+  const TD = '---\ntopic: tech-debt\n---\n# Tech Debt\n\n';
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const run = (files) => {
+    dir = setup(files);
+    return spawnScript(SCRIPT, [dir, '--json']);
+  };
+  const cats = (stdout) => JSON.parse(stdout).errors.map((e) => e.category);
+
+  it('resolves a tech-debt heading with an em dash by its double-hyphen slug', () => {
+    const { exitCode } = run({
+      'docs/architecture/foo.md': fmDoc(
+        [],
+        '[x](./tech-debt.md#recently-removed--dont-go-searching-for-these)\n',
+      ),
+      'docs/architecture/tech-debt.md': `${TD}## Recently removed — don't go searching for these\n`,
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  it('reports the single-hyphen form of that heading as stale', () => {
+    const { exitCode, stdout } = run({
+      'docs/architecture/foo.md': fmDoc(
+        [],
+        '[x](./tech-debt.md#recently-removed-dont-go-searching-for-these)\n',
+      ),
+      'docs/architecture/tech-debt.md': `${TD}## Recently removed — don't go searching for these\n`,
+    });
+    expect(exitCode).toBe(1);
+    expect(cats(stdout)).toEqual(['stale-anchor']);
+  });
+
+  it('keeps the underscore from a code span in the slug', () => {
+    const files = (ref) => ({
+      'docs/architecture/foo.md': fmDoc([], `[x](./tech-debt.md#${ref})\n`),
+      'docs/architecture/tech-debt.md': `${TD}## Compile-time flags (\`bs_const\`)\n`,
+    });
+    expect(run(files('compile-time-flags-bs_const')).exitCode).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+    const bad = run(files('compile-time-flags-bs_cnst'));
+    expect(bad.exitCode).toBe(1);
+    expect(cats(bad.stdout)).toEqual(['stale-anchor']);
+  });
+
+  it('reports a cross-file link to a missing heading as a broken anchor', () => {
+    const { exitCode, stdout } = run({
+      'docs/architecture/foo.md': fmDoc([], '[x](./other.md#missing)\n'),
+      'docs/architecture/other.md': fmDoc([], '## Real heading\n'),
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(1);
+    expect(cats(stdout)).toEqual(['broken-anchor']);
+    expect(JSON.parse(stdout).errors[0].target).toBe('./other.md#missing');
+  });
+
+  it('passes a cross-file link to a real heading, including a percent-encoded one', () => {
+    const { exitCode } = run({
+      'docs/architecture/foo.md': fmDoc(
+        [],
+        '[x](./other.md#real-heading) and [y](./other.md#caf%C3%A9--notes)\n[z](./other.md#tech-debt--cruft)\n',
+      ),
+      'docs/architecture/other.md': fmDoc(
+        [],
+        '## Real heading\n\n## Café & notes\n\n## Tech Debt & Cruft\n',
+      ),
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  it('numbers a repeated heading with -1, -2 suffixes', () => {
+    const files = (ref) => ({
+      'docs/architecture/foo.md': fmDoc([], `[x](./other.md#${ref})\n`),
+      'docs/architecture/other.md': '# Top\n\n## Notes\n\n## Notes\n\n## Notes\n',
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(run(files('notes')).exitCode).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+    expect(run(files('notes-1')).exitCode).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+    expect(run(files('notes-2')).exitCode).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+    expect(run(files('notes-3')).exitCode).toBe(1);
+  });
+
+  it('accepts explicit <a id>, <a name> and <hN id> targets', () => {
+    const { exitCode } = run({
+      'docs/architecture/foo.md': fmDoc(
+        [],
+        '[a](./other.md#by-id) [b](./other.md#by-name) [c](./other.md#by-h)\n',
+      ),
+      'docs/architecture/other.md':
+        '# Top\n\n<a id="by-id"></a>\n<a name="by-name"></a>\n<h2 id="by-h">Title</h2>\n',
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  it('does not treat a heading inside a fenced code block as an anchor', () => {
+    const { exitCode, stdout } = run({
+      'docs/architecture/foo.md': fmDoc([], '[x](./other.md#fake)\n'),
+      'docs/architecture/other.md': '# Top\n\n```md\n## Fake\n```\n',
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(1);
+    expect(cats(stdout)).toEqual(['broken-anchor']);
+  });
+
+  it('does not check GitHub line anchors', () => {
+    const { exitCode } = run({
+      'docs/architecture/foo.md': fmDoc([], '[x](./other.md#L12) and [y](./other.md#L12-L20)\n'),
+      'docs/architecture/other.md': '# Top\n',
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(0);
+  });
+});
+
+describe('docs-check — same-file anchor links', () => {
+  let dir;
+  const TD = '---\ntopic: tech-debt\n---\n# Tech Debt\n\n';
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const run = (files) => {
+    dir = setup(files);
+    return spawnScript(SCRIPT, [dir, '--json']);
+  };
+
+  it('reports a same-file link to a missing heading as a broken anchor', () => {
+    const { exitCode, stdout } = run({
+      'docs/architecture/foo.md': fmDoc([], '[x](#missing)\n'),
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(1);
+    const errors = JSON.parse(stdout).errors;
+    expect(errors.map((e) => e.category)).toEqual(['broken-anchor']);
+    expect(errors[0].target).toBe('#missing');
+  });
+
+  it('passes a same-file link to a real heading and to an explicit <a id>', () => {
+    const { exitCode } = run({
+      'docs/architecture/foo.md': fmDoc(
+        [],
+        '[x](#real-heading) [y](#by-id)\n\n## Real heading\n\n<a id="by-id"></a>\n',
+      ),
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  it('does not check a same-file line anchor', () => {
+    const { exitCode } = run({
+      'docs/architecture/foo.md': fmDoc([], '[x](#L12) [y](#L12-L20)\n'),
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  it('checks a same-file link inside tech-debt.md itself', () => {
+    const { exitCode, stdout } = run({
+      'docs/architecture/tech-debt.md': `${TD}## Real\n\n[ok](#real) [bad](#nope)\n`,
+    });
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stdout).errors.map((e) => e.category)).toEqual(['broken-anchor']);
+  });
+
+  it('checks a same-file link in a CLAUDE.md', () => {
+    const { exitCode, stdout } = run({
+      'tests/CLAUDE.md': '# Rules\n\n[ok](#rules) [bad](#gone)\n',
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stdout).errors.map((e) => e.category)).toEqual(['broken-anchor']);
+  });
+});
+
 describe('docs-check — progress.md frontmatter (structural, not temporal)', () => {
   // Temporal staleness (how OLD last-updated is) is intentionally NOT gated
   // here — it moved to the non-blocking progress-cursor-nudge.cjs + the weekly
