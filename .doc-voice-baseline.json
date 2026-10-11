@@ -77,10 +77,7 @@
     "filler": 1
   },
   ".claude/skills/README.md": {
-    "caps-emphasis": 3,
-    "em-dash": 18,
-    "filler": 3,
-    "prose-arrow": 16
+    "caps-emphasis": 1
   },
   ".claude/skills/catchup/SKILL.md": {
     "caps-emphasis": 3,
