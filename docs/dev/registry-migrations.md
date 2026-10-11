@@ -106,11 +106,13 @@ After a rename, only the new name exists, so nothing may read the old one:
 
 1. **`settings/settings.json`:** change the setting's `settingName`. The `jellyrock-bot` workflow regenerates [`docs/user/app-settings.md`](../user/app-settings.md) from it; never edit that file by hand.
 2. **`components/data/jellyfin/JellyfinUserSettings.xml`:** change the field's `id`. `user.Login()` loads each registry key into the settings field with the same name, so a key with no field is never loaded.
-3. **Everything else:** search for the old name and change each hit outside `source/migrations.bs`:
+3. **Everything else:** search for the old name and change each hit outside `source/migrations.bs`, docs and agent files included:
 
    ```bash
-   git grep -n "<old-name>" -- source components settings tests ':!source/migrations.bs'
+   git grep -n "<old-name>" -- source components settings tests docs .claude ':!source/migrations.bs'
    ```
+
+   Leave what is meant to keep the old name: earlier migrations' mappings, legacy inputs in the migration specs and mocks, and the generated `docs/user/app-settings.md`.
 
 ## Test it
 
