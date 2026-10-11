@@ -1,58 +1,58 @@
 # Rules for `source/api/`
 
-Jellyfin API layer + task pool dispatcher. See [docs/architecture/api.md](../../docs/architecture/api.md) for the full design (3-layer model, persistent task pool, `V1/V2` dispatch, the five call patterns, the children-as-vehicle trick to dodge SceneGraph event coalescing).
+The Jellyfin API layer and the Task pool that runs its requests. [docs/architecture/api.md](../../docs/architecture/api.md) has the full design: the three layers, the persistent Task pool, the V1 and V2 dispatch, the five call patterns, and why requests travel as child nodes (SceneGraph coalesces field writes).
 
-## The 3-layer model
+## The three layers
 
 Pick the right layer for the job:
 
-- **Layer 3 — domain helpers** (`source/utils/itemImageUrl.bs`, `source/utils/rowItemImage.bs`): one-call solutions with built-in fallback chains. Use for poster/backdrop/logo URLs. UI components usually want this. The user avatar URL is `GetUserAvatarURL` in `imageHelpers.bs`.
-- **Layer 2 — business logic** (`image.bs`, `userAuth.bs`, `items.bs`): validation, defaults, graceful degradation. Returns empty string / `invalid` on missing prerequisites rather than building bad URLs.
-- **Layer 1 — `ApiClient`** (`ApiClient.bs`): singleton via `GetApi()`. Per-method `Build*Request()` returns a request AA for the task pool. Auto-injects user ID, applies image defaults, routes `V1/V2`.
-
-Decision flow:
+- **Layer 3, domain helpers** (`source/utils/itemImageUrl.bs`, `source/utils/rowItemImage.bs`): one call with a built-in fallback chain. Use them for poster, backdrop and logo URLs; UI components usually want this layer. The user avatar URL is `GetUserAvatarURL` in `imageHelpers.bs`.
+- **Layer 2, business logic** (`image.bs`, `userAuth.bs`, `items.bs`): validation, defaults and graceful degradation. Returns an empty string or `invalid` when a prerequisite is missing, rather than building a bad URL.
+- **Layer 1, `ApiClient`** (`ApiClient.bs`): a singleton through `GetApi()`. Each `Build*Request()` method returns a request AA for the Task pool, filling in the user ID and the default image parameters and picking the V1 or V2 path.
 
 | Need | Use |
 |---|---|
-| Poster / backdrop / logo URL for an item | Layer 3 |
-| Custom image URL | Layer 2 (`ImageURL`) |
-| Any other API endpoint | Layer 1 (`GetApi().Build*Request()` + task pool) |
-| New endpoint | Add a `Build*Request()` method on `ApiClient`; route `V1/V2` if needed |
+| A poster, backdrop or logo URL for an item | Layer 3 |
+| A custom image URL | Layer 2 (`ImageURL`) |
+| Any other API endpoint | Layer 1 (`GetApi().Build*Request()` and the Task pool) |
+| A new endpoint | A new `Build*Request()` method on `ApiClient`, branching on the API version if needed |
 
-`docs/dev/api-layering-guide.md` is the canonical decision-tree how-to.
+[`docs/dev/api-layering-guide.md`](../../docs/dev/api-layering-guide.md) is the how-to with the full decision tree.
 
-## Task pool — the five call patterns
+## The five call patterns
 
-| Pattern | Use case | From |
+| Pattern | Use it for | From |
 |---|---|---|
-| `fetchRes(req, id)` / `fetchJson(req, id)` | Blocking; common case for orchestrator Tasks | a Task thread |
-| `submitApiRequest(req, id)` | Non-blocking; user clicks → fire → toggle UI on response | render thread |
-| `SubmitSideEffect(req)` | Fire-and-forget POST/DELETE (telemetry, mark-watched) | anywhere |
-| Dedicated `Task` + `roUrlTransfer` | Non-Jellyfin HTTP (font downloads, SSDP, …) | a Task component |
-| `apiPipelineBegin` / `apiPipelineNext` | N *independent* requests that scale with server data (per library, per season) | a Task thread |
+| `fetchRes(req, id)` or `fetchJson(req, id)` | Blocking; the common case for an orchestrator Task | A Task thread |
+| `fetchAsync(req, id)` | A promise, for a component that needs the answer | The render thread |
+| `SubmitSideEffect(req)` | A write nobody reads the answer to (telemetry, mark watched) | Any thread |
+| A dedicated `Task` with `roUrlTransfer` | Non-Jellyfin HTTP (font downloads, SSDP) | A Task component |
+| `apiPipelineBegin` and `apiPipelineNext` | Many independent requests that scale with server data (per library, per season) | A Task thread |
 
-**Never spawn a Task per request** to parallelize N calls — that fan-out is what produced the `&h29` "too many task threads" crashes (#728). Use `apiPipeline`: one thread, one request per pool slot in flight. Note `res = invalid` from it means *no answer*, not an error response — don't clear UI on it, including a skeleton/placeholder the caller drew before the run (clearing that makes the next success re-insert the element, which pops in and shifts the rows after it).
+Details and examples: [api.md](../../docs/architecture/api.md#the-five-call-patterns).
 
-## `V1` vs `V2` dispatch
+**Never start a Task per request** to run many calls in parallel: that fan-out caused the `&h29` "too many task threads" crashes (#728). Use `apiPipeline`: one thread, with one request in flight per pool slot. A `res = invalid` from it means *no answer*, not an error response. Don't clear UI on it, including a skeleton or placeholder the caller drew before the run: clearing it makes the next success insert the element again, which pops in and shifts the rows after it.
 
-- `Jellyfin`'s API changed shape between **10.7–10.8** (V1) and **10.9+** (V2). Many endpoints moved or restructured.
-- Read `m.global.server.apiVersion` via `getApiVersionFromGlobal()`.
-- Per-method branching inside `ApiClient` is the current convention. Add new endpoints with the same `if m.getApiVersion() >= 2` shape.
-- See `docs/dev/jellyfin-server-versioning.md` for the version-policy guide.
+## V1 and V2 dispatch
+
+- Jellyfin's API changed shape between **10.7 to 10.8** (V1) and **10.9 and later** (V2). Many endpoints moved or changed.
+- Read the tier with `getApiVersionFromGlobal()`, which reads `m.global.server.apiVersion`.
+- Each `ApiClient` method branches on its own: add a new endpoint with the same `if m.getApiVersion() >= 2` shape.
+- [`docs/dev/jellyfin-server-versioning.md`](../../docs/dev/jellyfin-server-versioning.md) is the version-policy guide.
 
 ## Don't bypass `ApiClient`
 
-- `source/api/sdk.bs`, `sdkV1.bs`, `sdkV2.bs` are the underlying endpoint wrappers. **Don't call them directly** from app code — go through `GetApi()`. The `no-direct-sdk` BSC plugin enforces this at build time; only `ApiClient.bs` and `sdk.bs` itself are allowed to invoke `sdk.<ns>.<fn>(...)`. See [docs/architecture/build-and-tooling.md](../../docs/architecture/build-and-tooling.md) ("Convention plugins") for the opt-out syntax (rare).
+- `source/api/sdk.bs`, `sdkV1.bs` and `sdkV2.bs` are the endpoint wrappers underneath. **Don't call them from app code**; go through `GetApi()`. The `no-direct-sdk` BSC plugin makes it a build error: only `ApiClient.bs` and `sdk.bs` may call `sdk.<ns>.<fn>(...)`. [build-and-tooling.md](../../docs/architecture/build-and-tooling.md) gives the opt-out syntax, which is rarely needed.
 
-## Auth header is automatic
+## The auth header is automatic
 
-- `ApiTask.executeRequest()` prepends the auth header (`MediaBrowser Token=...`) automatically. Callers building a request don't need to attach it.
+- `executeHttpRequest()` in `baseRequest.bs`, which every pool request goes through, adds the `Authorization` header (`buildAuthHeader()`). A request you build doesn't attach it. See [api.md](../../docs/architecture/api.md#authentication-and-request-building).
 
-## What NOT to do
+## What not to do
 
-- Don't add a new `Get*()` synchronous method on `ApiClient`. Sync exists for the bootstrap path; new endpoints use `Build*Request()`.
-- Don't build a request for a **bare-array endpoint** (spec 200 response `type: array`) with `validatedReq` — use `listReq`, and add it to the "List requests" group in `ApiClient.spec.bs`. The pool then guarantees an ok response carries an `roArray` and reports any other body as `ok = false` (`error = "unexpectedShape"`), which callers treat as no answer. Without it an object body reaches the caller, iterates as its KEYS, and the first `item.Field` or `json[0]` ends the app. See [docs/architecture/api.md](../../docs/architecture/api.md#reading-a-list-endpoints-body).
-- **A POST that only reads declares `skippable: true` on its request AA** (`BuildGetLiveTvScheduleRequest` is the one today). The pool skips a queued GET/HEAD whose caller has stopped waiting, and never a POST/DELETE, because a write the user asked for must land. A POST that queries, and has no side effect on the server, opts in. Don't mark one that can change server state: `BuildPostPlaybackInfoRequest` sends `AutoOpenLiveStream`, which can open a live stream. See [docs/architecture/api.md](../../docs/architecture/api.md#a-request-nobody-is-waiting-for).
-- **Don't add a cross-thread read to the coordinator's dispatch path** (`apiPoolNextDispatch`, `ApiQueueTask.tryDispatch`). It is serial for every request the app makes, and a rendezvous there costs milliseconds while the render thread is busy: reading two fields per entry to decide whether to skip it measured **7796 µs per request**, against 88 µs once the same check was confined to requests that had actually waited for a slot (Stick 4K, Home load, 2026-09-22). Anything a dispatch decision needs should ride the request AA the coordinator already holds, or be confined to a population that cannot be the common case. Re-take the numbers with `npm run measure -- --measurement api-dispatch`. See [docs/architecture/api.md](../../docs/architecture/api.md#a-request-nobody-is-waiting-for) and [ADR 0040](../../docs/adr/0040-pool-skips-abandoned-reads.md).
-- Don't write requests directly to a pool slot's field — go through `apiQueue` (children-as-vehicle dodge SceneGraph coalescing). See [docs/architecture/api.md](../../docs/architecture/api.md#the-coalescing-problem-why-children-not-fields).
-- Don't change the pool width (`source/constants/apiPool.bs`) without measuring on device — the two values are measured, per device class, and each slot is a thread for the whole session. See [docs/architecture/api.md](../../docs/architecture/api.md#pool-width). Don't restate the width (or a slot/thread count derived from it) in comments or docs elsewhere — it differs per device, so say "one per pool slot" or link that section.
+- Don't add a new synchronous `Get*()` method on `ApiClient`. The four that remain are on the sign-in path, which runs on the main thread; a new endpoint uses `Build*Request()`.
+- Don't build a request for a **bare-array endpoint** (spec 200 response `type: array`) with `validatedReq`. Use `listReq`, and add the request to the "List requests" group in `ApiClient.spec.bs`. The pool then guarantees a response with `ok = true` carries an `roArray`, and reports any other body as `ok = false` with `error = "unexpectedShape"`, which callers treat as no answer. Without it an object body reaches the caller and iterates as its keys, and the first `item.Field` or `json[0]` crashes the app. See [api.md](../../docs/architecture/api.md#reading-a-list-endpoints-body).
+- **A POST that only reads declares `skippable: true` on its request AA** (`BuildGetLiveTvScheduleRequest` is the one today). The pool skips a queued GET or HEAD whose caller has stopped waiting, and never a POST or DELETE, because a write the user asked for must land. A POST that queries and has no side effect on the server opts in. Don't mark one that can change server state: `BuildPostPlaybackInfoRequest` sends `AutoOpenLiveStream`, which can open a live stream. See [api.md](../../docs/architecture/api.md#a-request-nobody-is-waiting-for).
+- **Don't add a cross-thread read to the coordinator's dispatch path** (`apiPoolNextDispatch`, `ApiQueueTask.tryDispatch`). Every request the app makes passes through it in turn, and a rendezvous there costs milliseconds while the render thread is busy. Reading two fields per entry to decide whether to skip it measured **7796 µs per request**, against 88 µs once the same check was confined to requests that had waited for a slot (Stick 4K, Home load, 2026-09-22). Anything a dispatch decision needs rides the request AA the coordinator already holds, or is confined to a population that can't be the common case. Take the numbers again with `npm run measure -- --measurement api-dispatch`. See [api.md](../../docs/architecture/api.md#a-request-nobody-is-waiting-for) and [ADR 0040](../../docs/adr/0040-pool-skips-abandoned-reads.md).
+- Don't write a request straight to a pool slot's field. Go through `apiQueue`, whose child nodes avoid the coalescing SceneGraph applies to field writes. See [api.md](../../docs/architecture/api.md#the-coalescing-problem-why-children-not-fields).
+- Don't change the pool width (`source/constants/apiPool.bs`) without measuring on a device. Both values were measured, one per device class, and each slot is a thread for the whole session. See [api.md](../../docs/architecture/api.md#pool-width). Don't restate the width, or a slot or thread count derived from it, in comments or docs elsewhere: it differs per device, so say "one per pool slot" or link that section.

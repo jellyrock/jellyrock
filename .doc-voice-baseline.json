@@ -1981,11 +1981,6 @@
     "filler": 2,
     "latin-abbrev": 6
   },
-  "source/api/CLAUDE.md": {
-    "caps-emphasis": 1,
-    "em-dash": 11,
-    "prose-arrow": 2
-  },
   "source/api/apiFaults.bs": {
     "em-dash": 5
   },
