@@ -292,9 +292,7 @@
     "prose-arrow": 2
   },
   ".claude/skills/translation-add/SKILL.md": {
-    "caps-emphasis": 2,
-    "em-dash": 21,
-    "filler": 1
+    "caps-emphasis": 1
   },
   ".github/hooks/README.md": {
     "em-dash": 5,
