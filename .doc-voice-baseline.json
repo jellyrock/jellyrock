@@ -174,11 +174,7 @@
     "em-dash": 2
   },
   ".claude/skills/new-api-version/SKILL.md": {
-    "caps-emphasis": 2,
-    "em-dash": 30,
-    "filler": 4,
-    "latin-abbrev": 1,
-    "prose-arrow": 8
+    "caps-emphasis": 1
   },
   ".claude/skills/new-migration/SKILL.md": {
     "caps-emphasis": 1
