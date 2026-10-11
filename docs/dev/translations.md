@@ -61,6 +61,7 @@ Keys are PascalCase and start with a prefix that says what kind of text they hol
 | `Message` | Longer text | `MessageRememberMe` |
 | `Error` | Error messages | `ErrorFailedToUpdateFavorite` |
 | `Setting` | Setting titles and descriptions | `SettingDescDisplayLanguage` |
+| `Desc` | Descriptions of the custom theme color settings | `DescThemeColorPrimary` |
 | `Day` | Day names | `DayMonday` |
 | `Language` | Names of audio and subtitle languages | `LanguageAf` |
 
