@@ -260,6 +260,22 @@ Options weighed on the /snag screen: `reword` (keep the refusal; state the true 
 
 Not checked: whether `measure:report` really keys its columns by model and tier (taken from the old guide's wording, not read in `measure-report.js`); whether pooling two same-model devices in one cell is a problem worth refusing, or only a disclosure. Nobody has run the refusal on real hardware: you have one device of each model.
 
+#### `language-coverage.cjs` check 2 and `translations.md` say a missing alias shows English; it usually shows the raw code `[fid: language-coverage-tier2-fallback-wording]` `[captured 2026-10-11]`
+
+`scripts/lint/language-coverage.cjs` check 2's error message says a tier 1 language missing an alias for one of its 3-letter codes makes the app "use tier 2's English string in all UI locales", and `docs/architecture/translations.md`'s check table (row 2) says the same. `resolveLanguageName()` in `source/utils/mediaDisplayTitle.bs` misses tier 1 and then shows tier 2's English name only if tier 2 holds that 3-letter code; otherwise it shows the raw code. A check of the tables during the phase G comment pass (2026-10-11) found most aliased codes have no tier 2 entry (`slv`, for example), so the usual result is the raw code. The script's header comment is already corrected. Closes when the message and the doc row say "the English name if tier 2 has the code, else the raw code", checked against the tables.
+
+#### `rta-wait-inventory.js` keeps its own copy of `_shared.js`'s `calleeName` `[fid: rta-wait-inventory-duplicate-calleename]` `[captured 2026-10-11]`
+
+`scripts/lint/rta-wait-inventory.js` defines its own `calleeName()`, marked as mirroring `scripts/lint/eslint-rules/_shared.js`'s exported `calleeName` "for one local use". Two copies of the same AST helper drift; `_shared.js` exists to stop exactly that. Closes when `rta-wait-inventory.js` imports it from `./eslint-rules/_shared.js` and `npm run test:scripts` passes. Found in the phase G comment pass (2026-10-11).
+
+#### `no-raw-run` and `no-direct-sdk` messages name only `bsc-disable-line`, not the next-line form they also honor `[fid: no-raw-run-message-omits-next-line-marker]` `[captured 2026-10-11]`
+
+The `no-raw-run` and `no-direct-sdk` BSC plugins honor both `bsc-disable-line` and `bsc-disable-next-line` (their `DISABLE_NEXT_LINE_MARKER` checks the previous line), but each diagnostic message tells the developer only about `' bsc-disable-line <rule>`. Their header comments were corrected in the phase G comment pass (2026-10-11); the message strings were out of that pass's scope. Closes when both messages name both forms and the plugin tests that assert the text pass.
+
+#### `session-start-nudge` can nudge with "0 commit(s) since" when only `progress.md` commits landed `[fid: session-start-nudge-zero-commits-message]` `[captured 2026-10-11]`
+
+`checkProgressStale()` in `scripts/lint/session-start-nudge.cjs` decides to nudge when any commit landed since `progress.md`'s `last-updated`, but reports the count of commits other than `progress.md` ones. When every commit since is a `progress.md` commit, the nudge fires and says "0 commit(s) since". Read from the code during the phase G comment pass (2026-10-11), not seen in practice. Closes when the guard uses the same count it reports, with a test for the all-journal case.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
