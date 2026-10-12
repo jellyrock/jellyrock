@@ -168,6 +168,37 @@ namespace tests
       m.assertEqual(data, { TotalRecordCount: 1 }, "first reply without Items")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("itemFields()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves MediaSourceCount out of the music grids")
+    function _()
+      for each musicType in ["MusicArtist", "AlbumArtists", "MusicAlbum"]
+        m.assertEqual(gridPage.itemFields(musicType, ""), "Overview", musicType)
+      end for
+    end function
+
+    @it("appends the extra fields after Overview for the music grids")
+    function _()
+      for each musicType in ["MusicArtist", "AlbumArtists", "MusicAlbum"]
+        m.assertEqual(gridPage.itemFields(musicType, "Genres"), "Overview,Genres", musicType)
+      end for
+    end function
+
+    @it("keeps MediaSourceCount for every other grid")
+    function _()
+      for each otherType in ["Movie", "Series", "", "LiveTV"]
+        m.assertEqual(gridPage.itemFields(otherType, ""), "Overview,MediaSourceCount", otherType)
+      end for
+    end function
+
+    @it("appends the extra fields after MediaSourceCount for every other grid")
+    function _()
+      m.assertEqual(gridPage.itemFields("Movie", "Genres"), "Overview,MediaSourceCount,Genres")
+      m.assertEqual(gridPage.itemFields("", "Genres,Tags"), "Overview,MediaSourceCount,Genres,Tags")
+    end function
+
   end class
 
 end namespace

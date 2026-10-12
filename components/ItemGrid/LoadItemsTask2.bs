@@ -101,12 +101,8 @@ sub loadItems()
   ' MediaSourceCount is what tells a tile it has alternate versions. It is the ONLY free
   ' signal for that: measured 2026-09-19 on a local 12.0 server, adding it to a 100-item page
   ' cost +85 bytes and no measurable time, where asking for MediaSources cost +87 ms and
-  ' +326 KB. The music branches below rebuild `fields` for their own queries and deliberately
-  ' do not carry it — no cue is shown for music, and the per-track cost there is unmeasured.
-  fields = "Overview,MediaSourceCount"
-  if m.top.additionalFields <> ""
-    fields = fields + "," + m.top.additionalFields
-  end if
+  ' +326 KB. `gridPage.itemFields` says which types carry it.
+  fields = gridPage.itemFields(m.top.ItemType, m.top.additionalFields)
 
   params = {
     limit: m.top.limit,
