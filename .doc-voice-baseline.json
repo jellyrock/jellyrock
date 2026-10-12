@@ -447,6 +447,24 @@
     "filler": 3,
     "latin-abbrev": 1
   },
+  "components/tasks/FontDownloadTask.bs": {
+    "em-dash": 1
+  },
+  "components/tasks/FontScalingTask.bs": {
+    "em-dash": 1
+  },
+  "components/tasks/QuickPlayTask.bs": {
+    "em-dash": 7,
+    "filler": 1,
+    "latin-abbrev": 3,
+    "prose-arrow": 1
+  },
+  "components/tasks/TaskLaunchQueue.bs": {
+    "em-dash": 3
+  },
+  "components/tasks/TaskLaunchQueue.xml": {
+    "em-dash": 1
+  },
   "components/testing/GaaProbeTask.xml": {
     "caps-emphasis": 1,
     "em-dash": 4
