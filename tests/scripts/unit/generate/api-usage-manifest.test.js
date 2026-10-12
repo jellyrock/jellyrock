@@ -60,6 +60,19 @@ describe('endpoint extraction', () => {
     expect(endpointPaths(r)).toContain('/Audio/{0}/Lyrics');
   });
 
+  it('resolves a path variable assigned from a Substitute() template', () => {
+    const body = [
+      '  url = Substitute("Items/{0}/Images/{1}", id, version)',
+      '  fullURL = buildURL(url, params, serverURL)',
+      '  return fullURL',
+    ].join('\n');
+    const r = extractFromSource(fn(body));
+    const ep = findEndpoint(r, '/Items/{0}/Images/{1}');
+    expect(ep).toBeTruthy();
+    expect(ep.normalized).toBe('/items/{}/images/{}');
+    expect(r.unresolved).toHaveLength(0);
+  });
+
   it('infers the method from an inline { method: "POST" } request AA', () => {
     const r = extractFromSource(
       fn(

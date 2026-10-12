@@ -160,6 +160,18 @@
       ]
     },
     {
+      "path": "/Items/{0}/Images/{1}",
+      "normalized": "/items/{}/images/{}",
+      "methods": [
+        "UNKNOWN"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/image.bs"
+      ]
+    },
+    {
       "path": "/items/{0}/images/{1}/{2}",
       "normalized": "/items/{}/images/{}/{}",
       "methods": [
@@ -3277,8 +3289,7 @@
           "source/**/*.bs"
         ],
         "exclude": [
-          "source/api/baseRequest.bs",
-          "source/api/image.bs"
+          "source/api/baseRequest.bs"
         ]
       },
       "requestFields": {
@@ -3299,7 +3310,7 @@
       }
     },
     "counts": {
-      "endpoints": 78,
+      "endpoints": 79,
       "requestFields": 49,
       "responseFields": 223,
       "unresolvedEndpointSinks": 2

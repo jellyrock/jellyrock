@@ -48,10 +48,9 @@ import * as bs from 'brighterscript';
 
 // Endpoint sinks are unambiguous (the first string arg IS a path), so we scan
 // broadly. baseRequest.bs DEFINES buildURL/APIRequest (its internal buildURL
-// call just forwards a path param), and image.bs is a Layer-2 passthrough that
-// receives an already-built URL — neither contributes a real endpoint literal.
+// call only forwards a path param), so it contributes no endpoint literal.
 const ENDPOINT_GLOBS = ['source/**/*.bs'];
-const ENDPOINT_EXCLUDE = new Set(['source/api/baseRequest.bs', 'source/api/image.bs']);
+const ENDPOINT_EXCLUDE = new Set(['source/api/baseRequest.bs']);
 
 // Response-field reads: the data transformers are purpose-built DTO→node
 // mappers, so PascalCase reads there are reliably Jellyfin fields (elsewhere a
@@ -126,6 +125,13 @@ function calleeName(call) {
   const callee = call?.callee;
   if (!callee) return null;
   return callee.tokens?.name?.text ?? null;
+}
+
+// True for a call to one of the path-template functions (`Substitute(...)`).
+function isPathTemplateCall(node) {
+  return (
+    bs.isCallExpression(node) && PATH_TEMPLATE_NAMES.has((calleeName(node) ?? '').toLowerCase())
+  );
 }
 
 // Walk an object chain (a.b.c, a[0].b) down to the base variable name.
@@ -299,9 +305,12 @@ function extractEndpoints(ast) {
 
   ast.walk(
     (node) => {
-      // var = "literal"  → enables resolving buildURL(varName)
+      // var = "literal" and var = Substitute("literal", …) let a later
+      // buildURL(varName) resolve to the path.
       if (bs.isAssignmentStatement(node)) {
-        const lit = literalStringValue(node.value);
+        const lit = isPathTemplateCall(node.value)
+          ? literalStringValue(node.value.args?.[0])
+          : literalStringValue(node.value);
         if (lit !== null) {
           const name = node.tokens?.name?.text;
           if (name) {

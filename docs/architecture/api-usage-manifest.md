@@ -7,7 +7,7 @@ related-files:
   - source/api/sdk.bs
   - source/data/JellyfinDataTransformer.bs
   - source/utils/people.bs
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-11
 ---
 
 # API usage manifest
@@ -39,7 +39,7 @@ The floor checks (`lint:floor-coverage`, `lint:endpoint-availability`) read it t
 
 [`scripts/generate/api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js) parses the BrighterScript sources with the BrighterScript parser, the one the BSC plugins use, so formatting does not change the result. It reads:
 
-- **Endpoints** from the first argument of every `buildURL()` and `APIRequest()` call in `source/`: a string literal, or a `Substitute("/path/{0}", …)` template. The method comes from the builder around the call: the first argument of `validatedReq()` or `listReq()`, a returned `{ method: "POST", … }`, or `getJson()` and `postJson()`.
+- **Endpoints** from the first argument of every `buildURL()` and `APIRequest()` call in `source/`: a string literal, a `Substitute("/path/{0}", …)` template, or a variable the same function assigns one of those to. The method comes from the builder around the call: the first argument of `validatedReq()` or `listReq()`, a returned `{ method: "POST", … }`, or `getJson()` and `postJson()`.
 - **Request fields** from PascalCase keys and `body.X =` assignments in `source/api/`.
 - **Response fields** from PascalCase reads in the files listed in `RESPONSE_FIELD_FILES`.
 
