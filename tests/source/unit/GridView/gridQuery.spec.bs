@@ -107,6 +107,23 @@ namespace tests
       m.assertEqual(task.additionalFields, "Genres")
     end function
 
+    ' isMusic is what makes the music Genres view's samples leave out MediaSourceCount
+    ' (gridPage.genreSampleFields), so it has to survive the trip from the presenter to the node.
+    @it("marks the music Genres view as music on the node, and no other music view")
+    function _()
+      presenter = new MusicPresenter()
+      genres = paging.forPage(gridQuery.build(m.state(), m.musicLibrary(), "genres", presenter), 0)
+      albums = paging.forPage(gridQuery.build(m.state(), m.musicLibrary(), "albums", presenter), 0)
+      genresTask = CreateObject("roSGNode", "LoadItemsTask2")
+      albumsTask = CreateObject("roSGNode", "LoadItemsTask2")
+
+      genresTask.setFields(genres)
+      albumsTask.setFields(albums)
+
+      m.assertTrue(genresTask.isMusic, "the music Genres view's samples would ask for MediaSourceCount")
+      m.assertFalse(albumsTask.isMusic, "a music view other than Genres was marked as music")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("optionTitle() / optionValue()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

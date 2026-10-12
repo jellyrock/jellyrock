@@ -261,6 +261,7 @@ sub loadItems()
     ' version, server URL); genre views do not page, so that cost is never paid mid-scroll.
     libraryId = m.top.itemId
     requestedType = m.top.itemType
+    genreFields = gridPage.genreSampleFields(m.top.isMusic)
     for each item in data.Items
       tmp = invalid
       #if perfTiming
@@ -277,7 +278,7 @@ sub loadItems()
           SortOrder: "Ascending",
           IncludeItemTypes: requestedType,
           Recursive: true,
-          Fields: "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,BackdropImageTags",
+          Fields: genreFields,
           ImageTypeLimit: 1,
           EnableImageTypes: "Primary,Backdrop",
           Limit: 6,

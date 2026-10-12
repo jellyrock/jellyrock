@@ -115,4 +115,18 @@ namespace gridPage
     return fields
   end function
 
+  ' The Fields a Genres view asks for on each genre's sample items: the poster and backdrop data
+  ' and the sync flag, plus MediaSourceCount unless the samples are music.
+  '
+  ' See itemFields for why music leaves MediaSourceCount out.
+  '
+  ' @param isMusic - true when the samples are music items (the music library's Genres view)
+  ' @return the comma-separated Fields string
+  function genreSampleFields(isMusic as boolean) as string
+    if isMusic
+      return "PrimaryImageAspectRatio,BasicSyncInfo,BackdropImageTags"
+    end if
+    return "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,BackdropImageTags"
+  end function
+
 end namespace

@@ -199,6 +199,20 @@ namespace tests
       m.assertEqual(gridPage.itemFields("", "Genres,Tags"), "Overview,MediaSourceCount,Genres,Tags")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("genreSampleFields()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps MediaSourceCount for the samples of a video library's genres")
+    function _()
+      m.assertEqual(gridPage.genreSampleFields(false), "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,BackdropImageTags")
+    end function
+
+    @it("leaves MediaSourceCount out of the samples of the music genres")
+    function _()
+      m.assertEqual(gridPage.genreSampleFields(true), "PrimaryImageAspectRatio,BasicSyncInfo,BackdropImageTags")
+    end function
+
   end class
 
 end namespace
