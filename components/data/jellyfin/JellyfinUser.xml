@@ -2,7 +2,7 @@
 <!--
   LOADING STATE PATTERN: SENTINEL + EXPLICIT
 
-  RULE: If user.id = "" AND user.authToken = "", user is NOT authenticated
+  RULE: If user.id = "" AND user.authToken = "", user is not authenticated
   RULE: If user.id <> "", user IS authenticated
   RULE: isLoaded tracks whether full user data has been fetched from server
 
@@ -19,7 +19,7 @@
     <field id="authToken" type="string" value="" />
     <field id="primaryImageTag" type="string" value="" />
 
-    <!-- Server-Authoritative Data (nested content nodes, NEVER loaded from registry) -->
+    <!-- Server-Authoritative Data (nested content nodes, never loaded from registry) -->
     <field id="config" type="node" />
     <field id="policy" type="node" />
 

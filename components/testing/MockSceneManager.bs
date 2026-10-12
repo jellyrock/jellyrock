@@ -13,7 +13,7 @@ end sub
 
 ' This is the key function that user.Login() calls after authentication
 ' In the real SceneManager, this updates theme colors on the scene
-' In tests, we just do nothing since there's no real UI to update
+' In tests, we do nothing since there's no real UI to update
 sub refreshThemeColors()
 end sub
 

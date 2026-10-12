@@ -80,7 +80,7 @@ sub init()
   ' Interface observers are registered HERE rather than declared as XML onChange
   ' attributes: this component releases node references in onDestroy and these
   ' handlers dereference them, so the registrations have to be detachable. An XML
-  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' onChange does not appear to be removable by unobserveField; see the wiring
   ' rule in components/CLAUDE.md.
   m.top.observeField("filter", "channelFilterSet")
   m.top.observeField("searchTerm", "channelsearchTermSet")
@@ -166,7 +166,7 @@ sub channelsearchTermSet()
   end if
 end sub
 
-' Channels loaded callback — handles both first and subsequent pages.
+' Channels loaded callback: handles both first and subsequent pages.
 ' First page: creates grid content, shows channels immediately.
 ' Subsequent pages: appends channels to existing grid.
 ' Programs are not part of a page: reconcilePrograms loads them for the rows near the focus.
@@ -192,7 +192,7 @@ sub onChannelsLoaded(event as object)
   if m.scheduleGrid.loadingDataText <> m.textLoading then m.scheduleGrid.loadingDataText = m.textLoading
 
   if channels.count() = 0 and isFirstPage
-    ' No channels at all — stop spinner and restore focus so user can navigate back
+    ' No channels at all: stop spinner and restore focus so user can navigate back
     m.channelsComplete = true
     stopLoadingSpinner()
     m.scheduleGrid.showLoadingDataFeedback = false
@@ -210,7 +210,7 @@ sub onChannelsLoaded(event as object)
     gridData.appendChildren(channels)
     m.scheduleGrid.content = gridData
 
-    ' Show channels immediately — their rows read "Loading…" until their programs arrive
+    ' Show channels immediately; their rows read "Loading…" until their programs arrive
     m.scheduleGrid.showLoadingDataFeedback = false
     stopLoadingSpinner()
 
@@ -258,8 +258,8 @@ sub onChannelPageFailed(startIndex as integer)
   scheduleRetry()
 end sub
 
-' Arms the retry timer for the earliest failure whose delay is not up yet — a channel page with
-' none in flight, or a wanted program block with no fetch in flight — or stops it when nothing
+' Arms the retry timer for the earliest failure whose delay is not up yet (a channel page with
+' none in flight, or a wanted program block with no fetch in flight), or stops it when nothing
 ' waits or the guide is off screen.
 sub scheduleRetry()
   retryAt = invalid
@@ -304,7 +304,7 @@ sub resetPrograms()
   m.channelIds = []
   m.channelsComplete = false
   m.fullyLoadedProgramIds = {}
-  ' Invalidates any in-flight program-detail fetch — it belongs to the old grid
+  ' Invalidates any in-flight program-detail fetch: it belongs to the old grid
   m.programDetailsSeq += 1
 end sub
 
@@ -348,7 +348,7 @@ sub reconcilePrograms()
   scheduleRetry()
 end sub
 
-' The focused channel row, clamped to the grid — TimeGrid keeps reporting the old index for a
+' The focused channel row, clamped to the grid. TimeGrid keeps reporting the old index for a
 ' moment after the content is replaced.
 function guideFocusedRow(rowCount as integer) as integer
   focusedRow = m.scheduleGrid.channelFocused
@@ -455,7 +455,7 @@ sub applyPrograms(byChannel as object, fetch as object)
     m.programDetailsSeq += 1
   end if
 
-  ' The focused row may just have gained its programs while the details pane showed nothing
+  ' The focused row may have gained its programs while the details pane showed nothing
   if focusedRow >= rows[0] and focusedRow <= rows[1] and not isValid(m.detailsPane.programDetails)
     onProgramFocused()
   end if
@@ -539,7 +539,7 @@ end sub
 
 ' A row without programs reads "Loading…" while a block around the focus is still loading,
 ' "Schedule unavailable" while one is waiting to retry, and "No schedule information" once they
-' have all loaded — TimeGrid has one text for every such row, so it follows the rows the user
+' have all loaded. TimeGrid has one text for every such row, so it follows the rows the user
 ' can see.
 sub updateNoProgramsText(focusedRow as integer, rowCount as integer, window as object)
   visibleRows = guideVisibleRows()
@@ -569,13 +569,13 @@ sub onChannelFocused()
 end sub
 
 sub onProgramFocused()
-  ' A details fetch still in flight is for the program the focus just left. Without this, one
-  ' that lands while the focus is on a row without programs — or on a program whose details
-  ' are already loaded, which starts no fetch of its own — fills the pane with the old program.
+  ' A details fetch still in flight is for the program the focus has left. Without this, one
+  ' that lands while the focus is on a row without programs (or on a program whose details
+  ' are already loaded, which starts no fetch of its own) fills the pane with the old program.
   m.programDetailsSeq += 1
   m.top.watchChannel = invalid
 
-  ' Make sure we have channels (i.e. filter set to favorite yet there are none)
+  ' Make sure we have channels (for example, filter set to favorite yet there are none)
   if m.scheduleGrid.content.getChildCount() <= 0
     channel = invalid
   else
@@ -603,7 +603,7 @@ sub onProgramFocused()
 end sub
 
 ' Fetch full program details for a focused grid cell and swap the lightweight schedule
-' item for the fully-loaded node. Render-thread promise — replaces the former
+' item for the fully-loaded node. Render-thread promise: replaces the former
 ' LoadProgramDetailsTask, a pure-fetch Task consumed via createObject + observeField
 ' (Phase-3a collapse; canonical in docs/dev/promises.md). The transform here is a SINGLE
 ' item (transformBaseItem, not array processing), so it's render-thread-acceptable.
@@ -614,11 +614,11 @@ sub loadProgramDetails(programId as string, channelIndex as integer, programInde
 
   req = GetApi().BuildGetLiveTvProgramRequest(programId, { UserId: m.global.user.id })
 
-  ' Carry the target grid cell + generation through the promise context (no closures in BS) —
+  ' Carry the target grid cell + generation through the promise context (no closures in BS);
   ' these used to ride as Task fields echoed back in the programDetails wrapper.
   context = { channelIndex: channelIndex, programIndex: programIndex, seq: m.programDetailsSeq }
   promises.chain(fetchAsync(req, "liveTvProgram-" + programId), context).then(sub(res as object, ctx as object)
-    if ctx.seq <> m.programDetailsSeq then return ' stale — grid rebuilt or focus moved on
+    if ctx.seq <> m.programDetailsSeq then return ' stale: grid rebuilt or focus moved on
 
     ' Bail on a non-ok response / invalid body (the old Task set programDetails = {} here).
     if not (res.ok and isValid(res.json))
@@ -638,7 +638,7 @@ sub loadProgramDetails(programId as string, channelIndex as integer, programInde
       node.hdsmalliconurl = ""
     end if
 
-    ' Track this program as fully loaded to prevent redundant API requests on re-focus — BEFORE
+    ' Track this program as fully loaded to prevent redundant API requests on re-focus, BEFORE
     ' the ReplaceChild below: replacing the focused cell re-enters onProgramFocused at once, which
     ' would otherwise find the program not yet loaded and fetch it a second time
     m.fullyLoadedProgramIds[node.id] = true
@@ -651,8 +651,8 @@ sub loadProgramDetails(programId as string, channelIndex as integer, programInde
     m.detailsPane.programDetails = node
     m.scheduleGrid.showLoadingDataFeedback = false
   end sub).catch(sub(err as object, ctx as object)
-    if ctx.seq <> m.programDetailsSeq then return ' stale — a newer fetch owns the cell now
-    ' Transport failure / timeout (see the error contract) — the request never completed.
+    if ctx.seq <> m.programDetailsSeq then return ' stale: a newer fetch owns the cell now
+    ' Transport failure / timeout (see the error contract): the request never completed.
     m.log.warn("program-details fetch failed", err.reason)
     m.scheduleGrid.showLoadingDataFeedback = false
   end sub)
@@ -727,7 +727,7 @@ sub onRecordSeriesChannelSelected()
   startRecording(true)
 end sub
 
-' Records — or, if it already records, cancels — the program in the details pane, on a new
+' Records (or, if it already records, cancels) the program in the details pane, on a new
 ' RecordProgramTask node, so a second press while one is in flight starts a run of its own.
 sub startRecording(isSeries as boolean)
   ' Set focus back to grid before showing channel, to ensure grid has focus when we return
@@ -755,19 +755,19 @@ sub onRecordOperationDone(event as object)
 
   if isSeries
     ' Every airing of the series may now carry a recording indicator: mark every block's
-    ' programs stale, so each is replaced — the ones near the focus now, the rest when the
+    ' programs stale, so each is replaced: the ones near the focus now, the rest when the
     ' focus reaches them.
     for each key in m.guideHeld
       m.guideHeld[key].stale = true
     end for
     reconcilePrograms()
   else
-    ' This reloads just the details for the currently selected program, so that we don't have to
+    ' This reloads only the details for the currently selected program, so that we don't have to
     ' reload the entire grid...
     channel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
     prog = invalid
     if isValid(channel) then prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
-    ' Re-fetch unconditionally — the program's recording state just changed.
+    ' Re-fetch unconditionally: the program's recording state has changed.
     if isValid(prog) then loadProgramDetails(prog.id, m.scheduleGrid.programFocusedDetails.focusChannelIndex, m.scheduleGrid.programFocusedDetails.focusIndex)
   end if
 end sub
@@ -784,7 +784,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     gridGrp.setFocus(true)
     return true
   else if key = "back"
-    ' The TV guide lives inside the router-owned library view — leave it via the router (back
+    ' The TV guide lives inside the router-owned library view: leave it via the router (back
     ' to Home / the previous routed view).
     sgRouter.goBack()
     return true
@@ -795,10 +795,10 @@ end function
 
 ' onDestroy: Full teardown releasing all resources before component removal.
 ' The guide is a child of BaseGridView, not a routed view, so BaseGridView calls this
-' (hideTVGuide and its own onDestroy) — the router never will.
+' (hideTVGuide and its own onDestroy); the router never will.
 sub onDestroy()
   ' Detach the interface observers registered in init(). Must precede every
-  ' reference release below — these handlers dereference them.
+  ' reference release below: these handlers dereference them.
   m.top.unobserveField("filter")
   m.top.unobserveField("searchTerm")
 

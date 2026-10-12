@@ -1,4 +1,4 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
+' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
 
@@ -52,9 +52,11 @@ sub renderChanged()
 end sub
 
 
-' `buttons` onChange. The measurement has to happen on a Task: it needs roFontRegistry, which
-' Roku refuses to create on the render thread ("MAIN|TASK-only component"). The task is built
-' per write and released in showButtons, so nothing is retained between measurements.
+' `buttons` onChange. The measurement runs on a Task because roFontRegistry was believed to be
+' forbidden on the render thread. docs/architecture/threading.md records that it works there
+' (measured on device), and tech-debt `task-thread-budget` asks whether this task can go. The
+' task is built per write and released in showButtons, so nothing is retained between
+' measurements.
 sub updateButtons()
   cancelTextSizeTask()
 
@@ -67,7 +69,7 @@ end sub
 
 ' Stop, unobserve, and drop the in-flight TextSizeTask if one exists. Safe to call when none is
 ' active. The single teardown path for m.textSizeTask, mirroring QueueManager's cancelActive*.
-' JRButtons extends Group, so no onDestroy lifecycle hook runs on it — releasing the node as
+' JRButtons extends Group, so no onDestroy lifecycle hook runs on it. Releasing the node as
 ' soon as its one-shot measurement lands is what keeps it from outliving the screen.
 sub cancelTextSizeTask()
   if isValid(m.textSizeTask)
@@ -78,7 +80,7 @@ sub cancelTextSizeTask()
 end sub
 
 ' Rebuilds the label row. Clears first so a second `buttons` write replaces the row instead of
-' appending a second copy of it — createChild appends, and buttonCount drives key nav.
+' appending a second copy of it: createChild appends, and buttonCount drives key nav.
 sub showButtons()
 
   widths = m.textSizeTask.width
@@ -113,8 +115,8 @@ sub showButtons()
   m.menubg.height = lineHeight + 40
 
   ' Released only once the row is built. `widths` was read out of the task node, and Roku does
-  ' not document whether an array field read yields a copy or a view into the node's storage —
-  ' keeping the node alive across the loop means we never have to depend on the answer.
+  ' not document whether an array field read yields a copy or a view into the node's storage.
+  ' Keeping the node alive across the loop means we never have to depend on the answer.
   cancelTextSizeTask()
 
 end sub

@@ -570,6 +570,16 @@ The device check before an upstream direct play (`LoadVideoContentTask.upstreamM
 
 This is the non-manifest half of the closed followup `live-channel-buffers-forever-unreachable-url`, found in review of the manifest direct-play fix (decision `manifest-upstream-direct-play`). Not done there because it needs a different probe: a GET of an endless progressive stream never completes, so the check would need a ranged or HEAD request, or to read only the first bytes. Closes when an unreachable server-allowed non-manifest live URL falls back to the server's stream, measured on a device.
 
+#### A mixed queue leaves a stopped `AudioPlayerView` under the player `[fid: mixed-queue-stopped-audio-view]` `[captured 2026-10-12]`
+
+In a mixed audio and video queue, the non-audio branches of `AudioPlayerView` (`advanceToNextItem`, `previousClicked`, `nextClicked`) stop the audio and call `playQueue`, which plain-navigates to the play route. A covered view is suspended, not closed (the route comment in `JRScene.initRouter`), so `/audio` stays under the player; `PlayerHostView.exitPlayback` (`sgrouter.goBack()`) then resumes a stopped `AudioPlayerView`, which has no `onScreenShown`. It broke in #677: before it, `previousClicked` and `nextClicked` called `sceneManager.callFunc("clearPreviousScene")` before `playQueue`. Found by the batch 9 comment pass.
+
+Recommended fix (`close`): one `AudioPlayerView` helper for the three branches that stops, moves the queue, `goBack()`s to close `/audio`, then calls `playQueue` once that navigation settles, with an RTA spec driving a mixed queue on a device first (it must fail before the fix). Alternatives: `scene` (`JRScene.onPlaybackLaunchRequested` goes back first when the active view is `AudioPlayerView` and the target is a play route); `exit` (an `onScreenShown` that leaves when resumed with nothing playing; hides the symptom, with a flash).
+
+Not checked: what the screen actually shows on a device; whether `PlayerHostView` can play an audio item that comes after the video in the queue; how often users build mixed playlists.
+
+Not built now: it needs a new RTA spec and a device run, outside the comment pass.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

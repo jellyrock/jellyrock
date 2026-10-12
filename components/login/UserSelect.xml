@@ -26,7 +26,7 @@
          getActiveView) when this view emits "quickConnectAuthenticated". The
          AuthenticationResult carries the AccessToken and the full UserDto, so the
          coordinator needs no further request to establish the session.
-         `saveCredentials` mirrors LoginScene's field of the same name — the two
+         `saveCredentials` mirrors LoginScene's field of the same name: the two
          auth paths answer the same question and the coordinator reads it the same
          way. -->
     <field id="quickConnectAuth" type="assocarray" />

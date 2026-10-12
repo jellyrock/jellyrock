@@ -60,7 +60,7 @@ end sub
 
 ' Called when any individual setting field changes
 ' Observer is the single source of truth for registry sync
-' IMPORTANT: Only syncs to registry - does NOT modify the node (prevents recursion)
+' IMPORTANT: Only syncs to registry - does not modify the node (prevents recursion)
 '
 ' DESIGN: Always save settings to registry, never delete
 ' This preserves user intent - if user explicitly sets a value to match the default,

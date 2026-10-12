@@ -17,7 +17,7 @@ sub init()
   m.suppressSelection = false
 end sub
 
-' Re-filter when selectedCode changes externally (e.g. settings.bs sets it on focus)
+' Re-filter when selectedCode changes externally (for example, settings.bs sets it on focus)
 sub onSelectedCodeChanged()
   if m.allLanguages.count() > 0
     filterLanguages()
@@ -42,7 +42,7 @@ sub filterLanguages()
   m.filteredLanguages = []
   checkedIndex = -1
 
-  ' Always show "Automatic" at the top — it's the reset-to-default option
+  ' Always show "Automatic" at the top: it's the reset-to-default option
   automaticLang = invalid
   for each lang in m.allLanguages
     if lang.code = ""
@@ -75,7 +75,7 @@ sub filterLanguages()
     end if
   end for
 
-  ' Suppress before setting content — RadioButtonList resets checkedItem on content change
+  ' Suppress before setting content: RadioButtonList resets checkedItem on content change
   m.suppressSelection = true
   m.resultsList.content = content
 
@@ -83,7 +83,7 @@ sub filterLanguages()
     m.resultsList.jumpToItem = checkedIndex
     m.resultsList.checkedItem = checkedIndex
   else
-    ' Selected language not in filtered results — clear any stale checkmark
+    ' Selected language not in filtered results, so clear any stale checkmark
     m.resultsList.checkedItem = -1
   end if
   m.suppressSelection = false

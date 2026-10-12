@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- OverviewDialog: the read-only long-form overlay (item descriptions, the
-     playback-info report). Appended to the scene by FocusableOverview or by
-     showInfoDialog; dismisses itself via removeChild + returnFocusTo. Supports
+     playback-info report). Appended to the scene by presentOverlayDialog, through
+     showInfoDialog or showReportDialog; dismisses itself via removeChild + returnFocusTo. Supports
      vertical scrolling.
 
-     Its OK button flows INSIDE the panel, like every other dialog in the family
-     — there is no other placement, and computeDialogLayout no longer takes one
+     Its OK button flows INSIDE the panel, like every other dialog in the family:
+     there is no other placement, and computeDialogLayout no longer takes one
      as a parameter. It used to sit below the panel on the
      reasoning that a panel this large still reads as owning a button beneath it;
-     a before/after capture on device did not support that — the outside button
+     a before/after capture on device did not support that. The outside button
      read as floating on the dimmed backdrop while the panel above it carried
      several hundred pixels of dead space. One footer placement, family-wide.
 
@@ -17,7 +17,7 @@
      rather than along a button row. See onKeyEvent below. -->
 <component name="OverviewDialog" extends="JRGroup">
   <children>
-    <!-- Dimmed backdrop, panel, edge, title and accent rule — shared with the rest
+    <!-- Dimmed backdrop, panel, edge, title and accent rule, shared with the rest
          of the dialog family. See JRDialogPanel.xml for the ordering contract. -->
     <JRDialogPanel id="chrome" />
 
@@ -36,7 +36,7 @@
     <!-- OK button -->
     <TextButton id="okButton" text="" />
 
-    <!-- Delays ONLY the opening announcement; see narration.OPENING_DELAY in
+    <!-- Delays only the opening announcement; see narration.OPENING_DELAY in
          source/utils/dialogNarration.bs. -->
     <Timer id="narrationTimer" repeat="false" />
   </children>
@@ -50,18 +50,18 @@
 
          RE-SETTABLE, and that is a contract rather than an accident: the playback
          report refreshes on a timer while it is open, and setting this again
-         RECONCILES — rows matched by `id` have their text rewritten in place and
+         RECONCILES: rows matched by `id` have their text rewritten in place and
          nothing is added or removed. That keeps the panel height and the user's
          scroll position exactly where they were. A structurally different array
          rebuilds from scratch instead. -->
     <field id="sections" type="array" onChange="onSectionsChanged" />
-    <!-- Node to restore remote focus to when this overlay closes (the FocusableOverview that
-         opened it). Set by the opener before appendChild. -->
+    <!-- Node to restore remote focus to when this overlay closes (the opener, or else the
+         scene's last focused child). Set by presentOverlayDialog before appendChild. -->
     <field id="returnFocusTo" type="node" />
     <!-- Set true when this dialog closes, by EITHER route (the user pressing
          OK/back, or cancelDialog superseding it from outside).
-         A caller that keeps a reference to this dialog — the playback report polls
-         into it — has to know when it goes away, and there is no platform signal
+         A caller that keeps a reference to this dialog (the playback report polls
+         into it) has to know when it goes away, and there is no platform signal
          for that: `parentNode` is not a Node field, so observing it silently
          never fires. Node's observable fields are id / focusable / focusedChild /
          change, and none of them says "I was removed". -->
@@ -69,14 +69,14 @@
     <!-- Whether that close came from CODE rather than from the user. Set before
          `closed`, so a `closed` observer can always read it.
          This dialog has no `result`, so it cannot carry the family's
-         externallyCancelled key (source/utils/dialogResult.bs) — same question,
+         externallyCancelled key (source/utils/dialogResult.bs): same question,
          second mechanism. It matters for the same reason: an owner whose `closed`
          handler ACTS (VideoPlayerView exits the player when the playback-error
          report closes) must not fire that action because presentOverlayDialog
          superseded this dialog to put a cast message on screen. -->
     <field id="externallyCancelled" type="boolean" value="false" />
     <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog).
-         This dialog has no result to deliver, so cancelling is just closing. -->
+         This dialog has no result to deliver, so cancelling is only closing. -->
     <function name="cancelDialog" />
     <!-- Called by presentOverlayDialog while the dialog is still hidden, to lay it
          out before it is shown. See source/utils/dialogReveal.bs. -->

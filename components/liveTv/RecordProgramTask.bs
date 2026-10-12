@@ -36,7 +36,7 @@ sub RecordOrCancelProgram()
       end if
       if isValid(createRes) and createRes.ok
         m.top.programDetails.hdSmallIconUrl = "pkg:/images/red.png"
-        ' POST /LiveTv/Timers returns 204 No Content — no timer ID in the response.
+        ' POST /LiveTv/Timers returns 204 No Content, with no timer ID in the response.
         ' Re-fetch the program item to get the server-assigned TimerId so subsequent
         ' presses trigger cancel instead of attempting a duplicate create.
         refreshRes = fetchRes(GetApi().BuildGetItemRequest(m.top.programDetails.id), "refreshProgram")

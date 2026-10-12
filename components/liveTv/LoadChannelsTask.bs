@@ -25,7 +25,7 @@ sub loadChannels()
   hasAlphaFilter = m.top.NameStartsWith <> ""
 
   if hasAlphaFilter
-    ' /LiveTv/Channels doesn't support NameStartsWith — fall back to /Items for alpha filtering
+    ' /LiveTv/Channels doesn't support NameStartsWith: fall back to /Items for alpha filtering
     params = {
       includeItemTypes: "LiveTvChannel",
       SortBy: m.top.sortField,
@@ -53,7 +53,7 @@ sub loadChannels()
     timer = CreateObject("roTimespan")
     res = fetchRes(GetApi().BuildGetItemsByQueryRequest(params), "liveTvChannels")
   else
-    ' Dedicated endpoint — much faster, no unnecessary metadata (Chapters, Trickplay, Backdrop, etc.)
+    ' Dedicated endpoint: much faster, no unnecessary metadata (Chapters, Trickplay, Backdrop, etc.)
     ' OSD loads its own metadata via LoadVideoContentTask when a channel is selected.
     params = {
       SortBy: m.top.sortField,

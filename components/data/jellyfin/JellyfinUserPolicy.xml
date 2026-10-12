@@ -3,7 +3,7 @@
   Jellyfin User Policy
 
   This content node represents the Policy object from the Jellyfin server API.
-  Policy data is SERVER-AUTHORITATIVE and session-specific - it should NEVER
+  Policy data is SERVER-AUTHORITATIVE and session-specific - it should never
   be loaded from or synced to the registry.
 
   These permissions and restrictions are controlled by the Jellyfin server administrator
@@ -86,7 +86,7 @@
     <!-- Sync Play -->
     <field id="syncPlayAccess" type="string" />
 
-    <!-- DEBUG ONLY: Raw policy data for debugging - only populated when bs_const=debug=true -->
+    <!-- Debug only: Raw policy data for debugging - only populated when bs_const=debug=true -->
     <field id="rawPolicyData" type="assocarray" />
   </interface>
 </component>

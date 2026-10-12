@@ -8,7 +8,7 @@ sub init()
   m.overhang = m.scene.findNode("overhang")
 end sub
 
-' SceneManager is purely a shared SERVICE node — backdrop, theme, the overhang user/clock
+' SceneManager is purely a shared SERVICE node: backdrop, theme, the overhang user/clock
 ' passthroughs below, and the one dialog QUERY (isDialogOpen) that needs to answer for both
 ' presentation channels at once. It no longer SHOWS dialogs: every dialog in the app goes
 ' through source/utils/dialogs.bs and answers on its own node. The router host (JRScene) owns
@@ -48,14 +48,15 @@ sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdro
 end sub
 
 ' Is ANY dialog currently on screen? Callers use this to hold off on something
-' that would interfere — the OSD's inactivity auto-hide, the player's
-' end-of-playback teardown.
+' that would interfere: the OSD's inactivity auto-hide, VideoPlayerView taking
+' focus after a load and starting its segment and next-episode checks, and a
+' VideoNotification taking focus when it shows.
 '
 ' There are TWO channels and this must answer for both. It used to check only
 ' Roku's modal channel, so it began silently returning false for every dialog in
 ' the app when the JRDialog family moved to scene-appended overlays. The OSD read
-' that false and hid itself out from under an open dialog, taking focus with it
-' — the dialog stayed on screen but deaf, and Back fell through to the player.
+' that false and hid itself out from under an open dialog, taking focus with it.
+' The dialog stayed on screen but deaf, and Back fell through to the player.
 function isDialogOpen() as boolean
   if isValid(m.scene.dialog) then return true
   return isOverlayDialogOpen()
@@ -64,7 +65,7 @@ end function
 ' Refresh theme colors on JRScene and overhang.
 ' Called after theme color settings change (settings exit, login, logout).
 ' Uses refreshThemeOnTree() to walk the overhang's node tree and update all
-' themed elements (labels, buttons, icons) in place — no component recreation
+' themed elements (labels, buttons, icons) in place: no component recreation
 ' or per-component refresh functions needed.
 sub refreshThemeColors()
   m.scene.backgroundColor = m.global.constants.colorBackgroundPrimary
