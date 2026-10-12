@@ -1,7 +1,7 @@
 import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
 
-' The library grid's LoadItemsTask2 query — what BaseGridView asks for, kept apart from the
+' The library grid's LoadItemsTask2 query (what BaseGridView asks for), kept apart from the
 ' Task node that runs it.
 '
 ' BaseGridView runs every load and every page on a NEW node (see replaceTask), so the node
@@ -56,7 +56,7 @@ namespace gridQuery
   ' saved name could always be honored. The Collections view breaks that: it is offered
   ' only on 12.0+, so a name saved against one server can be missing when the SAME
   ' library is opened against an older one (a downgrade, a restored backup). Honoring it
-  ' anyway does not fail loudly — the presenter falls through to its default query branch
+  ' anyway does not fail loudly: the presenter falls through to its default query branch
   ' while the layout is still chosen for the named view, which on a movie library means
   ' the presentation grid's 650px offset with the info panel hidden: a grid pushed down
   ' the screen against dead space.
@@ -64,7 +64,7 @@ namespace gridQuery
   ' offersView: whether `viewName` is one of the views the presenter is listing.
   '
   ' Case-insensitive, matching how BaseGridView.SetUpOptions already compares a view name
-  ' to the saved one — a presenter's `Name` and the saved string must agree under the same
+  ' to the saved one. A presenter's `Name` and the saved string must agree under the same
   ' rule in both places or a view could restore here and fail to tick there.
   '
   ' @param views - a presenter's `getOptions().views`
@@ -89,12 +89,12 @@ namespace gridQuery
   ' case and is answered with the default exactly as before. A saved name is honored
   ' unless the presenter has stopped offering it.
   '
-  ' THE EMPTY DEFAULT IS NOT A MISSING VIEW. getDefaultView() returns "" for the Live TV,
-  ' Photos and Generic presenters, whose grids run with no named view at all — and "" is
+  ' The empty default is not a missing view. getDefaultView() returns "" for the Live TV,
+  ' Photos and Generic presenters, whose grids run with no named view at all, and "" is
   ' in no presenter's list, so a rule of "reset anything not offered" would reset those on
   ' every load. Only a non-empty saved name is checked.
   '
-  ' The caller does NOT write the fallback back to the registry: the saved choice is still
+  ' The caller does not write the fallback back to the registry: the saved choice is still
   ' what the user picked, and it becomes valid again the moment the library is opened
   ' against a server that supports it.
   '
@@ -118,7 +118,7 @@ namespace gridQuery
   ' A PLAIN STRING is its own query value: Genres sends the genre name, Years sends the
   ' year. What the panel shows and what the request carries are the same text.
   '
-  ' An AA — { title, value } — separates them, which the 12.0 language filters need in
+  ' An AA ({ title, value }) separates them, which the 12.0 language filters need in
   ' both directions. The label has to be the app's own localized language name, because
   ' the server's is an English library-science string ("Spanish; Castilian (spa)"); the
   ' value has to be the server's own case-sensitive codes, and for a language with two
@@ -129,7 +129,7 @@ namespace gridQuery
   ' category's delimiter, and that same string is what the registry stores. Decoding it
   ' on restore is a plain split, which is correct only while this holds:
   '
-  '     AN OPTION'S VALUE NEVER CONTAINS ITS CATEGORY'S DELIMITER.
+  '     An option's value never contains its category's delimiter.
   '
   ' Every category is built to satisfy it, and the delimiters were chosen for that
   ' reason: Genres and OfficialRatings use "|" because their values are free text that
@@ -139,13 +139,13 @@ namespace gridQuery
   '
   ' Break it and the failure is silent and specific: the query still applies, because
   ' joining is unaffected, but the restore pass splits a value apart and matches none of
-  ' the pieces — so the filter is active with no box ticked, and one confirming keypress
+  ' the pieces, so the filter is active with no box ticked, and one confirming keypress
   ' on that panel then clears it. queryValueFor() and checkedStateFor() are inverses, and
   ' are tested as a ROUND TRIP rather than individually, because each is self-consistently
   ' correct on its own while the pair silently disagrees.
   '
   ' Both accessors read through textOrEmpty() rather than toString(), which FAULTS on
-  ' Invalid (it falls through to Str()) — and a filter category's option list is exactly
+  ' Invalid (it falls through to Str()), and a filter category's option list is exactly
   ' the kind of place a missing entry shows up. Both also trim, because Str() on a number
   ' returns a LEADING SPACE (`1999` -> `" 1999"`), which would never match the saved
   ' query. Both faults were found by the unit tests on device, not by review.
@@ -194,7 +194,7 @@ namespace gridQuery
     return values
   end function
 
-  ' queryValueFor: the saved query for one category — its checked options' values, joined.
+  ' queryValueFor: the saved query for one category (its checked options' values, joined).
   '
   ' Takes VALUES rather than options because the caller (ItemGridOptions) reads them off
   ' the CheckList's own nodes via checkListValues(), not off the presenter's option list.
@@ -224,7 +224,7 @@ namespace gridQuery
   '
   ' The inverse of queryValueFor(), and the reason the pair has to be tested together:
   ' this is what re-ticks the boxes when the panel reopens, matching on the VALUE because
-  ' that is what was saved — the registry holds the query the filter applied, not the
+  ' that is what was saved: the registry holds the query the filter applied, not the
   ' labels it was picked by.
   '
   ' @param options - a category's `Options` list

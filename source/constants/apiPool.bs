@@ -19,7 +19,7 @@
 namespace apiPool
 
   ' Width for devices not on the low-memory list. Do not change without
-  ' measuring on device (npm run measure) — see the doc above.
+  ' measuring on device (npm run measure). See the doc above.
   const DEFAULT_WIDTH = 6
 
   ' Width for 512 MB devices (m.global.device.isLowMemoryDevice).
@@ -32,8 +32,8 @@ namespace apiPool
   end function
 
   ' The width this session's pool was created with (m.global.apiPoolWidth).
-  ' Falls back to LOW_MEMORY_WIDTH when the field is absent — before
-  ' setGlobalNodes() has run, or in a unit test — because asking for fewer slots
+  ' Falls back to LOW_MEMORY_WIDTH when the field is absent (before
+  ' setGlobalNodes() has run, or in a unit test), because asking for fewer slots
   ' than exist only queues requests, while asking for more would count slots
   ' that were never created. On a Task thread each call is a cross-thread read:
   ' call it once per run, not once per request.

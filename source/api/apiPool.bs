@@ -6,9 +6,9 @@ import "pkg:/source/utils/tasks.bs"
 
 ' ── Skipping a request nobody is waiting for ────────────────────────────────
 '
-' The pool has no way to cancel a request. A caller that stops listening — a Task
+' The pool has no way to cancel a request. A caller that stops listening (a Task
 ' STOPped by replaceTask() while it waits in fetchRes, a promise abandoned at
-' teardown, a pipeline run ended early, a caller that timed out — leaves its request
+' teardown, a pipeline run ended early, a caller that timed out) leaves its request
 ' in the coordinator's FIFO queue, where it is still dispatched and holds a pool slot
 ' for as long as the server takes (up to timeouts.HTTP_MS). On a slow server that
 ' queues the requests the user IS waiting for behind ones nobody will read: Search
@@ -20,10 +20,10 @@ import "pkg:/source/utils/tasks.bs"
 ' delete), and running it even though the screen moved on is what they want. A POST
 ' that only reads opts in with `skippable: true` on its request AA
 ' (BuildGetLiveTvScheduleRequest). A request already on a pool slot is stopped only when
-' it is a long one — see "Stopping a request nobody is waiting for" below.
+' it is a long one: see "Stopping a request nobody is waiting for" below.
 
 ' True when the pool may skip `req` once its caller is gone: a GET or HEAD (a request
-' with no method is a GET — executeHttpRequest's pool default), or a request that
+' with no method is a GET, executeHttpRequest's pool default), or a request that
 ' declares `skippable: true`.
 function apiRequestIsSkippable(req as dynamic) as boolean
   if not isValid(req) then return false
@@ -57,14 +57,14 @@ end function
 '
 ' Skipping only helps a request still in the queue. One already on a slot runs until the
 ' server answers or its HTTP limit runs out, and a request that asks for a long limit
-' (apiTimeout.isLong — a library grid's page) can hold its slot for a minute after the user
+' (apiTimeout.isLong, such as a library grid's page) can hold its slot for a minute after the user
 ' has backed out. So when the coordinator SENDS such a request, it watches the Task waiting
 ' for it, and if that Task stops before the answer arrives it tells the slot to give up
 ' (apiSlotQuit), which frees the slot at once.
 '
 ' Only long requests are watched. Watching costs the coordinator crossings on the serial
-' path every request takes — reading the waiting Task, then subscribing to it, measured at
-' 0.5-1.0 ms each on a 512 MB Stick (2026-09-25) — and a request with the default limit
+' path every request takes (reading the waiting Task, then subscribing to it, measured at
+' 0.5-1.0 ms each on a 512 MB Stick (2026-09-25)), and a request with the default limit
 ' frees its slot within timeouts.HTTP_MS anyway. Only reads, for the same reason as skipping:
 ' a write the user asked for should land.
 '
@@ -80,7 +80,7 @@ function apiRequestIsStoppable(req as dynamic) as boolean
   return apiTimeout.isLong(req) and apiRequestIsSkippable(req)
 end function
 
-' The slots whose requests `caller` is waiting for, [] when none are — each answer was
+' The slots whose requests `caller` is waiting for, [] when none are: each answer was
 ' already delivered, or no request of its was watched. More than one when a Task has several
 ' long requests on slots at once (an apiPipeline run), which share one subscription to it.
 '
@@ -101,7 +101,7 @@ end function
 ' Tells a pool slot to give up the request it is waiting on. roku-requests reads
 ' `m.top.quit` on every pass of its wait and cancels the transfer once it is true.
 '
-' The field exists only while a stop is pending, so ApiTask.xml must NOT declare it:
+' The field exists only while a stop is pending, so ApiTask.xml must not declare it:
 ' roku-requests reads it on every pass of every request in the app, and a read of a field
 ' the node has costs about twice a read of one it lacks (docs/architecture/api.md, "A long
 ' request already on a slot"). Added here, removed by apiSlotClearQuit before the slot's
@@ -126,7 +126,7 @@ end sub
 ' Skips the entry when its caller is gone and it is safe to skip, completing its
 ' result node so the node never looks pending; returns true if it did.
 '
-' Called by apiPoolNextDispatch, and ONLY for an entry that waited for a slot — every
+' Called by apiPoolNextDispatch, and only for an entry that waited for a slot: every
 ' read here crosses to the render thread, and the coordinator is the serial path every
 ' request passes through. Measured on a Stick 4K (2026-09-22, Home load, 96 requests):
 ' 7796 us per entry checked, against 1559 us for the slot write beside it.
@@ -142,11 +142,11 @@ function settleIfCallerGone(entry as object) as boolean
   owner = node.owner
   if not apiRequestCallerGone(node.abandoned, owner) then return false
   ' Skipped, so this Task reference is known dead: drop it. A DISPATCHED entry keeps
-  ' its owner — that Task is still waiting for the answer, and clearing it would cost a
+  ' its owner: that Task is still waiting for the answer, and clearing it would cost a
   ' crossing on the path every request takes. The node lets go when it is released,
   ' which the coordinator's 50-child prune bounds. (Folding the clear into the delivery
   ' write as setFields({result, owner: invalid}) was measured SLOWER than the plain
-  ' write: 27.4 ms against 10.8 — see ADR 0040.)
+  ' write: 27.4 ms against 10.8, see ADR 0040.)
   if isValid(owner) then node.owner = invalid
   node.result = {
     requestId: entry.req.requestId,
@@ -162,7 +162,7 @@ end function
 
 ' The coordinator's per-slot decision, as one step: take the next queued entry and say
 ' what to do with it. Extracted from ApiQueueTask.tryDispatch so tests can drive the
-' rules — a skip that claimed a slot would leave that slot marked busy with nothing
+' rules: a skip that claimed a slot would leave that slot marked busy with nothing
 ' running on it, dead for the rest of the session, and the shell is not reachable.
 '
 ' Mutates `queue` and `inFlight` exactly as the coordinator needs: the returned entry is
@@ -184,7 +184,7 @@ function apiPoolNextDispatch(queue as object, inFlight as object) as dynamic
   end for
 
   if freeSlot = -1
-    ' Every slot is busy, so everything still queued is now WAITING — the only
+    ' Every slot is busy, so everything still queued is now WAITING, the only
     ' population whose caller can go away before it is dispatched. An entry that
     ' finds a free slot on arrival is sent in the same breath, so checking it costs
     ' the crossings and can never find anything.
@@ -208,16 +208,16 @@ function apiPoolNextDispatch(queue as object, inFlight as object) as dynamic
 end function
 
 ' Submits a request to the API queue coordinator and blocks the calling Task thread
-' until the response arrives (or apiTimeout.waitMs(req) elapses — timeouts.API_WAIT_MS
+' until the response arrives (or apiTimeout.waitMs(req) elapses: timeouts.API_WAIT_MS
 ' unless the request carries its own `timeoutMs`).
 '
-' Safe to call concurrently from multiple Task threads — each request gets its own
+' Safe to call concurrently from multiple Task threads: each request gets its own
 ' ApiResultNode, so responses are never mixed up between callers. The coordinator
 ' (ApiQueueTask) is the only entity that dispatches to pool slots, eliminating the
 ' TOCTOU race that existed when callers claimed slots directly.
 '
 ' Delivery mechanism: the ApiResultNode is appended as a CHILD of the coordinator
-' node. This is immune to SceneGraph port-event coalescing — even if multiple
+' node. This is immune to SceneGraph port-event coalescing: even if multiple
 ' concurrent enqueue wakeup events merge into one, the coordinator reads ALL
 ' unprocessed children when it wakes up, so no request is ever lost.
 '
@@ -232,7 +232,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
 
   ' Startup ordering guard: the coordinator sets isReady=true only AFTER every pool
   ' slot has registered its request observer AND the coordinator has registered
-  ' its own observers. This guarantees the full pipeline (pool → coordinator →
+  ' its own observers. This guarantees the full pipeline (pool to coordinator to
   ' callers) is operational before any request flows.
   ' After the first request this check costs a single field-read rendezvous; it is
   ' effectively free for the rest of the session once the pipeline is up.
@@ -254,9 +254,9 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
 
   req.requestId = requestId
 
-  ' One result node per request — carries the request in and the response out.
+  ' One result node per request: carries the request in and the response out.
   ' The coordinator reads 'request', dispatches to a pool slot, then writes
-  ' 'result' and sets 'done' when the slot completes.
+  ' 'result' and sets 'isDone' when the slot completes.
   resultNode = CreateObject("roSGNode", "ApiResultNode")
   resultNode.request = req
   ' This Task thread is about to block on the answer. If it is STOPped before a slot
@@ -264,15 +264,15 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   if apiRequestIsSkippable(req) then resultNode.owner = poolCallerTask()
 
   ' Observe BEFORE appending. If the request completes before we reach wait(),
-  ' the 'done' event is already in the port queue and wait() returns immediately.
+  ' the 'isDone' event is already in the port queue and wait() returns immediately.
   port = CreateObject("roMessagePort")
   resultNode.observeField("isDone", port)
 
   ' Append the result node as a child of the coordinator. The coordinator reads
-  ' ALL unprocessed children when woken up — this is immune to event coalescing,
+  ' ALL unprocessed children when woken up. This is immune to event coalescing,
   ' unlike writing data to a shared field where concurrent writes can merge events.
   apiQueue.appendChild(resultNode)
-  ' Wake-up signal — coordinator ignores the value and reads children instead.
+  ' Wake-up signal: the coordinator ignores the value and reads children instead.
   apiQueue.enqueue = requestId
 
   msg = wait(apiTimeout.waitMs(req), port)
@@ -281,7 +281,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
     return resultNode.result
   end if
   ' Timeout: clean up the observer to prevent a stale reference to the dead port.
-  ' The result node stays as a child of the coordinator — do NOT removeChild(),
+  ' The result node stays as a child of the coordinator. Do not removeChild(),
   ' as that shifts child indices and corrupts the coordinator's m.processedIndex.
   ' When the coordinator eventually delivers the response it will write to the
   ' abandoned node (no crash), free the slot, and dispatch the next queued
@@ -292,7 +292,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   return invalid
 end function
 
-' Convenience wrapper — submits via the queue and returns the parsed JSON body.
+' Convenience wrapper: submits via the queue and returns the parsed JSON body.
 ' Returns invalid on timeout, HTTP error, or if req is invalid.
 '
 ' @param req       - request AA from a Build*Request() method
@@ -305,10 +305,10 @@ function fetchJson(req as dynamic, requestId as string) as dynamic
 end function
 
 ' Submits a request to the API queue coordinator and returns immediately without
-' blocking. The caller observes 'done' on the returned ApiResultNode via a
+' blocking. The caller observes 'isDone' on the returned ApiResultNode via a
 ' render-thread callback, then reads 'result' for the response.
 '
-' The render thread does NOT make the HTTP call — it just creates a node,
+' The render thread does not make the HTTP call. It only creates a node,
 ' appends it to the coordinator, and returns (~microseconds). The coordinator
 ' (ApiQueueTask, a Task thread) dispatches to an ApiTask pool slot (another
 ' Task thread) which performs the actual HTTP request. When done, the result
@@ -316,16 +316,16 @@ end function
 ' callback fires.
 '
 ' Use for single API calls with trivial callbacks (set a boolean, read one value).
-' Do NOT use when the callback needs data transforms or array processing —
+' Do not use when the callback needs data transforms or array processing:
 ' use an Orchestrator Task with fetchJson() instead.
 '
 ' Task-thread callers that pipeline several non-blocking requests pass their roMessagePort as
 ' `port`: isDone is then observed BEFORE the request enters the queue, so a response can never
 ' land ahead of the observer. Render-thread callers omit it (and should prefer fetchAsync).
 '
-' ORDERING DEPENDENCY — this function does NOT wait for the pipeline to come up. Where fetchRes
+' ORDERING DEPENDENCY: this function does not wait for the pipeline to come up. Where fetchRes
 ' blocks up to ~10s on apiQueue.isReady, this returns invalid on the spot, which callers
-' reasonably read as "no answer" and degrade on. That is only safe when something that DOES
+' reasonably read as "no answer" and degrade on. That is only safe when something that does
 ' wait has already run: LoadLatestRowsTask, for instance, is reached from Home only after the
 ' libraries fetch (a blocking fetchRes) has returned, so the pool is provably up by then. A new
 ' caller that can run before any blocking request must not assume the same.
@@ -398,11 +398,11 @@ sub dropApiRequest(resultNode as dynamic)
 end sub
 
 ' Submits a fire-and-forget request to the global SideEffectTask.
-' No response is observed. Calls are serialised — do not use for cancellable UI requests.
+' No response is observed. Calls are serialized, so do not use for cancellable UI requests.
 '
 ' Uses the children-as-vehicle pattern (like submitApiRequest / fetchRes): a FRESH
 ' ApiResultNode per request means back-to-back submits can never clobber one another.
-' The previous single shared 'request' field could — two rapid writes coalesced and a
+' The previous single shared 'request' field could: two rapid writes coalesced and a
 ' POST was silently dropped (issue #744). The 'enqueue' write is only a wake signal; the
 ' task reads the appended children, not the value.
 '
@@ -413,12 +413,12 @@ sub SubmitSideEffect(req as dynamic)
   if not isValid(sideEffectTask) then return
 
   ' Reuse ApiResultNode purely as a request-carrier vehicle: only its 'request' field is
-  ' read on this path — 'result'/'isDone' stay untouched, since side effects are
+  ' read on this path. 'result'/'isDone' stay untouched, since side effects are
   ' fire-and-forget and deliver no response. (Tier 1 uses all three; see ApiResultNode.xml.)
   resultNode = CreateObject("roSGNode", "ApiResultNode")
   resultNode.request = req
 
   sideEffectTask.appendChild(resultNode)
-  ' Wake-up only — value ignored (task reads children). alwaysNotify guarantees it fires.
+  ' Wake-up only: value ignored (task reads children). alwaysNotify guarantees it fires.
   sideEffectTask.enqueue = "submit"
 end sub

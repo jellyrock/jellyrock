@@ -135,7 +135,7 @@ class MusicPresenter extends GridPresenterBase
     if isMusicGenre
       task.itemType = "MusicAlbum"
       task.genreIds = parentItem.id
-      ' Clear parentId — genreIds alone scopes the result; parentItem.parentId from
+      ' Clear parentId: genreIds alone scopes the result; parentItem.parentId from
       ' the /Genres API response is unreliable (virtual folder ID, not library ID)
       task.itemId = ""
       task.view = "Artists"

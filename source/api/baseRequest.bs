@@ -150,10 +150,10 @@ end function
 
 ' Returns a string containing the "Authorization" header payload.
 '
-' DeviceId is the one field here that is load-bearing for session identity: Jellyfin resolves it
+' DeviceId is the one field here that matters for session identity: Jellyfin resolves it
 ' from THIS header only (never from a query string), and falls back to the DeviceId the auth token
 ' was minted under when the header omits it. Every channel that opens a Jellyfin session must
-' therefore send this header, or it silently lands on a different session — see the ws:// receiver
+' therefore send this header, or it silently lands on a different session: see the ws:// receiver
 ' in RemoteControlTask and issue #743.
 '
 ' @param shouldIncludeDeviceName - false omits the free-text `Device=` field. The ws:// handshake is
@@ -186,18 +186,18 @@ end function
 ' Shared HTTP execution for the API task tiers. Builds the request args (auth header,
 ' timeout, Content-Type default) from a request AA and performs the roku-requests call.
 ' Returns the raw roku-requests result object, or invalid when the URL is missing/empty
-' (the caller decides how to surface that — Tier 1 maps it to an error response AA, the
+' (the caller decides how to surface that: Tier 1 maps it to an error response AA, the
 ' fire-and-forget SideEffectTask ignores it).
 '
 ' Centralizes what previously lived duplicated in ApiTask.executeRequest() and
 ' SideEffectTask.executeSideEffect(); that copy drifted across three separate historical
 ' fixes (Content-Type default, URL validation, timeout centralization), each of which had
-' to patch both copies in lockstep. Runs on whichever Task thread invokes it — free
+' to patch both copies in lockstep. Runs on whichever Task thread invokes it: free
 ' functions share the caller's `m`, so auth/global reads resolve exactly as before.
 '
 ' @param req           - request AA: { method, url, headers?, body?, timeoutMs? }
 ' @param defaultMethod - HTTP method when req.method is absent ("GET" for the pool, "POST" for side effects)
-' @param logLabel      - tag prefixed to the invalid-URL log line (e.g. "[ApiTask]")
+' @param logLabel      - tag prefixed to the invalid-URL log line (for example "[ApiTask]")
 ' @return roku-requests result (.ok / .statusCode / .json / .text), or invalid on bad URL
 function executeHttpRequest(req as object, defaultMethod as string, logLabel as string) as object
   method = req.method

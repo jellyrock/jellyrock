@@ -1,7 +1,7 @@
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
 
-' Decision layer for Home's latest-media rows — which of the orchestrator's delivered
+' Decision layer for Home's latest-media rows: which of the orchestrator's delivered
 ' results the UI may act on, and where the drain cursor lands.
 '
 ' It lives in source/ rather than in HomeRows.bs because a component codebehind's functions
@@ -13,8 +13,8 @@ namespace latestRows
   ' The raw items one latest-media response lets the row show, or invalid when the row must be
   ' treated as "failed".
   '
-  ' Only an ok response is authoritative. No answer and a not-ok response return invalid — none
-  ' of them says what the library holds, and an "ok" with an empty list REMOVES the row
+  ' Only an ok response is authoritative. No answer and a not-ok response return invalid: neither
+  ' says what the library holds, and an "ok" with an empty list removes the row
   ' (HomeRows' populateRowFromData). Not-ok includes a 200 whose body holds no list: the request
   ' is a list request (ApiClient.listReq), so the pool reports that body as not-ok and an ok
   ' one always carries an roArray (apiResponse.enforceShape). Books are dropped: the app can't
@@ -33,27 +33,27 @@ namespace latestRows
   end function
 
   ' Walks LoadLatestRowsTask's result children from `startIndex` and returns the ones the UI
-  ' should populate, plus the new cursor. One wake can cover several results — wake events
-  ' coalesce, appended children don't — so the caller always drains to the end.
+  ' should populate, plus the new cursor. One wake can cover several results (wake events
+  ' coalesce, appended children don't), so the caller always drains to the end.
   '
   ' A "failed" child is never returned in `ready`. A timeout, a transport failure or an HTTP
   ' error says nothing about what the library holds, and populateRowFromData removes a row when
-  ' handed an empty list — so acting on a failure would delete good content on a flaky refresh.
+  ' handed an empty list, so acting on a failure would delete good content on a flaky refresh.
   ' The cursor still advances past it; the row is loaded again on the next Home.refresh(), which
   ' fires on every onScreenShown, or when the viewer presses OK on its failed tile.
   '
   ' Its libId comes back in `failed` instead, and the caller hands it to homeRowFailure, which
   ' changes a row only while it still shows its loading placeholder: that placeholder becomes
   ' the "couldn't load" tile IN PLACE, and a row that already shows items keeps them. The row is
-  ' never removed — a latest row that has not been populated yet is not empty, it carries one
+  ' never removed. A latest row that has not been populated yet is not empty: it carries one
   ' placeholder child so the RowList renders it at the right slot size, and the next successful
   ' load fills it via populateRowFromData's "update children in place" branch: items appended,
   ' placeholder dropped, no insert. Removing it instead would send that load down the
-  ' else-branch, which CreateObject+insertChild's a fresh row — the row visibly pops in and
-  ' shifts every row below it. Measured on device (8 libraries, HTTP 500 forced on five): the
+  ' else-branch, which CreateObject+insertChild's a fresh row: the row visibly pops in and
+  ' shifts every row below it. Measured on device on 2026-08-03 (8 libraries, HTTP 500 forced on five): the
   ' failed rows sat at their single placeholder child and nothing shifted. Keep it that way.
   '
-  ' Also resets `silenceClock` whenever the drain moves past at least one child — a failed
+  ' Also resets `silenceClock` whenever the drain moves past at least one child, a failed
   ' child included, since it is still the run reporting in. runIsStalled reads that clock, and
   ' the reset lives here rather than at the call site because this is the one call every
   ' delivered row goes through: a reset that could be dropped from the observer on its own
@@ -90,19 +90,19 @@ namespace latestRows
   '
   ' Only for the rows THAT run delivers. A run coalesces one row-size recompute per structural
   ' change into one for the whole run, which is only safe while the row list and the three
-  ' geometry arrays stay in step — so the removals have to wait alongside the recompute.
+  ' geometry arrays stay in step, so the removals have to wait alongside the recompute.
   '
   ' Every other Home section (Continue Watching, Next Up, On Now, Active Recordings) removes
-  ' and recomputes immediately, mid-run or not. Two reasons, and the second is load-bearing:
+  ' and recomputes immediately, mid-run or not. Two reasons, and the second is the one that matters:
   '
   '   - Those sections are fired by startParallelLoads, which RACES the orchestrator. Whether
   '     one lands inside a run depends on which HTTP response wins, so batching them would make
-  '     a user-visible row collapse race-dependent — same server, two loads, two behaviours.
+  '     a user-visible row collapse race-dependent: same server, two loads, two behaviors.
   '   - The queue is keyed by sectionId and holds its entry until the run ends. The orchestrator
   '     yields each library exactly once per run (see drainReady), so a queued latest_ row cannot
-  '     be repopulated before the flush. A parallel section CAN be — onProgramsExpired and
-  '     Home.refresh() both re-fire those tasks mid-run — and the flush would then delete a row
-  '     that had just been filled.
+  '     be repopulated before the flush. A parallel section can be (onProgramsExpired and
+  '     Home.refresh() both re-fire those tasks mid-run), and the flush would then delete a row
+  '     that had been filled moments before.
   '
   ' @param sectionId - the row's sectionId
   ' @param batching - whether a latest-rows run is currently holding the recompute
@@ -121,10 +121,10 @@ namespace latestRows
   '
   ' Measured from the last row the run DELIVERED, not from its start. apiPipeline charges its
   ' budget only while waiting on the server, so a live run with many rows can legitimately
-  ' outlast PIPELINE_RUN_MS end to end — every row it hands over is its own proof of life. What
+  ' outlast PIPELINE_RUN_MS end to end: every row it hands over is its own proof of life. What
   ' a live run cannot do is stay silent much longer than its whole budget, PIPELINE_RUN_MS: a
   ' wait never outlasts what is left of it. API_WAIT_MS on top is slack for the silent time that
-  ' is NOT charged — the task thread starting, building its entries before the first row, and
+  ' is not charged: the task thread starting, building its entries before the first row, and
   ' one row's transform and hand-off to this thread. Past the two combined it is not a slow run,
   ' it is a dead one.
   '
@@ -137,7 +137,7 @@ namespace latestRows
 
   ' The libraries a latest-media run loads, in row order: every library that gets a latest row
   ' (collections, Live TV and programs do not), or, for a retry, only those among them whose
-  ' ids are in `onlyLibIds`. A retry loads just the rows that failed, so it costs one request
+  ' ids are in `onlyLibIds`. A retry loads only the rows that failed, so it costs one request
   ' per failed row rather than a reload of every row.
   '
   ' @param filteredLatest - the libraries left after latestItemsExcludes, each with `id` and

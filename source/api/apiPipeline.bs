@@ -4,12 +4,12 @@ import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' ============================================================================
-' apiPipeline.bs — bounded request pipelining on ONE Task thread (call pattern 5)
+' apiPipeline.bs: bounded request pipelining on one Task thread (call pattern 5)
 ' ============================================================================
 '
 ' The problem this solves: an orchestrator Task with N independent requests has
 ' had two bad options. Serial `fetchJson` in a loop pays the full round trip N
-' times. One Task per request is a thread fan-out — the mechanism behind the
+' times. One Task per request is a thread fan-out: the mechanism behind the
 ' `&h29` "too many threads" crashes on large libraries (epic #728).
 '
 ' This is the third option: keep ONE thread, and keep as many requests riding the
@@ -27,7 +27,7 @@ import "pkg:/source/utils/misc.bs"
 '     result = apiPipelineNext(pipe)
 '   end while
 '
-' Each entry needs exactly two keys — `requestId` (unique per run) and `req` (a
+' Each entry needs exactly two keys: `requestId` (unique per run) and `req` (a
 ' Build*Request() AA). Everything else on the entry is caller payload, returned
 ' untouched so the caller can recover its context without a side table.
 '
@@ -35,8 +35,8 @@ import "pkg:/source/utils/misc.bs"
 ' entry order, so on-screen-first work still starts first.
 '
 ' The pool is topped up once per call, at the TOP of apiPipelineNext. Refilling
-' again right after a completion — before handing the result back, so the freed
-' slot is not idle for the caller's per-result work — was tried and measured:
+' again right after a completion (before handing the result back, so the freed
+' slot is not idle for the caller's per-result work) was tried and measured (2026-08-04):
 ' across six independent device/pass comparisons it was consistently ~1-3%
 ' SLOWER, never faster (sign test p=0.031), and the per-column split showed no
 ' mechanism holding up under n=30. The idle-slot argument sounds right and does
@@ -52,11 +52,11 @@ import "pkg:/source/utils/misc.bs"
 ' `budgetMs` (default `timeouts.PIPELINE_RUN_MS`) is ONE budget for the whole run,
 ' not a per-request timeout. A per-request wait lets N slow requests stack into
 ' N * API_WAIT_MS. When the budget expires the pipeline stops submitting and
-' yields every remaining entry — in-flight first, then unsubmitted — with
+' yields every remaining entry (in-flight first, then unsubmitted) with
 ' `res = invalid`. So budget expiry needs no special case at the call site: the
-' loop just sees undelivered entries and ends.
+' loop sees undelivered entries and ends.
 '
-' The budget is charged only for time spent INSIDE apiPipelineNext — the time the
+' The budget is charged only for time spent inside apiPipelineNext: the time the
 ' run is waiting on the server. The caller's own work between calls (transforming
 ' a response, handing a row to the render thread) is not charged. It bounds what
 ' the budget exists to bound, a slow or dead server, and it keeps that bound from
@@ -65,25 +65,25 @@ import "pkg:/source/utils/misc.bs"
 ' undelivered.
 '
 ' `res = invalid` means "no answer" (never submitted, pool unavailable, or the
-' budget ran out). It does NOT mean "the server said no" — an HTTP error is a
+' budget ran out). It does not mean "the server said no": an HTTP error is a
 ' valid `res` with `ok = false`. Callers that must distinguish a transient
 ' failure from an authoritative empty result branch on that difference.
 '
 ' ── Pure core / I/O shell split ────────────────────────────────────────────
 '
 ' The state machine (slot accounting, take, drain, done) is pure: it takes the
-' pipe AA explicitly and touches no nodes, no ports, no clock — the budget
-' helpers take the time as an argument. Only the shell (`apiPipelineNext` and
+' pipe AA explicitly and touches no nodes, no ports, no clock (the budget
+' helpers take the time as an argument). Only the shell (`apiPipelineNext` and
 ' its `apiPipelineAdvance` body) reads the clock, submits, waits, and
 ' unobserves. This mirrors `apiPromise.bs`'s `settleApiPromiseIn` split, and
-' for the same reason —
+' for the same reason:
 ' bare global calls from a Rooibos class method don't share the instance `m`,
 ' so an explicitly-passed state AA is what a unit test can drive.
 ' See docs/architecture/async.md.
 '
 ' ── Thread rules ───────────────────────────────────────────────────────────
 '
-' Task threads only — `apiPipelineNext` blocks on `wait()`. Never call it from
+' Task threads only: `apiPipelineNext` blocks on `wait()`. Never call it from
 ' the render thread. Render-thread callers want `fetchAsync` (apiPromise.bs).
 '
 ' Every observe goes through `submitApiRequest`'s `port` parameter, so the pool
@@ -102,7 +102,7 @@ function apiPipelineBegin(entries as dynamic, budgetMs = timeouts.PIPELINE_RUN_M
 
   return {
     entries: entries,
-    ' Index of the next entry to submit — entries before it are in flight,
+    ' Index of the next entry to submit. Entries before it are in flight,
     ' delivered, or drained.
     nextIndex: 0,
     ' requestId -> { entry, index, node } for every request currently in flight.
@@ -124,8 +124,8 @@ end function
 ' one request completes.
 '
 ' @param pipe - the AA from apiPipelineBegin()
-' @return an AA { entry, res } for one entry — `res` is the pool response AA, or
-'         invalid if that entry never got an answer — or invalid when the run
+' @return an AA { entry, res } for one entry (`res` is the pool response AA, or
+'         invalid if that entry never got an answer), or invalid when the run
 '         is exhausted (every entry has been yielded exactly once).
 function apiPipelineNext(pipe as dynamic) as dynamic
   if not isValid(pipe) then return invalid
@@ -136,7 +136,7 @@ function apiPipelineNext(pipe as dynamic) as dynamic
   return result
 end function
 
-' The body of apiPipelineNext, between the budget resume and pause — split out so
+' The body of apiPipelineNext, between the budget resume and pause. Split out so
 ' every return below is charged the same way without repeating the pause at each.
 function apiPipelineAdvance(pipe as object) as dynamic
   while true
@@ -176,19 +176,19 @@ function apiPipelineAdvance(pipe as object) as dynamic
 
         return { entry: record.entry, res: record.node.result }
       end if
-      ' Unknown id — a late event for an entry already drained. Fall through and
+      ' Unknown id: a late event for an entry already drained. Fall through and
       ' keep waiting; the budget check at the top of the loop bounds this.
     end if
   end while
 
-  ' Unreachable — every exit above returns. Present so the loop's only exits stay
+  ' Unreachable: every exit above returns. Present so the loop's only exits stay
   ' the explicit ones.
   return invalid
 end function
 
 ' Releases every still-in-flight request without waiting for it. Only needed by a
 ' caller that abandons the run early (breaking out of the loop before
-' apiPipelineNext returns invalid) — a run driven to exhaustion has already
+' apiPipelineNext returns invalid). A run driven to exhaustion has already
 ' released everything. Idempotent; safe on a finished pipe.
 '
 ' A late pool response after this writes to an abandoned result node and is
@@ -203,7 +203,7 @@ sub apiPipelineEnd(pipe as dynamic)
   pipe.nextIndex = pipe.entries.count()
 end sub
 
-' ── Pure core — no nodes, no ports, no clock; driven directly by unit tests ──
+' ── Pure core: no nodes, no ports, no clock; driven directly by unit tests ──
 
 ' How many more requests may be put in flight right now.
 function apiPipelineSlotsFree(pipe as object) as integer
@@ -217,8 +217,8 @@ function apiPipelineHasQueued(pipe as object) as boolean
   return pipe.nextIndex < pipe.entries.count()
 end function
 
-' A run is finished only when nothing is queued AND nothing is in flight —
-' an empty queue with requests still outstanding is not done.
+' A run is finished only when nothing is queued and nothing is in flight.
+' An empty queue with requests still outstanding is not done.
 function apiPipelineIsDone(pipe as object) as boolean
   return pipe.pending.count() = 0 and not apiPipelineHasQueued(pipe)
 end function
@@ -272,7 +272,7 @@ end function
 '
 ' Small enough to inline, but named and separate on purpose: the clock lives in
 ' the shell and is therefore untestable, whereas this predicate is pinned by unit
-' tests — including that the budget counts as spent AT zero rather than one
+' tests, including that the budget counts as spent at zero rather than one
 ' tick later. Any second budget check added later must call this rather than
 ' re-derive the comparison; two hand-written checks disagreeing is precisely the
 ' bug that a post-completion refill introduced here once.
@@ -312,7 +312,7 @@ end function
 '
 ' Best-effort by contract: an entry it cannot submit is put BACK on the queue
 ' (the claim is reverted) rather than consumed. That keeps the undeliverable
-' path in one place — apiPipelineNext's top-up, which yields the entry to the
+' path in one place: apiPipelineNext's top-up, which yields the entry to the
 ' caller with `res = invalid`. Without the revert, an entry claimed here and
 ' dropped would never be yielded at all, breaking the exactly-once guarantee.
 sub apiPipelineRefill(pipe as dynamic)
