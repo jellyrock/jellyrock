@@ -1240,7 +1240,7 @@
   },
   "docs/progress.md": {
     "caps-emphasis": 38,
-    "em-dash": 452,
+    "em-dash": 444,
     "filler": 56,
     "latin-abbrev": 9,
     "prose-arrow": 35
@@ -1275,132 +1275,8 @@
     "filler": 1,
     "latin-abbrev": 5
   },
-  "scripts/capture-screenshots.js": {
-    "caps-emphasis": 2,
-    "em-dash": 22,
-    "filler": 5,
-    "latin-abbrev": 2
-  },
-  "scripts/device-check.js": {
-    "em-dash": 6,
-    "filler": 1
-  },
-  "scripts/device-lock.js": {
-    "caps-emphasis": 11,
-    "em-dash": 46,
-    "filler": 9
-  },
-  "scripts/flake-baseline.js": {
-    "caps-emphasis": 3,
-    "em-dash": 20,
-    "filler": 4
-  },
-  "scripts/measure-args.js": {
-    "caps-emphasis": 2,
-    "em-dash": 31,
-    "filler": 4,
-    "prose-arrow": 4
-  },
-  "scripts/measure-arms.js": {
-    "caps-emphasis": 2,
-    "em-dash": 25,
-    "filler": 4
-  },
-  "scripts/measure-calibration.js": {
-    "caps-emphasis": 1,
-    "em-dash": 24,
-    "filler": 7
-  },
-  "scripts/measure-compare.js": {
-    "caps-emphasis": 7,
-    "em-dash": 62,
-    "filler": 7,
-    "latin-abbrev": 1,
-    "prose-arrow": 1
-  },
-  "scripts/measure-devices.js": {
-    "caps-emphasis": 4,
-    "em-dash": 33,
-    "filler": 12
-  },
-  "scripts/measure-loop.js": {
-    "caps-emphasis": 1,
-    "em-dash": 20,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
-  "scripts/measure-matrix.js": {
-    "caps-emphasis": 3,
-    "em-dash": 33,
-    "filler": 9,
-    "latin-abbrev": 1
-  },
-  "scripts/measure-report.js": {
-    "caps-emphasis": 4,
-    "em-dash": 36,
-    "filler": 8
-  },
-  "scripts/measure-selection.js": {
-    "caps-emphasis": 3,
-    "em-dash": 30,
-    "filler": 2
-  },
-  "scripts/measure-signin.js": {
-    "caps-emphasis": 2,
-    "em-dash": 23,
-    "filler": 3,
-    "latin-abbrev": 1
-  },
-  "scripts/measure.js": {
-    "caps-emphasis": 12,
-    "em-dash": 103,
-    "filler": 12,
-    "latin-abbrev": 1,
-    "prose-arrow": 2
-  },
-  "scripts/measurement-guard.js": {
-    "caps-emphasis": 6,
-    "em-dash": 37,
-    "filler": 8,
-    "latin-abbrev": 1,
-    "prose-arrow": 2
-  },
-  "scripts/measurements.js": {
-    "caps-emphasis": 13,
-    "em-dash": 87,
-    "filler": 10,
-    "prose-arrow": 3
-  },
-  "scripts/roku-devices.js": {
-    "em-dash": 13,
-    "filler": 2
-  },
   "scripts/ropm-hook.cjs": {
     "caps-emphasis": 1
-  },
-  "scripts/rta-restore.js": {
-    "em-dash": 7,
-    "filler": 1
-  },
-  "scripts/rta-run.js": {
-    "caps-emphasis": 1,
-    "em-dash": 21,
-    "filler": 4
-  },
-  "scripts/run-record.js": {
-    "caps-emphasis": 13,
-    "em-dash": 112,
-    "filler": 19,
-    "prose-arrow": 2
-  },
-  "scripts/screenshots-index.js": {
-    "caps-emphasis": 1,
-    "em-dash": 7,
-    "filler": 2
-  },
-  "scripts/screenshots-store.js": {
-    "caps-emphasis": 1,
-    "em-dash": 4
   },
   "source/GridView/GridPresenterBase.bs": {
     "caps-emphasis": 4,

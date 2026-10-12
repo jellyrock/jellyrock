@@ -7,7 +7,7 @@
  * device's full registry to `.device-runs/registry-<host>.json` BEFORE it seeds
  * anything, and deletes that file once its own verified restore succeeds. So a
  * file still sitting there means exactly one thing: the run did not put the
- * device back — it was killed, it crashed, or its restore failed.
+ * device back. It was killed, it crashed, or its restore failed.
  *
  * The next run repairs the device automatically (see `snapshotRegistry`); this
  * script is for when you want it back NOW, without starting a run. It targets
@@ -20,10 +20,10 @@
  * on failure by design, and `snapshotRegistry()` restores from it before its own,
  * so an unconvergeable one blocks every later run and this very command re-runs
  * the same loop. `--accept` is the way out that is not `rm` on the device's only
- * backup. It does not claim the device is clean — it prints what it accepted.
+ * backup. It does not claim the device is clean: it prints what it accepted.
  *
- * Requires the RTA-enabled build sideloaded — the on-device component is the
- * only way to reach the registry from outside — so it launches the dev channel
+ * Requires the RTA-enabled build sideloaded (the on-device component is the
+ * only way to reach the registry from outside), so it launches the dev channel
  * first if it is not already running.
  *
  *   npm run rta:restore -- --force
@@ -47,8 +47,8 @@ if (!snapshot) {
   process.exit(0);
 }
 
-// The premise of this whole script — "a file still sitting there means the run did
-// not put the device back" — is false while that run is STILL GOING. The snapshot
+// The premise of this whole script ("a file still sitting there means the run did
+// not put the device back") is false while that run is STILL GOING. The snapshot
 // is written before any seeding and removed only by a verified restore, so it is
 // present for the entire suite, and restoring from it here would put the registry
 // back underneath a live run and relaunch the channel mid-suite. `npm run
@@ -57,8 +57,8 @@ if (!snapshot) {
 // refusal belongs at the destructive end and not only at the signpost.
 //
 // A missing `ownerPid` (a snapshot from before that field, or a truncated write)
-// reads as not-alive and restores as it always did — the conservative direction,
-// since those are the genuinely stranded cases.
+// reads as not-alive and restores as it always did: the conservative direction,
+// since those are the stranded cases.
 if (isProcessAlive(snapshot.ownerPid) && !process.argv.includes('--force')) {
   console.error(
     `Refusing to restore ${host}: its snapshot belongs to a run that is STILL RUNNING ` +

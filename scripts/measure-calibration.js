@@ -5,8 +5,8 @@
  *   npm run measure:calibrate -- --server http://192.0.2.10:8096
  *   npm run measure:calibrate -- --server <url> -n 30 --block-size 5
  *
- * The experiment's design — the two arms, why the plain one turns `ENABLE_RTA` off as
- * well as dropping the component, and why the blocks alternate — is in
+ * The experiment's design (the two arms, why the plain one turns `ENABLE_RTA` off as
+ * well as dropping the component, and why the blocks alternate) is in
  * [`measure-arms.js`](measure-arms.js), where it can be tested. This file is delivery:
  * build once, deploy each arm, take the bracket reads, run `measure.js` per block, and
  * publish the records the enclosure supports.
@@ -17,20 +17,20 @@
  * only ever talks to one device, so re-pointing the RTA client is not in question). What
  * remains is decisive on its own: a series needs the device lock, the console socket and
  * its replay defense, the sampling loop, mount selection, the medians, the launch audit
- * and the record assembly — and that last one is the layer this project deliberately did
- * not extract (`measure-record-assembly-untested`). An in-process harness would have
+ * and the record assembly. That last one is the layer this project chose not to
+ * extract (`measure-record-assembly-untested`). An in-process harness would have
  * doubled the subsystem's one untested surface in order to avoid passing flags to a
  * process that already does the job.
  *
  * `measure-loop.js`'s header names this harness as its second caller. It is not, and the
- * header is corrected rather than left claiming one — the extraction bought testability,
+ * header is corrected rather than left claiming one: the extraction bought testability,
  * which it delivered, and the second caller it predicted went the other way for the
  * reasons above.
  *
  * ## What this file is responsible for, and the child is not
  *
  *  - **ONE build, two deploys.** Both arms come off the same `build/` directory, so the
- *    only difference between them is what the deploy stages. The child never deploys —
+ *    only difference between them is what the deploy stages. The child never deploys:
  *    `--enclosed-server` refuses `--deploy` outright.
  *  - **The bracket reads.** The plain arm cannot read its own identity, so this takes an
  *    observed read immediately before its deploy and another immediately after the next
@@ -39,7 +39,7 @@
  *  - **Publication.** Each child hands its record over (`--record-to`) instead of
  *    appending it, and a plain block's record is appended to `measurements.jsonl` only
  *    once its enclosure has closed. A block whose brackets disagree is written with
- *    `outcome: blocked` and an `enclosure` saying why — the samples are real and are
+ *    `outcome: blocked` and an `enclosure` saying why. The samples are real and are
  *    kept, and nothing selects them.
  *  - **Leaving the device usable.** The run always ends by redeploying the RTA build,
  *    including on the way out of an interrupt. A device left holding a build with no ODC
@@ -91,7 +91,7 @@ const BRACKET_RETRY_MS = 2000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The one screen both arms can reach. `--nav` is driven over ODC, so the plain arm can
-// only measure what a LAUNCH lands on — and Home is also the only screen with the n=30
+// only measure what a LAUNCH lands on, and Home is also the only screen with the n=30
 // non-RTA baselines this calibration exists to make comparable again
 // (`docs/dev/home-first-paint-performance.md`).
 const MEASUREMENT = 'home-latest-rows';
@@ -109,7 +109,7 @@ try {
   die(e.message);
 }
 
-setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — before anything is built
+setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing, before anything is built
 
 const blocks = planBlocks(args);
 console.log(`\n[calibrate] ${MEASUREMENT} on ${process.env.ROKU_IP}`);
@@ -118,7 +118,7 @@ for (const line of formatPlanLines(blocks, args)) console.log(`[calibrate] ${lin
 // ─── One build, for both arms ────────────────────────────────────────────────
 // Before the first deploy and never again: two builds would put a second variable in a
 // comparison whose whole purpose is to have exactly one. `--no-build` is for re-running
-// against a `build/` this checkout just produced, and it is the operator's claim, not
+// against a `build/` this checkout last produced, and it is the operator's claim, not
 // something this can verify.
 if (args.noBuild) {
   console.log('[calibrate] --no-build: using the existing build/ for BOTH arms as-is.');
@@ -141,7 +141,7 @@ let interrupted = false;
  * ## Why the acquire RETRIES instead of dying
  *
  * The lock is a GitHub ref, and `releaseRef` warns rather than throws when the DELETE
- * fails — a leaked lease "expires on its own" after `DEFAULT_LEASE_MS` (15 min), which is
+ * fails: a leaked lease "expires on its own" after `DEFAULT_LEASE_MS` (15 min), which is
  * the right call for a tool that takes the lock once per run. This driver takes it about
  * TWENTY-FIVE times per run (a deploy plus a child per block, plus the restore), so it
  * turns a rare transient into a likely one, and it is the only caller for which a leaked
@@ -152,8 +152,8 @@ let interrupted = false;
  * ref and the whole 45-minute run died on it. Nothing was wrong with the device.
  *
  * `stealIfExpired` reclaims an expired lease automatically, so the failure is recoverable
- * BY WAITING — which makes dying the wrong response. This waits past the lease and gives
- * up only if the holder is genuinely someone else who is still alive.
+ * BY WAITING, which makes dying the wrong response. This waits past the lease and gives
+ * up only if the holder is someone else who is still alive.
  */
 async function withLock(what, fn) {
   let lock;
@@ -197,7 +197,7 @@ async function deployArm(arm) {
  *
  * Never throws: a bracket that could not be read is a fact the enclosure has to weigh
  * (`enclosureVerdict` distinguishes it from a disagreement), and an exception here would
- * take the whole run out over one bookkeeping call — the same defect the closing read in
+ * take the whole run out over one bookkeeping call. That is the same defect the closing read in
  * `measure.js` was hardened against.
  */
 async function bracketRead(when) {
@@ -207,9 +207,9 @@ async function bracketRead(when) {
   // immediately after a child returns can catch the app with `m.global.server` created and
   // not yet populated: ODC answers, every field is `""`, and the enclosure then sees
   // `"" -> "http://…"` and correctly fails the whole block as drifted. Observed once on
-  // `.178` (block 10 of 12, 2026-08-17) — the gate was right and the input was wrong.
+  // `.178` (block 10 of 12, 2026-08-17): the gate was right and the input was wrong.
   //
-  // Bounded, and it gives up rather than looping: if the app genuinely has no server this
+  // Bounded, and it gives up rather than looping: if the app really has no server this
   // must still return the empty read so the enclosure can fail on it loudly. Silence here
   // would be the guard going blind in exactly the case tier 1 exists for.
   for (let attempt = 0; attempt < BRACKET_READ_ATTEMPTS; attempt++) {
@@ -254,7 +254,7 @@ function runMeasure(block, recordPath) {
     '--record-to',
     recordPath,
     // This run did not deploy; the driver did, seconds ago, off this checkout. Without
-    // this the child prints the resident-build warning on every block — true of an
+    // this the child prints the resident-build warning on every block, true of an
     // ordinary run and false here.
     '--deployed-by',
     'measure-calibration',
@@ -288,7 +288,7 @@ function takeRecord(recordPath) {
 }
 
 const outPath = measurementsLedgerPath();
-/** Append a record to the ledger — the only place in this file that publishes. */
+/** Append a record to the ledger: the only place in this file that publishes. */
 function publish(record) {
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.appendFileSync(outPath, `${JSON.stringify(record)}\n`);
@@ -297,14 +297,14 @@ function publish(record) {
 /**
  * Stamp what THIS process knows and the child could not.
  *
- * `provenance.checkout.deployedFromCheckout` is deliberately NOT touched. It is a claim
- * about what the CHILD did, and the child deployed nothing — overwriting it here would
+ * `provenance.checkout.deployedFromCheckout` is left untouched on purpose. It is a claim
+ * about what the CHILD did, and the child deployed nothing: overwriting it here would
  * make the record say the series deployed its own build. The deployer's claim goes in its
  * own field, named for who made it.
  *
  * The literal `bs_const` is recorded rather than the arm's intent: what matters to a
  * reader months later is what the device was actually given, and that is the string RTA
- * staged — read back out of the staging dir rather than assumed from the flags.
+ * staged, read back out of the staging dir rather than assumed from the flags.
  */
 function stampDeploy(record, { arm, bsConst }) {
   record.provenance.deploy = {
@@ -352,13 +352,13 @@ const rows = [];
 /** A plain block's record, waiting for the bracket read that closes its enclosure. */
 let pending = null;
 /**
- * The last observed identity before ODC goes away — the OPENING bracket of the plain
+ * The last observed identity before ODC goes away: the OPENING bracket of the plain
  * block about to run. Read while the RTA build is still resident, because after its
  * deploy there is nothing left to ask.
  */
 let openingBracket = null;
 
-/** Close `pending` against the identity just observed, and publish or withhold it. */
+/** Close `pending` against the identity a bracket observed, and publish or withhold it. */
 function closeEnclosure(after) {
   if (!pending) return;
   const verdict = enclosureVerdict({
@@ -369,7 +369,7 @@ function closeEnclosure(after) {
   pending.record.enclosure = verdict;
   if (verdict.ok) {
     // `record.enclosure` and NOTHING ELSE. Filling `provenance.server` from the identity
-    // the brackets agreed on is the one option ADR 0030 rejects by name — that field is
+    // the brackets agreed on is the one option ADR 0030 rejects by name: that field is
     // where a reader takes a value as observed, and a deduction written there is
     // indistinguishable from a measurement to `checkSeriesConsistency`, to
     // `measure:compare`'s gates, and to the matrix report that does not exist yet.
@@ -399,7 +399,7 @@ function closeEnclosure(after) {
  * Two things reach here: a deploy that failed or timed out (`withDeployTimeout`), and a
  * `withLock` acquire that gave up after its 17-minute window. Both were previously
  * uncaught, and an uncaught throw at this scope skipped BOTH of the two promises this file
- * makes — the restore and the accounting — which is the one combination that is worse than
+ * makes (the restore and the accounting), which is the one combination that is worse than
  * either alone: the device is left holding an arm with no ODC and nothing says so.
  */
 let runFailure = null;
@@ -419,7 +419,7 @@ try {
     rows.push(row);
 
     // Checked at the TOP so an interrupt cannot buy one more 90-second deploy before it
-    // takes effect. Every block that never ran is still named in the summary — a run that
+    // takes effect. Every block that never ran is still named in the summary: a run that
     // stopped early and reported only what it managed is the shape this file refuses.
     if (interrupted) {
       row.reason = 'the run was interrupted before this block ran';
@@ -439,7 +439,7 @@ try {
       //  - the CLOSING one immediately after the next RTA deploy, which is the first.
       //
       // Anything between them is `npm run build`'s output being sideloaded, ECP presses and
-      // a console socket — none of which writes the app's registry, which is the whole
+      // a console socket, none of which writes the app's registry, which is the whole
       // reason the enclosure is a real assertion rather than a guess (ADR 0030).
       if (!arm.odcResident) openingBracket = await bracketRead(`before the ${arm.id} block`);
       const staged = await deployArm(arm);
@@ -476,7 +476,7 @@ try {
   // accounting, where an operator reads it against the blocks it cost.
   runFailure = e;
   // The block that threw already has a row (pushed at the top of its iteration); the ones
-  // after it have none, and a summary that simply omits them is the silently-truncated run
+  // after it have none, and a summary that omits them is the silently-truncated run
   // this file refuses. Name them.
   const accounted = new Set(rows.map((r) => r.index));
   const throwing = rows[rows.length - 1];
@@ -502,7 +502,7 @@ try {
   try {
     await withLock('restore', async () => {
       await deployArm(ARMS.rta);
-      // The restore's read is the last enclosure's CLOSING bracket — which is why the plan
+      // The restore's read is the last enclosure's CLOSING bracket, which is why the plan
       // does not need a trailing RTA block to buy one. Skipped when nothing is open (an
       // interrupt during an RTA block, or a plain block that never wrote a record).
       if (pending) closeEnclosure(await bracketRead('closing'));
@@ -537,7 +537,7 @@ console.log(
 // rather than the other way round.
 if (runFailure) console.error(`\n[calibrate] ⚠ the run failed: ${runFailure.message}`);
 
-// The exit code follows the ACCOUNTING, not the last thing that happened — and a run that
+// The exit code follows the ACCOUNTING, not the last thing that happened. A run that
 // published every block it planned is still a failure if the device was left unusable,
 // because the next tool to touch it is the one that pays.
 process.exit(summary.ok && !interrupted && !runFailure && !restoreFailure ? 0 : 1);

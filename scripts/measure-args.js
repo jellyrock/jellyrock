@@ -6,7 +6,7 @@
  * It lives here rather than in `measure.js` for one reason: `measure.js` is a
  * top-level-await entry point that claims the device on import, so nothing can
  * import it to test it. This is the only part of the tool with real branching, and
- * it is the part whose failure mode is SILENT — so it is the part that has to be
+ * it is the part whose failure mode is SILENT, so it is the part that has to be
  * testable. (`crash-report.js` and `server-upgrade.js` solve the same problem with
  * an `import.meta.url` main guard; that would mean restructuring a device
  * orchestration nobody can re-run without hardware, for no additional coverage.)
@@ -18,18 +18,18 @@
  * revision:
  *
  * - A trailing `--server` consumed `argv[i + 1]` = `undefined` and left the
- *   expectation undeclared, so tier 1 silently did NOT assert on the run the
- *   operator typed `--server` to make it assert.
- * - An unrecognised flag was dropped entirely, so `--sever https://…` and
+ *   expectation undeclared, so tier 1 silently skipped its assertion on the run
+ *   the operator typed `--server` to make it assert.
+ * - An unrecognized flag was dropped entirely, so `--sever https://…` and
  *   `--smaples 30` produced a confident, wrongly-shaped series.
  *
- * Neither is hypothetical in kind: `measure.js` already carried a note that the
+ * Neither is hypothetical in kind: `measure.js` already carried a comment saying the
  * documented `-n` short form failed to parse and was only caught by reading the
  * usage block against the parser. So every flag is declared in one table, an
  * unknown one is an error, and a value flag without a value is an error.
  */
 
-/** Thrown for a bad command line — the caller prints `.message` and exits, no stack. */
+/** Thrown for a bad command line: the caller prints `.message` and exits, no stack. */
 export class MeasureArgError extends Error {
   constructor(message) {
     super(message);
@@ -44,49 +44,49 @@ const VALUE_FLAGS = new Map([
   ['--measurement', 'measurement'],
   ['--server', 'server'],
   ['--window-ms', 'windowMs'],
-  // Which side of a comparison this series belongs to — a free-form label read
+  // Which side of a comparison this series belongs to: a free-form label read
   // back by `measure-compare.js`. It exists because the two arms of the commonest
   // comparison are otherwise INDISTINGUISHABLE in the record: measuring an
   // uncommitted change means both arms carry the same `commit` and `dirty: true`,
   // so nothing but a label the operator supplies can separate them.
   ['--arm', 'arm'],
   // WHERE the app was. Only meaningful for a family whose `screen` is null (see
-  // `measurements.js`), and only for a screen measurement cannot NAVIGATE to — see
+  // `measurements.js`), and only for a screen measurement cannot NAVIGATE to. See
   // `--nav`, which supersedes it wherever it applies.
   ['--screen', 'screen'],
   // DRIVE the app to a screen after each relaunch, by name, using the nav declared on
   // that screen's entry in `tests/rta/screens.js`.
   //
   // This is what makes anything but Home measurable: without it `measure.js` reaches a
-  // screen by relaunching, so the app is always on Home and 26 of the 29 registered
-  // screens are unreachable. Naming the screen registry rather than growing a private
-  // one is the point — the functional suite and the store screenshots already drive
+  // screen by relaunching, so the app is always on Home and most registered screens
+  // are unreachable. Naming the screen registry rather than growing a private one is
+  // the point: the functional suite and the store screenshots already drive
   // these navs, and a second copy would drift from the app the first one is keeping
   // honest.
   ['--nav', 'nav'],
   // The library id a nav should target, for a server with more than one library of a
   // type. `navLibraryByType` matches on collectionType when this is absent and REFUSES
-  // an ambiguous match rather than guessing — correct, but it refuses on exactly the
+  // an ambiguous match rather than guessing. That is correct, but it refuses on exactly the
   // large multi-library servers a perf measurement most wants to run against.
   ['--library', 'library'],
   // WHICH mount to report, when one launch produced several. A chained navigation
   // mounts one component more than once (a Season is reached THROUGH its Series), so
-  // `indexInLaunch === 0` is the wrong screen. Unlike `--screen` this is CHECKABLE —
-  // `measure.js` refuses a value no sample carried — so it is evidence rather than an
+  // `indexInLaunch === 0` is the wrong screen. Unlike `--screen` this is CHECKABLE
+  // (`measure.js` refuses a value no sample carried), so it is evidence rather than an
   // assertion, which is the same distinction that made the family's screen derived.
   ['--variant', 'variant'],
   // The other half of a mount's identity, and the half `--variant` alone cannot express:
   // a launch can mount two DIFFERENT components under the SAME variant. Every playback
-  // nav does — reaching the player means walking through `ItemDetails`, and for a movie
-  // both stamp `Movie` — so `--nav osd` saw one variant, concluded the launch was
+  // nav does: reaching the player means walking through `ItemDetails`, and for a movie
+  // both stamp `Movie`. So `--nav osd` saw one variant, concluded the launch was
   // single-mount, and reported the details screen's numbers under `screen: osd`.
   // Checkable on the same terms as `--variant`: refused if no sample carried it.
   ['--component', 'component'],
-  // Tier 1's expectation for an arm that has NO ODC to read it from — see ADR 0030 and
+  // Tier 1's expectation for an arm that has no ODC to read it from. See ADR 0030 and
   // `enclosedServerIdentity`. Only the ODC calibration produces such an arm, and it is
   // driven by `measure-calibration.js`, which takes the observed reads either side.
   //
-  // Deliberately a SEPARATE flag rather than `--server` plus a boolean: the two make
+  // A SEPARATE flag rather than `--server` plus a boolean, by design: the two make
   // different claims about the same field ("this is what I observed" vs "this is what the
   // reads either side of me observed"), and the record has to be able to say which. A
   // boolean modifier would leave every existing reader of `--server` unable to tell them
@@ -95,19 +95,19 @@ const VALUE_FLAGS = new Map([
   // WHO put this build on the device, when it was not this run.
   //
   // The default mode measures whatever is resident and warns that the recorded
-  // appVersion/commit describe the checkout rather than what ran — true, and FALSE for a
+  // appVersion/commit describe the checkout rather than what ran. True, and FALSE for a
   // caller that deployed this checkout seconds earlier and then invoked this tool
   // (`measure-calibration.js` deploys both arms itself, because they must come off ONE
   // build). The warning was printing on every calibration block.
   //
-  // Deliberately a LABEL rather than a boolean: it names who is making the claim, so the
-  // record carries evidence rather than an unattributable assertion. It does NOT set
-  // `deployedFromCheckout` — that field is about what THIS run did, and it stays false,
+  // A LABEL rather than a boolean, by design: it names who is making the claim, so the
+  // record carries evidence rather than an unattributable assertion. It does not set
+  // `deployedFromCheckout`: that field is about what THIS run did, and it stays false,
   // which is the literal truth.
   ['--deployed-by', 'deployedBy'],
   // Write the record HERE instead of appending it to `measurements.jsonl`.
   //
-  // For a caller that must decide whether the series may be published at all — the ODC
+  // For a caller that must decide whether the series may be published at all. The ODC
   // calibration cannot know until its closing bracket read, which necessarily happens
   // after this process has exited. Holding the line back is the only shape that keeps the
   // ledger's promise: a published line's identity is one somebody actually established,
@@ -118,7 +118,7 @@ const VALUE_FLAGS = new Map([
 /** Flags that take no value. */
 const BOOLEAN_FLAGS = new Map([
   ['--deploy', 'deploy'],
-  // Declare that the app has NO server on the node — the state `serverSelect` can only
+  // Declare that the app has no server on the node: the state `serverSelect` can only
   // be measured in, because reaching that screen means deleting the server. Turns tier
   // 1's absent `serverUrl` from a fatal read failure into an assertion, and asserts the
   // OTHER direction too: a device that still has a server lands on Home, so the flag
@@ -126,8 +126,8 @@ const BOOLEAN_FLAGS = new Map([
   //
   // NAMED for what it asserts, and that is a correction rather than a preference. The
   // first cut called it `--signed-out`, which is the app's word for a DIFFERENT state:
-  // `SignOut()` (app menu → Sign out) and `SignOut(false)` (→ Change user) both clear
-  // `active_user` and leave `server` untouched, so both land on `userSelect` — where
+  // `SignOut()` (the app menu's Sign out) and `SignOut(false)` (its Change user) both clear
+  // `active_user` and leave `server` untouched, so both land on `userSelect`, where
   // this flag REFUSES. Only Change server (`unsetSetting("server")` + `server.Delete()`)
   // produces the state it asserts. A name that points at the wrong menu item generated
   // four wrong sentences before anyone typed the flag; `--no-server` cannot, and it
@@ -142,14 +142,14 @@ const BOOLEAN_FLAGS = new Map([
  * `--a` splits on `,` and takes the first `=` as a key/value break. So a label
  * carrying either is written into the ledger fine and is then unaddressable:
  * `--arm "before,v2"` records `before,v2`, and `--a before,v2` parses to
- * `{arm: 'v2'}` — a DIFFERENT selection, made silently, which matches nothing and
+ * `{arm: 'v2'}`: a DIFFERENT selection, made silently, which matches nothing and
  * reports "selected no usable series" while pointing at the wrong cause. `--arm
  * "a=b"` fails differently, as an unknown selector key `a`.
  *
  * Refused at the moment the label is created rather than diagnosed later, for the
  * same reason as every other refusal in this file: the failure is silent, and the
- * only place it can be attributed to what caused it is here. Spaces are deliberately
- * allowed — `--a "batched attach"` round-trips, because the selector parser trims
+ * only place it can be attributed to what caused it is here. Spaces are allowed on
+ * purpose: `--a "batched attach"` round-trips, because the selector parser trims
  * each part rather than splitting on whitespace.
  */
 const LABEL_FORBIDDEN = /[,=]/;
@@ -181,7 +181,7 @@ const knownFlags = () => [...VALUE_FLAGS.keys(), ...BOOLEAN_FLAGS.keys()].join('
  *
  * `measurementIds` and `screens` are passed in rather than imported so the validation
  * messages can name the registered families without this module depending on the
- * registry — the registry is what the CLI is *about*, and a parser that imports it
+ * registry. The registry is what the CLI is *about*, and a parser that imports it
  * makes a cycle the moment the registry wants to report a usage error.
  *
  * @param {string[]} [options.measurementIds] every registered family id.
@@ -190,7 +190,7 @@ const knownFlags = () => [...VALUE_FLAGS.keys(), ...BOOLEAN_FLAGS.keys()].join('
  *   that contradicts one.
  * @param {{name: string, state: string}[]} [options.navScreens] the screen registry,
  *   reduced to what validating `--nav` needs. Passed in for the same reason as the
- *   two above — and additionally because importing `tests/rta/screens.js` here would
+ *   two above, and also because importing `tests/rta/screens.js` here would
  *   pull the whole nav/ODC stack into a pure parser.
  * @throws {MeasureArgError} on an unknown flag, a value flag with no value, or a
  *   value that cannot be what the flag means.
@@ -259,8 +259,8 @@ export function parseMeasureArgs(
 
   if (raw.server !== undefined) args.server = raw.server;
 
-  // Free-form in MEANING — an arm label means whatever the operator's experiment
-  // means — but not in SHAPE: see `checkLabel`. `--arm=` was already rejected above.
+  // Free-form in MEANING (an arm label means whatever the operator's experiment
+  // means), but not in SHAPE: see `checkLabel`. `--arm=` was already rejected above.
   if (raw.arm !== undefined) {
     checkLabel('--arm', raw.arm);
     args.arm = raw.arm;
@@ -275,9 +275,9 @@ export function parseMeasureArgs(
     //
     // Precedence used to run the other way (`args.screen ?? measurement.screen`),
     // which made the ONE thing this tool exists to prevent reachable from its own
-    // command line: `measure.js` cannot navigate — it relaunches, so the app is
-    // always on Home — and `npm run measure -- --screen movies-grid` therefore wrote
-    // a record asserting a screen the app was never on. Tier 3 would then compare it
+    // command line. Without `--nav`, `measure.js` cannot navigate (it relaunches, so
+    // the app is always on Home), and `npm run measure -- --screen movies-grid`
+    // therefore wrote a record asserting a screen the app was never on. Tier 3 would then compare it
     // against a real movies-grid series and refuse nothing, because by then the lie
     // is indistinguishable from provenance.
     const declared = screens[args.measurement];
@@ -301,7 +301,7 @@ export function parseMeasureArgs(
           `${navScreens.map((s) => s.name).join(', ')}`,
       );
     }
-    // `measure` writes no registry and restores none — see its header. Every screen it
+    // `measure` writes no registry and restores none (see its header). Every screen it
     // can DRIVE to is a `home`-state one. The other two are not driven to at all:
     // `beginLogin()` re-reads `server` / `active_user` on every launch, so once the
     // operator has put the app in that state BY HAND the relaunch loop lands on the
@@ -310,18 +310,18 @@ export function parseMeasureArgs(
     //
     // Per STATE, and that distinction is the whole point of the branch below. An earlier
     // cut said "sign out by hand (Change Server / Change User)" for both, which is two
-    // different registry states under one sentence — and following it for `userSelect`
+    // different registry states under one sentence. Following it for `userSelect`
     // walked into a hard tier-1 refusal:
     //
-    //   serverSelect — reached by DELETING the server (app menu → Change server, which
-    //                  runs `unsetSetting("server")` + `server.Delete()`). Identity then
-    //                  has no `serverUrl`, which is fatal unless `--no-server` declares it.
-    //   userSelect   — reached by clearing the ACTIVE USER (app menu → Change user, or
-    //                  Sign out). The server STAYS, so identity reads normally and no
-    //                  declaration is wanted at all; `--no-server` would refuse the run.
-    //                  `--server <url>` still works here, and is worth passing.
+    //   serverSelect: reached by DELETING the server (the app menu's Change server, which
+    //                 runs `unsetSetting("server")` + `server.Delete()`). Identity then
+    //                 has no `serverUrl`, which is fatal unless `--no-server` declares it.
+    //   userSelect:   reached by clearing the ACTIVE USER (the app menu's Change user, or
+    //                 Sign out). The server STAYS, so identity reads normally and no
+    //                 declaration is wanted at all; `--no-server` would refuse the run.
+    //                 `--server <url>` still works here, and is worth passing.
     // `reach` is the imperative; `note` is the state's own caveat, kept as its own
-    // sentence rather than folded in as a parenthetical — the flag advice is the part a
+    // sentence rather than folded in as a parenthetical. The flag advice is the part a
     // reader most needs to land on, and it is the part a mid-sentence aside loses.
     const REACHED_BY_HAND = {
       serverSelect: {
@@ -392,7 +392,7 @@ export function parseMeasureArgs(
         'cannot assert both. Drop whichever one is not what you meant.',
     );
   }
-  // A nav needs a signed-in Home to start from, so this pair can never both be true —
+  // A nav needs a signed-in Home to start from, so this pair can never both be true,
   // and it would fail late and obscurely (the nav timing out on a screen that never
   // came) rather than here, where the contradiction is visible.
   if (args.noServer && args.nav !== undefined) {
@@ -404,8 +404,8 @@ export function parseMeasureArgs(
   }
 
   // ─── The enclosed arm ──────────────────────────────────────────────────────
-  // Every refusal here is a pair that would otherwise be settled SILENTLY, in favour of
-  // whichever branch happens to run second — the failure mode this parser exists for.
+  // Every refusal here is a pair that would otherwise be settled SILENTLY, in favor of
+  // whichever branch happens to run second: the failure mode this parser exists for.
   if (raw.enclosedServer !== undefined) {
     args.enclosedServer = raw.enclosedServer;
     if (args.server !== undefined) {
