@@ -363,6 +363,18 @@ describe('doc-citation-ratchet — house-voice scope', () => {
     const r = makeRoot({ 'docs/projects/2026-10-x/PLAN.md': 'One — two.\n' });
     expect(run(r).exitCode).toBe(0);
   });
+
+  // The root `tasks/` is gitignored; a nested `components/tasks/` is tracked source.
+  it('skips tasks/ at the repo root only', () => {
+    const line = "' One — two.\n";
+    const ignored = run(makeRoot({ 'tasks/X.bs': line }));
+    expect(ignored.exitCode).toBe(0);
+    rmSync(root, { recursive: true, force: true });
+    root = undefined;
+    const gated = run(makeRoot({ 'components/tasks/X.bs': line }));
+    expect(gated.exitCode).toBe(1);
+    expect(gated.stderr).toContain('em-dash');
+  });
 });
 
 describe('doc-citation-ratchet — the house-voice ratchet', () => {

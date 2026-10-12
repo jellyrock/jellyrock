@@ -331,6 +331,14 @@ describe('docs-check — same-file anchor links', () => {
     expect(JSON.parse(stdout).errors.map((e) => e.category)).toEqual(['broken-anchor']);
   });
 
+  it('checks a CLAUDE.md under a nested tasks/ dir but not under the root tasks/', () => {
+    const TDOC = { 'docs/architecture/tech-debt.md': TD };
+    const nested = run({ ...TDOC, 'components/tasks/CLAUDE.md': '# Rules\n\n[bad](#gone)\n' });
+    expect(nested.exitCode).toBe(1);
+    const atRoot = run({ ...TDOC, 'tasks/CLAUDE.md': '# Rules\n\n[bad](#gone)\n' });
+    expect(atRoot.exitCode).toBe(0);
+  });
+
   it('checks a same-file link in a CLAUDE.md', () => {
     const { exitCode, stdout } = run({
       'tests/CLAUDE.md': '# Rules\n\n[ok](#rules) [bad](#gone)\n',

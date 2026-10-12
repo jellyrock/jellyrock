@@ -835,15 +835,7 @@ if (fs.existsSync(SIGNALS_PATH)) {
 function findClaudeMds(rootDir) {
   const found = [];
   // Skip directories that don't host project source / docs
-  const skipDirs = new Set([
-    'node_modules',
-    'build',
-    'build-analysis',
-    'out',
-    'tasks',
-    '.git',
-    '.husky',
-  ]);
+  const skipDirs = new Set(['node_modules', 'build', 'build-analysis', 'out', '.git', '.husky']);
   function walk(dir) {
     let entries;
     try {
@@ -854,7 +846,10 @@ function findClaudeMds(rootDir) {
     for (const e of entries) {
       if (e.isDirectory()) {
         if (skipDirs.has(e.name) || e.name.startsWith('.')) continue;
-        walk(path.join(dir, e.name));
+        const full = path.join(dir, e.name);
+        // The repo-root `tasks/` is gitignored; a nested `components/tasks/` is tracked.
+        if (path.relative(rootDir, full) === 'tasks') continue;
+        walk(full);
       } else if (e.name === 'CLAUDE.md') {
         found.push(path.join(dir, e.name));
       }
