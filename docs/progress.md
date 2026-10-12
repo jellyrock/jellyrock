@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-11
+last-updated: 2026-10-12
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-12: ci(server-upgrade): Record the `ImageURL` endpoint in the API manifest
 - 2026-10-11: docs(voice): Rewrite the lint and BSC plugin comments
 - 2026-10-11: docs(voice): Rewrite the remaining agent files
 - 2026-10-11: docs(voice): Rewrite the user, dev, architecture and agent docs
@@ -72,9 +73,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-30 — fix: Quick play slow, TV and mixed libraries, and resume music videos
 - 2026-09-29 — chore(journal-sync): Rebuild the Recently shipped section on every sync
 - 2026-09-29 — build(tooling): Fail the build on code the app never uses
-- 2026-09-27 — fix(playback): Back cancels a start, keys wait; slow starts say still loading
-- 2026-09-27 — chore(editor): Load two language-server projects; format JS and JSON with Prettier
-- 2026-09-27 — fix(audio): Transcode Opus in `ogg` music instead of hanging
 
 ## Open followups
 
