@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-12: docs(voice): Rewrite the generator, lib and top-level script comments
 - 2026-10-12: ci(server-upgrade): Record the `ImageURL` endpoint in the API manifest
 - 2026-10-11: docs(voice): Rewrite the lint and BSC plugin comments
 - 2026-10-11: docs(voice): Rewrite the remaining agent files
