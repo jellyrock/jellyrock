@@ -1107,12 +1107,7 @@ sub onVideoContentLoaded()
   if not isValid(videoContent) or not isValid(videoContent[0])
     ' A load that opened a live stream and then failed (no transcoding URL, a localhost path it
     ' cannot rebuild) leaves the stream to us: no player will ever hold it (liveStreamHandoff.bs).
-    failedLiveStreamId = openLiveStreamId(loadedLiveStream)
-    if failedLiveStreamId <> ""
-      m.log.info("Closing the live stream a failed load opened", "liveStreamId", failedLiveStreamId, "itemId", m.top.id)
-      SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(failedLiveStreamId))
-      m.LoadMetaDataTask.liveStream = { stage: LiveStreamStage.RELEASED, id: failedLiveStreamId }
-    end if
+    releaseUnplayedLiveStream(loadedLiveStream, "a failed load")
     appWaits.fail(m.playbackStart, "the load found nothing to play")
     stopLoadingSpinner()
     taskErrorMsg = m.LoadMetaDataTask.errorMsg
@@ -1121,6 +1116,17 @@ sub onVideoContentLoaded()
     else
       showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
     end if
+    return
+  end if
+
+  ' This device cannot load the upstream URL the server allowed (LoadVideoContentTask
+  ' .upstreamManifestAnswers), and handing it to the Video node would only buffer on it. Ask the
+  ' server for its stream instead, before playing anything: the retry a failed direct play takes.
+  ' Nothing played the stream this load opened, so it is released as a failed load's is.
+  if videoContent[0].needsServerStream = true
+    m.log.warn("Upstream URL unreachable from this device; asking the server for its stream", "itemId", m.top.id)
+    releaseUnplayedLiveStream(loadedLiveStream, "a load handed to the server's stream")
+    retryPlayback(false, true)
     return
   end if
 
@@ -1819,6 +1825,20 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' declaration), so it spans the whole wait rather than restarting mid-way.
   screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
+end sub
+
+' Close the live stream a load opened when no player will ever play it: the load failed, or it is
+' being replaced by a load of the server's stream. Nothing reported its start, so the server has no
+' session to release it with (endClosesLiveStream); a close by id does.
+'
+' @param {dynamic} loadedLiveStream - LoadVideoContentTask.liveStream: { stage, id }, or invalid
+' @param {string} why - for the log line
+sub releaseUnplayedLiveStream(loadedLiveStream as dynamic, why as string)
+  liveStreamId = openLiveStreamId(loadedLiveStream)
+  if liveStreamId = "" then return
+  m.log.info("Closing a live stream nothing played", "of", why, "liveStreamId", liveStreamId, "itemId", m.top.id)
+  SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(liveStreamId))
+  m.LoadMetaDataTask.liveStream = { stage: LiveStreamStage.RELEASED, id: liveStreamId }
 end sub
 
 ' keepLoadedVersionOnReload: Hand the version this session loaded to the loader's next run.

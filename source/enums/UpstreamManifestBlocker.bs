@@ -1,18 +1,18 @@
-' What keeps a Live TV channel off its own HLS URL (getUpstreamHlsBlocker in source/utils/liveTv.bs).
-' NONE means nothing does: play the channel from its upstream URL.
-enum UpstreamHlsBlocker
+' What keeps a source off its own HLS or DASH manifest URL (getUpstreamManifestBlocker in
+' source/utils/upstreamManifest.bs). NONE means nothing does: check the URL from this device, then
+' play it directly.
+enum UpstreamManifestBlocker
   NONE = "none"
-  ' This load is not a live channel.
-  NOT_LIVE = "notLive"
   ' The retry after a failed direct play, which must reach the server.
   FORCED_TRANSCODE = "forcedTranscode"
   NO_SOURCE = "noSource"
-  ' The server allowed direct play, or did not say: nothing to override.
-  NOT_DECLINED = "notDeclined"
+  ' The server did not say whether it would direct play: nothing to decide on.
+  NO_DIRECT_PLAY_ANSWER = "noDirectPlayAnswer"
   NOT_HTTP_PROTOCOL = "notHttpProtocol"
   ' Path is not an absolute http(s) URL.
   NOT_HTTP_URL = "notHttpUrl"
-  NOT_HLS = "notHls"
+  ' Neither an HLS nor a DASH manifest (upstreamManifestFormat).
+  NOT_MANIFEST = "notManifest"
   ' Jellyfin's /LiveTv/LiveStreamFiles/ relay.
   SERVER_RELAY = "serverRelay"
   LOOPBACK = "loopback"

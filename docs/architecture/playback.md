@@ -37,6 +37,7 @@ related-files:
   - source/utils/streamSelection.bs
   - source/utils/stillWatching.bs
   - source/utils/liveTv.bs
+  - source/utils/upstreamManifest.bs
   - source/utils/bufferStall.bs
   - source/enums/BufferCheckAction.bs
   - source/utils/playbackEnd.bs
@@ -46,7 +47,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-11
 ---
 
 # Video and audio playback
@@ -439,17 +440,19 @@ Every fact about the file (runtime, bitrate, container, streams) comes from `med
 The client overrides the server's answer in three places:
 
 - **H.264 and HEVC level.** With `playbackTryDirectH264ProfileLevel` or `playbackTryDirectHevcProfileLevel` on, a source whose only transcode reason is `VideoLevelNotSupported` plays directly, within the device's hardware ceiling (`isWithinH264HardwareCeiling`).
-- **Live direct play is always backed by a transcode retry** (`applyLiveDirectPlayFallback`). The server cannot probe a live stream ahead of time, so its "yes" is a guess; a failure before the first frame reloads with `EnableDirectPlay=false`.
-- **An HLS channel the server declines to direct play is played from its own URL** (`getUpstreamHlsBlocker()` in `source/utils/liveTv.bs`, decision [`live-hls-upstream-direct-play`](../decisions.md#decision-id-live-hls-upstream-direct-play)). Jellyfin 12.0 withdrew direct play for every `m3u` tuner channel whose URL is an HLS manifest ([jellyfin/jellyfin#17768](https://github.com/jellyfin/jellyfin/pull/17768)), because it had been relaying the master playlist through its own URL, where relative variant URIs fail. JellyRock plays the absolute upstream `Path`, where they resolve, and the server's replacement (remuxing the stream itself) loses audio sent as a separate rendition and starts slower.
+- **Live direct play is always backed by a transcode retry** (`applyLiveDirectPlayFallback`). The server cannot probe a live stream ahead of time, so its "yes" is a guess; a failure before the first frame reloads with `EnableDirectPlay=false`. `applyMediaSourceToPostData()` sends that flag on every forced retry, live or not, so a server that allowed direct play answers with its transcode rather than the same "yes".
+- **A source whose URL is an upstream HLS or DASH manifest is played from that URL, whatever the server answered** (`getUpstreamManifestBlocker()` in `source/utils/upstreamManifest.bs`, decision [`manifest-upstream-direct-play`](../decisions.md#decision-id-manifest-upstream-direct-play)). That covers `m3u` tuner channels and `.strm` items. Jellyfin 12.0 withdrew direct play for every manifest source (`StreamBuilder.ManifestContainers`: `hls`, `applehttp`, `dash`; [jellyfin/jellyfin#17768](https://github.com/jellyfin/jellyfin/pull/17768) for channels), because it had been relaying the manifest through its own URL, where relative URIs fail. JellyRock plays the absolute upstream `Path`, where they resolve. The server's replacement, a remux or a full transcode, loses audio sent as a separate rendition, starts slower and loads the server; it has no DASH output at all.
 
-  The server's "no" does not say whether 12.0 is its only reason, so the override rebuilds the earlier answer from what the client can see. `getUpstreamHlsBlocker()` returns the first reason to stay on the server's stream, as an `UpstreamHlsBlocker` value the loader logs, or `NONE`:
+  The server's "no" does not say whether 12.0 is its only reason, so the rule rebuilds the earlier answer from what the client can see. `getUpstreamManifestBlocker()` returns the first reason to stay on the server's stream, as an `UpstreamManifestBlocker` value the loader logs, or `NONE`:
 
-  - **This load:** not a live channel, or the retry that forces a transcode.
-  - **Not the 12.0 case:** no source, the server did not decline, the source is not HTTP, not an absolute `http(s)` HLS URL, or it is DASH.
+  - **This load:** the retry that forces a transcode, or a source with no `SupportsDirectPlay` answer.
+  - **Not an upstream manifest:** not HTTP, not an absolute `http(s)` URL, or neither HLS nor DASH (`upstreamManifestFormat()`, from the container or, failing that, the URL path's extension; 10.7 and 10.8 report a `.strm` DASH item's container as `strm`).
   - **Through Jellyfin:** the server's own host and port, the `/LiveTv/LiveStreamFiles/` relay, or `localhost` or `127.0.0.1`.
-  - **The server's older reasons, which 10.11 applied too:** the tuner's "Auto-loop live streams" (`RequiresLooping`), "Force transcoding of remote media sources such as Live TV" on a remote source (`IsRemote`), and the internet streaming bitrate limit (`ContainerBitrateExceedsLimit` among the transcode reasons). The other reasons are ignored: for a manifest, 12.x no longer judges direct play, and its codec reasons say whether its own transcode can copy the stream, not whether the device can play it.
+  - **The server's older reasons, which 10.11 applied too:** the tuner's "Auto-loop live streams" (`RequiresLooping`), "Force transcoding of remote media sources such as Live TV" on a remote source (`IsRemote`; the server reports a `.strm` item as remote even for a LAN URL), and the internet streaming bitrate limit (`ContainerBitrateExceedsLimit` among the transcode reasons). The other reasons are ignored: for a manifest, 12.x no longer judges direct play, and its codec reasons say whether its own transcode can copy the stream, not whether the device can play it.
 
-  The tuner's "Simultaneous stream limit" is the one older reason the client cannot see; the server still enforces it when the stream opens. The request is typed (`UpstreamHlsRequest`), so a misspelled field is a build error. Past those checks, a **device preflight** gates the override: the loader fetches the master playlist itself (`upstreamPlaylistAnswers`, `timeouts.LIVE_UPSTREAM_PREFLIGHT_MS`) and plays it directly only on HTTP 200 with an `#EXTM3U` body. A Roku handed a URL it cannot reach buffers forever instead of failing, so without the preflight the retry above would never run.
+  The tuner's "Simultaneous stream limit" is the one older reason the client cannot see; the server still enforces it when the stream opens. The request is typed (`UpstreamManifestRequest`), so a misspelled field is a build error. Past those checks, a **device check** gates every upstream play, a server "yes" included: the loader fetches the manifest itself (`upstreamManifestAnswers()`, `timeouts.UPSTREAM_PREFLIGHT_MS`) and plays it directly only on HTTP 200 with a manifest of the declared format (`isUpstreamManifestResponse()`: an `#EXTM3U` first line for HLS, well-formed XML with an `MPD` root for DASH). A Roku handed a URL it cannot reach buffers instead of failing, which ended in the live stall error at about a minute on 10.11 (measured 2026-10-11). When the check fails after a "no", the load uses the server's `TranscodingUrl`. After a "yes" there is none, so the load flags `needsServerStream`: `VideoPlayerView.onVideoContentLoaded()` hands nothing to the `Video` node, closes the live stream the load opened (`releaseUnplayedLiveStream()`) and reloads through `retryPlayback()`.
+
+  A source played from its URL always gets the transcode retry, live or not, and its `StreamFormat` is the manifest's own (`directPlayStreamFormat()`). A live direct play whose format cannot be read keeps `hls`, which every live direct play was given before formats were told apart.
 
 MPEG-TS is left out of the direct-play profiles (`GetDirectPlayProfiles`), so the server remuxes every TS source, recordings included, to HLS.
 

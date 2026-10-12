@@ -1601,7 +1601,8 @@ The cost accepted is one series `GET` per episode that lacks its own `OriginalLa
 ## decision-id: live-hls-upstream-direct-play
 
 **date**: 2026-09-21
-**status**: accepted
+**status**: superseded
+**superseded-by**: `manifest-upstream-direct-play`
 **related-files**: `source/utils/liveTv.bs`, `source/enums/UpstreamHlsBlocker.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `source/constants/timeouts.bs`
 
 When Jellyfin 12.x declines direct play for a live `m3u` HLS channel (jellyfin/jellyfin#17768) but still returns the channel's absolute upstream `Path`, JellyRock plays that URL itself, as it did on 10.11 (`getUpstreamHlsBlocker()`). The server's replacement, remuxing on the server, drops audio carried as a separate HLS rendition and starts ~31 s slower, and the relay bug #17768 fixed never affected JellyRock, which already played the absolute URL. Ruled out: reporting upstream instead (not viable for this project); a player stall watchdog (a Roku handed an unreachable URL buffers indefinitely with no error, so a watchdog could only guess at a timeout); trusting the server's `IsRemote` as a reachability test (it says where the server sees the host, not whether the TV can reach it).
@@ -1975,6 +1976,17 @@ The API pool's caller watch keeps the plain `observeField` / `unobserveField` pa
 **related-files**: `settings/settings.json`
 
 The still-watching prompt stays on by default (`playbackStillWatching` is `default`: 3 videos or 90 minutes), although jellyfin-web 12.2 changed its fallback to off (`userSettings.stillWatchingPrompt()` returns `StillWatchingOptions.Disabled` at `v12.2` and `StillWatchingOptions.Default` at `v12.0`). A TV app is where unattended auto-play runs on with nobody watching, so the prompt earns its place on by default; a browser tab is a different setting. It builds on `still-watching-prompt`, which set the presets. Ruled out: following jellyfin-web to off by default.
+
+## decision-id: manifest-upstream-direct-play
+
+**date**: 2026-10-11
+**status**: accepted
+**supersedes**: `live-hls-upstream-direct-play`
+**related-files**: `source/utils/upstreamManifest.bs`, `source/enums/UpstreamManifestBlocker.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `components/video/VideoPlayerView.bs`, `source/api/items.bs`, `source/constants/timeouts.bs`
+
+Jellyfin 12.x declines direct play for every manifest source (`StreamBuilder.ManifestContainers`: `hls`, `applehttp`, `dash`), not only live `m3u` HLS channels, so `.strm` items always went through a server transcode and live DASH channels never played on 12.1. JellyRock now plays any source whose `Path` is an absolute upstream HLS or DASH manifest from that URL (`getUpstreamManifestBlocker()`), keeping the server's stream only where a rule older than 12.0 applies (the retry that forces a transcode, auto-loop, remote-source policy, bitrate limit), and sets `StreamFormat` from the manifest's own format instead of giving every live item `hls`. Considered and ruled out: a separate `.strm` rule beside the live one (two copies of the same checks), and leaving `.strm` unset as on 10.11 (relies on the Roku guessing the format from the URL).
+
+The device check (`upstreamManifestAnswers()`) now runs on a server "yes" too, since a Roku handed an unreachable URL buffers until the live stall error (~62 s on 10.11) where the server's own stream plays (~36 s); a failed check after a "yes" hands off to the server's stream before the Video node sees the URL (`needsServerStream`, then `retryPlayback`). For that retry to work on non-live items, every retry that forces a transcode now sends `EnableDirectPlay=false`; before, only live retries did, so a `.strm` the server allowed got the same "yes" back. Cost accepted: up to `UPSTREAM_PREFLIGHT_MS` (3 s) added when an upstream URL is unreachable; no measurable cost on a reachable LAN URL (measured 2026-10-11, Stick 4K, 10.11.11 and 12.1.0).
 
 ## Migrated to ADRs
 

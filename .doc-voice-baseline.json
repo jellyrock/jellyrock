@@ -2599,13 +2599,6 @@
     "em-dash": 6,
     "filler": 2
   },
-  "tests/source/unit/utils/liveTv-getUpstreamHlsBlocker.spec.bs": {
-    "em-dash": 1,
-    "filler": 1
-  },
-  "tests/source/unit/utils/liveTv-isHlsPlaylistResponse.spec.bs": {
-    "em-dash": 1
-  },
   "tests/source/unit/utils/liveTv.spec.bs": {
     "em-dash": 2,
     "filler": 3,

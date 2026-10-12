@@ -415,10 +415,6 @@ On 12.x the server returns a live channel's media streams without probing them (
 
 Knowing whether a stream is the upstream URL or the server's transcode would have shortened the 12.x Live TV investigation. Admin-only because the URL can carry session tokens; never log it.
 
-#### A live channel the server allows to direct play can buffer forever when the TV cannot reach its URL (found with the live HLS direct-play fix; pre-existing). `[fid: live-channel-buffers-forever-unreachable-url]` `[captured 2026-09-21]`
-
-The device preflight (`upstreamPlaylistAnswers`) runs only when JellyRock overrides the server's "no", so a Roku handed an unreachable upstream by a "yes" (10.11, or a non-manifest stream on 12.x, such as a TV away from home on a LAN tuner) buffers with no error and the transcode retry never runs. The override's own measurement (Roku Ultra, 2026-09-21) had a host it has no route to and a hostname it cannot resolve both buffering 150 s+. Candidate: run the preflight for every live direct play of an external URL. A GET of an endless MPEG-TS stream never completes, so a stream that is not HLS needs a different probe.
-
 #### The TV guide's channel list is paged 25 at a time; larger later pages would shorten a big lineup's load — measure before changing. `[fid: tv-guide-channel-paging-25]` `[captured 2026-09-22]`
 
 A 2,000-channel lineup takes 18 s to finish loading idle (Stick 4K, 2026-09-21), ~180 ms per page of which the transform is now the smaller part, and while the user scrolls each page costs 3.6–4.7 s, mostly per-request overhead (see the API pool followup under `### api`). Keep page 1 small for first paint; bigger later pages trade fewer round trips for a larger single handoff, so compare both on a 512 MB device.
@@ -561,6 +557,12 @@ Not filed now because the comment is a public post that needs the operator's app
 Not checked: why the dead-code plugin doesn't flag the two written-but-unread fields. I assume it counts a write as a use, but I haven't read the plugin.
 
 Closes when #1072's `DeviceInfo` item names all eight fields, or they are removed.
+
+#### A server-allowed live channel in a non-manifest container (mp4, mkv, ism) still buffers when the TV cannot reach its URL `[fid: live-non-manifest-unreachable-url-buffers]` `[captured 2026-10-12]`
+
+The device check before an upstream direct play (`LoadVideoContentTask.upstreamManifestAnswers()`) runs only for HLS and DASH manifests: `getUpstreamManifestBlocker()` returns `NOT_MANIFEST` for anything else and the server's answer stands. The device profile still allows direct play of `mp4`, `mkv` and `ism` (`supportedContainers` in `GetDirectPlayProfiles`), so a live channel in one of those containers over HTTP that the TV cannot reach is still handed to the Video node, which buffers instead of failing, and the transcode retry does not run in time. MPEG-TS is unaffected: it is left out of the direct-play profiles, so the server always remuxes it.
+
+This is the non-manifest half of the closed followup `live-channel-buffers-forever-unreachable-url`, found in review of the manifest direct-play fix (decision `manifest-upstream-direct-play`). Not done there because it needs a different probe: a GET of an endless progressive stream never completes, so the check would need a ranged or HEAD request, or to read only the first bytes. Closes when an unreachable server-allowed non-manifest live URL falls back to the server's stream, measured on a device.
 
 ### source
 

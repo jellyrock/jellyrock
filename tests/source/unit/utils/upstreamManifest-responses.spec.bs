@@ -1,0 +1,163 @@
+import "pkg:/source/utils/upstreamManifest.bs"
+
+namespace tests
+
+  ' The device check of an upstream manifest URL, and the format it is checked and played as. A
+  ' "no" from the check uses the server's stream, so a false positive is the costly direction: it
+  ' sends the Roku to a URL it may then only buffer on.
+  @suite("upstreamManifest - manifest formats and the device check's verdict")
+  class UpstreamManifestResponseTests extends tests.BaseTestSuite
+
+    private function mpd(prefix = "" as string) as string
+      return prefix + "<?xml version=""1.0"" encoding=""utf-8""?>" + Chr(10) + "<MPD xmlns=""urn:mpeg:dash:schema:mpd:2011"" type=""dynamic"" profiles=""urn:mpeg:dash:profile:isoff-live:2011""><Period id=""0""/></MPD>"
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isHlsPlaylistResponse")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts HTTP 200 with an HLS playlist")
+    function _()
+      m.assertTrue(isHlsPlaylistResponse(200, "#EXTM3U" + Chr(10) + "#EXT-X-VERSION:6" + Chr(10)))
+    end function
+
+    @it("tolerates whitespace before the #EXTM3U line")
+    function _()
+      m.assertTrue(isHlsPlaylistResponse(200, Chr(13) + Chr(10) + "  #EXTM3U" + Chr(10)))
+    end function
+
+    @it("turns away a 200 that is not a playlist, such as a captive portal")
+    function _()
+      m.assertFalse(isHlsPlaylistResponse(200, "<!doctype html><title>Sign in</title>"))
+    end function
+
+    @it("turns away an empty or missing body")
+    function _()
+      m.assertFalse(isHlsPlaylistResponse(200, ""))
+      m.assertFalse(isHlsPlaylistResponse(200, invalid))
+    end function
+
+    @it("turns away an HTTP error, even one whose body looks like a playlist")
+    function _()
+      m.assertFalse(isHlsPlaylistResponse(403, "#EXTM3U"))
+      m.assertFalse(isHlsPlaylistResponse(404, "#EXTM3U"))
+    end function
+
+    @it("turns away a transport failure")
+    ' roUrlTransfer reports DNS and connection failures as negative codes.
+    function _()
+      m.assertFalse(isHlsPlaylistResponse(-6, ""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isMpdResponse")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts HTTP 200 with an MPD behind an XML declaration")
+    function _()
+      m.assertTrue(isMpdResponse(200, m.mpd()))
+    end function
+
+    @it("accepts an MPD with no declaration, and one behind a comment")
+    function _()
+      m.assertTrue(isMpdResponse(200, "<MPD type=""static""><Period/></MPD>"))
+      m.assertTrue(isMpdResponse(200, "<!-- packager v1 -->" + Chr(10) + "<MPD type=""static""><Period/></MPD>"))
+    end function
+
+    @it("accepts an MPD behind a byte order mark")
+    function _()
+      m.assertTrue(isMpdResponse(200, m.mpd(Chr(&hFEFF))))
+    end function
+
+    @it("accepts an MPD root with a namespace prefix")
+    function _()
+      m.assertTrue(isMpdResponse(200, "<dash:MPD xmlns:dash=""urn:mpeg:dash:schema:mpd:2011""><dash:Period/></dash:MPD>"))
+    end function
+
+    @it("turns away a 200 that is not an MPD, such as a captive portal")
+    function _()
+      m.assertFalse(isMpdResponse(200, "<html><head><title>Sign in</title></head><body/></html>"))
+      m.assertFalse(isMpdResponse(200, "#EXTM3U" + Chr(10)))
+    end function
+
+    @it("turns away malformed XML")
+    function _()
+      m.assertFalse(isMpdResponse(200, "<MPD type=""static""><Period>"))
+    end function
+
+    @it("turns away an empty or missing body")
+    function _()
+      m.assertFalse(isMpdResponse(200, ""))
+      m.assertFalse(isMpdResponse(200, invalid))
+    end function
+
+    @it("turns away an HTTP error or a transport failure, even with an MPD body")
+    function _()
+      m.assertFalse(isMpdResponse(404, m.mpd()))
+      m.assertFalse(isMpdResponse(-6, ""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isUpstreamManifestResponse")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("checks the body against the format the source declared")
+    function _()
+      m.assertTrue(isUpstreamManifestResponse("dash", 200, m.mpd()))
+      m.assertFalse(isUpstreamManifestResponse("dash", 200, "#EXTM3U"))
+      m.assertTrue(isUpstreamManifestResponse("hls", 200, "#EXTM3U"))
+      m.assertFalse(isUpstreamManifestResponse("hls", 200, m.mpd()))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("upstreamManifestFormat")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the container the server reports")
+    function _()
+      m.assertEqual(upstreamManifestFormat({ Container: "hls", Path: "https://cdn.example.com/a" }), "hls")
+      m.assertEqual(upstreamManifestFormat({ Container: "applehttp", Path: "https://cdn.example.com/a" }), "hls")
+      m.assertEqual(upstreamManifestFormat({ Container: "DASH", Path: "https://cdn.example.com/a" }), "dash")
+    end function
+
+    @it("falls back to the URL path's extension, which a query string cannot hide")
+    function _()
+      m.assertEqual(upstreamManifestFormat({ Container: "", Path: "https://cdn.example.com/live/index.m3u8?t=a.mpd" }), "hls")
+      m.assertEqual(upstreamManifestFormat({ Path: "http://iptv.example.com/channel/5.m3u" }), "hls")
+      m.assertEqual(upstreamManifestFormat({ Container: "", Path: "https://cdn.example.com/live/manifest.mpd?t=a.m3u8" }), "dash")
+    end function
+
+    @it("names no format for anything else")
+    function _()
+      m.assertEqual(upstreamManifestFormat({ Container: "ts", Path: "http://tuner.example.com/auto/v5.1" }), "")
+      m.assertEqual(upstreamManifestFormat({ Container: "mp4", Path: "/media/movie.mp4" }), "")
+      m.assertEqual(upstreamManifestFormat(invalid), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("directPlayStreamFormat")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets the manifest's own format, live or not")
+    ' Every live direct play was given "hls" before, which broke DASH channels on 10.11.
+    function _()
+      m.assertEqual(directPlayStreamFormat({ Container: "dash", Path: "http://h/live.mpd" }, true), "dash")
+      m.assertEqual(directPlayStreamFormat({ Container: "hls", Path: "http://h/live.m3u8" }, true), "hls")
+      m.assertEqual(directPlayStreamFormat({ Container: "dash", Path: "http://h/vod.mpd" }, false), "dash")
+      m.assertEqual(directPlayStreamFormat({ Container: "hls", Path: "http://h/vod.m3u8" }, false), "hls")
+    end function
+
+    @it("keeps hls for a live source whose format it cannot read, as before")
+    function _()
+      m.assertEqual(directPlayStreamFormat({ Container: "", Path: "/LiveTv/LiveStreamFiles/abc/stream" }, true), "hls")
+    end function
+
+    @it("leaves a non-live file's format to the player")
+    ' Setting "mp4" explicitly breaks Roku's detection of progressive MP4.
+    function _()
+      m.assertEqual(directPlayStreamFormat({ Container: "mp4", Path: "/media/movie.mp4" }, false), "")
+    end function
+
+  end class
+
+end namespace

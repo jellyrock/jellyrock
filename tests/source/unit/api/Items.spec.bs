@@ -25,11 +25,14 @@ namespace tests
       m.assertFalse(postData.doesExist("EnableDirectPlay"))
     end function
 
-    @it("does not set EnableDirectPlay even when forceTranscoding=true for non-live content")
+    @it("disables direct play on the transcode retry for non-live content too (forceTranscoding=true)")
+    ' A .strm item the server allows to direct play but this device cannot reach: without the flag,
+    ' the retry gets the same "yes" and no transcode URL (measured 2026-10-11 on 10.11.11).
     function _()
       postData = {}
       applyMediaSourceToPostData(postData, "source-abc123", true)
-      m.assertFalse(postData.doesExist("EnableDirectPlay"))
+      m.assertEqual(postData.MediaSourceId, "source-abc123")
+      m.assertFalse(postData.EnableDirectPlay)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

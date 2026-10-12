@@ -761,22 +761,18 @@ sub applyLiveTvMinSegments(postData as object)
   end for
 end sub
 
-' applyMediaSourceToPostData: Applies the media source ID or live TV retry flags to a postData object.
-' Live TV is detected by an empty mediaSourceId. On the first attempt, direct play is not disabled
-' so the server can evaluate compatibility (matching web client behaviour). On retry,
-' forceTranscoding=true sets EnableDirectPlay=false so the server provides a transcode URL instead.
+' applyMediaSourceToPostData: Applies the media source ID and the transcode retry flag to a postData
+' object. Live TV sends no mediaSourceId. On the first attempt, direct play is not disabled so the
+' server can evaluate compatibility (matching web client behaviour). On the retry after a failed
+' direct play, forceTranscoding=true sets EnableDirectPlay=false, live or not: a server that allowed
+' direct play would otherwise answer the retry with the same "yes" and no transcode URL.
 '
 ' @param {object} postData - The request body assoc array to modify
 ' @param {string} mediaSourceId - Media source ID, or "" for live TV
 ' @param {boolean} forceTranscoding - True when retrying with forced transcoding
 sub applyMediaSourceToPostData(postData as object, mediaSourceId as string, forceTranscoding as boolean)
-  if mediaSourceId <> ""
-    postData.MediaSourceId = mediaSourceId
-  else
-    if forceTranscoding
-      postData.EnableDirectPlay = false
-    end if
-  end if
+  if mediaSourceId <> "" then postData.MediaSourceId = mediaSourceId
+  if forceTranscoding then postData.EnableDirectPlay = false
 end sub
 
 ' Tailors a video transcoding profile's AudioCodec list to the current source's channel count

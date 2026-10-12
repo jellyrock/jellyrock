@@ -24,6 +24,7 @@ import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/subtitles.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
+import "pkg:/source/utils/upstreamManifest.bs"
 import "pkg:/source/utils/versionPick.bs"
 import "pkg:/source/utils/versionResume.bs"
 
@@ -511,10 +512,6 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   video.PlaySessionId = m.playbackInfo.PlaySessionId
 
-  if isLive
-    video.content.StreamFormat = "hls"
-  end if
-
   video.container = meta.container
 
   ' Pass JellyfinBaseItem node for OSD to read typed fields directly
@@ -555,28 +552,38 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' 'TODO: allow user selection of subtitle track before playback initiated, for now set to no subtitles
   video.isDirectPlaySupported = m.playbackInfo.MediaSources[0].SupportsDirectPlay
 
-  ' Jellyfin 12.0+ declines direct play for every HLS Live TV channel, and its remux loses audio that
-  ' arrives as a separate rendition; play the channel's own URL instead, as before 12.0, unless the
-  ' server had a reason of its own (getUpstreamHlsBlocker says which). The device must be able to
-  ' load that URL itself first: one it cannot reach leaves the Roku buffering forever rather than
-  ' failing, so the fallback to the server would never run.
+  ' A source whose URL is an upstream HLS or DASH manifest (a Live TV channel, a .strm item) plays
+  ' from that URL whenever the server had no reason of its own against it (getUpstreamManifestBlocker
+  ' says which), even though Jellyfin 12.0+ declines direct play for every manifest. Whatever the
+  ' server answered, the device must be able to load the URL itself first: one it cannot reach leaves
+  ' the Roku buffering rather than failing, so the fallback to the server would not run in time.
+  manifestSource = m.playbackInfo.MediaSources[0]
   userPolicy = userSession.policy
-  upstreamBlocker = getUpstreamHlsBlocker(m.playbackInfo.MediaSources[0], {
-    isLive: isLive,
+  upstreamBlocker = getUpstreamManifestBlocker(manifestSource, {
     forceTranscoding: forceTranscoding,
     serverUrl: textOrEmpty(getUrl()),
     forceRemoteSourceTranscoding: isValid(userPolicy) and isBooleanTrue(userPolicy.forceRemoteSourceTranscoding),
-    transcodeReasons: getTranscodeReasons(textOrEmpty(m.playbackInfo.MediaSources[0].TranscodingUrl))
+    transcodeReasons: getTranscodeReasons(textOrEmpty(manifestSource.TranscodingUrl))
   })
-  if upstreamBlocker = UpstreamHlsBlocker.NONE
-    if upstreamPlaylistAnswers(m.playbackInfo.MediaSources[0].Path)
+  if upstreamBlocker = UpstreamManifestBlocker.NONE
+    manifestFormat = upstreamManifestFormat(manifestSource)
+    serverAllowed = isBooleanTrue(video.isDirectPlaySupported)
+    if upstreamManifestAnswers(manifestSource.Path, manifestFormat)
       video.isDirectPlaySupported = true
-      m.log.info("Server declined direct play of a live HLS channel; playing its upstream URL", "itemId", video.id)
+      ' If the device cannot play the stream after all, the player retries through the server.
+      video.isTranscodeAvailable = true
+      m.log.info("Playing the upstream manifest URL", "format", manifestFormat, "serverAllowed", serverAllowed, "isLive", isLive, "itemId", video.id)
+    else if serverAllowed
+      ' The server's "yes" carries no stream of its own (no TranscodingUrl), so the player asks it
+      ' for one before playing anything: the retry a failed direct play takes.
+      video.needsServerStream = true
+      video.isTranscodeAvailable = true
+      m.log.info("This device cannot load the upstream manifest URL the server allowed; asking the server for its stream", "format", manifestFormat, "isLive", isLive, "itemId", video.id)
     else
-      m.log.info("Server declined direct play of a live HLS channel and this device cannot load its upstream URL; using the server's stream", "itemId", video.id)
+      m.log.info("This device cannot load the upstream manifest URL; using the server's stream", "format", manifestFormat, "isLive", isLive, "itemId", video.id)
     end if
-  else if isLive
-    m.log.info("Live channel keeps the server's answer", "blocker", upstreamBlocker, "itemId", video.id)
+  else
+    m.log.debug("Source keeps the server's answer", "blocker", upstreamBlocker, "isLive", isLive, "itemId", video.id)
   end if
 
   ' For h264/hevc video, Roku spec states that it supports specfic encoding levels
@@ -616,6 +623,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   if video.isDirectPlaySupported
     video.isTranscoded = false
     setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
+    if not isValid(video.content) then return
+    streamFormat = directPlayStreamFormat(m.playbackInfo.MediaSources[0], isLive)
+    if streamFormat <> "" then video.content.StreamFormat = streamFormat
     applyLiveDirectPlayFallback(video, meta)
     m.log.info("Playback path: DIRECT PLAY", "finalUrl", video.content.url, "streamFormat", video.content.StreamFormat)
   else
@@ -667,19 +677,20 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
 end sub
 
-' upstreamPlaylistAnswers: Whether THIS device can load a live channel's upstream HLS playlist.
+' upstreamManifestAnswers: Whether THIS device can load a source's upstream manifest URL.
 '
-' A preflight for playing a channel from its own URL (getUpstreamHlsBlocker). The server
+' The device check before playing a source from its own URL (getUpstreamManifestBlocker). The server
 ' reaching a URL says nothing about the Roku reaching it, and a Roku handed one it cannot reach does
-' not error: an unroutable host or an unresolvable name leaves it buffering indefinitely, so the
-' direct-play fallback never runs. A GET within timeouts.LIVE_UPSTREAM_PREFLIGHT_MS that returns an
-' HLS playlist is the answer (isHlsPlaylistResponse); anything else keeps the server's stream.
+' not error: an unroutable host or an unresolvable name leaves it buffering, so the direct-play
+' fallback does not run. A GET within timeouts.UPSTREAM_PREFLIGHT_MS that returns a manifest of the
+' declared format is the answer (isUpstreamManifestResponse); anything else uses the server's stream.
 ' Raw roUrlTransfer on this Task thread, no Jellyfin auth (the URL is not Jellyfin's) and the URL is
 ' never logged, because upstream URLs carry session tokens.
 '
-' @param {dynamic} url - the channel's upstream playlist URL (MediaSource.Path)
+' @param {dynamic} url - the source's upstream manifest URL (MediaSource.Path)
+' @param {string} format - "hls" or "dash" (upstreamManifestFormat)
 ' @returns {boolean}
-function upstreamPlaylistAnswers(url as dynamic) as boolean
+function upstreamManifestAnswers(url as dynamic, format as string) as boolean
   target = textOrEmpty(url)
   if target = "" then return false
 
@@ -688,7 +699,7 @@ function upstreamPlaylistAnswers(url as dynamic) as boolean
   req.setMessagePort(port)
   req.setUrl(target)
   if LCase(Left(target, 8)) = "https://" then req.setCertificatesFile("common:/certs/ca-bundle.crt")
-  ' The player decodes a gzip-encoded playlist, so the preflight must too: a CDN serving
+  ' The player decodes a gzip-encoded manifest, so the check must too: a CDN serving
   ' pre-compressed objects sends one even to a request that did not ask for it.
   req.EnableEncodings(true)
 
@@ -696,19 +707,20 @@ function upstreamPlaylistAnswers(url as dynamic) as boolean
   elapsed.mark()
   if not req.AsyncGetToString() then return false
 
-  remaining = timeouts.LIVE_UPSTREAM_PREFLIGHT_MS
+  remaining = timeouts.UPSTREAM_PREFLIGHT_MS
   while remaining > 0
     msg = wait(remaining, port)
     if type(msg) = "roUrlEvent"
-      answers = isHlsPlaylistResponse(msg.GetResponseCode(), msg.GetString())
-      m.log.info("Live upstream preflight", "answers", answers, "responseCode", msg.GetResponseCode(), "ms", elapsed.TotalMilliseconds())
+      fetchedMs = elapsed.TotalMilliseconds()
+      answers = isUpstreamManifestResponse(format, msg.GetResponseCode(), msg.GetString())
+      m.log.info("Upstream manifest check", "answers", answers, "responseCode", msg.GetResponseCode(), "fetchMs", fetchedMs, "checkMs", elapsed.TotalMilliseconds() - fetchedMs)
       return answers
     end if
-    remaining = timeouts.LIVE_UPSTREAM_PREFLIGHT_MS - elapsed.TotalMilliseconds()
+    remaining = timeouts.UPSTREAM_PREFLIGHT_MS - elapsed.TotalMilliseconds()
   end while
 
   req.AsyncCancel()
-  m.log.info("Live upstream preflight timed out", "ms", elapsed.TotalMilliseconds())
+  m.log.info("Upstream manifest check timed out", "format", format, "ms", elapsed.TotalMilliseconds())
   return false
 end function
 
