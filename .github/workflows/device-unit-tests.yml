@@ -291,8 +291,8 @@ jobs:
       #
       # `if: always()` because a RED run is the interesting one. Adds no egress path:
       # the step above already uploads a full telnet console dump from the same job,
-      # and this file carries only commit sha, timings, the `sha256(device-id)` key
-      # and the holder record — `recordFailure` lives in the RTA harness, so a
+      # and a ledger line carries only commit sha, timings, the `sha256(device-id)`
+      # key and the lock state. `recordFailure` lives in the RTA harness, so a
       # Rooibos run's `failures` is always empty. upload-artifact authenticates with
       # ACTIONS_RUNTIME_TOKEN, so `contents: read` is untouched.
       - name: Upload the run record
@@ -302,6 +302,5 @@ jobs:
           name: roku-run-record-${{ github.event.inputs.test_type || 'all' }}
           path: |
             .device-runs/device/runs.jsonl
-            out/device/run-meta.json
           retention-days: 30
           if-no-files-found: warn
