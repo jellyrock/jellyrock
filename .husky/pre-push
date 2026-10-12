@@ -63,7 +63,8 @@
 #                                    post-merge journal-sync workflow.
 #
 # Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
-# can't be swept into the auto-fix commit. Check steps still run.
+# can't be swept into the auto-fix commit. Dirty means a changed tracked file
+# or a new file that .gitignore doesn't cover. Check steps still run.
 #
 # What's NOT here (handled in pre-commit / lint-staged):
 #   - bsfmt --write / --check on .bs/.brs (file-scoped)
@@ -130,8 +131,8 @@ HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
 # Auto-fix steps (project-wide regens; combined into one commit at the end)
 # ──────────────────────────────────────────────────────────────────────────
 if [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ] || [ -n "$HAS_ICON_SOURCES" ] || [ -n "$HAS_GRADIENT_SOURCES" ] || [ -n "$HAS_API_MANIFEST_SOURCES" ] || [ -n "$HAS_DICTIONARY" ]; then
-  if ! git diff-index --quiet HEAD --; then
-    echo "⚠️  Working tree has uncommitted changes; skipping auto-fix steps."
+  if ! git diff-index --quiet HEAD -- || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    echo "⚠️  Working tree has uncommitted or untracked changes; skipping auto-fix steps."
     echo "   Commit or stash them, then re-push to enable auto-fix."
   else
     if [ -n "$TRANSLATION_TRIGGERS" ]; then
