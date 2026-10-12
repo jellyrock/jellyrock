@@ -37,6 +37,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackInfo.bs"
+import "pkg:/source/utils/streamOrigin.bs"
 import "pkg:/source/utils/transcodeCause.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -406,8 +407,17 @@ function fileSection(source as object, transcoding as dynamic, input as object) 
     reportRow(rows, "file.size", translationKeys.LabelSize, getReadableSize(source.Size))
   end if
   reportRow(rows, "file.bitrate", translationKeys.LabelTotalBitrate, getDisplayBitrate(source.Bitrate))
+  ' Where the stream comes from, for everyone: the question a playback problem starts with
+  ' (the server's stream, or a provider's), and a host name is no secret.
+  origin = upstreamHost(input.playbackUrl, input.serverUrl)
+  if origin = "" and isServerUrl(input.playbackUrl, input.serverUrl) then origin = translate(translationKeys.LabelThisJellyfinServer)
+  reportRow(rows, "file.origin", translationKeys.LabelStreamingFrom, origin)
+
+  ' The URL and the path are for administrators, with their secrets hidden (streamOrigin.bs):
+  ' a server URL carries the user's token, and a provider's URL can carry the provider's.
   if isBooleanTrue(input.isAdministrator)
-    reportRow(rows, "file.path", translationKeys.LabelPath, textOrEmpty(source.Path))
+    reportRow(rows, "file.url", translationKeys.LabelPlaybackUrl, maskUrlSecrets(input.playbackUrl, input.serverUrl))
+    reportRow(rows, "file.path", translationKeys.LabelPath, maskUrlSecrets(source.Path, input.serverUrl))
   end if
 
   return reportSection("file", translate(translationKeys.LabelFile), rows, false)

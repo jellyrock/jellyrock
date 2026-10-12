@@ -1,0 +1,94 @@
+' Where a playing stream comes from, and how to show its URL without its secrets.
+'
+' A Jellyfin URL carries the user's access token in its query (`ApiKey`, `api_key` on older
+' servers). An upstream URL (a Live TV channel, a .strm item) belongs to someone else's service,
+' whose token names are unknown, so every query value is hidden there, and so is any
+' `user:password@` before the host. A screenshot of the playback-info report must be safe to
+' attach to a bug report.
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/url.bs"
+
+' What a hidden value shows instead.
+const MASKED_VALUE = "***"
+
+' True when the URL is this Jellyfin server's: relative, or the same host and port.
+'
+' @param {dynamic} url - the URL to place
+' @param {dynamic} serverUrl - the signed-in server's URL
+' @returns {boolean}
+function isServerUrl(url as dynamic, serverUrl as dynamic) as boolean
+  text = textOrEmpty(url)
+  if text = "" then return false
+  if Instr(1, text, "://") = 0 then return Left(text, 1) = "/"
+  target = parseUrlComponents(text)
+  server = parseUrlComponents(textOrEmpty(serverUrl))
+  if not isValid(target) or not isValid(server) then return false
+  return target.host <> "" and target.host = server.host and target.port = server.port
+end function
+
+' The host a stream comes from, or "" when it is this server's or there is no URL.
+'
+' @param {dynamic} url - the URL being played
+' @param {dynamic} serverUrl - the signed-in server's URL
+' @returns {string}
+function upstreamHost(url as dynamic, serverUrl as dynamic) as string
+  text = textOrEmpty(url)
+  if text = "" or Instr(1, text, "://") = 0 or isServerUrl(text, serverUrl) then return ""
+  target = parseUrlComponents(text)
+  if not isValid(target) then return ""
+  return target.host
+end function
+
+' The URL with its secrets hidden: a server URL's token values, an upstream URL's every query
+' value and any user information. Anything that is not a URL (a file path) is returned as is.
+'
+' @param {dynamic} url
+' @param {dynamic} serverUrl - the signed-in server's URL
+' @returns {string}
+function maskUrlSecrets(url as dynamic, serverUrl as dynamic) as string
+  text = textOrEmpty(url)
+  isUrl = Instr(1, text, "://") > 0
+  if not isUrl and Left(text, 1) <> "/" then return text
+  isServer = isServerUrl(text, serverUrl)
+
+  ' Worked on the text itself rather than rebuilt from parseUrlComponents, which lowercases
+  ' the host: everything that is not a secret reads exactly as the server or provider wrote it.
+  if isUrl and not isServer
+    authorityStart = Instr(1, text, "://") + 3
+    authorityEnd = Len(text) + 1
+    for each delimiter in ["/", "?", "#"]
+      found = Instr(authorityStart, text, delimiter)
+      if found > 0 and found < authorityEnd then authorityEnd = found
+    end for
+    at = Instr(authorityStart, text, "@")
+    if at > 0 and at < authorityEnd then text = Left(text, authorityStart - 1) + MASKED_VALUE + Mid(text, at)
+  end if
+
+  queryStart = Instr(1, text, "?")
+  if queryStart = 0 then return text
+  fragment = ""
+  hash = Instr(queryStart, text, "#")
+  query = Mid(text, queryStart + 1)
+  if hash > 0
+    fragment = Mid(text, hash)
+    query = Mid(text, queryStart + 1, hash - queryStart - 1)
+  end if
+
+  pairs = []
+  for each pair in query.split("&")
+    equals = Instr(1, pair, "=")
+    if equals > 1
+      name = Left(pair, equals - 1)
+      if not isServer or isServerTokenName(name) then pair = name + "=" + MASKED_VALUE
+    end if
+    pairs.push(pair)
+  end for
+  return Left(text, queryStart) + pairs.join("&") + fragment
+end function
+
+' The query names a Jellyfin URL carries the user's access token in. The server's StreamInfo
+' writes `api_key` at 10.7.7 and `ApiKey` at 10.11.0, and its authorization reads both.
+function isServerTokenName(name as string) as boolean
+  lowered = LCase(name)
+  return lowered = "apikey" or lowered = "api_key"
+end function

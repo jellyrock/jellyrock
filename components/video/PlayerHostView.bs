@@ -735,6 +735,10 @@ function playbackReportInputs(session as dynamic) as object
     ' still moving. Both live here rather than in the pure model because only this
     ' scope can see the player and the previous poll.
     playheadSeconds: m.view.position,
+    ' What the player was handed, after any override of the server's answer (an upstream
+    ' manifest played from its own URL), so "Streaming from" names the source actually used.
+    playbackUrl: playingUrl(m.view.content),
+    serverUrl: m.global.server.serverUrl,
     previousCompletion: m.lastCompletionPercentage,
     audioStreamIndex: m.view.audioIndex,
     subtitleStreamIndex: m.view.selectedSubtitle,
@@ -749,6 +753,12 @@ function playbackReportInputs(session as dynamic) as object
     deviceMaxHeight: capabilities.maxHeight,
     doviPreservationBypassed: m.view.isDoviPreservationBypassed
   }
+end function
+
+' The URL the Video node is playing, or "" when it has no content.
+function playingUrl(content as dynamic) as string
+  if not isValid(content) then return ""
+  return textOrEmpty(content.url)
 end function
 
 ' True only when the signed-in user is a Jellyfin administrator.

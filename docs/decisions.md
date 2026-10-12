@@ -2000,6 +2000,16 @@ The playback-info report shows an Audio section whenever the source lists audio,
 
 Silence was ruled out because a missing Audio section reads as "this has no audio", which is how the live gap was first reported. A bare "Unknown" row was ruled out because it hides tracks the server did list. Showing the first audio stream was ruled out because it names a track nobody may be hearing, which is the bug `findStreamByIndex()` exists to prevent.
 
+## decision-id: playback-report-stream-origin
+
+**date**: 2026-10-12
+**status**: accepted
+**related-files**: `source/utils/streamOrigin.bs`, `source/utils/playbackReport.bs`, `docs/architecture/playback.md`
+
+The playback-info report tells every viewer where the stream comes from ("Streaming from": this Jellyfin server, or the host of the URL the player was handed), and shows administrators the playback URL and the path with their secrets hidden. A server URL's `ApiKey` (or `api_key`) is masked, since it is the user's access token (measured in the `TranscodingUrl` of 10.11 and 12.1); a provider's URL has every query value and any `user:password@` masked, because its token names are unknown. The report is the screen users photograph for a bug report.
+
+Chosen over an admin-only raw URL (answers nobody else, and puts the token on screen) and over the origin row alone (left provider tokens visible in the admin Path row). The cost: an administrator can no longer copy a provider URL's query values from the TV; the server's dashboard still has them.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
