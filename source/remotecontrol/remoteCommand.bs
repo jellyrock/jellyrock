@@ -1,6 +1,6 @@
 ' Pure wire-protocol parser for the remote-control receiver. Turns a Jellyfin session-socket message
 ' envelope ({ MessageType, Data }) into a normalized command that the main-thread dispatcher
-' (remoteDispatch) enacts. No socket, no node, no m.global — fully unit-testable. The envelope + Data
+' (remoteDispatch) enacts. No socket, no node, no m.global, so it is fully unit-testable. The envelope + Data
 ' shapes below were captured from a live Jellyfin server. Analog of the voice pure layer,
 ' source/utils/voiceTransport.bs. See docs/architecture/remote-control.md.
 namespace remoteCommand
@@ -15,15 +15,15 @@ namespace remoteCommand
   '   goback    -> (none)                          (GeneralCommand Back)
   '   message   -> header, text, hasTimeout        (GeneralCommand DisplayMessage; timeout -> toast, else dialog)
   '   keepalive -> intervalSeconds
-  '   ignore    -> KeepAlive / Sessions / volume / directional / unknown — parsed but not enacted
+  '   ignore    -> KeepAlive / Sessions / volume / directional / unknown: parsed but not enacted
   function parseMessage(envelope as object) as object
     result = { kind: "ignore", raw: invalid, messageId: "" }
     if not isValid(envelope) or not isValidAndNotEmpty(envelope.MessageType) then return result
     result.raw = envelope.Data
     ' The server-assigned id, present on the long-poll transport ({ MessageType, Data, MessageId }) and
-    ' the ack key for at-least-once delivery. Captured for EVERY kind — even "ignore"/"keepalive" — so the
+    ' the ack key for at-least-once delivery. Captured for every kind, even "ignore"/"keepalive", so the
     ' long-poll receiver can ack past them (letting the plugin drop them) and dedupe a redelivered command.
-    ' The ws:// transport omits it; it stays "" there and is simply unused. See remote-control-longpoll-contract.md.
+    ' The ws:// transport omits it; it stays "" there and is unused. See remote-control-longpoll-contract.md.
     if isValidAndNotEmpty(envelope.MessageId) then result.messageId = envelope.MessageId
 
     messageType = envelope.MessageType
@@ -87,7 +87,7 @@ namespace remoteCommand
     end if
 
     ' DisplayMessage -> a notification. Arguments (MessageCommand) carry { Header, Text, TimeoutMs }
-    ' (all as strings — GeneralCommand.Arguments is a string map). TimeoutMs is the sender's intent
+    ' (all as strings: GeneralCommand.Arguments is a string map). TimeoutMs is the sender's intent
     ' signal: present = transient (dispatch shows a toast), absent = persistent (a dialog). Header is
     ' the title, Text the body.
     if name = "DisplayMessage"
@@ -115,7 +115,7 @@ namespace remoteCommand
       return result
     end if
 
-    ' Volume (no Roku app volume API), directional D-pad (no in-app key injection — an ECP/plugin
+    ' Volume (no Roku app volume API), directional D-pad (no in-app key injection; an ECP/plugin
     ' job), SendKey/SendString/screenshot, and the Toggle*/bitrate niceties all fall through to
     ' ignore. See remote-control.md for which are deferred vs platform-limited.
     return result

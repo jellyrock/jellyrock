@@ -44,7 +44,7 @@ namespace gridPage
   ' The request that completes the page after the first delivered `delivered` items, or invalid
   ' when the page needs none.
   '
-  ' Once the first range has run out — it delivered fewer than asked for — the rest of the page
+  ' Once the first range has run out (it delivered fewer than asked for), the rest of the page
   ' comes from the top of the second. The first page always asks the second range, even when the
   ' first range filled the page (limit 0: the count alone), because the grid's total is both
   ' counts.
@@ -64,7 +64,7 @@ namespace gridPage
   end function
 
   ' The query params for one "#" request: the page's params with this request's range, start,
-  ' size and whether to count. A copy — `params` stays the page's.
+  ' size and whether to count. A copy: `params` stays the page's.
   '
   ' @param params - the page's query params, without a name filter
   ' @param request - from hashFirstRequest() or hashSecondRequest()

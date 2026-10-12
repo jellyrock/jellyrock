@@ -43,7 +43,7 @@ sub runGlobalMigrations()
       "global.rememberme": "globalRememberMe"
     }
 
-    ' Migrate each setting: read → write new → delete old
+    ' Migrate each setting: read, write the new name, delete the old
     reg = CreateObject("roRegistrySection", getGlobalRegistrySection())
     migratedCount = 0
     for each oldName in migrations
@@ -81,7 +81,7 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
   end if
 
   ' Detect test mode ONCE: if ANY section starts with "test-", we're in test mode
-  ' In test mode, ONLY migrate test sections to prevent touching real user data
+  ' In test mode, migrate only test sections to prevent touching real user data
   hasTestSections = false
   for each checkSection in regSections
     if LCase(checkSection).left(5) = "test-"
@@ -107,7 +107,7 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
     reg = CreateObject("roRegistrySection", section)
 
     ' Validate this is a legitimate user section by checking for serverId
-    ' serverId is ALWAYS written by user.Login() regardless of saveCredentials
+    ' serverId is always written by user.Login() regardless of saveCredentials
     ' If missing, this is an orphaned/incomplete section - skip it
     if not reg.exists("serverId")
       print `Skipping incomplete user section: ${section} (missing serverId)`
@@ -129,7 +129,7 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, SETTINGS_MIGRATION_VERSION)
       m.wasMigrated = true
 
-      ' Define user setting migrations (old dotted name → new camelCase name)
+      ' Define user setting migrations (old dotted name to new camelCase name)
       ' Single source of truth for migration mapping
       migrations = {
         ' Auth settings (stored per-user for multi-user support)
@@ -185,7 +185,7 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
         "display.livetv.landing": "displayLiveTvLanding"
       }
 
-      ' Migrate each setting: read → write new → delete old
+      ' Migrate each setting: read, write the new name, delete the old
       migratedCount = 0
       for each oldName in migrations
         if reg.exists(oldName)
@@ -299,7 +299,7 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
       m.wasMigrated = true
 
       ' globalSplashScreen was incorrectly saved to user registry sections due to a bug in radioSettingChanged()
-      ' This setting should ONLY exist in the global "JellyRock" or "test-global" section
+      ' This setting should exist only in the global "JellyRock" or "test-global" section
       ' Delete it from user sections to prevent confusion and ensure single source of truth
       settingName = "globalSplashScreen"
 

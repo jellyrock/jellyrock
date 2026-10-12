@@ -3,7 +3,7 @@ import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 
-' Decision layer for ItemDetails' extras rows — which rows an item type shows, in what order
+' Decision layer for ItemDetails' extras rows: which rows an item type shows, in what order
 ' and slot shape, how a delivered row is ordered and filtered, when a run may be committed to
 ' the RowList and which rows it may skip, and the layout arrays for the rows on screen.
 '
@@ -35,16 +35,16 @@ namespace extrasRows
   ' A row whose request cannot be formed for this item (an episode with no season, a track
   ' with no album) is left out of the plan rather than planned and resolved empty.
   '
-  ' Rows about the item itself come first; the rows that lead AWAY from it — Collections, then
-  ' More Like This — come last on every type that has them (appendDiscovery).
+  ' Rows about the item itself come first; the rows that lead away from it (Collections, then
+  ' More Like This) come last on every type that has them (appendDiscovery).
   '
   ' Every type plans a Collections row except Person. The server accepts any item into a
-  ' collection, so none is ruled out by type; the row simply stays off screen when the answer
+  ' collection, so none is ruled out by type; the row stays off screen when the answer
   ' is empty. Person's rows are the person's own media instead: ExtrasRowList.finishRunIfResolved
   ' reads "any row on screen" as personHasMedia, which shows the Shuffle button, so a
   ' Collections row there would offer to shuffle a person with nothing to play.
   '
-  ' @param itemType - the item's type, e.g. "Movie"
+  ' @param itemType - the item's type, for example "Movie"
   ' @param item - the item node or AA
   ' @param serverVersion - the server's version string; decides whether a Collections row is
   '                        planned (supportsItemCollections)
@@ -104,7 +104,7 @@ namespace extrasRows
       end if
       appendDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "Playlist"
-      ' PORTRAIT until the items are known — finishRow makes an all-audio playlist SQUARE.
+      ' PORTRAIT until the items are known; finishRow makes an all-audio playlist SQUARE.
       rows.push(planRow("playlistItems", "PORTRAIT", translationKeys.LabelPlaylistItems, itemId))
       appendDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "Photo"
@@ -121,7 +121,7 @@ namespace extrasRows
       end if
       appendDiscovery(rows, itemType, item, canListCollections)
     else
-      ' Movie, Video, Recording — and any type not named above, as the chain always did.
+      ' Movie, Video, Recording, and any type not named above, as the chain always did.
       rows.push(planRow("chapters", "WIDE", translationKeys.LabelChapters, itemId))
       rows.push(planRow("additionalParts", "PORTRAIT", translationKeys.LabelAdditionalParts, itemId))
       rows.push(planRow("cast", "PORTRAIT", translationKeys.LabelCastCrew, itemId))
@@ -138,7 +138,7 @@ namespace extrasRows
   ' requested and failed. Registered as a version guard in
   ' docs/dev/jellyfin-endpoint-availability.yml, whose lint fails if this function disappears.
   '
-  ' @param serverVersion - the server's version string, e.g. "12.0.0"
+  ' @param serverVersion - the server's version string, for example "12.0.0"
   ' @return true from 12.0.0; false below it, and for an empty or unknown version
   function supportsItemCollections(serverVersion as string) as boolean
     if not isValidAndNotEmpty(serverVersion) then return false
@@ -149,7 +149,7 @@ namespace extrasRows
   '
   ' @param row - the plan row the items were fetched for
   ' @param items - array of item nodes or AAs, in server order
-  ' @return an AA { items, shape, contentKind } — contentKind is playlistContentKind's answer for
+  ' @return an AA { items, shape, contentKind }; contentKind is playlistContentKind's answer for
   '         a playlist row, and "" for every other row
   function finishRow(row as object, items as object) as object
     shape = row.shape
@@ -175,7 +175,7 @@ namespace extrasRows
 
   ' What a playlist holds, for ItemDetails' Watched button and "Tracks"/"Items" label.
   '
-  ' "unknown" covers both an empty playlist and one that failed to load — ItemDetails treats
+  ' "unknown" covers both an empty playlist and one that failed to load. ItemDetails treats
   ' it as the safe default (no Watched button, "Items" label).
   '
   ' @param items - array of item nodes or AAs, or invalid
@@ -212,8 +212,8 @@ namespace extrasRows
   ' Is a delivered row identical to the one on screen? Such a row is not written at all: RowList
   ' redraws its row counter on any write to an on-screen row, even one that changes nothing.
   '
-  ' Identity is the title plus a digest of the row's SOURCE content — the server's response body,
-  ' or the item data a local row is built from — taken where that content is at hand (see
+  ' Identity is the title plus a digest of the row's SOURCE content (the server's response body,
+  ' or the item data a local row is built from), taken where that content is at hand (see
   ' digestOf). Anything the server changes about the row, including a field on an item whose id
   ' did not change (its played state, an image tag), changes the digest; so an unchanged digest
   ' means the rebuilt row would be identical, and a tile can never be left showing stale data.
@@ -266,7 +266,7 @@ namespace extrasRows
 
   ' What a resolved row does to the list.
   '
-  ' A failed request says nothing about what the item HAS, so it never removes a row — the
+  ' A failed request says nothing about what the item HAS, so it never removes a row: the
   ' same rule latestRows.drainReady applies to Home. Only an answered, empty row removes one.
   '
   ' @param status - "ok" | "failed"
@@ -378,14 +378,14 @@ namespace extrasRows
     return { kind: kind, shape: shape, titleKey: titleKey, titleArgs: [], itemId: itemId }
   end function
 
-  ' Cast, then the discovery tail — how every video-library type ends except those on the Movie
+  ' Cast, then the discovery tail: how every video-library type ends except those on the Movie
   ' plan, which put Special Features between the two.
   sub appendCastAndDiscovery(rows as object, itemType as string, item as object, canListCollections as boolean)
     rows.push(planRow("cast", "PORTRAIT", translationKeys.LabelCastCrew, item.id ?? ""))
     appendDiscovery(rows, itemType, item, canListCollections)
   end sub
 
-  ' Collections, then More Like This — the rows that lead away from the item.
+  ' Collections, then More Like This: the rows that lead away from the item.
   sub appendDiscovery(rows as object, itemType as string, item as object, canListCollections as boolean)
     if canListCollections then rows.push(collectionsRow(item))
     rows.push(likeThisRow(itemType, item))
@@ -394,7 +394,7 @@ namespace extrasRows
   ' The collections the item is in. Keyed on the item ITSELF, even for an episode, unlike More
   ' Like This: the server lists only the collections an item was added to directly, so asking
   ' about an episode's series would show collections the episode is not in. PORTRAIT whatever
-  ' the viewed item's shape — the tiles are collections, not items like this one.
+  ' the viewed item's shape: the tiles are collections, not items like this one.
   function collectionsRow(item as object) as object
     return planRow("collections", "PORTRAIT", translationKeys.LabelCollections, item.id ?? "")
   end function
@@ -448,7 +448,7 @@ namespace extrasRows
     return firstArtist.Id
   end function
 
-  ' The current item, then the items after it, then the items before it — e.g. viewing
+  ' The current item, then the items after it, then the items before it. For example, viewing
   ' episode 3 of 5 gives [3, 4, 5, 1, 2]. Server order is kept when the item is absent.
   function currentFirst(items as object, currentId as string) as object
     current = invalid

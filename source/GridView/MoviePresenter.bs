@@ -78,7 +78,7 @@ class MoviePresenter extends GridPresenterBase
     }
 
     ' The library itself on 12.0+ only. Below 12.0 the same request returns every
-    ' collection on the server — other libraries' included — so the view is withheld
+    ' collection on the server, other libraries' included, so the view is withheld
     ' rather than offered and wrong. See collectionsView for both rules.
     if collectionsView.offeredFor(parentItem, m.serverVersion())
       options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": collectionsView.VIEW_NAME })
@@ -94,7 +94,7 @@ class MoviePresenter extends GridPresenterBase
     end if
 
     ' The Collections view lists BoxSets, not movies, so it takes its own sort and filter
-    ' lists and stops here — every category below this point describes a movie.
+    ' lists and stops here: every category below this point describes a movie.
     '
     ' The sort list is shorter on purpose, and matches what jellyfin-web offers on its own
     ' Collections tab (`collectionMovieOptions`): a collection carries no critic rating,
@@ -259,13 +259,13 @@ class MoviePresenter extends GridPresenterBase
       end if
     end if
 
-    ' Reached on every query build — every sort, filter, view, alpha letter and voice
-    ' search — so loadFilters() itself is the thing that decides whether to fetch. It
+    ' Reached on every query build (every sort, filter, view, alpha letter and voice
+    ' search), so loadFilters() itself is the thing that decides whether to fetch. It
     ' fetches once per library and is then a no-op until the options panel revalidates it.
     '
     ' Not in the Collections view: every category those lists fill describes a movie, and
     ' getOptions() offers none of them here. Skipping is free rather than merely cheaper,
-    ' because leaving the view runs this again — a session that lands on Collections and
+    ' because leaving the view runs this again: a session that lands on Collections and
     ' stays there never pays for lists it was never shown.
     if lowerView <> LCase(collectionsView.VIEW_NAME)
       m.loadFilters(parentItem, "Movie")
@@ -277,7 +277,7 @@ class MoviePresenter extends GridPresenterBase
     if not isValidAndNotEmpty(item.id) then return
 
     ' Everything below writes into `presentationInfo`, which only the Movies presentation
-    ' view puts on screen — BaseGridView.configureBackdrop() sets its visibility to
+    ' view puts on screen: BaseGridView.configureBackdrop() sets its visibility to
     ' exactly this predicate. In every other view the labels are built and the logo is
     ' fetched for a hidden panel, which for the logo is a network request per focus
     ' change: the grid views moved a cursor across a library and asked the server for a

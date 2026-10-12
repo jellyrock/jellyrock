@@ -1,5 +1,5 @@
 ' Main-thread dispatch adapter for the remote-control receiver. THE single place any
-' deep-link / player seam is called for a normalized remote-control command — whether it arrives
+' deep-link / player seam is called for a normalized remote-control command, whether it arrives
 ' from the Roku voice roInput path (main.bs) or the ws:// receiver (RemoteControlTask). Runs on the
 ' MAIN thread (shares Main()'s m): stashDeepLink / onRuntimeDeepLink / getActiveView / callFunc all
 ' resolve there and must never be called from a Task. All sgRouter-era coupling is quarantined here.
@@ -32,9 +32,7 @@ namespace remoteDispatch
 
   ' route (GeneralCommand GoHome / GoToSearch / GoToSettings) -> navigate the router to a fixed path.
   ' GoHome's "/" clears the stack (clearStackOnResolve) so Home is the back-stack root. An active
-  ' player is torn down by routing away (its onDestroy stops playback); from an idle screen this
-  ' shares the render-thread-wake caveat noted in remote-control.md, but going home from playback
-  ' wakes the render thread as the player unmounts.
+  ' player is torn down by routing away (its onDestroy stops playback).
   sub dispatchRoute(route as string)
     if not isValidAndNotEmpty(route) then return
     m.scene.callFunc("routerNavigate", route)
@@ -48,7 +46,7 @@ namespace remoteDispatch
 
   ' message (GeneralCommand DisplayMessage) -> surface the sender's notification. TimeoutMs is the
   ' sender's intent: present -> transient (a toast); absent -> persistent (a dialog the user
-  ' dismisses). Header is the title, Text the body — either may be empty. This is a trusted-LAN,
+  ' dismisses). Header is the title, Text the body; either may be empty. This is a trusted-LAN,
   ' authenticated sender (see remote-control.md), so interrupting with a dialog is acceptable.
   sub dispatchMessage(command as object)
     header = command.header
@@ -67,7 +65,7 @@ namespace remoteDispatch
       ' observe. JR owns the TITLE (LabelCastMessage) so the dialog reads as something that
       ' arrived from elsewhere; putting the sender's Header there instead would make arbitrary
       ' LAN-supplied text indistinguishable from an app-native prompt. The Header keeps its
-      ' title ROLE as the dialog's bold subheading — Jellyfin's contract is Header = title,
+      ' title role as the dialog's bold subheading: Jellyfin's contract is Header = title,
       ' Text = body (see remoteCommand.parseGeneralCommand).
       parts = castMessageParts(header, text)
       showAlertDialog(translate(translationKeys.LabelCastMessage), parts.body, "", parts.subheading)
@@ -75,7 +73,7 @@ namespace remoteDispatch
   end sub
 
   ' Split a DisplayMessage's { Header, Text } across the dialog's subheading + body slots.
-  ' Pure, so the mapping is unit-testable — the caller only renders it.
+  ' Pure, so the mapping is unit-testable; the caller only renders it.
   '
   ' A Header with no Text has nothing to lead, so it becomes the body rather than a bold line
   ' floating alone above an empty message. Either field may be absent; dispatchMessage has
@@ -106,7 +104,7 @@ namespace remoteDispatch
   ' Shared transport adapter, extracted from main.bs's roInputEvent branch so the voice path and the
   ' ws:// receiver dispatch transport identically. Returns { status, nowPlaying }: main.bs's voice
   ' branch keeps the roInput.EventResponse + roAppManager.SetNowPlayingContentMetaData (both are
-  ' main-thread-only) around this call; the ws:// path just fires it. A non-player active view (or
+  ' main-thread-only) around this call; the ws:// path only fires it. A non-player active view (or
   ' none) yields "error.no-media"; a player that returns no status yields "unhandled".
   function dispatchTransport(evt as object) as object
     activeScene = getActiveView()

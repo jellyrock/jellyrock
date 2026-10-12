@@ -23,12 +23,12 @@ namespace itemTypeOrder
     "Recording", ' Recordings
     "PhotoAlbum", ' Photo Albums
     "Photo", ' Photos
-    ' "Book"        ' Audiobooks / Books — not yet supported
+    ' "Book"        ' Audiobooks / Books: not yet supported
     "BoxSet" ' Collections
   ]
 
   ' Types displayed in the Favorites home tab, in web-client display order.
-  ' Excluded: "Book" — not yet supported.
+  ' Excluded: "Book", not yet supported.
   const FAVORITES = [
     "Movie", ' Movies
     "Series", ' Shows
@@ -45,7 +45,7 @@ namespace itemTypeOrder
     "Recording", ' Recordings
     "PhotoAlbum", ' Photo Albums
     "Photo", ' Photos
-    ' "Book"        ' Audiobooks / Books — not yet supported
+    ' "Book"        ' Audiobooks / Books: not yet supported
     "BoxSet" ' Collections
   ]
 

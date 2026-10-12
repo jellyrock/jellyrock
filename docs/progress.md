@@ -662,6 +662,10 @@ Not investigated: whether the early load in `Main()` is needed for strings shown
 
 Found 2026-10-10 by the `translations.md` fact-check (docs-voice project, session 9).
 
+#### `TRANSCODE_CAUSE_STEREO_CAPPED_CODECS` hand-copies `getStereoOutputCodecs()`, and nothing checks the two agree `[fid: transcode-cause-stereo-codecs-hand-copy]` `[captured 2026-10-12]`
+
+`TRANSCODE_CAUSE_STEREO_CAPPED_CODECS` in `source/utils/transcodeCause.bs` is a hand-written string of the codec list `getStereoOutputCodecs()` returns in `source/utils/deviceCapabilities.bs`. The two hold the same eight codecs on 2026-10-12, but nothing checks that they stay equal, so a codec added to one list silently drifts from the other and the explanation `transcodeCause.bs` gives stops matching what the device profile caps. Found in the docs-voice comment pass (batch 5, recorded at batch 6's PR). Not fixed now: closing it is a code change with a test (derive the constant from `getStereoOutputCodecs()`, or a unit test asserting the two agree), outside a comment-only PR. Closes when one list is derived from the other or a test holds them equal.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`

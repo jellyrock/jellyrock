@@ -7,7 +7,7 @@
 ' metrics; the two differed, and rows visibly drifted out of their slots while
 ' the search and "current subtitles" columns failed to line up.
 '
-' The panel's vertical extent is inherited from extrasLayout — it uses the same
+' The panel's vertical extent is inherited from extrasLayout: it uses the same
 ' open/closed positions as the extras pane on purpose, so the two panels read as
 ' the same gesture.
 
@@ -17,14 +17,14 @@ namespace subtitleLayout
   '
   ' These are small because the list's focus indicator is drawn ~10px OUTSIDE the
   ' row (see ROW_SPACING), so 10px of inset already exists before the row adds
-  ' any. They were 12 and 10 — written when the row drew its own border AT its
-  ' own bounds — which silently became insets of 22 and 21 once the list took the
-  ' indicator over. Measured on a Stick 4K: a 92px ring around a 50px text block,
+  ' any. They were 12 and 10 (written when the row drew its own border AT its
+  ' own bounds), which silently became insets of 22 and 21 once the list took the
+  ' indicator over. Measured on a Stick 4K (2026-09-14): a 92px ring around a 50px text block,
   ' 42px of it air.
   '
   ' That read as "off" for a reason worth keeping: 21px of padding inside the ring
   ' against a 24px gap BETWEEN rows meant the two were nearly equal, so nothing
-  ' grouped — the eye cannot tell which space belongs to the row. Inside must be
+  ' grouped: the eye cannot tell which space belongs to the row. Inside must be
   ' clearly tighter than outside.
   '
   ' 2 and 1 rather than 0: the totals land at 12 and 11, which is what the
@@ -53,14 +53,14 @@ namespace subtitleLayout
   ' Badges are RIGHT-ALIGNED: a row's badge LayoutGroup has horizAlignment="right"
   ' and sits on the row's right padding edge, so badges grow leftward and line up
   ' down a column whatever their widths. Each row measures its own badge labels
-  ' (localBoundingRect — font metrics, so any translation fits) and gives its text
+  ' (localBoundingRect: font metrics, so any translation fits) and gives its text
   ' whatever is left. Nothing here guesses at how wide a word renders.
 
   ' Between two badges. Applied to the badge LayoutGroup in each row's init(), so
   ' the arithmetic below and the rendered layout use the same number.
   const BADGE_SPACING = 16
 
-  ' Between a badge's icon and its label. Only a badge WITH an icon pays it — a
+  ' Between a badge's icon and its label. Only a badge WITH an icon pays it: a
   ' spacing applied beside an empty icon slot is what indented, and clipped, an
   ' icon-less badge like "Forced".
   const BADGE_ICON_GAP = 6
@@ -83,7 +83,7 @@ namespace subtitleLayout
   ' badgesThatFit: How many LEADING badges fit in `available`, spacing included.
   '
   ' Badges arrive in significance order, so stopping at the first one that does
-  ' not fit always drops the least significant. Whole badges only — a badge is
+  ' not fit always drops the least significant. Whole badges only: a badge is
   ' shown in full or not at all, never cut mid-word.
   '
   ' @param {object} widths - badge widths, most significant first
@@ -143,8 +143,8 @@ namespace subtitleLayout
 
   ' ── Row action affordance ──────────────────────────────────────────────────
   ' The delete icon on a downloaded-subtitle row. 24px matches the app's other
-  ' affordance markers — TrackDropdown's chevron and the panel's own language
-  ' button — so an icon that says "this control does something" is the same size
+  ' affordance markers (TrackDropdown's chevron and the panel's own language
+  ' button), so an icon that says "this control does something" is the same size
   ' wherever it appears.
   const ROW_ACTION_ICON_SIZE = 24
 
@@ -154,18 +154,18 @@ namespace subtitleLayout
   ' actionZoneWidth: Width a row reserves for the action icon, ON ITS SECOND LINE.
   '
   ' THE SECOND LINE, AND THAT IS THE POINT. The first line is already fully
-  ' committed — a title that has to hold "Portuguese (Brazil) · SUBRIP" beside a
-  ' right-anchored badge zone wide enough for "Hearing impaired" and "Forced" —
+  ' committed (a title that has to hold "Portuguese (Brazil) · SUBRIP" beside a
+  ' right-anchored badge zone wide enough for "Hearing impaired" and "Forced"),
   ' so taking the icon's strip out of the row as a whole ellipsized the title.
-  ' Measured on device: it truncated "English · SUBRIP" to "English · SUB…" on a
+  ' Measured on device (2026-09-14): it truncated "English · SUBRIP" to "English · SUB…" on a
   ' row carrying no badges at all, while 300px of badge zone sat empty beside it.
   ' The SECOND line holds only the filename tail (".en.sdh.srt") across the full
   ' width, has no badges to collide with, and had ~500px of slack. Only a
   ' downloaded file is ever deletable and only a downloaded file has a second
   ' line, so the space is always there when the icon is.
   '
-  ' RESERVED BY DELETABILITY, NOT BY FOCUS. The icon is only DRAWN while the row
-  ' is focused, but the space is held whenever the row can be acted on — so
+  ' Reserved by deletability, not by focus. The icon is only DRAWN while the row
+  ' is focused, but the space is held whenever the row can be acted on, so
   ' focusing a row cannot shift its filename sideways. Every row in the
   ' downloaded section reserves the same amount (they share one canDelete), so
   ' the reservation never makes the section look ragged.
@@ -177,8 +177,8 @@ namespace subtitleLayout
     return subtitleLayout.ROW_ACTION_ICON_SIZE + subtitleLayout.ROW_ACTION_GUTTER
   end function
 
-  ' Column widths. The results column is wide because release names run long —
-  ' 85 characters was the longest observed in a real result set — and width here
+  ' Column widths. The results column is wide because release names run long
+  ' (85 characters was the longest observed in a real result set, 2026-09-14), and width here
   ' directly buys fewer marquees.
   const RESULTS_WIDTH = 1120
   const EXISTING_WIDTH = 570
@@ -209,7 +209,7 @@ namespace subtitleLayout
   ' This is a proximity fix, and the numbers are why it was needed. The column
   ' heading is fontSizeMedium (32) in a 44px slot and a section heading is
   ' fontSizeSmaller (25) in a 34px slot, so the actual whitespace was 12px above
-  ' the section heading and 9px below it — near enough to equal that the heading
+  ' the section heading and 9px below it: near enough to equal that the heading
   ' grouped ambiguously, and because it is also the SMALLER of the two it read as
   ' a subtitle of the column heading instead of a label for its own list. With
   ' one section present that produced a run-on title ("On this item / In the video
@@ -224,12 +224,12 @@ namespace subtitleLayout
   ' Vertical gap between rows, and the reason the lists can no longer be flush.
   '
   ' The list draws the app's focus indicator (source/utils/listTheme.bs), and that
-  ' 9-patch is drawn EXPANDED ~10px beyond the row on every side — measured on a
-  ' Stick 4K: a 72px row's ring spanned 92px. With rows flush the ring's edge
+  ' 9-patch is drawn EXPANDED ~10px beyond the row on every side (measured on a
+  ' Stick 4K on 2026-09-14: a 72px row's ring spanned 92px). With rows flush the ring's edge
   ' landed exactly on the neighbouring row's first line of text.
   '
   ' 24 for a TWO-LINE row: it is JRLabelList's spacing, so these lists share the
-  ' rhythm of every other list in the app, and it is divisible by 3 AND 6 — 6 for
+  ' rhythm of every other list in the app, and it is divisible by 3 and 6: 6 for
   ' the design scale, 3 because 1080/720 means an absolute edge divisible by 3
   ' lands on a 720p output row and stays sharp. Row heights are already divisible
   ' by 3, so a spacing that is too keeps every row boundary on the grid. See
@@ -240,14 +240,14 @@ namespace subtitleLayout
   ' …and 12 for the COMPACT one-line row, which is a density decision rather than
   ' a second opinion about rhythm. A built-in track's row is 27px
   ' (rowHeightCompact at fontSizeSmaller 25 plus 2 x ROW_V_PADDING), so 24 would
-  ' be very nearly a whole row of air between every entry — and it costs real
+  ' be very nearly a whole row of air between every entry, and it costs real
   ' content: the column's design target of one downloaded file plus six built-in
   ' tracks fits at 12 and does not at 24. 12 still clears the focus ring's 10px
   ' overshoot and is still divisible by 3 and 6.
   '
   ' The arithmetic is pinned in subtitleLayout.spec.bs rather than restated here,
   ' so a future padding or font change fails a test instead of quietly making
-  ' this paragraph wrong — which is exactly what happened to the numbers it used
+  ' this paragraph wrong, which is exactly what happened to the numbers it used
   ' to carry, written against the 45px row of the pre-padding-trim draft.
   const ROW_SPACING_COMPACT = 12
 
@@ -255,11 +255,11 @@ namespace subtitleLayout
   '
   ' SIX, and it is six again only because the row got shorter: at the old 72px row
   ' the gaps pushed six rows to 552px against a 486px column, so five was all that
-  ' fit. Trimming the double padding took the row to 54, and 6 x 54 + 5 x 24 = 444
-  ' — which leaves room for the focus ring below the last row too.
+  ' fit. Trimming the double padding took the row to 54, and 6 x 54 + 5 x 24 = 444,
+  ' which leaves room for the focus ring below the last row too.
   '
   ' Drives the MarkupList's numRows AND the perfect-match filter's visibility
-  ' threshold — the filter is pointless when the whole result set already fits on
+  ' threshold: the filter is pointless when the whole result set already fits on
   ' screen, so the two must be the same number by construction.
   const VISIBLE_ROWS = 6
 
@@ -277,8 +277,8 @@ namespace subtitleLayout
   '
   ' The inverse of rowsHeight, and it must stay its inverse: solving
   ' n*h + (n-1)*s <= available for n gives (available + s) / (h + s). The two are
-  ' used on opposite sides of the same decision — one rations rows to a height,
-  ' the other places them — so a disagreement is a clipped row no build can see.
+  ' used on opposite sides of the same decision (one rations rows to a height,
+  ' the other places them), so a disagreement is a clipped row no build can see.
   function rowsThatFit(available as integer, rowHeight as integer, spacing as integer) as integer
     if rowHeight <= 0 then return 0
     rows = int((available + spacing) / (rowHeight + spacing))
@@ -289,14 +289,14 @@ namespace subtitleLayout
   ' rowHeight: Total height of one subtitle row.
   '
   ' Exactly two lines, and that is a shape decision rather than an arithmetic
-  ' one: the first draft reserved a third line for a badge strip on EVERY row so
+  ' one: the first draft reserved a third line for a badge strip on every row so
   ' both columns would stay a uniform height, which left rows without badges
   ' looking broken next to rows with them. Badges now sit on the second line
   ' beside the detail text, so a badge-free row is correctly spaced by
   ' construction and the reserved strip is gone.
   '
-  ' Pure by construction — the font sizes are passed in rather than read off
-  ' m.global — so it is unit-testable and callable from either component's
+  ' Pure by construction (the font sizes are passed in rather than read off
+  ' m.global), so it is unit-testable and callable from either component's
   ' scope.
   '
   ' @param {integer} fontSmaller - constants.fontSizeSmaller (first line)
@@ -311,7 +311,7 @@ namespace subtitleLayout
   ' Used for a subtitle built into the video file, which has nothing to put on a
   ' second line: it has no filename of its own, and the section heading above it
   ' already says where it comes from. Giving it the two-line height anyway is
-  ' what the first draft of this column did — every such row then carried the
+  ' what the first draft of this column did: every such row then carried the
   ' word "Embedded" purely to fill the space, which made the least informative
   ' text on screen the most repeated.
   '
@@ -335,27 +335,27 @@ namespace subtitleLayout
   ' sectionRowCounts: How many rows each "on this item" section may render.
   '
   ' Both sections compete for one fixed column, and neither may overflow the
-  ' panel's clip — a list that renders one row past the edge is the exact bug the
+  ' panel's clip: a list that renders one row past the edge is the exact bug the
   ' results column shipped with, and it is invisible in a build.
   '
   ' The rule when they cannot both fit in full: every non-empty section is
   ' guaranteed its heading plus ONE row, and the downloaded section gets first
-  ' claim on whatever is left. Downloaded files are the actionable ones — they
-  ' are what you came here to manage and the only ones you can delete — while a
+  ' claim on whatever is left. Downloaded files are the actionable ones (they
+  ' are what you came here to manage and the only ones you can delete), while a
   ' built-in track is reference information. A section that had to be trimmed
   ' still scrolls, so nothing becomes unreachable; it is only the number visible
   ' at rest that is being rationed.
   '
-  ' ⚠️ THAT LAST SENTENCE IS A CLAIM ON THE PANEL, NOT A PROPERTY OF THIS
-  ' FUNCTION, and it was false for two months. Rationing is only honest while
+  ' ⚠️ That last sentence is a claim on the panel, not a property of this
+  ' function, and it was false for two months. Rationing is only honest while
   ' BOTH sections can take focus, because a MarkupList that cannot be focused
-  ' cannot be scrolled — and the built-in section was deliberately not a focus
-  ' stop, so on a 3-downloaded/8-embedded item four tracks were simply
+  ' cannot be scrolled, and the built-in section was by design not a focus
+  ' stop, so on a 3-downloaded/8-embedded item four tracks were
   ' unreachable. SubtitlePanel.canFocusDownloaded/canFocusEmbedded now gate on
   ' rows alone for exactly this reason. Re-narrow either of them and this
   ' function silently starts hiding content again.
   '
-  ' Returning zero for a section means it has no content, NOT that it was
+  ' Returning zero for a section means it has no content, not that it was
   ' squeezed out: a section with content always keeps at least one row.
   '
   ' @param {integer} downloadedCount - external subtitles on the item
@@ -394,9 +394,9 @@ namespace subtitleLayout
 
   ' sectionHeadingSpace: Total vertical cost of one section heading.
   '
-  ' The top gap and the heading slot are always spent together — placeSection
-  ' cannot draw one without the other — so they are added up in ONE place and
-  ' every consumer asks here. Summing them at each of the four sites in
+  ' The top gap and the heading slot are always spent together (placeSection
+  ' cannot draw one without the other), so they are added up in one place and
+  ' every consumer asks here. Summing them at each site in
   ' sectionRowCounts() is how a section ends up drawing a row past the panel's
   ' clip: miss one and the arithmetic under-counts, which is invisible in a build
   ' and has already produced that bug twice in this column.

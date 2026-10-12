@@ -35,7 +35,7 @@ sub Main (args as dynamic) as void
   ' so the capture driver (scripts/capture-screenshots.js) can seed the registry
   ' (server / active_user / authToken / globalTranslationLocale / translationLocale)
   ' and query the node tree. ENABLE_RTA is false in the committed manifest and is
-  ' flipped to true ONLY by the RTA screenshot deploy, so prod / store builds
+  ' flipped to true only by the RTA screenshot deploy, so prod / store builds
   ' compile this out at device load (it never ships enabled).
   #if ENABLE_RTA
     m.rtaOnDeviceComponent = createObject("roSGNode", "RTA_OnDeviceComponent")
@@ -46,8 +46,8 @@ sub Main (args as dynamic) as void
 
   ' Session-reset bridge. Routed Home sets m.scene.userMenuAction (change user / change server /
   ' sign out); we observe it here on the main thread and re-enter the login flow in place via
-  ' handleMenuAction → reenterLogin. A scene field + port delivers (unlike an m.global field +
-  ' port, which does not — the delivery defect). Registered once here, before any navigation.
+  ' handleMenuAction, then reenterLogin. A scene field + port delivers (unlike an m.global field +
+  ' port, which does not: the delivery defect). Registered once here, before any navigation.
   m.scene.observeField("userMenuAction", m.port)
   m.scene.observeField("exit", m.port)
   ' Pre-login views (SetServerScreen / UserSelect / LoginScene) set this to an intent action
@@ -56,22 +56,23 @@ sub Main (args as dynamic) as void
   m.scene.observeField("preLoginIntent", m.port)
 
   ' Observe the ws:// receiver's marshalled commands; dispatched on the MAIN thread via remoteDispatch
-  ' (shared with the voice path). The field lives on the task node, not m.global — a task-node field +
+  ' (shared with the voice path). The field lives on the task node, not m.global: a task-node field +
   ' port delivers, an m.global field + port does not (the delivery defect noted above). See
   ' remote-control.md.
   m.global.remoteControlTask.observeField("dispatchCommand", m.port)
 
   ' Cold-start deep link. Stash it (structured intent on
   ' m.global.AuthManager.stashedDeepLink) BEFORE entering the login flow so it replays
-  ' uniformly — the fast path lands straight on the deep-linked content, while a deferred
-  ' (no-token) launch replays once the user finishes signing in. replayAfterLogin (invoked
-  ' from createAndShowHomeGroup) reads the stash; an absent deep link leaves it empty and
-  ' replay is just Home. The deep link routes through ItemDetails, which validates the id and
-  ' auto-launches with the real type + resume position (or errors to Home if it doesn't exist).
+  ' uniformly: the fast path replays it at once, while a deferred (no-token) launch replays
+  ' once the user finishes signing in. replayAfterLogin (invoked from createAndShowHomeGroup)
+  ' reads the stash; an absent deep link leaves it empty and replay is only Home. A deep link
+  ' lands on Home first, then JRScene.resolveDeepLink fetches the id before navigating: an
+  ' invalid id only toasts on Home, and a valid one opens ItemDetails, which runs the action.
   m.launchArgs = args
   if isValid(m.launchArgs) and isValidAndNotEmpty(m.launchArgs.contentId)
     ' mediaType is optional (a cast from another Jellyfin client may send only an id +
-    ' server) — ItemDetails infers play-vs-springboard from the resolved item, not the hint.
+    ' server). ItemDetails takes the real type from the resolved item, not the hint; the
+    ' link's action, not the item, decides play or springboard (deepLinkDetailsRoute).
     mediaTypeHint = ""
     if isValidAndNotEmpty(m.launchArgs.mediaType) then mediaTypeHint = m.launchArgs.mediaType
     itemNameHint = ""
@@ -81,8 +82,8 @@ sub Main (args as dynamic) as void
     steerColdStartDeepLinkServer()
   end if
 
-  ' Handle input messages. Set up ONCE — these survive session resets (Change Server /
-  ' User / Sign Out re-enter the login flow via handleMenuAction, NOT by restarting the
+  ' Handle input messages. Set up once: these survive session resets (Change Server /
+  ' User / Sign Out re-enter the login flow via handleMenuAction, not by restarting the
   ' app loop), so roInput/roDeviceInfo are no longer recreated per login.
   input = CreateObject("roInput")
   input.SetMessagePort(m.port)
@@ -114,8 +115,7 @@ sub Main (args as dynamic) as void
 
   ' This is the core logic loop. Mostly for transitioning between scenes
   ' This now only references m. fields so could be placed anywhere, in theory
-  ' "group" is always "whats on the screen"
-  ' m.scene's children is the "previous view" stack
+  ' "group" is the active routed view (getActiveView())
   group = invalid
   while true
     msg = wait(0, m.port)
@@ -202,7 +202,7 @@ sub Main (args as dynamic) as void
       if msg.IsInput()
         info = msg.GetInfo()
         if info.DoesExist("contentid")
-          ' Runtime deep link — another Jellyfin client casting to this device (or any sender)
+          ' Runtime deep link: another Jellyfin client casting to this device (or any sender)
           ' handed us content. mediaType is optional (ItemDetails infers the
           ' launch from the resolved item). Stash the intent, then resolve its server: replay
           ' now if it's the active server (or none), prompt to switch if it's another saved
@@ -229,7 +229,7 @@ sub Main (args as dynamic) as void
           else if LCase(info.command) = "nowplaying"
             ' Per Roku doc: when we can't report current content, pass invalid to clear
             ' stale metadata. Covers both "no active player" and "player mounted but
-            ' item not yet loaded" — neither is "currently playing" from the user's POV.
+            ' item not yet loaded": neither is "currently playing" from the user's POV.
             appMgr = CreateObject("roAppManager")
             appMgr.SetNowPlayingContentMetaData(invalid)
           end if
@@ -238,17 +238,17 @@ sub Main (args as dynamic) as void
       end if
     else if isNodeEvent(msg, "result")
       ' A dialog observed on THIS port resolved. Every dialog in the app delivers its result on
-      ' its OWN node's `result` field, and component-owned dialogs use scoped observers — so the
+      ' its own node's `result` field, and component-owned dialogs use scoped observers, so the
       ' only events that reach here are from main-thread flows that explicitly observed on m.port.
-      ' There is exactly one today (the deep-link server-switch prompt), and its handler compares
+      ' Today that is the deep-link server-switch prompt (replayRoute), and its handler compares
       ' node identity before acting, so adding a second one cannot cross-fire.
       onServerSwitchDialogResult(msg.getRoSGNode())
     else if isNodeEvent(msg, "dispatchCommand")
-      ' A ws:// remote-control command marshalled from RemoteControlTask. Dispatch on the MAIN thread —
+      ' A ws:// remote-control command marshalled from RemoteControlTask. Dispatch on the main thread:
       ' remoteDispatch reuses the deep-link (play/navigate) and shared transport seams.
       remoteDispatch.dispatch(msg.getData())
     else if isNodeEvent(msg, "reloadHomeRequested")
-      ' Theme/locale changed — re-navigate the router to "/" for a fresh Home (picks up new
+      ' Theme/locale changed: re-navigate the router to "/" for a fresh Home (picks up new
       ' theme constants / reloaded translations).
       m.scene.callFunc("reloadRoutedHome")
     else
@@ -303,15 +303,16 @@ end sub
 ' Create and show the home group
 sub createAndShowHomeGroup()
   ' Home is mounted by the router (in JRScene's outlet). replayAfterLogin
-  ' (source/replayRoute.bs) brings the router up and replays any stashed deep link as an
-  ' ordered route chain — Home alone when there is none, or Home -> Details -> Player for a
-  ' deferred/cold-start play deep link (decision #3). Home self-loads its libraries in its own
+  ' (source/replayRoute.bs) brings the router up. A stashed deep link goes to
+  ' JRScene.resolveDeepLink with homeFirst: Home mounts, then the id is fetched and a valid one
+  ' navigates on. Otherwise replayRoutedDeepLink replays any stashed guard route as an ordered
+  ' route chain, or Home alone when there is none. Home self-loads its libraries in its own
   ' onViewOpen. (exit + activeRoutedView + the pre-login intent bridge are observed once during
   ' bootstrap, not here.)
-  ' The blocking login spinner (started on the outgoing pre-login view) is intentionally NOT
-  ' stopped here. replayAfterLogin() only KICKS OFF the async router nav to Home (sgRouter resolves
+  ' The blocking login spinner (started on the outgoing pre-login view) is intentionally not
+  ' stopped here. replayAfterLogin() only kicks off the async router nav to Home (sgRouter resolves
   ' at NavigationEnd), so the outgoing UserSelect/LoginScene is still the active routed view at this
-  ' point — stopping the spinner now resets isRemoteDisabled and re-shows that view for a frame
+  ' point. Stopping the spinner now resets isRemoteDisabled and re-shows that view for a frame
   ' before Home mounts (the #677 login flash). The spinner is cleared when the Home nav settles
   ' (replayRoutedDeepLink -> navigateChainStep clearLoginSpinnerOnEnd). The deep-link branch owns
   ' its own spinner via resolveDeepLink/onDeepLinkResolved.
@@ -386,10 +387,10 @@ sub calculateFontScaleFactor()
 end sub
 
 ' Shared handler for menu actions from both the OptionsSlider and the user dropdown.
-' OPEN_SEARCH / OPEN_SETTINGS are not handled here — Home navigates to those routes directly
+' OPEN_SEARCH / OPEN_SETTINGS are not handled here: Home navigates to those routes directly
 ' (navigateTo runs on the render thread, which main.bs is not). Only the session-ending
 ' actions remain. Each tears down the routed Home (resetRouter) and re-enters the login flow
-' IN PLACE (reenterLogin) — no `goto appStart`, since the pre-login flow is routed and driven
+' in place (reenterLogin), with no `goto appStart`, since the pre-login flow is routed and driven
 ' by the same unified event loop.
 sub handleMenuAction(actionId as string)
   if actionId = HomeAction.CHANGE_SERVER
