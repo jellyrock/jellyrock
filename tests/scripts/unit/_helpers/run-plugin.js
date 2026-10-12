@@ -20,9 +20,9 @@ import { Program } from 'brighterscript';
  *
  * @param {() => object} pluginFactory  Factory function exported by the plugin
  *                                       (the `module.exports = () => new X()` form).
- * @param {Record<string, string>} files Map of repo-relative path → BS/XML source.
+ * @param {Record<string, string>} files Map of repo-relative path to BS/XML source.
  * @param {object} [options] Extra bsconfig options, for a plugin configured
- *                           through them (e.g. `{ deadCode: {…} }`).
+ *                           through them (for example `{ deadCode: {…} }`).
  * @returns {Array} Flat list of BsDiagnostic objects emitted during validate.
  */
 export function runPluginOnSource(pluginFactory, files, options = {}) {
@@ -43,7 +43,7 @@ export function runPluginOnSource(pluginFactory, files, options = {}) {
  * ---------------
  * `runPluginOnSource` builds a program, validates ONCE, and reads the result. It
  * therefore cannot observe anything about a plugin's behaviour ACROSS
- * validations — and the whole stale-diagnostic bug class lives there: a plugin
+ * validations, and the whole stale-diagnostic bug class lives there: a plugin
  * that reads two files but anchors its finding in one will happily report the
  * right thing on a cold run and then fail to clear it when the OTHER file is
  * edited. `field-observer-wiring` shipped with 18 green tests and exactly that
@@ -51,7 +51,7 @@ export function runPluginOnSource(pluginFactory, files, options = {}) {
  *
  * Each step is a partial file map applied on top of the previous state, so a step
  * lists only what it changes. Editing a file means calling `setFile` with the new
- * contents, which is what the language server does on a keystroke — the point is
+ * contents, which is what the language server does on a keystroke. The point is
  * to exercise BSC's INCREMENTAL path, not to rebuild the program.
  *
  * @param {() => object} pluginFactory Factory exported by the plugin.

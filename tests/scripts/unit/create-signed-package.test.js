@@ -76,7 +76,7 @@ describe('create-signed-package', () => {
   });
 
   it("fails when build/ directory doesn't exist (env validated, build missing)", () => {
-    // All required env present but no build/ — script should reject with a
+    // All required env present but no build/: script should reject with a
     // clear "run npm run build:prod first" message BEFORE attempting any
     // network call to the Roku.
     const ws = freshWorkspace();
@@ -149,7 +149,7 @@ describe('create-signed-package', () => {
   });
 
   it('fails when build/manifest is missing (need version for filename)', () => {
-    // Prod build with no source maps but no manifest — script can't compute
+    // Prod build with no source maps but no manifest: script can't compute
     // the version-tagged filename, so it must bail before signing rather than
     // produce an unversioned .pkg.
     const ws = freshWorkspace();

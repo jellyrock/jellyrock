@@ -7,7 +7,7 @@
 // (the `bsconfig-files-duplicated` tech-debt entry records it happening twice).
 // `extends` fixes the copying, but BrighterScript merges it SHALLOWLY: only
 // `compilerOptions` is merged key-by-key. A child that sets `diagnosticFilters`,
-// `files` or `plugins` replaces the parent's array outright — so a well-meant
+// `files` or `plugins` replaces the parent's array outright, so a well-meant
 // "add one filter here" in a child drops every filter the base defines, with no
 // warning. Each check below closes one way that can happen unnoticed.
 
@@ -91,7 +91,7 @@ describe('bsconfig inheritance', () => {
   );
 
   // A config the device-test path filter watches changes what the device builds,
-  // and so does every file it inherits from — they must re-run the tests too.
+  // and so does every file it inherits from: they must re-run the tests too.
   const deviceFilter = deviceTestPathFilter();
   it.each(CONFIGS.filter((c) => deviceFilter.test(c)))(
     'everything %s inherits from also triggers the device unit tests',

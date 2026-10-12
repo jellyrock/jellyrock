@@ -780,7 +780,7 @@ describe('no-same-node-relaunch — pending migrations', () => {
   });
 
   it('points each missing-file error at that entry in the plugin', () => {
-    // Deliberately NOT keyed to a particular entry: the list shrinks as sites are migrated,
+    // Not keyed to a particular entry, on purpose: the list shrinks as sites are migrated,
     // and an assertion naming one of them fails the day it is deleted (it did). Every
     // diagnostic must name the line its own path is written on; an empty list has none to
     // check, which is the state this whole mechanism is working toward.
@@ -811,9 +811,9 @@ describe('no-same-node-relaunch — pending migrations', () => {
 // Every way a PENDING_MIGRATIONS entry can fail to line up with the code.
 //
 // This table is the gate behind the claim that the list "can only shrink". Each
-// row is a state an entry can land in; the contract is that EVERY state produces
+// row is a state an entry can land in; the contract is that every state produces
 // at least one actionable diagnostic naming what to do. Seven of the eight were
-// found silent or self-contradictory during review — silence is the failure this
+// found silent or self-contradictory during review. Silence is the failure this
 // table exists to prevent, because a silent entry stops covering its site AND
 // stops the rule from guarding it, with nothing on screen either way.
 //
@@ -869,7 +869,7 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
           end class
         `,
       },
-      expect: null, // a method is nameable, so the entry simply matches
+      expect: null, // a method is nameable, so the entry matches
     },
     {
       state: 'entry names a path the function never relaunches',
@@ -940,7 +940,7 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
   }
 
   // A state an edit to the CODE can resolve must clear once it is resolved, in the
-  // same program — which is what the language server keeps between keystrokes. A
+  // same program, which is what the language server keeps between keystrokes. A
   // single validation cannot see this: a diagnostic anchored outside the file that
   // produced it is never cleared when that file re-validates, so it outlives the
   // fix. Every recoverable row's entry names `search` / `m.searchTask`, so
@@ -956,7 +956,7 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
     });
   }
 
-  // An entry in a file the rule cannot check has one remedy — delete it — so the
+  // An entry in a file the rule cannot check has one remedy (delete it), so the
   // file gets one error, not a second per entry that cannot be acted on. The key
   // listed AFTER it must still be audited: reading functions out of a file that
   // has none throws, and the never-crash guard would swallow the rest of the list.
@@ -987,7 +987,7 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
   });
 
   // The review found states where the plugin said, of ONE node, both "this is
-  // relaunched" and "this is no longer relaunched" — following either message
+  // relaunched" and "this is no longer relaunched": following either message
   // left the other standing. Two claims about DIFFERENT nodes are not a
   // contradiction: an entry naming `m.typoTask` while the code relaunches
   // `m.searchTask` yields both, and together they pinpoint the typo.

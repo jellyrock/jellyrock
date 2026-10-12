@@ -136,7 +136,7 @@ describe('serverToTier', () => {
 
   it('resolves an RC to the same tier as its base release', () => {
     // The -rcN suffix is stripped before the range lookup, so an RC lands wherever
-    // its base version would (10.12.0 → active tier 2; an old-line RC → tier 1).
+    // its base version would (10.12.0 is active tier 2; an old-line RC is tier 1).
     expect(serverToTier(m, '10.12.0-rc1')).toBe(2);
     expect(serverToTier(m, '10.9.0-beta2')).toBe(2);
     expect(serverToTier(m, '10.8.13-rc1')).toBe(1);

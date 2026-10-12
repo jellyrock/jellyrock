@@ -1,8 +1,8 @@
-// Tests for scripts/journal-sync.js — the post-merge mechanical edit
+// Tests for scripts/journal-sync.js: the post-merge mechanical edit
 // engine for docs/progress.md.
 //
 // Two layers:
-//   - Pure-function tests (tokenize, shouldSkip, applyShipEdit) — no fs.
+//   - Pure-function tests (tokenize, shouldSkip, applyShipEdit), no fs.
 //   - CLI tests via spawnScript with a temp repo fixture to exercise
 //     argv parsing, file IO, idempotency, and dry-run.
 //
@@ -72,7 +72,7 @@ describe('tokenize', () => {
   });
 
   it('drops stopwords + short tokens + numerals', () => {
-    // All tokens are stopwords / 1-2 chars / pure numerals — nothing left.
+    // All tokens are stopwords / 1-2 chars / pure numerals, so nothing is left.
     const t = tokenize('the a is and 3 of feat fix');
     expect(t.size).toBe(0);
   });
@@ -202,9 +202,9 @@ describe('applyShipEdit', () => {
       running: '',
       shipped: ['2026-05-20 — recent shipment', '2026-05-01 — ancient shipment'],
     });
-    // today 2026-05-21, 14-day window → cutoff 2026-05-07: recent kept, ancient pruned.
+    // today 2026-05-21, 14-day window, so cutoff 2026-05-07: recent kept, ancient pruned.
     const r = applyShipEdit(before, { prTitle: 'feat: new thing', today: '2026-05-21' });
-    expect(r.content).toContain('- 2026-05-21: feat: new thing'); // just-prepended, always kept
+    expect(r.content).toContain('- 2026-05-21: feat: new thing'); // prepended now, always kept
     expect(r.content).toContain('- 2026-05-20 — recent shipment');
     expect(r.content).not.toContain('ancient shipment');
   });
@@ -224,7 +224,8 @@ describe('applyShipEdit', () => {
   // Regression: the clear used to append its own newline on top of the one the
   // lookahead already preserves, leaving TWO blank lines between the headings.
   // That trips markdownlint MD012, which fails `lint:markdown` in the pre-push
-  // hook — and journal-sync's own workflow pushes to main, so it broke itself.
+  // hook. The bot's sync-changelog push to main runs that hook, so
+  // journal-sync's own output blocked the next push.
   // Asserting the cursor is empty is not enough; the surrounding shape matters.
   it('leaves exactly one blank line between the headings after clearing', () => {
     const before = progressTemplate({
@@ -301,7 +302,7 @@ describe('pruneRecentlyShipped', () => {
     const before = progressTemplate({
       shipped: ['2026-05-20 — keep recent', '2026-05-07 — keep edge', '2026-05-06 — drop old'],
     });
-    // today 2026-05-21, window 14 → cutoff 2026-05-07 (kept via >=).
+    // today 2026-05-21, window 14, so cutoff 2026-05-07 (kept via >=).
     const out = pruneRecentlyShipped(before, '2026-05-21', 14);
     expect(out).toContain('- 2026-05-20 — keep recent');
     expect(out).toContain('- 2026-05-07 — keep edge');
@@ -402,7 +403,7 @@ last-updated: 2026-05-01
     });
 
     it('keeps a line that is neither the intro nor a bullet, in order after the intro', () => {
-      // Only extra blank lines may be dropped — never content.
+      // Only extra blank lines may be dropped, never content.
       const before = progressWith(`\n(a note)\n${INTRO}\n\n- 2026-05-20 — a\n`);
       const out = pruneRecentlyShipped(before, '2026-05-21', 14);
       expect(shippedSection(out)).toBe(`\n${INTRO}\n\n(a note)\n- 2026-05-20 — a\n`);
@@ -560,13 +561,13 @@ describe('CLI: ship', () => {
     expect(exitCode).toBe(0);
     const after = readFileSync(join(fix.dir, 'docs/progress.md'), 'utf8');
     // Use the same exported helper so the test mirrors the script's parser
-    // exactly — earlier inline regex had a `\s*\n` greedy-swallow bug.
+    // exactly: an earlier inline regex had a `\s*\n` greedy-swallow bug.
     expect(extractCurrentlyRunning(after)).toBe('');
   });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
-// Dictionary precheck — guards docs/progress.md against un-dictionarized
+// Dictionary precheck: guards docs/progress.md against un-dictionarized
 // PR-title words landing via post-merge journal-sync.
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -652,7 +653,7 @@ describe('check command (CLI)', () => {
     fix = createGitFixture();
     mkdirSync(join(fix.dir, 'docs'), { recursive: true });
     writeFileSync(join(fix.dir, 'docs/progress.md'), progressTemplate());
-    // No dictionary.txt — defaultSpellRunner detects the absence and skips
+    // No dictionary.txt: defaultSpellRunner detects the absence and skips
     // (test-fixture branch). The skip-rule case below never reaches the
     // spawn, so it works regardless.
   }

@@ -1,5 +1,5 @@
 /**
- * Vitest globalSetup — the hardware-free suite must leave the durable device
+ * Vitest globalSetup: the hardware-free suite must leave the durable device
  * state alone: the ledger in `.device-runs/` and the run output in `out/`.
  *
  * `out/` holds the build output a device run installs: `run-roku-tests.js` zips
@@ -16,7 +16,7 @@
  * the checkout and writes into the real thing.
  *
  * That is not hypothetical and it is not loud. `run-record.test.js`'s
- * device-scoping case did exactly this on every `npm run test:scripts` — two
+ * device-scoping case did exactly this on every `npm run test:scripts`: two
  * ledger rows plus two stray record directories per run, `outcome: null`,
  * accruing indefinitely in every contributor's checkout and visible only to
  * someone who happened to read the ledger. The same file's comments record an
@@ -24,30 +24,31 @@
  * tmpdirs, hand-cleaned. A per-test `process.chdir` closes each instance; this
  * closes the class, because nothing else notices.
  *
- * Runs once around the whole suite (not per file) deliberately: test files run in
+ * Runs once around the whole suite (not per file) on purpose: test files run in
  * parallel workers, so a per-file check would turn several files red for one
- * file's leak. The tradeoff is that this names WHAT appeared, not WHO wrote it —
- * the leaked content nearly always says, since a record carries the fixture's own
- * `deviceKey` and `run`.
+ * file's leak. The tradeoff is that this names what appeared, not who wrote it.
+ * The leaked content nearly always says who, since a record carries the
+ * fixture's own `deviceKey` and `run`.
  *
  * It reports and fails; it never cleans up. Reverting would risk deleting rows
- * from a device run that was genuinely in flight.
+ * from a device run that was in flight.
  *
  * The verdict is per SESSION, not per run: Vitest tears a `globalSetup` down only
  * from `Vitest.close()`, so under `test:scripts:tdd` (watch) it arrives when you
  * QUIT, not between reruns. `setup` still snapshots at session start, so nothing
- * escapes — it just arrives late.
+ * escapes. The verdict only arrives late.
  *
  * ## Why a content hash and not `size:mtime`
  *
  * The first cut fingerprinted `size:mtimeMs`, which cannot see a same-size
- * rewrite inside one filesystem clock tick — and `run-meta.json` is exactly that
+ * rewrite inside one filesystem clock tick, and `run-meta.json` is exactly that
  * shape, a fixed set of keys rewritten per run. `mtimeNs` looks like the fix and
- * is not: measured on this repo's ext4, 2000 rapid same-size rewrites collided on
- * `mtimeNs` in the SAME 1918 cases as on `mtimeMs`, because the field carries
- * nanosecond digits but only advances about once per millisecond. Hashing the
- * bytes is the only thing that actually closes it, and it is cheap here — 3.4 ms
- * per run over the current tree, ~435 ms extrapolated to 100 MB.
+ * is not: measured 2026-08-24 on this repo's ext4, 2000 rapid same-size
+ * rewrites collided on `mtimeNs` in the SAME 1918 cases as on `mtimeMs`, because
+ * the field carries nanosecond digits but only advances about once per
+ * millisecond. Hashing the bytes is the only thing that actually closes it, and
+ * it is cheap here: 3.4 ms per run over the tree of that day, about 435 ms
+ * extrapolated to 100 MB.
  *
  * The fingerprint keeps the mtime alongside the hash, because swapping one blind
  * spot for another is not a fix: a hash alone cannot see a byte-identical rewrite,
@@ -63,7 +64,7 @@ const WATCHED_ROOTS = ['.device-runs', 'out'];
 const MAX_LISTED = 10;
 
 /**
- * A path that could not be read. A STABLE value, deliberately: a permanently
+ * A path that could not be read. A stable value, on purpose: a permanently
  * unreadable entry fingerprints the same before and after and so does not trip
  * the gate, while an entry that becomes readable (or stops being) shows up as a
  * change, which is what it is.
@@ -73,7 +74,7 @@ const UNREADABLE = '<unreadable>';
 /**
  * Every entry under `dir`, as `relative path -> content fingerprint`.
  *
- * Returns `null` — never `undefined` — when the directory does not exist. The
+ * Returns `null` (never `undefined`) when the directory does not exist. The
  * two are different answers and `teardown` treats them differently: `null` is a
  * real, comparable state ("nothing there"), while `undefined` means no snapshot
  * was ever taken. Collapsing them is what made the first cut report every
@@ -100,7 +101,7 @@ function snapshot(dir) {
         walk(full);
         continue;
       }
-      // Anything that is not a directory is fingerprinted, symlinks included —
+      // Anything that is not a directory is fingerprinted, symlinks included:
       // `isFile()` is false for a symlink, so an earlier cut skipped them and a
       // symlinked ledger would have been invisible to the gate.
       const rel = path.relative(dir, full);
@@ -108,7 +109,7 @@ function snapshot(dir) {
         // Content hash AND mtime, because each alone has a blind spot and the pair
         // has none: a hash misses a byte-identical rewrite (a test writing where it
         // must not, which is the thing being gated), and an mtime misses a same-size
-        // rewrite inside one clock tick (measured real — see the header).
+        // rewrite inside one clock tick (measured real, see the header).
         const stat = fs.statSync(full);
         const hash = crypto.createHash('sha1').update(fs.readFileSync(full)).digest('hex');
         seen.set(rel, `${hash}:${stat.size}:${stat.mtimeMs}`);
@@ -121,7 +122,7 @@ function snapshot(dir) {
   return seen;
 }
 
-/** `+ added`, `- removed`, `~ modified` — one line each, bounded. */
+/** `+ added`, `- removed`, `~ modified`: one line each, bounded. */
 function describeChanges(before, after) {
   // `null` (the directory did not exist) is the only nullish value that reaches
   // here; `undefined` is rejected in `teardown` before this is called.
@@ -148,10 +149,10 @@ export function setup() {
 
 export function teardown() {
   // FAIL CLOSED. Every exit from here that is not "verified clean" sets a
-  // non-zero code BEFORE throwing, and that ordering is the whole gate: Vitest
-  // reports a globalSetup teardown throw as `error during close` and still exits
-  // 0 — measured on 4.1.11 — so a throw alone buys a diagnostic nobody's exit
-  // status reads. The first cut computed the diff as an argument, which meant an
+  // non-zero code BEFORE throwing, so the gate never depends on how Vitest
+  // treats a teardown throw. Vitest 4.1.11 reported one as `error during close`
+  // and still exited 0 (measured 2026-08-24); Vitest 5.0.3 exits 1 (measured
+  // 2026-10-12). The first cut computed the diff as an argument, which meant an
   // error inside the walk escaped before this line and let a real leak through
   // with a green exit. Re-measure before reordering any of this.
   if (before === undefined) {
@@ -169,7 +170,7 @@ export function teardown() {
     try {
       after = snapshot(root);
     } catch (e) {
-      // Set the code, explain, then rethrow the original untouched — the repo has no
+      // Set the code, explain, then rethrow the original untouched. The repo has no
       // `error-cause` precedent and its lint config pins a Node range that predates it,
       // so the context goes to stderr rather than onto a wrapper.
       process.exitCode = 1;

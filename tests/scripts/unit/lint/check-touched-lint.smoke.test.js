@@ -3,8 +3,8 @@
 // The script invokes spell / markdown / json linters as child processes
 // against the working tree (committed + uncommitted + untracked files).
 // Full coverage requires those linters' fixtures, which is heavy. Here we
-// verify the script's basic shape: clean tree → 0 output, --quiet works,
-// it can run from a non-repo directory without crashing.
+// verify the script's basic shape: under --quiet it exits 0 on a clean tree,
+// and it can run from a non-repo directory without crashing.
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';

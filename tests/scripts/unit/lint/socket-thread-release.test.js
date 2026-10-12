@@ -1,17 +1,17 @@
-// Tests for scripts/lint/socket-thread-release-check.js — the static guard on
+// Tests for scripts/lint/socket-thread-release-check.js: the static guard on
 // release of the ws:// socket Task thread (epic #728).
 //
 // Two layers:
 //
-//  1. PURE — hand-written source strings exercise each rule, plus a smoke pass
+//  1. PURE: hand-written source strings exercise each rule, plus a smoke pass
 //     over the REAL committed files so reverting any part of the fix fails here.
 //
-//  2. EXECUTABLE MODEL — the loop-exit ordering is the one rule whose condition
+//  2. EXECUTABLE MODEL: the loop-exit ordering is the one rule whose condition
 //     can look identical and still be wrong, so asserting on source position
 //     alone is weak. This layer models WebSocketClient's posting contract (WHEN
 //     it enqueues terminal events relative to the ready_state it reports,
 //     transcribed with line citations from WebSocketClient.brs) and runs the
-//     loop against it — with the loop's ordering READ BACK OUT of the real
+//     loop against it, with the loop's ordering READ BACK OUT of the real
 //     WebSocketClientTask.brs via extractLoopShape(), so the model can't drift
 //     away from the source it claims to test. The pre-fix ordering is asserted
 //     to drop the terminal event; the committed one is asserted not to.
@@ -38,7 +38,7 @@ const read = (rel) => readFileSync(resolve(REPO_ROOT, rel), 'utf8');
 
 // ── layer 1: pure ──────────────────────────────────────────────────────────────
 
-// Minimal well-formed sources — the shape the guard wants, nothing more.
+// Minimal well-formed sources: the shape the guard wants, nothing more.
 const GOOD_WS_TASK = `
 sub runSocketLoop()
   m.connect_requested = false
@@ -169,10 +169,10 @@ describe('rule 5 — the receiver publishes and STOPs its child', () => {
     );
   });
 
-  // There is deliberately no rule about ordering `close = [1000]` against the STOP:
+  // There is no rule about ordering `close = [1000]` against the STOP, on purpose:
   // closeSocket() only runs once the client has already left OPEN, so the close frame
   // had nothing to send even before the STOP, and the request was dropped rather than
-  // kept as scaffolding. A guard over a no-op would read as load-bearing as rules 2-4,
+  // kept as scaffolding. A guard over a no-op would read as essential as rules 2-4,
   // which are.
 });
 
@@ -236,20 +236,21 @@ const STATE = { OPEN: 1, CLOSING: 2, CLOSED: 3 };
 
 // WebSocketClient's posting contract, transcribed from
 // components/vendor/BrightWebSocket/web_socket_client/WebSocketClient.brs.
-// The load-bearing detail: the CLOSED transition and the on_close post BOTH
+// The detail that matters: the CLOSED transition and the on_close post BOTH
 // happen inside run(), so a port drained before run() tells you nothing about
 // what run() leaves behind.
 class SocketClientModel {
-  // runsBeforeClose  — run() calls while OPEN before the server's CLOSE frame.
-  // runsInClosing    — run() calls spent in CLOSING before _try_force_close
-  //                    fires. Real value: _CLOSING_DELAY is 30s at a ~100ms
-  //                    loop cadence (:37, :161), i.e. hundreds — which is
-  //                    exactly why the port is always drained by then.
+  // runsBeforeClose: run() calls while OPEN before the server's CLOSE frame.
+  // runsInClosing:   run() calls spent in CLOSING before _try_force_close
+  //                  fires. Real value: `ws._CLOSING_DELAY` is 30 s, and an
+  //                  idle iteration waits 100 ms in the task loop's wait() plus
+  //                  200 ms in `ws.run`, so a hundred runs or more. That is
+  //                  exactly why the port is always drained by then.
   //
   // The server-closes-first sequence this models is MEASURED, not assumed:
   // probing a real Jellyfin 10.11.11 with the same raw upgrade the vendored
   // client builds, ending the session server-side produced a WebSocket CLOSE
-  // frame (code 1000, "System Shutdown") — not a TCP drop — and the connection
+  // frame (code 1000, "System Shutdown"), not a TCP drop, and the connection
   // then stayed up rather than being FIN'd early. That matters because a CLOSE
   // frame posts NO on_error (:737-740), so on_close emitted at the later CLOSED
   // transition is the only terminal event the parent ever gets. The TCP-drop
@@ -295,7 +296,7 @@ class SocketClientModel {
 }
 
 // Runs the task loop with the ordering described by `shape`. Everything the
-// loop does with a message is modelled by forwarding it to `top` — which is the
+// loop does with a message is modeled by forwarding it to `top`, which is the
 // whole point: an event still sitting in `port` when the loop exits is an event
 // RemoteControlTask never receives.
 function runTaskLoop(shape, client, { connectRequested = true, maxIterations = 2000 } = {}) {
@@ -397,7 +398,7 @@ describe('loop-exit ordering, executed', () => {
     // The old ordering survived in exactly one situation: something had to be
     // sitting in the port at the START of the transition iteration, so that
     // iteration's wait() returned a message and the `msg = invalid` term was
-    // false. Note how precise that is — an event arriving DURING the transition
+    // false. That is precise: an event arriving DURING the transition
     // does not help, because the exit test reads a `msg` already fetched. The
     // window is the single ~100ms iteration preceding the close, which is why
     // this could pass a hand test on a chatty socket and still be broken.
@@ -410,7 +411,7 @@ describe('loop-exit ordering, executed', () => {
     };
     const lucky = runTaskLoop(PREFIX_SHAPE, client);
 
-    expect(lucky.top.on_close).toBe(''); // survives — by luck, not by design
+    expect(lucky.top.on_close).toBe(''); // survives, by luck, not by design
     expect(lucky.stranded).toBe(0);
 
     // Same client, same traffic, one iteration later: back to dropping it.

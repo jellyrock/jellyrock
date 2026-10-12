@@ -1,4 +1,4 @@
-// Tests for scripts/lint/ci-parity-check.js — the meta-gate asserting every
+// Tests for scripts/lint/ci-parity-check.js: the meta-gate asserting every
 // check in the `npm run lint` aggregate is actually run by some CI workflow.
 //
 // Pure layer: hand-written package.json `scripts` maps + fake workflow texts.
@@ -74,7 +74,7 @@ describe('coverage detection', () => {
   });
 
   // A MENTION is not a RUN. Each of these was a real false-positive before the
-  // comment-stripping pass — the same "it's referenced somewhere, so it must be
+  // comment-stripping pass: the same "it's referenced somewhere, so it must be
   // wired" confusion that let three checks sit uncovered in the first place.
   it.each([
     ['a YAML comment mentioning the check', '      # TODO: wire up npm run lint:docs someday'],
@@ -99,7 +99,7 @@ describe('coverage detection', () => {
 
   // Regression guard: comment stripping must stay LINE-based. This repo wires
   // plenty of commands inside multi-line `run: |` blocks, where the command
-  // line carries no `run:` key — a matcher scoped to `run:` lines would report
+  // line carries no `run:` key, and a matcher scoped to `run:` lines would report
   // a false MISSING here and red-fail CI for a check that is correctly wired.
   it('accepts a check invoked inside a multi-line `run: |` block', () => {
     expect(
@@ -190,7 +190,7 @@ describe('the LOCAL_ONLY allowlist', () => {
   const scripts = { lint: 'npm run lint:bs', 'lint:bs': 'bslint' };
 
   it('exempts an allowlisted check from the CI requirement', () => {
-    // lint:bs is the real allowlist entry — covered in substance by `validate`.
+    // lint:bs is the real allowlist entry, covered in substance by `validate`.
     expect(check({ scripts, workflows: wf('run: npm run validate') }).missing).toEqual([]);
   });
 
@@ -218,7 +218,7 @@ describe('the committed package.json + workflows', () => {
       .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
       .map((f) => ({ name: f, text: readFileSync(resolve(dir, f), 'utf8') }));
 
-    // Same inputs the CLI assembles, including the COVERED_BY_TEST files —
+    // Same inputs the CLI assembles, including the COVERED_BY_TEST files;
     // otherwise this gate would report the test-hosted checks as missing.
     const tests = [...new Set(Object.values(COVERED_BY_TEST))].map((rel) => ({
       name: rel,

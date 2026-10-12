@@ -1,10 +1,10 @@
 /**
- * `npm run measure`'s command line — see `scripts/measure-args.js`.
+ * `npm run measure`'s command line. See `scripts/measure-args.js`.
  *
  * These exist because the parser's failure mode is SILENT. A lenient parser drops
  * what it does not recognise, so `--sever https://…` and a trailing `--server`
  * both produce a run that quietly did not assert the server it was invoked to
- * assert — the one failure a measurement guard must not have. Every case below is
+ * assert, the one failure a measurement guard must not have. Every case below is
  * a downgrade that the first revision would have accepted without a word.
  */
 import { describe, expect, it } from 'vitest';
@@ -116,7 +116,7 @@ describe('the comparison labels', () => {
   });
 
   it('REFUSES a label the selector grammar could never name again', () => {
-    // `--a before,v2` parses to `{arm: 'v2'}` — a different selection, made silently.
+    // `--a before,v2` parses to `{arm: 'v2'}`: a different selection, made silently.
     // So the label is refused where it is created, not diagnosed where it fails.
     expect(() => parse(['--arm', 'before,v2'])).toThrow(/may not contain/);
     expect(() => parse(['--arm', 'a=b'])).toThrow(/may not contain/);
@@ -132,7 +132,7 @@ describe('the comparison labels', () => {
 describe('--screen may not contradict a family that declares one', () => {
   // `measure.js` reaches a screen by RELAUNCHING, so the app is always on Home. With
   // the old `args.screen ?? measurement.screen` precedence, `--screen movies-grid`
-  // wrote a record asserting a screen the app was never on — and tier 3 cannot tell
+  // wrote a record asserting a screen the app was never on, and tier 3 cannot tell
   // that from provenance after the fact.
   const withScreens = (argv) =>
     parseMeasureArgs(argv, {
@@ -160,7 +160,7 @@ describe('--screen may not contradict a family that declares one', () => {
 describe('--nav, which is what makes anything but Home reachable', () => {
   // The registry reduced to what the parser needs. Mirrors `tests/rta/screens.js`:
   // most screens are reached from a signed-in Home, and the two PRE-LOGIN ones are
-  // reached by hand — which `measure` cannot drive to, because it writes no registry.
+  // reached by hand, which `measure` cannot drive to, because it writes no registry.
   // Both are carried here because they are two DIFFERENT registry states and the
   // refusal must not describe them as one; see the `--no-server` block below.
   const withNav = (argv) =>
@@ -191,7 +191,7 @@ describe('--nav, which is what makes anything but Home reachable', () => {
   it('REFUSES a --nav to a pre-login screen, naming the path that DOES work', () => {
     // `measure` writes no registry and restores none, so it cannot put the app in that
     // state. Refused rather than attempted and timed out on a screen that was never
-    // going to appear — and the refusal names the hand path, because "impossible"
+    // going to appear. And the refusal names the hand path, because "impossible"
     // stopped being true once these screens could be LANDED on. It must not read as a
     // dead end.
     expect(() => withNav(['--nav', 'serverSelect'])).toThrow(/never writes the registry/);
@@ -200,8 +200,8 @@ describe('--nav, which is what makes anything but Home reachable', () => {
   });
 
   it('gives the two pre-login screens DIFFERENT instructions, because they are different states', () => {
-    // The bug this pins. `userSelect` is reached by clearing the ACTIVE USER — Change
-    // user and Sign out both leave `server` in place — so its identity reads normally
+    // The bug this pins. `userSelect` is reached by clearing the ACTIVE USER (Change
+    // user and Sign out both leave `server` in place), so its identity reads normally
     // and `--no-server` would hard-refuse the run. One shared sentence sent an operator
     // to Change server, which takes them off the very screen they were measuring.
     let refusal;
@@ -212,7 +212,7 @@ describe('--nav, which is what makes anything but Home reachable', () => {
     }
     expect(refusal).toMatch(/Change user/);
     expect(refusal).toMatch(/server stays/);
-    // The flag must be named only as the thing NOT to pass here.
+    // The flag must be named only as the thing not to pass here.
     expect(refusal).toMatch(/--no-server would REFUSE the run/);
     expect(refusal).not.toMatch(/Change server/);
   });
@@ -312,7 +312,7 @@ describe('--component, the other half of a mount identity', () => {
 
   it('REFUSES a component carrying the selector grammar', () => {
     // Recorded in the measurement record like every other selector, so it goes through
-    // the same label hygiene — a value `measure:compare`'s grammar cannot name would
+    // the same label hygiene: a value `measure:compare`'s grammar cannot name would
     // record fine and then never select again.
     expect(() => withNav(['--component', 'a=b'])).toThrow(/may not contain/);
   });
@@ -343,8 +343,8 @@ describe('--no-server, which is how `serverSelect` becomes measurable', () => {
   });
 
   it('no longer answers to `--signed-out`, which named the wrong app-menu action', () => {
-    // Not a rename for taste. `SignOut()` (app menu → Sign out) and `SignOut(false)`
-    // (→ Change user) BOTH leave `server` in place and land on `userSelect`, where this
+    // Not a rename for taste. `SignOut()` (app menu, Sign out) and `SignOut(false)`
+    // (Change user) BOTH leave `server` in place and land on `userSelect`, where this
     // flag refuses; only Change server produces the state it asserts. The old name is
     // refused loudly by the unknown-flag rule rather than silently ignored, which is
     // the same reason every unknown flag is refused.

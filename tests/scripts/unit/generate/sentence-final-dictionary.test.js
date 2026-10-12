@@ -3,10 +3,10 @@
 // The generated dictionary is a real spellchecker input, so two properties matter and they
 // fail differently: the TRANSFORM has to produce a pattern that matches only the sentence-final
 // form, and the COMMITTED file has to stay in step with dictionary.txt. A stale committed file
-// is the dangerous one — it produces no error anywhere, it just quietly stops covering whatever
-// was added to dictionary.txt since.
+// is the dangerous one: it produces no error anywhere, it only quietly stops covering
+// whatever was added to dictionary.txt since.
 //
-// What this suite does NOT cover, because it cannot: whether the patterns behave correctly
+// What this suite does not cover, because it cannot: whether the patterns behave correctly
 // inside the real tool. That is the behavioral suite in ../lint/spellchecker-config.test.js,
 // which spawns the binary over a fixture.
 
@@ -56,7 +56,7 @@ describe('sentence-final dictionary / the transform', () => {
   it('escapes the period rather than leaving it as a wildcard', () => {
     // The four hand-written workarounds this generator replaced (`codebase.`, `globals.`,
     // `lifecycle.`, `lookups.` in dictionary.txt) each had an UNESCAPED period, so they also
-    // accepted `codebaseX`. That is a coverage hole, not a typo — assert it cannot return.
+    // accepted `codebaseX`. That is a coverage hole, not a typo: assert it cannot return.
     const re = new RegExp(`^${sentenceFinalForm('codebase')}$`);
     expect(re.test('codebase.')).toBe(true);
     expect(re.test('codebaseX')).toBe(false);
@@ -71,7 +71,7 @@ describe('sentence-final dictionary / the transform', () => {
   });
 
   it('emits a header whose lines can never match a word token', () => {
-    // Dictionary files have no comment syntax — a `#` line is just an entry, anchored as
+    // Dictionary files have no comment syntax: a `#` line is an ordinary entry, anchored as
     // ^line$ like every other. It is inert only because a word token is letters, digits,
     // apostrophes and hyphens, and no header line is made solely of those. That is the
     // property to assert; "contains a space" is a proxy that a bare `#` separator breaks.

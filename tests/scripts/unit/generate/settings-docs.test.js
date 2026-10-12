@@ -79,7 +79,7 @@ describe('settings-docs', () => {
   });
 
   it('omits the range row when only one bound is declared', () => {
-    // Half a range is not enforced by the app either — settingRangeBounds() requires both —
+    // Half a range is not enforced by the app either (settingRangeBounds() requires both),
     // so printing one bound would document a rule that does not exist.
     dir = setupTemp([
       {

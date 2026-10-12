@@ -1,15 +1,15 @@
 // Tests for scripts/lint/eslint-rules/rta-home-list-resolved.js.
 //
 // The rule is a BAN with one named exemption: Home's row list ids may be spelled only in
-// `tests/rta/lib/home-list.js`, and there only twice — one per id, in `HOME_ROW_LIST_IDS`.
-// The cases are therefore what it counts, what it must NOT count, and each of the three ways
+// `tests/rta/lib/home-list.js`, and there only twice: one per id, in `HOME_ROW_LIST_IDS`.
+// The cases are therefore what it counts, what it must not count, and each of the three ways
 // a file can disagree with that contract, including BOTH directions of the resolver's cap.
 //
 // It replaced a per-file budget table that froze 30 sites during the conversion. Those sites
 // are now zero, and the cases that used to prove the ratchet (`overBudget` / `staleBudget`)
 // are gone with it: there is no table left to drift, which was the point of the change.
 //
-// The filenames are REAL repo paths, deliberately: the rule keys off the resolver's path, so
+// The filenames are REAL repo paths, on purpose: the rule keys off the resolver's path, so
 // a test on a fictional path would exercise the counting and never the exemption.
 
 import fs from 'node:fs';
@@ -26,7 +26,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 describe('the exempt resolver module exists', () => {
   // Same blind spot as the sibling rule's budget table, and sharper here: the exemption
   // names ONE file, and if it is renamed the rule silently permits nothing and reports
-  // nothing — every other file still fails correctly, so the gate LOOKS healthy while the
+  // nothing. Every other file still fails correctly, so the gate LOOKS healthy while the
   // module it was built around has moved. `Program:exit` cannot fire on a path that no
   // longer resolves.
   it(`${RESOLVER_MODULE} is still there`, () => {
@@ -35,7 +35,7 @@ describe('the exempt resolver module exists', () => {
 });
 
 // RuleTester drives its own describe/it; hand it Vitest's so failures land in the normal
-// reporter. Must run at module scope — `ruleTester.run()` registers its cases while the
+// reporter. Must run at module scope: `ruleTester.run()` registers its cases while the
 // describe callback below is being evaluated.
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -60,7 +60,7 @@ describe('rta-home-list-resolved', () => {
       { filename: OTHER, code: `await waitFocusInside('#itemGrid');` },
 
       // A COMMENT naming the list is free, in any file. The rule module, this file and
-      // several docblocks name `#homeRows` many times while explaining the hazard —
+      // several docblocks name `#homeRows` many times while explaining the hazard, and
       // counting prose would punish documenting it.
       {
         filename: OTHER,
@@ -78,7 +78,7 @@ describe('rta-home-list-resolved', () => {
         code: `export const HOME_ROW_LIST_IDS = Object.freeze(['#homeRows', '#favoritesRows']);`,
       },
 
-      // A RESOLVED list is the shape the conversion moved to — no id spelled, so nothing
+      // A RESOLVED list is the shape the conversion moved to: no id spelled, so nothing
       // to count. This is what every one of the 30 converted sites now looks like.
       {
         filename: NAV,
@@ -86,7 +86,7 @@ describe('rta-home-list-resolved', () => {
       },
 
       // Asking the FOCUSED node its subtype is the other sanctioned shape, and it names the
-      // SUBTYPE rather than an id — `HomeRows` is not `#homeRows`.
+      // SUBTYPE rather than an id: `HomeRows` is not `#homeRows`.
       {
         filename: NAV,
         code: `function key(f) { if (HOME_ROW_LIST_SUBTYPES.includes(f?.node?.subtype)) return ecp.Key.Up; }`,
@@ -95,7 +95,7 @@ describe('rta-home-list-resolved', () => {
 
     invalid: [
       // The whole point: naming an id outside the resolver, in a file that used to hold 26
-      // such sites. There is no budget to lower — the fix is always to resolve.
+      // such sites. There is no budget to lower: the fix is always to resolve.
       {
         filename: NAV,
         code: `await waitFocusInside('#homeRows');`,
@@ -120,7 +120,7 @@ describe('rta-home-list-resolved', () => {
       },
 
       // The SYMMETRY check. A "conversion" that swapped one hardcoded id for the other
-      // would otherwise pass while fixing nothing — the favorites list is equally absent
+      // would otherwise pass while fixing nothing: the favorites list is equally absent
       // under the Home tab.
       {
         filename: OTHER,
@@ -150,7 +150,7 @@ describe('rta-home-list-resolved', () => {
       },
 
       // UNDER the cap is a failure too, and this is the direction a plain ban would miss.
-      // A constant listing only one id makes `homeListId` probe one list — which silently
+      // A constant listing only one id makes `homeListId` probe one list, which silently
       // reinstates the original bug, because the read it drops is the one that resolves to
       // `undefined` instead of throwing.
       {
@@ -160,7 +160,7 @@ describe('rta-home-list-resolved', () => {
       },
 
       // Emptying the resolver must still report. There is no literal left to hang the
-      // message on, so it lands on Program — without that, deleting the id constant would
+      // message on, so it lands on Program. Without that, deleting the id constant would
       // pass silently, and that is the one edit that turns every `homeListId()` caller into
       // a resolver that cannot resolve.
       {

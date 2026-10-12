@@ -115,7 +115,7 @@ describe('changelog-syncer.js', () => {
 
     it('exits 0 on a valid CHANGELOG.md', () => {
       fixture = createGitFixture();
-      // No commits → no unreleased-commit consistency error.
+      // No commits, so no unreleased-commit consistency error.
       writeChangelog(fixture.dir, VALID_HEADER);
       const { exitCode, stdout } = spawnScript(SCRIPT, ['validate'], { cwd: fixture.dir });
       expect(exitCode).toBe(0);

@@ -65,7 +65,7 @@ describe('auto-destroyed-guard — injection', () => {
       'components/Ord.bs': guardable(),
     });
     const code = out['components/Ord.bs'];
-    // Both asserted PRESENT first — an un-emitted guard answers -1, and -1 is less than
+    // Both asserted PRESENT first: an un-emitted guard answers -1, and -1 is less than
     // every real index, so the ordering alone passes when the plugin emits nothing.
     expect(code).toContain('if m.isDestroyed = true then');
     expect(code).toContain('m.menu.focusedChild');
@@ -77,7 +77,7 @@ describe('auto-destroyed-guard — injection', () => {
   it('compares against true rather than testing truthiness', async () => {
     // Roku treats `invalid` as neither true nor false: a bare `if m.isDestroyed`
     // THROWS when the flag was never initialised. The comparison form is the
-    // second layer behind the init() injection — a regression here would turn a
+    // second layer behind the init() injection. A regression here would turn a
     // rare teardown race into a crash on every key press.
     const out = await transpileWithPlugin(autoDestroyedGuardPlugin, {
       'components/Cmp.xml': xml('Cmp'),
@@ -160,7 +160,7 @@ describe('auto-destroyed-guard — injection', () => {
   it('guards an onKeyEvent that mentions the flag only AFTER dereferencing a node', async () => {
     // The regression this rule exists to stop: a body-wide "does it mention the
     // flag?" test reads this file as already-guarded and injects nothing, leaving
-    // `m.menu.focusedChild` — the statement that actually crashes — unprotected.
+    // `m.menu.focusedChild` (the statement that actually crashes) unprotected.
     const out = await transpileWithPlugin(autoDestroyedGuardPlugin, {
       'components/Late.xml': xml('Late'),
       'components/Late.bs': `
@@ -189,7 +189,7 @@ describe('auto-destroyed-guard — injection', () => {
 
   it('still sets the flag when onDestroy assigns it only conditionally', async () => {
     // A conditional set can leave the flag `false` after teardown, so the guard
-    // would never fire — exactly the case a body-wide assignment test would skip.
+    // would never fire: exactly the case a body-wide assignment test would skip.
     const out = await transpileWithPlugin(autoDestroyedGuardPlugin, {
       'components/Cond.xml': xml('Cond'),
       'components/Cond.bs': `
@@ -232,7 +232,7 @@ describe('auto-destroyed-guard — injection', () => {
     // auto-abandon-promises runs FIRST in bsconfig.json and prepends
     // abandonApiPromises() into onDestroy, so by the time this plugin looks, the
     // hand-written flag is no longer statement 0. Idempotency keys on the first
-    // AUTHORED statement for exactly this reason — a positional test that counted
+    // AUTHORED statement for exactly this reason: a positional test that counted
     // injected statements would emit a duplicate `m.isDestroyed = true` here.
     const out = await transpileWithPlugin([autoAbandonPromisesPlugin, autoDestroyedGuardPlugin], {
       'components/Chain.xml': xml('Chain'),

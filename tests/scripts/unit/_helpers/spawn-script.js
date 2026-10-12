@@ -15,7 +15,7 @@ const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..'
 /**
  * Run a Node script and return { exitCode, stdout, stderr }.
  *
- * @param {string} scriptPath  repo-relative path, e.g. 'scripts/generate/dev-index.cjs'
+ * @param {string} scriptPath  repo-relative path, for example 'scripts/generate/dev-index.cjs'
  * @param {string[]} [args]    CLI args to pass after the script
  * @param {object} [options]
  * @param {string} [options.cwd]  working dir for the spawned process

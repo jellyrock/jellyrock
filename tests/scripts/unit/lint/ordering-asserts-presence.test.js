@@ -6,7 +6,7 @@
 // each way a site can legitimately have already proved presence, because a rule with no
 // escape hatch is only reasonable if it recognises every reasonable guard.
 //
-// Two properties are gated deliberately, both of which a naive implementation gets wrong:
+// Two properties are gated on purpose, both of which a naive implementation gets wrong:
 //   - scope: a presence assertion in a SIBLING test must not excuse this one;
 //   - substring: `toContain('a longer line with beta crash in it')` DOES prove
 //     `indexOf('beta crash')`, and demanding a second assertion next to a sound one is how
@@ -17,7 +17,7 @@ import { RuleTester } from 'eslint';
 import rule from '../../../../scripts/lint/eslint-rules/ordering-asserts-presence.js';
 
 // RuleTester drives its own describe/it; hand it Vitest's so failures land in the normal
-// reporter. Must run at module scope — `ruleTester.run()` registers its cases while the
+// reporter. Must run at module scope: `ruleTester.run()` registers its cases while the
 // describe callback below is being evaluated.
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -40,7 +40,7 @@ describe('ordering-asserts-presence', () => {
       `),
 
       // A proof in the `it()` body governs an assert inside a nested callback. Scoping to
-      // the NEAREST function would miss it and report a sound test — and this rule has no
+      // the NEAREST function would miss it and report a sound test, and this rule has no
       // escape hatch, so a false positive can only be answered by disabling it.
       inTest(`
         expect(code).toContain('guard');
@@ -94,7 +94,7 @@ describe('ordering-asserts-presence', () => {
       inTest(`
         expect(items.length).toBeLessThan(other.length);
       `),
-      // Equality is not an ordering assertion — `toBe(-1)` is a legitimate absence check.
+      // Equality is not an ordering assertion: `toBe(-1)` is a legitimate absence check.
       inTest(`
         expect(s.indexOf('gone')).toBe(-1);
       `),
@@ -144,7 +144,7 @@ describe('ordering-asserts-presence', () => {
         ],
       },
       // The shape found in journal-sync.test.js: ONE operand guarded, the other not. The
-      // rule must report only the unguarded half — over-reporting here is what would push
+      // rule must report only the unguarded half. Over-reporting here is what would push
       // someone to blanket-disable it.
       {
         code: inTest(`
@@ -159,7 +159,7 @@ describe('ordering-asserts-presence', () => {
       },
       // Scope: a presence assertion in a SIBLING test proves nothing about this one. A
       // file-wide search would call this valid, which is the false negative that matters
-      // most — it is the shape a large test file drifts into.
+      // most: it is the shape a large test file drifts into.
       {
         code: `
           it('a', () => {
@@ -181,7 +181,7 @@ describe('ordering-asserts-presence', () => {
           },
         ],
       },
-      // `toContain` proves `indexOf`/`lastIndexOf` of the SAME needle only — a different
+      // `toContain` proves `indexOf`/`lastIndexOf` of the SAME needle only. A different
       // needle on the same haystack is still unproven.
       {
         code: inTest(`
@@ -204,9 +204,9 @@ describe('ordering-asserts-presence', () => {
         `),
         errors: [{ messageId: 'vacuous' }],
       },
-      // A NEGATED lower bound asserts the value was NOT found, so it must not be read as
+      // A NEGATED lower bound asserts the value was not found, so it must not be read as
       // a presence proof. This is the one shape that states the opposite of presence and
-      // would still have satisfied the matcher-name check — the rule failing in exactly
+      // would still have satisfied the matcher-name check: the rule failing in exactly
       // the direction it exists to prevent.
       {
         code: inTest(`

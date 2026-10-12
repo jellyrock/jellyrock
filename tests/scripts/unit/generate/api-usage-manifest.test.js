@@ -255,7 +255,7 @@ describe('buildManifest determinism', () => {
     const m = JSON.parse(a);
     expect(m.endpoints.length).toBeGreaterThan(40);
     expect(m.responseFields.length).toBeGreaterThan(100);
-    // endpoints sorted by (normalized, path) via localeCompare — same comparator
+    // endpoints sorted by (normalized, path) via localeCompare: the same comparator
     // the generator uses.
     const cmp = (a, b) => a.normalized.localeCompare(b.normalized) || a.path.localeCompare(b.path);
     expect(m.endpoints).toEqual([...m.endpoints].sort(cmp));

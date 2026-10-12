@@ -1,8 +1,8 @@
 // Tests for scripts/lint/dictionary-audit.cjs.
 //
 // Two layers:
-//  1. classify() unit tests — battery of known-good and known-bad inputs.
-//  2. Smoke test — the actual repo dictionary.txt must pass the audit. This
+//  1. classify() unit tests: a battery of known-good and known-bad inputs.
+//  2. Smoke test: the actual repo dictionary.txt must pass the audit. This
 //     protects the on-disk dictionary against regression: if someone strips
 //     a needed entry from ALLOWLIST or weakens the heuristic, a real
 //     dictionary entry will start getting flagged and this test fails.
@@ -120,8 +120,8 @@ describe('dictionary-audit classify() / unescaped regex metacharacters', () => {
 
   it('does not let the escape character itself trip the path-separator rule', () => {
     // The regression this guards: the identifier-shape checks read the RAW entry,
-    // so `\\.claude` was rejected as containing a path separator — the audit
-    // rejecting the exact fix it had just demanded.
+    // so `\\.claude` was rejected as containing a path separator: the audit
+    // rejected the exact fix it had demanded a moment before.
     expect(classify('\\.claude')).toBeNull();
   });
 
@@ -135,7 +135,7 @@ describe('dictionary-audit classify() / unescaped regex metacharacters', () => {
   it('catches an allowlisted proper noun that carries a live metacharacter', () => {
     // The metacharacter check runs AFTER the shape checks (an identifier-shaped
     // entry should be deleted, not escaped), and the allowlist makes `shapeVerdict`
-    // return null rather than short-circuiting `classify` — so an allowlisted entry
+    // return null rather than short-circuiting `classify`, so an allowlisted entry
     // written with a live metacharacter is still caught.
     const [allowlisted] = [...require('../../../../scripts/lint/dictionary-audit.cjs').ALLOWLIST];
     expect(classify(`${allowlisted}.`)).not.toBeNull();

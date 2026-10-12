@@ -7,8 +7,8 @@
 // observed EXACTLY ONCE (that once being in `init()`) may only be `unobserveField`'d
 // in `onDestroy()`. That is the REGISTER-ONCE shape from components/CLAUDE.md.
 //
-// The population matters as much as the check. Balanced toggles must never enter it —
-// their observe is not a lone call inside `init()` — which is what separates this from
+// The population matters as much as the check. Balanced toggles must never enter it
+// (their observe is not a lone call inside `init()`), which is what separates this from
 // the earlier naive attempt that flagged 143 sites at a 3-of-3 false-positive rate.
 
 import { describe, it, expect } from 'vitest';

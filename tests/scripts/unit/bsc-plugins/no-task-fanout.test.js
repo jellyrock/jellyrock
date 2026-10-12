@@ -8,7 +8,7 @@
 // epic #728 (`&h29` "too many task threads") actually took, in HomeRows'
 // per-library latest-media fan-out removed by PR #762.
 //
-// The interesting edge is that NOT every in-loop launch is a fan-out. A loop
+// The interesting edge is that not every in-loop launch is a fan-out. A loop
 // that launches a fixed `m.<field>` slot launches the same node however many
 // times it turns, so the discriminator is the ARGUMENT, not the loop itself. Get
 // that wrong in either direction and the rule is useless: too loose and it
@@ -25,7 +25,7 @@ import noTaskFanoutPlugin from '../../../../scripts/bsc-plugins/no-task-fanout.c
 
 const CODE = 'no-task-fanout';
 
-/** Runs the plugin over one component file and returns just its diagnostics. */
+/** Runs the plugin over one component file and returns only its diagnostics. */
 function check(source, path = 'components/Foo.bs') {
   return diagnosticsByCode(runPluginOnSource(noTaskFanoutPlugin, { [path]: source }), CODE);
 }
@@ -126,7 +126,7 @@ describe('no-task-fanout', () => {
     it('flags a fresh node parked in a stable m. slot each turn', () => {
       // The one-token escape from every other assertion in this block: hoist the
       // flagged local into an `m.` field and the stable-slot exemption applies,
-      // while the fan-out is untouched — nothing STOPs the previous node and the
+      // while the fan-out is untouched: nothing STOPs the previous node and the
       // loop never waits. The shape is idiomatic here (QueueManager and JRScene
       // both build Task nodes straight into an `m.` slot at a call site), which
       // is why the exemption has to ask whether the loop rebinds the slot.
@@ -143,8 +143,8 @@ describe('no-task-fanout', () => {
     });
 
     it('flags a rebind of a PARENT of the launched path', () => {
-      // `m.view = <fresh>` makes `m.view.task` a different node every turn just
-      // as surely as rebinding the leaf does, so the check walks prefixes.
+      // `m.view = <fresh>` makes `m.view.task` a different node every turn as
+      // surely as rebinding the leaf does, so the check walks prefixes.
       expect(
         check(`
           sub go()
@@ -158,7 +158,7 @@ describe('no-task-fanout', () => {
     });
 
     it('flags a rebind that happens AFTER the launch in the body', () => {
-      // Source order does not matter — the second turn launches a node the first
+      // Source order does not matter: the second turn launches a node the first
       // turn's tail rebound.
       expect(
         check(`
@@ -173,7 +173,7 @@ describe('no-task-fanout', () => {
     });
 
     it('flags a rebind nested inside an if', () => {
-      // The rebind is collected from the whole loop subtree, not just the body's
+      // The rebind is collected from the whole loop subtree, not only the body's
       // top-level statements.
       expect(
         check(`
@@ -226,8 +226,8 @@ describe('no-task-fanout', () => {
 
     it('allows a sibling field write that is not the launched slot', () => {
       // A loading flag written beside the launch it guards, as HomeRows'
-      // section loads once did in this loop. Matching too loosely here — "any
-      // m. write in the loop" — would flag every guarded launch.
+      // section loads once did in this loop. Matching too loosely here ("any
+      // m. write in the loop") would flag every guarded launch.
       expect(
         check(`
           sub startParallelLoads()
@@ -257,7 +257,7 @@ describe('no-task-fanout', () => {
     });
 
     it('allows a rebind that sits OUTSIDE the loop', () => {
-      // Built once, launched many times against the same node — the shape the
+      // Built once, launched many times against the same node: the shape the
       // exemption exists for.
       expect(
         check(`
@@ -275,7 +275,7 @@ describe('no-task-fanout', () => {
   describe('rebind spelling 2 — a literal-key index', () => {
     // `m["loader"]` and `m.loader` are one field in BrightScript, so the check has
     // to read both spellings or mixing them across the write and the launch slips
-    // it. A COMPUTED key names nothing knowable and is deliberately not collected.
+    // it. A COMPUTED key names nothing knowable and is not collected, on purpose.
     it('flags a rebind spelled as a literal-key index, read back dotted', () => {
       // The two spellings name the same field, so a write in one and a launch
       // in the other is the same fan-out. Collected by `slotsAssignedIn`.
@@ -352,11 +352,11 @@ describe('no-task-fanout', () => {
 
   describe('rebind spelling 3 — a literal-AA setFields / addFields', () => {
     // The spelling with real precedent: `globals.bs` parks Task nodes with
-    // `m.global.addFields({ ... })`. The negative cases here are the load-bearing
-    // ones — each guards the FALSE-POSITIVE direction, which is the costlier one
+    // `m.global.addFields({ ... })`. The negative cases here are the ones that
+    // matter: each guards the FALSE-POSITIVE direction, which is the costlier one
     // for an Error-severity rule.
     it('flags a rebind through a literal-AA setFields', () => {
-      // The third write spelling, and the one with real precedent —
+      // The third write spelling, and the one with real precedent:
       // `globals.bs` parks Task nodes via addFields exactly this way.
       expect(
         check(`
@@ -429,7 +429,7 @@ describe('no-task-fanout', () => {
     it('does not treat an ordinary method taking an AA as a field write', () => {
       // Guards the setFields/addFields name filter. Without it ANY dotted call
       // with a literal AA would mark its keys rebound, turning correct code
-      // into a false positive — the costlier direction for a build error.
+      // into a false positive: the costlier direction for a build error.
       expect(
         check(`
           sub go()
@@ -487,9 +487,9 @@ describe('no-task-fanout', () => {
     it('yields one diagnostic for a site inside nested loops', () => {
       // The walk enters the body of every loop, so an inner call is reached
       // twice at an identical position (measured). This asserts the observable
-      // contract — one diagnostic per site — which is what a reader needs.
+      // contract (one diagnostic per site), which is what a reader needs.
       //
-      // It deliberately does NOT claim to cover the plugin's own dedup guard:
+      // It does not claim to cover the plugin's own dedup guard:
       // `diagnostics.register` collapses identical diagnostics too, so this
       // test passes with that guard removed. Verified by mutation rather than
       // assumed. The guard earns its place by not depending on undocumented
@@ -511,8 +511,8 @@ describe('no-task-fanout', () => {
   describe('what counts as a launch call', () => {
     it('flags a DOTTED launch call, so namespacing tasks.bs cannot silently disable the rule', () => {
       // `launchTask` is a free function today, so every call site is bare. If
-      // `source/utils/tasks.bs` is ever namespaced — an active convention here,
-      // 10 of 44 utils files — all 101 call sites become dotted in one commit.
+      // `source/utils/tasks.bs` is ever namespaced (an active convention among the
+      // utils files), all its call sites become dotted in one commit.
       // A bare-only match would then flag NOTHING, with the plugin still loading
       // and CI still green. `no-raw-run` keys on the `control` write, so it would
       // keep passing and only this bound would vanish.
@@ -648,7 +648,7 @@ describe('no-task-fanout', () => {
     it('errs toward reporting when two functions share the bare name', () => {
       // A namespaced function and a global one both answer to `loadOne` here;
       // the rule does not resolve which a call reaches, so either fanning out
-      // flags the call — whichever is declared last.
+      // flags the call, whichever order they are declared in.
       expect(
         check(`
           sub go()

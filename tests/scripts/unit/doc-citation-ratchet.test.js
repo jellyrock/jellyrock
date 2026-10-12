@@ -1,8 +1,8 @@
 // Tests for the line-number citation ratchet (scripts/lint/doc-citation-ratchet.js).
 //
 // The gate exists because a `file.bs:623` citation rots on ANY edit above line 623,
-// faster than a review or a freshness gate can catch — see
-// .claude/rules/derive-dont-duplicate.md. What the tests below actually pin is the
+// faster than a review or a freshness gate can catch (see
+// .claude/rules/derive-dont-duplicate.md). What the tests below actually pin is the
 // set of judgment calls the regex and the walk encode, because each one is a place a
 // naive implementation would either miss the problem or cry wolf:
 //   - fenced code blocks are transcripts, not citations (rewriting one would falsify it)
@@ -190,7 +190,7 @@ describe('doc-citation-ratchet — scope', () => {
     expect(res.stderr).toContain('.claude/skills/x/SKILL.md');
   });
 
-  // An AUDIT-LOG entry records what a run saw on a date — a historical measurement,
+  // An AUDIT-LOG entry records what a run saw on a date: a historical measurement,
   // which the rule's third clause explicitly allows.
   it('ignores append-only AUDIT-LOG.md records', () => {
     const r = makeRoot({ '.claude/skills/pr/AUDIT-LOG.md': 'Run saw `a.bs:1`.\n' });

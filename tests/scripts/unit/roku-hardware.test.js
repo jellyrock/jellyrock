@@ -1,10 +1,10 @@
 /**
- * The Roku hardware dataset and the parsers that derive it — see
+ * The Roku hardware dataset and the parsers that derive it. See
  * `scripts/generate/roku-hardware.js`.
  *
  * Two kinds of check, and they fail for different reasons. The INVARIANTS run against
  * the committed dataset with the same function the generator runs on every fetch, so
- * upstream cannot introduce a violation without failing the sync — including the one
+ * upstream cannot introduce a violation without failing the sync, including the one
  * assumption family-keying rests on, shown failing against a tampered copy. The CELL
  * NORMALIZERS pin every spelling Roku's table actually uses: the document glues numbers
  * onto names (`4K60fps`, `ARM11`) and carries footnote markers into data cells, both of
@@ -29,7 +29,7 @@ import {
 
 describe('the device dictionary invariants', () => {
   // These replace a test that asserted `new Set(Object.keys(TABLE)).size ===
-  // Object.keys(TABLE).length` — which can never fail, because object keys cannot
+  // Object.keys(TABLE).length`, which can never fail, because object keys cannot
   // repeat. Its stated purpose was to check the assumption family-keying rests on;
   // that claim is about Roku's published table, and only a check against the parsed
   // table can make it. `assertInvariants` is the same function the generator runs on
@@ -45,9 +45,10 @@ describe('the device dictionary invariants', () => {
   it('WOULD fail if a family ever carried two RAM sizes', () => {
     // The check that matters, shown failing. If Roku ships a 2 GB revision under an
     // existing family prefix, `familyOf` stops being a safe lookup and this is what
-    // says so — at sync time, loudly, instead of quietly mislabelling an arm.
-    // A JSON round-trip rather than `structuredClone`: the repo's ESLint config
-    // targets Node >=16, where it is not available.
+    // says so: at sync time, loudly, instead of quietly mislabeling an arm.
+    // A JSON round-trip rather than `structuredClone`: written when the repo had no
+    // `engines` field and ESLint's Node plugin assumed Node >=16, where it is not
+    // available.
     const tampered = JSON.parse(JSON.stringify(ROKU_HARDWARE));
     const [model, entry] = Object.entries(tampered.models).find(
       ([, e]) => tampered.families[e.family].models.length > 1,
@@ -93,7 +94,7 @@ describe('the spec cell normalizers', () => {
     expect(parseResolution('4K UHD, 60fps')).toEqual({ resolution: '4K', fps: 60, hdr: false });
     expect(parseResolution('3,840 x 2,160')).toEqual({ resolution: '4K', fps: null, hdr: false });
     expect(parseResolution('4K144fps, HDR')).toEqual({ resolution: '4K', fps: 144, hdr: true });
-    // The footnote digit glued to the frame rate — `parseInt` would read 603 fps.
+    // The footnote digit glued to the frame rate: `parseInt` would read 603 fps.
     expect(parseResolution('1920x1080, 60fps3***')).toEqual({
       resolution: '1080p',
       fps: 60,
@@ -102,8 +103,8 @@ describe('the spec cell normalizers', () => {
   });
 
   it('REFUSES a resolution it does not know, rather than nulling the device', () => {
-    // The safety property of the whole pipeline: upstream inventing a spelling — or
-    // shipping an 8K playback row, which does not exist today — fails the weekly sync
+    // The safety property of the whole pipeline: upstream inventing a spelling (or
+    // shipping an 8K playback row, which does not exist today) fails the weekly sync
     // instead of silently dropping a device into unknown-tier.
     expect(() => parseResolution('7680x4320')).toThrow(/unrecognized resolution/);
   });
@@ -136,7 +137,7 @@ describe('the spec cell normalizers', () => {
 
   it('keys a table by its column HEADERS, which is what stops a resolution reading as a model', () => {
     // `A000X`'s Max-UI-Resolution cell is literally `1920X1080`, which has the shape
-    // of a model number. A positional or shape-matching read takes it for one — that
+    // of a model number. A positional or shape-matching read takes it for one: that
     // mistake was made against this very table.
     const [table] = parseTables(
       [

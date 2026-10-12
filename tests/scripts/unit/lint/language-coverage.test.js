@@ -74,8 +74,8 @@ end function
 `;
 }
 
-// people.bs holds the OTHER localization table the script gates: PersonKind →
-// translation key, plus the set of kinds deliberately rendered blank.
+// people.bs holds the OTHER localization table the script gates: PersonKind to
+// translation key, plus the set of kinds rendered blank on purpose.
 function buildPeopleBs({
   personKinds = {},
   unlabelledKinds = [],
@@ -130,8 +130,8 @@ end function
 ${creditFn}`;
 }
 
-// The PersonKind defaults are deliberately MINIMAL — one enum value, declared blank,
-// needing no en_US key — so the language-table tests above are unaffected by the
+// The PersonKind defaults are minimal on purpose (one enum value, declared blank,
+// needing no en_US key), so the language-table tests above are unaffected by the
 // person table existing. Tests that exercise Check 4 pass their own.
 function setupTree({
   aliases = {},
@@ -210,7 +210,7 @@ describe('language-coverage', () => {
   it('exits 1 when a tier-1 base lacks its 639-2 alias coverage', () => {
     // sl is in tier 1, but the 639-2 variant slv is missing from aliases
     dir = setupTree({
-      aliases: { eng: 'en' }, // no slv → sl
+      aliases: { eng: 'en' }, // no slv to sl
       tier1: { en: 'translationKeys.LanguageEnglish', sl: 'translationKeys.LanguageSlovenian' },
       tier2: {},
       enUS: { LanguageEnglish: 'English', LanguageSlovenian: 'Slovenian' },
@@ -327,7 +327,7 @@ describe('language-coverage — PersonKind coverage', () => {
 
   it('unions the enum across fingerprints rather than trusting the newest', () => {
     // A value present only on an OLDER supported line still has to render: the app
-    // talks to 10.7 → 12.x simultaneously.
+    // talks to 10.7 through 12.x simultaneously.
     dir = setupTree({
       ...CLEAN_LANG,
       enUS: { LanguageEnglish: 'English', LabelPersonKindActor: 'Actor' },
@@ -468,7 +468,7 @@ describe('language-coverage — PersonKind coverage', () => {
 
   it('fails loudly when the credit-row table holds entries it cannot read', () => {
     // Shape drift must not read as "no credit rows to check". An entry authored in a
-    // form the parser does not know would otherwise disable this check silently —
+    // form the parser does not know would otherwise disable this check silently,
     // exactly how the table escaped the gate in the first place.
     dir = setupTree({
       ...CLEAN_LANG,
@@ -521,7 +521,7 @@ describe('language-coverage — PersonKind coverage', () => {
   });
 
   it('fails loudly when no fingerprint defines the enum, rather than passing silently', () => {
-    // A skip would be indistinguishable from full coverage — the precise failure mode
+    // A skip would be indistinguishable from full coverage: the precise failure mode
     // the whole check exists to prevent.
     dir = setupTree({
       ...CLEAN_LANG,

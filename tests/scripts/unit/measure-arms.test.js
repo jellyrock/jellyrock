@@ -16,11 +16,11 @@ const ok = (argv) => parseCalibrationArgs(['--server', 'http://192.0.2.10:8096',
 
 describe('ARMS', () => {
   it('turns ENABLE_RTA off in the plain arm, not just the component injection', () => {
-    // The finding this whole design rests on: `injectTestingFiles: false` does NOT skip
+    // The finding this whole design rests on: `injectTestingFiles: false` does not skip
     // RTA's `ENABLE_RTA=false` -> `true` staged-manifest rewrite (it sits outside that
-    // option's `if`, RokuDevice.js:71-76), and `#if` is evaluated on the DEVICE. So an
-    // arm that only drops the component still runs every `#if ENABLE_RTA` block and is
-    // not the build the recorded baselines were taken on.
+    // option's `if`, in `RokuDevice.createPackage()`), and `#if` is evaluated on the
+    // DEVICE. So an arm that only drops the component still runs every `#if ENABLE_RTA`
+    // block and is not the build the recorded baselines were taken on.
     expect(ARMS.plain.injectTestingFiles).toBe(false);
     expect(ARMS.plain.enableRta).toBe(false);
     expect(ARMS.rta.injectTestingFiles).toBe(true);
@@ -40,7 +40,7 @@ describe('parseCalibrationArgs', () => {
 
   it('REQUIRES --server, because the plain arm has no read to fall back on', () => {
     // Without a declaration the enclosure could only show the two brackets agreed with
-    // EACH OTHER — which a device parked on the wrong server the whole run satisfies.
+    // EACH OTHER, which a device parked on the wrong server the whole run satisfies.
     expect(() => parseCalibrationArgs([])).toThrow(CalibrationError);
     expect(() => parseCalibrationArgs([])).toThrow(/--server <url> is required/);
   });
@@ -214,7 +214,7 @@ describe('--label — keeping two calibration runs from pooling', () => {
 
   it('leaves the bare arm id when no label was given', () => {
     // `measure:compare` selects by arm label across the WHOLE ledger, so an unlabelled
-    // re-run merges into the previous one — the mixed-population failure this subsystem
+    // re-run merges into the previous one: the mixed-population failure this subsystem
     // refuses everywhere else, reachable through a default.
     expect(armLabel('rta', undefined)).toBe('rta');
     expect(ok([]).label).toBeUndefined();

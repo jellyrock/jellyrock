@@ -96,7 +96,7 @@ describe('planSeed', () => {
       sources: [web, tv],
       keymap: { LabelRoleAs: keymap.LabelRoleAs },
     });
-    // de "als" drops the placeholder — rejected, and tv has no mapping for it.
+    // de "als" drops the placeholder: rejected, and tv has no mapping for it.
     expect(p.fills.de?.LabelRoleAs).toBeUndefined();
     expect(p.rejections).toContainEqual({
       key: 'LabelRoleAs',

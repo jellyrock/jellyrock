@@ -88,7 +88,7 @@ describe('check-touched-related-files', () => {
     git(dir, 'add', '.');
     git(dir, 'commit', '--quiet', '-m', 'add');
     git(dir, 'branch', '-f', 'base', 'HEAD');
-    // Touch BOTH the source AND the doc — give each file a real diff.
+    // Touch BOTH the source AND the doc: give each file a real diff.
     writeFileSync(join(dir, 'source/foo.bs'), 'sub init()\n  m.x = 1\nend sub\n');
     writeFileSync(
       join(dir, 'docs/architecture/foo.md'),
@@ -126,7 +126,7 @@ describe('check-touched-related-files', () => {
     expect(stdout).not.toMatch(/Doc reminder/);
   });
 
-  // docs/dev/ is covered by this reminder but deliberately NOT by the
+  // docs/dev/ is covered by this reminder but, on purpose, not by the
   // 120-day CI gate, so the label is what tells the two apart.
   it('reminds on a dev guide and marks it informational', () => {
     dir = setupRepo();
