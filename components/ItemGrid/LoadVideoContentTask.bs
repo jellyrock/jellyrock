@@ -48,7 +48,7 @@ sub loadItems()
     '
     ' startingPoint alone no longer answers that on a per-version server: the item's own
     ' version can sit at 0 while an alternate is partway through, and which version resumes is
-    ' settled further down, after the metadata fetch — too late to un-queue an intro. So the
+    ' settled further down, after the metadata fetch, too late to un-queue an intro. So the
     ' caller passes hasVersionInProgress, read from the server's source order for free.
     ' jellyfin-web draws the same line (getIntros() bails on options.startPositionTicks), and
     ' keys it on the position actually being played, which is what this restores.
@@ -64,7 +64,7 @@ sub loadItems()
         ' Bypass the music video and treat it as an error message
         if lcase(preRoll.items[0].name) <> "rick roll'd"
           ' The item plays after its intro, so it goes directly after the slot the intro plays
-          ' in — appending it would play the rest of the queue first. Moving on to it reaches
+          ' in: appending it would play the rest of the queue first. Moving on to it reaches
           ' the same item, not a new one, so it keeps the start it was launched with
           ' (QueueManager.advanceTo consumes followsIntro).
           followingItem = queueManager.callFunc("getCurrentItem")
@@ -92,20 +92,20 @@ end sub
 '
 ' The imperative shell around versionResume.chooseResumeSource(): that function owns every
 ' rule and says what it still needs; this fetches it and asks again. Same division as
-' ItemDetails, so both entry points reach an identical answer — the split between them is
+' ItemDetails, so both entry points reach an identical answer. The split between them is
 ' what made the app name one version on the details screen and play another.
 '
 ' Reads ride apiPipeline rather than a fetch loop: the pipeline keeps as many requests on the
-' pool as it has slots, so N versions cost roughly one round trip instead of N. Each reply is
-' ~150 bytes against the item's ~17 KB, and nothing is fetched at all unless something is
-' already in progress — so an item nobody has started costs no requests on the playback path.
+' pool as it has slots, so N versions cost roughly one round trip instead of N. Each reply was
+' ~150 bytes against the item's ~17 KB (measured 2026-09-19), and nothing is fetched at all unless something is
+' already in progress, so an item nobody has started costs no requests on the playback path.
 ' When the source order cannot say which version was played last, one more request asks the
 ' server (fetchMostRecentVersionId).
 '
 ' @param {string} itemId - the item being played
 ' @param {object} meta - ItemMetaData() for it (its own UserData position comes from here)
 ' @param {object} mediaSources - its MediaSources, in server order
-' @return {object} { sourceId, ticks } — sourceId "" when no version is in progress
+' @return {object} { sourceId, ticks }: sourceId "" when no version is in progress
 function resolveResumeVersion(itemId as string, meta as object, mediaSources as object) as object
   ctx = {
     itemId: itemId,
@@ -128,8 +128,8 @@ function resolveResumeVersion(itemId as string, meta as object, mediaSources as 
     else if answer.needsMostRecent
       ctx.mostRecentId = fetchMostRecentVersionId(itemId, meta, mediaSources)
     else if answer.tiedIds.count() > 1
-      ' Equally far along, so quality decides — and that needs the device, which
-      ' versionResume deliberately knows nothing about.
+      ' Equally far along, so quality decides, and that needs the device, which
+      ' versionResume knows nothing about by design.
       ctx.deviceBestId = findBestVideoSourceAmongIds(mediaSources, answer.tiedIds)
       if not isValidAndNotEmpty(ctx.deviceBestId) then exit for
     else
@@ -137,7 +137,7 @@ function resolveResumeVersion(itemId as string, meta as object, mediaSources as 
     end if
   end for
 
-  ' A tie no device pick could settle — not reachable while tiedIds come from the item's own
+  ' A tie no device pick could settle: not reachable while tiedIds come from the item's own
   ' sources, but it must not be re-asked: no per-version answer, so the caller's own rule applies.
   return { sourceId: "", ticks: 0& }
 end function
@@ -146,14 +146,14 @@ end function
 '
 ' The resume query returns the version that owns the resume point, which is the answer the
 ' source order gives only from a primary (see versionResume.chooseResumeSource). Scoped to the
-' item's parent — its season, or the folder holding a movie — so the reply is that parent's
+' item's parent (its season, or the folder holding a movie), so the reply is that parent's
 ' in-progress items rather than the whole of Continue Watching, and lean, because only ids are
 ' read.
 '
 ' @param {string} itemId - the item being played
 ' @param {object} meta - ItemMetaData() for it
 ' @param {object} mediaSources - its MediaSources
-' @return {string} the version's source id, or "" when the server cannot say — itself an
+' @return {string} the version's source id, or "" when the server cannot say, itself an
 '                  answer, so the caller falls back to the order instead of asking again
 function fetchMostRecentVersionId(itemId as string, meta as object, mediaSources as object) as string
   if not isValidAndNotEmpty(meta.parentId) then return ""
@@ -165,7 +165,7 @@ end function
 ' fetchVersionPositions: Read each named version's own position into `positions`.
 '
 ' A version that does not answer is recorded as POSITION_UNREADABLE rather than left absent,
-' so the caller's next pass cannot ask for it again and loop — and so an unread position is
+' so the caller's next pass cannot ask for it again and loop, and so an unread position is
 ' never mistaken for "this version has no progress", which would silently restart the content.
 '
 ' @param {object} positions - sourceId -> ticks, filled in place
@@ -190,8 +190,8 @@ sub fetchVersionPositions(positions as object, sourceIds as object)
     result = apiPipelineNext(pipe)
   end while
 
-  ' Anything the pipeline never delivered (budget expiry) is still absent — pin it so the
-  ' decision is made on what IS known instead of waiting on a reply that is not coming.
+  ' Anything the pipeline never delivered (budget expiry) is still absent. Pin it so the
+  ' decision is made on what is known instead of waiting on a reply that is not coming.
   for each sourceId in sourceIds
     if not isValid(positions[sourceId]) then positions[sourceId] = versionResume.POSITION_UNREADABLE
   end for
@@ -224,7 +224,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   userSession = m.global.user
   userSettings = userSession.settings
 
-  ' Cache mediaSourcesData.mediaSources once — accessed frequently below
+  ' Cache mediaSourcesData.mediaSources once: accessed frequently below
   mediaSources = invalid
   if isValid(meta.mediaSourcesData) and isValidAndNotEmpty(meta.mediaSourcesData.mediaSources)
     mediaSources = meta.mediaSourcesData.mediaSources
@@ -235,13 +235,13 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   if isValid(currentItem) and isValid(currentItem.startingPoint)
     playbackPosition = currentItem.startingPoint
   end if
-  ' A place the caller named — a chapter, Play from the start, a position saved before a
-  ' reload — as opposed to a saved resume position (nodeHelpers.setExactStart).
+  ' A place the caller named (a chapter, Play from the start, a position saved before a
+  ' reload), as opposed to a saved resume position (nodeHelpers.setExactStart).
   startsAtExactPosition = isValid(currentItem) and isValid(currentItem.startingPointIsExact) and currentItem.startingPointIsExact
 
   ' Select a video source if no specific source was requested. On a per-version server this is
-  ' the ONE place that choice is made for every entry point that did not make it on screen —
-  ' quick play, casts, a queued item — because it is the only one that can read each version's
+  ' the one place that choice is made for every entry point that did not make it on screen
+  ' (quick play, casts, a queued item), because it is the only one that can read each version's
   ' own position. The details screen still decides for itself and arrives with an explicit id,
   ' which is honored untouched. An item that starts fresh (QueueManager.advanceTo /
   ' startCurrentFresh) is the exception: it resumes nothing, so position has no say in its version.
@@ -284,7 +284,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       audioStreamIdx = selectAudioStreamIndex(playedSource.MediaStreams, userSettings, userSession.config, meta.originalLanguage ?? "")
     else
       ' MediaStreams not available - keep existing behavior of using 0
-      ' This should never happen since ItemMetaData() just fetched metadata
+      ' This should never happen since ItemMetaData() fetched metadata above
       audioStreamIdx = 0
     end if
     m.log.debug("Audio stream auto-selected", "audioStreamIdx", audioStreamIdx)
@@ -295,11 +295,11 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' Early metadata extraction - MediaSources may not exist yet for Live TV
   if isValid(playedSource)
     ' Duration source priority for setting video.content.length (needed for seeking):
-    '   1. mediaSource.RunTimeTicks  — file's probed duration (authoritative when available)
-    '   2. Size × 8 / Bitrate        — actual file duration estimate (good for recordings
-    '                                   where the file differs from the scheduled runtime)
-    '   3. meta.runTimeTicks         — movie/episode metadata (full runtime; may not match
-    '                                   a partial recording)
+    '   1. mediaSource.RunTimeTicks: file's probed duration (authoritative when available)
+    '   2. Size × 8 / Bitrate:       actual file duration estimate (good for recordings
+    '                                where the file differs from the scheduled runtime)
+    '   3. meta.runTimeTicks:        movie/episode metadata (full runtime; may not match
+    '                                a partial recording)
     ' MPEG-TS files have no duration header so #1 is often missing; #2 is ideal because
     ' it reflects the actual recorded bytes, not the program's scheduled length.
     effectiveLengthSeconds = 0
@@ -361,9 +361,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   end if
 
   ' Set logo image using metadata (same logic as ItemDetails)
-  ' All OSD logo images are sized to imageSize.LOGO_OSD — the Poster node in OSD.xml enforces
-  ' this client-side via loadWidth/loadHeight with loadDisplayMode="noScale", so the API params and UI stay in sync.
-  osdLogoSize = imageSize.LOGO_OSD ' { width: 500, height: 300 } — BrightScript requires local var for namespace field access
+  ' All OSD logo images are sized to imageSize.LOGO_OSD. The OSD's videoLogo Poster enforces
+  ' this client-side via loadWidth/loadHeight (set in OSD.bs init()) with loadDisplayMode="noScale", so the API params and UI stay in sync.
+  osdLogoSize = imageSize.LOGO_OSD ' { width: 500, height: 300 }: BrightScript requires local var for namespace field access
   ' Check for logoImageTag first (movie/item logo)
   if isValidAndNotEmpty(meta.logoImageTag)
     video.logoImage = ImageURL(meta.id, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.logoImageTag })
@@ -371,10 +371,10 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     ' Series logo for episodes
     video.logoImage = ImageURL(meta.seriesId, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.parentLogoImageTag })
   else if videotype = "movie" and isValidAndNotEmpty(meta.primaryImageTag)
-    ' Movie with no logo — fall back to primary (poster) image
+    ' Movie with no logo: fall back to primary (poster) image
     video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
   else if videotype = "episode" or videotype = "recording"
-    ' Episode/recording with no series logo — fall back to series primary poster, then episode thumbnail
+    ' Episode/recording with no series logo: fall back to series primary poster, then episode thumbnail
     if isValidAndNotEmpty(meta.seriesPrimaryImageTag) and isValidAndNotEmpty(meta.seriesId)
       video.logoImage = ImageURL(meta.seriesId, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.seriesPrimaryImageTag })
     else if isValidAndNotEmpty(meta.primaryImageTag)
@@ -382,7 +382,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     end if
   else if videotype = "tvchannel"
     ' For live TV channels, prefer the currently-airing program's artwork over the channel icon.
-    ' Priority: program logo → program primary (poster) → channel icon (fallback).
+    ' Priority: program logo, then program primary (poster), then channel icon (fallback).
     currentProgram = meta.currentProgram
     if isValid(currentProgram)
       if isValidAndNotEmpty(currentProgram.logoImageTag)
@@ -526,7 +526,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     end if
   end if
 
-  ' All downstream code requires MediaSources[0] — fail fast if it's missing
+  ' All downstream code requires MediaSources[0]: fail fast if it's missing
   if not isValid(m.playbackInfo.MediaSources) or m.playbackInfo.MediaSources.Count() = 0 or not isValid(m.playbackInfo.MediaSources[0])
     video.errorMsg = "Error loading playback info: no valid media source returned"
     video.content = invalid
@@ -593,9 +593,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' fall back to the transcode if that fails.
   '
   ' Resolution guard: Only attempt the level override when the source resolution is within the
-  ' codec's hardware ceiling. Many encoders tag 1080p content with inflated levels (e.g. 5.1)
+  ' codec's hardware ceiling. Many encoders tag 1080p content with inflated levels (for example 5.1)
   ' even though the actual decode workload is within Roku's capability. But for resolutions
-  ' above the hardware limit (e.g. 4K h264), no level tolerance will help — skip the override.
+  ' above the hardware limit (for example 4K h264), no level tolerance will help: skip the override.
   ' Both height and width are checked to catch ultrawide or non-standard aspect ratios.
   if m.playbackInfo.MediaSources[0].MediaStreams.Count() > 0 and not isLive
     ' Find first video stream - MediaStreams[0] might be subtitle/audio
@@ -630,7 +630,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     m.log.info("Playback path: DIRECT PLAY", "finalUrl", video.content.url, "streamFormat", video.content.StreamFormat)
   else
     if not isValid(m.playbackInfo.MediaSources[0].TranscodingUrl)
-      ' Server did not provide a transcode URL — surface a message to the user via the task field
+      ' Server did not provide a transcode URL: surface a message to the user via the task field
       ' so VideoPlayerView shows one dialog (not two).
       m.log.error("Server did not provide a TranscodingUrl", "itemId", video.id)
       m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
@@ -649,7 +649,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
     video.content.url = transcodingUrl
     ' Jellyfin reports the transcode protocol via TranscodingSubProtocol ("hls" or "http").
-    ' Only set StreamFormat="hls" for HLS — Roku auto-detects progressive MP4 from the URL
+    ' Only set StreamFormat="hls" for HLS: Roku auto-detects progressive MP4 from the URL
     ' and the moov atom, and explicitly setting StreamFormat="mp4" breaks that detection.
     subProtocol = ""
     if isValid(m.playbackInfo.MediaSources[0].TranscodingSubProtocol)
@@ -801,7 +801,7 @@ end sub
 
 ' addAudioStreamsToVideo: Populate video.fullAudioData with the item's audio tracks.
 '
-' Sources from the original item metadata (meta.mediaSourcesData) — NOT from the
+' Sources from the original item metadata (meta.mediaSourcesData), not from the
 ' PlaybackInfo response. The /PlaybackInfo response can return a transcode-shaped
 ' MediaSource carrying only the chosen audio stream, which would shrink the OSD picker
 ' to a single entry (issue #500). The OSD picker must always list every original track
@@ -818,7 +818,7 @@ sub addAudioStreamsToVideo(video as object, meta as dynamic, mediaSourceId as dy
     if isValid(playedSource) then mediaStreams = playedSource.MediaStreams
   end if
 
-  ' Defensive fallback if metadata is unavailable (shouldn't happen — ItemMetaData ran above)
+  ' Defensive fallback if metadata is unavailable (shouldn't happen: ItemMetaData ran above)
   if not isValid(mediaStreams) and isValid(m.playbackInfo) and isValid(m.playbackInfo.MediaSources) and isValid(m.playbackInfo.MediaSources[0])
     mediaStreams = m.playbackInfo.MediaSources[0].MediaStreams
   end if

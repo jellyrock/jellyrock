@@ -37,7 +37,7 @@ sub init()
   m.isLoadingFavorites = false
   m.isLoadingFavoritePeople = false
 
-  ' Known type ordering and labels — used for skeleton creation and data grouping.
+  ' Known type ordering and labels, used for skeleton creation and data grouping.
   ' Ordering follows itemTypeOrder.FAVORITES (web-client section sort order).
   m.typeArray = itemTypeOrder.FAVORITES
   m.typeLabels = {
@@ -179,7 +179,7 @@ end sub
 
 ' After either load: the backdrop follows the focused tile, and texture management is active
 ' so off-screen cells unload. Also after a failure, which may be the only answer this list gets.
-' Recalculate the buffer range first — rows were added after the initial range calculation.
+' Recalculate the buffer range first: rows may have been added or removed since the first range was set.
 sub finishLoad()
   updateBackdropForFocusedItem()
   updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
@@ -225,13 +225,13 @@ sub applyItems(types as object, itemData as dynamic, sizesChanged as boolean)
     result = findRowBySectionId(itemType)
 
     if bucket.count() = 0
-      ' No items — remove row if it exists (skeleton or populated)
+      ' No items: remove row if it exists (skeleton or populated)
       if isValid(result)
         m.top.content.removeChildIndex(result.index)
         sizesChanged = true
       end if
     else if isValid(result)
-      ' Row exists — swap children in place (append new before removing old)
+      ' Row exists: swap children in place (append new before removing old)
       row = result.row
       oldCount = row.getChildCount()
 
@@ -243,7 +243,7 @@ sub applyItems(types as object, itemData as dynamic, sizesChanged as boolean)
         row.removeChildIndex(i)
       end for
     else
-      ' Row was previously removed but now has data — re-insert at correct position
+      ' Row was previously removed but now has data: re-insert at correct position
       row = CreateObject("roSGNode", "HomeRow")
       row.title = m.typeLabels[itemType] ?? itemType
       row.sectionId = itemType
@@ -374,9 +374,9 @@ end function
 
 ' Returns the appropriate slot size for a Jellyfin item type.
 ' Follows the same logic as SearchRow.bs getSlotSizeForType.
-' WIDE  (16:9) — Episode, Video, MusicVideo, PhotoAlbum, Photo
-' SQUARE (1:1) — Music types, Playlist, Program, TvChannel, Recording
-' PORTRAIT (2:3) — all others (Movie, Series, Person, BoxSet, etc.)
+' WIDE  (16:9): Episode, Video, MusicVideo, PhotoAlbum, Photo
+' SQUARE (1:1): Music types, Playlist, Program, TvChannel, Recording
+' PORTRAIT (2:3): all others (Movie, Series, Person, BoxSet, etc.)
 function getSlotSizeForType(itemType as string) as object
   if itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "PhotoAlbum" or itemType = "Photo"
     return rowSlotSize.WIDE
@@ -447,7 +447,7 @@ sub itemSelected()
   if not isValid(item) then return
 
   ' OK on a "couldn't load" tile loads Favorites again, the same reload a return to Home runs:
-  ' each load not still running starts again (loadFavorites). Nothing retries on its own — the
+  ' each load not still running starts again (loadFavorites). Nothing retries on its own: the
   ' viewer asks (decision `home-row-failure-tile`).
   if skeleton.isFailedPlaceholder(item)
     loadFavorites()
@@ -484,7 +484,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       itemToPlay = getItemAtIndices(m.top.rowItemFocused)
       if isValid(itemToPlay) and not skeleton.isPlaceholder(itemToPlay)
         m.top.quickPlayNode = itemToPlay
-        ' Clear immediately — same pattern as selectedItem. Prevents stale
+        ' Clear immediately, the same pattern as selectedItem. Prevents stale
         ' value from re-firing when the screen is restored after playback.
         m.top.quickPlayNode = invalid
       end if

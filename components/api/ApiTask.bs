@@ -10,12 +10,12 @@ end sub
 
 ' Continuous-server event loop (Architecture C).
 ' Waits for request field writes, executes HTTP via roku-requests, writes response.
-' Never exits — lives for the lifetime of the app alongside the global pool.
+' Never exits: it lives for the lifetime of the app alongside the global pool.
 sub runApiLoop()
   port = CreateObject("roMessagePort")
   m.top.observeField("request", port)
   ' Signal that our observer is registered. The ApiQueueTask coordinator waits
-  ' for all pool slots to be ready before dispatching — without this, the
+  ' for all pool slots to be ready before dispatching. Without this, the
   ' coordinator could write to our request field before we're listening,
   ' causing a permanently dead slot.
   m.top.isReady = true
@@ -35,7 +35,7 @@ sub runApiLoop()
 end sub
 
 ' Executes a single HTTP request via the shared executeHttpRequest() helper and shapes
-' the roku-requests result into the pool's response AA (invalid URL → an error AA so the
+' the roku-requests result into the pool's response AA (an invalid URL becomes an error AA so the
 ' waiting orchestrator still unblocks). Auth/timeout/Content-Type live in the helper.
 '
 ' The body is then held to the shape the request declared (apiResponse.enforceShape): a list
@@ -63,8 +63,8 @@ function executeRequest(req as object) as object
   }
   bodyType = type(r.json)
   res = apiResponse.enforceShape(req, res)
-  ' Stock Jellyfin answers every list endpoint with a bare array, so anything else — a wrapper
-  ' read through, or a body rejected — is a server worth knowing about.
+  ' Stock Jellyfin answers every list endpoint with a bare array, so anything else (a wrapper
+  ' read through, or a body rejected) is a server worth knowing about.
   if r.ok and bodyType <> "roArray" and apiResponse.expectsList(req)
     m.log.warn("list endpoint answered with a non-array body", req.requestId, "body", bodyType, "accepted", res.ok)
   end if

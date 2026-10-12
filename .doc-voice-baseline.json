@@ -249,50 +249,6 @@
     "latin-abbrev": 1,
     "prose-arrow": 2
   },
-  "components/ItemGrid/BaseGridView.bs": {
-    "caps-emphasis": 4,
-    "em-dash": 48,
-    "filler": 2,
-    "latin-abbrev": 4,
-    "prose-arrow": 4
-  },
-  "components/ItemGrid/BaseGridView.xml": {
-    "caps-emphasis": 1,
-    "em-dash": 5,
-    "filler": 1
-  },
-  "components/ItemGrid/GridItem.bs": {
-    "caps-emphasis": 2,
-    "em-dash": 35,
-    "filler": 2,
-    "latin-abbrev": 1,
-    "prose-arrow": 7
-  },
-  "components/ItemGrid/GridItem.xml": {
-    "em-dash": 1
-  },
-  "components/ItemGrid/ItemGridOptions.bs": {
-    "em-dash": 1
-  },
-  "components/ItemGrid/ItemGridOptions.xml": {
-    "em-dash": 1
-  },
-  "components/ItemGrid/LoadItemsTask2.bs": {
-    "caps-emphasis": 3,
-    "em-dash": 31,
-    "filler": 3,
-    "latin-abbrev": 1
-  },
-  "components/ItemGrid/LoadItemsTask2.xml": {
-    "filler": 1
-  },
-  "components/ItemGrid/LoadVideoContentTask.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 30,
-    "filler": 2,
-    "latin-abbrev": 2,
-    "prose-arrow": 2
-  },
   "components/JRGroup.bs": {
     "em-dash": 2
   },
@@ -329,35 +285,6 @@
     "caps-emphasis": 1,
     "em-dash": 7,
     "filler": 1
-  },
-  "components/api/ApiQueueTask.bs": {
-    "em-dash": 16,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 2
-  },
-  "components/api/ApiQueueTask.xml": {
-    "em-dash": 4
-  },
-  "components/api/ApiResultNode.xml": {
-    "em-dash": 2,
-    "prose-arrow": 2
-  },
-  "components/api/ApiTask.bs": {
-    "em-dash": 4,
-    "prose-arrow": 1
-  },
-  "components/api/ApiTask.xml": {
-    "em-dash": 2
-  },
-  "components/api/SideEffectTask.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 4,
-    "filler": 1
-  },
-  "components/api/SideEffectTask.xml": {
-    "caps-emphasis": 1,
-    "em-dash": 4
   },
   "components/auth/AuthManager.bs": {
     "em-dash": 5
@@ -417,58 +344,6 @@
   "components/data/jellyfin/JellyfinUserSettings.xml": {
     "caps-emphasis": 3
   },
-  "components/dialogs/JRDialog.bs": {
-    "caps-emphasis": 3,
-    "em-dash": 22,
-    "filler": 3,
-    "latin-abbrev": 1
-  },
-  "components/dialogs/JRDialog.xml": {
-    "caps-emphasis": 2,
-    "em-dash": 5
-  },
-  "components/dialogs/JRDialogPanel.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 3
-  },
-  "components/dialogs/JRDialogPanel.xml": {
-    "caps-emphasis": 1,
-    "em-dash": 2
-  },
-  "components/dialogs/JRKeyboardDialog.bs": {
-    "em-dash": 1
-  },
-  "components/dialogs/JRKeyboardDialog.xml": {
-    "em-dash": 2
-  },
-  "components/dialogs/JRListDialog.bs": {
-    "caps-emphasis": 3,
-    "em-dash": 18,
-    "filler": 2,
-    "latin-abbrev": 1
-  },
-  "components/dialogs/JRListDialog.xml": {
-    "caps-emphasis": 1,
-    "em-dash": 4,
-    "filler": 5
-  },
-  "components/dialogs/JRListDialogRow.bs": {
-    "caps-emphasis": 2,
-    "em-dash": 6
-  },
-  "components/dialogs/JRListDialogRow.xml": {
-    "caps-emphasis": 2,
-    "em-dash": 5
-  },
-  "components/dialogs/QuickConnectDialog.bs": {
-    "em-dash": 13,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
-  "components/dialogs/QuickConnectDialog.xml": {
-    "caps-emphasis": 1,
-    "em-dash": 9
-  },
   "components/extras/ExtrasRowList.bs": {
     "caps-emphasis": 1,
     "em-dash": 26,
@@ -485,39 +360,6 @@
   },
   "components/extras/LoadExtrasRowsTask.xml": {
     "em-dash": 2
-  },
-  "components/home/FavoritesRows.bs": {
-    "em-dash": 10
-  },
-  "components/home/Home.bs": {
-    "caps-emphasis": 3,
-    "em-dash": 31,
-    "filler": 2,
-    "latin-abbrev": 2,
-    "prose-arrow": 1
-  },
-  "components/home/HomeRows.bs": {
-    "caps-emphasis": 9,
-    "em-dash": 62,
-    "filler": 8,
-    "latin-abbrev": 2,
-    "prose-arrow": 3
-  },
-  "components/home/LoadItemsTask.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 8,
-    "filler": 1
-  },
-  "components/home/LoadItemsTask.xml": {
-    "filler": 1
-  },
-  "components/home/LoadLatestRowsTask.bs": {
-    "caps-emphasis": 3,
-    "em-dash": 14,
-    "filler": 2
-  },
-  "components/home/LoadLatestRowsTask.xml": {
-    "em-dash": 1
   },
   "components/keyboards/AlphaKeyboard.bs": {
     "em-dash": 1
@@ -640,124 +482,6 @@
   },
   "components/testing/TaskRelaunchProbeTask.xml": {
     "em-dash": 1
-  },
-  "components/ui/Gradient.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 4,
-    "filler": 1,
-    "prose-arrow": 3
-  },
-  "components/ui/Gradient.xml": {
-    "em-dash": 1
-  },
-  "components/ui/button/IconButton.bs": {
-    "caps-emphasis": 2,
-    "em-dash": 3
-  },
-  "components/ui/button/IconButton.xml": {
-    "em-dash": 1
-  },
-  "components/ui/button/JROverhangIcon.bs": {
-    "em-dash": 1
-  },
-  "components/ui/button/ResumeButton.bs": {
-    "em-dash": 3
-  },
-  "components/ui/button/TextButton.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 22,
-    "filler": 7
-  },
-  "components/ui/button/TextButton.xml": {
-    "em-dash": 7,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
-  "components/ui/buttongroup/JRButtonGroup.bs": {
-    "em-dash": 1,
-    "latin-abbrev": 1
-  },
-  "components/ui/dropdown/JRDropdown.bs": {
-    "em-dash": 7,
-    "latin-abbrev": 1
-  },
-  "components/ui/dropdown/JRDropdownItem.bs": {
-    "em-dash": 1
-  },
-  "components/ui/dropdown/TrackDropdown.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 15,
-    "filler": 1
-  },
-  "components/ui/dropdown/TrackDropdown.xml": {
-    "caps-emphasis": 1,
-    "em-dash": 2
-  },
-  "components/ui/dropdown/TrackDropdownRow.bs": {
-    "em-dash": 1
-  },
-  "components/ui/label/FocusableOverview.bs": {
-    "em-dash": 1
-  },
-  "components/ui/label/JRLabel.bs": {
-    "em-dash": 1
-  },
-  "components/ui/label/JRScrollingLabel.bs": {
-    "em-dash": 1
-  },
-  "components/ui/labellist/JRLabelList.bs": {
-    "em-dash": 2
-  },
-  "components/ui/placeholder/JRPlaceholder.bs": {
-    "prose-arrow": 2
-  },
-  "components/ui/placeholder/JRPlaceholder.xml": {
-    "em-dash": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 3
-  },
-  "components/ui/poster/JRPoster.bs": {
-    "em-dash": 4
-  },
-  "components/ui/poster/JRPoster.xml": {
-    "caps-emphasis": 2,
-    "em-dash": 3,
-    "filler": 1
-  },
-  "components/ui/progress/ProgressPill.xml": {
-    "em-dash": 1
-  },
-  "components/ui/rowitem/JRRowItem.bs": {
-    "caps-emphasis": 4,
-    "em-dash": 44,
-    "filler": 3,
-    "latin-abbrev": 7,
-    "prose-arrow": 9
-  },
-  "components/ui/rowitem/JRRowItem.xml": {
-    "em-dash": 3,
-    "latin-abbrev": 2
-  },
-  "components/ui/rowlist/JRRowList.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 12,
-    "latin-abbrev": 1
-  },
-  "components/ui/tabbar/JRTab.bs": {
-    "em-dash": 4
-  },
-  "components/ui/tabbar/JRTabBar.bs": {
-    "em-dash": 9,
-    "latin-abbrev": 3
-  },
-  "components/ui/tabbar/JRTabBar.xml": {
-    "latin-abbrev": 2
-  },
-  "components/ui/timegrid/JRTimeGrid.bs": {
-    "em-dash": 1
-  },
-  "components/ui/toast/Toast.bs": {
-    "em-dash": 4
   },
   "docs/adr/0001-triage-opus-inline-investigation.md": {
     "prose-arrow": 1

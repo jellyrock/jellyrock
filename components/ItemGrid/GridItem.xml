@@ -4,7 +4,7 @@
     <JRPlaceholder id="placeholder" translation="[0,22]" width="264" height="396" />
     <!--
       genreBackdrop / genreLabel: action-tile treatment for "View All [Genre]" items.
-      These tiles aren't media — they're navigation buttons that intentionally have no image,
+      These tiles aren't media: they're navigation buttons that intentionally have no image,
       so they get a themed backdrop + in-cell label instead of going through JRPlaceholder.
       Hidden by default; toggled visible only in the Genre branch of renderItem().
       Used when this component backs the genre RowList (genreList in BaseGridView).

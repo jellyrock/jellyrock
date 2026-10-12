@@ -47,7 +47,7 @@ end sub
 ' (border + background) mirrors JRDropdownItem's button pattern. repeatCount flips
 ' to -1 when focused so long labels marquee; 0 otherwise keeps them static.
 '
-' Label color is driven by isSelected ALONE — selected rows render dim (colorText
+' Label color is driven by isSelected alone: selected rows render dim (colorText
 ' Secondary) regardless of focus state. The focus border + filled background
 ' communicate "you're hovering this row"; the dim text communicates "this is your
 ' current pick". Both signals coexist so the user can distinguish "focused on my

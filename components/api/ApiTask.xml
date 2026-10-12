@@ -7,7 +7,7 @@
     <!--
       Set to true by runApiLoop() immediately after registering the request
       observer. The ApiQueueTask coordinator waits for all pool slots to be
-      ready before it starts dispatching — this prevents the startup race
+      ready before it starts dispatching. This prevents the startup race
       where a request field write arrives before the observer is registered.
     -->
     <field id="isReady" type="boolean" value="false" />
@@ -15,8 +15,8 @@
       No `quit` field here, on purpose. The coordinator stops a request whose caller has gone
       by ADDING `quit` = true to this node (apiSlotQuit in apiPool.bs), and removes it before
       the slot's next request (apiSlotClearQuit). roku-requests reads `m.top.quit` on every
-      pass of its wait, for every request in the app, and a declared field costs about twice
-      as much to read as a missing one — so declaring it would slow every request for the
+      pass of its wait, for every request in the app, and a declared field cost about twice
+      as much to read as a missing one (measured 2026-09-25), so declaring it would slow every request for the
       sake of the rare one that is stopped.
 
       The cancel works only while executeHttpRequest passes no `retryCount`. roku-requests

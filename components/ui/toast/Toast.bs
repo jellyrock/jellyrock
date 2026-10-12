@@ -1,6 +1,6 @@
 import "pkg:/source/utils/misc.bs"
 
-' Layout constants — padding synced to TextButton (30px)
+' Layout constants: padding synced to TextButton (30px)
 const TOAST_PADDING = 30
 const TOAST_ICON_SIZE = 32
 const TOAST_ICON_GAP = 12
@@ -66,7 +66,7 @@ sub onShouldShow()
   m.top.visible = true
   m.container.opacity = 0
 
-  ' Size and position — if already rendered, do it now; otherwise wait for onRenderComplete
+  ' Size and position: if already rendered, do it now; otherwise wait for onRenderComplete
   if m.top.renderTracking = "full"
     sizeAndPosition()
   end if
@@ -119,11 +119,11 @@ sub sizeAndPosition()
   m.toastBackground.width = toastWidth
   m.toastBackground.height = toastHeight
 
-  ' Position icon — vertically centered
+  ' Position icon, vertically centered
   iconY = (toastHeight - TOAST_ICON_SIZE) / 2
   m.toastIcon.translation = [TOAST_PADDING, iconY]
 
-  ' Position label — after icon + gap, vertically centered
+  ' Position label after icon + gap, vertically centered
   labelX = TOAST_PADDING + TOAST_ICON_SIZE + TOAST_ICON_GAP
   labelWidth = toastWidth - labelX - TOAST_PADDING
   m.toastMessage.width = labelWidth

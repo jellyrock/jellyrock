@@ -11,7 +11,7 @@ import "pkg:/source/utils/misc.bs"
 ' wraps to two lines, a message of any length, or a button row whose width
 ' depends on the translation.
 '
-' The flow itself — the order of the blocks and the gaps between them — lives in
+' The flow itself (the order of the blocks and the gaps between them) lives in
 ' source/utils/dialogLayout.bs, shared with JRListDialog and OverviewDialog and
 ' unit-tested there. What stays here is what is specific to THIS dialog: a panel
 ' that grows to fit its button row, and the row that made it grow.
@@ -40,7 +40,7 @@ sub init()
   m.subheadingText = m.top.findNode("subheadingText")
   m.messageText = m.top.findNode("messageText")
   m.panelWidth = PANEL_WIDTH
-  ' Layout depends on the rendered text heights — recompute when each settles
+  ' Layout depends on the rendered text heights: recompute when each settles
   m.subheadingText.enableRenderTracking = true
   m.subheadingText.observeField("renderTracking", "onSubheadingRendered")
   m.messageText.enableRenderTracking = true
@@ -48,8 +48,8 @@ sub init()
 
   m.buttonRow = m.top.findNode("buttonRow")
   ' Button sizing is observed per-button via TextButton's `isReady` (see
-  ' onButtonsChanged), NOT via renderTracking. renderTracking reports render
-  ' VISIBILITY, so it fires once on none -> full and never again — it cannot see
+  ' onButtonsChanged), not via renderTracking. renderTracking reports render
+  ' VISIBILITY, so it fires once on none -> full and never again: it cannot see
   ' the resize our own applyButtonLayout triggers when it switches the row to
   ' stacked, which left the stacked row positioned from stale measurements.
 
@@ -83,9 +83,11 @@ end sub
 ' SET THE TEXT FIELDS BEFORE PRESENTING, never after. `renderTracking` fires on
 ' the none -> full transition and never again (the same property that made the
 ' button row use TextButton's `isReady` instead), so once the dialog has rendered
-' no later text change re-runs applyLayout — the new text draws on top of the old
-' layout. True of `title` and `message` too; the helpers in source/utils/dialogs.bs
-' set every field before presentOverlayDialog for exactly this reason.
+' no later text change re-runs applyLayout, and the new text draws on top of the
+' old layout. True of `title` and `message` too; the helpers in
+' source/utils/dialogs.bs set every field before presentOverlayDialog for exactly
+' this reason. The one exception is a one-line field whose height cannot change:
+' PlayerHostView rewrites the still-watching countdown subheading every second.
 sub onSubheadingChanged()
   m.subheadingText.text = m.top.subheading
   ' renderTracking fires once the new text lays out; layout() runs then
@@ -136,19 +138,19 @@ end sub
 ' Screen-reader announcement, driven by the focus event itself.
 '
 ' The platform announces the focused button the moment focus lands, and app
-' speech and platform speech interrupt each other rather than queueing — so we
+' speech and platform speech interrupt each other rather than queueing, so we
 ' have to speak second to be the one that survives. The focus change IS that
 ' moment, so reacting to it needs no guess about timing (an earlier version used
 ' a tuned delay; the value was a guess that would rot on different hardware).
 '
 ' First focus = the dialog opening: announce the whole thing, folding in the
 ' button so it is one utterance in the built-in order. Later focus changes
-' announce just the button the user moved to — nothing else has changed.
+' announce only the button the user moved to: nothing else has changed.
 sub onButtonFocusChanged()
   focused = m.buttonRow.focusedChild
   if not isValid(focused) then return
 
-  ' The opening announcement is the timer's job — it has to land after the
+  ' The opening announcement is the timer's job: it has to land after the
   ' platform's own. Starting the timer here (rather than when the buttons are
   ' built) means it is anchored to focus actually landing.
   if not m.hasNarrated
@@ -165,7 +167,7 @@ end sub
 sub onOpeningAnnouncementDue()
   ' FAILSAFE for the layout cover, riding a timer that already exists and already
   ' means "this dialog has been open for 0.15s". A dialog that never completes a
-  ' layout would otherwise stay covered — i.e. invisible while still holding the
+  ' layout would otherwise stay covered, that is, invisible while still holding the
   ' remote. Uncovering it here means the worst case is the pre-existing broken
   ' paint, not a black screen. See dialogReveal.bs.
   revealDialog(m.top)
@@ -177,7 +179,7 @@ sub onOpeningAnnouncementDue()
   if isValid(focused) then focusedText = toString(focused.text)
 
   ' The subheading is part of the BODY, not a second title, so it is joined into
-  ' the message rather than passed as its own block — the same shape
+  ' the message rather than passed as its own block, the same shape
   ' OverviewDialog uses for its tagline.
   body = []
   if isValidAndNotEmpty(m.top.subheading) then body.push(m.top.subheading)
@@ -189,14 +191,14 @@ end sub
 ' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
 '
 ' The dialog is hidden until this returns, so there is no renderTracking to wait
-' on — and none is needed, because localBoundingRect() answers while hidden. See
+' on, and none is needed, because localBoundingRect() answers while hidden. See
 ' dialogReveal.bs.
 sub settleLayout()
   applyLayout()
 end sub
 
-' A button finished sizing itself. Re-run the whole layout, not just the
-' centring: the panel's width and height and the row's position are all derived
+' A button finished sizing itself. Re-run the whole layout, not only the
+' centering: the panel's width and height and the row's position are all derived
 ' from the buttons' real measurements. Laying out once from an estimate left the
 ' bottom padding short, and left a stacked row positioned off the panel.
 sub onButtonReady()
@@ -218,7 +220,7 @@ sub applyLayout()
   wanted = PANEL_WIDTH
   if rowWidth + (PANEL_PADDING * 2) > wanted then wanted = rowWidth + (PANEL_PADDING * 2)
   ' PANEL_WIDTH is on the 6px scale so its vertical edges land on the 720p grid,
-  ' but a GROWN width is derived from a measured button row and lands anywhere —
+  ' but a GROWN width is derived from a measured button row and lands anywhere,
   ' so the crispness that constant buys survives only if the growth is snapped
   ' too. Before the max check, so the clamp still wins (PANEL_MAX_WIDTH is on
   ' the scale itself).
@@ -243,14 +245,14 @@ sub applyLayout()
   subheadingHeight = 0
   if m.top.subheading.len() > 0
     subheadingHeight = m.subheadingText.localBoundingRect().height
-    ' Not rendered yet — renderTracking re-runs layout() once it settles
+    ' Not rendered yet: renderTracking re-runs layout() once it settles
     if subheadingHeight = 0 then return
   end if
 
   textHeight = 0
   if m.top.message.len() > 0
     textHeight = m.messageText.localBoundingRect().height
-    ' Not rendered yet — renderTracking re-runs layout() once it settles
+    ' Not rendered yet: renderTracking re-runs layout() once it settles
     if textHeight = 0 then return
   end if
 
@@ -264,10 +266,10 @@ sub applyLayout()
 
   ' --- ceiling ---------------------------------------------------------------
   ' Never exceed the screen. Reaching this needs ~600 characters of message,
-  ' which means the caller wants showInfoDialog, not a confirm — so say so
+  ' which means the caller wants showInfoDialog, not a confirm, so say so
   ' rather than silently swallowing the text.
   '
-  ' `body.height` is what the flow could actually give us, which is NOT what we
+  ' `body.height` is what the flow could actually give us, which is not what we
   ' asked for when it overflowed. Truncate to that, rather than to a figure
   ' re-derived from PANEL_MAX_HEIGHT here: the panel now comes back already
   ' clamped, so panel.height - PANEL_MAX_HEIGHT is zero and this branch would
@@ -282,18 +284,18 @@ sub applyLayout()
     if m.messageText.maxLines <> keepLines
       m.log.warn("JRDialog message too long for a dialog; truncating to", keepLines, "lines - use showInfoDialog for long-form text")
 
-      ' PLACE THE PANEL BEFORE RETURNING. The clamped layout is already valid —
-      ' it is what the flow could give us — so writing it here means the dialog
-      ' is positioned whether or not anything re-enters, and a later pass simply
+      ' PLACE THE PANEL BEFORE RETURNING. The clamped layout is already valid
+      ' (it is what the flow could give us), so writing it here means the dialog
+      ' is positioned whether or not anything re-enters, and a later pass
       ' refines it.
       '
       ' The old shape returned first and relied on the truncation re-running
-      ' layout(). It does re-run today, but NOT by the route the comment claimed:
+      ' layout(). It does re-run today, but not by the route the comment claimed:
       ' `renderTracking` reports render VISIBILITY, so it fires once on
       ' none -> full and never again (tech-debt
       ' jrdialog-no-relayout-on-post-mount-change) and a maxLines change does not
       ' bring it back. What actually re-enters is a TextButton's `isReady`, which
-      ' lands after this only because both helpers in source/utils/dialogs.bs set
+      ' lands after this only because the helpers in source/utils/dialogs.bs set
       ' `buttons` AFTER `message`. That is an ordering accident, not a mechanism,
       ' and it is one helper edit away from leaving the panel unplaced.
       m.chrome.layout = layout
@@ -303,7 +305,7 @@ sub applyLayout()
 
     ' Already capped at exactly this many lines and STILL over. `lineHeight` is
     ' an ESTIMATE (fontSizeMedium * 1.25), so a font whose real line box is
-    ' taller re-derives the same cap forever — and a title tall enough to blow
+    ' taller re-derives the same cap forever, and a title tall enough to blow
     ' the ceiling on its own leaves body.height at 0, which pins keepLines at 1
     ' whatever the message says. Returning again would be the quiet failure:
     ' `m.chrome.layout` never gets written, so the dialog draws with unpositioned
@@ -368,8 +370,8 @@ function buttonRowHeight() as integer
   return dialogButtonFallbackHeight(m.global.constants.fontSizeMedium)
 end function
 
-' Centre the row on the PANEL, not the screen — they only coincided while the
-' panel was a fixed width centred on screen.
+' Center the row on the PANEL, not the screen: they only coincided while the
+' panel was a fixed width centered on screen.
 sub centerButtonRow()
   if not isValid(m.buttonRowY) then return
   rect = m.buttonRow.localBoundingRect()
@@ -386,7 +388,7 @@ sub focusButton(index as integer)
   m.buttonNodes[index].setFocus(true)
 end sub
 
-' Step button focus, WRAPPING at the ends to match JRButtonGroup — the app's other
+' Step button focus, WRAPPING at the ends to match JRButtonGroup: the app's other
 ' horizontal button row wraps, so a dialog that dead-ends feels broken.
 '
 ' Narration of the newly focused button is handled by the focusedChild observer,
@@ -412,12 +414,12 @@ sub resolveDialog(index as integer, externallyCancelled = false as boolean)
   closeDialog()
 end sub
 
-' Cancel this dialog from OUTSIDE — see cancelOpenDialog() in source/utils/dialogs.bs.
+' Cancel this dialog from OUTSIDE: see cancelOpenDialog() in source/utils/dialogs.bs.
 ' Routed through resolveDialog so the once-only guard and the standard cancelled
 ' result both apply: a third party clearing the screen must be indistinguishable
 ' from the user pressing Back, or the owner waiting on the result is stranded.
 '
-' Indistinguishable in what it DELIVERS, not in where it came from — the result
+' Indistinguishable in what it DELIVERS, not in where it came from: the result
 ' also carries externallyCancelled, so an owner whose handler ACTS can decline to
 ' act on a close the user did not make. Everyone else reads `cancelled` and is
 ' unaffected. See source/utils/dialogResult.bs.

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- JRListDialog: the JellyRock modal for choosing one item from a longer list
-     (audio tracks, subtitles, video sources — anything past JRDialog's 3-button
+     (audio tracks, subtitles, video sources: anything past JRDialog's 3-button
      cap). Chrome comes from JRDialogPanel, so this component owns only the list.
 
-     There is no Cancel button, deliberately: the rows are the only focusable
+     There is no Cancel button, on purpose: the rows are the only focusable
      thing in it, and Back is how a Roku dialog is dismissed. The list wraps in
      both directions, which is what makes a thirty-track list cheap to navigate
      with a remote:
@@ -30,14 +30,14 @@
       <ContentNode id="content" role="content" />
     </MarkupList>
 
-    <!-- Delays ONLY the opening announcement; see narration.OPENING_DELAY in
+    <!-- Delays only the opening announcement; see narration.OPENING_DELAY in
          source/utils/dialogNarration.bs. -->
     <Timer id="narrationTimer" repeat="false" />
 
     <!-- Measures a row label so `sizeToContent` can derive a panel width. Same
          component the row itself uses, so it carries the same font; no width is
          set on it, so localBoundingRect() reports the text's NATURAL width.
-         Hidden, which does not stop it measuring — see source/utils/dialogReveal.bs
+         Hidden, which does not stop it measuring: see source/utils/dialogReveal.bs
          for the hardware-verified reason font metrics answer while invisible. -->
     <LabelPrimaryMedium id="widthProbe" visible="false" />
   </children>
@@ -45,10 +45,10 @@
     <!-- Array of option label strings. Assigning this REBUILDS the rows, so it
          is the last field a caller sets. -->
     <field id="items" type="array" onChange="onItemsChanged" />
-    <!-- Optional leading icon URIs, positionally paired with `items`. Deliberately
-         a parallel array with no onChange: `items` is already the build trigger,
-         so set this BEFORE it — the same ordering defaultIndex and selectedIndex
-         already rely on. A shorter array (or none) simply leaves later rows without
+    <!-- Optional leading icon URIs, positionally paired with `items`. It is
+         a parallel array with no onChange on purpose: `items` is already the build trigger,
+         so set this BEFORE it, the same ordering defaultIndex and selectedIndex
+         already rely on. A shorter array (or none) leaves later rows without
          an icon, so a caller can decorate some rows and not others. -->
     <field id="icons" type="array" />
     <field id="title" type="string" onChange="onTitleChanged" />
@@ -70,10 +70,10 @@
     <field id="anchor" type="assocarray" />
     <!-- Which row to FOCUS when the dialog opens. Falls back to 0. -->
     <field id="defaultIndex" type="integer" value="0" />
-    <!-- Which option is genuinely CURRENT — it gets the check, the surface and
+    <!-- Which option is CURRENT: it gets the check, the surface and
          the "currently selected" announcement. -1 means none is, which is the
          right answer for a choice dialog (nothing is active yet) and for a
-         picker whose active track is not in the list. Deliberately separate
+         picker whose active track is not in the list. Kept separate
          from defaultIndex: they coincide in the normal case, and collapsing
          them made a focus fallback claim row 0 was playing. -->
     <field id="selectedIndex" type="integer" value="-1" />

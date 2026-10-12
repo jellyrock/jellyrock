@@ -73,6 +73,6 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   end if
 
-  ' UP: don't consume — nothing above the overhang icons
+  ' UP: don't consume, nothing is above the overhang icons
   return false
 end function

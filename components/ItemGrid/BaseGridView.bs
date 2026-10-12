@@ -57,13 +57,13 @@ sub init()
 
   m.genreData = CreateObject("roSGNode", "ContentNode")
   m.genreList.focusXOffset = 0
-  ' rowLabelOffset is set in the XML, not here — it only makes sense alongside
+  ' rowLabelOffset is set in the XML, not here: it only makes sense alongside
   ' rowHeights/itemSpacing, so all three live together. See the comment there.
   ' Override JRRowList's inherited "fixedFocusWrap": this is a browse view with an
   ' alpha menu to its left, so Left at the first item must exit to that menu (handled
   ' in onKeyEvent) rather than wrap to the end of the row. floatingFocus stops the row
   ' from consuming/wrapping the boundary key so it bubbles up. Genre rows no longer
-  ' cycle horizontally — matching the main MarkupGrid's browse behavior.
+  ' cycle horizontally, matching the main MarkupGrid's browse behavior.
   m.genreList.rowFocusAnimationStyle = "floatingFocus"
   m.genreList.observeField("rowItemFocused", "onGenreItemFocused")
   m.genreList.observeField("itemSelected", "onGenreItemSelected")
@@ -77,7 +77,7 @@ sub init()
   ' grid/genre/watch-channel handlers set m.top.selectedItem; we observe it here and route.
   m.top.observeField("selectedItem", "onLibrarySelection")
 
-  ' A non-navigable selection (plays directly — e.g. an episode, a Live TV channel) sets
+  ' A non-navigable selection (plays directly: an episode, a Live TV channel) sets
   ' m.top.quickPlayNode; this self-observer forwards it to the QueueManager launcher.
   m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
 
@@ -136,7 +136,7 @@ sub init()
   m.resetGrid = userSettings.itemGridReset
   m.top.gridTitles = userSettings.itemGridTitles
 
-  ' Presenter (set via setPresenter function)
+  ' Presenter (built by onPresenterTypeChanged when presenterType is set)
   m.presenter = invalid
 
   ' TV Guide state (LiveTV only)
@@ -152,7 +152,7 @@ sub init()
   ' Interface observers are registered HERE rather than declared as XML onChange
   ' attributes: this component releases node references in onDestroy and these
   ' handlers dereference them, so the registrations have to be detachable. An XML
-  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' onChange does not appear to be removable by unobserveField. See the wiring
   ' rule in components/CLAUDE.md.
   m.top.observeField("presenterType", "onPresenterTypeChanged")
   m.top.observeField("parentItem", "loadInitialItems")
@@ -219,23 +219,23 @@ sub onScreenShown()
 
   ' On first mount, self-load from the route (/library/:id). Both in-app navigation AND a
   ' deep link / cast pass the rich library node as route.context.item (in-app: the selected
-  ' node; deep link: the node JRScene.resolveDeepLink already validated) — instant, no
-  ' re-fetch. presenterType MUST be set before parentItem (parentItem triggers
+  ' node; deep link: the node JRScene.resolveDeepLink already validated): instant, no
+  ' re-fetch. presenterType has to be set before parentItem (parentItem triggers
   ' loadInitialItems, which reads presenterType). A resumed view skips this
   ' (parentItem already set).
   if not isValid(m.top.parentItem)
     loadLibraryFromRoute(m.top.route)
   else
     ' Resume: this view was suspended beneath a pushed screen, not destroyed, so its content
-    ' survived. If a mutation elsewhere (e.g. an item delete in ItemDetails) bumped
+    ' survived. If a mutation elsewhere (for example an item delete in ItemDetails) bumped
     ' the scene's content-freshness token since we last
-    ' loaded, our cached grid is stale — re-fetch so deleted items don't linger as
+    ' loaded, our cached grid is stale: re-fetch so deleted items don't linger as
     ' selectable ghosts. Unchanged token = no reload, so the resume stays cheap.
     scene = m.top.getScene()
     if isValid(scene) and scene.contentVersion <> m.lastContentVersion
       reloadGridItems()
     else
-      ' The runway may have run short while another screen was up — a later page failed, or
+      ' The runway may have run short while another screen was up: a later page failed, or
       ' the user left from near the end. Asked here and not only when focus lands back in
       ' the grid (the grid reports its focused item again, and onItemFocused asks), because
       ' focus may return somewhere else; m.loading keeps the two to one request.
@@ -246,7 +246,7 @@ sub onScreenShown()
   ' Clear global backdrop - we handle our own backdrops
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
-  ' Re-activate voice capture — the voiceBox loses its active connection to the
+  ' Re-activate voice capture. The voiceBox loses its active connection to the
   ' Roku firmware while this screen is suspended ("detach" removes the node from the
   ' tree entirely) and another view is on top.
   if isValid(m.voiceBox)
@@ -268,7 +268,7 @@ sub onScreenShown()
 end sub
 
 ' Focus hook (overrides JRScreen.restoreScreenFocus). The router's handleFocus runs it right after
-' onScreenShown, and the base restores lastFocus again — undoing a restore that followed what
+' onScreenShown, and the base restores lastFocus again, undoing a restore that followed what
 ' changed while this view was suspended. Same trap and same fix as Home.restoreHomeFocus.
 sub restoreScreenFocus()
   restoreGridFocus()
@@ -277,7 +277,7 @@ end sub
 ' Configure the library view from its route. Both in-app navigation and a deep link / cast
 ' supply the rich library node as route.context.item (the resolver passes the node
 ' it already validated), so there is no fetch here. A missing context node is therefore an
-' unexpected route shape, not a deferred feature — warn rather than silently render nothing.
+' unexpected route shape, not a deferred feature: warn rather than silently render nothing.
 sub loadLibraryFromRoute(route as object)
   if not isValid(route) then return
 
@@ -292,7 +292,7 @@ sub loadLibraryFromRoute(route as object)
   end if
 end sub
 
-' A grid / genre / channel item was selected — navigate to its route (rich node as context).
+' A grid / genre / channel item was selected: navigate to its route (rich node as context).
 ' Non-navigable selections fall through to playback.
 sub onLibrarySelection(msg)
   item = msg.getData()
@@ -400,7 +400,7 @@ end sub
 
 ' A first page can take the server most of a minute (timeouts.GRID_PAGE_MS). The spinner says
 ' nothing for SLOW_LOAD_STILL_S, then that it is still loading, then from SLOW_LOAD_SERVER_S
-' that the wait is the server's — all we know then, since nothing has arrived. The cause, if
+' that the wait is the server's: all we know then, since nothing has arrived. The cause, if
 ' the page fails, goes to the log (decision `grid-load-failure-retry-policy`).
 sub startSlowLoadText()
   m.slowLoadStage = 0
@@ -454,7 +454,7 @@ end sub
 sub loadInitialItems()
   m.log.debug("start loadInitialItems()")
   ' Record the content-freshness token we're loading at, so a resume after a mutation
-  ' elsewhere (e.g. a delete) can detect staleness and re-fetch.
+  ' elsewhere (for example a delete) can detect staleness and re-fetch.
   scene = m.top.getScene()
   if isValid(scene) then m.lastContentVersion = scene.contentVersion
   prepareDataLoad(false)
@@ -472,16 +472,16 @@ sub loadInitialItems()
   m.view = getLibraryDisplaySetting(libraryId, "landing", invalid)
   m.sortAscending = getLibraryDisplaySetting(libraryId, "sortAscending", true)
 
-  ' Set default view if not saved — or if the saved one is no longer on offer.
+  ' Set default view if not saved, or if the saved one is no longer on offer.
   '
   ' A saved view could always be honored until 12.0, because every view a presenter
   ' listed existed on every server. The Collections view is the first that does not: the
   ' same library opened against an older server has no such view, and loading it anyway
   ' takes the presenter's default query branch while the layout stays the named view's.
   '
-  ' The fallback is NOT written back to the registry. The saved choice is still what the
+  ' The fallback is not written back to the registry. The saved choice is still what the
   ' user picked, and it is valid again the moment the library is opened against a server
-  ' that offers it — so this reads the setting down, it does not overwrite it.
+  ' that offers it, so this reads the setting down, it does not overwrite it.
   m.view = gridQuery.resolveView(m.view, offeredViews(), getDefaultView())
 
   ' Keep currentView in sync with the finalized view
@@ -519,7 +519,7 @@ sub loadInitialItems()
   ' Update title after the query is final
   updateTitle()
 
-  ' Only a Genres run writes genreSkeletons, and only before its samples are fetched — it
+  ' Only a Genres run writes genreSkeletons, and only before its samples are fetched: it
   ' is a head start on drawing, not a second delivery channel. `content` still carries the
   ' real rows for every view including this one.
   startGridRun(0, true)
@@ -582,8 +582,8 @@ end sub
 ' presenter yet.
 '
 ' Derived from getOptions() rather than from a second list the presenters would also have
-' to maintain: there is one list, so nothing can disagree with it. "Currently" is
-' load-bearing — a presenter's views depend on the server version and on the parent item
+' to maintain: there is one list, so nothing can disagree with it. "Currently" matters:
+' a presenter's views depend on the server version and on the parent item
 ' (a genre folder offers fewer than its library), so this is asked per load, not cached.
 ' The cost is one extra options build per library load, the same work SetUpOptions already
 ' does once: a handful of translate() calls on the render thread.
@@ -690,7 +690,7 @@ sub configureGrid()
 end sub
 
 ' Swaps the genre RowList to a new set of rows and reveals it, preserving the user's
-' position. ONE owner for both delivery stages — the skeleton rows and the real rows —
+' position. One owner for both delivery stages (the skeleton rows and the real rows),
 ' so the opacity/focus/spinner sequence cannot drift between them.
 '
 ' `rowsRoot` is a DETACHED ContentNode root: building rows off-tree and assigning
@@ -699,7 +699,7 @@ end sub
 '
 ' Focus/scroll: the view is interactive from the moment skeletons draw, so the user may
 ' have scrolled before the real rows land. Skeleton and real rows are 1:1 in server
-' order, so the previous [row, item] position is index-stable — restore it rather than
+' order, so the previous [row, item] position is index-stable: restore it rather than
 ' letting the content swap snap the list back to the top. The item index is clamped:
 ' a skeleton row holds one cell, the filled row up to 7.
 sub revealGenreList(rowsRoot as object)
@@ -732,13 +732,13 @@ end sub
 ' Draw the Genres view's rows before their artwork exists.
 '
 ' The task knows every genre's name as soon as the genre LIST query returns, which is one
-' request rather than one-per-genre — so the list can be on screen long before the samples
+' request rather than one-per-genre, so the list can be on screen long before the samples
 ' land. Each row gets its title and a single skeleton placeholder cell: a RowList does not
 ' lay out a childless row at all, and that one cell is also what gives the row its slot
 ' height.
 '
-' `genreSkeletons` carries ids and titles, NOT nodes. Building the rows here rather than
-' shipping them from the task keeps the payload of that cross-thread write small — the
+' `genreSkeletons` carries ids and titles, not nodes. Building the rows here rather than
+' shipping them from the task keeps the payload of that cross-thread write small: the
 ' rendezvous is priced by what it carries. Same split of work as
 ' HomeRows.createSkeletonRows().
 '
@@ -767,7 +767,7 @@ sub onGenreSkeletonsReady(msg)
   ' Roku's own RowList counter reports "focused item of items IN THIS ROW"
   ' (JRRowList sets showRowCounter = [true]). A skeleton row holds exactly one
   ' placeholder, so it would truthfully but uselessly read "1 of 1" and then jump to
-  ' "1 of 7" on fill. Hidden until the row can answer the question — restored beside
+  ' "1 of 7" on fill. Hidden until the row can answer the question, and restored beside
   ' the "loaded" transition below, so the two can't drift apart.
   m.genreList.showRowCounter = [false]
   m.top.loadState = "skeleton"
@@ -785,7 +785,7 @@ sub onItemDataLoaded(msg)
   isFirstPage = m.loadItemsTask.startIndex = 0
 
   ' Before the total is read: a failed run's total is its default -1, and keeping it would
-  ' stop every later page — including the retry that scrolling near the end makes.
+  ' stop every later page, including the retry that scrolling near the end makes.
   if m.loadItemsTask.status = "failed"
     onGridLoadFailed(isFirstPage)
     return
@@ -832,7 +832,7 @@ sub onItemDataLoaded(msg)
       end for
 
       revealGenreList(rowsRoot)
-      ' Rows can answer "N of M" now — undo the suppression onGenreSkeletonsReady applied.
+      ' Rows can answer "N of M" now: undo the suppression onGenreSkeletonsReady applied.
       ' Unconditional: this path also runs when no skeletons preceded it, where the field
       ' is already [true] and setting it again is a no-op.
       m.genreList.showRowCounter = [true]
@@ -932,7 +932,7 @@ end sub
 ' A later page: what is on screen stays, and so does the total, so scrolling near the end
 ' asks again (onItemFocused), and so does coming back to the grid (onScreenShown). When the
 ' user is told is gridPaging's rule. The first page: the
-' failure state replaces the grid, with a Try again the user chooses to press — retrying on
+' failure state replaces the grid, with a Try again the user chooses to press. Retrying on
 ' our own would re-send a query the server may still be working on.
 sub onGridLoadFailed(isFirstPage as boolean)
   m.loading = false
@@ -1054,7 +1054,7 @@ end sub
   ' at the end of the loaded rows and for how long (stalls), against how much was loaded and how
   ' far down they actually went. A stall counts from reaching the last loaded row with a page in
   ' flight, before the indicator's delay. appendMs / appendMaxMs are the render thread's side of a
-  ' page — adding its items to the grid — summed over the session and at its worst page, because
+  ' page (adding its items to the grid), summed over the session and at its worst page, because
   ' a long add is a scroll hitch that no task-side number shows.
   sub newGridSession()
     m.session = { pages: 0, items: 0, stalls: 0, stallMs: 0, stallStartMs: -1, furthestRow: 0, appendMs: 0, appendMaxMs: 0 }
@@ -1106,7 +1106,7 @@ end sub
 ' Where focus goes is decided from what the view shows NOW, in the three subs below, never
 ' by an event on its own: a load that could not take focus (the options dialog was open,
 ' the view was suspended) leaves nothing to put it back, so whatever later hands focus back
-' to the content — closing the dialog, leaving the alpha menu, resuming — asks here.
+' to the content (closing the dialog, leaving the alpha menu, resuming) asks here.
 
 ' Focus the content area as it currently is: Try again when the load failed, otherwise
 ' whichever of the genre list and the grid is showing.
@@ -1134,7 +1134,7 @@ end sub
 
 ' Focus on return to this view (onScreenShown and restoreScreenFocus). The saved lastFocus is kept
 ' when it is outside the content area (the alpha menu, the TV guide). Inside it, what it
-' names may no longer be what the view shows — a load can fail or finish while suspended —
+' names may no longer be what the view shows (a load can fail or finish while suspended),
 ' so the content area is focused as it is now.
 sub restoreGridFocus()
   last = m.top.lastFocus
@@ -1185,12 +1185,12 @@ end sub
 
 ' Render-thread filter load, collapsed from GetFiltersTask (Phase-4 pure-fetch Task
 ' collapse; see docs/dev/promises.md). Invoked by the presenter via callFunc so the
-' body runs in component-m context, where fetchAsync + auto-abandon work — the presenter
+' body runs in component-m context, where fetchAsync + auto-abandon work. The presenter
 ' is a class, and the auto-abandon plugin only injects into components with onDestroy
-' (which BaseGridView has). The presenter still owns m.apiFilters + the toast; this just
+' (which BaseGridView has). The presenter still owns m.apiFilters + the toast; this only
 ' fetches and hands the result back via deliverFilters().
 sub loadFilters(params as object)
-  ' Debug error injection — compiled out in production (mirrors ItemDetails.toggleFavorite).
+  ' Debug error injection, compiled out in production (mirrors ItemDetails.toggleFavorite).
   #if debug
     if isValid(m.global.debug) and m.global.debug.shouldForceFiltersFail
       deliverFilters({}, "[DEBUG] Forced filter failure")
@@ -1205,14 +1205,14 @@ sub loadFilters(params as object)
   req = GetApi().BuildGetFiltersRequest(params)
   promises.chain(fetchAsync(req, "filters-" + params.parentid)).then(sub(res as object)
     ' Any HTTP response lands here (incl. 4xx/5xx). Mirrors the old Task's contract:
-    ' res.ok → deliver the filters; otherwise deliver {} + the error message.
+    ' res.ok delivers the filters; otherwise deliver {} + the error message.
     if res.ok
       loadLanguageFilters(res.json, "")
     else
       loadLanguageFilters({}, "Unable to load filter options")
     end if
   end sub).catch(sub(err as object)
-    ' Transport failure / timeout (see the error contract) — never completed.
+    ' Transport failure / timeout (see the error contract): never completed.
     m.log.warn("filter load failed", err.reason)
     loadLanguageFilters({}, "Unable to load filter options")
   end sub)
@@ -1221,8 +1221,8 @@ end sub
 ' Second leg of the filter load, on 12.0+ servers only: the audio/subtitle language
 ' lists, which live on a DIFFERENT endpoint from the rest.
 '
-' The two are disjoint and neither is a superset — `/Items/Filters` carries
-' OfficialRatings and Years, `/Items/Filters2` carries the language lists — so a
+' The two are disjoint and neither is a superset: `/Items/Filters` carries
+' OfficialRatings and Years, `/Items/Filters2` carries the language lists. So a
 ' client that wants both has to ask twice. Sequential rather than parallel because a
 ' promise callback here cannot capture locals, so the first leg's result has to be
 ' parked on m anyway; the extra round trip happens once per library load, off the
@@ -1248,7 +1248,7 @@ sub loadLanguageFilters(filters as object, errorMsg as string)
   promises.chain(fetchAsync(req, "filters2-" + m.pendingFilterParams.parentid)).then(sub(res as object)
     merged = m.pendingFilters
     if res.ok and isValid(res.json)
-      ' Absent keys, not empty ones, are how a pre-12.0 server answers — so a missing
+      ' Absent keys, not empty ones, are how a pre-12.0 server answers, so a missing
       ' key here means "no such filter", which is exactly what an empty option list
       ' makes the panel do.
       merged[languageFilters.AUDIO_KEY] = languageFilters.optionsFrom(res.json.AudioLanguages)
@@ -1299,7 +1299,7 @@ end sub
 
 sub onGenreItemSelected()
   ' The list is interactive while deliveries are pending, so rowItemSelected can be STALE
-  ' against freshly swapped content — an OK queued behind a swap can index a row the new
+  ' against freshly swapped content: an OK queued behind a swap can index a row the new
   ' content no longer has. Walk the tree stepwise; a chained getChild().getChild() faults
   ' on the invalid intermediate.
   rowNode = m.genreList.content.getChild(m.genreList.rowItemSelected[0])
@@ -1308,7 +1308,7 @@ sub onGenreItemSelected()
 
   ' Ignore a skeleton placeholder. The Genres view is interactive from the moment its rows
   ' are drawn, which is BEFORE the samples land, so OK on a not-yet-filled row is reachable
-  ' for a few hundred ms — longer on a slow server. Routing on a bare placeholder would
+  ' for a few hundred ms, longer on a slow server. Routing on a bare placeholder would
   ' navigate to nothing. Same guard, same reason, as HomeRows.itemSelected.
   if not isValid(selected) or skeleton.isPlaceholder(selected) then return
 
@@ -1327,7 +1327,7 @@ sub onGenreItemFocused()
   focusedItem = rowNode.getChild(rowItemFocused[1])
   if not isValid(focusedItem) then return
 
-  ' A skeleton placeholder carries no image tags — asking it for a backdrop reads fields a
+  ' A skeleton placeholder carries no image tags: asking it for a backdrop reads fields a
   ' bare ContentNode does not have. Leave the current backdrop up until the row is filled.
   if skeleton.isPlaceholder(focusedItem) then return
 
@@ -1342,7 +1342,7 @@ function getItemFocused()
     ' Same stale-index and skeleton exposure as onGenreItemSelected: rowItemFocused is -1
     ' (an integer) when nothing is focused, the row index can outlive a content swap, and
     ' a skeleton placeholder must not quick-play (HomeRows guards its play path the same
-    ' way — QueueManager would reject the bare node anyway, but not by design).
+    ' way; QueueManager would reject the bare node anyway, but not by design).
     rowItemFocused = m.genreList.rowItemFocused
     if type(rowItemFocused) <> "roArray" or rowItemFocused.count() < 2 then return invalid
     rowNode = m.genreList.content.getChild(rowItemFocused[0])
@@ -1483,7 +1483,7 @@ sub optionsClosed()
     reload = true
   end if
 
-  ' Let presenter handle any custom option processing (e.g., PhotoPresenter saves slideshow/random settings)
+  ' Let presenter handle any custom option processing (for example, PhotoPresenter saves slideshow/random settings)
   if isValid(m.presenter)
     m.presenter.onOptionsClosed(m.options)
   end if
@@ -1619,9 +1619,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.voiceBox.setFocus(false)
   end if
 
-  ' Photos go to ItemDetails like any other item (OK → itemSelected → onItemSelected).
-  ' The fullscreen viewer opens from ItemDetails' "View" button (viewPhotoButton →
-  ' quickplay.photo), not directly from the grid — launching PhotoDetails here bypassed
+  ' Photos go to ItemDetails like any other item (OK, then itemSelected, then onItemSelected).
+  ' The fullscreen viewer opens from ItemDetails' "View" button (viewPhotoButton, then
+  ' quickplay.photo), not directly from the grid. Launching PhotoDetails here bypassed
   ' ItemDetails and double-pushed (viewer + ItemDetails stacked).
 
   if key = "options"
@@ -1637,7 +1637,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       ' also where they are revalidated: SetUpOptions() above has already rendered the
       ' cached lists, and this refresh lands silently for the NEXT open rather than
       ' reshuffling categories under a cursor already in the list. It is what lets every
-      ' other path — sort, filter, view, alpha, voice search — stop refetching entirely,
+      ' other path (sort, filter, view, alpha, voice search) stop refetching entirely,
       ' and it retries a load that previously failed.
       if isValid(m.presenter) then m.presenter.refreshFilters()
 
@@ -1662,7 +1662,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       optionsClosed()
       return true
     else
-      ' The library view is router-owned — pop it via the router (back to Home / the
+      ' The library view is router-owned: pop it via the router (back to Home / the
       ' previous routed view).
       sgrouter.goBack()
       return true
@@ -1816,7 +1816,7 @@ sub onDestroy()
     logGridSession()
   #end if
   ' Detach the interface observers registered in init(). Must precede every
-  ' reference release below — these handlers dereference them.
+  ' reference release below: these handlers dereference them.
   m.top.unobserveField("presenterType")
   m.top.unobserveField("parentItem")
   m.top.unobserveField("alphaSelected")
@@ -1824,7 +1824,7 @@ sub onDestroy()
 
   m.log.verbose("onDestroy")
 
-  ' Destroy texture manager — force-unloads all grid item textures
+  ' Destroy texture manager: force-unloads all grid item textures
   destroyTextureManager(m.data)
 
   ' Unobserve child node observers
@@ -1847,16 +1847,17 @@ sub onDestroy()
 
   ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
   ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
-  ' the gridTitles field) AND registers scoped observers on the shared content root, which
-  ' makes the content root hold each cell's component scope. That closes the loop:
+  ' the gridTitles field) AND observes fields on the shared content root with observeField
+  ' (setupGridTextureObserver), which makes the content root hold each cell's component
+  ' scope. That closes the loop:
   '   view -> m.data -> cell scope -> m.gridView -> view
-  ' BrightScript refcounts, so a cycle is never collected — the whole view survived every
+  ' BrightScript refcounts, so a cycle is never collected: the whole view survived every
   ' back-out as an unparented root, one per library visit. GridItem has no onDestroy and
   ' only unobserves when the content root CHANGES, so the release has to come from here:
   ' dropping BOTH references to the content root (ours and the ArrayGrid's) frees it, which
   ' frees the cell scopes it holds, which drops their back-reference to us.
   '
-  ' MUST stay BELOW the unobserve block: emptying an ArrayGrid can move itemFocused /
+  ' This has to stay BELOW the unobserve block: emptying an ArrayGrid can move itemFocused /
   ' rowItemFocused, and onItemFocused / onGenreItemFocused both dereference `.content`
   ' unguarded. Dropping the observers first means a reset fires at nothing.
   m.itemGrid.content = invalid
