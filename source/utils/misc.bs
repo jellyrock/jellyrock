@@ -818,12 +818,17 @@ end function
 ' (Roku OS 15.3.4):
 '
 '   type(2)                  -> "Integer"    an unboxed literal
-'   type(aa.someInt)         -> "roInteger"  boxed, read out of an AA
+'   type(parsed.someInt)     -> "Integer"    read out of an AA from ParseJson
+'   type(aa.someInt)         -> "roInteger"  boxed, read out of an AA literal
 '   type(node.someIntField)  -> "roInt"      read off a SceneGraph node field
 '
+' (The ParseJson row, and the AA-literal and node rows again, measured 2026-10-11
+' on a Stick 4K, including an AA read back through an `assocarray` node field.)
+'
 ' All three are listed because this function is handed all three: MediaStream
-' fields arrive in AAs from ParseJson, user settings arrive from a
-' JellyfinUserSettings node, and callers pass literals. Enumerating only the
+' fields arrive from ParseJson ("Integer") or read back through a node field
+' ("roInt"), user settings arrive from a JellyfinUserSettings node, and callers and
+' specs pass literals, an AA literal among them ("roInteger"). Enumerating only the
 ' plausible-looking names is what produced the bug this function was extracted to
 ' fix: `type(x) = "Integer"` against a node field is always false, so
 ' GetBitRateLimit discarded every user-set bitrate limit and silently substituted
