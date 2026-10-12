@@ -1599,7 +1599,8 @@ The cost accepted is one series `GET` per episode that lacks its own `OriginalLa
 ## decision-id: live-hls-upstream-direct-play
 
 **date**: 2026-09-21
-**status**: accepted
+**status**: superseded
+**superseded-by**: `manifest-upstream-direct-play`
 **related-files**: `source/utils/liveTv.bs`, `source/enums/UpstreamHlsBlocker.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `source/constants/timeouts.bs`
 
 When Jellyfin 12.x declines direct play for a live `m3u` HLS channel (jellyfin/jellyfin#17768) but still returns the channel's absolute upstream `Path`, JellyRock plays that URL itself, as it did on 10.11 (`getUpstreamHlsBlocker()`). The server's replacement, remuxing on the server, drops audio carried as a separate HLS rendition and starts ~31 s slower, and the relay bug #17768 fixed never affected JellyRock, which already played the absolute URL. Ruled out: reporting upstream instead (not viable for this project); a player stall watchdog (a Roku handed an unreachable URL buffers indefinitely with no error, so a watchdog could only guess at a timeout); trusting the server's `IsRemote` as a reachability test (it says where the server sees the host, not whether the TV can reach it).
@@ -1866,6 +1867,17 @@ Ruled out: transcoding only Opus in `ogg` that carries art (the Ultra hangs with
 The editor's BrighterScript language server loads only `bsconfig.json` (dev: every lint plugin) and `bsconfig-tests.json` (the only config covering `tests/`). `bsconfig-prod.json` stays listed with `"disabled": true`; the unit and integration test configs are no longer listed. The language server holds one full program per `brightscript.projects` entry and, on every save, re-validates each entry containing the file in parallel (`ProjectManager.flushDocumentChanges`). The configs we dropped add nothing to what the editor reports: unit and integration are file subsets of all-tests with the same plugins, and prod's plugins are a subset of those in `bsconfig.json`, with the CI `build.yml` prod job building it on every PR. Measured 2026-09-27 with `bsc --noEmit` (brighterscript 1.0.0-alpha.55): the five configs peaked at ~6.0 GB and 66 s of full validation combined; the two kept peak at 2.46 GB and 29 s. The dev machine (31 GB, no swap) had killed a VS Code process for lack of memory the day before, with two ~2.1 GB language-server-sized processes resident.
 
 Ruled out: one merged editor bsconfig (all-tests plus the plugins in `bsconfig.json`). It measured 1.52 GB and 19 s but raised 29 false diagnostics in spec files (`callfunc-interface` 25, `print-outside-allowlist` 3, `no-task-fanout` 1), and it would add a third plugin list to keep in step with the one in `bsconfig.json`. Also ruled out: `brightscript.languageServer.maxWorkerThreads: 1`, which keeps all five programs in memory and only serializes validation. Re-evaluate if a prod-only plugin or file set starts producing diagnostics dev does not; then flip prod's `disabled` off.
+
+## decision-id: manifest-upstream-direct-play
+
+**date**: 2026-10-11
+**status**: accepted
+**supersedes**: `live-hls-upstream-direct-play`
+**related-files**: `source/utils/upstreamManifest.bs`, `source/enums/UpstreamManifestBlocker.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `components/video/VideoPlayerView.bs`, `source/api/items.bs`, `source/constants/timeouts.bs`
+
+Jellyfin 12.x declines direct play for every manifest source (`StreamBuilder.ManifestContainers`: `hls`, `applehttp`, `dash`), not only live `m3u` HLS channels, so `.strm` items always went through a server transcode and live DASH channels never played on 12.1. JellyRock now plays any source whose `Path` is an absolute upstream HLS or DASH manifest from that URL (`getUpstreamManifestBlocker()`), keeping the server's stream only where a rule older than 12.0 applies (the retry that forces a transcode, auto-loop, remote-source policy, bitrate limit), and sets `StreamFormat` from the manifest's own format instead of giving every live item `hls`. Considered and ruled out: a separate `.strm` rule beside the live one (two copies of the same checks), and leaving `.strm` unset as on 10.11 (relies on the Roku guessing the format from the URL).
+
+The device check (`upstreamManifestAnswers()`) now runs on a server "yes" too, since a Roku handed an unreachable URL buffers until the live stall error (~62 s on 10.11) where the server's own stream plays (~36 s); a failed check after a "yes" hands off to the server's stream before the Video node sees the URL (`needsServerStream` → `retryPlayback`). For that retry to work on non-live items, every retry that forces a transcode now sends `EnableDirectPlay=false`; before, only live retries did, so a `.strm` the server allowed got the same "yes" back. Cost accepted: up to `UPSTREAM_PREFLIGHT_MS` (3 s) added when an upstream URL is unreachable; no measurable cost on a reachable LAN URL (measured 2026-10-11, Stick 4K, 10.11.11 and 12.1.0).
 
 ## Migrated to ADRs
 
