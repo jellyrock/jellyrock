@@ -1,4 +1,4 @@
-// scripts/lib/endpoint-availability.cjs — loader + validator + matcher for the
+// scripts/lib/endpoint-availability.cjs: loader, validator and matcher for the
 // committed endpoint-availability registry (docs/dev/jellyfin-endpoint-availability.yml).
 //
 // The registry is the server-upgrade-automation pipeline's validated DISPOSITION
@@ -11,7 +11,7 @@
 // regression-safe rather than a blunt suppression.
 //
 // `.cjs` per scripts/CLAUDE.md's module rule (lib/ helpers are CJS so both the ESM
-// findings-candidates.js — via createRequire — and the CJS lint can use it).
+// findings-candidates.js, through createRequire, and the CJS lint can use it).
 
 'use strict';
 
@@ -35,8 +35,9 @@ const HTTP_METHODS = new Set(['GET', 'PUT', 'POST', 'DELETE', 'PATCH', 'HEAD', '
 
 // Normalize a spec/registry path to the manifest's `normalized` form: collapse
 // every {placeholder} to {}, fold case, strip a trailing slash, ensure a leading
-// slash. Mirrors normalizeSpecPath in findings-candidates.js / api-usage-manifest.js
-// (each module re-implements it to stay decoupled — see those files' comments).
+// slash. The same rule as normalizeSpecPath in spec-path.cjs (shared by
+// findings-candidates.js and server-upgrade.js) and normalizePath in
+// api-usage-manifest.js, which keeps its own copy.
 function normalizePath(p) {
   let s = (p.startsWith('/') ? p : '/' + p).replace(/\{[^}]*\}/g, '{}').toLowerCase();
   if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
@@ -62,7 +63,7 @@ function entryId(entry) {
 }
 
 // Validate the parsed registry shape, throwing a one-line error on any violation.
-// SCHEMA validation only — the source/manifest cross-checks live in the lint.
+// Schema validation only: the source and manifest cross-checks live in the lint.
 // Returns a normalized array of entries, each augmented with `normalizedPath` and
 // `methodSet` (parsed) and a stable `id`.
 function validateRegistry(raw) {
@@ -129,7 +130,7 @@ function validateRegistry(raw) {
 
 // Validate the `parameters:` section: query parameters whose server behavior
 // differs by version, each tied to the guard that decides whether to send it.
-// Only `version-guard` handling is accepted — it is the one claim the lint can
+// Only `version-guard` handling is accepted: it is the one claim the lint can
 // check for a parameter (every file that sends it must call the guard).
 // Returns entries augmented with `normalizedPath`, `methodSet` and a stable `id`.
 function validateParameterRegistry(raw) {
@@ -200,14 +201,14 @@ function readRegistry(rootDir) {
 }
 
 // Load + validate the committed registry from a repo root. A MISSING file means
-// "no registered endpoints" (an empty ledger is valid — the floor check then
+// "no registered endpoints" (an empty ledger is valid: the floor check then
 // flags every post-floor endpoint, the pre-registry behavior).
 function loadEndpointAvailability(rootDir = '.') {
   const raw = readRegistry(rootDir);
   return raw == null ? [] : validateRegistry(raw);
 }
 
-// Load + validate the registry's `parameters:` section (missing file → []).
+// Load + validate the registry's `parameters:` section (a missing file gives []).
 function loadParameterAvailability(rootDir = '.') {
   return validateParameterRegistry(readRegistry(rootDir));
 }

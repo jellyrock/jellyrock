@@ -1,7 +1,7 @@
-// scripts/catchup-state.js — Aggregator for /catchup, /ramp, sub-agents.
+// scripts/catchup-state.js: the aggregator for /catchup, /ramp and sub-agents.
 //
 // Single Node call returns JSON describing the repo state the shared reader
-// (.claude/skills/catchup/catchup-state.sh) does not cover — open PRs, recent
+// (.claude/skills/catchup/catchup-state.sh) does not cover: open PRs, recent
 // issues, CI runs, pending handoffs, signal watchlist age, recent ADRs, tech
 // debt, doc staleness. Git position and the followup journal are the shared
 // reader's. Replaces ~13 parallel-bash calls with one allowlisted invocation. Banner-detection in /catchup becomes deterministic
@@ -19,9 +19,9 @@
 //   --area=<name>  scope to one of: components, components/video,
 //                  components/data, source, source/api, source/utils,
 //                  tests, locale, scripts. Filters PR/issue gh queries
-//                  via the area→keyword map (mirrors /ramp/SKILL.md).
+//                  via the area-to-keyword map (mirrors /ramp/SKILL.md).
 //   --no-gh        skip all `gh` API calls (offline / fast tests)
-//   --no-network   skip ALL network I/O — same as --no-gh PLUS skip the
+//   --no-network   skip all network I/O: --no-gh, plus skip the
 //                  signals upstream-version fetch. Used by tests and any
 //                  fully offline invocation.
 //
@@ -60,7 +60,7 @@ const STABLE_TRIAGING_LABEL = 'server-upgrade:triaging';
 
 // The stable row's open-digest context, queried once in run('signals') and reused
 // by maintainSignals()'s post-fetch staleness recompute. { stableDigest } where
-// stableDigest is an object (open) / null (none) / undefined (offline → fallback).
+// stableDigest is an object (open) / null (none) / undefined (offline, so fallback).
 let stableDigestCtx = {};
 
 // Resolve sibling script paths relative to THIS script's location, not cwd.
@@ -109,7 +109,7 @@ if (AREA && !VALID_AREAS.includes(AREA)) {
   process.exit(2);
 }
 
-// Area → keyword map. Mirrors .claude/skills/ramp/SKILL.md lines 41-50.
+// Area-to-keyword map. Mirrors the keyword table in .claude/skills/ramp/SKILL.md.
 // Used to scope gh PR/issue queries when --area= is set. Keep in sync with
 // /ramp; if the map drifts, /ramp's hand-rolled bash and the aggregator
 // return different scopes for the same area.
@@ -398,8 +398,8 @@ run('signals', () => {
 
 run('decisions', () => {
   // ADR-grade decisions live as numbered, immutable records in docs/adr/.
-  // Sub-ADR notes (docs/decisions.md) are deliberately NOT surfaced here —
-  // they're below the architectural bar and would dilute the briefing.
+  // Sub-ADR notes (docs/decisions.md) are left out on purpose: they're below
+  // the architectural bar and would dilute the briefing.
   const dir = 'docs/adr';
   if (!existsSync(dir)) return { recent_3: [] };
 
@@ -431,13 +431,13 @@ run('tech_debt', () => {
     return { top_3: [], high_count: 0, medium_count: 0, low_count: 0 };
   }
   const content = readFileSync(path, 'utf8');
-  // Structure: `## Refactor candidates` → `### High|Medium|Low` → `#### `slug``
-  // items, each followed by an `- **issue**: <text>` bullet. A non-severity H3
-  // or any H2 closes the current severity section. We capture {slug, severity,
-  // issue_oneline} in file order — file order encodes author priority within
-  // severity, and the High → Medium → Low file ordering means top_3 just slices
-  // the first 3 (cross-severity) and naturally surfaces the most-important
-  // remaining work.
+  // Structure: `## Refactor candidates`, then `### High|Medium|Low`, then
+  // `#### `slug`` items, each followed by an `- **issue**: <text>` bullet. A
+  // non-severity H3 or any H2 closes the current severity section. We capture
+  // {slug, severity, issue_oneline} in file order: file order encodes author
+  // priority within severity, and the High, Medium, Low file ordering means
+  // top_3 only slices the first 3 (cross-severity) and naturally surfaces the
+  // most-important remaining work.
   const counts = { High: 0, Medium: 0, Low: 0 };
   const items = [];
   let currentSeverity = null;
@@ -582,7 +582,7 @@ async function maintainSignals() {
   }
 }
 
-// In-place line-targeted rewrite of the signals file. ONLY touches lines we
+// In-place line-targeted rewrite of the signals file. Touches only the lines we
 // own (latest_upstream/last_checked bullets in known slug blocks, plus the
 // frontmatter last-updated date). Everything else is preserved byte-for-byte.
 function applySignalUpdates(content, updatesBySlug, today) {

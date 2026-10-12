@@ -1,4 +1,4 @@
-// scripts/lib/signal-staleness.cjs — the PURE "does this signal row need human
+// scripts/lib/signal-staleness.cjs: the PURE "does this signal row need human
 // attention?" decision, extracted from scripts/catchup-state.js so it can be unit
 // tested directly (the aggregator runs all its work at module top-level, so it
 // can't be imported side-effect-free). The IO that feeds `ctx` (the live open-
@@ -17,11 +17,11 @@ const STABLE_SLUG = 'jellyfin-server-stable';
 // auto-closes the digest for a mechanically-clean release WITHOUT bumping
 // `latest_acknowledged` (CI never writes the journals), so the string compare
 // false-fires forever after every clean release. The TRUE "needs attention"
-// signal for that row is an OPEN tracker digest — only a candidate-bearing
+// signal for that row is an OPEN tracker digest: only a candidate-bearing
 // release leaves one open; clean ones close themselves. `ctx.stableDigest` is:
-//   - an object  → an open digest exists → stale
-//   - null       → no open digest → not stale
-//   - undefined  → not queried (offline / --no-gh) → fall back to string compare
+//   - an object:  an open digest exists, so stale
+//   - null:       no open digest, so not stale
+//   - undefined:  not queried (offline / --no-gh), so fall back to string compare
 function signalStaleness(row, ctx = {}) {
   if (row.status !== 'watching') return false;
   if (row.slug === STABLE_SLUG && ctx.stableDigest !== undefined) {

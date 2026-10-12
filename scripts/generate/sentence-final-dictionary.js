@@ -1,8 +1,8 @@
-// Generates dictionary-sentence-final.txt — a companion spellchecker dictionary
+// Generates dictionary-sentence-final.txt, a companion spellchecker dictionary
 // holding the sentence-final form of every dictionary.txt entry.
 //
 // Why this exists: retext mis-tokenizes the last word of a paragraph when the
-// next block is a lowercase heading, a list, or a blockquote — it stops treating
+// next block is a lowercase heading, a list, or a blockquote: it stops treating
 // the final period as sentence-final and looks the word up WITH the period glued
 // on (`handoff.` rather than `handoff`). Base-dictionary words survive that;
 // dictionary.txt entries are matched as anchored regexes and do not, so a
@@ -10,11 +10,11 @@
 // sanctioned `/log decision` path, whose schema (`## decision-id: <slug>`) puts a
 // lowercase heading directly under a paragraph.
 //
-// Why NOT a broad `ignore` regex: an `ignore` entry matching any token that ends
+// Why not a broad `ignore` regex: an `ignore` entry matching any token that ends
 // in a period also swallows genuine typos in that position. Measured on this repo
 // at the time of writing: 47 paragraph-above-a-list sites across 24 of 88 linted
 // files, every one of which would stop being spellchecked. This file closes the
-// same trap with no coverage loss — a typo is still not in either dictionary, so
+// same trap with no coverage loss: a typo is still not in either dictionary, so
 // `typoo.` is still reported.
 //
 // Two ad-hoc versions of this workaround already existed by hand (`codebase.`,
@@ -23,16 +23,16 @@
 // was an unescaped regex wildcard. This generator replaces that pattern.
 //
 // Run modes:
-//   node scripts/generate/sentence-final-dictionary.js          → write (default)
-//   node scripts/generate/sentence-final-dictionary.js --check  → fail on drift (CI)
+//   node scripts/generate/sentence-final-dictionary.js          write (default)
+//   node scripts/generate/sentence-final-dictionary.js --check  fail on drift (CI)
 //
 // An optional positional argument overrides the root the two files are read from
-// and written to — the convention dev-index.cjs and docs-stale.cjs already use, so
+// and written to: the convention dev-index.cjs and docs-stale.cjs already use, so
 // the tests can drive both outcomes against a fixture rather than the live repo.
 //
 // npm scripts:
-//   dictionary:sentence-final        → regenerate (write mode)
-//   dictionary:sentence-final:check  → drift check (pre-push + CI)
+//   dictionary:sentence-final        regenerate (write mode)
+//   dictionary:sentence-final:check  drift check (pre-push + CI)
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -92,7 +92,7 @@ export function main(argv = process.argv.slice(2)) {
   try {
     current = readFileSync(outputPath, 'utf8');
   } catch {
-    /* absent — reported as "missing" below */
+    /* absent: reported as "missing" below */
   }
 
   if (current === expected) {

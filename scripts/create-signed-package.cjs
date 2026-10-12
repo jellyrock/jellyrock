@@ -2,7 +2,7 @@
  * Creates a signed Roku .pkg from the compiled build directory using
  * roku-deploy.deployAndSignPackage().
  *
- * Local-only by design — the signing operation requires a physical Roku
+ * Local-only by design: the signing operation requires a physical Roku
  * device (the device performs the encryption using its on-device dev key),
  * and a solo-maintainer release ritual doesn't benefit enough from CI to
  * justify the secret-management overhead. Run this against your dev Roku
@@ -15,22 +15,22 @@
  *
  * Optional env var:
  *   ROKU_DEV_ID            expected keyed-developer-id (40-char SHA-1 hex from
- *                          your signing cert — NOT the numeric vendor ID on
- *                          dev.roku.com, NOT the channel-store URL hash). Script
+ *                          your signing cert; not the numeric vendor ID on
+ *                          dev.roku.com, and not the channel-store URL hash). Script
  *                          queries device's actual keyed-developer-id and aborts
  *                          before signing on mismatch. Recommended for channel-
  *                          store updates (must be stable across versions).
  *
- * Storage: easiest is a gitignored .env (chmod 600) — same pattern used by
+ * Storage: easiest is a gitignored .env (chmod 600), the same pattern used by
  * scripts/run-roku-tests.js for ROKU_IP/ROKU_PASSWORD. For encryption-at-rest,
  * wrap with your preferred secret manager:
  *   ROKU_SIGNING_PASSWORD=$(pass show jellyrock/signing) npm run package:signed
  *
- * Usage: npm run package:signed   (composes build:prod first — always safe)
+ * Usage: npm run package:signed   (composes build:prod first, so always safe)
  *        node scripts/create-signed-package.cjs   (direct; signs whatever's
- *                                                  in build/ — see prod-build
+ *                                                  in build/; see the prod-build
  *                                                  guard below)
- * Output: out/jellyrock-vX.Y.Z.pkg   (version pulled from manifest — if the
+ * Output: out/jellyrock-vX.Y.Z.pkg   (version pulled from manifest: if the
  *         filename's version doesn't match what you expect, the version bump
  *         didn't land)
  */
@@ -92,7 +92,8 @@ async function createSignedPackage() {
   // Refuse to sign anything that isn't a prod build. Detection: prod sets
   // sourceMap=false (bsconfig-prod.json), dev sets sourceMap=true. Test
   // builds also have source maps. Any *.map under build/ means the build
-  // came from bsconfig.json or bsconfig-tests*.json — both unsafe to ship.
+  // came from bsconfig.json or a test config (bsconfig-tests*.json,
+  // bsconfig-tdd*.json): none of them safe to ship.
   //
   // No exceptions: every config's `files` excludes prebuilt `**/*.map` (the
   // roku-log maps ropm vendors), so a prod build contains none at all.
@@ -109,7 +110,7 @@ async function createSignedPackage() {
   }
 
   // Version goes in the filename so a missed version-bump is obvious at a
-  // glance — the manifest is the canonical on-device version source.
+  // glance. The manifest is the canonical on-device version source.
   const version = readVersionFromManifest(path.join(buildDir, 'manifest'));
   const outFile = `jellyrock-v${version}`;
 
@@ -126,9 +127,9 @@ async function createSignedPackage() {
     outDir,
     outFile,
   };
-  // Note: roku-deploy's `options.devId` is ONLY consulted inside rekeyDevice()
+  // Note: roku-deploy's `options.devId` is only consulted inside rekeyDevice()
   // (which we don't call). signExistingPackage/deployAndSignPackage silently
-  // ignore it. So we have to run the check ourselves before signing — fail
+  // ignore it. So we have to run the check ourselves before signing, and fail
   // fast on mismatch rather than producing a .pkg the channel store will
   // reject.
   if (devId) {

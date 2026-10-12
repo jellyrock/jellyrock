@@ -1,4 +1,4 @@
-// scripts/server-upgrade-tracker.js — the proactive-CI surface of the
+// scripts/server-upgrade-tracker.js: the proactive-CI surface of the
 // server-upgrade-automation pipeline (docs/architecture/server-upgrade-automation.md),
 // Phase 4 generalized by Phase 6 into the PER-VERSION RELEASE-TRIAGE DIGEST model.
 //
@@ -13,35 +13,35 @@
 //   2. COMPUTES the full mechanical report (the Phase-2 buildReport, including the
 //      Phase-6 endpoint-availability ledger so the recurring floor findings are
 //      floor-known, not flagged) against an EPHEMERAL, in-memory `to` fingerprint
-//      built from the fetched spec — NOTHING is written to the repo. The
+//      built from the fetched spec. Nothing is written to the repo. The
 //      reviewed-anchor invariant (a committed fingerprint means a human reviewed
 //      it) is preserved; the human commits the `to` fingerprint when they run
 //      `/server-upgrade`. If the report can't be computed (spec fetch fails / a
 //      baseline fingerprint is missing) the tracker DEGRADES to announce-only.
-//   3. RENDERS the per-version digest body (server-upgrade.js renderDigestBody) —
+//   3. RENDERS the per-version digest body (server-upgrade.js renderDigestBody):
 //      a mechanical checklist when there are candidates, or the "mechanically
-//      clean" record when 0 candidates touch us — and EMITS a decision JSON the
+//      clean" record when 0 candidates touch us. It then EMITS a decision JSON the
 //      workflow uses to open / refresh / open-then-close the ONE digest issue for
 //      THIS version (mirroring docs-stale-tracker.yml's lifecycle, but per-version).
 //
-// LIFECYCLE (Phase 6 — what changed from the single rolling tracker):
+// LIFECYCLE (Phase 6: what changed from the single rolling tracker):
 //   - There is one digest issue PER server version (label server-upgrade:tracker,
 //     found by its version-stamped title). They stack; each is a persistent audit
 //     record of what the mechanical pass found for that release.
-//   - action 'clean'  → 0 candidates: a judgment-free claim, so CI opens-then-closes
+//   - action 'clean':  0 candidates: a judgment-free claim, so CI opens-then-closes
 //                       the digest as a record (the only CI close).
-//   - action 'triage' → ≥1 candidate: CI opens/refreshes the digest body until the
+//   - action 'triage': ≥1 candidate: CI opens/refreshes the digest body until the
 //                       digest is first triaged (it carries server-upgrade:triaging,
-//                       added by /server-upgrade) — then CI HANDS OFF and never
+//                       added by /server-upgrade). Then CI HANDS OFF and never
 //                       overwrites or closes it. A candidate-bearing digest is closed
 //                       only by a human / the skill (acknowledging ≠ work done).
-//   - action 'none'   → caught up (acknowledged == latest): do NOTHING. (Phase 4's
-//                       "close on caught-up" is REMOVED — that conflated acknowledgment
+//   - action 'none':   caught up (acknowledged == latest): do nothing. (Phase 4's
+//                       "close on caught-up" is removed: it conflated acknowledgment
 //                       with work done.)
 //
-// It NEVER files per-finding issues (that stays human-gated behind
+// It never files per-finding issues (that stays human-gated behind
 // `/server-upgrade execute`, which files them as sub-issues of the digest) and
-// NEVER touches the journals (latest_upstream / last_checked stay /catchup's job).
+// never touches the journals (latest_upstream / last_checked stay /catchup's job).
 //
 // CLI:
 //   node scripts/server-upgrade-tracker.js [--root <dir>] [--signals <path>]
@@ -52,9 +52,11 @@
 //     --tracker-issues gh JSON ([{title,state}]) of the per-version digests; used
 //                      to derive "mechanically cleared through" for the body header
 //     --body-out       write the rendered issue body markdown to this path
-//   → prints decision JSON: { action, version, acknowledged, floor,
-//                             needsInvestigation, title, degraded, error }
-//     action ∈ { none | clean | triage }
+//   Prints decision JSON: { action, version, acknowledged, clearedThrough, floor,
+//                           needsInvestigation, title, triagingLabel,
+//                           trackerLabel, degraded, error }
+//     action ∈ { none | clean | triage }; a 'none' decision carries only
+//     action, version and acknowledged.
 //
 // Pure parts (parse / decide / render) are named exports so the Vitest suite at
 // tests/scripts/unit/server-upgrade-tracker.test.js drives them offline.
@@ -112,7 +114,7 @@ export function parseStableSignal(markdown) {
 
     const h3 = line.match(/^###\s+([a-z0-9][a-z0-9-]*)\s*:/);
     if (h3) {
-      if (inRow) break; // next row starts → we already captured ours
+      if (inRow) break; // next row starts, so we already captured ours
       inRow = h3[1] === STABLE_SLUG;
       continue;
     }
@@ -133,7 +135,7 @@ export function parseStableSignal(markdown) {
 // ── Decision ──────────────────────────────────────────────────────────────────
 
 // 'ahead' when the latest stable is strictly newer than what we've acknowledged;
-// 'caught-up' otherwise (equal, or — defensively — acknowledged somehow ahead). A
+// 'caught-up' otherwise (equal, or, defensively, acknowledged somehow ahead). A
 // non-semver acknowledged value (placeholder) is treated as "behind" so the
 // tracker still nudges rather than silently going quiet. The emitted action
 // (none/clean/triage) is derived from this plus the report (see main).
@@ -143,11 +145,11 @@ export function decideVersionState({ latestStable, acknowledged }) {
   return compareSemverBase(latestStable, acknowledged) > 0 ? 'ahead' : 'caught-up';
 }
 
-// Map (version-state, report) → the emitted digest action.
-//   caught-up                       → 'none'   (do nothing; Phase 4's close-on-caught-up is gone)
-//   ahead + report unavailable      → 'triage' (announce-only; can't claim clean)
-//   ahead + 0 candidates            → 'clean'  (judgment-free → CI opens-then-closes a record)
-//   ahead + ≥1 candidate            → 'triage' (CI opens/refreshes until first triage)
+// Map (version-state, report) to the emitted digest action.
+//   caught-up                       gives 'none'   (do nothing; Phase 4's close-on-caught-up is gone)
+//   ahead + report unavailable      gives 'triage' (announce-only; can't claim clean)
+//   ahead + 0 candidates            gives 'clean'  (judgment-free, so CI opens-then-closes a record)
+//   ahead + ≥1 candidate            gives 'triage' (CI opens/refreshes until first triage)
 export function decideDigestAction(versionState, report) {
   if (versionState === 'caught-up') return 'none';
   if (!report) return 'triage';
@@ -272,7 +274,7 @@ async function main() {
   });
 }
 
-// Single-line JSON on stdout — the workflow parses it with jq. Human-readable
+// Single-line JSON on stdout: the workflow parses it with jq. Human-readable
 // progress goes to stderr so stdout stays pure.
 function emit(decision) {
   process.stdout.write(JSON.stringify(decision) + '\n');

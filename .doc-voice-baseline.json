@@ -1275,40 +1275,11 @@
     "filler": 1,
     "latin-abbrev": 5
   },
-  "scripts/agent-telemetry-report.cjs": {
-    "em-dash": 1,
-    "prose-arrow": 2
-  },
   "scripts/capture-screenshots.js": {
     "caps-emphasis": 2,
     "em-dash": 22,
     "filler": 5,
     "latin-abbrev": 2
-  },
-  "scripts/catchup-state.js": {
-    "caps-emphasis": 2,
-    "em-dash": 5,
-    "filler": 2,
-    "prose-arrow": 7
-  },
-  "scripts/changelog-syncer.js": {
-    "em-dash": 1,
-    "filler": 1
-  },
-  "scripts/crash-report.js": {
-    "caps-emphasis": 8,
-    "em-dash": 52,
-    "filler": 2,
-    "latin-abbrev": 4,
-    "prose-arrow": 12
-  },
-  "scripts/create-signed-package.cjs": {
-    "caps-emphasis": 3,
-    "em-dash": 9
-  },
-  "scripts/dead-code-accuracy.js": {
-    "em-dash": 2,
-    "prose-arrow": 2
   },
   "scripts/device-check.js": {
     "em-dash": 6,
@@ -1323,177 +1294,6 @@
     "caps-emphasis": 3,
     "em-dash": 20,
     "filler": 4
-  },
-  "scripts/generate/api-usage-manifest.js": {
-    "em-dash": 12,
-    "filler": 4,
-    "latin-abbrev": 1,
-    "prose-arrow": 12
-  },
-  "scripts/generate/dev-index.cjs": {
-    "em-dash": 1,
-    "prose-arrow": 5
-  },
-  "scripts/generate/findings-candidates.js": {
-    "caps-emphasis": 5,
-    "em-dash": 30,
-    "filler": 6,
-    "latin-abbrev": 6,
-    "prose-arrow": 11
-  },
-  "scripts/generate/gradient-assets.js": {
-    "caps-emphasis": 1,
-    "em-dash": 2,
-    "prose-arrow": 2
-  },
-  "scripts/generate/icons-add.js": {
-    "caps-emphasis": 2,
-    "em-dash": 4,
-    "latin-abbrev": 5,
-    "prose-arrow": 1
-  },
-  "scripts/generate/icons-build.js": {
-    "em-dash": 9,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 9
-  },
-  "scripts/generate/roku-hardware.js": {
-    "caps-emphasis": 4,
-    "em-dash": 26,
-    "filler": 4
-  },
-  "scripts/generate/sentence-final-dictionary.js": {
-    "caps-emphasis": 1,
-    "em-dash": 5,
-    "prose-arrow": 4
-  },
-  "scripts/generate/settings-docs.cjs": {
-    "em-dash": 2
-  },
-  "scripts/generate/spec-diff.js": {
-    "caps-emphasis": 1,
-    "em-dash": 10,
-    "filler": 1,
-    "prose-arrow": 2
-  },
-  "scripts/generate/spec-fingerprint.js": {
-    "em-dash": 2,
-    "filler": 2,
-    "latin-abbrev": 1,
-    "prose-arrow": 13
-  },
-  "scripts/harden-prod-manifest.js": {
-    "caps-emphasis": 3,
-    "em-dash": 8,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 3
-  },
-  "scripts/jellyfin-matrix.js": {
-    "em-dash": 2,
-    "latin-abbrev": 1
-  },
-  "scripts/journal-sync.js": {
-    "caps-emphasis": 5,
-    "em-dash": 21,
-    "filler": 4,
-    "latin-abbrev": 2,
-    "prose-arrow": 2
-  },
-  "scripts/lib/bsc-rule.cjs": {
-    "caps-emphasis": 2,
-    "em-dash": 10,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
-  "scripts/lib/catchup-typed.cjs": {
-    "em-dash": 1
-  },
-  "scripts/lib/changed-files.cjs": {
-    "em-dash": 3
-  },
-  "scripts/lib/endpoint-availability.cjs": {
-    "em-dash": 7,
-    "prose-arrow": 1
-  },
-  "scripts/lib/env-config.cjs": {
-    "em-dash": 4
-  },
-  "scripts/lib/fixture-probe.js": {
-    "caps-emphasis": 1,
-    "em-dash": 6,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
-  "scripts/lib/frontmatter.cjs": {
-    "em-dash": 5,
-    "latin-abbrev": 1
-  },
-  "scripts/lib/git-safe.cjs": {
-    "em-dash": 1
-  },
-  "scripts/lib/lint-excludes.cjs": {
-    "em-dash": 8
-  },
-  "scripts/lib/load-env.cjs": {
-    "em-dash": 1
-  },
-  "scripts/lib/locale-files.cjs": {
-    "em-dash": 2,
-    "prose-arrow": 3
-  },
-  "scripts/lib/odc-probe.js": {
-    "caps-emphasis": 2,
-    "em-dash": 9,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 1
-  },
-  "scripts/lib/png-compare.js": {
-    "em-dash": 4,
-    "filler": 2,
-    "prose-arrow": 1
-  },
-  "scripts/lib/pr-title.js": {
-    "em-dash": 4,
-    "filler": 1
-  },
-  "scripts/lib/process-liveness.cjs": {
-    "caps-emphasis": 2,
-    "em-dash": 5,
-    "filler": 1
-  },
-  "scripts/lib/rooibos-summary.cjs": {
-    "em-dash": 2
-  },
-  "scripts/lib/signal-staleness.cjs": {
-    "em-dash": 2,
-    "prose-arrow": 6
-  },
-  "scripts/lib/signals-fetch.cjs": {
-    "caps-emphasis": 1,
-    "em-dash": 8,
-    "filler": 1
-  },
-  "scripts/lib/spec-fetch.cjs": {
-    "caps-emphasis": 2,
-    "em-dash": 4,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 6
-  },
-  "scripts/lib/spec-path.cjs": {
-    "em-dash": 3,
-    "filler": 1
-  },
-  "scripts/lib/translation-formats.cjs": {
-    "em-dash": 6
-  },
-  "scripts/lib/version-boundaries.cjs": {
-    "caps-emphasis": 1,
-    "em-dash": 5,
-    "prose-arrow": 4
   },
   "scripts/measure-args.js": {
     "caps-emphasis": 2,
@@ -1593,9 +1393,6 @@
     "filler": 19,
     "prose-arrow": 2
   },
-  "scripts/run-roku-tests.js": {
-    "em-dash": 3
-  },
   "scripts/screenshots-index.js": {
     "caps-emphasis": 1,
     "em-dash": 7,
@@ -1604,26 +1401,6 @@
   "scripts/screenshots-store.js": {
     "caps-emphasis": 1,
     "em-dash": 4
-  },
-  "scripts/server-upgrade-tracker.js": {
-    "caps-emphasis": 2,
-    "em-dash": 10,
-    "prose-arrow": 11
-  },
-  "scripts/server-upgrade.js": {
-    "caps-emphasis": 5,
-    "em-dash": 22,
-    "filler": 3,
-    "latin-abbrev": 2,
-    "prose-arrow": 10
-  },
-  "scripts/translations-merge.js": {
-    "prose-arrow": 1
-  },
-  "scripts/translations-seed.js": {
-    "em-dash": 5,
-    "filler": 2,
-    "prose-arrow": 2
   },
   "source/GridView/GridPresenterBase.bs": {
     "caps-emphasis": 4,

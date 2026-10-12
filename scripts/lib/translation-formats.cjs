@@ -1,4 +1,4 @@
-// scripts/lib/translation-formats.cjs — read other projects' translation files.
+// scripts/lib/translation-formats.cjs: read other projects' translation files.
 //
 // Every parser takes the file's raw bytes (a Buffer) and returns a flat
 // `{ sourceKey: value }` object of plain strings: markup the format uses for its OWN
@@ -50,12 +50,12 @@ function onlyStrings(object) {
 
 // ── Parsers ──────────────────────────────────────────────────────────────────
 
-/** `{ "Key": "Value" }` — jellyfin-web, the Jellyfin server. */
+/** `{ "Key": "Value" }`: jellyfin-web, the Jellyfin server. */
 function parseJsonFlat(buffer) {
   return onlyStrings(JSON.parse(decodeText(buffer)));
 }
 
-/** Nested i18next JSON — streamyfin. Keys are joined with `.`: `player.menu.audio`. */
+/** Nested i18next JSON: streamyfin. Keys are joined with `.`: `player.menu.audio`. */
 function parseJsonNested(buffer) {
   const out = {};
   const walk = (node, prefix) => {
@@ -113,7 +113,7 @@ function decodeAndroidText(raw) {
 }
 
 /**
- * Android `res/values-*\/strings.xml` — jellyfin-androidtv, jellyfin-android.
+ * Android `res/values-*\/strings.xml`: jellyfin-androidtv, jellyfin-android.
  * Only `<string>` elements: `<plurals>` and `<string-array>` have no single value
  * to map, and `translatable="false"` strings are not translations.
  */
@@ -148,7 +148,7 @@ function decodeAppleString(raw) {
   });
 }
 
-/** Apple `.strings` — Swiftfin. `"key" = "value";`, with C comments. */
+/** Apple `.strings`: Swiftfin. `"key" = "value";`, with C comments. */
 function parseAppleStrings(buffer) {
   const text = decodeText(buffer).replace(/\/\*[\s\S]*?\*\//g, '');
   const out = {};
@@ -159,7 +159,7 @@ function parseAppleStrings(buffer) {
 }
 
 /**
- * Qt Linguist `.ts` — jellyfin-roku. The English source text IS the key. Entries
+ * Qt Linguist `.ts`: jellyfin-roku. The English source text IS the key. Entries
  * marked `unfinished`, `obsolete` or `vanished` are not translations; numerus forms
  * have no single value.
  */

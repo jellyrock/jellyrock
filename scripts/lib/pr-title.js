@@ -6,9 +6,9 @@
  * before the colon is therefore the one input that places a change in the release
  * notes. This module is the single definition of that mapping, read by:
  *
- *   - `scripts/changelog-syncer.js` — sorts and words each changelog line
- *   - `scripts/lint/pr-body-check.js` — fails a PR whose title has no known type
- *   - the `/pr` skill — picks the type when it titles a PR
+ *   - `scripts/changelog-syncer.js`: sorts and words each changelog line
+ *   - `scripts/lint/pr-body-check.js`: fails a PR whose title has no known type
+ *   - the `/pr` skill: picks the type when it titles a PR
  *
  * A title is `type(scope)!: Subject` (Conventional Commits 1.0), where the scope and
  * the `!` are optional. Types are case-insensitive, as the spec requires. The set is
@@ -72,7 +72,7 @@ export const TITLE_TYPES = Object.freeze({
 const DEPENDENCY_SCOPE = 'deps';
 
 // type, then an optional (scope) holding anything but parentheses, an optional `!`,
-// the colon, and the rest. Deliberately loose past the colon so the changelog can read
+// the colon, and the rest. Loose past the colon on purpose, so the changelog can read
 // imperfect titles already on `main` (the sync bot's own `chore:(docs) sync …`);
 // titleProblems() is where a NEW title is held to the exact form.
 const TITLE_RE = /^([A-Za-z]+)(?:\(([^()]*)\))?(!)?:(\s*)(.*)$/;
@@ -129,7 +129,7 @@ export function changelogSection(title, { isDependency = false } = {}) {
 
 /**
  * A title's changelog line: the type (and any `!`) removed, the scope kept in front for
- * the area it names — `fix(skills): Make X` reads `(skills) Make X`. A title with no
+ * the area it names: `fix(skills): Make X` reads `(skills) Make X`. A title with no
  * known type is used whole, since there is nothing to remove.
  *
  * @param {string} title
