@@ -247,7 +247,7 @@ function getRelativeDayName(date) as string
 end function
 
 '
-' Get program duration string (e.g. 1h 20m)
+' Get program duration string (for example, 1h 20m)
 function getDurationStringFromSeconds(seconds) as string
 
   hours = 0
@@ -311,7 +311,7 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  ' Just prevent up/down from bubbling
+  ' Prevent up/down from bubbling
   if key = "up" or key = "down"
     return true
   end if

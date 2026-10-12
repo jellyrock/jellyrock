@@ -8,7 +8,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' This dialog's OWN geometry. The vertical flow (padding, title, accent rule,
-' gaps) is shared — see source/utils/dialogLayout.bs.
+' gaps) is shared: see source/utils/dialogLayout.bs.
 '
 ' WIDTH is this dialog's to choose; HEIGHT is not, and used to be. The panel was
 ' a fixed 1602x762 on the reasoning that a scrolling body cannot decide its own
@@ -16,13 +16,13 @@ import "pkg:/source/utils/translate.bs"
 ' where the text wraps, and the width is fixed, so the text's natural height is
 ' fully known before any height decision. So the panel is content-derived like
 ' every other dialog now, and the scroll viewport reads the body height the flow
-' hands back — clamped at PANEL_MAX_HEIGHT, which is the point at which it
+' hands back, clamped at PANEL_MAX_HEIGHT, which is the point at which it
 ' scrolls. A short description gets a small panel instead of ~200px of dead
 ' space; a long one gets 924px, which is 162px MORE than the old fixed height.
 '
 ' 1602 rather than 1600 because a width divisible by 6 puts the centred panelX
 ' on the 720p output grid ((1920 - w) / 2 = 960 - w/2); computeDialogLayout snaps
-' panelY. 1600 put every edge off it — the most visible chrome in the app's
+' panelY. 1600 put every edge off it, on the most visible chrome in the app's
 ' largest panel.
 const DIALOG_WIDTH = 1602
 const SCROLL_STEP = 150
@@ -33,7 +33,7 @@ const SCROLLBAR_TRACK_WIDTH = 3
 const SCROLLBAR_MARGIN = 12
 
 ' Centring offset for the 3px track inside the 12px thumb gutter. The true
-' centre is 4.5, which is both fractional AND off the grid — for a 3px hard edge
+' center is 4.5, which is both fractional AND off the grid. For a 3px hard edge
 ' that is the worst case, so it sits one and a half pixels right of centre
 ' instead, which nothing can see and the output grid can.
 const SCROLLBAR_TRACK_INSET = 6
@@ -44,21 +44,21 @@ const SCROLLBAR_TRACK_INSET = 6
 ' multiples of 6 so the value column's left edge lands on the 720p output grid.
 ' Wide enough that no known label has to wrap, because wrapping is the expensive
 ' fix here: a wrapping label must be render-tracked (it could be the tallest thing
-' in its row), and tracked nodes are quadratic — see trackReportNode.
+' in its row), and tracked nodes are quadratic: see trackReportNode.
 '
 ' MEASURED on a Stick 4K, not estimated from character counts, which got this
-' wrong in both directions — the longest string is not the widest one:
+' wrong in both directions. The longest string is not the widest one:
 '
 '     Total Bitrate           179px   the longest ENGLISH row label
 '     Taxa de bits total      250px   pt_BR
 '     Formato dos pixeis      271px   pt / gl / es_AR
-'     Format slikovnih pik    285px   sl — the longest by CHARACTERS (20), fits
-'     Formatu-edukiontzia     302px   eu — the only real translation over 300
+'     Format slikovnih pik    285px   sl: the longest by CHARACTERS (20), fits
+'     Formatu-edukiontzia     302px   eu: the only real translation over 300
 '     Hardware Acceleration   329px   not a value we ship, but the shape of one
 '
 ' 300 clipped `eu` by two pixels. 360 clears every string above with room to
 ' spare, stays a multiple of 6 so the value column's left edge lands on the 720p
-' output grid, and costs the value column 60px it does not need — the longest
+' output grid, and costs the value column 60px it does not need. The longest
 ' value is a file path, which wraps to maxLines = 6 either way.
 const REPORT_LABEL_WIDTH = 360
 ' Reason rows carry a Jellyfin reason code in the label column
@@ -88,7 +88,7 @@ sub init()
   m.taglineText = invalid
 
   ' The text column's width comes from the PANEL WIDTH alone, which is a
-  ' constant — so it is known before any layout pass, and setting it here is what
+  ' constant, so it is known before any layout pass, and setting it here is what
   ' lets the text render (and be measured) before the panel height is decided.
   ' That ordering is the whole reason this dialog can be content-sized at all.
   m.textAreaWidth = DIALOG_WIDTH - (PANEL_PADDING * 2) - SCROLLBAR_THUMB_WIDTH - SCROLLBAR_MARGIN
@@ -122,7 +122,7 @@ sub init()
   m.okButton.minWidth = DIALOG_BUTTON_MIN_WIDTH
   ' The panel's height now includes the button, so the button's own height is an
   ' input to the layout rather than something read opportunistically. `isReady`
-  ' is the signal TextButton publishes when it has sized itself — the same one
+  ' is the signal TextButton publishes when it has sized itself, the same one
   ' JRDialog's row uses, and not renderTracking, which reports render visibility
   ' and fires once.
   m.okButton.observeField("isReady", "onOkButtonReady")
@@ -130,7 +130,7 @@ sub init()
   ' Observe focus changes to show/hide scrollbar
   m.top.observeField("focusedChild", "onFocusChanged")
 
-  ' Screen-reader announcement — mirrors JRDialog / JRListDialog. Without it this
+  ' Screen-reader announcement, mirroring JRDialog / JRListDialog. Without it this
   ' overlay is SILENT: a scene-appended Group gets only Scene's fallback rule,
   ' which speaks the focused descendant, and both things focus can land on here
   ' (the scroll area and the OK button) are Groups the platform never announces.
@@ -145,7 +145,7 @@ sub init()
   m.maxScroll = 0
   m.contentHeight = 0
   m.textAreaHeight = 0
-  ' Set the moment the user scrolls or moves focus themselves — see
+  ' Set the moment the user scrolls or moves focus themselves. See
   ' applyScrollBounds, which re-places the OPENING focus on every layout pass
   ' until this is true.
   m.userHasNavigated = false
@@ -163,7 +163,7 @@ end sub
 
 ' Measure, then flow. Every input to the panel's height has to have settled
 ' before the panel can be sized, so each one that has not returns early and comes
-' back through its own observer — the same measure-or-return shape JRDialog uses.
+' back through its own observer: the same measure-or-return shape JRDialog uses.
 sub applyLayout()
   titleHeight = m.chrome.titleHeight
   if isValidAndNotEmpty(m.top.title) and titleHeight = 0 then return
@@ -172,10 +172,10 @@ sub applyLayout()
   ' onOkButtonReady brings us back with the real figure.
   footerHeight = okButtonHeight()
 
-  ' The natural height of everything that scrolls — tagline plus overview. Zero
+  ' The natural height of everything that scrolls: tagline plus overview. Zero
   ' while the labels are still rendering; their renderTracking observers bring us
   ' back. Measured on scrollContent rather than the labels so the LayoutGroup's
-  ' own spacing is included — but GUARDED per label, because the group reports a
+  ' own spacing is included, but GUARDED per label, because the group reports a
   ' non-zero height as soon as EITHER child has rendered. Measuring the group
   ' alone let a tagline-plus-overview dialog settle on a height short by the
   ' whole tagline, and nothing downstream could tell that apart from a real one.
@@ -230,9 +230,9 @@ function hasBodyText() as boolean
   return isValidAndNotEmpty(m.top.overview) or isValidAndNotEmpty(m.top.tagline)
 end function
 
-' True once EVERY label this dialog expects to show reports a rendered height.
+' True once every label this dialog expects to show reports a rendered height.
 ' Each label carries its own renderTracking observer, so each brings us back at
-' least once — this only decides whether the pass we are in may be trusted, not
+' least once. This only decides whether the pass we are in may be trusted, not
 ' whether another one is coming.
 function bodyLabelsMeasured() as boolean
   ' Structured body: the same rule as the string body, generalised from two named
@@ -258,9 +258,9 @@ function bodyLabelsMeasured() as boolean
   return true
 end function
 
-' Derive the scroll state from the two heights the layout just settled. The body
+' Derive the scroll state from the two heights the layout has settled. The body
 ' is clamped at PANEL_MAX_HEIGHT by computeDialogLayout, so `maxScroll > 0` is
-' exactly "the content did not fit" — this dialog never re-derives that ceiling.
+' exactly "the content did not fit": this dialog never re-derives that ceiling.
 sub applyScrollBounds()
   m.maxScroll = m.contentHeight - m.textAreaHeight
   if m.maxScroll < 0 then m.maxScroll = 0
@@ -285,12 +285,12 @@ sub applyScrollBounds()
   end if
   updateScrollThumb()
 
-  ' Place the opening focus on EVERY pass until the user takes over, not once.
+  ' Place the opening focus on every pass until the user takes over, not once.
   '
   ' Once was the obvious shape and it was wrong, because the first completed pass
   ' is not the one that knows anything. `init()` runs a layout before a single
   ' field is set, so a latch armed there sent every scrolling dialog to the OK
-  ' button — where `down` is swallowed (see onKeyEvent) and the user has to press
+  ' button, where `down` is swallowed (see onKeyEvent) and the user has to press
   ' UP to reach text they are looking straight at. Confirmed on a Stick 4K: the
   ' OK button held focus immediately after createObject, with no content.
   '
@@ -301,14 +301,14 @@ sub applyScrollBounds()
   ' Anything that latches on a single pass is betting on which pass it is in.
   '
   ' So: re-derive it every time, and stop only when the answer stops being ours
-  ' to give. That is what the old calculateScrollBounds did — it re-placed focus
-  ' on every recalculation — plus the guard it lacked, which is the real concern
+  ' to give. That is what the old calculateScrollBounds did (it re-placed focus
+  ' on every recalculation), plus the guard it lacked, which is the real concern
   ' behind the latch: a late pass must not yank focus from a user who has already
   ' scrolled. setFocus on the already-focused node is a no-op, so the repeats
   ' cost nothing.
-  ' hasBodyText() is the second half of the same rule, and it is load-bearing:
+  ' hasBodyText() is the second half of the same rule, and it is required:
   ' init() runs a layout BEFORE a single field is set, and a body of nothing
-  ' cannot scroll — so that pass derives `scrolls = false` and, without this
+  ' cannot scroll, so that pass derives `scrolls = false` and, without this
   ' guard, focused the OK button on the strength of it. The focus then moved to
   ' the scroll area on the first pass that had real content, which is correct,
   ' but the BUTTON had already painted itself focused and never repainted:
@@ -363,7 +363,7 @@ sub onTaglineChanged()
     if isValid(m.taglineText)
       m.scrollContent.removeChild(m.taglineText)
       m.taglineText = invalid
-      ' The body just got shorter, so the panel is now too tall for it.
+      ' The body is now shorter, so the panel is too tall for it.
       applyLayout()
     end if
   end if
@@ -372,14 +372,14 @@ end sub
 ' The structured body arrived, or was refreshed.
 '
 ' Two paths, and choosing between them is the whole reason this dialog can carry a
-' LIVE report. When the row ids are unchanged — the ordinary case, because a
-' refresh re-reads the same stream — only the text of the value labels is
+' LIVE report. When the row ids are unchanged (the ordinary case, because a
+' refresh re-reads the same stream), only the text of the value labels is
 ' rewritten. No node is created or destroyed, the body's height does not move, and
-' neither does the user's scroll position or focus. When the shape genuinely
+' neither does the user's scroll position or focus. When the shape
 ' differs (a transcode started, a section appeared), everything is rebuilt and the
 ' panel re-flows.
 '
-' The in-place path deliberately does NOT call applyLayout(). A refreshed figure
+' The in-place path does not call applyLayout(). A refreshed figure
 ' occupies the same single line as the one it replaces, so re-flowing would be a
 ' no-op that risks yanking the panel out from under someone mid-read.
 sub onSectionsChanged()
@@ -421,7 +421,7 @@ function reportShapeMatches(sections as object) as boolean
 end function
 
 ' Rewrite the values whose text actually changed. Skipping the unchanged ones is
-' not just a saving: assigning to a Label's text re-renders it, and doing that to
+' not only a saving: assigning to a Label's text re-renders it, and doing that to
 ' every row five seconds apart would repaint the whole report to update two
 ' numbers.
 sub updateReportValues(sections as object)
@@ -443,7 +443,7 @@ sub clearReportNodes()
   m.reportRowOrder = []
 
   ' Remove every child this dialog added, leaving the XML-declared overviewText
-  ' (and any tagline) alone — the same node can serve a plain description later.
+  ' (and any tagline) alone: the same node can serve a plain description later.
   for each child in m.scrollContent.getChildren(-1, 0)
     if child.id = "reportSection" then m.scrollContent.removeChild(child)
   end for
@@ -458,8 +458,8 @@ sub buildReportNodes(sections as object)
   clearReportNodes()
 
   ' REMOVED from the group, not hidden. The XML-declared paragraph label is unused
-  ' in this mode, and a LayoutGroup positions every child by its bounding rect —
-  ' visibility is not part of that, so an empty hidden Label still reserved a line
+  ' in this mode, and a LayoutGroup positions every child by its bounding rect.
+  ' Visibility is not part of that, so an empty hidden Label still reserved a line
   ' and left a visible gap under the status. Verified on a Stick 4K: setting
   ' visible = false changed nothing. onOverviewChanged puts it back if a plain
   ' description is ever set on this same dialog.
@@ -499,7 +499,7 @@ end sub
 ' One label/value row.
 '
 ' The label column is LabelSecondary and the value LabelPrimary, so the eye lands
-' on the data rather than on the field names — the same emphasis split the theme
+' on the data rather than on the field names: the same emphasis split the theme
 ' table describes for text. The value wraps (a file path needs two or three
 ' lines); the label never does, which is what keeps the columns aligned.
 function buildReportRow(row as object, labelWidth as integer) as object
@@ -507,7 +507,7 @@ function buildReportRow(row as object, labelWidth as integer) as object
   rowGroup.layoutDirection = "horiz"
   rowGroup.itemSpacings = [0]
 
-  ' ONE LINE, and deliberately NOT render-tracked — see REPORT_LABEL_WIDTH for why
+  ' ONE LINE, and not render-tracked: see REPORT_LABEL_WIDTH for why
   ' the column is wide enough that it does not need to wrap.
   label = CreateObject("roSGNode", "LabelSecondaryMedium")
   label.text = row.label
@@ -531,11 +531,11 @@ end function
 
 ' Every label whose rendered height feeds the panel gets a renderTracking
 ' observer, for the same reason the overview label has one: the panel cannot be
-' sized until they have all reported. Only WRAPPING labels are tracked — a
+' sized until they have all reported. Only WRAPPING labels are tracked: a
 ' single-line label column cannot change the row height, and each tracked node is
 ' expensive twice over: it adds a settle signal AND a member to the set every
-' other settle signal re-measures. Measured on a Stick 4K, one
-' localBoundingRect() read costs 23.05 µs, so that set is quadratic in real time —
+' other settle signal re-measures. Measured on a Stick 4K on 2026-08-29, one
+' localBoundingRect() read costs 23.05 µs, so that set is quadratic in real time:
 ' 26 tracked nodes is ~15.6 ms of render-thread work per open and 46 would be
 ' ~48.8 ms. Do not track a node whose height cannot vary.
 sub trackReportNode(node as object)
@@ -544,8 +544,8 @@ sub trackReportNode(node as object)
   m.reportNodes.push(node)
 end sub
 
-' Tagline has rendered — its height is part of the body, so the PANEL changes,
-' not just the scroll bounds.
+' Tagline has rendered. Its height is part of the body, so the PANEL changes,
+' not only the scroll bounds.
 sub onTaglineRendered()
   applyLayout()
 end sub
@@ -576,18 +576,18 @@ sub onFocusChanged()
     return
   end if
 
-  ' Afterwards only the OK button needs announcing — moving between it and the
+  ' Afterwards only the OK button needs announcing: moving between it and the
   ' scroll area is otherwise silent.
   if m.okButton.hasFocus() then narrateFocusedElement(toString(m.okButton.text))
 end sub
 
 ' Announce the dialog once the platform's own focus announcement is out of the
 ' way. The overview text IS the announcement here: this dialog exists to be read,
-' so a screen-reader user opening it wants its contents, not just its title.
+' so a screen-reader user opening it wants its contents, not only its title.
 sub onOpeningAnnouncementDue()
   ' FAILSAFE for the layout cover, riding a timer that already exists and already
   ' means "this dialog has been open for 0.15s". A dialog that never completes a
-  ' layout would otherwise stay covered — i.e. invisible while still holding the
+  ' layout would otherwise stay covered, that is, invisible while still holding the
   ' remote. Uncovering it here means the worst case is the pre-existing broken
   ' paint, not a black screen. See dialogReveal.bs.
   revealDialog(m.top)
@@ -608,7 +608,7 @@ end sub
 ' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
 '
 ' The dialog is hidden until this returns, so there is no renderTracking to wait
-' on — and none is needed, because localBoundingRect() answers while hidden. See
+' on, and none is needed, because localBoundingRect() answers while hidden. See
 ' dialogReveal.bs.
 sub settleLayout()
   applyLayout()
@@ -618,7 +618,7 @@ end sub
 '
 ' Without this a report dialog announces its title and then falls silent, because
 ' the opening announcement reads `overview` and a report sets `sections` instead.
-' Each row is read as "label, value" so the pairing survives being spoken — the
+' Each row is read as "label, value" so the pairing survives being spoken: the
 ' two-column alignment that carries it visually is worth nothing to a listener.
 function reportNarrationLines() as object
   lines = []
@@ -652,9 +652,9 @@ sub updateScrollbarFocus(isFocused as boolean)
   end if
 end sub
 
-' Cancel this dialog from OUTSIDE — see cancelOpenDialog() in source/utils/dialogs.bs.
+' Cancel this dialog from OUTSIDE. See cancelOpenDialog() in source/utils/dialogs.bs.
 ' This dialog is read-only and has no `result` field, so there is nothing to
-' deliver: cancelling it is exactly closing it — but WHO closed it is still worth
+' deliver: cancelling it is exactly closing it. But WHO closed it is still worth
 ' recording, because an owner that acts on `closed` must not act on a close the
 ' user did not make. Set before closeDialog(), which writes `closed` last.
 sub cancelDialog()
@@ -662,9 +662,9 @@ sub cancelDialog()
   closeDialog()
 end sub
 
-' Dismiss this overlay. It is appended directly to the scene by FocusableOverview, so closing
-' is a removeChild from our parent + restoring focus to the element that opened us
-' (returnFocusTo).
+' Dismiss this overlay. presentOverlayDialog appends it to the scene (through showInfoDialog or
+' showReportDialog), so closing is a removeChild from our parent + restoring focus to the
+' element that opened us (returnFocusTo).
 sub closeDialog()
   returnFocusTo = m.top.returnFocusTo
   parent = m.top.getParent()
@@ -682,9 +682,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   ' The three keys this dialog acts on all either scroll or move focus, so from
   ' the first one the placement is the USER's and a late layout pass must not
-  ' redo it (see applyScrollBounds). The ones that look like no-ops — `down` on
-  ' the OK button, `up` at the top of the scroll — count too: the user is still
-  ' saying where they are. Keys we do NOT handle deliberately do not count, or a
+  ' redo it (see applyScrollBounds). The ones that look like no-ops (`down` on
+  ' the OK button, `up` at the top of the scroll) count too: the user is still
+  ' saying where they are. Keys we don't handle are left out on purpose, or a
   ' stray `right` before the text renders would freeze the opening placement.
   if key = "OK" or key = "down" or key = "up" then m.userHasNavigated = true
 

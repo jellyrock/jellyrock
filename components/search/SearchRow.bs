@@ -89,8 +89,8 @@ function getData()
   updateTextureBufferRange(m.top.content, 0, 0, m.top.numRows)
   activateTextureManager(m.top.content)
 
-  ' Every row is built and the texture manager is live — the results are on screen. This is
-  ' the ONLY tail of this function that has results, so it is the only place the signal
+  ' Every row is built and the texture manager is live: the results are on screen. This is
+  ' the only tail of this function that has results, so it is the only place the signal
   ' belongs; the early return above is the init-time call, which has no data yet.
   m.top.contentReady = true
   return data
@@ -108,9 +108,9 @@ sub addRow(data, title, typeFilter)
 end sub
 
 ' Returns the appropriate slot size for a given Jellyfin item type.
-' WIDE  (16:9) — Episode, Video, MusicVideo, PhotoAlbum, Photo
-' SQUARE (1:1) — Music types, Playlist, Program, TvChannel, Recording
-' PORTRAIT (2:3) — all others (Movie, Series, Person, BoxSet, etc.)
+' WIDE  (16:9): Episode, Video, MusicVideo, PhotoAlbum, Photo
+' SQUARE (1:1): Music types, Playlist, Program, TvChannel, Recording
+' PORTRAIT (2:3): all others (Movie, Series, Person, BoxSet, etc.)
 function getSlotSizeForType(itemType as string) as object
   if itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "PhotoAlbum" or itemType = "Photo"
     return rowSlotSize.WIDE

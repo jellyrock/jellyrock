@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  TaskLedgerBench — the RENDER-THREAD counterpart to
+  TaskLedgerBench: the RENDER-THREAD counterpart to
   tests/source/unit/utils/taskLedgerCost.spec.bs.
 
   That spec measures what a production-resident task ledger costs, but Rooibos
   does not run on the render thread (proved from its own data: at depth 0 the
-  identical operation costs 3.7x more against `m.global` than against a
+  identical operation cost 3.7x more (measured 2026-08-23) against `m.global` than against a
   locally-created node, a gap that can only exist if `m.global` is owned
   elsewhere). Every figure it reports is therefore rendezvous-laden, and the app's
   Task launches happen on the RENDER thread, where a node op on a render-owned
   node does not rendezvous at all.
 
   A `callFunc` invoked through roku-test-automation's on-device component runs on
-  the render thread — RTA's Task sets `renderThreadRequest` and the observer
+  the render thread: RTA's Task sets `renderThreadRequest` and the observer
   callback for a field set from a Task thread executes on the Render thread
   (rokudev/dev-doc v2.0, DEVELOPER/core-concepts/threads.md). So this component is
   the measurement vehicle the spec could not be.

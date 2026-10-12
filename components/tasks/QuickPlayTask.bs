@@ -10,14 +10,14 @@ import "pkg:/source/utils/quickplayLibrary.bs"
 ' Trailer, and Photo Album flows that require API calls.
 '
 ' Input AA fields:
-'   action (string)       - dispatch key (e.g. "musicalbum", "playAllSeries", "instantMix", etc.)
+'   action (string)       - dispatch key (for example "musicalbum", "playAllSeries", "instantMix")
 '   id (string)           - primary item ID
 '   seriesId (string)     - optional, for season/episode context
 '   collectionType (string) - optional, for collection/userView dispatch
 '   folderType (string)   - optional, for folder sub-dispatch
 '   movieCount (integer)  - optional, for folder series vs movie heuristic
 '   seriesCount (integer) - optional, for folder series vs movie heuristic
-'   channelId (string)    - optional, for program → channel redirect
+'   channelId (string)    - optional, for program-to-channel redirect
 '   seasonId (string)     - optional, for season Play All
 '
 ' Output AA fields:
@@ -51,10 +51,10 @@ sub executeQuickPlay()
   keepsCopies = false
 
   ' Dispatch convention: the action key is the lowercased Jellyfin item type
-  ' (e.g. "musicalbum", "boxset"), optionally with a literal operation prefix
-  ' ("playall..."). Producers build it from the raw type (main.bs: LCase(type)
-  ' and "playAll" + type), so keys must match Jellyfin's BaseItemKind exactly —
-  ' there is no bare "album"/"artist" type, only "MusicAlbum"/"MusicArtist".
+  ' (for example "musicalbum", "boxset"), optionally with a literal operation prefix
+  ' ("playall..."). Producers build it from the raw type (QueueManager.launchItem:
+  ' LCase(type); ItemDetails: "playAll" + type), so keys must match Jellyfin's
+  ' BaseItemKind exactly: there is no bare "album"/"artist" type, only "MusicAlbum"/"MusicArtist".
   ' The else branch below logs any unmatched action so drift can't fail silently.
   if action = "musicalbum"
     doAlbum(input, items)
@@ -129,8 +129,8 @@ sub executeQuickPlay()
     outputAction = "photo"
   else
     ' No dispatch branch matched. This is the failure mode behind #629: a caller
-    ' builds an action string (e.g. "playAll" + itemType) that no handler key
-    ' matches, so items stays empty and the UI just stops the spinner silently.
+    ' builds an action string (for example "playAll" + itemType) that no handler key
+    ' matches, so items stays empty and the UI stops the spinner silently.
     ' Surface it loudly so a future type mismatch is debuggable, not invisible.
     m.log.error("unhandled action — no dispatch branch matched", input.action)
   end if
@@ -203,7 +203,7 @@ sub doBoxset(input as object, items as object)
   end if
 end sub
 
-' @return {object} { startingPoint, resumes } — see executeQuickPlay's launch
+' @return {object} { startingPoint, resumes } (see executeQuickPlay's launch)
 function doSeries(input as object, items as object) as object
   launch = { startingPoint: 0&, resumes: true }
   localUser = m.global.user
@@ -235,7 +235,7 @@ function doSeries(input as object, items as object) as object
     if isValid(data) and isValidAndNotEmpty(data.Items)
       items.push(data.Items[0])
     else
-      ' All episodes fully watched and rewatching disabled — shuffle the whole series
+      ' All episodes fully watched and rewatching disabled: shuffle the whole series
       allEps = fetchJson(GetApi().BuildGetEpisodesRequest(input.id, {
         "SortBy": "Random",
         "limit": 500,
@@ -251,7 +251,7 @@ function doSeries(input as object, items as object) as object
   return launch
 end function
 
-' @return {object} { startingPoint, resumes } — see executeQuickPlay's launch
+' @return {object} { startingPoint, resumes } (see executeQuickPlay's launch)
 function doSeason(input as object, items as object) as object
   launch = { startingPoint: 0&, resumes: true }
   seriesId = isValidAndNotEmpty(input.seriesId) ? input.seriesId : ""
@@ -267,7 +267,7 @@ function doSeason(input as object, items as object) as object
     ' Find the first unwatched EPISODE, not the first unwatched item: before 12.0 each copy
     ' of an episode is its own item with its own watched state, so an unwatched copy of a
     ' watched episode must not start the season over (episodeQueue). Tracks a position in
-    ' the list rather than one derived from IndexNumber — the two only agree when a season
+    ' the list rather than one derived from IndexNumber: the two only agree when a season
     ' holds episodes numbered 1..N with none missing; Jellyfin guarantees neither.
     groups = episodeQueue.groupByEpisode(episodesData.Items)
     firstUnwatched = -1
@@ -418,7 +418,7 @@ function doFolder(input as object) as dynamic
   if isValid(folderData) and isValidAndNotEmpty(folderData.items)
     if seriesCount > 0
       if seriesCount = 1
-        ' Single series — delegate to series quickplay, and carry its whole launch: a folder
+        ' Single series: delegate to series quickplay, and carry its whole launch: a folder
         ' holding one series plays it exactly as the series itself would, resume included.
         launch = doSeries({ id: folderData.items[0].Id }, items)
         shouldShuffle = false
@@ -602,7 +602,7 @@ sub doVideoContainer(input as object, items as object)
   end if
 end sub
 
-' Helper: a mixed-content library — its movies and videos that are not in progress, and its
+' Helper for a mixed-content library: its movies and videos that are not in progress, and its
 ' watched episodes, the Movies and TV libraries' rules (quickplayLibrary), shuffled together by
 ' executeQuickPlay.
 sub doMixedLibrary(input as object, items as object)

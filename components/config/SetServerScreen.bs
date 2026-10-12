@@ -9,7 +9,7 @@ import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
-  ' Opened before anything else so the run covers the chrome build too — the
+  ' Opened before anything else so the run covers the chrome build too: the
   ' findNode/translate/center work below is part of what the user waits for, and a
   ' ledger opened after it would report a screen that is faster than it is.
   screenLoad.begin("setServer")
@@ -18,7 +18,7 @@ sub init()
   ' onScanForServersComplete sets the precise focus target (picker vs. textbox) once the SSDP
   ' scan returns.
   m.top.isOptionsAvailable = true
-  ' Overhang config — declarative field projected onto the overhang by JRScene (registerOverhangData).
+  ' Overhang config: declarative field projected onto the overhang by JRScene (registerOverhangData).
   m.top.isLogoVisible = true
 
   m.top.findNode("prompt").text = translate(translationKeys.LabelConnectToServer)
@@ -49,7 +49,7 @@ sub init()
   ScanForServers()
 end sub
 
-' Build the "Delete Saved" options sidepanel entry (was CreateServerGroup 346-355).
+' Build the "Delete Saved" options sidepanel entry.
 sub setupDeleteSavedOption()
   sidepanel = m.top.findNode("options")
   opt = CreateObject("roSGNode", "OptionsButton")
@@ -60,7 +60,7 @@ sub setupDeleteSavedOption()
   sidepanel.observeField("closeSidePanel", "onCloseSidePanel")
 end sub
 
-' Submit pressed → publish the entered URL and emit the serverSubmitted intent.
+' Submit pressed: publish the entered URL and emit the serverSubmitted intent.
 ' The coordinator (loginRouter.onServerSubmitted) runs the blocking connect.
 sub onButtonSelected(event as object)
   buttonGroup = event.getRoSGNode()
@@ -71,12 +71,12 @@ sub onButtonSelected(event as object)
   end if
 end sub
 
-' Delete the focused saved server from the picker + registry (was CreateServerGroup 420-435).
+' Delete the focused saved server from the picker + registry.
 sub onDeleteSaved()
   itemToDelete = m.serverPicker.content.getChild(m.serverPicker.itemFocused)
   if not isValid(itemToDelete) then return
-  ' Prefer id for deletion — robust when the picker item's baseUrl differs from the
-  ' saved entry's baseUrl (e.g. SSDP HTTP item merged from an HTTPS saved entry).
+  ' Prefer id for deletion: robust when the picker item's baseUrl differs from the
+  ' saved entry's baseUrl (for example, an SSDP HTTP item merged from an HTTPS saved entry).
   idOrUrl = itemToDelete.id
   if not isValidAndNotEmpty(idOrUrl)
     idOrUrl = itemToDelete.baseUrl
@@ -89,7 +89,7 @@ sub onDeleteSaved()
   end if
 end sub
 
-' Sidepanel closed without a selection (was CreateServerGroup 366-369).
+' Sidepanel closed without a selection: return focus to the server picker.
 sub onCloseSidePanel()
   ' setFocus on the child focuses up the chain, so focusing m.top first is redundant.
   m.serverPicker.setFocus(true)
@@ -99,7 +99,7 @@ sub ScanForServers()
   startLoadingSpinner(false)
 
   ' Declared BEFORE the launch, per the ledger's rule 1. A `back` re-scan does not
-  ' re-open the ledger, so this is ignored on that path — the run is over and a
+  ' re-open the ledger, so this is ignored on that path: the run is over and a
   ' user-driven refresh is not a second load. Same shape as ItemDetails' refresh.
   screenLoad.pending("scan")
 
@@ -113,7 +113,7 @@ sub onScanForServersComplete(event)
   m.servers = event.getData()
 
   ' Resolved at the TOP so the fill measures the TASK and nothing else. Everything
-  ' below it — the `saved_servers` registry read and the two merge passes — is
+  ' below it (the `saved_servers` registry read and the two merge passes) is
   ' synchronous render-thread work with no async boundary to bracket, so it cannot be
   ' a fill of its own; it falls out as `paint` minus `scan` instead. That subtraction
   ' is only valid because the two spans nest exactly here, which is the whole reason
@@ -126,7 +126,7 @@ sub onScanForServersComplete(event)
   ' sample that cannot say which it was must not be compared against the other.
   '
   ' ⚠️ Unlike every other `variant` in the app, this one is decided by the ENVIRONMENT
-  ' rather than by what the user opened — so it can differ BETWEEN launches of one
+  ' rather than by what the user opened, so it can differ BETWEEN launches of one
   ' series. `scripts/measure-selection.js` refuses a median over a mixed series for
   ' that reason; do not "simplify" this to a constant.
   discovered = 0
@@ -135,7 +135,7 @@ sub onScanForServersComplete(event)
   items = CreateObject("roSGNode", "ContentNode")
   stopLoadingSpinner()
 
-  ' Load saved servers upfront — used in both passes below
+  ' Load saved servers upfront: used in both passes below
   savedServers = { serverList: [] }
   saved = getSetting("saved_servers")
   if isValid(saved)
@@ -147,7 +147,7 @@ sub onScanForServersComplete(event)
 
   ' Pass 1: Add all SSDP-discovered servers.
   ' If a matching saved entry exists, inject its originalUrl so the user sees their own
-  ' URL (e.g. "192.168.1.100:8096" or an HTTPS address) instead of the raw SSDP URL.
+  ' URL (for example "192.168.1.100:8096" or an HTTPS address) instead of the raw SSDP URL.
   ' Dedup uses id first (robust to URL changes), then falls back to canonical baseUrl
   ' for backward compatibility with saved entries that predate this change.
   for each serverItem in m.servers
@@ -166,14 +166,14 @@ sub onScanForServersComplete(event)
           savedOriginalUrl = savedServer.baseUrl ' backward compat: old entries have no originalUrl
         end if
         serverItem.originalUrl = savedOriginalUrl
-        serverItem.isSaved = true ' mark as deletable — this server exists in saved_servers
+        serverItem.isSaved = true ' mark as deletable: this server exists in saved_servers
         exit for
       end if
     end for
     items.update([serverItem], true)
   end for
 
-  ' Pass 2: Add saved servers not found by SSDP (e.g. remote servers)
+  ' Pass 2: Add saved servers not found by SSDP (for example, remote servers)
   for each savedServer in savedServers.serverList
     isAlreadyListed = false
     for each listed in m.servers
@@ -188,7 +188,7 @@ sub onScanForServersComplete(event)
       end if
     end for
     if not isAlreadyListed
-      savedServer.isSaved = true ' mark as deletable — this server exists in saved_servers
+      savedServer.isSaved = true ' mark as deletable: this server exists in saved_servers
       items.update([savedServer], true)
       m.servers.push(savedServer)
     end if
@@ -206,13 +206,13 @@ sub onScanForServersComplete(event)
     m.serverUrlOutline.visible = true
   end if
 
-  ' Paint LAST, and deliberately not at the end of init(). At the end of init() the
-  ' user has prompt text, hints and a spinner — something to look at, and nothing to
+  ' Paint LAST, and on purpose not at the end of init(). At the end of init() the
+  ' user has prompt text, hints and a spinner: something to look at, and nothing to
   ' act on: the picker is empty and no focus target has been chosen yet, so a keypress
   ' lands nowhere. The screen becomes usable on the line above, which is why the clock
   ' stops here. `settled` therefore lands with `paint` (the one fill resolved at the
   ' top), and that is the honest report rather than a missing milestone: this screen
-  ' has exactly one readiness moment, and the number worth acting on is `scan` — the
+  ' has exactly one readiness moment, and the number worth acting on is `scan`, the
   ' share of it that was the task rather than the screen.
   '
   ' `variant` separates the two workloads, per ADR 0028. `savedOnly` is the run whose
@@ -327,7 +327,7 @@ sub onDestroy()
     end for
   end if
 
-  ' Keyboard may or may not be open — unobserve and dismiss if present
+  ' Keyboard may or may not be open: unobserve and dismiss if present
   abandonDialog(m.dialog)
   m.dialog = invalid
 

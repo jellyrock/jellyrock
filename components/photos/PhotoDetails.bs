@@ -6,7 +6,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' How many photos in a row may fail before we stop skipping and make the user acknowledge it.
-' Bounds the wholesale-failure case (e.g. no server URL): random mode has no end-of-list stop,
+' Bounds the wholesale-failure case (for example, no server URL): random mode has no end-of-list stop,
 ' so an unbounded skip would cycle silently forever.
 const MAX_CONSECUTIVE_PHOTO_FAILURES = 3
 
@@ -33,7 +33,7 @@ sub init()
   ' Interface observers are registered HERE rather than declared as XML onChange
   ' attributes: this component releases node references in onDestroy and these
   ' handlers dereference them, so the registrations have to be detachable. An XML
-  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' onChange does not appear to be removable by unobserveField: see the wiring
   ' rule in components/CLAUDE.md.
   m.top.observeField("isSlideshow", "onIsSlideshowChanged")
   m.top.observeField("isRandom", "onIsRandomChanged")
@@ -95,14 +95,16 @@ sub onItemContentChanged()
 end sub
 
 ' Render the resolved photo, or handle an unresolvable one. Nothing else draws on this screen
-' — no title, no overhang (see PhotoDetails.xml) — so a failed photo shows the user nothing
+' (no title, no overhang; see PhotoDetails.xml), so a failed photo shows the user nothing
 ' new; the previous frame stays up, or black on the first one. During a slideshow we therefore
 ' toast and advance rather than stalling on a frame they never chose, and after
 ' MAX_CONSECUTIVE_PHOTO_FAILURES we stop advancing so a wholesale failure can't cycle silently.
 '
-' A toast rather than a blocking dialog, and not only for interruption reasons: a dialog needs
-' text metrics, and roFontRegistry is a MAIN|TASK-only component Roku refuses to create on the
-' render thread. Toast goes through the scene's showToast, which is just field writes.
+' A toast rather than a blocking dialog: a modal interrupts a slideshow the user is passively
+' watching, which is the wrong shape for a per-item failure. (An older reason, that the dialog's
+' roFontRegistry can't be created on the render thread, was disproved on device: see
+' docs/architecture/threading.md.) Toast goes through the scene's showToast, which is only
+' field writes.
 sub showPhoto(uri as string)
   stopLoadingSpinner()
 
@@ -238,7 +240,7 @@ end function
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   ' Detach the interface observers registered in init(). Must precede every
-  ' reference release below — these handlers dereference them.
+  ' reference release below: these handlers dereference them.
   m.top.unobserveField("isSlideshow")
   m.top.unobserveField("isRandom")
   m.top.unobserveField("itemIndex")

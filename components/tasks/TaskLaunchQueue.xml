@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  TaskLaunchQueue — where a Task launch waits while the app is at its thread watermark
+  TaskLaunchQueue: where a Task launch waits while the app is at its thread watermark
   (ADR 0041). One instance, on m.global.taskLaunchQueue, created by setGlobalNodes().
-  launchTask() in source/utils/tasks.bs is its only caller; nothing else should touch it.
+  launchTask() and isTaskInFlight() in source/utils/tasks.bs are its only callers; nothing
+  else should touch it.
 -->
 <component name="TaskLaunchQueue" extends="Node">
   <interface>

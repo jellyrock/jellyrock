@@ -1,8 +1,8 @@
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
 
-' The queue's state lives in this component's `m`, so only callFunc — which runs here, on
-' the render thread — ever touches it. The rules are the pure taskQueue* functions in
+' The queue's state lives in this component's `m`, so only callFunc (which runs here, on
+' the render thread) ever touches it. The rules are the pure taskQueue* functions in
 ' tasks.bs; this file only owns the array, the drain Timer, and the published depth.
 
 sub init()
@@ -18,7 +18,7 @@ sub init()
 end sub
 
 ' Queues `node` behind whatever waits. False only when TASK_QUEUE_CAP launches already
-' wait — launchTask() then reports a refusal.
+' wait; launchTask() then reports a refusal.
 function enqueue(node as object) as boolean
   outcome = taskQueueAdd(m.queue, node, TASK_QUEUE_CAP)
   if outcome = "full" then return false

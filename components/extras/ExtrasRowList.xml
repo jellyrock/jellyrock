@@ -11,16 +11,16 @@
     <function name="onDestroy" />
     <field id="personHasMedia" type="bool" value="false" alwaysNotify="true" />
     <!-- What the playlist row ON SCREEN holds: "video" | "audio" | "mixed" | "unknown" (no
-         playlist row — empty, or never loaded). Written once per run, when its rows are
+         playlist row: empty, or never loaded). Written once per run, when its rows are
          committed, and only for a Playlist; a row kept after a failed refresh keeps its kind.
          alwaysNotify so a refresh that confirms the same kind still wakes the observer. -->
     <field id="playlistContentKind" type="string" value="unknown" alwaysNotify="true" />
     <!-- The rows of the current load are on screen. Reset false by loadParts / loadPersonVideos;
          set true once every row of the run has resolved (answered, failed, or out of the run's
-         time budget) and the run has been committed — so it is derived from the run, and no item
+         time budget) and the run has been committed, so it is derived from the run, and no item
          type can leave it unset. ItemDetails' readiness ledger closes its extras fill on it.
 
-         NOT alwaysNotify: the reset-to-false is a real transition an observer would otherwise
+         Not alwaysNotify: the reset-to-false is a real transition an observer would otherwise
          be woken for and have to filter out. Read the value before acting. -->
     <field id="contentReady" type="bool" value="false" />
     <!-- Target Y for animating the RowList's translation within extrasGrp.

@@ -3,7 +3,7 @@
   <children>
     <Gradient id="itemTextGradient" width="1920" height="0" rotateDegrees="180" translation="[0, 0]" />
 
-    <!-- itemDetails geometry MUST match main byte-for-byte: translation=[96,775],
+    <!-- itemDetails geometry must match main byte-for-byte: translation=[96,775],
          itemSpacings=[12], vertAlignment="bottom". The extras slide animation uses
          itemDetails.translation as its resting state and itemInfoRows.boundingRect() as
          the slide target reference. Any deviation here breaks the animation and causes
@@ -46,11 +46,11 @@
                +18  pad
              y=800  buttons top
            For item types WITHOUT media tracks (Series, MusicArtist, MusicAlbum,
-           Person — see itemTypeOrder.NO_MEDIA_TRACKS), setTracksInLayout() removes
+           Person and the rest of itemTypeOrder.NO_MEDIA_TRACKS), setTracksInLayout() removes
            this spacer from the layout at runtime, so description bottom drops back
            to y=775 and matches main's behavior for those types.
            The animation's resting state (itemDetails.translation = [96, 775]) is
-           UNCHANGED — the slide target math in updateItemDetailsAnimationTarget()
+           UNCHANGED: the slide target math in updateItemDetailsAnimationTarget()
            reads itemInfoRows.boundingRect() at runtime and adapts to the taller
            spacer automatically, landing infoRows bottom at the same screen y=282
            when extras open. -->
@@ -64,10 +64,10 @@
 
     <!-- Overflow stash. Holds the buttons that did not fit the row, in order, while
          the "More" button stands in for them (see applyOverflow in ItemDetails.bs).
-         A child of the SCREEN and deliberately NOT of the button group: a hidden
+         A child of the SCREEN, on purpose, and not of the button group: a hidden
          child of a LayoutGroup still reserves its slot, so a stashed button has to
-         leave the group entirely — but staying in the node tree is what keeps
-         m.top.findNode("refreshButton") resolving at the nine places that mutate
+         leave the group entirely. But staying in the node tree is what keeps
+         m.top.findNode("refreshButton") resolving at the places that mutate
          this row after setupButtons has built it. -->
     <Group id="buttonOverflow" visible="false" />
 
@@ -97,14 +97,14 @@
          the same itemDetailsSlider that lifts the metadata block, so the two
          read as one gesture; they are mutually exclusive at runtime. Declared
          AFTER extrasSlider so it draws above the extras backdrop and the button
-         group, but BEFORE trackCluster — the cluster is hidden while this panel
+         group, but BEFORE trackCluster: the cluster is hidden while this panel
          is open, and keeping it last preserves the open-dropdown z-order that
          its own comment below depends on. -->
     <SubtitlePanel id="subtitlePanel" visible="false" />
 
     <!-- dropdownDimmer: vertical gradient dim shown only while one of the track
-         dropdowns has its menu open. Fades from fully clear at y=707 (just below the
-         description bottom y=701, just above the trackCluster titles top y=713) to
+         dropdowns has its menu open. Fades from fully clear at y=707 (a little below the
+         description bottom y=701, a little above the trackCluster titles top y=713) to
          fully opaque black at the screen bottom y=1080. Solves the original merge
          problem (menu fill = IconButton fill = colorBackgroundSecondary, so the
          menu's bottom rows blend into the buttons under it) without the artifacts
@@ -114,36 +114,36 @@
              edge, looking like a render glitch and cutting the logo in half.
          The gradient transitions smoothly so there's no edge to spot. With endColor
          at alpha100 the bottom of the screen is fully blacked out, but the linear
-         ramp keeps the trackCluster region (~y=737-782) at <20% dim — track titles
+         ramp keeps the trackCluster region (~y=737-782) at <20% dim, so track titles
          and trigger labels remain clearly readable. Above y=707 nothing changes.
          Geometry: translation [0, 707], width 1920, height 373 = 1080 - 707. Full
          width so the dim is consistent regardless of which slot's menu is open.
          Direction: default (top-to-bottom). startColor/endColor are set in
          ItemDetails.bs init() so they stay in sync with the constants table.
-         Z-order: rendered just BEFORE trackCluster so the cluster (titles + triggers
+         Z-order: rendered immediately BEFORE trackCluster so the cluster (titles + triggers
          + open menu) draws ON TOP of the dimmer at full brightness.
          Toggled from ItemDetails.bs via observers on each TrackDropdown's menuOpen
          field; visible iff any of the three is open. -->
     <Gradient id="dropdownDimmer" translation="[0, 707]" width="1920" height="373" visible="false" />
 
     <!-- trackCluster: positioned at y=713 so there is a 12px breathing pad ABOVE the
-         cluster (description bottom y=701 → titles top y=713) and an 18px breathing
-         pad BELOW (trigger row bottom y=782 → button group top y=800). Cluster
+         cluster (description bottom y=701 to titles top y=713) and an 18px breathing
+         pad BELOW (trigger row bottom y=782 to button group top y=800). Cluster
          height = 24 (titles row + gap) + 45 (trigger, see TrackDropdown.bs
          TRACK_DROPDOWN_TRIGGER_HEIGHT) = 69px. The description's y=701 bottom is
-         produced by the 62px itemTracks spacer inside itemDetails — see the
-         comment on itemTracks above. x=96 pins the first slot's left edge to the
+         produced by the 62px itemTracks spacer inside itemDetails (see the
+         comment on itemTracks above). x=96 pins the first slot's left edge to the
          Play button's visible left edge (buttons[90,800] + IconButton's 6px text-
          extension offset). The buttons group cannot move down without its 2-line
-         labels (e.g. "Play Trailer") crashing into the closed extras panel's
+         labels (for example "Play Trailer") crashing into the closed extras panel's
          chapters header peek at PANEL_CLOSED_Y=972, so the breathing room is
          created by shifting description + cluster UP via the spacer instead.
          IMPORTANT: Rendered as the LAST child of ItemDetails so open dropdown menus
-         render ON TOP of everything — buttons AND the extras pane's semi-transparent
+         render ON TOP of everything: buttons AND the extras pane's semi-transparent
          backdrop. Later siblings = higher z-order in Roku SG.
          This cluster uses PLAIN Groups (not LayoutGroups) with hard-coded child
          translations. A horizontal LayoutGroup would auto-align children by their
-         boundingRect.y — when a TrackDropdown's menu scrolls (translating menuItems
+         boundingRect.y. When a TrackDropdown's menu scrolls (translating menuItems
          negatively), its boundingRect.y becomes negative and the LG would shift the
          whole child DOWN to compensate, causing visible "drift". Plain Groups skip
          that compensation, so each TrackDropdown stays at its declared translation.
@@ -151,7 +151,7 @@
          slot 1 at x=0 spans button[0]'s visible left to button[1]'s visible right,
          slot 2 at x=308 spans button[2]-[3], slot 3 at x=616 spans button[4]-[5]. -->
     <Group id="trackCluster" translation="[96, 713]" visible="false">
-      <!-- Static title row ("Video"/"Audio"/"Subtitles"). NOT part of TrackDropdown —
+      <!-- Static title row ("Video"/"Audio"/"Subtitles"). Not part of TrackDropdown:
            rendered here so the titles render identically whether the slot below is an
            interactive dropdown or a static single-option row. -->
       <Group id="trackTitles" translation="[0, 0]">
@@ -160,7 +160,7 @@
         <LabelSecondarySmallest id="subtitleTrackTitle" width="278" horizAlign="left" translation="[628, 0]" />
       </Group>
 
-      <!-- Three TrackDropdown slots at fixed x positions. y=24 places this row just
+      <!-- Three TrackDropdown slots at fixed x positions. y=24 places this row directly
            below trackTitles (22px label + 2px gap). See TrackDropdown.bs for per-slot
            layout. -->
       <Group id="trackDropdowns" translation="[0, 24]">

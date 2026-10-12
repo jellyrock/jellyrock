@@ -15,15 +15,15 @@ sub search()
 end sub
 
 ' Searches multiple Jellyfin endpoints for media matching the query.
-' Runs on SearchTask thread — fetchJson blocks waiting for ApiPool responses.
+' Runs on SearchTask thread: fetchJson blocks waiting for ApiPool responses.
 ' Every result echoes the query it ANSWERS. The caller gives each keystroke a new node and
 ' drops a delivery from any node it has since replaced (`SearchResults.loadResults`); the
 ' echo is what that drop logs, so a superseded delivery names the query it answered. Taken
 ' from the local the search actually ran with, so the echo and the items cannot disagree.
 '
-' ⚠️ `m.top.results` is assigned ONCE, below, as this function's last act — and that is
-' load-bearing, not incidental. It is what lets the caller's `control = "stop"` prevent a
-' superseded query from delivering at all (measured: 12 keystrokes, 6 deliveries, every one
+' ⚠️ `m.top.results` is assigned ONCE, by `search()` with this function's return value, as the
+' Task's last act, and that is essential, not incidental. It is what lets the caller's `control = "stop"` prevent a
+' superseded query from delivering at all (measured 2026-08-14: 12 keystrokes, 6 deliveries, every one
 ' current). Publishing partial results as each fetch lands would widen the window of
 ' superseded deliveries that `SearchResults.loadResults` has to drop.
 function searchMedia(query as string)
@@ -32,7 +32,7 @@ function searchMedia(query as string)
   transformer = JellyfinDataTransformer()
   allItems = []
 
-  ' Regular library items — Person and MusicArtist are fetched via dedicated endpoints below.
+  ' Regular library items. Person and MusicArtist are fetched via dedicated endpoints below.
   ' LiveTvProgram is excluded here because /Items EPG search is incomplete; /LiveTv/Programs is used instead.
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
     "searchTerm": query,
@@ -56,7 +56,7 @@ function searchMedia(query as string)
     end for
   end if
 
-  ' People — /Items does not return Person type; /Persons endpoint required.
+  ' People: /Items does not return Person type; /Persons endpoint required.
   personData = fetchJson(GetApi().BuildGetPersonsRequest({
     "searchTerm": query,
     "Limit": 20,
@@ -68,7 +68,7 @@ function searchMedia(query as string)
     end for
   end if
 
-  ' Artists — /Items does not return MusicArtist type; /Artists endpoint required.
+  ' Artists: /Items does not return MusicArtist type; /Artists endpoint required.
   artistData = fetchJson(GetApi().BuildGetArtistsRequest({
     "searchTerm": query,
     "Limit": 20,
@@ -80,7 +80,7 @@ function searchMedia(query as string)
     end for
   end if
 
-  ' Live TV Programs — /LiveTv/Programs searches the full EPG; /Items only covers recordings.
+  ' Live TV Programs: /LiveTv/Programs searches the full EPG; /Items only covers recordings.
   programData = fetchJson(GetApi().BuildGetLiveTVProgramsRequest({
     "SearchTerm": query,
     "Limit": 20,

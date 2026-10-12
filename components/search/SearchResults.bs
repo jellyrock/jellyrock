@@ -1,4 +1,4 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
+' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/baseRequest.bs"
@@ -20,12 +20,12 @@ import "pkg:/source/utils/translate.bs"
 ' This screen has TWO loads, and they are measured as two ledger runs rather than one.
 '
 ' Opening search and running a search are separated by the user typing, which is an
-' unbounded wait belonging to the person rather than to the app — measured on `.177`, the
+' unbounded wait belonging to the person rather than to the app. Measured on `.177` on 2026-08-14, the
 ' RTA harness alone sits 1.2 s in that gap. One run spanning both would publish a `settled`
 ' dominated by how fast something typed, which is not a property of this screen at all.
 '
 ' So `init` opens a run that ends when the keyboard is typable (variant `open`), and every
-' query opens a fresh one that ends when its results are on screen (variant `query`) —
+' query opens a fresh one that ends when its results are on screen (variant `query`):
 ' `begin`'s documented restart semantics, a re-load being a new run rather than a
 ' continuation. The variants are what let a reader select between them; `npm run measure
 ' --nav search` refuses a median until one is named, and names both.
@@ -53,11 +53,11 @@ sub init()
   m.searchSelect.observeField("rowItemFocused", "onSearchItemFocused")
 
   ' Observe contentReady to close the `rows` fill in the readiness ledger. SearchRow builds
-  ' the rows in its OWN `m`, so it cannot resolve this screen's ledger directly — it marks a
+  ' the rows in its OWN `m`, so it cannot resolve this screen's ledger directly. It marks a
   ' field and this screen resolves on it, the same signal ExtrasRowList gives ItemDetails.
   m.searchSelect.observeField("contentReady", "onResultRowsReady")
 
-  ' SearchResults owns its own navigation — a selected result navigates to its route.
+  ' SearchResults owns its own navigation: a selected result navigates to its route.
   m.searchSelect.observeField("itemSelected", "onSearchItemSelected")
 
   ' A non-navigable result (plays directly) sets m.top.quickPlayNode; this self-observer
@@ -66,20 +66,20 @@ sub init()
 
   ' Set initial focus for scene navigation
   m.top.lastFocus = searchBox
-  ' First show focuses the keyboard to type immediately; later shows (a resume, e.g. back
+  ' First show focuses the keyboard to type immediately; later shows (a resume, for example back
   ' from a result detail) restore the prior focus.
   m.isFirstShow = true
-  ' Last voice query applied via applyRouteQuery — guards against re-applying (and re-grabbing
+  ' Last voice query applied via applyRouteQuery. Guards against re-applying (and re-grabbing
   ' focus) on a back-resume that replays the same route context.
   m.lastAppliedQuery = ""
 
   ' The keyboard is BUILT here but not yet typable: nothing has focus until the router shows
   ' the view and `onScreenShown` runs, which is a later turn of the event loop. So it is
-  ' outstanding at paint and has to be declared here rather than discovered afterwards —
+  ' outstanding at paint and has to be declared here rather than discovered afterwards:
   ' the same shape as `settings`' right-hand panel, and for the same reason.
   screenLoad.pending("focus")
 
-  ' PAINT — the search UI exists and the help text is on screen. What it is NOT yet is
+  ' PAINT: the search UI exists and the help text is on screen. What it is not yet is
   ' usable, which is exactly what `focus` above measures; collapsing the two into one
   ' number would hide the wait between a screen appearing and it accepting a keystroke.
   screenLoad.paint("open")
@@ -87,31 +87,31 @@ sub init()
   ' Interface observers are registered HERE rather than declared as XML onChange
   ' attributes: this component releases node references in onDestroy and these
   ' handlers dereference them, so the registrations have to be detachable. An XML
-  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' onChange does not appear to be removable by unobserveField: see the wiring
   ' rule in components/CLAUDE.md.
   m.top.observeField("searchAlpha", "searchMedias")
 end sub
 
 sub onScreenShown()
-  ' The screen is now showing and about to take focus — it has become typable. Resolved at
+  ' The screen is now showing and about to take focus, so it has become typable. Resolved at
   ' the TOP because every path below this line returns early on some route (a voice query,
   ' a first show, a keepAlive resume), and a `pending` that any path can skip leaves the
   ' screen permanently unsettled. The wait being measured is the router's show, not the
   ' focus assignments underneath it.
   '
   ' Silent on every later call: `/search` is keepAlive, so a back-resume re-runs this long
-  ' after the open run settled, and `resolve` ignores a run that is over — see
-  ' screenReadiness.bs. The one case it does NOT swallow is a resume onto a query run still
+  ' after the open run settled, and `resolve` ignores a run that is over (see
+  ' screenReadiness.bs). The one case it does not swallow is a resume onto a query run still
   ' in flight, where it warns and returns without counting; left unguarded on purpose, since
   ' nothing is mis-timed by it and the warning is the only way that ordering would ever be
   ' seen. Same reasoning as `onResultRowsReady`.
   screenLoad.resolve("focus")
 
-  ' Voice search arrives as route.context.query — pre-populate the search box and focus its
+  ' Voice search arrives as route.context.query: pre-populate the search box and focus its
   ' text entry, skipping normal focus restoration.
   if applyRouteQuery() then return
 
-  ' Restore texture management — reactivate and restore buffer range so cells reload.
+  ' Restore texture management: reactivate and restore buffer range so cells reload.
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     updateTextureBufferRange(m.searchSelect.content, m.searchSelect.rowItemFocused[0], m.searchSelect.rowItemFocused[1], m.searchSelect.numRows)
     activateTextureManager(m.searchSelect.content)
@@ -148,10 +148,10 @@ end sub
 ' a query was applied so onScreenShown can skip normal focus.
 '
 ' onScreenShown fires on first open AND on resume, and the router replays the
-' ORIGINAL route (with its query context) on a back-resume (Router.brs reuses view.route) — so
+' ORIGINAL route (with its query context) on a back-resume (Router.brs reuses view.route), so
 ' applying unconditionally would re-grab focus to the text box every time the user backs out of
 ' a result. Guard on the last-applied value: a back-resume carries the same query we already
-' applied (skip), while a genuinely new voice search carries a different query (apply). The box
+' applied (skip), while a new voice search carries a different query (apply). The box
 ' already holds the prior term on a resume, so skipping a repeat is also the right UX.
 function applyRouteQuery() as boolean
   route = m.top.route
@@ -167,7 +167,7 @@ function applyRouteQuery() as boolean
   return true
 end function
 
-' A search result was selected — navigate to its route (rich node as context). Non-navigable
+' A search result was selected: navigate to its route (rich node as context). Non-navigable
 ' results fall through to playback.
 sub onSearchItemSelected(msg)
   item = getMsgPicker(msg)
@@ -241,16 +241,16 @@ sub searchMedias()
     screenWaits.finish(m.top, "results")
   end if
   ' A NEW node per keystroke, never a relaunch of the previous one (see replaceTask): a
-  ' relaunch of a node still searching is sometimes ignored, and then the letter just typed
+  ' relaunch of a node still searching is sometimes ignored, and then the letter last typed
   ' is never searched at all.
   m.searchTask = replaceTask(m.searchTask, "SearchTask", "results", { query: query })
   if isValid(query) and query <> ""
-    ' A new query is a NEW run, not a continuation — `begin` restarts the ledger, so the
+    ' A new query is a NEW run, not a continuation: `begin` restarts the ledger, so the
     ' clock starts at the keystroke rather than at the screen opening. Each keystroke
     ' supersedes the last (the line above stops the task in flight), and the superseded run
-    ' simply never paints, so it emits nothing rather than a truncated number.
+    ' never paints, so it emits nothing rather than a truncated number.
     '
-    ' Deliberately inside this guard: an emptied search box also reaches here, and it
+    ' Inside this guard on purpose: an emptied search box also reaches here, and it
     ' starts no task and produces no results, so opening a run for it would leave a ledger
     ' that can never settle.
     screenLoad.begin("searchResults")
@@ -270,14 +270,14 @@ end sub
 sub loadResults(event as object)
   if not isCurrentTaskEvent(event, m.searchTask)
     ' An invalid m.searchTask is teardown: onDestroy released the node, so there is nothing
-    ' to report. Otherwise this is a delivery from a node searchMedias has since replaced —
+    ' to report. Otherwise this is a delivery from a node searchMedias has since replaced,
     ' one queued before its observer was removed. Reading m.searchTask in its place would
     ' read the NEW run's empty results, resolve its fill early and unobserve it, so the live
     ' query's results would never arrive; hence the drop.
     '
     ' WARN, not info: this line is the only field evidence that Roku delivers an event
     ' queued before `unobserveField`, which its docs neither promise nor rule out. The
-    ' measured expectation is that it never fires — `SearchTask` publishes once, as its last
+    ' measured expectation is that it never fires: `SearchTask` publishes once, as its last
     ' act, so a stopped search does not deliver at all.
     if isValid(m.searchTask)
       stale = event.getData()
@@ -307,21 +307,21 @@ sub loadResults(event as object)
   '
   ' The BUILD is answered: it runs inline inside the assignment below. Across every series
   ' taken on `.177` the `rows` fill measures ~46 ms and `settled` lands within 1 ms of
-  ' `paint`, so that 46 ms sits between THIS line and paint rather than after it — which
+  ' `paint`, so that 46 ms sits between THIS line and paint rather than after it, which
   ' means `paint` for a query already contains the row building, and the paint/settle split
   ' says nothing for this variant. The actionable split is the two fills: server (~1.3 s
   ' cold) against row-building (~46 ms).
   '
-  ' The MARK's delivery is the half that moves — at or just before paint in one series, 1 ms
-  ' after it in another — and that is the whole reason `onResultRowsReady` asks the ledger
+  ' The MARK's delivery is the half that moves (at or shortly before paint in one series, 1 ms
+  ' after it in another), and that is the whole reason `onResultRowsReady` asks the ledger
   ' before resolving rather than assuming it is still the same run.
   screenLoad.pending("rows")
 
   m.searchSelect.itemdata = results
   m.searchSelect.query = m.top.SearchAlpha
 
-  ' PAINT — the results are handed over, the rows are built and the spinner is down. Note
-  ' this is NOT the usual paint-then-settle shape: the build ran inline in the assignment
+  ' PAINT: the results are handed over, the rows are built and the spinner is down. Note
+  ' this is not the usual paint-then-settle shape: the build ran inline in the assignment
   ' above, so both fills are already closed here and `settled` follows within a millisecond.
   ' For this variant the two FILLS are the split, not paint against settled.
   screenLoad.paint("query")
@@ -335,17 +335,17 @@ sub loadResults(event as object)
   end if
 end sub
 
-' The result rows are built and on screen — closes the `rows` fill.
+' The result rows are built and on screen: closes the `rows` fill.
 '
 ' Reads the VALUE rather than treating the notification as the signal: SearchRow clears the
 ' field at the start of every build, so half the callbacks here are the clear rather than
 ' the completion.
 '
-' Deliberately UNGUARDED against arriving late. The mark is delivered by a CHILD, so a
+' UNGUARDED against arriving late, on purpose. The mark is delivered by a CHILD, so a
 ' keystroke landing between the build and the mark would open the next run before it lands,
 ' and this would then resolve a fill that run never declared. `resolve` already handles that
-' safely on its own — it warns and returns WITHOUT counting, and the next run still declares
-' and closes its own `rows` — so the only thing a guard here would buy is silence, and the
+' safely on its own (it warns and returns WITHOUT counting, and the next run still declares
+' and closes its own `rows`), so the only thing a guard here would buy is silence, and the
 ' warning is the one signal that would ever tell anyone the race is real. Unobserved on
 ' `.177` across two keystroke intervals; if `screen-load unbalanced` ever names `rows`, that
 ' is the race, and the tripwire is worth more than the suppressed edge case.
@@ -385,13 +385,13 @@ end function
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   ' Detach the interface observers registered in init(). Must precede every
-  ' reference release below — these handlers dereference them.
+  ' reference release below: these handlers dereference them.
   m.top.unobserveField("searchAlpha")
 
   m.log.verbose("onDestroy")
   destroyTextureManager(m.searchSelect.content)
 
-  ' Fully release the voice route before teardown — the DynamicMiniKeyboard's
+  ' Fully release the voice route before teardown: the DynamicMiniKeyboard's
   ' textEditBox claims the firmware's global voice route via voiceEnabled + active.
   ' Both must be cleared: active=false stops input capture, voiceEnabled=false
   ' releases the "only one voiceEnabled at a time" slot so the returning screen's
@@ -409,11 +409,11 @@ sub onDestroy()
   m.top.unobserveField("quickPlayNode") ' playback launcher
 
   ' Drop the row content, same shape and same reason as BaseGridView.onDestroy: SearchRow's
-  ' cells are BrowseRowItem (a JRRowItem), which caches m.contentRoot and registers scoped
-  ' observers on it, so the content root holds each cell's scope. JRRowItem has no onDestroy
-  ' and SearchRow has none either, so the release has to come from here. Below the unobserve
-  ' block for the same reason it is there in BaseGridView — emptying the RowList can move
-  ' rowItemFocused, and onSearchItemFocused dereferences `.content`.
+  ' cells are BrowseRowItem (a JRRowItem), which caches m.contentRoot and observes a field
+  ' on it with plain observeField, so the content root holds each cell's scope. JRRowItem has
+  ' no onDestroy and SearchRow has none either, so the release has to come from here. Below the
+  ' unobserve block for the same reason it is there in BaseGridView: emptying the RowList can
+  ' move rowItemFocused, and onSearchItemFocused dereferences `.content`.
   m.searchSelect.content = invalid
 
   ' Stop and release task node (observer may already be cleared by loadResults())
