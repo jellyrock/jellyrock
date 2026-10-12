@@ -103,13 +103,10 @@
  * unlocked rather than blocking device work. A warning line alone is useless to
  * an agent: it is read when the command returns, minutes after the decision, and
  * the exit code stays 0, so a degraded green is indistinguishable from a real
- * one. The lock state is therefore stamped into the run record
- * (`<runDir>/run-meta.json` — `out/rta/`, `out/device/`, … per run kind) as
- * provenance on the RESULT.
- *
- * That record is LOCAL-ONLY today: `out/` is gitignored and neither device
- * workflow uploads it as an artifact, so in CI the provenance still dies with the
- * runner. Locally it has a reader (the RTA failure fold + printed summary).
+ * one. The lock state (`locked`, `mode`, `degraded`) is therefore stamped into
+ * the run record as provenance on the RESULT: into `run-meta.json` for the run in
+ * hand, and into a line of the never-reset `runs.jsonl` ledger, which both device
+ * workflows upload as an artifact.
  *
  * `RTA_REQUIRE_LOCK=1` turns degraded into a hard failure. CI does NOT set it:
  * CI is alone on .200, so there is no contention for the flag to protect

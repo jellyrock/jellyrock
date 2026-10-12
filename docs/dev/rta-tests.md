@@ -183,9 +183,9 @@ The tag comes from the directory, so the two can't disagree. Three files per kin
 
 | File | Where | Lifetime | Read it for |
 | --- | --- | --- | --- |
-| `run-meta.json` | `out/<kind>/` | This run, overwritten | One run whole: lock, time window, folded failures |
-| `failures.jsonl` | `out/<kind>/` | This run, emptied at start | Failures as they land, mid-run |
-| `runs.jsonl` | `.device-runs/<kind>/` | Never reset | Comparing across runs: the flake baseline reads this |
+| `run-meta.json` | `.device-runs/<kind>/runs/<device key>/` | This run, overwritten | One run whole: lock, time window, folded failures |
+| `failures.jsonl` | `.device-runs/<kind>/runs/<device key>/` | This run, emptied at start | Failures as they land, mid-run |
+| `runs.jsonl` | `.device-runs/<kind>/` | Never reset | Comparing across runs: the flake baseline reads this. Each line carries the lock state (`locked`, `mode`, `degraded`) |
 
 **The ledger lives outside `out/`** because every `build*` script starts with `npx rimraf build/ out/`, and `test:rta` builds first: a ledger there would be deleted before each run that appends to it. [`run-record.test.js`](../../tests/scripts/unit/run-record.test.js) checks both halves.
 
@@ -505,7 +505,7 @@ For an account with a password, set `MEASURE_SIGNIN_PASSWORD` in `.env` rather t
 - **A crashed holder's lease expires after 15 minutes.** Live holders renew every 5 minutes, so a long `screenshots:capture` never expires. `npm run device:status` names the holder, and `npm run device:release` drops a stuck lock.
 - **`rta-restore.js` takes no lock,** since it is the repair for an abandoned run, which may have left one behind.
 
-When GitHub is unreachable or you aren't signed in, a run warns and proceeds without the lock, and records `locked: false` in `run-meta.json`. Set `RTA_REQUIRE_LOCK=1` to make that a failure, or `RTA_SKIP_LOCK=1` to bypass the lock on purpose. CI doesn't set `RTA_REQUIRE_LOCK`: it is alone on its device, so the flag would only turn a GitHub outage into a red run.
+When GitHub is unreachable or you aren't signed in, a run warns and proceeds without the lock, and records `locked: false` in `run-meta.json` and in its `runs.jsonl` line. Set `RTA_REQUIRE_LOCK=1` to make that a failure, or `RTA_SKIP_LOCK=1` to bypass the lock on purpose. CI doesn't set `RTA_REQUIRE_LOCK`: it is alone on its device, so the flag would only turn a GitHub outage into a red run.
 
 ## Notes
 

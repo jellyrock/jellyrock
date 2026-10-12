@@ -875,6 +875,7 @@ export function summarizeRun({
   commit,
   dirty,
   deviceKey,
+  lockState = {},
   outcome,
   cumulative = false,
 }) {
@@ -938,6 +939,13 @@ export function summarizeRun({
     // both parties agree on. Null on the degraded lock path, which never resolves
     // one — honest, and the run really is of unknown provenance there.
     deviceKey: deviceKey ?? null,
+    // The lock state the run held, off `acquireDeviceLock`'s `meta`. `run-meta.json`
+    // is overwritten each run and no workflow uploads it, so this line is the only
+    // place a degraded (unlocked) green stays identifiable. `null` when the run had
+    // no lock meta: unknown, never a claim that a lock was held.
+    locked: lockState.locked ?? null,
+    mode: lockState.mode ?? null,
+    degraded: lockState.degraded ?? null,
     // The sixth filter key, and the only one that is about the run rather than the
     // invocation. `null` when the entry point did not say — honest, and the same
     // "missing would mean you have to know the convention" argument as the four
@@ -1385,6 +1393,11 @@ export function endRun({
     // the lock exists, so carrying it would duplicate state for no gain and add a
     // way for the two copies to disagree.
     deviceKey: lock?.meta?.deviceKey,
+    lockState: {
+      locked: lock?.meta?.locked,
+      mode: lock?.meta?.mode,
+      degraded: lock?.meta?.degraded,
+    },
     // Resolved at the OPEN and carried here, so the exit net folds the same
     // provenance an explicit close would — and so no git subprocess runs on the
     // exit path. See `codeState`.

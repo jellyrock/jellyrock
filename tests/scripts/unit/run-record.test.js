@@ -579,6 +579,37 @@ describe('the run lifecycle — where a run s records actually land', () => {
       expect(ledger(runsLedgerPath())[0].deviceKey).toBeNull();
     });
 
+    it('records the lock state on the ledger line, off the lock', async () => {
+      // `run-meta.json` is overwritten each run and no workflow uploads it, so the
+      // ledger line is the only place the lock provenance can survive.
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      const lock = { meta: { locked: true, mode: 'publisher', degraded: false } };
+      beginRun({ lock, run: 'test:rta' }).close();
+      expect(ledger(runsLedgerPath())[0]).toMatchObject({
+        locked: true,
+        mode: 'publisher',
+        degraded: false,
+      });
+    });
+
+    it('records a degraded lock as unlocked and degraded', async () => {
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      const degraded = { meta: { locked: false, mode: 'degraded', degraded: true } };
+      beginRun({ lock: degraded, run: 'test:rta' }).close();
+      expect(ledger(runsLedgerPath())[0]).toMatchObject({
+        locked: false,
+        mode: 'degraded',
+        degraded: true,
+      });
+    });
+
+    it('records null lock state, not a claim of a held lock, when the run has no lock meta', () => {
+      const summary = summarizeRun({ startedAt: 'a', endedAt: 'b', run: 'test:rta' });
+      expect(summary.locked).toBeNull();
+      expect(summary.mode).toBeNull();
+      expect(summary.degraded).toBeNull();
+    });
+
     it('reports nulls rather than failing the run when git cannot answer', async () => {
       // These cases chdir into a temp dir that is not a git checkout, so this is
       // the real unavailable path — not a mock. Bookkeeping must never fail a

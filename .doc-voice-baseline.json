@@ -290,7 +290,7 @@
   },
   ".github/workflows/device-unit-tests.yml": {
     "caps-emphasis": 7,
-    "em-dash": 15,
+    "em-dash": 14,
     "filler": 1,
     "prose-arrow": 8
   },
