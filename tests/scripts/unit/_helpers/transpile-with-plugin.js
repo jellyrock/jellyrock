@@ -5,14 +5,22 @@
 // Why getTranspiledFileContents and not program.build():
 //   getTranspiledFileContents internally runs program.build({files: [file]})
 //   with a temporary beforeWriteFile plugin that marks every output as
-//   processed, so the pipeline fires (beforeBuildProgram → beforePrepareFile
-//   → afterSerializeFile) without writing to disk. afterBuildProgram undoes
+//   processed, so the pipeline fires (beforeBuildProgram, beforePrepareFile,
+//   afterSerializeFile) without writing any files. afterBuildProgram undoes
 //   editor edits between calls, so multi-file harness invocations stay clean.
+//
+// Each call still gets its own temp outDir. Program.write empties its outDir
+// before it writes, and a Program with no outDir falls back to ./out under the
+// cwd, which is the real checkout's out/ when the suite runs from the repo
+// root. The temp dir is removed when the call ends.
 //
 // Plugin config flows through Program options: arbitrary keys (like rokuLog)
 // survive util.normalizeConfig, so they're available on event.program.options
 // when beforeBuildProgram fires.
 
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Program } from 'brighterscript';
 
 /**
@@ -28,24 +36,31 @@ import { Program } from 'brighterscript';
  * @param {Record<string,string>} files Map of pkgPath → BS/XML source.
  * @param {object} [options]            Extra options merged into the Program
  *                                       constructor. Use this to pass plugin
- *                                       config (e.g. `{rokuLog: {strip: true}}`).
+ *                                       config (for example `{rokuLog: {strip: true}}`).
+ *                                       An `outDir` here replaces the temp one.
  * @returns {Promise<Record<string,string>>} Map of pkgPath → transpiled code.
  */
 export async function transpileWithPlugin(pluginFactory, files, options = {}) {
-  const program = new Program({
-    rootDir: '/tmp/jellyrock-plugin-test',
-    ...options,
-  });
-  for (const factory of Array.isArray(pluginFactory) ? pluginFactory : [pluginFactory]) {
-    program.plugins.add(factory());
+  const tempOutDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jellyrock-plugin-out-'));
+  try {
+    const program = new Program({
+      rootDir: '/tmp/jellyrock-plugin-test',
+      outDir: tempOutDir,
+      ...options,
+    });
+    for (const factory of Array.isArray(pluginFactory) ? pluginFactory : [pluginFactory]) {
+      program.plugins.add(factory());
+    }
+    for (const [pkgPath, content] of Object.entries(files)) {
+      program.setFile(pkgPath, content);
+    }
+    const out = {};
+    for (const pkgPath of Object.keys(files)) {
+      const result = await program.getTranspiledFileContents(pkgPath);
+      out[pkgPath] = result.code;
+    }
+    return out;
+  } finally {
+    fs.rmSync(tempOutDir, { recursive: true, force: true });
   }
-  for (const [pkgPath, content] of Object.entries(files)) {
-    program.setFile(pkgPath, content);
-  }
-  const out = {};
-  for (const pkgPath of Object.keys(files)) {
-    const result = await program.getTranspiledFileContents(pkgPath);
-    out[pkgPath] = result.code;
-  }
-  return out;
 }

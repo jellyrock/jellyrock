@@ -1,10 +1,17 @@
 /**
  * Vitest globalSetup — the hardware-free suite must leave the durable device
- * ledger alone.
+ * state alone: the ledger in `.device-runs/` and the run output in `out/`.
+ *
+ * `out/` holds the build output a device run installs: `run-roku-tests.js` zips
+ * and sideloads `out/jellyrock.zip`. Two writers once hit it from
+ * `test:scripts`: the transpile harness (BrighterScript empties its outDir before
+ * writing) and `create-package.cjs` (it zipped the real `build/` over the real
+ * package). Both now take a temp directory, and this watches `out/` so a third
+ * fails the run instead of being found by hand.
  *
  * `.device-runs/` is where real device runs accumulate: the per-run-kind ledger
  * a baseline reads across, and one record directory per device. `run-record.js`
- * reaches it through the RELATIVE `LEDGER_ROOT = '.device-runs'`, so any test
+ * reaches it through the RELATIVE `.device-runs` path, so any test
  * that opens a run without first chdir'ing into a tmpdir resolves that against
  * the checkout and writes into the real thing.
  *
@@ -51,7 +58,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const LEDGER_ROOT = '.device-runs';
+// Relative on purpose: they resolve against the cwd, which is the checkout.
+const WATCHED_ROOTS = ['.device-runs', 'out'];
 const MAX_LISTED = 10;
 
 /**
@@ -131,10 +139,11 @@ function describeChanges(before, after) {
   return listed;
 }
 
+/** `root -> snapshot`, or `undefined` before `setup()` has run. */
 let before;
 
 export function setup() {
-  before = snapshot(LEDGER_ROOT);
+  before = new Map(WATCHED_ROOTS.map((root) => [root, snapshot(root)]));
 }
 
 export function teardown() {
@@ -148,42 +157,47 @@ export function teardown() {
   if (before === undefined) {
     process.exitCode = 1;
     throw new Error(
-      `${LEDGER_ROOT}/ was never snapshotted, so this run cannot say whether it wrote there.\n` +
+      `${WATCHED_ROOTS.join(', ')} were never snapshotted, so this run cannot say whether it wrote there.\n` +
         'setup() did not run, or it threw — Vitest calls teardown either way. Fix that failure.\n' +
         'This is NOT a leak report: do not go looking for the files it would have listed.',
     );
   }
 
-  let after;
-  try {
-    after = snapshot(LEDGER_ROOT);
-  } catch (e) {
-    // Set the code, explain, then rethrow the original untouched — the repo has no
-    // `error-cause` precedent and its lint config pins a Node range that predates it,
-    // so the context goes to stderr rather than onto a wrapper.
-    process.exitCode = 1;
-    console.error(
-      `[no-durable-writes] could not read ${LEDGER_ROOT}/ to verify the suite left it alone.\n` +
-        'Failing CLOSED — an unverifiable run is treated as a failed one, because the whole\n' +
-        'point of this gate is that a silent write must not pass.',
-    );
-    throw e;
+  const report = [];
+  for (const root of WATCHED_ROOTS) {
+    let after;
+    try {
+      after = snapshot(root);
+    } catch (e) {
+      // Set the code, explain, then rethrow the original untouched — the repo has no
+      // `error-cause` precedent and its lint config pins a Node range that predates it,
+      // so the context goes to stderr rather than onto a wrapper.
+      process.exitCode = 1;
+      console.error(
+        `[no-durable-writes] could not read ${root}/ to verify the suite left it alone.\n` +
+          'Failing CLOSED — an unverifiable run is treated as a failed one, because the whole\n' +
+          'point of this gate is that a silent write must not pass.',
+      );
+      throw e;
+    }
+    const changes = describeChanges(before.get(root), after);
+    if (changes.length > 0)
+      report.push(`${root}/\n${changes.map((line) => `  ${line}`).join('\n')}`);
   }
-
-  const changes = describeChanges(before, after);
-  if (changes.length === 0) return;
+  if (report.length === 0) return;
 
   process.exitCode = 1;
   throw new Error(
-    `The hardware-free suite wrote to ${LEDGER_ROOT}/ — that directory belongs to real device runs.\n` +
-      `${changes.map((line) => `  ${line}`).join('\n')}\n\n` +
-      'Usual cause: a test called `beginRun`/`endRun` (or anything reaching `runsLedgerPath`)\n' +
-      "without chdir'ing into a tmpdir first, so the relative ledger path resolved against the\n" +
-      'checkout. Fix it with the `process.chdir(tmpDir)` / `process.chdir(cwd)` pair the run-record\n' +
-      'tests use — NOT by pointing `RTA_RECORD_DIR` at a tmpdir, which makes the derivation tests\n' +
-      'vacuous. Restore the rows above by hand; this guard deliberately does not clean up.\n\n' +
-      'If a real device run was in flight in this checkout, that is the cause instead — the two\n' +
-      'suites must not overlap: `test:scripts` also wipes `out/` wholesale, which is where that\n' +
-      'run keeps its `run-meta.json` and failure records.',
+    `The hardware-free suite wrote to a directory that belongs to real device runs:\n${report.join('\n')}\n\n` +
+      'Usual cause for `.device-runs/`: a test called `beginRun`/`endRun` (or anything reaching\n' +
+      "`runsLedgerPath`) without chdir'ing into a tmpdir first, so the relative ledger path resolved\n" +
+      'against the checkout. Fix it with the `process.chdir(tmpDir)` / `process.chdir(cwd)` pair the\n' +
+      'run-record tests use, not by pointing `RTA_RECORD_DIR` at a tmpdir, which makes the derivation\n' +
+      'tests vacuous.\n' +
+      'Usual cause for `out/`: a test ran BrighterScript or `create-package.cjs` without an outDir of\n' +
+      'its own. `transpileWithPlugin` takes a temp one, and `create-package.cjs` takes `--out-dir`.\n' +
+      'Restore the entries above by hand; this guard does not clean up.\n\n' +
+      'If a real device run was in flight in this checkout, that is the cause instead. The two\n' +
+      'suites must not overlap: that run installs the package it built in `out/`.',
   );
 }

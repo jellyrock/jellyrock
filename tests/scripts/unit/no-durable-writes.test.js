@@ -2,7 +2,7 @@
  * Gate on the gate.
  *
  * [`tests/scripts/setup/no-durable-writes.js`](../setup/no-durable-writes.js) is
- * the globalSetup that fails this suite if it wrote into `.device-runs/`. It has
+ * the globalSetup that fails this suite if it wrote into `.device-runs/` or `out/`. It has
  * one non-obvious line — Vitest reports a globalSetup teardown throw as
  * `error during close` and still exits 0, so `process.exitCode = 1` is what makes
  * it a gate rather than a diagnostic. That line reads like belt-and-braces and is
@@ -181,5 +181,42 @@ describe('the no-durable-writes guard', () => {
     setup();
     writeLedgerFile('rta/runs.jsonl', 'AAAA', 1_700_000_042); // same bytes, touched
     expect(() => teardown()).toThrow(/~ rta[\\/]runs\.jsonl/);
+  });
+
+  describe('the out/ root', () => {
+    /** A file under out/, where a device run's build output and package zip live. */
+    const writeOutFile = (name, body, mtimeSeconds) => {
+      const target = path.join('out', name);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, body);
+      fs.utimesSync(target, mtimeSeconds, mtimeSeconds);
+    };
+
+    it('passes when out/ is left alone', async () => {
+      writeOutFile('jellyrock.zip', 'zip', 1_700_000_000);
+      const { setup, teardown } = await fresh();
+      setup();
+      expect(() => teardown()).not.toThrow();
+    });
+
+    it('fails, and names it, when a file is added under out/', async () => {
+      const { setup, teardown } = await fresh();
+      setup();
+      writeOutFile('jellyrock.zip', 'zip', 1_700_000_000);
+      process.exitCode = 0;
+      expect(() => teardown()).toThrow(/out[\\/]?.*\+ jellyrock\.zip/s);
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('fails, and names it, when out/ is wiped', async () => {
+      // The emptyDir shape: Program.write clears the directory before writing.
+      writeOutFile('rta/run-meta.json', '{}', 1_700_000_000);
+      const { setup, teardown } = await fresh();
+      setup();
+      fs.rmSync('out', { recursive: true });
+      process.exitCode = 0;
+      expect(() => teardown()).toThrow(/- rta[\\/]run-meta\.json/);
+      expect(process.exitCode).toBe(1);
+    });
   });
 });
