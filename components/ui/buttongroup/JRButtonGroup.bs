@@ -1,4 +1,4 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
+' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
 
 import "pkg:/source/utils/misc.bs"
 
@@ -132,7 +132,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   if key = "OK"
-    ' Ignore OK on buttons in loading state (e.g. async placeholders, in-flight API requests)
+    ' Ignore OK on buttons in loading state (for example async placeholders, in-flight API requests)
     if isValid(currentFocusButton) and currentFocusButton.hasField("isLoading") and currentFocusButton.isLoading then return true
     print "OK pressed from JRButtonGroup, buttonFocused =", m.top.buttonFocused
     m.top.buttonSelected = m.top.buttonFocused

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ProgressPill: a small "still working" notice — a spinner and a short line of text in the
+  ProgressPill: a small "still working" notice: a spinner and a short line of text in the
   toast's chrome (the same rounded panel and background color), centered at the bottom of the
   action-safe area. For work the user is waiting on while the screen stays usable, such as a
   grid's next page; the scene-level spinner is for a screen with nothing to show yet.

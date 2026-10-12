@@ -1,9 +1,9 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
+' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
 sub init()
   m.top.observeField("playbackPositionTicks", "onTicksChanged")
   m.top.observeField("runtimeTicks", "onTicksChanged")
 
-  ' The progress bar is drawn only once the icon has loaded — see updateProgressBar()
+  ' The progress bar is drawn only once the icon has loaded (see updateProgressBar())
   m.buttonIcon = m.top.findNode("buttonIcon")
   if isValid(m.buttonIcon)
     m.buttonIcon.observeField("loadStatus", "onIconLoaded")
@@ -22,7 +22,7 @@ sub onIconLoaded()
   ' Clean up observer to prevent memory leaks. This is a genuine ONE-SHOT: the icon
   ' URI is set once when the button is built and never reassigned, and a ResumeButton is created and
   ' removed per use (ItemDetails.manageResumeButton) rather than recycled as a list
-  ' cell — so `loadStatus` reaches "ready" exactly once for this node and there is
+  ' cell, so `loadStatus` reaches "ready" exactly once for this node and there is
   ' nothing further to hear. Those two facts are what make detaching here safe, and
   ' neither is visible to the gate, which is why this is suppressed rather than
   ' carved out of the rule.

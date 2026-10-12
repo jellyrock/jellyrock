@@ -175,7 +175,7 @@ end sub
 '
 ' This used to hand-roll the append (createObject + appendChild + setFocus). The
 ' helper does the same thing AND stamps the shared overlay id, which is what
-' isOverlayDialogOpen / isDialogOpen / cancelOpenDialog find an open dialog by —
+' isOverlayDialogOpen / isDialogOpen / cancelOpenDialog find an open dialog by,
 ' so the hand-rolled version was invisible to all three, and OverviewDialog's own
 ' cancelDialog() was unreachable on this path.
 '

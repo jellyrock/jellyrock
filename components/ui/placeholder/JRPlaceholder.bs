@@ -21,8 +21,8 @@ sub onSizeChanged()
   m.glyph.setFields(size)
 end sub
 
-' Empty itemType → loading state (backdrop visible, glyph hidden).
-' Non-empty itemType → placeholder fallback state (backdrop + tinted glyph).
+' Empty itemType: loading state (backdrop visible, glyph hidden).
+' Non-empty itemType: placeholder fallback state (backdrop + tinted glyph).
 sub onItemTypeChanged()
   itemType = m.top.itemType
   if isValidAndNotEmpty(itemType)

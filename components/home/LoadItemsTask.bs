@@ -21,7 +21,7 @@ sub loadItems()
   m.transformer = JellyfinDataTransformer()
 
   results = []
-  ' Set by the Home row and Favorites loads only — see the `status` field.
+  ' Set by the Home row and Favorites loads only; see the `status` field.
   status = ""
 
   ' Load Libraries
@@ -68,13 +68,13 @@ sub loadItems()
     ' No user means no request was made, which is not an answer.
     status = "failed"
     if isValid(activeUser)
-      ' DELIBERATELY NO `limit`, and now stated rather than merely absent — the silence here
+      ' No `limit`, on purpose, and now stated rather than merely absent: the silence here
       ' was previously indistinguishable from nobody having got round to it. Continue Watching
       ' is a WORKLIST: capping it can only hide something the user is mid-way through. Next Up
       ' is uncapped for the same reason; `uiHomeRowLimit` sizes the browse feeds only.
       params = {}
       params["EnableTotalRecordCount"] = false
-      ' Alternate-versions badge — see buildHomeNextUpParams for the measured cost.
+      ' Alternate-versions badge: see buildHomeNextUpParams for the measured cost.
       params["Fields"] = "MediaSourceCount"
 
       items = fetchRowItems(GetApi().BuildGetResumeItemsRequest(params), "continue")
@@ -106,7 +106,7 @@ sub loadItems()
     if isValid(items)
       ' A favorited movie is the same tile the library grid draws, so it gets the same
       ' correction: from 12.0 its own UserData can belong to a version other than the one Play
-      ' would start. Unscoped — favorites span every library. Continue Watching and the series
+      ' would start. Unscoped, since favorites span every library. Continue Watching and the series
       ' resume row below need none of this: they are built FROM the resume list, so each row
       ' already IS the version in progress.
       changed = versionDisplay.correctDisplayProgress(items, m.global.server.version, "", "favoritesVersionDisplay", {})
@@ -129,7 +129,7 @@ sub loadItems()
     ' Note: MusicArtist items ARE returned by /Items above (they are regular library items),
     ' so no separate /Artists call is needed here (unlike search, where /Items misses them).
 
-    ' People — favorited persons are not returned by /Items; requires /Persons endpoint. Its own
+    ' People: favorited persons are not returned by /Items; requires /Persons endpoint. Its own
     ' load, so a failure of one request says nothing about the other's rows.
   else if m.top.itemsToLoad = "favoritePeople"
     items = fetchRowItems(GetApi().BuildGetPersonsRequest({
@@ -149,7 +149,7 @@ sub loadItems()
     params = {}
     params["userId"] = globalUser.id
     params["isAiring"] = true
-    ' The comment this replaces read "16 to be consistent with Latest In" — a parity three
+    ' The comment this replaces read "16 to be consistent with Latest In": a parity three
     ' files asserted by hand and nothing enforced. Reading the same setting makes it hold.
     params["limit"] = resolveHomeRowLimit(globalUser.settings.uiHomeRowLimit)
     params["imageTypeLimit"] = 1
@@ -183,7 +183,7 @@ sub loadItems()
       end for
     end if
 
-    ' ItemDetails' extras rows are NOT loaded here — LoadExtrasRowsTask owns all of them.
+    ' ItemDetails' extras rows are not loaded here: LoadExtrasRowsTask owns all of them.
   else if m.top.itemsToLoad = "seriesResume"
     ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
     ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
@@ -197,7 +197,7 @@ sub loadItems()
       node = m.transformer.transformBaseItem(resumeData.Items[0])
       if isValid(node) then results.push(node)
     else
-      ' No resumable episode — fall back to next unstarted episode, but only once a regular
+      ' No resumable episode: fall back to next unstarted episode, but only once a regular
       ' episode has been watched: a Resume button must never appear for an unwatched series.
       ' Checked here because Next Up's DisableFirstEpisode is ignored from Jellyfin 10.11 (#925).
       playedData = fetchJson(GetApi().BuildGetItemsByQueryRequest(watchedRegularEpisodeQuery(m.top.itemId)), "seriesPlayed")

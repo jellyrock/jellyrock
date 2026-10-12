@@ -1,18 +1,18 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
+' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
 
 ' ┌────────────────────────────────────────────────────────────────────────────┐
-' │ FOCUS-INDICATOR LAYOUT CONTRACT — read before building/changing an item      │
+' │ FOCUS-INDICATOR LAYOUT CONTRACT: read before building/changing an item       │
 ' │ component (the itemComponentName) for any RowList.                            │
 ' │                                                                              │
-' │ The focus indicator pins to the poster slot (rowItemSize) ONLY when          │
+' │ The focus indicator pins to the poster slot (rowItemSize) only when          │
 ' │ rowHeights is set TALLER than the slot. Without rowHeights, it wraps the      │
-' │ item component's full bounding box — including a title below the poster — so  │
+' │ item component's full bounding box, including a title below the poster, so   │
 ' │ the border extends past the image and swallows the title. Set                │
-' │ rowHeights = rowItemSize height + a title area, fill the poster at a top      │
-' │ offset (so it overflows the slot and the border reads behind it), and put    │
-' │ the title in the rowHeights area below. Canonical: JRRowItem + HomeRows.      │
+' │ rowHeights = rowItemSize height + a title area, fill the slot with the        │
+' │ poster from its origin, and put the title in the rowHeights area below.      │
+' │ Canonical: JRRowItem + HomeRows.                                             │
 ' │ Full explanation + evidence: docs/architecture/list-grid-item-layout.md      │
 ' └────────────────────────────────────────────────────────────────────────────┘
 sub init()
@@ -44,7 +44,7 @@ sub init()
   ' in real time so the percentage must be refreshed periodically. This
   ' base-class tick propagates the feature to every JRRowList descendant
   ' (HomeRows, FavoritesRows, SearchRow, ExtrasRowList) with no per-screen
-  ' plumbing — it gates itself on textureManagerState, which every row-list
+  ' plumbing: it gates itself on textureManagerState, which every row-list
   ' screen already sets via activateTextureManager/hideTextureManager.
   m.programProgressTimer = invalid
   m.observedContentRoot = invalid
@@ -81,8 +81,8 @@ sub onProgramProgressContentChanged()
 
   m.observedContentRoot = content
   content.observeField("textureManagerState", "onProgramProgressVisibilityChanged")
-  ' Honour the current state immediately — content may already be "active"
-  ' by the time we subscribe (e.g. reassignment after a refresh).
+  ' Honor the current state immediately: content may already be "active"
+  ' by the time we subscribe (for example, reassignment after a refresh).
   syncProgramProgressTicking(content.textureManagerState)
 end sub
 
@@ -93,7 +93,7 @@ end sub
 ' Starts or stops the 60s Program progress tick based on the visibility state
 ' broadcast by the texture manager. Idempotent; safe on every state change.
 ' State arrives as dynamic because textureManagerState is unset (invalid) on
-' freshly-created content roots — setupTextureManager only assigns "init"
+' freshly-created content roots: initTextureManager only assigns "init"
 ' after the subclass first populates the content tree.
 sub syncProgramProgressTicking(state as dynamic)
   isString = isValid(state) and (type(state) = "roString" or type(state) = "String")
@@ -124,7 +124,7 @@ sub startProgramProgressTicking()
 
   ' Immediate refresh so returning from Settings/another screen does not
   ' leave stale percentages on screen for up to 60 seconds. Suppress expiry
-  ' detection on this first tick — the data is stale (from before the user
+  ' detection on this first tick: the data is stale (from before the user
   ' navigated away) and almost always contains expired programs, which would
   ' trigger unnecessary refetches before the screen's own refresh has landed.
   m.suppressNextExpiry = true
@@ -150,8 +150,8 @@ end sub
 ' refreshing visible bars without triggering a cell re-render. Non-Program
 ' items are skipped.
 '
-' Iteration is scoped to loadedRowRange [bufferStart..bufferEnd] — the vertical
-' range maintained by textureManager.bs — so large datasets (SearchRow,
+' Iteration is scoped to loadedRowRange [bufferStart..bufferEnd], the vertical
+' range maintained by textureManager.bs, so large datasets (SearchRow,
 ' FavoritesRows) don't pay the cost of walking hundreds of offscreen items
 ' every minute on the render thread. Offscreen rows whose percentage goes
 ' stale during scroll-away will update at the next tick after re-entering the
@@ -162,7 +162,7 @@ end sub
 ' refetch (HomeRows, ExtrasRowList) observe that field and trigger a fresh
 ' load. Expiry detection is scoped to the buffer range rather than the full
 ' content tree because Live TV rows in HomeRows/ExtrasRowList are always in
-' the vertical buffer in practice — full-scan expiry on every tick would be
+' the vertical buffer in practice; full-scan expiry on every tick would be
 ' unnecessary work for zero real-world benefit.
 '
 ' Hard-guards rather than full-scan fallback when loadedRowRange is missing or
@@ -199,7 +199,7 @@ sub onProgramProgressTick()
         if isValid(item) and (item.type = "Program" or item.type = "Recording")
           item.playedPercentage = computeProgramBroadcastProgress(item.PlayStart, item.PlayDuration, nowSeconds)
           ' Expiry check uses the same window math as the progress computation.
-          ' PlayStart/PlayDuration default to 0 for items missing broadcast data —
+          ' PlayStart/PlayDuration default to 0 for items missing broadcast data;
           ' the > 0 guards prevent those from being flagged as expired.
           if item.PlayStart > 0 and item.PlayDuration > 0 and nowSeconds >= (item.PlayStart + item.PlayDuration)
             hasExpiredProgram = true
