@@ -1,8 +1,8 @@
 ' Remote subtitle search / download helpers (issue #750).
 '
 ' Pure functions backing the subtitle-management panel. They live here rather
-' than inside the panel component so every judgment call — the permission gate,
-' the item-type gate, the download-completion diff, the result-row shaping — is
+' than inside the panel component so every judgment call (the permission gate,
+' the item-type gate, the download-completion diff, the result-row shaping) is
 ' directly unit-testable without a device or a server.
 '
 ' Every claim in the comments below was MEASURED against a live Jellyfin
@@ -21,7 +21,7 @@ namespace remoteSubtitles
   '
   ' SubtitleManager.SearchSubtitles maps the item to a VideoContentType and
   ' bails to an EMPTY ARRAY for anything that isn't a Movie or an Episode. A
-  ' non-Video item (BoxSet, Series, MusicAlbum, …) doesn't even get that far —
+  ' non-Video item (BoxSet, Series, MusicAlbum, …) doesn't even get that far:
   ' the controller resolves it via GetItemById<Video>, so it 404s. Either way
   ' the entry point must not be offered for these types.
   const SEARCHABLE_TYPES = ["Movie", "Episode"]
@@ -32,14 +32,14 @@ namespace remoteSubtitles
   ' existing V1/V2 split:
   '
   '   10.7.x - 10.8.x (apiVersion 1): the endpoints carry only
-  '     Policies.DefaultAuthorization — ANY authenticated user may search. The
+  '     Policies.DefaultAuthorization, so any authenticated user may search. The
   '     EnableSubtitleManagement permission does not exist in UserPolicy at all
   '     on these versions (confirmed absent from the 10.7.0 spec fingerprint),
   '     so gating on it would hide the feature from everyone.
   '
   '   10.9+ (apiVersion 2): the endpoints carry Policies.SubtitleManagement.
   '
-  ' The admin clause is NOT a convenience — it is required for correctness.
+  ' The admin clause is not a convenience: it is required for correctness.
   ' EnableSubtitleManagement defaults to FALSE for every account including
   ' administrators (Jellyfin's AddDefaultPermissions), yet admins are allowed
   ' through anyway: UserPermissionRequirement subclasses
@@ -50,7 +50,7 @@ namespace remoteSubtitles
   '   non-admin, EnableSubtitleManagement=false (the default) -> 403
   '   non-admin, EnableSubtitleManagement=true                -> 200 / 204
   '
-  ' So gating purely on the permission flag — as the official Roku client does —
+  ' So gating purely on the permission flag, as the official Roku client does,
   ' hides the feature from every administrator who never ticked the box, which
   ' is the default state and the majority of self-hosted installs.
   '
@@ -69,8 +69,8 @@ namespace remoteSubtitles
   ' canDeleteSubtitles: Whether this user may delete an external subtitle file.
   '
   ' DELETE /Videos/{id}/Subtitles/{index} carries Policies.RequiresElevation on
-  ' EVERY supported version (checked at 10.7.7, 10.8.13, 10.9.11, 10.10.7,
-  ' 10.11.11 and master) — that is a straight administrator role check, NOT the
+  ' every supported version (checked at 10.7.7, 10.8.13, 10.9.11, 10.10.7,
+  ' 10.11.11 and master). That is a straight administrator role check, not the
   ' subtitle-management permission. Measured: a non-admin holding
   ' EnableSubtitleManagement=true still gets 403 on delete while search and
   ' download return 200/204. Delete is therefore gated separately and more
@@ -97,8 +97,8 @@ namespace remoteSubtitles
 
   ' shouldAutoSearch: Whether the panel should start a search by itself.
   '
-  ' The seeded language is not always available at the moment the panel opens —
-  ' /Localization/Cultures may still be in flight — so the decision has to be
+  ' The seeded language is not always available at the moment the panel opens
+  ' (/Localization/Cultures may still be in flight), so the decision has to be
   ' re-asked when the language lands. That makes it an IDEMPOTENT predicate
   ' called from both points rather than a "remember to search later" flag: the
   ' flag shape is what failed here, having been armed on open and never read by
@@ -132,7 +132,7 @@ namespace remoteSubtitles
 
   ' shouldShowOpeningSpinner: Whether an opening panel should show the results wait.
   '
-  ' Only while a language can still ARRIVE — the culture list is in flight. Once it
+  ' Only while a language can still ARRIVE: the culture list is in flight. Once it
   ' has loaded without the user's preference in it, no language is coming, and the
   ' panel is showing "choose a language" instead; a spinner there spins forever,
   ' because nothing will ever stop it.
@@ -153,7 +153,7 @@ namespace remoteSubtitles
   ' "busy" boolean, because the two things a user can do here need opposite
   ' answers and a boolean cannot tell them apart:
   '
-  '   * the SAME language again — a held-down OK on Search — is a repeat, and
+  '   * the SAME language again (a held-down OK on Search) is a repeat, and
   '     costs a real provider round-trip through the server for an answer
   '     already on its way. Refused.
   '   * a DIFFERENT language is a new question, and the old answer is now
@@ -161,7 +161,7 @@ namespace remoteSubtitles
   '
   ' A boolean refused both, which is what deadlocked the panel: picking a
   ' language mid-search started nothing, and then the original reply was
-  ' discarded by the stale-language guard without clearing the flag — because
+  ' discarded by the stale-language guard without clearing the flag, because
   ' that guard's premise is "a newer search already owns it", and the refusal is
   ' precisely what stopped a newer search existing. Nothing could search again
   ' until the panel was closed and reopened.
@@ -185,7 +185,7 @@ namespace remoteSubtitles
   '
   ' Filtering on IsExternal is a SAFETY guard, not a cosmetic one. The server's
   ' DeleteSubtitles resolves the stream by index and unconditionally deletes
-  ' MediaStream.Path — for an EMBEDDED subtitle that path is the media container
+  ' MediaStream.Path, and for an EMBEDDED subtitle that path is the media container
   ' itself. Never offer a stream whose IsExternal is not explicitly true.
   '
   ' @param {object} streams - MediaStreams array from a fresh item fetch
@@ -207,17 +207,17 @@ namespace remoteSubtitles
 
   ' subtitleStreams: Every subtitle stream on the item, in server-index order.
   '
-  ' The DISPLAY set, and deliberately wider than externalSubtitleStreams(),
+  ' The DISPLAY set, and wider on purpose than externalSubtitleStreams(),
   ' which is the DELETE set. The panel used to render only external streams, so
   ' an item whose subtitles are all embedded reported "no subtitles on item"
-  ' while the detail screen's own dropdown listed several — measured on a
-  ' 4-stream movie where 3 of the 4 were embedded, which is the ordinary case
+  ' while the detail screen's own dropdown listed several. Measured 2026-09-14 on
+  ' a 4-stream movie where 3 of the 4 were embedded, which is the ordinary case
   ' for a remuxed release. A column headed "Current subtitles" has to describe
   ' the item; whether a given row may be DELETED is a property of that row
   ' (IsExternal), not a reason to hide it from the list.
   '
   ' ⚠️ Anything that acts on a row from THIS set must re-check IsExternal.
-  ' Deleting an embedded stream deletes the media container — see
+  ' Deleting an embedded stream deletes the media container: see
   ' externalSubtitleStreams() for why.
   '
   ' @param {object} streams - MediaStreams array from a fresh item fetch
@@ -238,21 +238,21 @@ namespace remoteSubtitles
   ' subtitleDropdownEntries: An item's subtitle tracks, made distinguishable.
   '
   ' The detail screen rendered every track through formatSubtitleDisplayTitle()
-  ' alone, which describes a stream by language, codec and flags — nothing that
-  ' separates two English SRTs. Measured on a real 6-stream movie, the dropdown
-  ' offered "English SUBRIP" three times, so after downloading a subtitle there
-  ' was no way to tell which entry was the file just fetched.
+  ' alone, which describes a stream by language, codec and flags: nothing that
+  ' separates two English SRTs. Measured 2026-09-14 on a real 6-stream movie, the
+  ' dropdown offered "English SUBRIP" three times, so after downloading a subtitle
+  ' there was no way to tell which entry was the newly fetched file.
   '
   ' ONE RULE, statable in a sentence: a file kept outside the video is marked
   ' External, and everything else is inside the video. That answers "which one
-  ' did I just add?" — a download is a separate file, whether Jellyfin saved it
-  ' beside the video or in its own metadata folder — and answering only that
+  ' did I add?" (a download is a separate file, whether Jellyfin saved it
+  ' beside the video or in its own metadata folder), and answering only that
   ' keeps the list quiet. The marker said "Downloaded" until #1004, which was
   ' wrong for a file placed by hand. The rule itself is formatSubtitleTrackLabel(),
   ' which the playback picker shares, so a track reads the same on both screens;
   ' it also leads with the track's own Title, which tells most look-alikes apart.
   '
-  ' What this deliberately does NOT do is number the built-in tracks. An earlier
+  ' What this does not do, on purpose, is number the built-in tracks. An earlier
   ' cut appended a source segment wherever two entries collided and an ordinal
   ' where they still collided, which produced "English SUBRIP · Embedded 1" /
   ' "Embedded 2": jargon, and arbitrary-looking because the suffix appeared on
@@ -285,8 +285,8 @@ namespace remoteSubtitles
   ' re-indexing.
   '
   ' Index CANNOT be used as an identity across a download. External subtitles
-  ' are inserted at index 0 and push every other stream down — measured on
-  ' 10.11.11, a file that was [0 Video, 1 Audio] became
+  ' are inserted at index 0 and push every other stream down. Measured 2026-09-14
+  ' on 10.11.11, a file that was [0 Video, 1 Audio] became
   ' [0 Subtitle, 1 Subtitle, 2 Video, 3 Audio] after two sidecars appeared. So
   ' the diff keys on path (unique per external file) and falls back to the
   ' display title plus language for streams without a readable path.
@@ -308,9 +308,9 @@ namespace remoteSubtitles
   ' same file as `key`, or invalid.
   '
   ' What makes a delete safe against renumbering. The server deletes the subtitle at
-  ' an INDEX, and a download or delete since the list was fetched shifts every index —
+  ' an INDEX, and a download or delete since the list was fetched shifts every index,
   ' so an index read from an older list can name a different subtitle file. Resolving
-  ' the stream the user chose by its stable key against a list fetched just before
+  ' the stream the user chose by its stable key against a list fetched right before
   ' the delete is what guarantees the index sent is the file they saw.
   '
   ' @param {object} streams - MediaStreams from a fresh item fetch
@@ -329,7 +329,7 @@ namespace remoteSubtitles
   '
   ' Jellyfin records NO provenance for a subtitle. A subtitle MediaStream
   ' carries only Codec, Language, IsForced, IsHearingImpaired, IsDefault,
-  ' IsExternal, Index, DisplayTitle and Path — no provider, no download date, no
+  ' IsExternal, Index, DisplayTitle and Path: no provider, no download date, no
   ' rating. Two English SRTs are therefore identical in every field the API
   ' returns EXCEPT Path, which makes the filename the only discriminator the
   ' client can offer, and the sidecar suffix (".en.hi.srt" vs ".en.sdh.srt") the
@@ -338,8 +338,8 @@ namespace remoteSubtitles
   ' The media file's own basename is stripped when the subtitle sits beside it,
   ' because that name is already on screen in the panel header and repeating it
   ' per row would push the differing tail off the end of a 570px column. When
-  ' the subtitle does NOT share the media basename — a Subs/ folder, a manually
-  ' placed file — there is no redundancy to strip and the whole filename is
+  ' the subtitle does not share the media basename (a Subs/ folder, a manually
+  ' placed file), there is no redundancy to strip and the whole filename is
   ' returned, since then it IS the discriminator.
   '
   ' @param {dynamic} subtitlePath - MediaStream.Path of the subtitle
@@ -359,7 +359,7 @@ namespace remoteSubtitles
 
   ' fileNameFrom: The last path segment of a server-side path.
   '
-  ' Deliberately string-based rather than roPath: the paths here come from the
+  ' String-based on purpose rather than roPath: the paths here come from the
   ' SERVER, so they are in the server host's format (a Windows install reports
   ' backslashes), and roPath expects a Roku volume like pkg:/ or tmp:/. Handling
   ' both separators here also keeps the function pure and unit-testable off
@@ -400,9 +400,9 @@ namespace remoteSubtitles
 
   ' newSubtitleStreams: Subtitle streams present in `after` but not in `before`.
   '
-  ' This is the ONLY honest completion signal for a download. The server's
+  ' This is the only honest completion signal for a download. The server's
   ' DownloadRemoteSubtitles wraps the provider call in try/catch, logs any
-  ' failure, and returns 204 regardless — then queues the metadata refresh
+  ' failure, and returns 204 regardless, then queues the metadata refresh
   ' asynchronously. Measured on a server with no providers configured, a
   ' download of a nonexistent subtitle id still returned 204. A missing plugin,
   ' absent credentials, and an exhausted daily quota are all indistinguishable
@@ -472,8 +472,8 @@ namespace remoteSubtitles
   end function
 
   ' cultureOptions: Map the server's CultureDto list onto the shape
-  ' components/settings/LanguagePicker already consumes — { code, name,
-  ' nativeName } — so the subtitle panel reuses that component unchanged
+  ' components/settings/LanguagePicker already consumes ({ code, name,
+  ' nativeName }), so the subtitle panel reuses that component unchanged
   ' (type-to-filter keyboard + RadioButtonList) instead of growing a second
   ' language picker.
   '
@@ -481,10 +481,10 @@ namespace remoteSubtitles
   ' hands the provider (SubtitleManager resolves our path param through
   ' FindLanguageInfo and passes culture.TwoLetterISOLanguageName onward), and it
   ' is the only form that preserves regional variants: 192 cultures collapse to
-  ' 187 distinct three-letter codes, and the collisions are exactly the ones
-  ' users care about — zh-tw / zh-cn / zh-hk all share "zho", and es-419 shares
-  ' "spa" with Castilian. Measured that regional codes return genuinely
-  ' different result sets (en 50, fr 22, pt-br 50, zh-tw 6).
+  ' 187 distinct three-letter codes (counted 2026-09-14 on 10.11.11), and the
+  ' collisions are exactly the ones users care about. zh-tw / zh-cn / zh-hk all
+  ' share "zho", and es-419 shares "spa" with Castilian. Measured 2026-09-14 that
+  ' regional codes return different result sets (en 50, fr 22, pt-br 50, zh-tw 6).
   '
   ' `nativeName` prefers JellyRock's own translated language names so the picker
   ' reads in the user's UI language; the server's DisplayName is English-only.
@@ -514,9 +514,9 @@ namespace remoteSubtitles
   ' localizedLanguageName: JellyRock's translated name for a culture, falling
   ' back to the server's English DisplayName.
   '
-  ' Regional variants deliberately keep the server's DisplayName. The shared
+  ' Regional variants keep the server's DisplayName on purpose. The shared
   ' resolver, resolveLanguageName(), normalizes away any region/script suffix by
-  ' design — it exists to label media STREAMS, where "pt-BR" and "pt" should
+  ' design: it exists to label media STREAMS, where "pt-BR" and "pt" should
   ' both read "Portuguese". Here that normalization is lossy in a way that
   ' matters: it would collapse "Portuguese (Brazil)" and "Portuguese (Portugal)"
   ' into two identical rows in the picker, and those are exactly the entries a
@@ -534,7 +534,7 @@ namespace remoteSubtitles
     if not isValid(culture) then return fallback
     if not isValidAndNotEmpty(culture.ThreeLetterISOLanguageName) then return fallback
 
-    ' Regional variant (pt-br, zh-tw, es-419, fr-ca, …) — keep the region.
+    ' Regional variant (pt-br, zh-tw, es-419, fr-ca, …): keep the region.
     if isValidAndNotEmpty(culture.TwoLetterISOLanguageName)
       if inStr(1, culture.TwoLetterISOLanguageName, "-") > 0 then return fallback
     end if

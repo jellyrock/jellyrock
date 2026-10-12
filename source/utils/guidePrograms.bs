@@ -26,7 +26,7 @@ end enum
 '
 ' The guide loads every channel row but programs only near the viewport: every channel's
 ' programs at once do not fit a large lineup on a 512 MB device. Programs are fetched in BLOCKS
-' of BLOCK_SIZE consecutive channel rows — one request per block — and at most CAP blocks hold
+' of BLOCK_SIZE consecutive channel rows (one request per block), and at most CAP blocks hold
 ' programs at once. They hold them only for a TIME WINDOW around the grid's left edge
 ' (timeWindow), not from the guide's start: a block holding every program up to a horizon that
 ' only grows ran a 512 MB device out of memory once the user looked a few days ahead. So program
@@ -35,7 +35,7 @@ end enum
 ' Pure decisions only: the component does the fetching and the node writes. A block's state is
 ' in `held` (an AA keyed by the block index as a string), absent when it holds nothing, else
 ' { from, until, stale }: it holds every program airing in [from, until] (seconds since the
-' epoch) — those ending at or after `from` and starting at or before `until`, as one
+' epoch): those ending at or after `from` and starting at or before `until`, as one
 ' /LiveTv/Programs query with MinEndDate and MaxStartDate returns them. `stale` marks programs
 ' that must be replaced (a series was recorded).
 ' A block whose last fetch failed also has an entry in `failures` (same keys): its backoff state
@@ -109,7 +109,7 @@ namespace guidePrograms
   end function
 
   ' Blocks to hold programs for, nearest the focused row first: the focused block, then
-  ' alternately below and above it. Only blocks whose rows have all arrived are listed — a
+  ' alternately below and above it. Only blocks whose rows have all arrived are listed: a
   ' block fetched while its channels are still paging in would miss the late ones.
   '
   ' @param focusedRow - the focused channel row
@@ -184,7 +184,7 @@ namespace guidePrograms
   end function
 
   ' When the earliest wanted block waiting to retry may be fetched, or invalid when none is
-  ' waiting — the time to come back if nextFetch has nothing to do now.
+  ' waiting: the time to come back if nextFetch has nothing to do now.
   '
   ' @param wanted - from wantedBlocks
   ' @param held - block states
@@ -235,7 +235,7 @@ namespace guidePrograms
   ' @param wanted - from wantedBlocks
   ' @param window - from timeWindow
   ' @param focusedRow - the focused channel row
-  ' @return AAs with `block` and `drop` — true to drop the block, else false with the `from` /
+  ' @return AAs with `block` and `drop`: true to drop the block, else false with the `from` /
   '   `until` to keep
   function trims(held as object, wanted as object, window as object, focusedRow as integer) as object
     focusBlock = blockOf(focusedRow)
@@ -305,7 +305,7 @@ namespace guidePrograms
     return dropped
   end function
 
-  ' What rows in [firstRow, lastRow] without programs should say — TimeGrid has one text for
+  ' What rows in [firstRow, lastRow] without programs should say. TimeGrid has one text for
   ' every such row. FAILED wins over LOADING: a block waiting up to 30 s to retry must not read as
   ' loading, while a block still loading next to it reads as unavailable only until it lands.
   '

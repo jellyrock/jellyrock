@@ -9,12 +9,12 @@ import "pkg:/source/utils/viewport.bs"
 ' their position.
 '
 ' States:
-'   "init"      — Content loading, layout unstable. Cells freeze current state (no-op).
-'   "active"    — Normal operation. Short rows (≤ threshold) use renderTracking only.
+'   "init"      : Content loading, layout unstable. Cells freeze current state (no-op).
+'   "active"    : Normal operation. Short rows (≤ threshold) keep every item loaded.
 '                  Long rows (> threshold) use horizontal buffer logic.
-'   "hidden"    — Screen hidden (pushed behind another). Freeze/no-op — all textures
+'   "hidden"    : Screen hidden (pushed behind another). Freeze/no-op: all textures
 '                  stay loaded so returning is instant. renderTracking changes ignored.
-'   "destroyed" — Component being torn down. All cells force-unload unconditionally.
+'   "destroyed" : Component being torn down. All cells force-unload unconditionally.
 '
 ' Vertical range (loadedRowRange):
 '   4-element array: [bufferStart, visibleStart, visibleEnd, bufferEnd]
@@ -24,8 +24,8 @@ import "pkg:/source/utils/viewport.bs"
 '
 ' Horizontal buffer (focusedColumns + textureVisibleWidth + textureItemSpacing):
 '   Only applies to RowList rows with > TEXTURE_BUFFER_THRESHOLD items.
-'   A window of TEXTURE_BUFFER_THRESHOLD columns keeps textures loaded — the visible slots
-'   plus the rest of the budget split left/right, wrapping — and the rest unload. See
+'   A window of TEXTURE_BUFFER_THRESHOLD columns keeps textures loaded (the visible slots
+'   plus the rest of the budget split left/right, wrapping), and the rest unload. See
 '   isColumnInTextureWindow.
 '   Not used for MarkupGrid (all columns fit on screen).
 '
@@ -41,10 +41,10 @@ import "pkg:/source/utils/viewport.bs"
 ' Flow (MarkupGrid):
 '   Same as RowList but uses updateGridTextureBufferRange() instead of
 '   updateTextureBufferRange(). GridItem observes textureManagerState and
-'   loadedRowRange (no focusedColumns — no horizontal buffer for grids).
+'   loadedRowRange (no focusedColumns: no horizontal buffer for grids).
 
 ' Maximum items a row can have before horizontal buffer logic kicks in.
-' Rows at or below this count use renderTracking only — all items stay loaded
+' Rows at or below this count skip the horizontal buffer: all items stay loaded
 ' when on screen because they fit comfortably in texture memory.
 const TEXTURE_BUFFER_THRESHOLD = 20
 
@@ -52,7 +52,7 @@ const TEXTURE_BUFFER_THRESHOLD = 20
 const TEXTURE_BUFFER_ROWS = 2
 
 ' Adds texture management fields to a RowList content root node.
-' Sets initial state to "init" — cells will not unload during layout changes.
+' Sets initial state to "init", so cells will not unload during layout changes.
 '
 ' @param contentRoot - the RowList's root ContentNode (m.top.content)
 ' @param itemSize - RowList itemSize field ([containerWidth, containerHeight])
@@ -72,7 +72,7 @@ sub initTextureManager(contentRoot as object, itemSize as dynamic, focusXOffset 
       textureItemSpacing: itemSpacing
     })
   else
-    ' Fields may already exist from a previous init — update layout values
+    ' Fields may already exist from a previous init: update layout values
     contentRoot.textureVisibleWidth = visibleWidth
     contentRoot.textureItemSpacing = itemSpacing
   end if
@@ -88,7 +88,7 @@ sub initTextureManager(contentRoot as object, itemSize as dynamic, focusXOffset 
   contentRoot.textureManagerState = "init"
 
   ' Attach the cell-load ledger to the same lifecycle. `m.top.subtype()` resolves to the
-  ' CALLING component (these are free functions, so `m` is the caller's — the same
+  ' CALLING component (these are free functions, so `m` is the caller's, the same
   ' mechanism `screenReadiness.bs` documents), which is what lets every screen name itself
   ' without a single call site changing. Every caller today is a component codebehind; the
   ' caller's-`m` rule does not hold inside a BrighterScript class method, so a future class
@@ -149,7 +149,7 @@ end function
 '
 ' The window keeps TEXTURE_BUFFER_THRESHOLD textures loaded: the visible slots plus the
 ' remaining budget split around them, the odd item going to the right. It wraps, because
-' Home's rows use `fixedFocusWrap` — at column 0 the left half sits at the row's TAIL, which
+' Home's rows use `fixedFocusWrap`: at column 0 the left half sits at the row's TAIL, which
 ' is the item drawn in the `focusXOffset` gap and one Left press away.
 '
 ' Pure so the geometry can be pinned by unit tests. The column sets those tests assert were
@@ -175,7 +175,7 @@ function isColumnInTextureWindow(colIndex as integer, focusedCol as integer, tot
   bufferEnd = focusedCol + numVisible - 1 + rightBuffer
 
   if bufferEnd >= totalItems
-    ' Wraps past the end — in range at the tail OR the head
+    ' Wraps past the end: in range at the tail or the head
     return colIndex >= bufferStart or colIndex <= (bufferEnd mod totalItems)
   else if bufferStart > focusedCol
     ' Wraps before the start (focus near column 0, start near the end)
@@ -273,21 +273,21 @@ sub activateTextureManager(contentRoot as object)
 end sub
 
 ' Hides texture management when the screen is no longer visible.
-' Freezes all cells in their current state — textures stay loaded so returning
+' Freezes all cells in their current state: textures stay loaded so returning
 ' is instant. renderTracking changes are ignored while hidden.
 '
 ' @param contentRoot - the RowList's root ContentNode (m.top.content)
 sub hideTextureManager(contentRoot as object)
   if not isValid(contentRoot) or not contentRoot.hasField("textureManagerState") then return
   contentRoot.textureManagerState = "hidden"
-  ' A screen being hidden is a COMPLETE viewing session — the user navigated away — and
+  ' A screen being hidden is a COMPLETE viewing session (the user navigated away), and
   ' it is the only session boundary Home ever reaches, because the router SUSPENDS Home
   ' rather than destroying it.
   cellLoad.emit(contentRoot)
 end sub
 
 ' Destroys texture management during component teardown.
-' All cells force-unload unconditionally — no guards, no buffer checks.
+' All cells force-unload unconditionally: no guards, no buffer checks.
 '
 ' @param contentRoot - the RowList's root ContentNode (m.top.content)
 sub destroyTextureManager(contentRoot as object)
@@ -301,16 +301,16 @@ end sub
 '
 ' THREE paths leave a cell's poster at "" with the real URL still cached, and they do not
 ' all want the same thing:
-'   - unloadTexture()    — the manager evicted a resident texture to free memory.
-'   - deferTextureLoad() — the cell bound while off screen, so no request was ever issued.
-'   - showPlaceholder()  — the image FAILED, and the URI was cleared to reveal the type
+'   - unloadTexture()    : the manager evicted a resident texture to free memory.
+'   - deferTextureLoad() : the cell bound while off screen, so no request was ever issued.
+'   - showPlaceholder()  : the image FAILED, and the URI was cleared to reveal the type
 '                          glyph underneath.
 ' The first two want the load; the third does not, because re-requesting a known-broken
 ' image wipes the glyph off a cell that is sitting still and then fails again. Deciding on
-' `currentUri <> cachedUri` cannot separate them — all three look identical from there.
+' `currentUri <> cachedUri` cannot separate them: all three look identical from there.
 ' `isTextureUnloaded` can: the first two set it, showPlaceholder does not.
 '
-' Worth knowing before "fixing" the missing retry: a failed image does NOT retry while its
+' Worth knowing before "fixing" the missing retry: a failed image does not retry while its
 ' cell stays in range, only at the next unload or rebind. That is deliberate, and the
 ' measurement behind it is recorded as `failed-poster-no-scroll-retry` in
 ' docs/decisions.md.

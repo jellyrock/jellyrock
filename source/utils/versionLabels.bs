@@ -21,7 +21,7 @@ import "pkg:/source/utils/versionResume.bs"
 '     range), and it comes first, so it survives the ellipsis. Versions whose video is
 '     identical (a bitrate ladder) get none, since repeating "1080p AV1" on every row does
 '     not help anyone choose. Audio is left out: the Audio dropdown lists it per version.
-'   * Name: the words EVERY version shares are dropped from the start and the end, comparing
+'   * Name: the words every version shares are dropped from the start and the end, comparing
 '     case-insensitively with space, ".", "-" and "_" as separators. Only shared words go, so
 '     nothing that tells two versions apart is lost; the rest is kept as written. Then the
 '     words at either end that repeat a label the row's stream info already shows go too

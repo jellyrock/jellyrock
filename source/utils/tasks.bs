@@ -1,5 +1,5 @@
 ' ============================================================================
-' tasks.bs — the one accounted chokepoint for starting a Task thread
+' tasks.bs: the one accounted chokepoint for starting a Task thread
 ' ============================================================================
 '
 ' RokuOS caps an app instance at 100 concurrent threads (main + render + every
@@ -14,7 +14,7 @@
 '
 ' ── The count is DERIVED, never tracked ────────────────────────────────────
 '
-' A counter would need a decrement when the thread exits — i.e. an
+' A counter would need a decrement when the thread exits, that is, an
 ' `observeField("state")` per launch, which is the unpaired-observer leak shape
 ' PR #765 spent a whole pass removing, and which neither teardown plugin can see
 ' on a component that isn't a `JRScreen`.
@@ -24,35 +24,35 @@
 ' Roku's own rule is stated in terms of `state`: a Task thread that has
 ' terminated does not count toward the cap "even if the task object itself is
 ' still valid". So a stopped or done node is not a thread, and a `control =
-' "STOP"` needs no accounting call at all — the next read simply sees it.
+' "STOP"` needs no accounting call at all: the next read sees it.
 '
 ' Measured on device rather than reasoned about: a Task whose function returns
 ' NATURALLY reports `state = "stop"`, and never reverts to `"init"`. That is the
-' one way the derived count could have been silently wrong — `taskThreadIsLive`
-' treats `"init"` as live — so `tests/source/unit/utils/tasks.spec.bs` pins it.
+' one way the derived count could have been silently wrong (`taskThreadIsLive`
+' treats `"init"` as live), so `tests/source/unit/utils/tasks.spec.bs` pins it.
 '
-' ── Where the ledger lives, and the cheap option that does NOT work ────────
+' ── Where the ledger lives, and the cheap option that does not work ────────
 '
 ' It is an array field on `m.global`. That costs 555.7 us per launch at a ledger
-' depth of 10 on a Stick 4K (render thread), and it is the cheapest CORRECT option
-' available — not the cheapest option.
+' depth of 10 (measured 2026-08-23 on a Stick 4K, render thread), and it is the
+' cheapest CORRECT option available, though not the cheapest option.
 '
 ' `GetGlobalAA()` is ~500x cheaper: appending there is below the measurement floor,
 ' against 555.7 us for the m.global round-trip. It cannot be used. GetGlobalAA is
-' scoped per COMPONENT, not per thread — measured, after an earlier probe got this
-' wrong by varying thread and component together: launching and counting inside ONE
+' scoped per COMPONENT, not per thread. That was measured, after an earlier probe got
+' this wrong by varying thread and component together: launching and counting inside ONE
 ' component reads 1, while two components on the SAME render thread read each other
 ' as 0 (tests/rta/specs/gaa-thread-scope.spec.js). A per-component ledger counts only
 ' its own component's launches, which is not a thread budget.
 '
 ' So the cost buys the one property nothing else offers: every component shares it.
 ' A node field is the only cross-component storage SceneGraph has, and reading one
-' returns a COPY — `m.global.taskLedger.push(x)` measured a plausible 58 us and left
-' the field at its original length after 200 pushes — so the read-modify-WRITE is
-' unavoidable. Full cost model: docs/architecture/threading.md.
+' returns a COPY: `m.global.taskLedger.push(x)` measured a plausible 58 us and left
+' the field at its original length after 200 pushes (2026-08-23). So the
+' read-modify-WRITE is unavoidable. Full cost model: docs/architecture/threading.md.
 '
 ' The count is exact rather than a lower bound: every thread's launches land in the
-' same shared field. The cross-thread race is still possible in principle — there is
+' same shared field. The cross-thread race is still possible in principle: there is
 ' no atomic read-modify-write on a node field, so two launches racing across threads
 ' read the same copy and one write wins.
 '
@@ -60,46 +60,43 @@
 ' readout low by one. It now also means OVER-ADMISSION: each racer sees a count that
 ' does not include the other, so both are admitted and the live total can exceed the
 ' watermark by up to the number of racers. Still accepted, and now for a stated reason
-' rather than by inheritance — the overshoot is bounded by concurrent launches (a
+' rather than by inheritance: the overshoot is bounded by concurrent launches (a
 ' handful, and only bootstrap launches are off the render thread at all) against the
 ' 50 threads the bound leaves spare below Roku's cap.
 '
-' ── Pure core / debug shell split ──────────────────────────────────────────
+' ── Pure core, shell and debug readout ─────────────────────────────────────
 '
 ' The ledger arithmetic (`pruneTaskLedger`, `countLiveTaskThreads`,
 ' `taskThreadIsLive`) is pure: it takes the ledger array explicitly and touches
-' no `m`, no globals, no console. Only the shell reads and writes
-' `m.global.taskLedger` or prints, and the shell is `#if debug`.
+' no `m`, no globals, no console. Only the shell (`admitTaskLaunch`,
+' `recordTaskLaunch`, `sharedTaskLedger`) reads and writes `m.global.taskLedger`.
 '
-' The split is not stylistic. Test builds compile against the same `manifest`,
-' where `bs_const=debug=false`, so anything inside `#if debug` is stripped
-' before Rooibos ever sees it — a fully-gated ledger would be untestable. Same
-' reason `apiPipeline.bs` and `apiPromise.bs` are split this way; see
-' docs/architecture/async.md.
+' The shell runs in every build, because the ceiling needs the count (ADR 0031).
+' A production build pays the `m.global` round-trip above on every launch. Only
+' the console output is `#if debug`: `printTaskThreads()` and the `[TASKS]` prints.
 '
-' A production build pays nothing at runtime. `#if debug` survives transpile as a
-' BrightScript conditional-compilation directive and is resolved on the device
-' from the manifest's `bs_const=debug=false`, so the shell — and `launchTask()`'s
-' call into it — is excluded at load rather than merely skipped. Same mechanism
-' as the DebugFlags precedent in globals.bs. The pure functions remain, but with
-' nothing calling them they cost only their own bytes.
+' The split keeps the ledger testable: the pure functions take the ledger, and
+' `recordTaskLaunch` takes its store, so a Rooibos test drives them with state of
+' its own. `apiPipeline.bs` and `apiPromise.bs` split the same way, for the same
+' reason (docs/architecture/async.md). Rooibos cannot reach the `#if debug` output
+' either: test builds compile against the same `manifest`, with `debug=false`.
 '
 ' ── The ceiling, and why these two numbers ─────────────────────────────────
 '
 ' `launchTask()` starts no thread above TASK_THREAD_WATERMARK live threads (the
-' launch waits instead — see below). Roku's cap is 100. Measured peak in real use is
-' 11 (13-library server, Stick 4K, sampled across a scripted journey —
+' launch waits instead; see below). Roku's cap is 100. Measured peak in real use is
+' 11 (2026-08-23, 13-library server, Stick 4K, sampled across a scripted journey by
 ' tests/rta/specs/task-thread-peak.spec.js), so a
 ' watermark of 50 is ~4.5x the observed peak: it cannot fire in normal operation,
 ' only when something is fanning out.
 '
-' Three numbers, deliberately kept apart:
+' Three numbers, kept apart on purpose:
 '
 '     RTA gate 30  <  watermark 50  <  Roku's cap 100
 '
 ' The gate fires in TESTING and names the culprit; the ceiling only ever fires in
 ' PRODUCTION, where nothing can report. Tightening the watermark toward the gate
-' collapses that separation — a fixture slightly heavier than the test journey would
+' collapses that separation: a fixture slightly heavier than the test journey would
 ' start queuing in production at the count the gate calls a regression. The gap is
 ' the design. Full argument: docs/adr/0031-task-thread-ceiling.md.
 '
@@ -116,7 +113,7 @@
 '
 ' Above the watermark a launch is queued, not refused: `launchTask()` returns true
 ' and the node starts when a slot frees. A refusal left whatever the caller set
-' before launching — a spinner, a pending screen-load fill, an in-flight flag —
+' before launching (a spinner, a pending screen-load fill, an in-flight flag)
 ' stuck for the life of the screen, and nearly no call site handled it. Waiting
 ' makes a saturated app slow instead of broken, and no caller has to know.
 '
@@ -126,19 +123,19 @@
 ' that finds no free slot backs off, up to TASK_QUEUE_RETRY_MAX_SECONDS, and the
 ' first launch that starts resets it.
 ' While anything waits, every new launch queues behind it, so the order is FIFO.
-' A node STOPped while it waits is dropped, not started — detectable only for a
+' A node STOPped while it waits is dropped, not started, which shows only for a
 ' node that had never run, whose `state` moves init -> stop. A node that had
 ' already finished reads "stop" either way, so releasing one of THOSE while it
 ' waits cannot be seen, and it runs late.
 '
-' Refusal remains, returning false and starting nothing — the contract an invalid
-' node already had: past TASK_QUEUE_CAP waiting launches (only a runaway fan-out
+' Refusal remains, returning false and starting nothing (the contract an invalid
+' node already had): past TASK_QUEUE_CAP waiting launches (only a runaway fan-out
 ' gets there), or before setGlobalNodes() has created the queue.
 '
 ' ── What the readout is for ────────────────────────────────────────────────
 '
 ' Measuring on a sideloaded dev build, in the same port-8085 console workflow as
-' `m.global.debug.*` — see docs/dev/debug-flags.md.
+' `m.global.debug.*` (docs/dev/debug-flags.md).
 ' ============================================================================
 
 ' Live Task threads above which `launchTask()` queues instead of starting. See the bound above.
@@ -163,18 +160,19 @@ const TASK_QUEUE_RETRY_MAX_SECONDS = 0.4
 '
 ' @param node - the Task node to start
 ' @return true when the node was started, or queued to start once a thread slot frees
-'         (ADR 0041); false when nothing will start — an invalid node, or a full launch
-'         queue. Check it where state depends on the run delivering — a "loading" flag
-'         that only the delivery clears must take this result, or a refused launch
+'         (ADR 0041); false when nothing will start: an invalid node, or a launch over
+'         the watermark with no room to queue (a full queue, or none yet). Check it
+'         where state depends on the run delivering. A "loading" flag that only the
+'         delivery clears must take this result, or a refused launch
 '         leaves it set for good. A queued run has not started yet: ask
 '         `isTaskInFlight(node)`, not `node.state`, whether it is still going.
 function launchTask(node as object) as boolean
   if not isValid(node)
     ' Behaviour change worth stating: a raw `m.someTask.control = "RUN"` on an
     ' invalid node FAULTED. This returns false instead, so a missing Task node is
-    ' a screen that never loads rather than an app that dies — better for the
+    ' a screen that never loads rather than an app that dies: better for the
     ' user, worse for whoever has to find it. Debug builds say it out loud so the
-    ' signal the fault used to provide is not simply gone.
+    ' signal the fault used to provide is not gone.
     #if debug
       print "[TASKS] launchTask() called with an invalid node — nothing started"
     #end if
@@ -211,7 +209,7 @@ function enqueueTaskLaunch(queue as object, node as object) as boolean
 end function
 
 ' True while `node`'s run is live or waiting in the launch queue. Use it where a caller
-' decides "is my run still going?" — reading `state = "run"` alone calls a queued run
+' decides "is my run still going?": reading `state = "run"` alone calls a queued run
 ' finished, and replacing it sends the new one to the back of the queue.
 function isTaskInFlight(node as dynamic) as boolean
   if not isValid(node) then return false
@@ -221,9 +219,9 @@ function isTaskInFlight(node as dynamic) as boolean
   return queue.callFunc("isQueued", node)
 end function
 
-' A launch that starts nothing — past the queue's cap, or with no queue yet.
+' A launch that starts nothing: past the queue's cap, or with no queue yet.
 sub noteTaskLaunchRefused(node as object)
-  ' Loud in debug, silent in production — `m.log.*` is stripped and `#if debug` is
+  ' Loud in debug, silent in production: `m.log.*` is stripped and `#if debug` is
   ' excluded in a store build, so there is no production channel to say this on.
   ' That is exactly why the RTA peak gate exists: this must be caught before ship,
   ' not diagnosed after it.
@@ -232,9 +230,9 @@ sub noteTaskLaunchRefused(node as object)
   #end if
 
   #if perfTiming
-    ' THE ONLY DURABLE TRACE A REFUSAL LEAVES. The print above is `#if debug`, and the
+    ' The only durable trace a refusal leaves. The print above is `#if debug`, and the
     ' committed manifest ships `debug=false`, so seeing a refusal that way costs a const
-    ' flip and a rebuild — by which time you are no longer in the state that produced it.
+    ' flip and a rebuild, by which time you are no longer in the state that produced it.
     ' `perfTiming` ships TRUE in that same manifest and is in harden-prod-manifest.js's
     ' FORCED_OFF list, so these two fields are present in every dev sideload, absent from
     ' every store build, and readable from the port-8085 console with no rebuild at all:
@@ -296,7 +294,7 @@ end function
 ' Replacing the node brings a second obligation. Roku documents `unobserveField` only as
 ' removing the connection; it says nothing about a change event already queued to this
 ' thread. Such an event can reach the handler AFTER the field points at the replacement,
-' and a handler that reads `m.task` would then read the new run's still-empty output —
+' and a handler that reads `m.task` would then read the new run's still-empty output,
 ' and usually unobserve it, losing the real delivery. So a handler for a replaceable
 ' node takes its event and checks `isCurrentTaskEvent` first.
 
@@ -304,7 +302,7 @@ end function
 ' `observedField`.
 '
 ' Called from the handler of the field the Task writes, it can land before the Task's
-' function returns — the node still reads `run` there — and a stopped run executes nothing
+' function returns (the node still reads `run` there), and a stopped run executes nothing
 ' further. So a caller that releases on delivery relies on that field being the Task's LAST
 ' write; anything the Task does after it may silently not happen.
 '
@@ -332,7 +330,7 @@ function replaceTask(existing as dynamic, nodeType as string, observedField as s
   return task
 end function
 
-' True when `event` came from `current` — the run the component still wants. False for an
+' True when `event` came from `current`, the run the component still wants. False for an
 ' event queued by a node that has since been replaced or released, which the handler must
 ' ignore rather than read `current` in its place.
 '
@@ -346,12 +344,12 @@ end function
 ' Records `node` and decides whether its launch may proceed.
 '
 ' Returns false when the app is at or above the watermark, in which case the node is
-' NOT recorded — a launch that has not started holds no thread, so counting it would
+' not recorded: a launch that has not started holds no thread, so counting it would
 ' inflate the ledger on exactly the path that must not spiral. False is not a refusal:
 ' launchTask() then queues the node, and the queue's drain asks again once
 ' taskLedgerHasRoom says a slot has freed.
 function admitTaskLaunch(node as object) as boolean
-  ' `m.global` and NOT `GetGlobalAA()`. That is the whole design, and it was arrived
+  ' `m.global`, not `GetGlobalAA()`. That is the whole design, and it was arrived
   ' at the wrong way round: GetGlobalAA is ~500x cheaper (an append there is below the
   ' measurement floor; the m.global round-trip is 555.7 us per launch at depth 10 on a
   ' Stick 4K) and it CANNOT be used, because it is scoped per COMPONENT, not per
@@ -361,24 +359,24 @@ function admitTaskLaunch(node as object) as boolean
   ' own component's launches, which is not a thread budget.
   '
   ' So the ledger pays for the one property nothing else offers: being shared by every
-  ' component in the app. There is no cheaper shared home — a node field is the only
+  ' component in the app. There is no cheaper shared home: a node field is the only
   ' cross-component storage SceneGraph has, and reading one returns a COPY, so the
   ' read-modify-WRITE is unavoidable.
   store = m.global
-  ' Bootstrap launches before `m.global` exists must not be blocked — refusing there
+  ' Bootstrap launches before `m.global` exists must not be blocked: refusing there
   ' would break startup to protect against a condition startup cannot be in.
   if not isValid(store) then return true
 
   #if perfTiming
     ' Measures the ceiling's OWN cost on a real screen load, the way
-    ' `cellLoadInstrumentUs` does — so "what does this add to ItemDetails" is a
+    ' `cellLoadInstrumentUs` does, so "what does this add to ItemDetails" is a
     ' reading rather than a benchmark multiplied by a guessed launch count. Measured
     ' 2026-08-23 on a Stick 4K: 7-8 launches, 2.6 ms. Stripped from dev and prod;
     ' `perfTiming` is in harden-prod-manifest.js's FORCED_OFF list.
     if not store.hasField("taskLedgerUs") then store.addField("taskLedgerUs", "float", false)
     if not store.hasField("taskLedgerLaunches") then store.addField("taskLedgerLaunches", "integer", false)
     ' Cached, never per-call: a fresh roTimespan costs ~22 us, five times the thing it
-    ' would be timing (measured — see cellLoad.bs).
+    ' would be timing (measured 2026-08-23; see cellLoad.bs).
     if not isValid(m.taskLedgerProbe) then m.taskLedgerProbe = CreateObject("roTimespan")
     m.taskLedgerProbe.mark()
   #end if
@@ -392,15 +390,15 @@ function admitTaskLaunch(node as object) as boolean
 
   if candidate.count() <= TASK_THREAD_WATERMARK then return true
 
-  ' Refused: drop the entry we just added, or every refusal would ratchet the count
-  ' permanently upward — a never-launched node reports `state = "init"`, which counts
-  ' as live, so it would never be pruned. It is always LAST because
+  ' Not admitted: drop the entry added above, or every turn-away would ratchet the
+  ' count permanently upward. A never-launched node reports `state = "init"`, which
+  ' counts as live, so it would never be pruned. It is always LAST because
   ' `pruneTaskLedger` appends it after the liveness filter (also pinned in the spec).
   '
-  ' NOTE a RELAUNCH of an already-tracked live node is refused here too, even though it
-  ' adds no thread: `pruneTaskLedger` de-duplicates it out and re-appends it, so the
-  ' count is unchanged and still over. That is the right answer — the app is at the
-  ' watermark either way — but it is worth knowing before reading a refusal as "this
+  ' NOTE a RELAUNCH of an already-tracked live node is turned away here too, even
+  ' though it adds no thread: `pruneTaskLedger` de-duplicates it out and re-appends it, so the
+  ' count is unchanged and still over. That is the right answer (the app is at the
+  ' watermark either way), but it is worth knowing before reading a turn-away as "this
   ' launch was the one too many".
   candidate.pop()
   store["taskLedger"] = candidate
@@ -421,7 +419,7 @@ function taskThreadIsLive(node as object) as boolean
   return taskStateIsLive(node.state)
 end function
 
-' taskThreadIsLive's rule for a `state` value already in hand — the data of a `state`
+' taskThreadIsLive's rule for a `state` value already in hand: the data of a `state`
 ' change event, where reading the node again would cost a crossing for the same answer.
 function taskStateIsLive(state as dynamic) as boolean
   if not isValid(state) then return false
@@ -431,7 +429,7 @@ end function
 
 ' Counts the tracked nodes whose Task thread is still running.
 '
-' This is the app's own launches only — it excludes the main and render threads
+' This is the app's own launches only: it excludes the main and render threads
 ' and anything started outside `launchTask()`.
 function countLiveTaskThreads(ledger as object) as integer
   if not isValid(ledger) then return 0
@@ -479,15 +477,14 @@ end function
 ' The field is CREATED here rather than assumed to exist, because a write to a
 ' field an roSGNode does not have is a silent no-op. Measured on device: with the
 ' field declared at the end of `setGlobalNodes()`, the five Task threads that
-' `setGlobalNodes()` starts before that line — the three `ApiTask`s, `ApiQueueTask`
-' and `SideEffectTask` — were dropped without a trace, and `printTaskThreads()`
+' `setGlobalNodes()` starts before that line (the three `ApiTask`s, `ApiQueueTask`
+' and `SideEffectTask`) were dropped without a trace, and `printTaskThreads()`
 ' under-reported by a permanent five. Creating on first use makes the ledger
 ' correct whatever order bootstrap and launches happen in, so the bug cannot come
 ' back by someone adding a launch earlier.
 '
-' `store` is passed in rather than read from `m.global` so this stays outside the
-' `#if debug` shell and a Rooibos test can drive it — test builds compile with
-' `debug=false`, so anything inside the gate is unreachable from Rooibos.
+' `store` is passed in rather than read from `m.global`, so a Rooibos test can drive
+' it with a node of its own.
 function recordTaskLaunch(store as object, node as object) as object
   if not isValid(store) then return []
   if not store.hasField("taskLedger") then store.addField("taskLedger", "array", false)
@@ -510,8 +507,8 @@ end function
 '   "queued"  - appended at the back
 '   "already" - it already waits; its entry is re-armed with its current state, so a
 '               release-and-relaunch while waiting still starts it once
-'   "running" - its thread is live; not queued, just as Roku ignores relaunching a
-'               running node
+'   "running" - its thread is live; not queued, the same way Roku ignores
+'               relaunching a running node
 '   "full"    - `cap` entries already wait; not queued
 function taskQueueAdd(queue as object, node as object, cap as integer) as string
   state = LCase(node.state)
@@ -559,7 +556,7 @@ function taskQueueRetrySeconds(lastWait as float, started as integer) as float
   return nextWait
 end function
 
-' ── Debug shell ─────────────────────────────────────────────────────────────
+' ── Debug readout ───────────────────────────────────────────────────────────
 
 #if debug
 

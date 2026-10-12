@@ -7,7 +7,7 @@ import "pkg:/source/utils/misc.bs"
 ' `uri_resolution_autosub` declaration) so the OS rewrites it to the correct
 ' per-device asset (`_fhd.png` / `_hd.png`) at load time.
 '
-' @param itemType - Jellyfin item type string (e.g., "Movie", "Person")
+' @param itemType - Jellyfin item type string (for example "Movie", "Person")
 ' @returns pkg:/ URI to the appropriate placeholder image
 function getPlaceholderImagePath(itemType as string) as string
   if itemType = "Movie" or itemType = "BoxSet"
@@ -41,28 +41,28 @@ function getPlaceholderImagePath(itemType as string) as string
 end function
 
 ' Resolves the Jellyfin item type string to use as JRPlaceholder.itemType for a
-' given content node. For most types this is just `item.type`. For library-tile
+' given content node. For most types this is `item.type`. For library-tile
 ' container types (CollectionFolder / UserView / Folder) it consults
-' DeterminePresenterType() in libraryViewFactory.bs so that, e.g., a Movies
-' library with no custom art surfaces the Movie glyph instead of a generic
-' folder, a Music library surfaces the album glyph, and so on. Unresolved
+' DeterminePresenterType() in libraryViewFactory.bs so that, for example, a
+' Movies library with no custom art surfaces the Movie glyph instead of a
+' generic folder, a Music library surfaces the music-note glyph, and so on. Unresolved
 ' library tiles fall back to "Folder" so every cell surfaces a placeholder
 ' rather than rendering as an empty backdrop.
 '
-' ChannelFolderItem is intentionally NOT treated as a library-tile here — it
+' ChannelFolderItem is intentionally not treated as a library-tile here: it
 ' passes through unchanged so getPlaceholderImagePath maps it to the livetv
 ' glyph (matching its parent channel's visual treatment).
 '
 ' NOTE: The library-tile set here (CollectionFolder / UserView / Folder) is
 ' intentionally narrower than what might initially seem natural and is distinct
-' from JRRowItem.bs's isLibraryTile check at line 112 (CollectionFolder /
+' from the isLibraryTile check in JRRowItem.renderItem() (CollectionFolder /
 ' UserView / Channel). JRRowItem renders library tiles in a dedicated branch
 ' with its own backdropText + itemIcon overlay (not via JRPlaceholder), so its
 ' set reflects what naturally appears in horizontal rows on Home. This routing
 ' is grid-side and serves a different purpose (typed-glyph fallback for
 ' empty-art tiles).
 '
-' Returns "" only when the item itself is invalid or has no type at all —
+' Returns "" only when the item itself is invalid or has no type at all;
 ' valid items always resolve to a typed glyph or the "Folder" catch-all.
 '
 ' @param item - Jellyfin content node
@@ -76,7 +76,7 @@ function resolveItemPlaceholderType(item as object) as string
   isLibraryTile = (itemType = "collectionfolder" or itemType = "userview" or itemType = "folder")
   if not isLibraryTile then return item.type
 
-  ' Library-tile container — pick the glyph from what's inside.
+  ' Library-tile container: pick the glyph from what's inside.
   presenterType = DeterminePresenterType(item)
   if presenterType = "movie" then return "Movie"
   if presenterType = "tvshow" then return "Series"
@@ -85,7 +85,7 @@ function resolveItemPlaceholderType(item as object) as string
   if presenterType = "photo" then return "Photo"
 
   ' "generic" / unmapped library tile (homevideos folder, nested generic
-  ' container, raw Genre/Studio from a bypass path, etc.) — fall back to
+  ' container, raw Genre/Studio from a bypass path, etc.): fall back to
   ' "Folder" rather than returning "" so the cell still surfaces a glyph.
   return "Folder"
 end function

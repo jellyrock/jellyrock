@@ -1,7 +1,7 @@
 import "pkg:/source/constants/apiPool.bs"
 import "pkg:/source/utils/tasks.bs"
 ' Low memory device model prefixes (512MB RAM, ~50MB texture memory)
-' These devices cannot load large textures (e.g., default trickplay 10x10 320 tiles) into memory
+' These devices cannot load large textures (for example, default trickplay 10x10 320 tiles) into memory
 ' See: https://github.com/jellyrock/jellyrock/issues/299
 const LOW_MEMORY_DEVICE_PREFIXES = [
   ' Current Models
@@ -85,7 +85,7 @@ end sub
 ' NOTE: roSGNodes must be created after m.screen is shown
 sub setGlobalNodes()
   ' RTA-only test hooks. ENABLE_RTA is false in the committed manifest and flipped true
-  ' ONLY by the roku-test-automation deploy (see source/main.bs), so these fields do not
+  ' only by the roku-test-automation deploy (see source/main.bs), so these fields do not
   ' exist in dev or prod builds. rtaSkeletonHoldMs: LoadItemsTask2 holds the Genres view
   ' in its skeleton stage this long, so RTA specs can exercise the skeleton window
   ' deterministically instead of racing the demo server's latency. rtaFailRequests: rules
@@ -94,7 +94,7 @@ sub setGlobalNodes()
   ' rtaGridPageSize: when above 0, LoadItemsTask2's page size, so a spec can page a grid
   ' across the demo server's small libraries (the page size is otherwise 100).
   ' rtaHeldRequests: how many slowed answers the coordinator holds right now, each keeping a
-  ' pool slot busy — read-only for specs, so one can tell a request is on a slot before acting
+  ' pool slot busy. Read-only for specs, so one can tell a request is on a slot before acting
   ' and see the slot given back. rtaForceStillWatching: PlayerHostView asks "are you still
   ' watching?" at every automatic advance, so a spec need not play for an hour first.
   #if ENABLE_RTA
@@ -104,9 +104,9 @@ sub setGlobalNodes()
   ' First, so it exists before any launch below could need it.
   m.global.taskLaunchQueue = CreateObject("roSGNode", "TaskLaunchQueue")
 
-  ' Tier 1 API pool — persistent ApiTask instances (Architecture C continuous-server), as
+  ' Tier 1 API pool: persistent ApiTask instances (Architecture C continuous-server), as
   ' many as apiPool.widthFor() picks for this device class. Each task runs an infinite while
-  ' loop; control = "RUN" must be set once to start it. One guarded block per slot (no loop:
+  ' loop, which one launchTask() starts. One guarded block per slot (no loop:
   ' `no-task-fanout`), so any width from 1 to 6 is a constants change; a width above 6 needs
   ' more blocks. ApiQueueTask checks the slots created here against apiPoolWidth at startup.
   apiPoolWidth = apiPool.widthFor(m.global.device.isLowMemoryDevice)
@@ -147,14 +147,14 @@ sub setGlobalNodes()
   end if
   m.global.addFields(poolFields)
 
-  ' FIFO queue coordinator — dispatches queued requests to free pool slots.
+  ' FIFO queue coordinator: dispatches queued requests to free pool slots.
   ' Must start after the pool nodes are on m.global so it can read them in runQueueLoop.
   apiQueue = CreateObject("roSGNode", "ApiQueueTask")
   launchTask(apiQueue)
   m.global.addFields({ apiQueue: apiQueue })
 
-  ' Tier 2 side-effect task — single persistent SideEffectTask (Architecture C continuous-
-  ' server). Runs a FIFO children-as-vehicle loop; control = "RUN" starts that loop. Early
+  ' Tier 2 side-effect task: a single persistent SideEffectTask (Architecture C continuous-
+  ' server). Runs a FIFO children-as-vehicle loop, which launchTask() starts. Early
   ' submits are safe even if they land before the enqueue observer registers: the loop drains
   ' all pre-existing children once at startup (the node tree is the source of truth), so no
   ' side effect is lost to startup ordering.
@@ -172,10 +172,10 @@ sub setGlobalNodes()
   ' helper read the path it stashes on a signed-out redirect. See components/auth/AuthManager.bs.
   m.global.addFields({ AuthManager: CreateObject("roSGNode", "AuthManager") })
 
-  ' Title to toast ("Opening <title>") when the player mounts for a deep-link launch. Set by
-  ' ItemDetails.autoLaunchFromDeepLink (it has the resolved item name); read + cleared by
-  ' PlayerHostView on mount — a stable point that renders reliably through the details->player
-  ' transition (firing it from ItemDetails mid-transition was unreliable).
+  ' Title to toast ("Playing <title>") when the player mounts for a deep-link launch. Set by
+  ' ItemDetails.dispatchDeepLinkAction (it has the resolved item name); read + cleared by
+  ' PlayerHostView or AudioPlayerView on mount, a stable point that renders reliably through
+  ' the details->player transition (firing it from ItemDetails mid-transition was unreliable).
   m.global.addField("deepLinkOpeningTitle", "string", false)
 
   ' The full-screen view the router currently has mounted in JRScene's outlet (post-login
@@ -186,7 +186,7 @@ sub setGlobalNodes()
   ' Video playback launch signal. QueueManager.playQueue has no router chain so it can't
   ' navigate; it sets this AA ({ type, id }) and JRScene's onPlaybackLaunchRequested turns it
   ' into a navigateTo("/details/:type/:id/play"). alwaysNotify so re-launching the same item
-  ' (e.g. replay) re-fires the observer.
+  ' (for example, replay) re-fires the observer.
   m.global.addField("playbackLaunchRequest", "assocarray", true)
 
   ' Photo viewer launch signal. The photo launchers (quickplay.photo for a single photo,
@@ -199,12 +199,12 @@ sub setGlobalNodes()
   m.global.addFields({ queueManager: CreateObject("roSGNode", "QueueManager") })
   m.global.addFields({ audioPlayer: CreateObject("roSGNode", "AudioPlayer") })
 
-  ' Remote-control receiver — the ws:// "Cast to JellyRock" listener. Created here as a stable m.global
-  ' node but NOT started: it needs the session token, so Home starts it (control="RUN") post-login. See
-  ' remote-control.md.
+  ' Remote-control receiver: the ws:// "Cast to JellyRock" listener. Created here as a stable m.global
+  ' node but not started: it needs the session token, so Home starts it with launchTask() post-login.
+  ' See remote-control.md.
   m.global.addFields({ remoteControlTask: CreateObject("roSGNode", "RemoteControlTask") })
 
-  ' Debug-only error injection flags — compiled out in production (bs_const=debug=false)
+  ' Debug-only error injection flags, compiled out in production (bs_const=debug=false).
   ' See docs/dev/debug-flags.md for the full developer contract.
   #if debug
     debugNode = CreateObject("roSGNode", "DebugFlags")
@@ -216,15 +216,16 @@ sub setGlobalNodes()
     print "[DEBUG]   m.global.debug.shouldForceWatchedFail = true"
     print "[DEBUG]   m.global.debug.extraButtonCount = 3"
 
-    ' Task-thread ledger — every node launchTask() has started, so the live
-    ' thread count can be derived from each node's `state`. Debug builds only;
-    ' see source/utils/tasks.bs and docs/dev/debug-flags.md.
+    ' The Task-thread ledger (every node launchTask() has started, so the live
+    ' thread count can be derived from each node's `state`) records in every build;
+    ' only this notice is debug-only. See source/utils/tasks.bs and
+    ' docs/architecture/debug-tools.md.
     '
-    ' The `taskLedger` field is deliberately NOT declared here. `recordTaskLaunch`
+    ' The `taskLedger` field is not declared here, on purpose. `recordTaskLaunch`
     ' creates it on first use, which is the only ordering that can be right: the
     ' Task threads this sub starts above (the pool slots, ApiQueueTask and
     ' SideEffectTask) run BEFORE this point, and a write to an undeclared roSGNode
-    ' field is a silent no-op — declaring it here lost them all from the readout.
+    ' field is a silent no-op: declaring it here lost them all from the readout.
     print "[DEBUG] Task ledger active — printTaskThreads() for the live count"
   #end if
 end sub
@@ -311,14 +312,14 @@ sub resetThemeColors()
 end sub
 
 ' Walk a node tree and refresh theme colors on all known themed node types.
-' This is a generic function that handles any component tree — it identifies
+' This is a generic function that handles any component tree: it identifies
 ' nodes by their subtype and applies the correct color from m.global.constants.
 '
 ' Handled automatically:
-'   - Labels: subtype containing "Primary"/"Secondary"/"Disabled" → matching text color
+'   - Labels: a subtype containing "Primary"/"Secondary"/"Disabled" gets that text color
 '   - TextButton subtypes: focusBorder, focusBackground, textFocusColor, plus the
-'     buttonIndicator underline → colorSecondary
-'   - JROverhangIcon: buttonIcon poster → colorTextSecondary (unfocused default)
+'     buttonIndicator underline, which gets colorSecondary
+'   - JROverhangIcon: the buttonIcon poster gets colorTextSecondary (unfocused default)
 '
 ' Components that cache theme colors (JRTab, JRDropdown, JRDropdownItem,
 ' JROverhangIcon) should read from m.global.constants directly in their event
@@ -335,7 +336,7 @@ end sub
 sub refreshThemeOnNode(node as object, constants as object)
   subtype = node.subtype()
 
-  ' Labels — color is determined by the subtype name pattern
+  ' Labels: color is determined by the subtype name pattern
   if node.isSubType("Label")
     if subtype.inStr("Primary") >= 0 and subtype.inStr("Error") < 0
       node.color = constants.colorTextPrimary
@@ -345,7 +346,7 @@ sub refreshThemeOnNode(node as object, constants as object)
       node.color = constants.colorTextDisabled
     end if
 
-    ' TextButton and subtypes (JRTab, etc.) — update focus-state colors
+    ' TextButton and subtypes (JRTab, etc.): update focus-state colors
   else if node.isSubType("TextButton")
     node.focusBorder = constants.colorPrimary
     node.focusBackground = constants.colorBackgroundSecondary
@@ -356,7 +357,7 @@ sub refreshThemeOnNode(node as object, constants as object)
     indicator = node.findNode("buttonIndicator")
     if isValid(indicator) then indicator.color = constants.colorSecondary
 
-    ' JROverhangIcon — update the icon poster's unfocused blend color
+    ' JROverhangIcon: update the icon poster's unfocused blend color
   else if subtype = "JROverhangIcon"
     buttonIcon = node.findNode("buttonIcon")
     if isValid(buttonIcon)

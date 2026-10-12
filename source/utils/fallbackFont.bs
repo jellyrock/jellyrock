@@ -2,8 +2,8 @@
 ' fallback-font support (#582).
 '
 ' Every operand is type-checked rather than negated or compared directly. A key
-' the server omits dereferences to Invalid, and `not Invalid` faults with `&h18`
-' — as does `= true` against a value that is a String or an AA. Establishing the
+' the server omits dereferences to Invalid, and `not Invalid` faults with `&h18`,
+' as does `= true` against a value that is a String or an AA. Establishing the
 ' type first is what keeps a missing, malformed or mistyped field returning
 ' false instead of crashing the guard that exists to select the fallback.
 '

@@ -24,7 +24,7 @@ namespace paging
   ' A page that delivers nothing ends the load even when `total` says more exist: the next
   ' request would ask for the same startIndex and get the same empty answer, forever.
   '
-  ' @param startIndex - the startIndex of the page just delivered
+  ' @param startIndex - the startIndex of the page that was delivered
   ' @param delivered - how many items that page delivered
   ' @param total - the server's total for the query
   ' @return the next page's startIndex, or -1

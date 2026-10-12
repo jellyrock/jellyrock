@@ -9,7 +9,7 @@ import "pkg:/source/utils/translate.bs"
 ' @param {integer} width - Video width in pixels
 ' @param {integer} height - Video height in pixels
 ' @param {boolean} isInterlaced - Whether the video is interlaced
-' @returns {string} - Resolution label (e.g., "4K", "1080p", "720i") or "" if below all thresholds
+' @returns {string} - Resolution label (for example "4K", "1080p", "720i") or "" if below all thresholds
 function getVideoResolutionLabel(width as integer, height as integer, isInterlaced as boolean) as string
   ' 4K: Width >= 3800 OR Height >= 2000 (no p/i suffix)
   if width >= 3800 or height >= 2000
@@ -46,21 +46,21 @@ end function
 
 ' resolveLanguageName: Convert a media stream language code to a localized display name.
 '
-' MediaStream.Language passes through whatever the container metadata holds —
+' MediaStream.Language passes through whatever the container metadata holds:
 ' ffmpeg/Jellyfin do not normalize, so real-world inputs include ISO 639-2/T
 ' ("fra"), 639-2/B ("fre"), 639-1 ("fr"), and BCP-47 tags ("fr-FR", "pt_BR").
 '
 ' Three-tier resolution chain:
 '   1. Lowercase + strip after first "-" or "_" (drop region/script suffix)
-'   2. "und" / "zxx" → "" — caller omits the language label
-'   3. Alias map → normalize 3-letter / deprecated codes to a base form
-'   4. Tier 1: translationKey lookup → translate() — localized to user's UI
-'   5. Tier 2: English-name fallback → covers every other ISO 639-2 code
-'   6. Tier 3: raw code passthrough — last-resort, preserves info
+'   2. "und" / "zxx" give "": caller omits the language label
+'   3. Alias map: normalize 3-letter / deprecated codes to a base form
+'   4. Tier 1: translationKey lookup, then translate(): localized to user's UI
+'   5. Tier 2: English-name fallback: covers every other ISO 639-2 code
+'   6. Tier 3: raw code passthrough: last-resort, preserves info
 '
-' "und" (Undefined) and "zxx" (No linguistic content — instrumental music,
+' "und" (Undefined) and "zxx" (No linguistic content: instrumental music,
 ' ambient sound, foley) are both omitted: rendering "No linguistic content
-' EAC3 5.1" as a track label is noisier than just "EAC3 5.1". The other
+' EAC3 5.1" as a track label is noisier than plain "EAC3 5.1". The other
 ' ISO 639-2 special codes ("mul" Multiple, "mis" Uncoded) ARE displayed
 ' because they convey real information when they appear.
 '
@@ -92,10 +92,10 @@ function resolveLanguageName(langCode as string, cache = invalid as dynamic) as 
 end function
 
 ' formatAudioChannels: Convert channel count integer to display format
-' Ignores ChannelLayout field since it can return inconsistent strings (e.g., "stereo")
+' Ignores ChannelLayout field since it can return inconsistent strings (for example "stereo")
 '
 ' @param {integer} channels - Number of audio channels
-' @returns {string} - Channel layout string (e.g., "2.0", "5.1", "7.1") or "" if invalid/zero
+' @returns {string} - Channel layout string (for example "2.0", "5.1", "7.1") or "" if invalid/zero
 function formatAudioChannels(channels as integer) as string
   if channels <= 0 then return ""
 
@@ -103,7 +103,7 @@ function formatAudioChannels(channels as integer) as string
     return channels.toStr().trim() + ".0"
   end if
 
-  ' For > 2 channels: (channels - 1).1 (e.g., 6 -> "5.1", 8 -> "7.1")
+  ' For > 2 channels: (channels - 1).1 (for example 6 -> "5.1", 8 -> "7.1")
   return (channels - 1).toStr().trim() + ".1"
 end function
 
@@ -111,7 +111,7 @@ end function
 ' Format: "RESOLUTION CODEC" or "RESOLUTION CODEC RANGETYPE" (when HDR)
 '
 ' @param {object} stream - Video MediaStream object from Jellyfin API
-' @returns {string} - Formatted display title (e.g., "4K HEVC HDR10") or "N/A" if insufficient data
+' @returns {string} - Formatted display title (for example "4K HEVC HDR10") or "N/A" if insufficient data
 function formatVideoDisplayTitle(stream as object) as string
   if not isValid(stream) then return "N/A"
 
@@ -152,8 +152,8 @@ end function
 ' same range the track pickers do, rather than growing a second copy of the Dolby
 ' Vision profile/compatibility formatting.
 '
-' Callers differ in one way, and it is deliberate that this function does NOT
-' decide it: formatVideoDisplayTitle only asks for a label when VideoRange is
+' Callers differ in one way, and this function leaves that choice to them on
+' purpose: formatVideoDisplayTitle only asks for a label when VideoRange is
 ' "HDR", because "1080p H264 SDR" is noise in a picker row. The report asks
 ' unconditionally, because "SDR" is exactly what it needs to render on the target
 ' side of a tone-mapping transcode.
@@ -162,7 +162,7 @@ end function
 ' coarse VideoRange ("SDR" / "HDR") that has existed throughout.
 '
 ' @param {object} stream - Video MediaStream object from Jellyfin API
-' @returns {string} - e.g. "DV 8.1", "HDR10+", "HLG", "SDR", or "" with nothing to go on
+' @returns {string} - for example "DV 8.1", "HDR10+", "HLG", "SDR", or "" with nothing to go on
 function formatVideoRangeLabel(stream as object) as string
   if not isValid(stream) then return ""
 
@@ -211,7 +211,7 @@ end function
 ' Format: "Language CODEC CHANNELS" or "Language CODEC CHANNELS (Default)"
 '
 ' @param {object} stream - Audio MediaStream object from Jellyfin API
-' @returns {string} - Formatted display title (e.g., "English AAC 2.0 (Default)") or "N/A" if insufficient data
+' @returns {string} - Formatted display title (for example "English AAC 2.0 (Default)") or "N/A" if insufficient data
 function formatAudioDisplayTitle(stream as object) as string
   if not isValid(stream) then return "N/A"
 
@@ -245,7 +245,7 @@ function formatAudioDisplayTitle(stream as object) as string
   result = parts.join(" ")
 
   ' 4. Default suffix. Translated: this string is shown to the user, and a
-  ' hard-coded English word is a bug in every locale but one — it left a French
+  ' hard-coded English word is a bug in every locale but one: it left a French
   ' or German user reading their own language everywhere except this one word.
   if isValid(stream.IsDefault) and stream.IsDefault = true
     result = result + " (" + translate(translationKeys.LabelDefault) + ")"
@@ -255,7 +255,7 @@ function formatAudioDisplayTitle(stream as object) as string
 end function
 
 ' subtitleLabelParts: What a subtitle stream says about itself, as the pieces its
-' labels are built from — the full language name ("" for none or "und"), the codec
+' labels are built from: the full language name ("" for none, "und" or "zxx"), the codec
 ' uppercased ("" for none), and the flags in display order. Hearing-impaired leads
 ' because it changes what the track IS rather than when it plays; Forced takes
 ' precedence over Default if both are set.
@@ -301,7 +301,7 @@ function joinSubtitleLabelParts(language as string, codec as string, flags as ob
 end function
 
 ' formatSubtitleDisplayTitle: Build a display title for a subtitle stream
-' Format: "Language CODEC", optionally followed by a parenthesised flag list —
+' Format: "Language CODEC", optionally followed by a parenthesized flag list:
 ' "English SUBRIP (Hearing impaired)", "English SUBRIP (Hearing impaired, Forced)".
 ' The language is omitted for "und"/Undefined. The flags matter: the panel badges
 ' hearing-impaired, so without it the dropdown and the panel described the same
@@ -309,7 +309,7 @@ end function
 '
 ' @param {object} stream - Subtitle MediaStream object from Jellyfin API
 ' @param {object} [cache=invalid] - translateCached() batch cache, for a caller labeling many tracks
-' @returns {string} - Formatted display title (e.g., "English SUBRIP (Forced)") or "N/A" if insufficient data
+' @returns {string} - Formatted display title (for example "English SUBRIP (Forced)") or "N/A" if insufficient data
 function formatSubtitleDisplayTitle(stream as object, cache = invalid as dynamic) as string
   parts = subtitleLabelParts(stream, cache)
   result = joinSubtitleLabelParts(parts.language, parts.codec, parts.flags)
@@ -317,7 +317,7 @@ function formatSubtitleDisplayTitle(stream as object, cache = invalid as dynamic
   return result
 end function
 
-' formatSubtitleTrackLabel: The label a subtitle list shows for one track — the
+' formatSubtitleTrackLabel: The label a subtitle list shows for one track. The
 ' details-screen dropdown and the playback picker both use it, so the same track
 ' reads the same on both. It was two paths once, and the picker's (the server's
 ' DisplayTitle verbatim) led with "Undefined" for a track with no language.
@@ -338,7 +338,7 @@ end function
 ' @param {object} stream - Subtitle MediaStream object from Jellyfin API
 ' @param {boolean} [markExternal=true] - false for a slot that shows the track alone, without the entries the marker distinguishes it from
 ' @param {object} [cache=invalid] - translateCached() batch cache, for a caller labeling many tracks
-' @returns {string} - e.g. "English SUBRIP", "SAMI  ·  External", "Spanish (Latin America) SUBRIP"; "N/A" if there is nothing to describe it by
+' @returns {string} - for example "English SUBRIP", "SAMI  ·  External", "Spanish (Latin America) SUBRIP"; "N/A" if there is nothing to describe it by
 function formatSubtitleTrackLabel(stream as object, markExternal = true as boolean, cache = invalid as dynamic) as string
   if not isValid(stream) then return "N/A"
 

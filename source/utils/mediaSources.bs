@@ -5,7 +5,7 @@ import "pkg:/source/utils/misc.bs"
 
 ' Fetching a set of items' MediaSources by id.
 '
-' Two features ask the same question — "which version ids belong to these items?" — and both
+' Two features ask the same question ("which version ids belong to these items?"), and both
 ' reach it from a Task thread holding a list of ids:
 '
 '   * episodeQueue.collapseCopies(), choosing one copy per episode on a pre-12 server, where
@@ -14,14 +14,14 @@ import "pkg:/source/utils/misc.bs"
 '     tile back to whichever of its versions is in progress
 '
 ' It lives here rather than inside either of them because neither owns it. Fields=MediaSources
-' is the expensive field on any item query, so asking for it BY ID — rather than for a whole
-' page — is what keeps the cost tied to the few items that need it.
+' is the expensive field on any item query, so asking for it BY ID (rather than for a whole
+' page) is what keeps the cost tied to the few items that need it.
 namespace mediaSources
 
   ' byIds: Each item's MediaSources, by item id.
   '
-  ' The imperative half — runs on a Task thread, blocking, apiIds.PER_REQUEST ids per request. An
-  ' id the server does not answer for is simply ABSENT from the result; every caller reads that
+  ' The imperative half: runs on a Task thread, blocking, apiIds.PER_REQUEST ids per request. An
+  ' id the server does not answer for is ABSENT from the result; every caller reads that
   ' as "no versions known" rather than as an error, so a partial answer degrades instead of
   ' failing the screen.
   '

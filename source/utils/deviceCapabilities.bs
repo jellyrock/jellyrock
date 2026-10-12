@@ -43,9 +43,9 @@ const DTS_MAX_DIRECT_PLAY_CHANNELS = 6
 
 ' Translate Jellyfin codec names to Roku API codec names where they differ.
 ' Covers both audio and video codecs.
-'   "h264"      → "mpeg4 avc" (Jellyfin uses "h264"; Roku API uses "mpeg4 avc" with a space)
-'   "truehd"    → "mat"       (TrueHD/Dolby MAT — "truehd" is unknown to the Roku API)
-'   "mpeg1video"→ "mpeg1"     (Jellyfin uses "mpeg1video"; Roku API uses "mpeg1")
+'   "h264"      -> "mpeg4 avc" (Jellyfin uses "h264"; Roku API uses "mpeg4 avc" with a space)
+'   "truehd"    -> "mat"       (TrueHD/Dolby MAT; "truehd" is unknown to the Roku API)
+'   "mpeg1video"-> "mpeg1"     (Jellyfin uses "mpeg1video"; Roku API uses "mpeg1")
 function jellyfinToRokuCodecName(codec as string) as string
   if codec = "h264" then return "mpeg4 avc"
   if codec = "truehd" then return "mat"
@@ -54,9 +54,9 @@ function jellyfinToRokuCodecName(codec as string) as string
 end function
 
 ' Returns the Device Capabilities for Roku.
-' Debug builds also dump the generated profile — see printDeviceProfile().
+' Debug builds also dump the generated profile: see printDeviceProfile().
 function getDeviceCapabilities() as object
-  ' Advertise media control only on http:// servers, where we can open the ws:// session socket —
+  ' Advertise media control only on http:// servers, where we can open the ws:// session socket.
   ' Roku can't wss://, so don't advertise control we can't deliver. Mirrors remoteProtocol.isHttpServer
   ' (kept inline to avoid pulling the remotecontrol namespace into every capabilities reader). See
   ' remote-control.md.
@@ -87,13 +87,13 @@ function getDeviceCapabilities() as object
 end function
 
 ' GeneralCommand-type actions JellyRock can enact. This capability is a GeneralCommandType[] and
-' Jellyfin deserializes it STRICTLY — any value outside the GeneralCommandType enum 400s the whole
-' /Sessions/Capabilities/Full POST. So it must NOT contain PlaystateCommands (Pause/Stop/Seek/…) or
+' Jellyfin deserializes it strictly: any value outside the GeneralCommandType enum 400s the whole
+' /Sessions/Capabilities/Full POST. So it must not contain PlaystateCommands (Pause/Stop/Seek/…) or
 ' PlayCommands: those transport verbs are governed by SupportsMediaControl:true, not advertised here.
 function getSupportedRemoteCommands() as object
   ' The web only SENDS a GeneralCommand it sees advertised here, so this is the enactable navigation +
-  ' messaging set. Volume, directional D-pad, SendKey/String, and screenshot are deliberately omitted
-  ' (not enactable from an app on Roku today — see remote-control.md).
+  ' messaging set. Volume, directional D-pad, SendKey/String, and screenshot are omitted
+  ' (not enactable from an app on Roku today; see remote-control.md).
   return [
     "DisplayContent", ' springboard an item
     "GoHome", ' return to Home
@@ -204,9 +204,9 @@ end function
 ' Override false positives from Roku API using known hardware limits
 ' Returns true if codec can actually decode/passthrough the specified channel count
 ' For surround codecs (>2ch), prioritizes PassThru check to detect receiver support
-' Accepts Jellyfin codec names (e.g. "truehd") and translates to Roku API names internally
+' Accepts Jellyfin codec names (for example "truehd") and translates to Roku API names internally
 function getActualCodecSupport(codec as string, channelCount as integer, di as object) as boolean
-  rokuCodec = jellyfinToRokuCodecName(codec) ' e.g. "truehd" → "mat"
+  rokuCodec = jellyfinToRokuCodecName(codec) ' for example "truehd" becomes "mat"
 
   ' DTS-HD and DTS:X are never advertised, because Roku's media spec lists DTS
   ' passthrough and neither of these; the API answers yes to both on a DTS-HD soundbar
@@ -283,15 +283,15 @@ end function
 ' Returns array in priority order: eac3, ac3, dts, truehd, dtshd
 '
 ' Two groups due to differing Roku API behaviour:
-'   Group 1 (ChCnt-aware): eac3, ac3, dts, mat — checked with ChCnt + PassThru: 1
-'   Group 2 (ChCnt N/A):   dtshd             — checked with PassThru: 1 only
+'   Group 1 (ChCnt-aware): eac3, ac3, dts, mat  (checked with ChCnt + PassThru: 1)
+'   Group 2 (ChCnt N/A):   dtshd              (checked with PassThru: 1 only)
 '
 ' mat is the Roku API name for TrueHD/Dolby MAT; returned here as "truehd" (Jellyfin name).
-' dtsx (DTS:X) is an extension of DTS-HD MA — covered by dtshd; not added separately.
+' dtsx (DTS:X) is an extension of DTS-HD MA, covered by dtshd; not added separately.
 function getSupportedPassthruCodecs(di as object, channelCount as integer) as object
   supportedCodecs = []
 
-  ' Group 1: codecs that accept ChCnt — use PassThru + ChCnt check
+  ' Group 1: codecs that accept ChCnt, so use a PassThru + ChCnt check
   ' "mat" is the Roku API string for TrueHD; map back to "truehd" for Jellyfin callers
   chCntCodecs = ["eac3", "ac3", "dts", "mat"]
   for each codec in chCntCodecs
@@ -304,7 +304,7 @@ function getSupportedPassthruCodecs(di as object, channelCount as integer) as ob
     end if
   end for
 
-  ' Group 2: codecs where ChCnt is N/A — use PassThru-only check
+  ' Group 2: codecs where ChCnt is N/A, so use a PassThru-only check
   ' If passthrough is supported at all, include for any channelCount > 2 (passthrough is bitstream)
   chCntNACodecs = ["dtshd"]
   if channelCount > 2
@@ -360,7 +360,7 @@ function GetDirectPlayProfiles() as object
       rokuCodec = jellyfinToRokuCodecName(videoCodec)
       if di.CanDecodeVideo({ Codec: rokuCodec, Container: container }).Result
         if videoCodec = "h264"
-          ' push both Jellyfin aliases — server may use either string
+          ' push both Jellyfin aliases; the server may use either string
           supportedContainers[container]["video"].push("h264")
           supportedContainers[container]["video"].push("avc")
         else if videoCodec = "hevc"
@@ -395,7 +395,7 @@ function GetDirectPlayProfiles() as object
   end if
 
   ' check audio codecs for each container
-  ' translate Jellyfin names to Roku API names for the detection call (e.g. truehd → mat)
+  ' translate Jellyfin names to Roku API names for the detection call (for example truehd to mat)
   ' but push the Jellyfin name so the profile contains the correct string
   for each container in supportedContainers
     for each audioCodec in audioCodecs
@@ -416,7 +416,7 @@ function GetDirectPlayProfiles() as object
     end for
   end for
 
-  ' The list above serves the standalone-audio profiles too — do NOT re-declare a
+  ' The list above serves the standalone-audio profiles too, so do not re-declare a
   ' filtered copy here. It used to be re-declared minus opus, on the claim that Roku
   ' cannot play opus as a standalone audio file, and the filtered copy silently cost
   ' the audio mkv row a codec the video mkv row kept. Opus in an OGG file is a
@@ -450,40 +450,40 @@ end function
 ' Audio-only (standalone music file) direct-play profiles.
 '
 ' Jellyfin matches DirectPlayProfile.Container against MediaSource.Container and
-' .AudioCodec against the audio stream's codec — both comma-lists, compared with
+' .AudioCodec against the audio stream's codec. Both are comma-lists, compared with
 ' ContainerHelper.ContainsContainer, where an EMPTY field matches ANY value. So
 ' Container must carry CONTAINER names; a codec name only ever matches by
 ' coincidence, which is what "mp3" and "flac" do.
 '
 ' Roku is the other half of the mismatch: CanDecodeAudio takes a ROKU container
 ' name, and Roku's vocabulary is not Jellyfin's. An .m4a / .m4b is an MP4
-' container, but Roku does not recognise the strings "m4a" or "m4b" at all — every
+' container, but Roku does not recognize the strings "m4a" or "m4b" at all: every
 ' codec answers false for them, while the same codec answers true for "mp4". So the
 ' capability is PROBED under the Roku name and ADVERTISED under the Jellyfin ones.
 function getAudioDirectPlayProfiles(di as object, audioCodecs as object) as object
   ' Each row is one CONTAINER the server may report for a standalone audio file.
   '
-  '   jellyfin — the Container string(s) to advertise. MEASURED against a live 10.11.11
+  '   jellyfin:  the Container string(s) to advertise. MEASURED against a live 10.11.11
   '              library, from the /PlaybackInfo MediaSource, which is the string the
-  '              server actually matches on. Do NOT read this off /Items?Fields=MediaSources
-  '              — that reports a SHORTER value ("m4a", "mov") and designing against it is
+  '              server actually matches on. Do not read this off /Items?Fields=MediaSources,
+  '              which reports a SHORTER value ("m4a", "mov"); designing against it is
   '              a trap. What PlaybackInfo reports: an .mka is "mkv" (not "mka"), .oga and
-  '              .opus are BOTH "ogg", and every mp4-family audio file — .m4a and .m4b
-  '              alike — is the full ffprobe list "mov,mp4,m4a,3gp,3g2,mj2". Since
+  '              .opus are BOTH "ogg", and every mp4-family audio file (.m4a and .m4b
+  '              alike) is the full ffprobe list "mov,mp4,m4a,3gp,3g2,mj2". Since
   '              ContainerHelper splits BOTH sides on commas, "m4a" alone matches .m4b too.
-  '   roku     — the container name to probe CanDecodeAudio with. Roku's vocabulary is
+  '   roku:      the container name to probe CanDecodeAudio with. Roku's vocabulary is
   '              not Jellyfin's: it does not recognise "m4a"/"m4b"/"aac"/"aiff" at all
   '              (every codec answers false), so those probe under "mp4" or, where Roku
   '              has no container name for the format, with no Container at all ("").
-  '   probe    — codecs to test. Empty means test the whole audioCodecs list.
-  '   bounded  — true emits AudioCodec = the codecs that passed. False emits NO
+  '   probe:     codecs to test. Empty means test the whole audioCodecs list.
+  '   bounded:   true emits AudioCodec = the codecs that passed. False emits NO
   '              AudioCodec, so any codec in that container matches.
   '
   ' Bounded is the safer default for a NEW container, but it is WRONG where Jellyfin
   ' reports a codec name finer than the one Roku probes: a .wav carries "pcm_s16le"
   ' and an .aiff "pcm_s16be", neither of which equals the "pcm" we can probe, so an
   ' AudioCodec list would never match. mp3 and flac stay unbounded for a different
-  ' reason — they already shipped that way, and bounding them would newly transcode an
+  ' reason: they already shipped that way, and bounding them would newly transcode an
   ' "mp1" stream inside an .mp3, which direct-plays via Roku's mpg123 decoder.
   audioContainers = [
     { jellyfin: "mp3", roku: "mp3", probe: [], bounded: false },
@@ -492,40 +492,40 @@ function getAudioDirectPlayProfiles(di as object, audioCodecs as object) as obje
     { jellyfin: "aiff", roku: "", probe: ["pcm"], bounded: false },
     { jellyfin: "aac", roku: "", probe: ["aac"], bounded: true },
     { jellyfin: "m4a,m4b", roku: "mp4", probe: ["aac", "alac"], bounded: true },
-    ' NO OPUS, deliberately, although CanDecodeAudio says yes for it here. Opus in Ogg
+    ' NO OPUS, although CanDecodeAudio says yes for it here. Opus in Ogg
     ' (.opus, and .ogg / .oga holding opus) hangs the player on some models, which model
     ' depends on the file, and on a Stick 4K leaving the hang restarts the device; Roku's
     ' media spec documents Ogg only "with Vorbis audio", and Opus only inside MKV / WebM.
-    ' Transcoded, the same tracks play. Don't add it back on a probe that says yes —
-    ' measurements in issue #1061.
+    ' Transcoded, the same tracks play. Don't add it back on a probe that says yes.
+    ' The measurements are in issue #1061.
     { jellyfin: "ogg", roku: "ogg", probe: ["vorbis", "flac"], bounded: true },
     { jellyfin: "mkv", roku: "mkv", probe: [], bounded: true },
-    ' Elementary surround bitstreams, where the container name IS the codec name —
+    ' Elementary surround bitstreams, where the container name IS the codec name:
     ' the same shape as mp3 and flac, which is why the old joined-codec string
     ' covered these by accident on a surround-capable device. A .ac3 reports "ac3"
     ' and a .eac3 "eac3"; a .ec3 also resolves to "eac3", so one token covers both.
     '
     ' These probe BARE (roku: ""), because Roku has no container name for an
-    ' elementary bitstream. Bare is also the honest question here — "can this device
-    ' put ac3 out at all" is exactly the capability that makes the file playable —
+    ' elementary bitstream. Bare is also the honest question here ("can this device
+    ' put ac3 out at all" is exactly the capability that makes the file playable),
     ' and it gates per device: false on a Stick 4K in Stereo out, true on an Ultra
     ' with a surround soundbar.
     '
-    ' TWO SURROUND FORMATS ARE DELIBERATELY ABSENT, and neither can be added by
+    ' TWO SURROUND FORMATS ARE ABSENT, and neither can be added by
     ' relaxing the probe:
     '
-    '   dts    — CanDecodeAudio says yes and Roku really can decode DTS, but its
+    '   dts:     CanDecodeAudio says yes and Roku really can decode DTS, but its
     '            Audio node cannot DEMUX a raw DTS elementary stream: a .dts errors
     '            -5 "malformed data" under every streamFormat, while the IDENTICAL
     '            bitstream muxed into .mka plays. So dts belongs in the mkv row (it
-    '            is there) and must NOT get a container row of its own.
-    '   truehd — advertising it HANGS playback. TrueHD in .mka IS indexed
+    '            is there) and must not get a container row of its own.
+    '   truehd:  advertising it HANGS playback. TrueHD in .mka IS indexed
     '            (container "mkv", codec "truehd"), so it is matchable, but on an
     '            Ultra `4850X` it sits in buffering with audioFormat=mat and never
-    '            reaches playing — 45 s, streamFormat mkv / mka / unset alike, while
-    '            a control holding DTS in `mka` played at 0.5 s in the same run. A raw .thd separately
-    '            cannot be matched (Jellyfin does not index one at all), but
-    '            that covers only .thd — the hang is the reason that reaches .mka.
+    '            reaches playing (45 s, streamFormat mkv / mka / unset alike, measured
+    '            2026-08-30), while a control holding DTS in `mka` played at 0.5 s in the
+    '            same run. A raw .thd separately cannot be matched (Jellyfin does not index
+    '            one at all), but that covers only .thd. The hang is the reason that reaches .mka.
     '            canDecodeAudioInContainer() enforces this; see the note there.
     { jellyfin: "ac3", roku: "", probe: ["ac3"], bounded: true },
     { jellyfin: "eac3", roku: "", probe: ["eac3"], bounded: true }
@@ -555,26 +555,26 @@ end function
 
 ' CanDecodeAudio with an OPTIONAL container. An empty container asks the bare
 ' question, which is the only way to probe a format whose container name Roku does
-' not recognise (elementary AAC, AIFF) — passing an unknown Container string makes
+' not recognize (elementary AAC, AIFF). Passing an unknown Container string makes
 ' the API answer false for every codec, which is indistinguishable from a real no.
 function canDecodeAudioInContainer(di as object, jellyfinCodec as string, rokuContainer as string) as boolean
   rokuCodec = jellyfinToRokuCodecName(jellyfinCodec)
 
-  ' MAT (Jellyfin "truehd") is excluded from every CONTAINER row, deliberately.
+  ' MAT (Jellyfin "truehd") is excluded from every CONTAINER row.
   '
   ' The probe cannot answer the question: asked for mat in mkv Roku returns
   '   { container: ["mat"], result: false, updated: "container" }
-  ' — it wants Container to BE "mat", so the false is a rejected question rather than
+  ' It wants Container to BE "mat", so the false is a rejected question rather than
   ' a real "no". Measured on a Roku Ultra `4850X` with a TrueHD-capable soundbar: mat is
   ' true bare and false for mkv / mp4 / ts alike.
   '
-  ' DO NOT "FIX" THIS BY FALLING BACK TO THE BARE PROBE. That reads as the obvious
-  ' repair — the bare probe says yes on a TrueHD soundbar, so every row looks like
-  ' it is under-claiming truehd — and it ships a HANG. The video rows in
+  ' Do not "fix" this by falling back to the bare probe. That reads as the obvious
+  ' repair (the bare probe says yes on a TrueHD soundbar, so every row looks like
+  ' it is under-claiming truehd), and it ships a HANG. The video rows in
   ' GetDirectPlayProfiles() call this too, so the rule covers them. Measured on that
   ' same Ultra: a 6ch TrueHD stream muxed into .mka (Jellyfin reports it as
   ' container "mkv", codec "truehd") reaches state=buffering with audioFormat=mat and
-  ' errorCode 0, and NEVER reaches playing — still buffering after 45 s, under
+  ' errorCode 0, and never reaches playing: still buffering after 45 s (measured 2026-08-30), under
   ' streamFormat "mkv", "mka" and unset alike. A control holding DTS in `mka` played at 0.5 s in
   ' the same run, so it is TrueHD specifically and not the file, the mux or the
   ' network. Advertising it would trade a working transcode for an endless spinner,
@@ -649,18 +649,18 @@ function getTranscodingProfiles() as object
   ' ========================================
   '
   ' Container preference order: ts (HLS-mpegts) first, then mp4 (HLS-fmp4). One
-  ' video transcoding profile is emitted PER container, in this array order, just
-  ' below — so this order IS the emitted profile order, and Jellyfin's StreamBuilder
+  ' video transcoding profile is emitted PER container, in this array order, further
+  ' below, so this order IS the emitted profile order, and Jellyfin's StreamBuilder
   ' picks FirstOrDefault when profile ranks tie. ts-first => the server prefers an
   ' mpegts-HLS transcode, which is what Roku reliably plays audio for.
   '
-  ' Do NOT flip this to mp4-first. fmp4-HLS transcodes produce silent audio on some
+  ' Do not flip this to mp4-first. fmp4-HLS transcodes produce silent audio on some
   ' Roku hardware (issue #573 regression: stereo files that played under mpegts went
   ' silent under fmp4). Upstream jellyfin-roku declares ["mp4","ts"] but only uses
-  ' that loop to accumulate per-container codec strings — it emits its ts video
-  ' profile BEFORE its mp4 one, i.e. ts-first, the same as here. The #573 empty-codec
+  ' that loop to accumulate per-container codec strings: it emits its ts video
+  ' profile BEFORE its mp4 one, that is ts-first, the same as here. The #573 empty-codec
   ' fix lives in buildVideoTranscodingAudioCodecsForContainer (always leads with aac,
-  ' never empty) and optimizeAudioCodecListForSource — it does not depend on container
+  ' never empty) and optimizeAudioCodecListForSource. It does not depend on container
   ' order, so this stays ts-first.
   transcodingContainers = ["ts", "mp4"]
   containerVideoCodecs = {}
@@ -689,8 +689,8 @@ function getTranscodingProfiles() as object
     ' StreamBuilder filters HLS video codecs against _supportedHlsVideoCodecs, and
     ' mpeg2video is not in it: 10.8 ships ["h264","hevc"], 10.9 adds av1, 10.10+
     ' adds vp9. So from 10.8 on, an mpeg2video HLS transcode target is dropped and
-    ' MPEG-2 is always re-encoded. **10.7.0 has no such allowlist** — it splits
-    ' TranscodingProfile.VideoCodec straight into playlistItem.VideoCodecs — so on
+    ' MPEG-2 is always re-encoded. **10.7.0 has no such allowlist**: it splits
+    ' TranscodingProfile.VideoCodec straight into playlistItem.VideoCodecs, so on
     ' the oldest servers we support this entry is live and removing it would take a
     ' capability away. Verified by reading StreamBuilder.cs at v10.7.0, v10.8.13,
     ' v10.9.11, v10.10.0 and master.
@@ -781,7 +781,7 @@ function getHlsTranscodeTargetsForContainer(container as string) as object
 end function
 
 ' Build the AudioCodec list for a single HLS video transcoding profile container.
-' Pure function — all inputs explicit so the full hardware matrix can be unit-tested
+' Pure function: all inputs explicit so the full hardware matrix can be unit-tested
 ' without mocking roDeviceInfo or m.global.
 '
 ' Ordering rules (leftmost is the server's first-choice transcode target):
@@ -830,7 +830,7 @@ function buildVideoTranscodingAudioCodecsForContainer(container as string, allSu
     end if
   end for
 
-  ' 4. Stereo fallbacks — caller already verified device decode capability
+  ' 4. Stereo fallbacks: caller already verified device decode capability
   for each codec in decodableStereoFallbacks
     if not arrayHasValue(audioCodecList, codec) and arrayHasValue(serverTargets, codec)
       audioCodecList.push(codec)
@@ -864,11 +864,11 @@ function getCodecProfiles() as object
   resolutionConditions = getResolutionConditions()
 
   ' ========================================
-  ' USER SETTING — FORCE SERVER-SIDE MULTICHANNEL HANDLING
+  ' USER SETTING: FORCE SERVER-SIDE MULTICHANNEL HANDLING
   ' ========================================
   '
   ' playbackDecodeMultichannelAudio = false means the user has explicitly asked us to keep
-  ' multichannel sources off the Roku's decoder — usually because Roku's downmix sounded worse
+  ' multichannel sources off the Roku's decoder, usually because Roku's downmix sounded worse
   ' than the server's on their system, or because they want bitstream surround output preserved
   ' via server transcoding instead of relying on Roku PCM output.
   '
@@ -880,9 +880,9 @@ function getCodecProfiles() as object
   ' CODEC CATEGORIES
   ' ========================================
 
-  ' Codecs whose decode-then-output path on Roku does not always pass through multichannel —
+  ' Codecs whose decode-then-output path on Roku does not always pass through multichannel,
   ' depending on the user's Audio Output Mode and HDMI/eARC sink, these may downmix to 2ch PCM.
-  ' We do NOT cap these at 2ch by default: most modern HDMI sinks accept multichannel PCM and
+  ' We do not cap these at 2ch by default: most modern HDMI sinks accept multichannel PCM and
   ' the official Roku decode behavior produces correct multichannel output for capable users.
   ' The cap is applied only when userWantsDecodeLimit is true (see setting above).
   '
@@ -902,7 +902,7 @@ function getCodecProfiles() as object
     ' codecs at 2ch to force server-side transcoding for multichannel sources.
     if arrayHasValue(stereoOutputCodecs, audioCodec) and userWantsDecodeLimit
       ' Force to 2 channels maximum to prevent Roku from decoding the multichannel source.
-      ' Server transcodes to a surround codec (eac3/ac3/dts) if surround passthrough is
+      ' Server transcodes to a surround codec (eac3 or ac3; never dts) if surround passthrough is
       ' available, otherwise transcodes to stereo.
       for each codecType in ["VideoAudio", "Audio"]
         ' Special AAC profile restrictions (Main and HE-AAC not supported)
@@ -918,7 +918,7 @@ function getCodecProfiles() as object
             })
           })
         else
-          ' All other stereo-output codecs: just limit channels
+          ' All other stereo-output codecs: only limit channels
           codecProfiles.push({
             "Type": codecType,
             "Codec": audioCodec,
@@ -1089,7 +1089,7 @@ function getCodecProfiles() as object
 
   ' Send VideoLevel so the server produces compatible transcodes.
   ' The playbackTryDirectH264ProfileLevel setting is handled client-side in
-  ' LoadVideoContentTask — if the only transcode reason is VideoLevelNotSupported,
+  ' LoadVideoContentTask: if the only transcode reason is VideoLevelNotSupported,
   ' the client will attempt direct play with a transcode fallback.
   '
   ' Omitted when no probe succeeded: "LessThanEqual 0" is not "unconstrained", it
@@ -1123,7 +1123,7 @@ function getCodecProfiles() as object
   '
   ' NO VideoLevel CONDITION. Roku names mpeg2's levels "main" / "high"
   ' (CanDecodeVideo takes them under `Level`, mpeg2 having no profiles), but
-  ' Jellyfin parses VideoLevel as a NUMBER — ConditionProcessor dispatches it to
+  ' Jellyfin parses VideoLevel as a NUMBER: ConditionProcessor dispatches it to
   ' the double? overload and runs double.TryParse over the condition value, at
   ' both ends of the server range we support (v10.7.0 and master). Neither word
   ' parses, so the condition evaluated to FALSE for every mpeg2 stream carrying a
@@ -1133,7 +1133,7 @@ function getCodecProfiles() as object
   ' Not mapped onto mpeg2's numeric level scale either, and the blocking reason is
   ' that nobody here has established which value ffprobe reports for it. The scale
   ' also runs BACKWARDS (High = 4, Main = 8), so it would need GreaterThanEqual
-  ' rather than the LessThanEqual every other codec here uses — expressible, but
+  ' rather than the LessThanEqual every other codec here uses. That is expressible, but
   ' one more thing to get wrong. Jellyfin's own reference client ships no
   ' mpeg2video codec profile at all.
   '
@@ -1145,7 +1145,7 @@ function getCodecProfiles() as object
   ' This only ever reaches MPEG-2 in a container we direct play. Live TV and every
   ' other MPEG-TS source is excluded from DirectPlayProfiles (see GetDirectPlayProfiles)
   ' and mpeg2video is not a legal HLS transcode target from 10.8 on, so those are
-  ' re-encoded no matter what this profile says — which is why the setting's
+  ' re-encoded no matter what this profile says. That is why the setting's
   ' description no longer offers Live TV as an example.
   if globalUserSettings.playbackMpeg2
     mpeg2ProfileArray = {
@@ -1229,7 +1229,7 @@ function getCodecProfiles() as object
       ]
     }
 
-    ' Omitted when no probe succeeded — see the h264 note above.
+    ' Omitted when no probe succeeded (see the h264 note above).
     if av1LevelSupported <> NO_VIDEO_LEVEL
       av1ProfileArray.Conditions.push({
         "Condition": "LessThanEqual",
@@ -1291,10 +1291,10 @@ function getCodecProfiles() as object
 
     ' Send VideoLevel so the server produces compatible transcodes.
     ' The playbackTryDirectHevcProfileLevel setting is handled client-side in
-    ' LoadVideoContentTask — if the only transcode reason is VideoLevelNotSupported,
+    ' LoadVideoContentTask: if the only transcode reason is VideoLevelNotSupported,
     ' the client will attempt direct play with a transcode fallback.
     '
-    ' Omitted when no probe succeeded — see the h264 note above.
+    ' Omitted when no probe succeeded (see the h264 note above).
     if hevcLevelSupported <> NO_VIDEO_LEVEL
       hevcProfileArray.Conditions.push({
         "Condition": "LessThanEqual",
@@ -1365,7 +1365,7 @@ function getCodecProfiles() as object
   end if
 
   ' VP8
-  ' No profile/level system to test — SDR only
+  ' No profile/level system to test; SDR only
   if di.CanDecodeVideo({ Codec: "vp8" }).Result
     vp8ProfileArray = {
       "Type": "Video",
@@ -1405,7 +1405,7 @@ end function
 
 ' Properties Jellyfin can evaluate in a Type:"Audio" codec-profile condition.
 ' Mirrors ConditionProcessor.IsAudioConditionSatisfied's switch, which has no
-' default-allow branch — see dropConditionsUnevaluableOnAudioFiles().
+' default-allow branch (see dropConditionsUnevaluableOnAudioFiles()).
 function audioFileConditionProperties() as object
   return ["AudioBitrate", "AudioChannels", "AudioSampleRate", "AudioBitDepth"]
 end function
@@ -1416,7 +1416,7 @@ end function
 ' whose switch handles only the four properties above and ends in
 '   default: throw new ArgumentException("Unexpected condition on audio file: " + …)
 ' There is no default-allow branch. Jellyfin turns that exception into HTTP 400 for
-' the whole /Items/{id}/PlaybackInfo request, so the track does not play AT ALL —
+' the whole /Items/{id}/PlaybackInfo request, so the track does not play at all,
 ' strictly worse than the transcode the condition was trying to force.
 '
 ' AudioProfile is the one we emit that it cannot take: that property is only
@@ -1447,7 +1447,7 @@ function dropConditionsUnevaluableOnAudioFiles(codecProfiles as object) as objec
 end function
 
 ' filterCodecProfileConditions: Removes conditions with specified properties from codec profiles
-' Used for version compatibility - e.g., removing VideoRangeType for pre-10.9 servers
+' Used for version compatibility, for example removing VideoRangeType for pre-10.9 servers
 '
 ' @param {roArray} codecProfiles - Array of codec profile objects
 ' @param {roArray} propertiesToRemove - Array of property names to filter out
@@ -1511,7 +1511,7 @@ function GetBitRateLimit(codec as string) as object
 
   if globalUserSettings.playbackBitrateMaxLimited
     ' mediaNumber, not `type(x) = "Integer"`. This is a SceneGraph node field, and
-    ' a node integer field reports its type as "roInt" — measured on a Stick 4K —
+    ' a node integer field reports its type as "roInt" (measured 2026-08-25 on a Stick 4K),
     ' so the old exact-string comparison was false for every value a user could
     ' possibly set. The branch never ran: turning the limit on quietly applied
     ' Roku's per-codec hardware ceilings below instead, and the number chosen in
@@ -1527,7 +1527,7 @@ function GetBitRateLimit(codec as string) as object
       }
     else
       codec = Lcase(codec)
-      ' Some repeated values (e.g. same "40mbps" for several codecs)
+      ' Some repeated values (for example the same "40mbps" for several codecs)
       ' but this makes it easy to update in the future if the bitrates start to deviate.
       if codec = "h264"
         ' Roku only supports h264 up to 10Mpbs
@@ -1630,9 +1630,9 @@ function getResolutionConditions(isRequired = false as boolean) as object
       maxVideoWidth = globalDevice.videoWidth ' paired width for device's native video mode
     end if
   else
-    ' THE USER'S NUMBER IS TAKEN AS GIVEN, and is deliberately NOT clamped —
-    ' neither against `maxVideoHeight` above (a FAILURE fallback, not a ceiling)
-    ' nor against the device's own video mode.
+    ' THE USER'S NUMBER IS TAKEN AS GIVEN, and is not clamped,
+    ' either against `maxVideoHeight` above (a FAILURE fallback, not a ceiling)
+    ' or against the device's own video mode.
     '
     ' Not clamping to the device is the half that needs a why. Roku exposes no API
     ' for the ATTACHED DISPLAY's maximum video resolution: GetVideoMode() reports
@@ -1643,7 +1643,7 @@ function getResolutionConditions(isRequired = false as boolean) as object
     ' otherwise. This setting is how they say it.
     '
     ' Safe because the ladder already carries a MORE permissive rung: "off"
-    ' returns [] above, sending no height or width condition at all — so honouring
+    ' returns [] above, sending no height or width condition at all, so honoring
     ' "4k" is strictly narrower than an option that already ships.
     '
     ' Rationale and the rejected alternatives (clamping to the device height;
@@ -1688,8 +1688,8 @@ end function
 ' When the existing cap is wider than maxHeight, replaces it (avoids duplicate conditions
 ' that can confuse the server's condition evaluation order).
 ' @param codecProfile {object} - The codec profile AA containing a Conditions array
-' @param maxHeight {integer} - The max height to cap at (e.g. 1080)
-' @param maxWidth {integer} - The max width to cap at (e.g. 1920)
+' @param maxHeight {integer} - The max height to cap at (for example 1080)
+' @param maxWidth {integer} - The max width to cap at (for example 1920)
 ' @param isRequired {boolean} - Whether the condition is required for direct play
 sub applyResolutionCapToProfile(codecProfile as object, maxHeight as integer, maxWidth as integer, isRequired = false as boolean)
   if not isValid(codecProfile) or not isValid(codecProfile.Conditions) then return
@@ -1702,7 +1702,7 @@ sub applyResolutionCapToProfile(codecProfile as object, maxHeight as integer, ma
     if isValid(condition.Property)
       if condition.Property = "Height"
         if condition.Value.toInt() <= maxHeight
-          return ' Existing cap is already at or below the target — nothing to do
+          return ' Existing cap is already at or below the target; nothing to do
         end if
         heightIndex = i
       else if condition.Property = "Width"
@@ -1775,7 +1775,7 @@ end function
 '
 ' THERE IS NO SINGLE SCALE, which is the entire reason this is a function.
 ' Jellyfin matches a VideoLevel condition against MediaStream.Level, which is
-' ffprobe's raw `level` field — and ffprobe reports that field on each codec's OWN
+' ffprobe's raw `level` field, and ffprobe reports that field on each codec's OWN
 ' scale:
 '
 '   h264   level x10        "4.2" -> 42
@@ -1788,14 +1788,14 @@ end function
 '
 ' A codec that is absent here gets NO condition rather than a guessed number.
 ' The asymmetry is deliberate, and it is about WHICH WAY each choice can fail.
-' Omitting can only fail one way — permissively, since a condition we never send
-' constrains nothing — and that direction is still bounded by the resolution,
+' Omitting can only fail one way: permissively, since a condition we never send
+' constrains nothing, and that direction is still bounded by the resolution,
 ' bitrate and profile conditions the codec profile keeps sending. A wrong number
 ' fails EITHER way, silently, for every stream of that codec: too high permits a
 ' direct play the device cannot decode (av1 shipped 612), too low forces a
 ' transcode that was never needed (mpeg2 shipped "main|high", which parses as
 ' nothing, so the condition could never be satisfied). mpeg2 is the worked
-' example — see getCodecProfiles().
+' example (see getCodecProfiles()).
 function jellyfinVideoLevel(codec as string, level as string) as integer
   parts = level.split(".")
   if parts.count() <> 2 then return NO_VIDEO_LEVEL

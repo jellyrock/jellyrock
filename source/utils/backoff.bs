@@ -1,7 +1,7 @@
 import "pkg:/source/utils/misc.bs"
 
 ' Exponential backoff for retrying something that failed: how long to wait before the next
-' attempt, and whether a failure is still waiting that long. Pure — callers pass their own clock
+' attempt, and whether a failure is still waiting that long. Pure: callers pass their own clock
 ' in, so the same failure state works on any thread and in a test.
 namespace backoff
 

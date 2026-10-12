@@ -8,7 +8,7 @@ const LIVE_EDGE_SEEK = 999999
 
 ' Maximum behind-live offset (seconds) at which we still consider the user to be at
 ' the live edge. Absorbs 1-tick rounding flicker between the integer wall-clock
-' (roDateTime.AsSeconds) and int(m.top.position) — both tick discretely but can be
+' (roDateTime.AsSeconds) and int(m.top.position). Both tick discretely but can be
 ' out of phase by up to 1 second depending on calibration alignment, which would
 ' otherwise flicker the UI between LIVE and -0:01 every second during normal play.
 const LIVE_EDGE_THRESHOLD_SECONDS = 2
@@ -59,19 +59,19 @@ end function
 
 ' Compute seconds the user is behind the live edge using a hybrid play/pause model.
 '
-' Roku's m.top.position for live HLS DVR streams keeps advancing during pause —
+' Roku's m.top.position for live HLS DVR streams keeps advancing during pause:
 ' it tracks the live edge, not the user's playhead. So position-vs-wallclock math
 ' cancels out to zero during pause and we have to switch strategies based on state:
 '
 '   During pause: behindLive = accumulated + (now - pausedAtEpoch)
-'                  Wall-clock-only — independent of position so Roku's auto-advance
+'                  Wall-clock-only: independent of position so Roku's auto-advance
 '                  during pause is invisible to us.
 '
 '   During play:  behindLive = (now - epochAtPosition0) - position
-'                  Position-math — self-correcting on scrubs while playing, where
-'                  position genuinely tracks the user's playhead.
+'                  Position-math: self-correcting on scrubs while playing, where
+'                  position really tracks the user's playhead.
 '
-' On the pause→play transition the caller re-anchors epochAtPosition0 so play-math
+' On the pause-to-play transition the caller re-anchors epochAtPosition0 so play-math
 ' continues from the same offset where wall-clock math left off.
 '
 ' @param epochAtPosition0 epoch corresponding to video position=0 in the current stream
@@ -100,7 +100,7 @@ end function
 
 ' Compute the new accumulated baseline after a scrub during pause. Folds the elapsed
 ' pause duration into accumulated first so the wall-clock pause counter can be reset
-' from the scrub moment — otherwise a forward scrub to live edge would still leave
+' from the scrub moment. Otherwise a forward scrub to live edge would still leave
 ' the wall-clock counter adding to total behindLive.
 '
 ' Caller is expected to also reset pausedAtEpoch = now after this returns.
@@ -150,12 +150,12 @@ end function
 ' Tagging "episode" enables the Next-Episode flow in VideoPlayerView.
 '
 ' Episodes and series items are always episodes. Recordings are episodes only
-' when their metadata identifies them as part of a series (seriesId set) — a
-' standalone recording of a movie or sports event should NOT trigger the
+' when their metadata identifies them as part of a series (seriesId set). A
+' standalone recording of a movie or sports event should not trigger the
 ' Next-Episode prompt.
 '
 ' Recordings without a season/episode number but WITH a seriesId still count
-' as series content (e.g. news bulletins or shows whose EPG omits S/E numbering).
+' as series content (for example news bulletins or shows whose EPG omits S/E numbering).
 '
 ' @param videotype lowercased meta.type
 ' @param meta      JellyfinBaseItem or AA with seriesId field
@@ -170,7 +170,7 @@ end function
 ' liveRestartOnEnd and liveRestartOnStall hold the whole rule, including when each field resets, so
 ' it can be tested without a player.
 '
-' @returns {object} { count, isStallRestart, hasPlayed } — count: consecutive restarts;
+' @returns {object} { count, isStallRestart, hasPlayed }. count: consecutive restarts;
 '   isStallRestart: the last restart answered a stall and no mount since has played
 '   LIVE_STALL_REPROVE_MS; hasPlayed: some mount since the viewer chose the channel made progress,
 '   which decides the error's wording (liveGiveUpCauseKey)
@@ -256,7 +256,7 @@ end function
 '
 ' The step fields are diagnostics for LIVE_PROGRESS_MAX_STEP_MS (see VideoPlayerView's log lines).
 '
-' @returns {object} { progressMs, markMs, steps, largestStepMs, jumps, smallestJumpMs } — markMs is
+' @returns {object} { progressMs, markMs, steps, largestStepMs, jumps, smallestJumpMs }. markMs is
 '   the furthest position reached (-1 before the first usable one); smallestJumpMs is 0 with no jumps
 function newLiveProgress() as object
   return { progressMs: 0, markMs: -1, steps: 0, largestStepMs: 0, jumps: 0, smallestJumpMs: 0 }
@@ -269,7 +269,7 @@ end function
 '
 ' @param {object} progress - from newLiveProgress
 ' @param {double} positionSeconds - the player's position
-' @returns {integer} the size of a forward jump this notification made, in milliseconds, or 0 — for
+' @returns {integer} the size of a forward jump this notification made, in milliseconds, or 0, for
 '   the caller's debug log
 function liveProgressOnPosition(progress as object, positionSeconds as double) as integer
   if positionSeconds < 0 or positionSeconds >= LIVE_EDGE_SEEK then return 0
@@ -310,7 +310,7 @@ end sub
 ' A live feed that drops mid-stream surfaces as `finished`, and the player restarts the channel
 ' instead of dropping the viewer back to the guide. A stream that ends before it ever plays
 ' (an on-demand playlist listed as a channel, joined at its end) also surfaces as `finished`, and
-' restarting it just loops. So an end after healthy playback resets the count, and any other end
+' restarting it only loops. So an end after healthy playback resets the count, and any other end
 ' adds one; canRestartLiveChannel decides whether that count still allows a restart.
 '
 ' @param {integer} previousCount - the count before this end (0 for a fresh channel)

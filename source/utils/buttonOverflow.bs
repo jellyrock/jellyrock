@@ -1,8 +1,8 @@
 ' The ONE definition of how many action buttons fit on a row, and what happens to
 ' the ones that don't.
 '
-' Two surfaces cap a horizontal IconButton row — ItemDetails' JRButtonGroup and the
-' OSD's buttonMenuLeft — and they arrive at DIFFERENT caps from the same arithmetic,
+' Two surfaces cap a horizontal IconButton row (ItemDetails' JRButtonGroup and the
+' OSD's buttonMenuLeft), and they arrive at DIFFERENT caps from the same arithmetic,
 ' because their geometry differs:
 '
 '   ItemDetails   spacing 18, stops at the logo's leftmost possible edge   -> 8
@@ -15,8 +15,8 @@
 ' constant changes, the cap changes with it or the guarantee it encodes is fiction.
 '
 ' Pure on purpose: no node access, no m, no globals. The overflow path is not
-' reachable on either surface today (ItemDetails sits at exactly 8 of 8, the OSD at
-' 7 of 10), so a spec is the ONLY thing that can exercise it until someone adds the
+' reachable on either surface (counted 2026-09-07: ItemDetails at exactly 8 of 8, the
+' OSD at 7 of 10), so a spec is the only thing that can exercise it until someone adds the
 ' button that pushes a row over. A gate that needs the bug to already be shipping is
 ' not a gate.
 import "pkg:/source/utils/misc.bs"
@@ -26,7 +26,7 @@ import "pkg:/source/utils/misc.bs"
 '
 ' Shared with components/ui/button/IconButton.bs, which imports this file and
 ' renders from the same two functions. The layout budget below and the button's
-' own sizing code MUST agree, and the only way to guarantee that is for there to
+' own sizing code have to agree, and the only way to guarantee that is for there to
 ' be one copy of the arithmetic. (ICON_BUTTON_PADDING previously existed as a bare
 ' `paddingPixels = 15` local in two separate IconButton subs.)
 ' ---------------------------------------------------------------------------
@@ -37,13 +37,13 @@ const ICON_BUTTON_PADDING = 15
 
 ' The caption is wider than the button by 6px on each side so labels don't wrap
 ' any earlier than they have to. It is what actually sets the button's layout
-' footprint — the caption, not the background, is the widest thing in the node.
+' footprint: the caption, not the background, is the widest thing in the node.
 const ICON_BUTTON_TEXT_EXTENSION = 12
 
 ' The icon's rendered edge length, and the reason every button on a capped row is
 ' the same width.
 '
-' This is NOT "the size of the icon asset" — it is the LOAD BOX. IconButton.xml
+' This is not "the size of the icon asset". It is the LOAD BOX. IconButton.xml
 ' declares its icon Poster as `width/loadWidth/height/loadHeight = 64` with
 ' `loadDisplayMode="limitSize"`, so an oversized source is scaled down AS IT
 ' LOADS and `bitmapWidth` reports the scaled figure. That is what makes the
@@ -51,9 +51,9 @@ const ICON_BUTTON_TEXT_EXTENSION = 12
 ' plainly because two icons on the ItemDetails row ship a 96x96 FHD asset
 ' (album -> goToAlbumButton, person -> goToArtistButton) and still render at 64.
 '
-' Measured, not assumed — via RTA against a rendered IconButton on a Streaming
-' Stick 4K (OS 15.3.4, 1080p UI), because a Rooibos test cannot complete an image
-' load synchronously:
+' Measured, not assumed: via RTA against a rendered IconButton on a Streaming
+' Stick 4K (OS 15.3.4, 1080p UI, measured 2026-09-07), because a Rooibos test
+' cannot complete an image load synchronously:
 '
 '   icon = person_fhd.png (96x96 source)
 '     buttonIcon.loadDisplayMode = "limitsize"   buttonIcon.loadWidth   = 64
@@ -97,12 +97,12 @@ end function
 ' them, fit before `rightBound`.
 '
 ' `spacing` is added back to the available width because the gaps sit BETWEEN
-' items — n items occupy n*width + (n-1)*spacing, not n*(width+spacing).
+' items: n items occupy n*width + (n-1)*spacing, not n*(width+spacing).
 '
 ' @param originX    left edge of the row (the group's own translation x)
 ' @param spacing    LayoutGroup itemSpacings
 ' @param itemWidth  one item's layout footprint
-' @param rightBound the first x the row may NOT reach
+' @param rightBound the first x the row may not reach
 ' @return the largest n that fits, never below 0
 function maxVisibleButtons(originX as integer, spacing as integer, itemWidth as integer, rightBound as integer) as integer
   stride = itemWidth + spacing
@@ -116,16 +116,16 @@ end function
 
 ' Where the More button sits, so the menu can be anchored to it.
 '
-' DERIVED FROM THE SAME ARITHMETIC AS THE CAP, deliberately. More occupies the
+' DERIVED FROM THE SAME ARITHMETIC AS THE CAP, on purpose. More occupies the
 ' last slot the cap allows, so its position is the row's stride walked `cap - 1`
-' times — the identical expression maxVisibleButtons() inverted to produce `cap`.
+' times: the identical expression maxVisibleButtons() inverted to produce `cap`.
 ' Reading the rendered node's boundingRect() would have been the obvious
 ' alternative and is worse in three ways: it is a render-thread node read the
 ' pure path does not otherwise need, it returns LOCAL coordinates that the caller
 ' would have to re-base onto the screen (see the comment above
-' updateExtrasPanePosition in ItemDetails.bs for that trap), and it answers 0
-' until the row has laid out — which, for a menu opened from the very button
-' being measured, is a race there is no reason to take.
+' updateItemDetailsAnimationTarget in ItemDetails.bs for that trap), and it
+' answers 0 until the row has laid out. For a menu opened from the very button
+' being measured, that is a race there is no reason to take.
 '
 ' Because it is the same arithmetic, the anchor CANNOT drift from the cap. Change
 ' the geometry and both move together or neither does.
@@ -153,18 +153,18 @@ end function
 
 ' Decide how a row of `count` buttons is divided by a cap of `cap`.
 '
-' At or below the cap everything is visible and there is NO More button — the cap
+' At or below the cap everything is visible and there is NO More button: the cap
 ' is a ceiling, not a quota. Above it, one slot is spent on More, so `cap - 1`
 ' real buttons remain.
 '
-' A consequence worth stating because it is load-bearing rather than incidental:
-' the menu never holds a single item. Reaching overflow at all means count > cap,
-' and cap-1 visible leaves at least two behind. A one-item More menu would be a
+' A consequence worth stating because the design relies on it, rather than
+' getting it by accident: the menu never holds a single item. Reaching overflow
+' at all means count > cap, and cap-1 visible leaves at least two behind. A one-item More menu would be a
 ' worse affordance than the button it replaced, and this shape rules it out
 ' rather than relying on nobody hitting it.
 '
 ' `visibleCount` doubles as the index of the first button that moves into the
-' menu — the row stops exactly where the menu starts. This used to also be
+' menu: the row stops exactly where the menu starts. This used to also be
 ' returned as a separate `overflowFrom`, which no caller ever read and which the
 ' spec asserted was equal to `visibleCount`: two names for one number is a thing
 ' that can drift, so there is one.
@@ -186,7 +186,7 @@ end function
 ' The row's focus index, read and written through ONE guarded pair.
 '
 ' Both halves of the bracket touch `buttonFocused`, and this file's signatures
-' take a plain `group as object` — so a group without the field (any bare Group)
+' take a plain `group as object`, so a group without the field (any bare Group)
 ' must not fault. It previously guarded with hasField() in one half and read the
 ' field directly in the other, which is a rule the second half had to remember
 ' rather than a property of the code. Reading an absent field yields invalid, and
@@ -210,7 +210,7 @@ end sub
 ' Both surfaces keep their overflowed buttons in an off-layout STASH node: a
 ' sibling Group that is in the screen's node tree but not in any LayoutGroup. A
 ' hidden child of a LayoutGroup still reserves its slot, so an overflowed button
-' has to leave the group entirely — but staying in the tree is what keeps
+' has to leave the group entirely. But staying in the tree is what keeps
 ' `screen.findNode("refreshButton")` resolving for the code that mutates the row
 ' afterwards.
 ' ---------------------------------------------------------------------------
@@ -221,13 +221,13 @@ end sub
 '
 ' Restoring at More's index rather than appending is what makes the order robust.
 ' More marks exactly where the tail was cut, so putting the tail back there is
-' correct even when the row has grown since the split — and a row that has grown
+' correct even when the row has grown since the split, and a row that has grown
 ' since the split is precisely the case a caller creates by forgetting to restore
 ' before it mutates. Appending would have put that newer button ahead of the
 ' older tail and silently reordered the row.
 '
 ' This is also the START of the mutation bracket, so it records which button has
-' focus — see captureRowFocus(). applyButtonOverflow() re-restores the row
+' focus: see captureRowFocus(). applyButtonOverflow() re-restores the row
 ' internally and must not re-record, which is why the body lives in restoreRow().
 sub restoreOverflowedButtons(group as object, stash as object)
   if not isValid(group) or not isValid(stash) then return
@@ -240,8 +240,8 @@ end sub
 '
 ' JRButtonGroup tracks focus as an INDEX, and OK dispatches whatever button sits at
 ' that index. A mutation that inserts or removes a button to the LEFT of the focused
-' one leaves the highlight where it was while the index now names a different button
-' — so OK runs the wrong action (a late Trailer insert turns "Delete" into "Play
+' one leaves the highlight where it was while the index now names a different button,
+' so OK runs the wrong action (a late Trailer insert turns "Delete" into "Play
 ' Trailer"), or nothing when the index runs past the end. Recording the ID here,
 ' before the caller mutates, and re-pointing the index at the end of the bracket is
 ' what keeps the two in agreement.
@@ -303,9 +303,9 @@ end sub
 
 ' Re-point the row's focus at the captured button, and consume the capture.
 '
-' Acts ONLY when that button is still in the row, or has moved into the stash (More
-' then stands in for it). When it is gone — the caller removed it — the caller's own
-' choice stands: ItemDetails.setupButtons() deliberately falls back to index 0 when
+' Acts only when that button is still in the row, or has moved into the stash (More
+' then stands in for it). When it is gone (the caller removed it), the caller's own
+' choice stands: ItemDetails.setupButtons() falls back to index 0 on purpose when
 ' the focused button no longer exists, and removeResumeButtonWithFocus() hands focus
 ' on itself. Real focus is moved only if the row had it when the bracket began, so a
 ' refresh can never pull focus out of a child panel the user is in.
@@ -346,7 +346,7 @@ end function
 ' remote goes dead until something calls setFocus. Mutators that remove a button
 ' they know may be focused re-focus it themselves; one that does not (a Trailer
 ' button withdrawn by a late check while the user sits on it) left the screen deaf.
-' The caller's index is kept — it is still the caller's choice — clamped to the
+' The caller's index is kept (it is still the caller's choice), clamped to the
 ' row, and real focus is put there only when no node IN THE ROW holds it, so a caller
 ' that re-focused the row is never overridden. A caller that sends focus somewhere
 ' outside the row must do so after applyOverflow(): this cannot see focus elsewhere,
@@ -401,13 +401,13 @@ sub restoreRow(group as object, stash as object)
 
   ' Hand focus on to whatever now stands in More's slot.
   '
-  ' Detaching the focused node breaks the focus chain for the ENTIRE tree — not
-  ' just this group — so without this the screen goes deaf: every later
+  ' Detaching the focused node breaks the focus chain for the ENTIRE tree, not
+  ' only this group, so without this the screen goes deaf: every later
   ' `if group.isInFocusChain()` guard answers false and silently skips its own
   ' focus restore, including the ones the row mutators already had. Measured on
   ' a Stick 4K / Ultra: after a mutation with More focused, no node in the scene
   ' held focus. Landing on More's old slot is the same rule the split itself
-  ' uses — More stood in for the tail, so the tail's first button is where the
+  ' uses: More stood in for the tail, so the tail's first button is where the
   ' user was looking.
   if moreHadFocus and group.getChildCount() > 0
     landing = moreSlot
@@ -438,7 +438,7 @@ end sub
 ' More button in its place. Restores first, so the split is always derived from
 ' the whole set rather than accumulated across calls.
 '
-' Focus is carried by ID rather than index — the entire point of the split is
+' Focus is carried by ID rather than index: the entire point of the split is
 ' that indices move. A button that ends up in the stash hands focus to More,
 ' which is where the user will now find it; landing back on index 0 instead
 ' would silently throw them to the other end of the row.
@@ -447,7 +447,7 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
 
   ' Captured BEFORE anything detaches. Removing a focused child nulls out focus
   ' for the whole tree, so asking isInFocusChain() after the split below always
-  ' answers false — which silently skips the restore at the end of this sub and
+  ' answers false, which silently skips the restore at the end of this sub and
   ' leaves the screen deaf. This is the same trap, and the same idiom, as
   ' `wasButtonGroupFocused` at the head of ItemDetails.setupButtons().
   wasFocused = group.isInFocusChain()
@@ -456,7 +456,7 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
 
   split = splitForOverflow(group.getChildCount(), cap)
   if not split.hasOverflow
-    ' A row that fits still has to re-point focus after a bracketed mutation — this
+    ' A row that fits still has to re-point focus after a bracketed mutation. This
     ' early return used to skip it, which is the common case, not the rare one.
     consumeRowFocusCapture(group, stash)
     return
@@ -476,9 +476,9 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
   end while
 
   ' The same node every time, taken back from the stash's custody. Re-creating it
-  ' is a BUG, not just churn: an open More menu holds this node as its
+  ' is a BUG, not only churn: an open More menu holds this node as its
   ' returnFocusTo, so a fresh one would leave the dialog restoring focus to an
-  ' orphan. (Looking it up in the row here instead does not work — the row
+  ' orphan. (Looking it up in the row here instead does not work: the row
   ' mutators call restoreOverflowedButtons() themselves before they mutate, so
   ' by the time this runs the button has already left the row.)
   moreButton = custodiedMoreButton(stash)
@@ -508,7 +508,7 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
   end if
 
   setRowFocusIndex(group, restoredIndex)
-  ' `wasFocused`, NOT a fresh isInFocusChain() — the stash loop above detached a
+  ' `wasFocused`, not a fresh isInFocusChain(): the stash loop above detached a
   ' child, and if that child was the focused one the chain is already gone.
   if wasFocused then group.getChild(restoredIndex).setFocus(true)
 end sub
@@ -531,10 +531,10 @@ function overflowMenuEntries(stash as object) as object
   return entries
 end function
 
-' Which button ID a More-menu result chose, or "" for a result that must NOT act.
+' Which button ID a More-menu result chose, or "" for a result that must not act.
 '
-' Both surfaces' onMoreMenuResult handlers ACT — ItemDetails navigates, deletes and
-' starts playback; the OSD seeks and switches tracks — so both have to decline a
+' Both surfaces' onMoreMenuResult handlers ACT (ItemDetails navigates, deletes and
+' starts playback; the OSD seeks and switches tracks), so both have to decline a
 ' close that CODE made rather than the user, or a third party clearing the screen
 ' fires an item action from inside its own flow (dialogs.md). They had a line-for-
 ' line copy of that rule each. One copy, because the OSD's is otherwise unreachable
@@ -558,10 +558,10 @@ end function
 const MORE_BUTTON_ICON = "pkg:/images/icons/more_horiz_$$RES$$.png"
 
 ' ---------------------------------------------------------------------------
-' Debug spare buttons — pure half
+' Debug spare buttons: pure half
 '
 ' SPLIT ON PURPOSE, and the split is not stylistic. `#if debug` is resolved by the
-' DEVICE from the manifest's `bs_const`, which every test build shares — so
+' DEVICE from the manifest's `bs_const`, which every test build shares, so
 ' anything inside the shell is stripped before Rooibos ever sees it and cannot be
 ' tested at all. That is not hypothetical here: the accumulation bug these
 ' functions exist to prevent shipped once precisely because nothing could reach
@@ -571,9 +571,9 @@ const MORE_BUTTON_ICON = "pkg:/images/icons/more_horiz_$$RES$$.png"
 ' code-coverage instrumentation splices a statement into every `#if` block, which
 ' at file scope is a syntax error on device, and past that the coverage event
 ' volume hangs the render thread. So the pure half lives out here where the specs
-' can reach it in EVERY build, and the shell keeps only the `m.global` read.
+' can reach it in every build, and the shell keeps only the `m.global` read.
 '
-' Same shape as source/utils/tasks.bs's ledger — see its header for the original
+' Same shape as source/utils/tasks.bs's ledger: see its header for the original
 ' statement of the rule. A production build pays only these functions' bytes,
 ' since nothing outside the shell calls them.
 ' ---------------------------------------------------------------------------
@@ -599,7 +599,7 @@ end sub
 ' Bring `group` to EXACTLY `count` spare buttons, whatever it started with.
 '
 ' Idempotent, and that is the whole point. OSD.setButtonStates() re-derives its
-' row WITHOUT clearing it — it only removes buttons by id — and runs again on
+' row WITHOUT clearing it (it only removes buttons by id) and runs again on
 ' every item change, which for live TV is every program boundary. Appending
 ' unconditionally grew the row by `count` on each pass, silently moving the very
 ' cap boundary the flag exists to locate. ItemDetails never showed it because
@@ -631,13 +631,13 @@ end sub
 #if debug
   ' Pad a row so the #788 overflow can be SEEN on a device.
   '
-  ' It cannot be seen otherwise. ItemDetails tops out at exactly 8 of 8 and the OSD
-  ' at 7 of 10, so no library and no item type reaches either cap — and the 8th
-  ' ItemDetails button is Trailer, which needs a local trailer FILE in the library
+  ' It cannot be seen otherwise. ItemDetails topped out at exactly 8 of 8 and the OSD
+  ' at 7 of 10 (counted 2026-09-07), so no library and no item type reached either
+  ' cap. And the 8th ItemDetails button is Trailer, which needs a local trailer FILE in the library
   ' (BuildGetLocalTrailersRequest), not a RemoteTrailers URL. Without this flag a
   ' reviewer cannot reach the boundary case either, let alone the menu.
   '
-  ' Nothing but the `m.global` read lives here — the behaviour is in
+  ' Nothing but the `m.global` read lives here: the behavior is in
   ' syncDebugSpareButtons() above, where a spec can reach it.
   sub appendDebugSpareButtons(group as object)
     if not isValid(m.global.debug) then return

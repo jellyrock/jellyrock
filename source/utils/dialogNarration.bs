@@ -1,34 +1,34 @@
 ' Screen-reader narration for the scene-appended dialog overlays.
 '
-' WHY THIS EXISTS — measured on-device (Roku Ultra 4850X, Roku OS 15.2.4, screen
+' WHY THIS EXISTS: measured on-device (Roku Ultra 4850X, Roku OS 15.2.4, screen
 ' reader on, 2026-08-01), comparing the two dialog channels back to back:
 '
 '   StandardMessageDialog on m.scene.dialog  -> speaks the title, the message,
 '     "a list of two options", and each button with its position as focus moves
 '     ("exit, button 2 of 2").
-'   JRDialog appended to the scene           -> speaks ONLY the focused button
+'   JRDialog appended to the scene           -> speaks only the focused button
 '     ("Cancel"). The title and message are never announced.
 '
 ' The gap is structural, not a bug in our layout. Scene's screen-reader rule
 ' speaks `dialog` when one is set and otherwise falls back to RenderableNode,
 ' which speaks only the FOCUSED DESCENDANT. Roku wrote dedicated narration rules
 ' for Dialog / KeyboardDialog / PinDialog / ProgressDialog precisely because that
-' fallback is not enough for a modal — a scene-appended Group gets the fallback
+' fallback is not enough for a modal: a scene-appended Group gets the fallback
 ' and nothing else. See docs/DEVELOPER/media-playback/text-to-speech.md in
 ' rokudev/dev-doc for the per-node table.
 '
-' So the overlay announces its own title + message, and deliberately does NOT
-' repeat the focused button: the platform already speaks that, and duplicating it
-' would make every dialog say the button name twice.
+' So the overlay announces its own title + message, with the focused button folded
+' in as one utterance. The platform speaks that button too, but ours lands after
+' it and flushes it (see narrateDialogOpening), so no dialog says the name twice.
 import "pkg:/source/utils/misc.bs"
 
 namespace narration
-  ' How long after focus lands to speak an opening announcement, in seconds — the ONE piece
+  ' How long after focus lands to speak an opening announcement, in seconds: the one piece
   ' of narration timing that cannot be event-driven. Every dialog and screen that announces
   ' itself on opening uses this; keep it the only copy.
   '
   ' Established on-device, one behavior at a time:
-  '   - The platform announces the focused button ONLY when focus first enters the
+  '   - The platform announces the focused button only when focus first enters the
   '     dialog. Moving between buttons afterwards is silent (TextButton extends
   '     Group, not Roku's Button, so the "text of button is spoken only if focused"
   '     rule never applies). Those moves are ours alone, and need no timing.
@@ -37,13 +37,13 @@ namespace narration
   '     platform speaks after us and we are cut off. Speaking before focus loses
   '     the same way.
   ' To survive we must speak AFTER the platform's announcement, and SceneGraph
-  ' exposes no event for "the platform has finished dispatching speech" — the only
+  ' exposes no event for "the platform has finished dispatching speech". The only
   ' observable speech events are for utterances the app itself starts. So the
   ' opening announcement is the one place a delay is unavoidable.
   '
   ' Keep it short: long enough to land second, short enough to flush the platform's
   ' word before it is audible. At 0.6s the clipped word was clearly audible.
-  ' Changing this needs an ear, not reasoning — there is no test that can catch it.
+  ' Changing this needs an ear, not reasoning: there is no test that can catch it.
   const OPENING_DELAY = 0.15
 end namespace
 
@@ -52,7 +52,7 @@ end namespace
 ' matching the cadence of the built-in dialog.
 '
 ' focusedText is what the dialog's focused element is (a button label), included
-' so the whole announcement is ONE utterance — see narrateDialogOpening for why
+' so the whole announcement is ONE utterance. See narrateDialogOpening for why
 ' it can't be left to the platform.
 function composeDialogAnnouncement(title as string, message as string, focusedText = "" as string) as string
   announcement = ""
@@ -65,10 +65,10 @@ function composeDialogAnnouncement(title as string, message as string, focusedTe
   return announcement
 end function
 
-' Announce a dialog that has just opened, as a single utterance.
+' Announce a dialog that has opened, as a single utterance.
 '
-' TIMING — measured on-device, and counter-intuitive. The platform announces the
-' focused element as soon as focus lands, and that announcement does NOT queue
+' TIMING: measured on-device, and counter-intuitive. The platform announces the
+' focused element as soon as focus lands, and that announcement does not queue
 ' behind ours: it FLUSHES it. Speaking before handing over focus produced about
 ' three words of the title and then "Cancel", which is worse than saying nothing.
 '
@@ -79,7 +79,7 @@ sub narrateDialogOpening(title as string, message as string, focusedText = "" as
   announcement = composeDialogAnnouncement(title, message, focusedText)
   if announcement = "" then return
 
-  ' roAudioGuide self-gates — it speaks only while the screen reader is enabled,
+  ' roAudioGuide self-gates: it speaks only while the screen reader is enabled,
   ' and uses the reader's own voice, language, rate and volume, so there is no
   ' isAudioGuideEnabled check to keep in sync here. It is absent on pre-OS-7.5
   ' hardware, hence the guard.
@@ -87,16 +87,16 @@ sub narrateDialogOpening(title as string, message as string, focusedText = "" as
   if not isValid(guide) then return
 
   ' flushSpeech = true: whatever was being read (the screen behind, or the
-  ' platform's own announcement of the button we just focused) is stale or
+  ' platform's own announcement of the button we focused) is stale or
   ' redundant with what we are about to say. dontRepeat = false so re-opening the
   ' same dialog announces again.
   guide.Say(announcement, true, false)
 end sub
 
-' Announce the element focus just moved to.
+' Announce the element focus moved to.
 '
-' Needed because the platform does NOT narrate focus moves between the buttons in
-' a dialog's row — measured on-device: after the opening announcement, arrowing
+' Needed because the platform does not narrate focus moves between the buttons in
+' a dialog's row. Measured on-device: after the opening announcement, arrowing
 ' between Cancel and Confirm was completely silent. `TextButton` extends `Group`,
 ' not Roku's `Button`, so the documented "text of button is spoken only if
 ' focused" rule never applies to it.

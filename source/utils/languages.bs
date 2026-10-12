@@ -4,13 +4,13 @@
 ' covered (see scripts/lint/update-translations.cjs LANGUAGE_METADATA).
 '
 ' Why this exists: ffmpeg/Jellyfin pass through whatever the container
-' metadata holds — most modern files use 639-2/T (e.g., "fra"), older or
-' hand-tagged files use 639-2/B (e.g., "fre"), and some use 639-1 ("fr"
+' metadata holds: most modern files use 639-2/T (for example "fra"), older or
+' hand-tagged files use 639-2/B (for example "fre"), and some use 639-1 ("fr"
 ' already, no alias needed). MediaStream.Language is therefore not a single
 ' standardized format; this map normalizes to one canonical form.
 '
 ' 3-letter codes that have no 2-letter ISO 639-1 equivalent (ckb, fil, gsw,
-' jbo, kab) are not aliased here — they're looked up directly in
+' jbo, kab) are not aliased here: they're looked up directly in
 ' languageTranslationKeys() under their 3-letter form.
 '
 ' Cached on the caller's m scope after first build to avoid reallocating
@@ -111,13 +111,13 @@ function mediaLanguageAliases() as object
 end function
 
 ' ISO 639-2 codes for the languages mediaLanguageAliases() leaves out (it covers only UI
-' locales), mapped to their ISO 639-1 code. For language MATCHING only — see
+' locales), mapped to their ISO 639-1 code. For language MATCHING only: see
 ' languageBaseCode(). Kept apart from mediaLanguageAliases() because display depends on that
 ' map's gaps: languageEnglishFallbacks() is keyed by the 3-letter code, so aliasing "swa" to
 ' "sw" there would show Swahili as the raw "swa".
 '
 ' Source: the ISO 639-2 list (Library of Congress) as Jellyfin 12.0 ships it,
-' Emby.Server.Implementations/Localization/iso6392.txt — every code with an ISO 639-1
+' Emby.Server.Implementations/Localization/iso6392.txt: every code with an ISO 639-1
 ' equivalent that mediaLanguageAliases() does not already map. lint:language-coverage fails if
 ' the two maps overlap.
 '
@@ -235,8 +235,8 @@ function mediaLanguageMatchAliases() as object
 end function
 
 ' languageBaseCode: One canonical form of a language code, for comparing codes written in
-' different ISO 639 forms — "fra", "fre" and "fr" all give "fr", "sw" and "swa" give "sw".
-' A region or script suffix is dropped first ("pt-BR" → "pt"), as resolveLanguageName() does.
+' different ISO 639 forms: "fra", "fre" and "fr" all give "fr", "sw" and "swa" give "sw".
+' A region or script suffix is dropped first ("pt-BR" becomes "pt"), as resolveLanguageName() does.
 ' A code neither map knows is returned lowercased as-is.
 '
 ' @param {dynamic} code - Language code in any common form
@@ -251,7 +251,7 @@ function languageBaseCode(code as dynamic) as string
   if underscorePos > 0 then base = Left(base, underscorePos - 1)
 
   base = mediaLanguageAliases()[base] ?? base
-  ' Second lookup on the result, for the one display alias whose target is 3-letter ("ji" → "yid")
+  ' Second lookup on the result, for the one display alias whose target is 3-letter ("ji" to "yid")
   return mediaLanguageMatchAliases()[base] ?? base
 end function
 
@@ -270,8 +270,8 @@ end function
 ' without a 639-1 equivalent) to the translation key used by translate()
 ' for the localized language name. Keys must exist in locale/custom/en_US.json.
 '
-' Region/script suffixes (e.g., "_BR", "_Hant") are stripped before lookup
-' by resolveLanguageName(), so en_GB and en_US both land at "en" → LanguageEn.
+' Region/script suffixes (for example "_BR", "_Hant") are stripped before lookup
+' by resolveLanguageName(), so en_GB and en_US both land at "en", then LanguageEn.
 '
 ' Cached on the caller's m scope after first build.
 '
@@ -372,12 +372,12 @@ function languageTranslationKeys() as object
 end function
 
 ' Comprehensive English-name fallback for ISO 639-2 codes that the app does
-' NOT have a UI translation for (e.g., "lat" Latin, "swa" Swahili). Used as
-' tier 2 by resolveLanguageName() — translatable languages always go through
+' not have a UI translation for (for example "lat" Latin, "swa" Swahili). Used as
+' tier 2 by resolveLanguageName(): translatable languages always go through
 ' translate() first; this only fires when no LanguageX key exists for the
 ' resolved base code, ensuring no recognized 3-letter code ever displays raw.
 '
-' Names are the official ISO 639-2 forms. They are intentionally NOT routed
+' Names are the official ISO 639-2 forms. They are intentionally not routed
 ' through the i18n pipeline: these languages are unlikely to be a UI locale
 ' for our users, so the maintenance cost of translating "Akkadian" into
 ' Polish (etc.) outweighs the UX benefit. Users see the English name in any

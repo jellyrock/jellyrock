@@ -3,7 +3,7 @@ import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/promises/promises.brs"
 import "pkg:/source/utils/misc.bs"
 
-' Waits the whole app is in, which outlive the screen that started them — a playback start
+' Waits the whole app is in, which outlive the screen that started them: a playback start
 ' runs from a press on one screen to a player on another. The scene's AppWaitHost keeps them,
 ' and the scene shows them as its loading spinner over the active screen's own waits
 ' (screenWaits).
@@ -15,7 +15,7 @@ import "pkg:/source/utils/misc.bs"
 '   appWaits.fail(wait, "failed")   ' it failed, or the viewer left
 '
 ' The first settle wins and the rest do nothing, so every exit path can end the wait without
-' checking whether another already has — and code holding one wait can never end another,
+' checking whether another already has, and code holding one wait can never end another,
 ' which is what a wait ended by name could not promise (a player being replaced by the next
 ' channel's would end the next channel's). A wait nobody ends is ended by its kind's time
 ' limit and logged as an error.
@@ -60,7 +60,7 @@ namespace appWaits
 
   ' Whether a wait of `kind` hides the screen it was started from while it is open. A playback
   ' start does, so the viewer sees the item's backdrop and the spinner rather than the screen
-  ' they pressed Play on — unless that screen is itself a player (a channel switch).
+  ' they pressed Play on, unless that screen is itself a player (a channel switch).
   function hidesLaunchingScreen(kind as string) as boolean
     return kind = LoadingKind.PLAYBACK_START
   end function
@@ -92,7 +92,7 @@ namespace appWaits
 
   ' The keys of the playback starts the viewer has left, now that `newView` is the active
   ' screen: it is neither the screen the start was pressed on nor a player. The start has
-  ' nowhere to go any more — Back during a Play all must not start playback on whatever
+  ' nowhere to go any more: Back during a Play all must not start playback on whatever
   ' screen the viewer went back to.
   function leftBehind(entries as object, newView as dynamic) as object
     keys = []
@@ -116,7 +116,7 @@ namespace appWaits
     return keys
   end function
 
-  ' Whether an open wait hides `view` — a start that replaced another from the same screen
+  ' Whether an open wait hides `view`. A start that replaced another from the same screen
   ' keeps it hidden when the replaced one ends.
   function hides(entries as object, view as object) as boolean
     for each key in entries

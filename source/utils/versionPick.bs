@@ -14,7 +14,7 @@ import "pkg:/source/utils/versionLabels.bs"
 ' an automatic choice stays automatic, so upgrades still happen.
 namespace versionPick
 
-  ' preferenceFor: What an explicit version pick carries to later items — the video fields a
+  ' preferenceFor: What an explicit version pick carries to later items: the video fields a
   ' version is told apart by, written as the version labels write them.
   '
   ' @param {dynamic} source - the MediaSource the viewer picked
@@ -41,7 +41,7 @@ namespace versionPick
     return -1
   end function
 
-  ' sourceIndexFor: Which version plays — the explicit pick's match, else the best for the device.
+  ' sourceIndexFor: Which version plays: the explicit pick's match, else the best for the device.
   '
   ' @param {dynamic} preference - from preferenceFor(), or invalid
   ' @param {object} mediaSources - the item's MediaSources

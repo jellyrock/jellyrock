@@ -3,7 +3,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' What the scene's loading spinner shows and tells the viewer as a wait goes on. Pure apart
-' from `nowMs()` — JRScene passes what is waiting and the time, so the rule is the same on any
+' from `nowMs()`: JRScene passes what is waiting and the time, so the rule is the same on any
 ' screen and in a test.
 '
 ' Three things can be waiting: the scene's own spinner (`startLoadingSpinner()`, a cast), the
@@ -14,7 +14,7 @@ import "pkg:/source/utils/misc.bs"
 ' Stick shows a large library's first page in about 3.4 s from a server that keeps up
 ' (measured 2026-09-24, 8,643-movie library). Past it the viewer is told the app is still
 ' working, which is the usual ~10 s point where a wait needs feedback; past SERVER_SLOW_MS,
-' that the wait is the server's — true of every kind that gets text, because each is waiting
+' that the wait is the server's. That is true of every kind that gets text, because each waits
 ' on a server answer. Kinds whose wait is not a server answer get no text at all.
 namespace loadingStages
 
@@ -37,7 +37,7 @@ namespace loadingStages
   end function
 
   ' Milliseconds from `elapsedMs` until the text for `kind` next changes, or -1 when it never
-  ' will — the kind has no stages, or the last one is already showing.
+  ' will: the kind has no stages, or the last one is already showing.
   function msUntilNextChange(kind as string, elapsedMs as integer) as integer
     if not hasStages(kind) then return -1
     if elapsedMs < STILL_LOADING_MS then return STILL_LOADING_MS - elapsedMs
@@ -47,8 +47,8 @@ namespace loadingStages
 
   ' What the spinner shows now: { visible, kind, elapsedMs, label }.
   '
-  ' Waits the whole app is in win while any is open — the scene's own spinner and its app
-  ' waits — and the screen's waits show again, still counting from when they started, once the
+  ' Waits the whole app is in (the scene's own spinner and its app waits) win while any is
+  ' open, and the screen's waits show again, still counting from when they started, once the
   ' last of those ends. Among the waits that show, the text counts from the OLDEST one with
   ' stages, since that is how long the viewer has been waiting. `label` is the newest app
   ' wait's label (a channel's name), "" when none has one; the scene's own spinner carries its

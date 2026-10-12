@@ -20,7 +20,7 @@ namespace quickplay
     end if
   end sub
 
-  ' A single video file — a movie, episode, recording, video or music video.
+  ' A single video file: a movie, episode, recording, video or music video.
   sub video(itemNode as object)
     if not isValid(itemNode) or not isValid(itemNode.id) or itemNode.id = "" then return
 
@@ -40,11 +40,11 @@ namespace quickplay
       mediaSources = itemNode.mediaSourcesData.mediaSources
       if mediaSources.Count() > 1
         if versionResume.isPerVersionServer(m.global.server.version)
-          ' Which version resumes depends on EVERY version's own position, and each of those
-          ' is a request — impossible here, on the render thread with no fetching. So hand the
+          ' Which version resumes depends on every version's own position, and each of those
+          ' is a request, impossible here, on the render thread with no fetching. So hand the
           ' choice to LoadVideoContentTask, which makes it with the positions in hand.
           '
-          ' Standing down means actively CLEARING the id, not just declining to set one: the
+          ' Standing down means actively clearing the id, not only declining to set one: the
           ' transformer pre-fills item.mediaSourceId with MediaSources[0].Id and
           ' createQueueItem copies it, so a quick play would otherwise arrive at the loader
           ' looking like an explicit pick and skip the choice altogether. The details screen's
@@ -52,7 +52,7 @@ namespace quickplay
           deferVersionToLoader = true
 
           ' Free signal, no request. The loader needs to know this is a resume BEFORE it has
-          ' chosen a version — startingPoint cannot say so when the item's own position is 0
+          ' chosen a version: startingPoint cannot say so when the item's own position is 0
           ' and an alternate holds one.
           queueItem.hasVersionInProgress = versionResume.anyVersionInProgress(itemNode.id, itemNode.playbackPositionTicks, mediaSources, true)
         else
@@ -130,7 +130,7 @@ namespace quickplay
       return
     end if
 
-    ' Push TV channel queue item — keep spinner active until video content loads
+    ' Push TV channel queue item; keep spinner active until video content loads
     m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(itemNode))
   end sub
 

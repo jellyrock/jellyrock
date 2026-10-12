@@ -124,7 +124,7 @@ namespace server
 
   ' Discovers server information and handles redirects.
   '
-  ' Convention: all API calls should go through the ApiClient class via GetApi() (e.g. GetApi().GetUser()).
+  ' Convention: all API calls should go through the ApiClient class via GetApi() (for example GetApi().GetUser()).
   ' Those functions bundle APIRequest() with a synchronous execution strategy (getJson, postVoid, etc.).
   '
   ' Discover() is an intentional exception: it must intercept the roUrlEvent to read GetResponseHeaders()
@@ -178,7 +178,7 @@ namespace server
       ' Resolve relative URLs and normalize
       currentUrl = serverNode.serverUrl
 
-      ' Resolve redirect against the full request URL (not just server base)
+      ' Resolve redirect against the full request URL (not only the server base)
       ' This ensures relative Location values resolve correctly with base paths
       endpointPath = "/system/info/public"
       if Right(currentUrl, 1) = "/"
@@ -189,7 +189,7 @@ namespace server
       resolvedUrl = resolveUrl(fullRequestUrl, headers.location)
 
       ' Strip the endpoint path to get the new server base URL
-      ' This keeps any base path (e.g., /jellyfin) rather than reducing to scheme + authority
+      ' This keeps any base path (for example /jellyfin) rather than reducing to scheme + authority
       newBaseUrl = getServerBaseUrl(resolvedUrl, endpointPath)
       normalizedNewUrl = normalizeUrl(newBaseUrl)
 
@@ -218,7 +218,7 @@ namespace server
           end if
 
           ' Update runtime state with canonical URL and retry
-          ' Note: We do NOT persist canonical URL to registry - caller handles persistence
+          ' This does not persist the canonical URL to the registry: the caller handles persistence
           ' This ensures user's original URL is preserved for multi-network access
           serverNode.serverUrl = normalizedNewUrl
           result = server.Discover(redirectCount + 1)
@@ -264,11 +264,11 @@ namespace user
     ' Check for valid user ID in either location (direct or nested)
     ' Note: Jellyfin API returns "Id" (capital I) in JSON, but we normalize to lowercase "id" on ContentNode
     '
-    ' All three branches test the id is PRESENT AND NON-EMPTY. The nested one used
-    ' to test only `isValid`, which is `input <> invalid` — so an `Id` of "" passed
+    ' Every branch tests that the id is present and non-empty. The nested one used
+    ' to test only `isValid`, which is `input <> invalid`, so an `Id` of "" passed
     ' the guard and this sub ran to completion on a payload it should have refused.
     ' That is worse now than it was: `isLoaded` below is the app's authoritative
-    ' "somebody is signed in" signal, so an empty id did not just sign in emptily,
+    ' "somebody is signed in" signal, so an empty id did not only sign in emptily,
     ' it made user.IsAuthenticated() answer true about it.
     hasValidId = false
     if isValid(userData.id) and userData.id <> ""
@@ -391,7 +391,7 @@ namespace user
       print "Loading user setting:", setting, "=", userSettings[setting]
       ' Skip global settings (loaded from global section separately)
       ' Skip display settings (handled separately below via TransformDisplaySettings)
-      ' Skip homeSection fields — these are server-authoritative (fetched fresh from
+      ' Skip homeSection fields: these are server-authoritative (fetched fresh from
       ' DisplayPreferences in LoadUserPreferences) and must not be loaded from the
       ' registry. Stale registry values would override the server's current arrangement.
       if not isGlobalSetting(setting) and not setting.StartsWith("display.") and not setting.StartsWith("homeSection")
@@ -399,7 +399,7 @@ namespace user
         ' userNode before invoking Login() (or they are extracted from the
         ' response payload above); reapplying them from the registry here would
         ' clobber a freshly-issued token with a stale one left over from a
-        ' previous session - e.g. the Quick Connect re-auth case where a new
+        ' previous session, for example the Quick Connect re-auth case where a new
         ' AccessToken is issued but the user's registry still holds the old one.
         if setting = "authToken" or setting = "primaryImageTag"
           print "Skipping auth-flow field from registry:", setting
@@ -469,8 +469,8 @@ namespace user
     applyThemeColorOverrides(userNode.settings)
     m.global.sceneManager.callFunc("refreshThemeColors")
 
-    ' THE AUTHORITATIVE "a session is established" SIGNAL, and the last thing
-    ' this sub does — so it is set only once every guard above has been cleared
+    ' The authoritative "a session is established" signal, set at the end of this
+    ' sub (only `loadedAt` follows), so it is set once every guard above has been cleared
     ' and the node is fully populated. Every `return` before this point leaves it
     ' false, which is the whole point: this sub has no return value, so this
     ' field IS how it reports that it took. See user.IsAuthenticated().
@@ -480,9 +480,9 @@ namespace user
 
   ' Is a user actually signed in RIGHT NOW?
   '
-  ' Reads `isLoaded`, NOT `id` / `authToken`, and that distinction is the whole
+  ' Reads `isLoaded`, not `id` / `authToken`, and that distinction is the whole
   ' reason this exists. JellyfinUser.xml states the rule as "if user.id is not
-  ' empty, user IS authenticated" — and that is false in practice, because two
+  ' empty, user IS authenticated", and that is false in practice, because two
   ' paths populate the node SPECULATIVELY before anything has been authenticated:
   '
   '   onUserSelected      writes `id` from the picker, before any auth
@@ -491,9 +491,9 @@ namespace user
   ' Neither is rolled back when the attempt fails (the failure path clears the
   ' REGISTRY, not the node), so after a rejected token `m.global.user` still
   ' carries both fields and answers "authenticated" to anyone who asks it that
-  ' way. Those writes are not sloppiness — validateSavedToken's is load-bearing,
+  ' way. Those writes are not sloppiness. validateSavedToken's is required,
   ' because AboutMe() reads the token straight back off the node through
-  ' buildAuthHeader() — so the fix is a signal that only a COMPLETED login sets,
+  ' buildAuthHeader(). So the fix is a signal that only a completed login sets,
   ' rather than an attempt to stop the speculative writes.
   '
   ' `isLoaded` is that signal. It was already declared for exactly this ("tracks
@@ -554,25 +554,26 @@ namespace user
 
   ' Compute the Jellyfin DeviceId this device advertises. Every session-creating channel
   ' (auth header at baseRequest.bs, the ws:// socket URL via remoteProtocol.buildSocketUrl,
-  ' and the /pair report) reads it from device.serverDeviceName, so it MUST be stable across
+  ' and the /pair report) reads it from device.serverDeviceName, so it must be stable across
   ' the app lifecycle or the device splits into two Jellyfin sessions.
   '
   ' Appending the sanitized username was a workaround for OLD Jellyfin servers that revoked a
   ' device's sibling auth tokens on re-authentication, letting multiple users' saved tokens
   ' coexist on one Roku for fast user-switching. But the suffix is set post-login, making the
-  ' DeviceId unstable across startup (bare before login, suffixed after) — which on the HTTP
+  ' DeviceId unstable across startup (bare before login, suffixed after), which on the HTTP
   ' (ws://) path splits one device+user into two sessions and breaks the #668 cold-launch cast
   ' producer (the phantom keys on one DeviceId, the live socket lands on the other).
   '
   ' Servers >= 10.11 tolerate multiple auth tokens per DeviceId (proven on 10.11.11), so the
-  ' suffix is unneeded there — keep the DeviceId bare + stable. Older servers keep the suffix
-  ' (unchanged behavior; those servers have no cold-cast producer anyway — it is net9/10.11
+  ' suffix is unneeded there: keep the DeviceId bare + stable. Older servers keep the suffix
+  ' (unchanged behavior; those servers have no cold-cast producer anyway, since it is net9/10.11
   ' floored). An empty/unknown server version falls through to the suffixed path, matching the
-  ' conservative pre-10.11 behavior. See decision deviceid-suffix-gate-10.11 + ADR 0023.
+  ' conservative pre-10.11 behavior. See decision deviceid-header-authoritative (which supersedes
+  ' deviceid-suffix-gate-10.11) + ADR 0023.
   '
   ' @param deviceId - the stable per-device id (roDeviceInfo GetChannelClientId)
   ' @param friendlyName - URL-safe username, or "" when no user is resolved
-  ' @param serverVersion - connected Jellyfin server version string (e.g. "10.11.11")
+  ' @param serverVersion - connected Jellyfin server version string (for example "10.11.11")
   ' @returns the DeviceId to advertise on the auth header, ws:// socket, and /pair report
   function ComputeServerDeviceName(deviceId as string, friendlyName as string, serverVersion as string) as string
     if versionChecker(serverVersion, "10.11.0") then return deviceId
@@ -690,9 +691,9 @@ namespace user
   end function
 
   ' Apply server home sections to the settings node (in-memory only, no registry).
-  ' Home sections are server-authoritative — the Jellyfin server's DisplayPreferences
+  ' Home sections are server-authoritative: the Jellyfin server's DisplayPreferences
   ' is the single source of truth. Writing to registry would create a stale cache that
-  ' masks server-side changes (e.g., user rearranges sections in the web client).
+  ' masks server-side changes (for example, user rearranges sections in the web client).
   sub SaveUserHomeSections(userPreferences as object)
     rowTypes = []
 
@@ -786,7 +787,7 @@ namespace user.settings
         settingsNode.setField(name, value.toStr().toFloat())
       end if
     else if fieldType = "assocarray"
-      ' AssociativeArray field (e.g., displaySettings, rawSettings)
+      ' AssociativeArray field (for example displaySettings)
       settingsNode.setField(name, value)
     else
       ' String or other field type - convert to string if needed
@@ -861,7 +862,7 @@ namespace user.settings
 
     for each key in registryData.Keys()
       if key.StartsWith("display.")
-        ' Parse "display.libraryId.settingKey" → nested object
+        ' Parse "display.libraryId.settingKey" into a nested object
         parts = key.Split(".")
         if parts.Count() = 3 and isValidAndNotEmpty(parts[1]) and isValidAndNotEmpty(parts[2])
           libraryId = parts[1]
