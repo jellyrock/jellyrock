@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-12: docs(voice): Rewrite the `source/utils` comments
 - 2026-10-12: fix(playback): Direct-play `.strm` and DASH; fall back if unreachable
 - 2026-10-12: docs(voice): Rewrite the root config and workflow comments
 - 2026-10-12: ci(hooks): Keep untracked files out of the pre-push auto-fix commit
