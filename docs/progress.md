@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-12: docs(voice): Rewrite the UI, dialog, home, grid and API comments
 - 2026-10-12: fix(grid): Stop asking for `MediaSourceCount` on the music grids
 - 2026-10-12: docs(voice): Rewrite the `components/video` and `subtitles` comments
 - 2026-10-12: docs(voice): Rewrite the `source` comments outside `source/utils`
