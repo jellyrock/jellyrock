@@ -22,7 +22,7 @@ end enum
 ' in AudioLanguagePreference in place of a language code; it means "the item's OriginalLanguage".
 const ORIGINAL_LANGUAGE_PREFERENCE = "originallanguage"
 
-' wantsOriginalAudio: True when the viewer's audio preference is "Original language" — the web
+' wantsOriginalAudio: True when the viewer's audio preference is "Original language": the web
 ' client's choice, not overridden by a JellyRock Roku or custom language.
 '
 ' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
@@ -38,7 +38,7 @@ function wantsOriginalAudio(userSettings as object, userConfig as object) as boo
 end function
 
 ' needsSeriesOriginalLanguage: True when an episode's track selection needs its series'
-' OriginalLanguage — the viewer wants the original audio and the episode has none of its own.
+' OriginalLanguage: the viewer wants the original audio and the episode has none of its own.
 ' The server falls back to the series itself (Episode.GetInheritedOriginalLanguage), but sends
 ' only the item's own value, and not every metadata provider sets one on episodes. ItemMetaData()
 ' fetches it; render-thread callers, which cannot, leave the track to LoadVideoContentTask.
@@ -57,8 +57,8 @@ end function
 '
 ' Exact codes win: when any stream carries the preferred code itself (case-insensitively), only
 ' that code matches, so a "pob" preference keeps its Brazilian track over a "por" one. Only when
-' none does are codes for the same language in another form accepted (languagesMatch()) — how a
-' "fre" preference finds a "fra" track, and an OriginalLanguage of "ko" a "kor" one.
+' none does are codes for the same language in another form accepted (languagesMatch()). That is
+' how a "fre" preference finds a "fra" track, and an OriginalLanguage of "ko" a "kor" one.
 '
 ' Compute it once over ALL the candidate streams, not per filtered subset, so a subset without
 ' the exact code cannot fall back to a same-language code the full list would have ruled out.
@@ -106,7 +106,7 @@ function isLanguageMatch(matches as object, code as dynamic) as boolean
   return isValidAndNotEmpty(code) and matches.doesExist(LCase(code))
 end function
 
-' selectAudioStreamIndex: The audio stream to auto-select for the viewer — their "play default
+' selectAudioStreamIndex: The audio stream to auto-select for the viewer: their "play default
 ' track" and language preferences resolved, then findBestAudioStreamIndex().
 '
 ' @param {object} streams - Array of MediaStream AAs (all types, or audio only)
@@ -157,7 +157,7 @@ end function
 ' resolveAudioLanguagePreference: Resolves the audio language preference setting value
 '
 ' Checks JellyRock override setting first, then falls back to web client setting.
-' Returns a 3-letter ISO 639-2 language code (e.g., "eng", "jpn") or empty string.
+' Returns a 3-letter ISO 639-2 language code (for example "eng", "jpn") or empty string.
 '
 ' The web client's "Original language" choice (12.0+) resolves to the item's OriginalLanguage,
 ' which is ISO 639-1 ("ko"), or to "" when the item has none. Pair the result with
@@ -204,7 +204,7 @@ end function
 '
 ' Checks JellyRock override setting first, then falls back to web client setting.
 ' The "audio" option chains to resolveAudioLanguagePreference() so subtitle language
-' follows the user's audio language override — including "Original language", which follows
+' follows the user's audio language override, including "Original language", which follows
 ' the item's OriginalLanguage, or applies no language rule when the item has none.
 '
 ' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
@@ -248,24 +248,24 @@ end function
 
 ' mapRokuLocaleToJellyfinLanguage: Converts Roku locale codes to Jellyfin ISO 639-2 language codes
 '
-' Maps Roku device locale (e.g., "en_US", "fr_CA") to Jellyfin's 3-letter language codes.
+' Maps Roku device locale (for example "en_US", "fr_CA") to Jellyfin's 3-letter language codes.
 ' Extracts base language from locale and maps to standard ISO 639-2 codes.
 '
 ' Supported Roku locales:
-' - en_US, en_GB, en_CA, en_AU → eng (English)
-' - es_ES, es_MX → spa (Spanish)
-' - pt_BR → por (Portuguese)
-' - fr_CA → fra (French)
-' - de_DE → deu (German)
-' - it_IT → ita (Italian)
+' - en_US, en_GB, en_CA, en_AU: eng (English)
+' - es_ES, es_MX: spa (Spanish)
+' - pt_BR: por (Portuguese)
+' - fr_CA: fra (French)
+' - de_DE: deu (German)
+' - it_IT: ita (Italian)
 '
-' @param {dynamic} rokuLocale - Roku locale string (e.g., "en_US", "fr_CA")
-' @returns {string} - Jellyfin ISO 639-2 language code (e.g., "eng", "fra"), or empty string if not recognized
+' @param {dynamic} rokuLocale - Roku locale string (for example "en_US", "fr_CA")
+' @returns {string} - Jellyfin ISO 639-2 language code (for example "eng", "fra"), or empty string if not recognized
 function mapRokuLocaleToJellyfinLanguage(rokuLocale as dynamic) as string
   if not isValid(rokuLocale) or rokuLocale = "" then return ""
 
-  ' Extract base language (first 2 characters before underscore)
-  ' "en_US" → "en", "fr_CA" → "fr"
+  ' Extract base language (everything before the underscore)
+  ' "en_US" becomes "en", "fr_CA" becomes "fr"
   baseLanguage = ""
   underscorePos = rokuLocale.inStr("_")
   if underscorePos > -1
@@ -298,11 +298,11 @@ end function
 ' inside audioStreams is decodable by the current device.
 '
 ' Used by mid-playback audio switching to decide whether Roku's native track-switch is
-' viable, or whether a server reload is required (e.g. switching back to an 8ch track
-' on a stereo device — Roku can't decode it natively, so a transcode reload is needed).
+' viable, or whether a server reload is required (for example switching back to an 8ch track
+' on a stereo device: Roku can't decode it natively, so a transcode reload is needed).
 '
 ' @param {integer} jellyfinAudioIndex - Jellyfin index of the chosen audio stream
-' @param {dynamic} audioStreams - Array of audio MediaStream objects (e.g. fullAudioData)
+' @param {dynamic} audioStreams - Array of audio MediaStream objects (for example fullAudioData)
 ' @returns {boolean} - true if the chosen stream can be direct-played on this device
 function isSelectedAudioStreamDirectPlayable(jellyfinAudioIndex as integer, audioStreams as dynamic) as boolean
   if not isValid(audioStreams) then return false
@@ -337,14 +337,14 @@ end function
 '   1. Filter by IsDefault = true streams (ignore language preference)
 '   2. If multiple IsDefault streams, use language preference as tiebreaker
 '   3. If still multiple or no language match, apply hardware optimization
-'   4. If no IsDefault streams exist, fall back to language preference → hardware optimization
+'   4. If no IsDefault streams exist, fall back to language preference, then hardware optimization
 '
 ' Selection priority when playDefault = false:
 '   1. Filter by language preference (completely ignore IsDefault flag)
 '   2. If multiple language matches, apply hardware optimization
 '   3. If no language matches, apply hardware optimization to all streams
 '
-' "Original language" (preferOriginal, playDefault = false) — as the server does, a stream the
+' "Original language" (preferOriginal, playDefault = false): as the server does, a stream the
 ' file flags IsOriginal wins: among the language matches when the item's original language is
 ' known, among all streams when it is not. The server ignores IsOriginal when playDefault = true.
 '
@@ -364,7 +364,7 @@ end function
 '
 ' @param {dynamic} streams - Array of media streams from Jellyfin metadata
 ' @param {dynamic} playDefault - Boolean, if true use IsDefault flag and only use language as tiebreaker
-' @param {dynamic} preferredLanguage - Language code in any ISO 639 form (e.g., "eng", "ko")
+' @param {dynamic} preferredLanguage - Language code in any ISO 639 form (for example "eng", "ko")
 ' @param {dynamic} deviceCapabilities - Optional: Device audio capabilities (for testing). If invalid, will detect automatically.
 ' @param {boolean} [preferOriginal=false] - The viewer wants the original audio (wantsOriginalAudio())
 ' @returns {integer} - Jellyfin index of best audio stream, or 0 if not found
@@ -634,7 +634,7 @@ end function
 '
 ' Strategy:
 ' - Use combined check (no PassThru) for 6-channel and below (safe, checks both)
-' - ALWAYS verify 8-channel with PassThru: 1 (combined check can lie)
+' - Always verify 8-channel with PassThru: 1 (combined check can lie)
 ' - Roku max native decode is 6 channels (varies by model)
 ' - 8-channel requires HDMI passthrough to receiver/soundbar
 '
@@ -666,7 +666,7 @@ function getDeviceAudioCapabilities() as object
   ' CRITICAL: Always use PassThru: 1 for 8-channel verification
   ' The combined check (no PassThru) can lie about 8-channel support
   ' Roku devices cannot natively decode 8-channel audio (max is 6)
-  ' PassThru: 1 checks ONLY the HDMI device capability (receiver/soundbar)
+  ' PassThru: 1 checks only the HDMI device capability (receiver/soundbar)
   for each codec in audioCodecs
     if di.CanDecodeAudio({ Codec: codec, ChCnt: 8, PassThru: 1 }).Result
       supports8Channel = true
@@ -763,15 +763,15 @@ function findDirectPlayableStreamByChannelCount(audioStreams as object, targetCh
 end function
 
 ' findDefaultSubtitleStreamIndex: Determine which subtitle stream will be auto-selected during playback
-' Mirrors the selection logic in defaultSubtitleTrackFromVid() and sortSubtitles() (Subtitles.bs)
+' Mirrors the selection logic in defaultSubtitleTrackFromVid() and sortSubtitles() (subtitles.bs)
 ' for use on the render thread without requiring playback-specific dependencies (buildURL, etc.)
 '
 ' Selection logic (by subtitleMode):
-'   "none"      → No subtitles
-'   "default"   → First forced or default subtitle matching preferred language
-'   "always"    → First non-forced subtitle matching preferred language; fallback to forced/default
-'   "onlyforced"→ First forced subtitle matching preferred language
-'   "smart"     → First non-forced subtitle when audio language differs from preference; fallback to forced/default
+'   "none":       No subtitles
+'   "default":    First forced or default subtitle matching preferred language
+'   "always":     First non-forced subtitle matching preferred language; fallback to forced/default
+'   "onlyforced": First forced subtitle matching preferred language
+'   "smart":      First non-forced subtitle when audio language differs from preference; fallback to forced/default
 '
 ' Priority ordering: forced > default > normal; preferred language first within each category
 ' Text subtitles are tried first; non-text only used when playbackSubsOnlyText is false
@@ -794,7 +794,7 @@ function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStr
 
   ' Sort subtitles into priority buckets: forced > default > normal
   ' Within each bucket, preferred language entries come first
-  ' Mirrors sortSubtitles() in Subtitles.bs without URL building
+  ' Mirrors sortSubtitles() in subtitles.bs without URL building
   forced = []
   default = []
   normal = []
@@ -872,11 +872,11 @@ function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStr
 end function
 
 ' selectSubtitleByMode: Apply subtitle mode selection logic to sorted subtitle entries
-' Mirrors defaultSubtitleTrack() in Subtitles.bs
+' Mirrors defaultSubtitleTrack() in subtitles.bs
 '
 ' @param {object} sortedEntries - Array of sorted subtitle entries from findDefaultSubtitleStreamIndex
 ' @param {string} subtitleMode - Lowercase subtitle mode ("default", "always", "onlyforced", "smart")
-' @param {string} prefLang - Preferred subtitle language (ISO 639-2 code, e.g., "eng")
+' @param {string} prefLang - Preferred subtitle language (ISO 639-2 code, for example "eng")
 ' @param {string} selectedAudioLanguage - Language of the selected audio stream
 ' @param {boolean} requireText - If true, only consider text subtitle entries
 ' @param {object} languageMatches - matchingLanguageCodes() for prefLang over ALL the item's subtitles
@@ -1010,8 +1010,8 @@ end function
 '
 ' mediaSources[0] is only the server's default. A version picked in the Video dropdown sits
 ' elsewhere in the list, and from Jellyfin 12.0 the server moves the in-progress version to
-' the front, so anything about the file being PLAYED — its runtime, bitrate, container or
-' streams — has to be read from the source the request names (mediaSourceIndexForId).
+' the front, so anything about the file being PLAYED (its runtime, bitrate, container or
+' streams) has to be read from the source the request names (mediaSourceIndexForId).
 '
 ' @param {dynamic} mediaSources - MediaSourceInfo array
 ' @param {dynamic} mediaSourceId - the id the request names ("" or invalid = the default)
@@ -1050,7 +1050,7 @@ end function
 ' 1. Resolution fit (primary): Prefer highest resolution at or below device max.
 '    Sources exceeding device max receive a penalty (will likely transcode).
 ' 2. HDR match (secondary): If device supports HDR, prefer HDR sources.
-'    If device does NOT support HDR, prefer SDR (avoids tone-mapping transcode).
+'    If device does not support HDR, prefer SDR (avoids tone-mapping transcode).
 ' 3. Direct play (tertiary): Prefer sources the server says can direct play.
 ' 4. Bitrate (tiebreaker): Higher bitrate wins among otherwise-equal sources.
 '
@@ -1108,7 +1108,7 @@ function findBestVideoSource(mediaSources as dynamic, deviceCapabilities = inval
         ' Device supports HDR and source is HDR: bonus
         score += 500
       else
-        ' Device does NOT support HDR: penalty (tone-mapping transcode)
+        ' Device does not support HDR: penalty (tone-mapping transcode)
         score -= 500
       end if
     end if
@@ -1139,8 +1139,8 @@ end function
 '
 ' The tie-break half of versionResume.chooseResumeSource(): that module decides which
 ' versions are at the same place and so compete on quality, but it is pure by contract and
-' has no device knowledge, so it hands the tie back as ids. Scoring runs over just those
-' versions, because the best of a subset is not the best overall — a 4K version nobody has
+' has no device knowledge, so it hands the tie back as ids. Scoring runs over only those
+' versions, because the best of a subset is not the best overall: a 4K version nobody has
 ' started must not win a tie between two the viewer is actually partway through.
 '
 ' @param {dynamic} mediaSources - the item's full MediaSource array

@@ -10,16 +10,16 @@ import "pkg:/source/utils/misc.bs"
 '
 '   * On 12.x they filter. `audioLanguages=zzz` returns 0 of 17 films; `=eng`
 '     returns all 17.
-'   * On 10.11 they are SILENTLY IGNORED — `audioLanguages=zzz` returns all 17,
+'   * On 10.11 they are silently ignored: `audioLanguages=zzz` returns all 17,
 '     in either casing. That is why the filters are version-gated rather than
 '     offered everywhere and allowed to no-op: a 10.11 user picking "Japanese
 '     audio" would get their whole library back, which reads as a broken filter.
 '   * Within one parameter the values are OR'd (`hin,pol` returns exactly the
 '     union, 2 films); across the two parameters they are AND'd (Spanish audio 3,
 '     Japanese subtitles 9, both together 2). The panel can only have one filter
-'     category active at a time, so only the OR half is reachable today —
+'     category active at a time, so only the OR half is reachable today:
 '     see `itemgridoptions-single-active-filter` in tech-debt.md.
-'   * Comma is the delimiter ON THE WIRE, and a pipe returns 0 there. It is NOT what
+'   * Comma is the delimiter on the wire, and a pipe returns 0 there. It is not what
 '     the categories declare: an option's value is itself several comma-joined codes,
 '     so the panel separates options with PANEL_DELIMITER and toWire() flattens the
 '     two apart when the request is built. See PANEL_DELIMITER for why.
@@ -27,10 +27,10 @@ import "pkg:/source/utils/misc.bs"
 '     return 0. So the option list must send the server's own `Value` verbatim,
 '     which is why nothing here upper- or lower-cases a code.
 '
-' THE ALIAS TRAP, and why this module exists at all. The server does NOT
+' The alias trap, and why this module exists at all. The server does not
 ' canonicalize ISO 639-2/T against /B: it matches the literal tag on the file. On
 ' the same library, `subtitleLanguages=fra` returns 1 film and `fre` returns 10,
-' and `/Items/Filters2` duly advertises BOTH as separate options — "French (fra)"
+' and `/Items/Filters2` duly advertises both as separate options: "French (fra)"
 ' and "French (fre)". Offering those two entries as the server sends them would be
 ' a filter where picking "French" gives one of two partial answers and which one
 ' is arbitrary. Grouping them and sending `fra,fre` returns all 11, which is what
@@ -39,7 +39,7 @@ import "pkg:/source/utils/misc.bs"
 ' The grouping needs no new table: `languageBaseCode()` already folds the alias
 ' pairs (it is the same fold the audio/subtitle track pickers use), and
 ' `resolveLanguageName()` already localizes a code through the app's own language
-' keys. Checked 2026-09-22 against the 52 codes the local fixture reports — every
+' keys. Checked 2026-09-22 against the 52 codes the local fixture reports: every
 ' one resolves, and the 8 alias pairs present (fra/fre, deu/ger, ces/cze, nld/dut,
 ' zho/chi, eus/baq, ell/gre, ron/rum) merge cleanly.
 '
@@ -70,21 +70,21 @@ namespace languageFilters
   ' One language's value is already several codes joined by a comma ("fra,fre"), so a
   ' comma between options makes the saved query ambiguous: the restore pass splits
   ' "fra,fre" into "fra" and "fre", matches neither against the option, and leaves the
-  ' box unticked while the filter is still applied — and one confirming keypress on that
+  ' box unticked while the filter is still applied, and one confirming keypress on that
   ' panel then clears the filter outright. Measured on a Roku Stick 2026-09-22: the
   ' round-trip test fails on exactly the 8 alias-merged languages and passes on the rest,
   ' which is what makes the bug look like flakiness rather than breakage.
   '
-  ' "|" is what Genres and OfficialRatings already use for the same reason — their values
-  ' are free text that can contain a comma — so this follows the panel's existing rule
-  ' rather than inventing one: AN OPTION'S VALUE NEVER CONTAINS ITS CATEGORY'S DELIMITER.
+  ' "|" is what Genres and OfficialRatings already use for the same reason (their values
+  ' are free text that can contain a comma), so this follows the panel's existing rule
+  ' rather than inventing one: an option's value never contains its category's delimiter.
   ' toWire() flattens the two apart on the way to the request.
   const PANEL_DELIMITER = "|"
 
   ' supported: Whether this server honours the language filter parameters.
   '
   ' @param {string} serverVersion - m.global.server.version
-  ' @return {boolean} false for an empty/unknown version (the conservative answer —
+  ' @return {boolean} false for an empty/unknown version (the conservative answer:
   '                   an unknown server is assumed not to filter, so the categories
   '                   are hidden rather than offered and silently ignored)
   function supported(serverVersion as string) as boolean
@@ -122,19 +122,20 @@ namespace languageFilters
       ' tables are keyed differently, and languageEnglishFallbacks holds the 3-letter
       ' forms ("aar" -> "Afar") while the base of "aar" is "aa", which no table carries.
       ' Resolving the base would render Afar as a bare "aa". (Tried, measured, reverted
-      ' 2026-09-22 — the naive de-duplication of this line is a downgrade.)
+      ' 2026-09-22: the naive de-duplication of this line is a downgrade.)
       '
-      ' Empty means a code the app deliberately renders as nothing ("und", "zxx") — there
+      ' Empty means a code the app renders as nothing on purpose ("und", "zxx"). There
       ' is no sensible row to offer for those, so they are dropped rather than shown with
       ' a blank title. A code with no name at ALL keeps its raw form as the label, because
       ' resolveLanguageName() falls back to the code: a filter that works under an ugly
       ' label beats one that silently is not offered.
       '
-      ' KNOWN LIMIT, deliberately not addressed here: when a group's spellings resolve to
+      ' Known limit, left unaddressed here on purpose: when a group's spellings resolve to
       ' DIFFERENT names, the first one the server listed wins, so the label depends on its
       ' ordering. That needs both spellings of one language present in a single library
-      ' AND only one of them carrying a name — no such pair exists in the 52 codes the
-      ' local fixture reports, where every alias pair resolves identically.
+      ' and only one of them carrying a name. No such pair exists in the 52 codes the
+      ' local fixture reported (counted 2026-09-22), where every alias pair resolves
+      ' identically.
       title = resolveLanguageName(code)
       if title = "" then continue for
 
@@ -165,8 +166,8 @@ namespace languageFilters
   ' toWire: the request form of a saved `filterOptions` AA.
   '
   ' The panel and the registry separate selected options with PANEL_DELIMITER; the server
-  ' wants one flat comma list. Flattening that one level is the entire conversion —
-  ' "fra,fre|deu,ger" becomes "fra,fre,deu,ger" — and it is what lets the saved form stay
+  ' wants one flat comma list. Flattening that one level is the entire conversion
+  ' ("fra,fre|deu,ger" becomes "fra,fre,deu,ger"), and it is what lets the saved form stay
   ' unambiguous while the sent form stays what the server accepts.
   '
   ' Only the two language keys are touched. Every other category already stores exactly

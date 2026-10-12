@@ -53,7 +53,7 @@ end function
 ' whether it has already been auto-skipped this playback session.
 '
 ' A Skip-configured segment auto-seeks only on its first pass. Once skipped, rewinding
-' back into it must NOT re-skip (that would trap the user in a rewind loop) — but the
+' back into it must not re-skip (that would trap the user in a rewind loop), but the
 ' user should still get the *manual* Skip button. So an already-skipped Skip segment
 ' degrades to AskToSkip; all other actions pass through unchanged.
 '
@@ -122,8 +122,8 @@ const SEGMENT_SKIP_END_OF_MEDIA_SECONDS = 5
 ' reports a playback error, instead of ever reaching `finished` and moving on. So the
 ' caller finishes playback rather than seeking.
 '
-' Deliberately independent of the segment TYPE. Any segment can run to the end of the
-' file — a Preview after the Outro, credits, a commercial — and what makes the seek
+' Independent of the segment TYPE on purpose. Any segment can run to the end of the
+' file (a Preview after the Outro, credits, a commercial), and what makes the seek
 ' unplayable is where it lands, not what the segment was called.
 '
 ' @param {float} segmentEndSeconds - Where the skip would seek to

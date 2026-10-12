@@ -71,9 +71,10 @@ namespace trickplay
   end function
 
   ' Selects the best trickplay resolution based on device capabilities
-  ' SD (720p) uses smallest available, FHD (1920p) uses largest, scales between
-  ' @param {Object} trickplayData - Trickplay data object with width keys (e.g., {"320": {...}, "640": {...}})
-  ' @param {Integer} deviceWidth - Device max video width (e.g., 1920 for FHD, 720 for SD)
+  ' SD (width 720 or less) uses the smallest available, FHD (width 1920 or more) the largest,
+  ' and anything between takes the middle one
+  ' @param {Object} trickplayData - Trickplay data object with width keys (for example {"320": {...}, "640": {...}})
+  ' @param {Integer} deviceWidth - Device max video width (for example 1920 for FHD, 720 for SD)
   ' @return {String} - Best width key to use, or invalid if no data available
   function selectBestResolution(trickplayData as object, deviceWidth as integer) as dynamic
     if not isValid(trickplayData) or trickplayData.count() = 0
@@ -105,7 +106,7 @@ namespace trickplay
     ' Select resolution based on device width:
     ' <= 720 (SD): smallest available
     ' >= 1920 (FHD): largest available
-    ' Between: scale proportionally
+    ' Between: the middle entry
     if deviceWidth <= 720
       ' SD - use smallest
       return availableWidths[0].ToStr()

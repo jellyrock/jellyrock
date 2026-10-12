@@ -4,12 +4,12 @@ import "pkg:/source/utils/misc.bs"
 
 ' Returns the image URL for a row item based on its type, slot dimensions, and user settings.
 '
-' Does NOT handle blur — blur is appended by the caller (JRRowItem) after the URL is resolved.
+' Does not handle blur: the caller (JRRowItem) appends blur after the URL is resolved.
 '
 ' @param item - JellyfinBaseItem content node
 ' @param slotWidth - width of the image area in pixels (from rowSlotSize constant)
-' @param posterHeight - height of the image area in pixels; pass rowSlotSize[1] directly —
-'                       text is laid out below the slot by the caller, so do NOT subtract
+' @param posterHeight - height of the image area in pixels; pass rowSlotSize[1] directly.
+'                       Text is laid out below the slot by the caller, so do not subtract
 '                       the text area before passing this value (that would double-subtract it)
 ' @param userSettings - m.global.user.settings node (may be invalid)
 ' @param useEpisodeImages - pre-computed from m.global.user.config.useEpisodeImagesInNextUpAndResume;
@@ -39,9 +39,9 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
     return getItemImageUrl(item, "Primary", size)
   end if
 
-  ' Recordings: standalone items, not episodes of a series — the episode image setting
+  ' Recordings: standalone items, not episodes of a series, so the episode image setting
   ' (show art vs episode art) does not apply. Use only the item's own images (no parent/series
-  ' inheritance), falling back through Primary → Thumb → Backdrop.
+  ' inheritance), falling back from Primary to Thumb, then Backdrop.
   if item.type = "Recording"
     url = getItemImageUrl(item, "Primary", size)
     if url <> "" then return url

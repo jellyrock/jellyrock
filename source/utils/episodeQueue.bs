@@ -4,11 +4,11 @@ import "pkg:/source/utils/mediaSources.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/versionPick.bs"
 
-' One entry per episode in a queue the app builds from a list of episodes — the next episodes
+' One entry per episode in a queue the app builds from a list of episodes: the next episodes
 ' behind the one playing, Play All, quick play and shuffle of a series, season, person or folder.
 '
 ' Before 12.0 the server lists every file of an episode as its own episode (same series, season
-' and episode number, one MediaSource each — the same on 10.7 through 10.11), so a plain queue
+' and episode number, one MediaSource each; the same on 10.7 through 10.11), so a plain queue
 ' plays both copies back to back. Copies are grouped and one is kept, chosen like a version:
 ' the viewer's explicit pick when a copy matches it, else the best for the device
 ' (versionPick). A 12.0 server merges them into one item with alternate versions, so its
@@ -22,7 +22,7 @@ namespace episodeQueue
 
   ' episodeKey: "<seriesId>/S<season>E<episode>" for a single numbered episode, "" otherwise.
   '
-  ' "" means "never group": anything that is not an episode (a movie, a recording, a track —
+  ' "" means "never group": anything that is not an episode (a movie, a recording, a track,
   ' which has disc and track numbers), an episode without a series or numbers, and a
   ' multi-episode file (IndexNumberEnd past IndexNumber), which covers more than the episode
   ' its first number names. The series is part of the key so a list mixing shows never merges
@@ -66,7 +66,7 @@ namespace episodeQueue
     return groups
   end function
 
-  ' copyIds: The ids of every item that has another copy in its group — the only items whose
+  ' copyIds: The ids of every item that has another copy in its group: the only items whose
   ' MediaSources are needed to choose between them.
   function copyIds(groups as object) as object
     ids = []
@@ -80,7 +80,7 @@ namespace episodeQueue
     return ids
   end function
 
-  ' isGroupPlayed: Whether the viewer has watched this episode — on ANY copy. Before 12.0 each
+  ' isGroupPlayed: Whether the viewer has watched this episode, on any copy. Before 12.0 each
   ' copy keeps its own watched state, so an unwatched copy of a watched episode is not a reason
   ' to play it again.
   '
@@ -122,7 +122,7 @@ namespace episodeQueue
   '
   ' A copy's own source is its FIRST MediaSource: before 12.0 each copy is a separate item
   ' with its file as its only source. When any copy's sources could not be read, the server's
-  ' first copy is kept — a choice made on partial data would be a guess.
+  ' first copy is kept: a choice made on partial data would be a guess.
   '
   ' @param {object} group - copies of one episode, from groupByEpisode()
   ' @param {object} sourcesById - item id -> its MediaSources
@@ -144,7 +144,7 @@ namespace episodeQueue
   ' collapseCopies: The items with one copy per episode, in play order.
   '
   ' The imperative shell around the rules above; runs on a Task thread. MediaSources are
-  ' fetched only when copies exist — mediaSources.byIds() chunks them — so a 12.0 list
+  ' fetched only when copies exist (mediaSources.byIds() chunks them), so a 12.0 list
   ' (never any copies) costs nothing.
   '
   ' @param {dynamic} items - raw items in play order

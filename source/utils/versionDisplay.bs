@@ -4,7 +4,7 @@ import "pkg:/source/utils/mediaSources.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/versionResume.bs"
 
-' The imperative shell for the display-progress correction — the half that fetches.
+' The imperative shell for the display-progress correction: the half that fetches.
 '
 ' versionResume's DISPLAY section holds the rules and the measurements; this holds the two
 ' requests they need, in one place, because three loaders make the same correction and two
@@ -19,7 +19,7 @@ namespace versionDisplay
   '
   ' Costs nothing at all on a pre-12 server, or for a page with nothing grouped. When a page
   ' DOES hold grouped items it makes one cheap request, and a second only if something is
-  ' actually in progress — see the DISPLAY section of versionResume for why that order, and for
+  ' actually in progress. See the DISPLAY section of versionResume for why that order, and for
   ' the measurements behind asking for MediaSources by id rather than on the resume list.
   '
   ' `cache` is owned by the CALLER, which is what lets one function serve both shapes: a grid
@@ -41,8 +41,8 @@ namespace versionDisplay
     if ids.Count() = 0 then return 0
 
     ' The ranking first, because an empty one ends it: nothing is in progress anywhere, so no
-    ' tile can need correcting and the second request is not worth making. Memoized either way
-    ' — a failed lookup must not be retried once per row.
+    ' tile can need correcting and the second request is not worth making. Memoized either way:
+    ' a failed lookup must not be retried once per row.
     if not isValid(cache.ranking)
       cache.ranking = versionResume.resumeRanking(versionDisplay.resumeRows(parentId, requestId))
     end if
@@ -64,7 +64,7 @@ namespace versionDisplay
   ' resumeRows: Every version the viewer is part-way through, in the server's DatePlayed order.
   '
   ' No Fields: the sibling ids come from mediaSources.byIds() instead, which is what keeps this
-  ' request's size tied to the viewer's backlog rather than multiplying it — 1.1 KB a row here
+  ' request's size tied to the viewer's backlog rather than multiplying it: 1.1 KB a row here
   ' against 7.3 KB with Fields=MediaSources, measured 2026-09-20 on a local 12.0 server.
   '
   ' @param {string} parentId - container to scope to, or ""

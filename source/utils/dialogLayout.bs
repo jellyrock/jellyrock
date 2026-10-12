@@ -1,24 +1,24 @@
 ' The ONE definition of how a JellyRock dialog is laid out.
 '
-' Every dialog in the family — JRDialog, JRListDialog, QuickConnectDialog,
-' OverviewDialog — is the same vertical flow with a different body, and after the
-' fixed-panel and outside-footer modes were deleted it is the ONLY flow there is:
+' Every dialog in the family (JRDialog, JRListDialog, QuickConnectDialog,
+' OverviewDialog) is the same vertical flow with a different body, and after the
+' fixed-panel and outside-footer modes were deleted it is the only flow there is:
 '
 '   padding | title | TITLE_GAP | accent | BODY_GAP | [subheading | SUBHEADING_GAP |] body | BODY_GAP | footer | padding
 '
 ' The accent rule sits TIGHT under the title (TITLE_GAP) because the two are one
-' unit — it belongs to the title, it does not divide the card. Below it the body
-' is centred in its own space (BODY_GAP above and below), so the eye reads
+' unit: it belongs to the title, it does not divide the card. Below it the body
+' is centered in its own space (BODY_GAP above and below), so the eye reads
 ' title -> body -> options as three steps. Hierarchy comes from the accent, not
 ' from unequal gaps.
 '
 ' The optional subheading is a lead line for the body, not a third step: it sits
 ' inside the body's space at SUBHEADING_GAP, so the pair still reads as one block.
 '
-' WHY THIS IS A MODULE AND NOT THREE COPIES. It was three copies. JRDialog was
-' restyled during the #757 review — buttons inside the panel, a 3px border, a
+' Why this is a module and not three copies: it was three copies. JRDialog was
+' restyled during the #757 review (buttons inside the panel, a 3px border, a
 ' short accent rule instead of a full-width divider, a derived flow instead of
-' fixed offsets — and JRListDialog and OverviewDialog kept the OLD look, because
+' fixed offsets), and JRListDialog and OverviewDialog kept the OLD look, because
 ' each carried its own private constants and its own layout code. Nothing caught
 ' it: no gate asserted a single position, gap, colour or asset, so "the app has
 ' one dialog language" stayed true only where someone had recently looked. These
@@ -36,8 +36,8 @@ const SCREEN_HEIGHT = 1080
 ' The spacing scale, on a 6px grid. Two separate things are going on here and
 ' they were previously conflated:
 '
-'   The 6px RHYTHM is a design convention — it keeps the flow on one scale.
-'   That is all it is. It does NOT, by itself, buy anything at 720p.
+'   The 6px RHYTHM is a design convention: it keeps the flow on one scale.
+'   That is all it is. It does not, by itself, buy anything at 720p.
 '
 '   CRISPNESS at 720p comes from where an edge finally LANDS. Roku renders the
 '   full 1920x1080 framebuffer and supersamples it (manifest, #419), so an edge
@@ -46,21 +46,21 @@ const SCREEN_HEIGHT = 1080
 '
 ' Divisible constants never delivered the second thing, because every offset is
 ' added to a panel origin derived from a MEASURED text height. Absolute edges
-' landed on the grid about a third of the time — chance. snapToGrid() below is
+' landed on the grid about a third of the time, by chance. snapToGrid() below is
 ' what actually delivers it; the spec asserts the edges, not the constants.
 const PANEL_PADDING = 48
 const TITLE_GAP = 24
 const BODY_GAP = 36
 const SEPARATOR_HEIGHT = 3
 
-' Gap between an optional subheading and the body it leads. Deliberately TIGHTER
+' Gap between an optional subheading and the body it leads. TIGHTER on purpose
 ' than BODY_GAP and equal to TITLE_GAP, for the same reason: the subheading and
 ' the body are one unit. At BODY_GAP the two would read as separate blocks and
 ' the subheading would look like a second title.
 const SUBHEADING_GAP = 24
 
 ' Daylight between an ANCHORED panel and the thing it is anchored to. Equal to
-' TITLE_GAP and SUBHEADING_GAP because it reads as the same kind of gap — the
+' TITLE_GAP and SUBHEADING_GAP because it reads as the same kind of gap: the
 ' panel and its anchor are one unit, the way a title and its accent rule are.
 ' Non-zero on purpose: the two must not touch, or the menu reads as an extension
 ' of the button row rather than as a surface floating above it.
@@ -79,23 +79,25 @@ const PANEL_WIDTH_SCALE = 6
 ' own comments with nothing enforcing it, which is how a scale drifts.
 '
 ' LIST_ROW_CHECK_GUTTER = LIST_ROW_PADDING + LIST_ROW_ICON_SIZE + 24 gap. A fixed
-' gutter on EVERY row, selected or not, so the labels line up with each other.
+' gutter on every row, selected or not, so the labels line up with each other.
 '
 ' The gutter holds one of two things and never both: the current-option check, or
 ' a leading action icon (an overflow menu's rows carry the same glyph the button
 ' they replaced was wearing). LIST_ROW_ICON_SIZE is the SLOT, which is why it is
-' on the 6px scale — unlike CHECK_ICON_SIZE in JRListDialogRow.bs, which is a
-' source-bitmap dimension and deliberately is not.
+' on the 6px scale, unlike CHECK_ICON_SIZE in JRListDialogRow.bs, which is a
+' source-bitmap dimension and is not on purpose.
 const LIST_ROW_HEIGHT = 60
 const LIST_ROW_SPACING = 24
 const LIST_ROW_PADDING = 24
 const LIST_ROW_ICON_SIZE = 36
 const LIST_ROW_CHECK_GUTTER = 84
 
-' Minimum width of a dialog footer button. Shared because THREE places need the
-' same number — JRDialog sizes its row with it, choicesFitAsButtons estimates
-' against it to decide button-row vs list, and OverviewDialog's OK uses it — and
-' the last two previously carried their own copy of the literal.
+' Minimum width of a dialog footer button. Shared because several places need the
+' same number: JRDialog sizes its row with it, choicesFitAsButtons estimates
+' against it to decide button-row vs list, OverviewDialog's OK and
+' QuickConnectDialog's Cancel use it, and JRListDialog derives its
+' MIN_CONTENT_PANEL_WIDTH from it. choicesFitAsButtons and OverviewDialog
+' previously carried their own copy of the literal.
 '
 ' 204, not 200: on the 6px scale so the button's own edges land on the 720p grid.
 const DIALOG_BUTTON_MIN_WIDTH = 204
@@ -110,26 +112,27 @@ const DIALOG_BUTTON_PADDING = 30
 ' A short accent rule under the title, not a full-width divider: at content width
 ' it competed with the body instead of supporting the title.
 '
-' Rendered in colorSecondary, NOT colorPrimary — colorPrimary is the theme's
-' FOCUSABLE colour (it is the focus ring on the buttons in this same dialog) and
-' this rule can never take focus. See components/CLAUDE.md's theme-colour table.
+' Rendered in colorSecondary, not colorPrimary: colorPrimary is the theme's
+' FOCUSABLE color (it is the focus ring on the buttons in this same dialog) and
+' this rule can never take focus. See components/CLAUDE.md's theme-color table.
 const SEPARATOR_ACCENT_WIDTH = 120
 
-' Ceiling so a panel can never exceed the screen — at 1080 this leaves 78px top
+' Ceiling so a panel can never exceed the screen: at 1080 this leaves 78px top
 ' and bottom. A dialog that reaches it is holding content that belongs in
 ' showInfoDialog, so callers are expected to notice rather than silently clip.
 '
 ' The 60 is the value #757 chose; consolidating the three copies into this
 ' module briefly changed it to 24, which loosened JRDialog's message ceiling by
 ' 36px. The spec pins it now, because the before/after render comparison that
-' verified the consolidation could not see it — the ceiling only engages at
-' roughly 600 characters of message, four times taller than anything captured.
+' verified the consolidation could not see it: the ceiling only engages at
+' roughly 600 characters of message, four times taller than anything captured
+' (figures from 2026-08-22).
 const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 60
 
 ' Compute every rect a dialog needs, from the heights it has measured.
 '
 ' ONE SHAPE, for every dialog. The footer always flows INSIDE the panel and the
-' panel is always derived from its content — there is no fixed-panel mode and no
+' panel is always derived from its content. There is no fixed-panel mode and no
 ' outside-footer mode, because a second way to lay out a dialog is how the app
 ' grew two dialog looks the first time. Both variants existed for OverviewDialog
 ' alone and both are gone: a before/after capture on device showed the outside
@@ -145,7 +148,7 @@ const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 60
 '                  body, 0 for none. Its slot only exists when it is non-zero,
 '                  so a dialog without one is laid out exactly as before.
 '   bodyHeight   - measured/derived body height, 0 for none. CLAMPED so the panel
-'                  never exceeds PANEL_MAX_HEIGHT — read `body.height` back, do
+'                  never exceeds PANEL_MAX_HEIGHT. Read `body.height` back; do
 '                  not assume you got what you asked for.
 '   footerHeight - measured footer height, 0 for none
 '   anchor       - OPTIONAL { x, y, width }, in screen coordinates. Omitted, the
@@ -159,7 +162,7 @@ const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 60
 ' @returns {object} - { panel, title, accent, subheading, body, footer }, each
 '                     { x, y, width, height }, plus `overflows`.
 '
-' `overflows` means THE BODY DID NOT FIT and was clamped — what to do about it is
+' `overflows` means the body did not fit and was clamped. What to do about it is
 ' the caller's, and the two answers differ: JRDialog truncates its message to
 ' `body.height` worth of lines (a confirm that scrolls is a confirm that should
 ' have been an info dialog), OverviewDialog scrolls its viewport at exactly that
@@ -173,8 +176,8 @@ function computeDialogLayout(spec as object) as object
 
   ' An anchor is present only if it carries the one field placement cannot be
   ' derived without. x and width default to 0 so a half-built anchor lays out
-  ' against the screen's left edge rather than reading uninitialised memory as a
-  ' position — visibly wrong, which is what you want from a caller bug.
+  ' against the screen's left edge rather than reading uninitialized memory as a
+  ' position: visibly wrong, which is what you want from a caller bug.
   anchor = spec.anchor
   hasAnchor = isValid(anchor) and isValid(anchor.y)
   anchorX = 0
@@ -214,7 +217,7 @@ function computeDialogLayout(spec as object) as object
 
   ' A gap only exists BETWEEN things. A dialog whose body is the last thing in
   ' the panel (JRListDialog has no footer at all) gets padding under it and
-  ' nothing else — reserving a footer's gap for a footer that is not there left
+  ' nothing else. Reserving a footer's gap for a footer that is not there left
   ' 84px of dead space under the list, which is what this shape is guarding.
   hasFooter = footerHeight > 0
 
@@ -223,9 +226,9 @@ function computeDialogLayout(spec as object) as object
   ' that still fits is arithmetic rather than a second pass. Clamping HERE, in
   ' the one place that owns the flow, is why no caller has to re-derive the
   ' ceiling: a dialog asks for the body it measured and is told what it got.
-  ' An anchored panel has LESS room than a centred one: it may only occupy the
+  ' An anchored panel has LESS room than a centered one: it may only occupy the
   ' band between the top margin and the gap above its anchor. Resolving that into
-  ' the same `ceiling` the centred path uses is what lets one clamp serve both —
+  ' the same `ceiling` the centered path uses is what lets one clamp serve both,
   ' and it is why an anchored caller needs no new overflow handling. It asks for
   ' the body it measured, is told what it got, and JRListDialog's existing
   ' drop-rows-and-relayout loop reacts to `overflows` exactly as it always has.
@@ -249,9 +252,9 @@ function computeDialogLayout(spec as object) as object
   if bodyHeight > maxBodyHeight
     bodyHeight = maxBodyHeight
     overflows = true
-    ' Deliberately NOT snapped, unlike the measured heights above. This one is
+    ' Not snapped, on purpose, unlike the measured heights above. This one is
     ' an ALLOWANCE bounded by the ceiling, and snapping it UP would defeat the
-    ' clamp it was just subjected to.
+    ' clamp it has only now been through.
   end if
 
   contentBottom = bodyY + bodyHeight
@@ -269,17 +272,17 @@ function computeDialogLayout(spec as object) as object
   ' The clamp above bounds the BODY, which is the whole story only while the body
   ' is what grew. A title tall enough to blow the ceiling on its own leaves
   ' maxBodyHeight at 0 and clamps nothing, so the panel can still come back over
-  ' the line — say so rather than reporting a fit nobody checked.
+  ' the line. Say so rather than reporting a fit nobody checked.
   if panelHeight > ceiling then overflows = true
 
   ' --- place the panel, then resolve everything to screen coordinates --------
-  ' Both origins snap to the grid, because every offset is measured from them —
-  ' they decide whether anything else lands on it. Centring halves a snapped
+  ' Both origins snap to the grid, because every offset is measured from them:
+  ' they decide whether anything else lands on it. Centering halves a snapped
   ' height, which re-introduces a 1.5px offset, hence snapping the result too.
   ' Moves the panel by at most 2px, which is invisible; the spec pins the drift.
   '
   ' panelX only guarantees the LEFT edge. The right edge is panelX + panelWidth,
-  ' so it additionally needs a width on the 6px scale — which every caller now
+  ' so it additionally needs a width on the 6px scale, which every caller now
   ' uses, and which is why a width divisible by 6 lands panelX on the grid by
   ' itself ((1920 - w) / 2 = 960 - w/2). The snap is the floor for a future
   ' caller that picks a width off the scale: one crisp edge beats none.
@@ -288,7 +291,7 @@ function computeDialogLayout(spec as object) as object
     ' normally positioned: try the side you want, flip to the other only when the
     ' panel would not fit there.
     '
-    ' Preferred is LEFT-aligned, growing right — the menu starts under the button
+    ' Preferred is LEFT-aligned, growing right: the menu starts under the button
     ' that opened it, which is the direction the eye is already travelling. The
     ' fallback is RIGHT-aligned, growing left, and it exists because both callers
     ' anchor to the LAST button of a left-to-right row, which sits near the right
@@ -296,7 +299,7 @@ function computeDialogLayout(spec as object) as object
     ' the OSD's at x=1530, leaving 342px. A panel wider than that has nowhere to
     ' go rightward, and the left side has 1256px and 1618px respectively.
     '
-    ' So a narrow menu — every one either surface builds today — opens leftward
+    ' So a narrow menu (every one either surface builds today) opens leftward
     ' under its button, and only a wide one (a long translation, a longer label
     ' set) flips to where the room actually is. One rule; the side it picks is a
     ' consequence of where the anchor sits, not a per-surface decision.
@@ -304,7 +307,7 @@ function computeDialogLayout(spec as object) as object
     ' UPWARD in both cases, because both surfaces put their button row near the
     ' bottom of the screen (ItemDetails at y=800, the OSD at y=932), so above is
     ' where the room is. That is an observation about these two callers, not a
-    ' law — a row near the TOP would need a downward variant, and this is the
+    ' law: a row near the TOP would need a downward variant, and this is the
     ' place to add it rather than a second placement mode elsewhere.
     rightLimit = SCREEN_WIDTH - PANEL_PADDING
 
@@ -316,8 +319,8 @@ function computeDialogLayout(spec as object) as object
     panelY = floorToGrid(anchorY - ANCHOR_GAP - panelHeight)
 
     ' Keep the panel on screen with the same margin the centred path leaves.
-    ' Both bounds are already grid-aligned — PANEL_PADDING is 48, and the right
-    ' bound is 1872 minus a width the caller took off the 6px scale — so
+    ' Both bounds are already grid-aligned (PANEL_PADDING is 48, and the right
+    ' bound is 1872 minus a width the caller took off the 6px scale), so
     ' clamping after the snap cannot knock an edge back off the grid.
     minPanelX = PANEL_PADDING
     maxPanelX = rightLimit - panelWidth
@@ -328,7 +331,7 @@ function computeDialogLayout(spec as object) as object
     if panelX > maxPanelX then panelX = maxPanelX
 
     ' The ceiling above already sized the body to fit this band, so this clamp
-    ' only engages for the case the ceiling cannot fix — a title tall enough to
+    ' only engages for the case the ceiling cannot fix: a title tall enough to
     ' blow it on its own, which `overflows` has already reported.
     if panelY < PANEL_PADDING then panelY = PANEL_PADDING
   else
@@ -357,7 +360,7 @@ end function
 '
 ' A fallback rather than an early return at the call site, and all three callers
 ' need it for the same reason: a dialog with no title and no body is a legitimate
-' state — it is the one every spec constructs — and returning would park it with
+' state (it is the one every spec constructs), and returning would park it with
 ' an unlaid-out panel forever, since nothing else would fire to bring it back.
 '
 ' One definition because there were three, verbatim, including the literal 60.
@@ -371,7 +374,7 @@ function dialogButtonFallbackHeight(fontSize as integer) as integer
   return int(fontSize * DIALOG_BUTTON_TEXT_RATIO) + (DIALOG_BUTTON_PADDING * 2)
 end function
 
-' Centre a block of `width` inside a rect — for a footer button that is narrower
+' Center a block of `width` inside a rect, for a footer button that is narrower
 ' than the content column it was allotted.
 function centreInRect(container as object, width as integer) as integer
   return container.x + int((container.width - width) / 2)
@@ -394,7 +397,7 @@ end function
 ' ((1920 - w) / 2 = 960 - w/2), and the right edge is panelX + width.
 '
 ' For a caller whose width GROWS to fit its content (JRDialog's button row), the
-' fixed constant being on the scale is not enough — the grown value is derived
+' fixed constant being on the scale is not enough: the grown value is derived
 ' from a measured row width and lands wherever it lands. Costs at most 5px of
 ' width, which no layout here is tight enough to notice.
 function snapPanelWidthToScale(width as integer) as integer
@@ -422,7 +425,7 @@ end function
 
 ' Missing and non-numeric both mean "not supplied". Callers pass measured values
 ' that are invalid until the node has rendered, and a layout computed from those
-' is discarded and recomputed — it must not fault on the way through.
+' is discarded and recomputed, so it must not fault on the way through.
 '
 ' `roInteger` is in this list because BrightScript reports integers under THREE
 ' names (roInt / roInteger / Integer) depending on how the value was boxed, and

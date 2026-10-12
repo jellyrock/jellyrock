@@ -5,8 +5,8 @@ import "pkg:/source/utils/misc.bs"
 '
 ' Parse leniently: the input is not always server-written. Jellyfin returns a
 ' subtitle file unchanged when it is already in the requested format
-' (`SubtitleEncoder.GetSubtitles()`), so an external `.vtt` on the user's disk —
-' hand-edited, or an SRT renamed to `.vtt` — reaches this parser byte for byte.
+' (`SubtitleEncoder.GetSubtitles()`), so an external `.vtt` on the user's disk
+' (hand-edited, or an SRT renamed to `.vtt`) reaches this parser byte for byte.
 
 ' The timestamp grammar vttTimestampToMs() accepts: `[H:]MM:SS.mmm`. The hour field
 ' is optional in WebVTT. A comma before the milliseconds is not valid WebVTT, but it
@@ -44,9 +44,9 @@ end function
 ' Parses a WebVTT file into caption lines.
 '
 ' A WebVTT file is blocks separated by blank lines, and only a cue's text is shown:
-' the lines after its timing line, up to the next blank line. Everything else — the
-' WEBVTT header, NOTE / STYLE / REGION blocks, and a cue identifier (the optional
-' line BEFORE a timing line) — is skipped, because none of it follows a timing line
+' the lines after its timing line, up to the next blank line. Everything else (the
+' WEBVTT header, NOTE / STYLE / REGION blocks, and a cue identifier, the optional
+' line BEFORE a timing line) is skipped, because none of it follows a timing line
 ' within its block.
 '
 ' A cue whose timing cannot be read is dropped whole, and its text with it: attaching

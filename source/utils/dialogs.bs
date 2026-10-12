@@ -1,14 +1,14 @@
-' Standard dialog helpers — the ONE way to show a dialog in JellyRock.
+' Standard dialog helpers: the one way to show a dialog in JellyRock.
 '
 ' All helpers create the dialog, present it, and return the dialog NODE. Result
 ' delivery is per-dialog-instance through the node's `result` field (shape:
 ' { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value,
 ' externallyCancelled }), set
-' exactly once when the user resolves the dialog — there is no shared global
+' exactly once when the user resolves the dialog. There is no shared global
 ' return field, so concurrent observers can never cross-fire.
 '
-' From a COMPONENT (render thread), pass onResult — the name of a function in
-' YOUR component scope — and the helper wires the scoped observer for you:
+' From a COMPONENT (render thread), pass onResult (the name of a function in
+' YOUR component scope), and the helper wires the scoped observer for you:
 '
 '   m.dialog = showConfirmDialog(tr("Delete"), tr("Are you sure?"), "onDeleteConfirm")
 '   sub onDeleteConfirm()
@@ -22,7 +22,7 @@
 '
 ' JRDialog / JRListDialog / QuickConnectDialog are scene-appended overlays
 ' (OverviewDialog mechanics); showKeyboardDialog uses Roku's modal channel
-' (m.scene.dialog) because it wraps the OS keyboard. Callers don't need to care —
+' (m.scene.dialog) because it wraps the OS keyboard. Callers don't need to care:
 ' the result contract is identical.
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
@@ -35,23 +35,24 @@ import "pkg:/source/utils/translate.bs"
 '
 ' result.buttonIndex is 0 for OK, 1 for the secondary action, and the result is
 ' `cancelled` on back. A caller with no secondary state to unwind should treat
-' cancelled exactly as it treats OK — back on a one-button alert has nothing to
+' cancelled exactly as it treats OK: back on a one-button alert has nothing to
 ' cancel back to.
 '
 ' `subheading` is an optional BOLD lead line above the message, for a message
-' that genuinely arrives in two parts — a heading and its text. Use it only when
+' that arrives in two parts: a heading and its text. Use it only when
 ' the two parts come from different places (the cast notice: JellyRock owns the
 ' provenance title, the sender owns the heading and the body). A message you
 ' wrote yourself belongs in one string.
 '
 ' `secondaryButtonText` adds ONE extra button to the right of OK, for an action
-' that does not leave the alert's subject — "Details" on an error, not a second
+' that does not leave the alert's subject: "Details" on an error, not a second
 ' answer to a question. Two answers to a question are showConfirmDialog.
 '
-' NOT showChoiceDialog, which is the near miss a reader will reach for: it falls
+' Not showChoiceDialog, which is the near miss a reader will reach for: it falls
 ' back to JRListDialog when the labels are wide (long translations), which would
 ' turn an error message into a scrollable list, and its contract says NOTHING is
-' current yet — wrong for an alert whose primary action is already the default.
+' current yet. That is wrong for an alert whose primary action is already the
+' default.
 function showAlertDialog(title as string, message as string, onResult = "" as string, subheading = "" as string, secondaryButtonText = "" as string) as object
   dialog = createObject("roSGNode", "JRDialog")
   dialog.title = title
@@ -62,7 +63,7 @@ function showAlertDialog(title as string, message as string, onResult = "" as st
   if secondaryButtonText <> "" then buttons.push(secondaryButtonText)
 
   ' OK is focused whether or not a secondary exists. The secondary is an EXTRA,
-  ' never the thing a reflexive press should land on — and setting this before
+  ' never the thing a reflexive press should land on. Setting this before
   ' `buttons` matters, because assigning `buttons` is what builds and focuses the
   ' row (see JRDialog.onButtonsChanged).
   dialog.defaultButtonIndex = 0
@@ -71,7 +72,7 @@ function showAlertDialog(title as string, message as string, onResult = "" as st
 end function
 
 ' "Are you still watching?" (issue #982). One button, and ANY key answers it, Back
-' included (anyKeyResolves) — the question is only whether someone is there, so making
+' included (anyKeyResolves). The question is only whether someone is there, so making
 ' them find a particular button would defeat it.
 '
 ' `countdown` goes in the subheading slot, and the caller rewrites it every second. That
@@ -93,7 +94,7 @@ function showStillWatchingDialog(countdown as string, onResult = "" as string) a
 end function
 
 ' Yes/No-style confirmation. Cancel is LEFT, confirm is RIGHT; back = cancelled.
-' Read result.confirmed — true only when the confirm button was selected.
+' Read result.confirmed: true only when the confirm button was selected.
 function showConfirmDialog(title as string, message as string, onResult = "" as string, confirmText = "" as string, cancelText = "" as string) as object
   if confirmText = "" then confirmText = translate(translationKeys.ButtonYes)
   if cancelText = "" then cancelText = translate(translationKeys.ButtonNo)
@@ -108,7 +109,7 @@ function showConfirmDialog(title as string, message as string, onResult = "" as 
 end function
 
 ' 2+ mutually exclusive options. Up to 3 short options render as the horizontal
-' button row; more (or wider-than-panel labels, e.g. long translations) fall back
+' button row; more (or wider-than-panel labels, such as long translations) fall back
 ' to the scrollable list dialog. Either way the selection lands in
 ' result.optionIndex (-1 = cancelled), so callers don't care which route ran.
 ' bsc-disable-next-line dead-code keep: api: the pick-one member of the dialog family (#288); no feature has needed it yet
@@ -123,7 +124,7 @@ function showChoiceDialog(title as string, message as string, choices as object,
   end if
   ' selectedIndex left at its -1 default on purpose: a choice dialog is asking
   ' the user to pick, so NOTHING is current yet. Passing defaultIndex here would
-  ' mark whichever option we happened to focus as the one already in effect —
+  ' mark whichever option we happened to focus as the one already in effect,
   ' and the button route this falls back FROM shows no such marker, so the two
   ' presentations would stop meaning the same thing.
   return showListDialog(title, choices, onResult, defaultIndex)
@@ -133,12 +134,12 @@ end function
 ' result.optionIndex is the selected index, -1 on cancel.
 '
 ' `defaultIndex` is which row to FOCUS. `selectedIndex` is which option is
-' already CURRENT — it gets the check, the surface, and the "currently selected"
-' announcement — and defaults to -1, meaning none is. A picker passes both (they
+' already CURRENT (it gets the check, the surface, and the "currently selected"
+' announcement), and defaults to -1, meaning none is. A picker passes both (they
 ' normally coincide); anything offering a fresh choice passes only the first.
 ' `icons` is optional and positionally paired with `items`: an array of Poster
 ' URIs drawn in the row gutter the check would otherwise occupy. It exists for
-' ACTION lists — a "More" overflow menu whose rows should wear the same glyphs as
+' ACTION lists: a "More" overflow menu whose rows should wear the same glyphs as
 ' the buttons they stand in for. A picker passes none, because the gutter is
 ' already carrying its current-option check.
 function showListDialog(title as string, items as object, onResult = "" as string, defaultIndex = 0 as integer, selectedIndex = -1 as integer, icons = invalid as object) as object
@@ -152,8 +153,8 @@ function showListDialog(title as string, items as object, onResult = "" as strin
   return presentOverlayDialog(dialog, onResult)
 end function
 
-' An overflow ("More") menu — the same JRListDialog, presented as a MENU instead
-' of as a centred modal.
+' An overflow ("More") menu: the same JRListDialog, presented as a MENU instead
+' of as a centered modal.
 '
 ' Three presentation differences, and each is a fix for something the centred
 ' form got wrong here (#788):
@@ -162,7 +163,7 @@ end function
 '   the title/metadata column on the left. Anchored to the More button and grown
 '   upward, it sits over the backdrop art on the right and leaves both readable.
 '   It opens leftward from the button where it fits and flips rightward where it
-'   does not — computeDialogLayout owns that rule. `anchor` is { x, y, width } in
+'   does not; computeDialogLayout owns that rule. `anchor` is { x, y, width } in
 '   screen coordinates; build it with moreButtonAnchor() so it cannot drift from
 '   the cap that produced the button.
 '
@@ -170,12 +171,13 @@ end function
 '   label was stranded in a mostly-empty row.
 '
 '   NO DRAWN TITLE. The menu hangs off a button already labelled More, so the
-'   heading repeated it and cost ~100px of height. It is still ANNOUNCED — the
-'   title field is set, and narration reads that, not the panel.
+'   heading repeated it and cost about 100px of height (figure from 2026-09-07).
+'   It is still ANNOUNCED: the title field is set, and narration reads that, not
+'   the panel.
 '
 ' Everything else is JRListDialog: same chrome, same key model, same result
 ' contract, same specs. This is a presentation of the family's list dialog, not
-' a second surface — see docs/architecture/dialogs.md for why that distinction
+' a second surface. See docs/architecture/dialogs.md for why that distinction
 ' is enforced rather than encouraged.
 function showOverflowMenu(title as string, items as object, onResult as string, anchor as object, icons = invalid as object) as object
   dialog = createObject("roSGNode", "JRListDialog")
@@ -183,7 +185,7 @@ function showOverflowMenu(title as string, items as object, onResult as string, 
   dialog.titleVisible = false
   dialog.sizeToContent = true
   dialog.anchor = anchor
-  ' selectedIndex is left at -1: these are ACTIONS, so no row is current — which
+  ' selectedIndex is left at -1: these are ACTIONS, so no row is current. That
   ' is also what frees the row gutter for the buttons' own glyphs.
   if isValid(icons) then dialog.icons = icons
   ' Before `items`, which is the field that triggers the row build.
@@ -195,7 +197,7 @@ end function
 ' no result to observe. Wraps the existing OverviewDialog chrome.
 '
 ' `returnFocusTo` names the node to restore focus to on close. Pass it when the
-' OPENER is the right answer and you already hold it — a focusable element that
+' OPENER is the right answer and you already hold it: a focusable element that
 ' expands into this dialog. Omitted, focus returns to whatever was focused when
 ' the dialog opened, which is the same node in most cases but is DERIVED rather
 ' than known.
@@ -204,12 +206,12 @@ function showInfoDialog(title as string, overview as string, tagline = "" as str
   if title <> "" then dialog.title = title
   if tagline <> "" then dialog.tagline = tagline
   dialog.overview = overview
-  ' OverviewDialog has no `result` field — it self-closes on OK/back, so there is
+  ' OverviewDialog has no `result` field. It self-closes on OK/back, so there is
   ' nothing to observe. Present it through the same path as the other overlays.
   return presentOverlayDialog(dialog, "", returnFocusTo)
 end function
 
-' Show a structured read-only report — the same overlay as showInfoDialog, with a
+' Show a structured read-only report: the same overlay as showInfoDialog, with a
 ' body of label/value rows instead of a paragraph.
 '
 ' Returns the dialog so the caller can keep reporting into it: assigning
@@ -229,7 +231,7 @@ function showReportDialog(title as string, status as string, sections as object,
   dialog = createObject("roSGNode", "OverviewDialog")
   if title <> "" then dialog.title = title
   if status <> "" then dialog.tagline = status
-  ' Set BEFORE presenting, like every other dialog in the family — the panel is
+  ' Set BEFORE presenting, like every other dialog in the family: the panel is
   ' sized from the body, so a body arriving after mount would draw over a layout
   ' computed for nothing.
   dialog.sections = sections
@@ -238,18 +240,19 @@ end function
 
 ' Show a Quick Connect code and wait for the user to approve it elsewhere.
 '
-' A VIEW ONLY: it displays `code` with a Cancel button and resolves cancelled if
-' the user backs out. It does not poll and does not sign anyone in — the caller
-' owns the flow (initiate, poll, exchange) because that is a chain of
+' A view and nothing more: it displays `code` with a Cancel button and resolves
+' cancelled if the user backs out. It does not poll and does not sign anyone in.
+' The caller owns the flow (initiate, poll, exchange) because that is a chain of
 ' `fetchAsync` promises and the promise registry lives on the CALLER's `m`.
-' UserSelect.startQuickConnect is the reference and the only caller.
+' UserSelect is the reference and the only caller: startQuickConnect runs the
+' flow, and openQuickConnectDialog shows this view.
 '
 ' The caller closes it on the success path with abandonDialog(): approval comes
 ' from the server, not from the user, so there is nothing to deliver back through
 ' `result`.
 function showQuickConnectDialog(title as string, instruction as string, code as string, onResult = "" as string) as object
   dialog = createObject("roSGNode", "QuickConnectDialog")
-  ' Order matters only in that ALL of them are set before presenting — this
+  ' Order matters only in that all of them are set before presenting: this
   ' dialog lays out once and never re-flows (see its XML field comments).
   dialog.title = title
   dialog.instruction = instruction
@@ -263,7 +266,7 @@ end function
 '
 ' keyboardDomain drives the keyboard's VOICE dictation mode, so it must match the
 ' kind of text being entered ("email" / "numeric" / "alphanumeric" / "password" /
-' "generic"). secure = true implies "password" unless the caller names a domain —
+' "generic"). secure = true implies "password" unless the caller names a domain;
 ' otherwise a masked field would still dictate as free-form words.
 function showKeyboardDialog(title as string, onResult = "" as string, defaultText = "" as string, secure = false as boolean, keyboardDomain = "" as string) as object
   if keyboardDomain = ""
@@ -277,7 +280,7 @@ function showKeyboardDialog(title as string, onResult = "" as string, defaultTex
   if defaultText <> "" then dialog.setField("text", defaultText)
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
 
-  ' Roku modal channel — the OS owns presentation and focus for keyboard dialogs
+  ' Roku modal channel: the OS owns presentation and focus for keyboard dialogs
   scene = appScene()
   scene.dialog = dialog
   return dialog
@@ -285,7 +288,7 @@ end function
 
 ' Is a scene-appended overlay dialog currently on screen?
 '
-' The JRDialog family does NOT use Roku's modal channel (m.scene.dialog), so
+' The JRDialog family does not use Roku's modal channel (m.scene.dialog), so
 ' anything asking "is a dialog open?" via that channel alone has been answering
 ' false for every dialog in the app since the family moved to scene overlays.
 ' SceneManager.isDialogOpen() folds this in; prefer that if you have it, because
@@ -301,23 +304,23 @@ end function
 '
 ' Overlay dialogs are appended to the SCENE, not to the screen that opened them,
 ' so they outlive their opener: a routed view destroyed while one is open (deep
-' link, session expiry, server switch — anything that navigates without the user
+' link, session expiry, server switch: anything that navigates without the user
 ' pressing back) would leave a modal stranded over the incoming screen, with a
 ' scoped observer pointing at a torn-down scope and returnFocusTo pointing at a
 ' dead node. Safe to call with invalid / an already-closed dialog.
 sub abandonDialog(dialog as object)
   if not isValid(dialog) then return
 
-  ' unobserveField, NOT unobserveFieldScoped: the scoped form removes only the
+  ' unobserveField, not unobserveFieldScoped: the scoped form removes only the
   ' CALLING component's connection, so it misses a main-thread dialog observed
   ' with `observeField("result", m.port)`. The unscoped form drops every
-  ' observer on the field, scoped and port alike — which is what "abandon"
+  ' observer on the field, scoped and port alike, which is what "abandon"
   ' means. That is a WIDENING, and it is safe only because a dialog has exactly
   ' one owner. Don't reuse abandonDialog() on a node several scopes observe.
   dialog.unobserveField("result")
 
   if dialog.isSubtype("StandardKeyboardDialog")
-    ' Roku modal channel — the OS owns presentation; writing `close` dismisses it
+    ' Roku modal channel: the OS owns presentation; writing `close` dismisses it
     dialog.close = true
     return
   end if
@@ -331,7 +334,7 @@ end sub
 ' screen clear while the dialog's owner is still alive and waiting on a result.
 '
 ' The distinction matters. abandonDialog() delivers NOTHING, which is right in
-' onDestroy — the scope that would receive the result is being torn down. Here
+' onDestroy: the scope that would receive the result is being torn down. Here
 ' the owner is a main-thread flow that holds state until its dialog answers (the
 ' deep-link server switch holds the pending server and the stashed link), so
 ' closing without an answer strands it. A cancelled result is the same thing the
@@ -374,9 +377,9 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
   '
   ' The incumbent is SUPERSEDED, not dropped: cancelDialog() routes through its
   ' own once-only resolve guard, so its owner gets the same cancelled result the
-  ' user pressing Back would have produced. Safe at every call site — all ten
-  ' result.confirmed consumers in app code gate positively, so a superseded
-  ' confirm is a no-op, never a half-action. (This deliberately reverses an
+  ' user pressing Back would have produced. Safe at every call site: every
+  ' `result.confirmed` read in app code gates positively, so a superseded
+  ' confirm is a no-op, never a half-action. (This reverses an
   ' earlier decision to warn and stack, which was correct only while there was
   ' no way to close someone else's dialog WITHOUT stranding them.)
   '
@@ -384,34 +387,34 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
   ' ordering that makes that true is at replayRoute.onServerSwitchDialogResult.
   '
   ' The log line stays. Two overlays racing is still a signal about something
-  ' upstream — two casts in flight — and arbitrating silently would discard it.
+  ' upstream (two casts in flight), and arbitrating silently would discard it.
   incumbent = scene.findNode(OVERLAY_DIALOG_ID)
   if isValid(incumbent)
     print "WARNING - presentOverlayDialog: a dialog was already open; superseding it with a cancelled result"
-    ' Reusing the node we just found rather than calling cancelOpenDialog():
+    ' Reusing the node we found above rather than calling cancelOpenDialog():
     ' that would re-run findNode against a render-thread-owned tree, and on the
     ' main-thread path every crossing is a rendezvous. It would also reach the
     ' MODAL channel, which must not be superseded. That channel has ONE writer
-    ' left — showKeyboardDialog — and superseding it would silently discard what
+    ' left (showKeyboardDialog), and superseding it would silently discard what
     ' the user typed. (It was THREE: QuickConnectDialog and then the player's
     ' error dialog both moved onto this overlay channel and joined the
     ' supersede.) See docs/architecture/tech-debt.md#dialog-channels-unarbitrated.
     '
     ' ⚠️ The blanket safety argument above covers dialogs whose handler READS a
-    ' value. It does NOT cover one whose handler ACTS — VideoPlayerView's
+    ' value. It does not cover one whose handler ACTS: VideoPlayerView's
     ' playback-error alert leaves the play route on close, so superseding it
     ' used to fire exitPlayback() from inside this very call, a goBack out from
     ' under the dialog being mounted. That is why the cancelled result now
     ' carries externallyCancelled (see source/utils/dialogResult.bs): an acting
     ' handler declines a close the user did not make, while every reading
-    ' handler is untouched. Do NOT instead skip the supersede for such a dialog
-    ' — the one-overlay invariant is what stops findNode resolving to a corpse.
+    ' handler is untouched. Don't skip the supersede for such a dialog instead:
+    ' the one-overlay invariant is what stops findNode resolving to a corpse.
     incumbent.callFunc("cancelDialog")
   end if
 
   ' AFTER the supersede, never before. lastFocusedChild walks focusedChild down
   ' to the deepest focused node, which with an incumbent still mounted resolves
-  ' INSIDE the incumbent — so returnFocusTo would point at a node that is about
+  ' INSIDE the incumbent, so returnFocusTo would point at a node that is about
   ' to be detached, and closing this dialog would restore focus to a corpse.
   ' A caller that KNOWS its opener passes it instead and skips the derivation.
   dialog.id = OVERLAY_DIALOG_ID
@@ -423,12 +426,12 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
   ' A dialog cannot place anything until it has measured its own content, so it
   ' is hidden across the append and shown once it has. Measuring does not need
-  ' visibility — see dialogReveal.bs.
+  ' visibility (see dialogReveal.bs).
   hideDialogUntilLaidOut(dialog)
   scene.appendChild(dialog)
   settleAndRevealDialog(dialog)
   dialog.setFocus(true)
-  ' Screen-reader narration is NOT done here: it has to happen after focus
+  ' Screen-reader narration is not done here: it has to happen after focus
   ' settles or the platform's own announcement flushes it, so each dialog
   ' component owns its own announcement. See source/utils/dialogNarration.bs.
   return dialog
@@ -437,17 +440,17 @@ end function
 ' Mirrors JRDialog's MAX_BUTTONS design cap. Kept as its own constant because
 ' BrighterScript consts are file-scoped and the component's is not visible here.
 const MAX_BUTTON_ROW_CHOICES = 3
-' A deliberately CONSERVATIVE cap, not a mirror of any panel dimension.
+' A CONSERVATIVE cap, not a mirror of any panel dimension.
 '
 ' JRDialog flows its button row INSIDE the panel and grows the panel to fit,
-' up to PANEL_MAX_WIDTH (1200) — so 1104px of row would actually render. This
+' up to PANEL_MAX_WIDTH (1200), so 1104px of row would actually render. This
 ' stops well short of that: past ~900 a three-button row reads as a wall of
 ' chrome, and the scrollable list is the better presentation for that many
 ' words regardless of whether it would fit.
 '
 ' Erring low only routes to the list dialog, which is the safe direction. Three
-' buttons at TextButton's 200 minWidth plus spacing is 648, so the cap bites
-' only on genuinely long labels.
+' buttons at DIALOG_BUTTON_MIN_WIDTH (204) plus spacing is 660, so the cap bites
+' only on long labels.
 '
 ' (This previously claimed to mirror JRDialog's PANEL_WIDTH and to describe a
 ' row centered UNDER the panel. Neither was true: PANEL_WIDTH is 762, and the
@@ -456,11 +459,11 @@ const BUTTON_ROW_MAX_WIDTH = 900
 
 ' A choice set renders as JRDialog's horizontal button row only if it's short
 ' (<= 3) AND the measured row fits the screen with comfortable margins.
-' Translations that overflow (e.g. long German labels) route to the list dialog.
+' Translations that overflow (such as long German labels) route to the list dialog.
 '
 ' Measured with the system font at the size the button label actually renders at
-' (constants.fontSizeMedium, applied by LabelMedium), NOT roFontRegistry's
-' default size — those differ, so the old estimate was wrong for every label.
+' (constants.fontSizeMedium, applied by LabelMedium), not roFontRegistry's
+' default size. Those differ, so the old estimate was wrong for every label.
 ' Still an estimate: a user on the downloaded fallback font (uiFontFallback) has
 ' slightly different metrics, but fontScaleFactor normalizes those toward the
 ' system font's, so the error stays small. Erring wide merely routes to the list

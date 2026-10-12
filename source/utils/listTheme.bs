@@ -11,9 +11,9 @@
 import "pkg:/source/utils/misc.bs"
 
 ' Apply the standard focus chrome to a list node (LabelList, MarkupList, or any
-' other ArrayGrid subtype — they all share these four fields).
+' other ArrayGrid subtype: they all share these four fields).
 '
-' Deliberately does NOT touch fonts, colours, alignment or spacing: those belong
+' Does not touch fonts, colors, alignment or spacing: those belong
 ' to whatever renders the ROW, which is the list itself for a LabelList and the
 ' item component for a MarkupList.
 '

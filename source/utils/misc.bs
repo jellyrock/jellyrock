@@ -75,7 +75,7 @@ function secondsToTimestamp(totalSeconds as integer, addLeadingMinuteZero as boo
 end function
 
 ' Computes a broadcast program's elapsed-time percentage.
-' Programs are live broadcasts, not streamed media — so "progress" is
+' Programs are live broadcasts, not streamed media, so "progress" is
 ' wall-clock elapsed, not UserData.PlayedPercentage.
 ' Returns 0 (not 100) for finished programs because JRPoster only cleanly
 ' removes the VideoProgressBar child when playedPercentage = 0.
@@ -92,7 +92,7 @@ function computeProgramBroadcastProgress(playStart as integer, playDuration as i
 end function
 
 ' Format time as 12 or 24 hour format based on system clock setting
-' NOTE: This is NOT used by app's clock, only for displaying time in dialogs
+' The app's clock (Clock.bs) does not use this; it formats times shown on screens and in dialogs
 function formatTime(time) as string
   hours = time.getHours()
   minHourDigits = 1
@@ -114,7 +114,7 @@ function formatTime(time) as string
 end function
 
 ' Returns "am" or "pm" for 12h clock, empty string for 24h.
-' Use for times the reader has no on-screen reference for — a broadcast range that may be hours
+' Use for times the reader has no on-screen reference for: a broadcast range that may be hours
 ' or days away. For a time anchored to "now", prefer formatDisambiguatedTime().
 function getTimePeriod(time as object) as string
   if m.global.device.clockFormat <> "12h" then return ""
@@ -124,7 +124,7 @@ function getTimePeriod(time as object) as string
   return "am"
 end function
 
-' True when two times fall in opposite halves of the day, i.e. one of them is on the far side of
+' True when two times fall in opposite halves of the day, that is, one of them is on the far side of
 ' noon or midnight from the other. This is exactly when a 12h time needs an am/pm suffix to be
 ' readable against the other: same half means the suffix carries no information.
 ' Hours are 0-23 local. Injected (rather than read from roDateTime) so this stays unit-testable.
@@ -134,18 +134,19 @@ end function
 
 ' How far ahead a reader can still resolve a bare 12h time by comparing it to the clock. Dropping
 ' the suffix asserts "the nearest clock face showing these digits", which stops being the time we
-' meant once the meridian comes back around: at 13:00 a 23-hour runtime ends at 12:00 pm — same
+' meant once the meridian comes back around: at 13:00 a 23-hour runtime ends at 12:00 pm, the same
 ' half of the day, so the suffix rule alone would omit it and "Ends at 12:00" would read as noon
 ' today. Past this horizon the suffix always earns its place.
 const MERIDIAN_INFERENCE_HORIZON_SECONDS = 43200 ' 12h
 
-' Returns "am"/"pm" ONLY when the suffix disambiguates the time against the current clock,
+' Returns "am"/"pm" only when the suffix disambiguates the time against the current clock,
 ' empty string otherwise (and always empty on a 24h clock).
 '
-' Why this exists: the clock the reader compares against renders bare in 12h mode — "10:32",
+' Why this exists: the clock the reader compares against renders bare in 12h mode: "10:32",
 ' never "10:32 pm" (see Clock.bs, used by both the overhang and the playback OSD). A time
-' measured against that clock therefore doesn't need a meridian either, UNLESS it crosses noon
-' or midnight, or sits beyond the horizon above — the cases the reader can't infer at a glance.
+' measured against that clock therefore doesn't need a meridian either, unless it crosses noon
+' or midnight, or sits beyond the horizon above. Those are the cases the reader can't infer at
+' a glance.
 ' Only for now-anchored times; see getTimePeriod() for absolute ones.
 ' @param time - a LOCAL roDateTime (caller must have applied toLocalTime())
 function getDisambiguatingTimePeriod(time as object) as string
@@ -161,7 +162,7 @@ function getDisambiguatingTimePeriod(time as object) as string
   return getTimePeriod(time)
 end function
 
-' The one way to render a time the reader will read off against an on-screen clock — the "Ends at"
+' The one way to render a time the reader will read off against an on-screen clock: the "Ends at"
 ' value in ItemDetails and in the playback OSD. Bare when the half of the day is inferable,
 ' suffixed when it isn't, so the same end time reads identically on both screens.
 ' @param time - a LOCAL roDateTime (caller must have applied toLocalTime())
@@ -234,10 +235,9 @@ function lastFocusedChild(obj as object) as object
   end if
 end function
 
-' Returns the full-screen view currently on top — the router-mounted view tracked on
+' Returns the full-screen view currently on top: the router-mounted view tracked on
 ' m.global.activeRoutedView. The whole app is routed: pre-login, content, and playback are all
-' router views in JRScene's outlet. Used by main.bs's playback/dialog/device code and by
-' JRScene's options key to resolve "what's on screen".
+' router views in JRScene's outlet. Callers use it to resolve "what's on screen".
 function getActiveView() as object
   return m.global.activeRoutedView
 end function
@@ -254,11 +254,11 @@ sub restoreFocus(view as object)
   end if
 end sub
 
-' Maps a selected content item to its route — a named-route arg { name, params } for
+' Maps a selected content item to its route: a named-route arg { name, params } for
 ' sgRouter.navigateTo. Pure (no router call) so it can live here in commonly-imported misc.bs;
 ' the routed view that owns the selection calls navigateTo itself (passing the rich node as
-' `context` to avoid a re-fetch). Returns invalid for items that are NOT view navigation
-' (Chapter → playback); the caller handles those via the playback path (quickPlayNode).
+' `context` to avoid a re-fetch). Returns invalid for items that are not view navigation
+' (a Chapter starts playback); the caller handles those via the playback path (quickPlayNode).
 function routeForItem(item as object) as object
   if not isValid(item) or not isValidAndNotEmpty(item.type) or not isValidAndNotEmpty(item.id) then return invalid
 
@@ -283,7 +283,7 @@ end function
 ' the complete url. then tests these guesses to see if it can find a jf server
 ' returns the url of the server it found, or an empty string
 function inferServerUrl(url as string) as string
-  ' if this server is already stored, just use the value directly
+  ' if this server is already stored, use the value directly
   ' the server had to get resolved in the first place to get into the registry
   saved = getSetting("saved_servers")
   if isValid(saved)
@@ -359,7 +359,7 @@ function urlCandidates(input as string)
     protoCandidates.push(proto + "//" + host) ' but still allow arbitrary protocols if they are declared
   end if
   finalCandidates = []
-  if isValid(port) and port <> "" ' if the port is defined just use that
+  if isValid(port) and port <> "" ' if the port is defined, use only that
     for each candidate in protoCandidates
       finalCandidates.push(candidate + port + path)
     end for
@@ -466,8 +466,8 @@ function isLocalhost(url as string) as boolean
 end function
 
 '
-' Returns whether or not a version number (e.g. 10.7.7) is greater or equal
-' to some minimum version allowed (e.g. 10.8.0)
+' Returns whether or not a version number (for example 10.7.7) is greater or equal
+' to some minimum version allowed (for example 10.8.0)
 function versionChecker(versionToCheck as string, minVersionAccepted as string)
   leftHand = CreateObject("roLongInteger")
   rightHand = CreateObject("roLongInteger")
@@ -520,8 +520,8 @@ end function
 
 '
 ' Maps a Jellyfin server version string to an API version integer used by the SDK dispatcher.
-' V1: Covers pre-10.9 servers (10.7.x, 10.8.x) — uses /Users/{userId}/ path prefix
-' V2: Covers 10.9+ servers — endpoints moved to top-level, userId passed as query param
+' V1: Covers pre-10.9 servers (10.7.x, 10.8.x): uses /Users/{userId}/ path prefix
+' V2: Covers 10.9+ servers: endpoints moved to top-level, userId passed as query param
 ' Returns 1 if serverVersion is empty/invalid (safe fallback to legacy paths)
 function resolveApiVersion(serverVersion as string) as integer
   if not isValidAndNotEmpty(serverVersion)
@@ -599,11 +599,11 @@ function toString(input) as string
   return str(input)
 end function
 
-' Text from a field that may simply not exist.
+' Text from a field that may not exist.
 '
 ' toString() faults with a Type Mismatch on Invalid, because it falls through to
 ' Str(), so it can only be used where the value is known to be present. Optional
-' fields — most of a Jellyfin MediaStream, every field a newer server added — need
+' fields (most of a Jellyfin MediaStream, every field a newer server added) need
 ' this instead: absent reads as "", which is what a caller building display text
 ' out of them wants anyway.
 '
@@ -619,13 +619,13 @@ end function
 ' `value = true` faults &h18 on a non-boolean operand, so the TYPE has to be
 ' established before the comparison. A field the server omitted dereferences to
 ' Invalid, which is exactly the case a bare `if stream.IsAnamorphic` would fault on.
-' ParseJson yields an unboxed "Boolean" and an AA literal a boxed "roBoolean" —
-' both are genuine booleans, so both have to pass.
+' ParseJson yields an unboxed "Boolean" and an AA literal a boxed "roBoolean".
+' Both are real booleans, so both have to pass.
 '
 ' Lives here, beside isValid / mediaNumber / textOrEmpty, because it is the same
 ' kind of thing: a coercion for a field that may not be there. It used to live in
 ' fallbackFont.bs, which meant reaching it from anywhere else imported a module
-' about FONTS to get a boolean guard — enough friction that the playback report
+' about fonts to get a boolean guard. That was enough friction that the playback report
 ' grew a byte-identical private copy rather than pay it.
 '
 ' @param {dynamic} value - any value, including Invalid
@@ -641,15 +641,15 @@ end function
 ' both directions. mediaNumber truncates to a 32-bit Integer, which is right for
 ' Height / Channels / SampleRate and wrong for two kinds of field:
 '
-'   - FRACTIONAL ones — frame rates, completion percentages — where truncating
+'   - Fractional ones (frame rates, completion percentages), where truncating
 '     destroys the figure outright.
-'   - LARGE ones — a byte count passes 2^31 at ~2.1 GB, and RunTimeTicks for a
-'     three-hour film is ~1.08e11 — where truncating overflows.
+'   - Large ones (a byte count passes 2^31 at ~2.1 GB, and RunTimeTicks for a
+'     three-hour film is ~1.08e11), where truncating overflows.
 '
 ' @param {dynamic} value - a numeric field off a media object, a settings node, or a literal
 ' @returns {float} - the numeric value, or 0.0 for invalid / AA / array / boolean input.
 '   Every caller today passes a media field, so this covers what actually reaches
-'   it in practice — an unhandled type (roSGNode, roDateTime, a function) would
+'   it in practice. An unhandled type (roSGNode, roDateTime, a function) would
 '   still fault on `return value as float` rather than fall back to 0.0.
 function decimalOrZero(value as dynamic) as float
   if not isValid(value) then return 0.0
@@ -666,7 +666,7 @@ end function
 '
 ' Reaching the scene means walking up from m.top, so every caller that needed it
 ' had grown its own copy of this three-line cache. m is per-component-scope, so
-' the cache is per component — which is what we want: each component resolves the
+' the cache is per component, which is what we want: each component resolves the
 ' scene once and reuses it.
 function appScene() as object
   if not isValid(m.scene)
@@ -802,17 +802,18 @@ end function
 '
 ' Jellyfin's numeric fields (Height, Width, Channels, BitRate, Level) arrive as
 ' integers from ParseJson, but the app has always handled them arriving as strings
-' too — isWithinH264HardwareCeiling, ItemPostPlaybackInfo's channel count and
-' getDeviceProfile's MaxAudioChannels each carry their own inline copy of this
-' coercion. This is that coercion, once.
+' too. isWithinH264HardwareCeiling (Height and Width) and buildPlaybackInfoPostData
+' in source/api/items.bs (the audio stream's Channels and the transcoding profile's
+' MaxAudioChannels) still carry their own inline copies of this coercion. This is
+' that coercion, once.
 '
 ' Returns 0 for anything missing or non-numeric, so callers can compare without a
-' validity check first — a stream that does not report a height has no height,
+' validity check first: a stream that does not report a height has no height,
 ' and 0 is the honest reading of that for every comparison the report makes.
 '
 ' @param {dynamic} value - a field off a MediaStream / MediaSourceInfo / TranscodingInfo
 ' @returns {integer} - the numeric value, or 0
-' THE TYPE NAMES BELOW WERE MEASURED, NOT REASONED, and the same integer reports
+' The type names below were measured, not reasoned, and the same integer reports
 ' three different names depending on where it came from. On a Stick 4K
 ' (Roku OS 15.3.4):
 '
@@ -824,12 +825,12 @@ end function
 ' fields arrive in AAs from ParseJson, user settings arrive from a
 ' JellyfinUserSettings node, and callers pass literals. Enumerating only the
 ' plausible-looking names is what produced the bug this function was extracted to
-' fix — `type(x) = "Integer"` against a node field is ALWAYS false, so
+' fix: `type(x) = "Integer"` against a node field is always false, so
 ' GetBitRateLimit discarded every user-set bitrate limit and silently substituted
 ' Roku's hardware ceiling.
 '
-' NOT FOR BYTE COUNTS. The return type is a 32-bit Integer, so anything above
-' 2,147,483,647 overflows — and MediaSourceInfo.Size is a byte count, which passes
+' Not for byte counts. The return type is a 32-bit Integer, so anything above
+' 2,147,483,647 overflows, and MediaSourceInfo.Size is a byte count, which passes
 ' that at ~2.1 GB. Every other numeric media field (Height, Width, Channels,
 ' BitRate, Level, SampleRate, BitDepth) is comfortably inside the range. Format
 ' sizes from the raw value in floating point instead.
@@ -869,9 +870,9 @@ end function
 ' The MediaSource this playback is actually using, off the cached
 ' /PlaybackInfo response.
 '
-' ONE definition because two surfaces describe the same streams — the
-' playback-info report (PlayerHostView) and the playback-error Details readout
-' (VideoPlayerView) — and two copies of "which source are we describing" is
+' One definition because two surfaces describe the same streams (the
+' playback-info report in PlayerHostView and the playback-error Details readout
+' in VideoPlayerView), and two copies of "which source are we describing" is
 ' exactly how they would come to disagree about one stream.
 '
 ' MediaSources[0] is correct rather than merely convenient: the app asks the
@@ -896,9 +897,9 @@ end function
 ' matches by language with ordinal disambiguation: among same-language Jellyfin streams
 ' (in original order), find the position N of the chosen index, then return the Nth
 ' same-language Roku track. This avoids returning the wrong track when multiple streams
-' share a language (e.g. main + commentary, both English — issue #500).
+' share a language (for example main + commentary, both English: issue #500).
 ' Falls back to Index + 1 mapping when availableAudioTracks is not available or no
-' ordinal match can be found (e.g., before playback starts or for non-MKV containers).
+' ordinal match can be found (for example before playback starts or for non-MKV containers).
 '
 ' @param {integer} jellyfinAudioIndex - The Jellyfin audio stream index
 ' @param {dynamic} audioStreamsArray - Jellyfin fullAudioData array (must have .index and .language fields)
@@ -1005,7 +1006,7 @@ end function
 '
 ' @param {object} params - Original query parameters from caller
 ' @param {integer} apiVersion - API version (1 for pre-10.9, 2+ for 10.9+)
-' @param {object} imageDefaults - Default image parameters (e.g., { EnableImageTypes: "Primary,Backdrop,Logo,Thumb", ImageTypeLimit: 1 })
+' @param {object} imageDefaults - Default image parameters (for example { EnableImageTypes: "Primary,Backdrop,Logo,Thumb", ImageTypeLimit: 1 })
 ' @returns {object} New params object with defaults merged and version-specific fields added
 function injectApiParams(params as object, apiVersion as integer, imageDefaults as object) as object
   merged = {}

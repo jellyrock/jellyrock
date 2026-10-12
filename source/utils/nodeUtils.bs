@@ -13,8 +13,8 @@ namespace nodeUtils
   ' Reset a ContentNode to its XML-defined defaults
   '
   ' @param targetNode - The node to reset (must be a local reference)
-  ' @param nodeType - The node type (e.g. "JellyfinServer", "JellyfinUser")
-  ' @param preserveFields - Array of field names to preserve (e.g. ["settings"])
+  ' @param nodeType - The node type (for example "JellyfinServer", "JellyfinUser")
+  ' @param preserveFields - Array of field names to preserve (for example ["settings"])
   '
   ' Example:
   '   localServer = m.global.server

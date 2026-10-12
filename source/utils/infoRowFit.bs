@@ -3,7 +3,7 @@ import "pkg:/source/utils/misc.bs"
 ' How much of a row of text items fits a width budget, and where to cut the rest.
 '
 ' ItemDetails' info rows are horizontal LayoutGroups of labels with a bullet divider
-' between items, and a LayoutGroup never clips: whatever does not fit simply runs on
+' between items, and a LayoutGroup never clips: whatever does not fit runs on
 ' past the budget. On the details screen that means into the logo, which sits at the
 ' right edge. This answers the fitting question ONCE, from widths, so the screen only
 ' has to apply the answer.

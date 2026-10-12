@@ -1,7 +1,7 @@
 ' Key models for the dialog family, as pure decisions.
 '
-' WHY THIS IS NOT JUST `onKeyEvent`. JRListDialog's first version reached its
-' Cancel button by catching a `down` that BUBBLED OUT of the list — which works
+' WHY THIS LIVES OUTSIDE `onKeyEvent`. JRListDialog's first version reached its
+' Cancel button by catching a `down` that BUBBLED OUT of the list, which works
 ' only while the list declines to handle it. Above 8 rows the list switched to
 ' `fixedFocusWrap`, wrapped forever, and never let a `down` past; Cancel became
 ' unreachable and `up` died with it. Both halves were correct in isolation and
@@ -23,8 +23,8 @@ import "pkg:/source/utils/misc.bs"
 '   anything else           consumed (a modal lets nothing reach the screen behind it)
 '
 ' Symmetric on purpose. Wrapping is only worth having because it makes a long
-' list cheap to navigate with a remote — one UP to reach the end of thirty
-' tracks — and an asymmetric wrap does not deliver that; it only cycles forward.
+' list cheap to navigate with a remote (one UP to reach the end of thirty
+' tracks), and an asymmetric wrap does not deliver that; it only cycles forward.
 '
 ' ItemDetails' TrackDropdown, which this otherwise mirrors, dismisses on UP-at-top
 ' instead. That is right for a dropdown: UP returns you to the trigger you opened
@@ -53,13 +53,13 @@ function listDialogKeyAction(key as string, focusedIndex as integer, itemCount a
   return "consume"
 end function
 
-' What a key press means to a BUTTON-ROW dialog — JRDialog, and
+' What a key press means to a BUTTON-ROW dialog: JRDialog, and
 ' QuickConnectDialog, whose row happens to hold exactly one button.
 '
 ' Here for the same reason listDialogKeyAction is: the decision was in a
 ' component's onKeyEvent, where nothing can call it, and it was wrong there.
 ' `applyButtonLayout` stacks the row vertically when the labels are too wide to
-' fit across the panel, and onKeyEvent moved focus only on left/right — so a row
+' fit across the panel, and onKeyEvent moved focus only on left/right. So a row
 ' the user could SEE was stacked ignored up/down entirely and was navigated along
 ' an axis that was not on screen. Nothing caught it: the only evidence was a
 ' `Down` press in an RTA take that had been a silent no-op since it was written.
@@ -69,15 +69,15 @@ end function
 '   BACK                    cancels
 '   OK                      resolves with the focused button
 '   LEFT / RIGHT            step the row, in BOTH orientations
-'   UP / DOWN               step the row ONLY when it is stacked
+'   UP / DOWN               step the row only when it is stacked
 '   anything else           consumed (a modal lets nothing reach the screen behind it)
 '
-' left/right work in both orientations deliberately, so no caller has to know
-' which layout its translations produced. up/down are GATED on `stacked` just as
-' deliberately: moving focus along an axis the user cannot see is its own bug, so
+' left/right work in both orientations on purpose, so no caller has to know
+' which layout its translations produced. up/down are GATED on `stacked` on
+' purpose too: moving focus along an axis the user cannot see is its own bug, so
 ' a horizontal row consumes them under modal containment rather than acting.
 '
-' Stepping WRAPS at the ends rather than clamping — matching JRButtonGroup, the
+' Stepping WRAPS at the ends rather than clamping, matching JRButtonGroup, the
 ' app's other horizontal row. A dialog that dead-ends feels broken. The caller
 ' owns the wrap arithmetic; this function only says which direction to step.
 '
