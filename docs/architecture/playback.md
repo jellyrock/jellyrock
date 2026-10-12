@@ -35,6 +35,7 @@ related-files:
   - source/utils/quickplayLibrary.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
+  - source/utils/probedStreams.bs
   - source/utils/stillWatching.bs
   - source/utils/liveTv.bs
   - source/utils/upstreamManifest.bs
@@ -47,7 +48,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-11
+last-reviewed: 2026-10-12
 ---
 
 # Video and audio playback
@@ -436,6 +437,8 @@ The "now playing" screen for music, a `JRScreen` routed at `/audio`. It shows th
 The server decides how an item plays, from the device profile JellyRock sends: `getDeviceProfile()` in `source/utils/deviceCapabilities.bs` builds it, and `buildPlaybackInfoPostData()` in `source/api/items.bs` builds the `PlaybackInfo` request around it. `LoadVideoContentTask` reads the answer: when the source `SupportsDirectPlay`, it plays the file; otherwise it plays the `TranscodingUrl`, which may be a remux or a full transcode.
 
 Every fact about the file (runtime, bitrate, container, streams) comes from `mediaSourceForId(mediaSources, mediaSourceId)`, never `mediaSources[0]`, because the first entry is only the server's default: a version picked in the Video menu sits elsewhere, and from 12.0 a primary's most recently played version moves to the front. The `PlaybackInfo` answer is the exception: the request names the version and the server returns only that one.
+
+A source the server has never probed lists no streams: a `.strm` item before its first play. Its first `PlaybackInfo` probes it, and the server saves what it found (measured 2026-10-12 on 10.11 and 12.1: the item lists the streams as soon as that answer arrives). The audio and subtitle picks were made before that, from nothing, so the loader reads the item again (`reloadProbedStreams()`), picks again from the probed streams, and builds the track menu and the playback-info report from them. A transcode answer was built for the server's own picks, so when ours differ the loader asks once more (`probedPicksNeedNewAnswer()` in `source/utils/probedStreams.bs`); a direct play needs no second answer, since the device plays the source and switches tracks itself. The first play then looks like every later one. A probe that outlasts the 10 s request limit still fails the first play (followup `strm-first-play-probe-outlasts-10s`).
 
 The client overrides the server's answer in three places:
 

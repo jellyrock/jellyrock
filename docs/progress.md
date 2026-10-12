@@ -471,7 +471,7 @@ Each sets focus in `onScreenShown()` but does not override `restoreScreenFocus`,
 
 #### Find which screens other than the library grid outgrow the 10 s request limit on a slow server (from #1043). `[fid: screens-outgrowing-10s-request-limit]` `[captured 2026-09-25]`
 
-Measured over 10 s so far: a grid's first page (fixed in #1043), a quick play's whole-library read (17.2–35.0 s, measured 2026-09-29; fixed with #811 by `timeouts.QUICKPLAY_LIBRARY_MS`, which also covers the person and artist reads, not measured — no fixture has people — but the same whole-server query), `/Items/Filters` (followup above), live `PlaybackInfo` (followup under api). Drive each spinner screen against the slow 8,643-movie fixture and record which requests exceed `timeouts.HTTP_MS`. For each one that does, give it all three parts #1043 gave the grid page, or none: a limit sized from the measurement, staged "Still loading…" text before 10 s, and a stop on Back that frees its pool slot (ADR 0043). Don't raise `HTTP_MS` for the whole app: a server that never answers would take a minute to report on every screen. The staged text now comes from a screen wait (`screenWaits.begin`, ADR 0044), so a screen gets it by opening one rather than running its own timer.
+Measured over 10 s so far: a grid's first page (fixed in #1043), a quick play's whole-library read (17.2–35.0 s, measured 2026-09-29; fixed with #811 by `timeouts.QUICKPLAY_LIBRARY_MS`, which also covers the person and artist reads, not measured — no fixture has people — but the same whole-server query), `/Items/Filters` (followup above), live `PlaybackInfo` (followup under api), and the first `PlaybackInfo` of a never-played `.strm` item (10.8–12.0 s, measured 2026-10-12; pinned followup `strm-first-play-probe-outlasts-10s`). Drive each spinner screen against the slow 8,643-movie fixture and record which requests exceed `timeouts.HTTP_MS`. For each one that does, give it all three parts #1043 gave the grid page, or none: a limit sized from the measurement, staged "Still loading…" text before 10 s, and a stop on Back that frees its pool slot (ADR 0043). Don't raise `HTTP_MS` for the whole app: a server that never answers would take a minute to report on every screen. The staged text now comes from a screen wait (`screenWaits.begin`, ADR 0044), so a screen gets it by opening one rather than running its own timer.
 
 #### A genre view's rows may still give up at 10 s on a slow server — unmeasured (from #1043). `[fid: genre-rows-10s-timeout-unmeasured]` `[captured 2026-09-25]`
 
@@ -722,6 +722,22 @@ ADR 0043 ruled out the scoped pair (`observeFieldScopedEx` / `unobserveFieldScop
 **Work:** an on-device record test of this exact case (Task thread, message port, `observeFieldScopedEx` on another Task's `state`, plus a second plain observer from a render component; `unobserveFieldScoped`; does the other observer still fire?). If isolation holds, swap the two calls and drop the invariant; if not, keep the code and record why. Not now because it needs a new test component and device runs, and it ships as its own PR.
 
 First filed 2026-10-07 in `89c8185c`, which never reached `main` (PR #1126 merged without it). The docs-voice project states the true reason in [`api.md`](architecture/api.md#a-long-request-already-on-a-slot) and the `forgetCaller()` comment.
+
+#### The first play of a never-played `.strm` item fails when the server's probe outlasts the 10 s request limit `[fid: strm-first-play-probe-outlasts-10s]` `[captured 2026-10-12]` `[pinned]`
+
+Jellyfin probes a never-played remote source (a `.strm` item) inside its first `PlaybackInfo` and saves the result, and that probe can outlast the app's default request limit (`timeouts.HTTP_MS`, 10 s). `LoadItems_AddVideoContent` in `LoadVideoContentTask` gives only a live item its own limit (`openLimitMs`), so the first play shows "There was an error retrieving playback information from the server." The second play works, because the server kept the probe.
+
+Evidence (2026-10-12): on a device (`.177`, `main`, Jellyfin 12.1), two fresh `.strm` items pointing at a public HLS stream failed with `[http] Timeout= 10000`, then `Event Timed Out` and `PlaybackInfo failed cause timed out isLive false`. With curl, the first `PlaybackInfo` on a fresh `.strm` took 10.8 to 11.5 s on 12.1 (4 runs) and 10.8 to 12.0 s on 10.11 (2 runs), and 44.6 s once while a library scan ran. A `.strm` item served from the LAN probed fast and played.
+
+Options weighed in `/snag`:
+
+- `unprobed-limit` (recommended): when the played source lists no media streams, its `PlaybackInfo` gets its own limit sized from measurements (a new `timeouts` constant). The `PLAYBACK_START` app wait already shows "Still loading…". Back is the open design: the pool never stops a POST, so the slot stays held up to the limit. That is the third part the `screens-outgrowing-10s-request-limit` rule asks for.
+- `all-playback-info`: a longer limit for every non-live `PlaybackInfo`. Rejected: a dead server would take that long to report on every Play.
+- `retry-once`: ask again after a timeout. Rejected: a probe over 20 s still fails, and whether a second request waits for the first probe is not measured.
+
+Not checked: how long the server keeps probing a `.strm` before giving up (100 s for a live open); versions 10.7 to 10.10; whether a second `PlaybackInfo` sent during a running probe waits for it or starts another.
+
+Not done now because the Back and pool-slot design belongs with the `failure-not-empty` project's slow-server work.
 
 ### tests
 

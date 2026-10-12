@@ -19,6 +19,7 @@ import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/probedStreams.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/subtitles.bs"
@@ -499,6 +500,38 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   m.log.debug("PlaybackInfo loaded", "mediaSourceCount", m.playbackInfo.MediaSources.Count())
 
+  ' A source the server had never probed (a .strm item before its first play) listed no streams,
+  ' so the audio and subtitle picks above had nothing to choose from. This PlaybackInfo probed it
+  ' and the server saved what it found, so read the item again and pick from that.
+  if not isLive and sourceListsNoStreams(playedSource)
+    reloadProbedStreams(meta, mediaSourceId)
+    probedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
+    if not sourceListsNoStreams(probedSource)
+      if m.top.selectedAudioStreamIndex = 0
+        audioStreamIdx = selectAudioStreamIndex(probedSource.MediaStreams, userSettings, userSession.config, meta.originalLanguage ?? "")
+      end if
+      sentSubtitleIdx = subtitleIdx
+      if m.top.selectedSubtitleIndex = SubtitleSelection.NOT_SET
+        subtitleIdx = defaultSubtitleTrackFromVid(meta, audioStreamIdx, mediaSourceId)
+      end if
+      answeredSource = invalid
+      if isValidAndNotEmpty(m.playbackInfo.MediaSources) then answeredSource = m.playbackInfo.MediaSources[0]
+      m.log.info("Tracks picked from the streams the first PlaybackInfo probed", "audioStreamIdx", audioStreamIdx, "subtitleIdx", subtitleIdx, "itemId", video.id)
+      ' A transcode was built for the server's own picks, so ask for one built for ours.
+      if probedPicksNeedNewAnswer(answeredSource, audioStreamIdx, subtitleIdx, sentSubtitleIdx)
+        res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
+        if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
+          m.playbackInfo = res.json
+        else
+          ' Play the first answer, and describe it as the server built it.
+          m.log.warn("PlaybackInfo for the probed picks failed; keeping the server's", "cause", apiResponse.jsonFailure(res), "itemId", video.id)
+          audioStreamIdx = serverAudioIndex(answeredSource)
+          subtitleIdx = sentSubtitleIdx
+        end if
+      end if
+    end if
+  end if
+
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
   addSubtitlesToVideo(video, meta)
 
@@ -797,6 +830,22 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
   if not fullyExternal
     video.content = authRequest(video.content)
   end if
+end sub
+
+' reloadProbedStreams: Replace the item's media sources with the ones the server saved when the
+' first PlaybackInfo probed them. Leaves meta as it was when the read fails, so the caller's picks
+' stand and nothing else changes.
+'
+' @param {object} meta - item metadata (from ItemMetaData), updated in place
+' @param {dynamic} mediaSourceId - the MediaSource being played
+sub reloadProbedStreams(meta as object, mediaSourceId as dynamic)
+  probed = ItemMetaData(meta.id)
+  if not isValid(probed) or not isValid(probed.mediaSourcesData) then return
+  meta.mediaSourcesData = probed.mediaSourcesData
+  probedSource = mediaSourceForId(probed.mediaSourcesData.mediaSources, mediaSourceId)
+  streamCount = 0
+  if isValid(probedSource) and isValid(probedSource.MediaStreams) then streamCount = probedSource.MediaStreams.count()
+  m.log.info("Reloaded the streams the first PlaybackInfo probed", "streamCount", streamCount, "itemId", meta.id)
 end sub
 
 ' addAudioStreamsToVideo: Populate video.fullAudioData with the item's audio tracks.
