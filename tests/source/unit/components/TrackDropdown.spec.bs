@@ -160,6 +160,18 @@ namespace tests
       m.assertEqual(menuItems.getChild(0).itemId, "1")
     end function
 
+    @it("rows keep the full title as text and carry the short triggerTitle as triggerText")
+    function _()
+      m.dropdown.items = [
+        { id: "1", title: "SAMI  ·  External", triggerTitle: "SAMI" },
+        { id: "2", title: "English AAC 2.0" }
+      ]
+      menuItems = m.dropdown.findNode("menuItems")
+      m.assertEqual(menuItems.getChild(0).text, "SAMI  ·  External")
+      m.assertEqual(menuItems.getChild(0).triggerText, "SAMI")
+      m.assertEqual(menuItems.getChild(1).triggerText, "English AAC 2.0")
+    end function
+
     @it("clipping viewport caps visible rows for long lists so >5 items scroll")
     function _()
       bigList = []

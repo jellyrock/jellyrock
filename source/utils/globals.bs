@@ -95,9 +95,10 @@ sub setGlobalNodes()
   ' across the demo server's small libraries (the page size is otherwise 100).
   ' rtaHeldRequests: how many slowed answers the coordinator holds right now, each keeping a
   ' pool slot busy — read-only for specs, so one can tell a request is on a slot before acting
-  ' and see the slot given back.
+  ' and see the slot given back. rtaForceStillWatching: PlayerHostView asks "are you still
+  ' watching?" at every automatic advance, so a spec need not play for an hour first.
   #if ENABLE_RTA
-    m.global.addFields({ rtaSkeletonHoldMs: 0, rtaFailRequests: [], rtaGridPageSize: 0, rtaHeldRequests: 0 })
+    m.global.addFields({ rtaSkeletonHoldMs: 0, rtaFailRequests: [], rtaGridPageSize: 0, rtaHeldRequests: 0, rtaForceStillWatching: false })
   #end if
 
   ' First, so it exists before any launch below could need it.

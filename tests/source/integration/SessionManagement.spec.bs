@@ -241,27 +241,5 @@ namespace tests
 
       return m.assertTrue(true, "All mixed types handled correctly")
     end function
-
-    @it("user.settings.Read() retrieves stored values")
-    function _()
-      ' Set some test values using local reference
-      localSettings = m.getTestUserSettings()
-      localSettings.uiRowLayout = "narrowgrid"
-      localSettings.uiDesignHideClock = true
-
-      layoutValue = user.settings.Read("uiRowLayout")
-      clockValue = user.settings.Read("uiDesignHideClock")
-
-      m.assertEqual(layoutValue, "narrowgrid")
-      return m.assertEqual(clockValue, true)
-    end function
-
-    @it("user.settings.Read() returns invalid for non-existent settings")
-    function _()
-      value = user.settings.Read("nonexistent.setting")
-
-      return m.assertInvalid(value)
-    end function
-
   end class
 end namespace

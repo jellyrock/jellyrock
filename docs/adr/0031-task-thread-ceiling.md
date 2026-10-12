@@ -126,9 +126,9 @@ Most entries cost nothing extra, because the owning component holds the same nod
 `m.serverReachableTask` before it launches). Exactly **two** call sites launch a node held by
 nothing else, both main-thread bootstrap:
 
-- `main.bs:285` `fontDownloadTask` — a local, and `handleFontDownloadCompletion` explicitly
+- `fontDownloadTask` in `main.bs`'s `initializeFallbackFont()` — a local, and `handleFontDownloadCompletion` explicitly
   releases it (`unobserveField`, then `= invalid`). The ledger now outlives that release.
-- `main.bs:375` `fontTask` — a local that is unobserved, stopped, and falls out of scope.
+- `fontTask` in `main.bs`'s `calculateFontScaleFactor()` — a local that is unobserved, stopped, and falls out of scope.
 
 The consequence is **memory only**. Both nodes are terminated (`state = "stop"`) by the time
 they linger, so a retained one cannot fire an observer again, and both unobserve themselves

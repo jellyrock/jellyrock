@@ -7,6 +7,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- (manifest) Require Roku OS 15.1 and SceneGraph 1.3 ([#1126](https://github.com/jellyrock/jellyrock/pull/1126))
+
+### Fixed
+
+- (music) Keep the playing track when shuffle is switched on again ([#1159](https://github.com/jellyrock/jellyrock/pull/1159))
+- (navigation) Recover from a failed navigation before logging it ([#1157](https://github.com/jellyrock/jellyrock/pull/1157))
+- Stop the sign-in screen flashing back after a deep-link sign-in ([#1156](https://github.com/jellyrock/jellyrock/pull/1156))
+- (locale) Apply the user's language when preferences fail ([#1155](https://github.com/jellyrock/jellyrock/pull/1155))
+- Stop a crash on options in a stopped video's playback info ([#1154](https://github.com/jellyrock/jellyrock/pull/1154))
+- (overhang) Reset the clock when the screensaver ends ([#1152](https://github.com/jellyrock/jellyrock/pull/1152))
+- (home) Hide pilots of not-yet-started series from Next Up ([#1124](https://github.com/jellyrock/jellyrock/pull/1124))
+- Change screens and the overhang in one frame ([#1137](https://github.com/jellyrock/jellyrock/pull/1137))
+- (focus) Stop screens taking focus back when it leaves the router ([#1138](https://github.com/jellyrock/jellyrock/pull/1138))
+- Clearer subtitle track names; dropdowns keep short text on pick ([#1121](https://github.com/jellyrock/jellyrock/pull/1121))
+- (home) Show Home sections placed in web client slots 8-10 ([#1119](https://github.com/jellyrock/jellyrock/pull/1119))
+
+### Dependencies
+
+- Update brighterscript-formatter from v1.8.3 to v1.8.4 ([#1151](https://github.com/jellyrock/jellyrock/pull/1151))
+- Update dotenv from v18.0.5 to v18.0.7 ([#1125](https://github.com/jellyrock/jellyrock/pull/1125), [#1145](https://github.com/jellyrock/jellyrock/pull/1145))
+- Update eslint from v10.11.0 to v10.12.0 ([#1083](https://github.com/jellyrock/jellyrock/pull/1083))
+- Update js-yaml from v5.4.2 to v5.4.3 ([#1116](https://github.com/jellyrock/jellyrock/pull/1116))
+- Update eslint-plugin-n from v18.4.0 to v18.4.1 ([#1087](https://github.com/jellyrock/jellyrock/pull/1087))
+
+## [2.35.0](https://github.com/jellyrock/jellyrock/compare/v2.34.1...v2.35.0) - 2026-10-04
+
+### Added
+
+- (video) Ask "Are you still watching?" before endless auto-play ([#1086](https://github.com/jellyrock/jellyrock/pull/1086))
+
+### Changed
+
+- (translations) Seed translations from other Jellyfin clients ([#1102](https://github.com/jellyrock/jellyrock/pull/1102))
+- Consolidate duplicate helpers from the dead-code baseline ([#1104](https://github.com/jellyrock/jellyrock/pull/1104))
+- Remove unused session transformers, test the live login ([#1103](https://github.com/jellyrock/jellyrock/pull/1103))
+- Remove unused component functions, fields and interface exposures ([#1098](https://github.com/jellyrock/jellyrock/pull/1098))
+- Remove unused API calls, image helpers and utilities ([#1096](https://github.com/jellyrock/jellyrock/pull/1096))
+- Remove unused components, dev dependencies and JS exports ([#1078](https://github.com/jellyrock/jellyrock/pull/1078))
+
+### Fixed
+
+- (video) Keep Next Episode and Skip pop-ups off open dialogs ([#1084](https://github.com/jellyrock/jellyrock/pull/1084))
+
+### Dependencies
+
+- Update dotenv from v17.4.2 to v18 ([#962](https://github.com/jellyrock/jellyrock/pull/962))
+- Update vitest from v5.0.2 to v5.0.3 ([#1077](https://github.com/jellyrock/jellyrock/pull/1077))
+
+## [2.34.1](https://github.com/jellyrock/jellyrock/compare/v2.34.0...v2.34.1) - 2026-10-02
+
+### Fixed
+
+- Silent DTS, failing TrueHD over passthrough, and track switching ([#1079](https://github.com/jellyrock/jellyrock/pull/1079))
+- Quick play slow, TV and mixed libraries, and resume music videos ([#1076](https://github.com/jellyrock/jellyrock/pull/1076))
+
+### Dependencies
+
+- Update lint-staged from v17.5.1 to v17.6.0 ([#1053](https://github.com/jellyrock/jellyrock/pull/1053))
+- Update eslint-plugin-n from v18.3.0 to v18.4.0 ([#1052](https://github.com/jellyrock/jellyrock/pull/1052))
+- Update rooibos-roku to v6.0.0 ([#1067](https://github.com/jellyrock/jellyrock/pull/1067))
+- Update brighterscript to v1.0.0 ([#1065](https://github.com/jellyrock/jellyrock/pull/1065))
+- Update sharp from v0.35.4 to v0.35.5 ([#1066](https://github.com/jellyrock/jellyrock/pull/1066))
+
+## [2.34.0](https://github.com/jellyrock/jellyrock/compare/v2.33.0...v2.34.0) - 2026-09-27
+
 ### Added
 
 - Say when search or cast is slow; keep search's spinner on search ([#1044](https://github.com/jellyrock/jellyrock/pull/1044))
@@ -18,6 +85,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) Back cancels a start, keys wait; slow starts say still loading ([#1064](https://github.com/jellyrock/jellyrock/pull/1064))
 - (audio) Transcode Opus in `ogg` music instead of hanging ([#1062](https://github.com/jellyrock/jellyrock/pull/1062))
 - Release live streams left mid-open, and wait for slow channels ([#1058](https://github.com/jellyrock/jellyrock/pull/1058))
 - (home) Tell a failed Favorites load from an empty one; OK retries ([#1057](https://github.com/jellyrock/jellyrock/pull/1057))

@@ -1,46 +1,46 @@
 /**
- * BrighterScript plugin — no hand-rolled dialog chrome, and no hand-rolled
+ * BrighterScript plugin: no hand-rolled dialog chrome, and no hand-rolled
  * overlay append.
  *
  * The dialog family exists because CONVENTION FAILED HERE ONCE. `JRDialog`,
  * `JRListDialog` and `OverviewDialog` each carried a private copy of the chrome
  * and of the layout arithmetic; when the #757 review restyled `JRDialog` the
  * other two silently kept the old look, and the app shipped two dialog languages
- * with every gate green — nothing asserted a single position, gap, colour or
+ * with every gate green: nothing asserted a single position, gap, color or
  * asset. This plugin is the gate that was missing.
  *
  * See `docs/architecture/dialogs.md`.
  *
  * What is flagged:
  *
- *   1. A component that draws its OWN dimmed backdrop — a `Rectangle` sized
+ *   1. A component that draws its OWN dimmed backdrop: a `Rectangle` sized
  *      1920x1080 (the full screen). Every dialog's backdrop belongs to
  *      `JRDialogPanel`; a second one is a dialog being rebuilt by hand.
  *
  *   2. `appendChild` / `insertChild` onto a SCENE reference (`m.scene`,
  *      `appScene()`, `getScene()`), which is how an overlay used to be mounted
- *      by hand — including via a LOCAL bound to one (`scene = appScene()` then
+ *      by hand, including via a LOCAL bound to one (`scene = appScene()` then
  *      `scene.appendChild(x)`), which is the shape `presentOverlayDialog` itself
  *      is written in and therefore the shape a copy of it will take. The helpers
  *      in `source/utils/dialogs.bs` are the only path that stamps the shared
  *      overlay id, so a hand-rolled append is invisible to
- *      `isOverlayDialogOpen` / `isDialogOpen` / `cancelOpenDialog` — it cannot
+ *      `isOverlayDialogOpen` / `isDialogOpen` / `cancelOpenDialog`. It cannot
  *      be superseded, queried or cancelled, and nothing about it looks wrong at
  *      the call site.
  *
- * What is NOT flagged, and WHY NOT — this half was learned the hard way:
+ * What is not flagged, and why not (this half was learned the hard way):
  *   - The family itself and the helpers that mount it (ALLOWED_DEST_PATHS).
  *   - **The 9-patch panel assets.** The first version of this plugin flagged any
  *     `Poster` drawing `filled-rounded.9.png` or `border-3px.9.png`, on the
- *     theory that those ARE the dialog panel. Run against the tree it produced
- *     16 errors and 1 true positive: those assets are the app's generic rounded
+ *     theory that those ARE the dialog panel. Run against the tree on 2026-08-24, it
+ *     produced 16 errors and 1 true positive: those assets are the app's generic rounded
  *     surface and edge, used by `TextButton`, `Toast`, `JRDropdown`,
  *     `IconButton`, `TrackDropdown` and more. An asset does not identify a
  *     dialog; a full-screen dimmed backdrop does. The rule was deleted rather
  *     than allow-listed, because an allow-list of every legitimate user would
  *     have to grow with each new button.
- *   - A Rectangle that is full-screen for a reason other than a dialog backdrop
- *     — there is no way to tell those apart statically, which is why the check
+ *   - A Rectangle that is full-screen for a reason other than a dialog backdrop:
+ *     there is no way to tell those apart statically, which is why the check
  *     requires an `opacity` (a DIMMING rectangle) and why the escape hatch below
  *     exists.
  *   - Vendored third-party code, in BOTH trees (`components/roku_modules/`,
@@ -48,8 +48,8 @@
  *
  * Known gap, stated rather than papered over: a backdrop whose size is set in
  * BrightScript (`m.dim.width = 1920`) rather than in the XML is not caught. The
- * XML half reads the markup on purpose — that is where every dialog in this app
- * declares its chrome — and chasing the code-set case would mean tracking field
+ * XML half reads the markup on purpose (that is where every dialog in this app
+ * declares its chrome), and chasing the code-set case would mean tracking field
  * writes on arbitrary nodes for a shape nothing in the tree uses.
  *
  * Escape hatch:
@@ -61,7 +61,7 @@
 
 const brighterscript = require('brighterscript');
 
-/** The dialog family and the helpers that mount it — the sanctioned authors. */
+/** The dialog family and the helpers that mount it: the sanctioned authors. */
 const ALLOWED_DEST_PATHS = new Set([
   'components/dialogs/JRDialogPanel.xml',
   'components/dialogs/JRDialogPanel.bs',
@@ -90,9 +90,9 @@ const EXCLUDED_DEST_PREFIXES = [
   'tests/',
 ];
 
-// The marker alone, NOT anchored to a comment opener. A multi-line XML comment
+// The marker alone, not anchored to a comment opener. A multi-line XML comment
 // puts the opener several lines above the marker, so requiring `<!--` on the same
-// line silently ignored the suppression — and a bare occurrence of this literal
+// line silently ignored the suppression. A bare occurrence of this literal
 // is intentional wherever it appears.
 const DISABLE_LINE = /bsc-disable-line\s+no-hand-rolled-dialog\b/i;
 const DISABLE_NEXT_LINE = /bsc-disable-next-line\s+no-hand-rolled-dialog\b/i;
@@ -218,13 +218,13 @@ class NoHandRolledDialogPlugin {
   }
 
   /**
-   * The mounting half — an overlay appended to the scene outside the helpers.
+   * The mounting half: an overlay appended to the scene outside the helpers.
    *
    * Two passes PER FUNCTION, not one over the file. A direct
    * `appScene().appendChild(x)` is the easy shape; the one that actually
    * matters is `scene = appScene()` on one line and `scene.appendChild(x)` two
    * lines later, because that is the shape `presentOverlayDialog` itself is
-   * written in — so it is what a developer copying the sanctioned reference
+   * written in, so it is what a developer copying the sanctioned reference
    * produces, and a rule blind to it would wave through every realistic
    * violation while catching only the naive one.
    *
@@ -239,7 +239,7 @@ class NoHandRolledDialogPlugin {
     const checkFunctionBody = (body) => {
       if (!body?.walk) return;
 
-      // Pass 1 — locals bound to the scene.
+      // Pass 1: locals bound to the scene.
       const sceneLocals = new Set();
       body.walk(
         brighterscript.createVisitor({
@@ -253,7 +253,7 @@ class NoHandRolledDialogPlugin {
         walkAll,
       );
 
-      // Pass 2 — appends onto the scene, however it was reached.
+      // Pass 2: appends onto the scene, however it was reached.
       body.walk(
         brighterscript.createVisitor({
           CallExpression: (call) => {

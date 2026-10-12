@@ -1,112 +1,115 @@
 ---
 name: tech-debt-scan
-description: At the end of a feature or fix, scan docs/architecture/tech-debt.md for entries whose area matches the files this branch touched. Surfaces each candidate with three options — resolved (remove the entry), still applies (no change), or add new (file a new entry for deferred work the PR introduces). Walks the user through each, applies the diffs, and re-runs npm run lint:docs to confirm anchor refs still resolve. Mandated by CLAUDE.md's "PR follow-ups land in tech-debt.md" rule. Use before opening a PR for any non-trivial change.
+description: At the end of a feature or fix, scan docs/architecture/tech-debt.md for entries whose area matches the files this branch touched. Surfaces each candidate for a call (resolved removes the entry, still applies keeps it, defer further narrows it) and asks about new debt the PR defers. Walks the user through each, applies the diffs, and re-runs npm run lint:docs to confirm anchor references still resolve. AGENTS.md's followup-discipline rule routes internal debt with a slug and severity here; /pr runs it as a sub-agent. Use before opening a PR for any non-trivial change.
 model: sonnet
 effort: low
 ---
 
-# /tech-debt-scan — pre-PR debt sweep
+# /tech-debt-scan: a debt sweep before a PR
 
-[`docs/architecture/tech-debt.md`](../../../docs/architecture/tech-debt.md) is the canonical inventory of known issues. Per JellyRock's [CLAUDE.md](../../../CLAUDE.md): **PR follow-ups land in tech-debt.md, not just the PR body** — deferrals evaporate the moment the PR merges if they're only mentioned in the description. This skill ensures every PR gets a deliberate sweep.
+[`docs/architecture/tech-debt.md`](../../../docs/architecture/tech-debt.md) is the inventory of known debt. `AGENTS.md`'s followup-discipline rule sends internal debt with a slug and a severity here: work a PR defers and mentions only in its body is forgotten once it merges. This skill gives every PR a deliberate sweep, in two halves:
 
-Two halves of the sweep:
+1. **Did this PR resolve an existing entry?** Then remove it in the same PR. The closed issue and the file's git history are the record.
+2. **Did this PR defer new debt?** Then add an entry with a stable slug.
 
-1. **Did this PR resolve any existing tech-debt entries?** If yes, REMOVE them. The closed GitHub issue (or just the git history) becomes the audit trail.
-2. **Did this PR introduce or defer any new debt?** If yes, ADD entries with stable slugs.
-
-## Step 1 — Identify the changed files
+## Step 1: Identify the changed files
 
 ```bash
-# Files touched on this branch vs main
-git diff main...HEAD --name-only
+# Files changed on this branch. Use origin/main: local main is often stale.
+git diff origin/main...HEAD --name-only
 
-# Files in the working tree (uncommitted) — include if you're scanning
-# before committing
-git status --porcelain | awk '{print $2}'
+# Uncommitted and untracked files, when scanning before committing
+git diff HEAD --name-only
+git ls-files --others --exclude-standard
 ```
 
-Combine the two. This is the "territory" the PR has touched.
+Combine the two. This is the territory the PR touched.
 
-## Step 2 — Scan tech-debt.md for area matches
+## Step 2: Scan `tech-debt.md` for area matches
 
-The tech-debt file groups entries under `### High` / `### Medium` / `### Low`. Each entry has a slug, an area / file mention, and a description. Walk the file:
-
-```bash
-# Extract candidate entries (each starts with ## or ### slug-name)
-grep -nE "^##+ " docs/architecture/tech-debt.md
-```
-
-For each entry, check whether ANY changed-file path appears in the entry's body, or whether the entry's described area matches the changed-file's parent dir. Be liberal with matching — better to surface a borderline candidate than miss a relevant one. The user makes the keep / remove call, not the matcher.
-
-## Step 3 — For each candidate, ask the user
-
-Present each match like:
+Entries sit under `### High`, `### Medium` and `### Low`, each headed by its slug in backticks:
 
 ```markdown
-**[`<slug>`](docs/architecture/tech-debt.md#<slug>)** (severity: <high/med/low>)
+#### `slug-name`
 
-> <first 2 lines of the entry body — the description>
+- **area**: the files or symbols it covers
+- **issue**: what is wrong
+- **direction**: what the fix looks like
+```
 
-Files this PR touched that overlap: <comma list>
+Every entry has `area` and `issue`; most have `direction`. Some add a `- **severity**:` bullet (why it has that grade), a `- **github**:` bullet (its issue number) or a bullet of their own (`enforced`, `headroom`). List the entries with:
+
+```bash
+grep -nE "^#### " docs/architecture/tech-debt.md
+```
+
+For each entry, check whether a changed file's full path appears in its body, or whether its area covers that file's folder. Match on the full path: a bare file name such as `CLAUDE.md` matches entries about other folders' files. Match generously: a borderline candidate the user dismisses costs less than a missed one. The user makes the call, not the matching.
+
+## Step 3: Ask the user about each candidate
+
+Present each match like this:
+
+```markdown
+**[`<slug>`](docs/architecture/tech-debt.md#<slug>)** (<High, Medium or Low>)
+
+> <the first sentence or two of the entry's issue bullet>
+
+Files this PR touched that overlap: <list>
 
 What's the call? `resolved` / `still applies` / `defer further` / `skip`
 ```
 
-- **`resolved`** — this PR fixed it. Remove the entry from tech-debt.md. If a GitHub issue was tracking the slug, the user comments on that issue ("closed by PR #N") and closes it.
-- **`still applies`** — this PR didn't touch that part of the slug; the entry stays.
-- **`defer further`** — the PR partially addresses but leaves work for later. Update the entry's description to reflect what's now resolved vs what remains.
-- **`skip`** — false positive; the slug doesn't actually overlap with this PR.
+- **`resolved`:** this PR fixed it. Remove the entry. If its `github` field names an issue, the user comments on it ("closed by #N") and closes it.
+- **`still applies`:** this PR didn't touch that part; the entry stays.
+- **`defer further`:** the PR fixes part of it. Rewrite the entry to say what is left.
+- **`skip`:** a false positive.
 
-Walk one at a time. Don't batch.
+Walk them one at a time; don't batch.
 
-## Step 4 — Ask about NEW debt
+## Step 4: Ask about new debt
 
-Independently of Step 3, ask: "Did this PR defer any new work? Things explicitly marked 'out of scope', 'TODO', 'follow-up', or 'will fix later'?"
+Separately from Step 3, ask: "Did this PR defer any work? Anything marked out of scope, TODO, follow-up or will fix later?"
 
-For each, draft a new tech-debt entry:
+For each, draft an entry in the file's schema:
 
 ```markdown
-## <stable-kebab-slug>
+#### `<stable-kebab-slug>`
 
-**Severity**: high | med | low
-**Area**: <area or file paths>
-
-<2-4 sentence description: what's wrong, what was deferred, what the
-fix would look like (if known). Don't pad — short and specific.>
+- **area**: <files or symbols>
+- **issue**: <what is wrong and what was deferred, in two to four sentences>
+- **direction**: <what the fix would look like; leave the bullet out if nobody knows yet>
 ```
 
-Place the entry under the matching `### High` / `### Medium` / `### Low` heading. Slug should be unique and stable (used as cross-reference in commits, PRs, decisions.md).
+Put it under the `### High`, `### Medium` or `### Low` heading the file's severity rubric gives. Keep the issue bullet first after area: `scripts/catchup-state.js` reads the slug, the section and the first `issue` bullet to brief `/catchup`. The slug must be unique and stable, since commits, PRs and decisions cite it.
 
-## Step 5 — Apply the diff + verify
+## Step 5: Apply the diff and verify
 
-Apply the resolved-removals and new-debt-additions via `Edit`. Then verify the anchor chain still resolves:
+Apply the removals and additions with `Edit`. Then check the anchors:
 
 ```bash
 npm run lint:docs
 ```
 
-The lint catches `tech-debt.md#<slug>` references that no longer resolve (when you removed a slug another doc was citing). Two fix shapes:
+It fails on a `tech-debt.md#<slug>` link whose entry you removed. Fix it by the file it is in:
 
-- **Reference is in `docs/architecture/`** → update the citing doc to drop or rename the reference.
-- **Reference is in `decisions.md`** → don't edit the decision (it's append-only); add a new decision noting that the previous one's referenced slug was resolved.
+- **An architecture or dev doc:** update the link or drop it.
+- **A journal (`docs/decisions.md`, `docs/progress.md`) or an ADR:** neither can be hand-edited (journals change through `/log` and `/done`; ADRs never change). Stop and ask the user how to keep the link working.
 
-## Step 6 — Cross-link to the PR (when one exists)
+## Step 6: Link new entries from the PR
 
-When you open the PR via `/pr`, the **Follow-ups** section of the body should link any new tech-debt slugs you added. Example:
+When `/pr` opens the PR, its **Follow-ups** section links each new slug. A relative link does not resolve from a PR body, so use the full URL:
 
 ```markdown
 ## Follow-ups
-- [`itemdetails-size`](../docs/architecture/tech-debt.md#itemdetails-size) — split per-item-type renderers into separate modules
+- [`itemdetails-size`](https://github.com/jellyrock/jellyrock/blob/main/docs/architecture/tech-debt.md#itemdetails-size): split the per-type renderers into modules
 ```
-
-The `/pr` skill scans the diff and reminds about this; `/tech-debt-scan` setting up the entry first means the PR body has something concrete to link.
 
 ## When NOT to use
 
-- The change is trivial (typo fix, dependency bump) — no scan needed.
-- You're not opening a PR — `/tech-debt-scan` is pre-PR. Mid-feature, the slugs aren't stable yet.
-- The PR is a deferred-work follow-up itself — that PR's job is RESOLVING an existing slug; the slug-removal happens automatically on merge. No fresh scan needed unless the work uncovered NEW debt.
+- A trivial change (a typo fix, a dependency bump): no scan needed.
+- You're not opening a PR: mid-feature, the slugs aren't stable yet.
+- The PR exists to resolve an existing slug: remove the entry in it (Step 3's `resolved`). Scan only if the work found new debt.
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent: parent passes `Read .claude/skills/tech-debt-scan/SKILL.md and follow the steps; surface candidate slugs + ask about new debt but do NOT apply edits` in the Task prompt. Sub-agents shouldn't apply tech-debt edits — those are user calls.
+To run it from a sub-agent, the parent passes `Read .claude/skills/tech-debt-scan/SKILL.md and follow the steps; surface candidate slugs and ask about new debt but do not apply edits` in the Agent prompt. The sub-agent this section starts never applies tech-debt edits: those are the user's calls.

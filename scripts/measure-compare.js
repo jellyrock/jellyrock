@@ -1,5 +1,5 @@
 /**
- * Tier 3 — compare two arms of a measurement, and print the WORKLOAD delta beside
+ * Tier 3: compare two arms of a measurement, and print the WORKLOAD delta beside
  * the timing delta.
  *
  *   npm run measure:compare                                describe the ledger
@@ -11,21 +11,21 @@
  *
  * A perf claim is two numbers and one unstated assumption: that both arms did the
  * SAME WORK. [#799](https://github.com/jellyrock/jellyrock/pull/799) states it by
- * hand — *"both arms end at 9 rows, so the win is not a run that rendered less"* —
- * and `home-first-paint-performance.md` states it again, per comparison, as a thing
+ * hand (*"both arms end at 9 rows, so the win is not a run that rendered less"*),
+ * and `home-first-paint-performance.md` stated it again, per comparison, as a thing
  * the author remembered to check ("verified non-vacuous", "one before sample is
  * excluded because it opened a 12-genre library"). Every one of those is a human
  * doing a mechanical join between two series and then writing a sentence about it.
  *
  * So this reads `measurements.jsonl` the way `flake-baseline.js` reads `runs.jsonl`,
- * and prints the workload delta on the line above the timing delta — not in a
+ * and prints the workload delta on the line above the timing delta: not in a
  * caveat underneath it, and not only when someone thought to look.
  *
  * ## What it refuses, and what it merely says out loud
  *
  * The split is the guard's, one tier up: **identity is asserted, everything else is
  * recorded.** A comparison across two different screens, servers, device models or
- * build flavors is not a slow arm and a fast arm — it is two different experiments,
+ * build flavors is not a slow arm and a fast arm. It is two different experiments,
  * so it is REFUSED. Content drift is not: two arms that rendered 10 rows and 9 rows
  * are still worth looking at, as long as nobody can miss that they differ. That is
  * printed, loudly, beside the delta.
@@ -37,12 +37,13 @@
  * a gate cannot separate a regression from a busy server. The exit code says whether
  * a COMPARISON COULD BE MADE, never what it showed.
  *
- * The statistics are the ones the doc already prescribes — *"use a rank test, not a
- * median difference"* — computed rather than assembled by hand: an exact
+ * The statistics are the ones the doc already prescribes (*"use a rank test, not a
+ * median difference"*), computed rather than assembled by hand: an exact
  * Mann-Whitney p where the sample sizes allow one, and the normal approximation with
  * a tie correction where they do not. A p-value here is a description of the spread,
- * not a verdict; the doc's own floor (~120 ms at n=30 per arm) is printed with it so
- * a small delta is read against what this method can actually resolve.
+ * not a verdict; the doc's own floor (about 120 ms at n=30 per arm, measured
+ * 2026-08-04) is printed with it so a small delta is read against what this method
+ * can actually resolve.
  */
 import path from 'node:path';
 
@@ -52,7 +53,7 @@ import { sameServer } from './measurement-guard.js';
 // client, and this tool only ever reads a JSON Lines file off disk.
 import { ramTierFor } from './roku-devices.js';
 import { MeasureArgError } from './measure-args.js';
-// The SAME selection rule the publisher uses. Not a copy — a copy is what produced the
+// The SAME selection rule the publisher uses. Not a copy: a copy is what produced the
 // 8x disagreement between what `measure` printed and what this read back.
 import { selectColdSamples } from './measure-selection.js';
 import { measurementById, unitFor, withUnit } from './measurements.js';
@@ -88,38 +89,38 @@ export const SERIES_KEYS = Object.freeze({
   os: (r) => r?.provenance?.device?.osVersion ?? null,
   // Observed if there is one, else the identity an ENCLOSURE established. The fallback is
   // what lets ADR 0030's no-ODC arm be compared at all: that arm records
-  // `provenance.server.url: null` on purpose — writing a deduction into the field a reader
-  // takes as an observation is the option the ADR rejects by name — so the value lives
+  // `provenance.server.url: null` on purpose (writing a deduction into the field a reader
+  // takes as an observation is the option the ADR rejects by name), so the value lives
   // under `enclosure.identity`, and a reader that wants it opts in by reaching for it.
   server: (r) => r?.provenance?.server?.url ?? r?.enclosure?.identity?.serverUrl ?? null,
   // Same fallback as `server` above, and for the same reason. Without it the calibration's
   // enclosed arm reads as "(not recorded)" and every run false-warns that the two arms ran
-  // against different Jellyfin versions — a warning about the one axis the enclosure has
+  // against different Jellyfin versions: a warning about the one axis the enclosure has
   // already proven identical.
   serverVersion: (r) =>
     r?.provenance?.server?.version ?? r?.enclosure?.identity?.serverVersion ?? null,
   appVersion: (r) => r?.provenance?.checkout?.appVersion ?? null,
   // WHICH NPM SCRIPT launched the run (`process.env.npm_lifecycle_event`), written by
-  // `runProvenance()`. NOT the item type — see `screenVariant` below, and do not merge
-  // the two: they are unrelated senses of one word and the record carries both.
+  // `runProvenance()`. Not the item type: see `screenVariant` below, and do not merge
+  // the two. They are unrelated senses of one word and the record carries both.
   variant: (r) => r?.variant ?? null,
-  // WHICH kind of thing the screen loaded — the item type for `itemDetails`, the library
+  // WHICH kind of thing the screen loaded: the item type for `itemDetails`, the library
   // type for a grid. This is the field that separates two screens backed by ONE component,
   // and without it `screen` alone is too coarse for a component-level family.
   screenVariant: (r) => r?.screenVariant ?? null,
   // WHICH component emitted the lines. One component backs many screens (`itemDetails`
-  // backs all nine `*Details` entries), so this is deliberately NOT `screen`.
+  // backs all the `*Details` entries), so this is not `screen`.
   component: (r) => r?.component ?? null,
   library: (r) => r?.library ?? null,
-  // Whether the CHECKOUT had uncommitted changes. Selectable but deliberately NOT a
-  // refusal axis and NOT a provenance axis: mixing a dirty series with a clean one is
+  // Whether the CHECKOUT had uncommitted changes. Selectable but not a refusal axis
+  // and not a provenance axis: mixing a dirty series with a clean one is
   // disclosed by `SERIES_INTEGRITY`, and a second disclosure would say the same thing
-  // twice. What was missing is the way to ACT on that disclosure — the matrix report
+  // twice. What was missing is the way to ACT on that disclosure. The matrix report
   // tells a reader their median includes dirty series, and without this key there was
   // no `--select dirty=false` to answer it with.
   //
-  // Three states, not two: `false` selects the 68 records that recorded a clean tree and
-  // leaves out the 34 that predate the field, which read as `(unrecorded)` like every
+  // Three states, not two: `false` selects the records that recorded a clean tree and
+  // leaves out those that predate the field, which read as `(unrecorded)` like every
   // other absent value here. "Nobody wrote it down" is not "it was clean".
   dirty: (r) => r?.dirty ?? null,
 });
@@ -139,7 +140,7 @@ const flagsOf = (sample) =>
  * A bare word is an ARM LABEL, because that is the common case by a wide margin and
  * `--a arm=before` reads like ceremony. Anything with an `=` is explicit.
  *
- * @throws {MeasureArgError} on an unknown key — never ignored, for the reason
+ * @throws {MeasureArgError} on an unknown key. It is never ignored, for the reason
  *   `measure-args.js` documents at length: a dropped selector produces a confident
  *   comparison of something other than what the operator asked for.
  */
@@ -167,8 +168,8 @@ export function parseSelector(text) {
  * Pick the series an arm is made of, and attribute every line that did not make it.
  *
  * Same contract as `selectBaseline`: exclusions are OUTPUT, not a silent `filter`.
- * The ordinary failure of a strict selection is selecting fewer lines than you think
- * — and a median over three samples when you took ten reads exactly like a result.
+ * The ordinary failure of a strict selection is selecting fewer lines than you think,
+ * and a median over three samples when you took ten reads exactly like a result.
  */
 export function selectSeries(records, selector = {}) {
   const excluded = { notSelected: 0, notASample: 0, noColdSamples: 0 };
@@ -181,7 +182,7 @@ export function selectSeries(records, selector = {}) {
     );
     if (!matches) excluded.notSelected++;
     // A record written before `outcome` existed reads as `unrecorded` rather than as
-    // a pass — the two earliest series in the ledger predate the field, and treating
+    // a pass. The earliest series in the ledger predate the field, and treating
     // an absent verdict as a good one is the laundering this project keeps removing.
     else if (!SAMPLE_OUTCOMES.has(r.outcome)) {
       excluded.notASample++;
@@ -194,22 +195,22 @@ export function selectSeries(records, selector = {}) {
 }
 
 /**
- * The cold first paints of one series — the mount the RECORD says it is about.
+ * The cold first paints of one series: the mount the RECORD says it is about.
  *
  * Through the shared `selectColdSamples`, because this is the same question `measure.js`
  * answers when it publishes, and the two must not answer it differently. They did: this
  * filtered on `indexInLaunch === 0` regardless of what the record said it was about, and
- * index 0 of a playback launch is the `itemDetails` mount the nav walked THROUGH — so
+ * index 0 of a playback launch is the `itemDetails` mount the nav walked THROUGH. So
  * every sample of such a record read back as the wrong screen, while the workload line
- * called it "identical" to an arm that genuinely was `itemDetails`.
+ * called it "identical" to an arm that really was `itemDetails`.
  *
  * Note the field-name mapping: a SAMPLE carries `dimensions.variant`, a RECORD carries
  * `screenVariant` (the rename exists because `runProvenance()` already spreads a
  * `variant` of its own). Normalising here is what keeps the shared module ignorant of
  * both shapes.
  *
- * A record with neither field set — the two legacy families, which stamp no mount identity
- * (they may still carry other dimensions), or a run whose selection was refused — falls
+ * A record with neither field set (the two legacy families, which stamp no mount identity
+ * though they may still carry other dimensions, or a run whose selection was refused) falls
  * back to first-mount, which is what every single-mount series has always meant.
  */
 export function coldSamples(record) {
@@ -225,7 +226,7 @@ export function coldSamples(record) {
  *
  * `field` is the timing being headlined. It falls back to the sample's WORKLOAD when
  * the field is not a timing, which is how a workload-valued primary (an item count,
- * say) would still resolve — the same fallback `measure.js` uses when it prints a
+ * say) would still resolve: the same fallback `measure.js` uses when it prints a
  * series summary.
  */
 export function buildArm(label, records, selector, field) {
@@ -268,7 +269,7 @@ const show = (value) =>
 
 /**
  * Name one series the way an operator can act on it: its arm label and when it was
- * taken. Not the array index — the ledger is append-only and a reader cannot see
+ * taken. Not the array index: the ledger is append-only and a reader cannot see
  * positions, but `npm run measure:compare` with no arguments prints exactly these.
  */
 const describeSeries = (r) =>
@@ -299,7 +300,7 @@ export function workloadTally(arm) {
  * that shares a screen and a tier, which is the same question asked of one arm rather
  * than of two. A cell that quietly averaged an RTA build with a non-RTA one, or a
  * `debug=true` build with a release one, would publish a well-formed number about two
- * different experiments — the exact failure these checks were written for, one level
+ * different experiments: the exact failure these checks were written for, one level
  * down from where they were written.
  *
  * So the rules live here ONCE and both callers read them. A second copy in the report
@@ -310,7 +311,7 @@ export function workloadTally(arm) {
  * keys from the individual samples (the build-flavor bracket is stamped per sample).
  *
  * `crossArm: 'custom'` means the axis states its DIFFERING-ACROSS-ARMS case in its own
- * words further down — because it normalizes before comparing (`server`), or carries a
+ * words further down, because it normalizes before comparing (`server`), or carries a
  * sanctioned exception (`enableRta`), or is not read off the record at all
  * (`buildFlavor`). It is declared here, on the axis, rather than as a list of key names
  * at the loop: a list two hundred lines from the axis it names is how an axis added
@@ -328,17 +329,17 @@ export const POPULATION_AXES = Object.freeze([
     read: SERIES_KEYS.measurement,
   },
   { key: 'screen', what: 'screen', scope: 'series', read: SERIES_KEYS.screen },
-  // A component-level family makes `screen` alone too coarse: `itemDetails` backs nine
+  // A component-level family makes `screen` alone too coarse: `itemDetails` backs many
   // screens, so a Movie series and a Series series agree on component and would agree
   // on every other key here. `variant` is the field that separates them, and it is
-  // checked at BOTH levels — mixed within an arm, and differing across arms — for the
+  // checked at BOTH levels (mixed within an arm, and differing across arms) for the
   // same reason `screen` is.
   { key: 'screenVariant', what: 'item variant', scope: 'series', read: SERIES_KEYS.screenVariant },
   // WHICH component emitted the lines. Until measurement reached a playback screen,
-  // `screen` implied this — one screen, one component — so the gate did not need it.
+  // `screen` implied this (one screen, one component), so the gate did not need it.
   // A nav that walks through another instrumented screen breaks that implication: an
   // `itemDetails` arm and a `videoPlayer` arm can BOTH carry `screen: osd`, pass every
-  // other key here, and be compared without a word. Worse than silent — the workload
+  // other key here, and be compared without a word. Worse than silent: the workload
   // line then prints "identical: the delta below is not a run that did less work",
   // which is a positive reassurance that two different components are comparable.
   { key: 'component', what: 'component', scope: 'series', read: SERIES_KEYS.component },
@@ -347,13 +348,13 @@ export const POPULATION_AXES = Object.freeze([
   { key: 'library', what: 'library id', scope: 'series', read: SERIES_KEYS.library },
   { key: 'model', what: 'device model', scope: 'series', read: SERIES_KEYS.model },
   { key: 'tier', what: 'device RAM tier', scope: 'series', read: SERIES_KEYS.tier },
-  // Raw, NOT through `sameServer`: within one arm a trailing slash means two runs were
+  // Raw, not through `sameServer`: within one arm a trailing slash means two runs were
   // configured differently, and this half has always been strict. The cross-arm check
   // below is the one that normalizes.
   { key: 'server', what: 'server', scope: 'series', crossArm: 'custom', read: SERIES_KEYS.server },
-  // Build flavor, as the RUNNING build stamped it. `debug=true` alone is +121 ms on a
-  // Stick 4K (measured, and recorded in `home-first-paint-performance.md`), which is
-  // larger than most changes anyone measures.
+  // Build flavor, as the RUNNING build stamped it. `debug=true` alone made Home's first
+  // paint 121 ms slower on a Stick 4K (measured 2026-08-04, n=10, recorded in
+  // `docs/dev/debug-flags.md`), which is larger than most changes anyone measures.
   {
     key: 'buildFlavor',
     what: 'build flavor',
@@ -366,7 +367,7 @@ export const POPULATION_AXES = Object.freeze([
     show: (v) => v ?? 'unstamped',
   },
   // ENABLE_RTA is the third compile-time flag that can move a measurement, and it is
-  // DERIVED from ODC answering rather than read from a manifest — see the guard.
+  // DERIVED from ODC answering rather than read from a manifest (see the guard).
   {
     key: 'enableRta',
     what: 'ENABLE_RTA state',
@@ -386,7 +387,7 @@ const pluralOf = ({ what, plural }) => plural ?? `${what}s`;
  * Which axes this arm mixes, and the values it mixes on them.
  *
  * Empty means the arm is one population. Every entry is a refusal for a paired
- * comparison and an un-poolable cell for the matrix report — the two callers differ in
+ * comparison and an un-poolable cell for the matrix report. The two callers differ in
  * what they DO about it, never in what counts as mixed.
  */
 export function mixedPopulations(arm) {
@@ -418,9 +419,10 @@ export const describeMixed = (label, axis) =>
  * The sample sizes the recorded method is defined against.
  *
  * Extracted because these three numbers were already typed into three different message
- * strings in this file, and the matrix report needs the same ones — a fourth copy of a
+ * strings in this file, and the matrix report needs the same ones. A fourth copy of a
  * constant is how two tools end up disagreeing about what "enough samples" means.
- * Sourced from `docs/dev/home-first-paint-performance.md`, which established them.
+ * Established in `docs/dev/home-first-paint-performance.md`; all three are now stated
+ * in `docs/dev/measuring-performance.md`.
  */
 export const METHOD_FLOOR = Object.freeze({
   /** Below this a series is not a series; the doc's stated minimum. */
@@ -436,7 +438,7 @@ export const METHOD_FLOOR = Object.freeze({
  *
  * These are not population axes. A population axis asks "are these series the same
  * experiment?" and refuses when they are not. These ask "is this series' own account of
- * itself trustworthy?", and the answer never refuses anything — it is disclosed beside
+ * itself trustworthy?", and the answer never refuses anything. It is disclosed beside
  * the number, because the alternative is a median that reads exactly like a good one.
  *
  * Shared for the reason `measure-selection.js` documents at length: `comparability`
@@ -464,10 +466,10 @@ export const SERIES_INTEGRITY = Object.freeze([
     // `deployedFromCheckout` is a claim about THIS run; `deployedBy` is the escape hatch
     // for a caller that deployed immediately before and vouches for it (the calibration
     // harness sets it). Neither means nobody can say the measured build came from the
-    // recorded commit at all — which is a WEAKER claim than a dirty tree, not a stronger
+    // recorded commit at all. That is a WEAKER claim than a dirty tree, not a stronger
     // one, and the two co-occur constantly.
     //
-    // `!== true` deliberately catches `undefined` as well as `false`: a record predating
+    // `!== true` catches `undefined` as well as `false`: a record predating
     // the field cannot attribute its build either, and "we cannot say" is what the
     // warning claims.
     test: (r) =>
@@ -515,14 +517,14 @@ export const describeIntegrity = (fact, total) => `${fact.count} of ${total} ser
  * Can these two arms be compared at all?
  *
  * REFUSALS are the axes on which two series are not a slow arm and a fast arm but
- * two different experiments — every one of them an entry in `POPULATION_AXES`, checked
+ * two different experiments. Every one of them is an entry in `POPULATION_AXES`, checked
  * both WITHIN an arm and ACROSS the pair. WARNINGS are everything the guard's tier 2
  * records: a difference that changes what the number MEANS without making the
  * comparison meaningless, which the reader must see rather than be protected from.
  *
- * The asymmetry is deliberate and it is the tier-3 design: *drift is made visible
- * rather than refused.* A workload difference is the loudest thing this tool prints
- * and it is still not a refusal — because the run that rendered 9 rows instead of 10
+ * The asymmetry is the tier-3 design: *drift is made visible rather than refused.*
+ * A workload difference is the loudest thing this tool prints and it is still not a
+ * refusal, because the run that rendered 9 rows instead of 10
  * is exactly the case a human needs to look at, and a tool that swallowed it would
  * have nothing to say about the failure it exists for.
  */
@@ -548,15 +550,15 @@ export function comparability(a, b) {
   }
   if (refusals.length) return { refusals, warnings };
 
-  // ANY shared series is a refusal, not just a total overlap. A series cannot be
+  // ANY shared series is a refusal, not only a total overlap. A series cannot be
   // evidence for both sides of a comparison against itself.
   //
-  // The total case is a typo with a plausible output — a delta of zero and a p of 1,
+  // The total case is a typo with a plausible output: a delta of zero and a p of 1,
   // which reads as "no difference found". The PARTIAL case is worse, and it is the one
   // an operator actually reaches: `--a commit=<sha> --b after` on an uncommitted change
-  // selects every arm on that commit as A, including all of B. Measured against this
-  // repo's own ledger, that printed `Δ -45.5 ms (-2.5%)`, a p, and an `order` line of
-  // twelve entries built from eight distinct samples — with B's four values counted on
+  // selects every arm on that commit as A, including all of B. Measured on 2026-08-13
+  // against this repo's own ledger, that printed `Δ -45.5 ms (-2.5%)`, a p, and an `order` line of
+  // twelve entries built from eight distinct samples, with B's four values counted on
   // both sides, and nothing anywhere saying so. The only visible tell was that both arms
   // reported the same min and max.
   //
@@ -581,7 +583,7 @@ export function comparability(a, b) {
 
   // Mixed WITHIN an arm is checked before differing ACROSS arms, because a mixed arm
   // makes the cross-arm question meaningless rather than merely wrong. Both arms are
-  // checked on EVERY axis first, out of the shared `POPULATION_AXES` — the matrix
+  // checked on each axis first, out of the shared `POPULATION_AXES`. The matrix
   // report asks the same question of one pooled cell, and one rule with two
   // implementations is what `measure-selection.js` exists to stop happening again.
   for (const arm of [a, b]) {
@@ -613,9 +615,10 @@ export function comparability(a, b) {
     );
   }
 
-  // Build flavor cross-arm. The within-arm half is an axis in `POPULATION_AXES`, and
-  // `debug=true` alone is +121 ms on a Stick 4K (measured, and recorded in
-  // `home-first-paint-performance.md`) — larger than most changes anyone measures.
+  // Build flavor cross-arm. The within-arm half is an axis in `POPULATION_AXES`.
+  // `debug=true` alone made Home's first paint 121 ms slower on a Stick 4K (measured
+  // 2026-08-04, n=10, recorded in `docs/dev/debug-flags.md`), which is larger than most
+  // changes anyone measures.
   const flagsA = [...new Set(a.samples.map((s) => s.flags))];
   const flagsB = [...new Set(b.samples.map((s) => s.flags))];
   if (flagsA.length === 1 && flagsB.length === 1 && flagsA[0] !== flagsB[0]) {
@@ -633,14 +636,14 @@ export function comparability(a, b) {
   }
 
   // ENABLE_RTA is the third compile-time flag that can move a measurement, and it is
-  // DERIVED from ODC answering rather than read from a manifest — see the guard.
+  // DERIVED from ODC answering rather than read from a manifest (see the guard).
   // The within-arm half is an axis in `POPULATION_AXES`, checked above like every other
   // refusal axis: a single arm pooling an RTA build and a non-RTA one and then being
   // compared confidently against the other side is the failure the cross-arm check
   // exists to stop, hidden one level down.
   const rta = (arm) => distinct(arm.series, (r) => r?.provenance?.enableRta ?? null);
   if (rta(a).length === 1 && rta(b).length === 1 && rta(a)[0] !== rta(b)[0]) {
-    // …EXCEPT for the one comparison that exists to measure that variable —
+    // …EXCEPT for the one comparison that exists to measure that variable:
     // [ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md). The ODC
     // calibration's whole point is two arms differing in exactly this, so a refusal with
     // no exception makes the answer unreachable through the tool that would report it.
@@ -648,7 +651,7 @@ export function comparability(a, b) {
     // The exception is EXPLICIT rather than a bypass flag, and the difference matters: a
     // flag would be typed by whoever wanted the comparison to happen, which is precisely
     // the person the refusal is for. What is required instead is a property of the
-    // records — both arms carry an identity, observed or enclosed, and they agree.
+    // records: both arms carry an identity, observed or enclosed, and they agree.
     //
     // `asserted: false` is not an identity. That keeps the cheapest of ADR 0030's three
     // options (skip the assert in the arm that cannot read one) from quietly becoming the
@@ -657,10 +660,10 @@ export function comparability(a, b) {
     //
     // And each arm's identity SOURCE has to match its ODC state, which is what keeps the
     // exception from swallowing the rule. `enableRta` is derived from ODC answering, so
-    // an arm claiming `false` cannot have observed its own identity — that pair is a
+    // an arm claiming `false` cannot have observed its own identity. That pair is a
     // contradiction, not a calibration, and it is exactly what someone comparing an RTA
     // series against a hand-taken plain one would produce. A `null` (a line written
-    // before the field, i.e. unknown) is not `false` and does not qualify either.
+    // before the field, so unknown) is not `false` and does not qualify either.
     //
     // Agreement of the identities themselves is not re-checked here: the server refusal
     // above already fails any pair whose recorded servers differ, and the enclosed arm's
@@ -710,7 +713,7 @@ export function comparability(a, b) {
   // ── Recorded, not refused ────────────────────────────────────────────────────
   // A line the selector MATCHED and the gates then dropped. Said out loud on the
   // success path too, not only inside a refusal, because `selectSeries`'s whole
-  // contract is that exclusions are output rather than a silent `filter` — and the
+  // contract is that exclusions are output rather than a silent `filter`, and the
   // failure it names ("a median over three samples when you took ten reads exactly
   // like a result") happens on the path that prints a delta, not on the one that
   // refuses. Only the gate-dropped counts appear here: `notSelected` is every other
@@ -829,7 +832,7 @@ export function comparability(a, b) {
   return { refusals, warnings };
 }
 
-/** `4 not selected · 1 not a sample (1 blocked)` — every excluded line attributed. */
+/** `4 not selected · 1 not a sample (1 blocked)`: every excluded line attributed. */
 export function describeExclusions(arm) {
   const parts = [];
   if (arm.excluded.notSelected) parts.push(`${arm.excluded.notSelected} not selected`);
@@ -854,7 +857,7 @@ export function median(values) {
   return v.length % 2 ? v[(v.length - 1) / 2] : (v[mid - 1] + v[mid]) / 2;
 }
 
-/** n, median and the full range — the range because a median alone hides the spread. */
+/** n, median and the full range. The range because a median alone hides the spread. */
 export function summarizeValues(values) {
   return {
     n: values.length,
@@ -880,7 +883,7 @@ function midRanks(sorted) {
   return { ranks, tieGroups };
 }
 
-/** Φ(z) via the Abramowitz–Stegun 7.1.26 error function — good to ~1.5e-7. */
+/** Φ(z) via the Abramowitz–Stegun 7.1.26 error function, good to ~1.5e-7. */
 function normalCdf(z) {
   const sign = z < 0 ? -1 : 1;
   const x = Math.abs(z) / Math.SQRT2;
@@ -896,7 +899,7 @@ function normalCdf(z) {
 /**
  * The exact null distribution of U for sizes `m`, `n`, as counts indexed by U.
  *
- * `N(m, n, u) = N(m-1, n, u-n) + N(m, n-1, u)` — the standard recurrence, carried in
+ * `N(m, n, u) = N(m-1, n, u-n) + N(m, n-1, u)`, the standard recurrence, carried in
  * doubles and normalized by its own total, so no factorial is ever formed.
  */
 function uDistribution(m, n) {
@@ -926,32 +929,32 @@ const EXACT_MAX_PAIRS = 2500;
 /**
  * Mann-Whitney U, two-sided.
  *
- * The doc is explicit that this is the test to use — *"a median gap that looks
- * decisive can sit well inside the spread"* — and every recorded p in it was computed
- * by hand outside the repo. Exact where the sample sizes allow it and there are no
- * ties; otherwise the normal approximation WITH the tie correction, and the result
- * says which was used, because "p = 0.03, exact" and "p = 0.03, approximate at n=4"
- * are not the same claim.
+ * The doc is explicit that this is the test to use (*"use a rank test, not a median
+ * difference"*), and every p it recorded was computed by hand outside the repo.
+ * Exact where the sample sizes allow it and there are no ties; otherwise the normal
+ * approximation WITH the tie correction, and the result says which was used, because
+ * "p = 0.03, exact" and "p = 0.03, approximate at n=4" are not the same claim.
  *
- * ## That distinction is not academic — it is already in the doc, unlabeled
+ * ## That distinction is not academic: the doc's own p-values mixed the two, unlabeled
  *
  * Re-deriving the two recorded p-values while writing this found they were computed
- * two different ways. The `apiPipeline` pair (n=5 vs 6, complete separation) records
+ * two different ways. The `apiPipeline` pair (n=5 vs 6, complete separation) recorded
  * *"exact Mann-Whitney p≈0.004"* and is exact: 2/C(11,5) = 0.00433. The batched-attach
- * pair (n=10 per arm, complete separation) records *"U = 0.0, p = 0.0002"* — which is
- * the NORMAL approximation with a continuity correction (z = 3.742 → 1.83e-4). Its
+ * pair (n=10 per arm, complete separation) recorded *"U = 0.0, p = 0.0002"*, which is
+ * the NORMAL approximation with a continuity correction (z = 3.742 gives 1.83e-4). Its
  * exact value is 2/C(20,10) = **1.08e-5**, seventeen times smaller. The conclusion is
- * unaffected — it only gets stronger — but nothing in the doc said which method
+ * unaffected (it only gets stronger), but nothing in the doc said which method
  * produced which number, and a reader re-deriving one from the other would have
  * concluded the arithmetic was broken. Both are reachable here, and both are pinned
- * by tests.
+ * by tests. The finding is recorded in `docs/decisions.md`, decision
+ * `comparison-refuses-identity-reports-drift`.
  *
  * ## Which ties force the approximation, and why this is conservative
  *
  * ANY tie in the combined sample sends it to the approximation, including a tie
  * BETWEEN TWO VALUES OF THE SAME ARM. Strictly, a within-arm tie leaves U an integer
  * and the exact null distribution valid, so the exact test would still be available
- * there — this gives it up deliberately rather than by oversight. Timings are whole
+ * there. This gives it up on purpose rather than by oversight. Timings are whole
  * milliseconds and arms are small, so within-arm ties are common; distinguishing the
  * two kinds of tie would mean a second code path whose only effect is a sharper p on
  * a number this tool explicitly refuses to gate on. Losing precision in the safe
@@ -1014,13 +1017,13 @@ export function completeSeparation(aValues, bValues) {
  *
  * The interleave rule (`A,B,A,B`) exists because content drift and device warm-up are
  * monotone in time: taken in blocks they land on ONE arm and read as a result. The
- * rule was a note in a plan for this tool's whole design period — which is precisely
+ * rule was a note in a plan for this tool's whole design period, which is precisely
  * how the flake baseline's selection recipe went wrong three times. So it is checked
  * from the recorded sample times rather than assumed to have happened.
  *
  * Samples with no `launchAt` are counted separately and never treated as ordered:
  * they predate the field, and "unknown" reading as "fine" is the failure this project
- * has removed from four different records now.
+ * has removed from several records now.
  */
 export function interleaving(a, b) {
   const stamped = [
@@ -1047,7 +1050,7 @@ export function interleaving(a, b) {
 /**
  * A span, in the largest unit that does not round it to nothing.
  *
- * Whole minutes alone printed `0 min` for anything under 30 s — and this number is
+ * Whole minutes alone printed `0 min` for anything under 30 s, and this number is
  * read to judge how far apart the arms were taken, so the one span it must not
  * describe as zero is a short one.
  */
@@ -1059,7 +1062,7 @@ const span = (v) => {
 };
 
 /**
- * The comparison, as lines. Workload first, deliberately: it is the line that says
+ * The comparison, as lines. Workload first, on purpose: it is the line that says
  * whether the timing line below it is about the change or about the fixture.
  */
 export function reportComparison(a, b, { refusals = [], warnings = [] } = {}) {
@@ -1106,7 +1109,7 @@ export function reportComparison(a, b, { refusals = [], warnings = [] } = {}) {
     '',
   );
 
-  // The FAMILY, so a workload-valued primary reads as a count rather than as `ms` —
+  // The FAMILY, so a workload-valued primary reads as a count rather than as `ms`:
   // `--field rows` headlines a row count, and `unitFor` needs the family to know that.
   const unit = unitFor(a.primary, measurementById(SERIES_KEYS.measurement(a.series[0])));
   const sa = summarizeValues(a.values);
@@ -1143,7 +1146,7 @@ export function reportComparison(a, b, { refusals = [], warnings = [] } = {}) {
         (order.unknown ? `   (${order.unknown} sample(s) carry no timestamp)` : ''),
     );
     // `<= 2` means one contiguous run of each arm. Suppressed when neither arm has
-    // more than one sample, where two blocks is the ONLY sequence available and the
+    // more than one sample, where two blocks is the only sequence available and the
     // warning would be telling the operator to do something that does not exist. The
     // n<5 warning already covers that case, and a warning that cannot be acted on is
     // how the whole set stops being read.
@@ -1179,7 +1182,7 @@ const describeSelector = (selector) =>
     .map(([k, v]) => `${k}=${v}`)
     .join(',');
 
-/** `before ×3   after ×3`, commonest first — one describe-mode row per selection key. */
+/** `before ×3   after ×3`, commonest first: one describe-mode row per selection key. */
 function tally(records, read) {
   const counts = {};
   for (const r of records) {
@@ -1195,7 +1198,7 @@ function tally(records, read) {
 }
 
 /**
- * What is IN the ledger, for before two arms have been named — the same job
+ * What is IN the ledger, for before two arms have been named: the same job
  * `describeLedger` does for the run ledger, and for the same reason: the selection
  * keys are exactly what the operator has to supply, and a device is recorded as a
  * hash nobody can type from memory.

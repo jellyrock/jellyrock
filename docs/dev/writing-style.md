@@ -1,0 +1,116 @@
+---
+topic: writing-style
+related-files:
+  - scripts/lint/doc-citation-ratchet.js
+  - .doc-voice-baseline.json
+  - .claude/rules/writing-style.md
+last-reviewed: 2026-10-07
+---
+
+# Writing style
+
+How JellyRock's docs and code comments read: README, user guides, dev guides, architecture docs, ADRs, journals, the agent files (`CLAUDE.md`, skills, rules) and the comments in our code. People read the agent files too, to improve them or to do a task by hand, so they follow the same rules.
+
+The goal is one plain voice that is quick to scan. If a sentence makes the reader work, rewrite it.
+
+## Know your reader
+
+Each doc has one reader. Write for that person.
+
+| Doc | Reader | They want |
+| --- | --- | --- |
+| `README.md`, `docs/user/` | Someone using JellyRock | What to do and what they will see. No internals. |
+| `CONTRIBUTING.md`, `docs/dev/` | A contributor | Steps that work the first time. |
+| `docs/architecture/`, `docs/adr/` | A maintainer | Why the code is shaped this way, and what breaks if it changes. |
+| `CLAUDE.md`, `.claude/` | An agent, and the person improving it | The rule, the reason, and how to tell it applies. |
+| Code comments | The next person to change that code | What the code can't say: the reason, the platform quirk, the trap. |
+
+## The rules
+
+### 1. No em dashes
+
+Use a period, a comma, a colon or parentheses. An em dash joins two thoughts that usually read better as two sentences.
+
+```text
+Before: Nothing else observes a Task's `state` — the task ledger reads it instead,
+        by design — and the scoped pair that would drop only this one needs Roku OS 12.
+
+After:  Nothing else observes a Task's `state`: the task ledger reads it instead.
+        The scoped pair would drop only this observer, but it needs Roku OS 12.
+```
+
+### 2. Sentence-case headings
+
+Capitalize the first word and proper nouns only: "Install the companion plugin", not "Install The Companion Plugin".
+
+### 3. Start with the answer
+
+Put the conclusion or the action first, then the detail. Keep one idea per sentence and aim for under 25 words. A long sentence is usually two.
+
+### 4. One reader per doc
+
+User docs never mention Task threads, observers or file paths. If a user doc needs that detail, link to the dev or architecture doc instead.
+
+### 5. Bold is for UI labels
+
+Bold what the reader sees on screen: **Settings → Playback**. Use bold for at most one warning per section. Never write words in capitals for emphasis (`NOT`, `ONLY`, `MUST`). If a word needs stress, the sentence probably needs restructuring.
+
+### 6. Plain words over abbreviations
+
+Write "for example" and "that is", not `e.g.` and `i.e.`.
+
+### 7. You, present tense, active voice
+
+"Press **Back** to stop the load", not "The load can be stopped by pressing **Back**".
+
+### 8. Arrows only in UI paths
+
+`→` belongs in a bold UI path (**Dashboard → Plugins**). In prose, say what happens: "which leads to", "then".
+
+### 9. Cut filler words
+
+Avoid: `load-bearing`, `deliberately`, `genuinely`, `crucially`, `simply`, `just`, `note that`. They add length and no meaning.
+
+### 10. State the rule and why; keep the proof elsewhere
+
+A doc says what is true and why it matters. Measurements, reproductions and the history of how you found out belong in the commit message or the ADR, where `git blame` reaches them. A dated measurement that *is* the point stays, with its date and device.
+
+### 11. American spelling, symbols not line numbers
+
+Write "behavior", "color", "license". Cite a function by name (`ApiQueueTask.forgetCaller()`), never by line number. See [`american-spelling.md`](../../.claude/rules/american-spelling.md) and [`derive-dont-duplicate.md`](../../.claude/rules/derive-dont-duplicate.md).
+
+## In code comments
+
+A comment follows the same rules as a doc. Rules 1, 5, 6, 8 and 9 apply as written. Rule 10 matters most: a comment carries what the next person needs to change the code correctly, and the proof (measurements, reproductions, how you found out) goes in the commit message. See [`code-style.md`](code-style.md#comments) for what belongs in a comment at all.
+
+Code a tool reads is not prose: a marker such as `bsc-disable-next-line dead-code keep: api: <reason>` keeps the form its tool parses.
+
+## What the gate checks
+
+`npm run lint:doc-citations` runs [`doc-citation-ratchet.js`](../../scripts/lint/doc-citation-ratchet.js) in pre-push and CI. Besides line-number citations, it counts these per file:
+
+| Category | What it counts |
+| --- | --- |
+| `em-dash` | `—` |
+| `filler` | The words in rule 9 |
+| `caps-emphasis` | Common words written in capitals for emphasis (`NOT`, `ONLY`, `NEVER`, `MUST`, `ALWAYS`) |
+| `prose-arrow` | `→` outside bold text |
+| `latin-abbrev` | `e.g.` and `i.e.` |
+
+It skips fenced code blocks, inline code and link targets, so commands and quoted tool output are never counted. A table cell holding only `—` is a "none" marker, not prose, and is skipped too. It covers every tracked markdown file except `CHANGELOG.md` (generated by CI) and `locale/`.
+
+It also counts the same categories in the comments of tracked code (`.bs`, `.brs`, `.js`, `.cjs`, `.mjs`, `.xml`, `.yml`, `.yaml`, `.sh` and the git hooks in `.husky/`), under the file's own path in the same baseline. Only comment text is read, by a parser per language, so a quote mark or `//` inside a string is never a comment:
+
+| Language | How comments are found |
+| --- | --- |
+| BrightScript | The BrighterScript lexer (`'` and `REM`) |
+| JavaScript | `espree`; a file that does not parse stops the run, naming the file |
+| YAML | The `yaml` lexer, so a `#` in a quoted value or URL is not a comment |
+| XML | `<!-- -->` blocks |
+| Shell | Whole-line `#` comments only, since a trailing `#` can sit inside a string and nothing parses shell here |
+
+Inline code and URLs inside a comment are skipped. Vendored and generated code (`components/vendor/`, `roku_modules/`, `node_modules/`, `build/`, `out/`) is out of scope.
+
+The gate is a ratchet. Each file has an allowance in [`.doc-voice-baseline.json`](../../.doc-voice-baseline.json), and a file may only improve. A new file starts at zero. When a file drops below its allowance, the gate asks you to lower the baseline so the gain stays.
+
+The gate cannot judge rules 2, 3, 4, 7 and 10. Reviewers check those.

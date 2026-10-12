@@ -1,15 +1,16 @@
 /**
  * BrighterScript v1 plugin for roku-log integration.
  *
- * OURS, not a vendored copy — written from scratch to replace the unmaintained
+ * OURS, not a vendored copy: written from scratch to replace the unmaintained
  * roku-log-bsc-plugin (0.9.0-beta.1), which BSC v1's AST changes broke
- * (parser.references removed, .name → .tokens.name, .range → .location.range,
- * constructors require options objects instead of positional args). There is no
+ * (parser.references removed, `.name` became `.tokens.name`, `.range` became
+ * `.location.range`, constructors require options objects instead of positional
+ * args). There is no
  * upstream to sync from or defer to: change it here.
  *
  * ⚠️ Do not confuse this with the roku-log RUNTIME library in
  * `source/roku_modules/log/`. That one IS upstream (npm:roku-log, vendored by
- * ropm, gitignored, regenerated on every install — edits there vanish). This
+ * ropm, gitignored, regenerated on every install; edits there vanish). This
  * file rewrites CALL SITES before the compiler sees them, so it can put a
  * statement in a scope that never contained one; when logging misbehaves, work
  * out which of the two artifacts you are looking at first.
@@ -111,13 +112,13 @@ class RokuLogPlugin {
         // Only a logger stored on `m.log` gets the cache line, because that line is
         // hardcoded `m.__le = m.log.enabled` and the call-site visitor below only guards
         // `m.log.<method>()`. For a logger kept under any other name the injection is both
-        // UNREAD (nothing guards its calls) and UNSAFE — it dots into an `m.log` that need
+        // UNREAD (nothing guards its calls) and UNSAFE: it dots into an `m.log` that need
         // not exist in that scope.
         //
         // Not hypothetical: `source/utils/screenReadiness.bs` keeps its logger on
         // `m.screenLoadLog`, and the ledger crashed the app at launch with `&hec` ('Dot'
         // operator on invalid) the first time it was called from a scope with no `m.log`
-        // of its own — main-thread `source/loginRouter.bs`. Every instrumented COMPONENT
+        // of its own: main-thread `source/loginRouter.bs`. Every instrumented COMPONENT
         // happens to set `m.log` in `init()`, which is why the coupling survived until a
         // main-thread caller existed. It also stops a second logger in one component from
         // overwriting `m.__le` with a different logger's enabled state.
@@ -218,7 +219,7 @@ class RokuLogPlugin {
  * Injected after every `m.log = new log.Logger()` to cache the enabled state.
  *
  * `m.log` is hardcoded on BOTH sides on purpose, and the caller only invokes this for an
- * assignment whose target IS `m.log` — see the note at that call site. A logger under any
+ * assignment whose target IS `m.log` (see the note at that call site). A logger under any
  * other name gets no cache line, because nothing would read it and the read itself is
  * unsafe in a scope that has no `m.log`.
  */

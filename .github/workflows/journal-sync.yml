@@ -2,7 +2,7 @@
 #
 # When a PR merges to main, this workflow runs scripts/journal-sync.js to
 # perform the mechanical close-loop edit on docs/progress.md:
-#   - Prepend "- YYYY-MM-DD — <pr-title>" to ## Recently shipped
+#   - Prepend "- YYYY-MM-DD: <pr-title>" to ## Recently shipped
 #   - Clear ## Currently running when its text overlaps the PR title
 #   - Bump frontmatter last-updated:
 #
@@ -59,6 +59,7 @@ jobs:
   sync:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

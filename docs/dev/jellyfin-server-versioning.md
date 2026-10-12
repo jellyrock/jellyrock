@@ -12,345 +12,185 @@ related-files:
   - docs/dev/jellyfin-endpoint-availability.yml
   - docs/dev/jellyfin-version-boundaries.yml
   - scripts/lint/apiversion-consistency-check.js
-last-reviewed: 2026-09-25
+last-reviewed: 2026-10-09
 ---
 
-# JellyRock Versioning Systems Overview
+# Jellyfin server versions
 
-This document provides a high-level overview of how JellyRock handles multiple versioning systems to maintain compatibility across different Jellyfin server versions and Roku device capabilities.
+How JellyRock works with every Jellyfin server from 10.7.0 up: the API tier that picks request paths, the device profile, the guards on endpoints and parameters newer than 10.7, and Quick Connect. At the end: what to do when a release breaks something.
 
-## Overview
+There are two ways the app adapts:
 
-JellyRock supports Jellyfin servers from 10.7.0 through the latest version. To achieve this, the app implements several versioning layers that work together seamlessly.
+- **The API tier** (`apiVersion`) for changes that cut across the API.
+- **A version guard** for one endpoint or parameter that newer servers added or changed.
 
-## Versioning Systems
+## The API tier
 
-### 1. API Endpoint Versioning (`apiVersion`)
+Jellyfin 10.9 moved the user endpoints off the `/Users/{userId}/` prefix, so the app has two tiers:
 
-Jellyfin 10.9 introduced breaking changes to user API endpoints by removing `/Users/{userId}/` path prefixes. JellyRock transparently handles both endpoint styles through a dispatch layer.
+| `apiVersion` | Servers | Paths |
+| --- | --- | --- |
+| `1` | 10.7.x to 10.8.x | `/users/{userId}/items/{itemId}` |
+| `2` | 10.9 and later | `/Items/{itemId}?userId=...` |
 
-**How it works:**
+At login, `source/utils/session.bs` sets `m.global.server.apiVersion` from `resolveApiVersion()` (`source/utils/misc.bs`). Code reads it through `getApiVersionFromGlobal()`, or `m.getApiVersion()` inside `ApiClient`.
 
-- `apiVersion = 1`: 10.7.x - 10.8.x (legacy paths with `/Users/{id}/` prefix)
-- `apiVersion = 2`: 10.9+ (top-level paths with `userId` query parameter)
-- `ApiClient` class routes to the appropriate version (`sdkV1` or `sdkV2`) based on `m.global.server.apiVersion`
-- Static endpoints (shows, artists, movies, etc.) use `sdk.*` directly without version dispatch
+`ApiClient` hides the tier from callers. The same call works on every server:
 
-**Key Files:**
-
-- `source/api/ApiClient.bs` - Dispatcher that routes to appropriate version and injects defaults
-- `source/api/sdk.bs` - Base SDK with static endpoints (shows, artists, items, etc.)
-- `source/api/sdkV1.bs` - 10.7.x - 10.8.x user endpoint implementations
-- `source/api/sdkV2.bs` - 10.9+ user endpoint implementations
-
-### 2. Device Profile Versioning
-
-Device profiles describe what media formats the Roku device can play. Different server versions expect different profile structures.
-
-**How it works:**
-
-- `V1 Profile`: 10.7.x - 10.8.x (includes `Identification` object, `SupportedMediaTypes`, `ResponseProfiles`)
-- `V2 Profile`: 10.9+ (simplified structure, supports `VideoRangeType`)
-- Profile is generated based on detected API version
-
-**Key Differences:**
-
-- `V1` includes DLNA related fields (`Identification`, `SupportedMediaTypes`)
-- `V2` adds support for `VideoRangeType` for `HDR`/`DoVi` detection
-- `V1` does NOT support `VideoRangeType` in codec conditions (causes 400 errors)
-
-**Key Files:**
-
-- `source/utils/deviceCapabilities.bs` - Generates the appropriate profile (`V1` vs `V2` selected internally based on `m.global.server.apiVersion`)
-
-### 3. Field Availability Versioning (BaseItemDto)
-
-Different Jellyfin versions return different fields in API responses. JellyRock handles this gracefully.
-
-**How it works:**
-
-- Fields added in 10.9+ are checked with `isValid()` before accessing
-- Fields not available return gracefully with defaults
-- `ApiClient` automatically injects required fields (`EnableImageTypes`, `ImageTypeLimit`)
-
-**Notable Field Differences:**
-
-| Field | 10.7.0 | 10.9+ | Handling |
-| ----- | ------ | ----- | -------- |
-| `Trickplay` | ❌ | ✅ | Safe with `isValid()` check |
-| `HasLyrics` | ❌ | ✅ | Safe with ?? operator |
-| `NormalizationGain` | ❌ | ✅ | Safe with ?? operator |
-| `VideoRangeType` | ❌ | ✅ | Safe with `isValid()` checks |
-| `ImageTags` | ✅ | ✅ | Always requested via `ApiClient` |
-| `SupportsSync` | ✅ | ❌ | Not used in codebase |
-
-**Note:** Some fields like `ImageTags` and `BackdropImageTags` are not in the `ItemFields` enum but are returned when `EnableImageTypes` is specified.
-
-### 4. Version-Gated API Endpoints
-
-Some Jellyfin API endpoints are only available on specific server versions. These are guarded by direct version checks using `versionChecker()` rather than the `apiVersion` dispatch system.
-
-| Endpoint | Min Version | Guard Function | Purpose |
-| -------- | ----------- | -------------- | ------- |
-| `GET /MediaSegments/{itemId}` | 10.10.0 | `supportsMediaSegments()` | Fetch intro/outro/recap/preview/commercial segments for skip functionality |
-| `GET /Items/{itemId}/Collections` | 12.0.0 | `extrasRows.supportsItemCollections()` | The collections an item is in — the item-details Collections row |
-| `GET /Items` `audioLanguages` / `subtitleLanguages` | 12.0.0 | `languageFilters.supported()` | The library grid's audio- and subtitle-language filters. Gated on the SERVER VERSION rather than on the request succeeding, because 10.11 accepts both parameters and silently ignores them — an ungated filter would return the user's whole library instead of reporting a problem |
-| `GET /Items/Filters2` language lists | 12.0.0 | `languageFilters.supported()` | Supplies the options for the filters above. A SECOND filters endpoint, not a replacement: it carries `AudioLanguages` / `SubtitleLanguages`, while `/Items/Filters` carries `OfficialRatings` / `Years`, so a caller wanting both asks twice |
-| `GET /Items` `parentId` with `IncludeItemTypes=BoxSet` | 12.0.0 | `collectionsView.supported()` | The per-library Collections view. Gated on the SERVER VERSION because nothing in the reply distinguishes a server that scoped the query from one that did not — 10.11 answers 200 with plausible items either way. With `Recursive=true` it ignores `parentId` and returns every collection on the server, another library's included; with `Recursive=false` it ignores `IncludeItemTypes` too and returns the user's root library folders |
-
-**How it works:**
-
-- Guard functions call `versionChecker()` on the raw server version string — read from `m.global.server.version` inside the guard (`supportsMediaSegments()`), or passed in by the caller so the guard stays pure and table-testable (`extrasRows.supportsItemCollections(serverVersion)`)
-- Callers check the guard before making the API request — the endpoint simply isn't called on older servers
-- A gate can be on a PARAMETER rather than a whole endpoint (`audioLanguages` on `GET /Items`), and that case is the one to be careful with: an absent endpoint answers 404, but an unsupported parameter on a supported endpoint is **accepted and ignored**, so the request succeeds and returns unfiltered results. There is nothing to detect at runtime — verified on 10.11.11, where `audioLanguages=zzz` returns the full library in either casing — which is why the version check is the only correct gate
-- No `apiVersion` dispatch needed because these are top-level paths, not user-scoped endpoints
-
-**Endpoints that gracefully degrade (no explicit guard):** some post-floor
-endpoints have no version guard but are safe because a missing endpoint returns a
-404 and the caller checks `isValid()` before use — e.g. `Audio/{itemId}/Lyrics`
-(10.9+, no lyrics shown on older servers) and the Quick Connect probe `/QuickConnect/Enabled`
-(10.8+, fail-open). These are not bugs, but they *do* trip the server-upgrade
-pipeline's floor-coverage check (we call an endpoint the 10.7.0 floor spec lacks).
-
-**Machine-readable registry:** every post-floor endpoint and its old-server
-handling (guard / dispatch-sibling / graceful-degradation) is recorded in
-[`jellyfin-endpoint-availability.yml`](jellyfin-endpoint-availability.yml) — the
-server-upgrade pipeline's validated disposition ledger
-([server-upgrade-automation.md](../architecture/server-upgrade-automation.md),
-Phase 6). The table above is the human-readable mirror; the YAML is the source the
-floor check consumes, and `npm run lint:endpoint-availability` validates each
-entry's guard/sibling claim against current code so a removed guard resurfaces the
-finding. When you add a version-gated or post-floor endpoint, add a registry entry
-(the lint will tell you if you forgot — the finding will flag `needsInvestigation`).
-
-**Version-gated parameters:**
-
-A parameter can change behavior while its endpoint stays the same, and the spec
-diff will not show it. Jellyfin 10.11 kept `DisableFirstEpisode` on
-`GET /Shows/NextUp` in the spec but stopped acting on it; only 12.0 removed it.
-
-| Endpoint | Parameter | Servers that act on it | Guard Function | Sent by |
-| -------- | --------- | ---------------------- | -------------- | ------- |
-| `GET /Shows/NextUp` | `DisableFirstEpisode` | 10.7–10.10 (ignored on 10.11, removed in 12.0) | `honorsDisableFirstEpisode()` | `buildHomeNextUpParams()` (`source/api/items.bs`) |
-
-The rule:
-
-- **Send a version-specific parameter only to versions whose behavior you checked.**
-  Check two things. First, read the controller and the code it calls at each release
-  tag you support. Second, send a live request whose results differ depending on
-  whether the server acted on the parameter.
-  `npm run jellyfin:matrix -- '<path?query>'` sends one GET to a server of each
-  version (`JELLYFIN_VERSION_SERVERS` in `.env.example`) and prints status, item
-  count and size per version.
-- **Decide with a guard function** that takes the server version, next to the code
-  that builds the request, and unit-test the table of versions it covers.
-- **Register it** under `parameters:` in
-  [`jellyfin-endpoint-availability.yml`](jellyfin-endpoint-availability.yml).
-  `npm run lint:endpoint-availability` then fails any `.bs` file under `source/` or
-  `components/` whose code names the parameter without calling the guard, and any
-  entry no file sends any more. Comments don't count, so you can still explain in
-  a comment why a call does not send the parameter.
-
-**When the registry cannot hold it.** The lint keys on the parameter's NAME, which
-works when the name is specific to the behavior (`DisableFirstEpisode` appears in one
-place and means one thing). It does not work when what changed is a COMBINATION of
-otherwise-ordinary parameters. The per-library Collections gate is that case: 12.0
-started honoring `parentId` for `IncludeItemTypes=BoxSet` queries, and both of those
-parameters are sent by most of the app for unrelated, always-correct reasons —
-registering either name would fail nearly every file under `source/` and
-`components/`. So `collectionsView.supported()` is recorded in the table above and
-deliberately NOT in the YAML. The guard, its unit table and the measured behavior of
-each server line are in `source/GridView/collectionsView.bs`. Extending the registry
-to express a combination would need the lint to match a call SITE rather than a name;
-nothing needs that yet, and one entry is not evidence that it should be built.
-
-**Name-range filters (the grid's "#" letter) — measured, and no guard needed.** The grid's
-"#" is every name that starts with no letter A–Z, asked for as two ranges:
-`NameLessThan=A`, then `NameStartsWithOrGreater={` ("{" is the character after "z")
-(`gridPage.hashRanges`). How the server compares those two parameters has changed across
-releases:
-
-| Server | Comparison |
-| ------ | ---------- |
-| 10.7 – 10.10 | whole `SortName` as stored, against the lowercased value (SQL) |
-| 10.11.0 – 10.11.2 | first character only, of `SortName` **or** `Name`, strictly `<` / `>` the raw value |
-| 10.11.3 – 10.11.x | whole `SortName` as stored, against the lowercased value ([jellyfin#15381](https://github.com/jellyfin/jellyfin/pull/15381)) |
-| 12.x | whole `SortName` lowercased in the query, against the lowercased value |
-
-Verified 2026-09-25 with a partition check: on 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11
-and 12.0.0, A–Z plus the two ranges put every item of a library in exactly one place, for
-`/Items` (seeded names including `_Under`, `[Bracket]`, `{Brace}`, `~Tilde`, `1917`, `Élite`,
-`アキラ`, `Ωmega`, plus two real libraries) and `/Genres`; `/Artists`, `/Artists/AlbumArtists`
-and `/Studios` go through the same server function as `/Genres`. Two server behaviors the check
-surfaced, both on every version: the stored `SortName` drops a leading `{` (so "{Brace}" files
-under B), and from 10.9 it is transliterated (`アキラ` → `akira`, `Ωmega` → `omega`), so non-Latin
-titles file under a letter there and after "z" only on 10.7–10.8. On a temporary 10.11.2 server,
-`_Under` and `[Bracket]` fell in no range and `Élite`, `アキラ` and `Ωmega` in "#" as well as a
-letter, whatever the app sends — the first-character comparison cannot be asked any better, so
-those three patch releases are a documented server limitation, not a guard.
-
-**Media Segments (10.10.0+):**
-
-The `MediaSegments` API provides segment timing data (intro, outro, recap, preview, commercial, unknown) for video items. JellyRock fetches segments during video content loading and supports three action modes per segment type: auto-skip, show skip button, or do nothing. All segment types default to "show skip button" (AskToSkip). User action preferences are loaded from the server's `DisplayPreferences` `CustomPrefs` (key format: `segmentTypeAction__[Type]`) with optional per-device overrides via JellyRock settings.
-
-**Key Files:**
-
-- `source/utils/mediaSegments.bs` - `supportsMediaSegments()` guard, `resolveSegmentAction()`, `findActiveSegment()`
-- `source/enums/MediaSegmentType.bs` - Segment type enum (Intro, Outro, Commercial, Preview, Recap, Unknown)
-- `source/enums/MediaSegmentAction.bs` - Action mode enum (None, AskToSkip, Skip)
-- `source/api/ApiClient.bs` - `BuildGetMediaSegmentsRequest()` request builder
-- `source/api/items.bs` - `GetMediaSegments()` helper (guards with `supportsMediaSegments()`)
-- `components/ItemGrid/LoadVideoContentTask.bs` - Fetches segments after metadata load
-- `components/video/VideoNotification.bs` - Reusable notification component for skip prompts
-- `components/video/VideoPlayerView.bs` - Segment detection and action handling during playback
-
-### 5. Authentication Compatibility
-
-Most authentication flows work across all versions, with one quirk for
-Quick Connect.
-
-**Quick Connect:**
-
-The two QC dispatches operate on different version boundaries — the request
-builders handle them separately:
-
-| Concern | 10.7.x | 10.8.x | 10.9.0+ | Boundary |
-| ------- | ------ | ------ | ------- | -------- |
-| `AuthenticateWithQuickConnect` body | `{ "Token": secret }` | `{ "Secret": secret }` | `{ "Secret": secret }` | `versionChecker(version, "10.8.0")` |
-| `/QuickConnect/Initiate` HTTP method | `GET` | `GET` | `POST` | `m.getApiVersion() >= 2` |
-| `/QuickConnect/Connect` | `GET ?secret=` | same | same | n/a |
-| `/QuickConnect/Enabled` (gating probe) | missing | present | present | fail-open in `UserSelect.probeQuickConnectAvailability` |
-
-`ApiClient`'s `BuildInitiateQuickConnectRequest` /
-`BuildAuthenticateWithQuickConnectRequest` dispatch at build time, so the caller
-(`components/login/UserSelect.bs`) is version-agnostic. The Token→Secret split
-happens at 10.8.0 (a *finer* boundary than the `apiVersion` 1→2 split at
-10.9.0), so it uses raw `versionChecker` rather than the `apiVersion` integer.
-
-All four endpoints run through the API pool, which is what makes the STATUS CODE
-readable. That matters because three of Quick Connect's four failure signals are
-status codes and nothing else, and two of them are themselves version-dependent.
-Checked against every published spec from 10.7.0 to 10.11.8:
-
-| Endpoint | 10.7.0–10.10.7 | 10.11.0+ | Meaning |
-| -------- | -------------- | -------- | ------- |
-| `/QuickConnect/Connect` | `200`, `404` | `+ 503` | `404` = "Unknown quick connect secret" — the code is expired or was never issued |
-| `/QuickConnect/Initiate` | `200`, `401` | `+ 503` | `401` = "Quick connect is not active on this server" — the feature is off |
-| `AuthenticateWithQuickConnect` | `200`, `400` | `+ 503` | `400` = "Missing token"; a live 10.11.11 also answered an **undeclared** `404` for an unapproved secret |
-| `/QuickConnect/Enabled` | `200` (absent < 10.8) | `+ 503` | plain boolean body |
-
-Two consequences the app depends on:
-
-- **`503` is transient, not "disabled"** — "The server is currently starting or is
-  temporarily not available." It arrived at 10.11.0, so a client that lumps every
-  failure status into one bucket tells a user with a *booting* server that Quick Connect
-  is switched off. `quickConnectInitiateFailure` / `quickConnectExchangeFailure`
-  (`source/utils/quickConnect.bs`) keep it separate.
-- **`401` is the only "feature is off" signal**, and it is also what a *route
-  mismatch* returns — sending `GET` to a 10.9+ server, or `POST` to a 10.8 one.
-  The method dispatch above is what keeps that collision from ever surfacing.
-
-**One schema difference, on the floor server only.** 10.7.x's `QuickConnectResult`
-carries `Error` (and `Authentication`); 10.8.0 dropped both. A 10.7 server can
-therefore answer `200` with `Authenticated: false` *and* an error string, which a
-poll loop must not read as "not yet" — see `quickConnectPollOutcome`.
-
-Username/password authentication works identically across all versions.
-
-### 6. Client Interface Versioning
-
-The `GetApi()` client provides a unified interface that hides version complexity:
-
-```brightscript
-' Same code works on all server versions; ApiClient routes V1/V2 internally.
+```brighterscript
 req = GetApi().BuildGetItemRequest(itemId, { fields: "Overview" })
 res = fetchRes(req, "myReq")
 if isValid(res) and res.ok then item = res.json
 ```
 
-**Automatic handling:**
+A method whose path differs by tier branches on `if m.getApiVersion() >= 2` and builds each path itself. `sdkV1.bs` and `sdkV2.bs` hold only `users.GetImageURL()`, which `ApiClient` picks by tier. `ApiClient` also fills in the user ID and, through `injectApiParams()` (`source/utils/misc.bs`), `EnableImageTypes`, `ImageTypeLimit` and, on tier 2, the `Trickplay` field.
 
-- Image parameters injected automatically (`EnableImageTypes`, `ImageTypeLimit`)
-- Version-specific fields added conditionally (e.g., Trickplay for 10.9+)
-- `UserId` automatically retrieved from global state
-- API version automatically detected and routed
+`npm run lint:apiversion-consistency` checks that `resolveApiVersion()` matches the tier map in [`jellyfin-version-boundaries.yml`](jellyfin-version-boundaries.yml).
 
-## How Versioning Works Together
+## The device profile
 
-```text
-User Action → GetApi().BuildGetItemRequest(...)
-                    ↓
-            ApiClient (dispatcher)
-                    ↓
-            Check m.global.server.apiVersion
-                    ↓
-            ├── apiVersion = 1 → /users/{userId}/items/{itemId}  (V1 path)
-            └── apiVersion = 2 → /Items/{itemId}?userId=...      (V2 path)
-                    ↓
-            Static endpoints (shows, items, etc.) → sdk.* (single shape across versions)
-                    ↓
-            Device Profile (getDeviceProfile())
-                    ↓
-            Check m.global.server.apiVersion
-                    ↓
-            ├── apiVersion = 1 → getDeviceProfileV1()
-            └── apiVersion = 2 → getDeviceProfileV2()
-```
+The profile tells the server what the Roku can play. `getDeviceProfile()` in `source/utils/deviceCapabilities.bs` picks `getDeviceProfileV1()` or `getDeviceProfileV2()` by tier:
 
-## Version Detection
+- **V1** (10.7 to 10.8) carries the DLNA fields `Identification`, `SupportedMediaTypes` and `ResponseProfiles`.
+- **V2** (10.9 and later) can use `VideoRangeType` in codec conditions to describe HDR and Dolby Vision. On tier 1 the profile drops those conditions, because older servers reject the profile with them.
 
-Server version detection happens at login:
+## Fields newer servers return
 
-1. `resolveApiVersion()` checks server version string
-2. Returns `1` for 10.7.x - 10.8.x
-3. Returns `2` for 10.9+
-4. Stored in `m.global.server.apiVersion`
+A field a newer server adds is missing from an older server's response, so the code checks it before use:
 
-All code references this value to determine behavior.
+| Field | Added | Read with |
+| --- | --- | --- |
+| `Trickplay` | 10.9 | `isValid()`, and requested only on tier 2 |
+| `HasLyrics` | 10.9 | `??` |
+| `NormalizationGain` | 10.9 | `isValid()` |
+| `VideoRangeType` | 10.9 | `isValid()` |
 
-## Files by Versioning System
+`ImageTags` and `BackdropImageTags` are not in the `ItemFields` enum. The server returns them when the request has `EnableImageTypes`, which `ApiClient` always adds.
 
-| System | Key Files |
-| ------ | --------- |
-| API Endpoints | `source/api/ApiClient.bs` (dispatcher), `source/api/sdk.bs` (static), `source/api/sdkV1.bs` (`V1` user), `source/api/sdkV2.bs` (`V2` user) |
-| Device Profile | `source/utils/deviceCapabilities.bs` (`V1/V2` selection internal) |
-| Field Handling | `source/data/JellyfinDataTransformer.bs`, `source/api/ApiClient.bs` |
-| Version Detection | `source/utils/misc.bs` (resolveApiVersion), `source/utils/session.bs` |
-| Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/items.bs` (GetMediaSegments), `source/extras/extrasRows.bs` (supportsItemCollections), `source/utils/languageFilters.bs` (supported) |
+## Endpoints newer than 10.7
 
-## Adding Support for New Server Versions
+An endpoint added after 10.7 inside tier 2 has a guard: a function that takes the server version and says whether to call it. The caller checks the guard and skips the request on an older server.
 
-> **Guided path:** the [`/new-api-version`](../../.claude/skills/new-api-version/SKILL.md) skill wraps this whole recipe (boundary map + `resolveApiVersion()` twin, the `sdkVN.bs` shim, dispatch branches, device profile, manifest clamp, docs + validators) and stops at each verify gate. Use it so a tier split can't land half-built.
+| Endpoint | From | Guard | Used for |
+| --- | --- | --- | --- |
+| `GET /Audio/{itemId}/Lyrics` | 10.9.0 | `supportsLyrics()` | Song lyrics |
+| `GET /MediaSegments/{itemId}` | 10.10.0 | `supportsMediaSegments()` | Skipping intros, recaps and credits |
+| `GET /Items/{itemId}/Collections` | 12.0.0 | `extrasRows.supportsItemCollections()` | The Collections row on item details |
+| `GET /Items` with `audioLanguages` or `subtitleLanguages` | 12.0.0 | `languageFilters.supported()` | The library grid's language filters |
+| `GET /Items/Filters2` | 12.0.0 | `languageFilters.supported()` | The options for those filters. It adds `AudioLanguages` and `SubtitleLanguages`; `/Items/Filters` still has `OfficialRatings` and `Years`, so a caller that wants both asks twice |
+| `GET /Items` with `parentId` and `IncludeItemTypes=BoxSet` | 12.0.0 | `collectionsView.supported()` | A library's Collections view |
 
-If a future Jellyfin release introduces breaking changes — including a **cross-major jump** like `12.0.0` (Jellyfin has discussed dropping the `10.` prefix), which the version logic already handles since comparison is numeric-per-segment and the active tier is unbounded above:
+Write a guard so it takes the version as an argument where it can (`extrasRows.supportsItemCollections(serverVersion)`), so a unit test can check it against a table of versions.
 
-1. **API Changes:** Create `source/api/sdkV3.bs` with new endpoint paths
-2. **Profile Changes:** Add a `V3` branch in `source/utils/deviceCapabilities.bs` (`V1/V2` are already internal selectors; `V3` follows the same pattern)
-3. **Update Detection:** Modify `resolveApiVersion()` to return `3` for the new minimum (e.g. `12.0.0+`). **This must stay in lockstep with the boundary map** — `npm run lint:apiversion-consistency` ([`scripts/lint/apiversion-consistency-check.js`](../../scripts/lint/apiversion-consistency-check.js)) statically parses `resolveApiVersion()` and fails CI if its guards drift from `jellyfin-version-boundaries.yml`. This is what lets you verify a tier split **offline**, with no Roku hardware.
-4. **Update Dispatchers:** Add `apiVersion >= 3` branches in `ApiClient.bs`
-5. **Forward Compatibility:** Existing `>= 2` checks automatically fall through to `V2` until overridden
+**A parameter needs the version check most.** A missing endpoint answers 404, which the caller sees. An unsupported parameter on an existing endpoint is accepted and ignored, so the request succeeds with the wrong results. On 10.11, `audioLanguages=zzz` returns the whole library (checked on 10.11.11). With `parentId` and `IncludeItemTypes=BoxSet`, 10.11 returns every collection on the server when `Recursive=true`, and the user's library folders when `Recursive=false`. Nothing in either reply shows the parameter was ignored, so the version is the only gate.
 
-### Also update the server-upgrade-automation pipeline
+The Quick Connect probe `GET /QuickConnect/Enabled` (10.8) has no guard. It answers 404 on 10.7, and the caller treats that as "available" (`UserSelect.probeQuickConnectAvailability`).
 
-The release-detection pipeline ([server-upgrade-automation.md](../architecture/server-upgrade-automation.md)) is generalized to `N` tiers via range math, so its diff / join / floor / registry logic needs **no** rewrite when `V3` lands — but it has two data/config touch-points that DO need updating, plus the manifest must be regenerated:
+### The endpoint registry
 
-1. **Tier boundary map:** in [`jellyfin-version-boundaries.yml`](jellyfin-version-boundaries.yml), flip tier `2` to `status: frozen` with a concrete `maxServer` (the last 10.x release before 11.0), and add tier `3` with `status: active`, `maxServer: null`. (The loader requires exactly one active tier, and it must be the unbounded one.)
-2. **Manifest tier clamp:** in [`scripts/generate/api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js), the cross-function clamp that pins `sdkV1.bs → max ≤ 1` / `sdkV2.bs → min ≥ 2` needs a `sdkV3.bs → min ≥ 3` line, and the `sdkV2.bs` line gains a `max ≤ 2` clamp (V2 becomes the frozen middle tier). Then regenerate: `npm run docs:api-manifest`. The `getApiVersion() >= 3` branches added in the dispatcher step above are picked up automatically (the extractor reads the literal `N`).
+[`jellyfin-endpoint-availability.yml`](jellyfin-endpoint-availability.yml) records every endpoint newer than 10.7 and how old servers are handled: a guard, a tier-1 equivalent, or a 404 the caller handles. The server-upgrade pipeline reads it ([`server-upgrade-automation.md`](../architecture/server-upgrade-automation.md)), and `npm run lint:endpoint-availability` checks each entry's guard against the code. When you add such an endpoint, add an entry; the lint reports one you forgot.
 
-After those, regenerate/commit a fresh baseline fingerprint at the next acknowledged release as usual — the floor (`10.7.0`) stays put forever (we support the oldest servers indefinitely), so the backward + symmetry + endpoint-availability checks need no change.
+### Parameters whose meaning changed
 
-### Reacting proactively (RC + master/unstable)
+A parameter can change what it does while the spec stays the same, so a spec diff does not show it:
 
-You don't have to wait for a stable release to find out what breaks. The server-upgrade pipeline can diff against a **release candidate** or a **master/unstable** build, so you can start tier work (above) before the final ships:
+| Endpoint | Parameter | Servers that act on it | Guard | Sent by |
+| --- | --- | --- | --- | --- |
+| `GET /Shows/NextUp` | `DisableFirstEpisode` | 10.7 to 10.10; ignored by 10.11, removed in 12.0 | `honorsDisableFirstEpisode()` | `buildHomeNextUpParams()` (`source/api/items.bs`) |
 
-- **Triage an RC or master build:** `/server-upgrade <from> <to>` where `<to>` is an RC (`10.12.0-rc1`), the literal `unstable`/`master` (resolves to the latest immutable datestamped build), or an explicit datestamp. It investigates locally and writes a `.claude/handoffs/` note — it files **no** GitHub issues (durable filing is the stable flow when the final lands).
-- **Re-diff as it changes:** RCs and master move. After triaging `rc1`, set the `jellyfin-server-rc` signal's `latest_acknowledged = <base>-rc1`; when `rc2` lands, `/server-upgrade` diffs `rc1 → rc2`, surfacing only the delta since your proactive work. For master, the pinned datestamp lives in the handoff and becomes the next `<from>`.
-- **Why ephemeral:** pre-release fingerprints are built in-memory from the permanent archive (`--fetch`), never committed — RC/master builds are throwaway anchors. See [server-upgrade-automation.md → "Pre-release channels"](../architecture/server-upgrade-automation.md).
+To add one:
 
-When that triage shows a breaking shift warranting a new tier, the follow-up is [`/new-api-version`](../../.claude/skills/new-api-version/SKILL.md), which automates the recipe above. **RCs can still change before release** — always re-run `/server-upgrade` against the final stable once it ships.
+1. **Check what each version does.** Read the controller and the code it calls at each release tag you support. Then send a request whose results differ by whether the server acted on the parameter: `npm run jellyfin:matrix -- '<path?query>'` sends one GET to a server of each version (`JELLYFIN_VERSION_SERVERS` in `.env.example`) and prints the status, item count and size from each.
+2. **Write a guard** that takes the server version, beside the code that builds the request, and unit-test its table of versions.
+3. **Register it** under `parameters:` in the registry. The lint then fails any `.bs` file under `source/` or `components/` whose code names the parameter without calling the guard, and any entry nothing sends any more. Comments don't count, so a comment can say why a call leaves the parameter out.
 
-## Related Documentation
+**The registry can't hold a combination.** The lint matches a parameter's name, which works when the name means one thing. The Collections view's gate is a combination of `parentId` and `IncludeItemTypes=BoxSet`, two names most of the app sends for other reasons. So `collectionsView.supported()` is in the table above and not in the registry. Its unit table and each server line's measured behavior are in `source/GridView/collectionsView.bs`.
 
-- `docs/user/jellyfin-server-feature-matrix.md` - User-facing feature support by server version
-- `docs/dev/new-user-setting.md` - How to add version-aware settings
-- `docs/dev/registry-migrations.md` - Handling data migrations across versions
+### The grid's "#" filter needs no guard
+
+The grid's "#" holds every name that doesn't start with A to Z, asked for as two ranges: `NameLessThan=A`, then `NameStartsWithOrGreater={` (`{` follows `z`). See `gridPage.hashRanges`. Servers compare those values differently:
+
+| Server | Compares |
+| --- | --- |
+| 10.7 to 10.10 | The whole stored `SortName` against the lowercased value |
+| 10.11.0 to 10.11.2 | The first character of `SortName` or `Name`, strictly less or greater than the raw value |
+| 10.11.3 to 10.11.x | The whole stored `SortName` against the lowercased value ([jellyfin/jellyfin#15381](https://github.com/jellyfin/jellyfin/pull/15381)) |
+| 12.x | The whole `SortName`, lowercased in the query, against the lowercased value |
+
+A check on 2026-09-25 found that A to Z plus the two ranges put every item in exactly one place on 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11 and 12.0.0. It covered `/Items` and `/Genres`; `/Artists`, `/Artists/AlbumArtists` and `/Studios` use the same server function as `/Genres`. Two server behaviors follow from how `SortName` is stored, on every version:
+
+- **A leading `{` is dropped**, so "{Brace}" files under B.
+- **From 10.9, names are transliterated** (`アキラ` becomes `akira`), so a non-Latin title files under a letter. On 10.7 and 10.8 it files after "z".
+
+On 10.11.0 to 10.11.2, `_Under` and `[Bracket]` fell in no range, and `Élite`, `アキラ` and `Ωmega` landed in "#" and under a letter. No query can fix a first-character comparison, so those three releases are a known server limit, not a guard.
+
+### Media segments (10.10.0 and later)
+
+The `MediaSegments` API gives the times of a video's intro, outro, recap, preview, commercial and unknown segments. For each type the user picks an action: skip it, show a skip button (the default), or do nothing. The choices come from the server's `DisplayPreferences` `CustomPrefs` (`segmentTypeAction__<Type>`), and a JellyRock setting can override them on one device.
+
+| Where | What |
+| --- | --- |
+| `source/utils/mediaSegments.bs` | `supportsMediaSegments()`, `resolveSegmentAction()`, `findActiveSegment()` |
+| `source/enums/MediaSegmentType.bs`, `source/enums/MediaSegmentAction.bs` | The segment types, and the actions `None`, `AskToSkip` and `Skip` |
+| `source/api/ApiClient.bs`, `source/api/items.bs` | `BuildGetMediaSegmentsRequest()`, and `GetMediaSegments()`, which checks the guard |
+| `components/ItemGrid/LoadVideoContentTask.bs` | Fetches the segments after the item's metadata |
+| `components/video/VideoPlayerView.bs`, `components/video/VideoNotification.bs` | Finds the active segment during playback and shows the skip prompt |
+
+## Quick Connect
+
+Sign-in with a password works the same on every version. Quick Connect differs at two boundaries, which `ApiClient` handles when it builds the request, so `components/login/UserSelect.bs` does not check versions:
+
+| What | 10.7.x | 10.8.x | 10.9 and later | Decided by |
+| --- | --- | --- | --- | --- |
+| `AuthenticateWithQuickConnect` body | `{ "Token": secret }` | `{ "Secret": secret }` | `{ "Secret": secret }` | `versionChecker(version, "10.8.0")` in `BuildAuthenticateWithQuickConnectRequest()` |
+| `/QuickConnect/Initiate` method | `GET` | `GET` | `POST` | `m.getApiVersion() >= 2` in `BuildInitiateQuickConnectRequest()` |
+| `/QuickConnect/Connect` | `GET ?secret=` | the same | the same | |
+| `/QuickConnect/Enabled` | missing | present | present | Treated as available when missing |
+
+The body changes at 10.8.0, inside tier 1, so it uses `versionChecker()` and not the tier.
+
+Most of Quick Connect's failures show only as a status code, and two codes depend on the version. These come from the published specs, 10.7.0 to 10.11.8:
+
+| Endpoint | 10.7.0 to 10.10.7 | 10.11.0 and later | Meaning |
+| --- | --- | --- | --- |
+| `/QuickConnect/Connect` | `200`, `404` | adds `503` | `404`: the code expired or was never issued |
+| `/QuickConnect/Initiate` | `200`, `401` | adds `503` | `401`: Quick Connect is off on the server |
+| `AuthenticateWithQuickConnect` | `200`, `400` | adds `503` | `400`: missing token. A live 10.11.11 also answered an undeclared `404` for a secret not yet approved |
+| `/QuickConnect/Enabled` | `200` (missing before 10.8) | adds `503` | A plain boolean |
+
+The app relies on two of these:
+
+- **`503` means the server is starting, not that Quick Connect is off.** `quickConnectInitiateFailure()` and `quickConnectExchangeFailure()` (`source/utils/quickConnect.bs`) report it separately, so a user whose server is booting is not told the feature is disabled.
+- **`401` is also what a wrong method returns**: `GET` to 10.9 or later, or `POST` to 10.8. The method choice above keeps that from happening.
+
+On 10.7 only, `QuickConnectResult` also has `Error` and `Authentication`; 10.8.0 dropped both. A 10.7 server can answer `200` with `Authenticated: false` and an error, which a poll loop must not read as "not yet". See `quickConnectPollOutcome()`.
+
+## When a server release breaks something
+
+### Triage the release
+
+The server-upgrade pipeline diffs the API between two server versions ([`server-upgrade-automation.md`](../architecture/server-upgrade-automation.md)). Run `/server-upgrade <from> <to>` when a stable release lands.
+
+You can also triage before the release. `<to>` can be a release candidate (`10.12.0-rc1`), `unstable` or `master` (the latest datestamped build), or a datestamp. A pre-release triage writes a note to `.claude/handoffs/` and files no GitHub issues. To follow a release candidate, set the `jellyfin-server-rc` signal's `latest_acknowledged` to the RC you triaged, and the next run diffs only what changed since. A release candidate can still change, so triage the final release again when it ships.
+
+### Add a guard
+
+When one endpoint or parameter changes, add a guard and a registry entry, as above.
+
+### Add an API tier
+
+When a release changes the API widely enough that guards won't do, add a tier. The [`/new-api-version`](../../.claude/skills/new-api-version/SKILL.md) skill walks through it and stops at each check. A jump to `12.0.0` needs nothing special: versions compare segment by segment, and the newest tier has no upper bound.
+
+1. **Tier map:** in [`jellyfin-version-boundaries.yml`](jellyfin-version-boundaries.yml), set tier `2` to `status: frozen` with its last server as `maxServer`, and add tier `3` with `status: active` and `maxServer: null`. The loader requires exactly one active tier, the one without a bound.
+2. **Detection:** make `resolveApiVersion()` return `3` from the new minimum. `npm run lint:apiversion-consistency` compares it with the tier map, so you can check the split without a Roku.
+3. **Requests:** add `m.getApiVersion() >= 3` branches to the `ApiClient` methods that change. Existing `>= 2` branches keep serving tier 3 until you add one.
+4. **Profile:** add a tier 3 branch to `getDeviceProfile()` if the profile changes.
+5. **Usage manifest:** if you add `sdkV3.bs`, give it a `min ≥ 3` clamp in [`api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js) beside the `sdkV1.bs` and `sdkV2.bs` ones, and cap `sdkV2.bs` at `max ≤ 2`. Then run `npm run docs:api-manifest`. The extractor reads the `N` in each `getApiVersion() >= N` branch.
+
+The floor stays at 10.7.0, so the pipeline's other checks need no change.
+
+## Related docs
+
+- [`jellyfin-server-feature-matrix.md`](../user/jellyfin-server-feature-matrix.md): what users get on each server version.
+- [`new-user-setting.md`](new-user-setting.md): adding a setting.
+- [`registry-migrations.md`](registry-migrations.md): changing stored settings.

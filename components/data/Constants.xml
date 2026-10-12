@@ -70,7 +70,6 @@
     <field id="iconArrowUpWhite" type="string" value="pkg:/images/icons/arrow-up-white_$$RES$$.png" />
     <field id="iconArrowDownBlack" type="string" value="pkg:/images/icons/arrow-down-black_$$RES$$.png" />
     <field id="iconArrowDownWhite" type="string" value="pkg:/images/icons/arrow-down-white_$$RES$$.png" />
-    <field id="iconCheckBlack" type="string" value="pkg:/images/icons/check-black_$$RES$$.png" />
     <field id="iconCheckWhite" type="string" value="pkg:/images/icons/check-white_$$RES$$.png" />
     <field id="iconTomatoFresh" type="string" value="pkg:/images/icons/tomato-fresh_$$RES$$.png" />
     <field id="iconTomatoRotten" type="string" value="pkg:/images/icons/tomato-rotten_$$RES$$.png" />

@@ -210,8 +210,8 @@ namespace tests
       m.assertNotInvalid(multiSourceQueueItem.mediaSourceId)
       m.assertNotEmpty(multiSourceQueueItem.mediaSourceId)
 
-      ' Explicitly pop the item to ensure clean state
-      m.global.queueManager.callFunc("pop")
+      ' Explicitly clear the queue to ensure clean state
+      m.global.queueManager.callFunc("clear")
       m.assertEqual(m.global.queueManager.callFunc("getCount"), 0)
     end function
 

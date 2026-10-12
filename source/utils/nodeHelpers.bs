@@ -203,4 +203,15 @@ namespace nodeHelpers
     queueItem.hasVersionInProgress = false
   end sub
 
+  ' findOptionsPanel: The options panel of a view, or invalid when the view has none.
+  ' A view can report isOptionsAvailable (JRGroup defaults it to true) without owning an
+  ' "options" node, so JRScene asks here before it shows the panel.
+  '
+  ' @param {dynamic} group - the active view, or invalid
+  ' @returns {dynamic} - the options panel node, or invalid
+  function findOptionsPanel(group as dynamic) as dynamic
+    if not isValid(group) then return invalid
+    return group.findNode("options")
+  end function
+
 end namespace

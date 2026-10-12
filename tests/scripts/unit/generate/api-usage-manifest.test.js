@@ -60,6 +60,19 @@ describe('endpoint extraction', () => {
     expect(endpointPaths(r)).toContain('/Audio/{0}/Lyrics');
   });
 
+  it('resolves a path variable assigned from a Substitute() template', () => {
+    const body = [
+      '  url = Substitute("Items/{0}/Images/{1}", id, version)',
+      '  fullURL = buildURL(url, params, serverURL)',
+      '  return fullURL',
+    ].join('\n');
+    const r = extractFromSource(fn(body));
+    const ep = findEndpoint(r, '/Items/{0}/Images/{1}');
+    expect(ep).toBeTruthy();
+    expect(ep.normalized).toBe('/items/{}/images/{}');
+    expect(r.unresolved).toHaveLength(0);
+  });
+
   it('infers the method from an inline { method: "POST" } request AA', () => {
     const r = extractFromSource(
       fn(
@@ -216,6 +229,24 @@ describe('request-field extraction', () => {
   });
 });
 
+describe('response-field files', () => {
+  // user.Login() is where production reads the UserDto's Configuration and Policy;
+  // without session.bs in the scan the manifest loses them (#1072).
+  it('reads the DTO fields user.Login() and server.Discover() read in session.bs', () => {
+    const fields = new Map(buildManifest('.').responseFields.map((r) => [r.name, r]));
+    for (const name of ['Configuration', 'Policy', 'AccessToken', 'ServerName']) {
+      expect(fields.get(name)?.sourceFiles, name).toContain('source/utils/session.bs');
+    }
+  });
+
+  it('skips the fields session.bs writes itself', () => {
+    const fields = new Set(buildManifest('.').responseFields.map((r) => r.name));
+    for (const name of ['Error', 'ErrorMessage', 'LastRunVersion']) {
+      expect(fields.has(name), name).toBe(false);
+    }
+  });
+});
+
 describe('buildManifest determinism', () => {
   it('produces sorted, stable output on the real repo (idempotent)', () => {
     const a = serializeManifest(buildManifest('.'));
@@ -260,6 +291,7 @@ describe('CLI --check drift gate', () => {
     // Same: every RESPONSE_FIELD_FILES entry must exist, because the generator fails
     // loudly on a missing one rather than quietly scanning less.
     writeFileSync(join(dir, 'source', 'utils', 'people.bs'), fn('  x = person.Id'));
+    writeFileSync(join(dir, 'source', 'utils', 'session.bs'), fn('  x = userData.Policy'));
 
     const check1 = spawnScript(SCRIPT, ['--check', dir]);
     expect(check1.exitCode).toBe(1);

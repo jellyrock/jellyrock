@@ -1,91 +1,83 @@
 ---
 name: new-setting
-description: Guided workflow for adding a new user setting or global setting to JellyRock. Walks the canonical recipe from docs/dev/new-user-setting.md (pick the bucket, add to settings/settings.json, wire JellyfinUserSettings, surface in the settings UI, write a registry migration if the schema changes, write tests, regenerate the settings docs). Stops at each step to verify and gives the user the relevant file paths. Use when adding a new toggle / dropdown / numeric setting that the user can change in the JellyRock Settings screen.
+description: Guided workflow for adding a new user setting or global setting to JellyRock. Walks the recipe in docs/dev/new-user-setting.md (pick the kind, add the settings/settings.json entry, add its strings, add the JellyfinUserSettings field, read it in code, test it). Stops at each step to verify and gives the user the relevant file paths. Use when adding a toggle, a choice, a number or a text setting that the user can change in the JellyRock Settings screen.
 model: sonnet
 effort: low
 ---
 
-# /new-setting — guided workflow
+# /new-setting: a guided workflow
 
-Wraps [`docs/dev/new-user-setting.md`](../../../docs/dev/new-user-setting.md) as a step-by-step. The doc is the source of truth — this skill is a launcher that ensures none of the steps get skipped.
+Wraps [`docs/dev/new-user-setting.md`](../../../docs/dev/new-user-setting.md) as a step-by-step. The guide is the source of truth; this skill makes sure no step is skipped. Read the guide's section for each step before doing it.
 
-## Step 0 — Confirm a setting is the right answer
+## Step 0: Confirm a setting is the right answer
 
-JellyRock has three types of "settings"-shaped state. Make sure you're adding the right one:
+There are three kinds of settings-shaped state ([the guide's table](../../../docs/dev/new-user-setting.md#three-kinds-of-setting)):
 
-1. **User Settings** — registry per-user, managed by JellyRock. Stored under the user's session-keyed registry section. Examples: playback preferences, UI choices.
-2. **Global Settings** — registry per-device, applies to all users on this Roku. Examples: developer mode, debug flags.
-3. **User Configuration** — server-authoritative from Jellyfin API. **NEVER** stored in JellyRock's registry. Read live from `m.global.user`.
+1. **User setting:** saved in the user's registry section, for one user. Named by area: `playback*`, `ui*`, `itemGrid*`.
+2. **Global setting:** saved in the `JellyRock` registry section, for everyone on the device. Named `global*` (**Remember Me?** is `globalRememberMe`). The prefix is what decides where the value is saved: `isGlobalSetting()` in `source/utils/config.bs` checks it.
+3. **User configuration:** owned by the Jellyfin server. JellyRock never stores it; read it from `m.global.user`.
 
-If the value is server-authoritative (anything Jellyfin already tracks per-user), STOP — don't add it as a setting. Read it from `m.global.user` directly. Only proceed if the user controls the value from inside JellyRock.
+Search `settings/settings.json` for a setting that already covers the behavior (a new "Show clock on the player" would overlap `uiDesignHideClock`). If one does, ask whether to extend it instead. If the server already tracks the value per user, stop: don't add a setting, read it from `m.global.user`. Don't add one for state that lasts one session, or for something the app can detect on the device either. If unsure between the first two, pick a user setting; it is the common case.
 
-## Step 1 — Pick the bucket (User vs Global)
+## Step 1: Add the entry to `settings/settings.json`
 
-User Settings ⇔ "this is a personal preference and changes per signed-in user." Global Settings ⇔ "this applies to the device and survives user changes." If unsure, default to User Settings — it's the more common case.
+This is the one source of truth for defaults. `user.settings.SaveDefaults()` fills every field from it at start-up and at sign-in, and a default is never written to the registry: only a value the user changed is.
 
-## Step 2 — Add the default to `settings/settings.json`
+Follow [the guide's step 1](../../../docs/dev/new-user-setting.md#1-add-the-entry-to-settingsjson): put the entry in its category's `children`, in order of `title`. `settingName` is `lowerCamelCase` with its area's prefix, and specific (`playbackPlayDefaultAudioTrack`, not `playbackAudio`). Pick the `type` from the guide's table, which also gives the field type it needs. Read [`settings/settings.json`](../../../settings/settings.json) for the shape before editing.
 
-This is the **single source of truth** for defaults. Defaults are loaded at app startup via `user.settings.SaveDefaults()`. Defaults are NEVER written to registry — only user-set values are persisted.
+The Settings screen (`components/settings/settings.bs`) builds its menu from this file, so a setting of an existing `type` needs no UI code. `visibleWhen` and `presetValues` cover showing an entry conditionally and setting several values at once.
 
-Pick a stable kebab-case key. Match the JSON shape of nearby existing entries (type, default value, optional description). Read [`settings/settings.json`](../../../settings/settings.json) before editing to confirm the shape.
+## Step 2: Add the strings
 
-## Step 3 — Wire it into `JellyfinUserSettings`
+Add each new `titleKey` and `descriptionKey` (and each option's `titleKey`) to `locale/custom/en_US.json` through [`/translation-add`](../translation-add/SKILL.md). The Step 1 entry is what uses these keys, so `update-translations` won't remove them as unused (the warning in `/translation-add` is about keys only code uses). `npm run lint:translations` checks the keys `settings.json` uses.
 
-Edit [`components/data/jellyfin/JellyfinUserSettings.xml`](../../../components/data/jellyfin/JellyfinUserSettings.xml) and the `.bs` sibling. The XML declares the field's type (`assocarray` / `node` / `nodearray` / `string` / `int` / `float` / `boolean`); the BS reads the default from `settings.json` and exposes the field for downstream observation.
+## Step 3: Add the field to `JellyfinUserSettings`
 
-[`source/data/SessionDataTransformer.bs`](../../../source/data/SessionDataTransformer.bs) reads the user's registry section at login and overlays saved values on top of the defaults. Confirm your new field flows through it.
+Add a field to [`components/data/jellyfin/JellyfinUserSettings.xml`](../../../components/data/jellyfin/JellyfinUserSettings.xml), in its area's section, as [the guide's step 3](../../../docs/dev/new-user-setting.md#3-add-the-field) shows:
 
-## Step 4 — Surface in the Settings UI (if user-facing)
+- the `id` matches `settingName` exactly, because the value is saved and loaded under it;
+- the type comes from the guide's table (a `radio` setting is a `string`);
+- give it no `value`: the default comes from `settings.json`.
 
-Add the toggle / dropdown / numeric input to the relevant Settings screen under [`components/`](../../../components/) (typically a screen under `components/data/` or a Settings-prefixed component). Use the existing settings controls as templates — don't invent a new control unless none of the existing shapes fit.
+No `.bs` change is needed. `JellyfinUserSettings.bs` observes every field and saves a change once auto-sync is on, and `user.Login()` (`source/utils/session.bs`) loads every registry key that names a field through `user.settings.Save()`, which converts it to the field's type.
 
-## Step 5 — Write a registry migration (only if schema changes)
+## Step 4: Read it in code
 
-If you're RENAMING an existing setting key, REMOVING one, or changing the data shape, write a registry migration via the [`/new-migration`](../new-migration/SKILL.md) skill. Brand-new settings DO NOT need a migration — they get their default from `settings.json` for users who haven't changed them.
+Read `m.global.user` into a local once, then `localUser.settings.<settingName>`. When the setting overrides a server value, write one function that decides between them and call it everywhere; [the guide's step 4](../../../docs/dev/new-user-setting.md#4-use-it) shows `resolvePlayDefaultAudioTrack()`. Search for every place the behavior lives (`git grep -n "<related term>" -- source components`) so the setting changes all of them.
 
-## Step 6 — Write tests
+## Step 5: A registry migration, only when changing an existing setting
 
-Per [`docs/dev/unit-tests.md`](../../../docs/dev/unit-tests.md): registry-touching tests use `test-*` section names so they don't pollute production data. Set `m.needsRegistrySetup = true` in the suite's setup so the BaseTestSuite clears `test-*` between tests.
+Renaming or removing a setting, or changing the shape of its stored value, needs a registry migration: use [`/new-migration`](../new-migration/SKILL.md). A new setting needs none: a user who never set it gets the default from `settings.json`.
 
-Tests should cover: default value loaded correctly when registry is empty; saved value persists across the autoSync mechanism; setting affects the downstream behavior it's supposed to.
+## Step 6: Test it
 
-## Step 7 — Regenerate the settings docs
+A plain on/off setting read in one place may need no unit test, only the on-device checks in Step 7. Otherwise follow [the guide's step 5](../../../docs/dev/new-user-setting.md#5-test-it): unit-test a resolving function in `tests/source/unit/<area>/` (cover each option, the server's value, `invalid` nodes and an unexpected value). A suite that touches the registry uses `test-` section names and sets `m.needsRegistrySetup = true` before `super.setup()`, so its sections are cleared after each test ([`unit-tests.md`](../../../docs/dev/unit-tests.md)).
 
-```bash
-npm run docs:settings
-```
-
-This generates [`docs/user/app-settings.md`](../../../docs/user/app-settings.md) from `settings.json`. Run it after editing `settings.json`. The pre-push hook also runs it, but better to land it in the same commit as the new setting.
-
-## Step 8 — Verify end-to-end
+## Step 7: Verify
 
 ```bash
-npm run lint:bs
 npm run validate
-npm run lint:docs
+npm run lint:translations
 ```
 
-Then on hardware (if reachable):
+Then on hardware: `npm run device:check`, and when a device answers, `npm run test:tdd` with your spec listed, then the guide's on-device checks (the setting shows, survives a restart, changes the behavior, and the default applies to a user who never changed it). If the probe fails, say the probe failed; never claim "tested" without a green run.
 
-```bash
-npm run test:tdd
-```
+`docs/user/app-settings.md` is generated from `settings.json`. The `jellyrock-bot` workflow regenerates it after the change merges, and `npm run docs:settings` does the same locally. Never edit it by hand.
 
-If hardware isn't reachable, say so explicitly — don't claim "tested" without a green run.
+## Common pitfalls
 
-## Common pitfalls (from the doc)
-
-- **Forgetting to add the default** to `settings.json`. Without it, the field reads a Roku-default (empty string / 0) and downstream code may misbehave.
-- **Writing the default to registry**. Defaults belong only in `settings.json`. Writing them to registry breaks the "saved-vs-default" distinction the migration system relies on.
-- **Not setting `m.needsRegistrySetup = true`** in test suites that touch the registry. Cross-test leakage will produce flaky failures.
-- **Committing without running `npm run docs:settings`**. The hook auto-runs but committing it explicitly makes the diff cleaner.
+- **No default in `settings.json`.** The field then reads its type's default (an empty string, 0, false), and code that reads it may misbehave.
+- **Writing the default to the registry.** Defaults belong only in `settings.json`, so that changing a default reaches every user who never changed the setting.
+- **A field `id` that differs from `settingName`.** The value is saved under one name and loaded under the other, so it never comes back.
+- **A global setting without the `global` prefix**, or a user setting with it: the value is saved in the wrong section.
+- **A registry test without `m.needsRegistrySetup = true`.** Sections leak into the next suite and fail it.
 
 ## When NOT to use
 
-- The value is server-authoritative — read from `m.global.user` directly.
-- You're renaming an existing setting — use `/new-migration` for the rename, not `/new-setting`.
-- You're adding a developer-only debug flag — see [`docs/dev/debug-flags.md`](../../../docs/dev/debug-flags.md); flags are different infrastructure.
+- The value is owned by the server: read it from `m.global.user`.
+- You're renaming or removing an existing setting: use `/new-migration`.
+- You're adding a developer-only debug flag: see [`docs/dev/debug-flags.md`](../../../docs/dev/debug-flags.md); flags are different machinery.
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent: parent passes `Read .claude/skills/new-setting/SKILL.md and follow the steps for adding $ARGUMENTS=<setting-name>; surface each step's file paths and the diffs to apply but do NOT commit` in the Task prompt.
+To run it from a sub-agent, the parent passes `Read .claude/skills/new-setting/SKILL.md and follow the steps for adding the setting <setting-name>; surface each step's file paths and the diffs to apply but do not commit` in the Agent prompt.

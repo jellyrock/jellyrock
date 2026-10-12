@@ -25,5 +25,6 @@
     <function name="getSearchIcon" />
     <function name="getSettingsIcon" />
     <function name="hideClock" />
+    <function name="resetTime" />
   </interface>
 </component>

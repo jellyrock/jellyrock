@@ -15,6 +15,7 @@ namespace tests
     private host as object
     private launcher as object
     private previousView as object
+    private previousQueue as object
     private addedSceneFields as object
 
     ' beforeEach, not setup: every test opens and ends starts (tests/CLAUDE.md).
@@ -26,6 +27,12 @@ namespace tests
         localUser.settings.playbackCinemaMode = false
       end if
       m.queue = CreateObject("roSGNode", "QueueManager")
+      ' The quickplay helpers push to the app's queue manager, so this test's queue stands in;
+      ' the one it replaces comes back in afterEach.
+      if not m.global.doesExist("queueManager") then m.global.addField("queueManager", "node", false)
+      if not m.global.doesExist("playbackLaunchRequest") then m.global.addField("playbackLaunchRequest", "assocarray", true)
+      m.previousQueue = m.global.queueManager
+      m.global.queueManager = m.queue
 
       if not m.global.doesExist("activeRoutedView") then m.global.addField("activeRoutedView", "node", false)
       if not m.global.doesExist("photoLaunchRequest") then m.global.addField("photoLaunchRequest", "assocarray", true)
@@ -57,6 +64,8 @@ namespace tests
       end for
       m.mountedIn.removeChildren([m.host, m.launcher])
       m.global.activeRoutedView = m.previousView
+      m.global.queueManager = m.previousQueue
+      m.previousQueue = invalid
       m.previousView = invalid
       m.host = invalid
       m.launcher = invalid
@@ -113,6 +122,27 @@ namespace tests
       m.assertEqual(pending.promiseState, "rejected")
       m.assertEqual(pending.promiseResult.message, "replaced by a photo launch")
       m.assertEqual(m.host.openWaits.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a music video launch")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("queues it as any single video is queued, resuming where the viewer left off")
+    function _()
+      musicVideo = CreateObject("roSGNode", "JellyfinBaseItem")
+      musicVideo.id = "music-video-1"
+      musicVideo.type = "MusicVideo"
+      musicVideo.playbackPositionTicks = 600000000&
+      m.queue.callFunc("launchItem", musicVideo)
+
+      m.assertEqual(m.queue.callFunc("getCount"), 1)
+      queued = m.queue.callFunc("getItemByIndex", 0)
+      m.assertEqual(queued.startingPoint, 600000000&)
+      m.assertFalse(queued.startingPointIsExact)
+      m.assertEqual(m.global.playbackLaunchRequest.id, "music-video-1")
+
+      m.queue.callFunc("failPendingPlaybackStart", "test done")
     end function
 
   end class

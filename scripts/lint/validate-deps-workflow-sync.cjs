@@ -6,11 +6,11 @@
 // unconditionally on dep-update PRs. If a new reusable is added without
 // a matching entry here, dep bumps that break it will silently land green.
 //
-// _build-*.yml helpers are excluded — they're called on-demand, not
+// _build-*.yml helpers are excluded: they're called on-demand, not
 // verification reusables. _validate-dependencies.yml itself is excluded
 // (it's the orchestrator, not a reusable).
 //
-// Only Node stdlib — no npm ci needed.
+// Only Node stdlib, so no npm ci needed.
 
 'use strict';
 

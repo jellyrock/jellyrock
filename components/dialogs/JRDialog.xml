@@ -52,6 +52,10 @@
     <field id="confirmIndex" type="integer" value="-1" />
     <!-- Button focused when the dialog opens -->
     <field id="defaultButtonIndex" type="integer" value="0" />
+    <!-- Every key, Back included, resolves with the focused button instead of the
+         usual key model (buttonDialogKeyAction in source/utils/dialogKeys.bs). For a
+         dialog whose only question is whether anyone is there. -->
+    <field id="anyKeyResolves" type="boolean" value="false" />
     <!-- Set exactly once when the dialog resolves, then the dialog closes itself.
          Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value,
          externallyCancelled } -->

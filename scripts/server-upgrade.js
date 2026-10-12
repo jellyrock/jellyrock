@@ -1,34 +1,35 @@
-// scripts/server-upgrade.js — Phase 3 mechanical filer for the
+// scripts/server-upgrade.js: Phase 3 mechanical filer for the
 // server-upgrade-automation pipeline (docs/architecture/server-upgrade-automation.md).
 //
 // This is pipeline stage 5 ("File"): the deterministic GitHub side of the
 // agent/script seam. The Phase-2 report (findings-candidates.json) lists every
 // spec change that intersects code JellyRock ships. The `/server-upgrade`
 // agent skill investigates each candidate that `needsInvestigation` and emits a
-// VERDICT per finding. This script never decides "is this a real problem" — it
+// VERDICT per finding. This script never decides "is this a real problem". It
 // only does the mechanical work around that judgment:
 //
-//   scaffold  — read the data report, select the candidates needing
-//               investigation (drops suppressed + frozen-skip via the report's
-//               own needsInvestigation flag), and emit a verdict-template JSON
-//               keyed by a STABLE, version-independent findingKey, pre-listing
-//               each candidate's cited sites + mechanical severity guess + base
-//               labels. The agent fills the judgment fields in place. No GH, no
-//               writes — pure read.
-//   plan      — join the agent's filled verdicts back to the report by
-//               findingKey, dedup-search GitHub for each finding marked `file`,
-//               draft titles + issue bodies, reconcile into concrete actions
-//               (create / comment / reopen / skip / monitor / missing-verdict).
-//               GH READS only — no writes. Mirrors crash-report's `plan`.
-//   execute   — perform the GH writes (create / comment / reopen) + labels for
-//               the planned actions, then write a run-summary handoff. Mirrors
-//               crash-report's `execute`.
+//   scaffold: read the data report, select the candidates needing
+//             investigation (drops suppressed + frozen-skip via the report's
+//             own needsInvestigation flag), and emit a verdict-template JSON
+//             keyed by a STABLE, version-independent findingKey, pre-listing
+//             each candidate's cited sites + mechanical severity guess + base
+//             labels. The agent fills the judgment fields in place. No GH, no
+//             writes: pure read.
+//   plan:     join the agent's filled verdicts back to the report by
+//             findingKey, dedup-search GitHub for each candidate (only a `file`
+//             verdict uses the match), draft titles + issue bodies, reconcile
+//             into concrete actions (create / comment / reopen / skip / monitor
+//             / missing-verdict / invalid-verdict). GH READS only, no writes.
+//             Mirrors crash-report's `plan`.
+//   execute:  perform the GH writes (create / comment / reopen) + labels for
+//             the planned actions, then write a run-summary handoff. Mirrors
+//             crash-report's `execute`.
 //
-// Decisions locked for Phase 3 (see the design doc's "Decisions" + the matching
-// /log decision entry):
+// Decisions locked for Phase 3 (see the design doc's "Decisions" and ADR 0008,
+// docs/adr/0008-server-upgrade-issue-filing.md):
 //   (a) Dedup key is VERSION-INDEPENDENT (kind + locator), so a finding that
-//       recurs across releases — every coverage-gap does, since it's recomputed
-//       from manifest×floor each run — comments/reopens the one live issue
+//       recurs across releases (every coverage-gap does, since it's recomputed
+//       from manifest×floor each run) comments/reopens the one live issue
 //       instead of re-filing a duplicate every month. Title carries the
 //       human-readable locator; dedup confirms by the version-independent
 //       `<kindLabel>: <locator>` substring (mirrors crash-report's stable
@@ -36,11 +37,11 @@
 //   (b) The agent hands judgment over via a SCRIPT-SCAFFOLDED template so the
 //       script owns findingKey derivation (no key drift) and `plan` can flag any
 //       un-investigated candidate (no silent drops/misses).
-//   (c) ALL finding-classes are human-gated — running `execute` IS the per-
+//   (c) All finding-classes are human-gated: running `execute` is the per-
 //       release batch approval (the "graduated trust ratchet"). The ratchet is
 //       wired (each action carries `autoFileEligible`, always false now) so a
-//       future Phase 5 can graduate a low-false-positive class by config, not a
-//       rewrite. Nothing auto-files today.
+//       class with a low measured false-positive rate can graduate by config,
+//       not a rewrite. Nothing auto-files today.
 //
 // Public exports (for tests): all pure / IO-free helpers are named exports so
 // the Vitest suite at tests/scripts/unit/server-upgrade.test.js can drive them
@@ -62,7 +63,7 @@ export const BASE_LABEL = 'server-upgrade';
 
 // Base labels by candidate type. The agent may APPEND labels in its verdict;
 // these are the mechanical floor. `bug` / `enhancement` are GitHub defaults so
-// they aren't preflight-created — only BASE_LABEL is (see the skill's Step 0).
+// they aren't preflight-created; only BASE_LABEL is (see the skill's Step 0).
 export const BASE_LABELS_BY_TYPE = {
   breaking: [BASE_LABEL, 'bug'],
   'coverage-gap': [BASE_LABEL, 'bug'],
@@ -70,7 +71,7 @@ export const BASE_LABELS_BY_TYPE = {
   'symmetry-advisory': [BASE_LABEL, 'enhancement'],
 };
 
-// Human phrase per change kind — drives the issue title + the version-
+// Human phrase per change kind. Drives the issue title + the version-
 // independent dedup confirm substring `<kindLabel>: <locator>`.
 export const KIND_LABEL = {
   'endpoint-removed': 'endpoint removed',
@@ -92,22 +93,23 @@ export const ACTIONS = new Set(['file', 'skip', 'monitor']);
 // Graduated trust ratchet: which finding-CLASSES auto-file. EMPTY = everything is
 // human-gated (running `execute` is the per-release batch approval).
 //
-// Phase 5 deliberately keeps this empty: no class has an OBSERVED false-positive
-// rate yet (the pipeline has filed zero issues), so graduating any class would be
-// graduating on faith — exactly what the ratchet decision forbids. The MECHANISM
-// is fully wired (each action carries autoFileEligible via isAutoFileEligible), so
-// graduating a class later is a one-line config change here, NOT a rewrite.
+// Phase 5 keeps this empty on purpose: no class has an OBSERVED false-positive
+// rate yet (too few issues have been filed for any class to measure one), so
+// graduating any class would be graduating on faith, which is what the ratchet
+// decision forbids. The MECHANISM is fully wired (each action carries
+// autoFileEligible via isAutoFileEligible), so graduating a class later is a
+// one-line config change here, not a rewrite.
 //
 // What graduation MEANS (decided Phase 5): adding a class here relaxes the per-class
-// batch-approval gate inside a human-run `/server-upgrade execute` — that class's
-// `create` actions no longer need the Step-4 confirmation. It does NOT add an
+// batch-approval gate inside a human-run `/server-upgrade execute`: that class's
+// `create` actions no longer need the Step-4 confirmation. It does not add an
 // autonomous auto-file path to the Phase-4 CI tracker: the CI tracker stays the one
 // fully-autonomous surface and only ANNOUNCES; auto-filing a mechanically-derived
 // candidate without the agent's per-finding disposition would file the very
 // false-positives the disposition exists to catch.
 //
 // The evidence bar + the FP-rate query that justifies a future graduation live in
-// the "Graduation procedure" subsection of the Phase-5 build record in
+// the "The trust ratchet" section of
 // docs/architecture/server-upgrade-automation.md.
 export const AUTO_FILE_CLASSES = new Set();
 
@@ -141,9 +143,9 @@ const isOperationChange = (c) => typeof c.path === 'string';
 
 // ── Stable, version-independent finding identity ─────────────────────────────
 
-// findingKey is the dedup identity: kind + locator, NEVER the version. The same
-// structural concern recurring in a later release maps to the same key →
-// comment/reopen, not a duplicate. Both `scaffold` and `plan` derive it from the
+// findingKey is the dedup identity: kind + locator, never the version. The same
+// structural concern recurring in a later release maps to the same key, so it
+// becomes a comment/reopen, not a duplicate. Both `scaffold` and `plan` derive it from the
 // candidate so the agent never invents keys.
 export function findingKey(candidate) {
   const c = candidate.change;
@@ -178,7 +180,7 @@ const kindLabel = (kind) => KIND_LABEL[kind] ?? kind;
 // The version-independent substring that uniquely identifies a finding inside a
 // title: `<kindLabel>: <locator>`. Used both to BUILD the title and to CONFIRM a
 // GitHub search hit is really this finding (disambiguates two kinds sharing a
-// locator, e.g. "param removed: GET /Items/{}" vs "param changed: GET /Items/{}").
+// locator, for example "param removed: GET /Items/{}" vs "param changed: GET /Items/{}").
 export function titleIdentity(candidate) {
   return `${kindLabel(candidate.change.kind)}: ${findingLocator(candidate)}`;
 }
@@ -198,7 +200,7 @@ export function draftIssueTitle(candidate) {
 
 // GitHub dedup search query: the most distinctive stable token of the locator,
 // quoted (GitHub search splits on punctuation, so quote the phrase). The result
-// set is then JS-confirmed by titleIdentity containment — broad search, exact
+// set is then JS-confirmed by titleIdentity containment: broad search, exact
 // confirm, same shape as crash-report's searchExistingIssues.
 export function draftDedupSearchQuery(candidate) {
   const c = candidate.change;
@@ -220,7 +222,7 @@ export function issueMatchesFinding(issueTitle, candidate) {
   return issueTitle.startsWith(TITLE_PREFIX) && issueTitle.includes(titleIdentity(candidate));
 }
 
-// ── Scaffold (pure read of the report → verdict template) ────────────────────
+// ── Scaffold (pure read of the report into a verdict template) ───────────────
 
 // Candidates the agent must investigate = those the report flagged
 // needsInvestigation. The report already forces this false for suppressed and
@@ -410,12 +412,13 @@ export function searchExistingIssues(candidates, { ghExec = defaultGhExec } = {}
   return out;
 }
 
-// ── Reconcile verdicts + candidates + dedup → concrete actions ────────────────
+// ── Reconcile verdicts + candidates + dedup into concrete actions ─────────────
 
 // Pure. Joins the report's investigation candidates with the agent's verdicts
 // (by findingKey) and the dedup matches, producing one action per candidate.
-// Nothing is silently dropped: a candidate with no verdict → 'missing-verdict';
-// a malformed verdict → 'invalid-verdict'; skip/monitor → logged, no write.
+// Nothing is silently dropped: a candidate with no verdict becomes
+// 'missing-verdict'; a malformed verdict becomes 'invalid-verdict'; skip/monitor
+// are logged, with no write.
 export function reconcileActions(candidates, verdicts, dedupMatches, meta) {
   const verdictByKey = new Map();
   for (const v of verdicts ?? []) {
@@ -459,7 +462,7 @@ export function reconcileActions(candidates, verdicts, dedupMatches, meta) {
       continue;
     }
 
-    // recommendedAction === 'file' → reconcile against the dedup match.
+    // recommendedAction === 'file': reconcile against the dedup match.
     const existing = dedupMatches.get(key) ?? null;
     const body = assembleIssueBody(candidate, verdict, meta);
     if (existing && existing.state === 'OPEN') {
@@ -522,7 +525,7 @@ export function buildPlan({ report, verdicts, dedupMatches }) {
       invalidVerdict: byAction('invalid-verdict').length,
     },
     // Pass through the report's own suppressed/frozen-skip accounting so the
-    // plan render can show what was deliberately NOT investigated (audit trail).
+    // plan render can show what was left out of the investigation (audit trail).
     reportCounts: report.counts ?? null,
     actions,
   };
@@ -582,9 +585,9 @@ export function digestCandidateLine(candidate) {
   return `- [ ] **${titleIdentity(candidate)}**${detail}${siteNote(candidate.appUsage?.sites)}`;
 }
 
-// The highest version among CLOSED tracker digests strictly BELOW `version` —
-// i.e. how far the mechanical pass has cleared (or a human has triaged) past the
-// diff anchor. A clean release auto-closes its digest WITHOUT bumping the
+// The highest version among CLOSED tracker digests strictly BELOW `version`,
+// that is, how far the mechanical pass has cleared (or a human has triaged) past
+// the diff anchor. A clean release auto-closes its digest WITHOUT bumping the
 // `latest_acknowledged` anchor (CI never writes the journals), so the anchor
 // legitimately trails the newest release; this is what lets the digest say
 // "cleared through X" instead of reading as stale. `issues` is the gh JSON
@@ -611,8 +614,8 @@ function digestHeader(version, acknowledged, floor, clearedThrough) {
     `| This release | \`${version}\` |`,
     `| Diff baseline (last full review) | \`${acknowledged ?? 'unknown'}\` |`,
   ];
-  // Only surface "cleared through" when it's meaningfully ahead of the anchor —
-  // otherwise it just restates the baseline. This is the line that makes a
+  // Only surface "cleared through" when it's meaningfully ahead of the anchor;
+  // otherwise it only restates the baseline. This is the line that makes a
   // trailing anchor read as "we've mechanically cleared up to here" rather than
   // "we're behind".
   if (clearedThrough && clearedThrough !== acknowledged) {
@@ -627,19 +630,19 @@ function digestHeader(version, acknowledged, floor, clearedThrough) {
 // or a paradox). They are split here into the two questions a maintainer actually
 // asks:
 //
-//   1. What changed in THIS release?  → breaking + opportunity (the acknowledged→
+//   1. What changed in THIS release? Breaking + opportunity (the acknowledged-to-
 //      latest diff). Both zero means the release itself touched nothing we use.
-//   2. What standing FLOOR findings exist?  → coverage-gap + symmetry. These are
+//   2. What standing FLOOR findings exist? Coverage-gap + symmetry. These are
 //      recomputed from manifest×floor every run and recur forever regardless of
 //      the release; each is independently either `floor-known` (handled, recorded
 //      in the ledger) or still needs investigation.
 //
-// coverage-gap/symmetry is the TYPE of a finding; floor-known is its DISPOSITION —
-// the same finding is counted under both, by design, not double-counting.
+// coverage-gap/symmetry is the TYPE of a finding; floor-known is its DISPOSITION.
+// The same finding is counted under both, by design, not double-counting.
 
 // The candidate types that belong to axis 2 (standing floor findings). Everything
 // else is axis 1 (the release delta). `counts.needsInvestigation` spans BOTH axes,
-// so each line must count its own candidates — printing the total on the floor
+// so each line must count its own candidates: printing the total on the floor
 // line labeled release changes as floor facts.
 const FLOOR_FINDING_TYPES = new Set(['coverage-gap', 'symmetry-advisory']);
 
@@ -702,7 +705,7 @@ function digestLegend() {
 }
 
 // The MECHANICAL digest body the CI tracker opens with (zero judgment). A clean
-// report (0 needsInvestigation) renders the "nothing touches us" record — the
+// report (0 needsInvestigation) renders the "nothing touches us" record: the
 // open-then-close audit trail. Otherwise renders the candidate checklist.
 export function renderDigestBody({ version, acknowledged, floor, report, clearedThrough }) {
   const counts = report?.counts ?? null;
@@ -850,7 +853,7 @@ function extractIssueNumber(ghCreateOutput) {
 // Execute the plan's writes. In Phase 6, `file` actions become per-finding
 // PROMOTION issues attached as native SUB-ISSUES of the per-version digest (when
 // `digest` is given); after the loop the digest body is rewritten with the verdict
-// checklist + marked triaged, and optionally closed (the human/skill close — never
+// checklist + marked triaged, and optionally closed (the human/skill close, never
 // CI on caught-up). When `digest` is omitted (a manual run with no CI digest open)
 // promotions are filed standalone and the digest steps are skipped.
 export function executePlan(
@@ -938,7 +941,7 @@ export function executePlan(
 
       // Close the digest only when the human/skill asked AND every candidate is
       // dispositioned (no missing/invalid verdict left unresolved). A candidate-
-      // bearing digest is NEVER closed by CI — this is the human-gated close.
+      // bearing digest is never closed by CI: this is the human-gated close.
       const unresolved = results.filter(
         (r) => r.action === 'missing-verdict' || r.action === 'invalid-verdict',
       );

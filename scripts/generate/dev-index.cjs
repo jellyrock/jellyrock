@@ -2,7 +2,7 @@
 //
 // Why this exists: Phase 1 of the agent-context-system work dropped a
 // 15-row hand-maintained "Existing dev guides" table from the architecture
-// README because it was a maintenance trap — every new how-to required
+// README because it was a maintenance trap: every new how-to required
 // updating an index that wasn't enforced by anything. Now that every dev
 // doc has YAML frontmatter (topic, related-files, last-reviewed) the index
 // can be generated mechanically and stay forever-current.
@@ -11,18 +11,18 @@
 //   - Walks docs/dev/*.md
 //   - Extracts the first H1 heading as the human-readable title (frontmatter
 //     `topic` is a slug; the H1 is what readers see)
-//   - Builds a markdown table of (filename → title) sorted alphabetically
+//   - Builds a markdown table of (filename, title) sorted alphabetically
 //   - Writes that table into docs/architecture/README.md between the
 //     <!-- BEGIN/END auto-generated dev-index --> sentinel comments
 //
 // Run modes:
-//   node scripts/generate/dev-index.cjs           → write (default)
-//   node scripts/generate/dev-index.cjs --check   → fail if drift exists
-//                                                   (no write; for CI)
+//   node scripts/generate/dev-index.cjs           write (default)
+//   node scripts/generate/dev-index.cjs --check   fail if drift exists
+//                                                 (no write; for CI)
 //
 // npm scripts:
-//   docs:dev-index        → regenerate (write mode)
-//   docs:dev-index:check  → drift check (used by pre-push hook)
+//   docs:dev-index        regenerate (write mode)
+//   docs:dev-index:check  drift check (used by pre-push hook)
 //
 // Pre-push hook integration: when docs/dev/*.md changes, the hook runs
 // the regen step in auto-fix mode. Drift never lands.

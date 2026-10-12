@@ -27,6 +27,7 @@ on:
 jobs:
   vitest:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: detect
@@ -70,7 +71,10 @@ jobs:
           # nearest one that runs `npm ci` — lint:rta-capabilities reads the
           # installed roku-test-automation client and skips when it is absent,
           # and lint:rta-waits drives ESLint with the repo's own config.)
-          pattern: '^scripts/|^tests/scripts/|^tests/rta/|^images/gradients/|^resources/icons/|^images/icons/|^resources/placeholders/|^images/placeholders/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$|^dictionary(-sentence-final)?\.txt$|^eslint\.config\.js$'
+          # .github/workflows/ is here because workflow-timeouts.test.js asserts
+          # every machine job sets timeout-minutes; a PR adding a workflow would
+          # otherwise skip the one test that checks it.
+          pattern: '^scripts/|^tests/scripts/|^\.github/workflows/|^tests/rta/|^images/gradients/|^resources/icons/|^images/icons/|^resources/placeholders/|^images/placeholders/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$|^dictionary(-sentence-final)?\.txt$|^eslint\.config\.js$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'

@@ -457,14 +457,6 @@ sub onSizeChanged()
   setSizeAndCenterText()
 end sub
 
-sub onHeightChanged()
-  setSizeAndCenterText()
-end sub
-
-sub onWidthChanged()
-  setSizeAndCenterText()
-end sub
-
 sub onEnabledChanged()
   constants = m.global.constants
 

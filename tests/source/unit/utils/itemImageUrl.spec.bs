@@ -404,68 +404,6 @@ namespace tests
 
       m.assertEqual(url, "")
     end function
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("getItemParentBackdropUrl - parent-first backdrop")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("prefers parent backdrop over item's own backdrop")
-    function _()
-      ' Season has both its own backdrop AND a parent (series) backdrop.
-      ' getItemParentBackdropUrl should pick the series backdrop so that the
-      ' URL matches what ItemDetails generates for the same series.
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.id = "season1"
-      item.backdropImageTags = ["seasonBack"]
-      item.parentBackdropImageTags = ["seriesBack"]
-      item.parentBackdropItemId = "series1"
-
-      url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
-
-      m.assertTrue(url.inStr("seriesBack") > -1, "should use parent tag")
-      m.assertTrue(url.inStr("series1") > -1, "should use parent item ID")
-      m.assertFalse(url.inStr("seasonBack") > -1, "should NOT use season tag")
-    end function
-
-    @it("falls back to item's own backdrop when no parent backdrop exists")
-    function _()
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.id = "season1"
-      item.backdropImageTags = ["seasonBack"]
-      ' No parentBackdropImageTags / parentBackdropItemId
-
-      url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
-
-      m.assertTrue(url.inStr("seasonBack") > -1, "should fall back to item tag")
-      m.assertTrue(url.inStr("season1") > -1, "should use item ID")
-    end function
-
-    @it("returns empty string when neither parent nor own backdrop available")
-    function _()
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.id = "season1"
-      ' No backdrops at all
-
-      url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
-
-      m.assertEqual(url, "")
-    end function
-
-    @it("returns empty string for invalid item")
-    function _()
-      url = getItemParentBackdropUrl(invalid, { width: 1920, height: 1080 })
-      m.assertEqual(url, "")
-    end function
-
-    @it("returns empty string for unloaded sentinel node (id is empty)")
-    function _()
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      ' id="" is the unloaded sentinel; tag is present so only the id guard prevents URL generation
-      item.backdropImageTags = ["btag"]
-
-      url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
-
-      m.assertEqual(url, "")
-    end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getItemParentWidePosterUrl - parent-first wide art")

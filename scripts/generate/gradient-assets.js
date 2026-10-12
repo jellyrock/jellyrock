@@ -2,18 +2,19 @@
 // across its bounds (see components/ui/Gradient.bs and issue #777).
 //
 // Why bitmaps at all: Rectangle-strip gradients alias into visible bars/gaps
-// under the FHD→HD autoscale on 720p-UI devices (#777). A single stretched
+// under the FHD-to-HD autoscale on 720p-UI devices (#777). A single stretched
 // Poster is scale-independent and is the technique Roku OS itself uses for its
-// player shade (FixedTheme PauseGradient.9.png — 3×1082, measured in
-// r2d2_bitmaps on an Ultra 4850X). The assets
-// stay tiny on purpose: texture memory is the DECODED SOURCE dimensions × 4B
-// (verified with r2d2_bitmaps on hardware — a 4×270 asset allocates ~36KB
-// regardless of displayed size), so this does NOT reintroduce the full-screen
-// gradient PNGs (~2.3MB each) that the Rectangle design replaced.
+// player shade (FixedTheme PauseGradient.9.png, 3×1082, measured in
+// r2d2_bitmaps on an Ultra 4850X). The assets stay tiny on purpose: texture
+// memory follows the decoded source dimensions, not the displayed size
+// (r2d2_bitmaps on hardware, 2026-08-09 in #781: the 270×4 fade-h.png
+// allocated 36,864 bytes while displayed at 102×540), so this does not
+// reintroduce the full-screen gradient PNGs (about 2.3 MB each, 2026-08-09)
+// that the Rectangle design replaced.
 //
 // Asset contract (consumed by components/ui/Gradient.bs):
 //   - White RGB throughout; the component tints via Poster.blendColor.
-//   - Linear alpha ramp 255→0 along the fade axis. 270 ramp steps ≥ the 256
+//   - Linear alpha ramp from 255 to 0 along the fade axis. 270 ramp steps ≥ the 256
 //     representable 8-bit alpha levels, so every alpha value appears and the
 //     GPU stretch only ever interpolates between adjacent levels.
 //   - 4px thick on the non-fade axis (stretched to any width/height).

@@ -174,14 +174,18 @@ namespace tests
       m.assertTrue(arrayHasValue(result, "mp3"), "mp3 must be present as stereo fallback")
     end function
 
-    @it("MP4 profile contains dts (because MP4 HLS supports dts)")
+    @it("MP4 profile leaves dts out, though MP4 HLS could carry it")
     function _()
+      ' The server COPIES a source codec that is on this list. Offered dts, a Roku Ultra
+      ' `4850X` was sent DTS copied into fMP4 HLS (AudioCodec=dts, SegmentContainer=mp4)
+      ' and played it SILENT, twice, while the same soundbar plays direct DTS with sound.
+      ' The server cannot encode dts either, so it has no working role here.
       allSurroundCodecs = ["dts"]
       decodableStereoFallbacks = ["mp3"]
 
       result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "auto", decodableStereoFallbacks)
 
-      m.assertTrue(arrayHasValue(result, "dts"), "dts IS valid in MP4 HLS — preserves surround for dts-only-passthru users")
+      m.assertFalse(arrayHasValue(result, "dts"), "dts must not be offered — the server would copy it into a stream Roku plays silent")
       m.assertEqual(result[0], "aac", "aac still at index 0 as safe fallback")
     end function
 
@@ -201,14 +205,18 @@ namespace tests
       m.assertTrue(arrayHasValue(result, "mp3"))
     end function
 
-    @it("MP4 profile contains truehd (because MP4 HLS supports truehd)")
+    @it("MP4 profile leaves truehd out, though MP4 HLS could carry it")
     function _()
+      ' The server COPIES a source codec that is on this list. Offered truehd, a
+      ' Roku Ultra `4850X` with a TrueHD soundbar was sent a movie's 8ch TrueHD
+      ' copied into fMP4 HLS (AudioCodec=truehd, SegmentContainer=mp4) and playback
+      ' failed, as it does in direct play. Left off, the server must convert it.
       allSurroundCodecs = ["truehd"]
       decodableStereoFallbacks = ["mp3"]
 
       result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "auto", decodableStereoFallbacks)
 
-      m.assertTrue(arrayHasValue(result, "truehd"), "truehd IS valid in MP4 HLS")
+      m.assertFalse(arrayHasValue(result, "truehd"), "truehd must not be offered — the server would copy it to a Roku that cannot play it")
       m.assertEqual(result[0], "aac")
     end function
 
@@ -264,13 +272,16 @@ namespace tests
       m.assertEqual(result[2], "eac3", "eac3 follows in standard priority order")
     end function
 
-    @it("preferredCodec='truehd' appears at index 1 in MP4 profile (TS strips it)")
+    @it("preferredCodec='truehd' is ignored in both profiles")
     function _()
+      ' The setting does not offer truehd, but a preference is still not a way round
+      ' the rule above.
       allSurroundCodecs = ["truehd", "eac3", "ac3"]
 
       mp4Result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "truehd", [])
+      m.assertFalse(arrayHasValue(mp4Result, "truehd"), "a truehd preference must not put truehd back in the MP4 profile")
       m.assertEqual(mp4Result[0], "aac")
-      m.assertEqual(mp4Result[1], "truehd", "User-preferred truehd at index 1 in MP4")
+      m.assertEqual(mp4Result[1], "eac3", "MP4 falls back to standard-priority surround (eac3)")
 
       tsResult = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "truehd", [])
       m.assertFalse(arrayHasValue(tsResult, "truehd"), "truehd preference cannot apply to TS profile — server filter would strip it")
@@ -286,10 +297,10 @@ namespace tests
       m.assertEqual(result[0], "aac")
       m.assertEqual(result[1], "eac3", "Auto mode: eac3 first (highest standard priority)")
       m.assertEqual(result[2], "ac3")
-      m.assertEqual(result[3], "dts")
+      m.assertFalse(arrayHasValue(result, "dts"), "dts is never offered")
     end function
 
-    @it("preferredCodec='dts' is ignored on TS profile (gracefully falls back to standard order)")
+    @it("preferredCodec='dts' is ignored in both profiles (falls back to standard order)")
     function _()
       allSurroundCodecs = ["eac3", "ac3", "dts"]
       result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "dts", [])
@@ -297,6 +308,10 @@ namespace tests
       m.assertEqual(result[0], "aac")
       m.assertEqual(result[1], "eac3", "TS strips dts so user preference doesn't apply; eac3 takes index 1")
       m.assertFalse(arrayHasValue(result, "dts"), "dts must not appear in TS profile regardless of preference")
+
+      mp4Result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "dts", [])
+      m.assertEqual(mp4Result[1], "eac3", "a dts preference cannot put dts back in the MP4 profile either")
+      m.assertFalse(arrayHasValue(mp4Result, "dts"))
     end function
 
     @it("preferredCodec set to a codec the device does NOT passthru is silently ignored")
@@ -362,12 +377,11 @@ namespace tests
       m.assertEqual(result[0], "aac")
     end function
 
-    @it("truehd-only passthru with no fallbacks still produces aac+truehd for MP4")
+    @it("truehd-only passthru with no fallbacks still produces aac for MP4")
     function _()
       result = buildVideoTranscodingAudioCodecsForContainer("mp4", ["truehd"], "auto", [])
-      m.assertEqual(result.count(), 2)
+      m.assertEqual(result.count(), 1)
       m.assertEqual(result[0], "aac")
-      m.assertEqual(result[1], "truehd")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

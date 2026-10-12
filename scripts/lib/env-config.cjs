@@ -1,12 +1,12 @@
-// scripts/lib/env-config.cjs — where the tooling's environment comes from.
+// scripts/lib/env-config.cjs: where the tooling's environment comes from.
 //
 // Every script that needs a device or a secret reads it from `process.env`, and
 // this module fills that in from two files, in this order:
 //
-//   1. the variables already set (your shell, or a parent process)   — always win
-//   2. `.env` in the current checkout                                — per-checkout override
-//   3. `$XDG_CONFIG_HOME/jellyrock/env` (default `~/.config/jellyrock/env`)
-//                                                                    — per-user default
+//   1. the variables already set (your shell, or a parent process): always win
+//   2. `.env` in the current checkout: the per-checkout override
+//   3. `$XDG_CONFIG_HOME/jellyrock/env` (default `~/.config/jellyrock/env`): the
+//      per-user default
 //
 // The user file is what lets several checkouts of this repo share one device list
 // and one set of credentials without a copy of `.env` in each. A checkout's `.env`

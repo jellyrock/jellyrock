@@ -5,33 +5,36 @@ model: sonnet
 effort: low
 ---
 
-# /ramp `<area>` — area-scoped deep-dive briefing
+# /ramp `<area>`: an area-scoped briefing
 
-Mandated by the JellyRock onboarding discipline for area-switches >2 weeks. Complements `/catchup` (global) by zooming into a specific subsystem's rules, recent commits, and tech-debt.
+`AGENTS.md`'s catchup-discipline rule calls for it when you come back to a subsystem after more than two weeks away. Where `/catchup` covers the whole repo, `/ramp` zooms into one subsystem's rules, recent commits and tech debt.
 
 ## Inputs
 
-`$ARGUMENTS`: area name. Recognized areas (auto-loaded scoped CLAUDE.md tree): `components`, `components/video`, `components/data`, `source`, `source/api`, `source/utils`, `tests`, `locale`, `scripts`.
+The arguments name one area. The recognized areas are the folders with a scoped `CLAUDE.md`: `components`, `components/video`, `components/data`, `source`, `source/api`, `source/utils`, `tests`, `locale`, `scripts`.
 
-If `$ARGUMENTS` is empty, list the recognized areas and ask which one. If it's not in the list, treat as cross-cutting and tell the user to use `/catchup` instead (or pick the closest matching area).
+With no arguments, list the recognized areas and ask which one. For an area not in the list, treat the question as cross-cutting and suggest `/catchup`, or the closest matching area.
 
-## Step 1 — Load state via the aggregator + targeted reads
+## Step 1: Load state through the aggregator and targeted reads
 
-State for the briefing comes from two sources:
+The briefing's state comes from two sources:
 
-1. **Single aggregator call** — `scripts/catchup-state.js` with `--area=<area>` returns area-scoped JSON: PRs/issues filtered by the area→keyword map (mirrors the map below), git commits scoped via `git log -- <area>`, plus the four journals (progress.md followups filtered to this area, full signals watchlist, recent decisions, tech-debt severity counts, pending handoffs):
+1. **One aggregator call.** `scripts/catchup-state.js` with `--area=<area>` returns JSON: PRs and issues filtered by the area's keywords (the map below), plus the current branch's CI, pending handoffs, the full list of watched signals, recent decisions, tech-debt counts and stale docs.
 
    ```bash
    node scripts/catchup-state.js --area=<area> --pretty
    ```
 
-2. **Targeted file reads** for area-specific content the aggregator doesn't carry (file-content data, not state):
+2. **Targeted file reads** for area content the aggregator doesn't carry:
 
    ```bash
-   # Scoped rules (auto-load convention) — full content
+   # Recent activity: the last 10 commits in the area
+   git log --oneline -10 -- <area>
+
+   # Scoped rules, full content
    cat <area>/CLAUDE.md 2>/dev/null
 
-   # Area-matching architecture topic doc(s) — find then Read
+   # Architecture docs whose related-files name the area: find, then Read
    grep -lE "^  - <area>" docs/architecture/*.md
 
    # Area-relevant tech-debt slugs (substring match on the area keyword)
@@ -44,7 +47,7 @@ State for the briefing comes from two sources:
    grep -l "<keyword>" .claude/handoffs/*.md 2>/dev/null | head -5
    ```
 
-Substitute `<area>` and a sensible search keyword. Area → keyword map (mirrors `scripts/catchup-state.js` `AREA_KEYWORDS`; if these drift, re-sync to the aggregator):
+Substitute `<area>` and a search keyword from this map. It copies `AREA_KEYWORDS` in `scripts/catchup-state.js`; when the two differ, the script is right.
 
 | Area | Keywords |
 |---|---|
@@ -58,9 +61,9 @@ Substitute `<area>` and a sensible search keyword. Area → keyword map (mirrors
 | `locale` | `translation\|locale\|i18n\|en_US` |
 | `scripts` | `bsc\|plugin\|lint\|generate` |
 
-## Step 2 — Compose the briefing
+## Step 2: Compose the briefing
 
-Output a single structured markdown briefing optimized for both human + sub-agent ingestion. Pure file refs, no decorative chrome:
+Output one markdown briefing that a person and a sub-agent can both read. Use plain file references and no decoration:
 
 ```markdown
 # Ramp briefing: <area>
@@ -71,14 +74,14 @@ Output a single structured markdown briefing optimized for both human + sub-agen
 
 ## Architecture topic doc
 
-<topic-name>: [`docs/architecture/<topic>.md`](docs/architecture/<topic>.md) — last-reviewed YYYY-MM-DD
-<one-paragraph summary from the doc's "How [subsystem] works" or equivalent intro section>
+<topic-name>: [`docs/architecture/<topic>.md`](docs/architecture/<topic>.md), last reviewed YYYY-MM-DD
+<a one-paragraph summary of the doc's opening section>
 
 (If multiple topic docs match the area: list each.)
 
 ## Active tech debt for this area
 
-- [`<slug>`](docs/architecture/tech-debt.md#<slug>) — <one-line summary>
+- [`<slug>`](docs/architecture/tech-debt.md#<slug>): <one-line summary>
 - ...
 
 ## Recent activity (last 10 commits in `<area>/`)
@@ -87,39 +90,38 @@ Output a single structured markdown briefing optimized for both human + sub-agen
 
 ## Open issues / PRs touching this area
 
-- Issues: #N — <title>; ...
-- PRs: #N — <title> by @author; ...
+- Issues: #N, <title>; ...
+- PRs: #N, <title> by @author; ...
 
-## Related skills + agents
+## Related skills and agents
 
-- [`/<skill>`](../.claude/skills/<skill>/SKILL.md) — <one-line description>
-- [`<agent>`](../.claude/agents/<agent>.md) — <one-line description>
+- [`/<skill>`](.claude/skills/<skill>/SKILL.md): <one-line description>
+- [`<agent>`](.claude/agents/<agent>.md): <one-line description>
 
 ## Pending handoffs touching this area
 
-- `<path>` — <skill>, <relative-time>
+- `<path>`: <skill>, <relative-time>
 - (or "(none)")
 
 ## Suggested entry points
 
-<2-3 concrete files to read first based on the type of work likely needed —
-the architecture doc's `related-files:` is the strongest hint for this>
+<two or three files to read first for the work likely needed; the architecture doc's `related-files:` is the strongest hint>
 ```
 
-Section collapses to "(none)" when empty so the shape stays consistent.
+An empty section reads "(none)", so the shape stays the same.
 
-## Step 3 — Hand-off
+## Step 3: Hand off
 
-If the briefing surfaces something action-shaped (an open issue with traction, a tech-debt slug the user just touched), name the right next-skill in a closing line: `/issue-triage <N>`, `/tech-debt-scan` (when finishing a feature in this area), `/runtime-triage` (when a recent crash log is handy).
+If the briefing turns up something to act on (an open issue with traction, a tech-debt slug the user recently touched), name the next skill in a closing line: `/issue-triage <N>`, `/tech-debt-scan` (when finishing a feature in this area) or `/runtime-triage` (when a recent crash log is at hand).
 
-This is a READ-ONLY skill. Don't apply edits — surface and summarize only.
+This skill only reads. Don't edit anything: surface and summarize.
 
 ## When NOT to use
 
-- Starting a fresh session → use `/catchup` first; `/ramp` is for *area-switches within* a session.
-- The area isn't in the recognized list → ask the user, or treat as cross-cutting and use `/catchup`.
-- Specific question that doesn't need a full ramp → answer directly.
+- Starting a fresh session: use `/catchup` first. `/ramp` is for switching areas within a session.
+- The area isn't in the recognized list: ask the user, or treat it as cross-cutting and use `/catchup`.
+- A specific question that doesn't need a full briefing: answer it directly.
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent: parent passes `Read .claude/skills/ramp/SKILL.md and follow the steps for $ARGUMENTS=<area>; report the briefing` in the Task prompt. Sub-agents should treat the briefing as authoritative for that area's rules + recent state.
+To run it from a sub-agent, the parent passes `Read .claude/skills/ramp/SKILL.md and follow the steps for the area <area>; report the briefing` in the Agent prompt. The sub-agent treats the briefing as authoritative for that area's rules and recent state.

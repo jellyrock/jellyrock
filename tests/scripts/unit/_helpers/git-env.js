@@ -18,30 +18,11 @@
 // how it was noticed; the repo damage was silent.
 //
 // Every spawn of `git`, and of any script that shells out to `git`, therefore
-// passes the env through `gitSafeEnv()`.
+// passes the env through `gitSafeEnv()`. The list lives in scripts/lib/git-safe.cjs,
+// which the scripts themselves use, so tests and scripts scrub the same variables.
 
-const REPO_VARS = [
-  'GIT_DIR',
-  'GIT_COMMON_DIR',
-  'GIT_INDEX_FILE',
-  'GIT_WORK_TREE',
-  'GIT_OBJECT_DIRECTORY',
-  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  'GIT_CEILING_DIRECTORIES',
-  'GIT_PREFIX',
-];
+import { createRequire } from 'node:module';
 
-/**
- * A copy of `env` with every variable that points git at a repository removed,
- * so `cwd` decides which repo a spawned git touches.
- *
- * @param {Record<string, string|undefined>} [env] defaults to `process.env`
- * @returns {Record<string, string|undefined>}
- */
-export function gitSafeEnv(env = process.env) {
-  const copy = { ...env };
-  for (const name of REPO_VARS) delete copy[name];
-  return copy;
-}
+const require = createRequire(import.meta.url);
 
-export const GIT_REPO_ENV_VARS = REPO_VARS;
+export const { gitSafeEnv, GIT_REPO_ENV_VARS } = require('../../../../scripts/lib/git-safe.cjs');

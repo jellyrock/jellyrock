@@ -92,12 +92,6 @@ sub clear()
   setPosition(0)
 end sub
 
-' Delete item from play queue at passed index
-sub deleteAtIndex(index)
-  m.queue.Delete(index)
-  m.queueTypes.Delete(index)
-end sub
-
 ' Return the number of items in the play queue
 function getCount()
   return m.queue.count()
@@ -195,11 +189,6 @@ function getQueueUniqueTypes()
   return itemTypes
 end function
 
-' Return item at end of play queue without removing
-function peek()
-  return m.queue.peek()
-end function
-
 ' Play items in queue.
 '
 ' QueueManager has no router chain, so it can't navigateTo — it sets
@@ -277,14 +266,11 @@ sub launchItem(itemNode as object)
       push(queueItem)
       playQueue()
     end if
-  else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
+  else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video" or itemType = "musicvideo"
     quickplay.video(itemNode)
     playQueue()
   else if itemType = "audio"
     quickplay.audio(itemNode)
-    playQueue()
-  else if itemType = "musicvideo"
-    quickplay.musicVideo(itemNode)
     playQueue()
   else if itemType = "photo"
     quickplay.photo(itemNode)
@@ -476,12 +462,6 @@ sub launchPhotoAlbum(isRandom as boolean, id as string)
   runQuickPlayAction({ action: "loadPhotoAlbum", id: id })
 end sub
 
-' Remove item at end of play queue
-sub pop()
-  m.queue.pop()
-  m.queueTypes.pop()
-end sub
-
 ' Return isPrerollActive status
 function isPrerollActive() as boolean
   return m.isPrerollActive
@@ -585,18 +565,15 @@ sub shuffleQueueItems()
   set(itemIDArray)
 end sub
 
-' Return the fitst item in the play queue
-function top()
-  return getItemByIndex(0)
-end function
-
 ' Replace play queue with passed array
 sub set(items)
   ' set() replaces the contents — a shuffle toggle reorders through it — so the viewer's
-  ' version pick stays; a NEW queue starts with clear(), which forgets it.
+  ' version pick and the playing state stay; a new queue starts with clear(), which forgets them.
   versionPreference = m.versionPreference
+  isPlaying = m.isPlaying
   clear()
   m.versionPreference = versionPreference
+  m.isPlaying = isPlaying
   m.queue = items
   for each item in items
     m.queueTypes.push(getItemType(item))

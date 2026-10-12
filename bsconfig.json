@@ -28,12 +28,40 @@
     "./scripts/bsc-plugins/callfunc-interface.cjs",
     "./scripts/bsc-plugins/button-row-bracket.cjs",
     "./scripts/bsc-plugins/field-observer-wiring.cjs",
-    "./scripts/bsc-plugins/register-once-observer.cjs"
+    "./scripts/bsc-plugins/register-once-observer.cjs",
+    "./scripts/bsc-plugins/dead-code.cjs"
   ],
   "lintConfig": "bslint.json",
   "rokuLog": {
     "strip": false,
     "insertPkgPath": true,
     "removeComments": false
+  },
+  "deadCode": {
+    "baseline": ".dead-code-baseline.json",
+    "exposureConsumers": ["tests/source/**/*.bs", "tests/rta/**/*.{js,mjs}"],
+    "keep": [
+      {
+        "kind": "design-system",
+        "files": ["components/ui/label/colors/**"],
+        "reason": "Themed label color x size matrix (#106): the full set is the design system, and screens pick variants as they need them."
+      },
+      {
+        "kind": "design-system",
+        "files": ["components/data/Constants.xml"],
+        "names": ["alpha*"],
+        "reason": "Alpha opacity scale (#106): kept whole so a screen picks a step instead of inventing a value."
+      },
+      {
+        "kind": "design-system",
+        "files": ["source/constants/imageSize.bs"],
+        "reason": "Image-size vocabulary: named request boxes per image shape, kept whole so callers pick a size instead of hard-coding one."
+      },
+      {
+        "kind": "test-infra",
+        "files": ["components/testing/**"],
+        "reason": "Probe components the RTA suite creates by name against the dev build and the Rooibos suite drives."
+      }
+    ]
   }
 }

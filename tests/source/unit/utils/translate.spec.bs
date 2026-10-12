@@ -143,5 +143,33 @@ namespace tests
       m.assertEqual(result, "La vidéo commencera dans {0} secondes")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("translateCached()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("translates without a cache")
+    function _()
+      m.assertEqual(translateCached(translationKeys.ButtonPlay, invalid), "Lire")
+    end function
+
+    @it("stores the value and answers later calls from the cache")
+    function _()
+      cache = {}
+      m.assertEqual(translateCached(translationKeys.ButtonPlay, cache), "Lire")
+      m.assertEqual(cache["ButtonPlay"], "Lire")
+      cache["ButtonPlay"] = "cached"
+      m.assertEqual(translateCached(translationKeys.ButtonPlay, cache), "cached")
+    end function
+
+    @it("seeded with the table, falls back on a missing key without changing the global table")
+    function _()
+      ' sortSubtitles() seeds its cache with m.global.translations. A miss writes the
+      ' fallback into the cache, which must be a copy: writing through to the shared
+      ' table would plant an English string in the user's locale.
+      cache = m.global.translations
+      m.assertEqual(translateCached("ButtonCancel", cache), "Cancel")
+      m.assertInvalid(m.global.translations["ButtonCancel"])
+    end function
+
   end class
 end namespace

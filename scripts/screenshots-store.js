@@ -1,17 +1,18 @@
 /**
- * scripts/screenshots-store.js — gather the store-listing screenshots.
+ * scripts/screenshots-store.js: gather the store-listing screenshots.
  *
  * Two curated axes, both bounded by what the Roku store listing accepts:
  *  - storeLanguages: the locale subset that ships (a subset of the full capture
- *    matrix, which grows to ~99 locales for the font blast-radius analysis).
+ *    matrix, which is planned to grow to every locale for the font blast-radius
+ *    analysis).
  *  - store-flagged SCREENS: the screen subset that ships. The store caps a listing
  *    at 6 screenshots, so only screens marked `capture.store` in tests/rta/screens.js
- *    are bundled — the locale folders also hold website-gallery-only screens, which
- *    must NOT end up in the store upload.
+ *    are bundled. The locale folders also hold website-gallery-only screens, which
+ *    must not end up in the store upload.
  *
  * The committed gallery images are WebP (small), but the Roku Developer Portal wants
  * PNG, so this DECODES each store-flagged WebP back to PNG into out/store/<lang>/
- * (gitignored), ready to upload — you never hunt through the full capture set. Adding
+ * (gitignored), ready to upload: you never hunt through the full capture set. Adding
  * a store language = add it to storeLanguages and re-run `npm run screenshots:store`.
  */
 import fs from 'node:fs';
@@ -25,7 +26,7 @@ const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const srcDir = path.join(repoRoot, 'docs', 'screenshots');
 const outDir = path.join(repoRoot, 'out', 'store');
 
-// The frozen Roku-store screen set (<= 6) — only these ship, even though the locale
+// The frozen Roku-store screen set (<= 6). Only these ship, even though the locale
 // folders also hold website-gallery-only screens. Names only; committed as .webp.
 const storeScreens = SCREENS.filter((s) => s.capture?.eligible && s.capture?.store).map(
   (s) => s.name,

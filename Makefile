@@ -33,7 +33,7 @@ help:
 
 ## development
 
-BUILT_PKG := out/$(notdir $(CURDIR)).zip
+BUILT_PKG := out/jellyrock.zip
 
 node_modules/: package-lock.json; npm ci
 
@@ -46,8 +46,8 @@ build-tests-unit: node_modules/; npm run build:tests-unit
 build-tests-integration: node_modules/; npm run build:tests-integration
 build-tdd: node_modules/; npm run build:tdd
 
-# default to build-dev if file doesn't exist
-$(BUILT_PKG):; $(MAKE) build-dev
+# default to build-dev + package if file doesn't exist
+$(BUILT_PKG):; $(MAKE) build-dev && npm run package
 
 .PHONY: format
 format: node_modules/; npm run format

@@ -1,15 +1,16 @@
-// scripts/lib/signals-fetch.cjs — Upstream version fetchers for the three
-// signals tracked in docs/signals-backlog.md.
+// scripts/lib/signals-fetch.cjs: Upstream version fetchers for the three
+// auto-managed signals in docs/signals-backlog.md (jellyfin-server-stable,
+// jellyfin-server-rc, roku-os).
 //
 // Used by scripts/catchup-state.js to auto-maintain `latest_upstream` +
 // `last_checked` so the watchlist reflects reality without manual journaling.
 // Per-signal failures are non-fatal: the caller falls back to the file's
 // existing latest_upstream and surfaces the error in `_errors.signals_fetch`.
 //
-// `.cjs` because scripts/catchup-state.js is ESM and uses createRequire — see
-// scripts/CLAUDE.md ("Module system rule"): anything required by a .cjs is
-// .cjs, and ESM CAN require .cjs but the reverse is messy. Pure CJS here keeps
-// us future-proof.
+// `.cjs` because other .cjs helpers (spec-fetch.cjs, version-boundaries.cjs,
+// endpoint-availability.cjs) require() it. See scripts/CLAUDE.md ("Module system
+// rule"): anything required by a .cjs is .cjs. ESM callers such as
+// scripts/catchup-state.js load it via createRequire or import.
 
 const https = require('node:https');
 
@@ -49,7 +50,7 @@ function httpGet(url, { timeoutMs = DEFAULT_TIMEOUT_MS, redirects = 0 } = {}) {
 }
 
 // Compare two semver bases (MAJOR.MINOR.PATCH) numerically. Returns negative,
-// zero, or positive. Pre-release suffixes are NOT considered here — call sites
+// zero, or positive. Pre-release suffixes are not considered here: call sites
 // use this only on already-split base strings.
 function compareSemverBase(a, b) {
   const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
@@ -64,7 +65,7 @@ function compareSemverBase(a, b) {
 // An unstable-channel (master) build label: an 8-digit date, optionally followed
 // by a 6-digit time (20240402201942) or the legacy <YYYYMMDD>.<N> minor (20240207.2).
 // Lives here rather than in spec-fetch.cjs (which re-exports it) because
-// spec-fetch already requires this module — defining it there would force a cycle.
+// spec-fetch already requires this module; defining it there would force a cycle.
 function isUnstableVersion(v) {
   return typeof v === 'string' && /^\d{8}(?:\d{6}|\.\d+)?$/.test(v);
 }
@@ -88,7 +89,7 @@ function isReleaseVersionBase(v) {
 //
 // PATCH is optional: the 10.x line published three segments (10.12.0-rc1) but the
 // 12.0 line publishes two (12.0-rc4). Matching only three segments made the whole
-// 12.0 line invisible here — the discovery half of the same gap spec-fetch.cjs's
+// 12.0 line invisible here: the discovery half of the same gap spec-fetch.cjs's
 // isStableVersion had. compareSemverBase already treats a missing PATCH as 0.
 //
 // "RC in flight" rule (per user spec): only count an RC when its base version
@@ -96,7 +97,7 @@ function isReleaseVersionBase(v) {
 // shipped to stable) and we report null.
 //
 // Exported separately so unit tests can exercise the parser without network
-// mocking. The `fetchJellyfinVersions` wrapper just composes httpGet + this.
+// mocking. The `fetchJellyfinVersions` wrapper only composes httpGet + this.
 function parseJellyfinIndex(html) {
   const re = /jellyfin-openapi-(\d+\.\d+(?:\.\d+)?)(?:-(rc\d+|beta\d+|alpha\d+))?\.json/g;
   const seen = new Set();
@@ -104,7 +105,7 @@ function parseJellyfinIndex(html) {
   for (let m; (m = re.exec(html));) {
     // A two-segment base also matches the legacy unstable datestamp form
     // (20240207.2). Those belong to unstable/ and must never be ranked as a
-    // stable version — an 8-digit MAJOR would out-sort every real release.
+    // stable version: an 8-digit MAJOR would out-sort every real release.
     if (!isReleaseVersionBase(m[1])) continue;
     const key = m[1] + (m[2] ? '-' + m[2] : '');
     if (seen.has(key)) continue;
@@ -148,14 +149,14 @@ async function fetchJellyfinVersions({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
 // unstable/ is an Apache-style directory listing of IMMUTABLE master builds:
 // `jellyfin-openapi-<datestamp>.json`. Recent builds carry a 14-digit
 // YYYYMMDDHHMMSS stamp (20240402201942); legacy builds used a <YYYYMMDD>.<N>
-// form (20240207.2). We return the NEWEST 14-digit build — lexical sort equals
+// form (20240207.2). We return the NEWEST 14-digit build: lexical sort equals
 // chronological order for fixed-width datestamps. The legacy `.N` builds are
 // years old and structurally unsortable against the modern form, so they're
 // ignored when modern stamps exist (noted here so a future maintainer isn't
 // surprised that "latest" skips them).
 //
-// Returns a concrete datestamp string the caller can PIN (immutable, re-diffable)
-// — never the mutable /openapi/ root pointer. Exported separately for unit-test
+// Returns a concrete datestamp string the caller can PIN (immutable, re-diffable),
+// never the mutable /openapi/ root pointer. Exported separately for unit-test
 // parity with parseJellyfinIndex.
 function parseUnstableIndex(html) {
   const re = /jellyfin-openapi-(\d{8}(?:\d{6}|\.\d+)?)\.json/g;

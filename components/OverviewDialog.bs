@@ -1,5 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogReveal.bs"
@@ -679,11 +680,6 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  if key = "back"
-    closeDialog()
-    return true
-  end if
-
   ' The three keys this dialog acts on all either scroll or move focus, so from
   ' the first one the placement is the USER's and a late layout pass must not
   ' redo it (see applyScrollBounds). The ones that look like no-ops — `down` on
@@ -692,56 +688,30 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' stray `right` before the text renders would freeze the opening placement.
   if key = "OK" or key = "down" or key = "up" then m.userHasNavigated = true
 
-  if key = "OK"
-    if m.okButton.hasFocus()
-      closeDialog()
-      return true
-    end if
+  action = overviewDialogKeyAction(key, m.okButton.hasFocus(), m.scrollPosition, m.maxScroll)
+
+  if action = "close"
+    closeDialog()
+  else if action = "focusOk"
     m.okButton.setFocus(true)
     updateScrollbarFocus(false)
-    return true
+  else if action = "focusText"
+    m.textClip.setFocus(true)
+    updateScrollbarFocus(true)
+  else if action = "scrollDown"
+    m.scrollPosition = m.scrollPosition + SCROLL_STEP
+    if m.scrollPosition > m.maxScroll then m.scrollPosition = m.maxScroll
+    m.scrollContent.translation = [0, -m.scrollPosition]
+    updateScrollThumb()
+  else if action = "scrollUp"
+    m.scrollPosition = m.scrollPosition - SCROLL_STEP
+    if m.scrollPosition < 0 then m.scrollPosition = 0
+    m.scrollContent.translation = [0, -m.scrollPosition]
+    updateScrollThumb()
   end if
 
-  if key = "down"
-    if m.okButton.hasFocus() then return true
-
-    if m.maxScroll > 0 and m.scrollPosition < m.maxScroll
-      m.scrollPosition = m.scrollPosition + SCROLL_STEP
-      if m.scrollPosition > m.maxScroll
-        m.scrollPosition = m.maxScroll
-      end if
-      m.scrollContent.translation = [0, -m.scrollPosition]
-      updateScrollThumb()
-      return true
-    end if
-
-    m.okButton.setFocus(true)
-    updateScrollbarFocus(false)
-    return true
-  end if
-
-  if key = "up"
-    if m.okButton.hasFocus()
-      ' Only move back to text area if there's scrollable content
-      if m.maxScroll > 0
-        m.textClip.setFocus(true)
-        updateScrollbarFocus(true)
-      end if
-      return true
-    end if
-
-    if m.scrollPosition > 0
-      m.scrollPosition = m.scrollPosition - SCROLL_STEP
-      if m.scrollPosition < 0
-        m.scrollPosition = 0
-      end if
-      m.scrollContent.translation = [0, -m.scrollPosition]
-      updateScrollThumb()
-      return true
-    end if
-    ' At top of scroll, consume event to prevent bubbling
-    return true
-  end if
-
-  return false
+  ' Modal containment: nothing escapes to the scene behind us, including the
+  ' "consume" action itself. A key left to bubble reaches JRScene, whose
+  ' `options` branch acts on the screen under the dialog.
+  return true
 end function

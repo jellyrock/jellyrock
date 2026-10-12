@@ -38,6 +38,7 @@ permissions:
 jobs:
   check-skip:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       relevant: ${{ steps.paths.outputs.relevant }}
     steps:
@@ -138,7 +139,6 @@ jobs:
           name: rta-run-record-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             .device-runs/rta/runs.jsonl
-            out/rta/run-meta.json
           retention-days: 30
           if-no-files-found: warn
 

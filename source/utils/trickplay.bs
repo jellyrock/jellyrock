@@ -119,16 +119,6 @@ namespace trickplay
     end if
   end function
 
-  ' Converts a thumbnail index to video position in seconds
-  ' @param {Integer} index - Zero-based thumbnail index
-  ' @param {Integer} interval - Milliseconds between thumbnails
-  ' @return {Float} - Video position in seconds
-  function thumbnailIndexToPosition(index as integer, interval as integer) as float
-    if interval <= 0 then return 0.0
-    ' Calculate time in milliseconds (index * interval), then convert to seconds
-    return (index * interval) / 1000.0
-  end function
-
   ' buildConfigFromMetadata: Extracts and validates trickplay config from item trickplay data
   '
   ' Provides fail-fast validation at config creation time rather than at usage time.

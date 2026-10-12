@@ -39,6 +39,7 @@ jobs:
   # re-add it. See git history / docs/decisions.md for the full trace.
   update-translation-source:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -114,6 +115,7 @@ jobs:
     if: github.actor != 'jellyrock[bot]'
     needs: update-translation-source
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -179,6 +181,7 @@ jobs:
   update-settings-docs:
     needs: update-translation-source
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -264,6 +267,7 @@ jobs:
   sync-changelog:
     needs: update-settings-docs
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Generate GitHub App Token
         id: app-token

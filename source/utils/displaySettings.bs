@@ -125,27 +125,6 @@ sub setLibraryDisplaySetting(libraryId as dynamic, key as dynamic, value as dyna
   localUser.settings.displaySettings = displaySettings
 end sub
 
-' Batch get multiple settings at once (performance optimization)
-' keys: Array of setting keys ["sortField", "filter", "landing"]
-' defaults: AA of default values { sortField: "SortName", filter: "All" }
-' Returns: AA with all requested settings
-function getLibraryDisplaySettingsBatch(libraryId as string, keys as object, defaults as object) as object
-  result = {}
-  librarySettings = getLibraryDisplaySettings(libraryId)
-
-  for each key in keys
-    if librarySettings.DoesExist(key)
-      result[key] = librarySettings[key]
-    else if defaults.DoesExist(key)
-      result[key] = defaults[key]
-    else
-      result[key] = invalid
-    end if
-  end for
-
-  return result
-end function
-
 ' Delete all display settings for a library
 sub deleteLibraryDisplaySettings(libraryId as dynamic)
   if not isValid(libraryId) or libraryId = ""

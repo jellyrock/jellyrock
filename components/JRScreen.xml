@@ -10,5 +10,7 @@
     <function name="onScreenShown" />
     <function name="onScreenHidden" />
     <function name="onDestroy" />
+    <!-- JRScene's screen swap: hide this view in the step the view covering it opens. -->
+    <function name="hideCovered" />
   </interface>
 </component>

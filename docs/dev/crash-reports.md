@@ -6,68 +6,58 @@ related-files:
   - .crash-report/known-noise.yml
   - .claude/skills/crash-report/SKILL.md
   - tests/scripts/unit/crash-report.test.js
-last-reviewed: 2026-07-22
+last-reviewed: 2026-10-09
 ---
 
-# Weekly Roku crash-report workflow
+# Weekly Roku crash reports
 
-Roku emails the JellyRock developers an aggregate "Crash Reporting" CSV every week (window: the last 7 days). Each row is a unique crash signature with occurrence counts, distinct-device counts, OS release, app version, and a `pkg:/path/file.brs(line)` reference. The [`/crash-report`](../../.claude/skills/crash-report/SKILL.md) skill turns each above-threshold unique crash into tracked GitHub state so nothing falls through the cracks.
+Every week Roku emails the JellyRock developers a "Crash Reporting" CSV covering the last 7 days. Each row is one crash signature, with its crash and device counts, the Roku OS release, the app version and a `pkg:/path/file.brs(line)` reference. The [`/crash-report`](../../.claude/skills/crash-report/SKILL.md) skill turns each crash above the threshold into tracked GitHub state, so none is lost.
 
-This page documents the workflow for human contributors. The skill documents the agent-facing steps.
+This page explains the workflow for contributors. The skill holds the steps an agent follows.
 
-## The core shape: enrich before file (`stage → enrich → file`)
+## Enrich before filing: stage, enrich, file
 
-The weekly CSV carries only the crashing function signature — **not the exception code**. But the exception code is exactly what decides whether a crash is a scoped bug, a big-library "too many task threads" crash, or a render-thread execution timeout. That code lives only behind Roku's per-crash dashboard backtrace (7-day window, one click each, no bulk export). So filing straight off the CSV means filing *before* you know what a crash is — and walking back the architectural-class noise afterward.
+The CSV names the crashing function but not the exception code. The code is what tells a small bug apart from a big-library "too many task threads" crash or a render-thread timeout, and it is only in the backtrace on Roku's dashboard (kept for 7 days, one click per crash, no bulk export). Filing straight from the CSV would mean filing before you know what a crash is. So the workflow runs in three phases:
 
-The workflow reorders around that reality:
-
-1. **`stage`** — parse/filter the CSV, group by signature, apply the threshold, build the cited version(s), source-map `pkg:/…brs:N → .bs:N`, run the GH dedup search, and write a local **worksheet**. Every above-threshold crash starts `pending`; a mechanism hint (`task-launch` / `network` / `other`) only *orders* which to pull first — it never authorizes a file. No GitHub writes.
-2. **`enrich`** — paste the dashboard backtraces; the helper extracts each `&hNN`, source-maps the frames, and routes each crash to its disposition. No GitHub writes.
-3. **`file`** — perform the GitHub writes: enriched scoped bugs become issues, enriched architectural-class crashes upsert onto their epic. Crashes still unenriched are **held, never filed** — the exception code decides the disposition and lives only in the backtrace, so nothing is filed on a guess (even an ordinary-looking line can be a compute-bound `&h23` timeout).
+1. **`stage`** reads and filters the CSV, groups rows by signature, applies the threshold, builds each cited app version, maps `pkg:/…brs:N` back to `.bs:N`, searches GitHub for existing issues, and writes a local worksheet. Every crash above the threshold starts as `pending`. A hint (`task-launch`, `network` or `other`) only sets the order to pull backtraces in; it never decides a crash. Nothing is written to GitHub.
+2. **`enrich`** takes the backtraces you paste from the dashboard. It reads each `&hNN` exception code, maps the frames to source, and routes each crash to its disposition. Nothing is written to GitHub.
+3. **`file`** writes to GitHub: scoped bugs become issues, and architectural crashes are recorded on their epic. A crash still without a backtrace is held and never filed. Its disposition depends on the exception code, so nothing is filed on a guess; even an ordinary-looking line can be an `&h23` timeout from heavy computation.
 
 ## The three dispositions
 
-The routing table is [`.crash-report/known-noise.yml`](../../.crash-report/known-noise.yml). Every above-threshold crash routes to exactly one:
+[`.crash-report/known-noise.yml`](../../.crash-report/known-noise.yml) is the routing table. Every crash above the threshold gets exactly one disposition:
 
 | Disposition | Meaning | What happens |
-|---|---|---|
-| **`file`** | A real, small-scoped bug | New per-signature `[crash]` issue, born enriched (backtrace + exception + source frames) |
-| **`aggregate`** | A known architectural class you intend to fix, no small fix exists | One flat record comment per `file·function·line·version` **upserted** onto the class **epic** — never a standalone issue |
-| **`watch`** | Accepted noise we won't fix | Counted; silent unless a spike crosses `baseline × multiplier`, then one comment on the tracker |
+| --- | --- | --- |
+| **`file`** | A real bug with a small fix | A new `[crash]` issue for the signature, with the backtrace, exception and source frames from the start |
+| **`aggregate`** | A known architectural problem we mean to fix, with no small fix | One record comment per `file·function·line·version` on the problem's epic, created or updated; never an issue of its own |
+| **`watch`** | Accepted noise we won't fix | Counted, and silent unless a spike passes `baseline × multiplier`, which posts one comment on the tracker |
 
-Anything that matches no pattern is `file`.
+A crash that matches no pattern is `file`.
 
-### Routing is by exception code **+ context**
+### Routing uses the exception code and its context
 
-`&h29` (too many task threads) and `&h23` (execution timeout) *are* their architectural class regardless of which code site they surface at — so their patterns route on `exception_code` alone. `&hec` ('Dot' operator on an invalid reference) is different: it's the themed-init race **only** when it's `init()` accessing `m.global.constants` (issue #103's class). Bare `&hec` anywhere else is an ordinary scoped null-deref (e.g. caption VTT parsing). That asymmetry is why the init-race pattern gates `&hec` on `function` + `snippet_regex` too. The tool never assumes two different crash *lines* are "the same crash whose line moved" — that's a human call after investigation; distinct records stay distinct on the epic.
+`&h29` (too many task threads) and `&h23` (execution timeout) belong to their architectural problem wherever they happen, so their patterns route on `exception_code` alone. `&hec` (the `.` operator used on an invalid value) is different: it is the themed-init race only when `init()` reads `m.global.constants` (issue #103). Anywhere else it is an ordinary bug, such as in caption VTT parsing. That is why the init-race pattern also matches on `function` and `snippet_regex`.
 
-## The architectural epics (`aggregate` model)
+The tool never assumes that two different crash lines are one crash whose line moved. Deciding that takes a person's investigation, so each record stays separate on the epic.
 
-An epic is a GitHub issue labeled `epic` that holds the **problem statement** (human-owned body) plus **crashlog evidence** (machine-appended record comments). Each unique crash record is one flat comment keyed by a hidden marker `<!-- crashlog-record: v1 key=file|function|line|version -->` with an embedded JSON data block (the source of truth) and rendered markdown derived from it. On each run the `file` phase either creates the comment or edits the existing one (merging occurrence stats, never duplicating; a no-op edit is skipped). The machine only ever rewrites comments it owns — it never touches the epic body you author by hand.
+## Architectural epics
 
-Current epics:
+An epic is a GitHub issue labeled `epic`. Its body, written and kept by a person, states the problem. Below it, the `file` phase keeps one comment per crash record, marked with a hidden `<!-- crashlog-record: v1 key=file|function|line|version -->` line. The comment holds a JSON block, which is the source of truth, and markdown built from it. Each run creates the comment or edits it, merging the counts without duplicating, and skips an edit that would change nothing. The tool only edits its own comments, never the epic's body.
 
-- **`&h29` — big libraries / too-many-task-threads.** Roku caps concurrent SceneGraph Task threads; a very large library saturates the pool and the next `.control = "RUN"` (any of ~25 sites) throws. The fix is architectural (a task budget / back-pressure), not per-site.
-- **`&h23` — render-thread execution timeouts.** Roku kills a render-thread callback that runs too long. Always our thread taking too long — trigger is a blocking call *or* heavy synchronous compute (the common case here, since API runs on the task pool) — reframed from "server timeouts" per real crash evidence (ADR 0024). Distinct from "unexpected / malformed server response" crashes (`&h18` etc.) — those are scoped bugs.
-- **`&hec` + `init()` + `m.global.constants` — themed-component init race** (issue #103, promoted from a `watch` tracker to an `aggregate` epic).
+The epics, all active in `known-noise.yml`:
 
-### Seeding the epics
+- **`&h29`, too many task threads (#728).** Roku caps how many Task threads run at once. A very large library fills the pool, and the next `.control = "RUN"` anywhere in the app throws. The fix is architectural, a budget on tasks, not a change at each launch.
+- **`&h23`, render-thread execution timeouts (#729).** Roku kills a render-thread callback that runs too long. The cause is always our own thread taking too long, through a blocking call or, more often here, heavy computation, since API calls run on the task pool ([ADR 0024](../adr/0024-crash-report-enrich-before-file.md)). Crashes from an unexpected or malformed server response (`&h18` and others) are scoped bugs, not this.
+- **`&hec` in `init()` reading `m.global.constants`, the themed-component init race (#103).**
 
-The two architectural-class patterns ship **commented out** in `known-noise.yml` until their epic issues exist (a pattern pointing at a non-existent issue would fail loud — `tracker_issue` must be a positive integer). One-time seed:
+To add an epic, create the issue with the `epic` label, then add an `aggregate` pattern whose `tracker_issue` is its number. `tracker_issue` must be a positive integer.
 
-```bash
-gh label create epic --color 5319e7 --description "Architectural class tracker — /crash-report aggregates crashlog evidence here"
-gh issue create --label epic,bug,crash --title '[epic] Large libraries crash the app — "Too many task threads" (&h29)' --body-file <problem-statement.md>
-gh issue create --label epic,bug,crash --title '[epic] Render-thread execution timeouts crash the app — `Execution timeout` (&h23)' --body-file <problem-statement.md>
-```
+## `watch` patterns and spikes
 
-Then uncomment the two patterns in `known-noise.yml` and fill each `tracker_issue` with the new issue number. The `&hec` init-race pattern is already active (tracker #103).
+A `watch` pattern is noise we accept. Matching crashes get no issue and no comment, and appear in the run summary under "Suppressed (known noise)". When their combined count passes `baseline_crashes_per_week × spike_multiplier`, the skill posts one spike comment on the tracker. It doesn't reopen anything; a person decides.
 
-## Known-noise `watch` patterns + spike detection
-
-A `watch` pattern is accepted noise the team lives with. Matched signatures are suppressed (no issue, no comment) and shown in the run summary under "Suppressed (known noise)". When the combined count across matched signatures exceeds `baseline_crashes_per_week × spike_multiplier`, the skill posts ONE spike comment to the tracker — it does **not** reopen (the human decides).
-
-### Config schema
+### Pattern format
 
 ```yaml
 patterns:
@@ -80,43 +70,45 @@ patterns:
     spike_multiplier: <float>         # watch only; defaults to 2.0
     match:                            # ALL provided fields must agree (AND)
       exception_code: '&hNN'          # or a list; from the backtrace (enrich phase)
-      function: <regex>               # e.g. ^init$
+      function: <regex>               # for example ^init$
       category: <one-of>              # global-state-race | null-node-ref | ...
       file_glob: [components/ui/**]   # list of globs, any-match
       snippet_regex: <regex>          # gate against the code snippet
 ```
 
-First-match wins. Empty/omitted match fields are wildcards. Because `exception_code` comes from the backtrace, a code-gated pattern only matches during `enrich` — during `stage` (CSV-only) such crashes stay `needs-backtrace`.
+The first matching pattern wins. An empty or missing match field matches anything. `exception_code` comes from the backtrace, so a pattern that needs it can only match during `enrich`. During `stage`, which has only the CSV, those crashes stay `needs-backtrace`.
 
 ## The 7-day dashboard window
 
-Roku's dashboard retains only **7 days** of backtraces, one click per crash line-item, no bulk export. Enrichment must happen within the report's window. When the skill asks you to pull a backtrace it gives the exact `<basename>.brs:<line>` + `date`; anything older than 7 days can never be enriched (file it unenriched, or hold it).
+Roku's dashboard keeps backtraces for 7 days only, one click per crash, with no bulk export, so enrich within the report's window. When the skill asks you for a backtrace, it gives the exact `<basename>.brs:<line>` and date. A crash older than 7 days can never be enriched, so it stays held.
 
-## Threshold (default: file when ≥2 devices OR ≥2 distinct dates)
+## Threshold
 
-A crash is above threshold when **either** max-devices-on-any-date ≥ 2 (a "wide" crash) **or** distinct-dates ≥ 2 (a "persistent" crash). Override with `--min-devices N` / `--min-dates N`; file everything with `--min-devices 1 --min-dates 1`.
+A crash is above the threshold when it hit at least 2 devices on one date (a wide crash), or happened on at least 2 different dates (a lasting crash). Change this with `--min-devices N` and `--min-dates N`; `--min-devices 1 --min-dates 1` takes every crash.
 
-## The dashboard backtrace format
+## The backtrace format
 
-The per-crash "View report → Backtrace" export is a TSV whose backtrace cell uses `~~` as a flattened newline separator; the exception code is in the first line:
+The dashboard's **View report → Backtrace** export is a TSV row. Its backtrace cell uses `~~` in place of line breaks, and the exception code is on the first line:
 
 ```text
 ~~Too many task threads (runtime error &h29) in pkg:/components/.../WebSocketClientTask.brs(14) ~~Backtrace: ~~#0  Function init() As $1 file/line: pkg:/.../WebSocketClientTask.brs(15) ~~Local Variables: ~~global  Interface:ifGlobal ~~m  roAssociativeArray refcnt=2 count:2 ~~
 ```
 
-`normalizeBacktraceText` accepts three interchangeable shapes: the dashboard TSV row, the plaintext "View report → Backtrace" page, and already-`~~`-separated cell text. Roku redacts collection contents (only `refcnt`/`count` shown), so dumping the block into a public issue is safe.
+`normalizeBacktraceText` accepts three forms: the TSV row, the plain text of the **View report → Backtrace** page, and cell text already split by `~~`. Roku hides what collections contain (it shows only `refcnt` and `count`), so posting the block in a public issue is safe.
 
-## Issue shape (scoped `file` bugs)
+## Issues for `file` crashes
 
-- **Title**: `[crash] <function>() in <basename>.brs:<line> (v<version>)` — deterministic so dedup is reliable across runs.
-- **Body**: matches [`bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml) headers; includes resolved source location, code snippet, occurrence stats, the appended backtrace (once enriched), and a pointer to `/issue-triage <N>`.
-- **Labels**: `bug`, `crash`.
+- **Title:** `[crash] <function>() in <basename>.brs:<line> (v<version>)`. It is the same every run, so finding an existing issue is reliable.
+- **Body:** follows the headings of [`bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml), with the source location, a code snippet, the counts, the backtrace and a pointer to `/issue-triage <N>`.
+- **Labels:** `bug` and `crash`.
 
-## Dedup behavior (`file` disposition)
+### Finding existing issues
 
-Per-signature search: `gh issue list --state all --search "<basename>.brs:<line>" in:title`, filtered to `[crash]`-prefixed titles. No match → `create`; open match → `comment` (new occurrences); closed match → `reopen` + regression comment.
+For each signature, the tool runs `gh issue list --state all --search "<basename>.brs:<line>" in:title` and keeps titles starting with `[crash]`. No match creates an issue. An open match gets a comment with the new crashes. A closed match is reopened, with a comment that it came back.
 
 ## One-time setup
+
+The skill's preflight checks that these labels exist, and prints the commands for any that are missing:
 
 ```bash
 gh label create crash --color e11d48 --description "Filed by /crash-report from Roku's weekly crash report"
@@ -124,23 +116,21 @@ gh label create known-issue --color cccccc --description "Long-running known bug
 gh label create epic --color 5319e7 --description "Architectural class tracker — /crash-report aggregates crashlog evidence here"
 ```
 
-The skill's preflight checks all three and prints the missing commands.
-
 ## What the workflow can't do
 
-- **Specific device models / users** — not in Roku's aggregate report.
-- **Reproduce the crash** — telemetry says where, not why. Run `/issue-triage <N>` after filing.
-- **Crashes from intermediate (untagged) commits** — the manifest version doesn't bump per commit; the script falls back to the highest `v<major>.<minor>.*` tag and notes the inexact match.
-- **Source maps for shipped builds** — prod ships without them; the script rebuilds the tagged version locally with a `bsconfig-analysis.json` mirroring prod to recover the mapping.
-- **Enrich a crash older than 7 days** — the dashboard window has closed.
+- **Name device models or users.** Roku's report doesn't include them.
+- **Reproduce a crash.** The report says where it happened, not why. Run `/issue-triage <N>` after filing.
+- **Match an exact build between releases.** The manifest version doesn't change on every commit, so the script uses the highest `v<major>.<minor>.*` tag and notes that the match is inexact.
+- **Read source maps from a shipped build.** Release builds ship without them, so the script rebuilds the tagged version with `bsconfig-analysis.json`, which mirrors the release build.
+- **Enrich a crash older than 7 days.** The dashboard no longer has it.
 
-## When the build step fails
+## When a build fails
 
-If `npm ci` / `bsc` fails in the worktree, affected signatures get an unresolved source location (issue body says so, shows the transpiled `file:line`), and the build errors appear in the run summary. Common causes: a tag too old for `bsconfig-prod.json`, a dep mismatch, or a transient registry hiccup.
+If `npm ci` or `bsc` fails while building a cited version, its crashes get no source location. The issue says so and shows the transpiled `file:line`, and the run summary lists the build errors. Common causes are a tag too old for `bsconfig-prod.json`, a dependency mismatch, or a passing registry error.
 
-## Legacy: per-issue enrichment (deprecated)
+## Old flow: enrich after filing
 
-The old flow filed issues from the CSV first and enriched each one afterward via the standalone `/crash-backtrace` skill. That skill is [deprecated](../../.claude/skills/crash-backtrace/SKILL.md) — enrichment now happens inside `/crash-report`'s `enrich` phase, before filing. The `enrich-issue` script subcommand still exists as an escape hatch for a pre-migration already-filed issue:
+The old flow filed issues from the CSV first, then enriched each one with the `/crash-backtrace` skill. That skill is [deprecated](../../.claude/skills/crash-backtrace/SKILL.md): `/crash-report` now enriches before filing. For an issue filed under the old flow, the script still has an `enrich-issue` command:
 
 ```bash
 node scripts/crash-report.js enrich-issue --issue <N> --backtrace-file <path>
@@ -148,4 +138,4 @@ node scripts/crash-report.js enrich-issue --issue <N> --backtrace-file <path>
 
 ## Tests
 
-The deterministic logic — CSV parse, grouping, threshold, backtrace parse, exception-code routing (`routeCrash`), epic record render/parse/merge/upsert, the file-phase disposition split — is covered by [`tests/scripts/unit/crash-report.test.js`](../../tests/scripts/unit/crash-report.test.js). Run with `npm run test:scripts`. The build + GH integration paths are exercised manually against a sample CSV.
+[`tests/scripts/unit/crash-report.test.js`](../../tests/scripts/unit/crash-report.test.js) covers the logic that always gives the same answer: reading the CSV, grouping, the threshold, reading backtraces, routing by exception code (`routeCrash`), the epic records (render, read, merge, create or update) and how the `file` phase splits crashes by disposition. Run it with `npm run test:scripts`. The build and GitHub steps are tried by hand against a sample CSV.

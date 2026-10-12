@@ -14,7 +14,6 @@
 -->
 <component name="JRGroup" extends="sgrouter_View">
   <interface>
-    <field id="backPressed" type="boolean" alwaysNotify="true" />
     <field id="lastFocus" type="node" />
     <field id="overhangTitle" type="string" />
     <field id="isOptionsAvailable" value="true" type="boolean" />

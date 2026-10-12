@@ -1,16 +1,16 @@
-// scripts/lint/dictionary-audit.cjs — Audit dictionary.txt for identifier-shaped entries.
+// scripts/lint/dictionary-audit.cjs: Audit dictionary.txt for identifier-shaped entries.
 //
 // The spellchecker dictionary should hold real English words, acronyms, and
-// legitimate technical terms — never code identifiers, file names, class
+// legitimate technical terms, never code identifiers, file names, class
 // names, or path fragments. Adding identifiers defeats the spellchecker for
 // any actual typo that happens to collide with an identifier name.
 //
 // This script flags entries that look identifier-shaped:
 //   - contain a path separator (/, \)
 //   - end with a known source/asset file extension
-//   - camelCase (lowercase prefix → internal uppercase)
-//   - identifier-prefix (2+ uppercase → lowercase, e.g. JRRowItem)
-//   - 2+ uppercase→lowercase humps (e.g. ItemDetails, MusicArtist)
+//   - camelCase (a lowercase prefix, then an internal uppercase)
+//   - identifier-prefix (2+ uppercase, then lowercase, for example JRRowItem)
+//   - 2+ humps of uppercase then lowercase (for example ItemDetails, MusicArtist)
 //
 // Acronym plurals (URLs, URIs, FAQs) and product names (BrighterScript,
 // JavaScript) are allowed via an explicit allowlist.
@@ -74,7 +74,7 @@ const ALLOWLIST = new Set([
 
 // Acronym-plural and acronym-possessive patterns. Words like URLs / APIs /
 // PNGs / READMEs / BSC's are legitimate dictionary entries that the base
-// retext-spell does not know — they look identifier-prefix-shaped only by
+// retext-spell does not know. They look identifier-prefix-shaped only by
 // coincidence, so bypass them rather than allowlisting each one.
 const ACRONYM_PLURAL_RE = /^[A-Z]{2,}'?s$/;
 
@@ -118,7 +118,7 @@ const PASCAL_HUMP_RE = /[A-Z][a-z]+/g;
  * The first unescaped regex metacharacter in an entry, or null.
  *
  * A backslash escapes the character after it, so `\.claude` is clean while
- * `.claude` is not. `-` is deliberately absent: it is only special inside a
+ * `.claude` is not. `-` is left out on purpose: it is only special inside a
  * character class, and this file is full of legitimately hyphenated entries.
  */
 function unescapedMetacharacters(word) {
@@ -136,13 +136,13 @@ function shapeVerdict(word) {
   // Every check below is about what the entry MEANS, not how it is written, so
   // they run against the UNESCAPED literal. Without this, correctly escaping
   // `.claude` to `\.claude` trips the path-separator rule on its own escape
-  // character — the audit would reject the very fix it just demanded.
+  // character: the audit would reject the very fix it had demanded.
   const literal = word.replace(/\\(.)/g, '$1');
 
   if (ALLOWLIST.has(literal)) return null;
   if (ACRONYM_PLURAL_RE.test(literal)) return null;
 
-  // Possessive form of an allowlisted entry (e.g., "BrighterScript's")
+  // Possessive form of an allowlisted entry (for example "BrighterScript's")
   if (literal.endsWith("'s") && ALLOWLIST.has(literal.slice(0, -2))) return null;
 
   if (PATH_SEPARATOR_RE.test(literal)) {
@@ -183,12 +183,12 @@ function shapeVerdict(word) {
 /**
  * Two independent problems, in the order their FIXES make sense.
  *
- * An identifier-shaped entry should be DELETED, so it is reported first — telling
+ * An identifier-shaped entry should be DELETED, so it is reported first: telling
  * someone to escape the dot in `package.json` would be advice toward keeping an
  * entry that should never have been added. Only once an entry is otherwise
  * legitimate does an unescaped metacharacter become the actionable problem.
  *
- * The metacharacter check deliberately sits AFTER the allowlist rather than
+ * The metacharacter check sits AFTER the allowlist rather than
  * before it: `shapeVerdict` returns null for an allowlisted entry, so control
  * still reaches here and an allowlisted proper noun written with a live
  * metacharacter is caught too.
@@ -247,8 +247,8 @@ function main() {
     console.error(`  dictionary.txt:${v.line}  ${v.word}  (${v.reason})`);
     console.error(`    → ${v.hint}`);
   }
-  // The two violation classes have OPPOSITE fixes — an identifier-shaped entry
-  // should be deleted, an unescaped metacharacter should be escaped and KEPT — so
+  // The two violation classes have OPPOSITE fixes (an identifier-shaped entry
+  // should be deleted, an unescaped metacharacter should be escaped and KEPT), so
   // printing both footers unconditionally tells half the readers to do the wrong
   // thing. Each prints only when its own class is present.
   if (violations.some((v) => !v.reason.startsWith('unescaped regex metacharacter'))) {

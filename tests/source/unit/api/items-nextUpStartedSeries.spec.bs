@@ -1,0 +1,144 @@
+import "pkg:/source/api/items.bs"
+
+namespace tests
+
+  @suite("items.bs - Next Up started-series filter")
+  class NextUpStartedSeriesTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextUpSeriesIds()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns each series once, in response order")
+    function _()
+      items = [{ SeriesId: "b" }, { SeriesId: "a" }, { SeriesId: "b" }]
+      m.assertEqual(nextUpSeriesIds(items), ["b", "a"])
+    end function
+
+    @it("skips items with no series")
+    function _()
+      m.assertEqual(nextUpSeriesIds([{ Id: "x" }, { SeriesId: "" }, { SeriesId: "a" }]), ["a"])
+    end function
+
+    @it("returns an empty list for no items")
+    @params(invalid)
+    @params([])
+    function _(items)
+      m.assertEqual(nextUpSeriesIds(items), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("planNextUpSeriesLookups()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sends a series with a played special to the exact check, the rest to the count lookup")
+    function _()
+      specials = [{ SeriesId: "sop", ParentIndexNumber: 0 }, { SeriesId: "notInNextUp", ParentIndexNumber: 0 }]
+      plan = planNextUpSeriesLookups(["rock", "sop", "sv"], specials)
+      m.assertEqual(plan.counted, ["rock", "sv"])
+      m.assertEqual(plan.exact, ["sop"])
+    end function
+
+    @it("counts every series when the specials lookup has no answer")
+    function _()
+      plan = planNextUpSeriesLookups(["rock", "sop"], invalid)
+      m.assertEqual(plan.counted, ["rock", "sop"])
+      m.assertEqual(plan.exact, [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playedSpecialsQuery()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for every played season-0 episode")
+    function _()
+      q = playedSpecialsQuery()
+      m.assertEqual(q.Recursive, true)
+      m.assertEqual(q.IncludeItemTypes, "Episode")
+      m.assertEqual(q.IsPlayed, true)
+      m.assertEqual(q.ParentIndexNumber, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("classifyNextUpSeries()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("marks a series with nothing played as not started")
+    function _()
+      ' Silicon Valley on a 12.0 server: S4E6 started at 320 s, nothing finished.
+      series = [{ Id: "sv", RecursiveItemCount: 53, UserData: { UnplayedItemCount: 53 } }]
+      m.assertEqual(classifyNextUpSeries(series), { sv: NextUpSeriesStart.NOT_STARTED })
+    end function
+
+    @it("marks a series with a played episode as started")
+    function _()
+      series = [{ Id: "rock", RecursiveItemCount: 142, UserData: { UnplayedItemCount: 141 } }]
+      m.assertEqual(classifyNextUpSeries(series), { rock: NextUpSeriesStart.STARTED })
+    end function
+
+    @it("leaves out a series whose counts are missing")
+    function _()
+      series = [
+        { Id: "noUserData", RecursiveItemCount: 10 },
+        { Id: "noTotal", UserData: { UnplayedItemCount: 10 } },
+        { Id: "noUnplayed", RecursiveItemCount: 10, UserData: {} }
+      ]
+      m.assertEqual(classifyNextUpSeries(series), {})
+    end function
+
+    @it("returns nothing when no series counts arrived")
+    function _()
+      m.assertEqual(classifyNextUpSeries([]), {})
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("keepStartedSeriesItems()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("drops only the items of series that are not started, keeping order")
+    function _()
+      items = [
+        { Id: "e1", SeriesId: "rock" },
+        { Id: "e2", SeriesId: "sv" },
+        { Id: "e3", SeriesId: "sop" },
+        { Id: "e4", SeriesId: "unknown" },
+        { Id: "e5" }
+      ]
+      starts = {
+        rock: NextUpSeriesStart.STARTED,
+        sv: NextUpSeriesStart.NOT_STARTED,
+        sop: NextUpSeriesStart.STARTED
+      }
+      kept = keepStartedSeriesItems(items, starts)
+      m.assertEqual(kept.count(), 4)
+      m.assertEqual(kept[0].Id, "e1")
+      m.assertEqual(kept[1].Id, "e3")
+      m.assertEqual(kept[2].Id, "e4")
+      m.assertEqual(kept[3].Id, "e5")
+    end function
+
+    @it("keeps every item when nothing was classified")
+    function _()
+      items = [{ Id: "e1", SeriesId: "a" }, { Id: "e2", SeriesId: "b" }]
+      m.assertEqual(keepStartedSeriesItems(items, {}).count(), 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("watchedRegularEpisodeQuery()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for the series' top played episode, regular seasons sorting first")
+    function _()
+      q = watchedRegularEpisodeQuery("abc")
+      m.assertEqual(q.ParentId, "abc")
+      m.assertEqual(q.Recursive, true)
+      m.assertEqual(q.IncludeItemTypes, "Episode")
+      m.assertEqual(q.IsPlayed, true)
+      m.assertEqual(q.SortBy, "ParentIndexNumber,IndexNumber")
+      m.assertEqual(q.SortOrder, "Descending")
+      m.assertEqual(q.Limit, 1)
+    end function
+
+  end class
+
+end namespace

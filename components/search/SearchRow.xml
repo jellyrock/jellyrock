@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="SearchRow" extends="JRRowList">
   <interface>
-    <field id="rowSize" type="int" />
     <field id="itemData" type="assocarray" onChange="getData" />
     <!-- Set true once getData has built every row; cleared at the start of each build.
          SearchResults resolves its readiness ledger's `rows` fill on this, because a row

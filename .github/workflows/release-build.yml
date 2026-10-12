@@ -8,6 +8,7 @@ on:
 jobs:
   finalize-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: jellyrock-bot-main
       cancel-in-progress: false

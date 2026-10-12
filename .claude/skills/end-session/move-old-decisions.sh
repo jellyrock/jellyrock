@@ -19,8 +19,8 @@
 #   - An item already in DECISIONS.md (a run interrupted between its two writes) is not added
 #     twice. DECISIONS.md is written first, so an interruption can duplicate but never lose one.
 #   - Once DECISIONS.md exists, the heading links to it (an older unlinked heading is updated).
-#   - A new DECISIONS.md takes the PLAN's frontmatter minus its lifecycle fields (status, created,
-#     last-updated), so a repo whose docs need frontmatter gets it; none when the PLAN has none.
+#   - A new DECISIONS.md takes the PLAN's frontmatter minus its lifecycle fields (status, waits-on,
+#     created, last-updated), so a repo whose docs need frontmatter gets it; none when the PLAN has none.
 #     A frontmatter block in DECISIONS.md is never read as decisions.
 #   - Before replacing anything the script counts every decision in both files; a mismatch
 #     aborts with both files untouched.
@@ -79,10 +79,10 @@ awk -v placeholder="$PLACEHOLDER" -v newplan="$work/plan.new" -v moved="$work/mo
       if (seen[items[i]]++) { printf "duplicate decision in the list: %s\n", items[i] > "/dev/stderr"; exit 3 }
     }
     real = 0
-    for (i = 1; i <= nitems; i++) if (items[i] != placeholder) real++
+    for (i = 1; i <= nitems; i++) if (items[i] != placeholder "") real++
     k = 0
     for (i = 1; i <= nitems; i++) {
-      if (items[i] == placeholder && real > 0) continue
+      if (items[i] == placeholder "" && real > 0) continue
       k++
       if (k <= n) keep[++nkeep] = items[i]
       else if (!(items[i] in inlog)) { print items[i] > moved; nmoved++ }
@@ -112,7 +112,7 @@ read -r nmoved ndup <"$work/counts"
 # (newest first), or a new file with a short header.
 project="$(basename "$(cd "$(dirname "$PLAN")" && pwd)")"
 # The PLAN's frontmatter without its lifecycle fields; empty when it has none (or never closes it).
-fm="$(awk 'NR == 1 { if ($0 != "---") exit; next } $0 == "---" { printf "%s", buf; exit } !/^(status|created|last-updated):/ { buf = buf $0 "\n" }' "$PLAN")"
+fm="$(awk 'NR == 1 { if ($0 != "---") exit; next } $0 == "---" { printf "%s", buf; exit } !/^(status|waits-on|created|last-updated):/ { buf = buf $0 "\n" }' "$PLAN")"
 if [ "$nmoved" -gt 0 ]; then
   if [ -s "$work/log.old" ]; then
     awk -v moved="$work/moved" '
@@ -139,7 +139,7 @@ fi
 # Count check: every decision before is somewhere after (minus a dropped placeholder).
 count_items() { awk 'NR==1&&$0=="---"{fm=1;next} fm{if($0=="---")fm=0;next} /^- /{c++} END{print c+0}' "$1"; }
 list_items() { awk '/^\*\*Last [0-9]+ decisions/{f=1;next} f&&/^- /{c++;next} f&&c>0&&!/^[ \t]+[^ \t]/{exit} END{print c+0}' "$1"; }
-list_ph() { awk -v p="$PLACEHOLDER" '/^\*\*Last [0-9]+ decisions/{f=1;next} f&&$0==p{c++} f&&/^- /{n++;next} f&&n>0&&!/^[ \t]+[^ \t]/{exit} END{print c+0}' "$1"; }
+list_ph() { awk -v p="$PLACEHOLDER" '/^\*\*Last [0-9]+ decisions/{f=1;next} f&&$0==p ""{c++} f&&/^- /{n++;next} f&&n>0&&!/^[ \t]+[^ \t]/{exit} END{print c+0}' "$1"; }
 before_list="$(list_items "$PLAN")"; before_ph="$(list_ph "$PLAN")"
 after_list="$(list_items "$work/plan.new")"; after_ph="$(list_ph "$work/plan.new")"
 before_log="$(count_items "$work/log.old")"

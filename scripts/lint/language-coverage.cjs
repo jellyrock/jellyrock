@@ -1,71 +1,80 @@
-// Verifies the three-tier language resolver in source/utils/languages.bs is
-// internally consistent and provides coverage for every UI-translatable
+// Verifies the tables behind the language resolver (`resolveLanguageName()` in
+// source/utils/mediaDisplayTitle.bs; the tables live in source/utils/languages.bs)
+// are internally consistent and provide coverage for every UI-translatable
 // language across all common input formats.
 //
 // Why this exists: resolveLanguageName() resolves a media stream language
-// code (ISO 639-2/T, /B, 639-1, or BCP-47) to a localized display name via
-// three tiers — alias → translationKey → English fallback. Three classes of
-// silent regression are easy to introduce and impossible to catch via
-// existing lints, type checking, or unit tests:
+// code (ISO 639-2/T, /B, 639-1, or BCP-47) to a localized display name. It
+// first normalizes the code (lowercase, drop any region, then map a 3-letter
+// code to its 2-letter base through the alias map), then tries three tiers:
+// translation key, English fallback, the raw code. Four classes of silent
+// regression are easy to introduce and impossible to catch via existing
+// lints, type checking, or unit tests:
 //
-//   1. ALIAS WITHOUT TARGET — alias maps "tib" → "bo" but "bo" is not in
+//   1. ALIAS WITHOUT TARGET: alias maps "tib" to "bo" but "bo" is not in
 //      tier 1 nor tier 2. The user sees raw "bo" instead of a name.
-//   2. TIER 1 WITHOUT ALIAS COVERAGE — adds LanguageSl + "sl" to tier 1
-//      but forgets "slv" → "sl" in aliases. ffmpeg-tagged Slovenian audio
-//      ("slv") falls through to tier 2's English string in EVERY UI locale,
-//      including Slovenian — the user's own language fails to localize.
+//   2. TIER 1 WITHOUT ALIAS COVERAGE: adds LanguageSl + "sl" to tier 1
+//      but forgets "slv" to "sl" in aliases. ffmpeg-tagged Slovenian audio
+//      ("slv") misses tier 1 in every UI locale, including Slovenian, and
+//      shows tier 2's English name if tier 2 holds "slv", the raw code if not.
+//      The user's own language fails to localize.
 //
-//   3. PERSONKIND WITHOUT A LABEL — `source/utils/people.bs` maps every
+//   3. PERSONKIND WITHOUT A LABEL: `source/utils/people.bs` maps every
 //      `PersonKind` enum value to a translation key (or declares it
-//      deliberately unlabelled). A value with NO row in either table is
-//      rendered as raw English enum text. This is NOT a compile error —
-//      a missing row has no expression to fail on — which is exactly how
+//      unlabeled on purpose). A value with NO row in either table is
+//      rendered as raw English enum text. This is not a compile error
+//      (a missing row has no expression to fail on), which is exactly how
 //      nine of the twenty-six values shipped untranslated. The enum is
 //      read from the committed spec fingerprints, so the check needs no
 //      network and no gitignored API cache.
 //
-//   4. A CREDIT ROW NAMING A KIND THE SERVER NO LONGER SENDS —
+//   4. A CREDIT ROW NAMING A KIND THE SERVER NO LONGER SENDS:
 //      `creditRowKinds()` drives the details screen's per-kind credit lines
 //      ("Created by", "Directed by") by naming `PersonKind` values. If
 //      upstream renames or drops one, the matching line silently renders
-//      empty: nothing throws, no row is missing, the label just never has
-//      anyone to name. Same silence as class 3, and the same fix — check
+//      empty: nothing throws, no row is missing, the label only never has
+//      anyone to name. Same silence as class 3, and the same fix: check
 //      the named kinds against the committed enum.
 //
 // All fail silently. Compile passes, unit tests pass, English UI renders
-// fine, only non-English users notice — months later. This script catches
-// them before merge.
+// fine, only non-English users notice, months later. This script catches
+// them before merge. Classes 1 and 2 are checks 1 and 2 below; classes 3 and
+// 4 are check 4. Two more checks guard the tables themselves: check 3 (every
+// tier-1 key exists in en_US.json) and check 3b (the matching-only alias map
+// never overlaps the display alias map).
 //
-// Despite the name this covers BOTH localization lookup tables — the
-// language resolver and the person-label resolver. They share the same
-// `m.<cache> = { … }` authoring shape and the same failure mode, so they
-// share a parser and a gate rather than drifting across two scripts.
+// Despite the name this covers three localization lookup tables: the
+// language resolver, the person-label resolver and the credit-row table
+// (`creditRowKinds()`). They share the same failure mode, and the first two
+// the `m.<cache> = { … }` authoring shape, so they share a gate rather than
+// drifting across scripts.
 //
 // Exits 1 on any inconsistency, 0 when clean.
 //
 // npm scripts:
-//   lint:language-coverage  → run this check
+//   lint:language-coverage  runs this check
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
+const INPUTS = require('./language-coverage-inputs.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
-const LANGS_BS_PATH = path.join(ROOT_DIR, 'source/utils/languages.bs');
-const PEOPLE_BS_PATH = path.join(ROOT_DIR, 'source/utils/people.bs');
-const EN_US_PATH = path.join(ROOT_DIR, 'locale/custom/en_US.json');
+const LANGS_BS_PATH = path.join(ROOT_DIR, INPUTS.LANGS_BS);
+const PEOPLE_BS_PATH = path.join(ROOT_DIR, INPUTS.PEOPLE_BS);
+const EN_US_PATH = path.join(ROOT_DIR, INPUTS.EN_US);
 // Committed, network-free source of truth for server enums. `.api-watch/cache/` holds
-// the raw specs but is gitignored, so it does not exist in CI — these do.
-const FINGERPRINT_DIR = path.join(ROOT_DIR, 'docs/architecture/spec-fingerprints');
+// the raw specs but is gitignored, so it does not exist in CI; these do.
+const FINGERPRINT_DIR = path.join(ROOT_DIR, INPUTS.FINGERPRINT_DIR);
 
 // ============================================================
-// Reference: ISO 639-1 (2-letter) → ISO 639-2 (3-letter) variants.
+// Reference: ISO 639-1 (2-letter) to ISO 639-2 (3-letter) variants.
 // Used for the alias-coverage check: when the resolver registers a 2-letter
 // code in tier 1, the matching 3-letter forms (T = terminological, B =
 // bibliographic; B is listed only when it differs from T) must alias to
-// that 2-letter code, otherwise ffmpeg-tagged 3-letter input falls through
-// to tier 2's English fallback in every UI locale.
+// that 2-letter code, otherwise ffmpeg-tagged 3-letter input misses tier 1
+// and shows tier 2's English fallback or the raw code in every UI locale.
 //
 // Source: https://www.loc.gov/standards/iso639-2/php/code_list.php
 // ============================================================
@@ -173,8 +182,9 @@ function c(text, color) {
 
 // ============================================================
 // Parser: extract an AssocArray literal from a function body in languages.bs
+// or people.bs
 //
-// Regex-based on purpose — the function bodies are write-once tables of
+// Regex-based on purpose: the function bodies are write-once tables of
 // `"key": "value"` / `"key": translationKeys.X` pairs with no other string
 // literals. Two assumptions this parser makes; violate either and entries
 // will be silently misread:
@@ -186,7 +196,7 @@ function c(text, color) {
 //      bounded by `function <name>()` and the next `\nend function`.
 //
 // Values may be a quoted string, `translationKeys.X`, or a bare `true`
-// (a SET — `unlabeledPersonKinds()` in people.bs uses that shape).
+// (a SET: `unlabeledPersonKinds()` in people.bs uses that shape).
 //
 // If either table gains real logic, replace this with a tokenizer.
 // ============================================================
@@ -217,7 +227,7 @@ function parseAA(source, fnName, fileLabel) {
 //
 // A second shape rather than a second parser by accident: `creditRowKinds()`
 // is ordered (the credit lines render in array order), so it cannot be an AA,
-// and parseAA() above finds its tables BY FUNCTION NAME while parsing an AA —
+// and parseAA() above finds its tables BY FUNCTION NAME while parsing an AA,
 // so this table sat outside every check until it was added here.
 //
 // Keys are UNQUOTED here (`kind:`, not `"kind":`), matching how the table is
@@ -226,9 +236,9 @@ function parseAA(source, fnName, fileLabel) {
 // Absence is never confused with failure, the same discipline the PersonKind
 // enum read applies below: a missing function, a missing array literal, an
 // entry that parses to nothing, and an entry missing either field are all
-// LOUD. A genuinely empty `[]` is the one quiet answer, and it is quiet only
+// LOUD. A truly empty `[]` is the one quiet answer, and it is quiet only
 // because the literal provably holds no entries. Without that split, a shape
-// change to the table would disable this check silently — which is the exact
+// change to the table would disable this check silently, which is the exact
 // failure class the check exists to close.
 // ============================================================
 function parseAAArray(source, fnName, fileLabel) {
@@ -266,7 +276,7 @@ function parseAAArray(source, fnName, fileLabel) {
     entries.push({ kind: kind[1], messageKey: messageKey[1] });
   }
 
-  // Quiet ONLY for a literal that provably holds nothing. Keying this on `{`
+  // Quiet only for a literal that provably holds nothing. Keying this on `{`
   // would let a re-authoring to bare strings (`[ "creator" ]`) parse to zero
   // entries and pass, so the test is whether the literal holds any CONTENT at
   // all, not whether it has braces.
@@ -389,7 +399,7 @@ if (missingKeys.length === 0) {
 // overlaps it. languageBaseCode() consults the display map first, so an overlapping
 // entry is dead at best and a silent contradiction at worst; and a display alias
 // moved here by mistake would change nothing visible, but the reverse (a matching
-// alias moved into the display map) breaks tier-2 names — see mediaLanguageMatchAliases().
+// alias moved into the display map) breaks tier-2 names; see mediaLanguageMatchAliases().
 // --------------------------------------------------------
 console.log(c('\n[Match Alias Supplement]', 'cyan'));
 const badMatchAliases = [];
@@ -413,10 +423,10 @@ if (badMatchAliases.length === 0) {
 }
 
 // --------------------------------------------------------
-// Check 4: every `PersonKind` value is either labelled or deliberately blank
+// Check 4: every `PersonKind` value is either labeled or blank on purpose
 //
 // Source of truth is the UNION of `schemas.PersonKind.enum` across every committed
-// fingerprint, not the newest one: the app supports 10.7 → 12.x simultaneously, so a
+// fingerprint, not the newest one: the app supports 10.7 to 12.x simultaneously, so a
 // value present on any supported line must render. (10.7.0 predates the enum and
 // contributes nothing; no special-casing needed.) A value dropped upstream keeps its
 // string harmlessly, a value added anywhere is required.
@@ -434,7 +444,7 @@ function readPersonKindEnum() {
   } catch {
     return null;
   }
-  const union = new Map(); // lowercased → canonical spelling
+  const union = new Map(); // lowercased to canonical spelling
   const sources = [];
   for (const file of files) {
     let doc;

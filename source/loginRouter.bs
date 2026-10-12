@@ -445,7 +445,7 @@ sub onQuickConnectAuthenticated()
   user.Login(activeUser, saveCreds)
   ' user.Login persists authToken + primaryImageTag when saveCredentials is set,
   ' but not the username — the same gap onCredentialsSubmitted fills by hand, and
-  ' the saved-user picker reads it (UserData.loadFromRegistry).
+  ' the saved-user picker reads it (getSavedUsers).
   if saveCreds then setUserSetting("username", activeUser.username)
   finishLogin()
 end sub

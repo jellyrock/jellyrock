@@ -27,6 +27,7 @@ import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/trackClusterFocus.bs"
+import "pkg:/source/utils/trackDropdownItems.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/versionLabels.bs"
 import "pkg:/source/utils/versionPick.bs"
@@ -1126,12 +1127,9 @@ sub insertManageSubtitlesButton()
   applyOverflow()
 end sub
 
-' callFunc entry — toggles the favorite state of the current item. Invoked from main.bs's
-' button router; because callFunc rendezvouses to this render-thread-owned node, the body
-' (and the fetchAsync().then() promise delivery + auto-abandon) runs on this component's
-' render thread, where the named-observer adapter works. This is the Phase-3c canonical
-' "main thread → render thread delegation" pattern — see docs/dev/promises.md. It moves the
-' favorite toggle off main.bs's god-loop (was submitApiRequest + isDone branch + handler).
+' Toggles the favorite state of the current item. Called from dispatchDetailButtonAction on
+' this component's render thread, where the fetchAsync().then() promise delivery and
+' auto-abandon work.
 sub toggleFavorite()
   favoriteButton = m.top.findNode("favoriteButton")
   item = m.top.itemContent
@@ -1175,14 +1173,9 @@ sub onFavoriteToggleFailed(favoriteButton as object, attemptedState as boolean)
   displayToast(translate(translationKeys.ErrorFailedToUpdateFavorite), "error")
 end sub
 
-' callFunc entry — toggles the watched/played state of the current item. Invoked from main.bs's
-' button router; Movie/Episode call it directly, while Series route through the "mark all
-' episodes" confirmation dialog first (main.bs keeps that dialog routing and re-invokes this on
-' confirm — #550 sgRouter territory). Because callFunc rendezvouses to this render-thread-owned
-' node, the body (and the fetchAsync().then() promise delivery + auto-abandon) runs on this
-' component's render thread, where the named-observer adapter works. This is the deferred twin of
-' toggleFavorite() — the Phase-3c "main thread → render thread delegation" pattern (see
-' docs/dev/promises.md). It moves the LAST raw submitApiRequest + isDone flow off main.bs's god-loop.
+' Toggles the watched/played state of the current item. Called from onWatchedButtonPressed
+' (Movie/Episode) or onWatchedConfirmResponse (a Series, after the "mark all episodes"
+' confirmation), on this component's render thread like toggleFavorite().
 sub toggleWatched()
   watchedButton = m.top.findNode("watchedButton")
   item = m.top.itemContent
@@ -3761,15 +3754,10 @@ function triggerTextForSelection(items as object, selectedId as string) as strin
   if not isValid(items) or items.count() = 0 then return ""
   for each item in items
     if isValid(item.id) and item.id = selectedId
-      return triggerTextForItem(item)
+      return trackDropdownItems.triggerText(item)
     end if
   end for
-  return triggerTextForItem(items[0])
-end function
-
-function triggerTextForItem(item as object) as string
-  if isValidAndNotEmpty(item.triggerTitle) then return item.triggerTitle
-  return item.title
+  return trackDropdownItems.triggerText(items[0])
 end function
 
 ' buildVideoDropdownItems: Convert MediaSources into dropdown items. "Video" here is the
@@ -3823,8 +3811,9 @@ end function
 ' from formatSubtitleDisplayTitle(), because language + codec + flags does not
 ' separate two English SRTs — measured on a 6-stream movie, this dropdown offered
 ' "English SUBRIP" three times, so a freshly downloaded subtitle was impossible
-' to pick out from the built-in ones. The helper marks the downloaded ones and
-' leaves the rest plain, which is the one question worth answering here.
+' to pick out from the built-in ones. The helper marks the external ones (a
+' download is one) and leaves the rest plain, which is the one question worth
+' answering here.
 '
 ' Each item carries triggerTitle as well: the collapsed trigger is a narrow slot
 ' that already ellipsizes, and the marker is only meaningful beside the entries
@@ -3998,8 +3987,7 @@ sub setItemLogo(item as object)
   else if item.type = "MusicArtist"
     ' Same as Person — primary photo where the logo sits, falling back to the
     ' canonical artist silhouette (account_box) when no primary image. Matches
-    ' what JRRowItem shows for MusicArtist items in the row list and what
-    ' MusicArtistGridItem shows on grid fallback.
+    ' what JRRowItem shows for MusicArtist items in the row list.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       setLogoImage(item.id, "Primary", imgParams)
@@ -5174,18 +5162,6 @@ sub focusInteractiveDropdown(candidates as object)
     end if
   end for
 end sub
-
-' firstInteractiveDropdown: Returns the first visible, interactive TrackDropdown in
-' left-to-right order, or invalid if none exist.
-function firstInteractiveDropdown() as object
-  candidates = [m.videoDropdown, m.audioDropdown, m.subtitleDropdown]
-  for each candidate in candidates
-    if isValid(candidate) and candidate.visible and candidate.isInteractive
-      return candidate
-    end if
-  end for
-  return invalid
-end function
 
 ' onTrackDropdownFocusChanged: Observer wired to each TrackDropdown's focusedChild.
 ' Remembers the last dropdown that held focus so the UP-from-buttons handler can

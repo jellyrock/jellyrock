@@ -58,6 +58,7 @@ end sub
 ' their own onScreenShown / onRouteUpdate overrides.
 function onViewOpen(_params = {} as object) as dynamic
   m.global.activeRoutedView = m.top
+  m.isShowFocusPending = true
   onScreenShown()
   return promises.resolve(invalid)
 end function
@@ -65,18 +66,35 @@ end function
 ' Router: a previously-suspended view has returned to the top of the stack (goBack
 ' uncovered it). Re-publish it as the active routed view, then restore via onScreenShown.
 function onViewResume(_params = {} as object) as dynamic
+  m.isCoverPending = false
   m.global.activeRoutedView = m.top
+  m.isShowFocusPending = true
   onScreenShown()
   return promises.resolve(invalid)
 end function
 
 ' Router: a new view is being pushed on top of this one (still alive).
 ' Save focus the same way SceneManager.pushScene does so it can be restored.
+'
+' The view is still on screen here: every route suspends with "show", and the incoming view
+' opens several message-loop turns later. So onScreenHidden waits for hideCovered, which
+' JRScene calls in the step the incoming view opens; anything it changes on screen then
+' changes in the same render pass as the swap.
 function onViewSuspend(_params = {} as object) as dynamic
   saveLastFocus()
-  onScreenHidden()
+  m.isCoverPending = true
   return promises.resolve(invalid)
 end function
+
+' JRScene's screen swap: the view that covers this one has opened. Hide this view and, if the
+' router suspended it, run onScreenHidden. A view the router CLOSED instead (back, a cleared
+' stack) already ran onScreenHidden in beforeViewClose, so it is only hidden.
+sub hideCovered()
+  m.top.visible = false
+  if m.isCoverPending <> true then return
+  m.isCoverPending = false
+  onScreenHidden()
+end sub
 
 ' Router: this view is about to be permanently destroyed.
 function beforeViewClose(_params = {} as object) as dynamic
@@ -85,11 +103,36 @@ function beforeViewClose(_params = {} as object) as dynamic
   return promises.resolve(invalid)
 end function
 
-' Router: take remote focus. Mirrors onScreenShown's focus rule (restore the
-' saved descendant, else focus the view root).
-function handleFocus(_data = {} as object) as boolean
-  restoreFocus(m.top)
+' Router: take remote focus. The router also calls this with routerFocused = false when focus
+' LEFT its outlet (to the overhang, a dialog or AppWaitHost). Taking focus then would steal it
+' back, so that notice is ignored while another node holds focus. The call right after the view
+' is shown always takes focus, and a stranded focus (on the bare scene) is still recovered.
+' Screens override restoreScreenFocus, not this.
+function handleFocus(data = {} as object) as boolean
+  wasShowPending = m.isShowFocusPending = true
+  m.isShowFocusPending = false
+  if not wasShowPending and isValid(data) and data.routerFocused = false and isFocusHeldElsewhere()
+    return false
+  end if
+  restoreScreenFocus()
   return true
+end function
+
+' Where this screen takes focus. Mirrors onScreenShown's focus rule (restore the saved
+' descendant, else focus the view root). Screens that restore focus differently override this.
+sub restoreScreenFocus()
+  restoreFocus(m.top)
+end sub
+
+' True when a node outside the bare scene holds focus. The scene itself holding it (or nothing)
+' means focus is stranded.
+function isFocusHeldElsewhere() as boolean
+  scene = m.top.getScene()
+  focused = scene
+  while isValid(focused) and focused.hasFocus() = false
+    focused = focused.focusedChild
+  end while
+  return isValid(focused) and not focused.isSameNode(scene)
 end function
 
 ' Walk the focus chain to the deepest focused descendant and remember it in

@@ -58,3 +58,7 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0044](0044-spinner-by-kind-of-wait.md) | A loading spinner is started by the kind of wait it covers | Accepted | 2026-09-25 |
 | [0045](0045-live-stream-open-handed-off-by-stage.md) | A live stream's open is handed off by stage, and waits as long as the server can | Accepted | 2026-09-26 |
 | [0046](0046-playback-start-wait-is-a-promise.md) | A playback start's wait is a Promise per start (partially supersedes 0044) | Accepted | 2026-09-27 |
+| [0047](0047-dead-code-gate.md) | Dead code is a build error, judged the way SceneGraph resolves names | Accepted | 2026-09-28 |
+| [0048](0048-translation-seeding-and-weblate-merge.md) | Missing translations are seeded from other Jellyfin clients, and release prep merges Weblate instead of overwriting | Accepted | 2026-10-04 |
+| [0049](0049-house-voice-ratchet.md) | Every doc is held to one house voice by a per-file ratchet | Accepted | 2026-10-07 |
+| [0050](0050-same-frame-screen-swap.md) | Screens change in one render pass: every route suspends with "show" and JellyRock drives the swap | Accepted | 2026-10-08 |

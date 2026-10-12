@@ -39,7 +39,6 @@ namespace tests
       m.assertTrue(allFields.DoesExist("globalRememberMe"), "should have globalRememberMe field")
       m.assertTrue(allFields.DoesExist("playbackBitrateLimit"), "should have playbackBitrateLimit field")
       m.assertTrue(allFields.DoesExist("displaySettings"), "should have displaySettings field")
-      m.assertTrue(allFields.DoesExist("rawSettings"), "should have rawSettings field")
     end function
 
     @it("can filter out excluded fields from getFields() result")
@@ -51,8 +50,7 @@ namespace tests
       excludedFields = [
         "id",
         "isLoaded",
-        "loadedAt",
-        "rawSettings"
+        "loadedAt"
       ]
 
       ' Filter out excluded fields
@@ -72,7 +70,7 @@ namespace tests
       end for
 
       ' Verify excluded fields are not in observable list
-      m.assertFalse(inArray(observableFields, "rawSettings"), "rawSettings should be excluded")
+      m.assertFalse(inArray(observableFields, "isLoaded"), "isLoaded should be excluded")
       m.assertFalse(inArray(observableFields, "id"), "id should be excluded")
 
       ' Verify non-excluded fields ARE in observable list
@@ -85,7 +83,7 @@ namespace tests
       settingsNode = CreateObject("roSGNode", "JellyfinUserSettings")
       allFields = settingsNode.getFields()
 
-      excludedFields = ["id", "isLoaded", "loadedAt", "rawSettings"]
+      excludedFields = ["id", "isLoaded", "loadedAt"]
 
       displaySettingsCount = 0
       otherSettingsCount = 0

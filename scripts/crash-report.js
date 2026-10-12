@@ -1,34 +1,37 @@
-// scripts/crash-report.js — Process Roku weekly crash-report CSVs.
+// scripts/crash-report.js: process Roku weekly crash-report CSVs.
 //
 // Roku emails an aggregate "Crash Reporting" CSV (default window: last 7 days)
 // listing unique crash signatures with counts, distinct-device counts, OS
 // releases, app versions, and pkg:/path.brs(line) references. This script
-// turns that report into tracked GitHub issues — one per unique above-threshold
-// crash — with the .brs:line resolved back to source .bs:line via the version's
+// turns that report into tracked GitHub work (a [crash] issue per unique
+// above-threshold scoped bug, or a record on an architectural-class epic),
+// with the .brs:line resolved back to source .bs:line via the version's
 // own source maps (built in a temporary git worktree using bsconfig-analysis.json).
 //
-// Two-phase CLI keeps the user-confirmation step in the orchestrating skill:
+// A three-step CLI (enrich before file) keeps the user-confirmation steps in
+// the orchestrating skill (/crash-report):
 //
-//   plan         — parse input, build the version, resolve source locations,
-//                  search GH for existing matches, emit a JSON plan. No GH writes.
-//   execute      — read a plan JSON, perform GH writes (create / comment / reopen),
-//                  write a run-summary handoff.
-//   enrich-issue — backfill a multi-frame backtrace onto one already-filed crash
-//                  issue. Takes the plaintext backtrace from Roku's "View report"
-//                  page (per-error click-through), resolves frames against the
-//                  issue's cited version, posts a single enrichment comment.
-//   resolve-issue— reverse-lookup: given a backtrace, find every [crash] issue
-//                  whose title carries the innermost frame's basename:line.
-//                  JSON output; powers /crash-backtrace's auto-resolve flow so
-//                  the user doesn't have to remember issue numbers.
+//   stage        (alias `plan`) parse input, build the version, resolve source
+//                locations, search GH for existing matches, write a JSON
+//                worksheet. No GH writes.
+//   enrich       fold pasted dashboard backtraces into the worksheet and route
+//                each crash to a disposition (file, aggregate or watch).
+//   file         read the worksheet, perform GH writes (create / comment / reopen,
+//                epic record upserts), write a run-summary handoff.
 //
-// Usage:
-//   node scripts/crash-report.js plan --input <csv|zip> [--min-devices N]
-//     [--min-dates N] [--no-build] [--dashboard-csv <path>] --plan-out <path>
-//   node scripts/crash-report.js execute --plan <plan.json> [--label crash]
-//     [--handoff-dir <path>]
-//   node scripts/crash-report.js enrich-issue --issue <N>
-//     [--backtrace-file <path>]    # else read backtrace text from stdin
+// Legacy subcommands from the earlier file-first flow:
+//   execute      read a plan JSON, perform GH writes (create / comment / reopen),
+//                write a run-summary handoff.
+//   enrich-issue backfill a multi-frame backtrace onto one already-filed crash
+//                issue. Takes the plaintext backtrace from Roku's "View report"
+//                page (per-error click-through), resolves frames against the
+//                issue's cited version, posts a single enrichment comment.
+//   resolve-issue reverse-lookup: given a backtrace, find every [crash] issue
+//                whose title carries the innermost frame's basename:line.
+//                JSON output; it powered the deprecated /crash-backtrace's
+//                auto-resolve flow.
+//
+// Usage: `node scripts/crash-report.js --help` lists every subcommand and flag.
 //
 // Public exports (for tests): all pure / IO-free helpers are named exports so
 // the Vitest suite at tests/scripts/unit/crash-report.test.js can drive them
@@ -207,7 +210,7 @@ export function mergeCsvs(csvTexts) {
 // Pulled manually from Roku's analytics dashboard. Tab-separated, 4 columns:
 //   Daily Error Key | Date | Backtrace Formatted | Backtrace Text Formatted
 //
-// One row per (signature, date) — the same crash on different days produces
+// One row per (signature, date): the same crash on different days produces
 // separate rows. The 4th column carries the parseable payload: a single CSV-
 // quoted string where `~~` separates what would otherwise be newlines.
 //
@@ -228,11 +231,11 @@ const ERROR_HEADER_RE = /\(runtime error\s+(&h[0-9a-f]+)\)\s+in\s+(pkg:\/[^()\s]
 export function validateDashboardCsv(headerLine) {
   if (typeof headerLine !== 'string' || headerLine.length === 0) return false;
   const headers = parseCsvLine(headerLine, '\t').map((h) => h.trim());
-  // Roku's real export PREFIXES the logical column name (e.g.
+  // Roku's real export prefixes the logical column name (for example
   // `Agg Channel Brightscript Error Daily Error Key Date`,
   // `Agg Channel Brightscript Error Backtrace Formatted Backtrace Text Formatted`),
   // so match by suffix, not exact equality. (The idealized `Date` /
-  // `Backtrace Text Formatted` headers still match — endsWith(self) is true.)
+  // `Backtrace Text Formatted` headers still match: endsWith(self) is true.)
   return DASHBOARD_REQUIRED_HEADERS.every((req) =>
     headers.some((h) => h === req || h.endsWith(req)),
   );
@@ -269,7 +272,7 @@ export function extractDashboardDate(text) {
 /**
  * Parse the `Backtrace Text Formatted` cell into structured pieces. Returns
  * null when the cell can't be recognized as a backtrace. The cell uses `~~`
- * as an in-cell line separator; we split on it and walk three sections —
+ * as an in-cell line separator; we split on it and walk three sections:
  * header (one line), frames (after `Backtrace:`), locals (after
  * `Local Variables:`).
  *
@@ -305,7 +308,7 @@ export function parseBacktraceCell(cellText) {
 
   const frames = [];
   const locals = [];
-  let mode = 'preamble'; // preamble → frames → locals
+  let mode = 'preamble'; // preamble, then frames, then locals
   for (let i = 1; i < parts.length; i++) {
     const line = parts[i];
     if (/^Backtrace:/i.test(line)) {
@@ -338,7 +341,7 @@ export function parseBacktraceCell(cellText) {
 }
 
 /**
- * The crash signature is keyed by the *innermost* frame — same convention as
+ * The crash signature is keyed by the *innermost* frame, the same convention as
  * groupBySignature uses with the email CSV (which only carries one frame).
  * In a backtrace, the innermost frame is the one with the highest index.
  */
@@ -352,7 +355,7 @@ export function innermostFrame(parsed) {
  * where signature is `${pkgPath}(${line})` of the innermost frame (matching
  * the email-CSV signature key from groupBySignature). When multiple rows
  * share a signature (same crash on different days), the most-recent-by-date
- * row wins — local variable values are a per-crash snapshot, so we keep one.
+ * row wins: local variable values are a per-crash snapshot, so we keep one.
  */
 export function parseDashboardCsv(text) {
   const out = new Map();
@@ -455,7 +458,7 @@ export function groupBySignature(rows) {
 /**
  * Split groups into kept (above threshold) and filtered (below). Threshold is
  * met when EITHER max-devices-per-row meets minDevices OR distinct date count
- * meets minDates — catches both "wide" and "persistent" patterns.
+ * meets minDates. This catches both "wide" and "persistent" patterns.
  */
 export function applyThreshold(groups, { minDevices, minDates } = {}) {
   const minDev = minDevices ?? DEFAULT_MIN_DEVICES;
@@ -478,7 +481,7 @@ export function applyThreshold(groups, { minDevices, minDates } = {}) {
 
 /**
  * Infer a crash category from a source code snippet (the lines around the
- * crash). Pure regex heuristics — render in the issue as "Suspected category"
+ * crash). Pure regex heuristics: render in the issue as "Suspected category"
  * so triagers know to verify.
  */
 export function inferCategory(codeSnippet, errorText = '') {
@@ -509,8 +512,8 @@ export function inferCategory(codeSnippet, errorText = '') {
 // ────────────────────────────────────────────────────────────────────
 // Known-noise classification
 //
-// Some crashes are long-running, hardware-specific, or otherwise "won't fix"
-// — race conditions the team has accepted as ongoing noise. Filing a new
+// Some crashes are long-running, hardware-specific, or otherwise "won't fix":
+// race conditions the team has accepted as ongoing noise. Filing a new
 // issue per signature per week for these is pure noise. Instead the user
 // declares them in .crash-report/known-noise.yml; the skill suppresses
 // per-signature issue activity AND posts a single comment to the tracker
@@ -524,7 +527,7 @@ export const DEFAULT_SPIKE_MULTIPLIER = 2.0;
 /**
  * Load the noise config from <repoRoot>/.crash-report/known-noise.yml.
  * Returns `{ patterns: [] }` when the file doesn't exist (noise filter
- * silently inactive). Throws on parse error / schema violation — fail-loud
+ * silently inactive). Throws on parse error / schema violation. Fail-loud
  * is the right move here because a silently-broken filter would leak the
  * noise it's meant to dampen.
  */
@@ -555,7 +558,7 @@ export function loadNoiseConfig(repoRoot = REPO_ROOT) {
     }
     p.disposition = disposition;
     // A pattern that routed to issue #0 would try to comment on a
-    // non-existent issue — reject non-positive/non-integer trackers loud.
+    // non-existent issue, so reject non-positive/non-integer trackers loud.
     if (!Number.isInteger(p.tracker_issue) || p.tracker_issue <= 0) {
       throw new Error(
         `${NOISE_CONFIG_PATH}: pattern \`${p.id}\` missing/invalid \`tracker_issue\` (expected a positive integer)`,
@@ -591,7 +594,7 @@ export function matchNoisePattern(group, sourceInfo, pattern) {
   if (m.exception_code) {
     // The exception code comes from the backtrace, which only exists after
     // the `enrich` phase. During `stage` (CSV-only) group.errorCode is unset,
-    // so a code-gated pattern correctly can't match yet — the crash stays
+    // so a code-gated pattern correctly can't match yet: the crash stays
     // `needs-backtrace` until enriched. Case-insensitive; accepts str or list.
     const codes = (Array.isArray(m.exception_code) ? m.exception_code : [m.exception_code]).map(
       (c) => String(c).toLowerCase(),
@@ -621,7 +624,7 @@ export function matchNoisePattern(group, sourceInfo, pattern) {
   return true;
 }
 
-// Minimal glob → regex (supports * and **). Path separators are '/'.
+// Minimal glob-to-regex conversion (supports * and **). Path separators are '/'.
 function globMatch(glob, path) {
   const re = new RegExp(
     '^' +
@@ -678,7 +681,7 @@ export function classifyAgainstNoise(groups, sourceBySig, config) {
  * Route a single crash to its disposition using the routing table.
  *
  * For `exception_code`-gated patterns to fire, `group.errorCode` must be
- * populated from the enriched backtrace — so this is an ENRICH-phase call.
+ * populated from the enriched backtrace, so this is an `enrich`-phase call.
  * Returns:
  *   { disposition: 'aggregate' | 'watch', pattern }  when a pattern matches
  *   { disposition: 'file',               pattern: null }  when none match
@@ -753,7 +756,7 @@ This pattern is normally suppressed (see [.crash-report/known-noise.yml](../tree
 // ────────────────────────────────────────────────────────────────────
 
 /**
- * Resolve an app version (e.g. "2.17.0") to a git tag. Exact match preferred;
+ * Resolve an app version (for example "2.17.0") to a git tag. Exact match preferred;
  * falls back to the highest tag whose version is ≤ the requested version with
  * the same major.minor (covers the "manifest didn't bump for late commits"
  * case).
@@ -801,16 +804,16 @@ function defaultGitExec(args) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Input resolution — CSV file / ZIP / stdin
+// Input resolution: CSV file / ZIP / stdin
 // ────────────────────────────────────────────────────────────────────
 
 /**
  * Resolve the input arg into a set of CSV texts. Supports:
- *   - a .csv path  → reads the file, returns one text
- *   - a .zip path  → extracts to tmp, walks for Roku crash CSVs (by header
- *     shape, NOT filename), returns matching texts. Unrelated files in the
+ *   - a .csv path: reads the file, returns one text
+ *   - a .zip path: extracts to tmp, walks for Roku crash CSVs (by header
+ *     shape, not filename), returns matching texts. Unrelated files in the
  *     zip are listed as `ignoredFiles`.
- *   - '-' or undefined → reads stdin
+ *   - '-' or undefined: reads stdin
  *
  * Returns { kind, csvTexts, ignoredFiles, tmpDir, sourcePath, cleanup }.
  */
@@ -925,7 +928,7 @@ function readStdin() {
  * `compilerOptions.sourceMap` beats a top-level `sourceMap` (BrighterScript
  * 1.0.0-alpha.53+), so a top-level override alone silently loses to a prod config
  * that sets `compilerOptions.sourceMap: false`. Older tags keep the top-level key,
- * and their BrighterScript ignores `compilerOptions`, so it is overridden too —
+ * and their BrighterScript ignores `compilerOptions`, so it is overridden too,
  * but only where the prod config has it, since a newer BrighterScript warns on it.
  */
 export function deriveAnalysisConfig(prodConfig) {
@@ -941,7 +944,7 @@ export function deriveAnalysisConfig(prodConfig) {
 /**
  * Create a git worktree at the given tag/ref and run the analysis build there.
  * Generates bsconfig-analysis.json by reading the worktree's own bsconfig-prod.json
- * and flipping sourceMap on — this means the build always uses the plugin list
+ * and flipping sourceMap on. This means the build always uses the plugin list
  * that existed at the tagged commit, not the current HEAD's plugin list.
  *
  * Returns { worktreePath, buildDir, cleanup } where cleanup removes the worktree.
@@ -1002,9 +1005,9 @@ export function buildAnalysisInWorktree(
 // Cache wrapper for `buildAnalysisInWorktree`. Git tags are immutable so the
 // source maps generated from one are deterministic across builds (modulo
 // package-lock.json + npm registry resolution, which `npm ci` pins). For the
-// enrich-issue flow this saves ~30-90s per call when the same version was
-// built recently. The cache key is the resolved tag (not the version string,
-// since version → tag resolution does fallback matching).
+// enrich and enrich-issue flows this saved 30 to 90 s per call (observed
+// 2026-05-20) when the same version was built recently. The cache key is the resolved tag (not the version string,
+// since version-to-tag resolution does fallback matching).
 export const ANALYSIS_CACHE_TTL_MS = 60 * 60 * 1000;
 export const ANALYSIS_CACHE_PREFIX = 'jellyrock-crash-wt-cache-';
 
@@ -1051,7 +1054,7 @@ export function getOrBuildAnalysis(
   }
 
   const built = buildAnalysisInWorktree(tag, { logger, worktreePath: cacheDir });
-  // Override cleanup — we keep the cache for next-call reuse.
+  // Override cleanup: we keep the cache for next-call reuse.
   return {
     worktreePath: built.worktreePath,
     buildDir: built.buildDir,
@@ -1108,8 +1111,8 @@ function runStep(cmd, cwd, logger) {
  * is a Map<destMapPath, SourceMapConsumer | null | undefined> for reuse
  * across calls inside one resolveSourceLocations invocation.
  *
- * `null` means "no map but dest file exists → assume 1:1"; `undefined`
- * means "no map AND no dest file → unresolvable".
+ * `null` means "no map but dest file exists, so assume 1:1"; `undefined`
+ * means "no map and no dest file, so unresolvable".
  */
 async function mapPkgLocationToSource(pkgPath, lineOneBased, buildDir, consumerCache) {
   const destPath = join(buildDir, pkgPath.replace(/^pkg:/i, ''));
@@ -1233,24 +1236,27 @@ function readSnippet(filePath, lineOneBased, context) {
 const TITLE_PREFIX = '[crash]';
 
 export function draftIssueTitle(group) {
-  const base = basename(group.pkgPath); // e.g. RectangleSecondary.brs
+  const base = basename(group.pkgPath); // for example RectangleSecondary.brs
   const version = [...group.versions][0] ?? 'unknown';
   return `${TITLE_PREFIX} ${group.function}() in ${base}:${group.line} (v${version})`;
 }
 
-// Pre-enrichment classification — flags backtraces that look like known-noise
-// patterns the user probably doesn't want enriched. Two cases today:
+// Pre-enrichment classification: flags backtraces that match a known
+// architectural class, which routes to its epic (`aggregate-to-epic`) instead
+// of a standalone issue. The cases today, in the order they are checked:
 //
-//   1. timeout-one-off  — `Execution timeout` (&h23) with exactly 1 occurrence.
-//      Roku OS killed our thread for running too long. One-offs are usually
-//      transient (server disconnect, network blip); recurring timeouts are a
-//      real bug class worth investigating.
-//
-//   2. global-constants-init-race-suspect — init() with the `'Dot' Operator`
+//   1. global-constants-init-race-suspect: init() with the `'Dot' Operator`
 //      error (&hec). Belt-and-suspenders behind /crash-report's filing-time
 //      noise filter; catches variants the YAML pattern missed.
 //
-// Returns null when the backtrace looks unique enough to enrich without prompting.
+//   2. too-many-tasks: too many task threads (&h29), the big-library class.
+//
+//   3. timeout-one-off / timeout-recurring: `Execution timeout` (&h23).
+//      Roku OS killed our thread for running too long. Both route to the
+//      render-thread execution-timeout epic; a one-off (exactly 1 occurrence)
+//      is often transient (server disconnect, network blip).
+//
+// Returns null when the backtrace matches none of them.
 export const TIMEOUT_ERROR_CODE = '&h23';
 export const NULL_DOT_ERROR_CODE = '&hec';
 export const TOO_MANY_TASKS_ERROR_CODE = '&h29';
@@ -1337,7 +1343,7 @@ export function parseOccurrenceCount(issueBody) {
   return parsedAny ? total : null;
 }
 
-// Inverse of draftIssueTitle — extracts { function, basename, line, version }
+// Inverse of draftIssueTitle: extracts { function, basename, line, version }
 // from an existing crash-issue title for the enrich-issue flow.
 const CRASH_ISSUE_TITLE_RE =
   /^\[crash\]\s+(\w+)\(\)\s+in\s+([^:]+\.brs):(\d+)\s+\(v([0-9.]+)\)\s*$/;
@@ -1351,11 +1357,12 @@ export function parseCrashIssueTitle(title) {
 // Normalize any of the three shapes the user might paste into a single
 // `~~`-separated cell that parseBacktraceCell can consume:
 //   1. Roku dashboard TSV export (header row + N data rows, `~~` inside cells).
-//      First data row's `Backtrace Text Formatted` cell wins — multi-error TSVs
-//      belong on `plan --dashboard-csv`, not the single-issue subcommands.
+//      First data row's `Backtrace Text Formatted` cell wins. Multi-error TSVs
+//      belong on `stage --dashboard-csv`, not on `enrich` or the single-issue
+//      subcommands, which read one backtrace per input.
 //   2. Plaintext backtrace (newline-separated) from the dashboard's per-error
-//      "View report → Backtrace" page.
-//   3. Already-normalized cell text (`~~`-separated, no header) — passes through.
+//      "View report", then "Backtrace" page.
+//   3. Already-normalized cell text (`~~`-separated, no header): passes through.
 export function normalizeBacktraceText(text) {
   if (typeof text !== 'string') return '';
   const firstNewline = text.indexOf('\n');
@@ -1438,18 +1445,18 @@ function defaultGhExec(args) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Epic aggregation — flat per-record crashlog upsert
+// Epic aggregation: flat per-record crashlog upsert
 //
 // Architectural-class crashes (disposition: aggregate) don't get their own
 // issue; each unique crash RECORD becomes one flat comment on the class epic,
 // keyed by a hidden marker so a later run edits the existing record instead of
-// duplicating it. A record's identity is file · function · line · version —
-// distinct lines/versions are NEVER auto-merged (deciding two are "the same
-// crash whose line just moved" is a human call after investigation). Only the
+// duplicating it. A record's identity is file · function · line · version:
+// distinct lines/versions are never auto-merged (deciding two are "the same
+// crash whose line moved" is a human call after investigation). Only the
 // occurrence stats accumulate over time.
 //
 // Each comment embeds a JSON data block (the source of truth) plus rendered
-// markdown derived from it. Merge reads/writes the JSON — we never parse our
+// markdown derived from it. Merge reads/writes the JSON; we never parse our
 // own rendered prose, so a human editing the markdown can't corrupt state (and
 // the machine only ever rewrites comments it owns, never the epic body).
 // ────────────────────────────────────────────────────────────────────
@@ -1459,7 +1466,7 @@ const RECORD_MARKER_RE = /<!--\s*crashlog-record:\s*v(\d+)\s+key=(\S+)\s*-->/;
 const RECORD_DATA_RE = /<!--\s*crashlog-data:\s*([\s\S]*?)\s*-->/;
 
 /**
- * Stable identity for a crash record. Line + version are part of identity —
+ * Stable identity for a crash record. Line + version are part of identity:
  * two different lines (or the same line in two versions) are distinct records.
  */
 export function epicRecordKey(rec) {
@@ -1607,12 +1614,12 @@ export function upsertEpicRecords(
 /**
  * Cheap, deterministic stage-time triage hint from a crash's source. The
  * exception code that actually decides disposition only arrives with a
- * backtrace — so this NEVER authorizes a file; it only ORDERS which crashes to
+ * backtrace, so this never authorizes a file. It only orders which crashes to
  * pull a backtrace for first:
- *   - 'task-launch' — a `.control = "RUN"` site (could be the &h29 big-library
+ *   - 'task-launch': a `.control = "RUN"` site (could be the &h29 big-library
  *     class regardless of which site tipped the limit).
- *   - 'network'     — server/HTTP/socket code (could be the &h23 timeout class).
- *   - 'other'       — no architectural-class smell; likely a scoped bug, but
+ *   - 'network': server/HTTP/socket code (could be the &h23 timeout class).
+ *   - 'other': no architectural-class smell; likely a scoped bug, but
  *     still needs a backtrace to confirm (an ordinary line can be a compute-
  *     bound &h23 timeout).
  * Every above-threshold crash is `pending` until enriched; the hint is purely
@@ -1757,7 +1764,7 @@ N/A — telemetry-sourced.
 Not available in the aggregate report. To gather logs, reproduce in dev mode and run \`/runtime-triage\` against a captured BrightScript console log.
 
 ### Additional context (optional)
-- Run \`/issue-triage <this-issue-number>\` to load a deeper investigation handoff.
+- Run \`/issue-triage <this-issue-number>\` for a deeper investigation.
 - Filed by the \`/crash-report\` skill — see \`docs/dev/crash-reports.md\`.
 `;
 }
@@ -1865,7 +1872,7 @@ export async function buildPlan({
   const sourceBySig = new Map();
   const backtraceFramesBySig = new Map();
   for (const group of kept) {
-    // Use the first version's build (most groups have just one version).
+    // Use the first version's build (most groups have only one version).
     const ver = [...group.versions][0];
     const build = buildsByVersion.get(ver);
     if (!build) continue;
@@ -1953,7 +1960,7 @@ export async function buildPlan({
       maxDevicesPerRow: group.maxDevicesPerRow,
       dates: [...group.dates].sort(),
       osReleases: [...group.osReleases].sort(),
-      // Per-row occurrences — the epic record's accumulating stats table is
+      // Per-row occurrences: the epic record's accumulating stats table is
       // built from these when a crash routes to `aggregate` during enrich.
       occurrences: group.rows.map((r) => ({
         date: r.date,
@@ -1969,13 +1976,13 @@ export async function buildPlan({
       labels: ['bug', DEFAULT_LABEL],
       commentBody,
       existingIssue: existing,
-      // Enrichment fields — populated by the `enrich` phase. Every
+      // Enrichment fields, populated by the `enrich` phase. Every
       // above-threshold crash is `pending` until a pasted backtrace confirms
       // its exception code: the code decides the disposition (file vs
-      // aggregate) and lives ONLY in the backtrace, so nothing files or
-      // aggregates without one. `mechanismHint` does NOT authorize a file — it
-      // only ORDERS which crashes to pull first (architectural-suspect sites,
-      // i.e. task-launch / network, before ordinary ones).
+      // aggregate) and lives only in the backtrace, so nothing files or
+      // aggregates without one. `mechanismHint` does not authorize a file; it
+      // only orders which crashes to pull first (architectural-suspect sites,
+      // that is task-launch / network, before ordinary ones).
       mechanismHint: mechanismHint(source),
       verdict: 'needs-backtrace',
       disposition: 'pending',
@@ -2012,7 +2019,7 @@ export async function buildPlan({
     }
   }
 
-  // Cleanup builds — we've extracted all the source info we need.
+  // Cleanup builds: we've extracted all the source info we need.
   for (const cleanup of buildCleanups) {
     try {
       cleanup();
@@ -2062,7 +2069,7 @@ export function executePlan(plan, { ghExec = defaultGhExec, logger = console.err
   const results = [];
   for (const action of plan.actions) {
     if (action.action === 'suppress-noise') {
-      // Info-only — no GH writes. The spike comment fires once per pattern
+      // Info-only: no GH writes. The spike comment fires once per pattern
       // below, not per signature.
       results.push({ ...action, issueNumber: null, error: null });
       continue;
@@ -2110,7 +2117,7 @@ export function executePlan(plan, { ghExec = defaultGhExec, logger = console.err
       results.push({ ...action, issueNumber: null, error: err.message });
     }
   }
-  // Spike alerts — ONE comment per pattern on the tracker issue. Per the
+  // Spike alerts: one comment per pattern on the tracker issue. Per the
   // locked design: comment, don't reopen.
   const spikeResults = [];
   for (const spike of plan.spikeAlerts ?? []) {
@@ -2135,7 +2142,7 @@ export function executePlan(plan, { ghExec = defaultGhExec, logger = console.err
 }
 
 // ────────────────────────────────────────────────────────────────────
-// stage → enrich → file (enrich-before-file flow)
+// stage, then enrich, then file (enrich-before-file flow)
 //
 // `enrichWorksheet` folds pasted dashboard backtraces into the staged
 // worksheet: it extracts the exception code, source-maps the frames, and
@@ -2164,7 +2171,7 @@ export async function enrichWorksheet(
       logger(`[crash-report] enrich: unparseable backtrace (${err.message})`);
       continue;
     }
-    // normalizeBacktraceText drops the TSV date column — recover it for the
+    // normalizeBacktraceText drops the TSV date column; recover it for the
     // locals-snapshot label so filed issues don't read "snapshot from undefined".
     if (bt && !bt.date) bt.date = extractDashboardDate(text);
     const innermost = bt && innermostFrame(bt);
@@ -2217,7 +2224,7 @@ export async function enrichWorksheet(
     action.verdict = 'enriched';
 
     if (disposition === 'aggregate') {
-      action.action = 'aggregate'; // do NOT also file a standalone issue
+      action.action = 'aggregate'; // don't also file a standalone issue
       action.trackerIssue = pattern.tracker_issue;
       action.noisePatternId = pattern.id;
       action.epicRecord = buildEpicRecordForAction(action, {
@@ -2226,7 +2233,7 @@ export async function enrichWorksheet(
         backtraceMarkdown,
       });
     } else if (backtraceMarkdown) {
-      // file disposition — enrich the issue body/comment so it's born complete.
+      // file disposition: enrich the issue body/comment so it's born complete.
       if (action.action === 'create') {
         action.body = `${action.body}\n\n${backtraceMarkdown}`;
       } else if (action.commentBody) {
@@ -2245,14 +2252,14 @@ export async function enrichWorksheet(
 export function executeWorksheet(plan, { ghExec = defaultGhExec, logger = console.error } = {}) {
   const aggregateActions = [];
   const passthroughActions = []; // enriched `file` crashes + info-only suppress
-  const heldResults = []; // un-enriched crashes — NEVER filed without a backtrace
+  const heldResults = []; // un-enriched crashes, never filed without a backtrace
   for (const a of plan.actions) {
     if (a.action === 'aggregate' || a.disposition === 'aggregate') {
       aggregateActions.push(a);
     } else if (a.disposition === 'file' || a.action === 'suppress-noise') {
       passthroughActions.push(a);
     } else {
-      // `pending` (or any non-enriched) — the exception code is unknown, so we
+      // `pending` (or any non-enriched): the exception code is unknown, so we
       // cannot know whether this is a scoped bug or an architectural class.
       // Hold it; surface in the summary. This is the enrich-before-file rule.
       logger(`[crash-report] HELD (needs backtrace, not filed): ${a.signature}`);
@@ -2522,8 +2529,9 @@ async function cmdPlan(args) {
 /**
  * Backfill a multi-frame backtrace + locals snapshot onto an already-filed
  * crash issue. The Roku analytics dashboard exposes backtraces only per-error
- * (one click per signature), so this is the realistic enrichment path — pull
- * the plaintext backtrace for one error, hand it to this command.
+ * (one click per signature), so you pull the plaintext backtrace for one error
+ * and hand it to this command. Legacy: it backfills an issue filed before the
+ * enrich-before-file flow, where `enrich` now adds the backtrace before filing.
  */
 export async function enrichIssue({
   issueNumber,
@@ -2594,7 +2602,7 @@ ${block}`;
 }
 
 /**
- * Lightweight pre-enrichment classifier. Does NOT build a worktree — pure
+ * Lightweight pre-enrichment classifier. Does not build a worktree: pure
  * backtrace parsing + issue-body inspection. Emits a JSON document so the
  * orchestrating skill can branch on the classification before paying the
  * worktree-build cost.
@@ -2629,9 +2637,9 @@ export async function classifyForEnrichment({
 
 /**
  * Reverse-lookup: given a parsed backtrace, find every [crash] issue whose
- * title carries the innermost frame's `<basename>:<line>` substring. Same
- * search shape `searchExistingIssues` uses at /crash-report filing time —
- * so the auto-resolve lands on whatever the dedup search would have hit.
+ * title carries the innermost frame's `<basename>:<line>` substring. It builds
+ * the same query `searchExistingIssues` uses at /crash-report filing time, so
+ * the auto-resolve finds the issue the dedup search would have matched.
  */
 export function resolveIssuesByBacktrace(backtrace, { ghExec = defaultGhExec } = {}) {
   const innermost = innermostFrame(backtrace);
@@ -2743,7 +2751,7 @@ async function cmdEnrichIssue(args) {
   await enrichIssue({ issueNumber, backtraceText });
 }
 
-// `enrich` — fold pasted dashboard backtraces into a staged worksheet.
+// `enrich`: fold pasted dashboard backtraces into a staged worksheet.
 // Backtrace files are positional args after the subcommand; the worksheet is
 // --worksheet (alias --plan). Mutates the worksheet in place.
 async function cmdEnrich(args) {
@@ -2778,7 +2786,7 @@ function writeRunSummary(plan, results, handoffDir) {
   }
 }
 
-// `file` — perform GitHub writes for an enriched worksheet (files novel
+// `file`: perform GitHub writes for an enriched worksheet (files novel
 // crashes, upserts aggregate crashes onto their epics).
 function cmdFile(args) {
   const wsPath = args.flags.worksheet ?? args.flags.plan ?? args._[1];

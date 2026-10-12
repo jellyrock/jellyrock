@@ -1,5 +1,5 @@
 /**
- * BrighterScript plugin — no direct sdk.* calls outside the API layer.
+ * BrighterScript plugin: no direct sdk.* calls outside the API layer.
  *
  * `source/api/sdk.bs` is a thin internal wrapper around Jellyfin endpoints,
  * intended to be reachable only through `source/api/ApiClient.bs` (which
@@ -14,7 +14,8 @@
  *  - `source/api/sdk.bs`        (internal cross-namespace calls)
  *
  * Escape hatch:
- *  - `' bsc-disable-line no-direct-sdk` on the offending line.
+ *  - `' bsc-disable-line no-direct-sdk` on the offending line, or
+ *    `' bsc-disable-next-line no-direct-sdk` on the line above it.
  */
 'use strict';
 
@@ -46,7 +47,7 @@ class NoDirectSdkPlugin {
 
       const visitor = brighterscript.createVisitor({
         CallExpression: (call) => {
-          // Match: sdk.<ns>.<fn>(...) — i.e. callee is DottedGet whose obj is
+          // Match: sdk.<ns>.<fn>(...), that is, callee is DottedGet whose obj is
           // also a DottedGet whose root is the variable `sdk`.
           const callee = call?.callee;
           if (!brighterscript.isDottedGetExpression(callee)) return;

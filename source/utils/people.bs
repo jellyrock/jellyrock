@@ -164,27 +164,6 @@ function personCreditLabel(personKind as string, role as string, cache = invalid
   return role
 end function
 
-' translate(), memoized for one batch.
-'
-' Memoized on the KEY rather than on the credit — see personCreditLabel for why that
-' distinction is load-bearing. `cache` may be invalid, which just means no reuse.
-'
-' Do not "optimise" this by hoisting `m.global.translations` into a local to dodge the
-' render-owned read translate() makes. That was tried and measured WORSE — reading the
-' ~150 KB table eagerly on every row costs more than the four or five lazy translate()
-' calls the memo below actually makes (measured 2026-09-20 on a Stick 4K, 31-person
-' cast: castMs +13.5 ms against the same baseline this version does not move, n=8 per
-' arm interleaved). A build making ZERO m.global reads here was no faster again, so the
-' rendezvous is not what this loop costs.
-function translateCached(key as string, cache as dynamic) as string
-  if not isValid(cache) then return translate(key)
-  if isValid(cache[key]) then return cache[key]
-
-  value = translate(key)
-  cache[key] = value
-  return value
-end function
-
 ' Merge and label a whole `People` array in ONE pass — what the Cast & Crew row wants.
 '
 ' Pure: takes raw AAs, returns plain AAs, creates no nodes and reads no node fields.

@@ -357,6 +357,46 @@ function submitApiRequest(req as dynamic, requestId as string, port = invalid as
   return resultNode
 end function
 
+' Waits for a request a Task thread sent earlier with submitApiRequest(req, id, port), and
+' returns its response as fetchRes would have. Lets that Task send a request it needs later,
+' do a blocking fetchRes meanwhile, then collect it, so the two waits overlap instead of
+' adding up. Waits as long as fetchRes unless the caller sets a shorter limit, and abandons the
+' request the same way when that runs out.
+'
+' @param resultNode - what submitApiRequest returned; invalid (not sent) returns invalid
+' @param port       - the port passed to submitApiRequest
+' @param maxWaitMs  - the most to wait, for a caller with its own deadline; invalid waits as
+'                     long as fetchRes would (apiTimeout.waitMs)
+' @return the response AA, or invalid when it was not sent or did not answer in time
+function collectApiRequest(resultNode as dynamic, port as object, maxWaitMs = invalid as dynamic) as dynamic
+  if not isValid(resultNode) then return invalid
+
+  if not resultNode.isDone
+    waitMs = apiTimeout.waitMs(resultNode.request)
+    if isValid(maxWaitMs) and maxWaitMs < waitMs then waitMs = maxWaitMs
+    ' wait(0) blocks forever, so a deadline already spent still gets the shortest real wait.
+    if waitMs < 1 then waitMs = 1
+    msg = wait(waitMs, port)
+    if type(msg) <> "roSGNodeEvent"
+      resultNode.unobserveField("isDone")
+      abandonApiRequest(resultNode)
+      return invalid
+    end if
+  end if
+  resultNode.unobserveField("isDone")
+  return resultNode.result
+end function
+
+' Releases a request a Task thread sent with submitApiRequest(req, id, port) and no longer
+' needs, instead of collecting it: stops listening and abandons it.
+'
+' @param resultNode - what submitApiRequest returned; invalid is a no-op
+sub dropApiRequest(resultNode as dynamic)
+  if not isValid(resultNode) then return
+  resultNode.unobserveField("isDone")
+  abandonApiRequest(resultNode)
+end sub
+
 ' Submits a fire-and-forget request to the global SideEffectTask.
 ' No response is observed. Calls are serialised — do not use for cancellable UI requests.
 '

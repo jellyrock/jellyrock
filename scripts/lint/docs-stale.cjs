@@ -1,25 +1,25 @@
 // Reports docs whose `last-reviewed` frontmatter date is older than a
-// threshold. Powers the quarterly arch-audit cadence — reading "X files
-// haven't been reviewed in 90+ days" is the trigger to re-read them
-// against the current code.
+// threshold. It reports the review cadence on demand (`npm run docs:stale`):
+// reading "X files haven't been reviewed in 90+ days" is the trigger to
+// re-read them against the current code.
 //
 // Why this exists: every architecture doc and dev doc has YAML frontmatter
 // with a `last-reviewed` date that's bumped only on substantive content
 // refreshes (not on routine edits). When the date drifts far from today,
-// it's a signal the doc may have stale claims — exactly the failure mode
+// it's a signal the doc may have stale claims, exactly the failure mode
 // the v2.15.0 audit caught.
 //
 // Default threshold: 90 days. The cadence is "review quarterly," so any
 // doc older than a quarter is a candidate for re-audit.
 //
 // Usage:
-//   node scripts/lint/docs-stale.cjs              → list stale docs (exit 0; informational)
-//   node scripts/lint/docs-stale.cjs --days 60    → custom threshold
-//   node scripts/lint/docs-stale.cjs --strict     → exit 1 if any are stale (CI mode)
-//   node scripts/lint/docs-stale.cjs --json       → JSON output (for tooling)
+//   node scripts/lint/docs-stale.cjs              list stale docs (exit 0; informational)
+//   node scripts/lint/docs-stale.cjs --days 60    custom threshold
+//   node scripts/lint/docs-stale.cjs --strict     exit 1 if any are stale (no CI step uses it)
+//   node scripts/lint/docs-stale.cjs --json       JSON output (for tooling)
 //
 // npm scripts:
-//   docs:stale       → human-readable report (informational)
+//   docs:stale       human-readable report (informational)
 
 'use strict';
 

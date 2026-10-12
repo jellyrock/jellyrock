@@ -7,8 +7,8 @@
 // (add missing locales), then runs all checks. Exits 1 on remaining errors.
 //
 // npm scripts:
-//   lint:translations    → check mode (all validation)
-//   update-translations  → fix mode (--fix baked in)
+//   lint:translations    runs check mode (all validation)
+//   update-translations  runs fix mode (--fix baked in)
 
 const fs = require('fs');
 const path = require('path');
@@ -36,7 +36,7 @@ const SOURCE_PATTERNS = [
 ];
 
 // Language metadata for auto-generating languages.json entries.
-// Maps locale code → { name (English), nativeName (native script) }.
+// Maps a locale code to { name (English), nativeName (native script) }.
 // Covers all codes from Jellyfin ecosystem + community languages.
 const LANGUAGE_METADATA = {
   af: { name: 'Afrikaans', nativeName: 'Afrikaans' },
@@ -203,13 +203,13 @@ function extractTranslateKeys(code) {
   const hardcodedErrors = [];
   let match;
 
-  // Match translate(translationKeys.Key) — compile-time safe constant references
+  // Match translate(translationKeys.Key): compile-time safe constant references
   const constRegex = /\btranslate\(\s*translationKeys\.(\w+)/g;
   while ((match = constRegex.exec(code)) !== null) {
     keys.add(match[1]);
   }
 
-  // Match translate("Key") — flag as hardcoded error (should use translationKeys.*)
+  // Match translate("Key"): flag as hardcoded error (should use translationKeys.*)
   const translateRegex = /\btranslate\(\s*"([^"]+)"/g;
   while ((match = translateRegex.exec(code)) !== null) {
     keys.add(match[1]);
@@ -220,7 +220,7 @@ function extractTranslateKeys(code) {
     });
   }
 
-  // Match translatePlural("BaseKey", ...) — flag as hardcoded error
+  // Match translatePlural("BaseKey", ...): flag as hardcoded error
   const pluralRegex = /\btranslatePlural\(\s*"([^"]+)"/g;
   while ((match = pluralRegex.exec(code)) !== null) {
     const baseKey = match[1];
@@ -235,7 +235,7 @@ function extractTranslateKeys(code) {
     });
   }
 
-  // Match translatePlural(translationKeys.BaseKey, ...) — compile-time safe plural calls
+  // Match translatePlural(translationKeys.BaseKey, ...): compile-time safe plural calls
   const pluralConstRegex = /\btranslatePlural\(\s*translationKeys\.(\w+)/g;
   while ((match = pluralConstRegex.exec(code)) !== null) {
     const baseKey = match[1];
@@ -247,7 +247,7 @@ function extractTranslateKeys(code) {
 
   // Match translationKeys.Key anywhere (covers comments, return values, etc.)
   // Requires PascalCase key (uppercase start) to avoid matching import paths like translationKeys.bs
-  // Skip plural base keys — they don't exist in en_US.json directly (only Zero/One/Many variants do)
+  // Skip plural base keys: they don't exist in en_US.json directly (only Zero/One/Many variants do)
   const refRegex = /\btranslationKeys\.([A-Z]\w*)/g;
   while ((match = refRegex.exec(code)) !== null) {
     if (!pluralBaseKeys.has(match[1])) {
@@ -261,7 +261,7 @@ function extractTranslateKeys(code) {
     keys.add(match[1]);
   }
 
-  // Match titleKey: "Key" and descriptionKey: "Key" — flag as hardcoded error
+  // Match titleKey: "Key" and descriptionKey: "Key": flag as hardcoded error
   const keyPropRegex = /\b(?:titleKey|descriptionKey):\s*"([^"]+)"/g;
   while ((match = keyPropRegex.exec(code)) !== null) {
     keys.add(match[1]);
@@ -420,7 +420,7 @@ async function main() {
   // ----------------------------------------------------------
   console.log(c('\n[en_US.json]', 'cyan'));
 
-  // Sort order check (skip in fix mode — already fixed above)
+  // Sort order check (skip in fix mode: already fixed above)
   if (!FIX_MODE) {
     const currentKeys = Object.keys(enUs);
     const sortedKeys = [...currentKeys].sort();
@@ -432,7 +432,7 @@ async function main() {
       console.log(c('  OK', 'green') + ' \u2014 keys sorted alphabetically');
     }
 
-    // Orphan keys check (skip in fix mode — already removed above)
+    // Orphan keys check (skip in fix mode: already removed above)
     if (orphanKeys.length > 0) {
       errors.push(`${orphanKeys.length} orphan key(s) in en_US.json`);
       console.log(c(`  ERROR: ${orphanKeys.length} orphan key(s)`, 'red'));
@@ -521,13 +521,13 @@ async function main() {
       }
     }
 
-    // Orphaned keys (in locale but not in en_US) — warning only (Weblate's concern)
+    // Orphaned keys (in locale but not in en_US): warning only (Weblate's concern)
     const orphans = localeKeys.filter((k) => !(k in enUs));
     if (orphans.length > 0) {
       warnings.push(`${fileName}: ${orphans.length} orphaned key(s)`);
     }
 
-    // Plural completeness — warning only
+    // Plural completeness: warning only
     const localePluralErrors = checkPluralCompleteness(localeKeys);
     localePluralErrors.forEach((e) => warnings.push(`${fileName}: ${e}`));
 

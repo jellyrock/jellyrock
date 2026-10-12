@@ -1,92 +1,92 @@
-# Release Management System
+# Releases
 
-This system automates the complete release process from branch creation to publication, with manual control points for quality assurance.
+A release takes three actions from you: push a release branch, merge the PR it opens, and publish the draft release. Workflows do the rest. Store submission needs a signed `.pkg`, which you build on your own machine.
 
-## Release Process Overview
-
-### 🚀 **Complete Release Workflow**
+## Overview
 
 ```bash
-# 1. Create release branch
+# 1. Create and push the release branch
 git checkout -b release-1.21.3
 git push origin release-1.21.3
 
-# 2. System automatically:
-#    - Validates version
-#    - Updates package.json & manifest
-#    - Creates PR "Prepare for v1.21.3 release"
-#    - Creates draft release with ZIP
+# 2. CI checks the version, merges translations, bumps the version files,
+#    opens the PR "Prepare for v1.21.3 release" and creates a draft release with a ZIP
 
 # 3. Review and merge the PR
-#    - System updates draft release with version-bumped ZIP
+#    CI rebuilds the draft release's ZIP from main
 
-# 4. Edit the draft release:
-#    - Add scheduled release date
-#    - Review release notes
-#    - Publish when ready
+# 4. Edit the draft release: add the scheduled release date, review the notes, publish
 
-# 5. Publishing creates tag and finalizes changelog
+# 5. Publishing creates the tag; CI turns [Unreleased] into the release's changelog section
 ```
 
-## Detailed Steps
+## Step by step
 
-### 1. Create Release Branch
+### 1. Push a release branch
 
 ```bash
 git checkout -b release-1.21.3
 git push origin release-1.21.3
 ```
 
-**Triggers**: `release-management.yml`
+A branch named `release-X.Y.Z` starts `release-management.yml`, which:
 
-- ✅ Validates version format (must be x.y.z)
-- ✅ Validates version is greater than latest release
-- ✅ Updates `package.json` and `manifest` files (not Makefile)
-- ✅ jellyrock-bot creates PR "Prepare for v1.21.3 release"
-- ✅ Creates draft GitHub release with build ZIP
+1. Checks the version is in `x.y.z` form and greater than the latest release. If not, it stops with an error.
+2. Merges translations from Weblate into the branch, fills gaps from other Jellyfin clients, and sends the result back to Weblate. See [Weblate sync](../architecture/translations.md#weblate-sync) for the steps and the `WEBLATE_TOKEN` it needs.
+3. Updates the version in `package.json`, `package-lock.json` and `manifest`.
+4. Opens the PR "Prepare for v1.21.3 release" as `jellyrock[bot]`, labeled `release-prep`.
+5. Builds the production app and creates a draft GitHub release with the ZIP. An existing draft for the same tag is deleted first. The release notes come from the changelog, under a "Release Schedule" heading with a placeholder date.
 
-### 2. Merge Release PR
+### 2. Merge the release PR
 
-When you merge the PR to main:
+Merging a PR labeled `release-prep` into `main` starts `update-draft-release.yml`. It reads the version from the PR title, builds the production app from `main`, and replaces the draft release's ZIP.
 
-**Triggers**: `update-draft-release.yml`
+### 3. Publish the release
 
-- ✅ Release is ready to be published
+Edit the draft release: set the scheduled release date and review the notes. Then publish it.
 
-### 3. Manually Publish Release
+Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`. It turns `[Unreleased]` in `CHANGELOG.md` into the release's section and commits that to `main`. How changelog entries are built, and how to fix one, is in [Changelog](changelog.md).
 
-When you publish the draft release:
+## Files the release changes
 
-**Triggers**: `release-build.yml` (finalize-release)
+| File | Changed by | What changes |
+| --- | --- | --- |
+| `package.json`, `package-lock.json` | The release workflow | `version` |
+| `manifest` | The release workflow | `major_version`, `minor_version`, `build_version` |
+| `CHANGELOG.md` | CI | `[Unreleased]` becomes the release's section at publish |
+| `Makefile` | Nobody | Its `VERSION` stays at 1.0.0 unless you change it by hand |
+| The draft release's notes | You | The scheduled release date |
 
-- ✅ Creates git tag pointing to merge commit on main
-- ✅ Converts `[Unreleased]` to versioned release in changelog
-- ✅ Release process is complete
+## Fixing a release in progress
 
-## Signed `.pkg` for Roku channel store
+- **Wrong code or version files:** push fixes to the release branch before you merge its PR.
+- **Wrong release notes:** edit the draft release before you publish it.
+- **Start over:** delete the draft release. Pushing to the release branch again creates a new one.
 
-Roku channel-store submission requires a **signed `.pkg`**, not the sideload zip. Roku has no submission API, so the upload itself is always manual — but the production of the `.pkg` is automated locally via `npm run package:signed`.
+## Signed `.pkg` for Roku Channel Store
 
-### Run it
+The Channel Store takes a signed `.pkg`, not the sideload ZIP. Roku has no upload API, so you always upload by hand, but `npm run package:signed` builds the `.pkg` for you.
 
-Against your dev Roku, after the release PR has merged and you're ready to ship:
+### Build it
+
+After the release PR has merged, run this with your dev Roku on the network:
 
 ```bash
 npm run package:signed
 ```
 
-That composes `npm run build:prod` then `node scripts/create-signed-package.cjs`, which calls `roku-deploy.deployAndSignPackage()` against your local Roku. Output: `out/jellyrock-vX.Y.Z.pkg` (version pulled from `manifest`, so a missed version-bump shows up in the filename). Upload it to the [Roku Developer Portal](https://developer.roku.com/) manually.
+It runs `npm run build:prod`, then `node scripts/create-signed-package.cjs`, which signs the build on your Roku with `roku-deploy`'s `deployAndSignPackage()`. The output is `out/jellyrock-vX.Y.Z.pkg`. The version comes from `manifest`, so a missed version bump shows in the file name. Upload the file to the [Roku Developer Portal](https://developer.roku.com/).
 
 ### One-time setup
 
-If you don't have a `.env` yet, copy [`.env.example`](../../.env.example) to `.env` and fill in the values. Otherwise just add the two new vars to your existing `.env`:
+If you have no `.env` yet, copy [`.env.example`](../../.env.example) to `.env` and fill it in. Otherwise add these two values to your `.env`:
 
 ```sh
-ROKU_SIGNING_PASSWORD=...   # what you currently type into the dev portal
+ROKU_SIGNING_PASSWORD=...   # the password you type into the dev portal
 ROKU_DEV_ID=...             # optional but recommended; see "Finding ROKU_DEV_ID" below
 ```
 
-`chmod 600 .env` to lock filesystem permissions. If you'd rather not store the signing password on disk, wrap with your preferred secret manager — the script just reads env vars:
+Run `chmod 600 .env` so only you can read it. To keep the signing password off disk, pass it from your secret manager instead. The script only reads environment variables:
 
 ```bash
 ROKU_SIGNING_PASSWORD=$(pass show jellyrock/signing) npm run package:signed
@@ -94,166 +94,27 @@ ROKU_SIGNING_PASSWORD=$(pass show jellyrock/signing) npm run package:signed
 
 ### Finding `ROKU_DEV_ID`
 
-Roku has three different "developer ID" concepts and the naming overlap is a known footgun:
+`ROKU_DEV_ID` is the **keyed developer ID**: a 40-character hex value that comes from the signing key on your Roku. Roku uses other IDs that are easy to mix up with it:
 
-| What | Format | Where it appears |
-|---|---|---|
-| Vendor / Account ID | short numeric (e.g. `819325`) | dev.roku.com → My Account |
-| **Keyed Developer ID** | **40-char SHA-1 hex** | what we want; derived from signing cert |
-| Channel ID | 32-char hex | channel-store URL `details/<this>:<other>/jellyrock` |
+| ID | Looks like | Where you find it |
+| --- | --- | --- |
+| Keyed developer ID (the one you want) | 40 hex characters | `keyed-developer-id` in the Roku's device info |
+| Channel ID | A number: JellyRock's is `819325` | The app list on a Roku (`/query/apps`) |
+| Channel Store listing | 32 hex characters | The channel's store URL, `details/<this>:<other>/jellyrock` |
 
-For `ROKU_DEV_ID` you want the **Keyed Developer ID**. Easiest way to find yours:
+To read your Roku's keyed developer ID:
 
 ```bash
 curl -s "http://${ROKU_IP}:8060/query/device-info" | grep keyed-developer-id
 ```
 
-Provided your existing prod `.pkg` installs on this device via "Install from File" in the dev portal, that value IS the cert your published channel was signed with — copy it into `.env`. If install fails, the device is on a different cert than what's published, and you need to rekey it from the existing prod `.pkg` first.
+If the current Channel Store `.pkg` installs on this Roku through **Install from File** in the developer settings, the Roku has the same key the published channel was signed with. Copy the value into `.env`. If the install fails, the Roku has a different key, and you must rekey it from the current store `.pkg` first.
 
-### Safety guardrails
+### Safety checks
 
-- **Prod-build guard.** Refuses to sign if `build/` contains source maps outside `roku_modules/` (a sign that a dev or test build is sitting there). The composed `package:signed` runs `build:prod` first, so the default invocation is always safe — the guard catches direct `.cjs` invocations against a stale build. `roku_modules/` is excluded because vendored ropm packages ship their own `.brs.map` files regardless of our bsconfig.
-- **Dev-ID verification.** When `ROKU_DEV_ID` is set, the script queries the device's `keyed-developer-id` via ECP and aborts before signing if it doesn't match. Catches "wrong-cert .pkg" before manual upload to Roku.
+- **Production build only.** The script refuses to sign if `build/` contains any source map (`*.map`), which means a dev or test build is sitting there. `npm run package:signed` runs `build:prod` first, so this only catches running the script directly against an old build.
+- **Right key.** When `ROKU_DEV_ID` is set, the script reads the Roku's `keyed-developer-id` and stops before signing if it doesn't match. This catches a `.pkg` signed with the wrong key before you upload it.
 
-### Why local instead of CI
+### Why it runs locally, not in CI
 
-Solo-maintainer release ritual; the time saved by CI signing (a sideload + a portal-UI sign) is washed out by the friction of downloading + decrypting a CI-produced artifact. Local stays simpler. If JellyRock ever gets multiple ship-capable maintainers, this is the natural moment to revisit.
-
-## Workflows
-
-### `release-management.yml`
-
-**Branch creation workflow** - Triggered by `release-*.*.*` branches:
-
-- Validates semantic version format and increment
-- Updates package.json and manifest files with new version
-- jellyrock-bot creates release preparation PR
-- Creates initial draft release with production ZIP
-- Handles version validation errors gracefully
-
-### `update-draft-release.yml`
-
-**PR merge workflow** - Triggered when release PR is merged to main:
-
-- Detects merged release PR by label `release-prep`
-- Builds updated ZIP with version-bumped files
-- Updates existing draft release with new ZIP
-- Prepares release for manual publication
-
-### `release-build.yml` (finalize-release)
-
-**Tag creation workflow** - Triggered when draft release is published:
-
-- Extracts version from created git tag
-- Finalizes changelog by converting unreleased to release
-- Commits changelog updates back to main branch
-- Provides release completion summary
-
-## Manual Control Points
-
-### ✅ **You Control:**
-
-- **When** to create release branch
-- **When** to merge the PR (after review)
-- **When** to publish the release
-- **Release notes** and scheduled date editing
-- **Quality assurance** at each step
-
-### 🤖 **Automated:**
-
-- Version validation and file updates
-- ZIP building with proper versions
-- Changelog synchronization
-- Git tag creation and placement
-
-## Error Handling
-
-The system will **fail with clear errors** if:
-
-### Version Validation
-
-- Invalid version format (must be x.y.z)
-- Version not greater than current release
-- Non-numeric version components
-
-### File Operations
-
-- Git operation failures
-- Build process errors
-- ZIP creation issues
-
-### Release State
-
-- Draft release conflicts
-- Missing release preparations
-- Changelog format issues
-
-## File Updates
-
-### Automatically Updated
-
-- **`package.json`** - version field updated to match release
-- **`manifest`** - major_version, minor_version, build_version updated
-
-### Manually Managed
-
-- **`Makefile`** - version stays at 1.0.0 until manually changed
-- **Release notes** - scheduled dates added manually
-- **`CHANGELOG.md`** - generated; `[Unreleased]` is rebuilt on every sync, so fix an entry by editing its PR's title — only released sections can be edited by hand (see [changelog.md](changelog.md))
-
-## Key Benefits
-
-### ✅ **Manual Control**
-
-- You decide timing of each release step
-- Quality gates at PR merge and release publication
-- Manual release note editing capability
-
-### ✅ **Early Preparation**
-
-- Draft release ready before Roku submission
-- ZIP available for testing before publication
-- Time to add scheduled release dates
-
-### ✅ **Version Safety**
-
-- Prevents invalid version releases
-- Validates version increments
-- Ensures proper file updates
-
-### ✅ **Always Current**
-
-- ZIP always reflects latest version bump
-- Changelog stays synchronized
-- Git tags point to correct commits
-
-### ✅ **Simple Process**
-
-- Just create branch and merge PR
-- Clear error messages when issues occur
-- Minimal manual intervention required
-
-## Advanced Usage
-
-### Testing Releases
-
-After creating release branch, you can:
-
-- Review the generated ZIP in draft release
-- Test the version-bumped build
-- Make adjustments in PR if needed
-
-### Release Notes
-
-The draft release includes:
-
-- Automatic changelog extraction
-- Template for scheduled release date
-
-### Rollback Options
-
-If issues are found:
-
-- Delete draft release to start over
-- Update PR with fixes before merging
-- Edit draft release notes before publishing
+One maintainer ships releases. Signing in CI would save a sideload and a portal step, but downloading and decrypting a CI artifact costs about as much. If JellyRock gets several maintainers who ship, revisit this.

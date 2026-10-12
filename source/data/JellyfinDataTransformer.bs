@@ -1,5 +1,6 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/api/image.bs"
+import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
@@ -334,9 +335,9 @@ class JellyfinDataTransformer
     hasOutro = false
     for each segment in segments
       segType = segment.Type ?? ""
-      if segType = "Intro"
+      if segType = MediaSegmentType.INTRO
         hasIntro = true
-      else if segType = "Outro"
+      else if segType = MediaSegmentType.OUTRO
         hasOutro = true
       end if
     end for
@@ -348,6 +349,7 @@ class JellyfinDataTransformer
   ' Populate theme songs from a separate API call result.
   ' @param item - JellyfinBaseItem node (already transformed)
   ' @param response - Response from GET /Items/{id}/ThemeSongs
+  ' bsc-disable-next-line dead-code keep: planned: theme songs and videos, #1070
   sub populateThemeSongs(item as object, response as object)
     if not isValid(item) or not isValid(response)
       return
@@ -358,6 +360,7 @@ class JellyfinDataTransformer
   ' Populate theme videos from a separate API call result.
   ' @param item - JellyfinBaseItem node (already transformed)
   ' @param response - Response from GET /Items/{id}/ThemeVideos
+  ' bsc-disable-next-line dead-code keep: planned: theme songs and videos, #1070
   sub populateThemeVideos(item as object, response as object)
     if not isValid(item) or not isValid(response)
       return

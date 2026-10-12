@@ -60,6 +60,10 @@ const MUST_TRIGGER = [
   ['bsconfig-base.json', 'the shared base every bsconfig extends: its filters reach them all'],
   ['scripts/bsc-plugins/field-observer-wiring.cjs', 'a gate: editing it changes what CI enforces'],
   ['scripts/lib/bsc-rule.cjs', 'the diagnostic lifecycle all cross-file gates share'],
+  [
+    '.dead-code-baseline.json',
+    'the dead-code gate skips its entries: widening it must re-run the gate',
+  ],
 ];
 
 // Paths that legitimately skip the job — guards against "fix" it by matching

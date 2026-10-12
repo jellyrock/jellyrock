@@ -5,305 +5,194 @@ related-files:
   - scripts/run-roku-tests.js
   - scripts/lib/env-config.cjs
   - tests/source/BaseTestSuite.spec.bs
-last-reviewed: 2026-09-21
+last-reviewed: 2026-10-09
 ---
 
-# Test-Driven Development (TDD) Workflow
+# Test-driven development (TDD)
 
-## Overview
+TDD mode builds and runs only the test files you are working on, so each run is much faster than the full suite. Read [unit testing basics](unit-tests.md) first.
 
-TDD mode enables rapid, focused development by building and running only the tests you're actively working on. This provides instant feedback and dramatically faster build times compared to running the full test suite.
+## Why use TDD mode
 
-**Prerequisites:** Familiarity with [unit testing basics](unit-tests.md)
+- **Faster runs:** only your test files are built, not the whole suite.
+- **Focus:** the results show only the tests you are working on.
+- **No `@ignore` clutter:** you choose tests by file, so nothing in the test code changes.
 
-**What you'll learn:**
+## Setup
 
-- Setting up TDD workflow for JellyRock
-- Configuring focused test execution
-- TDD best practices and workflow patterns
-- Troubleshooting common TDD issues
-
----
-
-## Why Use TDD Mode?
-
-- **Fast iteration**: Rebuild only the tests you're working on (seconds vs minutes)
-- **Focused development**: Work on one feature/fix at a time without distractions
-- **Continuous feedback**: Watch mode rebuilds automatically on save
-- **Better than @ignore**: Clean, file-based filtering without polluting your codebase
-
----
-
-## Setup Instructions
-
-### 1. Create Your TDD Configuration File
+### 1. Create your TDD config
 
 ```bash
 cp bsconfig-tdd-sample.json bsconfig-tdd.json
 ```
 
-**Note:** `bsconfig-tdd.json` is gitignored - it's your personal development config.
+`bsconfig-tdd.json` is gitignored: it is your own config.
 
-The sample `extends` `bsconfig-tests.json`, which supplies the plugins, compiler options and every diagnostic filter, so your copy only needs `files` and `rooibos`. Keep it that way: a `plugins` or `diagnosticFilters` array in your copy replaces the inherited list instead of adding to it, and a copied plugin list goes stale the moment a plugin moves. Keep `"!**/*.map"` as the last `files` entry, too — it stops the build copying prebuilt source maps over the ones BSC generates. If your copy predates this — it lists its own `plugins`, has top-level `sourceMap` / `autoImportComponentScript` keys, or the build warns `deprecated-bsconfig-option` — re-copy the sample and re-add your spec entries.
+The sample `extends` `bsconfig-tests.json`, which supplies the plugins, the compiler options and every diagnostic filter. Your copy only needs `files` and `rooibos`, and should keep it that way: a `plugins` or `diagnosticFilters` array in your copy replaces the inherited list instead of adding to it, and a copied plugin list goes stale when a plugin changes. Keep `"!**/*.map"` as the last `files` entry too. It stops the build copying prebuilt source maps over the ones BrighterScript generates.
 
-### 2. Edit the `files` Array
+If your copy is older than this (it lists its own `plugins`, has top-level `sourceMap` or `autoImportComponentScript` keys, or the build warns `deprecated-bsconfig-option`), copy the sample again and add your spec entries back.
 
-Include only your test file(s):
+### 2. List your test files
+
+The sample excludes every spec file, then adds back `BaseTestSuite.spec.bs` and one example. Replace the example with your own files:
 
 ```json
 {
   "files": [
-    // ... other entries ...
-    "!**/*.spec.bs",  // Exclude all test files
-    {
-      "src": "**/BaseTestSuite.spec.bs",  // Always include base
-      "dest": "source"
-    },
-    {
-      "src": "**/YourTestFile.spec.bs",  // Your test file
-      "dest": "source"
-    }
+    // ... the sample's other entries ...
+    "!**/*.spec.bs",
+    { "src": "**/BaseTestSuite.spec.bs", "dest": "source" },
+    { "src": "**/YourTestFile.spec.bs", "dest": "source" },
+    "!**/*.map"
   ]
 }
 ```
 
-**Examples:**
+Always keep `BaseTestSuite.spec.bs`. To work on several related files, add one entry for each.
 
-```json
-// Working on isValid tests
-"src": "**/isValid.spec.bs"
+### 3. Run the tests
 
-// Working on ItemGrid component tests
-"src": "**/ItemGrid.spec.bs"
+From Visual Studio Code, choose **Run TDD tests** in the **Run and Debug** panel and press `F5`. From a terminal, run:
 
-// Working on multiple related tests
-"src": "**/DisplaySettings.spec.bs"
-"src": "**/UserSettings.spec.bs"
+```bash
+npm run test:tdd
 ```
 
-### 3. Use VSCode "Run TDD tests" Launch Configuration
+Either one builds with `bsconfig-tdd.json`, installs the build on your Roku and runs the tests once. After you change code, run it again.
 
-- Press `F5` or use Run & Debug panel
-- Select **"Run TDD tests"**
-- Tests rebuild automatically on save (watch mode)
+## Rooibos settings
 
----
-
-## TDD Configuration Options
-
-The sample config includes optimized settings for TDD:
+The sample's `rooibos` block is set up for quick runs:
 
 ```json
 {
   "rooibos": {
-    "isRecordingCodeCoverage": false,  // Faster builds
-    "showOnlyFailures": true,          // Cleaner output
-    "failFast": false,                 // Run all tests
-    "catchCrashes": true               // Graceful error handling
+    "isRecordingCodeCoverage": false,
+    "showOnlyFailures": true,
+    "failFast": false,
+    "catchCrashes": true
   }
 }
 ```
 
-**Adjust for your workflow:**
+Change these to suit your work:
 
-- `"failFast": true` - Stop on first failure (faster feedback)
-- `"showOnlyFailures": false` - Show all test results
-- `"isRecordingCodeCoverage": true` - Enable coverage (slower)
+- `"failFast": true` stops at the first failure.
+- `"showOnlyFailures": false` lists passing tests too.
+- `"isRecordingCodeCoverage": true` records coverage, which makes the build slower.
 
----
+## A TDD session
 
-## TDD Workflow Best Practices
+Say you are adding a `getDisplaySetting()` function:
 
-### ✅ DO
+1. Create the test file, `tests/source/unit/utils/DisplaySettings.spec.bs`.
+2. Add it to `bsconfig-tdd.json`: `{ "src": "**/DisplaySettings.spec.bs", "dest": "source" }`.
+3. Write a test that fails.
+4. Run the TDD tests and watch it fail.
+5. Write the function.
+6. Run the TDD tests again until they pass, then clean up the code.
+7. Before you commit, run the full suite (`npm run test:unit`) to catch regressions.
 
-- Use TDD mode for daily development
-- Focus on 1-3 related test files at a time
-- Use `@only` temporarily to debug specific tests
-- Remove `@only` before committing
+## Choosing which tests run
 
-### ❌ DON'T
+### Choose by file
 
-- Commit `bsconfig-tdd.json` (it's gitignored)
-- Use `@ignore` to skip tests during development (use TDD file filtering instead)
-- Leave `@only` annotations in committed code
-- Include all test files (defeats the purpose)
+For day-to-day work, list the files in `bsconfig-tdd.json`. It is faster than annotations and leaves the test code alone.
 
----
+### `@only` for a quick debug
 
-## Example TDD Session
-
-**Scenario:** Adding a new `getDisplaySetting()` function
-
-1. Create test file: `tests/source/unit/utils/DisplaySettings.spec.bs`
-2. Update `bsconfig-tdd.json`:
-
-   ```json
-   "src": "**/DisplaySettings.spec.bs"
-   ```
-
-3. Write failing test
-4. Run TDD tests (`F5`)
-5. Implement function
-6. Watch tests pass automatically
-7. Refactor with confidence
-8. Before commit: Run full test suite to ensure no regressions
-
----
-
-## Controlling Test Execution in TDD
-
-### Recommended: File-Based Filtering
-
-**For daily development**, use TDD mode to run only specific test files. This is cleaner and faster than annotation-based filtering.
-
-### Use @only for Temporary Debugging
-
-When debugging a specific test within your TDD session:
+To run one test, or one group, inside your TDD files, mark it `@only`. It works on `@suite`, `@describe` and `@it`.
 
 ```brighterscript
-@only  ' Temporarily run only this test
+@only
 @it("debug this test")
 function _()
 end function
 ```
 
-**⚠️ CRITICAL: Remove all `@only` annotations before committing!**
+**Remove every `@only` before you commit.** A committed `@only` makes the full suite skip every other test.
 
-**Note:** `@only` can be used on `@suite`, `@describe`, or `@it` to focus execution at any level.
+### `@ignore` only for tests that stay off
 
-### Avoid @ignore During Development
-
-**❌ Don't use `@ignore` to skip tests during development** - use TDD file filtering instead.
-
-**✅ Only use `@ignore` for permanently disabled tests:**
+Don't use `@ignore` to skip tests while you work; choose files instead. Use it only for a test that stays disabled, with a comment that says why and links the issue:
 
 ```brighterscript
-@ignore  ' TODO: Fix in ticket #123 - API endpoint deprecated
+@ignore  ' Endpoint removed upstream; see #123
 @it("calls legacy endpoint")
 function _()
 end function
 ```
 
-**Best practice:** Always include a comment explaining why the test is ignored and reference a ticket/issue number.
+## Troubleshooting
 
----
+### Tests don't run
 
-## Troubleshooting TDD Mode
+- Check that `bsconfig-tdd.json` exists. The sample isn't used.
+- Check that `files` includes your test file and `BaseTestSuite.spec.bs`.
 
-### Tests Won't Run
+### Builds are slow
 
-- Verify `bsconfig-tdd.json` exists (not the `-sample` version)
-- Check `files` array includes your test file
-- Ensure `BaseTestSuite.spec.bs` is included
+- Check that `isRecordingCodeCoverage` is `false`.
+- Check that `files` lists only the test files you need.
+- Turn source maps off with `"compilerOptions": { "sourceMap": false }`. A top-level `"sourceMap": false` is ignored, because `compilerOptions.sourceMap` in `bsconfig-base.json` wins.
 
-### Builds Are Slow
-
-- Check `isRecordingCodeCoverage: false`
-- Verify only 1-3 test files are included
-- Disable source maps: `"compilerOptions": { "sourceMap": false }` (a top-level `"sourceMap": false` is ignored — the base's `compilerOptions.sourceMap` wins)
-
-### Changes Not Detected
-
-- Save the file (`Ctrl+S`)
-- Check VSCode output panel for build errors
-- Restart the debug session
-
----
-
-## Quick Reference
-
-### TDD Commands
+## Commands
 
 ```bash
-# Setup (one time)
-cp bsconfig-tdd-sample.json bsconfig-tdd.json
-
-# Edit bsconfig-tdd.json to include your test file(s)
-# Then run in VSCode: "Run TDD tests" (F5)
-
-# Build commands
-npm run build:tdd                # Build TDD config (watch mode)
-npm run build:tests-unit         # Build all unit tests
-npm run build:tests-integration  # Build all integration tests
-npm run build:tests              # Build all tests
+cp bsconfig-tdd-sample.json bsconfig-tdd.json   # once
+npm run test:tdd                 # build bsconfig-tdd.json and run it on the Roku
+npm run build:tdd                # build bsconfig-tdd.json only
+npm run build:tests-unit         # build all unit tests
+npm run build:tests-integration  # build all integration tests
+npm run build:tests              # build all tests
 ```
 
-### TDD File Filtering Example
+## Running tests from a terminal or an agent
 
-```json
-{
-  "files": [
-    "!**/*.spec.bs",
-    {"src": "**/BaseTestSuite.spec.bs", "dest": "source"},
-    {"src": "**/YourTest.spec.bs", "dest": "source"}
-  ]
-}
-```
+These notes are for running tests outside Visual Studio Code, for example from an agent's session.
 
-### Best Practice Comparison
+### The commands
 
-```brighterscript
-' ✅ GOOD - Use TDD file filtering
-' In bsconfig-tdd.json:
-"src": "**/DisplaySettings.spec.bs"
+- One spec file: `npm run test:tdd`. It builds with `bsconfig-tdd.json` and runs on the Roku at `ROKU_IP`.
+- Wider runs: `npm run test:unit`, `npm run test:integration`, `npm run test:all`.
+- The runner, [`scripts/run-roku-tests.js`](../../scripts/run-roku-tests.js), zips the build, installs it on the Roku and reads the Roku's debug console until it sees `[Rooibos Result]: PASS` or `FAIL`. It saves the full log to `roku-test-output.log`.
 
-' ❌ BAD - Using @ignore during development
-@ignore  ' Working on other tests first
-@it("test I'll do later")
+### Roku settings: `.env` and your per-user file
 
-' ⚠️ ACCEPTABLE - Temporary debugging only (MUST remove before commit)
-@only
-@it("debugging this specific test")
-```
+Every tool reads its device settings (`ROKU_IP`, `ROKU_PASSWORD`, `ROKU_DEVICES` and others) from the environment. Two files that never enter the repository fill it. In order, the first one that sets a value wins:
 
-**Why:** TDD file filtering keeps your codebase clean, builds faster, and prevents accidental commits of ignored tests.
+1. **Variables already set** in your shell, or by a parent process. These are never overwritten.
+2. **The checkout's `.env`**, at the repository root. Use it to override one checkout, such as a folder pointed at a different Roku.
+3. **Your per-user file**, `~/.config/jellyrock/env` (or `$XDG_CONFIG_HOME/jellyrock/env`). Put your defaults here once, and every checkout uses them.
 
----
+Both files use the format of `.env.example`. **An empty value in a file counts as unset**, so a `.env` copied from `.env.example` with blank keys doesn't hide your per-user file. The exceptions are `MEASURE_SIGNIN_PASSWORD`, `RTA_SERVER_PASS` and `JELLYFIN_VERSION_SERVERS_PASS`, where blank means an account with no password; `.env.example` ships those commented out.
 
-## Agent Workflow Notes
+**The per-user file is skipped under GitHub Actions**, so CI is set up only by its workflow. It is also skipped when `JELLYROCK_USER_ENV=off` is set, as the scripts' unit tests do.
 
-These notes apply when an automated agent (Claude Code, etc.) needs to run tests from a CLI session rather than the VSCode "Run TDD tests" launch.
+To stop using a device for a while, comment out the full `ROKU_DEVICES` line and add a shorter one below it. `npm run device:check` prints which file its device list came from. The rules live in [`scripts/lib/env-config.cjs`](../../scripts/lib/env-config.cjs).
 
-### Running
-
-- **Single spec (TDD)**: `npm run test:tdd` — builds with `bsconfig-tdd.json` and deploys to the Roku at `ROKU_IP`.
-- **Broader runs**: `npm run test:unit`, `npm run test:integration`, `npm run test:all`.
-- The runner ([`scripts/run-roku-tests.js`](../../scripts/run-roku-tests.js)) zips the build, sideloads to the Roku, and tails the debug console for `[Rooibos Result]: PASS|FAIL`.
-
-### Roku Credentials (`.env` and the per-user env file)
-
-Every tool reads its device settings (`ROKU_IP`, `ROKU_PASSWORD`, `ROKU_DEVICES`, …) from the environment, filled from two files that never enter the repo. Highest precedence first:
-
-1. **Variables already set** in your shell or by a parent process. Never overwritten.
-2. **The checkout's `.env`** at the repo root. Use it for a per-checkout override, such as one folder pointed at a different device.
-3. **The per-user file** `~/.config/jellyrock/env` (or `$XDG_CONFIG_HOME/jellyrock/env`). Put your defaults here once and every checkout of the repo uses them.
-
-Both files use the `.env.example` format. An **empty value in a file counts as unset**, so a `.env` copied from `.env.example` with blank keys does not hide the per-user file. The exceptions are `MEASURE_SIGNIN_PASSWORD`, `RTA_SERVER_PASS` and `JELLYFIN_VERSION_SERVERS_PASS`, where blank means an account with no password, so `.env.example` ships those commented out. **The per-user file is skipped under GitHub Actions**, so CI is configured only by its workflow, and whenever `JELLYROCK_USER_ENV=off` is set (the scripts' unit tests set it). To stop using a device for a while, comment out the full `ROKU_DEVICES` line and keep a shorter active one below it. `npm run device:check` prints which file its device list came from. The rules live in [`scripts/lib/env-config.cjs`](../../scripts/lib/env-config.cjs).
-
-If neither file exists, source the values from the user's VSCode settings:
+If neither file exists, read the values from the user's Visual Studio Code settings:
 
 ```bash
 grep -E '"brightscript\.debug\.(host|password)"' ~/.config/Code/User/settings.json
 ```
 
-…and write them as `ROKU_IP=...` / `ROKU_PASSWORD=...` to the per-user file (`chmod 600` it), or to `.env` for this checkout only.
+Then write them as `ROKU_IP=...` and `ROKU_PASSWORD=...` to the per-user file (and `chmod 600` it), or to `.env` for this checkout only.
 
-### Debugger Contention
+### A debugger already attached
 
-If a VSCode BrightScript debugger session is already attached to the test device, the deploy will fail (ECP refuses the second sideload) and may also kill the active debugger. Surface this to the user — do not retry blindly.
+If a Visual Studio Code BrightScript debugger is attached to the test Roku, the install can fail, and it can end that debugger session. Tell the user rather than retrying.
 
-### When Hardware Isn't Available
+### When the Roku doesn't answer
 
-**Check before you conclude it isn't: `npm run device:check`.** It probes every device in `.env` over ECP and tells you which answered. A device that answers is a device you can test on — run the tests.
+**Check before you conclude there is no hardware: run `npm run device:check`.** It probes every configured Roku over ECP and reports which answered. A Roku that answers is one you can test on, so run the tests.
 
-If the probe genuinely fails (no `.env`, no device on the network, debugger holding the port), say so explicitly, and say *the probe failed* rather than that you lack access. Do not claim a fix was tested when only the build (`npm run build:tdd`) was verified.
+If the probe fails (no device configured, none on the network, a debugger holding the port), say that the probe failed, not that you lack access. Never call a fix tested when only the build (`npm run build:tdd`) was checked.
 
-ECP answering is not a promise that a sideload will succeed — dev mode off, or a `ROKU_PASSWORD` belonging to a different device, still fails at deploy. That is a different (and also checkable) report.
+An answer over ECP doesn't promise the install will work. Developer mode turned off, or a `ROKU_PASSWORD` that belongs to another Roku, still fails at install. That is a different report, and one you can also check.
 
----
+## Related docs
 
-## Related Documentation
-
-- [Unit Testing Guide](unit-tests.md) - Core testing concepts and Rooibos framework
-- [Logging Guide](logging.md) - Using roku-log for runtime debugging
-- [Developer Guide](DEVGUIDE.md) - General development workflow
+- [Unit tests](unit-tests.md): testing concepts and the Rooibos framework.
+- [Logging](logging.md): using roku-log to debug at runtime.
+- [Dev guide](DEVGUIDE.md): setting up and installing the app.

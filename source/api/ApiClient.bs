@@ -184,14 +184,6 @@ class ApiClient
   ' ARTIST ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' Build a request AA for GetArtistByName, for use with fetchJson().
-  ' @param name - Artist name (will be URI-encoded)
-  ' @param params - Optional query parameters
-  ' @returns Request AA: { method, url } or invalid if server URL not set
-  function BuildGetArtistByNameRequest(name as string, params = {} as object) as dynamic
-    return m.validatedReq("GET", buildURL(Substitute("/artists/{0}", name.EncodeUriComponent()), params))
-  end function
-
   ' Build a request AA to fetch all artists, for use with fetchRes() or fetchJson().
   ' Mirrors GetArtists(): applies injectDefaults and injects UserId.
   ' @param params - Query parameters
@@ -508,13 +500,6 @@ class ApiClient
   ' ═══════════════════════════════════════════════════════════════════════════
   ' SYSTEM ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
-
-  ' Get configuration by name
-  ' @param name - Configuration name
-  ' @returns API response or invalid on error
-  function GetConfigurationByName(name as string) as dynamic
-    return sdk.system.GetConfigurationByName(name)
-  end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
   ' BRANDING ENDPOINTS

@@ -1,4 +1,4 @@
-// scripts/lint/eslint-rules/ordering-asserts-presence.js — an assertion that two things
+// scripts/lint/eslint-rules/ordering-asserts-presence.js: an assertion that two things
 // appear in a given ORDER has to establish that they appear at all.
 //
 // WHY THIS EXISTS
@@ -14,13 +14,14 @@
 // is the reason the test was written.
 //
 // This is not a hypothetical shape. It was found in this repo three ways:
-//   - `tests/rta/lib/diagnostics.test.js:278` — caught by mutation on 2026-09-06 (deleting
-//     the screensaver line left the ordering test green) and guarded in place.
+//   - `tests/rta/lib/diagnostics.test.js`, the test `puts the screensaver ABOVE the ODC
+//     line`: caught by mutation on 2026-09-06 (deleting the screensaver line left the
+//     ordering test green) and guarded in place.
 //   - Eleven more sites found by an AST audit on 2026-09-07, proven vacuous the same way:
 //     rewriting the searched-for text to something unfindable left **57/57 tests green**,
 //     including three in `auto-destroyed-guard.test.js`, whose plugin's entire job is
 //     emitting a crash guard.
-//   - The same audit found the sibling shape in the RTA specs — comparing one device read
+//   - The same audit found the sibling shape in the RTA specs: comparing one device read
 //     against another, where two absent reads are `undefined === undefined`.
 //
 // WHY A LINT RULE RATHER THAN A CONVENTION
@@ -29,12 +30,12 @@
 // not warn, and it does not look different from a sound one in review. Both operands are
 // `x.indexOf(...)`; whether the test proves anything depends on an assertion that is
 // somewhere else in the body, or missing. That is not something a reader reliably notices,
-// which is the whole argument for a gate — the same argument `rta-sleep-budgeted` makes
-// about a `sleep()` that a reviewer cannot tell from its ten legitimate neighbours.
+// which is the whole argument for a gate. It is the same argument `rta-sleep-budgeted` makes
+// about a `sleep()` that a reviewer cannot tell from its legitimate neighbors.
 //
 // It is also, unlike the sibling RTA rules, not an INVENTORY. There is no budget and no
 // ratchet, because unlike a `sleep()` there is no such thing as a justified vacuous
-// ordering assert — the fix is one line (`expect(idx).toBeGreaterThan(-1)`), it is always
+// ordering assert. The fix is one line (`expect(idx).toBeGreaterThan(-1)`), it is always
 // available, and it always strengthens the test. A rule with no escape hatch is the right
 // shape when compliance is free.
 //
@@ -43,13 +44,13 @@
 // Any numeric floor at or above "not found" proves the operand was found:
 // `toBeGreaterThan(-1)`, `toBeGreaterThan(0)`, `toBeGreaterThanOrEqual(0)`, and the
 // explicit `not.toBe(-1)` / `not.toEqual(-1)`. An ordering assertion can therefore double
-// as its own presence proof — `expect(idx).toBeGreaterThan(0)` both orders and proves.
+// as its own presence proof: `expect(idx).toBeGreaterThan(0)` both orders and proves.
 //
 // `expect(haystack).toContain(needle)` counts too, and is the better fix where it applies:
 // it is the idiomatic Vitest spelling, and it reports the missing VALUE on failure where a
 // bare `toBeGreaterThan(-1)` reports only "-1 is not greater than -1". Accepting it is
 // what stops the rule pushing every call site toward the less readable guard. It proves
-// `haystack.indexOf(needle)` and `haystack.lastIndexOf(needle)` only — `findIndex` takes a
+// `haystack.indexOf(needle)` and `haystack.lastIndexOf(needle)` only: `findIndex` takes a
 // predicate rather than the value, so `toContain` says nothing about it.
 //
 // The search for that proof is scoped to the ENCLOSING TEST BODY, not the file. A presence
@@ -68,9 +69,9 @@ const ORDERING = new Set([
 const FUNCTIONS = new Set(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression']);
 
 /**
- * Callers whose function argument is a TEST BODY — the scope a presence proof governs.
+ * Callers whose function argument is a TEST BODY, the scope a presence proof governs.
  *
- * `describe` is deliberately absent: two `it()`s inside one `describe` are separate tests,
+ * `describe` is absent on purpose: two `it()`s inside one `describe` are separate tests,
  * and treating the describe body as one scope would let a proof in the first excuse a
  * vacuous assert in the second. That is the same reason the file is not one scope.
  */
@@ -143,14 +144,14 @@ function isPresenceAssertion(node) {
 
   const negated = isNegated(node);
 
-  // The negation is checked for EVERY matcher, not just the equality pair. `.not` inverts
+  // The negation is checked for every matcher, not only the equality pair. `.not` inverts
   // a lower bound into an upper one, so `expect(idx).not.toBeGreaterThan(-1)` asserts the
-  // index is at most -1 — that the value was NOT found. Reading it as a presence proof
+  // index is at most -1: that the value was not found. Reading it as a presence proof
   // would let the one shape that states the opposite of presence wave a vacuous ordering
   // assert through, which is the rule failing in the exact direction it exists to prevent.
   if (matcher === 'toBeGreaterThan') return !negated && bound !== null && bound >= -1;
   if (matcher === 'toBeGreaterThanOrEqual') return !negated && bound !== null && bound >= 0;
-  // `toBe(-1)` / `toEqual(-1)` prove presence only UNDER a `.not` — the mirror image.
+  // `toBe(-1)` / `toEqual(-1)` prove presence only under a `.not`: the mirror image.
   if (matcher === 'toBe' || matcher === 'toEqual') return negated && bound === -1;
   return false;
 }
@@ -173,13 +174,13 @@ export default {
     const sourceCode = context.sourceCode ?? context.getSourceCode();
 
     /**
-     * True when `identifier` resolves to a binding initialised from a sentinel search —
-     * `const idx = haystack.indexOf(x)`.
+     * True when `identifier` resolves to a binding initialized from a sentinel search,
+     * such as `const idx = haystack.indexOf(x)`.
      *
      * Resolved through the SCOPE rather than a file-wide name table: two tests in one file
      * routinely both declare `idx`, and only one of them need be an `indexOf`. Keying on
      * the name alone would report the other one, and a rule with no escape hatch cannot
-     * afford a false positive — the only way out of one is to disable the rule.
+     * afford a false positive: the only way out of one is to disable the rule.
      */
     function isSentinelBinding(identifier) {
       const variable = sourceCode
@@ -201,15 +202,15 @@ export default {
      * The scope a presence proof must sit in: the enclosing TEST body where there is one,
      * and otherwise the nearest enclosing function.
      *
-     * ## Why not simply the nearest function
+     * ## Why not the nearest function
      *
      * That was the first shape, and it false-positives on a nested callback. An ordering
      * assert inside a `forEach` / `map` / `for (const … )` arrow cannot see a presence
      * assert sitting in the `it()` body around it, even though that assert governs it
-     * perfectly well — the operands are the same, and the proof ran before the loop.
+     * perfectly well: the operands are the same, and the proof ran before the loop.
      *
      * A false positive matters more here than in the sibling RTA rules, because this rule
-     * deliberately has no escape hatch: its header argues that compliance is always one
+     * has no escape hatch by design: its header argues that compliance is always one
      * free line, so there is no budget, no allowlist, and the only way out of a wrong
      * report is disabling the rule. A rule people disable is worse than no rule.
      *
@@ -232,7 +233,7 @@ export default {
      * Every operand text that carries a presence assertion inside `body`.
      *
      * `expect(h).toContain(n)` is recorded as proving the two searches whose result it
-     * actually constrains — `h.indexOf(n)` and `h.lastIndexOf(n)` — by synthesising their
+     * actually constrains (`h.indexOf(n)` and `h.lastIndexOf(n)`) by synthesizing their
      * source text, which is what the operand check below compares against.
      */
     function provenPresentIn(body) {
@@ -275,14 +276,14 @@ export default {
         if (!expectCall?.arguments[0]) return;
 
         // A NEGATED ordering assertion is left alone. `.not` inverts the claim, so
-        // "the operand must have been found" stops being its precondition — and the
+        // "the operand must have been found" stops being its precondition, and the
         // common negated shape, `expect(idx).not.toBeGreaterThan(-1)`, is a deliberate
         // assertion that the value is ABSENT. Reporting it would demand a presence proof
         // for the one assertion whose whole point is the opposite.
         //
         // This leaves one narrow shape unreported: `expect(a.indexOf(x)).not.toBeLessThan(
-        // b.indexOf(y))` is satisfied when both are -1. It is accepted deliberately, on
-        // this rule's own no-escape-hatch argument — a false positive can only be answered
+        // b.indexOf(y))` is satisfied when both are -1. It is accepted on purpose, on
+        // this rule's own no-escape-hatch argument: a false positive can only be answered
         // by disabling the rule, so where the two errors are not symmetric the false
         // NEGATIVE is the cheaper one. No instance exists in the tree.
         if (isNegated(node)) return;
@@ -291,7 +292,7 @@ export default {
 
         /**
          * `expect(h).toContain('- 2026-05-10 — fix: beta crash')` also proves
-         * `h.indexOf('beta crash')` is found — presence of the longer literal entails
+         * `h.indexOf('beta crash')` is found: presence of the longer literal entails
          * presence of any substring of it. Crediting that is what stops the rule
          * demanding a second, redundant assertion next to a sound one.
          */

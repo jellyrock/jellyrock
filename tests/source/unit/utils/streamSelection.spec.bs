@@ -287,11 +287,25 @@ namespace tests
     function _()
       streams = [
         { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
-        { Type: "audio", index: 2, Language: "eng", channels: 8, codec: "dts", IsDefault: false }
+        { Type: "audio", index: 2, Language: "eng", channels: 8, codec: "eac3", IsDefault: false }
       ]
       ' Both match language, 8-channel passthrough available, should pick 8-channel
       result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(8, true))
       m.assertEqual(result, 2)
+    end function
+
+    @it("passes over an 8-channel DTS or TrueHD track for a 6-channel one, though passthrough is supported")
+    function _()
+      ' DTS above 5.1 and TrueHD are never played natively (DTS_MAX_DIRECT_PLAY_CHANNELS,
+      ' canDecodeAudioInContainer), so the 6-channel track is the one that direct-plays.
+      for each codec in ["dts", "truehd"]
+        streams = [
+          { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+          { Type: "audio", index: 2, Language: "eng", channels: 8, codec: codec, IsDefault: false }
+        ]
+        result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(8, true))
+        m.assertEqual(result, 1, "8-channel " + codec + " must lose to the 6-channel track")
+      end for
     end function
 
     @it("falls back to 6-channel when 8-channel not supported")
@@ -341,7 +355,7 @@ namespace tests
       streams = [
         { Type: "audio", index: 1, Language: "eng", channels: 2, codec: "aac", IsDefault: false },
         { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
-        { Type: "audio", index: 3, Language: "eng", channels: 8, codec: "dts", IsDefault: false }
+        { Type: "audio", index: 3, Language: "eng", channels: 8, codec: "eac3", IsDefault: false }
       ]
       ' Should pick 8-channel (max supported by device)
       result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(8, true))
@@ -516,6 +530,66 @@ namespace tests
         { index: 1, channels: 2, codec: "aac", language: "eng" }
       ]
       m.assertFalse(isSelectedAudioStreamDirectPlayable(99, audioStreams))
+    end function
+
+    @it("never switches natively to DTS above 5.1, DTS-HD or TrueHD, whatever the device answers")
+    function _()
+      ' Runs against the real device. On a Roku Ultra `4850X` with a DTS-HD and TrueHD
+      ' soundbar, CanDecodeAudio says yes to dts at 8ch and to dtshd with PassThru, and a
+      ' native switch would take the path that failed to start; answering no makes the
+      ' switch reload.
+      audioStreams = [
+        { index: 1, channels: 8, codec: "dts", language: "eng" },
+        { index: 2, channels: 6, codec: "truehd", language: "eng" },
+        { index: 3, channels: 8, codec: "truehd", language: "eng" },
+        { index: 4, channels: 8, codec: "dtshd", language: "eng" }
+      ]
+      for each stream in audioStreams
+        m.assertFalse(isSelectedAudioStreamDirectPlayable(stream.index, audioStreams), stream.codec + " " + stream.channels.toStr() + "ch must reload, not switch natively")
+      end for
+    end function
+
+    @it("never switches natively where the device profile would not direct-play the track")
+    function _()
+      ' Runs against the real device, whose answers differ by model and audio setup. The
+      ' switch and the profile used to ask Roku different questions, so a switch could go
+      ' native onto a path the server would never have chosen.
+      caps = getDeviceAudioCapabilities()
+      di = CreateObject("roDeviceInfo")
+      mismatches = []
+      for each codec in ["aac", "ac3", "eac3", "dts", "flac", "opus", "pcm", "lpcm", "mp3", "vorbis", "alac"]
+        for each channels in [2, 6, 8]
+          if isStreamDirectPlayable({ codec: codec, channels: channels }, caps) and not getActualCodecSupport(codec, channels, di)
+            mismatches.push(codec + "/" + channels.toStr() + "ch")
+          end if
+        end for
+      end for
+      m.assertEqual(mismatches.count(), 0, "switches native where the profile would not direct-play: " + mismatches.join(", "))
+    end function
+
+    @it("honors Decode Multichannel Audio being off, like the profile does")
+    function _()
+      settings = m.global.user.settings
+      saved = settings.playbackDecodeMultichannelAudio
+      stream = { codec: "aac", channels: 6 }
+
+      settings.playbackDecodeMultichannelAudio = false
+      offResult = isStreamDirectPlayable(stream, m.createMockCapabilities(6, false))
+      settings.playbackDecodeMultichannelAudio = true
+      onResult = isStreamDirectPlayable(stream, m.createMockCapabilities(6, false))
+      settings.playbackDecodeMultichannelAudio = saved
+
+      m.assertFalse(offResult, "with the setting off the server handles multichannel aac, so a switch must reload")
+      m.assertTrue(onResult, "with the setting on, 6ch aac on a 5.1 device switches natively")
+    end function
+
+    @it("refuses the AAC profiles the device profile refuses")
+    function _()
+      caps = m.createMockCapabilities(6, false)
+      for each profile in getUnsupportedAacProfiles()
+        m.assertFalse(isStreamDirectPlayable({ codec: "aac", channels: 2, profile: profile }, caps), "aac " + profile + " must reload, as the profile would not direct-play it")
+      end for
+      m.assertTrue(isStreamDirectPlayable({ codec: "aac", channels: 2, profile: "LC" }, caps), "aac LC switches natively")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

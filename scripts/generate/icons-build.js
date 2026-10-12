@@ -23,7 +23,7 @@
 //     from `resources/icons/`) plus placeholder-specific canvas/glyph sizes
 //     and output dir. Same render path, larger canvas, different output
 //     directory. The themed card backdrop and glyph tint are runtime
-//     SceneGraph concerns (see JRPlaceholder component) — placeholder PNGs
+//     SceneGraph concerns (see JRPlaceholder component); placeholder PNGs
 //     are still transparent-canvas white-fill glyphs, identical contract to
 //     icons.
 //
@@ -49,24 +49,25 @@
 //       4. Default 54
 //
 // Run modes:
-//   node scripts/generate/icons-build.js           → write (default)
-//   node scripts/generate/icons-build.js --check   → fail on drift
-//   node scripts/generate/icons-build.js --force   → rewrite every PNG
+//   node scripts/generate/icons-build.js           write (default)
+//   node scripts/generate/icons-build.js --check   fail on drift
+//   node scripts/generate/icons-build.js --force   rewrite every PNG
 //
 // npm scripts:
-//   icons:build        → regenerate (write mode)
-//   icons:check        → drift check (pre-push hook + the test-scripts workflow,
+//   icons:build        regenerate (write mode)
+//   icons:check        drift check (pre-push hook + the test-scripts workflow,
 //                        via icons-build.test.js's repo drift gate)
 //
 // --force exists because write mode leaves a pixel-identical PNG alone, which is
 // what stops a rebuild on one machine churning every committed asset for the next
 // contributor. The cost of that is the committed bytes freeze at whatever encoder
 // wrote them, so a future sharp that compresses better would never be adopted.
-// --force is the deliberate way to take it — and it must stay deliberate, because
+// --force is the opt-in way to take it, and it must stay opt-in, because
 // an unconditional rewrite is exactly the churn the pixel compare exists to stop.
 //
-// Pre-push hook integration: when `resources/icons/*.svg` or
-// `resources/icons/icons.json` or this script changes, the hook runs the
+// Pre-push hook integration: when `resources/icons/*.svg`,
+// `resources/icons/icons.json`, `resources/placeholders/placeholders.json`,
+// this script or `scripts/lib/png-compare.js` changes, the hook runs the
 // regen step in auto-fix mode. Drift never lands.
 
 import { readdirSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -99,10 +100,10 @@ const DEFAULT_GLYPH_SIZE = 54;
 const RENDER_DENSITY_PX = 256;
 
 // Sharp render config. Locked so a given SVG renders to the same IMAGE every
-// time — not to the same bytes: sharp's prebuilt binary bundles its own libvips
+// time, not to the same bytes: sharp's prebuilt binary bundles its own libvips
 // (and zlib), so the PNG encoder's output varies with the sharp build even at a
 // pinned version. Drift detection therefore compares decoded PIXELS, never raw
-// bytes — see scripts/lib/png-compare.js for what that cost the repo when it
+// bytes. See scripts/lib/png-compare.js for what that cost the repo when it
 // did compare bytes.
 const PNG_OPTIONS = {
   compressionLevel: 9,
@@ -180,13 +181,13 @@ async function detectGlyphSize(outputDir, name) {
 }
 
 async function renderPng(svgBuffer, canvasSize, glyphSize) {
-  // Pipeline: render large → trim Material's design-grid padding → resize
-  // bare glyph to fit inside [glyphSize, glyphSize] preserving aspect ratio
-  // → center-pad with transparent border to reach canvasSize.
+  // Pipeline: render large, trim Material's design-grid padding, resize the
+  // bare glyph to fit inside [glyphSize, glyphSize] preserving aspect ratio,
+  // then center-pad with transparent border to reach canvasSize.
   //
-  // The trim step is the load-bearing piece — it eliminates the ~25% padding
-  // baked into Material Symbols' viewBox so each icon's visible glyph
-  // dominates its target square at the per-icon density.
+  // The trim step is the piece that matters: it eliminates the padding baked
+  // into Material Symbols' viewBox (about 25%, noted 2026-05-08) so each
+  // icon's visible glyph dominates its target square at the per-icon density.
   const rendered = await sharp(svgBuffer, { density: RENDER_DENSITY_PX })
     .resize(RENDER_DENSITY_PX, RENDER_DENSITY_PX, { fit: 'inside' })
     .toBuffer();
@@ -203,7 +204,7 @@ async function renderPng(svgBuffer, canvasSize, glyphSize) {
   // Pad (don't resize) the fitted glyph to canvas size with a transparent
   // border centered. We use extend() rather than resize(...,fit:'contain')
   // because fit:'contain' would upscale the glyph to fill the longer canvas
-  // dimension — defeating the per-icon glyphSize contract.
+  // dimension, defeating the per-icon glyphSize contract.
   const fittedMeta = await sharp(fitted).metadata();
   const widthPad = Math.max(0, canvasSize - fittedMeta.width);
   const heightPad = Math.max(0, canvasSize - fittedMeta.height);
@@ -221,11 +222,11 @@ async function renderPng(svgBuffer, canvasSize, glyphSize) {
 }
 
 // spec: { svgFile, name, sizeFhd?, glyphSize?, outputDir? }
-//   svgFile  — file in SVG_DIR to render
-//   name     — output basename (may differ from svgFile basename when
-//              reusing an icon SVG for a placeholder, e.g.
-//              missingArtist.svg → artist_fhd.png)
-//   sizeFhd / glyphSize / outputDir — same semantics as icons.json overrides
+//   svgFile  file in SVG_DIR to render
+//   name     output basename (may differ from svgFile basename when
+//            reusing an icon SVG for a placeholder, for example
+//            artist_filled.svg becomes artist_fhd.png)
+//   sizeFhd / glyphSize / outputDir: same semantics as icons.json overrides
 async function buildOne(spec) {
   const { svgFile, name, sizeFhd, glyphSize, outputDir: outputDirOverride } = spec;
   const outputDir = join(ROOT_DIR, outputDirOverride ?? DEFAULT_OUTPUT_DIR);

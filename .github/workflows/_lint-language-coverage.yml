@@ -12,15 +12,17 @@ on:
 jobs:
   language-coverage:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Clone github repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: detect
         uses: ./.github/actions/changed-paths
         with:
-          # Mirrors the previous event-time paths filter (the four exact files
-          # the language-coverage script depends on).
-          pattern: '^(source/utils/(languages|mediaDisplayTitle)\.bs|locale/custom/en_US\.json|scripts/lint/language-coverage\.cjs)$'
+          # Every file the language-coverage script reads, plus the script and its
+          # list of inputs. The pre-push hook uses the same pattern; a test checks
+          # both against that list.
+          pattern: '^(source/utils/(languages|people|mediaDisplayTitle)\.bs|locale/custom/en_US\.json|docs/architecture/spec-fingerprints/.+|scripts/lint/language-coverage(-inputs)?\.cjs)$'
           force: ${{ inputs.force }}
       - name: Setup Node.js
         if: steps.detect.outputs.relevant == 'true'

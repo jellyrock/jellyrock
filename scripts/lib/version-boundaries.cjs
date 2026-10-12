@@ -1,5 +1,5 @@
-// scripts/lib/version-boundaries.cjs — loader + accessors for the committed
-// Jellyfin server-version → apiVersion tier boundary map
+// scripts/lib/version-boundaries.cjs: loader + accessors for the committed
+// Jellyfin server-version to apiVersion tier boundary map
 // (docs/dev/jellyfin-version-boundaries.yml).
 //
 // This is the source-of-truth bridge between JellyRock's integer apiVersion
@@ -9,8 +9,8 @@
 // (frozen tiers can't break upstream). Phase 1 ships the map + this validated
 // loader so Phase 2 has a tested surface to build on.
 //
-// `.cjs` per scripts/CLAUDE.md's module rule (lib/ helpers are CJS so anything
-// — plugins or other .cjs — can require() them; ESM callers use createRequire,
+// `.cjs` per scripts/CLAUDE.md's module rule (lib/ helpers are CJS so anything,
+// plugins or other .cjs, can require() them; ESM callers use createRequire,
 // as scripts/catchup-state.js already does for the sibling signals-fetch.cjs).
 
 'use strict';
@@ -78,7 +78,7 @@ function validateBoundaries(raw) {
   if (activeCount !== 1) {
     throw new Error(`version-boundaries: expected exactly one active tier, found ${activeCount}`);
   }
-  // The active tier MUST be the one with an unbounded maxServer, so the latest
+  // The active tier must be the one with an unbounded maxServer, so the latest
   // release always lands in it (frozen-tier immunity falls out of range math).
   const active = Object.entries(raw.tiers).find(([, t]) => t.status === 'active');
   if (active[1].maxServer !== null) {
@@ -94,7 +94,7 @@ function loadBoundaries(rootDir = '.') {
   return validateBoundaries(parsed);
 }
 
-// The active (top, open-ended) tier integer — validateBoundaries guarantees
+// The active (top, open-ended) tier integer. validateBoundaries guarantees
 // exactly one. null only if called on an unvalidated map.
 function activeTier(boundaries) {
   const entry = Object.entries(boundaries.tiers).find(([, t]) => t.status === 'active');
@@ -105,10 +105,10 @@ function activeTier(boundaries) {
 // the floor / outside every tier range. A tier with maxServer:null is unbounded.
 //
 // Handles all three archive channels:
-//   - stable  (10.11.10)        → range lookup against the boundary map;
-//   - RC       (10.12.0-rc1)    → resolves to the same tier as its base release
+//   - stable  (10.11.10):        range lookup against the boundary map;
+//   - RC       (10.12.0-rc1):    resolves to the same tier as its base release
 //                                 (the suffix is stripped before comparison);
-//   - unstable (20240402201942) → the bleeding edge, ahead of every released
+//   - unstable (20240402201942): the bleeding edge, ahead of every released
 //                                 boundary, so it lands in the active tier by
 //                                 definition. We special-case it rather than rely
 //                                 on the accidental datestamp-vs-semver ordering.
@@ -125,7 +125,7 @@ function serverToTier(boundaries, version) {
   return null;
 }
 
-// True if the given tier integer is the frozen (closed-upstream) kind — an
+// True if the given tier integer is the frozen (closed-upstream) kind: an
 // endpoint pinned to it cannot be broken by a future upstream release.
 function isTierFrozen(boundaries, tier) {
   const t = boundaries.tiers[String(tier)];

@@ -21,10 +21,12 @@ import { Program } from 'brighterscript';
  * @param {() => object} pluginFactory  Factory function exported by the plugin
  *                                       (the `module.exports = () => new X()` form).
  * @param {Record<string, string>} files Map of repo-relative path → BS/XML source.
+ * @param {object} [options] Extra bsconfig options, for a plugin configured
+ *                           through them (e.g. `{ deadCode: {…} }`).
  * @returns {Array} Flat list of BsDiagnostic objects emitted during validate.
  */
-export function runPluginOnSource(pluginFactory, files) {
-  const program = new Program({ rootDir: '/tmp/jellyrock-plugin-test' });
+export function runPluginOnSource(pluginFactory, files, options = {}) {
+  const program = new Program({ rootDir: '/tmp/jellyrock-plugin-test', ...options });
   program.plugins.add(pluginFactory());
   for (const [path, content] of Object.entries(files)) {
     program.setFile(path, content);
@@ -54,10 +56,11 @@ export function runPluginOnSource(pluginFactory, files) {
  *
  * @param {() => object} pluginFactory Factory exported by the plugin.
  * @param {Array<Record<string, string>>} steps One partial {path: source} map per step.
+ * @param {object} [options] Extra bsconfig options, as for `runPluginOnSource`.
  * @returns {Array<Array>} Diagnostics after each step, in step order.
  */
-export function runPluginOnEdits(pluginFactory, steps) {
-  const program = new Program({ rootDir: '/tmp/jellyrock-plugin-test' });
+export function runPluginOnEdits(pluginFactory, steps, options = {}) {
+  const program = new Program({ rootDir: '/tmp/jellyrock-plugin-test', ...options });
   program.plugins.add(pluginFactory());
   return steps.map((files) => {
     for (const [path, content] of Object.entries(files)) {

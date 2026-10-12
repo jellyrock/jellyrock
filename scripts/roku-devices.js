@@ -1,7 +1,7 @@
 /**
  * Look up a Roku device by the model number ECP reports.
  *
- * The read side of `scripts/data/roku-hardware.json` — Roku's published hardware
+ * The read side of `scripts/data/roku-hardware.json`: Roku's published hardware
  * table, normalized and committed by `scripts/generate/roku-hardware.js`. See that
  * file for where the data comes from, what is normalized, and how it stays current.
  *
@@ -9,7 +9,7 @@
  *
  * It began inside `measurement-guard.js`, which imports `roku-test-automation` for
  * ODC. Nothing about "how much memory does a 3820 have" needs a device client, and
- * `measure-compare.js` — a tool that only reads a JSON Lines file — was pulling the
+ * `measure-compare.js` (a tool that only reads a JSON Lines file) was pulling the
  * whole RTA stack in to resolve one RAM label. A dictionary lookup is a pure
  * function over committed data and belongs where anything can import it cheaply.
  *
@@ -18,14 +18,14 @@
  * ECP reports `model-number` and nothing about memory, so this table is the only
  * source for a RAM tier. It answers at three levels of confidence, and says which:
  *
- * - **`model`** — the exact `GetModel()` value is in Roku's table. Everything the
+ * - **`model`**: the exact `GetModel()` value is in Roku's table. Everything the
  *   spec publishes is available.
- * - **`family`** — it is not, but its four-character prefix is. Real and common:
+ * - **`family`**: it is not, but its four-character prefix is. Real and common:
  *   the Streaming Stick 4K on this LAN reports `3820RW`, which appears in no Roku
  *   table, while `3820X` and `3820X2` do. Only RAM is answerable, because RAM is the
  *   one field asserted invariant across a family (`3820X` and `3820X2` differ in code
  *   name and release year).
- * - **`null`** — neither. Never a guess and never the commonest value: an unknown
+ * - **`null`**: neither. Never a guess and never the commonest value: an unknown
  *   device silently reading as 1 GB would let a comparison pair a 512 MB Stick
  *   against an Ultra and print a delta that is entirely hardware.
  */
@@ -44,8 +44,8 @@ export const ROKU_HARDWARE = Object.freeze(dataset);
  * The lookup key for a model number: its first four characters, upper-cased.
  *
  * Four CHARACTERS, not four digits. A digits-only key excluded every Roku TV and the
- * Projector — `J000X`, `A000X`, `C000GB`, `K8PXX` — sixteen families spanning 512 MB
- * to 2 GB, which is the largest device class Roku ships. Verified unambiguous across
+ * Projector (`J000X`, `A000X`, `C000GB`, `K8PXX`): families spanning 512 MB to 2 GB,
+ * which is the largest device class Roku ships. Verified unambiguous across
  * the whole published table, and re-verified on every generate and every
  * `roku-hardware:check`: no family carries two RAM sizes.
  */
@@ -89,7 +89,7 @@ export function deviceFor(modelNumber) {
 /**
  * The RAM tier label for a model number, or `null` when it is not in the table.
  *
- * The label's SPELLING is load-bearing rather than cosmetic — `512MB`, `1GB`,
+ * The label's SPELLING matters rather than being cosmetic: `512MB`, `1GB`,
  * `1.5GB`, `2GB`. Measurement records already on disk carry `ramTier: "1GB"`, and
  * tier 3 refuses a comparison whose arms disagree on that string, so a respelling
  * would quietly make every recorded series incomparable with every new one.
@@ -102,7 +102,7 @@ export function ramTierFor(modelNumber) {
  * Every RAM tier the table knows, smallest first.
  *
  * Ordered by `ramMb` out of the SAME rows that assign the labels, rather than by
- * parsing the labels — `512MB` and `1.5GB` do not sort as strings, and a second
+ * parsing the labels: `512MB` and `1.5GB` do not sort as strings, and a second
  * place that decodes the spelling is the drift the note above exists to prevent.
  * A tier is listed once however many models carry it.
  */
@@ -119,7 +119,7 @@ export const RAM_TIERS = Object.freeze(
 );
 
 /**
- * Sort comparator for tier labels — smallest RAM first, unknown labels LAST.
+ * Sort comparator for tier labels: smallest RAM first, unknown labels LAST.
  *
  * Unknown is sorted rather than dropped, and that is the whole reason this is not an
  * `indexOf` at the call site: a report column whose tier the table cannot place is a
@@ -139,8 +139,8 @@ export function compareRamTiers(a, b) {
  *
  * Roku's legacy table is not merely "old": its own heading says those models "cannot
  * be used to run IDK apps". Recorded rather than omitted, so a consumer can say that
- * outright instead of reporting an unknown device — which is a different fact and
- * would send someone looking for a missing table entry that is deliberately present.
+ * outright instead of reporting an unknown device, which is a different fact and
+ * would send someone looking for a missing table entry that is present on purpose.
  */
 export function cannotRunApps(modelNumber) {
   return deviceFor(modelNumber)?.supportTier === 'legacy';
@@ -149,7 +149,7 @@ export function cannotRunApps(modelNumber) {
 /**
  * A one-line human description, for a log or a report line.
  *
- * Names every variant when a model number has more than one — `8000X` is both
+ * Names every variant when a model number has more than one: `8000X` is both
  * "Roku TV" and "Roku TV (Brazil)", and `4800X` is both "Roku Ultra LT" and "Roku
  * Ultra". A device reporting one of those could be either, and picking the first
  * silently would be inventing provenance.

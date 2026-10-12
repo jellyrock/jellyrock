@@ -1,5 +1,5 @@
 /**
- * The Roku device dictionary — Roku's published hardware table, parsed into data we
+ * The Roku device dictionary: Roku's published hardware table, parsed into data we
  * own, so nothing in this repo ever has to look a device up by hand again.
  *
  *   npm run roku-hardware:fetch    pull upstream, re-derive, rewrite the dataset
@@ -8,16 +8,16 @@
  * ## Why a dataset and not a hand-typed table
  *
  * This started as 38 lines of object literal in `measurement-guard.js`, typed by hand
- * off the spec. It was accurate — every entry checked out against upstream — and it
+ * off the spec. It was accurate (every entry checked out against upstream), and it
  * was still wrong in the way hand-typed tables are always wrong: **incomplete in a
- * direction nobody would notice.** It keyed on `/^(\d{4})/`, so all sixteen
+ * direction nobody would notice.** It keyed on `/^(\d{4})/`, so the
  * letter-prefixed Roku TV and Projector families (`J000X`, `A000X`, `K8PXX`, …)
- * resolved to `null` forever, spanning 512 MB to 2 GB. Roku TVs are the largest device
- * class there is.
+ * resolved to `null` forever, spanning 512 MB to 2 GB on 2026-08-13. Roku TVs are
+ * the largest device class there is.
  *
  * And upstream moves. In the three months before this was written, `hardware.md` took
  * four commits: one pure SEO/frontmatter edit, one that rewrote an HDR column, one
- * that added the entire legacy table — and one, `0cddfa29`, that **added a new
+ * that added the entire legacy table, and one, `0cddfa29`, that **added a new
  * supported device** (`K000X`, Roku TV "Roxton", 512 MB, 2024). Nothing in this repo
  * would ever have known.
  *
@@ -29,7 +29,7 @@
  * - RAM: `512 MB` twenty-four times, `512MB` once.
  * - Max UI resolution: `1080p`, `1080p/60fps`, and `1920X1080` all mean 1080p.
  * - Max playback: `4K60fps, HDR`, `4K UHD, 60fps`, `3840x2160`, `3840X2160` and
- *   `3,840 x 2,160` all mean 4K — and `1920x1080, 60fps3***` carries a footnote digit
+ *   `3,840 x 2,160` all mean 4K. And `1920x1080, 60fps3***` carries a footnote digit
  *   glued to the frame rate, which a naive `parseInt` reads as 603 fps.
  * - HDR support: fifteen distinct spellings of four formats, including `HDR 10`,
  *   `DolbyVision`, `Dolby Vision IQ` and `HDR10+ Adaptive`.
@@ -40,14 +40,14 @@
  * scheduled sync loudly instead of silently dropping a device into unknown-tier. A
  * dataset that degrades quietly is the hand-typed table with extra steps.
  *
- * Raw cells are deliberately NOT kept beside the normalized values. They would double
+ * Raw cells are not kept beside the normalized values. They would double
  * the file and reintroduce exactly the noise this design removes: a footnote marker
  * moving from `**` to `***` is not a hardware change, and must not open a PR.
  *
  * ## Three levels, because neither a family NOR a model number is one device
  *
  * `3820X` and `3820X2` are both Streaming Stick 4K and both 1 GB, but they are
- * different rows — code name Madison vs Logan, released 2021 vs 2022. So a family is
+ * different rows: code name Madison vs Logan, released 2021 vs 2022. So a family is
  * not a device. Less obviously, **a model number is not one either**: upstream lists
  * `8000X` twice (Roku TV "Midland" 2019, and Roku TV (Brazil) "El Paso" 2020, with
  * different playback resolutions) and `4800X` twice (Roku Ultra LT "Benjamin-W" and
@@ -56,12 +56,13 @@
  * to overwrite a key, which is the case for refusing rather than shrugging.
  *
  * - **`models`** is keyed by the exact `roDeviceInfo.GetModel()` value. The fields
- *   that are ASSERTED equal across its variants — RAM and support tier — sit at the
- *   top; everything that genuinely differs lives in `variants[]`. So `ramTier` is
+ *   that are ASSERTED equal across its variants (RAM and support tier) sit at the
+ *   top; everything that differs lives in `variants[]`. So `ramTier` is
  *   always answerable and `name` is honestly plural.
- * - **`families`** is the four-character prefix, carrying ONLY RAM. It exists because
- *   real devices report model numbers that appear in no Roku table at all — the Stick
- *   4K on this LAN reports `3820RW` — and a family hit is the honest fallback.
+ * - **`families`** is the four-character prefix. Its one device fact is RAM (beside
+ *   its member list and their support tiers). It exists because real devices report
+ *   model numbers that appear in no Roku table at all (the Stick 4K on this LAN
+ *   reports `3820RW`), and a family hit is the honest fallback.
  *   `deviceFor()` says which level matched.
  *
  * Both invariances are checked, never assumed: `assertInvariants` fails if a family
@@ -90,7 +91,7 @@ export const OUTPUT_REL = path.join('scripts', 'data', 'roku-hardware.json');
 
 /**
  * Upstream. `v2.0` is `rokudev/dev-doc`'s DEFAULT branch, not a pinned historical
- * ref — verified at authoring time — so `--fetch` resolves the default branch and
+ * ref (verified at authoring time), so `--fetch` resolves the default branch and
  * asserts it still has this name. A future v3.0 cut then fails the sync loudly
  * instead of silently pinning us to an abandoned ref, which is the failure mode of
  * every hardcoded ref that ever went stale.
@@ -107,7 +108,7 @@ export const SUPPORT_TIERS = Object.freeze({
   CURRENT: 'current',
   /** No longer manufactured, but runs the latest Roku OS. */
   UPDATABLE: 'updatable',
-  /** Discontinued, capped at an old Roku OS, and CANNOT run IDK apps — so it cannot
+  /** Discontinued, capped at an old Roku OS, and cannot run IDK apps, so it cannot
    *  run JellyRock. Kept in the dataset so a consumer can say that, rather than
    *  reporting an unknown device. */
   LEGACY: 'legacy',
@@ -164,7 +165,7 @@ export function ramTierLabel(mb) {
  */
 export function parseResolution(cell) {
   // Footnote markers and the digit some rows glue to them (`60fps3***`) are dropped
-  // BEFORE any number is read — `parseInt` on `60fps3` would otherwise be plausible
+  // BEFORE any number is read: `parseInt` on `60fps3` would otherwise be plausible
   // and wrong. Commas go too: one row writes `3,840 x 2,160`.
   const text = String(cell).replace(/\*+/g, '').replace(/,/g, '').replace(/\s+/g, ' ').trim();
   if (!text || /^n\/a$/i.test(text)) return null;
@@ -195,7 +196,7 @@ export function parseResolution(cell) {
  *
  * Fifteen spellings collapse to four formats. `HDR10+ Adaptive` is HDR10+;
  * `Dolby Vision IQ` is Dolby Vision; `HDR 10` (with the space) is HDR10. The
- * `varies by model` qualifier is kept as its own flag rather than thrown away —
+ * `varies by model` qualifier is kept as its own flag rather than thrown away:
  * for a Roku TV it is the difference between "this panel does Dolby Vision" and
  * "some panels in this family do".
  */
@@ -222,8 +223,8 @@ export function parseHdr(cell) {
     );
   }
   return {
-    // Emitted in HDR_FORMATS order so the JSON is stable regardless of cell wording —
-    // otherwise a reworded upstream cell would reorder the array and open a PR that
+    // Emitted in HDR_FORMATS order so the JSON is stable regardless of cell wording.
+    // Otherwise a reworded upstream cell would reorder the array and open a PR that
     // changes nothing.
     formats: HDR_FORMATS.filter((f) => formats.has(f)),
     variesByModel: /varies by model/i.test(text),
@@ -233,15 +234,15 @@ export function parseHdr(cell) {
 /**
  * A CPU cell -> its instruction-set family, the one part that is cleanly derivable.
  *
- * The rest of the cell is genuinely free text of varying completeness (`ARM` alone in
- * two rows, `ARM Cortex A53 quad core 1.2 GHz` in others), so core count and clock are
- * NOT parsed: they would be null more often than not, and a mostly-null field reads as
+ * The rest of the cell is free text of varying completeness (`ARM` alone in some
+ * rows, `ARM Cortex A53 quad core 1.2 GHz` in others), so core count and clock are
+ * not parsed: they would be null more often than not, and a mostly-null field reads as
  * missing data rather than as absent upstream. The verbatim cell is kept as `cpu`.
  */
 export function parseCpuArch(cell) {
   const text = String(cell).trim();
   // No trailing `\b`: the table writes `ARM11 600 MHz`, where `M` and `1` are both
-  // word characters. Same shape as `4K60fps` in `parseResolution` — this document
+  // word characters. Same shape as `4K60fps` in `parseResolution`: this document
   // glues numbers onto names in several columns.
   if (/^arm/i.test(text)) return 'ARM';
   if (/^mips/i.test(text)) return 'MIPS';
@@ -262,7 +263,7 @@ export function parseGraphicsApi(cell) {
  * Every markdown table in the document, as `{ columns, rows }` with rows keyed by
  * column HEADER.
  *
- * Header-keyed rather than positional, and that is load-bearing rather than tidy: the
+ * Header-keyed rather than positional, and that matters for more than tidiness: the
  * three tables have different column sets (the legacy one has no graphics, resolution
  * or HDR columns at all), and a positional read of the current table finds `1920X1080`
  * in the Max-UI-Resolution column and takes it for a model number, because it matches
@@ -274,7 +275,7 @@ export function parseTables(markdown) {
   // Everything since the previous table ended. Carried per table rather than
   // recovered afterwards by searching the document for the table's own text: the
   // header rows are space-padded to their column widths, so a reconstructed
-  // `| a | b |` marker never matches what is actually on the line — the first cut of
+  // `| a | b |` marker never matches what is actually on the line. The first cut of
   // this function looked it up that way and found nothing, which is the failure mode
   // of every "find my own text again" search.
   let preceding = [];
@@ -399,7 +400,7 @@ export function buildDataset(markdown) {
         throw new SpecParseError(`a ${supportTier} row lists no model number (${variant.name})`);
       }
       for (const model of listed) {
-        // A REPEATED model number is upstream reality, not an error — see the header.
+        // A REPEATED model number is upstream reality, not an error: see the header.
         // The fields hoisted above `variants` must agree across them, and that is
         // asserted rather than assumed: `assertInvariants` fails if two variants of
         // one model number disagree about RAM or support tier, which is the only way
@@ -454,19 +455,20 @@ export function buildDataset(markdown) {
  * The lookup key for a model number: its first four characters.
  *
  * Four, not `/^\d{4}/`. The digits-only key silently excluded every Roku TV and the
- * Projector — `J000X`, `A000X`, `C000GB`, `K8PXX` — thirteen currently-supported
- * families spanning 512 MB to 2 GB. Checked against the whole published table before
- * adopting it: 70 families, none carrying two RAM values, and `assertInvariants`
+ * Projector (`J000X`, `A000X`, `C000GB`, `K8PXX`): currently supported families
+ * spanning 512 MB to 2 GB on 2026-08-13. Checked against the whole published table before
+ * adopting it: no family carries two RAM values, and `assertInvariants`
  * re-checks that on every generate and every `--check` rather than trusting it.
  */
 export const familyOf = (model) => String(model).slice(0, 4).toUpperCase();
 
 /**
- * Families carry ONLY what is invariant across their members.
+ * Families carry only what is invariant across their members (RAM), plus the member
+ * list and the set of their support tiers.
  *
  * RAM is; almost nothing else is. `3820X` and `3820X2` are one family and one RAM
  * size, but different code names (Madison, Logan) and different release years (2021,
- * 2022) — so a family cannot answer "what device is this", only "how much memory does
+ * 2022), so a family cannot answer "what device is this", only "how much memory does
  * it have". That is exactly the question the measurement guard asks, and pretending to
  * more would be the hand-typed table's mistake in a new costume.
  */
@@ -498,7 +500,7 @@ const sortKeys = (obj) =>
  * Everything the dataset's shape promises, asserted.
  *
  * This is the real version of a test that used to read
- * `expect(new Set(Object.keys(TABLE)).size).toBe(Object.keys(TABLE).length)` — which
+ * `expect(new Set(Object.keys(TABLE)).size).toBe(Object.keys(TABLE).length)`, which
  * can never fail, because object keys cannot repeat. Its stated purpose was to check
  * the assumption family-keying rests on. That claim is about the published table, and
  * only a check against the parsed table can make it.
@@ -574,7 +576,7 @@ export function assertInvariants(dataset) {
       }
     }
     // THE assumption family-keying rests on. If Roku ever ships a 2 GB revision under
-    // an existing family prefix, this is what says so — loudly, at sync time, instead
+    // an existing family prefix, this is what says so: loudly, at sync time, instead
     // of quietly mislabelling a comparison arm.
     const rams = [...new Set(family.models.map((m) => models[m]?.ramMb))];
     if (rams.length > 1) {
@@ -599,7 +601,7 @@ export function assertInvariants(dataset) {
 // ── Serialization ────────────────────────────────────────────────────────────
 
 /**
- * A stable hash over the DATA only — never over provenance.
+ * A stable hash over the DATA only, never over provenance.
  *
  * Provenance changes on every fetch (`fetchedAt`, and the blob SHA whenever upstream
  * edits prose). Hashing it would make the checksum change when nothing about any
@@ -633,7 +635,7 @@ const gh = (args) =>
  *
  * Asserts the tracked ref is still the repository default. `v2.0` is the default
  * today; if Roku cuts a v3.0 and moves it, this fails rather than continuing to
- * report a frozen table as current — which is the specific way a pinned ref goes bad
+ * report a frozen table as current, which is the specific way a pinned ref goes bad
  * without anyone noticing.
  */
 export function fetchUpstream() {

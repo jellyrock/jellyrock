@@ -34,7 +34,5 @@
     <field id="lastRunVersion" type="string" value="" />
     <field id="fontScaleFactor" type="float" value="1.0" />
 
-    <!-- DEBUG ONLY: Raw data for debugging - only populated when bs_const=debug=true -->
-    <field id="rawUserData" type="assocarray" />
   </interface>
 </component>

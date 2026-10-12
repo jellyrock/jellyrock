@@ -22,9 +22,9 @@
 //     signal the date is supposed to carry. A soft reminder lets the
 //     agent decide; the date stays meaningful.
 //
-// Why dev guides are covered here but NOT by `docs-stale-blocking.cjs`:
+// Why dev guides are covered here but not by `docs-stale-blocking.cjs`:
 // this reminder is the only freshness pressure `docs/dev/` gets, and a
-// how-to that documents a moved path breaks the reader immediately — but
+// how-to that documents a moved path breaks the reader immediately, but
 // it does so without changing any subsystem's shape, so it must never
 // block a PR. Soft prompt here, hard gate for architecture only.
 //
@@ -42,7 +42,7 @@
 //   node scripts/lint/check-touched-related-files.cjs --quiet  (no output if no matches)
 //
 // Env:
-//   BASE_REF — default base ref (set by harness wrappers if available)
+//   BASE_REF: default base ref (set by harness wrappers if available)
 
 'use strict';
 
@@ -90,7 +90,7 @@ for (const docPath of docs) {
   if (related.length === 0) continue;
 
   const docRel = path.relative(ROOT_DIR, docPath);
-  if (touched.includes(docRel)) continue; // doc was updated — no reminder needed
+  if (touched.includes(docRel)) continue; // doc was updated; no reminder needed
 
   const hits = [];
   for (const t of touched) {

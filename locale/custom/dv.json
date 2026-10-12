@@ -14,5 +14,16 @@
   "LabelCollections": "ކަލެކްޝަންތައް",
   "LabelCustom": "ކަސްޓަމް",
   "LabelDefault": "ޑީފޯލްޓް",
-  "LabelDirectPlaying": "ޑައިރެކްޓް ޕްލޭއިންގ"
+  "LabelDirectPlaying": "ޑައިރެކްޓް ޕްލޭއިންގ",
+  "LabelPersonKindActor": "އެކްޓަރު",
+  "LabelPersonKindAlbumArtist": "އަލްބަމް އާރޓިސްޓް",
+  "LabelPersonKindArranger": "އެރޭންޖަރ",
+  "LabelPersonKindArtist": "ފަންނާނު",
+  "LabelPersonKindAuthor": "ލިޔުންތެރިޔާ",
+  "LabelPersonKindColorist": "ކަލަރރިސްޓް",
+  "LabelPersonKindComposer": "ކޮމްޕޯސަރ",
+  "LabelPersonKindConductor": "ކޮންޑަކްޓަރ",
+  "LabelPersonKindCoverArtist": "ކަވަރ އާޓިސްޓް",
+  "LabelPersonKindCreator": "ހެދިމީހާ",
+  "LabelPersonKindDirector": "ޑިރެކްޓަރު"
 }

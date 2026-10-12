@@ -2,7 +2,7 @@ import "pkg:/source/utils/upstreamManifest.bs"
 
 namespace tests
 
-  ' getUpstreamManifestBlocker — play a source's own HLS or DASH manifest URL (a Live TV channel, a
+  ' getUpstreamManifestBlocker: play a source's own HLS or DASH manifest URL (a Live TV channel, a
   ' .strm item) whether or not the server offers direct play, once the device has checked it.
   '
   ' Jellyfin 12.0 stopped offering direct play for any manifest source (StreamBuilder
@@ -107,7 +107,7 @@ namespace tests
 
     @it("never overrides the retry that forces a transcode")
     ' The fallback after a failed direct play. Overriding it would send the device back to the
-    ' stream it just failed on, and the retry would repeat forever.
+    ' stream it failed on, and the retry would repeat forever.
     function _()
       m.assertEqual(getUpstreamManifestBlocker(m.declined(), m.request({ forceTranscoding: true })), UpstreamManifestBlocker.FORCED_TRANSCODE)
     end function

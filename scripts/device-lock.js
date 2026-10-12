@@ -12,7 +12,7 @@
  *
  *   .177  Streaming Stick 4K   local development (`.env` ROKU_IP)
  *   .178  Ultra                a personal device; occasional dev overflow
- *   .200  Streaming Stick 4K   CI ONLY -- `secrets.ROKU_DEVICE_IP`, an ORG
+ *   .200  Streaming Stick 4K   CI only -- `secrets.ROKU_DEVICE_IP`, an ORG
  *                              secret unmodified since 2026-03-18, read by both
  *                              device workflows and by RTA
  *
@@ -29,7 +29,7 @@
  *
  * This does not serialise a local run against CI, because they are not on the
  * same hardware. An earlier revision polled the Actions API and refused to start
- * while ANY device workflow was in flight. It was removed deliberately: its
+ * while ANY device workflow was in flight. It was removed on purpose: its
  * observable behaviour was "you may not use .177 because CI is busy on .200" --
  * blocking a developer from their own device to protect one nobody is touching.
  * It also carried a hardcoded workflow-filename list that rots silently on
@@ -42,7 +42,7 @@
  * reading of that incident is REFUTED by the sweep above: a `hardRelaunch()` on
  * .177 cannot reach .200. What remains is contention on the shared
  * `demo.jellyfin.org` account, or plain flake, and those are not yet
- * distinguished -- see the open followup in `docs/progress.md`. Do NOT re-add a
+ * distinguished -- see the open followup in `docs/progress.md`. Do not re-add a
  * CI-yield check on the strength of #800 until that is settled; if the demo
  * server turns out to be the shared resource, the thing to lock is the server,
  * not the device.
@@ -82,7 +82,7 @@
  *
  * Creating a ref needs `contents: write`. Both device workflows declare
  * `permissions: contents: read`, and `device-unit-tests.yml` does so
- * DELIBERATELY -- it runs fork code under `pull_request_target`. So CI does not
+ * on purpose -- it runs fork code under `pull_request_target`. So CI does not
  * publish; it performs a single read, which is enough for the one case that
  * matters (a local run holding CI's device announces itself, and CI backs off).
  * CI's own exclusivity against other CI jobs already comes from the fact that
@@ -92,32 +92,29 @@
  *
  * Measured against this repo on 2026-08-10: `POST /git/refs` conflict detection
  * is immediate and reliable (422 on the second create, every time), but a GET of
- * an aged ref came back stale 2/24 times. So correctness NEVER rests on a read
+ * an aged ref came back stale 2/24 times. So correctness never rests on a read
  * being empty. The CAS decides who holds the lock; a read only names the holder
  * for a human and feeds the staleness check, and the steal path re-confirms
  * before acting.
  *
- * ## Degraded mode is recorded, not just logged
+ * ## Degraded mode is recorded, not only logged
  *
  * When GitHub is unreachable or no token exists, a run warns and proceeds
  * unlocked rather than blocking device work. A warning line alone is useless to
  * an agent: it is read when the command returns, minutes after the decision, and
  * the exit code stays 0, so a degraded green is indistinguishable from a real
- * one. The lock state is therefore stamped into the run record
- * (`<runDir>/run-meta.json` — `out/rta/`, `out/device/`, … per run kind) as
- * provenance on the RESULT.
+ * one. The lock state (`locked`, `mode`, `degraded`) is therefore stamped into
+ * the run record as provenance on the RESULT: into `run-meta.json` for the run in
+ * hand, and into a line of the never-reset `runs.jsonl` ledger, which both device
+ * workflows upload as an artifact.
  *
- * That record is LOCAL-ONLY today: `out/` is gitignored and neither device
- * workflow uploads it as an artifact, so in CI the provenance still dies with the
- * runner. Locally it has a reader (the RTA failure fold + printed summary).
- *
- * `RTA_REQUIRE_LOCK=1` turns degraded into a hard failure. CI does NOT set it:
+ * `RTA_REQUIRE_LOCK=1` turns degraded into a hard failure. CI does not set it:
  * CI is alone on .200, so there is no contention for the flag to protect
  * against, and setting it would only trade a genuine green device-test run for
  * an api.github.com blip. It stays supported as a manual override.
  *
  * Acquisition happens before the DEPLOY, so a contended run is refused before it
- * touches the device and long before the ~10-15min suite. It is NOT the first
+ * touches the device and long before the multi-minute suite. It is not the first
  * thing that happens overall -- `npm run test:rta` is `npm run build && node
  * scripts/rta-run.js`, so a refusal costs the build first. Measured 2026-08-10:
  * an incremental build took ~11s and the lock landed ~1.5s into `rta-run.js`, so
@@ -147,8 +144,8 @@ const REFRESH_MS = 5 * 60 * 1000;
  * How long a lease survives WITHOUT a heartbeat before it is considered abandoned.
  *
  * This is a lease timeout, not a cap on how long a run may take. Every publisher
- * refreshes (see REFRESH_MS and `startRefresh`), so a legitimately long hold — a
- * 40-minute `screenshots:capture` across the language matrix — keeps renewing and
+ * refreshes (see REFRESH_MS and `startRefresh`), so a legitimately long hold (a
+ * `screenshots:capture` across the language matrix, tens of minutes) keeps renewing and
  * never self-expires. Sizing it against "the longest run we can imagine" would be
  * the wrong model, and it is what an earlier revision of this comment did.
  *
@@ -171,12 +168,12 @@ class SkipWrite extends Error {}
 /**
  * The ref path component for a device: sha256 of its ECP identity, truncated.
  *
- * NOT the raw `device-id`. The ref lives in a PUBLIC repo, so its name is
+ * Not the raw `device-id`. The ref lives in a PUBLIC repo, so its name is
  * world-readable via `git ls-remote`, and the device-id partially encodes the
  * hardware serial. Both parties hash the same input, so they still agree on the
  * name while publishing nothing about the hardware.
  *
- * 16 hex chars is 64 bits — vastly more than enough to separate a handful of
+ * 16 hex chars is 64 bits, vastly more than enough to separate a handful of
  * Rokus. A collision would merely make two devices share one lock, which is
  * conservative; it can never produce a MISSED lock. Hashing also removes the
  * ref-name escaping problem for free: the output is always [0-9a-f]{16}, so the
@@ -193,8 +190,8 @@ function deviceKey(id) {
  * Ask the device who it is, over ECP.
  *
  * The lock is keyed by the device's OWN identity, never by its address. Keying
- * on the IP looks fine until the two parties disagree about it — a DHCP lease
- * change, or simply a `ROKU_DEVICE_IP` secret that names the device differently
+ * on the IP looks fine until the two parties disagree about it: a DHCP lease
+ * change, or a `ROKU_DEVICE_IP` secret that names the device differently
  * from a developer's `.env`. Then each side computes a different ref name, each
  * reads "no lock", and both proceed. That failure is SILENT and total: it looks
  * exactly like an idle device. `device-id` is stable, and any host on the LAN can
@@ -206,20 +203,20 @@ function deviceKey(id) {
  * Exported because the measurement guard needs the SAME document for tier-2
  * provenance (device model, Roku OS version) that this module already fetches for
  * the lock key. A second fetcher would be a second timeout policy, a second error
- * vocabulary, and a second thing to fix when ECP changes — so this one grew a
+ * vocabulary, and a second thing to fix when ECP changes. So this one grew a
  * general return value rather than growing a sibling.
  *
  * Values are returned verbatim (trimmed); no field is required here, because the
  * callers disagree about which ones they cannot proceed without.
  *
- * ⚠️ **XML entities are NOT decoded.** Verified against live ECP on three devices
+ * ⚠️ **XML entities are not decoded.** Verified against live ECP on three devices
  * (2026-08-12): zero entities in any response, and every field read today is
- * machine-generated — `device-id` (a serial), `model-name`, `model-number`,
+ * machine-generated: `device-id` (a serial), `model-name`, `model-number`,
  * `software-version`, `software-build`. None can contain user input, so none can
  * carry one.
  *
- * The exposure is the user-settable name fields — `user-device-name`,
- * `friendly-device-name`, `default-device-name` — which nothing reads yet. A device
+ * The exposure is the user-settable name fields (`user-device-name`,
+ * `friendly-device-name`, `default-device-name`), which nothing reads yet. A device
  * named "Living Room & Den" would come back as the literal `Living Room &amp; Den`:
  * a wrong value, not a parse failure. Worth knowing because the field a future
  * caller is most likely to want is a human-readable device LABEL, which is exactly
@@ -284,7 +281,7 @@ async function resolveDeviceKey(host) {
 let cachedToken;
 /**
  * `GITHUB_TOKEN` in CI, otherwise the local `gh` login. Returns null rather than
- * throwing — a missing token is a degraded run, not a crash.
+ * throwing: a missing token is a degraded run, not a crash.
  */
 async function getToken() {
   if (cachedToken !== undefined) return cachedToken;
@@ -320,15 +317,17 @@ async function getRepo() {
  * Minimal GitHub REST call over `node:https`.
  *
  * Not `scripts/lib/signals-fetch.cjs`'s `httpGet`, and not `fetch`. `httpGet`
- * REJECTS any non-200 — but this protocol is built on reading exactly those: 422
+ * REJECTS any non-200, but this protocol is built on reading exactly those: 422
  * is the compare-and-swap signal and 404 is "lock is free". Teaching a
  * spec-fetching helper about auth headers, request bodies and status
  * passthrough would turn it into a general REST client for one caller in an
- * unrelated domain. `fetch` is out because the repo's ESLint targets Node >=16,
- * where it and `AbortSignal.timeout` are still flagged experimental.
+ * unrelated domain. `fetch` was ruled out when the repo had no `engines` field and
+ * ESLint's Node plugin fell back to Node >=16, where it and `AbortSignal.timeout`
+ * were still flagged experimental. `engines` now requires Node 22, so that reason
+ * no longer holds.
  *
  * `token` is optional. jellyrock/jellyrock is public and both endpoints the lock
- * reads (`git/ref`, `actions/runs`) answer unauthenticated, which is what lets
+ * reads (`git/ref`, `git/tags`) answer unauthenticated, which is what lets
  * `device-unit-tests.yml` run the check WITHOUT being handed a credential it
  * would then expose to fork code. Writes still need one, so a tokenless caller
  * is read-only by construction.
@@ -340,7 +339,7 @@ function api(pathname, opts = {}) {
 /**
  * The real transport. Swappable via `_internals.setTransport` so the unit tests
  * can drive the PROTOCOL (who wins a CAS, who yields to whom) without touching
- * the network — and, more importantly, so a stubbed test can never silently fall
+ * the network, and, more importantly, so a stubbed test can never silently fall
  * through to real GitHub and start creating refs.
  */
 function httpsTransport(pathname, { method = 'GET', body, token } = {}) {
@@ -387,9 +386,9 @@ let transport = httpsTransport;
 /**
  * Identity written into the tag object, so a contender can be named to a human.
  *
- * Deliberately NO hostname. This ref and the tag object it points at live in a
- * PUBLIC repo — `git ls-remote` and `GET /git/tags/{sha}` both answer
- * unauthenticated — so every field here is world-readable for as long as the
+ * No hostname, on purpose. This ref and the tag object it points at live in a
+ * PUBLIC repo (`git ls-remote` and `GET /git/tags/{sha}` both answer
+ * unauthenticated), so every field here is world-readable for as long as the
  * lock is held. `where` plus a pid already separates the only cases a human
  * needs to tell apart (a second terminal on this machine vs. CI); a machine name
  * identifies the PERSON, not the run, and buys nothing for that.
@@ -428,7 +427,7 @@ export function describeHolder(holder) {
  * Read the current holder, or null when free.
  *
  * A read can be stale (see the header), so this is for REPORTING and for the
- * staleness check — never for deciding that the lock is free.
+ * staleness check, never for deciding that the lock is free.
  */
 export async function readDeviceLock({ deviceHost = process.env.ROKU_IP } = {}) {
   const token = await getToken();
@@ -439,10 +438,10 @@ export async function readDeviceLock({ deviceHost = process.env.ROKU_IP } = {}) 
   if (got.status !== 200 || !got.json?.object?.sha) return null;
   const tagSha = got.json.object.sha;
   // The REF existing is the authority; the tag only NAMES the holder. A failed
-  // tag fetch therefore means "someone holds it, we cannot say who" — never "the
+  // tag fetch therefore means "someone holds it, we cannot say who", never "the
   // device is free". An earlier revision returned null here, which let CI (whose
   // only signal is this read) conclude free on a transient 5xx while a local run
-  // held the lock. That is the module's own rule — never infer free from a read —
+  // held the lock. That is the module's own rule (never infer free from a read)
   // being broken by its own helper.
   const tag = await api(`/repos/${repo}/git/tags/${tagSha}`, { token });
   if (tag.status !== 200) return { holder: null, acquiredAt: null, tagSha };
@@ -482,13 +481,13 @@ async function createHolderTag(repo, token, deviceHost, holder) {
 /**
  * Drop an abandoned lock.
  *
- * Deliberately conservative, because a DELETE is unconditional and reads are
+ * Conservative on purpose, because a DELETE is unconditional and reads are
  * eventually consistent: re-read and require the SAME tag sha and a still-expired
  * clock before touching anything. A lock that was released and freshly retaken
  * between the two reads changes sha, so it is left alone.
  *
  * The confirming read is SEPARATED IN TIME on purpose. Measured on 2026-08-10,
- * ref staleness is not a propagation window that closes — it is per-read replica
+ * ref staleness is not a propagation window that closes: it is per-read replica
  * routing, and the stale hit landed on the 4th of 8 consecutive reads, not the
  * 1st. Two back-to-back reads can therefore hit the same stale replica and agree
  * with each other while both are wrong, which would let us delete a lock that had
@@ -497,7 +496,7 @@ async function createHolderTag(repo, token, deviceHost, holder) {
  * on the normal one.
  */
 async function stealIfExpired(repo, token, ref, deviceHost, current, leaseMs) {
-  // `acquiredAt` is the tag date, which every heartbeat re-stamps — so this is
+  // `acquiredAt` is the tag date, which every heartbeat re-stamps, so this is
   // "time since last sign of life", not "time since the run started".
   const renewed = current.acquiredAt ? Date.parse(current.acquiredAt) : NaN;
   if (!Number.isFinite(renewed) || Date.now() - renewed < leaseMs) return false;
@@ -515,7 +514,7 @@ async function stealIfExpired(repo, token, ref, deviceHost, current, leaseMs) {
  *
  * Resolves to a handle whose `held` says whether exclusivity was actually
  * obtained and whose `degraded` says whether the check could even run. Callers
- * MUST call `release()` (including on interrupt) and should stamp `meta` into
+ * must call `release()` (including on interrupt) and should stamp `meta` into
  * their run record.
  *
  * There is NO wait budget: a contended run fails immediately and names the
@@ -523,7 +522,7 @@ async function stealIfExpired(repo, token, ref, deviceHost, current, leaseMs) {
  * queueing path existed only to serve the Actions-API CI-yield check that this
  * module no longer performs (see the header).
  *
- * Throws only when exclusivity was required and could not be had — either
+ * Throws only when exclusivity was required and could not be had: either
  * `RTA_REQUIRE_LOCK=1` with no working lock, or a live contender.
  */
 export async function acquireDeviceLock({
@@ -655,7 +654,7 @@ function degraded(reason, requireLock, what) {
   );
   return {
     held: false,
-    mode: 'degraded', // same shape as the success path — `lock.mode` is never undefined
+    mode: 'degraded', // same shape as the success path: `lock.mode` is never undefined
     degraded: true,
     meta: {
       locked: false,
@@ -681,8 +680,8 @@ async function releaseRef(repo, token, ref, tookRef) {
 }
 
 /**
- * Keep a lease alive by re-stamping the tag date. Runs for EVERY publisher, not
- * just watch mode — this is what makes DEFAULT_LEASE_MS a lease timeout rather
+ * Keep a lease alive by re-stamping the tag date. Runs for every publisher, not
+ * only watch mode. This is what makes DEFAULT_LEASE_MS a lease timeout rather
  * than a cap on run length. Returns a stop function, which `release()` calls.
  * `unref()` so the timer never keeps the process up.
  */
@@ -707,21 +706,21 @@ function startRefresh(repo, token, ref, deviceHost, holder) {
  * Stamp lock provenance onto the run record.
  *
  * The point is that a degraded or unlocked run stays identifiable AFTER the fact
- * — from CI, from an agent, from a later triage — instead of living only in a
+ * (from CI, from an agent, from a later triage) instead of living only in a
  * scrollback line nobody reads. Phase 4's measurement provenance extends this
  * same record rather than inventing a second one.
  *
- * `dir` is REQUIRED, and that is load-bearing rather than a tidiness knob: this is
+ * `dir` is REQUIRED, and that guards something rather than being a tidiness knob: this is
  * a full OVERWRITE, so while every entry point shared one path, any device run
  * destroyed the previous one's record. Harmless while the file held only lock
  * provenance; not once it carries folded failure records. A default here would be
- * an alias onto one known run kind — exactly the clobber the per-kind split
+ * an alias onto one known run kind: exactly the clobber the per-kind split
  * removes, reintroduced silently for whichever caller forgot. The run-kind mapping
  * lives with those records in `scripts/run-record.js` (`runDir`); this module knows
  * about locks, not about run kinds.
  *
  * A missing `dir` is a programming error, not a runtime condition, so it throws
- * rather than joining the "never fail a run over bookkeeping" contract below —
+ * rather than joining the "never fail a run over bookkeeping" contract below:
  * a silent no-op would lose the record it exists to write.
  */
 export function writeRunMeta(meta, extra = {}, dir) {
@@ -741,18 +740,18 @@ export function writeRunMeta(meta, extra = {}, dir) {
 export const _internals = {
   deviceKey,
   resolveDeviceKey,
-  /** Test seam — avoids needing a real Roku on the LAN. */
+  /** Test seam: avoids needing a real Roku on the LAN. */
   setDeviceIdLookup: (fn) => {
     idCache.clear();
     deviceIdLookup = fn ?? fetchDeviceId;
   },
   describeHolder,
   DEFAULT_LEASE_MS,
-  /** Test seam — see `httpsTransport`. Pass nothing to restore the real one. */
+  /** Test seam: see `httpsTransport`. Pass nothing to restore the real one. */
   setTransport: (fn) => {
     transport = fn ?? httpsTransport;
   },
-  /** Test seam — takes the directory so a test never reads the real `.device-runs/`. */
+  /** Test seam: takes the directory so a test never reads the real `.device-runs/`. */
   strandedSnapshotLines,
   acceptedResidueLines,
 };
@@ -763,7 +762,7 @@ export const _internals = {
  * A registry snapshot under `.device-runs/` means exactly one thing: a run did not
  * put that device back. The file is the recovery path AND the device's whole
  * registry including a live `authToken`, so it is both the most valuable and the
- * most sensitive thing on disk here — and since it moved out of `out/` nothing
+ * most sensitive thing on disk here. Since it moved out of `out/`, nothing
  * deletes it but a verified restore or `npm run rta:restore`.
  *
  * It had no operator-facing surface at all, which is how it got destroyed: during
@@ -771,27 +770,27 @@ export const _internals = {
  * aimed at the ledger beside it, and recovery meant hand-writing registry keys back
  * over ODC. Nothing would have told you it was there. This line does.
  *
- * Read by GLOB rather than by composing the path from `ROKU_IP`, deliberately, and
- * it is not a shortcut: the case that bites is a snapshot for a device you are NOT
+ * Read by GLOB rather than by composing the path from `ROKU_IP`, and that is
+ * not a shortcut: the case that bites is a snapshot for a device you are not
  * currently pointed at (stranded by `npm run demo` on `.177`, then `ROKU_IP=.178`),
  * which a host-specific check would report as clean. Each file names its own host,
- * so the glob answers for every device with no second copy of the naming convention
- * — `tests/rta/lib/registry.js` owns that, and importing it here would drag the
+ * so the glob answers for every device with no second copy of the naming convention:
+ * `tests/rta/lib/registry.js` owns that, and importing it here would drag the
  * whole `roku-test-automation` client into a module that only knows about locks.
  *
  * ## A snapshot is not evidence of a STRANDED run on its own
  *
  * This reported every snapshot as mid-restore, and the file is present for the
  * WHOLE of a healthy run (`rta-run.js` writes it right after the deploy and clears
- * it after the suite), so a live ~21min `test:rta` was reported as "left
- * mid-restore" and handed `rta:restore` — which would have restored the registry
+ * it after the suite), so a live `test:rta` (~21 min on 2026-09-09) was reported as "left
+ * mid-restore" and handed `rta:restore`, which would have restored the registry
  * out from under it and relaunched the channel mid-suite. The advice was the exact
  * inverse of the right move, and `status` held the facts to know better.
  *
  * `ownerPid` is what separates them; see `writeSnapshotFile`. The device lock is
- * NOT the signal to use even though it is right here: a degraded run (no token)
+ * not the signal to use even though it is right here: a degraded run (no token)
  * holds no lock while very much running, and a stale lease outlives a run that
- * finished cleanly — both wrong, in both directions.
+ * finished cleanly. Both wrong, in both directions.
  *
  * The in-progress case is still REPORTED, never suppressed. An operator asking
  * about a device wants to know a run owns it, and the auth token in that file is
@@ -806,11 +805,11 @@ function strandedSnapshotLines(dir = '.device-runs') {
       .map((f) => ({ file: f, host: /^registry-(.+)\.json$/.exec(f)?.[1] }))
       .filter((e) => e.host);
   } catch {
-    return out; // no `.device-runs/` yet — no device run has ever been taken here
+    return out; // no `.device-runs/` yet: no device run has ever been taken here
   }
   for (const { file, host: hostFromName } of entries) {
-    // The FILENAME is the fallback, not a placeholder. A truncated snapshot — what
-    // a killed write leaves — is exactly when an operator needs the recovery
+    // The FILENAME is the fallback, not a placeholder. A truncated snapshot (what
+    // a killed write leaves) is exactly when an operator needs the recovery
     // command, and a placeholder there produced `ROKU_IP=an unknown device npm run
     // rta:restore`, which the shell parses as `ROKU_IP=an` and then tries to run
     // `unknown`. The host is in the name either way, so the contents only ever add
@@ -824,7 +823,7 @@ function strandedSnapshotLines(dir = '.device-runs') {
       takenAt = parsed.takenAt || null;
       ownerPid = parsed.ownerPid ?? null;
     } catch {
-      // A truncated or unreadable snapshot is still a stranded one — say so with
+      // A truncated or unreadable snapshot is still a stranded one: say so with
       // what we have rather than staying silent about the file that is sitting
       // there. It also has no readable `ownerPid`, which is correct: a killed
       // write is exactly the case where the run is gone.
@@ -853,14 +852,14 @@ function strandedSnapshotLines(dir = '.device-runs') {
  * Report any device carrying differences an operator ACCEPTED, as part of `status`.
  *
  * `npm run rta:restore -- --accept` exists because a residual the restore loop cannot
- * converge would otherwise wedge every later run — it clears the snapshot so the next
+ * converge would otherwise wedge every later run. It clears the snapshot so the next
  * run is not blocked. The cost of clearing it is that the device is left not-as-found
  * with nothing on disk saying so, and the next run's snapshot then adopts that state
  * as the user's own baseline. `tests/rta/lib/registry.js` writes `accepted-<host>.json`
  * to close that, and this is the line that surfaces it.
  *
- * Unlike a stranded snapshot this file is SAFE to delete — it is redacted evidence,
- * not the recovery path — and deleting it is how an operator acknowledges the device.
+ * Unlike a stranded snapshot this file is SAFE to delete (it is redacted evidence,
+ * not the recovery path), and deleting it is how an operator acknowledges the device.
  * Nothing clears it automatically, because no later restore can prove the original
  * value came back; it is gone.
  *
@@ -877,7 +876,7 @@ function acceptedResidueLines(dir = '.device-runs') {
       .map((f) => ({ file: f, host: /^accepted-(.+)\.json$/.exec(f)?.[1] }))
       .filter((e) => e.host);
   } catch {
-    return out; // no `.device-runs/` yet — no device run has ever been taken here
+    return out; // no `.device-runs/` yet: no device run has ever been taken here
   }
   for (const { file, host: hostFromName } of entries) {
     // Same fallback rule as the snapshot report: the filename carries the host, so a
@@ -890,7 +889,7 @@ function acceptedResidueLines(dir = '.device-runs') {
       const parsed = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
       host = parsed.host || host;
       if (Array.isArray(parsed.events) && parsed.events.length) {
-        // The record APPENDS — every accept on this device is still live damage,
+        // The record APPENDS: every accept on this device is still live damage,
         // because nothing repairs one. Report the total and the most recent.
         events = parsed.events.length;
         count = parsed.events.reduce(
@@ -900,7 +899,7 @@ function acceptedResidueLines(dir = '.device-runs') {
         acceptedAt = parsed.events[parsed.events.length - 1].acceptedAt || null;
       }
     } catch {
-      // Unreadable is still accepted-and-unresolved — say so with what we have.
+      // Unreadable is still accepted-and-unresolved: say so with what we have.
     }
     out.push(
       `⚠️  ${host} has ${count ?? 'some'} accepted difference(s)` +
@@ -919,7 +918,7 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
   const host = process.env.ROKU_IP;
   if (cmd === 'status') {
     // A device that cannot answer ECP makes `readDeviceLock` throw (it resolves the
-    // key first), which surfaced as a raw Node stack trace — an unreachable device
+    // key first), which surfaced as a raw Node stack trace. An unreachable device
     // is the most ordinary thing `status` gets asked about, and the least
     // deserving of one. Report it and keep going: the stranded-snapshot and
     // accepted-residue lines below are read from LOCAL disk and are still true, and
@@ -932,7 +931,7 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
     // Name the device this answer is ABOUT. `status` reads `ROKU_IP`, so on a LAN
     // with three Rokus the line above is otherwise silent about which one it
     // describes. It is also the only way to learn the key by which the run ledger
-    // records a device — `runs.jsonl` stores this hash, never an address, so
+    // records a device: `runs.jsonl` stores this hash, never an address, so
     // filtering a baseline to one device (see rta-tests.md) needs it. Degrades to
     // a reason rather than throwing: an unreachable device still has a lock state
     // worth printing, and this line is provenance, not the answer.

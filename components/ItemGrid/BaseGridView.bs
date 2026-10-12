@@ -267,13 +267,12 @@ sub onScreenShown()
   updateLoadingMore()
 end sub
 
-' Router focus hook (overrides JRScreen.handleFocus). The router calls it right after
+' Focus hook (overrides JRScreen.restoreScreenFocus). The router's handleFocus runs it right after
 ' onScreenShown, and the base restores lastFocus again — undoing a restore that followed what
 ' changed while this view was suspended. Same trap and same fix as Home.restoreHomeFocus.
-function handleFocus(_data = {} as object) as boolean
+sub restoreScreenFocus()
   restoreGridFocus()
-  return true
-end function
+end sub
 
 ' Configure the library view from its route. Both in-app navigation and a deep link / cast
 ' supply the rich library node as route.context.item (the resolver passes the node
@@ -494,20 +493,18 @@ sub loadInitialItems()
   ' Configure grid based on presenter and view
   configureGrid()
 
-  ' Check if LiveTV presenter wants to show TV Guide
-  if m.top.presenterType = "livetv"
-    if LCase(m.view) = "tvguide"
-      ' Update title before early return to ensure overhang shows correct title on first load
-      updateTitle()
-      showTVGuide()
-      stopGridSpinner()
-      ' The guide is this view's finished surface; the grid never loads on this path.
-      m.top.loadState = "loaded"
-      return
-    else
-      ' Ensure TV Guide is hidden if switching away from it
-      hideTVGuide()
-    end if
+  ' The presenter decides whether this view is the TV Guide rather than the grid
+  if m.presenter.showsTVGuide(m.view)
+    ' Update title before early return to ensure overhang shows correct title on first load
+    updateTitle()
+    showTVGuide()
+    stopGridSpinner()
+    ' The guide is this view's finished surface; the grid never loads on this path.
+    m.top.loadState = "loaded"
+    return
+  else
+    ' Ensure TV Guide is hidden if switching away from it
+    hideTVGuide()
   end if
 
   ' Alpha search
@@ -1135,7 +1132,7 @@ sub focusAfterLoad()
   end if
 end sub
 
-' Focus on return to this view (onScreenShown and handleFocus). The saved lastFocus is kept
+' Focus on return to this view (onScreenShown and restoreScreenFocus). The saved lastFocus is kept
 ' when it is outside the content area (the alpha menu, the TV guide). Inside it, what it
 ' names may no longer be what the view shows — a load can fail or finish while suspended —
 ' so the content area is focused as it is now.

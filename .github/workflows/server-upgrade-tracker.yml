@@ -58,6 +58,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Generate JellyRock app token
         id: app-token

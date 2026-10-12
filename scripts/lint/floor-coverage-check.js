@@ -1,9 +1,9 @@
-// scripts/lint/floor-coverage-check.js — PROACTIVE PR-time floor-coverage lint.
+// scripts/lint/floor-coverage-check.js: PROACTIVE PR-time floor-coverage lint.
 // Phase 6 followup of the server-upgrade-automation pipeline
 // (docs/architecture/server-upgrade-automation.md).
 //
 // The release-triggered server-upgrade digest already runs the floor-coverage
-// check (backward + symmetry, minus the endpoint-availability ledger) — but only
+// check (backward + symmetry, minus the endpoint-availability ledger), but only
 // when a NEW Jellyfin release fires it. So a floor gap introduced by JellyRock's
 // OWN commit (the app starts calling an endpoint absent from the 10.7.0 floor spec
 // without a guard / dispatch-sibling / ledger entry) stays invisible until the next
@@ -11,35 +11,35 @@
 // SAME floor check on every PR against the committed manifest + floor fingerprint and
 // FAILs the moment an unregistered floor gap appears.
 //
-// It reuses the EXACT pure functions the digest pipeline uses — backwardFindings /
+// It reuses the EXACT pure functions the digest pipeline uses (backwardFindings /
 // symmetryFindings / applySuppressions / applyFloorAvailability from
-// findings-candidates.js — so the lint's verdict is identical to what the next
+// findings-candidates.js), so the lint's verdict is identical to what the next
 // release-triage digest would show for floor findings. There is ONE definition of
 // "floor actionable", shared between the proactive lint and the digest. (No forward
 // diff: this is floor-only, so diffFingerprints / forwardFindings are never called,
-// and there is no network — resolveFingerprint's --fetch path is never reached.)
+// and there is no network: resolveFingerprint's --fetch path is never reached.)
 //
 // FAIL POLICY (matches the digest's needsInvestigation set, split by severity):
-//   - coverage-gap residual  → FAIL (exit 1). The app calls a floor-included
-//     endpoint absent from the floor spec with no ledger entry — a real 404 risk on
+//   - coverage-gap residual: FAIL (exit 1). The app calls a floor-included
+//     endpoint absent from the floor spec with no ledger entry: a real 404 risk on
 //     the oldest supported server. Fix: register it in the endpoint-availability
 //     ledger (with a CI-validated version-guard / dispatch-sibling), add a version
 //     guard, or stop calling it on the floor tier.
-//   - symmetry-advisory residual → WARN (exit 0). Low-severity advisory: a modern-only
-//     endpoint whose operation IS present on the floor spec — usually the app already
+//   - symmetry-advisory residual: WARN (exit 0). Low-severity advisory: a modern-only
+//     endpoint whose operation IS present on the floor spec. Usually the app already
 //     reaches the floor via a V1 sibling the manifest doesn't link, which only a human
 //     can disposition. Printed but non-blocking.
 //
 // ESM (.js), not .cjs, BY NECESSITY: it imports named exports from the ESM
 // findings-candidates.js, which a CJS file cannot require(). Matches scripts/CLAUDE.md
-// (top-level CLI, no internal callers → .js ESM). version-boundaries.cjs is reached via
+// (top-level CLI, no internal callers, so .js ESM). version-boundaries.cjs is reached via
 // findings-candidates.js's own dependency graph.
 //
 // Usage:  node scripts/lint/floor-coverage-check.js [--root <dir>] [--json]
 // Exit:   0 = clean (no coverage-gap; symmetry advisories only warn) ·
 //         1 = at least one unregistered coverage-gap ·
-//         2 = internal error (e.g. missing floor fingerprint — a misconfigured repo,
-//             NOT a floor gap)
+//         2 = internal error (for example a missing floor fingerprint: a misconfigured
+//             repo, not a floor gap)
 
 import { createRequire } from 'node:module';
 import {
@@ -84,13 +84,13 @@ function main() {
   const flags = parseFlags(process.argv.slice(2));
   const rootDir = flags.root || '.';
 
-  // A missing floor fingerprint throws here → caught at the bottom → exit 2 (internal
-  // error), deliberately distinct from a floor gap (exit 1).
+  // A missing floor fingerprint throws here, is caught at the bottom and exits 2
+  // (internal error), kept distinct from a floor gap (exit 1).
   const boundaries = loadBoundaries(rootDir);
   const floorFp = readFingerprint(rootDir, boundaries.floor);
   const manifest = readManifest(rootDir);
 
-  // Same floor candidates the digest builds — then the same two dispositions, in the
+  // Same floor candidates the digest builds, then the same two dispositions, in the
   // same order buildReport uses (suppression wins over availability; both force
   // needsInvestigation:false). The residual is exactly the digest's floor actionable set.
   const candidates = [

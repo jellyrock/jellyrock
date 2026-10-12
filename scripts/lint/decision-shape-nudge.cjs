@@ -1,4 +1,4 @@
-// scripts/lint/decision-shape-nudge.cjs — Advisory pre-push reminder.
+// scripts/lint/decision-shape-nudge.cjs: advisory pre-push reminder.
 //
 // Pattern-matches commit messages in the push range for "decision-shaped"
 // language ("decided", "switched from", "use X instead of Y", "deprecate",
@@ -7,9 +7,9 @@
 // sub-architectural notes) is in the diff, print a friendly nudge pointing at
 // /log decision.
 //
-// **Always exits 0.** This is advisory — the agent-facing CLAUDE.md
-// "Capture-discipline rule" provides the hard enforcement (agents are told
-// they MUST invoke /log decision in the same change set). Humans see this
+// **Always exits 0.** This is advisory: the agent-facing CLAUDE.md
+// "Capture discipline" rule provides the hard enforcement (agents are told
+// to invoke /log decision in the same change set). Humans see this
 // nudge and decide.
 //
 // Why a nudge and not a hard gate: catching the false positive ("decided to
@@ -20,13 +20,13 @@
 //
 // Usage (from .husky/pre-push):
 //   node scripts/lint/decision-shape-nudge.cjs || true
-// (the `|| true` is belt-and-suspenders — the script also exits 0 on its own)
+// (the `|| true` is belt-and-suspenders: the script also exits 0 on its own)
 
 'use strict';
 
 const { execSync } = require('child_process');
 
-// Decision-shape keywords. Conservative list — false positives are cheap (a
+// Decision-shape keywords. Conservative list: false positives are cheap (a
 // printed line), false negatives waste an opportunity to capture a decision.
 // Word boundaries (\b) prevent matches inside other tokens.
 const DECISION_PATTERNS = [
@@ -89,7 +89,7 @@ function main() {
   }
 
   // Did the range touch a decision-record surface? ADR-grade decisions land in
-  // docs/adr/, sub-architectural notes in docs/decisions.md — either counts as
+  // docs/adr/, sub-architectural notes in docs/decisions.md; either counts as
   // "already captured".
   const changed = safeExec(`git diff --name-only ${range}`).split('\n').filter(Boolean);
   if (changed.some((f) => f === 'docs/decisions.md' || f.startsWith('docs/adr/'))) {

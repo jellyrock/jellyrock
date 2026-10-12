@@ -1,10 +1,10 @@
-// scripts/lint/eslint-rules/rta-home-list-resolved.js — Home's row lists may be named by id
+// scripts/lint/eslint-rules/rta-home-list-resolved.js: Home's row lists may be named by id
 // in exactly ONE module, and nowhere else.
 //
 // WHY THIS EXISTS
 // ---------------
 // Home's active row list is `m.activeContent` (`components/home/Home.bs`), which is
-// `HomeRows` or `FavoritesRows` depending on the selected tab — and only ONE of them is in
+// `HomeRows` or `FavoritesRows` depending on the selected tab, and only ONE of them is in
 // the scene at a time. `onTabChanged` calls `destroyActiveContent()`, which does
 // `m.top.removeChild(...)`, BEFORE it builds the new tab's list. So a site that names
 // `#homeRows` is not reading a list that merely lost focus; while another tab is selected
@@ -12,9 +12,9 @@
 //
 // Measured on `.177` 2026-09-07 with the Favorites tab selected (Up, Right, OK from Home):
 //
-//   waitFocusInside('#homeRows')            THREW after 4064 ms — last=FavoritesRows@…
-//   #homeRows.content.getChildCount()       RESOLVED in 8 ms — value `undefined`
-//   waitFor('#homeRows.rowItemFocused')     THREW after 4343 ms — last=undefined
+//   waitFocusInside('#homeRows')            THREW after 4064 ms, last=FavoritesRows@…
+//   #homeRows.content.getChildCount()       RESOLVED in 8 ms, value `undefined`
+//   waitFor('#homeRows.rowItemFocused')     THREW after 4343 ms, last=undefined
 //
 // The middle one is why this is a gate rather than a comment. It does not throw. It hands
 // back `undefined`, a caller's `|| 0` turns that into "Home has no rows", and the eventual
@@ -27,11 +27,11 @@
 // Home's active list (`homeListId`) or asks the focused node its `subtype`
 // (`focusIsInHomeContent`) instead of naming an id.
 //
-// The count cannot reach zero outright, though, and that is not a shortfall — it is the
+// The count cannot reach zero outright, though, and that is not a shortfall: it is the
 // shape of the answer. Resolving the active list means reading BOTH candidate ids and taking
 // whichever is in the scene, so something has to know them. `getActiveRows()` is not in
 // Home's `<interface>` and no node-typed field exposes `m.activeContent`, so there is no
-// id-free way to reach the list from RTA. What the conversion can do — and did — is make
+// id-free way to reach the list from RTA. What the conversion can do (and did) is make
 // exactly one module know, and this rule is what holds that line.
 //
 // A ban with one named exemption rather than a budget, because a budget answers the wrong
@@ -42,14 +42,14 @@
 // "use the resolver", and there is nothing to keep in sync.
 //
 // The exemption is capped, so it stays an exemption. Naming the ids inside `home-list.js` is
-// permitted for the ID CONSTANT and nothing else — without the cap, the one allowlisted file
-// could accumulate exactly the reads this rule exists to prevent, and a 1600-line module was
+// permitted for the ID CONSTANT and nothing else. Without the cap, the one allowlisted file
+// could accumulate exactly the reads this rule exists to prevent, and a large shared module was
 // the reason the allowlist was pointed at a small dedicated one in the first place.
 //
 // WHY IT COUNTS `#favoritesRows` TOO
 // ----------------------------------
-// The hazard is symmetrical — a site that hardcodes the favorites list breaks the moment the
-// Home tab is selected — and because a "conversion" that swapped one hardcoded id for the
+// The hazard is symmetrical (a site that hardcodes the favorites list breaks the moment the
+// Home tab is selected), and because a "conversion" that swapped one hardcoded id for the
 // other would otherwise pass this gate while fixing nothing.
 //
 // WHAT TO DO INSTEAD
@@ -58,8 +58,8 @@
 // two ids answers, so one batched read gets it, and absence becomes a named failure
 // (`HOME_LIST_ABSENT`) instead of an `undefined` a caller turns into zero rows. Where the
 // question is "is focus inside Home's content", use `focusIsInHomeContent` /
-// `waitFocusInHomeContent`, which ask the FOCUSED node its `subtype` — see
-// `tests/rta/CLAUDE.md` → "Identify a dynamically-created node by `subtype`".
+// `waitFocusInHomeContent`, which ask the FOCUSED node its `subtype`. See
+// `tests/rta/CLAUDE.md`, section "Name a dynamically created node by `subtype`".
 
 import { relativeFilename } from './_shared.js';
 
@@ -73,7 +73,7 @@ const TAB_OWNED_IDS = ['#homeRows', '#favoritesRows'];
  *
  * Two: one per id, in `HOME_ROW_LIST_IDS`. The cap is exact in BOTH directions on purpose.
  * Above it, reads have crept into the exempt module. Below it, the constant no longer lists
- * both ids — and a resolver that probes only one silently reverts to the bug this rule was
+ * both ids, and a resolver that probes only one silently reverts to the bug this rule was
  * built for, because the read it drops is the one that does not throw.
  */
 export const RESOLVER_MODULE = 'tests/rta/lib/home-list.js';
@@ -143,7 +143,7 @@ export default {
       },
 
       // Reported at the end so the count is the FILE's rather than a running total, and so
-      // the resolver module still reports when it has been emptied — otherwise deleting the
+      // the resolver module still reports when it has been emptied. Otherwise deleting the
       // id constant would pass silently, which is the one change that turns every caller of
       // `homeListId()` into a resolver that cannot resolve.
       'Program:exit'(program) {

@@ -17,6 +17,7 @@ jobs:
     if: github.repository == 'jellyrock/jellyrock' && github.actor != 'jellyrock[bot]'
     name: Labeling 🏷️
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Generate GitHub App Token
         id: app-token

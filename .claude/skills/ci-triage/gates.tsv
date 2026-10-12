@@ -1,0 +1,62 @@
+# gates.tsv — this repo's CI steps, for /ci-triage's ci-triage-state.sh. The repo's own file.
+# Format: <step pattern> TAB <category> TAB <sub-check pattern, or -> TAB <banner>. First match wins.
+# Step names are the workflows' `name:` (an unnamed step shows as "Run <its first line>").
+#
+# builds
+Build application	build-fail	-	BrighterScript compile error: the log names file:line; npm run validate reproduces it
+Build production app*	build-fail	-	BrighterScript compile error: the log names file:line; npm run validate reproduces it
+Build app for production	build-fail	-	BrighterScript compile error: the log names file:line; npm run validate reproduces it
+Run npm run validate	build-fail	-	BrighterScript compile error: the log names file:line; npm run validate reproduces it
+# device tests (self-hosted Roku runner)
+Run * tests on Roku*	device-test-fail	-	the Rooibos output names suite, test and assertion; a device that was unreachable is infrastructure (re-run), not code; locally npm run test:tdd runs one spec on a reachable Roku
+Run RTA functional tests	device-test-fail	-	needs a reachable Roku; a device that was unreachable is infrastructure (re-run), not code
+Run npm run test:scripts	test-fail	-	Vitest, no hardware: npm run test:scripts reproduces it
+# docs
+Conditional stale-doc gate	docs-stale-blocking	-	re-read the doc against the code; bump last-reviewed only when its shape and why did not change, never just to pass the gate
+Validate doc references	lint-fail	-	/docs-lint builds the fix list for broken related-files paths and anchors
+# translations
+Lint translation files	lint-fail	-	npm run update-translations regenerates en_US.json order and languages.json
+Validate translations	lint-fail	-	npm run update-translations regenerates en_US.json order and languages.json
+Lint language coverage	language-coverage-fail	-	a key added to en_US.json and missing elsewhere is a Weblate sync, not a fix here
+# formatting and spelling
+Run npm run check-formatting:*	lint-fail	-	npm run format fixes formatting; commit the result
+Check markdown files for spelling errors	lint-fail	-	add a real word to dictionary.txt alphabetically, or rephrase; never add a typo
+Spell-check candidate progress.md bullet	lint-fail	-	the PR title becomes the progress bullet: add a real word to dictionary.txt alphabetically, or rephrase the title
+Check the PR description is filled in	lint-fail	-	fill in the PR template's sections (gh pr edit), no code change
+# every other lint step
+Run npm run lint:js	lint-fail
+Check ws:// DeviceId binding is intact	lint-fail
+Check roku-log manager init contract	lint-fail
+Check ws:// socket thread is released	lint-fail
+Check promise-adoption ratchet	lint-fail
+Validate endpoint-availability ledger	lint-fail
+Check floor coverage (proactive)	lint-fail
+Check apiVersion twin consistency (boundaries ↔ resolveApiVersion)	lint-fail
+Check API usage manifest drift	lint-fail
+Validate issue-form templates	lint-fail
+Check Roku device dictionary integrity	lint-fail
+Validate JSON syntax	lint-fail
+Lint markdown files	lint-fail
+Check sentence-final dictionary is in sync with dictionary.txt	lint-fail
+Audit dictionary.txt for identifier-shaped entries	lint-fail
+Validate the ODC capability inventory covers the installed client	lint-fail
+Validate the RTA wait inventory matches the suite	lint-fail
+Check dev-index drift	lint-fail
+Validate _validate-dependencies.yml workflow sync	lint-fail
+Validate CI runs every `npm run lint` check	lint-fail
+Followup journal format	lint-fail
+Line-number citation ratchet	lint-fail
+# setup steps, in any workflow
+NPM install	toolchain-fail	-	setup, not this repo's code: check npm and GitHub status, and re-run before changing anything
+Install*	toolchain-fail	-	setup, not this repo's code: check npm and GitHub status, and re-run before changing anything
+Run npm ci	toolchain-fail	-	setup, not this repo's code: check npm and GitHub status, and re-run before changing anything
+Setup Node*	toolchain-fail	-	setup, not this repo's code: check npm and GitHub status, and re-run before changing anything
+Cache*	toolchain-fail	-	setup, not this repo's code: check npm and GitHub status, and re-run before changing anything
+Clone github repo	toolchain-fail	-	setup, not this repo's code: check GitHub status, and re-run before changing anything
+Checkout code	toolchain-fail	-	setup, not this repo's code: check GitHub status, and re-run before changing anything
+Generate GitHub App Token	toolchain-fail	-	setup, not this repo's code: check the app's credentials and GitHub's status, and re-run before changing anything
+Run actions/*	toolchain-fail	-	setup, not this repo's code: check GitHub status, and re-run before changing anything
+Setup Java	toolchain-fail	-	setup, not this repo's code: check upstream availability, and re-run before changing anything
+Download the Static Channel Analysis CLI	toolchain-fail	-	setup, not this repo's code: check Roku's download, and re-run before changing anything
+# roku-analysis.yml
+Run Roku Static Analysis	lint-fail	-	Roku's static channel analysis of the production build: npm run build:prod, then the CLI the workflow downloads

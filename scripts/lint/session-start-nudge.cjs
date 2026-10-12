@@ -1,5 +1,5 @@
-// scripts/lint/session-start-nudge.cjs — Local-only state check fired on
-// SessionStart. Prints a one-line advisory ONLY when actionable journal /
+// scripts/lint/session-start-nudge.cjs: local-only state check fired on
+// SessionStart. Prints a one-line advisory only when actionable journal /
 // handoff state exists; silent (exit 0, no output) when clean.
 //
 // Three checks, all offline:
@@ -8,7 +8,7 @@
 //   3. Schema-broken journals (frontmatter parse error on progress / signals)
 //
 // Network-dependent banners (failed CI, PR review requested) stay in
-// /focus itself — this hook is cheap and offline-tolerant by design so it
+// /focus itself: this hook is cheap and offline-tolerant by design so it
 // can't slow down session start or hit gh rate limits on heavy automation.
 //
 // Always exits 0. Never blocks. Mirrors the advisory-nudge shape of

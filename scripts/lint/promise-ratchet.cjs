@@ -1,60 +1,60 @@
-// scripts/lint/promise-ratchet.cjs — anti-backslide ratchet for the
+// scripts/lint/promise-ratchet.cjs: anti-backslide ratchet for the
 // @rokucommunity/promises adoption (issue #551).
 //
 // WHY THIS EXISTS
 // ---------------
-// #551 replaces the app's observer-spaghetti — render-thread (or main-thread)
+// #551 replaces the app's observer-spaghetti (render-thread or main-thread
 // callers that `submitApiRequest(...)` a raw pool request and then observe the
-// result node's `isDone` field by hand — with the promise adapter
+// result node's `isDone` field by hand) with the promise adapter
 // (`fetchAsync(...).then(...)`, see source/api/apiPromise.bs). The migration is
 // incremental: two paradigms coexist while the long tail is in flight (see
-// docs/architecture/async.md, "Risk & coexistence"). The danger during that
-// window is NET-NEW spaghetti — a fresh `observeField("isDone", ...)` call site
+// docs/architecture/async.md, "Risk and coexistence"). The danger during that
+// window is NET-NEW spaghetti: a fresh `observeField("isDone", ...)` call site
 // landing while the old ones are still being migrated, so the codebase never
 // converges. This ratchet makes that impossible: it counts the banned signature
 // and FAILS when the count rises above a committed baseline. The count can only
 // go DOWN (each migration lowers the baseline); it can never silently climb.
 //
-// THE METRIC (a deliberate, robust proxy)
-// ---------------------------------------
+// THE METRIC (a chosen, robust proxy)
+// -----------------------------------
 // We count `\.observeField("isDone"` occurrences in app code. `isDone` is the
 // field the pool's `ApiResultNode` fires (source/api/apiPool.bs), so a raw
 // `observeField("isDone", ...)` is, by construction, an app-code consumer of a
-// raw pool result — i.e. the exact observer-spaghetti #551 removes. Counting the
+// raw pool result, that is, the exact observer-spaghetti #551 removes. Counting the
 // OBSERVE side (not the `submitApiRequest` side) is intentional:
 //   - It is the half that defines the spaghetti. A `submitApiRequest` that never
-//     observes its result (e.g. VideoPlayerView.forceFinishPlayback, a deliberate
-//     fire-and-submit) is NOT spaghetti and is correctly not counted.
+//     observes its result (for example VideoPlayerView.forceFinishPlayback, an
+//     intentional fire-and-submit) is not spaghetti and is correctly not counted.
 //   - It is collision-proof against `unobserveField("isDone")`: the regex anchors
 //     on a literal `.observeField(`, and in `.unobserveField(` the substring
 //     `observeField` is preceded by `n`, not `.`, so it does not match.
 //
 // EXCLUSIONS (the engine + the bridge, not spaghetti):
-//   - source/api/apiPool.bs    — the pool engine itself observes `isDone`.
-//   - source/api/apiPromise.bs — the adapter's single bridging observer; every
-//                                migrated call site funnels through here.
-//   - roku_modules/**          — vendored library code.
-//   - whole-line comments      — a `'`-prefixed line is documentation, not a call.
+//   - source/api/apiPool.bs:    the pool engine itself observes `isDone`.
+//   - source/api/apiPromise.bs: the adapter's single bridging observer; every
+//                               migrated call site funnels through here.
+//   - roku_modules/**:          vendored library code.
+//   - whole-line comments:      a `'`-prefixed line is documentation, not a call.
 //
 // FAIL POLICY ("blocking on increase only", per the adoption plan)
 // ----------------------------------------------------------------
-//   count >  baseline → FAIL (exit 1). Net-new observer-spaghetti — migrate it to
-//                       fetchAsync, or this is the regression the ratchet guards.
-//   count <  baseline → PASS (exit 0) + LOUD advisory to lower the baseline so the
-//                       gain is locked in (an unlowered baseline leaves slack a
-//                       later PR could refill without tripping the gate).
-//   count == baseline → PASS (exit 0), one-line OK.
-//   baseline == 0     → the ratchet has automatically become a hard grep-zero
-//                       guard: any reintroduction trips `count > baseline`.
+//   count >  baseline: FAIL (exit 1). Net-new observer-spaghetti: migrate it to
+//                      fetchAsync, or this is the regression the ratchet guards.
+//   count <  baseline: PASS (exit 0) + LOUD advisory to lower the baseline so the
+//                      gain is locked in (an unlowered baseline leaves slack a
+//                      later PR could refill without tripping the gate).
+//   count == baseline: PASS (exit 0), one-line OK.
+//   baseline == 0:     the ratchet has automatically become a hard grep-zero
+//                      guard: any reintroduction trips `count > baseline`.
 //
 // WHERE IT RUNS (the exit codes above only matter where something reads them)
 // ---------------------------------------------------------------------------
-//   CI       → the `lint-brightscript` workflow, BLOCKING. This is the real gate.
-//   pre-push → advisory (`|| true`) so a local push isn't blocked.
+//   CI:       the `_lint-brightscript.yml` workflow, BLOCKING. This is the real gate.
+//   pre-push: advisory (`|| true`) so a local push isn't blocked.
 //
 // Historical note: this ratchet spent its early life blocking NOTHING. It was in
 // the `npm run lint` aggregate and run `|| true` at pre-push, and .husky/pre-push
-// asserted CI enforced it "because it's in `npm run lint`" — but CI never runs the
+// asserted CI enforced it "because it's in `npm run lint`", but CI never runs the
 // aggregate; it runs the per-domain reusable workflows. `scripts/lint/ci-parity-check.js`
 // now fails the build if any aggregate member loses its CI home like this again.
 //
@@ -62,7 +62,8 @@
 //   node scripts/lint/promise-ratchet.cjs [--root <dir>]
 //   --root defaults to the current working directory (the repo root in CI / hooks).
 //
-// Wired into `npm run lint` (→ CI blocking) and the pre-push hook (advisory).
+// Wired into `npm run lint`, CI's `_lint-brightscript.yml` (blocking) and the
+// pre-push hook (advisory).
 // Companion Vitest suite: tests/scripts/unit/lint/promise-ratchet.test.js.
 
 const fs = require('fs');
@@ -70,7 +71,7 @@ const path = require('path');
 
 const BASELINE_REL = '.promise-ratchet-baseline';
 const SCAN_DIRS = ['source', 'components'];
-// Engine + adapter — they legitimately observe `isDone`; never count them.
+// Engine + adapter: they legitimately observe `isDone`; never count them.
 const EXCLUDED_FILES = new Set([
   path.normalize('source/api/apiPool.bs'),
   path.normalize('source/api/apiPromise.bs'),

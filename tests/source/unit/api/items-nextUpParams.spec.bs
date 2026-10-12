@@ -126,6 +126,29 @@ namespace tests
       m.assertEqual(params.Fields, "MediaSourceCount")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextUpNeedsStartedFilter()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false where the request asks the server to drop unstarted series")
+    @params("10.7.7", 0)
+    @params("10.7.7", 30)
+    @params("10.8.13", 0)
+    @params("10.10.7", 0)
+    function _(version, maxDays)
+      m.assertFalse(nextUpNeedsStartedFilter(buildHomeNextUpParams(version, false, maxDays, 1000000000)))
+    end function
+
+    @it("is true where the server is not asked to, so their first episodes arrive")
+    @params("10.8.13", 30)
+    @params("10.10.7", 30)
+    @params("10.11.11", 0)
+    @params("12.0.0", 0)
+    @params("12.1.0", 30)
+    function _(version, maxDays)
+      m.assertTrue(nextUpNeedsStartedFilter(buildHomeNextUpParams(version, false, maxDays, 1000000000)))
+    end function
+
   end class
 
 end namespace

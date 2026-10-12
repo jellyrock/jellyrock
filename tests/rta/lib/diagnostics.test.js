@@ -364,6 +364,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
     expect(record.runStartedAt).toBe('2026-08-10T14:52:00Z');
     expect(record.afterHourBoundary).toBe(true);
     expect(error.message).toContain('crossed the top of the hour');
+    expect(error.message).toContain('re-run it inside one hour before debugging it');
   });
 
   it('does not claim a crossing for a run that started this hour', async () => {

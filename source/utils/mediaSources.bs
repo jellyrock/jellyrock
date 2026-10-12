@@ -1,4 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiIds.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -17,33 +18,9 @@ import "pkg:/source/utils/misc.bs"
 ' page — is what keeps the cost tied to the few items that need it.
 namespace mediaSources
 
-  ' How many ids one request names. Each costs 35 bytes of URL (32 hex + an encoded comma), so
-  ' 100 keeps a request near 3.5 KB — well inside common request-line limits.
-  const IDS_PER_REQUEST = 100
-
-  ' idChunks: The ids split into runs of at most `size`, in order — one request each.
-  '
-  ' @param {object} ids - array of strings
-  ' @param {integer} size - the most ids in one run (at least 1)
-  ' @return {object} array of arrays
-  function idChunks(ids as object, size as integer) as object
-    chunks = []
-    if size < 1 then size = 1
-    chunk = []
-    for each id in ids
-      chunk.push(id)
-      if chunk.count() = size
-        chunks.push(chunk)
-        chunk = []
-      end if
-    end for
-    if chunk.count() > 0 then chunks.push(chunk)
-    return chunks
-  end function
-
   ' byIds: Each item's MediaSources, by item id.
   '
-  ' The imperative half — runs on a Task thread, blocking, IDS_PER_REQUEST ids per request. An
+  ' The imperative half — runs on a Task thread, blocking, apiIds.PER_REQUEST ids per request. An
   ' id the server does not answer for is simply ABSENT from the result; every caller reads that
   ' as "no versions known" rather than as an error, so a partial answer degrades instead of
   ' failing the screen.
@@ -55,7 +32,7 @@ namespace mediaSources
     sourcesById = {}
     if not isValidAndNotEmpty(ids) then return sourcesById
 
-    for each chunk in mediaSources.idChunks(ids, mediaSources.IDS_PER_REQUEST)
+    for each chunk in apiIds.chunks(ids)
       data = fetchJson(GetApi().BuildGetItemsByQueryRequest({ Ids: chunk.join(","), Fields: "MediaSources", EnableTotalRecordCount: false }), requestId)
       if isValid(data) and isValid(data.Items)
         for each fetched in data.Items

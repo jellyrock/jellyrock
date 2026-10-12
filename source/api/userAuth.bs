@@ -94,11 +94,6 @@ sub SignOut(deleteSavedEntry = true as boolean)
   if isValid(group) then group.isOptionsAvailable = false
 end sub
 
-function AvailableUsers()
-  users = parseJson(getSetting("available_users", "[]"))
-  return users
-end function
-
 function ServerInfo()
   return server.Discover()
 end function

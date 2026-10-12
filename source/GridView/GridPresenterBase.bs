@@ -137,12 +137,6 @@ class GridPresenterBase
     ' Override in subclass
   end sub
 
-  ' Returns the item type(s) to load
-  ' @return {string} Item type(s) for API query (e.g., "Movie", "Series,Movie")
-  function getItemType() as string
-    return ""
-  end function
-
   ' ============================================================================
   ' Grid Configuration
   ' ============================================================================
@@ -174,6 +168,13 @@ class GridPresenterBase
     return false
   end function
 
+  ' Returns whether the view mode is the TV Guide (EPG) instead of the item grid
+  ' @param {string} viewMode - Current view mode
+  ' @return {boolean} True to show the TV Guide
+  function showsTVGuide(_viewMode as string) as boolean
+    return false
+  end function
+
   ' ============================================================================
   ' Focus Handling
   ' ============================================================================
@@ -183,22 +184,6 @@ class GridPresenterBase
   ' @param {object} item - The focused ContentNode item
   ' @param {string} currentView - The current view mode (e.g., "Movies", "MoviesGrid")
   sub onItemFocused(_item as object, _currentView as string)
-    ' Override in subclass
-  end sub
-
-  ' ============================================================================
-  ' Presentation Info
-  ' ============================================================================
-
-  ' Creates presenter-specific info nodes in the presentationInfo group
-  ' Called during onInit() if presenter needs custom info display
-  ' @param {object} infoGroup - The presentationInfo Group node
-  sub createInfoNodes(_infoGroup as object)
-    ' Override in subclass
-  end sub
-
-  ' Clears/hides the presentation info display
-  sub clearPresentationInfo()
     ' Override in subclass
   end sub
 

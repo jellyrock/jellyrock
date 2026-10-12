@@ -42,6 +42,30 @@ function translate(key as string, params = invalid as object) as string
   return value
 end function
 
+' translateCached: translate(), memoized for one batch.
+'
+' Memoized on the KEY rather than on the item: a batch labels many items with a
+' few distinct keys, and keying on the item would miss on every one (see
+' personCreditLabel in people.bs). `cache` may be invalid, which just means no reuse.
+'
+' A caller may instead seed `cache` with the table itself (`m.global.translations`,
+' read once), so every key it holds is already a hit and a missing one still falls
+' back through translate(). Which seed is cheaper depends on how many distinct keys
+' the batch needs. The cast needs four or five, and copying the ~150 KB table on
+' every row cost MORE than the memo (measured 2026-09-20 on a Stick 4K, 31-person
+' cast: castMs +13.5 ms, n=8 per arm interleaved; a build making ZERO m.global reads
+' was no faster again, so the rendezvous is not what that loop costs). A subtitle
+' list needs a language name per track, often dozens, so sortSubtitles() copies the
+' table once per list instead.
+function translateCached(key as string, cache as dynamic) as string
+  if cache = invalid then return translate(key)
+  if cache[key] <> invalid then return cache[key]
+
+  value = translate(key)
+  cache[key] = value
+  return value
+end function
+
 ' Translate a plural key using zero/one/many suffix convention.
 ' Selects the appropriate variant based on count, then delegates to translate().
 ' @param {string} baseKey - Base key without suffix (e.g. "LabelEpisodeCount")

@@ -108,12 +108,16 @@ function homeWithShowsAt(row, col) {
     if (keyPath === `#homeRows.content.${row}.${col}.id`) return SHOWS;
     return undefined;
   });
-  // The focus walk gates via `waitFor` (row half) and `scrollFocus` (column half);
-  // neither has anything to prove here, so let both pass.
+  // Both halves of the focus walk go through `scrollFocus`; it has nothing to prove
+  // here, so let it pass.
   waitFor.mockResolvedValue(undefined);
   scrollFocus.mockResolvedValue({ from: 0, to: col, pressed: col, recovered: 0 });
   getVals.mockResolvedValue([[row, col], col + 1]);
 }
+
+/** The `scrollFocus` calls a nav issued: rows first (Down/Up), then columns (Right/Left). */
+const rowWalk = () => scrollFocus.mock.calls.find(([o]) => o.forwardKey === 'Down');
+const columnWalk = () => scrollFocus.mock.calls.find(([o]) => o.forwardKey === 'Right');
 
 /** Queue the `parentItem.id` answers one attempt at a time. */
 function opensInOrder(...ids) {
@@ -188,8 +192,8 @@ describe('navLibraryByType — which library actually opened', () => {
     opensInOrder(SHOWS);
     await navLibraryByType('tvshows', SHOWS);
 
-    expect(scrollFocus).toHaveBeenCalledTimes(1);
-    const [opts] = scrollFocus.mock.calls[0];
+    expect(scrollFocus).toHaveBeenCalledTimes(2);
+    const [opts] = columnWalk();
     expect(opts).toMatchObject({
       keyPath: '#homeRows.rowItemFocused',
       target: 1,
@@ -204,21 +208,29 @@ describe('navLibraryByType — which library actually opened', () => {
     // would surface somewhere else entirely.
     opensInOrder(SHOWS);
     await navLibraryByType('tvshows', SHOWS);
-    const [{ select }] = scrollFocus.mock.calls[0];
+    const [{ select }] = columnWalk();
     expect(select([7, 3])).toBe(3);
     expect(select(undefined)).toBeUndefined();
   });
 
-  it('leaves the ROW walk hand-rolled — Up from row 0 escapes Home entirely', async () => {
-    // The asymmetry is deliberate. `Home.onKeyEvent` releases focus to the OVERHANG on Up
-    // from row 0, so a single row overshoot does not land on the wrong tile, it leaves the
-    // screen. The measured defect was a COLUMN over-press; converting the riskier axis on
-    // that evidence would be speculation. This fails if someone converts it anyway.
+  it('walks the ROW through scrollFocus in stepped mode — Up from row 0 escapes Home entirely', async () => {
+    // The row axis is unbounded: `Home.onKeyEvent` releases focus to the OVERHANG on Up from
+    // row 0, so a surplus key leaves the screen. A burst computes its keys from one read, so
+    // the row half asks for one key in flight at a time. This fails if someone drops that.
+    // The behavior under a slow device is `nav-row-walk.test.js`.
     opensInOrder(SHOWS);
     await navLibraryByType('tvshows', SHOWS);
-    const rowWalks = waitFor.mock.calls.filter(([kp]) => kp === '#homeRows.rowItemFocused');
-    expect(rowWalks).toHaveLength(1);
-    expect(rowWalks[0][2].label).toContain('home library row');
+    const [opts] = rowWalk();
+    expect(opts).toMatchObject({
+      keyPath: '#homeRows.rowItemFocused',
+      target: 0,
+      forwardKey: 'Down',
+      backKey: 'Up',
+      stepped: true,
+      within: '#homeRows',
+    });
+    expect(opts.label).toContain('home library row');
+    expect(opts.select([7, 3])).toBe(7);
   });
 
   it('carries the column walk’s recovered count into the record, so the fix stays measurable', async () => {

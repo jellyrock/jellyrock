@@ -251,7 +251,7 @@ namespace screenLoad
   '                      It is what the settled line names as the slowest, so it should
   '                      say what was being waited on rather than which task ran.
   ' @param {string} [fillClass] - `screenLoad.CONTENT` (default) or `screenLoad.TEXTURE`.
-  sub pending(id as string, fillClass = "content" as string)
+  sub pending(id as string, fillClass = screenLoad.CONTENT as string)
     #if perfTiming
       if not isValid(m.screenLoad) then return
       ' A run ENDS at settle. A fill declared after that belongs to work nobody opened a

@@ -4,14 +4,16 @@
 // (override with $JELLYROCK_TELEMETRY_DIR). The log is populated by the
 // PostToolUse hook at .claude/hooks/log-tool-use.sh, which writes per-USER
 // (not per-worktree) so contributors with multiple jellyrock copies see a
-// single combined picture without manual log consolidation. Summarises:
+// single combined picture without manual log consolidation. Summarizes:
 //
 //   - Top files agents read (signal: where the agent's mental model is built)
 //   - Top files agents edit (signal: where work concentrates)
-//   - Top grep / glob patterns (signal: what the agent is searching for —
+//   - Top grep / glob patterns (signal: what the agent is searching for;
 //     repeated greps in an area may indicate missing CLAUDE.md coverage there)
-//   - Files that are both read AND grepped (the agent had to find them; a
-//     subdir CLAUDE.md mention might short-circuit future searches)
+//
+// It also collects the files that are both read AND grepped (`filesRead`,
+// `filesGrepped`: the agent had to find them, and a subdir CLAUDE.md mention
+// might short-circuit future searches), but does not print them yet.
 //
 // Why this exists: the agent-context-system architecture decides which
 // subdir CLAUDE.md files to write based on telemetry, not vibes. Reading
@@ -19,12 +21,12 @@
 // a CLAUDE.md in components/X/?"
 //
 // Usage:
-//   node scripts/agent-telemetry-report.cjs              → last 7 days, top 20
+//   node scripts/agent-telemetry-report.cjs              (last 7 days, top 20)
 //   node scripts/agent-telemetry-report.cjs --days 30
 //   node scripts/agent-telemetry-report.cjs --top 50
 //
 // npm scripts:
-//   agent-telemetry  → run the report
+//   agent-telemetry: run the report
 
 'use strict';
 

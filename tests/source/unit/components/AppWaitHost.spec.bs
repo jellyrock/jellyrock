@@ -14,6 +14,7 @@ namespace tests
     private button as object
     private player as object
     private other as object
+    private overhang as object
     private previousView as object
 
     ' beforeEach, not setup: every test moves focus and opens waits (tests/CLAUDE.md).
@@ -31,14 +32,17 @@ namespace tests
       m.player = CreateObject("roSGNode", "JRScreen")
       m.player.isPlaybackScreen = true
       m.other = CreateObject("roSGNode", "JRScreen")
-      m.mountedIn.appendChildren([m.host, m.launcher, m.player, m.other])
+      ' Stands in for JRScene's overhang, which the host finds in the scene by this id.
+      m.overhang = CreateObject("roSGNode", "Group")
+      m.overhang.id = "overhang"
+      m.mountedIn.appendChildren([m.host, m.launcher, m.player, m.other, m.overhang])
 
       m.button.setFocus(true)
       m.global.activeRoutedView = m.launcher
     end sub
 
     protected override sub afterEach()
-      m.mountedIn.removeChildren([m.host, m.launcher, m.player, m.other])
+      m.mountedIn.removeChildren([m.host, m.launcher, m.player, m.other, m.overhang])
       m.global.activeRoutedView = m.previousView
       m.previousView = invalid
       m.host = invalid
@@ -46,6 +50,7 @@ namespace tests
       m.button = invalid
       m.player = invalid
       m.other = invalid
+      m.overhang = invalid
       m.mountedIn = invalid
       super.afterEach()
     end sub
@@ -142,6 +147,50 @@ namespace tests
       appWaits.done(appWait)
       m.assertTrue(m.player.hasFocus())
       m.assertTrue(m.launcher.opacity = 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the overhang goes and comes back with the hidden screen")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hides the overhang in the call that hides the screen")
+    function _()
+      m.begin()
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertTrue(m.overhang.opacity = 0)
+    end function
+
+    @it("leaves the overhang alone for a channel switch")
+    function _()
+      m.global.activeRoutedView = m.player
+      m.begin("Ch 5")
+      m.assertTrue(m.overhang.opacity = 1)
+    end function
+
+    @it("shows the overhang again with the screen when the start ends")
+    function _()
+      appWait = m.begin()
+      appWaits.done(appWait)
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.overhang.opacity = 1)
+    end function
+
+    @it("shows the overhang again with the screen when Back cancels the start")
+    function _()
+      m.begin()
+      m.host.callFunc("cancelOnBack")
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.overhang.opacity = 1)
+    end function
+
+    @it("keeps the overhang hidden while a newer start still hides the screen")
+    function _()
+      first = m.begin()
+      second = m.begin()
+      appWaits.fail(first, "replaced by a newer start")
+      m.assertTrue(m.overhang.opacity = 0)
+      appWaits.done(second)
+      m.assertTrue(m.overhang.opacity = 1)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

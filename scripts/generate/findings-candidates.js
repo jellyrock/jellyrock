@@ -1,42 +1,44 @@
 // Phase 2 (join + classify) of the server-upgrade-automation pipeline
-// (docs/architecture/server-upgrade-automation.md). Produces the DATA REPORT —
-// findings-candidates.json — that the Phase 3 agent (the /server-upgrade skill)
-// investigates.
+// (docs/architecture/server-upgrade-automation.md). Produces the DATA REPORT
+// (findings-candidates-<from>..<to>.json) that the Phase 3 agent (the
+// /server-upgrade skill) investigates.
 //
 // This is the deterministic seam: the script never decides "is this a real
 // problem", only "here is every spec change that intersects code JellyRock
-// actually ships, with full provenance". It does three things:
+// actually ships, with full provenance". It does four things:
 //
-//   1. FORWARD check (acknowledged → latest delta): intersect the spec-diff
+//   1. FORWARD check (the delta from acknowledged to latest): intersect the spec-diff
 //      with the API-usage manifest. A change is a breaking candidate only when
 //      the app uses the affected endpoint/field AND the endpoint's apiVersion
 //      tier range includes the tier the change lands in. Endpoints pinned to a
-//      frozen tier self-exclude (frozen-tier immunity falls out of range math —
+//      frozen tier self-exclude (frozen-tier immunity falls out of range math,
 //      no allowlist), and new endpoints the app doesn't use yet surface as
 //      opportunities.
-//   2. BACKWARD floor-coverage check (manifest → 10.7.0): for every endpoint
-//      whose range includes the floor tier, flag a coverage-gap if it's absent
-//      from the floor spec — i.e. we call something the oldest supported server
-//      lacks, with no dispatch/guard. (Modern-only endpoints, minApiVersion > 1,
-//      are intentionally NOT flagged here — that's the symmetry check's job.)
-//   3. COVERAGE-SYMMETRY advisory (Phase 5; manifest → 10.7.0): the mirror image
-//      of the backward check. For every MODERN-ONLY endpoint (range excludes the
-//      floor tier) whose operation IS present in the floor spec, flag a
-//      symmetry-advisory — the oldest supported server serves the endpoint yet
-//      the app wires it for the modern tier only, which is plausibly a missing
-//      low-tier fallback (or, the common case, the app reaches the same
+//   2. BACKWARD floor-coverage check (manifest against the 10.7.0 floor): for
+//      every endpoint whose range includes the floor tier, flag a coverage-gap if
+//      it's absent from the floor spec, that is, we call something the oldest
+//      supported server lacks, with no dispatch/guard. (Modern-only endpoints,
+//      minApiVersion > 1, are intentionally not flagged here: that's the symmetry
+//      check's job.)
+//   3. COVERAGE-SYMMETRY advisory (Phase 5; manifest against the 10.7.0 floor):
+//      the mirror image of the backward check. For every MODERN-ONLY endpoint
+//      (range excludes the floor tier) whose operation IS present in the floor
+//      spec, flag a symmetry-advisory: the oldest supported server serves the
+//      endpoint yet the app wires it for the modern tier only, which is plausibly
+//      a missing low-tier fallback (or, the common case, the app reaches the same
 //      capability on the floor via a different V1 sibling the manifest doesn't
-//      link — the agent dispositions which). Genuinely modern-only endpoints
-//      (absent from the floor) are NOT flagged: nothing to be asymmetric against.
+//      link; the agent dispositions which). Modern-only endpoints that are absent
+//      from the floor are not flagged: nothing to be asymmetric against.
 //   4. SUPPRESSION: .api-watch/suppressions.yml rules flag accepted churn. A
 //      suppressed candidate stays in the report (`suppressed: true`) so nothing
-//      silently vanishes — it's just marked not-to-investigate.
+//      silently vanishes; it's only marked not-to-investigate.
 //
 // CRITICAL carry-forward lesson (manifest coverage.knownGaps): the manifest join
-// MUST be case-insensitive on field names — the app sends PascalCase, the spec
-// defines camelCase. The diff deliberately preserved spec casing because
-// case-folding is THIS step's job. Endpoint paths are joined via the manifest's
-// `normalized` form (this script mirrors the manifest's normalizePath exactly).
+// has to be case-insensitive on field names. The app sends PascalCase, the spec
+// defines camelCase. The diff preserved spec casing on purpose because
+// case-folding is this step's job. Endpoint paths are joined via the manifest's
+// `normalized` form: normalizeSpecPath (scripts/lib/spec-path.cjs) applies the
+// same rule as the manifest's own normalizePath copy.
 //
 // Anchor strategy (Phase 1 left this open; decided here): the join reads
 // COMMITTED fingerprints for from/to/floor and computes the forward diff
@@ -50,19 +52,19 @@
 //        [--floor <version>] [--root <dir>] [--manifest <path>] [--fetch]
 //        [--no-opportunities] [--stdout]
 //     <toVersion> may be a stable (10.11.10), an RC (10.12.0-rc1), an unstable
-//       datestamp (20240402201942), or the literal `unstable`/`master` — which
+//       datestamp (20240402201942), or the literal `unstable`/`master`, which
 //       resolves to the latest immutable master build. Pre-release `to` versions
 //       have no committed fingerprint, so pair them with --fetch.
-//     → read the committed from/to/floor fingerprints + the API-usage manifest,
-//       build the report, write the gitignored
+//     Reads the committed from/to/floor fingerprints + the API-usage manifest,
+//       builds the report, and writes the gitignored
 //       .api-watch/cache/findings-candidates-<from>..<to>.json
-//   ... --stdout    → print the report JSON to stdout instead of writing the cache
-//   ... --fetch     → DRY-RUN: for any version with no committed fingerprint, build
+//   ... --stdout    prints the report JSON to stdout instead of writing the cache
+//   ... --fetch     DRY-RUN: for any version with no committed fingerprint, build
 //                     one in-memory from the fetched spec (network) instead of
-//                     erroring — preview the full report for a brand-new release
+//                     erroring. Previews the full report for a brand-new release
 //                     without committing its fingerprint (the same ephemeral path
 //                     the Phase-4 tracker uses; nothing is written to the tree).
-//   ... --manifest <path> → use an explicit manifest instead of the committed one
+//   ... --manifest <path> uses an explicit manifest instead of the committed one
 //                     (what-if / historical simulation; production uses committed).
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -104,7 +106,7 @@ const BREAKING_KINDS = new Set([
   'enum-changed',
 ]);
 // Purely additive kinds on a used surface: non-breaking, and not a whole-new
-// capability either — dropped (counted) rather than reported as findings.
+// capability either: dropped (counted) rather than reported as findings.
 const ADDITIVE_KINDS = new Set(['param-added', 'field-added']);
 
 // Mechanical first guess at severity. The agent overrides per finding.
@@ -119,10 +121,10 @@ const SEVERITY_GUESS = {
   'enum-changed': 'medium',
   'endpoint-added': 'low', // opportunity
   'coverage-gap': 'high',
-  'coverage-symmetry': 'low', // advisory — agent confirms whether a V1 sibling covers the floor
+  'coverage-symmetry': 'low', // advisory: agent confirms whether a V1 sibling covers the floor
 };
 
-// ── Path normalization (mirrors api-usage-manifest.js normalizePath) ─────────
+// ── Path normalization (same rule as api-usage-manifest.js normalizePath) ────
 
 // normalizeSpecPath is required above from ../lib/spec-path.cjs (shared with
 // server-upgrade.js so Phase-2 paths and Phase-3 dedup keys normalize
@@ -135,12 +137,12 @@ const opKey = (normalizedPath, method) => `${normalizedPath} ${method.toUpperCas
 
 // Index the manifest endpoints by normalized-path + method so a diff change can
 // resolve its exact apiVersion range (the same normalized path can appear under
-// several entries with different methods AND ranges — e.g. /items/{} has a
-// V1 DELETE and a V2 GET). Also keep a normalized-path set for the backward
+// several entries with different methods AND ranges: for example /items/{} has
+// a V1 DELETE and a V2 GET). Also keep a normalized-path set for the backward
 // check's path-level fallback.
 export function buildEndpointIndex(manifest) {
   const byOp = new Map();
-  const byPath = new Map(); // normalized path → [endpoint, …] (for fallback)
+  const byPath = new Map(); // normalized path to [endpoint, …] (for fallback)
   for (const ep of manifest.endpoints ?? []) {
     const norm = ep.normalized;
     if (!byPath.has(norm)) byPath.set(norm, []);
@@ -152,7 +154,7 @@ export function buildEndpointIndex(manifest) {
   return { byOp, byPath };
 }
 
-// Index request + response field usage by LOWERCASED name — the case-insensitive
+// Index request + response field usage by LOWERCASED name: the case-insensitive
 // join that bridges the app's PascalCase to the spec's camelCase. A name may be
 // both a request and a response field; we union the source files.
 export function buildFieldIndex(manifest) {
@@ -207,7 +209,7 @@ export function forwardFindings(diff, manifest, boundaries, { emitOpportunities 
 
       if (change.kind === 'endpoint-added') {
         // A new endpoint we don't already use is an opportunity; one we already
-        // call is just now-official — no action.
+        // call is now official, so no action.
         if (ep || !emitOpportunities) {
           dropped.unused++;
           continue;
@@ -245,14 +247,14 @@ export function forwardFindings(diff, manifest, boundaries, { emitOpportunities 
 
     if (isSchemaChange(change)) {
       // field-added is additive (the app cannot already read a field that did
-      // not exist), so it never joins — drop it explicitly for a clean count.
+      // not exist), so it never joins. Drop it explicitly for a clean count.
       if (change.kind === 'field-added') {
         dropped.additive++;
         continue;
       }
       // Join on the field name for field-*; for enum-changed there is no field
-      // name, so join the enum's schema name against consumed field names (e.g.
-      // a `MediaType` enum ↔ the `MediaType` response field the app reads).
+      // name, so join the enum's schema name against consumed field names (for
+      // example a `MediaType` enum ↔ the `MediaType` response field the app reads).
       const lookupName = change.kind === 'enum-changed' ? change.schema : change.name;
       const hit = lookupName ? fieldIndex.get(lookupName.toLowerCase()) : null;
       if (!BREAKING_KINDS.has(change.kind) || !hit) {
@@ -364,23 +366,23 @@ export function backwardFindings(manifest, floorFp, boundaries) {
 // The mirror image of the backward floor-coverage check. backwardFindings owns
 // the floor-INCLUDED endpoints (range includes the floor tier) and flags the ones
 // ABSENT from the floor spec (we call something old servers lack). This owns the
-// EXACT COMPLEMENT — the floor-EXCLUDED (modern-only) endpoints — and flags the
+// EXACT COMPLEMENT, the floor-EXCLUDED (modern-only) endpoints, and flags the
 // ones PRESENT in the floor spec: the oldest supported server serves the endpoint,
 // yet the app wires it for the modern tier only. That asymmetry is plausibly a
 // missing low-tier fallback... or (the common case on JellyRock today) the app
 // reaches the same capability on the floor via a different V1 sibling endpoint the
-// manifest doesn't link to this one — a dispatch pair like /Items/{} (V2) vs
+// manifest doesn't link to this one: a dispatch pair like /Items/{} (V2) vs
 // /Users/{}/Items/{} (V1). The agent dispositions which, exactly as it dispositions
 // the backward check's capability-guard coverage-gaps.
 //
-// Genuinely modern-only endpoints (absent from the floor spec — a real 10.9+ feature)
-// are NOT flagged: there is nothing on the floor to be asymmetric against. This is
+// Modern-only endpoints absent from the floor spec (a real 10.9+ feature) are not
+// flagged: there is nothing on the floor to be asymmetric against. This is
 // what "accounting for intentionally-modern-only guarded features" means mechanically.
 //
 // PARTITION GUARANTEE vs the backward check: both branch on the same predicate,
 // rangeIncludes(min, max, floorTier). backwardFindings handles `true`; this handles
 // `false`. A given endpoint can therefore be a coverage-gap OR a symmetry-advisory,
-// never both — no double-report, by construction.
+// never both. No double-report, by construction.
 export function symmetryFindings(manifest, floorFp, boundaries) {
   const floorTier = serverToTier(boundaries, floorFp.specVersion);
   const { ops, paths } = floorPresence(floorFp);
@@ -399,7 +401,7 @@ export function symmetryFindings(manifest, floorFp, boundaries) {
     const present = (ep.methods ?? []).filter((m) =>
       HTTP_METHODS.has(m.toUpperCase()) ? ops.has(opKey(norm, m)) : paths.has(norm),
     );
-    if (present.length === 0) continue; // genuinely modern-only — nothing to mirror
+    if (present.length === 0) continue; // absent from the floor too: nothing to mirror
 
     candidates.push({
       type: 'symmetry-advisory',
@@ -433,7 +435,7 @@ export function symmetryFindings(manifest, floorFp, boundaries) {
 
 // Does a candidate bind to a rule? ALL predicates the rule provides must match;
 // omitted predicates are wildcards. A predicate that references a field the
-// change doesn't carry (e.g. `schema` on an operation change) does NOT match.
+// change doesn't carry (for example `schema` on an operation change) does not match.
 export function matchSuppression(candidate, rule) {
   const m = rule.match ?? {};
   const c = candidate.change;
@@ -484,7 +486,7 @@ export function applySuppressions(candidates, rules) {
 // handled post-floor endpoint per the committed registry
 // (docs/dev/jellyfin-endpoint-availability.yml). A matched candidate becomes
 // `relevance: floor-known`, `needsInvestigation: false`, and carries the handling
-// disposition in `floorHandling` — it stays in the report as an audit trail but
+// disposition in `floorHandling`. It stays in the report as an audit trail but
 // drops out of the actionable set (mirrors applySuppressions, but it's a distinct,
 // version-semantic concept and stays `suppressed: false`).
 //
@@ -493,7 +495,7 @@ export function applySuppressions(candidates, rules) {
 // so without the ledger every such endpoint flags on every run. Registering one
 // records WHY its floor-absence is expected; the lint validates the code claim, so
 // it's regression-safe, not a blunt mute. An UNREGISTERED post-floor endpoint keeps
-// flagging needsInvestigation — the spec-derived floor check is the comprehensive
+// flagging needsInvestigation: the spec-derived floor check is the comprehensive
 // enumerator, so a new one can't hide.
 export function applyFloorAvailability(candidates, registry) {
   for (const candidate of candidates) {
@@ -597,7 +599,7 @@ function fingerprintPath(rootDir, version) {
 
 // Exported (alongside readManifest / readSuppressions) so the Phase-4 proactive
 // CI tracker (scripts/server-upgrade-tracker.js) can reuse the exact committed-
-// input readers — it computes counts from the same from/floor fingerprints +
+// input readers. It computes counts from the same from/floor fingerprints +
 // manifest + suppressions, only swapping in an EPHEMERAL in-memory `to`
 // fingerprint instead of a committed one.
 export function readFingerprint(rootDir, version) {
@@ -620,7 +622,7 @@ export function readManifest(rootDir) {
 }
 
 // Read a manifest from an EXPLICIT path (the --manifest override). For what-if /
-// historical simulations (e.g. reconstructing a pre-V2-split manifest) — in
+// historical simulations (for example reconstructing a pre-V2-split manifest). In
 // production you always want the committed manifest (current code).
 export function readManifestFrom(filePath) {
   try {
@@ -632,14 +634,14 @@ export function readManifestFrom(filePath) {
 
 // Resolve a version's fingerprint for the report. PREFER the committed anchor
 // (it's the reviewed one). With { fetch:true } and no committed fingerprint, fall
-// back to building one IN-MEMORY from the fetched spec — the same ephemeral path
-// the Phase-4 tracker uses — so a maintainer can DRY-RUN the full report for any
-// upstream version (e.g. preview a brand-new release) without first committing
+// back to building one IN-MEMORY from the fetched spec (the same ephemeral path
+// the Phase-4 tracker uses), so a maintainer can DRY-RUN the full report for any
+// upstream version (for example to preview a brand-new release) without first committing
 // its fingerprint. Nothing is written to the committed tree; only the gitignored
 // raw-spec cache is populated by fetchSpec.
 export async function resolveFingerprint(rootDir, version, { fetch = false } = {}) {
   if (existsSync(fingerprintPath(rootDir, version)) || !fetch) {
-    return readFingerprint(rootDir, version); // committed → read; missing + !fetch → helpful throw
+    return readFingerprint(rootDir, version); // committed: read; missing + !fetch: helpful throw
   }
   const spec = await fetchSpec(version, { rootDir });
   return buildFingerprint(spec, { specVersion: version });
@@ -665,7 +667,7 @@ export function readSuppressions(rootDir) {
 
 // Read + validate the committed endpoint-availability registry (Phase 6). Exported
 // alongside the other committed-input readers so the Phase-4 tracker reuses the
-// exact same ledger when it computes counts ephemerally. A missing file → [].
+// exact same ledger when it computes counts ephemerally. A missing file gives [].
 export function readAvailability(rootDir) {
   return loadEndpointAvailability(rootDir);
 }
@@ -686,7 +688,7 @@ async function main() {
   const [fromVersion, toArg] = positional;
 
   // The `unstable`/`master` convenience token resolves to the latest IMMUTABLE
-  // datestamped master build (re-diffable + reproducible) — never the mutable
+  // datestamped master build (re-diffable + reproducible), never the mutable
   // /openapi/ root pointer. The resolved datestamp becomes `toVersion`, so it lands
   // in the report + cache filename and can be reused as the next `<from>`.
   let toVersion = toArg;

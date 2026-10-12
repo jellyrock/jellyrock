@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-15
+last-updated: 2026-10-06
 ---
 
 # Signals backlog
@@ -105,9 +105,19 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 ### jellyfin-demo-single-mediasource: demo server has no movie with two video sources
 
 - **watching**: `demo.jellyfin.org/stable` regaining any movie that reports `numVideoSources >= 2` — or JellyRock standing up its own demo server, which is the plan (owner, 2026-09-07) and would let the fixture be seeded rather than waited on
-- **current**: `tests/rta/specs/dialogs.spec.js`'s `osd video-source button opens the list dialog; back cancels it` skips at runtime, because `components/video/OSD.bs:204` correctly removes `#showVideoSourceMenu` when `numVideoSources < 2`. Jellyfin **`v12`** landed on the demo server and dropped Dracula's color version, so the hero reports one `MediaSource` and **0 of its 11 movies** carry more than one (checked 2026-09-08). The skip is therefore not conditional — the test **cannot run against the only fixture the suite has**, and has not run since `v12` landed. That is coverage which reads as present in the suite listing and is inert, which is the same "green for a reason nobody chose" class the rest of this harness work is about; it is tracked here rather than as a followup because the trigger is an EXTERNAL fixture change nobody here controls. The four `#showVideoInfoPopup` callers beside it still throw on a missing button — they have no content precondition, so a missing button there is a real defect
+- **current**: `tests/rta/specs/dialogs.spec.js`'s `osd video-source button opens the list dialog; back cancels it` skips at runtime, because `OSD.setButtonStates()` correctly removes `#showVideoSourceMenu` when `numVideoSources < 2`. Jellyfin **`v12`** landed on the demo server and dropped Dracula's color version, so the hero reports one `MediaSource` and **0 of its 11 movies** carry more than one (checked 2026-09-08). The skip is therefore not conditional — the test **cannot run against the only fixture the suite has**, and has not run since `v12` landed. That is coverage which reads as present in the suite listing and is inert, which is the same "green for a reason nobody chose" class the rest of this harness work is about; it is tracked here rather than as a followup because the trigger is an EXTERNAL fixture change nobody here controls. The four `#showVideoInfoPopup` callers beside it still throw on a missing button — they have no content precondition, so a missing button there is a real defect
 - **latest_upstream**: Jellyfin `v12` on demo.jellyfin.org/stable — 0 of 11 movies with >1 `MediaSource`
 - **latest_acknowledged**: Jellyfin `v12` on demo.jellyfin.org/stable — 0 of 11 movies with >1 `MediaSource`
 - **last_checked**: 2026-09-09
 - **action_when_moves**: re-point the test at whichever item reports two sources and DELETE the `testCtx.skip` — a skip that outlives its cause is worse than a red, because nothing reports it. If the fixture moves to a `JellyRock`-owned demo server instead, seed one item with two video sources and delete the skip the same way. Either move also invalidates the run-count figures in the RTA timing followup in `docs/progress.md`, which counts this skip
+- **status**: watching
+
+### jellyfin-next-up-first-episode-filter: server keeping not-yet-started series out of Next Up again
+
+- **watching**: Jellyfin restoring a server-side way to keep the first episode of a series with no played regular episode out of `GET /Shows/NextUp`: a new query parameter, or `DisableFirstEpisode` acting again. jellyfin/jellyfin#13687 removed the filter in 10.11; its report, jellyfin/jellyfin#13743, was closed by the stale bot
+- **current**: Home's Next Up drops those episodes client-side wherever the request does not ask the server to (`nextUpNeedsStartedFilter()`: 10.8-10.10 with Max Days on, and every 10.11+ server), at one extra round of lookups on Home's first paint (measured 2026-10-06 on a Stick 4K against 12.1: +377 ms). Decision `next-up-started-series-filter`
+- **latest_upstream**: Jellyfin `v12.2`: Next Up takes no filter parameter
+- **latest_acknowledged**: Jellyfin `v12.2`: Next Up takes no filter parameter
+- **last_checked**: 2026-10-06
+- **action_when_moves**: verify the new filter with `npm run jellyfin:matrix`, register it as a version-gated parameter (decision `version-gated-query-parameters`), send it from `buildHomeNextUpParams()`, and recognize it in `nextUpNeedsStartedFilter()` so those servers skip the client lookups
 - **status**: watching
