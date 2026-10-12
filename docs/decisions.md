@@ -2010,6 +2010,16 @@ The playback-info report tells every viewer where the stream comes from ("Stream
 
 Chosen over an admin-only raw URL (answers nobody else, and puts the token on screen) and over the origin row alone (left provider tokens visible in the admin Path row). The cost: an administrator can no longer copy a provider URL's query values from the TV; the server's dashboard still has them.
 
+## decision-id: playback-report-reason-explanations
+
+**date**: 2026-10-12
+**status**: accepted
+**related-files**: `source/utils/playbackReport.bs`, `locale/custom/en_US.json`, `docs/architecture/playback.md`
+
+Each transcode reason in the playback-info report keeps the server's code as its label, untranslated so it can be searched, and explains it in plain words: one string for each of the 28 codes Jellyfin's `TranscodeReason` defines (10.7.7, 12.1, 12.2), written from where `StreamBuilder` sets each code rather than from its name (`DirectPlayError` means no direct-play profile fitted and no reason was found). The wording says what needs converting, not that the device cannot play it, because one of our settings can be the cause, and the row then names it. A code the app does not know shows no explanation.
+
+This reverses the earlier rule of showing codes with no gloss, which left a bare code beside an empty column on every transcode the app's settings did not cause. Ruled out: a "Reason" label with the code as the value (repeats the label for each reason), and exempting reason rows from the RTA check that no row is empty (kept the unexplained rows). The cost is 28 strings to translate, and a string to add when Jellyfin adds a code; until then the new code shows unexplained.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

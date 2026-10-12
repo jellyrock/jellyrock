@@ -322,19 +322,44 @@ namespace tests
     @describe("transcode reasons")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("shows the server's code verbatim and explains only our own doing")
+    @it("keeps the server's code as the label, explains it, and names our setting when it caused it")
     function _()
       section = m.sectionById(buildPlaybackReport(m.input), "reasons")
       m.assertEqual(section.rows[0].label, "VideoRangeTypeNotSupported", "the server's vocabulary passes through untranslated")
-      m.assertEqual(section.rows[0].value, "Caused by the Preserve DoVi setting")
+      m.assertEqual(section.rows[0].value, "The video's dynamic range needs converting for this device. Caused by the Preserve DoVi setting")
     end function
 
-    @it("leaves a reason unexplained when no setting of ours caused it")
+    @it("explains a reason no setting of ours caused")
     function _()
       m.input.session.TranscodingInfo.TranscodeReasons = ["AudioCodecNotSupported"]
       section = m.sectionById(buildPlaybackReport(m.input), "reasons")
       m.assertEqual(section.rows[0].label, "AudioCodecNotSupported")
-      m.assertEqual(section.rows[0].value, "", "a reason we cannot prove is the server's to explain")
+      m.assertEqual(section.rows[0].value, "The audio codec needs converting for this device.")
+    end function
+
+    @it("says DirectPlayError means no specific reason, which its name hides")
+    function _()
+      ' StreamBuilder sets it when no direct-play profile fits and no reason was found (12.1).
+      m.input.session.TranscodingInfo.TranscodeReasons = ["DirectPlayError"]
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "reason.DirectPlayError"), "The server found no way to play it directly, and gave no specific reason.")
+    end function
+
+    @it("explains every reason Jellyfin defines")
+    function _()
+      ' TranscodeReason at 10.7.7 (MediaBrowser.Model/Session/TranscodingInfo.cs) and at
+      ' v12.1 and v12.2 (MediaBrowser.Model/Session/TranscodeReason.cs): 28 codes in all.
+      codes = ["ContainerNotSupported", "VideoCodecNotSupported", "AudioCodecNotSupported", "SubtitleCodecNotSupported", "AudioIsExternal", "SecondaryAudioNotSupported", "StreamCountExceedsLimit", "VideoProfileNotSupported", "VideoRangeTypeNotSupported", "VideoCodecTagNotSupported", "VideoLevelNotSupported", "VideoResolutionNotSupported", "VideoBitDepthNotSupported", "VideoFramerateNotSupported", "VideoRotationNotSupported", "RefFramesNotSupported", "AnamorphicVideoNotSupported", "InterlacedVideoNotSupported", "AudioChannelsNotSupported", "AudioProfileNotSupported", "AudioSampleRateNotSupported", "AudioBitDepthNotSupported", "ContainerBitrateExceedsLimit", "VideoBitrateNotSupported", "AudioBitrateNotSupported", "UnknownVideoStreamInfo", "UnknownAudioStreamInfo", "DirectPlayError"]
+      m.assertEqual(codes.count(), 28)
+      for each code in codes
+        m.assertNotEqual(transcodeReasonExplanation(code), "", code + " has no explanation")
+      end for
+    end function
+
+    @it("leaves a code it does not know without an explanation")
+    function _()
+      ' A newer server's code: the code itself still shows, and a guess would be worse.
+      m.input.session.TranscodingInfo.TranscodeReasons = ["SomeFutureReason"]
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "reason.SomeFutureReason"), "")
     end function
 
     @it("pairs each code with its own explanation across several reasons")
@@ -347,9 +372,9 @@ namespace tests
 
       rows = m.sectionById(buildPlaybackReport(m.input), "reasons").rows
       m.assertEqual(rows.count(), 3)
-      m.assertEqual(rows[0].value, "Caused by the Preserve DoVi setting")
-      m.assertEqual(rows[1].value, "")
-      m.assertEqual(rows[2].value, "Caused by the Decode Multichannel Audio setting")
+      m.assertEqual(rows[0].value, "The video's dynamic range needs converting for this device. Caused by the Preserve DoVi setting")
+      m.assertEqual(rows[1].value, "The audio codec needs converting for this device.")
+      m.assertEqual(rows[2].value, "The audio's channel count needs converting for this device. Caused by the Decode Multichannel Audio setting")
     end function
 
     @it("gives the reasons section a wide label column for the codes")
@@ -696,6 +721,34 @@ namespace tests
       m.input.serverUrl = "http://192.168.1.3:8103"
       m.input.mediaSource.Path = "https://cdn.example.com/live/master.m3u8?token=abc"
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.path"), "https://cdn.example.com/live/master.m3u8?token=***")
+    end function
+
+    @it("omits size and bitrate for a .strm item, whose figures are the text file's")
+    function _()
+      ' Measured 2026-10-12 on 10.11 and 12.1: a .strm source is Protocol Http, and its Size
+      ' is the .strm file (101 B) with a Bitrate worked out from it (11 bit/s).
+      m.input.mediaSource.Protocol = "Http"
+      m.input.mediaSource.Size = 101
+      m.input.mediaSource.Bitrate = 11
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "file.size"), "<missing>")
+      m.assertEqual(m.rowValue(report, "file.bitrate"), "<missing>")
+    end function
+
+    @it("keeps the bitrate of a live stream, which the server measures")
+    function _()
+      m.input.mediaSource.Protocol = "Http"
+      m.input.mediaSource.IsInfiniteStream = true
+      m.input.mediaSource.Bitrate = 8200000
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.bitrate"), "8.2 Mbps")
+    end function
+
+    @it("keeps size and bitrate for a file")
+    function _()
+      m.input.mediaSource.Protocol = "File"
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "file.size"), "24.2 GiB")
+      m.assertNotEqual(m.rowValue(report, "file.bitrate"), "<missing>")
     end function
 
     @it("omits size on a live stream, which has no file to have one")
