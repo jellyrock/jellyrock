@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Claude Code PostToolUse hook — auto-format .bs / .brs files immediately
+# Claude Code PostToolUse hook: auto-format .bs / .brs files immediately
 # after the agent writes them. The agent's equivalent of "format on save"
 # for human devs using the BrighterScript extension.
 #
-# Why per-edit (not just pre-commit): the agent has no live editor
+# Why per-edit (not only pre-commit): the agent has no live editor
 # integration. Without this hook, formatting drift accumulates across
 # multiple edits and only surfaces at commit time (when lint-staged runs
 # bsfmt --write). Per-edit format means the agent's *next* read of the
-# file shows the canonical form — no surprise diff at commit, no risk of
+# file shows the canonical form: no surprise diff at commit, no risk of
 # the agent writing more code based on a soon-to-be-rewritten layout.
 #
 # Why bsfmt only (not bslint / validate): bsfmt is fast (~500ms-1s) and
@@ -53,12 +53,12 @@ LOG_FILE="$LOG_DIR/bsfmt-on-write-errors.log"
 mkdir -p "$LOG_DIR" 2>/dev/null
 
 if ! command -v node >/dev/null 2>&1 || [ ! -x "./node_modules/.bin/bsfmt" ]; then
-  # Tooling not present (no node, no node_modules) — nothing we can do.
+  # Tooling not present (no node, no node_modules): nothing we can do.
   exit 0
 fi
 
 # Run bsfmt. If it fails (parse error, unwriteable file), surface stderr
-# to the agent. Successful runs are silent — bsfmt --write outputs progress
+# to the agent. Successful runs are silent: bsfmt --write outputs progress
 # noise we don't want in the next-turn context.
 ERR=$(./node_modules/.bin/bsfmt --write "$FILE" 2>&1)
 EXIT=$?

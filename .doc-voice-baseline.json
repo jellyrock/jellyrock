@@ -6,32 +6,6 @@
     "caps-emphasis": 1,
     "filler": 1
   },
-  ".claude/hooks/bsfmt-on-write.sh": {
-    "em-dash": 4,
-    "filler": 1
-  },
-  ".claude/hooks/check-progress-cursor.sh": {
-    "caps-emphasis": 2,
-    "em-dash": 2,
-    "filler": 1
-  },
-  ".claude/hooks/check-touched-lint.sh": {
-    "caps-emphasis": 2,
-    "em-dash": 2
-  },
-  ".claude/hooks/check-touched-related-files.sh": {
-    "caps-emphasis": 2,
-    "em-dash": 3,
-    "latin-abbrev": 1
-  },
-  ".claude/hooks/log-tool-use.sh": {
-    "caps-emphasis": 2,
-    "em-dash": 1
-  },
-  ".claude/hooks/session-start-nudge.sh": {
-    "caps-emphasis": 2,
-    "em-dash": 2
-  },
   ".claude/rules/american-spelling.md": {
     "filler": 1
   },
@@ -247,146 +221,6 @@
   },
   ".claude/skills/translation-add/SKILL.md": {
     "caps-emphasis": 1
-  },
-  ".github/hooks/README.md": {
-    "em-dash": 5,
-    "latin-abbrev": 1
-  },
-  ".github/pull_request_template.md": {
-    "em-dash": 2,
-    "latin-abbrev": 1
-  },
-  ".github/workflows/_lint-brightscript.yml": {
-    "em-dash": 7,
-    "latin-abbrev": 1
-  },
-  ".github/workflows/_lint-docs.yml": {
-    "em-dash": 7
-  },
-  ".github/workflows/_lint-floor-system.yml": {
-    "em-dash": 7
-  },
-  ".github/workflows/_lint-js.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/_lint-spelling.yml": {
-    "em-dash": 2
-  },
-  ".github/workflows/_smoke-test-deps.yml": {
-    "caps-emphasis": 1,
-    "em-dash": 1
-  },
-  ".github/workflows/_test-scripts.yml": {
-    "em-dash": 6,
-    "filler": 1
-  },
-  ".github/workflows/_validate-dependencies.yml": {
-    "caps-emphasis": 1,
-    "em-dash": 2,
-    "latin-abbrev": 1
-  },
-  ".github/workflows/copilot-setup-steps.yml": {
-    "caps-emphasis": 1
-  },
-  ".github/workflows/device-unit-tests.yml": {
-    "caps-emphasis": 7,
-    "em-dash": 14,
-    "filler": 1,
-    "prose-arrow": 8
-  },
-  ".github/workflows/docs-stale-tracker.yml": {
-    "caps-emphasis": 1,
-    "em-dash": 6,
-    "latin-abbrev": 2
-  },
-  ".github/workflows/jellyrock-bot.yml": {
-    "em-dash": 2,
-    "latin-abbrev": 1,
-    "prose-arrow": 4
-  },
-  ".github/workflows/journal-sync-precheck.yml": {
-    "em-dash": 2,
-    "filler": 1,
-    "latin-abbrev": 1
-  },
-  ".github/workflows/journal-sync.yml": {
-    "caps-emphasis": 2,
-    "em-dash": 5,
-    "prose-arrow": 1
-  },
-  ".github/workflows/lint-brightscript.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/lint-docs.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/lint-floor-system.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/lint-issue-templates.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/lint-js.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/lint-json.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/lint-language-coverage.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/lint-markdown.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/lint-spelling.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/lint-translation-files.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/release-management.yml": {
-    "latin-abbrev": 1
-  },
-  ".github/workflows/roku-analysis.yml": {
-    "latin-abbrev": 1
-  },
-  ".github/workflows/roku-hardware-sync.yml": {
-    "caps-emphasis": 1,
-    "em-dash": 10,
-    "filler": 2
-  },
-  ".github/workflows/rta-functional-tests.yml": {
-    "caps-emphasis": 3,
-    "em-dash": 8,
-    "filler": 3
-  },
-  ".github/workflows/server-upgrade-tracker.yml": {
-    "caps-emphasis": 3,
-    "em-dash": 8,
-    "filler": 2,
-    "prose-arrow": 2
-  },
-  ".github/workflows/smoke-test-deps.yml": {
-    "em-dash": 1
-  },
-  ".github/workflows/test-scripts.yml": {
-    "em-dash": 1
-  },
-  ".husky/pre-commit": {
-    "em-dash": 2
-  },
-  ".husky/pre-push": {
-    "caps-emphasis": 9,
-    "em-dash": 28,
-    "latin-abbrev": 1
-  },
-  ".lintstagedrc.cjs": {
-    "em-dash": 11,
-    "prose-arrow": 11
-  },
-  ".spellcheckerrc.yaml": {
-    "caps-emphasis": 4,
-    "em-dash": 5
   },
   "components/AppWaitHost.bs": {
     "em-dash": 3,
@@ -1262,12 +1096,6 @@
   },
   "docs/user/playback-troubleshooting.md": {
     "filler": 1
-  },
-  "eslint.config.js": {
-    "caps-emphasis": 2,
-    "em-dash": 17,
-    "filler": 3,
-    "prose-arrow": 1
   },
   "resources/icons/README.md": {
     "caps-emphasis": 1,
@@ -2916,12 +2744,5 @@
   },
   "tests/source/unit/utils/videoSourceSelectionById.spec.bs": {
     "em-dash": 1
-  },
-  "vitest.config.js": {
-    "em-dash": 2,
-    "filler": 1
-  },
-  "vitest.rta.config.js": {
-    "em-dash": 3
   }
 }

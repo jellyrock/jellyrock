@@ -1,6 +1,6 @@
 name: lint-issue-templates
 
-# No event-time `paths:` filter — see .github/actions/changed-paths for why.
+# No event-time `paths:` filter: .github/actions/changed-paths says why.
 on:
   pull_request:
 

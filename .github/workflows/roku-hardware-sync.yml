@@ -1,8 +1,8 @@
 name: roku-hardware sync
 
 # Keeps scripts/data/roku-hardware.json current with Roku's published hardware table
-# (rokudev/dev-doc docs/SPECIFICATIONS/hardware.md), by opening a pull request when —
-# and ONLY when — the device data actually changes.
+# (rokudev/dev-doc docs/SPECIFICATIONS/hardware.md), by opening a pull request when,
+# and only when, the device data actually changes.
 #
 # ## Why this is a scheduled PR and not a journal row
 #
@@ -11,7 +11,7 @@ name: roku-hardware sync
 # up in the review queue with the diff already in it, and the evidence says the data
 # does not move often enough for anyone to keep the habit: in the three months before
 # this workflow was written, `hardware.md` took four commits, and only one of them
-# added a device (`0cddfa29` — `K000X`, Roku TV "Roxton", 512 MB, 2024). Nothing in
+# added a device (`0cddfa29`: `K000X`, Roku TV "Roxton", 512 MB, 2024). Nothing in
 # this repo would have known.
 #
 # ## Why the PR gate is the DATA, not the file
@@ -19,7 +19,7 @@ name: roku-hardware sync
 # Of those four upstream commits, one (`c685ceb7`) edited only frontmatter and SEO
 # metadata. Watching the file would have opened a PR for it. So the generator emits
 # `roku-hardware:data-changed=<bool>`, computed from a checksum over the normalized
-# device data alone — never over provenance, which moves on every fetch. Prose,
+# device data alone, never over provenance, which moves on every fetch. Prose,
 # whitespace, alignment markers and footnote churn upstream are invisible here. Every
 # PR this opens carries a real hardware diff.
 #
@@ -28,20 +28,20 @@ name: roku-hardware sync
 # `--fetch` refuses anything it does not recognize: a new RAM spelling, an unknown
 # resolution, a model number listed under two RAM sizes, a table whose support-tier
 # heading moved, or `rokudev/dev-doc` cutting a new default branch. All of those fail
-# this job LOUDLY rather than committing a device with a null tier — which is exactly
+# this job loudly rather than committing a device with a null tier, which is exactly
 # how the hand-typed table it replaced went silently stale. A red scheduled run here
 # means "go look at what Roku changed", not "the sync is flaky".
 
 on:
   schedule:
-    # 07:00 UTC Monday — deliberately offset from docs-stale-tracker.yml's 13:00 slot
+    # 07:00 UTC Monday, offset on purpose from docs-stale-tracker.yml's 13:00 slot
     # so two scheduled jobs don't land in the same minute. Weekly is generous for an
     # upstream that moves a few times a year; it costs two API calls.
     - cron: '0 7 * * MON'
   workflow_dispatch:
 
 # Unused when authenticating as the JellyRock GitHub App (the App's installation
-# permissions apply instead) — kept for clarity, matching docs-stale-tracker.yml.
+# permissions apply instead); kept for clarity, matching docs-stale-tracker.yml.
 # The App token is also what makes the opened PR run CI: a PR created with the stock
 # GITHUB_TOKEN does not trigger workflows, and an unverified data PR is worth little.
 permissions:
@@ -75,11 +75,11 @@ jobs:
 
       - run: npm ci
 
-      # `shell: bash` is LOAD-BEARING, not style. Actions' default shell on Linux is
-      # `bash -e {0}` — no `pipefail` — so the exit status of a pipeline is `tee`'s,
-      # and a failing `--fetch` would exit 0. The step would go green, the grep below
-      # would find no `data-changed=true` (the failure path never prints it), and the
-      # job would report "nothing to open" — weekly, forever. That is exactly the
+      # `shell: bash` is there for correctness, not style. Actions' default shell on
+      # Linux is `bash -e {0}` (no `pipefail`), so the exit status of a pipeline is
+      # `tee`'s, and a failing `--fetch` would exit 0. The step would go green, the grep
+      # below would find no `data-changed=true` (the failure path never prints it), and
+      # the job would report "nothing to open", weekly, forever. That is exactly the
       # silent staleness this generator exists to end, one layer up, and it would look
       # like a healthy sync the whole time. Naming the shell selects
       # `bash --noprofile --norc -eo pipefail {0}`, which fails the step instead.
@@ -131,7 +131,7 @@ jobs:
 
           # One long-lived branch, force-pushed. A dated branch per run would leave a
           # trail of stale PRs for the same fact; this way a second upstream change
-          # before anyone merges just updates the open PR in place.
+          # before anyone merges updates the open PR in place.
           git checkout -B "$BRANCH"
           git add scripts/data/roku-hardware.json
           git commit -m "chore(data): sync Roku hardware dictionary

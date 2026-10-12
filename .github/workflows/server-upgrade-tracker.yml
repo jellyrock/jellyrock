@@ -1,26 +1,27 @@
 name: server-upgrade tracker
 
 # Proactive CI for the server-upgrade-automation pipeline
-# (docs/architecture/server-upgrade-automation.md). The ONE fully-autonomous,
+# (docs/architecture/server-upgrade-automation.md). The one fully-autonomous,
 # zero-judgment surface: it maintains the PER-VERSION release-triage DIGEST issues
-# that nudge a human to triage a new Jellyfin stable release. It NEVER files
+# that nudge a human to triage a new Jellyfin stable release. It never files
 # per-finding issues (that stays human-gated behind `/server-upgrade execute`,
-# which files them as sub-issues of the digest) and NEVER writes the repo or the
+# which files them as sub-issues of the digest) and never writes the repo or the
 # journals.
 #
-# Behaviour (Phase 6 — per-version digests, mirroring docs-stale-tracker.yml's
+# Behavior (per-version digests, mirroring docs-stale-tracker.yml's
 # single-issue lifecycle but keyed on the version, not one rolling issue):
 #   - Detects the latest Jellyfin STABLE (RCs excluded) and compares it to
 #     `latest_acknowledged` on the jellyfin-server-stable row of signals-backlog.md.
-#   - action 'none'   (caught up): do nothing. Acknowledging != work done — Phase 4's
-#     "close on caught-up" is intentionally GONE.
+#   - action 'none'   (caught up): do nothing. Acknowledging != work done, so the
+#     first design's "close on caught-up" (a single rolling issue, Phase 4 in the
+#     design doc's History, which never ran) is intentionally GONE.
 #   - action 'clean'  (≥1 newer release, 0 candidates touch us): a judgment-free
 #     claim, so open-then-close the version's digest as a persistent audit record
-#     (the ONLY CI close). Counts come from an EPHEMERAL in-CI fingerprint (nothing
-#     committed — preserves the reviewed-anchor invariant).
+#     (the only CI close). Counts come from an EPHEMERAL in-CI fingerprint (nothing
+#     committed, which preserves the reviewed-anchor invariant).
 #   - action 'triage' (≥1 candidate, or degraded): open/refresh the version's digest
 #     with the mechanical checklist UNTIL it's first triaged (it carries
-#     `server-upgrade:triaging`, added by /server-upgrade) — then HAND OFF: never
+#     `server-upgrade:triaging`, added by /server-upgrade). Then HAND OFF: never
 #     overwrite or close it. A candidate-bearing digest is closed only by a human /
 #     the skill.
 #
@@ -31,8 +32,8 @@ on:
   schedule:
     # Daily at 12:00 UTC. Jellyfin can ship more than one (hot)fix in a week, so
     # weekly could miss a release for up to 7 days. Daily is cheap: a run
-    # short-circuits to a sub-second version-compare when caught up — the spec
-    # fetch + report compute only happen when a genuinely newer stable exists.
+    # short-circuits to a sub-second version-compare when caught up: the spec
+    # fetch + report compute only happen when a newer stable exists.
     - cron: '0 12 * * *'
   workflow_dispatch:
     inputs:
@@ -41,14 +42,14 @@ on:
         required: false
 
 # Permissions are unused when authenticating as the JellyRock GitHub App (the
-# App's installation permissions apply instead) — kept for clarity and as a
+# App's installation permissions apply instead). They are kept for clarity and as a
 # fallback for forks where APP_PRIVATE_KEY isn't available.
 permissions:
   contents: read
   issues: write
 
 # Serialize runs: a manual workflow_dispatch could otherwise overlap the daily
-# cron, and both resolve the same per-version digest by title-match dedup — two
+# cron, and both resolve the same per-version digest by title-match dedup, so two
 # concurrent runs could each see "no digest" and double-create. Queue rather than
 # cancel so an in-flight run finishes its GH-write sequence cleanly.
 concurrency:
@@ -85,12 +86,14 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       # List every per-version digest ONCE (any state). Feeds two consumers:
-      #   1) the render step below (--tracker-issues) → the "Mechanically cleared
+      #   1) the render step below (--tracker-issues), for the "Mechanically cleared
       #      through" header line, so a trailing diff anchor reads as "cleared up
       #      to here" rather than a stale baseline.
-      #   2) the dedup step further down (jq title-match) → THIS version's digest.
-      # Net gh calls are unchanged vs. the old per-step list — just hoisted earlier
-      # and shared. Runs after the label-ensure step so the label always exists.
+      #   2) the dedup step further down (jq title-match), to find THIS version's
+      #      digest.
+      # It replaces the dedup step's own list call, hoisted earlier and shared (a
+      # caught-up run, which skips the dedup step, now makes this one call too).
+      # Runs after the label-ensure step so the label always exists.
       - name: List tracker digests
         run: |
           set -euo pipefail
@@ -126,7 +129,7 @@ jobs:
         run: |
           set -euo pipefail
           # Match the title EXACTLY in jq against the shared /tmp/digests.json from
-          # the "List tracker digests" step — the title carries brackets + an
+          # the "List tracker digests" step. The title carries brackets + an
           # em-dash that gh's --search would mangle, and reusing the file avoids a
           # second list call.
           MATCH=$(jq -c --arg t "$TITLE" 'map(select(.title == $t)) | .[0] // {}' /tmp/digests.json)
@@ -148,9 +151,9 @@ jobs:
           set -euo pipefail
           # ROOT CAUSE (resolved): the GitHub App installation lacked the Issues
           # permission, so the token could create an issue but not comment, attach a
-          # label, or list — every non-create write returned HTTP 403 "Resource not
-          # accessible by integration" (REST *and* GraphQL alike — REST is not a
-          # workaround for the 403; the permission grant is the fix). Granting the App
+          # label, or list: every non-create write returned HTTP 403 "Resource not
+          # accessible by integration" (REST *and* GraphQL alike; REST is not a
+          # workaround for the 403, the permission grant is the fix). Granting the App
           # Issues: read & write fixed it. We use REST `gh api` here regardless because
           # it creates + labels atomically (so the digest is immediately visible to
           # the label-keyed dedup in "Find this version's digest", avoiding a

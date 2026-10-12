@@ -1,20 +1,23 @@
 name: smoke-test-deps
 
-# Module-level smoke tests for devDeps that nothing else in CI exercises.
+# Module-level smoke tests for devDeps that the dependency-PR checks
+# (_validate-dependencies.yml) would not otherwise exercise.
 #
 # Coverage matrix:
-# - roku-deploy (CJS): require() the module + verify .deploy and .createPackage
-#   are exported as functions. Only invoked by `npm run deploy` (manual), never
-#   in CI, so without this check a bad patch could land green.
+# - roku-deploy (CJS): require() the module + verify .deploy, .createPackage
+#   and .deployAndSignPackage are exported as functions. CI uses it only in
+#   `npm run package` (_build-app.yml) and in scripts/run-roku-tests.js on the
+#   device runner, and neither runs in the dependencies validator, so without
+#   this check a bad patch could land green.
 # - lint-staged (ESM): dynamic import the module + verify default export is
 #   a function. Plus require() .lintstagedrc.cjs to verify the config file
 #   parses (lint-staged only runs via the husky pre-commit hook locally).
 #
-# Husky itself is NOT smoke-tested here: `"prepare": "husky"` in package.json
+# Husky itself is not smoke-tested here: `"prepare": "husky"` in package.json
 # runs the husky CLI on every `npm ci`, so it's already covered.
 #
 # These checks load modules but DON'T invoke the CLIs. Invoking
-# `roku-deploy --version` would actually try to deploy — the CLI has no
+# `roku-deploy --version` would actually try to deploy: the CLI has no
 # --version flag and falls through to the default action. Module-load + API
 # surface check catches catastrophic package breakage without side effects.
 

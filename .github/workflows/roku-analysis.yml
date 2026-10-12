@@ -4,7 +4,7 @@ on:
   workflow_dispatch: # allow manual start
   push:
     branches:
-      - "v*.*.*" # e.g. v1.0.0, v2.1.3
+      - "v*.*.*" # for example v1.0.0, v2.1.3
 
 jobs:
   static:

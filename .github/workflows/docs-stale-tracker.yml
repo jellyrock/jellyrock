@@ -4,13 +4,13 @@ name: journal cursor tracker
 # (`last-updated` frontmatter, via progress-cursor-nudge.cjs --json).
 #
 # This USED to be a hard per-PR gate in lint:docs, but progress.md staleness
-# is a property of main — not of any one contributor's PR — so it false-failed
-# unrelated PRs (e.g. Renovate dep bumps) that couldn't legitimately fix it.
+# is a property of main, not of any one contributor's PR, so it false-failed
+# unrelated PRs (for example Renovate dep bumps) that couldn't legitimately fix it.
 # It now lives here as a non-blocking weekly signal + the local pre-push /
 # session-start nudges. See docs/architecture/system-shape.md.
 #
-# Why the architecture/dev-guide `last-reviewed` review cycle is NOT here
-# anymore: doc freshness is driven by CONTEXTUAL prompts — the end-of-turn
+# Why the architecture/dev-guide `last-reviewed` review cycle is not here
+# anymore: doc freshness is driven by CONTEXTUAL prompts: the end-of-turn
 # reminder in scripts/lint/check-touched-related-files.cjs (now covering
 # docs/dev/ as well as docs/architecture/) and the 120-day PR gate in
 # scripts/lint/docs-stale-blocking.cjs. Both fire while the author is already
@@ -28,15 +28,15 @@ name: journal cursor tracker
 #
 # The active developer already gets this signal locally (Stop hook +
 # pre-push); this weekly job is the backstop for "nobody's touched the
-# cursor in a while" — i.e. stretches with no local hook runs at all.
+# cursor in a while", that is, stretches with no local hook runs at all.
 
 on:
   schedule:
-    - cron: '0 13 * * MON'  # 13:00 UTC every Monday — start of the workweek for most contributors
+    - cron: '0 13 * * MON'  # 13:00 UTC every Monday, the start of the workweek for most contributors
   workflow_dispatch:
 
 # Permissions are unused when authenticating as the JellyRock GitHub App
-# (the App's installation permissions apply instead) — kept for clarity
+# (the App's installation permissions apply instead). They are kept for clarity
 # and as a fallback for forks where APP_PRIVATE_KEY isn't available.
 permissions:
   contents: read
@@ -72,8 +72,9 @@ jobs:
           set -euo pipefail
           # progress-cursor-nudge always exits 0; .stale is null when fresh,
           # or { days, commitsSince, lastUpdated } when stale (>7d + non-
-          # maintenance commits since). This is the single source of that
-          # computation — the local nudges use the same code path.
+          # maintenance commits since). This script is the single source of that
+          # computation for this job and the Stop-hook and pre-push nudges,
+          # which run it too (the session-start nudge has its own check).
           node scripts/lint/progress-cursor-nudge.cjs --json > /tmp/progress.json
           if [ "$(jq -c '.stale' /tmp/progress.json)" = "null" ]; then
             echo "progress_stale=0" >> "$GITHUB_OUTPUT"

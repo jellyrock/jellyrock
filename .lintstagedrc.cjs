@@ -5,28 +5,30 @@
 // reformatted code lands in the same commit.
 //
 // Surface ownership (see docs/architecture/build-and-tooling.md):
-//   - PostToolUse hook  — bsfmt --write on every agent Write/Edit (Claude Code only)
-//   - End-of-turn hook  — spell/markdown/json on uncommitted-only files (agents)
-//   - Pre-commit (here) — file-scoped lint+format for everyone (humans + agents)
-//   - Pre-push hook     — project-wide checks (validate, bslint, lint:docs, regens)
-//   - CI                — same as pre-push, can't bypass
+//   - PostToolUse hook:  bsfmt --write on every agent Write/Edit (Claude Code only)
+//   - End-of-turn hook:  spell/markdown/json on uncommitted-only files (agents)
+//   - Pre-commit (here): file-scoped lint+format for everyone (humans + agents)
+//   - Pre-push hook:     project-wide checks (validate, bslint, lint:docs, regens)
+//   - CI:                per-domain workflows (not a copy of pre-push), can't bypass
 //
 // What lives here vs pre-push:
-//   - bsfmt --write (file-scoped, fast, auto-fix) → here
-//   - bslint (cross-scope; needs full project context, not file-scopable) → pre-push
-//   - markdownlint --fix (file-scoped, auto-fix) → here
-//   - spellchecker (file-scoped) → here
-//   - jshint .json (file-scoped) → here
-//   - eslint --fix (file-scoped, auto-fix) → here
-//   - prettier --write (file-scoped, auto-fix; .prettierignore handles excludes) → here
-//   - bsc --noEmit (project-wide compile) → pre-push
-//   - lint:docs / docs:dev-index:check (cross-doc references) → pre-push
-//   - update-translations / docs:dev-index regen (project-wide regen) → pre-push
-//   - test:scripts (vitest, file-scoping is awkward) → pre-push + CI
+//   - bsfmt --write (file-scoped, fast, auto-fix): here
+//   - bslint (cross-scope; needs full project context, not file-scopable): pre-push
+//   - markdownlint --fix (file-scoped, auto-fix): here
+//   - spellchecker (file-scoped): here
+//   - jshint .json (file-scoped): here
+//   - eslint --fix (file-scoped, auto-fix): here
+//   - prettier --write (file-scoped, auto-fix; .prettierignore handles excludes): here
+//   - bsc --noEmit (project-wide compile): pre-push
+//   - lint:docs / docs:dev-index:check (cross-doc references): pre-push
+//   - update-translations / docs:dev-index regen (project-wide regen): pre-push
+//   - test:scripts (vitest, file-scoping is awkward): pre-push + CI
 //
-// Excludes mirror package.json's `lint:*` scripts via shared helpers in
-// `scripts/lib/lint-excludes.cjs` so all three surfaces (this file,
-// `scripts/lint/check-touched-lint.cjs`, package.json) stay in sync.
+// Excludes come from the shared helpers in `scripts/lib/lint-excludes.cjs`,
+// which this file and `scripts/lint/check-touched-lint.cjs` both import, so
+// those two share one list. The helpers are meant to mirror package.json's
+// `lint:*` excludes, but nothing checks that and they have drifted (see the
+// header of `lint-excludes.cjs`).
 
 'use strict';
 
@@ -39,7 +41,7 @@ const {
 
 // lint-staged passes ABSOLUTE paths to function configs, but the exclude
 // helpers in `lint-excludes.cjs` (and the `lint:*` scripts in package.json
-// they mirror) match against repo-relative POSIX-style paths. Normalize
+// they are meant to mirror) match against repo-relative POSIX-style paths. Normalize
 // at this boundary so the exclude check actually fires.
 //
 // Without this, every prefix/exact exclude (CHANGELOG.md, .claude/**,
@@ -61,7 +63,7 @@ const keep = (predicate) => (files) => files.filter((f) => !predicate(toRel(f)))
 const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
 // Build a `cmd args... files...` invocation, quoting file paths. Returns
-// null when there are no files left after filtering — lint-staged treats
+// null when there are no files left after filtering. lint-staged treats
 // `null` / `[]` / `undefined` as "no work to do" for that glob.
 const cmdWithFiles = (cmd, files) => {
   if (files.length === 0) return null;
@@ -69,7 +71,7 @@ const cmdWithFiles = (cmd, files) => {
 };
 
 module.exports = {
-  // BrighterScript format — auto-fix; lint-staged re-stages the result.
+  // BrighterScript format: auto-fix; lint-staged re-stages the result.
   // bslint stays in pre-push (full project context required).
   // No path-based excludes for .bs/.brs today.
   '*.{bs,brs}': (files) => {
@@ -77,16 +79,16 @@ module.exports = {
     return cmd ? [cmd] : [];
   },
 
-  // Markdown — auto-fix style + spell-check (no spell auto-fix; check only).
+  // Markdown: auto-fix style + spell-check (no spell auto-fix; check only).
   '*.md': (files) => {
     const mdLint = cmdWithFiles('npx markdownlint-cli2 --fix', keep(isMarkdownExcluded)(files));
-    // Dictionaries and plugins come from `.spellcheckerrc.yaml` — see that file for why
+    // Dictionaries and plugins come from `.spellcheckerrc.yaml`: see that file for why
     // they must not be re-specified here.
     const spell = cmdWithFiles('npx spellchecker --files', keep(isSpellExcluded)(files));
     return [mdLint, spell].filter(Boolean);
   },
 
-  // JSON — jshint syntax + duplicate-key check (broad set), then Prettier
+  // JSON: jshint syntax + duplicate-key check (broad set), then Prettier
   // formatting (curated set via .prettierignore). The two tools have
   // complementary scopes: jshint catches semantics Prettier doesn't (duplicate
   // keys), Prettier catches whitespace drift jshint doesn't.
@@ -99,7 +101,7 @@ module.exports = {
     return [jshint, prettier].filter(Boolean);
   },
 
-  // JS / CJS / ESM — ESLint --fix then Prettier --write.
+  // JS / CJS / ESM: ESLint --fix then Prettier --write.
   // ESLint owns code rules (unused vars, no-var, hashbang, etc.).
   // Prettier owns formatting and runs after to win any whitespace ties
   // (eslint-config-prettier disables ESLint rules that would conflict).
