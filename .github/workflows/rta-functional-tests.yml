@@ -1,18 +1,18 @@
 name: RTA Functional Tests
 
 # Drives the real Roku through every screen in tests/rta/screens.js. Unlike the
-# Rooibos device suite, this is NOT a per-PR gate: there is exactly ONE physical
+# Rooibos device suite, this is not a per-PR gate: there is exactly one physical
 # device, it is shared with the Rooibos runs and with ad-hoc manual RTA work, and
-# vitest.rta.config.js pins single-fork by design, so a full pass is ~10-15 min of
-# exclusive device time. The trigger surface is therefore deliberately narrow.
+# vitest.rta.config.js pins single-fork by design, so a full pass holds the device
+# for over ten minutes (13.6 min, measured 2026-08-11). The trigger surface is therefore narrow on purpose.
 #
 # Why this exists as a gate at all: some RTA assertions cover failure modes that
-# render as a completely correct-looking screen and that Rooibos cannot reach —
+# render as a completely correct-looking screen and that Rooibos cannot reach.
 # assertGenreRowsOwnTheirItems (PR #770) is the motivating case, where a crossed
 # slot index leaves every row present, titled, and in order, with only the pairing
 # wrong. Nothing else in CI can catch that class.
 #
-# No event-time `paths:` filter — see .github/actions/changed-paths/action.yml for
+# No event-time `paths:` filter: see .github/actions/changed-paths/action.yml for
 # why (a path-filtered required check never reports a status and wedges the PR).
 # The relevance check lives inside check-skip instead, so the workflow always
 # queues and always reports.
@@ -23,10 +23,10 @@ on:
     branches:
       - "release-*.*.*" # the release-prep branch, same trigger release-management.yml uses
 
-# cancel-in-progress MUST stay false. Concurrency is evaluated BEFORE any job runs,
+# cancel-in-progress must stay false. Concurrency is evaluated BEFORE any job runs,
 # so with `true` a docs-only push would cancel an in-flight RTA run started by an
-# earlier source push, then evaluate check-skip and skip — leaving that source
-# change ungated. A skipped run is a ~20s ubuntu-latest no-op, so letting runs queue
+# earlier source push, then evaluate check-skip and skip, leaving that source
+# change ungated. A skipped run is a no-op of seconds on ubuntu-latest, so letting runs queue
 # costs nothing. (release-management.yml uses false for the same class of reason.)
 concurrency:
   group: rta-${{ github.ref }}
@@ -59,8 +59,8 @@ jobs:
           #   package(-lock).json        the build RTA runs against
           #   this workflow file         so edits to the gate exercise the gate
           #
-          # Deliberately EXCLUDED: docs/**, docs/screenshots/**, *.md, CHANGELOG.md,
-          # scripts/**, and every other workflow — a screenshot or docs push to the
+          # Excluded on purpose: docs/**, docs/screenshots/**, *.md, CHANGELOG.md,
+          # scripts/**, and every other workflow. A screenshot or docs push to the
           # release branch must never spin the shared device. That exclusion is the
           # whole reason this job exists.
           pattern: '^(source/|components/|tests/rta/|locale/|settings/settings\.json$|manifest$|bsconfig[^/]*\.json$|package(-lock)?\.json$|\.github/workflows/rta-functional-tests\.yml$)'
@@ -73,12 +73,12 @@ jobs:
     if: needs.check-skip.outputs.relevant == 'true' && github.actor != 'jellyrock[bot]'
     runs-on: [self-hosted, roku-device]
     #
-    # NO `environment:` — deliberate, do not add one.
+    # No `environment:`, on purpose. Do not add one.
     #
     # This workflow exists so RTA cannot be forgotten before a release. An
     # environment carrying a required-reviewer rule would put a manual approval
     # click back in front of it, which is the same "someone has to remember"
-    # failure mode, just relocated. `device-unit-tests.yml` names the
+    # failure mode, only relocated. `device-unit-tests.yml` names the
     # `roku-device` environment because it runs FORK code under
     # pull_request_target and needs that gate; this workflow only triggers on
     # push-to-release-branch and workflow_dispatch, both of which already
@@ -91,12 +91,12 @@ jobs:
     # Device contention is handled by the runner, not by an approval gate:
     # exactly one runner carries the `roku-device` label, and a self-hosted
     # runner takes one job at a time, so this queues behind the Rooibos suite
-    # instead of racing it — RTA's registry snapshot/restore can never overlap a
+    # instead of racing it, so RTA's registry snapshot/restore can never overlap a
     # unit run. Nor can it cancel one: GitHub concurrency only acts within a
     # single group, this workflow's group is `rta-<ref>`, and
-    # device-unit-tests.yml declares no group at all.
+    # device-unit-tests.yml's is `device-unit-tests-<PR number or ref>`.
     #
-    # The timeout is the real safety net — a hung RTA holding the one shared
+    # The timeout is the real safety net: a hung RTA holding the one shared
     # device is worse than a missing gate.
     timeout-minutes: 25
     steps:
@@ -121,7 +121,7 @@ jobs:
           ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
         run: npm run test:rta
 
-      # The run record, ALWAYS — this is the only way a `.200` sample leaves the
+      # The run record, always: this is the only way a `.200` sample leaves the
       # runner. The ledger is the flake baseline's surface, and `.200` is the device
       # the baseline is specified on; but a local run cannot drive `.200` (its
       # dev-server password is an org secret, not the one in `.env`) and holding its

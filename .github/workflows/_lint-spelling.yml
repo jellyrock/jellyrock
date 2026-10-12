@@ -23,14 +23,14 @@ jobs:
           # dictionary.txt + its auditor: lint:dictionary runs in this job and
           # dictionary.txt is the spellchecker's own word list.
           #
-          # .spellcheckerrc.yaml is the third real input — it owns the dictionary
+          # .spellcheckerrc.yaml is the third real input: it owns the dictionary
           # list and the plugin set for every surface. Without it here, a PR that
           # breaks the config (a dropped plugin, a removed dictionary) while
           # touching no .md file skips this job and lands green.
           #
           # dictionary-sentence-final.txt and its generator are the fourth and
           # fifth. The generated dictionary is a real spellchecker input, and the
-          # drift gate below is the only thing that catches it going stale — a
+          # drift gate below is the only thing that catches it going stale, and a
           # stale one silently weakens the lint on every paragraph-final word.
           pattern: '\.md$|^dictionary(-sentence-final)?\.txt$|^scripts/lint/dictionary-audit\.cjs$|^scripts/generate/sentence-final-dictionary\.js$|^\.spellcheckerrc\.ya?ml$'
           force: ${{ inputs.force }}

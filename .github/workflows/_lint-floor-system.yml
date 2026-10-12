@@ -1,19 +1,20 @@
 name: lint-floor-system
 
-# Runs the two Phase-6 floor-governance lints of the server-upgrade-automation
+# Runs the floor-governance lints of the server-upgrade-automation
 # pipeline (docs/architecture/server-upgrade-automation.md):
 #
-#   - lint:endpoint-availability — validates each endpoint-availability ledger
+#   - lint:endpoint-availability: validates each endpoint-availability ledger
 #     entry's CODE claim (the version-guard symbol still exists in source/, the
 #     dispatch-sibling is still a floor-tier manifest endpoint, no dead entries).
-#     Reads source/*.bs, so a `.bs` change can flip its verdict.
-#   - lint:floor-coverage — proactive PR-time check: FAILs when JellyRock's own
+#     Reads the .bs files under source/ and components/, so a `.bs` change can
+#     flip its verdict.
+#   - lint:floor-coverage: proactive PR-time check, FAILs when JellyRock's own
 #     commit starts calling an endpoint absent from the 10.7.0 floor spec with no
 #     ledger entry / guard (symmetry advisories warn, don't block).
-#   - lint:apiversion-consistency — static cross-check that resolveApiVersion() in
+#   - lint:apiversion-consistency: static cross-check that resolveApiVersion() in
 #     source/utils/misc.bs agrees with the jellyfin-version-boundaries.yml tier map
 #     (parses the .bs with the BrighterScript AST). Catches a half-built apiVersion
-#     tier — the YAML and the dispatch twin drifting — without any Roku hardware.
+#     tier (the YAML and the dispatch twin drifting) without any Roku hardware.
 #
 # The three lints and the API usage manifest check are offline Node tooling (no
 # build, no network, no hardware), so running them behind one path gate is cheap.
@@ -71,8 +72,8 @@ jobs:
       - name: Check apiVersion twin consistency (boundaries ↔ resolveApiVersion)
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:apiversion-consistency
-      # The API usage manifest is an INPUT to this job's own path filter — floor
-      # analysis reasons over it — so stale drift here corrupts the checks above.
+      # The API usage manifest is an INPUT to this job's own path filter (floor
+      # analysis reasons over it), so stale drift here corrupts the checks above.
       # Pre-push regenerates it as an auto-fix, but that is skipped on a dirty tree
       # and bypassed by --no-verify or a GitHub-UI edit; this is the real gate.
       - name: Check API usage manifest drift

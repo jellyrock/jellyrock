@@ -8,13 +8,13 @@ name: validate-dependencies
 #
 # Why force: a dep bump (BSC, ESLint, Prettier, Vitest, markdownlint,
 # jshint, spellchecker-cli, rooibos, etc.) can break a check even when the
-# PR only changes package.json / package-lock.json — i.e., no source file
+# PR only changes package.json / package-lock.json, so no source file
 # matches any path pattern. Without `force`, every check would short-circuit
 # to "skipped" and the dep update would land unverified.
 #
-# This list MUST stay in sync with the set of `_*.yml` reusables in
-# .github/workflows/. When you add a new reusable lint/test workflow,
-# add it here too — otherwise a dep that breaks it will land green.
+# This list must stay in sync with the set of lint and test `_*.yml`
+# reusables in .github/workflows/. When you add a new reusable lint/test
+# workflow, add it here too. Otherwise a dep that breaks it will land green.
 #
 # Coverage note: this orchestrator is what makes Renovate patch automerge
 # safe. Every devDep in package.json is exercised by at least one of the

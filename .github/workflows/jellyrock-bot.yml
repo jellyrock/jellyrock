@@ -2,14 +2,15 @@
 # This workflow runs sequentially to avoid git conflicts when pushing to main
 #
 # Jobs:
-# 1. update-translation-source: Scans code for new translate() keys, updates en_US.json
+# 1. update-translation-source: Removes unused keys from en_US.json, sorts it, and
+#    adds missing locales to languages.json
 # 2. sync-translations-to-weblate: Syncs en_US.json + languages.json to weblate branch
 # 3. update-settings-docs: Updates settings documentation (only when settings.json changes)
 # 4. sync-changelog: Syncs changelog with unreleased changes
 #
-# Dependency graph:
-#   update-translation-source → update-settings-docs → sync-changelog
-#   update-translation-source → sync-translations-to-weblate (independent, does not block main chain)
+# Dependency graph (each job waits for the one before it):
+#   update-translation-source, then update-settings-docs, then sync-changelog
+#   update-translation-source, then sync-translations-to-weblate (independent, does not block main chain)
 
 name: JellyRock Bot
 
@@ -26,7 +27,8 @@ concurrency:
 jobs:
   # ============================================================================
   # Job 1: Translation Source Maintenance
-  # Sorts en_US.json alphabetically and syncs languages.json with locale files.
+  # Removes unused keys from en_US.json, sorts it, and syncs languages.json with
+  # the locale files.
   # Missing keys are caught at build time by the BSC translation-keys plugin.
   # ============================================================================
   # NO actor guard here (unlike the weblate job below). This job is an
@@ -34,9 +36,9 @@ jobs:
   # bot-triggered run either finds nothing to do (no push, no loop) or
   # completes sync work a superseded run would otherwise have dropped.
   # An `actor != jellyrock[bot]` skip here silently loses translation/
-  # changelog syncs when a bot commit (e.g. journal-sync) supersedes the
+  # changelog syncs when a bot commit (for example journal-sync) supersedes the
   # real-PR run in the shared jellyrock-bot-main concurrency group. Do not
-  # re-add it. See git history / docs/decisions.md for the full trace.
+  # re-add it. See commit 06b6e2529 for the full trace.
   update-translation-source:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -109,7 +111,7 @@ jobs:
   # Job 2: Sync Source Files to Weblate Branch
   # Copies en_US.json (source strings) and languages.json (metadata) to the
   # weblate branch so Weblate picks up new/changed keys.
-  # One-way sync: main → weblate. Fails if the weblate branch does not exist.
+  # One-way sync: main to weblate. Fails if the weblate branch does not exist.
   # ============================================================================
   sync-translations-to-weblate:
     if: github.actor != 'jellyrock[bot]'
@@ -176,7 +178,7 @@ jobs:
   # Job 3: Settings Documentation Update
   # Only runs when settings/settings.json is modified
   # ============================================================================
-  # NO actor guard — see update-translation-source above. Idempotent recompute,
+  # No actor guard: see update-translation-source above. Idempotent recompute,
   # gated by `git diff` before commit; skipping bot runs drops real-PR syncs.
   update-settings-docs:
     needs: update-translation-source
@@ -262,7 +264,7 @@ jobs:
   # ============================================================================
   # Job 4: Changelog Sync
   # ============================================================================
-  # NO actor guard — see update-translation-source above. Idempotent recompute,
+  # No actor guard: see update-translation-source above. Idempotent recompute,
   # gated by `git diff` before commit; skipping bot runs drops real-PR syncs.
   sync-changelog:
     needs: update-settings-docs

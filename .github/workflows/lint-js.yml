@@ -1,9 +1,9 @@
 name: lint-js
 
-# No event-time `paths:` filter — see .github/actions/changed-paths for why.
-# The reusable workflow short-circuits internally when no JS / JSON changed,
-# so this can be wired as a required check without stalling PRs that don't
-# touch JS or JSON.
+# No event-time `paths:` filter: .github/actions/changed-paths says why.
+# The reusable workflow short-circuits internally when no JS, JSON or Prettier
+# config changed, so this can be wired as a required check without stalling
+# PRs that don't touch them.
 on:
   pull_request:
 

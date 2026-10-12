@@ -8,17 +8,17 @@ name: Device Unit Tests
 # code cannot reach the runner until a maintainer approves. Same-repo branches skip
 # the gate and run unattended.
 #
-# The repo-level "require approval for outside collaborators" setting does NOT cover
+# The repo-level "require approval for outside collaborators" setting does not cover
 # pull_request_target and must not be relied on here. That is not theoretical: this
 # repo took a malicious fork PR through this exact path while that setting was
 # enabled. An earlier revision put `environment: roku-device` directly on all-tests;
-# that gated OUR pushes too, so it was dropped once the hardening below landed —
-# which left forks ungated, because the hardening does not cover every path (see the
+# that gated our pushes too, so it was dropped once the hardening below landed.
+# That left forks ungated, because the hardening does not cover every path (see the
 # fork-gate comment). The split-job form restores the gate for forks only.
 #
 # See: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk
 #
-# No event-time `paths:` filter — see .github/actions/changed-paths/action.yml.
+# No event-time `paths:` filter: see .github/actions/changed-paths/action.yml.
 # `check-skip` short-circuits internally when no test-relevant files changed,
 # so both `check-skip` and `all-tests` always report a status and can be wired
 # as required checks without stalling PRs that don't touch source / tests.
@@ -53,8 +53,8 @@ on:
 # reads as "the runner is dead" on the Actions page even though every job passed.
 # Superseded pushes to the same PR were most of that backlog.
 #
-# cancel-in-progress is TRUE for pull_request_target ONLY, and that asymmetry is
-# load-bearing — do not simplify it to a bare `true`. The hazard is the one
+# cancel-in-progress is true for pull_request_target only, and that asymmetry
+# matters: do not simplify it to a bare `true`. The hazard is the one
 # rta-functional-tests.yml documents: concurrency is evaluated BEFORE any job
 # runs, so a superseding docs-only trigger can cancel an in-flight run and then
 # skip via check-skip, leaving the earlier source change ungated. That is
@@ -63,7 +63,7 @@ on:
 # alone) but resolves a PR's from `gh pr diff` (the whole base...head diff). A
 # docs-only push to a PR therefore still sees the earlier source change and still
 # runs the device tests, so cancelling superseded PR runs cannot cause a false
-# skip — while cancelling superseded main pushes could. Hence false for push.
+# skip, while cancelling superseded main pushes could. Hence false for push.
 #
 # Fork PRs stay fails-closed: cancelling a run awaiting fork-gate approval leaves
 # fork-gate 'cancelled', which the all-tests allowlist below treats as blocked.
@@ -72,7 +72,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
 
 # Restrict the default GITHUB_TOKEN to read-only contents access. This workflow
-# only checks out code, installs deps, and runs tests on the Roku — it never
+# only checks out code, installs deps, and runs tests on the Roku. It never
 # pushes, comments, or otherwise mutates the repo. Without this, a malicious
 # pull_request_target PR could harvest the broadly-scoped default token from
 # .git/config (left there by actions/checkout) and use it to push to main.
@@ -88,17 +88,17 @@ jobs:
     steps:
       # Checkout is needed so the `./.github/actions/changed-paths` composite
       # action can be loaded. Under pull_request_target this is the BASE
-      # branch's copy of the action — PR-controlled action code never runs
+      # branch's copy of the action, so PR-controlled action code never runs
       # with the elevated token, which is the same security posture as the
       # rest of this workflow.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check if push is from PR merge
         id: merge_check
-        # COMMIT_MSG is passed via env, NOT interpolated into the shell. A commit
+        # COMMIT_MSG is passed via env, not interpolated into the shell. A commit
         # message is attacker-controllable; `${{ github.event.head_commit.message }}`
         # expanded directly into a `run:` line lets backticks / $(...) in the message
-        # execute as the line is parsed (GitHub Actions script-injection — a real
+        # execute as the line is parsed (GitHub Actions script-injection: a real
         # backtick-heavy merge commit tripped exactly this). env values are not
         # shell-parsed, so the quoted "$COMMIT_MSG" is inert. (event_name/ref are
         # controlled values, safe to interpolate.)
@@ -123,7 +123,7 @@ jobs:
         uses: ./.github/actions/changed-paths
         with:
           # Files whose changes can affect the Roku-device test run:
-          #   tests/source/** (the BrightScript suites — NOT tests/scripts/**,
+          #   tests/source/** (the BrightScript suites, not tests/scripts/**,
           #   which are Node/Vitest tests run by the separate `vitest` job),
           #   source/**, components/**, settings/settings.json, bsconfig.json,
           #   bsconfig-base.json (every test config extends it),
@@ -146,7 +146,7 @@ jobs:
 
   # ── The fork gate ────────────────────────────────────────────────────────
   #
-  # Does nothing. Its ONLY job is to sit behind the `roku-device` environment's
+  # Does nothing. Its only job is to sit behind the `roku-device` environment's
   # required-reviewer rule, so that `all-tests` (which needs it) cannot start on
   # a fork PR until a maintainer has approved. Same-repo branches skip it and
   # run unattended, exactly as before.
@@ -154,15 +154,15 @@ jobs:
   # Why a separate job rather than `environment:` on all-tests itself: an
   # environment is job-level and unconditional, so putting it on all-tests would
   # gate OUR pushes too. A conditional `environment: ${{ ... }}` expression was
-  # considered and rejected — whether an empty result means "no environment" is
+  # considered and rejected: whether an empty result means "no environment" is
   # not documented, and this is the control standing between a stranger's code
   # and a self-hosted runner on a home LAN. It should not rest on undocumented
   # expression semantics.
   #
   # Why this gate exists at all: `pull_request_target` hands secrets to a
   # workflow that then checks out FORK-authored code, and GitHub's
-  # "require approval for outside collaborators" setting does NOT cover
-  # pull_request_target. That was confirmed the hard way — this repo took a
+  # "require approval for outside collaborators" setting does not cover
+  # pull_request_target. That was confirmed the hard way: this repo took a
   # malicious fork PR through exactly this path while that setting was enabled.
   # The hardening below (contents:read, persist-credentials:false,
   # --ignore-scripts) closes the token and dependency-postinstall paths, but the
@@ -190,11 +190,12 @@ jobs:
     # this job too, and fork-gate is skipped on every same-repo run.
     #
     # fork-gate is checked as an ALLOWLIST of results, not a denylist, so it
-    # fails closed — anything unexpected blocks rather than falls through:
-    #   same-repo PR / push  → fork-gate 'skipped'  → run  (unattended, as before)
-    #   fork PR, approved    → fork-gate 'success'  → run
-    #   fork PR, pending     → fork-gate not done   → all-tests waits
-    #   fork PR, rejected    → fork-gate 'cancelled'→ blocked
+    # fails closed: anything unexpected blocks rather than falls through.
+    #   event                fork-gate result   all-tests
+    #   same-repo PR / push  'skipped'          runs (unattended, as before)
+    #   fork PR, approved    'success'          runs
+    #   fork PR, pending     not done           waits
+    #   fork PR, rejected    'cancelled'        blocked
     # `check-skip.result == 'success'` matters for the same reason: without it a
     # FAILED check-skip yields an empty `should_skip`, which would satisfy
     # `!= 'true'` and let a fork run with fork-gate skipped.
@@ -233,11 +234,13 @@ jobs:
       # Security: --ignore-scripts blocks transitive deps' install/postinstall hooks,
       # which is the highest-bandwidth pull_request_target exfiltration path
       # (a malicious PR adds a dep whose postinstall reads runner env vars).
-      # We then run our OWN postinstall steps by name — `ropm` and `patches:apply`
-      # are vetted scripts in this repo. Patch content lives under `patches/`
-      # (committed) and is applied to `node_modules/`; no PR-controlled execution.
+      # We then run our own postinstall steps by name: `ropm` and `patches:apply`.
+      # Patch content lives under `patches/` (committed) and is applied to
+      # `node_modules/`. Both run from the PR's checkout (its package.json,
+      # scripts/ and patches/), so for a fork they are covered by the `fork-gate`
+      # approval, not by this step.
       # If a future trusted dep needs install scripts, add it to an explicit
-      # `npm rebuild <pkg>` line below — never re-enable scripts globally.
+      # `npm rebuild <pkg>` line below. Never re-enable scripts globally.
       - name: Install dependencies (security-hardened)
         run: |
           npm ci --ignore-scripts
@@ -280,7 +283,7 @@ jobs:
           path: roku-test-output.log
           retention-days: 30
 
-      # The run record, ALWAYS — the counterpart to the same step in
+      # The run record, always: the counterpart to the same step in
       # rta-functional-tests.yml, and the reason `run-roku-tests.js` records an
       # `outcome` at all. #800 went red on a ROOIBOS test against the shared demo
       # server, and the experiment that re-derives it needs a local RTA run and a CI
@@ -292,7 +295,7 @@ jobs:
       # `if: always()` because a RED run is the interesting one. Adds no egress path:
       # the step above already uploads a full telnet console dump from the same job,
       # and a ledger line carries only commit sha, timings, the `sha256(device-id)`
-      # key and the lock state. `recordFailure` lives in the RTA harness, so a
+      # key and the lock state. Only the RTA harness calls `recordFailure`, so a
       # Rooibos run's `failures` is always empty. upload-artifact authenticates with
       # ACTIONS_RUNTIME_TOKEN, so `contents: read` is untouched.
       - name: Upload the run record

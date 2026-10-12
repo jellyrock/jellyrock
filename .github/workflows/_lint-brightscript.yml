@@ -21,25 +21,25 @@ jobs:
           # Mirrors the previous event-time paths filter (**/*.brs, **/*.bs), plus
           # component XML: several BSC plugins run by `npm run validate` read a
           # component's XML half, so an XML-only edit could otherwise weaken a gate
-          # without ever re-running it. `field-observer-wiring` is the sharpest case
-          # — it reads `<field onChange="...">`, so adding an onChange to a field the
+          # without ever re-running it. `field-observer-wiring` is the sharpest case:
+          # it reads `<field onChange="...">`, so adding an onChange to a field the
           # codebehind already observes is a duplicate registration expressed
           # ENTIRELY in XML. `.husky/pre-push` has always triggered validate on
           # `\.(bs|brs|xml)$|^bsconfig.*\.json$`; this job now matches that set
           # exactly, and tests/scripts/unit/lint/brightscript-trigger-parity.test.js
           # fails if the two drift apart again. Plus `scripts/bsc-plugins/` and
-          # `scripts/lib/`: `npm run validate` loads every plugin, and the three
-          # cross-file gates share `scripts/lib/bsc-rule.cjs`, so an edit to any of
+          # `scripts/lib/`: `npm run validate` loads every plugin, and the convention
+          # plugins share `scripts/lib/bsc-rule.cjs`, so an edit to any of
           # them changes what this job enforces while matching no source file.
-          # `scripts/lib/` is matched whole rather than by an enumerated list — a
+          # `scripts/lib/` is matched whole rather than by an enumerated list: a
           # stale list is the same drift this comment already describes twice, and
           # an over-trigger costs a job run while a miss costs a silent gap. Plus
           # the non-source inputs the checks below read: the promise-ratchet's
           # committed baseline (a PR that only edits the integer must re-run the
           # ratchet), the ratchet script itself, and the three source-shape guards
           # below. Each reads only .bs/.brs, so a PR that edits ONE OF THE CHECKS
-          # rather than a source file would otherwise skip the job that runs it —
-          # i.e. the guard could be weakened by a change that never re-runs it. The
+          # rather than a source file would otherwise skip the job that runs it,
+          # that is, the guard could be weakened by a change that never re-runs it. The
           # thread-release check additionally imports its helpers from the
           # auth-binding check, so an edit to either can change what both gate.
           pattern: '\.(brs|bs|xml)$|^bsconfig.*\.json$|^scripts/(bsc-plugins|lib)/|^\.promise-ratchet-baseline$|^\.dead-code-baseline\.json$|^scripts/lint/(promise-ratchet\.cjs|socket-auth-binding-check\.js|socket-thread-release-check\.js|log-manager-init-check\.js)$'
@@ -66,7 +66,7 @@ jobs:
         run: npm run check-formatting:bs
       # Static guard on the ws:// session-identity binding (#743). Cast commands are
       # delivered to the wrong Jellyfin session if the Authorization header stops
-      # reaching the upgrade handshake — silently, with no crash and no failing test.
+      # reaching the upgrade handshake: silently, with no crash and no failing test.
       # An end-to-end check is unreachable from RTA (it drives an https:// demo server,
       # and the ws:// receiver only runs on http://), so this guards the source shape
       # that the manual on-device verification in PR #747 validated.
@@ -74,10 +74,10 @@ jobs:
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:socket-auth-binding
       # Guards the roku-log manager's single init site. A Logger built before the
-      # manager exists caches `invalid` and silently no-ops forever — no output, no
+      # manager exists caches `invalid` and silently no-ops forever: no output, no
       # error, on any build. Rooibos can't catch it (bsconfig-tests-unit excludes
       # source/Main.bs and BaseTestSuite provisions its own rLog), so this static
-      # gate is the only automated cover. Scans .bs sources — same filter as above.
+      # gate is the only automated cover. Scans .bs sources, the same filter as above.
       - name: Check roku-log manager init contract
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:log-manager-init
@@ -91,7 +91,7 @@ jobs:
         run: npm run lint:socket-thread-release
       # #551 anti-backslide ratchet: FAILs when net-new raw `observeField("isDone")`
       # observer-spaghetti lands against the committed baseline. Advisory at pre-push
-      # (`|| true`) so a local push isn't blocked — this is where it actually blocks.
+      # (`|| true`) so a local push isn't blocked; this is where it actually blocks.
       # It scans .bs sources, which this job's path filter already matches.
       - name: Check promise-adoption ratchet
         if: steps.detect.outputs.relevant == 'true'

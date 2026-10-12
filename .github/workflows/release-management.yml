@@ -3,7 +3,7 @@ name: Release Preparation
 on:
   push:
     branches:
-      - "release-*.*.*" # e.g. release-1.0.0, release-2.1.3
+      - "release-*.*.*" # for example release-1.0.0, release-2.1.3
 
 concurrency:
   group: release-management-${{ github.ref }}

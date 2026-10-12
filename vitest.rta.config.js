@@ -12,7 +12,7 @@ export default defineConfig({
     setupFiles: ['tests/rta/setup/env-setup.js'], // RTA env per worker
     // A test must have room to reach its OWN timeout: a wait that gives up throws through
     // `diagnosedError` and reports the device state it saw, whereas a Vitest timeout reports
-    // nothing at all — so the budget here has to stay clear of the worst-case gate chain, or
+    // nothing at all, so the budget here has to stay clear of the worst-case gate chain, or
     // the suite loses its best diagnostic exactly when it needs it. `screen "settings"` is the
     // longest: hardRelaunch 14s (exitMs + bootMs) + waitHome 65s (45s login + 20s rows) +
     // walkHomeToFirstRow 10s + overhang focus 15s + version label 20s + 1s settle = ~125s.
@@ -23,9 +23,9 @@ export default defineConfig({
     // worst case sat above this arithmetic rather than at it.
     testTimeout: 180_000,
     hookTimeout: 120_000, // deploy + boot in globalSetup/beforeAll
-    // One real device — everything must run serially. `poolOptions` was removed in
+    // One real device: everything must run serially. `poolOptions` was removed in
     // Vitest 4 and these top-level options replace it. `minWorkers` was removed in
-    // Vitest 5 — it resolves but nothing reads it, so do not re-add it; the serial
+    // Vitest 5: it resolves but nothing reads it, so do not re-add it; the serial
     // guarantee here is `fileParallelism: false` + `maxWorkers: 1`.
     fileParallelism: false,
     maxWorkers: 1,

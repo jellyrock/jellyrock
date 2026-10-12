@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Claude Code Stop hook — runs lint categories the IDE doesn't cover, scoped
-# to files the agent changed in this session. Sibling to
+# Claude Code Stop hook: runs lint categories the IDE doesn't cover, scoped
+# to the uncommitted and untracked files. Sibling to
 # check-touched-related-files.sh; both fire at end-of-turn.
 #
 # Why this exists: CLAUDE.md tells the agent not to run `npm run lint:*`
 # manually. That rule incidentally leaves the agent blind to spelling /
-# markdown / JSON failures until `git push` time — by which point the agent
-# has already reported "done" and the user has to debug. This hook closes
-# the gap by surfacing those failures *during* the session, in time for the
-# agent to fix before declaring done.
+# markdown / JSON failures until `git commit` or `git push` time, by which
+# point the agent has already reported "done" and the user has to debug.
+# This hook closes the gap by surfacing those failures *during* the
+# session, in time for the agent to fix before declaring done.
 #
-# Failure mode: this hook MUST NOT block or fail an agent's turn. The
+# Failure mode: this hook must not block or fail an agent's turn. The
 # underlying script always exits 0; this wrapper does too. Hard enforcement
-# is the pre-push hook.
+# is the pre-commit and pre-push hooks and CI.
 
 set +e
 

@@ -1,9 +1,9 @@
 name: lint-brightscript
 
-# No event-time `paths:` filter — see .github/actions/changed-paths for why.
-# The reusable workflow short-circuits internally when no .brs / .bs files
-# changed, so this can be wired as a required check without stalling PRs
-# that don't touch BrightScript.
+# No event-time `paths:` filter: .github/actions/changed-paths says why.
+# The reusable workflow short-circuits internally when no file its
+# changed-paths `pattern:` matches has changed, so this can be wired as a
+# required check without stalling PRs that touch none of them.
 on:
   pull_request:
 

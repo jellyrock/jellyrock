@@ -1,7 +1,7 @@
 # PR-time precheck for the post-merge journal sync.
 #
 # Mirrors the skip rules of .github/workflows/journal-sync.yml: only PRs that
-# WILL be synced (i.e., the same predicate that the bot runs post-merge) are
+# will be synced (by the same predicate the bot runs after merge) are
 # checked. For those, the script builds the candidate "- YYYY-MM-DD: <title>"
 # bullet and spell-checks it against dictionary.txt with the same spellchecker
 # plugins lint:spelling uses.
@@ -18,7 +18,7 @@
 #
 # Skip modes (check passes with no spawn):
 #   - PR labels / authors / title patterns matched by shouldSkip in
-#     scripts/journal-sync.js — those PRs never write to progress.md anyway.
+#     scripts/journal-sync.js; those PRs never write to progress.md anyway.
 
 name: Journal Sync Precheck (PR-time)
 
@@ -51,8 +51,8 @@ jobs:
             --pr-title "$PR_TITLE" \
             --pr-author "$PR_AUTHOR" \
             --pr-labels "$PR_LABELS"
-      # Runs in the SAME workflow because it wants the same trigger set — `edited` is
-      # the load-bearing one: a body fixed on GitHub re-runs this without a new push.
+      # Runs in the same workflow because it wants the same trigger set. `edited` is
+      # the one that matters: a body fixed on GitHub re-runs this without a new push.
       - name: Check the PR description is filled in
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
