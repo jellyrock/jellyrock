@@ -15,7 +15,7 @@ sub init()
   ' loadWidth/loadHeight bound texture memory to imageSize.LOGO_OSD with AR preserved
   ' (Roku treats them as a bounding box, not independent axes). noScale renders at the loaded
   ' size so the Poster auto-sizes to its content, keeping top-left alignment in the safe zone.
-  ' Do NOT set width/height on the Poster node — that forces a fixed layout box and centers the image.
+  ' Don't set width/height on the Poster node: that forces a fixed layout box and centers the image.
   osdLogoSize = imageSize.LOGO_OSD
   m.videoLogo.loadWidth = osdLogoSize.width
   m.videoLogo.loadHeight = osdLogoSize.height
@@ -38,8 +38,8 @@ sub init()
   m.top.observeField("progressPercentage", "onProgressPercentageChanged")
   m.top.observeField("playbackState", "onPlaybackStateChanged")
   ' positionTime drives live-TV calibration so the epoch anchor is captured the first time
-  ' VideoPlayerView pushes a position during playback — even if the user pauses immediately
-  ' afterward (e.g. by pressing play to open the OSD).
+  ' VideoPlayerView pushes a position during playback, even if the user pauses immediately
+  ' afterward (for example, by pressing play to open the OSD).
   m.top.observeField("positionTime", "onPositionTimeChanged")
 
   m.isFirstRun = true
@@ -51,7 +51,7 @@ sub init()
   ' even during pause (it tracks the live edge, not the user's playhead), so we use:
   '   - position-math during play (handles scrubs while playing)
   '   - wall-clock math during pause (Roku's auto-advance is invisible to us)
-  ' On pause→play the epoch reference is re-anchored so play-math picks up where
+  ' On pause-to-play the epoch reference is re-anchored so play-math picks up where
   ' wall-clock math left off. See source/utils/liveTv.bs::computeLiveTvBehindLive.
   m.liveTvCalibrated = false
   m.liveTvEpochAtPosition0 = 0 ' play-math reference (epoch for video position=0)
@@ -60,7 +60,7 @@ sub init()
   m.liveTvLastPosition = 0 ' baseline for scrub-during-pause delta detection
   m.liveTvIsAtLiveEdge = true
 
-  ' Go to Live button — cached by setButtonStates() for live channels and dropped
+  ' Go to Live button: cached by setButtonStates() for live channels and dropped
   ' from the row entirely for anything else. See the comment there for why it is
   ' greyed rather than detached once it IS a member.
   m.goToLiveButton = invalid
@@ -75,7 +75,7 @@ sub init()
   ' Interface observers are registered HERE rather than declared as XML onChange
   ' attributes: this component releases node references in onDestroy and these
   ' handlers dereference them, so the registrations have to be detachable. An XML
-  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' onChange does not appear to be removable by unobserveField. See the wiring
   ' rule in components/CLAUDE.md.
   m.top.observeField("videoLogo", "setVideoLogoGroup")
 end sub
@@ -103,7 +103,7 @@ sub onItemDataChanged()
   if not isValid(item) or not isValidAndNotEmpty(item.id) then return
 
   ' Reset behind-live state only on channel change; program refreshes keep it.
-  ' New stream → new position=0 origin → must recalibrate and clear any pause snapshot.
+  ' A new stream has a new position=0 origin, so it must recalibrate and clear any pause snapshot.
   previousItemId = isValid(m.itemData) ? m.itemData.id : ""
   if item.id <> previousItemId
     m.liveTvCalibrated = false
@@ -121,7 +121,7 @@ sub onItemDataChanged()
 
   ' Preserve the original item name from the first load.
   ' Source-switch reloads fetch metadata for an alternate version whose name
-  ' may include year/edition suffixes (e.g., "Dracula (1931) [Colorized]").
+  ' may include year/edition suffixes (for example, "Dracula (1931) [Colorized]").
   ' TvChannel titles always come from currentProgram.name, so caching is unnecessary.
   if itemType <> "TvChannel" and not isValidAndNotEmpty(m.originalItemName)
     m.originalItemName = item.name
@@ -171,7 +171,7 @@ sub onItemDataChanged()
     m.top.numVideoSources = metaVideoSources
   end if
 
-  ' Runtime — for TvChannel, use the currently-airing program's runtime if available
+  ' Runtime: for TvChannel, use the currently-airing program's runtime if available
   runTimeTicks = item.runTimeTicks
   if itemType = "TvChannel" and isValid(item.currentProgram) and item.currentProgram.runTimeTicks > 0
     runTimeTicks = item.currentProgram.runTimeTicks
@@ -205,7 +205,7 @@ sub setButtonStates()
 
   ' Disable these buttons as needed
 
-  ' Keep prev/next enabled for TvChannel — channel list loads async after init
+  ' Keep prev/next enabled for TvChannel: channel list loads async after init
   if not isTvChannel and (queueCount = 1 or queueIndex = 0)
     itemPrevious = m.buttonMenuLeft.findNode("itemBack")
     itemPrevious.isEnabled = false
@@ -229,11 +229,11 @@ sub setButtonStates()
   if not m.itemData.hasSubtitles
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("showSubtitleMenu"))
   end if
-  ' Chapters — TvChannel has none
+  ' Chapters: TvChannel has none
   if not m.top.hasChapters or isTvChannel
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("chapterList"))
   end if
-  ' Go to Live — MEMBERSHIP IS PER-ITEM, ENABLEMENT IS PER-MOMENT.
+  ' Go to Live: MEMBERSHIP IS PER-ITEM, ENABLEMENT IS PER-MOMENT.
   '
   ' A live channel keeps this button in the row for the whole item and greys it out
   ' at the live edge (updateLiveTvDisplay owns isEnabled); anything else drops it
@@ -241,19 +241,19 @@ sub setButtonStates()
   '
   ' It used to attach and detach mid-playback, on the reasoning that "toggling
   ' visible/isEnabled isn't enough: LayoutGroup reserves a slot for invisible
-  ' children." That is true of `visible` and NOT of `isEnabled` — a disabled
-  ' IconButton only recolours (onEnabledChanged) and keeps its slot. The old
+  ' children." That is true of `visible` and not of `isEnabled`: a disabled
+  ' IconButton only recolors (onEnabledChanged) and keeps its slot. The old
   ' reasoning ruled out one option and then generalised to the other.
   '
   ' The generalisation cost a real defect. insertChild(_, 3) shifts every later
   ' child right, but buttonFocused is an INDEX and was never repaired, so it ended
   ' up naming a different node than the one holding focus and the next left/right
   ' press stepped from the wrong origin. Reachable by arrowing onto the audio or
-  ' subtitle button and then pausing — pause flips liveTvIsAtLiveEdge false, and
+  ' subtitle button and then pausing: pause flips liveTvIsAtLiveEdge false, and
   ' inactiveCheck declines to auto-hide while paused, so the OSD stayed open
   ' holding the bad index. (ItemDetails.manageResumeButton repairs exactly this
-  ' after its own insertChild; this never did.) Confirmed on device before the fix
-  ' — see tests/source/unit/components/video/OSDGoToLive.spec.bs.
+  ' after its own insertChild; this never did.) Confirmed on device before the fix.
+  ' See tests/source/unit/components/video/OSDGoToLive.spec.bs.
   '
   ' Greying in place is also what the rest of this row already does: itemBack and
   ' itemNext are disabled, not removed, when they would be a no-op.
@@ -283,7 +283,7 @@ sub setButtonStates()
     appendDebugSpareButtons(m.buttonMenuLeft)
   #end if
 
-  ' Membership is settled for this item — split the row if it no longer fits.
+  ' Membership is settled for this item: split the row if it no longer fits.
   applyOverflow()
 end sub
 
@@ -297,8 +297,8 @@ end sub
 
 ' setEndsAtText: "Ends at <time>", refreshed on every clock minute tick.
 '
-' The time goes through formatDisambiguatedTime() — the same rule ItemDetails' "Ends at" chip
-' uses — so it picks up an am/pm suffix exactly when the bare `<Clock />` beside it can't
+' The time goes through formatDisambiguatedTime(), the same rule ItemDetails' "Ends at" chip
+' uses, so it picks up an am/pm suffix exactly when the bare `<Clock />` beside it can't
 ' disambiguate (across noon/midnight, or beyond a 12-hour horizon). The suffix changes the
 ' label's width, which is safe here: `endsAtGroup` is a horiz LayoutGroup with
 ' horizAlignment="right", so its origin is the right edge of the last child and it grows
@@ -363,7 +363,7 @@ sub setVideoTitle()
     m.videoTitle.text = item.currentProgram.name
   else
     ' Use preserved original name (m.originalItemName) to avoid alternate version names
-    ' that may include year/edition suffixes (e.g., "Dracula (1931) [Colorized]").
+    ' that may include year/edition suffixes (for example, "Dracula (1931) [Colorized]").
     ' Falls back to item.name on first load before the original is cached.
     ' The active version is named on the line below (setVideoSubTitle), not here.
     m.videoTitle.text = m.originalItemName ?? item.name
@@ -394,8 +394,8 @@ sub setVideoSubTitle()
     end if
 
     ' episodeInfo: "S1E2 - Name". Omit S/E segments entirely when the numbers aren't
-    ' known — common for live TV recordings classified as series episodes with no EPG
-    ' numbering — so we don't display placeholder strings like "S?E?? - X".
+    ' known (common for live TV recordings classified as series episodes with no EPG
+    ' numbering), so we don't display placeholder strings like "S?E?? - X".
     episodeInfoText = ""
     if item.parentIndexNumber > 0
       episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelS)}${item.parentIndexNumber}`
@@ -403,14 +403,14 @@ sub setVideoSubTitle()
     if item.indexNumber > 0
       episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${item.indexNumber}`
     end if
-    ' Episode number end — additional E entries for multi-episode specials (e.g. S6:E1E2)
+    ' Episode number end: additional E entries for multi-episode specials (for example, S6:E1E2)
     if item.indexNumberEnd > 0 and item.indexNumberEnd > item.indexNumber
       for i = item.indexNumber + 1 to item.indexNumberEnd
         episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${i}`
       end for
     end if
     ' Append episode name when we have S/E context. When we don't, fall back to the bare
-    ' name only if it differs from what's already on the title line — otherwise we'd
+    ' name only if it differs from what's already on the title line; otherwise we'd
     ' duplicate the title.
     if isValidAndNotEmpty(item.name)
       if isValidAndNotEmpty(episodeInfoText)
@@ -441,8 +441,8 @@ sub setVideoSubTitle()
     if isValid(currentProgram)
       if currentProgram.isSeries
         ' Episode info: S1E2 - Episode Name. Skip entirely when we have no season/episode
-        ' numbers — the program name is already shown as the video title and we don't want
-        ' to duplicate it (e.g. news bulletins named "INFO" with no S/E numbering).
+        ' numbers: the program name is already shown as the video title and we don't want
+        ' to duplicate it (for example, news bulletins named "INFO" with no S/E numbering).
         episodeInfoText = ""
         if currentProgram.parentIndexNumber > 0
           episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelS)}${currentProgram.parentIndexNumber}`
@@ -465,7 +465,7 @@ sub setVideoSubTitle()
         displaySubtitleNode(productionYearNode)
       end if
     end if
-    ' Channel identity (e.g. "CH 4 - NHK World") — mirrors the ItemDetails program info row.
+    ' Channel identity (for example, "CH 4 - NHK World"): mirrors the ItemDetails program info row.
     ' For TvChannel items, item.name is the channel name.
     channelParts = []
     if isValidAndNotEmpty(item.channelNumber)
@@ -577,10 +577,10 @@ sub updateLiveTvDisplay()
   position = int(m.top.positionTime)
 
   ' Backstop: positionTime/playbackState observers normally calibrate this earlier,
-  ' but cover the path where neither has fired yet (e.g. fallback inactivity tick).
+  ' but cover the path where neither has fired yet (for example, the fallback inactivity tick).
   calibrateLiveTvIfNeeded()
   behindLive = computeLiveTvBehindLive(m.liveTvEpochAtPosition0, m.liveTvCalibrated, position, now, m.liveTvPausedAtEpoch, m.liveTvAccumulatedBehind)
-  ' Pause is an explicit user action — flip to "behind live" UI immediately rather than
+  ' Pause is an explicit user action: flip to "behind live" UI immediately rather than
   ' waiting for behindLive math to grow past the threshold. The threshold itself only
   ' suppresses sub-second rounding flicker during normal play.
   m.liveTvIsAtLiveEdge = LCase(m.top.playbackState) = "playing" and behindLive < LIVE_EDGE_THRESHOLD_SECONDS
@@ -690,7 +690,7 @@ sub onPositionTimeChanged()
     if delta < -2 or delta > 2
       ' Repartition the pause-state. Without folding the wall-clock pause counter into
       ' accumulated before applying the scrub, a forward scrub to live edge would zero
-      ' accumulated but the pause counter would keep growing — total behindLive wouldn't
+      ' accumulated but the pause counter would keep growing, so total behindLive wouldn't
       ' actually reach 0.
       now = CreateObject("roDateTime").AsSeconds()
       m.liveTvAccumulatedBehind = repartitionPauseStateOnScrub(m.liveTvAccumulatedBehind, now - m.liveTvPausedAtEpoch, delta)
@@ -775,7 +775,7 @@ sub onButtonSelected()
   ' skip disabled buttons, so this is the only way OK could reach one.
   if not isValid(selectedButton) or not selectedButton.isEnabled then return
 
-  ' "More" is a row affordance rather than a playback action — it opens the overflow
+  ' "More" is a row affordance rather than a playback action: it opens the overflow
   ' menu, whose rows come back through dispatchOsdAction below.
   if selectedButton.id = "moreButton"
     openMoreMenu()
@@ -785,8 +785,8 @@ sub onButtonSelected()
   dispatchOsdAction(selectedButton.id)
 end sub
 
-' Run the action for a button ID. Reached two ways — a press on a visible button,
-' and a row picked out of the "More" menu — so the overflow menu adds no second
+' Run the action for a button ID. Reached two ways (a press on a visible button,
+' and a row picked out of the "More" menu), so the overflow menu adds no second
 ' copy of this mapping. VideoPlayerView.onOSDAction routes `action` from here.
 sub dispatchOsdAction(buttonId as string)
   if LCase(buttonId) = "chapterlist"
@@ -808,7 +808,7 @@ sub dispatchOsdAction(buttonId as string)
 end sub
 
 ' ===========================================================================
-' Button-row overflow — the same contract ItemDetails runs, over this row.
+' Button-row overflow: the same contract ItemDetails runs, over this row.
 '
 ' The left group is capped at whatever fits before the RIGHT group's leftmost
 ' edge, so the transport row can never run into the pinned playback-info button.
@@ -817,9 +817,9 @@ end sub
 ' arithmetic in source/utils/buttonOverflow.bs, which is why neither is written
 ' down anywhere.
 '
-' Only setButtonStates() changes this row's membership — since goToLive stopped
-' attaching and detaching mid-playback, nothing else does — so unlike ItemDetails
-' this needs exactly one bracket rather than nine.
+' Only setButtonStates() changes this row's membership (since goToLive stopped
+' attaching and detaching mid-playback, nothing else does), so unlike ItemDetails
+' this needs exactly one bracket rather than one per membership change.
 ' ===========================================================================
 
 function osdRowSpacing(group as object) as integer
@@ -831,7 +831,7 @@ end function
 ' cannot be derived from different numbers.
 '
 ' The right group is right-ALIGNED, so its origin is its right edge and it grows
-' leftward — derived from its live child count so pinning a second button there
+' leftward. Its width is derived from its live child count so pinning a second button there
 ' correctly costs the left row a slot.
 '
 ' `translation` is taken as a SCREEN coordinate: the OSD is mounted at the origin
@@ -869,7 +869,7 @@ sub unsplitButtons()
   restoreOverflowedButtons(m.buttonMenuLeft, m.buttonOverflow)
 end sub
 
-' Same contract ItemDetails runs — see the comment there. The reachable trigger
+' Same contract ItemDetails runs; see the comment there. The reachable trigger
 ' on this surface is a live-TV program boundary: setButtonStates() re-derives the
 ' row from the refreshed program's metadata, and populateData() repaints the
 ' title, subtitle and logo in the same turn, so the menu closing reads as the
@@ -890,7 +890,7 @@ sub openMoreMenu()
   if entries.ids.count() = 0 then return
 
   m.overflowMenuIds = entries.ids
-  ' selectedIndex -1: these are actions, so no row is "current" — which is also
+  ' selectedIndex -1: these are actions, so no row is "current", which is also
   ' what frees the row gutter for the icons.
   geometry = osdRowGeometry()
   anchor = moreButtonAnchor(geometry.originX, geometry.spacing, geometry.itemWidth, geometry.rowY, osdButtonCap())
@@ -906,7 +906,7 @@ sub onMoreMenuResult()
   m.overflowMenuIds = invalid
   if not isValid(dialog) then return
 
-  ' Declining a code-made close is overflowMenuSelection's job — this handler ACTS
+  ' Declining a code-made close is overflowMenuSelection's job: this handler ACTS
   ' (seeks, switches tracks, opens panels), and that rule is shared with
   ' ItemDetails' identical handler rather than copied into both.
   buttonId = overflowMenuSelection(dialog.result, ids)
@@ -1001,13 +1001,13 @@ end function
 ' Called by VideoPlayerView.onDestroy() since OSD is a child component, not a SceneManager scene
 sub onDestroy()
   ' Detach the interface observers registered in init(). Must precede every
-  ' reference release below — these handlers dereference them.
+  ' reference release below: these handlers dereference them.
   m.top.unobserveField("videoLogo")
 
   m.log.verbose("onDestroy")
 
   ' The More menu's result handler ACTS (seeks, switches tracks), so it must be
-  ' abandoned rather than cancelled — a cancel is indistinguishable from the user
+  ' abandoned rather than cancelled: a cancel is indistinguishable from the user
   ' pressing Back and would fire a playback action into a dying scope (dialogs.md).
   abandonDialog(m.moreMenuDialog)
   m.moreMenuDialog = invalid
@@ -1021,7 +1021,7 @@ sub onDestroy()
   m.top.unobserveField("playbackState")
   m.top.unobserveField("positionTime")
 
-  ' Unobserve clock (guarded — may be invalid if clock node not found in init)
+  ' Unobserve clock (guarded: may be invalid if clock node not found in init)
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
     m.clock = invalid

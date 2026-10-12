@@ -5,8 +5,8 @@
 ' time, so a second track change while the first fetch was still running would
 ' silently never be fetched (ADR 0037).
 '
-' Everything here runs on the TASK thread. This component deliberately owns no
-' timer, no fonts and no render-thread state — that half is CaptionRenderer. That
+' Everything here runs on the TASK thread. This component owns no timer, no
+' fonts and no render-thread state: that half is CaptionRenderer. That
 ' separation is the point: when both halves lived in one component they shared one
 ' unsynchronized `m`, and the render thread's 100 ms caption timer racing this
 ' function is what produced the &hf3 crash on `m.tags.replaceAll()`.
@@ -24,7 +24,7 @@ end sub
 ' Uses raw roUrlTransfer + WaitMessage instead of rr_Requests(). rr_Requests_run()
 ' is a standalone function whose m resolves to the component's shared m AA, and its
 ' busy-polling loop reads m.top thousands of times per second. WaitMessage() blocks
-' at the OS level without touching m. See ADR 0014 — the layering reasons there
+' at the OS level without touching m. See ADR 0014: the layering reasons there
 ' still stand even though this component no longer shares m with a render thread.
 sub fetchCaption()
   ' Cache m.top into a local so the rest of this function minimizes touches to the
@@ -33,21 +33,22 @@ sub fetchCaption()
 
   m.log.debug("Start fetchCaption()", top.url)
 
-  ' Whether the server's fallback font actually made it to disk. This runs on a
-  ' Task thread, the only place `roFileSystem` can be constructed — the render
-  ' thread gets `Invalid` — so the renderer cannot ask this question itself.
+  ' Whether the server's fallback font actually made it to disk. The renderer
+  ' asks this Task instead of checking itself: `CreateObject("roFileSystem")`
+  ' returned `Invalid` in a `Group` component's `init()` and a valid object in a
+  ' `Task` component's (threading.md#constructing-components).
   ' Written before `captionData` so the delivery handler can read it.
   ' It matters for non-Latin subtitles: without the downloaded font their glyphs
-  ' have nothing to render with, and the setting being enabled does NOT prove the
+  ' have nothing to render with, and the setting being enabled does not prove the
   ' download succeeded.
   fs = CreateObject("roFileSystem")
   top.fontAvailable = isValid(fs) and fs.Exists("tmp:/font")
 
-  ' Only `.vtt` is accepted, and that is safe ONLY because `vtt` leads
+  ' Only `.vtt` is accepted, and that is safe only because `vtt` leads
   ' `getSubtitleProfiles()` in `source/utils/deviceCapabilities.bs`: Jellyfin converts
   ' an external text subtitle to the FIRST format the client advertises. Reorder that
-  ' list and every external track arrives as another format and renders nothing —
-  ' pinned by `deviceCapabilities-subtitleProfile.spec.bs`, which fails on the reorder.
+  ' list and every external track arrives as another format and renders nothing,
+  ' which is pinned by `deviceCapabilities-subtitleProfile.spec.bs`, which fails on the reorder.
   re = CreateObject("roRegex", "(http.*?\.vtt)", "s")
   matchResult = re.match(top.url)
 

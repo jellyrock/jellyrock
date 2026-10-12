@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   VideoNotification: A reusable, focusable notification component for position-triggered
-  interactive overlays during video playback (e.g., "Skip Intro", "Next Episode 30").
+  interactive overlays during video playback (for example "Skip Intro", "Next Episode 30").
 
   Usage:
     - Parent creates an instance and observes the "action" field

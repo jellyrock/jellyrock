@@ -15,7 +15,7 @@
     <Poster id="preloaderPoster" visible="false" />
 
     <Group id="posterGroup">
-      <!-- 5 clip groups: each clips a large tile image to show just one thumbnail -->
+      <!-- 5 clip groups: each clips a large tile image to show only one thumbnail -->
       <!-- The inner Poster is translated negatively to position the desired thumbnail in the clip area -->
       <!-- Side thumbnails: 320x180 display, Center: 480x270 display -->
 

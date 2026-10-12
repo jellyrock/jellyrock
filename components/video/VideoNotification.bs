@@ -26,8 +26,8 @@ sub onActionButtonReady()
 end sub
 
 ' Show the notification: position bottom-right with 5% safe zone, fade in, set focus.
-' Safe to call while already showing — restarts the auto-dismiss timer and repositions
-' for updated text/autoDismissSeconds (e.g. contiguous segment transitions).
+' Safe to call while already showing: restarts the auto-dismiss timer and repositions
+' for updated text/autoDismissSeconds (for example contiguous segment transitions).
 sub show()
   m.log.info("Showing notification", m.top.text)
   m.top.action = ""
@@ -43,7 +43,7 @@ sub show()
     m.fadeInAnimation.control = "start"
     ' Notifications appear on their own (next-episode countdown, media segments),
     ' so this can fire while the user is inside a dialog. Show, but do not steal
-    ' input from a modal — it would leave the dialog visible and unresponsive.
+    ' input from a modal: it would leave the dialog visible and unresponsive.
     if not m.global.sceneManager.callFunc("isDialogOpen") then m.actionButton.setFocus(true)
   end if
 
@@ -74,7 +74,7 @@ end sub
 sub dismiss()
   if m.top.state = "hidden" or m.top.state = "dismissing" then return
 
-  ' If paused (hidden for OSD), skip fade-out — button is already invisible
+  ' If paused (hidden for OSD), skip fade-out: button is already invisible
   if m.top.state = "paused"
     m.log.verbose("Dismissed from paused state")
     m.top.state = "hidden"
@@ -95,7 +95,7 @@ end sub
 
 ' Called when fade-out animation state changes.
 ' Guard with m.top.state = "dismissing" so externally stopped animations
-' (e.g., show() interrupting a fade-out) don't incorrectly transition to hidden.
+' (for example show() interrupting a fade-out) don't incorrectly transition to hidden.
 sub onFadeOutAnimationState()
   if m.fadeOutAnimation.state = "stopped" and m.top.state = "dismissing"
     m.log.verbose("Fade-out complete, state -> hidden")
