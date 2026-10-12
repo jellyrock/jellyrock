@@ -1,5 +1,5 @@
 /**
- * scripts/capture-screenshots.js — store-screenshot generator (#621).
+ * scripts/capture-screenshots.js: store-screenshot generator (#621).
  *
  * The reusable RTA layer (device driver, nav/wait steps, registry seeds, the
  * Jellyfin demo helpers, and the screen registry) lives under tests/rta/ and is
@@ -8,21 +8,22 @@
  * the real in-film frame behind the OSD (the video plane can't be screenshotted),
  * and emits the website manifest.
  *
- * Output — every locale folder is self-contained (all screens), so the website
- * reads docs/screenshots/<locale>/ with no fallback logic:
- *   docs/screenshots/<locale>/<screen>.png   one PNG per screen, per language
+ * Output: the gallery locale's folder holds every screen and every other locale's
+ * folder holds only the store screens, so the website reads docs/screenshots/<locale>/
+ * with no fallback logic:
+ *   docs/screenshots/<locale>/<screen>.webp  one lossless WebP per screen, per language
  *   docs/screenshots/screenshots.json        manifest: locales + screen order
  * Language-agnostic screens (capture.scope === 'shared') are captured ONCE then
- * copied into every locale folder.
+ * copied into each locale folder that keeps them.
  *
  * Store screenshots are captured from the PROD build (release branding, what
  * ships). RTA's deploy flips the manifest ENABLE_RTA on regardless of build
  * flavor, so prod works fine. Device creds: .env (ROKU_IP / ROKU_PASSWORD). The
- * device captures JPEG; we convert to PNG.
+ * device captures JPEG; we convert to lossless WebP.
  *
  *   npm run screenshots:capture            # build:prod + deploy + capture (store default)
  *   npm run screenshots:capture:dev        # dev build instead of prod
- *   npm run screenshots:capture:fast       # no build/deploy — re-capture against the deployed build
+ *   npm run screenshots:capture:fast       # no build/deploy: re-capture against the deployed build
  *   node scripts/capture-screenshots.js --languages=fr --screens=home   # subset (add DEPLOY=1 to deploy first)
  *
  * ============================ MAINTENANCE ============================
@@ -86,9 +87,9 @@ const CONFIG = {
 
 // Committed screenshots are LOSSLESS WebP. The device only outputs a fixed-quality
 // JPEG, so lossless adds nothing over that source while keeping every screen
-// pixel-perfect — and it's still ~3x smaller than PNG. screenshots-store.js decodes the
+// pixel-perfect, and it's still ~3x smaller than PNG (2026-06-11). screenshots-store.js decodes the
 // store set back to PNG for the Roku upload with zero extra loss. To keep the repo lean,
-// only GALLERY_LOCALE holds the full screen set; other store locales hold just the store
+// only GALLERY_LOCALE holds the full screen set; other store locales hold only the store
 // screens (a full per-language gallery isn't worth the weight). See docs/dev/rta-tests.md.
 const GALLERY_LOCALE = CONFIG.languages.includes('en_US') ? 'en_US' : CONFIG.languages[0];
 
@@ -113,7 +114,7 @@ function parseArgs() {
  * screen: the ACTUAL full-resolution frame at CONFIG.seekSeconds, extracted from
  * the direct video stream with ffmpeg. `-ss` before `-i` does an HTTP fast-seek,
  * so ffmpeg only fetches a small chunk near the timestamp (not the whole file).
- * This gives a crisp 1080p frame — trickplay tiles (320x180) are too low-res to
+ * This gives a crisp 1080p frame: trickplay tiles (320x180) are too low-res to
  * upscale cleanly. Falls back to the promo backdrop if ffmpeg/extraction fails.
  * Returns a JPEG Buffer (or null).
  */
@@ -165,8 +166,8 @@ async function prepareBackdrop(session, target) {
  * decoded video lives on a separate hardware plane that reads back as pure black
  * (documented Roku limitation). So we push the real in-film frame (see
  * prepareBackdrop) to the device's tmp: sandbox and inject a graphics-plane
- * Poster of it into `#captionGroup` — the player's FIRST child, so it renders
- * BEHIND the OSD overlay — to fill that black area. tmp: is cleared on each
+ * Poster of it into `#captionGroup` (the player's FIRST child, so it renders
+ * BEHIND the OSD overlay) to fill that black area. tmp: is cleared on each
  * relaunch, so we (re)write it here, right before use.
  *
  * `#captionGroup` is translated to [960,1020] (subtitle anchor), so the Poster
@@ -199,18 +200,18 @@ async function injectBackdrop(buf) {
   }).catch(() => {});
 }
 
-/** Capture the current screen to docs/screenshots/<folder>/<name>.png (JPEG -> PNG). */
+/** Capture the current screen to docs/screenshots/<folder>/<name>.webp (JPEG to lossless WebP). */
 async function capture(name, folder) {
   const tmp = path.join('/tmp/rta-shots', `${folder}-${name}`);
   fs.mkdirSync(path.dirname(tmp), { recursive: true });
   const shot = await device.getScreenshot(tmp);
-  // Guard: a pure-black capture is always a failure (e.g. the trickplay bar
+  // Guard: a pure-black capture is always a failure (for example, the trickplay bar
   // auto-closed before the shot, leaving only the un-capturable video plane).
   // Throw so captureScreen retries the whole nav instead of saving a black PNG.
   const stats = await sharp(shot.path).stats();
   const maxChannel = Math.max(...stats.channels.map((ch) => ch.max));
   if (maxChannel < 8) {
-    // A fail-fast whose cause is already named — it reports the measured channel max,
+    // A fail-fast whose cause is already named: it reports the measured channel max,
     // and `captureScreen` catches it to retry the whole nav. A retry signal, not a
     // timeout with unexplained state.
     // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
@@ -224,9 +225,10 @@ async function capture(name, folder) {
 }
 
 /**
- * Write the screenshots.json manifest — the contract the website (jellyrock.app)
- * reads. Every locale folder contains every screen, so the site just renders, for
- * the chosen locale, `<locale>/<screen>.png` for each screen in `screens` order.
+ * Write the screenshots.json manifest: the contract the website (jellyrock.app)
+ * reads. The `galleryLocale` folder contains every screen and the other locale
+ * folders only `storeScreens`, so the site renders, for the chosen locale,
+ * `<locale>/<screen>.<format>` for each screen in that list's order.
  * Config-derived, so it always reflects the full intended set regardless of any
  * --screens/--languages subset captured this run.
  */
@@ -258,8 +260,8 @@ let activeLock = null;
 async function main() {
   const { languages, screens, deploy, regen } = parseArgs();
 
-  // --regen: just rebuild the manifest + README from files already on disk (used
-  // after a manual image change, e.g. the PNG->WebP migration). No device needed.
+  // --regen: only rebuild the manifest + README from files already on disk (used
+  // after a manual image change, for example the PNG->WebP migration). No device needed.
   if (regen) {
     writeManifest();
     generateIndex();
@@ -273,7 +275,7 @@ async function main() {
   const lock = await acquireDeviceLock({ what: 'screenshots:capture' });
   activeLock = lock;
   // Records to `out/screenshots/`. This path drives the same navs as the RTA
-  // suite, so it produces the same failure records — and used to write them into
+  // suite, so it produces the same failure records, and used to write them into
   // the suite's own directory, where the next `test:rta` silently cleared them.
   const run = beginRun({ lock, run: 'capture-screenshots' });
   // Registered BEFORE armRestoreOnInterrupt() below, which installs its own signal
@@ -281,15 +283,16 @@ async function main() {
   // so this gets to start the release first.
   //
   // The two windows need OPPOSITE handling, and getting either wrong is a real
-  // failure — both measured on `.177`:
+  // failure. Both were measured on `.177`:
   //
-  //  - ARMED: do not await, and do not exit. `await lock.release(); process.exit(130)`
-  //    used to win the race against armRestore's ~30s registry restore (the release
-  //    is one GitHub DELETE, ~0.4s, or a no-op when degraded), killing the restore
-  //    and leaving the device signed into the demo server — the #800 bug, live on
-  //    this path until now. That handler owns the exit here.
-  //  - NOT ARMED: there is nothing to restore and nothing else will exit, so this
-  //    handler must. But it must AWAIT the release first — a fire-and-forget DELETE
+  //  - Armed: do not await, and do not exit. `await lock.release(); process.exit(130)`
+  //    used to win the race against armRestore's registry restore, which takes tens of
+  //    seconds (the release is one GitHub DELETE, under a second, or a no-op when
+  //    degraded), killing the restore and leaving the device signed into the demo
+  //    server: the #800 bug, live on this path until now. That handler owns the exit
+  //    here.
+  //  - Not armed: there is nothing to restore and nothing else will exit, so this
+  //    handler must. But it must AWAIT the release first: a fire-and-forget DELETE
   //    that never lands strands the lock for the full 15-minute lease, which then
   //    refuses the next run outright.
   let restoreArmed = false;
@@ -312,14 +315,14 @@ async function main() {
   // Good citizen: snapshot the device's current session so we can restore it after
   // (capturing logs the device into the demo server; we put it back the way we found it).
   const savedRegistry = await snapshotRegistry();
-  // A ~15-minute matrix run is the most likely thing anyone Ctrl-Cs, and the
+  // A matrix run takes tens of minutes, so it is the most likely thing anyone Ctrl-Cs, and the
   // `finally` below is not reached when the process is killed.
   armRestoreOnInterrupt(savedRegistry);
-  restoreArmed = true; // from here the restore handler owns the exit — see above
+  restoreArmed = true; // from here the restore handler owns the exit (see above)
 
   console.log(`Authenticating ${CONFIG.server.username}@${CONFIG.server.url} ...`);
   // Its OWN role, so a capture and an RTA run on two different devices cannot
-  // authenticate as the same client and evict each other — see `sessionDeviceId`.
+  // authenticate as the same client and evict each other (see `sessionDeviceId`).
   const session = await authenticate(CONFIG.server, {
     role: 'screenshots',
     deviceKey: lock.meta?.deviceKey,
@@ -338,7 +341,7 @@ async function main() {
     seekSeconds,
     backdropUrl: found.backdropUrl,
   });
-  // Scoped to the movies library the grid renders — an unscoped index spans every library
+  // Scoped to the movies library the grid renders: an unscoped index spans every library
   // and aims the nav at the wrong tile on any multi-library server (see findMovie).
   const moviesLibraryId = libraryIdFor(libraries, 'movies');
   const heroTarget = mkTarget(
@@ -397,15 +400,15 @@ async function main() {
         screen.view.landing,
       );
     }
-    // hardRelaunch, NOT relaunch — see assertSeedTookEffect. A soft relaunch lets
+    // hardRelaunch, not relaunch (see assertSeedTookEffect). A soft relaunch lets
     // the running app re-persist its own session over the seed, which here would
     // silently photograph the WRONG server's library into the public store set.
     await hardRelaunch();
     await assertSeedTookEffect(expectedServer, screen.name);
     if (screen.nav) await screen.nav(ctx);
     // Store-only polish: fill the un-capturable black video plane with the real
-    // in-film frame (osd's paused frame). trickplay deliberately has no backdrop —
-    // it would cover Roku's built-in trickPlayBar — so its video plane stays black.
+    // in-film frame (osd's paused frame). trickplay has no backdrop on purpose: it
+    // would cover Roku's built-in trickPlayBar, so its video plane stays black.
     if (screen.capture?.backdrop) {
       await injectBackdrop(backdrops[backdropKey(ctx)]);
       await sleep(1000);
@@ -413,12 +416,12 @@ async function main() {
     await capture(screen.name, folder);
   };
   // Each screen reseeds + relaunches from scratch, so a transient hiccup (a
-  // playback stall, a demo-server blip) is recoverable by simply retrying — and
+  // playback stall, a demo-server blip) is recoverable by retrying, and
   // one bad screen should never abandon a ~15-minute matrix run.
   const captureScreen = async (screen, locale, folder, attempts = 3) => {
     // A capability-gated screen the fixture cannot grant is SKIPPED, never retried.
-    // `wanted` is not filtered by `capture`, so every registry entry's nav runs here
-    // — and a nav whose button the fixture never renders would burn all three
+    // `wanted` is not filtered by `capture`, so every registry entry's nav runs here,
+    // and a nav whose button the fixture never renders would burn all three
     // attempts and then abandon a ~15-minute matrix run. Mirrors the same `requires`
     // gate in specs/screens.spec.js: one predicate, honored by both consumers of
     // the registry, so the two cannot disagree about what a screen needs.
@@ -492,7 +495,7 @@ async function main() {
 main().catch(async (e) => {
   console.error('capture failed:', e?.stack || e?.message || e);
   // No endRun here: `beginRun` arms a process-exit net that folds any run an entry
-  // point did not close, which covers this path AND the interrupt above — where a
+  // point did not close, which covers this path AND the interrupt above, where a
   // hand-rolled call could not run at all, because armRestoreOnInterrupt owns the
   // exit. See `armCloseOnExit` in scripts/run-record.js.
   await activeLock?.release();

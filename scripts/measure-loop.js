@@ -5,7 +5,7 @@
  * ## Why it is not in `measure.js`
  *
  * `measure.js` acquires the device lock at import, so nothing defined inside it can be
- * reached by a test — and by its own header it is "the one layer every defect in this
+ * reached by a test, and by its own comments it is "the one layer every defect in this
  * subsystem has been found in". That is the same reason `measure-args.js` and
  * `measure-selection.js` exist, and this file follows them: everything impure arrives
  * as an injected dependency, so the window arithmetic and the quiet-break can be driven
@@ -15,16 +15,16 @@
  * corrected here rather than left standing.** It said the multi-device driver and the ODC
  * calibration harness would each otherwise grow their own copy of the replay defense.
  * Both were then built OUT of process (`measure-devices.js` 2026-08-16,
- * `measure-calibration.js` 2026-08-17), each spawning `measure.js` per unit of work —
+ * `measure-calibration.js` 2026-08-17), each spawning `measure.js` per unit of work,
  * because a series needs far more than this loop (the device lock, the console socket,
  * the tier guards, mount selection, the medians, and the record assembly that tech-debt
  * flags as untested), and re-implementing that around a shared loop would have doubled
  * the subsystem's one untested surface to avoid passing flags to a process that already
  * does the job.
  *
- * So this file has ONE caller. The extraction still earned itself — 16 unit tests over
+ * So this file has ONE caller. The extraction still earned itself (unit tests over
  * window arithmetic and a quiet-break that had none, in the file every defect in this
- * subsystem has been found in — but it earned it on testability, not on reuse, and a
+ * subsystem has been found in), but it earned it on testability, not on reuse, and a
  * header claiming a caller that does not exist is how the next reader designs around a
  * constraint nobody has.
  *
@@ -32,7 +32,7 @@
  *
  * A failed navigation THROWS `NavFailedError` instead of closing the run and calling
  * `process.exit`. The error carries the finished operator message, so the entry point
- * refuses with byte-identical text and single-device behaviour is unchanged — but a matrix
+ * refuses with byte-identical text and single-device behavior is unchanged. But a matrix
  * driver has to be able to lose one device without killing the other two, and an exit
  * inside the loop cannot be caught.
  */
@@ -44,16 +44,16 @@ import { otherMountsIn, selectColdSamples } from './measure-selection.js';
  *
  * ## Why it carries the operator message rather than the entry point building one
  *
- * The refusal text lives here so it can be asserted. `measure.js` cannot be unit tested —
- * it claims the device on import — so a message assembled there from this error's fields
+ * The refusal text lives here so it can be asserted. `measure.js` cannot be unit tested
+ * (it claims the device on import), so a message assembled there from this error's fields
  * has no gate at all: rename a field and the operator reads `failed on launch undefined`,
  * with nothing red anywhere. Building it at the throw site costs this module one CLI-shaped
  * word (`--nav`), which is a smaller price than an untestable string.
  *
  * @param {number} launchNumber 1-BASED, because its only consumer is a human-facing message.
- *   Deliberately NOT named `launch`: `sample.launch` in this same module is 0-based, and one
+ *   Not named `launch`, on purpose: `sample.launch` in this same module is 0-based, and one
  *   name meaning two bases is a defect waiting for the multi-device driver to find.
- * @param {Error} cause the nav's own error — `diagnosedError` has already attached what the
+ * @param {Error} cause the nav's own error. `diagnosedError` has already attached what the
  *   device was showing, so the record survives on `.cause` even though only the message prints.
  * @param {object[]} samples what the series had already collected. Attached because the whole
  *   point of throwing rather than exiting is that a matrix driver survives losing one device;
@@ -84,7 +84,7 @@ export class NavFailedError extends Error {
  * @param {number} config.bootMs        what `relaunch` spends waiting for the app
  * @param {object} config.measurement   the family from `measurements.js`
  * @param {object} config.selector      the mount selector, per `measure-selection.js`
- * @param {string} [config.navLabel]    what to call the nav in a refusal — the `--nav` value
+ * @param {string} [config.navLabel]    what to call the nav in a refusal: the `--nav` value
  * @param {object} deps                 everything impure
  * @param {() => number} deps.now
  * @param {(ms:number) => Promise<void>} deps.sleep
@@ -113,20 +113,20 @@ export async function runSeries(
     // would cover a span in which the PREVIOUS launch can still be emitting.
     // `assembleSamples` merges by line, not by launch, so a straggler landing there is
     // absorbed into this launch's sample and the record fabricates one run out of halves
-    // of two — exactly what `measurements.js` refuses to do with an incomplete sample.
+    // of two: exactly what `measurements.js` refuses to do with an incomplete sample.
     // Filtering by a future instant is safe: lines are stamped as they arrive, so nothing
     // before it can ever be eligible.
     //
     // Usually masked by the quiet-break below, which will not fire until the console has
-    // been silent for `quietMs`. Not masked on the deadline path — i.e. exactly when the
-    // device is already misbehaving.
+    // been silent for `quietMs`. Not masked on the deadline path, that is, exactly when
+    // the device is already misbehaving.
     const from = now() + exitMs;
     openWindow(from);
     await relaunch();
 
     // Drive to the screen INSIDE the window, not before it. The nav's final gate waits on
     // a node the screen paints, so it necessarily returns AFTER the paint line has been
-    // emitted — a window opened when the nav returns would start by missing the very
+    // emitted. A window opened when the nav returns would start by missing the very
     // thing it was opened to catch.
     //
     // The intermediate screens a chained nav passes through emit their own lines and are
@@ -157,7 +157,7 @@ export async function runSeries(
     // window and would otherwise eat the watch budget: an episode detail is four screens
     // deep, and on `.177` that walk alone outlasts the 45 s cap the relaunch-only mode was
     // sized for. Note this span is the RELAUNCH plus the nav (less `exitMs`, which `from`
-    // already excluded), not the nav alone — and the deadline adds `bootMs` again below.
+    // already excluded), not the nav alone, and the deadline adds `bootMs` again below.
     // Both make the window longer than strictly needed, which is the safe direction: the
     // quiet-break ends a healthy launch early anyway, so the only thing a generous cap
     // changes is how long a MISBEHAVING device is given before being reported.
@@ -169,7 +169,7 @@ export async function runSeries(
     while (now() < deadline) {
       await sleep(1000);
       assembled = assembleSamples(measurement, linesSince(from));
-      // Only the sample this launch will PUBLISH may end the watch — the one the selector
+      // Only the sample this launch will PUBLISH may end the watch: the one the selector
       // picks, by the same rule the series uses. Any complete sample was the old test, and a
       // launch reached THROUGH another mount (Home through `preLogin`) completed that mount
       // first: a named screen starting more than `quietMs` later was never seen at all.
@@ -184,7 +184,7 @@ export async function runSeries(
       );
       // Only THIS launch's silence may end the watch. Nothing clears the reader's clock
       // between launches, so gating on the window instant makes that a property of the loop
-      // rather than a rule the caller has to remember — a second caller inherits it. Stale
+      // rather than a rule the caller has to remember, so a second caller inherits it. Stale
       // stamps are always strictly below `from`, which is computed after the previous
       // launch's last line; `>=` rather than `>` because a stamp landing exactly on the
       // window's first millisecond belongs to this launch.
@@ -203,15 +203,15 @@ export async function runSeries(
         // since `assembleSamples` merges by line and has no timestamps to hand back.
         launchAt: new Date(from).toISOString(),
         // 0 is the cold first paint; 1+ are the refreshes that follow it in the same
-        // launch. Recorded, never averaged together — see trap 3.
+        // launch. Recorded, never averaged together (see trap 3 in `measure.js`).
         indexInLaunch,
         complete: sample.complete,
         lines: sample.lines,
         buildFlags: sample.buildFlags,
         workload,
         timings,
-        // What the app said this sample WAS — its screen, and which variant of it. Empty
-        // for a sample carrying only numbers, which is every `item-grid` one and every
+        // What the app said this sample WAS: its screen, and which variant of it. Empty
+        // for a sample carrying only numbers, such as every `item-grid` one and every
         // `home-latest-rows` one from a build without the recompute attribution. This is
         // the only thing that can tell two samples from the same launch apart: a chained
         // navigation mounts one screen several times (a Season is reached through its
@@ -229,12 +229,12 @@ export async function runSeries(
 /**
  * The per-launch progress line.
  *
- * Uses the SAME rule the medians use, through the same function — not a second copy that
+ * Uses the SAME rule the medians use, through the same function, not a second copy that
  * can silently come to mean something else. Hardcoding the first mount here printed 260 ms
- * (the details screen a playback nav walks THROUGH) while the summary printed the mount
+ * on 2026-08-16 (the details screen a playback nav walks THROUGH) while the summary printed the mount
  * actually named: two numbers 8x apart, one tool, one output, both `osd`.
  *
- * `selectColdSamples` also filters on `complete`, which this line used not to do — it took
+ * `selectColdSamples` also filters on `complete`, which this line used not to do: it took
  * the first MATCHING sample and only then asked whether it was complete, so a launch whose
  * target mount emitted an incomplete sample ahead of a complete one printed "no complete
  * sample" while the summary counted it.
@@ -242,7 +242,7 @@ export async function runSeries(
 export function formatLaunchLine({ launch, sampleCount, samples, selector, measurement }) {
   const ofThisLaunch = samples.filter((s) => s.launch === launch);
   const cold = selectColdSamples(ofThisLaunch, selector)[0];
-  // The OTHER mounts this launch produced, named — see `otherMountsIn`, which is where the
+  // The OTHER mounts this launch produced, named. See `otherMountsIn`, which is where the
   // rule and its test live. Passed the pushed `samples`, not the assembled ones: the push
   // re-shapes each into a different object, and this compares against `cold` by identity,
   // so the assembled list would match nothing and count the selected sample as an other.

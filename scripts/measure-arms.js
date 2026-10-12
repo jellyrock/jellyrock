@@ -11,23 +11,24 @@
  * ## The question, and why it needs two builds rather than a flag
  *
  * `npm run measure` reads the app's identity over ODC, and ODC exists only because the
- * build was deployed with `injectTestingFiles` — which makes a task component RESIDENT
+ * build was deployed with `injectTestingFiles`, which makes a task component RESIDENT
  * for the whole session. Whether that component moves the number being measured has never
  * been established, so every number this project publishes carries an unmeasured
- * variable, and the n=30 non-RTA baselines in `home-first-paint-performance.md` cannot be
+ * variable, and the n=30 non-RTA baselines (plain builds, 2026-08-04) cannot be
  * compared against at all (`measure:compare` refuses arms differing in `enableRta`).
  *
  * The comparison cannot be made INSIDE one build: the readout is a console emit that both
  * arms keep, but the identity read is not available in the arm that has no ODC. That is
- * what [ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md) settles — the
+ * what [ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md) settles: the
  * no-ODC arm asserts identity by ENCLOSURE, from observed reads taken either side of it.
  *
  * ## Why the plain arm turns the flag OFF as well as dropping the component
  *
- * `injectTestingFiles: false` alone does NOT produce a non-RTA build. RTA rewrites
- * `ENABLE_RTA=false` -> `true` in the staged manifest unconditionally — the rewrite sits
- * outside that option's `if` (`RokuDevice.js:71-76`) — and `#if` is evaluated on the
- * DEVICE from the shipped manifest. So the obvious two arms would differ by the component
+ * `injectTestingFiles: false` alone does not produce a non-RTA build. RTA rewrites
+ * `ENABLE_RTA=false` -> `true` in the staged manifest unconditionally (the rewrite sits
+ * outside that option's `if`, in the `createPackage` callback of RTA's
+ * `RokuDevice.createPackage()`), and `#if` is evaluated on the DEVICE from the shipped
+ * manifest. So the obvious two arms would differ by the component
  * only, while both still ran every `#if ENABLE_RTA` block.
  *
  * Three reasons the plain arm flips the flag back (see `deployBuild`):
@@ -46,14 +47,14 @@
  *     manifest said `true`.
  *
  * The cost is that a delta cannot say WHICH of the two it was. That decomposition is
- * deliberately not taken up front: at n=30 this method resolves ~120 ms and up
- * (`home-first-paint-performance.md`), and the leftover hooks are one field-add — an arm
- * isolating them could only ever report "below the floor". If the delta comes back at or
+ * not taken up front: at n=30 this method resolves about 120 ms and up (measured
+ * 2026-08-04, `home-first-paint-performance.md`), and the leftover hooks are one
+ * field-add. An arm isolating them could only ever report "below the floor". If the delta comes back at or
  * above the floor, THEN a third arm (`injectTestingFiles: false` with the flag left on)
  * is worth taking, because only then can it return an answer.
  */
 
-/** Thrown for a calibration that cannot be run — the caller prints `.message` and exits. */
+/** Thrown for a calibration that cannot be run; the caller prints `.message` and exits. */
 export class CalibrationError extends Error {
   constructor(message) {
     super(message);
@@ -68,7 +69,7 @@ const CMD = 'npm run measure:calibrate';
  * The two arms, and what each one puts on the device.
  *
  * `enableRta` is what the SHIPPED manifest must say, which is a separate decision from
- * `injectTestingFiles` — see the header. `odcResident` is what follows for the session,
+ * `injectTestingFiles` (see the header). `odcResident` is what follows for the session,
  * and it is what decides whether the arm can read its own identity.
  */
 export const ARMS = Object.freeze({
@@ -86,7 +87,7 @@ export const ARMS = Object.freeze({
     enableRta: false,
     odcResident: false,
   }),
-  // The DECOMPOSITION arm — the one ADR 0030 originally specced, kept out of the default
+  // The DECOMPOSITION arm: the one ADR 0030 originally specced, kept out of the default
   // pair on purpose and unlocked by `--against no-component`.
   //
   // It drops the component while leaving `ENABLE_RTA=true`, so the app still runs every
@@ -96,11 +97,11 @@ export const ARMS = Object.freeze({
   // `plain` is the compiled-in hooks.
   //
   // Only worth running once `rta` vs `plain` has produced a delta at or above the method's
-  // floor — below that this arm can only report "not distinguishable" whichever way the
+  // floor. Below that this arm can only report "not distinguishable" whichever way the
   // truth lies. That condition was met on the 512 MB Stick 2026-08-18 (+153 ms, 6/6 cycles).
   //
   // ⚠️ Two honest caveats. `provenance.enableRta` is DERIVED from whether ODC answered, so
-  // this arm records `false` while its shipped manifest says `true` — the literal
+  // this arm records `false` while its shipped manifest says `true`. The literal
   // `bs_const` in `provenance.deploy` is the field to read for this arm, not `enableRta`.
   // And `createObject` on an unstaged node type is a path nothing else exercises; smoke it
   // for one sample before committing to a series.
@@ -133,8 +134,8 @@ export const DEFAULT_BLOCK_SIZE = 5;
  * The fewest blocks per arm that can be called interleaved.
  *
  * With one block each the run is all of A then all of B, which is precisely the shape the
- * interleave rule exists to prevent: anything that drifts with time — content, device
- * warm-up, a server getting busy — aliases entirely onto the second arm and is
+ * interleave rule exists to prevent: anything that drifts with time (content, device
+ * warm-up, a server getting busy) aliases entirely onto the second arm and is
  * indistinguishable from the effect under test. `measure:compare` reports the alternation
  * it finds; this refuses to TAKE a run whose answer it already knows.
  */
@@ -145,11 +146,11 @@ const VALUE_FLAGS = new Map([
   // A suffix for BOTH arm labels, so two calibration runs cannot pool.
   //
   // `measure:compare` selects series by arm label across the whole ledger, so a second
-  // run — a re-run after a fix, a smoke run at n=2, the same calibration a month later —
+  // run (a re-run after a fix, a smoke run at n=2, the same calibration a month later)
   // is silently merged into the first by `--a arm=rta --b arm=plain`. That is the
   // mixed-population failure this subsystem refuses everywhere else, reachable here
   // through nothing but a default. With `--label smoke` the arms record as `rta-smoke` /
-  // `plain-smoke` and can only be selected deliberately.
+  // `plain-smoke` and can only be selected on purpose.
   ['--label', 'label'],
   // WHICH non-RTA arm to compare `rta` against. Defaults to `plain`, the arm that answers
   // the comparability question; `no-component` is the decomposition arm (see ARMS).
@@ -176,15 +177,15 @@ const positiveInt = (raw, flag) => {
 };
 
 /**
- * Parse the driver's command line, strictly — same posture and the same reasons as
+ * Parse the driver's command line, strictly: same posture and the same reasons as
  * `parseMeasureArgs`: an unknown flag is an error, and a value flag with no value is an
  * error, because a dropped flag is how a measurement stops asserting what it was typed to
  * assert.
  *
- * Deliberately a SMALL grammar. The calibration is one fixed experiment, not a general
+ * A SMALL grammar on purpose. The calibration is one fixed experiment, not a general
  * measurement front end, and the flags it does not accept are the point: `--nav` gates on
  * ODC and cannot run in the plain arm, and `--deploy` would contradict the arm the driver
- * just deployed.
+ * has deployed.
  */
 export function parseCalibrationArgs(argv = []) {
   const raw = {};
@@ -258,7 +259,7 @@ export function parseCalibrationArgs(argv = []) {
   }
 
   // REQUIRED, and it is the one flag that has no sensible default. The plain arm has no
-  // ODC to read identity from, so `--server` is not merely tier 1's expectation there —
+  // ODC to read identity from, so `--server` is not merely tier 1's expectation there:
   // it is the only thing the enclosing brackets can be checked AGAINST. Without it the
   // enclosure would confirm that two reads agreed with each other, which a device sitting
   // on the wrong server all along satisfies perfectly.
@@ -290,7 +291,7 @@ export function parseCalibrationArgs(argv = []) {
 
 /**
  * How `samples` splits into blocks. The last one carries the remainder rather than being
- * padded, so `-n 30 --block-size 4` takes 30 samples and not 32 — the operator asked for
+ * padded, so `-n 30 --block-size 4` takes 30 samples and not 32: the operator asked for
  * a series length, and silently changing it is the sort of thing a reader finds months
  * later in the `requested` field.
  */
@@ -305,13 +306,13 @@ export function blockSizes(samples, blockSize) {
  *
  * Always `rta` then `plain`, cycle after cycle, so every plain block has an RTA arm on
  * both sides of it to be enclosed by. The closing bracket for the LAST plain block comes
- * from the restore deploy at the end of the run — which is not a block and is not
+ * from the restore deploy at the end of the run, which is not a block and is not
  * optional: a device left holding a build with no ODC is a device the next tool cannot
  * use, and that has already cost this project a whole RAM tier (`.178`, 2026-08-17). So
  * the final observed read is free, and the plan does not need a trailing arm to buy it.
  *
  * Both arms therefore get exactly `samples`, which is worth stating because the obvious
- * alternative — ending on an extra RTA block — silently gives one arm more.
+ * alternative (ending on an extra RTA block) silently gives one arm more.
  *
  * @returns {{index: number, arm: string, count: number, enclosure: number|null}[]}
  *   `enclosure` groups a plain block with the bracket reads either side of it; it is null
@@ -337,7 +338,7 @@ export function planBlocks({
  * is not a tidiness point: the count line used to read `per(ARMS.plain.id)` while the
  * descriptions below read `against`, so `--against no-component` announced
  * `30 + 0 launches` under two correctly-named arms. The zero is the tell and nobody read
- * it — the decomposition run printed it 2026-08-18 and ran anyway. One source for the
+ * it: the decomposition run printed it 2026-08-18 and ran anyway. One source for the
  * pair cannot say two things about it.
  */
 export function formatPlanLines(blocks, { samples, server, label, against = ARMS.plain.id }) {
@@ -363,9 +364,9 @@ export function formatPlanLines(blocks, { samples, server, label, against = ARMS
  * Here rather than inlined at the end of the driver, and that is the whole point of it: it
  * was inlined, it read `--a arm=rta --b arm=plain` with the ids hardcoded, and it ignored
  * both `--against` and `--label`. So every labelled run printed the selector for the
- * UNLABELLED arms — which is the pooling `--label` exists to prevent, handed to the
- * operator as the suggested next command. It printed that for six weeks of runs and was
- * never noticed, because whoever ran them pasted the right selectors from memory instead.
+ * UNLABELED arms, which is the pooling `--label` exists to prevent, handed to the
+ * operator as the suggested next command. It was never noticed, because whoever ran
+ * them pasted the right selectors from memory instead.
  *
  * A rule about what the run recorded belongs where the recording rule lives, next to
  * `armLabel`, with a test on it. The delivery layer prints the string it is given.
@@ -375,7 +376,7 @@ export const compareCommand = ({ against = ARMS.plain.id, label } = {}) =>
   `--b arm=${armLabel(against, label)}`;
 
 /**
- * How it went, and — the part that earns its own function — what did NOT reach the
+ * How it went, and (the part that earns its own function) what did not reach the
  * ledger.
  *
  * A calibration that silently published fewer blocks than it took is the failure this
@@ -413,7 +414,7 @@ export function summariseCalibration(rows = [], { arms = [ARMS.rta.id, ARMS.plai
     lines,
     published: published.length,
     withheld: withheld.length,
-    // Every block published, and both arms actually carry something — a run that
+    // Every block published, and both arms actually carry something: a run that
     // published six RTA blocks and no plain ones is not a calibration, and would
     // otherwise report itself as a clean pass.
     ok:

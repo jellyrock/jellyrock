@@ -5,8 +5,8 @@
  *
  * Spawned once per device by `scripts/measure-devices.js --sign-in`; that flag is the
  * supported surface and this file is its per-device half. Runnable by hand for the same
- * reason `rta-restore.js` is — when a device needs putting into a known state and there is
- * no matrix to run — but nothing else imports it.
+ * reason `rta-restore.js` is (when a device needs putting into a known state and there is
+ * no matrix to run), but nothing else imports it.
  *
  * ## Why this is a separate PROCESS rather than a function the driver calls
  *
@@ -24,38 +24,39 @@
  *
  * `hardRelaunch()` runs FIRST, before anything reads the registry, and that ordering is
  * the whole reason this comment exists: the on-device component lives INSIDE the app, so
- * an ODC read against a device that is not running it does not fail, it HANGS — and it
+ * an ODC read against a device that is not running it does not fail, it HANGS, and it
  * presents exactly like a network problem. That cost ~10 minutes to diagnose the first
  * time (2026-08-16) and is the same failure shape as the wedged deploy in #817.
  *
  * WHICH phase hangs is worth being exact about, because it decides where the bound has to
  * go. RTA does time out its requests (`sendRequest` races against `getTimeOut(options)`,
- * 10 s by default) — but it `await`s `setupClientSocket()` BEFORE that race, and that
- * promise only self-rejects on `ECONNREFUSED`/`EPIPE`. A connect to port 9000 that neither
- * connects nor errors never settles it, and the promise is cached, so it stays wedged.
- * Passing a `timeout` option to `readRegistry` therefore would NOT help. The bound has to
+ * 10 s by default), but it `await`s `setupClientSocket()` BEFORE that race, and that
+ * promise only self-rejects from a socket `error` event (its own timeout is checked only
+ * between `ECONNREFUSED`/`EPIPE` retries). A connect to port 9000 that neither connects
+ * nor errors never settles it, and the promise is cached, so it stays wedged.
+ * Passing a `timeout` option to `readRegistry` therefore would not help. The bound has to
  * be an outer wall clock, which is `SIGNIN_TIMEOUT_MS` below.
  *
  * `hardRelaunch()` fixes the common cause (a device parked on the Roku home screen). It
- * cannot fix the other one — a resident build with no ODC at all, which is what a device
+ * cannot fix the other one: a resident build with no ODC at all, which is what a device
  * carrying a Rooibos test build or a `build:prod` has. `--deploy` does not rescue that
- * either: the deploy happens inside `measure`, i.e. AFTER this runs. Hence the timeout,
+ * either: the deploy happens inside `measure`, that is, AFTER this runs. Hence the timeout,
  * whose message names the cause rather than the elapsed seconds.
  *
- * Then: snapshot the WHOLE registry to disk BEFORE any write (`lib/registry.js` — that file
+ * Then: snapshot the WHOLE registry to disk BEFORE any write (`lib/registry.js`; that file
  * is the device's only backup and the reason a killed run is still recoverable), authenticate,
  * seed, cold restart, and PROVE the seed took. `assertSeedTookEffect` is not ceremony: a plain
  * relaunch only foregrounds a running channel, so the app re-persists its in-memory session
  * over the seed and the run measures the wrong server using the right server's name.
  *
- * Putting the device back is deliberately NOT this script's job — the driver runs
+ * Putting the device back is not this script's job: the driver runs
  * `rta-restore.js` after the series, so a device is restored whether the measurement passed,
  * failed, or never got that far. If this process dies partway, the snapshot on disk is the
  * repair: `ROKU_IP=<host> npm run rta:restore`.
  *
  * ## Why `seedHome`, and never `seedServerSelect`
  *
- * `seedServerSelect` overwrites `saved_servers` with the DEMO server — which the project
+ * `seedServerSelect` overwrites `saved_servers` with the DEMO server, which the project
  * charter puts out of scope for perf work, and which changes the workload of the very screen
  * it would be used to reach. `seedHome` writes an authenticated session for the server the
  * operator named and nothing else.
@@ -94,7 +95,7 @@ const url = argValue('--url');
 const username = argValue('--user');
 // Never on argv: a real password there is visible in `ps` and lands in shell history.
 // `measure-devices.js` puts it here; `MEASURE_SIGNIN_PASSWORD` is also how an operator
-// running this by hand supplies one. Blank is the common case — a Jellyfin account with
+// running this by hand supplies one. Blank is the common case: a Jellyfin account with
 // `HasPassword: false` authenticates with an empty `Pw`.
 const password = process.env.MEASURE_SIGNIN_PASSWORD ?? '';
 
@@ -105,19 +106,19 @@ if (!url || !username) {
   process.exit(1);
 }
 
-setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — before anything is touched
+setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing, before anything is touched
 const host = device.getCurrentDeviceConfig().host;
 
-/** The locale the seed writes. Pinned, not preserved — see the header. */
+/** The locale the seed writes. Pinned, not preserved: see the header. */
 const locale = RTA_CONFIG.languages[0];
 
 /**
  * A wall clock on the whole sequence, because one step inside it has no bound of its own.
  *
- * Healthy is ~40-50 s here: two `hardRelaunch`es cost `exitMs + bootMs` each (~14 s), and
+ * Healthy was ~40-50 s here on 2026-08-16: two `hardRelaunch`es cost `exitMs + bootMs` each (~14 s), and
  * the registry read, the auth round trip and the seed are small beside that. Three minutes
  * is roughly the 4x headroom `DEPLOY_TIMEOUT_MS` allows its own step, and the direction of
- * error matters — this is a diagnosis for a wedge, never a performance gate, so a slow LAN
+ * error matters: this is a diagnosis for a wedge, never a performance gate, so a slow LAN
  * or a slow server must not be turned into a spurious failure.
  */
 const SIGNIN_TIMEOUT_MS = 3 * 60 * 1000;
@@ -126,7 +127,7 @@ const SIGNIN_TIMEOUT_MS = 3 * 60 * 1000;
  * Taken for the same reason `measure.js` takes one, and it is the step that needs it MOST.
  *
  * This is the only part of a matrix run that WRITES the registry, and a concurrent run that
- * snapshots while a device is seeded adopts our seed as that user's own state — then
+ * snapshots while a device is seeded adopts our seed as that user's own state, then
  * restores it faithfully, forever. That is the compounding damage `lib/registry.js` was
  * written to prevent, arrived at from the outside.
  *
@@ -140,27 +141,27 @@ try {
   lock = await acquireDeviceLock({ what: 'measure sign-in' });
 } catch (e) {
   // Contention, not a defect. Its message already names the holder and the way forward,
-  // so it is printed as-is — a top-level rejection would bury that under a stack trace
+  // so it is printed as-is: a top-level rejection would bury that under a stack trace
   // for a condition that is nobody's bug.
   console.error(`\n[signin] ${host}: ${e.message}`);
   process.exit(1);
 }
 
 // The `try`/`catch` below cannot catch everything that ends this process, and the gap is
-// not theoretical — it was hit on 2026-08-16. `roku-test-automation` surfaces a refused
+// not theoretical: it was hit on 2026-08-16. `roku-test-automation` surfaces a refused
 // ODC connect as an `error` EVENT on its socket, which lands OUTSIDE the await chain, so
 // no `catch` around `signIn()` can see it. The process died on an uncaughtException, the
 // release below was never reached, and `.178` stayed claimed by a dead pid until a manual
-// `node scripts/device-lock.js release` eight minutes later — blocking the very next run.
+// `node scripts/device-lock.js release` eight minutes later, blocking the very next run.
 //
-// A signal has the identical shape and is reachable on the ORDINARY path, not just a
+// A signal has the identical shape and is reachable on the ORDINARY path, not only a
 // crash: the driver's `signalPolicy` sends this child SIGTERM on a first Ctrl-C. That is
 // the same defect `measure.js` was given handlers for during #824 (filed as tech debt in
 // review, then fixed in that same branch, so no slug survives to cite); the sibling
 // seeding script was never given the equivalent.
 //
 // This file needs the net MORE than either sibling, because it is the first thing in a
-// matrix run to touch ODC — against a device whose build state nobody has verified, where
+// matrix run to touch ODC, against a device whose build state nobody has verified, where
 // "no on-device component at all" is a documented expected state (see the header), not an
 // edge case. The most crash-prone step had the least protection.
 //
@@ -168,27 +169,28 @@ try {
 // rejection out of top-level await surfaces as `uncaughtException` rather than
 // `unhandledRejection`, so both are hooked instead of betting on which.
 //
-// Releasing on a signal deliberately admits the next contender while the device may still
-// be seeded — the state the lock exists to protect. That is the right trade anyway: the
+// Releasing on a signal admits the next contender while the device may still
+// be seeded (the state the lock exists to protect). That is the right trade anyway: the
 // driver runs `rta-restore.js` unconditionally right after this child dies, so the window
 // is one restore long, whereas a leaked lock blocks every contender for the full lease
 // with no upside at all. The snapshot is on disk before the first write either way.
 //
 // `released` keeps the net from firing again on the way OUT. The ordinary path releases the
 // lock at the bottom of this file and then prints and exits; a signal landing after that
-// would otherwise re-release — a DELETE on a ref that is already gone, which `device-lock`
-// reports as "could not release the lock; the lease will expire on its own", alarming and
-// untrue.
+// would otherwise re-release: a second DELETE on a ref that is already gone. `releaseRef`
+// in `device-lock.js` does not check the HTTP status, so that is silent, but it is a
+// wasted GitHub round trip before the exit.
 //
 // It is set AFTER the release resolves, not before, and that ordering is the whole point:
 // the release is a GitHub round trip, so a signal can land mid-flight. Claiming the release
-// up front would make the handler skip it and exit — leaking exactly the lock this file
+// up front would make the handler skip it and exit, leaking exactly the lock this file
 // exists to free. Set afterwards, a mid-flight signal re-releases (idempotent, and the
-// duplicate warning is the cheap side of the trade) while a signal after it is done stays
-// quiet. Lock hygiene wins over a tidy log; a leaked lease blocks every contender.
+// duplicate request is the cheap side of the trade) while a signal after it is done skips
+// the request. Lock hygiene wins over a saved round trip; a leaked lease blocks every
+// contender.
 //
 // Signals exit `INTERRUPTED_EXIT` rather than 1, so the driver can tell an operator's
-// deliberate stop from a device that would not sign in — a bare 1 makes those identical,
+// deliberate stop from a device that would not sign in. A bare 1 makes those identical,
 // and the matrix then carries on to the next device after being told to stop. Imported
 // rather than written as a literal because `wasInterrupted` on the reading side is the
 // other half of the same contract; see its note for why 130 and not `128+n`.
@@ -209,7 +211,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 }
 
 // `process.exit` does not run a `finally`, so the release is sequenced explicitly rather
-// than wrapped around an exit — a lock held by a process that is gone wedges every
+// than wrapped around an exit: a lock held by a process that is gone wedges every
 // contender until the lease expires.
 let failure = null;
 try {
@@ -255,7 +257,7 @@ async function signIn() {
   await hardRelaunch();
   await assertSeedTookEffect(seeded, `measure:devices --sign-in (${host})`);
 
-  // The locale is named because the seed CHANGED it and no record will carry it — see the
+  // The locale is named because the seed CHANGED it and no record will carry it: see the
   // header. Without this line the one thing the seed altered besides the session is silent.
   console.log(`[signin] ${host}: signed in to ${seeded} as ${session.username}, locale ${locale}.`);
 }
