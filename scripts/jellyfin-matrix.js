@@ -1,10 +1,10 @@
-// scripts/jellyfin-matrix.js — send one Jellyfin API request to a server of each
+// scripts/jellyfin-matrix.js: send one Jellyfin API request to a server of each
 // version and print what each one returns.
 //
 // Used to check how an endpoint or parameter behaves across releases before code
-// depends on it (docs/dev/jellyfin-server-versioning.md §4): a parameter that one
-// version honors can be ignored by the next without leaving the spec, and only a
-// live request tells you which.
+// depends on it (docs/dev/jellyfin-server-versioning.md, "Parameters whose meaning
+// changed"): a parameter that one version honors can be ignored by the next
+// without leaving the spec, and only a live request tells you which.
 //
 // Usage:
 //   npm run jellyfin:matrix -- '/Shows/NextUp?UserId={userId}&DisableFirstEpisode=true'
@@ -12,7 +12,7 @@
 //
 // `{userId}` is replaced with the signed-in user's id on each server. The request
 // is a GET. Servers come from JELLYFIN_VERSION_SERVERS (comma-separated base URLs),
-// signed in as JELLYFIN_VERSION_SERVERS_USER / _PASS — see .env.example.
+// signed in as JELLYFIN_VERSION_SERVERS_USER / _PASS: see .env.example.
 //
 // Exit: 0 = every server answered (any HTTP status) · 1 = a server could not be
 // reached or signed in to · 2 = bad usage or configuration.
@@ -40,7 +40,7 @@ export function parseServerList(value) {
 
 /**
  * @param {string} baseUrl
- * @param {string} pathQuery - e.g. `/Shows/NextUp?UserId={userId}`
+ * @param {string} pathQuery - for example `/Shows/NextUp?UserId={userId}`
  * @param {string} userId
  * @returns {string}
  */

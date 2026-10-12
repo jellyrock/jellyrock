@@ -67,7 +67,7 @@ async function main() {
   );
   parts.push('');
 
-  // Top-level Table of Contents (only top-level groups) — no header to match other TOCs
+  // Top-level Table of Contents (only top-level groups); no header to match other TOCs
   if (data.length) {
     parts.push('');
     for (const group of data) {
@@ -229,7 +229,7 @@ function emitSetting(parts, node, pathTitles, depth) {
   parts.push(`| Setting Name | \`${mdEscape(name)}\` |`);
   parts.push(`| Type | \`${mdEscape(type)}\` |`);
   parts.push(`| Default | \`${mdEscape(def)}\` |`);
-  // Both ends together or neither — a half-declared range is not enforced either, so
+  // Both ends together or neither: a half-declared range is not enforced either, so
   // printing one bound would describe a rule the app does not apply.
   if (min !== undefined && max !== undefined) {
     parts.push(`| Range | \`${mdEscape(String(min))}\` to \`${mdEscape(String(max))}\` |`);

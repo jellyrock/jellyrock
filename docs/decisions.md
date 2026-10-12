@@ -1968,6 +1968,14 @@ Code comments follow the house voice, and the voice ratchet enforces the five me
 
 The API pool's caller watch keeps the plain `observeField` / `unobserveField` pair on a Task's `state`, for a new reason. [ADR 0043](adr/0043-pool-stops-long-reads-of-gone-callers.md) ruled out the scoped pair because it needs Roku OS 12 while the app supported 11. That reason went when #1126 raised the store floor to Roku OS 15.1. The pair stays out because its isolation is unproven on device: `unobserveFieldScoped` has removed another component's observer (#898, `components/CLAUDE.md`). The plain pair is safe while nothing else observes a Task's `state`, rechecked 2026-10-09. Followup `api-pool-watch-scoped-observer` measures the exact case before any swap.
 
+## decision-id: still-watching-default-on
+
+**date**: 2026-10-11
+**status**: accepted
+**related-files**: `settings/settings.json`
+
+The still-watching prompt stays on by default (`playbackStillWatching` is `default`: 3 videos or 90 minutes), although jellyfin-web 12.2 changed its fallback to off (`userSettings.stillWatchingPrompt()` returns `StillWatchingOptions.Disabled` at `v12.2` and `StillWatchingOptions.Default` at `v12.0`). A TV app is where unattended auto-play runs on with nobody watching, so the prompt earns its place on by default; a browser tab is a different setting. It builds on `still-watching-prompt`, which set the presets. Ruled out: following jellyfin-web to off by default.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

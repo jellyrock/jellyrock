@@ -1,4 +1,4 @@
-// scripts/lib/locale-files.cjs — read, write and merge `locale/custom/*.json`.
+// scripts/lib/locale-files.cjs: read, write and merge `locale/custom/*.json`.
 //
 // Shared by the two scripts that write non-English locale files:
 // `scripts/translations-seed.js` (fills gaps from other Jellyfin clients) and
@@ -7,7 +7,7 @@
 // would churn the files: 2-space JSON, keys in code-unit order (`Array#sort()`),
 // trailing newline.
 //
-// `.cjs` per scripts/CLAUDE.md: everything in scripts/lib/ is.
+// `.cjs` per scripts/CLAUDE.md, the default for scripts/lib/.
 
 'use strict';
 
@@ -21,7 +21,7 @@ function localeOfFile(fileName) {
   return fileName.endsWith('.json') ? fileName.slice(0, -'.json'.length) : null;
 }
 
-/** Every locale file in `dir` → `{ locale: { key: value } }`, en_US included. */
+/** Every locale file in `dir`, as `{ locale: { key: value } }`, en_US included. */
 function readLocaleDir(dir) {
   const locales = {};
   for (const fileName of fs.readdirSync(dir).sort()) {
@@ -53,7 +53,7 @@ function writeLocaleFile(dir, locale, translations) {
 }
 
 /**
- * The locales a runtime lookup layers UNDER `locale`, nearest last — the same chain
+ * The locales a runtime lookup layers UNDER `locale`, nearest last: the same chain
  * `loadLocaleFile()` / `loadChineseLocaleFile()` in `source/utils/translate.bs` build:
  * `fr_CA` sits on `fr`; `zh_Hant_HK` sits on `zh` then `zh_Hant`; a base locale (and
  * `x-pirate`, which has no underscore) sits on nothing.
@@ -80,8 +80,8 @@ function inheritedValue(locales, locale, key) {
  * Three-way merge of the non-English locale files, key by key, against the last
  * state both sides agreed on (`ancestor`). Per key, compared with the ancestor:
  *
- * - changed on one side only (a new value, a new key, or a deletion) → that side;
- * - changed on both sides, differently → `theirs`. Release prep passes Weblate as
+ * - changed on one side only (a new value, a new key, or a deletion): that side;
+ * - changed on both sides, differently: `theirs`. Release prep passes Weblate as
  *   `theirs`: translators are the authority on wording. Each one is listed in
  *   `conflicts` so the run can say what it overrode;
  * - a key not in `enKeys` is dropped, as Weblate's Cleanup add-on would;

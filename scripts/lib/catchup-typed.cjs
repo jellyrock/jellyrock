@@ -1,4 +1,4 @@
-// scripts/lib/catchup-typed.cjs — the banner rules of .claude/skills/catchup/jellyrock.md
+// scripts/lib/catchup-typed.cjs: the banner rules of .claude/skills/catchup/jellyrock.md
 // as the typed lines the shared reader (.claude/skills/catchup/catchup-state.sh) ranks;
 // its header defines the line types. Pure, so it is unit tested directly: catchup-state.js
 // prints these before its JSON under --typed. Each BANNER id's class is in

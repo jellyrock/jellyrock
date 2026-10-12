@@ -1,9 +1,9 @@
-// scripts/journal-sync.js — Mechanical post-merge edits to docs/progress.md.
+// scripts/journal-sync.js: mechanical post-merge edits to docs/progress.md.
 //
 // The "ship side" of the four-pillar journal automation. Called by
 // .github/workflows/journal-sync.yml after a PR merges to main. Handles only
-// the deterministic mechanical edits — judgment-bearing entries (decisions,
-// tech-debt, followups) stay on the user-driven /pr → /log path.
+// the deterministic mechanical edits. Entries that need judgment (decisions,
+// tech-debt, followups) stay on the user-driven path: /pr, then /log.
 //
 // What it does:
 //   1. Prepends "- YYYY-MM-DD: <pr-title>" to ## Recently shipped.
@@ -11,14 +11,17 @@
 //      (>=2 shared content tokens). Otherwise leaves the cursor alone.
 //   3. Bumps frontmatter last-updated: to today.
 //   4. Prunes ## Recently shipped bullets older than the retention window
-//      (RECENTLY_SHIPPED_PRUNE_DAYS) — so the section stays bounded without a
-//      manual /catchup sweep — and rebuilds the section's shape (intro on top, no
+//      (RECENTLY_SHIPPED_PRUNE_DAYS), so the section stays bounded without a
+//      manual /catchup sweep, and rebuilds the section's shape (intro on top, no
 //      doubled blank lines).
 //
 // What it skips (exit 0, prints "skipped: <reason>"):
-//   - PRs labeled dependencies / documentation / ci / automated
-//   - PRs whose title matches Renovate / Dependabot / Weblate patterns
-//   - PRs authored by app/dependabot, app/renovate, jellyrock[bot]
+//   - PRs with a label in SKIP_LABELS (dependencies, documentation, docs-only,
+//     ci, automated, chore-only)
+//   - PRs whose title matches SKIP_TITLE_PATTERNS (dependency bumps, Weblate
+//     syncs, `chore(agents):` tooling updates)
+//   - PRs whose author matches SKIP_AUTHOR_PATTERNS (Dependabot, Renovate,
+//     the jellyrock bot)
 //   - When today's date already has a Recently shipped bullet whose text
 //     overlaps the PR title (idempotency for re-runs)
 //
@@ -27,9 +30,9 @@
 //   - Future callers (a /done-running fallback, a manual re-sync command)
 //     get the exact same edit semantics.
 //
-// Capture-discipline rule note: this script is the SOLE non-skill writer to
-// docs/progress.md, sanctioned by .github/workflows/journal-sync.yml. Agents
-// still must NOT use Write/Edit on progress.md directly; the rule's intent
+// Capture-discipline rule: this script is the one writer to docs/progress.md
+// that isn't a skill, sanctioned by .github/workflows/journal-sync.yml. Agents
+// still must not use Write/Edit on progress.md directly; the rule's intent
 // is to protect against agent text-corruption, and CI mechanical edits are
 // out-of-scope of that risk.
 //
@@ -39,10 +42,20 @@
 //                                     [--pr-author "@user"] \
 //                                     [--repo-root <path>] \
 //                                     [--dry-run]
+//   node scripts/journal-sync.js check --pr-title "<title>" \
+//                                     [--pr-labels "a,b,c"] \
+//                                     [--pr-author "@user"] \
+//                                     [--repo-root <path>]
+//
+// `check` is the PR-time dictionary precheck (journal-sync-precheck.yml): it
+// never edits docs/progress.md.
 //
 // Exit codes:
-//   0  always (skipped or wrote — both are success). Errors print to stderr.
+//   0  skipped or wrote (both are success).
+//   1  `check`: the PR title would add a word the dictionaries lack.
 //   2  malformed args / missing required input.
+//   3  `ship`: refused to write, for the same dictionary reason.
+// Errors print to stderr.
 
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -127,7 +140,7 @@ const STOPWORDS = new Set([
   'made',
 ]);
 
-// PR labels that mean "don't add a Recently shipped bullet" — these are
+// PR labels that mean "don't add a Recently shipped bullet". These are
 // either auto-generated (Renovate/dependabot) or non-feature noise that
 // would clutter the cursor.
 const SKIP_LABELS = new Set([
@@ -180,7 +193,7 @@ export function tokenize(text) {
   s = s.replace(/^[a-z]+(\([^)]*\))?\s*:\s*/, '');
   // Drop backticks, code fences, common punctuation.
   s = s.replace(/[`*_~"'.,;:!?(){}[\]<>]/g, ' ');
-  // Slashes/hyphens become spaces so feat/skills-and-agents → words.
+  // Slashes/hyphens become spaces so feat/skills-and-agents splits into words.
   s = s.replace(/[/-]/g, ' ');
   const tokens = s
     .split(/\s+/)
@@ -209,7 +222,7 @@ export function tokenOverlap(a, b) {
  * '' when empty.
  *
  * The `[^\n]*\n` after the heading matches only the rest of the heading
- * line (always empty in practice) — using `\s*\n` instead would let the
+ * line (always empty in practice). Using `\s*\n` instead would let the
  * engine swallow body whitespace via greedy `\s*`.
  */
 export function extractCurrentlyRunning(content) {
@@ -249,7 +262,7 @@ export function shouldSkip({ prTitle, prLabels = [], prAuthor = '' }) {
 }
 
 /**
- * Apply the mechanical edits to a progress.md content string. Pure — does
+ * Apply the mechanical edits to a progress.md content string. Pure: does
  * not touch the filesystem. Returns the new content + a metadata object
  * describing what changed. When idempotent (today's bullet already lists
  * an overlapping title), returns the input unchanged with `idempotent: true`.
@@ -261,7 +274,7 @@ export function applyShipEdit(content, { prTitle, today }) {
 
   // Idempotency check: scan Recently shipped section for a bullet dated
   // today whose text contains the PR title verbatim (case-insensitive
-  // substring). Substring is the right semantic for re-run detection —
+  // substring). Substring is the right semantic for re-run detection;
   // token overlap is for the fuzzier cursor-clear decision below.
   const recentMatch = content.match(/##\s+Recently shipped[^\n]*\n([\s\S]*?)(?=\n##\s|$)/);
   if (recentMatch) {
@@ -275,8 +288,8 @@ export function applyShipEdit(content, { prTitle, today }) {
   }
 
   // Cursor-clear decision: token overlap >= 2 between cursor body and PR
-  // title means the running work is what just shipped. Otherwise the
-  // cursor stays — user is on a different feature than the merging PR.
+  // title means the running work is what has shipped. Otherwise the
+  // cursor stays: the user is on a different feature than the merging PR.
   const cursor = extractCurrentlyRunning(content);
   const cursorOverlap = cursor ? tokenOverlap(cursor, prTitle) : 0;
   const clearCursor = cursor !== '' && cursorOverlap >= 2;
@@ -293,11 +306,12 @@ export function applyShipEdit(content, { prTitle, today }) {
   //    avoids the `\s*\n` greedy-swallow trap (which would consume the
   //    body's leading newlines and leave the body unmatched).
   if (clearCursor) {
-    // Replacement is `header` alone, NOT `header + '\n'`. The lookahead
+    // Replacement is `header` alone, not `header + '\n'`. The lookahead
     // `(?=\n##\s)` leaves the newline before the next heading in place, so
-    // appending one here yields TWO blank lines between the headings —
+    // appending one here yields two blank lines between the headings. That is
     // markdownlint MD012, which fails `lint:markdown` in the pre-push hook and
-    // therefore breaks this workflow's own `git push origin main`.
+    // so breaks the next bot `git push origin main` that runs it (the
+    // changelog sync in jellyrock-bot.yml, which installs the hooks with npm ci).
     next = next.replace(
       /(##\s+Currently running[^\n]*\n)([\s\S]*?)(?=\n##\s)/,
       (_match, header) => header,
@@ -310,7 +324,7 @@ export function applyShipEdit(content, { prTitle, today }) {
   // 4. Prune Recently shipped bullets older than the retention window, and rebuild the
   //    section's shape. This runs in the same post-merge commit that prepends the new
   //    bullet, so the section stays bounded automatically instead of relying on a
-  //    manual /catchup sweep. The just-prepended bullet is dated `today`, so it is
+  //    manual /catchup sweep. The bullet prepended above is dated `today`, so it is
   //    always retained.
   next = pruneRecentlyShipped(next, today, RECENTLY_SHIPPED_PRUNE_DAYS);
 
@@ -335,10 +349,10 @@ function isoDaysBefore(isoDate, days) {
   return d.toISOString().slice(0, 10);
 }
 
-// Removes "- YYYY-MM-DD: …" (or the older "- YYYY-MM-DD — …") bullets older than
-// `maxAgeDays` from the Recently shipped section ONLY, then rebuilds the section's
-// shape (see below). Scoped by the section regex so dated bullets elsewhere (e.g. Open
-// followups) are untouched. ISO dates compare lexically = chrono, so a string >= is a
+// Removes `- YYYY-MM-DD: …` (or the older `- YYYY-MM-DD — …`) bullets older than
+// `maxAgeDays` from the Recently shipped section alone, then rebuilds the section's
+// shape (see below). Scoped by the section regex so dated bullets elsewhere (for
+// example, Open followups) are untouched. ISO dates compare lexically = chrono, so a string >= is a
 // correct date comparison. Bullets within the window and any non-bullet lines are
 // kept. Exported for tests.
 //
@@ -371,38 +385,39 @@ export function pruneRecentlyShipped(content, today, maxAgeDays) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Dictionary check — keep PR-title-derived words from landing in progress.md
+// Dictionary check: keep PR-title-derived words from landing in progress.md
 // without first being added to dictionary.txt. The PR-time precheck workflow
 // runs `check`, and `ship` runs the same check as a safety net before write.
 // ──────────────────────────────────────────────────────────────────────────
 
 // Dictionaries and plugins come from `.spellcheckerrc.yaml`. Inheriting them rather
-// than restating them is load-bearing — if a bullet passes here, it must pass the lint
+// than restating them matters: if a bullet passes here, it must pass the lint
 // on the next PR that touches a .md file.
 //
 // ⚠️ That inheritance is why the spawn below sets `cwd: repoRoot`, and it is not
 // cosmetic. spellchecker-cli discovers the config with `pkg-dir` walking up from
-// `process.cwd()` — NOT from the dictionary path, and NOT from the file being checked.
+// `process.cwd()`, not from the dictionary path and not from the file being checked.
 // This runner takes `--repo-root`, so its CWD and its repo root are routinely different
-// (CI checkouts, the test fixtures below); left unset, the config is simply not found
+// (CI checkouts, the test fixtures below); left unset, the config is not found
 // and the tool falls back to its own defaults, silently dropping the `frontmatter`
 // plugin and BOTH dictionaries. Verified by spawning it from outside the repo: the
 // mis-tokenized `handoff.` the companion dictionary exists to cover came back as a
-// failure. That matters most here — a `/log decision` bullet is exactly the shape
+// failure. That matters most here: a `/log decision` bullet is exactly the shape
 // (a paragraph above a `## decision-id:` heading) that produces the mis-tokenization.
 
 // Resolve spellchecker-cli's binary from THIS script's own node_modules so
 // runs against a fixture repo (test or CI checkout of a different working
 // tree) still find the tool. The `dictionary.txt` location stays governed by
-// the caller's `repoRoot` — different concern, different source.
+// the caller's `repoRoot`: different concern, different source.
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SPELLCHECKER_BIN = resolve(SCRIPT_DIR, '..', 'node_modules', '.bin', 'spellchecker');
 
 /**
  * Default runner: spawns spellchecker-cli against a temp file holding the
- * candidate content. When the binary isn't present (e.g., a test fixture
- * without an `npm install`), returns `{ ok: true, output: 'skipped: ...' }`
- * — production runs always have it installed (the workflow `npm ci`s).
+ * candidate content. When the binary isn't present (for example, a test
+ * fixture without an `npm install`), returns `{ ok: true, output: 'skipped: ...' }`.
+ * The PR-time precheck workflow runs `npm ci`, so `check` always has it there.
+ * The post-merge journal-sync.yml does not, so `ship` skips the check there.
  * Injectable via `runner` on checkBulletAgainstDictionary so unit tests can
  * short-circuit the spawn explicitly.
  */
@@ -436,7 +451,7 @@ export function defaultSpellRunner(content, repoRoot) {
 
 /**
  * Build the candidate progress.md bullet from a PR title and run it through
- * the spell runner. Returns `{ ok, output }` — `ok: true` means the bullet
+ * the spell runner. Returns `{ ok, output }`; `ok: true` means the bullet
  * would lint cleanly. Pure over its `runner` arg.
  */
 export function checkBulletAgainstDictionary({ today, prTitle, repoRoot, runner }) {
@@ -535,7 +550,7 @@ function shipCommand(args) {
     process.exit(0);
   }
 
-  // Safety net — the PR-time precheck workflow should have caught a dirty
+  // Safety net: the PR-time precheck workflow should have caught a dirty
   // title before merge. If we reach this point with one (admin bypass,
   // mid-merge label flip), refuse to corrupt progress.md.
   const spell = checkBulletAgainstDictionary({
@@ -601,7 +616,7 @@ function checkCommand(args) {
   // Distinguish real-word typos (fixable via dictionary.txt) from code
   // identifiers (PascalCase class/component names etc.). Adding an identifier
   // to dictionary.txt would pass THIS check but then fail `lint:dictionary`,
-  // whose dictionary-audit rejects identifier-shaped entries — a dead end.
+  // whose dictionary-audit rejects identifier-shaped entries: a dead end.
   // For those the fix is to BACKTICK them in the PR title: the spellchecker
   // skips backticked tokens and the title renders as code when the post-merge
   // sync writes it into docs/progress.md. Rephrasing to drop the reference is a

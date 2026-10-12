@@ -21,11 +21,11 @@
  *
  * - **Overwrite.** It only adds a key a locale does not have.
  * - **Use a source whose license is not on the allowlist** (`LICENSE_ALLOWLIST`), or
- *   whose LICENSE file at the pinned commit does not match the declared license, or —
- *   for MPL-2.0 — a file marked "Incompatible With Secondary Licenses". JellyRock is
+ *   whose LICENSE file at the pinned commit does not match the declared license, or
+ *   (for MPL-2.0) a file marked "Incompatible With Secondary Licenses". JellyRock is
  *   GPL-2.0-only; MPL-2.0 §1.12 names GPL-2.0 a Secondary License.
  * - **Change a placeholder set**, add markup or a line break en_US does not have, or
- *   write a value that is just the English (case-folded): it renders identically, and
+ *   write a value that is only the English (case-folded): it renders identically, and
  *   would shadow a later fix to en_US.
  * - **Copy a base value into a regional locale.** Runtime layering already shows `fr`
  *   to `fr_CA` users; a copy would hide later Weblate fixes to `fr`.
@@ -75,7 +75,7 @@ export const LEDGER_REL = path.join('locale', 'seed', 'seeded.json');
 
 /**
  * Licenses whose text may be copied into GPL-2.0-only JellyRock, each with phrases
- * its LICENSE file must contain. GPL-3.0 is deliberately absent: it is incompatible
+ * its LICENSE file must contain. GPL-3.0 is absent on purpose: it is incompatible
  * with GPL-2.0-only.
  */
 export const LICENSE_ALLOWLIST = Object.freeze({
@@ -209,7 +209,7 @@ const CHINESE = {
   zh_MO: 'zh_Hant_HK',
 };
 
-/** A source's own locale code → JellyRock's spelling (`pt-br` → `pt_BR`), unchecked. */
+/** A source's own locale code in JellyRock's spelling (`pt-br` becomes `pt_BR`), unchecked. */
 export function normalizeLocaleCode(raw, format) {
   let code = raw;
   if (format === 'android-xml') {
@@ -237,7 +237,7 @@ export function normalizeLocaleCode(raw, format) {
  * Map each source locale code to a JellyRock locale file, or to null (unmapped).
  *
  * An explicit `localeMap` entry wins. Otherwise the normalized code must name a
- * JellyRock locale — or, when JellyRock has only the base (`de` for `de-DE`) AND the
+ * JellyRock locale. Or, when JellyRock has only the base (`de` for `de-DE`) and the
  * source has no file of its own for that base, the base. That second condition keeps
  * web's `ar_SA.json` from landing on `ar` next to web's own `ar.json`. Two source
  * files landing on one locale is a config error, never a silent pick.
@@ -294,7 +294,7 @@ function sparsePatterns(source) {
 
 /**
  * Check out a source's pinned commit (sparse, depth 1) into the cache and verify it.
- * Refuses when the tag no longer points at the pinned commit — a moved tag is a
+ * Refuses when the tag no longer points at the pinned commit: a moved tag is a
  * different input, and the map was reviewed against the old one.
  */
 export function fetchSource(source, cacheDir) {
@@ -736,7 +736,7 @@ const normalizeForMatch = (text) =>
 /**
  * Candidate source keys for JellyRock keys that are not in the keymap yet: same
  * English after placeholder conversion, case folding and trailing-punctuation trim.
- * A candidate is a starting point for review, not an answer — this is exactly the
+ * A candidate is a starting point for review, not an answer: this is exactly the
  * matching the keymap exists to get past.
  */
 export function suggest({ locales, sources, keymap, keys }) {

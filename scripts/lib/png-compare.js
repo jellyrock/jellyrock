@@ -1,4 +1,4 @@
-// Is a PNG already on disk the same IMAGE as one just rendered?
+// Is a PNG already on disk the same IMAGE as one freshly rendered?
 //
 // Shared by the two asset generators (scripts/generate/icons-build.js and
 // scripts/generate/gradient-assets.js) because they had the same bug: both
@@ -6,7 +6,7 @@
 //
 // Two PNGs can hold identical pixels and differ byte-for-byte. The compressed
 // IDAT stream depends on the zlib doing the compressing, and sharp ships its own
-// libvips + zlib inside a platform-specific prebuilt binary — so the encoder's
+// libvips + zlib inside a platform-specific prebuilt binary, so the encoder's
 // output changes when sharp changes, even at an exact-pinned version, and
 // differs between the machine that generated an asset and the one checking it.
 //
@@ -16,13 +16,13 @@
 // while every one of them decoded to byte-identical pixels (max channel delta
 // 0 across all 55). It went unnoticed for three months, because the only thing
 // running the check was the pre-push hook, gated on the push range touching an
-// icon source — which a dependency bump never is.
+// icon source, which a dependency bump never is.
 //
 // Pixels are the property worth gating: does the committed asset show the right
 // image at the right size. This still catches a stale asset, a missing one and a
 // size change; it stops failing on the COMPRESSOR. Note the bound: it is not
 // blind to the RENDERER. A libvips change that alters resampling still moves
-// pixels and still fails the check — correctly, and loudly.
+// pixels and still fails the check: correctly, and loudly.
 import sharp from 'sharp';
 
 // Decode to non-premultiplied RGBA. ensureAlpha() normalizes both sides to 4
@@ -31,11 +31,11 @@ const decode = (buffer) => sharp(buffer).ensureAlpha().raw().toBuffer({ resolveW
 
 /**
  * @param {Buffer} existingBuffer the PNG currently on disk
- * @param {Buffer} freshBuffer    the PNG just rendered
+ * @param {Buffer} freshBuffer    the freshly rendered PNG
  * @returns {Promise<boolean>} true when both decode to the same pixels at the
  *   same dimensions. An unreadable or non-PNG existing file returns false, so it
  *   is reported as drift and regenerated rather than throwing.
- * @throws if the FRESHLY RENDERED buffer fails to decode — that is a bug in the
+ * @throws if the FRESHLY RENDERED buffer fails to decode: that is a bug in the
  *   generator, not drift in a committed asset, and must not be reported as one.
  */
 export async function matchesRenderedOutput(existingBuffer, freshBuffer) {
@@ -52,7 +52,7 @@ export async function matchesRenderedOutput(existingBuffer, freshBuffer) {
   try {
     existing = await decode(existingBuffer);
   } catch {
-    return false; // unreadable / not a PNG → drift, so the caller regenerates it
+    return false; // unreadable / not a PNG is drift, so the caller regenerates it
   }
 
   // No channels comparison: ensureAlpha() forces 4 on both sides, so dimensions

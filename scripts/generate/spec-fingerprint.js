@@ -1,5 +1,5 @@
 // Generates committed Jellyfin OpenAPI "fingerprints" under
-// docs/architecture/spec-fingerprints/ — the reduced structural surface of a
+// docs/architecture/spec-fingerprints/: the reduced structural surface of a
 // spec (paths, methods, parameters, request/response shapes, schema properties,
 // enum values) with all descriptions / summaries / examples STRIPPED.
 //
@@ -10,22 +10,23 @@
 // hand-written client and throws away the rest, so a diff of two fingerprints
 // (scripts/generate/spec-diff.js) surfaces real contract changes and nothing
 // else. Fingerprints are small + deterministic, so they are committed (unlike
-// the gitignored raw-spec cache) — reproducible, diffable, drift-gated diff
+// the gitignored raw-spec cache): reproducible, diffable, drift-gated diff
 // anchors. See docs/architecture/server-upgrade-automation.md.
 //
 // Run modes (mirrors scripts/generate/api-usage-manifest.js):
-//   node scripts/generate/spec-fingerprint.js                 → refresh every
-//       committed fingerprint (refetch each version named by its file)
-//   node scripts/generate/spec-fingerprint.js --check         → fail on drift
-//   node scripts/generate/spec-fingerprint.js <version>       → add/update one
-//       (e.g. when the acknowledged baseline bumps)
+//   node scripts/generate/spec-fingerprint.js                 refreshes every
+//       committed fingerprint (rebuilds each version named by its file,
+//       fetching its spec unless it is cached)
+//   node scripts/generate/spec-fingerprint.js --check         fails on drift
+//   node scripts/generate/spec-fingerprint.js <version>       adds/updates one
+//       (for example when the acknowledged baseline bumps)
 //   node scripts/generate/spec-fingerprint.js <version> --from-file <spec.json>
-//       → build from a local spec instead of fetching (offline; tests)
+//       builds from a local spec instead of fetching (offline; tests)
 //   node scripts/generate/spec-fingerprint.js <version> --check --from-file …
 //
 // npm scripts:
-//   docs:spec-fingerprints        → refresh committed fingerprints (write)
-//   docs:spec-fingerprints:check  → drift check
+//   docs:spec-fingerprints        refreshes committed fingerprints (write)
+//   docs:spec-fingerprints:check  runs the drift check
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -51,15 +52,16 @@ function refName(ref) {
 // Reduce a JSON schema node to a single normalized type signature string. This
 // is the unit the diff compares, so it must capture everything that can break a
 // consumer and nothing cosmetic:
-//   - $ref            → "ref:<Name>" (the referenced component is fingerprinted
-//                       separately, so its internal changes are caught there)
-//   - allOf/oneOf/anyOf → unwrapped to the lone ref when the combiner is just a
+//   - $ref            becomes "ref:<Name>" (the referenced component is
+//                       fingerprinted separately, so its internal changes are
+//                       caught there)
+//   - allOf/oneOf/anyOf is unwrapped to the lone ref when the combiner is only a
 //                       ref + sibling annotation (the common Jellyfin shape);
 //                       otherwise "<combiner>(a|b)"
-//   - array           → "array<items>"
-//   - primitive       → "<type>" or "<type>:<format>" (so int64→int32 retypes,
-//                       which differ only by format, are visible)
-//   - nullable        → trailing "?" (so nullable flips surface as a retype)
+//   - array           becomes "array<items>"
+//   - primitive       becomes "<type>" or "<type>:<format>" (so a retype from
+//                       int64 to int32, which differs only by format, is visible)
+//   - nullable        adds a trailing "?" (so nullable flips surface as a retype)
 function typeSig(schema) {
   if (!schema || typeof schema !== 'object') return 'unknown';
   if (schema.$ref) return withNullable('ref:' + refName(schema.$ref), schema);
@@ -69,7 +71,7 @@ function typeSig(schema) {
     if (Array.isArray(members)) {
       const parts = members.map(typeSig);
       const refs = parts.filter((p) => p.startsWith('ref:'));
-      // allOf:[{$ref}] (optionally + a description-only sibling) → just the ref.
+      // allOf:[{$ref}] (optionally + a description-only sibling) becomes only the ref.
       const sig =
         refs.length === 1 && members.length <= 2 ? refs[0] : `${combiner}(${parts.join('|')})`;
       return withNullable(sig, schema);

@@ -1,4 +1,4 @@
-// scripts/lib/git-safe.cjs — run git in a chosen directory, never in an inherited one.
+// scripts/lib/git-safe.cjs: run git in a chosen directory, never in an inherited one.
 //
 // git picks its repository from the ENVIRONMENT before the working directory:
 // `GIT_DIR` wins over `cwd` / `-C`. Git sets it for hooks run in a linked worktree,
@@ -8,7 +8,7 @@
 // config. tests/scripts/unit/_helpers/git-env.js has the full story and re-exports
 // this list.
 //
-// `.cjs` per scripts/CLAUDE.md: everything in scripts/lib/ is.
+// `.cjs` per scripts/CLAUDE.md, the default for scripts/lib/.
 
 'use strict';
 

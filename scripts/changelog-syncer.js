@@ -324,7 +324,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       /^(add|remove|update|upgrade|bump|change|improve|enhance|implement|create|delete)?\s*dependency\s+/i,
       '',
     );
-    // Then remove just the action word if it's still at the start (handles cases without "dependency" keyword)
+    // Then remove only the action word if it's still at the start (handles cases without "dependency" keyword)
     // "implement new-logger" -> "new-logger"
     withoutScope = withoutScope.replace(
       /^(add|remove|update|upgrade|bump|change|improve|enhance|implement|create|delete)\s+/i,
@@ -658,7 +658,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
           let isReleasePrep = false;
           // The PR's CURRENT title, not the commit's first line: a merged PR can be
           // retitled, so a wrong type is fixed by editing the PR and re-syncing, where the
-          // commit on main cannot be changed. Only for the PR's own squash commit — other
+          // commit on main cannot be changed. Only for the PR's own squash commit: other
           // commits end in "(#N)" too (journal-sync's "chore(journal): sync fix: … (#N)"),
           // and giving them the PR's title would list that PR twice.
           let message = commitMessage;

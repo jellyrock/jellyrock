@@ -10,9 +10,10 @@
 //   - untracked files (`git ls-files --others --exclude-standard`)
 //
 // The base ref defaults to `origin/main` (then `main`) and can be overridden
-// via the `baseRef` arg or the `BASE_REF` env var.
+// via the `baseRef` arg (check-touched-related-files.cjs passes its `BASE_REF`
+// env var).
 //
-// Stdlib only — these scripts run before / outside of `npm ci`.
+// Stdlib only: these scripts run before / outside of `npm ci`.
 
 'use strict';
 
@@ -41,7 +42,7 @@ function changedFiles(baseRef = 'main') {
       committed = safeDiff(`git diff ${base}...HEAD --name-only`);
       break;
     } catch {
-      // ref not resolvable — try next
+      // ref not resolvable: try next
     }
   }
   return Array.from(new Set([...committed, ...workingTreeFiles()]));
@@ -50,7 +51,7 @@ function changedFiles(baseRef = 'main') {
 /**
  * Files that are uncommitted (modified, staged-but-not-committed) plus
  * untracked. Used by hooks that want to focus on work pre-commit hasn't
- * processed yet — committed files are pre-commit's job.
+ * processed yet: committed files are pre-commit's job.
  *
  * @returns {string[]} unique repo-relative paths
  */

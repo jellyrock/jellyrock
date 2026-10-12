@@ -33,7 +33,7 @@ async function deployToRoku() {
   const BUILD_DIR = path.join(rootDir, 'build');
   const OUT_DIR = path.join(rootDir, 'out');
   try {
-    // BSC v1 only compiles to build/ — zip it for roku-deploy
+    // BSC v1 only compiles to build/: zip it for roku-deploy
     await rokuDeploy.zipPackage({
       stagingDir: BUILD_DIR,
       outDir: OUT_DIR,
@@ -52,8 +52,9 @@ async function deployToRoku() {
   } catch (error) {
     // Throw rather than exit: main() owns the device lock and must get the
     // chance to release it, or a failed deploy would wedge the device until the
-    // TTL expires. No `{ cause }` — the repo's ESLint targets Node >=16.0 and
-    // error-cause landed in 16.9; the message already carries the detail.
+    // TTL expires. No `{ cause }`: it was left out while the repo's ESLint targeted
+    // Node >=16.0 (error-cause landed in 16.9). `engines` now sets Node 22, where it
+    // lints clean; the message already carries the detail.
     // eslint-disable-next-line preserve-caught-error
     throw new Error(`Deployment failed: ${error.message}`);
   }
@@ -179,7 +180,7 @@ async function main() {
   // registry snapshot to protect it, so an overlapping run is pure corruption:
   // the deploy alone restarts whatever the other party was driving.
   const lock = await acquireDeviceLock({ what: 'roku device tests' });
-  // Records to `out/device/`, not `out/rta/` — this is the Rooibos runner, and it
+  // Records to `out/device/`, not `out/rta/`: this is the Rooibos runner, and it
   // used to overwrite the RTA suite's run record on a path named for the other
   // harness. The window it stamps is not decoration: #800 went red on
   // `SessionManagement.spec.bs` -> "connects to Jellyfin stable demo server", and

@@ -59,7 +59,8 @@ const KINDS = [
 
 /**
  * The OLD-side lines each file loses in a `git diff -M -U0` between two commits, as
- * { path → { all: boolean, lines: Set<0-based line> } }, plus the renames old → new.
+ * a map of path to { all: boolean, lines: Set<0-based line> }, plus the renames as a
+ * map of old path to new.
  */
 export function parseDeletedLines(diffText) {
   const deleted = new Map();
@@ -104,7 +105,7 @@ export function referenceDeleted(ref, deleted) {
  *   kept      recorded as kept on purpose
  *   exempt    never reported by design (entry point, firmware field, injected call)
  *   refactor  live at the parent, and the same commit deleted a caller of it or the
- *             live component it belongs to — it died WITH its users, so it was not
+ *             live component it belongs to: it died WITH its users, so it was not
  *             dead before the commit
  *   override  a function overriding a same-named one in its scope, which the commit
  *             kept: calls now reach that one, so it was live
@@ -160,7 +161,7 @@ function effectiveConfig() {
 
 /**
  * The app program rooted at `dir`, loaded with the real build's file selection and
- * options but no plugins and no validation — the analysis needs neither, and the
+ * options but no plugins and no validation: the analysis needs neither, and the
  * replay loads two programs per commit.
  */
 async function loadProgram(dir) {

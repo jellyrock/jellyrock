@@ -47,7 +47,7 @@ const { git } = require('./lib/git-safe.cjs');
 export const LOCALE_DIR = 'locale/custom';
 export const RELEASE_TRAILER = 'Translations-Release';
 
-/** Every locale file at `ref` → `{ locale: { key: value } }`, en_US included. */
+/** Every locale file at `ref`, as `{ locale: { key: value } }`, en_US included. */
 export function readLocaleTree(cwd, ref) {
   const locales = {};
   const names = git(cwd, ['ls-tree', '--name-only', `${ref}:${LOCALE_DIR}`])
