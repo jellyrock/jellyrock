@@ -7,7 +7,7 @@ namespace tests
   @suite("streamOrigin")
   class StreamOriginTests extends tests.BaseTestSuite
 
-    private SERVER = "http://192.168.1.3:8103"
+    private SERVER = "https://jellyfin.example.com"
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("isServerUrl() and upstreamHost()")
@@ -15,7 +15,7 @@ namespace tests
 
     @it("places a URL on the server's host and port as the server's")
     function _()
-      url = "http://192.168.1.3:8103/videos/abc/master.m3u8?ApiKey=secret"
+      url = "https://jellyfin.example.com/videos/abc/master.m3u8?ApiKey=secret"
       m.assertTrue(isServerUrl(url, m.SERVER))
       m.assertEqual(upstreamHost(url, m.SERVER), "")
     end function
@@ -34,7 +34,7 @@ namespace tests
 
     @it("places the server's host on another port as upstream")
     function _()
-      m.assertEqual(upstreamHost("http://192.168.1.3:8190/vod/hls/master.m3u8", m.SERVER), "192.168.1.3")
+      m.assertEqual(upstreamHost("https://jellyfin.example.com:8190/vod/hls/master.m3u8", m.SERVER), "jellyfin.example.com")
     end function
 
     @it("names no host when there is no URL")
@@ -55,8 +55,8 @@ namespace tests
 
     @it("hides an older server's api_key, whatever its case")
     function _()
-      url = "http://192.168.1.3:8103/videos/abc/stream?Static=true&API_KEY=secret"
-      m.assertEqual(maskUrlSecrets(url, m.SERVER), "http://192.168.1.3:8103/videos/abc/stream?Static=true&API_KEY=***")
+      url = "https://jellyfin.example.com/videos/abc/stream?Static=true&API_KEY=secret"
+      m.assertEqual(maskUrlSecrets(url, m.SERVER), "https://jellyfin.example.com/videos/abc/stream?Static=true&API_KEY=***")
     end function
 
     @it("hides every query value of an upstream URL and keeps the names")
@@ -73,7 +73,7 @@ namespace tests
 
     @it("leaves a URL with no query and no user information as it is")
     function _()
-      url = "http://192.168.1.3:8190/vod/hls/master.m3u8"
+      url = "https://jellyfin.example.com:8190/vod/hls/master.m3u8"
       m.assertEqual(maskUrlSecrets(url, m.SERVER), url)
     end function
 

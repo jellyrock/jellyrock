@@ -689,36 +689,36 @@ namespace tests
     @it("says a stream comes from this server, to everyone")
     function _()
       m.input.isAdministrator = false
-      m.input.serverUrl = "http://192.168.1.3:8103"
-      m.input.playbackUrl = "http://192.168.1.3:8103/videos/x/master.m3u8?ApiKey=secret"
+      m.input.serverUrl = "https://jellyfin.example.com"
+      m.input.playbackUrl = "https://jellyfin.example.com/videos/x/master.m3u8?ApiKey=secret"
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.origin"), "This Jellyfin server")
     end function
 
     @it("names the host an upstream stream comes from")
     function _()
-      m.input.serverUrl = "http://192.168.1.3:8103"
+      m.input.serverUrl = "https://jellyfin.example.com"
       m.input.playbackUrl = "https://cdn.example.com/live/master.m3u8?token=abc"
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.origin"), "cdn.example.com")
     end function
 
     @it("shows an administrator the playback URL with its token hidden")
     function _()
-      m.input.serverUrl = "http://192.168.1.3:8103"
-      m.input.playbackUrl = "http://192.168.1.3:8103/videos/x/master.m3u8?AudioStreamIndex=1&ApiKey=secret"
-      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.url"), "http://192.168.1.3:8103/videos/x/master.m3u8?AudioStreamIndex=1&ApiKey=***")
+      m.input.serverUrl = "https://jellyfin.example.com"
+      m.input.playbackUrl = "https://jellyfin.example.com/videos/x/master.m3u8?AudioStreamIndex=1&ApiKey=secret"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.url"), "https://jellyfin.example.com/videos/x/master.m3u8?AudioStreamIndex=1&ApiKey=***")
     end function
 
     @it("hides the playback URL from a non-administrator")
     function _()
       m.input.isAdministrator = false
-      m.input.serverUrl = "http://192.168.1.3:8103"
-      m.input.playbackUrl = "http://192.168.1.3:8103/videos/x/master.m3u8?ApiKey=secret"
+      m.input.serverUrl = "https://jellyfin.example.com"
+      m.input.playbackUrl = "https://jellyfin.example.com/videos/x/master.m3u8?ApiKey=secret"
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.url"), "<missing>")
     end function
 
     @it("hides the query values of an upstream path, which can carry a provider's token")
     function _()
-      m.input.serverUrl = "http://192.168.1.3:8103"
+      m.input.serverUrl = "https://jellyfin.example.com"
       m.input.mediaSource.Path = "https://cdn.example.com/live/master.m3u8?token=abc"
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.path"), "https://cdn.example.com/live/master.m3u8?token=***")
     end function
