@@ -80,7 +80,7 @@ sub init()
   ' Interface observers are registered HERE rather than declared as XML onChange
   ' attributes: this component releases node references in onDestroy and these
   ' handlers dereference them, so the registrations have to be detachable. An XML
-  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' onChange does not appear to be removable by unobserveField: see the wiring
   ' rule in components/CLAUDE.md.
   m.top.observeField("trickplayConfig", "onConfigChanged")
   m.top.observeField("thumbnailIndex", "onThumbnailIndexChanged")
@@ -355,7 +355,7 @@ end function
 
 ' Proactively checks if we need to request the next tile based on velocity
 ' Called on every thumbnail index change - the KEY function for smooth scrubbing
-' Uses formula: if thumbsUntilBoundary < safetyThreshold → request next tile NOW
+' Uses formula: if thumbsUntilBoundary <= safetyThreshold, request next tile NOW
 ' @param {Integer} thumbnailIndex - Current thumbnail index
 sub checkProactiveTileRequest(thumbnailIndex as integer)
   if m.scrubDirection = 0 then return ' No direction yet
@@ -460,7 +460,7 @@ end sub
 ' Called when isVisible field changes
 ' Performs initial tile caching and displays posters when carousel first appears
 sub onIsVisibleChanged()
-  ' Sync built-in Group visible — isVisible is a custom field that doesn't control rendering
+  ' Sync built-in Group visible: isVisible is a custom field that doesn't control rendering
   m.top.visible = m.top.isVisible
 
   if not m.top.isVisible
@@ -479,7 +479,7 @@ sub onIsVisibleChanged()
   m.lastIndexUpdateTime = 0
   m.lastIndexForVelocity = -1
 
-  ' ALWAYS cache tiles around current position when carousel becomes visible
+  ' Always cache tiles around current position when carousel becomes visible
   ' This ensures tiles are ready BEFORE user starts moving, regardless of playback history
   if m.top.thumbnailIndex >= 0
     ensureTilesCachedAroundPosition(m.top.thumbnailIndex)
@@ -533,11 +533,11 @@ sub onThumbnailIndexChanged()
 
   newIndex = m.top.thumbnailIndex
 
-  ' Out of bounds — hide every poster so we don't leave a stale thumbnail on screen from
+  ' Out of bounds: hide every poster so we don't leave a stale thumbnail on screen from
   ' the user's last in-range scrub position. Reset currentThumbnailIndex so that scrubbing
   ' back into range re-enters the first-time-init branch and does a full recalc.
   ' Happens when the video's declared duration exceeds what the server generated trickplay
-  ' for (e.g. fresh recordings with partial trickplay data).
+  ' for (for example fresh recordings with partial trickplay data).
   if newIndex < 0 or newIndex >= m.config.thumbnailCount
     m.log.debug("Thumbnail index out of bounds - hiding all posters", newIndex)
     for i = 0 to 4
@@ -1031,7 +1031,7 @@ sub refreshPostersWithNewTiles(loadedTiles as object)
     tileIndex = trickplay.calculateTileIndex(posterThumbIndex, m.config.tileWidth, m.config.tileHeight)
     tileIndexStr = tileIndex.ToStr()
 
-    ' If this tile was just loaded AND poster is currently hidden, update it
+    ' If this tile was newly loaded AND poster is currently hidden, update it
     if loadedTiles.doesExist(tileIndexStr) and not m.posterArray[i].visible
       m.log.debug("Refreshing poster", i, "with newly loaded tile", tileIndex)
       updateSinglePoster(i, posterThumbIndex)
@@ -1044,7 +1044,7 @@ end sub
 ' Clears task nodes, observers, all node refs, and data structures
 sub onDestroy()
   ' Detach the interface observers registered in init(). Must precede every
-  ' reference release below — these handlers dereference them.
+  ' reference release below: these handlers dereference them.
   m.top.unobserveField("trickplayConfig")
   m.top.unobserveField("thumbnailIndex")
   m.top.unobserveField("playbackPosition")

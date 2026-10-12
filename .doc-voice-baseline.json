@@ -605,34 +605,6 @@
     "filler": 3,
     "latin-abbrev": 1
   },
-  "components/subtitles/CurrentSubtitleRow.bs": {
-    "em-dash": 13,
-    "filler": 3,
-    "latin-abbrev": 1
-  },
-  "components/subtitles/CurrentSubtitleRow.xml": {
-    "caps-emphasis": 3,
-    "em-dash": 5,
-    "filler": 3
-  },
-  "components/subtitles/SubtitlePanel.bs": {
-    "caps-emphasis": 13,
-    "em-dash": 97,
-    "filler": 12
-  },
-  "components/subtitles/SubtitlePanel.xml": {
-    "caps-emphasis": 2,
-    "em-dash": 10
-  },
-  "components/subtitles/SubtitleResultRow.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 7,
-    "filler": 6
-  },
-  "components/subtitles/SubtitleResultRow.xml": {
-    "em-dash": 7,
-    "filler": 2
-  },
   "components/testing/GaaProbeTask.xml": {
     "caps-emphasis": 1,
     "em-dash": 4
@@ -786,64 +758,6 @@
   },
   "components/ui/toast/Toast.bs": {
     "em-dash": 4
-  },
-  "components/video/CaptionRenderer.bs": {
-    "caps-emphasis": 2,
-    "em-dash": 9,
-    "latin-abbrev": 1
-  },
-  "components/video/LoadCaptionTask.bs": {
-    "caps-emphasis": 2,
-    "em-dash": 5,
-    "filler": 1
-  },
-  "components/video/OSD.bs": {
-    "caps-emphasis": 2,
-    "em-dash": 35,
-    "latin-abbrev": 7,
-    "prose-arrow": 3
-  },
-  "components/video/OSD.xml": {
-    "caps-emphasis": 1,
-    "em-dash": 2,
-    "filler": 2,
-    "latin-abbrev": 1
-  },
-  "components/video/PlayerHostView.bs": {
-    "caps-emphasis": 7,
-    "em-dash": 45,
-    "filler": 8,
-    "latin-abbrev": 2
-  },
-  "components/video/PlayerHostView.xml": {
-    "em-dash": 1
-  },
-  "components/video/TrickplayCarousel.bs": {
-    "caps-emphasis": 1,
-    "em-dash": 4,
-    "filler": 1,
-    "latin-abbrev": 1,
-    "prose-arrow": 1
-  },
-  "components/video/TrickplayCarousel.xml": {
-    "filler": 1
-  },
-  "components/video/VideoNotification.bs": {
-    "em-dash": 3,
-    "latin-abbrev": 2
-  },
-  "components/video/VideoNotification.xml": {
-    "latin-abbrev": 1
-  },
-  "components/video/VideoPlayerView.bs": {
-    "caps-emphasis": 3,
-    "em-dash": 94,
-    "filler": 12,
-    "latin-abbrev": 8,
-    "prose-arrow": 6
-  },
-  "components/video/VideoPlayerView.xml": {
-    "em-dash": 2
   },
   "docs/adr/0001-triage-opus-inline-investigation.md": {
     "prose-arrow": 1
