@@ -95,4 +95,38 @@ namespace gridPage
     end if
   end sub
 
+  ' The Fields a grid query asks for: Overview, MediaSourceCount for every type except music, then
+  ' the caller's extras.
+  '
+  ' MediaSourceCount is what tells a video tile it has alternate versions. Jellyfin fills it only
+  ' for videos (DtoService, 10.7.7 through 12.x), so the music grid queries leave it out.
+  '
+  ' @param itemType - the grid's item type, such as "Movie" or "MusicAlbum"
+  ' @param additionalFields - extra comma-separated fields to append, or ""
+  ' @return the comma-separated Fields string
+  function itemFields(itemType as string, additionalFields as string) as string
+    fields = "Overview,MediaSourceCount"
+    if itemType = "MusicArtist" or itemType = "AlbumArtists" or itemType = "MusicAlbum"
+      fields = "Overview"
+    end if
+    if additionalFields <> ""
+      fields = fields + "," + additionalFields
+    end if
+    return fields
+  end function
+
+  ' The Fields a Genres view asks for on each genre's sample items: the poster and backdrop data
+  ' and the sync flag, plus MediaSourceCount unless the samples are music.
+  '
+  ' See itemFields for why music leaves MediaSourceCount out.
+  '
+  ' @param isMusic - true when the samples are music items (the music library's Genres view)
+  ' @return the comma-separated Fields string
+  function genreSampleFields(isMusic as boolean) as string
+    if isMusic
+      return "PrimaryImageAspectRatio,BasicSyncInfo,BackdropImageTags"
+    end if
+    return "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,BackdropImageTags"
+  end function
+
 end namespace

@@ -157,6 +157,7 @@ class MusicPresenter extends GridPresenterBase
       task.itemType = ""
       task.itemId = parentItem.Id
       task.view = "Genres"
+      task.isMusic = true
     else
       ' Default: Load music artists
       task.itemType = "MusicArtist"
