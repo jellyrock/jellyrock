@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- (grid) Stop asking for `MediaSourceCount` on the music grids ([#1181](https://github.com/jellyrock/jellyrock/pull/1181))
+
 ### Dependencies
 
 - Update prettier from v3.9.9 to v3.9.10 ([#1153](https://github.com/jellyrock/jellyrock/pull/1153))
