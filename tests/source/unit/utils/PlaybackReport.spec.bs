@@ -409,6 +409,40 @@ namespace tests
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.codec"), "AAC")
     end function
 
+    @it("describes the one audio stream of a source whose streams carry no index")
+    function _()
+      ' A Live TV channel: the M3U tuner sends every stream with Index -1.
+      m.input.mediaSource.MediaStreams = [
+        { Type: "Video", Index: -1, Codec: "h264" },
+        { Type: "Audio", Index: -1, Codec: "aac", Channels: 2, DisplayTitle: "AAC - Stereo" }
+      ]
+      m.input.audioStreamIndex = 0
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.codec"), "AAC")
+      m.assertEqual(m.rowValue(report, "audio.playing"), "<missing>")
+    end function
+
+    @it("says the playing track is unknown, and lists the tracks, when it cannot tell which plays")
+    function _()
+      m.input.mediaSource.MediaStreams = [
+        { Type: "Video", Index: -1, Codec: "h264" },
+        { Type: "Audio", Index: -1, Codec: "aac", DisplayTitle: "AAC - Stereo" },
+        { Type: "Audio", Index: -1, Codec: "ac3", DisplayTitle: "AC3 - 5.1" }
+      ]
+      m.input.audioStreamIndex = 0
+      report = buildPlaybackReport(m.input)
+      m.assertTrue(m.hasSection(report, "audio"))
+      m.assertEqual(m.rowValue(report, "audio.playing"), "Unknown")
+      m.assertEqual(m.rowValue(report, "audio.tracks"), "AAC - Stereo, AC3 - 5.1")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "<missing>")
+    end function
+
+    @it("still has no audio section for a source that lists no audio")
+    function _()
+      m.input.mediaSource.MediaStreams = [{ Type: "Video", Index: 0, Codec: "h264" }]
+      m.assertFalse(m.hasSection(buildPlaybackReport(m.input), "audio"))
+    end function
+
     @it("omits the subtitle section entirely when no subtitle is selected")
     function _()
       ' -1 is Jellyfin's "none", and a heading with nothing under it is noise.

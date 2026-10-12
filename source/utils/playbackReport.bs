@@ -59,6 +59,12 @@ function buildPlaybackReport(input as object) as object
   streams = mediaSource.MediaStreams
   videoStream = getFirstVideoStream(streams)
   selectedAudio = findStreamByIndex(streams, input.audioStreamIndex, "audio")
+  ' A source can list its audio without an index for it (a Live TV channel's M3U
+  ' tuner sends -1 for every stream). With one audio stream, that stream is the one
+  ' playing; with several, which one plays is unknown, and unidentifiedAudioSection
+  ' says so rather than leaving a gap that reads as "no audio".
+  audioStreams = streamsOfType(streams, "audio")
+  if not isValid(selectedAudio) and audioStreams.count() = 1 then selectedAudio = audioStreams[0]
   subtitleStream = findStreamByIndex(streams, input.subtitleStreamIndex, "subtitle")
 
   transcoding = invalid
@@ -77,7 +83,11 @@ function buildPlaybackReport(input as object) as object
 
   reportAppend(report, reasonsSection(transcoding, videoStream, selectedAudio, mediaSource, input))
   reportAppend(report, videoSection(videoStream, transcoding, urlParams, videoIsCopy))
-  reportAppend(report, audioSection(selectedAudio, transcoding, urlParams, audioIsCopy))
+  if isValid(selectedAudio)
+    reportAppend(report, audioSection(selectedAudio, transcoding, urlParams, audioIsCopy))
+  else
+    reportAppend(report, unidentifiedAudioSection(audioStreams))
+  end if
   reportAppend(report, subtitleSection(subtitleStream, urlParams))
   reportAppend(report, transcodeSection(transcoding, videoStream, mediaSource, input))
   reportAppend(report, fileSection(mediaSource, transcoding, input))
@@ -266,6 +276,37 @@ function audioSection(stream as dynamic, transcoding as dynamic, urlParams as ob
   end if
 
   return reportSection("audio", translate(translationKeys.LabelAudio), rows, false)
+end function
+
+' The audio section for a source whose audio the report cannot tie to the track
+' playing: the server listed several tracks and said nothing about which one. An
+' absent section would read as "no audio", so it says which one plays is unknown
+' and names the tracks by the server's own titles. A source that lists no audio
+' gets no section: none listed is not the same claim as none there.
+function unidentifiedAudioSection(audioStreams as object) as object
+  if audioStreams.count() = 0 then return invalid
+
+  titles = []
+  for each stream in audioStreams
+    title = textOrEmpty(stream.DisplayTitle)
+    if title = "" then title = upperOrEmpty(stream.Codec)
+    if title <> "" then titles.push(title)
+  end for
+
+  rows = []
+  reportRow(rows, "audio.playing", translationKeys.LabelPlayingTrack, translate(translationKeys.LabelUnknown))
+  reportRow(rows, "audio.tracks", translationKeys.LabelAvailableTracks, titles.join(", "))
+  return reportSection("audio", translate(translationKeys.LabelAudio), rows, false)
+end function
+
+' Every stream of one type, in the server's order.
+function streamsOfType(streams as dynamic, streamType as string) as object
+  found = []
+  if not isValidAndNotEmpty(streams) then return found
+  for each stream in streams
+    if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = streamType then found.push(stream)
+  end for
+  return found
 end function
 
 ' What is happening to subtitles, which no other row can explain.

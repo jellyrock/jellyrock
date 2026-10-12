@@ -1189,6 +1189,7 @@ The RTA suite tests Quick Connect end to end by approving its own code: `POST /Q
 
 **date**: 2026-08-25
 **status**: accepted
+**partially-superseded-by**: playback-report-unidentified-audio (the silence, when the source lists audio the report cannot tie to the playing track)
 **related-files**: `source/utils/playbackReport.bs`, `source/utils/transcodeCause.bs`, `docs/architecture/playback.md`
 
 The playback-info report renders a `source → target` pair for an aspect ONLY where the server declared the target. Where it did not, the row shows the source alone and no arrow. The arrow is a claim that something changed, and the report has no business making that claim from inference.
@@ -1987,6 +1988,17 @@ The still-watching prompt stays on by default (`playbackStillWatching` is `defau
 Jellyfin 12.x declines direct play for every manifest source (`StreamBuilder.ManifestContainers`: `hls`, `applehttp`, `dash`), not only live `m3u` HLS channels, so `.strm` items always went through a server transcode and live DASH channels never played on 12.1. JellyRock now plays any source whose `Path` is an absolute upstream HLS or DASH manifest from that URL (`getUpstreamManifestBlocker()`), keeping the server's stream only where a rule older than 12.0 applies (the retry that forces a transcode, auto-loop, remote-source policy, bitrate limit), and sets `StreamFormat` from the manifest's own format instead of giving every live item `hls`. Considered and ruled out: a separate `.strm` rule beside the live one (two copies of the same checks), and leaving `.strm` unset as on 10.11 (relies on the Roku guessing the format from the URL).
 
 The device check (`upstreamManifestAnswers()`) now runs on a server "yes" too, since a Roku handed an unreachable URL buffers until the live stall error (~62 s on 10.11) where the server's own stream plays (~36 s); a failed check after a "yes" hands off to the server's stream before the Video node sees the URL (`needsServerStream`, then `retryPlayback`). For that retry to work on non-live items, every retry that forces a transcode now sends `EnableDirectPlay=false`; before, only live retries did, so a `.strm` the server allowed got the same "yes" back. Cost accepted: up to `UPSTREAM_PREFLIGHT_MS` (3 s) added when an upstream URL is unreachable; no measurable cost on a reachable LAN URL (measured 2026-10-11, Stick 4K, 10.11.11 and 12.1.0).
+
+## decision-id: playback-report-unidentified-audio
+
+**date**: 2026-10-12
+**status**: accepted
+**partially-supersedes**: playback-report-target-evidence-tiers (the silence, when the source lists audio the report cannot tie to the playing track)
+**related-files**: `source/utils/playbackReport.bs`, `docs/architecture/playback.md`
+
+The playback-info report shows an Audio section whenever the source lists audio, even when the server does not say which track plays. One audio stream with no index (a Live TV channel's `m3u` tuner sends `-1` for every stream) is the track playing, and the section describes it. Several give "Playing track: Unknown" and the tracks by the server's own titles (`unidentifiedAudioSection()`). A source that lists no audio still gets no section, because none listed is not the same claim as none there.
+
+Silence was ruled out because a missing Audio section reads as "this has no audio", which is how the live gap was first reported. A bare "Unknown" row was ruled out because it hides tracks the server did list. Showing the first audio stream was ruled out because it names a track nobody may be hearing, which is the bug `findStreamByIndex()` exists to prevent.
 
 ## Migrated to ADRs
 
