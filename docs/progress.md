@@ -546,6 +546,12 @@ Not checked: why the dead-code plugin doesn't flag the two written-but-unread fi
 
 Closes when #1072's `DeviceInfo` item names all eight fields, or they are removed.
 
+#### A server-allowed live channel in a non-manifest container (mp4, mkv, ism) still buffers when the TV cannot reach its URL `[fid: live-non-manifest-unreachable-url-buffers]` `[captured 2026-10-12]`
+
+The device check before an upstream direct play (`LoadVideoContentTask.upstreamManifestAnswers()`) runs only for HLS and DASH manifests: `getUpstreamManifestBlocker()` returns `NOT_MANIFEST` for anything else and the server's answer stands. The device profile still allows direct play of `mp4`, `mkv` and `ism` (`supportedContainers` in `GetDirectPlayProfiles`), so a live channel in one of those containers over HTTP that the TV cannot reach is still handed to the Video node, which buffers instead of failing, and the transcode retry does not run in time. MPEG-TS is unaffected: it is left out of the direct-play profiles, so the server always remuxes it.
+
+This is the non-manifest half of the closed followup `live-channel-buffers-forever-unreachable-url`, found in review of the manifest direct-play fix (decision `manifest-upstream-direct-play`). Not done there because it needs a different probe: a GET of an endless progressive stream never completes, so the check would need a ranged or HEAD request, or to read only the first bytes. Closes when an unreachable server-allowed non-manifest live URL falls back to the server's stream, measured on a device.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

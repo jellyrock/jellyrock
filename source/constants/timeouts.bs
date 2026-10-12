@@ -56,7 +56,8 @@ namespace timeouts
   ' Device check of a source's upstream HLS or DASH manifest URL, before playing it directly
   ' instead of through the server (LoadVideoContentTask.upstreamManifestAnswers). It exists because
   ' a Roku handed a URL it cannot reach does not fail: an unroutable host or an unresolvable name
-  ' leaves it buffering until the live stall error, so the fallback to the server never runs. The
+  ' leaves it buffering (a live channel until the live stall error, a .strm item past two minutes
+  ' with no error, measured 2026-10-11), so the fallback to the server does not run in time. The
   ' budget is the worst-case extra wait before that fallback path. Measured 2026-09-21: the check
   ' itself took 57-129 ms on a Roku Ultra against two live-TV CDNs, and a desktop on the same LAN saw
   ' 0.16-0.82 s per playlist GET, so 3 s is ~3.7x the slowest seen anywhere.
