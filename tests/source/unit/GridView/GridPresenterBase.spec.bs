@@ -197,7 +197,7 @@ namespace tests
       return m.toasts
     end function
 
-    override sub showToast(message as string, toastType = "error" as string)
+    override sub showToast(_message as string, _toastType = "error" as string)
       m.toasts = m.toasts + 1
     end sub
 
