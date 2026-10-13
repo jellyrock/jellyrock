@@ -391,7 +391,7 @@ export const MEASUREMENTS = Object.freeze([
     title: 'Screen readiness (paint + settle)',
     // The doc this family OWNS, as of 2026-08-19. It pointed at
     // `home-first-paint-performance.md` only because that was the file that existed:
-    // a `doc:` naming a missing file is a dead link in every message that prints it, and
+    // a `doc:` naming a missing file is a dead link for anyone who follows it, and
     // a registry test asserts every path here resolves. The two docs answer different
     // questions (see the note at the top of this file): `screen-load` is about WHEN a
     // screen became usable, which is what `measuring-performance.md` is for.

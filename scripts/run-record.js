@@ -587,6 +587,16 @@ export function runProvenance() {
 }
 
 /**
+ * What the hourly reset does, worded once for every message that warns about it: the run
+ * summary below and each failure's message (tests/rta/lib/diagnostics.js). The advice is the
+ * point: a failure past the reset is the known fixture problem, so nobody should debug it.
+ */
+export const HOURLY_RESET_NOTE =
+  'the demo server resets then, wiping its user settings and watch history (favorites ' +
+  'included) and any state this run created through the app. A failure past the reset is ' +
+  'the known fixture problem, not the app: re-run it inside one hour before debugging it';
+
+/**
  * True when the top of an hour falls between two instants.
  *
  * The demo server resets at the top of every hour, changing its own content
@@ -598,16 +608,6 @@ export function runProvenance() {
  * Epoch-hour flooring is UTC, which is correct for a top-of-hour reset regardless
  * of the server's own timezone: `:00` is the same instant in every whole-hour zone.
  */
-/**
- * What the hourly reset does, worded once for every message that warns about it: the run
- * summary below and each failure's message (tests/rta/lib/diagnostics.js). The advice is the
- * point: a failure past the reset is the known fixture problem, so nobody should debug it.
- */
-export const HOURLY_RESET_NOTE =
-  'the demo server resets then, wiping its user settings and watch history (favorites ' +
-  'included) and any state this run created through the app. A failure past the reset is ' +
-  'the known fixture problem, not the app: re-run it inside one hour before debugging it';
-
 export function crossesHourBoundary(fromIso, toIso) {
   const a = Date.parse(fromIso);
   const b = Date.parse(toIso);
@@ -832,15 +832,6 @@ export const SAMPLE_OUTCOMES = new Set([RUN_OUTCOMES.PASSED, RUN_OUTCOMES.FAILED
 const KNOWN_OUTCOMES = new Set(Object.values(RUN_OUTCOMES));
 
 /**
- * The whole-run view: the wall-clock window, whether it straddled a reset, the
- * outcome, and the failures.
- *
- * `cumulative` marks a window spanning MANY logical runs rather than one: watch
- * mode, where the reset happens once at session start and the fold once at exit.
- * The hour flag is meaningless there (any session over an hour trips it), and a
- * flag that always fires is one nobody reads, so the formatter drops it.
- */
-/**
  * Fixture-health readings for the open run, kept in memory rather than in a `.jsonl`
  * beside the other streams.
  *
@@ -861,6 +852,15 @@ function resetFixtureReadings() {
   fixtureReadings = [];
 }
 
+/**
+ * The whole-run view: the wall-clock window, whether it straddled a reset, the
+ * outcome, and the failures.
+ *
+ * `cumulative` marks a window spanning MANY logical runs rather than one: watch
+ * mode, where the reset happens once at session start and the fold once at exit.
+ * The hour flag is meaningless there (any session over an hour trips it), and a
+ * flag that always fires is one nobody reads, so the formatter drops it.
+ */
 export function summarizeRun({
   startedAt,
   endedAt,

@@ -2251,7 +2251,7 @@ describe('waitFor — the failure kind that reaches the record', () => {
     return JSON.parse(lines.at(-1));
   };
 
-  it('defaults to wait-for-timeout, so the 61 existing call sites are unmoved', async () => {
+  it('defaults to wait-for-timeout, so existing call sites are unmoved', async () => {
     await waitFor('#a.loadState', () => false, { timeout: 60, interval: 10 }).catch(() => {});
     const record = lastRecord();
     expect(record.kind).toBe('wait-for-timeout');

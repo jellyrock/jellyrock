@@ -48,8 +48,10 @@ const ICON_BUTTON_TEXT_EXTENSION = 12
 ' `loadDisplayMode="limitSize"`, so an oversized source is scaled down AS IT
 ' LOADS and `bitmapWidth` reports the scaled figure. That is what makes the
 ' uniform budget below true rather than merely hopeful, and it is worth stating
-' plainly because two icons on the ItemDetails row ship a 96x96 FHD asset
-' (album -> goToAlbumButton, person -> goToArtistButton) and still render at 64.
+' plainly because two icons on the ItemDetails row shipped a 96x96 FHD asset
+' when this was measured (album -> goToAlbumButton, person -> goToArtistButton)
+' and still rendered at 64. #890 resized both to 64x64; the scale-down still
+' covers any oversized icon added later.
 '
 ' Measured, not assumed: via RTA against a rendered IconButton on a Streaming
 ' Stick 4K (OS 15.3.4, 1080p UI, measured 2026-09-07), because a Rooibos test

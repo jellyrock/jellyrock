@@ -7,10 +7,10 @@
 // sub-architectural notes) is in the diff, print a friendly nudge pointing at
 // /log decision.
 //
-// **Always exits 0.** This is advisory: the agent-facing CLAUDE.md
-// "Capture discipline" rule provides the hard enforcement (agents are told
-// to invoke /log decision in the same change set). Humans see this
-// nudge and decide.
+// **Always exits 0.** This is advisory. The requirement itself is the
+// agent-facing CLAUDE.md "Capture discipline" rule (agents are told to
+// invoke /log decision in the same change set), an instruction that
+// nothing enforces mechanically. Humans see this nudge and decide.
 //
 // Why a nudge and not a hard gate: catching the false positive ("decided to
 // rename this var" is not an ADR-grade decision) needs human judgment. A

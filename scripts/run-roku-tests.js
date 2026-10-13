@@ -180,7 +180,7 @@ async function main() {
   // registry snapshot to protect it, so an overlapping run is pure corruption:
   // the deploy alone restarts whatever the other party was driving.
   const lock = await acquireDeviceLock({ what: 'roku device tests' });
-  // Records to `out/device/`, not `out/rta/`: this is the Rooibos runner, and it
+  // Records to `.device-runs/device/`, not `.device-runs/rta/`: this is the Rooibos runner, and it
   // used to overwrite the RTA suite's run record on a path named for the other
   // harness. The window it stamps is not decoration: #800 went red on
   // `SessionManagement.spec.bs` -> "connects to Jellyfin stable demo server", and

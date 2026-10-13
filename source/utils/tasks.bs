@@ -454,8 +454,8 @@ end function
 ' plus any that finished since the previous launch.
 '
 ' `node` is appended unconditionally and de-duplicated against the existing
-' entries, because a persistent Task node gets relaunched many times over its
-' life (`ExtrasRowList` alone relaunches its nodes 38 times).
+' entries, because a persistent Task node can be relaunched many times over its
+' life.
 function pruneTaskLedger(ledger as object, node as object) as object
   kept = []
   if isValid(ledger)

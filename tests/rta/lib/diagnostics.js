@@ -86,6 +86,9 @@ import {
   runStartedAt,
 } from '../../../scripts/run-record.js';
 
+/** Both candidate keyPaths for Home's row count. See `homeRowCount` below. */
+const HOME_ROW_COUNT_PATHS = homeListKeyPaths('content.getChildCount()');
+
 /**
  * The fixed part of the dump: the questions worth asking about ANY failure.
  *
@@ -95,9 +98,6 @@ import {
  * the wrong screen. Home's row list is scene-rooted on purpose: on a failure deep
  * in a drill-down, "is Home still populated behind me?" is itself a signal.
  */
-/** Both candidate keyPaths for Home's row count. See `homeRowCount` below. */
-const HOME_ROW_COUNT_PATHS = homeListKeyPaths('content.getChildCount()');
-
 const CORE_REQUESTS = {
   viewSubtype: { base: 'global', keyPath: 'activeRoutedView.subtype()' },
   viewId: { base: 'global', keyPath: 'activeRoutedView.id' },

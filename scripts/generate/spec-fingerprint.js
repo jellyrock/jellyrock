@@ -4,7 +4,7 @@
 // enum values) with all descriptions / summaries / examples STRIPPED.
 //
 // Why this exists (server-upgrade-automation Phase 1, supply step): a raw spec
-// is ~2 MB and Jellyfin regenerates it every release, so a byte-diff of two raw
+// is about a megabyte and Jellyfin regenerates it every release, so a byte-diff of two raw
 // specs is dominated by cosmetic churn (reordered keys, reworded descriptions,
 // schema refactors). The fingerprint keeps only what can actually break a
 // hand-written client and throws away the rest, so a diff of two fingerprints

@@ -26,8 +26,8 @@
  *
  * `requiresCodebehind: false` because a component with NO codebehind cannot
  * declare `onDestroy` and so is the strongest instance of this finding, not an
- * absent one. That case has no live example today (13 JRScreen descendants, all
- * with a codebehind), but dropping it would silently narrow the gate.
+ * absent one. That case has no live example today (every JRScreen descendant has
+ * a codebehind), but dropping it would silently narrow the gate.
  *
  * Escape hatch:
  *  - `' bsc-disable-file jrscreen-on-destroy` anywhere in the XML or its codebehind
