@@ -75,8 +75,8 @@ namespace quickplayOutcome
   end function
 
   ' The toast's style for `status`: error for a read that failed (or a status nobody can
-  ' vouch for, which messageKey tells as failed), info for an answer that was simply nothing
-  ' to play.
+  ' vouch for, which messageKey tells as failed), info for an empty answer or a launch nothing
+  ' builds.
   '
   ' @param {dynamic} status - a STATUS_ constant
   ' @return {string} a displayToast type
