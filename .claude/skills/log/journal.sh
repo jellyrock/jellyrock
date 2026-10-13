@@ -68,6 +68,8 @@
 # writes are fine: several writes, one commit); --allow-dirty writes anyway, and commit then
 # refuses until those edits are committed or discarded. Exit: 0 done · 1 refused, with the reason · 2 usage or
 # setup error. JOURNAL_TODAY=YYYY-MM-DD overrides today's date (tests).
+# JOURNAL_FILE=<path> makes list and show read that file in place of the journal: another copy of it,
+# such as a ref's saved to a file. Every other command refuses it (exit 2), so nothing writes a copy.
 
 set -uo pipefail
 
@@ -100,6 +102,12 @@ fi
 
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 J="$top/$FILE"
+if [ -n "${JOURNAL_FILE:-}" ]; then
+  case "${1:-}" in
+    list|show) J="$JOURNAL_FILE" ;;
+    *) die "JOURNAL_FILE is read-only: it works with list and show, not '${1:-}'" ;;
+  esac
+fi
 TODAY="${JOURNAL_TODAY:-$(date -u +%F)}"
 [[ $TODAY =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "JOURNAL_TODAY must be YYYY-MM-DD, not '$TODAY'"
 FID_RE='^[a-z0-9][a-z0-9-]*$'

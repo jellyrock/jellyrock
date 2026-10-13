@@ -25,8 +25,9 @@
 #       **Always ask:** none, and scope matches the plan; every reason to stop is listed
 #   … land <plan> [--commit <rev>] [--dry-run] [--floor '<command>'] [--base <starting commit>]
 #       the landing line in the Session log of the plan's project, last-updated bumped, committed
-#       alone (a local edit where the projects folder is gitignored). Nothing when this session
-#       holds the project: /end-session records the work then.
+#       alone (a local edit where the projects folder is gitignored; pushed by projects-write.sh where
+#       the PLAN sits in a projects home, the line kept there uncommitted when the push fails). Nothing
+#       when this session holds the project: /end-session records the work then.
 #       --floor runs the command first (from the repo root, its whole output shown, stderr with stdout, then
 #       a NOTE naming each line shaped like this script's own) and records nothing when it fails;
 #       --base then prints scope against that commit, as `scope <plan> <base>` does, and the exit is
@@ -108,13 +109,14 @@ project_line() {
 
 frontmatter() { awk -v f="$2" 'NR==1 && $0!="---" { exit } NR>1 && $0=="---" { exit } NR>1 && $1==f":" { print $2; exit }' "$1"; }
 
-# resolve <value>: sets PSTATE (na|none|found|archived|unknown|ambiguous), PPLAN, PNAME, PMSG
+# resolve <value>: sets PSTATE (na|none|found|archived|unknown|ambiguous|unreachable), PPLAN, PNAME, PMSG
 resolve() {
   local v="$1" dir d n hits=() act=()
   PSTATE="" PPLAN="" PNAME="" PMSG=""
   if [ -z "$v" ]; then PSTATE=none; return; fi
   if [ "$v" = n/a ]; then PSTATE=na; return; fi
-  dir="$(bash "$resolver" "$root" 2>/dev/null)" || dir="$root/docs/projects"
+  # the resolver says where projects live, or why they are unreachable here: never a guessed folder
+  dir="$(bash "$resolver" "$root" 2>&1)" || { PSTATE=unreachable; PMSG="projects ${dir#projects-dir: }"; return; }
   matches() { [[ "$1" == "$v" ]] || { [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-(.+)$ ]] && [[ "${BASH_REMATCH[1]}" == "$v" ]]; }; }
   for d in "$dir"/*/; do
     n="$(basename "$d")"; [ -f "$d/PLAN.md" ] || continue
@@ -215,7 +217,7 @@ do_check() {
            git -C "$root" check-ignore -q "$PPLAN" 2>/dev/null && echo "NOTE: the projects folder is gitignored: the landing record is a local edit" ;;
     archived) echo "BANNER: $PMSG" ;;
     unknown) echo "BANNER: no project named $(project_line "$plan") here (active: ${PMSG##*Active: })" ;;
-    ambiguous) echo "BANNER: $PMSG" ;;
+    ambiguous|unreachable) echo "BANNER: $PMSG" ;;
   esac
 
   section "END"
@@ -345,28 +347,32 @@ do_gate() {
 # --- land --------------------------------------------------------------------------------------
 
 do_land() {
-  local plan="$1" rev="$2" dry="$3" v rel sha subject today line tmp ignored=0 slug
+  local plan="$1" rev="$2" dry="$3" v rel sha subject today line tmp ignored=0 slug ptop home=0 out rc
   [ -f "$plan" ] && [ -r "$plan" ] || die 3 "no such plan file: $plan"
   v="$(project_line "$plan")"; resolve "$v"
   case "$PSTATE" in
     none) die 2 "$plan has no **Project:** line in its header. Add **Project:** <project slug> under the title, or **Project:** n/a when the plan advances no tracked project" ;;
     na) echo "Project: n/a — nothing to record"; exit 0 ;;
-    archived|unknown|ambiguous) die 2 "$PMSG" ;;
+    archived|unknown|ambiguous|unreachable) die 2 "$PMSG" ;;
   esac
-  rel="${PPLAN#"$root"/}"; slug="${PNAME#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}"
+  # A PLAN in another repo (a projects home) is pushed there by projects-write.sh; its path is said
+  # relative to that repo, never as an absolute path.
+  ptop="$(cd "$(git -C "$(dirname "$PPLAN")" rev-parse --show-toplevel)" && pwd -P)"
+  [ "$ptop" = "$(cd "$root" && pwd -P)" ] || home=1
+  rel="${PPLAN#"$ptop"/}"; slug="${PNAME#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}"
   if [ -f "$resume" ] && (cd "$root" && bash "$resume" --holder "$slug" >/dev/null 2>&1); then
     echo "NOTE: this session holds $PNAME: /end-session records it; nothing written"; exit 0
   fi
   sha="$(git -C "$root" rev-parse --short "$rev" 2>/dev/null)" || die 2 "not a commit: $rev"
   subject="$(git -C "$root" log -1 --format=%s "$rev")"
   if grep -qF "\`$sha\`" "$PPLAN"; then echo "\`$sha\` is already recorded in $rel"; exit 0; fi
-  git -C "$root" check-ignore -q "$PPLAN" 2>/dev/null && ignored=1
-  if [ "$ignored" -eq 0 ] && [ -n "$(git -C "$root" status --porcelain -- "$PPLAN")" ]; then
+  [ "$home" = 1 ] || { git -C "$root" check-ignore -q "$PPLAN" 2>/dev/null && ignored=1; }
+  if [ "$ignored" -eq 0 ] && [ -n "$(git -C "$ptop" status --porcelain -- "$PPLAN")" ]; then
     die 2 "$rel has uncommitted edits; commit or set them aside first, because this commits the PLAN on its own"
   fi
   has_heading "$PPLAN" '^## .*Session log' 1 || die 2 "$rel has no Session log section to append to"
   today="${PLAN_RUN_TODAY:-$(date +%F)}"
-  line="- $today — **Landed from a /focus plan, outside a project session:** \`$sha\` $subject (plan \`$(basename "$plan")\`). Status and the kickoff were not updated; /resume-project reconciles them against git log."
+  line="- $today: **Landed from a /focus plan, outside a project session:** \`$sha\` $subject (plan \`$(basename "$plan")\`). Status and the kickoff were not updated; /resume-project reconciles them against git log."
   if [ "$dry" = 1 ]; then printf 'would append to %s:\n%s\n' "$rel" "$line"; exit 0; fi
 
   # the line goes after the Session log's last non-blank line (the section ends at the next # or ##
@@ -392,6 +398,16 @@ do_land() {
 
   if [ "$ignored" -eq 1 ]; then
     echo "recorded \`$sha\` in $rel as a local edit (the projects folder is gitignored): not committed"; exit 0
+  fi
+  if [ "$home" = 1 ]; then
+    subject="$slug: log a /focus plan landing ($sha)"; rc=0
+    out="$(cd "$ptop" && bash "$here/../start-project/projects-write.sh" --subject "$subject" -- "$PPLAN" 2>&1)" || rc=$?
+    case $rc in
+      0) echo "recorded \`$sha\` in $rel and pushed to the projects home"; printf '%s\n' "$out" | grep '^NOTE:'; exit 0 ;;
+      3) printf '%s\n' "$out"; die 2 "refused: the line is kept in the projects home, uncommitted; resolve the overlap there, then push it with projects-write.sh --subject \"$subject\" -- $rel" ;;
+      4) printf '%s\n' "$out"; die 2 "not pushed: the line is kept in the projects home, uncommitted; once its remote is reachable, push it from there with projects-write.sh --subject \"$subject\" -- $rel" ;;
+      *) printf '%s\n' "$out"; die 2 "projects-write.sh failed (exit $rc): the line is kept in the projects home, uncommitted" ;;
+    esac
   fi
   local out
   if ! out="$(git -C "$root" commit -q -m "$slug: log a /focus plan landing ($sha)" -- "$PPLAN" 2>&1)"; then

@@ -79,7 +79,7 @@ usage() {
   echo
   echo "The backend comes from the ### Forge slot in the repo's AGENTS.md (backend: github or forgejo)."
   echo "Forgejo: the API is https://<the origin remote's host>/api/v1 unless the slot has an api: <URL> line;"
-  echo 'the token is the curl config at $FORGEJO_CURLRC, else ~/.config/forgejo/<host>.curlrc.'
+  echo 'the token is the curl config at $FORGEJO_CURLRC, else ${XDG_CONFIG_HOME:-~/.config}/forgejo/<host>.curlrc.'
 }
 verb_help() {
   printf '%s\n' "$SPEC" | awk -F';' -v c="$cmd" -v p="$prog" '$1 == c "" {
@@ -223,7 +223,7 @@ esac
 # --------------------------------------------------------------------------- Forgejo (curl + jq)
 # The API is https://<the origin remote's host>/api/v1, or the slot's api: line (the API root, for a
 # forge on another port, scheme or path). The token is a curl config file, passed to curl and never
-# read here: $FORGEJO_CURLRC, else ~/.config/forgejo/<the origin remote's host>.curlrc.
+# read here: $FORGEJO_CURLRC, else ${XDG_CONFIG_HOME:-~/.config}/forgejo/<the origin remote's host>.curlrc.
 # Output keeps gh's field names (see the contract above); a field Forgejo does not record is null.
 if [ "$backend" = forgejo ]; then
   # What Forgejo cannot do, refused before any setup or call.
@@ -249,6 +249,7 @@ if [ "$backend" = forgejo ]; then
   for t in curl jq; do command -v "$t" >/dev/null 2>&1 || die 1 "$t is required by the Forgejo backend but is not installed"; done
   remote="$(git -C "$root" remote get-url origin 2>/dev/null)" \
     || die 3 "the Forgejo backend reads the host and repo from the origin remote, and this repo has none"
+  # Its own parser, not start-project/repo-key.sh: the API needs the host, which the repo key drops.
   case "$remote" in
     *://*) rest="${remote#*://}"; rest="${rest#*@}"; hostport="${rest%%/*}"; rpath="${rest#*/}" ;;
     *:*)   rest="${remote#*@}"; hostport="${rest%%:*}"; rpath="${rest#*:}" ;;
@@ -260,7 +261,7 @@ if [ "$backend" = forgejo ]; then
     || die 3 "cannot read host/owner/repo from the origin remote '$remote'"
   base="${api_line:-https://$host/api/v1}"; base="${base%/}"
   rapi="$base/repos/$owner/$repo"
-  curlrc="${FORGEJO_CURLRC:-$HOME/.config/forgejo/$host.curlrc}"
+  curlrc="${FORGEJO_CURLRC:-${XDG_CONFIG_HOME:-$HOME/.config}/forgejo/$host.curlrc}"
   [ -f "$curlrc" ] && [ -r "$curlrc" ] \
     || die 1 "no Forgejo token file at $curlrc: a curl config holding the token header (header = \"Authorization: token <token>\"), or point FORGEJO_CURLRC at one"
 
@@ -429,7 +430,7 @@ if [ "$backend" = forgejo ]; then
 fi
 
 # -------------------------------------------------------------------------------- GitHub (gh)
-command -v gh >/dev/null 2>&1 || die 1 "gh is required by the GitHub backend but is not installed"
+type -P gh >/dev/null 2>&1 || die 1 "gh is required by the GitHub backend but is not installed"
 err="$(mktemp)"; trap 'rm -f "$err"' EXIT
 # gh_run <args...>: gh's stdout and stderr pass through unchanged; any failure is exit 1 (gh's own
 # codes are not passed on: its 4 means "log in", not "no PR"), except pr view's "no pull requests"

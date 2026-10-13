@@ -84,8 +84,8 @@ Take the CANDIDATES block's lines in order; the first that yields a candidate is
 
 1. **On fire:** `ERROR` lines, then fire `BANNER` lines (a failing pipeline, CI run or deploy; a dirty tree left by an unclosed session).
 2. **Pinned followups:** `PIN` lines, above all project work. One its body says a project tracks routes to that project (resume) with the fid after the slug, `/resume-project {{slug}} {{fid}}`, so the session starts at the followup rather than the kickoff.
-3. **In-flight work to resume:** resume `BANNER` lines (a paused handoff, running work, a project that no longer waits), then `SLOT 3`, printed when the journal's in-flight section has items: one no project tracks is a candidate here; when every item is a project's, the slot yields nothing.
-4. **Overdue:** overdue `BANNER` lines (an overdue cadence, a stale journal, a dormant project, a PLAN that contradicts itself: a close that should have fixed it).
+3. **In-flight work to resume:** resume `BANNER` lines (a paused handoff, running work, a project that no longer waits, an open message from another repo about a project), then `SLOT 3`, printed when the journal's in-flight section has items: one no project tracks is a candidate here; when every item is a project's, the slot yields nothing.
+4. **Overdue:** overdue `BANNER` lines (an overdue cadence, a stale journal, a dormant project, a PLAN that contradicts itself: a close that should have fixed it; an open message from another repo about no project).
 5. **Cheap unblocks**, at `SLOT 5-6`: a followup whose fix is already named and small (pick the likely ones from their titles, then `show` them to confirm); a ready row in a backlog `## This repo` names.
 6. **Project forward motion**, at `SLOT 5-6`, after rank 5: the next step in an active project's kickoff.
 7. **Maintenance debt:** debt `BANNER` lines, then `SLOT 7`: known smells no line forces.
@@ -100,6 +100,8 @@ Within a judgment slot, consequence beats age (an item whose failure takes a liv
 
 Classify the pick into exactly one route: **resume** (an active or paused tracked project; its slug is the folder name without the `YYYY-MM-` prefix), **scaffold** (new project-shaped work), **another skill** (one that covers it: `/done` or `/log` for a journal fix, or a triage or recipe skill `## This repo` names), or **plan** (everything else). A one-off that *might* grow is a plan; a stub project can come later.
 
+Then ask where the pick sits on your priorities list: `bash .claude/skills/start-project/priorities.sh line . --project {{folder}}` for a project, `--fid {{fid}}` for a followup, `--none` for anything else. It prints one line, or nothing on a machine that keeps no list. The list labels the pick; it never changes it.
+
 Show it in this shape, with real names only:
 
 ````markdown
@@ -108,6 +110,8 @@ Show it in this shape, with real names only:
 **Recommended:** {{the pick, one line}}
 
 **Why:** {{for a picked line: "the reader's first candidate", or "its first after" the skipped line and why, with the line quoted; for a judgment slot: rank n and the rule}} — {{the state behind it: `[fid: …]`, backlog row or commit, cited}}.
+
+{{only when the priorities helper printed a line:}} **On your list:** {{its line, word for word}}
 
 **Route:** {{resume | scaffold | another skill | plan}}. {{For a command route:}} Type this to take it:
 
