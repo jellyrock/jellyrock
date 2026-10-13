@@ -35,6 +35,8 @@ related-files:
   - source/utils/quickplayLibrary.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
+  - source/utils/probedStreams.bs
+  - source/utils/streamOrigin.bs
   - source/utils/stillWatching.bs
   - source/utils/liveTv.bs
   - source/utils/upstreamManifest.bs
@@ -47,7 +49,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-11
+last-reviewed: 2026-10-12
 ---
 
 # Video and audio playback
@@ -174,7 +176,10 @@ The "i" button shows a report of what is playing and why.
 The report is built on each press, so it describes what is playing now: a Dolby Vision fallback that switches from a transcode to direct play changes the next report.
 
 - **A row shows `source → target` only where the server named the target** (decision [`playback-report-target-evidence-tiers`](../decisions.md#decision-id-playback-report-target-evidence-tiers)). `TranscodingInfo` from the live session is the actual output. A few `TranscodingUrl` parameters (`&AudioBitrate`, `&AudioSampleRate`, `&SubtitleMethod`) are exact. The per-codec stream options are constraints (`<codec>-rangetype` can be a list, `<codec>-videobitdepth` is a ceiling), read only where they reduce to one answer. Anything else shows the source alone.
-- **The server's transcode reason codes are shown as the server sends them.** Jellyfin owns that vocabulary. The report adds only what the server cannot know: that one of our settings caused the constraint, and only where the predicate that added that profile condition still holds for this stream.
+- **The Audio section never goes missing for a source that lists audio.** It describes the track the viewer chose, found by its index. A source can list its audio with no index (a Live TV channel's `m3u` tuner sends `-1` for every stream); with one audio stream, that stream is the one playing, and the section describes it. With several, the section says the playing track is unknown and lists the tracks by the server's own titles (`unidentifiedAudioSection()`), because an empty gap reads as "no audio". It says the same when the device plays the stream itself and Roku lists none of its audio tracks (several tracks muxed into one HLS variant, measured 2026-10-12): the app cannot choose among them, so it does not name the pick. A source that lists no audio gets no section: none listed is not the same claim as none there.
+- **A `.strm` item shows no size or total bitrate:** the server's figures describe the `.strm` text file (101 B and 11 bit/s for a two-hour film, measured 2026-10-12). The report knows a `.strm` item by its own path, the server's own test (`isShortcutPath()`), not by its source's protocol: a shortcut takes its URL's protocol, and a channel plugin's `Http` source can carry real figures. A live stream keeps its bitrate.
+- **"Streaming from" tells everyone where the stream comes from:** "This Jellyfin server", or the host of the URL the player was handed (a Live TV channel or `.strm` item played from its own URL). Administrators also see the playback URL and the path, with their secrets hidden (`maskUrlSecrets()` in `source/utils/streamOrigin.bs`): a server URL's token (`ApiKey`, or `api_key` on older servers), every query value of a provider's URL, whose token names are unknown, and any `user:password@` on either. The report is the screen users photograph for a bug report.
+- **Each transcode reason shows the server's code and what it means.** The code is the label, untranslated, so it can be searched in Jellyfin's vocabulary; the value explains it in plain words (`transcodeReasonExplanation()`, one string for each code Jellyfin defines, written from where the server sets them). The report then adds what the server cannot know: that one of our settings caused the constraint, and only where the predicate that added that profile condition still holds for this stream. A code the app does not know shows with no explanation.
 - **Live rows refresh** every `PLAYBACK_INFO_REFRESH_SECONDS`: transcode speed, progress, how far the transcode is ahead of the playback position, and output bitrate. Speed is the actionable one: `TranscodingInfo.Framerate` is frames encoded per second, so dividing by the source frame rate gives a real-time multiplier, and below 1.0x the server cannot keep up. `OverviewDialog` updates rows in place by `id` while the report's shape is unchanged, so the scroll position holds, and rebuilds the layout when the shape changes (a transcode ending while the report is open).
 - **Every fetch is a new `GetPlaybackInfoTask` node** ([ADR 0037](../adr/0037-task-run-replacement.md), decision [`playback-report-fetch-per-run`](../decisions.md#decision-id-playback-report-fetch-per-run)). A press replaces a run in flight; a poll tick skips while one runs or waits to launch (`isTaskInFlight`, [ADR 0041](../adr/0041-task-launch-queue.md)), or a server slower than the poll would never answer. Closing the report releases the node, so a late answer cannot open the report again. At most one fetch is live per player.
 - **A dialog opened after the press wins** (decision [`playback-report-newest-dialog-wins`](../decisions.md#decision-id-playback-report-newest-dialog-wins)). Opening a track picker releases the fetch, and an answer that finds another overlay open is dropped rather than superseding it, since the error dialog would read a supersede as a takeover and park the player. The chapter list is a panel inside the player, not an overlay, so a late answer still opens over it; the report gives focus back to the list when it closes.
@@ -220,7 +225,7 @@ The video player. It extends Roku's `Video` node, so it inherits the playback st
 | --- | --- |
 | Presses the host observes | `selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed` (all `alwaysNotify`) |
 | Selection | `audioIndex`, `SelectedSubtitle` (default `-2`, `SubtitleSelection.NOT_SET`; `-1` is none; `alwaysNotify`), `mediaSourceId`, `Subtitles`, `fullSubtitleData`, `fullAudioData`, `fullVideoSourceData`, `isPreviousSubtitleEncoded`, `shouldAllowCaptions` |
-| The stream | `videoId`, `PlaySessionId`, `container`, `isDirectPlaySupported`, `isTranscoded`, `isTranscodeAvailable`, `transcodeParams`, `cachedPlaybackInfo`, `showID` |
+| The stream | `videoId`, `PlaySessionId`, `container`, `isDirectPlaySupported`, `isTranscoded`, `isTranscodeAvailable`, `transcodeParams`, `cachedPlaybackInfo`, `isShortcut` (the item is a `.strm` file, so the report hides its size and bitrate), `showID` |
 | Dolby Vision fallback | `isDoviDirectPlayFallbackAvailable`, `isRetrying`, `isDoviPreservationBypassed` (a retry asked without the Dolby Vision profile, so the report must not blame the setting) |
 | Errors | `errorDialogOwnsExit` |
 | Other | `lastFocus`, `transcodeReasons` (set to `[]` in `init()` and never read) |
@@ -436,6 +441,8 @@ The "now playing" screen for music, a `JRScreen` routed at `/audio`. It shows th
 The server decides how an item plays, from the device profile JellyRock sends: `getDeviceProfile()` in `source/utils/deviceCapabilities.bs` builds it, and `buildPlaybackInfoPostData()` in `source/api/items.bs` builds the `PlaybackInfo` request around it. `LoadVideoContentTask` reads the answer: when the source `SupportsDirectPlay`, it plays the file; otherwise it plays the `TranscodingUrl`, which may be a remux or a full transcode.
 
 Every fact about the file (runtime, bitrate, container, streams) comes from `mediaSourceForId(mediaSources, mediaSourceId)`, never `mediaSources[0]`, because the first entry is only the server's default: a version picked in the Video menu sits elsewhere, and from 12.0 a primary's most recently played version moves to the front. The `PlaybackInfo` answer is the exception: the request names the version and the server returns only that one.
+
+A source the server has never probed lists no streams: a `.strm` item before its first play. Its first `PlaybackInfo` probes it, and the server saves what it found (measured 2026-10-12 on 10.11 and 12.1: the item lists the streams as soon as that answer arrives). The audio and subtitle picks were made before that, from nothing, so the loader reads the item again (`reloadProbedStreams()`), picks again from the probed streams, and builds the track menu and the playback-info report from them. A transcode answer was built for the server's own picks, so when ours differ the loader asks once more (`probedPicksNeedNewAnswer()` in `source/utils/probedStreams.bs`), but only when that answer is the stream that plays (`serverAnswerPlays()`). A direct play needs no second answer, since the device plays the source and switches tracks itself. Neither does a source whose own manifest URL the device will play, nor one the server allowed but the device cannot reach, whose retry asks the server with our picks. So the loader decides whether the device plays the manifest URL right after the first answer, before the picks; nothing in that decision depends on them. The first play then looks like every later one. Some remote `.strm` sources take the server longer than the 10 s request limit on every `PlaybackInfo`, and fail to play (followup `strm-first-play-probe-outlasts-10s`).
 
 The client overrides the server's answer in three places:
 

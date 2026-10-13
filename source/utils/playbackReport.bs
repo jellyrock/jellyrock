@@ -37,6 +37,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackInfo.bs"
+import "pkg:/source/utils/streamOrigin.bs"
 import "pkg:/source/utils/transcodeCause.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -59,6 +60,15 @@ function buildPlaybackReport(input as object) as object
   streams = mediaSource.MediaStreams
   videoStream = getFirstVideoStream(streams)
   selectedAudio = findStreamByIndex(streams, input.audioStreamIndex, "audio")
+  ' A source can list its audio without an index for it (a Live TV channel's M3U
+  ' tuner sends -1 for every stream). With one audio stream, that stream is the one
+  ' playing; with several, which one plays is unknown, and unidentifiedAudioSection
+  ' says so rather than leaving a gap that reads as "no audio". The same holds when
+  ' the device plays the stream itself and Roku lists none of its audio tracks: the
+  ' app could not select the pick, so the report must not name it.
+  audioStreams = streamsOfType(streams, "audio")
+  if not isValid(selectedAudio) and audioStreams.count() = 1 then selectedAudio = audioStreams[0]
+  if isBooleanTrue(input.audioTracksUnlisted) and audioStreams.count() > 1 then selectedAudio = invalid
   subtitleStream = findStreamByIndex(streams, input.subtitleStreamIndex, "subtitle")
 
   transcoding = invalid
@@ -77,12 +87,64 @@ function buildPlaybackReport(input as object) as object
 
   reportAppend(report, reasonsSection(transcoding, videoStream, selectedAudio, mediaSource, input))
   reportAppend(report, videoSection(videoStream, transcoding, urlParams, videoIsCopy))
-  reportAppend(report, audioSection(selectedAudio, transcoding, urlParams, audioIsCopy))
+  if isValid(selectedAudio)
+    reportAppend(report, audioSection(selectedAudio, transcoding, urlParams, audioIsCopy))
+  else
+    reportAppend(report, unidentifiedAudioSection(audioStreams))
+  end if
   reportAppend(report, subtitleSection(subtitleStream, urlParams))
   reportAppend(report, transcodeSection(transcoding, videoStream, mediaSource, input))
   reportAppend(report, fileSection(mediaSource, transcoding, input))
 
   return report
+end function
+
+' A plain explanation of one of Jellyfin's transcode reason codes, or "" for a code this
+' version of the app does not know. Each is written from where the server sets the code
+' (StreamBuilder), not from its name: DirectPlayError means no direct-play profile fitted
+' and no specific reason was found, not that a player failed. The phrasing says what needs
+' converting rather than that the device cannot play it, because one of our own settings
+' can be the cause, and the row then says which.
+'
+' The keys are listed rather than built from the code, so every one is a real reference the
+' translation lint can see.
+'
+' @param {string} code - a TranscodeReason, verbatim
+' @returns {string}
+function transcodeReasonExplanation(code as string) as string
+  keys = {
+    ContainerNotSupported: translationKeys.MessageTranscodeReasonContainerNotSupported,
+    VideoCodecNotSupported: translationKeys.MessageTranscodeReasonVideoCodecNotSupported,
+    AudioCodecNotSupported: translationKeys.MessageTranscodeReasonAudioCodecNotSupported,
+    SubtitleCodecNotSupported: translationKeys.MessageTranscodeReasonSubtitleCodecNotSupported,
+    AudioIsExternal: translationKeys.MessageTranscodeReasonAudioIsExternal,
+    SecondaryAudioNotSupported: translationKeys.MessageTranscodeReasonSecondaryAudioNotSupported,
+    StreamCountExceedsLimit: translationKeys.MessageTranscodeReasonStreamCountExceedsLimit,
+    VideoProfileNotSupported: translationKeys.MessageTranscodeReasonVideoProfileNotSupported,
+    VideoRangeTypeNotSupported: translationKeys.MessageTranscodeReasonVideoRangeTypeNotSupported,
+    VideoCodecTagNotSupported: translationKeys.MessageTranscodeReasonVideoCodecTagNotSupported,
+    VideoLevelNotSupported: translationKeys.MessageTranscodeReasonVideoLevelNotSupported,
+    VideoResolutionNotSupported: translationKeys.MessageTranscodeReasonVideoResolutionNotSupported,
+    VideoBitDepthNotSupported: translationKeys.MessageTranscodeReasonVideoBitDepthNotSupported,
+    VideoFramerateNotSupported: translationKeys.MessageTranscodeReasonVideoFramerateNotSupported,
+    VideoRotationNotSupported: translationKeys.MessageTranscodeReasonVideoRotationNotSupported,
+    RefFramesNotSupported: translationKeys.MessageTranscodeReasonRefFramesNotSupported,
+    AnamorphicVideoNotSupported: translationKeys.MessageTranscodeReasonAnamorphicVideoNotSupported,
+    InterlacedVideoNotSupported: translationKeys.MessageTranscodeReasonInterlacedVideoNotSupported,
+    AudioChannelsNotSupported: translationKeys.MessageTranscodeReasonAudioChannelsNotSupported,
+    AudioProfileNotSupported: translationKeys.MessageTranscodeReasonAudioProfileNotSupported,
+    AudioSampleRateNotSupported: translationKeys.MessageTranscodeReasonAudioSampleRateNotSupported,
+    AudioBitDepthNotSupported: translationKeys.MessageTranscodeReasonAudioBitDepthNotSupported,
+    ContainerBitrateExceedsLimit: translationKeys.MessageTranscodeReasonContainerBitrateExceedsLimit,
+    VideoBitrateNotSupported: translationKeys.MessageTranscodeReasonVideoBitrateNotSupported,
+    AudioBitrateNotSupported: translationKeys.MessageTranscodeReasonAudioBitrateNotSupported,
+    UnknownVideoStreamInfo: translationKeys.MessageTranscodeReasonUnknownVideoStreamInfo,
+    UnknownAudioStreamInfo: translationKeys.MessageTranscodeReasonUnknownAudioStreamInfo,
+    DirectPlayError: translationKeys.MessageTranscodeReasonDirectPlayError
+  }
+  key = keys[code]
+  if not isValid(key) then return ""
+  return translate(key)
 end function
 
 ' Direct play / direct stream / transcoding, or nothing when we do not know.
@@ -116,12 +178,13 @@ end function
 ' The server's reason codes, verbatim, each with our own explanation beside it,
 ' but only where a JellyRock setting provably caused it.
 '
-' The codes are not translated and not re-worded. Jellyfin already maintains that
-' vocabulary and a parallel copy here would drift; more to the point, a code we
-' cannot explain is the server's to explain, and inventing a gloss would add
-' nothing a user could act on. What IS worth saying is the part no server can
-' know: that the constraint came from a switch in OUR settings screen. See
-' transcodeCause.bs for how narrowly that is decided.
+' The code stays the label, untranslated, so it can be searched in Jellyfin's own
+' vocabulary. The value says in plain words what it means (transcodeReasonExplanation),
+' because a bare code beside an empty column answered "why?" for nobody but an
+' expert. A code this app does not know keeps an empty value: a guess would be worse.
+' After that comes the part no server can know: that the constraint came from a
+' switch in OUR settings screen. See transcodeCause.bs for how narrowly that is
+' decided.
 function reasonsSection(transcoding as dynamic, videoStream as dynamic, selectedAudio as dynamic, source as object, input as object) as object
   if not isValid(transcoding) then return invalid
 
@@ -155,7 +218,13 @@ function reasonsSection(transcoding as dynamic, videoStream as dynamic, selected
     ' lines reads fine at one reason and becomes unparseable at three, which is
     ' the common case (4K DoVi HEVC + TrueHD on a stereo setup returns exactly
     ' three).
-    rows.push({ id: "reason." + code, label: code, value: cause })
+    explanation = transcodeReasonExplanation(code)
+    value = explanation
+    if cause <> ""
+      if value <> "" then value = value + " "
+      value = value + cause
+    end if
+    rows.push({ id: "reason." + code, label: code, value: value })
   end for
 
   ' wideLabels: these labels are reason codes, several times longer than "Codec".
@@ -268,6 +337,37 @@ function audioSection(stream as dynamic, transcoding as dynamic, urlParams as ob
   return reportSection("audio", translate(translationKeys.LabelAudio), rows, false)
 end function
 
+' The audio section for a source whose audio the report cannot tie to the track
+' playing: the server listed several tracks and said nothing about which one. An
+' absent section would read as "no audio", so it says which one plays is unknown
+' and names the tracks by the server's own titles. A source that lists no audio
+' gets no section: none listed is not the same claim as none there.
+function unidentifiedAudioSection(audioStreams as object) as object
+  if audioStreams.count() = 0 then return invalid
+
+  titles = []
+  for each stream in audioStreams
+    title = textOrEmpty(stream.DisplayTitle)
+    if title = "" then title = upperOrEmpty(stream.Codec)
+    if title <> "" then titles.push(title)
+  end for
+
+  rows = []
+  reportRow(rows, "audio.playing", translationKeys.LabelPlayingTrack, translate(translationKeys.LabelUnknown))
+  reportRow(rows, "audio.tracks", translationKeys.LabelAvailableTracks, titles.join(", "))
+  return reportSection("audio", translate(translationKeys.LabelAudio), rows, false)
+end function
+
+' Every stream of one type, in the server's order.
+function streamsOfType(streams as dynamic, streamType as string) as object
+  found = []
+  if not isValidAndNotEmpty(streams) then return found
+  for each stream in streams
+    if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = streamType then found.push(stream)
+  end for
+  return found
+end function
+
 ' What is happening to subtitles, which no other row can explain.
 '
 ' &SubtitleMethod is an exact declaration, not a constraint, and "Encode" is the
@@ -361,12 +461,31 @@ function fileSection(source as object, transcoding as dynamic, input as object) 
   ' MediaSourceInfo's own declaration and has existed since well before the 10.7
   ' floor. Absent reads as false, so an older or unusual server shows the row
   ' exactly as it does today.
-  if not isBooleanTrue(source.IsInfiniteStream)
+  '
+  ' NOR ON A .STRM ITEM. The Size the server reports is the .strm text file's, with a
+  ' Bitrate worked out from it: 101 B and 11 bit/s for a two-hour film (measured
+  ' 2026-10-12 on 10.11 and 12.1), which rendered as "0 Kbps". The item's own path
+  ' says so (isShortcutPath); the source's Protocol cannot, since a shortcut takes its
+  ' URL's protocol and a channel plugin's Http source can carry real figures.
+  isLive = isBooleanTrue(source.IsInfiniteStream)
+  describesTextFile = isBooleanTrue(input.isShortcut)
+  if not isLive and not describesTextFile
     reportRow(rows, "file.size", translationKeys.LabelSize, getReadableSize(source.Size))
   end if
-  reportRow(rows, "file.bitrate", translationKeys.LabelTotalBitrate, getDisplayBitrate(source.Bitrate))
+  if not describesTextFile
+    reportRow(rows, "file.bitrate", translationKeys.LabelTotalBitrate, getDisplayBitrate(source.Bitrate))
+  end if
+  ' Where the stream comes from, for everyone: the question a playback problem starts with
+  ' (the server's stream, or a provider's), and a host name is no secret.
+  origin = upstreamHost(input.playbackUrl, input.serverUrl)
+  if origin = "" and isServerUrl(input.playbackUrl, input.serverUrl) then origin = translate(translationKeys.LabelThisJellyfinServer)
+  reportRow(rows, "file.origin", translationKeys.LabelStreamingFrom, origin)
+
+  ' The URL and the path are for administrators, with their secrets hidden (streamOrigin.bs):
+  ' a server URL carries the user's token, and a provider's URL can carry the provider's.
   if isBooleanTrue(input.isAdministrator)
-    reportRow(rows, "file.path", translationKeys.LabelPath, textOrEmpty(source.Path))
+    reportRow(rows, "file.url", translationKeys.LabelPlaybackUrl, maskUrlSecrets(input.playbackUrl, input.serverUrl))
+    reportRow(rows, "file.path", translationKeys.LabelPath, maskUrlSecrets(source.Path, input.serverUrl))
   end if
 
   return reportSection("file", translate(translationKeys.LabelFile), rows, false)

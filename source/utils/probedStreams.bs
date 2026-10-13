@@ -1,0 +1,57 @@
+' A source the server has never probed (a .strm item before its first play) lists no media streams,
+' so a track pick made from it has nothing to choose from. The PlaybackInfo that starts the play
+' probes the source, and the server saves what it found.
+import "pkg:/source/enums/UpstreamManifestBlocker.bs"
+import "pkg:/source/utils/misc.bs"
+
+' True when the source exists and lists no media streams yet.
+'
+' @param {dynamic} source - a MediaSourceInfo
+' @returns {boolean}
+function sourceListsNoStreams(source as dynamic) as boolean
+  if not isValid(source) then return false
+  return not isValidAndNotEmpty(source.MediaStreams)
+end function
+
+' The audio stream index the server built its transcode for: the AudioStreamIndex in the
+' TranscodingUrl, else the source's DefaultAudioStreamIndex, else -1.
+'
+' @param {dynamic} source - a MediaSourceInfo from a PlaybackInfo answer
+' @returns {integer}
+function serverAudioIndex(source as dynamic) as integer
+  if not isValid(source) then return -1
+  match = CreateObject("roRegex", "[?&]AudioStreamIndex=(-?[0-9]+)", "i").Match(textOrEmpty(source.TranscodingUrl))
+  if match.count() > 1 then return match[1].toInt()
+  if isValid(source.DefaultAudioStreamIndex) then return source.DefaultAudioStreamIndex
+  return -1
+end function
+
+' True when the server's answer is the stream that plays, so the track picks it was built with
+' matter. The device plays the source's own manifest URL when nothing blocks it and the device can
+' load it; when it cannot but the server allowed direct play, the player's retry asks the server
+' again with our picks (retryPlayback). Only a blocker, or a URL the device cannot load and the
+' server refused, leaves the answer as it is.
+'
+' @param {string} blocker - an UpstreamManifestBlocker value for the source
+' @param {boolean} deviceLoadsUpstream - the device's check that it can load the manifest URL
+' @param {boolean} serverAllowed - the answer's SupportsDirectPlay
+' @returns {boolean}
+function serverAnswerPlays(blocker as string, deviceLoadsUpstream as boolean, serverAllowed as boolean) as boolean
+  if blocker <> UpstreamManifestBlocker.NONE then return true
+  return not deviceLoadsUpstream and not serverAllowed
+end function
+
+' True when picks made from the probed streams differ from what a transcode answer was built
+' with, so that answer has to be asked for again. A direct play answer never does: the device
+' plays the source itself and switches tracks on its own.
+'
+' @param {dynamic} answerSource - the MediaSourceInfo the PlaybackInfo answer returned
+' @param {integer} audioIndex - the audio index picked from the probed streams
+' @param {integer} subtitleIndex - the subtitle index picked from the probed streams
+' @param {integer} sentSubtitleIndex - the subtitle index the answered request carried
+' @returns {boolean}
+function probedPicksNeedNewAnswer(answerSource as dynamic, audioIndex as integer, subtitleIndex as integer, sentSubtitleIndex as integer) as boolean
+  if not isValid(answerSource) or not isValidAndNotEmpty(answerSource.TranscodingUrl) then return false
+  if audioIndex >= 0 and audioIndex <> serverAudioIndex(answerSource) then return true
+  return subtitleIndex <> sentSubtitleIndex
+end function

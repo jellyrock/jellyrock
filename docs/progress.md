@@ -416,14 +416,6 @@ The `dialogs` RTA spec asserts "no row is ever a placeholder for missing data" a
 
 `playbackAudioLanguagePreference` offers `webclient` / `roku` / `custom`, so a viewer can only get the original audio by setting it in the web client. Add an `original` option that `wantsOriginalAudio()` treats like the web client's sentinel, hidden on servers older than 12.0, where no item carries `OriginalLanguage`.
 
-#### Playback Info shows no Audio section for a Live TV stream (follow-up to the live HLS direct-play fix). `[fid: playback-info-no-audio-live-tv]` `[captured 2026-09-21]`
-
-On 12.x the server returns a live channel's media streams without probing them (`Index: -1`), so the dialog has nothing to list, even when the stream carries audio (the server's remuxing of a home tuner channel had AAC in every segment). A display gap only. Fill it from what the player reports (`audioFormat`, `availableAudioTracks`) when the server has no stream data.
-
-#### Show the playback URL in Playback Info, admin-only (idea raised with the live HLS direct-play fix). `[fid: playback-url-in-info-admin-only]` `[captured 2026-09-21]`
-
-Knowing whether a stream is the upstream URL or the server's transcode would have shortened the 12.x Live TV investigation. Admin-only because the URL can carry session tokens; never log it.
-
 #### The TV guide's channel list is paged 25 at a time; larger later pages would shorten a big lineup's load — measure before changing. `[fid: tv-guide-channel-paging-25]` `[captured 2026-09-22]`
 
 A 2,000-channel lineup takes 18 s to finish loading idle (Stick 4K, 2026-09-21), ~180 ms per page of which the transform is now the smaller part, and while the user scrolls each page costs 3.6–4.7 s, mostly per-request overhead (see the API pool followup under `### api`). Keep page 1 small for first paint; bigger later pages trade fewer round trips for a larger single handoff, so compare both on a 512 MB device.
@@ -478,7 +470,7 @@ Each sets focus in `onScreenShown()` but does not override `restoreScreenFocus`,
 
 #### Find which screens other than the library grid outgrow the 10 s request limit on a slow server (from #1043). `[fid: screens-outgrowing-10s-request-limit]` `[captured 2026-09-25]`
 
-Measured over 10 s so far: a grid's first page (fixed in #1043), a quick play's whole-library read (17.2–35.0 s, measured 2026-09-29; fixed with #811 by `timeouts.QUICKPLAY_LIBRARY_MS`, which also covers the person and artist reads, not measured — no fixture has people — but the same whole-server query), `/Items/Filters` (followup above), live `PlaybackInfo` (followup under api). Drive each spinner screen against the slow 8,643-movie fixture and record which requests exceed `timeouts.HTTP_MS`. For each one that does, give it all three parts #1043 gave the grid page, or none: a limit sized from the measurement, staged "Still loading…" text before 10 s, and a stop on Back that frees its pool slot (ADR 0043). Don't raise `HTTP_MS` for the whole app: a server that never answers would take a minute to report on every screen. The staged text now comes from a screen wait (`screenWaits.begin`, ADR 0044), so a screen gets it by opening one rather than running its own timer.
+Measured over 10 s so far: a grid's first page (fixed in #1043), a quick play's whole-library read (17.2–35.0 s, measured 2026-09-29; fixed with #811 by `timeouts.QUICKPLAY_LIBRARY_MS`, which also covers the person and artist reads, not measured — no fixture has people — but the same whole-server query), `/Items/Filters` (followup above), live `PlaybackInfo` (followup under api), and every `PlaybackInfo` of some remote `.strm` items (10.4–12.0 s, measured 2026-10-12; pinned followup `strm-first-play-probe-outlasts-10s`). Drive each spinner screen against the slow 8,643-movie fixture and record which requests exceed `timeouts.HTTP_MS`. For each one that does, give it all three parts #1043 gave the grid page, or none: a limit sized from the measurement, staged "Still loading…" text before 10 s, and a stop on Back that frees its pool slot (ADR 0043). Don't raise `HTTP_MS` for the whole app: a server that never answers would take a minute to report on every screen. The staged text now comes from a screen wait (`screenWaits.begin`, ADR 0044), so a screen gets it by opening one rather than running its own timer.
 
 #### A genre view's rows may still give up at 10 s on a slow server — unmeasured (from #1043). `[fid: genre-rows-10s-timeout-unmeasured]` `[captured 2026-09-25]`
 
@@ -582,6 +574,18 @@ Recommended fix (`close`): one `AudioPlayerView` helper for the three branches t
 Not checked: what the screen actually shows on a device; whether `PlayerHostView` can play an audio item that comes after the video in the queue; how often users build mixed playlists.
 
 Not built now: it needs a new RTA spec and a device run, outside the comment pass.
+
+#### The app cannot select among audio tracks muxed into one HLS variant: Roku lists none of them `[fid: muxed-hls-audio-tracks-unselectable]` `[captured 2026-10-13]`
+
+On an HLS stream that carries several audio tracks in one variant, Roku lists none of them (`availableAudioTracks` empty, `currentAudioTrack` ""), so the app cannot play the viewer's pick. `getRokuAudioTrackPosition()` then falls back to index + 1 and writes a track id that does not exist. Playback Info now says "Playing track: Unknown" for this case (commit `25697e39`), but the audio menu still offers every track and choosing one changes nothing audible.
+
+Evidence (2026-10-12, Stick 4K, 12.1): the muxed fixture `vod2a` gave an empty track list for 20 s, with and without a pick; the same clip with two `#EXT-X-MEDIA` renditions (`vod2r`) listed both, and French played when picked (`currentAudioTrack` "2"). A direct-played MKV with two audio tracks lists them.
+
+Options weighed in `/snag`: reload through the server's stream when Roku lists no tracks and the pick differs from what plays (the pick then plays, but the list is known only after playback starts, so it restarts the play and loads the server); leave it as a known limitation.
+
+Not checked: which track is audible on the muxed stream; how common muxed multi-audio HLS is in real `.strm` or Live TV provider sources (no user report); Live TV TS channels.
+
+Not done now: no real source is known to use this layout. Act when a user report or a real source shows it.
 
 ### source
 
@@ -753,6 +757,22 @@ ADR 0043 ruled out the scoped pair (`observeFieldScopedEx` / `unobserveFieldScop
 **Work:** an on-device record test of this exact case (Task thread, message port, `observeFieldScopedEx` on another Task's `state`, plus a second plain observer from a render component; `unobserveFieldScoped`; does the other observer still fire?). If isolation holds, swap the two calls and drop the invariant; if not, keep the code and record why. Not now because it needs a new test component and device runs, and it ships as its own PR.
 
 First filed 2026-10-07 in `89c8185c`, which never reached `main` (PR #1126 merged without it). The docs-voice project states the true reason in [`api.md`](architecture/api.md#a-long-request-already-on-a-slot) and the `forgetCaller()` comment.
+
+#### Some remote `.strm` items fail on every play because the server's `PlaybackInfo` outlasts the 10 s request limit `[fid: strm-first-play-probe-outlasts-10s]` `[captured 2026-10-12]` `[pinned]`
+
+Some remote `.strm` items fail on every play with "There was an error retrieving playback information from the server": their `PlaybackInfo` takes longer than the app's default request limit (`timeouts.HTTP_MS`, 10 s). `LoadItems_AddVideoContent` in `LoadVideoContentTask` gives only a live item its own limit (`openLimitMs`).
+
+Evidence (2026-10-12): on a device (`.176` and `.177`, Jellyfin 12.1), `.strm` items pointing at a public HLS stream failed with `[http] Timeout= 10000`, then `Event Timed Out` and `PlaybackInfo failed cause timed out isLive false`, on a first play and on a later one. With curl, every `PlaybackInfo` for those items took 10.4 to 11.5 s on 12.1 and 10.7 to 12.0 s on 10.11, before and after the server had saved their streams (44.6 s once while a library scan ran). The same stream answered a plain GET in 0.6 s from inside both server containers, so the time is the server's own work. A `.strm` item served from the LAN answered `PlaybackInfo` in under 0.3 s and played.
+
+Options weighed in `/snag` (`unprobed-limit` was recommended, then disproved: it assumed only the first play was slow):
+
+- A per-source limit for remote `.strm` sources (an `Http` source whose `Path` is not the server's), sized from measurements. The `PLAYBACK_START` app wait already shows "Still loading…". Back is the open design: the pool never stops a POST, so the slot stays held up to the limit. That is the third part the `screens-outgrowing-10s-request-limit` rule asks for.
+- `all-playback-info`: a longer limit for every non-live `PlaybackInfo`. Rejected: a dead server would take that long to report on every Play.
+- `retry-once`: ask again after a timeout. Rejected: every request for the source is slow, so a retry fails the same way.
+
+Not checked: what the server spends the 10 s on (log lines show a metadata refresh for the item finishing as the answer arrives; not confirmed as the cause); whether it depends on the stream (a public HLS stream with 14 streams, against a local one with 2); how long the server takes at most; versions 10.7 to 10.10.
+
+Not done now because the Back and pool-slot design belongs with the `failure-not-empty` project's slow-server work, and the cause should be found first.
 
 ### tests
 

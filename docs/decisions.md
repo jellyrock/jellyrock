@@ -1189,6 +1189,7 @@ The RTA suite tests Quick Connect end to end by approving its own code: `POST /Q
 
 **date**: 2026-08-25
 **status**: accepted
+**partially-superseded-by**: playback-report-unidentified-audio (the silence, when the source lists audio the report cannot tie to the playing track)
 **related-files**: `source/utils/playbackReport.bs`, `source/utils/transcodeCause.bs`, `docs/architecture/playback.md`
 
 The playback-info report renders a `source → target` pair for an aspect ONLY where the server declared the target. Where it did not, the row shows the source alone and no arrow. The arrow is a claim that something changed, and the report has no business making that claim from inference.
@@ -1987,6 +1988,57 @@ The still-watching prompt stays on by default (`playbackStillWatching` is `defau
 Jellyfin 12.x declines direct play for every manifest source (`StreamBuilder.ManifestContainers`: `hls`, `applehttp`, `dash`), not only live `m3u` HLS channels, so `.strm` items always went through a server transcode and live DASH channels never played on 12.1. JellyRock now plays any source whose `Path` is an absolute upstream HLS or DASH manifest from that URL (`getUpstreamManifestBlocker()`), keeping the server's stream only where a rule older than 12.0 applies (the retry that forces a transcode, auto-loop, remote-source policy, bitrate limit), and sets `StreamFormat` from the manifest's own format instead of giving every live item `hls`. Considered and ruled out: a separate `.strm` rule beside the live one (two copies of the same checks), and leaving `.strm` unset as on 10.11 (relies on the Roku guessing the format from the URL).
 
 The device check (`upstreamManifestAnswers()`) now runs on a server "yes" too, since a Roku handed an unreachable URL buffers until the live stall error (~62 s on 10.11) where the server's own stream plays (~36 s); a failed check after a "yes" hands off to the server's stream before the Video node sees the URL (`needsServerStream`, then `retryPlayback`). For that retry to work on non-live items, every retry that forces a transcode now sends `EnableDirectPlay=false`; before, only live retries did, so a `.strm` the server allowed got the same "yes" back. Cost accepted: up to `UPSTREAM_PREFLIGHT_MS` (3 s) added when an upstream URL is unreachable; no measurable cost on a reachable LAN URL (measured 2026-10-11, Stick 4K, 10.11.11 and 12.1.0).
+
+## decision-id: playback-report-unidentified-audio
+
+**date**: 2026-10-12
+**status**: accepted
+**partially-supersedes**: playback-report-target-evidence-tiers (the silence, when the source lists audio the report cannot tie to the playing track)
+**related-files**: `source/utils/playbackReport.bs`, `docs/architecture/playback.md`
+
+The playback-info report shows an Audio section whenever the source lists audio, even when the server does not say which track plays. One audio stream with no index (a Live TV channel's `m3u` tuner sends `-1` for every stream) is the track playing, and the section describes it. Several give "Playing track: Unknown" and the tracks by the server's own titles (`unidentifiedAudioSection()`). A source that lists no audio still gets no section, because none listed is not the same claim as none there.
+
+Silence was ruled out because a missing Audio section reads as "this has no audio", which is how the live gap was first reported. A bare "Unknown" row was ruled out because it hides tracks the server did list. Showing the first audio stream was ruled out because it names a track nobody may be hearing, which is the bug `findStreamByIndex()` exists to prevent.
+
+## decision-id: playback-report-stream-origin
+
+**date**: 2026-10-12
+**status**: accepted
+**related-files**: `source/utils/streamOrigin.bs`, `source/utils/playbackReport.bs`, `docs/architecture/playback.md`
+
+The playback-info report tells every viewer where the stream comes from ("Streaming from": this Jellyfin server, or the host of the URL the player was handed), and shows administrators the playback URL and the path with their secrets hidden. A server URL's `ApiKey` (or `api_key`) is masked, since it is the user's access token (measured in the `TranscodingUrl` of 10.11 and 12.1); a provider's URL has every query value masked, because its token names are unknown; and any `user:password@` is masked on every URL, the server's own included, because the host comparison ignores it. The report is the screen users photograph for a bug report.
+
+Chosen over an admin-only raw URL (answers nobody else, and puts the token on screen) and over the origin row alone (left provider tokens visible in the admin Path row). The cost: an administrator can no longer copy a provider URL's query values from the TV; the server's dashboard still has them.
+
+## decision-id: playback-report-reason-explanations
+
+**date**: 2026-10-12
+**status**: accepted
+**related-files**: `source/utils/playbackReport.bs`, `locale/custom/en_US.json`, `docs/architecture/playback.md`
+
+Each transcode reason in the playback-info report keeps the server's code as its label, untranslated so it can be searched, and explains it in plain words: one string for each of the 28 codes Jellyfin's `TranscodeReason` defines (10.7.7, 12.1, 12.2), written from where `StreamBuilder` sets each code rather than from its name (`DirectPlayError` means no direct-play profile fitted and no reason was found). The wording says what needs converting, not that the device cannot play it, because one of our settings can be the cause, and the row then names it. A code the app does not know shows no explanation.
+
+This reverses the earlier rule of showing codes with no gloss, which left a bare code beside an empty column on every transcode the app's settings did not cause. Ruled out: a "Reason" label with the code as the value (repeats the label for each reason), and exempting reason rows from the RTA check that no row is empty (kept the unexplained rows). The cost is 28 strings to translate, and a string to add when Jellyfin adds a code; until then the new code shows unexplained.
+
+## decision-id: playback-report-strm-by-path
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/streamOrigin.bs`, `source/utils/playbackReport.bs`, `components/video/VideoPlayerView.bs`, `docs/architecture/playback.md`
+
+The playback-info report recognizes a `.strm` item by the item's own path ending in `.strm` (`isShortcutPath()`), and then hides its size and total bitrate, which describe the text file. This is the server's own test: `BaseVideoResolver` sets `IsShortcut` from the extension, but sends it to no client. The item's `Path` does reach the app, for an admin and a non-admin (measured 2026-10-12 on 10.11.11 and 12.1.0). Without a path, the figures show as they did before.
+
+Ruled out: `Protocol = Http`, which shipped first in #1184 and was replaced, because a shortcut takes its URL's protocol (a `.strm` holding an `rtsp://` URL kept showing 101 B) and a channel plugin's `Http` source can carry real figures. Also ruled out: `IsRemote`, which misses a `.strm` that points at a local path and depends on what each channel plugin sets.
+
+## decision-id: playback-report-unlisted-audio-tracks
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/playbackReport.bs`, `components/video/PlayerHostView.bs`, `docs/architecture/playback.md`
+
+When the device plays a stream itself and Roku lists none of its audio tracks, and the source lists more than one, the report says "Playing track: Unknown" and lists the tracks (`unidentifiedAudioSection()`), rather than describing the app's pick. Roku lists no tracks for audio muxed into one HLS variant, so the app cannot select one (measured 2026-10-12 on a Stick 4K against 12.1). With `#EXT-X-MEDIA` renditions, or a direct-played MKV, Roku lists the tracks, the pick plays, and the section describes it. This extends `playback-report-unidentified-audio` to a second way the playing track is unknown.
+
+Ruled out: reloading through the server's stream so the pick plays. The track list is known only after playback starts, so it would restart the play and load the server, and it assumes which muxed track Roku plays by default, which is unmeasured. Also ruled out: leaving the pick in the report, which names a track nobody may be hearing. Making the pick selectable is followup `muxed-hls-audio-tracks-unselectable`.
 
 ## Migrated to ADRs
 

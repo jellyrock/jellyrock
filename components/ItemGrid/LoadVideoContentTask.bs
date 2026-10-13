@@ -19,6 +19,7 @@ import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/probedStreams.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/subtitles.bs"
@@ -499,6 +500,60 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   m.log.debug("PlaybackInfo loaded", "mediaSourceCount", m.playbackInfo.MediaSources.Count())
 
+  ' Whether the device plays the source's own manifest URL is worked out once, from this first
+  ' answer, and applied further down. Nothing it reads depends on which tracks were picked, and the
+  ' probed picks below need it: a new answer is wasted when the device never plays the server's.
+  manifestSource = invalid
+  if isValidAndNotEmpty(m.playbackInfo.MediaSources) then manifestSource = m.playbackInfo.MediaSources[0]
+  manifestTranscodingUrl = ""
+  if isValid(manifestSource) then manifestTranscodingUrl = textOrEmpty(manifestSource.TranscodingUrl)
+  userPolicy = userSession.policy
+  upstreamBlocker = getUpstreamManifestBlocker(manifestSource, {
+    forceTranscoding: forceTranscoding,
+    serverUrl: textOrEmpty(getUrl()),
+    forceRemoteSourceTranscoding: isValid(userPolicy) and isBooleanTrue(userPolicy.forceRemoteSourceTranscoding),
+    transcodeReasons: getTranscodeReasons(manifestTranscodingUrl)
+  })
+  manifestFormat = ""
+  deviceLoadsUpstream = false
+  if upstreamBlocker = UpstreamManifestBlocker.NONE
+    manifestFormat = upstreamManifestFormat(manifestSource)
+    deviceLoadsUpstream = upstreamManifestAnswers(manifestSource.Path, manifestFormat)
+  end if
+
+  ' A source the server had never probed (a .strm item before its first play) listed no streams,
+  ' so the audio and subtitle picks above had nothing to choose from. This PlaybackInfo probed it
+  ' and the server saved what it found, so read the item again and pick from that.
+  if not isLive and sourceListsNoStreams(playedSource)
+    reloadProbedStreams(meta, mediaSourceId)
+    probedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
+    if not sourceListsNoStreams(probedSource)
+      if m.top.selectedAudioStreamIndex = 0
+        audioStreamIdx = selectAudioStreamIndex(probedSource.MediaStreams, userSettings, userSession.config, meta.originalLanguage ?? "")
+      end if
+      sentSubtitleIdx = subtitleIdx
+      if m.top.selectedSubtitleIndex = SubtitleSelection.NOT_SET
+        subtitleIdx = defaultSubtitleTrackFromVid(meta, audioStreamIdx, mediaSourceId)
+      end if
+      serverAllowedFirst = isValid(manifestSource) and isBooleanTrue(manifestSource.SupportsDirectPlay)
+      answerPlays = serverAnswerPlays(upstreamBlocker, deviceLoadsUpstream, serverAllowedFirst)
+      m.log.info("Tracks picked from the streams the first PlaybackInfo probed", "audioStreamIdx", audioStreamIdx, "subtitleIdx", subtitleIdx, "answerPlays", answerPlays, "itemId", video.id)
+      ' A transcode was built for the server's own picks, so ask for one built for ours, unless
+      ' the device plays the upstream URL or the player's retry asks the server with our picks.
+      if answerPlays and probedPicksNeedNewAnswer(manifestSource, audioStreamIdx, subtitleIdx, sentSubtitleIdx)
+        res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
+        if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
+          m.playbackInfo = res.json
+        else
+          ' Play the first answer, and describe it as the server built it.
+          m.log.warn("PlaybackInfo for the probed picks failed; keeping the server's", "cause", apiResponse.jsonFailure(res), "itemId", video.id)
+          audioStreamIdx = serverAudioIndex(manifestSource)
+          subtitleIdx = sentSubtitleIdx
+        end if
+      end if
+    end if
+  end if
+
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
   addSubtitlesToVideo(video, meta)
 
@@ -557,18 +612,11 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' says which), even though Jellyfin 12.0+ declines direct play for every manifest. Whatever the
   ' server answered, the device must be able to load the URL itself first: one it cannot reach leaves
   ' the Roku buffering rather than failing, so the fallback to the server would not run in time.
-  manifestSource = m.playbackInfo.MediaSources[0]
-  userPolicy = userSession.policy
-  upstreamBlocker = getUpstreamManifestBlocker(manifestSource, {
-    forceTranscoding: forceTranscoding,
-    serverUrl: textOrEmpty(getUrl()),
-    forceRemoteSourceTranscoding: isValid(userPolicy) and isBooleanTrue(userPolicy.forceRemoteSourceTranscoding),
-    transcodeReasons: getTranscodeReasons(textOrEmpty(manifestSource.TranscodingUrl))
-  })
+  ' The blocker and that check ran on the first answer, above; whether the server allowed direct
+  ' play is read from the answer that plays.
   if upstreamBlocker = UpstreamManifestBlocker.NONE
-    manifestFormat = upstreamManifestFormat(manifestSource)
     serverAllowed = isBooleanTrue(video.isDirectPlaySupported)
-    if upstreamManifestAnswers(manifestSource.Path, manifestFormat)
+    if deviceLoadsUpstream
       video.isDirectPlaySupported = true
       ' If the device cannot play the stream after all, the player retries through the server.
       video.isTranscodeAvailable = true
@@ -797,6 +845,22 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
   if not fullyExternal
     video.content = authRequest(video.content)
   end if
+end sub
+
+' reloadProbedStreams: Replace the item's media sources with the ones the server saved when the
+' first PlaybackInfo probed them. Leaves meta as it was when the read fails, so the caller's picks
+' stand and nothing else changes.
+'
+' @param {object} meta - item metadata (from ItemMetaData), updated in place
+' @param {dynamic} mediaSourceId - the MediaSource being played
+sub reloadProbedStreams(meta as object, mediaSourceId as dynamic)
+  probed = ItemMetaData(meta.id)
+  if not isValid(probed) or not isValid(probed.mediaSourcesData) then return
+  meta.mediaSourcesData = probed.mediaSourcesData
+  probedSource = mediaSourceForId(probed.mediaSourcesData.mediaSources, mediaSourceId)
+  streamCount = 0
+  if isValid(probedSource) and isValid(probedSource.MediaStreams) then streamCount = probedSource.MediaStreams.count()
+  m.log.info("Reloaded the streams the first PlaybackInfo probed", "streamCount", streamCount, "itemId", meta.id)
 end sub
 
 ' addAudioStreamsToVideo: Populate video.fullAudioData with the item's audio tracks.

@@ -1,0 +1,126 @@
+import "pkg:/source/utils/probedStreams.bs"
+
+namespace tests
+
+  ' The first play of a source the server never probed: what the app read before PlaybackInfo,
+  ' and when its track picks need a new answer.
+  @suite("probedStreams")
+  class ProbedStreamsTests extends tests.BaseTestSuite
+
+    private function transcodeSource(url as string) as object
+      return {
+        Id: "src",
+        TranscodingUrl: url,
+        DefaultAudioStreamIndex: 1,
+        MediaStreams: [{ Type: "Video", Index: 0 }, { Type: "Audio", Index: 1 }, { Type: "Audio", Index: 2 }]
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("sourceListsNoStreams()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a source whose MediaStreams is empty")
+    function _()
+      m.assertTrue(sourceListsNoStreams({ Id: "src", MediaStreams: [] }))
+    end function
+
+    @it("is true for a source with no MediaStreams field")
+    function _()
+      m.assertTrue(sourceListsNoStreams({ Id: "src" }))
+    end function
+
+    @it("is false for a source that lists streams")
+    function _()
+      m.assertFalse(sourceListsNoStreams({ Id: "src", MediaStreams: [{ Type: "Audio", Index: 1 }] }))
+    end function
+
+    @it("is false when there is no source at all")
+    function _()
+      m.assertFalse(sourceListsNoStreams(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("serverAudioIndex()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads AudioStreamIndex from the TranscodingUrl")
+    function _()
+      source = m.transcodeSource("/videos/x/master.m3u8?MediaSourceId=src&AudioStreamIndex=2&VideoCodec=h264")
+      m.assertEqual(serverAudioIndex(source), 2)
+    end function
+
+    @it("falls back to DefaultAudioStreamIndex when the URL has none")
+    function _()
+      source = m.transcodeSource("/videos/x/master.m3u8?MediaSourceId=src")
+      m.assertEqual(serverAudioIndex(source), 1)
+    end function
+
+    @it("is -1 when neither says")
+    function _()
+      m.assertEqual(serverAudioIndex({ Id: "src" }), -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("serverAnswerPlays()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false when the device plays the upstream URL itself")
+    function _()
+      ' Measured 2026-10-12 on a Stick 4K against 12.1: a manifest .strm got a transcode answer
+      ' and the device then played the provider's URL, so a second answer was never used.
+      m.assertFalse(serverAnswerPlays(UpstreamManifestBlocker.NONE, true, false))
+    end function
+
+    @it("is false when the server allowed a URL the device cannot load, since the retry asks again")
+    function _()
+      m.assertFalse(serverAnswerPlays(UpstreamManifestBlocker.NONE, false, true))
+    end function
+
+    @it("is true when the device cannot load the URL and the server refused it")
+    function _()
+      m.assertTrue(serverAnswerPlays(UpstreamManifestBlocker.NONE, false, false))
+    end function
+
+    @it("is true when something keeps the source off its upstream URL")
+    function _()
+      m.assertTrue(serverAnswerPlays(UpstreamManifestBlocker.NOT_MANIFEST, false, false))
+      m.assertTrue(serverAnswerPlays(UpstreamManifestBlocker.FORCED_TRANSCODE, false, true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("probedPicksNeedNewAnswer()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false when the picks match what the transcode was built with")
+    function _()
+      source = m.transcodeSource("/videos/x/master.m3u8?AudioStreamIndex=1")
+      m.assertFalse(probedPicksNeedNewAnswer(source, 1, SubtitleSelection.NONE, SubtitleSelection.NONE))
+    end function
+
+    @it("is true when the audio pick differs from the transcode's")
+    function _()
+      source = m.transcodeSource("/videos/x/master.m3u8?AudioStreamIndex=1")
+      m.assertTrue(probedPicksNeedNewAnswer(source, 2, SubtitleSelection.NONE, SubtitleSelection.NONE))
+    end function
+
+    @it("is true when the subtitle pick differs from the one requested")
+    function _()
+      source = m.transcodeSource("/videos/x/master.m3u8?AudioStreamIndex=1")
+      m.assertTrue(probedPicksNeedNewAnswer(source, 1, 3, SubtitleSelection.NONE))
+    end function
+
+    @it("is false for a direct play answer, whatever the picks")
+    function _()
+      source = { Id: "src", DefaultAudioStreamIndex: 1, MediaStreams: [] }
+      m.assertFalse(probedPicksNeedNewAnswer(source, 2, 3, SubtitleSelection.NONE))
+    end function
+
+    @it("is false when there is no answer")
+    function _()
+      m.assertFalse(probedPicksNeedNewAnswer(invalid, 2, 3, SubtitleSelection.NONE))
+    end function
+
+  end class
+
+end namespace

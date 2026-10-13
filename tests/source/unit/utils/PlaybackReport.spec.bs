@@ -60,6 +60,19 @@ namespace tests
       }
     end sub
 
+    ' A direct play of a source with two indexed audio tracks, the second picked.
+    private sub directPlayTwoAudio()
+      m.input.session = { PlayState: {} }
+      m.input.mediaSource.TranscodingUrl = invalid
+      m.input.mediaSource.MediaStreams = [
+        { Type: "Video", Index: 0, Codec: "h264" },
+        { Type: "Audio", Index: 1, Codec: "aac", Channels: 2, DisplayTitle: "English - AAC - Stereo" },
+        { Type: "Audio", Index: 2, Codec: "ac3", Channels: 2, DisplayTitle: "French - AC3 - Stereo" }
+      ]
+      m.input.audioStreamIndex = 2
+      m.input.subtitleStreamIndex = -1
+    end sub
+
     private function sectionById(report as object, id as string) as dynamic
       for each section in report.sections
         if section.id = id then return section
@@ -322,19 +335,44 @@ namespace tests
     @describe("transcode reasons")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("shows the server's code verbatim and explains only our own doing")
+    @it("keeps the server's code as the label, explains it, and names our setting when it caused it")
     function _()
       section = m.sectionById(buildPlaybackReport(m.input), "reasons")
       m.assertEqual(section.rows[0].label, "VideoRangeTypeNotSupported", "the server's vocabulary passes through untranslated")
-      m.assertEqual(section.rows[0].value, "Caused by the Preserve DoVi setting")
+      m.assertEqual(section.rows[0].value, "The video's dynamic range needs converting for this device. Caused by the Preserve DoVi setting.")
     end function
 
-    @it("leaves a reason unexplained when no setting of ours caused it")
+    @it("explains a reason no setting of ours caused")
     function _()
       m.input.session.TranscodingInfo.TranscodeReasons = ["AudioCodecNotSupported"]
       section = m.sectionById(buildPlaybackReport(m.input), "reasons")
       m.assertEqual(section.rows[0].label, "AudioCodecNotSupported")
-      m.assertEqual(section.rows[0].value, "", "a reason we cannot prove is the server's to explain")
+      m.assertEqual(section.rows[0].value, "The audio codec needs converting for this device.")
+    end function
+
+    @it("says DirectPlayError means no specific reason, which its name hides")
+    function _()
+      ' StreamBuilder sets it when no direct-play profile fits and no reason was found (12.1).
+      m.input.session.TranscodingInfo.TranscodeReasons = ["DirectPlayError"]
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "reason.DirectPlayError"), "The server found no way to play it directly, and gave no specific reason.")
+    end function
+
+    @it("explains every reason Jellyfin defines")
+    function _()
+      ' TranscodeReason at 10.7.7 (MediaBrowser.Model/Session/TranscodingInfo.cs) and at
+      ' v12.1 and v12.2 (MediaBrowser.Model/Session/TranscodeReason.cs): 28 codes in all.
+      codes = ["ContainerNotSupported", "VideoCodecNotSupported", "AudioCodecNotSupported", "SubtitleCodecNotSupported", "AudioIsExternal", "SecondaryAudioNotSupported", "StreamCountExceedsLimit", "VideoProfileNotSupported", "VideoRangeTypeNotSupported", "VideoCodecTagNotSupported", "VideoLevelNotSupported", "VideoResolutionNotSupported", "VideoBitDepthNotSupported", "VideoFramerateNotSupported", "VideoRotationNotSupported", "RefFramesNotSupported", "AnamorphicVideoNotSupported", "InterlacedVideoNotSupported", "AudioChannelsNotSupported", "AudioProfileNotSupported", "AudioSampleRateNotSupported", "AudioBitDepthNotSupported", "ContainerBitrateExceedsLimit", "VideoBitrateNotSupported", "AudioBitrateNotSupported", "UnknownVideoStreamInfo", "UnknownAudioStreamInfo", "DirectPlayError"]
+      m.assertEqual(codes.count(), 28)
+      for each code in codes
+        m.assertNotEqual(transcodeReasonExplanation(code), "", code + " has no explanation")
+      end for
+    end function
+
+    @it("leaves a code it does not know without an explanation")
+    function _()
+      ' A newer server's code: the code itself still shows, and a guess would be worse.
+      m.input.session.TranscodingInfo.TranscodeReasons = ["SomeFutureReason"]
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "reason.SomeFutureReason"), "")
     end function
 
     @it("pairs each code with its own explanation across several reasons")
@@ -347,9 +385,9 @@ namespace tests
 
       rows = m.sectionById(buildPlaybackReport(m.input), "reasons").rows
       m.assertEqual(rows.count(), 3)
-      m.assertEqual(rows[0].value, "Caused by the Preserve DoVi setting")
-      m.assertEqual(rows[1].value, "")
-      m.assertEqual(rows[2].value, "Caused by the Decode Multichannel Audio setting")
+      m.assertEqual(rows[0].value, "The video's dynamic range needs converting for this device. Caused by the Preserve DoVi setting.")
+      m.assertEqual(rows[1].value, "The audio codec needs converting for this device.")
+      m.assertEqual(rows[2].value, "The audio's channel count needs converting for this device. Caused by the Decode Multichannel Audio setting.")
     end function
 
     @it("gives the reasons section a wide label column for the codes")
@@ -407,6 +445,72 @@ namespace tests
 
       m.input.audioStreamIndex = 1
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.codec"), "AAC")
+    end function
+
+    @it("describes the one audio stream of a source whose streams carry no index")
+    function _()
+      ' A Live TV channel: the M3U tuner sends every stream with Index -1.
+      m.input.mediaSource.MediaStreams = [
+        { Type: "Video", Index: -1, Codec: "h264" },
+        { Type: "Audio", Index: -1, Codec: "aac", Channels: 2, DisplayTitle: "AAC - Stereo" }
+      ]
+      m.input.audioStreamIndex = 0
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.codec"), "AAC")
+      m.assertEqual(m.rowValue(report, "audio.playing"), "<missing>")
+    end function
+
+    @it("says the playing track is unknown, and lists the tracks, when it cannot tell which plays")
+    function _()
+      m.input.mediaSource.MediaStreams = [
+        { Type: "Video", Index: -1, Codec: "h264" },
+        { Type: "Audio", Index: -1, Codec: "aac", DisplayTitle: "AAC - Stereo" },
+        { Type: "Audio", Index: -1, Codec: "ac3", DisplayTitle: "AC3 - 5.1" }
+      ]
+      m.input.audioStreamIndex = 0
+      report = buildPlaybackReport(m.input)
+      m.assertTrue(m.hasSection(report, "audio"))
+      m.assertEqual(m.rowValue(report, "audio.playing"), "Unknown")
+      m.assertEqual(m.rowValue(report, "audio.tracks"), "AAC - Stereo, AC3 - 5.1")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "<missing>")
+    end function
+
+    @it("says the playing track is unknown on a direct play whose audio tracks Roku does not list")
+    function _()
+      ' Several tracks muxed into one HLS variant: Roku lists none, so the app cannot
+      ' choose, and naming the pick would describe a track nobody is hearing.
+      m.directPlayTwoAudio()
+      m.input.audioTracksUnlisted = true
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.playing"), "Unknown")
+      m.assertEqual(m.rowValue(report, "audio.tracks"), "English - AAC - Stereo, French - AC3 - Stereo")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "<missing>")
+    end function
+
+    @it("describes the picked audio stream when Roku lists the audio tracks")
+    function _()
+      m.directPlayTwoAudio()
+      m.input.audioTracksUnlisted = false
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.playing"), "<missing>")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "AC3")
+    end function
+
+    @it("still describes the one audio stream when Roku lists no tracks")
+    function _()
+      m.directPlayTwoAudio()
+      m.input.mediaSource.MediaStreams = [m.input.mediaSource.MediaStreams[0], m.input.mediaSource.MediaStreams[2]]
+      m.input.audioStreamIndex = 2
+      m.input.audioTracksUnlisted = true
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.playing"), "<missing>")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "AC3")
+    end function
+
+    @it("still has no audio section for a source that lists no audio")
+    function _()
+      m.input.mediaSource.MediaStreams = [{ Type: "Video", Index: 0, Codec: "h264" }]
+      m.assertFalse(m.hasSection(buildPlaybackReport(m.input), "audio"))
     end function
 
     @it("omits the subtitle section entirely when no subtitle is selected")
@@ -625,6 +729,92 @@ namespace tests
       for each row in m.sectionById(report, "file").rows
         m.assertNotEqual(row.id, "file.path", "an unknown viewer was shown the path")
       end for
+    end function
+
+    @it("says a stream comes from this server, to everyone")
+    function _()
+      m.input.isAdministrator = false
+      m.input.serverUrl = "https://jellyfin.example.com"
+      m.input.playbackUrl = "https://jellyfin.example.com/videos/x/master.m3u8?ApiKey=secret"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.origin"), "This Jellyfin server")
+    end function
+
+    @it("names the host an upstream stream comes from")
+    function _()
+      m.input.serverUrl = "https://jellyfin.example.com"
+      m.input.playbackUrl = "https://cdn.example.com/live/master.m3u8?token=abc"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.origin"), "cdn.example.com")
+    end function
+
+    @it("shows an administrator the playback URL with its token hidden")
+    function _()
+      m.input.serverUrl = "https://jellyfin.example.com"
+      m.input.playbackUrl = "https://jellyfin.example.com/videos/x/master.m3u8?AudioStreamIndex=1&ApiKey=secret"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.url"), "https://jellyfin.example.com/videos/x/master.m3u8?AudioStreamIndex=1&ApiKey=***")
+    end function
+
+    @it("hides the playback URL from a non-administrator")
+    function _()
+      m.input.isAdministrator = false
+      m.input.serverUrl = "https://jellyfin.example.com"
+      m.input.playbackUrl = "https://jellyfin.example.com/videos/x/master.m3u8?ApiKey=secret"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.url"), "<missing>")
+    end function
+
+    @it("hides the query values of an upstream path, which can carry a provider's token")
+    function _()
+      m.input.serverUrl = "https://jellyfin.example.com"
+      m.input.mediaSource.Path = "https://cdn.example.com/live/master.m3u8?token=abc"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.path"), "https://cdn.example.com/live/master.m3u8?token=***")
+    end function
+
+    @it("omits size and bitrate for a .strm item, whose figures are the text file's")
+    function _()
+      ' Measured 2026-10-12 on 10.11 and 12.1: a .strm source's Size is the .strm file
+      ' (101 B), with a Bitrate worked out from it (11 bit/s).
+      m.input.isShortcut = true
+      m.input.mediaSource.Protocol = "Http"
+      m.input.mediaSource.Size = 101
+      m.input.mediaSource.Bitrate = 11
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "file.size"), "<missing>")
+      m.assertEqual(m.rowValue(report, "file.bitrate"), "<missing>")
+    end function
+
+    @it("omits them for a .strm item whose URL is not Http")
+    function _()
+      ' A shortcut takes its URL's protocol, so an rtsp one is Rtsp with the same file figures.
+      m.input.isShortcut = true
+      m.input.mediaSource.Protocol = "Rtsp"
+      m.input.mediaSource.Size = 101
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "file.size"), "<missing>")
+      m.assertEqual(m.rowValue(report, "file.bitrate"), "<missing>")
+    end function
+
+    @it("keeps size and bitrate for an Http source that is not a .strm item")
+    function _()
+      ' A channel plugin's source: the plugin sets these, so they are not the text file's.
+      m.input.mediaSource.Protocol = "Http"
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "file.size"), "24.2 GiB")
+      m.assertNotEqual(m.rowValue(report, "file.bitrate"), "<missing>")
+    end function
+
+    @it("keeps the bitrate of a live stream, which the server measures")
+    function _()
+      m.input.mediaSource.Protocol = "Http"
+      m.input.mediaSource.IsInfiniteStream = true
+      m.input.mediaSource.Bitrate = 8200000
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.bitrate"), "8.2 Mbps")
+    end function
+
+    @it("keeps size and bitrate for a file")
+    function _()
+      m.input.mediaSource.Protocol = "File"
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "file.size"), "24.2 GiB")
+      m.assertNotEqual(m.rowValue(report, "file.bitrate"), "<missing>")
     end function
 
     @it("omits size on a live stream, which has no file to have one")
