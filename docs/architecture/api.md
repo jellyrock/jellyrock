@@ -16,7 +16,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-13
 ---
 
 # API layer and task pool
@@ -216,6 +216,8 @@ Only reads are stopped, for the same reason as skipping. The Live TV `PlaybackIn
 On-device specs need a screen's failure and slow-server paths against a healthy, fast server. So RTA builds (`ENABLE_RTA`) let a spec make chosen requests fail or answer slowly. The coordinator holds the rules from `m.global.rtaFailRequests`, reading the field only when a spec writes it. It checks each request as it takes it off its children (`processNewChildren`, then `answeredOnPurpose`).
 
 A failure is answered at once and never reaches a slot. The answer is the one the pool itself delivers for that failure, built by [`apiFaults.responseFor()`](../../source/api/apiFaults.bs): a `roku-requests` timeout is `ok = false` with no `statusCode` or body, and an HTTP failure keeps its status. Nothing marks it as injected, because code that could tell the two apart could handle a test failure differently from a real one.
+
+An empty answer (`kind: "empty"`) is answered at once too, with `ok = true` and an empty list in the shape its request expects: `[]` for a list request, which the shape check in `ApiTask` would otherwise demand, and an empty query result for any other, so a spec can reach a screen's "nothing here" path against a server whose libraries are full.
 
 A slow request (`kind: "slow"`, `ms`) is sent like any other, and its real answer is held until `ms` after it was sent (`heldOnPurpose`). Its slot stays in flight until then, because a slow server's cost to the app includes the slot it occupies, and a screen that abandons a slow load must be able to give that slot back. While an answer is held, the loop waits only until the earliest is due (`apiFaults.nextWaitMs`). A held request that is stopped ([above](#a-long-request-already-on-a-slot)) gives its slot back at once, as a stopped real one does (`releaseHeldOnPurpose`). `m.global.rtaHeldRequests` counts the answers held, so a spec can see a request is on a slot before acting, and see the slot come back.
 

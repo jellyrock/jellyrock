@@ -26,6 +26,7 @@ import {
   hasChildren,
   waitMediaPlaying,
   stopPlayback,
+  waitToast,
   PLAYING_STATES,
 } from '../lib/steps.js';
 
@@ -35,6 +36,8 @@ const LOCALE = RTA_CONFIG.languages[0];
 // on a LAN fetch to the demo, not a tuned value. If the production fetch ever gains an explicit
 // timeout constant, prefer deriving this from it.
 const VALIDATION_FETCH_BUDGET_MS = 6000;
+// locale/custom/en_US.json MessageShuffleUnsupported.
+const SHUFFLE_UNSUPPORTED = "Can't shuffle this.";
 
 let session;
 let heroId; // a Movie (open / play targets)
@@ -138,3 +141,15 @@ it('action=instantmix builds a mix and starts playback', async () => {
   await waitMediaPlaying('deep-link instantmix');
   await stopPlayback(); // audio keeps playing while browsing by design, so stop it so it can't leak
 }, 120000);
+
+// action=shuffle on a type nothing shuffles (a movie). A Jellyfin sender's Shuffle arrives as
+// this deep link for whatever item it names, so the app must say it can't, not ask for a retry
+// that can never work (quickplayOutcome.STATUS_UNSUPPORTED).
+it('action=shuffle on a movie says it cannot be shuffled and plays nothing', async () => {
+  await castFromHome(`id=${heroId}|action=shuffle`);
+  await waitToast(SHUFFLE_UNSUPPORTED, { label: 'the cannot-shuffle toast', timeout: 25000 });
+  // The toast comes from the details screen's own Shuffle, so it is the active view by now.
+  expect(await getActiveVal('itemId'), 'still on the movie details').toBe(heroId);
+  const player = await ecp.getMediaPlayer().catch(() => null);
+  expect(PLAYING_STATES.includes(player?.state), 'nothing playing').toBe(false);
+}, 90000);
