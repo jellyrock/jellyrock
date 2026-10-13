@@ -69,8 +69,8 @@
  *
  * The ref lives in a PUBLIC repo, so its name is world-readable to anyone who
  * runs `git ls-remote`. The key is therefore sha256(device-id) truncated -- never
- * the raw ECP `device-id`, which partially encodes the serial (.177 reports
- * serial X01700M79A2U and device-id S09042179A2U; note the shared tail). Both
+ * the raw ECP `device-id`, which partially encodes the serial (on the devices
+ * checked, the two share a tail). Both
  * parties hash the same input, so they still agree on the name. The holder
  * record in the tag object is scrubbed for the same reason: `where` and a pid,
  * never a hostname.

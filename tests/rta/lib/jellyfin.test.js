@@ -181,12 +181,12 @@ describe('sessionDeviceId', () => {
     // third-party server, and a LAN address is the device's own business.
     const prevKey = process.env.RTA_DEVICE_KEY;
     delete process.env.RTA_DEVICE_KEY;
-    process.env.ROKU_IP = '192.168.1.177';
+    process.env.ROKU_IP = '192.0.2.10';
     try {
       const id = sessionDeviceId('rta');
-      expect(id).not.toContain('192.168.1.177');
+      expect(id).not.toContain('192.0.2.10');
       expect(id).toBe(sessionDeviceId('rta'));
-      process.env.ROKU_IP = '192.168.1.178';
+      process.env.ROKU_IP = '192.0.2.11';
       expect(sessionDeviceId('rta')).not.toBe(id);
     } finally {
       delete process.env.ROKU_IP;

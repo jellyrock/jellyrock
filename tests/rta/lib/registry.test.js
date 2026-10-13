@@ -160,7 +160,7 @@ describe('session credentials the app re-mints for itself', () => {
 describe('the accepted-difference record', () => {
   const record = (diffs, previous = null) =>
     buildAcceptedRecord({
-      host: '192.168.1.177',
+      host: '192.0.2.10',
       acceptedAt: '2026-08-11T20:00:00Z',
       label: 'restoreRegistry',
       diffs,
@@ -197,7 +197,7 @@ describe('the accepted-difference record', () => {
       { section: 'u1', key: 'authToken', want: 'x', got: null },
       { section: 'u1', key: 'username', want: 'testuser', got: null },
     ]);
-    expect(r.host).toBe('192.168.1.177');
+    expect(r.host).toBe('192.0.2.10');
     const event = onlyEvent(r);
     expect(event.acceptedAt).toBe('2026-08-11T20:00:00Z');
     expect(event.differences).toHaveLength(2);
@@ -348,7 +348,7 @@ describe('the snapshot survives a build', () => {
 // the only one gated: `snapshotRegistry()` reads the same field and ACTS on it, and is
 // covered separately at the bottom of this file.
 describe('a snapshot says which process owns it', () => {
-  const HOST = '192.168.1.178';
+  const HOST = '192.0.2.11';
   let dir;
   let realEnv;
 
@@ -405,7 +405,7 @@ describe('a snapshot says which process owns it', () => {
 // branch, because what has to hold is that the guard sits ahead of the restore —
 // a test of the predicate alone would still pass if the call moved below it.
 describe('snapshotRegistry refuses a device another run still owns', () => {
-  const HOST = '192.168.1.178';
+  const HOST = '192.0.2.11';
   let dir;
   let cwd;
   let realEnv;

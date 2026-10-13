@@ -747,7 +747,7 @@ export const wasBlocked = (failures) => (failures || []).some((f) => BLOCKING_KI
  *      `expect()` in `tests/rta/specs/`, or a Vitest-level error);
  *   3. the suite never ran at all.
  *
- * (3) is not hypothetical: `ROKU_IP=192.168.1.200 npm run test:rta` on 2026-08-12
+ * (3) is not hypothetical: `npm run test:rta` against the CI device on 2026-08-12
  * threw out of `deployRtaBuild()` on a 401 (that device's dev password is a CI
  * secret, not the one in `.env`) and appended `durationMs: 621, failures: []`,
  * a line indistinguishable from a clean pass, on a clean commit, and the FIRST
