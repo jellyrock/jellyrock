@@ -2020,6 +2020,26 @@ Each transcode reason in the playback-info report keeps the server's code as its
 
 This reverses the earlier rule of showing codes with no gloss, which left a bare code beside an empty column on every transcode the app's settings did not cause. Ruled out: a "Reason" label with the code as the value (repeats the label for each reason), and exempting reason rows from the RTA check that no row is empty (kept the unexplained rows). The cost is 28 strings to translate, and a string to add when Jellyfin adds a code; until then the new code shows unexplained.
 
+## decision-id: playback-report-strm-by-path
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/streamOrigin.bs`, `source/utils/playbackReport.bs`, `components/video/VideoPlayerView.bs`, `docs/architecture/playback.md`
+
+The playback-info report recognizes a `.strm` item by the item's own path ending in `.strm` (`isShortcutPath()`), and then hides its size and total bitrate, which describe the text file. This is the server's own test: `BaseVideoResolver` sets `IsShortcut` from the extension, but sends it to no client. The item's `Path` does reach the app, for an admin and a non-admin (measured 2026-10-12 on 10.11.11 and 12.1.0). Without a path, the figures show as they did before.
+
+Ruled out: `Protocol = Http`, which shipped first in #1184 and was replaced, because a shortcut takes its URL's protocol (a `.strm` holding an `rtsp://` URL kept showing 101 B) and a channel plugin's `Http` source can carry real figures. Also ruled out: `IsRemote`, which misses a `.strm` that points at a local path and depends on what each channel plugin sets.
+
+## decision-id: playback-report-unlisted-audio-tracks
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/playbackReport.bs`, `components/video/PlayerHostView.bs`, `docs/architecture/playback.md`
+
+When the device plays a stream itself and Roku lists none of its audio tracks, and the source lists more than one, the report says "Playing track: Unknown" and lists the tracks (`unidentifiedAudioSection()`), rather than describing the app's pick. Roku lists no tracks for audio muxed into one HLS variant, so the app cannot select one (measured 2026-10-12 on a Stick 4K against 12.1). With `#EXT-X-MEDIA` renditions, or a direct-played MKV, Roku lists the tracks, the pick plays, and the section describes it. This extends `playback-report-unidentified-audio` to a second way the playing track is unknown.
+
+Ruled out: reloading through the server's stream so the pick plays. The track list is known only after playback starts, so it would restart the play and load the server, and it assumes which muxed track Roku plays by default, which is unmeasured. Also ruled out: leaving the pick in the report, which names a track nobody may be hearing. Making the pick selectable is followup `muxed-hls-audio-tracks-unselectable`.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
