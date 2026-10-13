@@ -173,14 +173,7 @@ const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-same-node-relau
  * when its site is migrated, or suppressed with its reason once audited safe; the
  * build fails until you do.
  */
-const PENDING_MIGRATIONS = {
-  'components/video/VideoPlayerView.bs': [
-    ['onSubtitleChange', 'm.LoadMetaDataTask'],
-    ['onAudioIndexChange', 'm.LoadMetaDataTask'],
-    ['onVideoSourceChange', 'm.LoadMetaDataTask'],
-    ['retryPlayback', 'm.LoadMetaDataTask'],
-  ],
-};
+const PENDING_MIGRATIONS = {};
 
 const CONTROL_FIELD = 'control';
 const STOP_VALUE = 'stop';

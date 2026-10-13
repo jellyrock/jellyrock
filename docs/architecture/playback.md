@@ -49,7 +49,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-13
 ---
 
 # Video and audio playback
@@ -236,7 +236,7 @@ Its children, declared in `VideoPlayerView.xml`: `captionGroup` (app-drawn subti
 ### Playback lifecycle
 
 1. **Mount.** `PlayerHostView.mountPlayer()` builds the player, observes its state and press fields, and appends it, hidden while it loads so no black frame covers the backdrop.
-2. **Load.** `init()` launches `LoadVideoContentTask` (`m.LoadMetaDataTask`), which asks the server how to play the item ([below](#choosing-a-stream)). `onVideoContentLoaded()` applies the answer (the stream `content`, the chosen audio, subtitle and version, `cachedPlaybackInfo`), makes the player visible and starts it, or shows the playback error when nothing came back.
+2. **Load.** `init()` launches `LoadVideoContentTask` (`m.LoadMetaDataTask`), which asks the server how to play the item ([below](#choosing-a-stream)). Every load, and every reload after it (an audio, subtitle or version change, a retry), goes through `startVideoLoad()`, which runs it on a new node with its full input set and lets the old run go through `releaseVideoLoad()`. A reload can start while the previous run is still going, and the same node would drop it: a second version pick made during the first one's load was lost 6 of 6 times, and the server-stream retry started from inside a delivery 9 of 10 times (measured 2026-10-13 on a Streaming Stick 4K against 12.0.0). `onVideoContentLoaded()` ignores a replaced run's delivery (`isCurrentTaskEvent`), then applies the answer (the stream `content`, the chosen audio, subtitle and version, `cachedPlaybackInfo`), makes the player visible and starts it, or shows the playback error when nothing came back.
 3. **Playing.** The `state` field moves through `buffering` to `playing`. The `playing` branch reports `start` once, tells the OSD the playback state (its icon), starts `playbackTimer`, and undoes a park.
 4. **Steady state.** `playbackTimer` sends `reportPlayback("update")` every 10 seconds. Pausing stops the timer and sends one update; resuming restarts it.
 5. **End.** `finished` reaches `PlayerHostView.onPlayerStateChange()` ([above](#when-a-video-ends)). If the viewer backs out, the router closes the host, and `destroyPlayer()` reports the stop either way.

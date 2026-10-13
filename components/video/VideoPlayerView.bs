@@ -82,21 +82,22 @@ sub init()
   m.playbackStart = m.global.queueManager.callFunc("takePlaybackStart")
 
   ' Load meta data
-  m.LoadMetaDataTask = CreateObject("roSGNode", "LoadVideoContentTask")
-  m.LoadMetaDataTask.itemId = m.currentItem.id
-  m.LoadMetaDataTask.itemType = m.currentItem.type
-  m.LoadMetaDataTask.selectedAudioStreamIndex = m.currentItem.selectedAudioStreamIndex
-  ' Subtitle override set pre-playback by ItemDetails' TrackDropdown. When unset we leave
-  ' LoadVideoContentTask's default (-2 = auto-detect) so the server's language/Smart-mode
-  ' rules still apply for callers that don't pick a track upfront.
+  m.isIntro = false
+  ' The version each run of the video load asks for (startVideoLoad): the one the queue item names,
+  ' later the one that loaded or the one the viewer switched to. "" lets the load choose.
+  m.videoLoadMediaSourceId = ""
+  if isValidAndNotEmpty(m.currentItem.mediaSourceId) then m.videoLoadMediaSourceId = m.currentItem.mediaSourceId
+  ' 0 lets the load pick the audio track, as a queue item that names none asks for.
+  audioStreamIndex = 0
+  if isValid(m.currentItem.selectedAudioStreamIndex) then audioStreamIndex = m.currentItem.selectedAudioStreamIndex
+  ' Subtitle override set pre-playback by ItemDetails' TrackDropdown. When unset we pass
+  ' auto-detect (-2) so the server's language/Smart-mode rules still apply for callers
+  ' that don't pick a track upfront.
+  subtitleIndex = SubtitleSelection.NOT_SET
   if isValid(m.currentItem.selectedSubtitleStreamIndex)
-    m.LoadMetaDataTask.selectedSubtitleIndex = m.currentItem.selectedSubtitleStreamIndex
+    subtitleIndex = m.currentItem.selectedSubtitleStreamIndex
     m.top.SelectedSubtitle = m.currentItem.selectedSubtitleStreamIndex
   end if
-  if isValidAndNotEmpty(m.currentItem.mediaSourceId)
-    m.LoadMetaDataTask.mediaSourceId = m.currentItem.mediaSourceId
-  end if
-  m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' The two waits that make up time-to-first-frame, declared as fills so the split line
   ' says WHICH of them the wait was. `metadata` is the server round trip (playback info,
   ' the transcode decision, the stream URL); `buffer` (declared once the content is
@@ -106,9 +107,8 @@ sub init()
   ' fill records a span inside the run, and `settleIfDone` will not fire until painted.
   ' So this screen settles the instant it paints (nothing is outstanding by then) and
   ' the value is entirely in the split: a slow start is either the server or the network,
-  ' and one number for the pair cannot say which.
-  screenLoad.pending("metadata")
-  launchTask(m.LoadMetaDataTask)
+  ' and one number for the pair cannot say which. startVideoLoad declares `metadata`.
+  startVideoLoad(audioStreamIndex, subtitleIndex)
 
   m.chapterList = m.top.findNode("chapterList")
   m.chapterMenu = m.top.findNode("chapterMenu")
@@ -676,16 +676,8 @@ sub onSubtitleChange()
 
   m.top.control = "stop"
 
-  m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
-  m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
-  m.LoadMetaDataTask.itemId = m.currentItem.id
   keepLoadedVersionOnReload()
-  m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  ' Every launch of this task declares the fill its one handler resolves (see
-  ' onVideoContentLoaded). Silent on this path in practice: a mid-playback reload happens
-  ' long after the run settled, and the ledger ignores both sides after that.
-  screenLoad.pending("metadata")
-  launchTask(m.LoadMetaDataTask)
+  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
 end sub
 
 ' Event handler for when audioIndex changes.
@@ -719,16 +711,8 @@ sub onAudioIndexChange()
 
   m.top.control = "stop"
 
-  m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
-  m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
-  m.LoadMetaDataTask.itemId = m.currentItem.id
   keepLoadedVersionOnReload()
-  m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  ' Every launch of this task declares the fill its one handler resolves (see
-  ' onVideoContentLoaded). Silent on this path in practice: a mid-playback reload happens
-  ' long after the run settled, and the ledger ignores both sides after that.
-  screenLoad.pending("metadata")
-  launchTask(m.LoadMetaDataTask)
+  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
 end sub
 
 ' onVideoSourceChange: Handles video source switching from OSD
@@ -782,16 +766,9 @@ sub onVideoSourceChange()
     audioStreamIdx = selectAudioStreamIndex(newSource.MediaStreams, localUser.settings, localUser.config, itemOriginalLanguage())
   end if
 
-  m.LoadMetaDataTask.selectedSubtitleIndex = -2 ' Reset to auto-detect for new source
-  m.LoadMetaDataTask.selectedAudioStreamIndex = audioStreamIdx
-  m.LoadMetaDataTask.itemId = m.currentItem.id
-  m.LoadMetaDataTask.mediaSourceId = newSourceId
-  m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  ' Every launch of this task declares the fill its one handler resolves (see
-  ' onVideoContentLoaded). Silent on this path in practice: a mid-playback reload happens
-  ' long after the run settled, and the ledger ignores both sides after that.
-  screenLoad.pending("metadata")
-  launchTask(m.LoadMetaDataTask)
+  m.videoLoadMediaSourceId = newSourceId
+  ' Subtitles reset to auto-detect for the new source
+  startVideoLoad(audioStreamIdx, SubtitleSelection.NOT_SET)
 end sub
 
 ' Fires on any REAL resolution of the error dialog: the user pressing OK, or
@@ -1077,24 +1054,21 @@ sub parkPlayerAfterSupersede()
   m.top.visible = false
 end sub
 
-sub onVideoContentLoaded()
-  ' The ONE resolve for `metadata`, and the reason every
-  ' `launchTask(m.LoadMetaDataTask)` site declares the fill rather than only the two that
-  ' can run before the first frame: this handler cannot tell which of them launched the
-  ' task, so pairing them individually is the only way the ledger stays balanced. The
-  ' three mid-playback reload sites (audio / subtitle / source switch) are silent in
-  ' practice (the run has long since settled and the ledger ignores both sides after that),
-  ' but "silent in practice" is not an invariant, and an unbalanced `resolve` warns.
-  ' That warning has to keep meaning something, so it must never fire on an ordinary path.
+sub onVideoContentLoaded(event as object)
+  ' Roku does not promise that unobserveField cancels an event already queued, so a run that
+  ' startVideoLoad replaced, or that onDestroy released (closing any stream it held), can still
+  ' deliver here. It must take nothing: its successor's run is the one this player waits for.
+  if not isCurrentTaskEvent(event, m.LoadMetaDataTask) then return
+  ' The ONE resolve for `metadata`, which every startVideoLoad call declares: this handler
+  ' cannot tell which call started the run, so pairing each launch with a declaration is the
+  ' only way the ledger stays balanced. An unbalanced `resolve` warns, and that warning has to
+  ' keep meaning something, so it must never fire on an ordinary path.
   '
-  ' Resolved at the TOP, before the no-content early return below. An error path that
-  ' returned without resolving would strand the run open forever, and the screen would
-  ' report as unmeasurable rather than as the failed playback it was. Same placement, and
-  ' the same reason, as the resolve-at-the-top handlers in ItemDetails.bs.
+  ' Resolved before the no-content early return below. An error path that returned without
+  ' resolving would strand the run open forever, and the screen would report as unmeasurable
+  ' rather than as the failed playback it was. Same placement, and the same reason, as the
+  ' resolve-at-the-top handlers in ItemDetails.bs.
   screenLoad.resolve("metadata")
-  ' Roku does not promise that unobserveField cancels an event already queued, and onDestroy
-  ' has released the load (and closed any stream it held), so a late one must take nothing.
-  if m.isDestroyed = true then return
   m.LoadMetaDataTask.unobserveField("content")
   m.LoadMetaDataTask.control = "STOP"
 
@@ -1103,6 +1077,9 @@ sub onVideoContentLoaded()
   videoContent = m.LoadMetaDataTask.content
   m.LoadMetaDataTask.content = []
   loadedLiveStream = m.LoadMetaDataTask.liveStream
+  ' Kept here rather than read off the node: the next reload replaces the node, and its run
+  ' starts with isIntro unset.
+  m.isIntro = m.LoadMetaDataTask.isIntro
 
   ' If we have nothing to play, show an error dialog and return.
   ' Prefer the task's specific errorMsg (for example NoCompatibleStream) over the generic fallback
@@ -1178,10 +1155,9 @@ sub onVideoContentLoaded()
   m.isApplyingOwnSelection = false
   m.loadedMediaSourceId = videoContent[0].mediaSourceId ?? ""
 
-  ' Reset retry flags so subsequent reloads (audio/subtitle changes) use fresh evaluation.
-  m.LoadMetaDataTask.shouldBypassDoviPreservation = false
+  ' A later reload (an audio or subtitle change) is a fresh evaluation, not a retry: its run
+  ' starts with both retry flags off (startVideoLoad), and the report must say so too.
   m.top.isDoviPreservationBypassed = false
-  m.LoadMetaDataTask.shouldForceTranscoding = false
 
   ' Pass JellyfinBaseItem node to OSD for typed field access
   if isValid(videoContent[0].meta)
@@ -1705,7 +1681,7 @@ sub onPositionChanged()
   ' No segment or next-episode notification while a dialog is open over the player
   if not m.global.sceneManager.callFunc("isDialogOpen")
     ' Do not check segments or next episode for intro videos
-    if not m.LoadMetaDataTask.isIntro
+    if not m.isIntro
       checkMediaSegments()
       checkTimeToDisplayNextEpisode()
     end if
@@ -1810,16 +1786,10 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
   m.top.isRetrying = true
   m.top.control = "stop"
-  m.LoadMetaDataTask.shouldBypassDoviPreservation = bypassDovi
   ' Surfaced so the playback report does not attribute a range transcode to the
   ' Preserve DoVi setting on a pass where that profile was not sent.
   m.top.isDoviPreservationBypassed = bypassDovi
-  m.LoadMetaDataTask.shouldForceTranscoding = forceTranscode
-  m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
-  m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
-  m.LoadMetaDataTask.itemId = m.currentItem.id
   keepLoadedVersionOnReload()
-  m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Unlike the three reload paths, this one CAN run before the first frame, and when it
   ' does the retry is still the same load (the user has been waiting since init and has
   ' seen no frame), so the second fetch is recorded as a second `metadata` fill rather than
@@ -1827,8 +1797,7 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' to transcode reports both round trips, which is exactly why its first frame took as
   ' long as it did. `buffer` stays open across the retry (`pending` keeps the first
   ' declaration), so it spans the whole wait rather than restarting mid-way.
-  screenLoad.pending("metadata")
-  launchTask(m.LoadMetaDataTask)
+  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle, bypassDovi, forceTranscode)
 end sub
 
 ' Close the live stream a load opened when no player will ever play it: the load failed, or it is
@@ -1850,11 +1819,53 @@ end sub
 ' A reload (a subtitle or audio change, or a retry) runs LoadVideoContentTask again for the
 ' same item, and a run given no mediaSourceId CHOOSES a version: on a per-version server from
 ' the positions the server holds, which lag the viewer and can name a different file. So each
-' reload names the loaded version as an input of that run rather than trusting the field to
-' survive on a reused node (ADR 0037). Before the first load completes, and for live TV, there
-' is none; the field is then left alone, so a mediaSourceId the queue item supplied still stands.
+' reload names the loaded version as an input of its run (startVideoLoad). Before the first load
+' completes, and for live TV, there is none; the version is then left alone, so a mediaSourceId
+' the queue item supplied, or a version switch whose load failed, still stands.
 sub keepLoadedVersionOnReload()
-  if isValidAndNotEmpty(m.loadedMediaSourceId) then m.LoadMetaDataTask.mediaSourceId = m.loadedMediaSourceId
+  if isValidAndNotEmpty(m.loadedMediaSourceId) then m.videoLoadMediaSourceId = m.loadedMediaSourceId
+end sub
+
+' startVideoLoad: Start a run of the video load for the current item, on a NEW
+' LoadVideoContentTask node, and declare the `metadata` fill onVideoContentLoaded resolves.
+'
+' A new node every run because a run can start while the last one is still going: a second
+' audio, subtitle or version pick before the first one's stream arrives, or the server-stream
+' retry onVideoContentLoaded starts from inside a delivery. The same node would drop that
+' launch, so the viewer's last pick was lost or the player stayed on its spinner (threading.md,
+' "Relaunching and stopping a Task"). The run it replaces goes through releaseVideoLoad, never a
+' bare STOP, because it may be opening a Live TV stream that only its answer names.
+'
+' A new node starts with every field at its default, so this passes the full input set each
+' time. The version is m.videoLoadMediaSourceId; the retry flags apply to one run only.
+'
+' @param {integer} audioStreamIndex - server index of the audio stream; 0 lets the load pick
+' @param {integer} subtitleIndex - server index of the subtitle stream, or a SubtitleSelection value
+' @param {boolean} bypassDovi - skip the DoVi container profile (retryPlayback)
+' @param {boolean} forceTranscode - disable direct play (retryPlayback)
+sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer, bypassDovi = false as boolean, forceTranscode = false as boolean)
+  if isValid(m.LoadMetaDataTask)
+    m.LoadMetaDataTask.unobserveField("content")
+    releaseVideoLoad(m.LoadMetaDataTask)
+  end if
+  ' invalid, not the old node: releaseVideoLoad has already let it go, and replaceTask's own
+  ' release is the bare STOP the live-stream rule forbids.
+  m.LoadMetaDataTask = replaceTask(invalid, "LoadVideoContentTask", "content", {
+    itemId: m.currentItem.id,
+    itemType: m.currentItem.type,
+    selectedAudioStreamIndex: audioStreamIndex,
+    selectedSubtitleIndex: subtitleIndex,
+    mediaSourceId: m.videoLoadMediaSourceId,
+    shouldBypassDoviPreservation: bypassDovi,
+    shouldForceTranscoding: forceTranscode
+  })
+  m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+  ' Every run declares the fill, because the handler cannot tell which call started it. A
+  ' replaced run's delivery is ignored, and `pending` keeps the first declaration of a fill
+  ' still open, so its successor's one resolve balances both. Silent in practice on a
+  ' mid-playback reload: the run settled long before, and the ledger ignores both sides then.
+  screenLoad.pending("metadata")
+  launchTask(m.LoadMetaDataTask)
 end sub
 
 '
