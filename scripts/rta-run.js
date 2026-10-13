@@ -62,7 +62,7 @@ const lock = await acquireDeviceLock({ what: runName });
 
 // A throw anywhere below this line exits the module without reaching any of the
 // three `lock.release()` calls, leaving the device claimed by a dead process until
-// the lease expires. Measured 2026-08-12: `ROKU_IP=192.168.1.200 npm run test:rta`
+// the lease expires. Measured 2026-08-12: `npm run test:rta` against the CI device
 // threw a 401 out of `deployRtaBuild()` (that device's dev password is a CI secret)
 // and `npm run device:status` then reported the device held by a pid that no longer
 // existed, for the full 15-minute lease. The deploy is the most failure-prone step

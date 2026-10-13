@@ -18,8 +18,8 @@ import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const REPO = 'jellyrock/jellyrock';
-const DEVICE = '192.168.1.177'; // how we REACH it: the shared dev device
-const DEVICE_ID = 'S09042179A2U'; // who it IS: the real .177 Stick 4K's ECP device-id
+const DEVICE = '192.0.2.10'; // how we REACH it: a documentation-range address
+const DEVICE_ID = 'FIXTURE0DEV1'; // who it IS: a made-up ECP device-id, never a real device's
 /** What the ref is actually named: a hash, never the raw id (the repo is public). */
 const lockKey = (id) => createHash('sha256').update(id).digest('hex').slice(0, 16);
 const DEVICE_KEY = lockKey(DEVICE_ID);
@@ -326,14 +326,14 @@ describe('device-lock: degraded mode', () => {
 describe('device-lock: helpers', () => {
   it('keys the ref by a hash, never the raw device-id — the repo is PUBLIC', () => {
     // `git ls-remote` on a public repo exposes every ref name, and a Roku's
-    // device-id partially encodes its serial (.177 reports serial X01700M79A2U
-    // and device-id S09042179A2U; mind the shared tail). The pinned value is
-    // what the CI self-test printed for the real device, so this also locks the
-    // algorithm: change the hash or the truncation and both sides stop agreeing.
-    const key = mod._internals.deviceKey('S09042179A2U');
-    expect(key).toBe('ac4701ca4a5d8a0b');
+    // device-id partially encodes its serial (the two share a tail). The pinned
+    // value is sha256 of the fixture id, truncated, so this also locks the
+    // algorithm: change the hash or the truncation and local runs and CI stop
+    // agreeing on the ref name.
+    const key = mod._internals.deviceKey(DEVICE_ID);
+    expect(key).toBe('943182adf476b074');
     expect(key).toMatch(/^[0-9a-f]{16}$/);
-    expect(key).not.toContain('S09042179A2U');
+    expect(key).not.toContain(DEVICE_ID);
     // Hashing subsumes the old sanitising: dots and colons can't survive it.
     expect(mod._internals.deviceKey('a.b.c')).toMatch(/^[0-9a-f]{16}$/);
   });
@@ -379,11 +379,11 @@ describe('device-lock: helpers', () => {
     const gh = fakeGitHub();
     mod._internals.setTransport(gh.handler);
     mod._internals.setDeviceIdLookup(async (host) =>
-      host === '192.168.1.200' ? 'S0J7355NCXLC' : DEVICE_ID,
+      host === '192.0.2.20' ? 'FIXTURE00CI1' : DEVICE_ID,
     );
 
-    const dev = await mod.acquireDeviceLock({ what: 'test:rta', deviceHost: '192.168.1.177' });
-    const ci = await mod.acquireDeviceLock({ what: 'test:unit', deviceHost: '192.168.1.200' });
+    const dev = await mod.acquireDeviceLock({ what: 'test:rta', deviceHost: '192.0.2.10' });
+    const ci = await mod.acquireDeviceLock({ what: 'test:unit', deviceHost: '192.0.2.20' });
     expect(dev.held).toBe(true);
     expect(ci.held).toBe(true);
     expect(gh.refs.size).toBe(2);
@@ -398,7 +398,7 @@ describe('device-lock: helpers', () => {
     mod._internals.setTransport(gh.handler);
     mod._internals.setDeviceIdLookup(async () => DEVICE_ID); // same box, either address
 
-    await mod.acquireDeviceLock({ what: 'test:rta', deviceHost: '192.168.1.178' });
+    await mod.acquireDeviceLock({ what: 'test:rta', deviceHost: '192.0.2.11' });
     await expect(
       mod.acquireDeviceLock({ what: 'test:all', deviceHost: '10.0.0.42' }),
     ).rejects.toThrow(/in use by test:rta/);
@@ -486,7 +486,7 @@ describe('device-lock: stranded-snapshot report', () => {
     // command most. Reading the host only from the contents produced
     // `ROKU_IP=an unknown device npm run rta:restore`, which the shell parses as
     // `ROKU_IP=an` and then tries to execute `unknown`. The host is in the name.
-    write(`registry-${DEVICE}.json`, '{"host":"192.168.1.177","values":{"trunc');
+    write(`registry-${DEVICE}.json`, '{"host":"192.0.2.10","values":{"trunc');
     const [line] = lines();
     expect(line).toContain(`ROKU_IP=${DEVICE} npm run rta:restore`);
     expect(line).not.toContain('unknown device');
@@ -497,8 +497,8 @@ describe('device-lock: stranded-snapshot report', () => {
   it('reports a device other than the one ROKU_IP points at', () => {
     // The case a host-specific check reports as clean: stranded by `npm run demo`
     // on one Roku, then a run against another. Each file names its own host.
-    write('registry-192.168.1.178.json', '{');
-    expect(lines()[0]).toContain('ROKU_IP=192.168.1.178 npm run rta:restore');
+    write('registry-192.0.2.11.json', '{');
+    expect(lines()[0]).toContain('ROKU_IP=192.0.2.11 npm run rta:restore');
   });
 
   it('ignores files that are not registry snapshots', () => {
@@ -554,7 +554,7 @@ describe('device-lock: stranded-snapshot report', () => {
   it('does not claim an accepted-residue record as a stranded snapshot', () => {
     // The two reports share a directory, and the snapshot glob is greedy. Naming the
     // record `registry-<host>.accepted.json` would have matched it here as a device
-    // called `192.168.1.177.accepted`, and printed a recovery command with that as
+    // called `192.0.2.10.accepted`, and printed a recovery command with that as
     // its ROKU_IP. The distinct prefix is what prevents it; this pins that.
     write(`accepted-${DEVICE}.json`, JSON.stringify({ host: DEVICE, differences: [] }));
     expect(lines()).toEqual([]);
@@ -635,7 +635,7 @@ describe('device-lock: accepted-residue report', () => {
   });
 
   it('still names the device when the record is truncated', () => {
-    write(`accepted-${DEVICE}.json`, '{"host":"192.168.1.177","even');
+    write(`accepted-${DEVICE}.json`, '{"host":"192.0.2.10","even');
     const [line] = lines();
     expect(line).toContain(DEVICE);
     expect(line).toContain('some accepted difference(s)');

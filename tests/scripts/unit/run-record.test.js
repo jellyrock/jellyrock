@@ -792,7 +792,7 @@ describe('the process-exit net — the fold nobody calls', () => {
   });
 
   it('labels a run nobody closed `crashed`, so it cannot pass as a clean pass', () => {
-    // The measured case this exists for: `ROKU_IP=192.168.1.200 npm run test:rta`
+    // The measured case this exists for: `npm run test:rta` against the CI device
     // threw out of the deploy on a 401 and appended `durationMs: 621, failures: []`
     // (a line the documented baseline recipe (`variant`/`commit`/`dirty`/
     // `deviceKey`) selected), on a run where no test ever executed.
