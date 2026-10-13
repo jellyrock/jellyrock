@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-12
+last-updated: 2026-10-13
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-13: test(scripts): Stop `test:scripts` emptying and writing `out/`
 - 2026-10-12: docs(voice): Rewrite the remaining `components` comments
 - 2026-10-12: ci(lint): Stop the voice gate skipping `components/tasks`
 - 2026-10-12: docs(voice): Rewrite the UI, dialog, home, grid and API comments
