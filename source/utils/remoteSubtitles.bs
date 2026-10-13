@@ -11,6 +11,7 @@
 ' Where the server's behaviour is surprising it is called out at the function
 ' that compensates for it.
 
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/translate.bs"
@@ -178,6 +179,35 @@ namespace remoteSubtitles
   function shouldStartSearch(inFlightLanguage as string, requestedLanguage as string) as boolean
     if not isValidAndNotEmpty(requestedLanguage) then return false
     return inFlightLanguage <> requestedLanguage
+  end function
+
+  ' searchFailure: Why a search reply cannot be shown as the server's answer, or ""
+  ' when it can.
+  '
+  ' Only an answered list says what subtitles exist. A timeout, an HTTP error or a
+  ' body that is not a list says nothing about them, so it must never read as "no
+  ' subtitles found". The reverse does not hold: the server catches each provider's
+  ' error and answers 200 [] (SubtitleManager.SearchSubtitles, 10.11 and master), so
+  ' a provider that is down or has no credentials still arrives as an empty list.
+  '
+  ' @param {dynamic} res - the fetchAsync result, or invalid
+  ' @return {string} the cause for a log line, or "" for a usable reply
+  function searchFailure(res as dynamic) as string
+    cause = apiResponse.jsonFailure(res)
+    if cause <> "" then return cause
+    if type(res.json) <> "roArray" then return "unexpected reply shape"
+    return ""
+  end function
+
+  ' searchStatusKey: The status line under the search controls after a search.
+  '
+  ' @param {boolean} failed - the reply was not a usable list (searchFailure)
+  ' @param {integer} resultCount - the results being shown
+  ' @return {string} a translation key, or "" when the results speak for themselves
+  function searchStatusKey(failed as boolean, resultCount as integer) as string
+    if failed then return translationKeys.MessageSubtitleSearchFailed
+    if resultCount = 0 then return translationKeys.MessageNoSubtitlesFound
+    return ""
   end function
 
   ' externalSubtitleStreams: The subtitle streams that are safe to offer for

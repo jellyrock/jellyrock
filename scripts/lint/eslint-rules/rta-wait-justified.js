@@ -108,6 +108,12 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
+  // `SubtitlePanel.setStatus` writes it. A search's reply sets the failed or the empty text
+  // (`renderResults`), and the only write back to "" is `showResultsSpinner` when the next
+  // search starts, which takes a Search press, a language pick or a reopen. Held until the
+  // user acts: terminal, not a pulse. Read against the app source 2026-10-13, every
+  // `setStatus` call site.
+  '#statusLabel.text',
   // `JRScene.showToast` sets it and nothing ever clears it. Dismissal hides the toast but
   // leaves `message` holding the last text. Terminal, not a pulse. Read against the app
   // source 2026-09-25 (JRScene.showToast, Toast.onShouldShow).

@@ -1,0 +1,84 @@
+import "pkg:/source/utils/remoteSubtitles.bs"
+
+' Unit tests for how the subtitle panel tells a failed search from an empty one.
+'
+' The server answers 200 [] for a search no provider could serve (it catches each provider's
+' error), so an empty list keeps the "no subtitles found" text with its provider hint. What
+' the app can see is a reply that never came or was not a list, and that must not read as
+' empty.
+
+namespace tests
+
+  @suite("remoteSubtitles - search outcome")
+  class RemoteSubtitlesSearchOutcomeTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("searchFailure() - a usable reply")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts an answered empty list")
+    function _()
+      m.assertEqual(remoteSubtitles.searchFailure({ ok: true, statusCode: 200, json: [] }), "")
+    end function
+
+    @it("accepts an answered list of results")
+    function _()
+      m.assertEqual(remoteSubtitles.searchFailure({ ok: true, statusCode: 200, json: [{ Id: "a" }] }), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("searchFailure() - a reply that says nothing about the server's subtitles")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("fails an HTTP error")
+    function _()
+      m.assertEqual(remoteSubtitles.searchFailure({ ok: false, statusCode: 500, json: invalid }), "HTTP 500")
+    end function
+
+    @it("fails a request that timed out")
+    function _()
+      m.assertEqual(remoteSubtitles.searchFailure({ ok: false, statusCode: invalid, json: invalid }), "timed out")
+    end function
+
+    @it("fails no reply at all")
+    function _()
+      m.assertEqual(remoteSubtitles.searchFailure(invalid), "no answer in time")
+    end function
+
+    @it("fails a connection error")
+    function _()
+      m.assertEqual(remoteSubtitles.searchFailure({ ok: false, statusCode: -7, json: invalid }), "network error -7")
+    end function
+
+    @it("fails an ok reply whose body could not be read")
+    function _()
+      m.assertEqual(remoteSubtitles.searchFailure({ ok: true, statusCode: 200, json: invalid }), "unreadable reply")
+    end function
+
+    @it("fails an ok reply whose body is not a list")
+    function _()
+      m.assertEqual(remoteSubtitles.searchFailure({ ok: true, statusCode: 200, json: { Items: [] } }), "unexpected reply shape")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("searchStatusKey()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("says the search failed, never that nothing was found, when it failed")
+    function _()
+      m.assertEqual(remoteSubtitles.searchStatusKey(true, 0), translationKeys.MessageSubtitleSearchFailed)
+    end function
+
+    @it("says nothing was found for an answered empty search")
+    function _()
+      m.assertEqual(remoteSubtitles.searchStatusKey(false, 0), translationKeys.MessageNoSubtitlesFound)
+    end function
+
+    @it("says nothing over results")
+    function _()
+      m.assertEqual(remoteSubtitles.searchStatusKey(false, 3), "")
+    end function
+
+  end class
+
+end namespace

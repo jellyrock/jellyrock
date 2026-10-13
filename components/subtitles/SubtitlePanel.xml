@@ -107,7 +107,8 @@
         <!-- Empty / status line, shown in place of the results list. Covers
              both real emptiness and the several server states that are
              indistinguishable from it (no provider plugin, missing provider
-             credentials, exhausted download quota all return 200 []). -->
+             credentials, exhausted download quota all return 200 []), and a
+             search that got no usable answer, which says so instead. -->
         <LabelSecondarySmall id="statusLabel" width="1120" wrap="true" translation="[96, 240]" visible="false" />
 
         <!-- ── On this item (right) ───────────────────────────────────────

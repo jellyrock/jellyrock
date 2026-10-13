@@ -14,6 +14,7 @@ import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/subtitleLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/listTheme.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
@@ -667,19 +668,15 @@ sub runSearch()
     if ctx.itemId <> m.top.itemId or ctx.language <> m.selectedLanguageCode then return
     m.searchInFlightLanguage = ""
     m.searchButton.isLoading = false
-    if not res.ok
-      ' A non-Video item 404s here rather than returning an empty list; the
-      ' entry point is type-gated, so this is a genuine failure.
-      m.log.warn("subtitle search failed", res.statusCode)
-      setStatus(translate(translationKeys.MessageNoSubtitlesFound))
-      m.allResults = []
-      renderResults([])
+    ' A non-Video item 404s here rather than returning an empty list; the entry
+    ' point is type-gated, so a failure here is a genuine one.
+    cause = remoteSubtitles.searchFailure(res)
+    if cause <> ""
+      m.log.warn("subtitle search failed", cause)
+      showSearchOutcome([], true)
       return
     end if
-    results = res.json
-    if not isValid(results) then results = []
-    m.allResults = results
-    renderResults(applyPerfectMatchFilter(results))
+    showSearchOutcome(res.json, false)
   end sub).catch(sub(err as object, ctx as object)
     ' Guarded on the language as well as the item, exactly as the success path
     ' is. A superseded search that fails in TRANSPORT must not clear the flag the
@@ -688,10 +685,24 @@ sub runSearch()
     m.searchInFlightLanguage = ""
     m.searchButton.isLoading = false
     m.log.warn("subtitle search error", err.reason)
-    setStatus(translate(translationKeys.MessageNoSubtitlesFound))
-    m.allResults = []
-    renderResults([])
+    showSearchOutcome([], true)
   end sub)
+end sub
+
+' showSearchOutcome: Show what a search ended with, and say it aloud.
+'
+' A failure keeps its own status line rather than the empty one: no answer says
+' nothing about which subtitles exist, and the empty text sends an admin to set
+' up a provider that may be working. The Search button is the retry, so the text
+' names it instead of adding a second control.
+'
+' The status is spoken because focus stays in the header while it lands, and the
+' screen reader speaks only what has focus. Queued, as SearchResults does, since
+' nothing moved. Results need no announcement: the user moves into them.
+sub showSearchOutcome(results as object, failed as boolean)
+  m.allResults = results
+  renderResults(applyPerfectMatchFilter(results), failed)
+  if m.top.isOpen and m.statusLabel.visible then narrateStatus(m.statusLabel.text)
 end sub
 
 ' renderResults: Build the results list.
@@ -700,7 +711,7 @@ end sub
 ' results sorted by download count descending (verified across the sample), and
 ' the alternative sort keys are worse: CommunityRating was 0 on 44 of 50 results
 ' in the same sample, so sorting by it would be close to sorting by noise.
-sub renderResults(results as object)
+sub renderResults(results as object, failed = false as boolean)
   m.results = results
   hideResultsSpinner()
 
@@ -734,13 +745,14 @@ sub renderResults(results as object)
   m.resultsList.content = content
   m.resultsList.visible = results.count() > 0
 
-  if results.count() = 0
-    ' Names the provider-configuration possibility on purpose: an unconfigured
-    ' provider, absent credentials and a genuine no-match all return 200 [], so
-    ' a bare "no results" would send people looking in the wrong place.
-    setStatus(translate(translationKeys.MessageNoSubtitlesFound))
-  else
+  ' The empty text names the provider-configuration possibility on purpose: an
+  ' unconfigured provider, absent credentials and a genuine no-match all return
+  ' 200 [], so a bare "no results" would send people looking in the wrong place.
+  statusKey = remoteSubtitles.searchStatusKey(failed, results.count())
+  if statusKey = ""
     setStatus("")
+  else
+    setStatus(translate(statusKey))
   end if
 
   m.perfectMatchButton.visible = shouldOfferPerfectMatchFilter()
