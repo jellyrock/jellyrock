@@ -107,54 +107,13 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
     mediaStreams = playedSource.MediaStreams
   end if
 
-  ' DOVI not supported using MKV container, so force remux for DOVI content
-  ' Only run DOVI logic if the user setting exists and is enabled, and caller has not bypassed it
-  ' (bypassDoviPreservation is set when retrying after a buffer overflow to allow direct play)
-  if not bypassDoviPreservation and isValid(mediaStreams) and isValid(globalUser.settings.playbackPreserveDovi) and globalUser.settings.playbackPreserveDovi
-    ' Check if device supports DOVI before proceeding
-    deviceSupportsDovi = false
-    di = CreateObject("roDeviceInfo")
-    if canPlay4k()
-      dp = di.GetDisplayProperties()
-      if dp.DolbyVision
-        deviceSupportsDovi = true
-      end if
-    end if
-
-    ' Only proceed with DOVI logic if device supports DOVI
-    if deviceSupportsDovi
-      for each stream in mediaStreams
-        ' always use the first video stream for now
-        ' Note: don't force remux on AV1 codec - see #194
-        if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
-          containerString = JDT_normalizeContainer(playedSource.Container ?? "")
-
-          ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
-          ' Only apply this for API v2+ servers (10.9+)
-          apiVersion = getApiVersionFromGlobal()
-
-          if apiVersion >= 2 and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
-            ' is DOVI in the string?
-            if inStr(LCase(stream.VideoRangeType), "dovi") > 0
-              ' add a condition to the mkv container profile to force remux (container swap)
-              postData.DeviceProfile.ContainerProfiles.push({
-                "Type": "Video",
-                "Container": "mkv",
-                "Conditions": [
-                  {
-                    "Condition": "NotEquals",
-                    "Property": "VideoRangeType",
-                    "Value": stream.VideoRangeType,
-                    "IsRequired": true
-                  }
-                ]
-              })
-            end if
-          end if
-          exit for
-        end if
-      end for
-    end if
+  playedContainer = ""
+  if isValid(playedSource)
+    playedContainer = playedSource.Container
+  end if
+  doviProfile = doviRemuxContainerProfile(mediaStreams, playedContainer, globalUser.settings.playbackPreserveDovi, bypassDoviPreservation, getApiVersionFromGlobal())
+  if isValid(doviProfile)
+    postData.DeviceProfile.ContainerProfiles.push(doviProfile)
   end if
 
   ' Cap H264 codec profile when the source video is H264.
@@ -262,6 +221,67 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   end if
 
   return postData
+end function
+
+' doviRemuxContainerProfile: The container profile that forces a remux of Dolby Vision video in an mkv file, or invalid.
+'
+' DOVI is not supported in the MKV container, so a remux (container swap) is forced for it.
+' The profile tells the server that mkv is only acceptable when VideoRangeType differs from the
+' stream's own value.
+'
+' Hardware is read only after the cheap checks pass: the setting must be on and the caller must
+' not have bypassed it. Only the first video stream with a codec other than AV1 is considered.
+'
+' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
+' @param {dynamic} container - the played source's container, or invalid
+' @param {dynamic} preserveDovi - the playbackPreserveDovi user setting, or invalid
+' @param {boolean} bypass - true when retrying after a buffer overflow, to allow direct play
+' @param {integer} apiVersion - the server's API tier (VideoRangeType needs tier 2)
+' @param {dynamic} mockCapabilities - capabilities AA with isMock = true, for tests
+' @return {dynamic} the container profile AA to add to ContainerProfiles, or invalid
+function doviRemuxContainerProfile(mediaStreams as dynamic, container as dynamic, preserveDovi as dynamic, bypass as boolean, apiVersion as integer, mockCapabilities = invalid as dynamic) as dynamic
+  ' Only run DOVI logic if the user setting exists and is enabled, and caller has not bypassed it
+  ' (bypass is set when retrying after a buffer overflow to allow direct play)
+  if not (not bypass and isValid(mediaStreams) and isValid(preserveDovi) and preserveDovi)
+    return invalid
+  end if
+
+  ' Only proceed with DOVI logic if device supports DOVI
+  if not getDeviceVideoCapabilities(mockCapabilities).supportsDolbyVision
+    return invalid
+  end if
+
+  for each stream in mediaStreams
+    ' always use the first video stream for now
+    ' Note: don't force remux on AV1 codec - see #194
+    if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
+      containerString = JDT_normalizeContainer(container ?? "")
+
+      ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
+      ' Only apply this for API v2+ servers (10.9+)
+      if apiVersion >= 2 and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
+        ' is DOVI in the string?
+        if inStr(LCase(stream.VideoRangeType), "dovi") > 0
+          ' add a condition to the mkv container profile to force remux (container swap)
+          return {
+            "Type": "Video",
+            "Container": "mkv",
+            "Conditions": [
+              {
+                "Condition": "NotEquals",
+                "Property": "VideoRangeType",
+                "Value": stream.VideoRangeType,
+                "IsRequired": true
+              }
+            ]
+          }
+        end if
+      end if
+      exit for
+    end if
+  end for
+
+  return invalid
 end function
 
 ' MetaData about an item. Returns a JellyfinBaseItem node.

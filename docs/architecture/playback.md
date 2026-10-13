@@ -476,7 +476,7 @@ The profile rules for audio live in `source/utils/deviceCapabilities.bs` and `so
 
 Roku does not play Dolby Vision from an MKV container, so JellyRock asks for a remux, with a fallback when the server's stream overflows Roku's video buffer:
 
-- With `playbackPreserveDovi` on, `buildPlaybackInfoPostData()` adds an MKV container condition (`VideoRangeType NotEquals` the stream's range) that keeps the server from direct-playing the file, so it remuxes it into another container. It does this only when the device reports Dolby Vision and plays 4K, the stream's range type names Dolby Vision, the container is MKV, the codec is not AV1 and the server is tier 2 or later. A transcode reason of `VideoRangeTypeNotSupported` marks the fallback as available.
+- With `playbackPreserveDovi` on, `buildPlaybackInfoPostData()` adds the MKV container condition `doviRemuxContainerProfile()` returns (`VideoRangeType NotEquals` the stream's range) that keeps the server from direct-playing the file, so it remuxes it into another container. It does this only when the device reports Dolby Vision and plays 4K, the stream's range type names Dolby Vision, the container is MKV, the codec is not AV1 and the server is tier 2 or later. A transcode reason of `VideoRangeTypeNotSupported` marks the fallback as available.
 - If that stream fails with a `buffer:loop:` source error, the player retries with `shouldBypassDoviPreservation = true`, which asks again without the condition and so allows direct play. `isRetrying` keeps `PlayerHostView` from advancing or exiting during the retry, and `isDoviPreservationBypassed` tells the report not to blame the setting.
 
 ## Subtitles
