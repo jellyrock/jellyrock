@@ -1,0 +1,47 @@
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace quickplayRead
+
+  ' The reads of one quick play queue build (QuickPlayTask, GetShuffleItemsTask). It remembers
+  ' whether any read did not answer, so an empty result is not told as "nothing here"
+  ' (quickplayOutcome.statusOf), and logs why each one failed at warn: the viewer's message
+  ' says only that it failed, so the log is where the cause lives (timeout, HTTP status,
+  ' unreadable reply). A Task builds one per run, with its own logger.
+  class Reader
+
+    ' A read did not answer, or could not be sent.
+    anyFailed = false
+
+    ' The Task's logger. Named `log` so its calls are `m.log.*`, which the roku-log plugin
+    ' strips from a production build like every other log line.
+    private log
+
+    ' @param logger - the Task's log.Logger
+    sub new(logger as object)
+      m.log = logger
+    end sub
+
+    ' The parsed body of `req`, or invalid when the read did not answer. Only a failed read
+    ' returns invalid: an answered empty result is a body, so a caller can tell the two apart
+    ' and stop rather than fall back to a guess.
+    '
+    ' @param req - the request AA, or invalid when it could not be built
+    ' @param requestId - the pool request id, also the log's label
+    ' @return the parsed body, or invalid
+    function json(req as dynamic, requestId as string) as dynamic
+      cause = "not sent"
+      if isValid(req)
+        res = fetchRes(req, requestId)
+        cause = apiResponse.jsonFailure(res)
+        if cause = "" then return res.json
+      end if
+      m.anyFailed = true
+      m.log.warn("quick play read failed", requestId, "cause", cause)
+      return invalid
+    end function
+
+  end class
+
+end namespace

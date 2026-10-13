@@ -3303,6 +3303,7 @@
           "source/api/**/*.bs"
         ],
         "exclude": [
+          "source/api/apiFaults.bs",
           "source/api/baseRequest.bs"
         ]
       },

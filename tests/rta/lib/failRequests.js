@@ -5,12 +5,14 @@
  * the pool itself would deliver, instead of sending it, or sends a slowed one and holds its
  * answer (`source/api/apiFaults.bs`, `ApiQueueTask.answeredOnPurpose`).
  *
- * A rule: `{ prefix, kind: 'timeout' | 'http' | 'slow', status, ms, times, after }`.
+ * A rule: `{ prefix, kind: 'timeout' | 'http' | 'slow' | 'empty', status, ms, times, after }`.
  *  - `prefix` matches the start of the request id the app passes to fetchRes / fetchAsync
  *    (`itemQuery_usersItems`, `itemMetaData`, …).
  *  - `timeout` answers as roku-requests does when it gives up; `http` needs a `status` >= 400.
  *  - `slow` needs `ms`: the answer arrives `ms` after the request was sent, its pool slot busy
  *    all that time.
+ *  - `empty` answers ok with nothing in it, as a server with nothing to give would: a screen's
+ *    "nothing here" path against a demo library that is never empty.
  *  - `times` is how many matching requests the rule applies to; omit it for all of them.
  *  - `after` is how many matching requests go through before the rule starts failing, for an
  *    id that repeats faster than a spec can set a rule in between (a grid's page 1 and 2).

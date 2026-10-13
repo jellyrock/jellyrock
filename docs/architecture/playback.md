@@ -31,6 +31,8 @@ related-files:
   - source/utils/versionPick.bs
   - components/tasks/QuickPlayTask.bs
   - components/GetShuffleItemsTask.bs
+  - source/utils/quickplayOutcome.bs
+  - source/utils/quickplayRead.bs
   - source/utils/quickplay.bs
   - source/utils/quickplayLibrary.bs
   - source/utils/nodeHelpers.bs
@@ -49,7 +51,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-13
 ---
 
 # Video and audio playback
@@ -84,6 +86,8 @@ There is one video player, `VideoPlayerView`. The next-episode lookup is not a T
 ### Starting playback
 
 The launchers build a queue and start it: `launchItem`, `launchQuickPlayAction`, `launchShuffle` and `launchPhotoAlbum`. Each opens a playback-start wait first, through `beginPlaybackStart()`. The player that mounts takes that wait (`takePlaybackStart()`) and ends it when its stream loads or fails, and `failPendingPlaybackStart()` fails it when the start cannot reach a player. Every start gets its own Promise, so one start can never end another's spinner ([ADR 0046](../adr/0046-playback-start-wait-is-a-promise.md); the wait kinds are in [`navigation.md`](navigation.md#what-kind-of-wait-a-spinner-is)).
+
+A launcher whose Task finds nothing to play ends its start and shows a toast (`showNothingToPlay`): "couldn't load" when a read failed, "nothing here" when the server answered empty, and "can't" when nothing builds that launch, such as a Shuffle another device sends for a movie. The text is worded for what the build was (`source/utils/quickplayOutcome.bs`). Each Task reads through a `quickplayRead.Reader` (`source/utils/quickplayRead.bs`), which records a read that did not answer, so a failure never looks like an empty item. A failed read also never falls back to a guess: a series whose resume or Next Up read fails stops there, rather than start some other episode.
 
 `playQueue()` then looks at the current item's type and sets `m.global.playbackLaunchRequest = { type, id[, media: "audio"] }`. `JRScene.onPlaybackLaunchRequested` turns that into a route: audio goes to `/audio`, every video type to `/details/<type>/<id>/play`. The queue is the source of truth for what plays; the route's `:type` and `:id` only give the launch a deep-link identity. The whole path from a press to a mounted player is in [`user-journey.md`](user-journey.md#starting-playback).
 
@@ -428,7 +432,7 @@ Two instances overlay playback:
 
 ## `AudioPlayer` engine
 
-`components/mediaPlayers/AudioPlayer` extends `Video` but plays only audio. It lives at `m.global.audioPlayer` for the whole app, so music keeps playing while the viewer moves between screens. It observes its own `state` and reports to Jellyfin on each change: `start` on the first `playing`, `stop` on `stopped` or `finished`, `update` otherwise, through the same `BuildPlaystateRequest` and `SubmitSideEffect` as video. It reports nothing while its position is invalid. It sets `disableScreenSaver` while playing, which keeps Roku's screensaver off during audio, and has a `loopMode` field for repeat.
+`components/mediaPlayers/AudioPlayer` extends `Video` but plays only audio. It lives at `m.global.audioPlayer` for the whole app, but music does not play on once the viewer leaves `/audio`: every exit from `AudioPlayerView` stops it (Back, `exitAudioPlayback()`, a deep link, a move to a video in a mixed queue). It observes its own `state` and reports to Jellyfin on each change: `start` on the first `playing`, `stop` on `stopped` or `finished`, `update` otherwise, through the same `BuildPlaystateRequest` and `SubmitSideEffect` as video. It reports nothing while its position is invalid. It sets `disableScreenSaver` while playing, which keeps Roku's screensaver off during audio, and has a `loopMode` field for repeat.
 
 Video reports differently: an end once, through `reportPlaybackEnd()`, and updates on a timer.
 

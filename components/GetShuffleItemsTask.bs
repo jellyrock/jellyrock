@@ -1,37 +1,46 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/quickplayOutcome.bs"
+import "pkg:/source/utils/quickplayRead.bs"
 
 sub init()
   m.top.functionName = "getShuffleItems"
+  m.log = new log.Logger("GetShuffleItemsTask")
 end sub
 
 ' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
 ' Fetches items to shuffle for Series, Season, and Person item types.
-' Writes the combined result array to m.top.shuffleItems (empty array = nothing to play).
+' Writes the combined result array to m.top.shuffleItems (empty array = nothing to play), after
+' m.top.status, which says why an empty one is empty.
 sub getShuffleItems()
   input = m.top.shuffleInput
   items = []
+  ' Every read of this build, which remembers one that did not answer (quickplayRead.Reader).
+  m.reader = new quickplayRead.Reader(m.log)
+  ' No branch shuffles this type, which no retry changes.
+  unsupported = false
 
   if input.type = "Series"
-    data = fetchJson(GetApi().BuildGetEpisodesRequest(input.id, { SortBy: "Random", Limit: 200 }), "shuffleSeriesEpisodes")
+    data = m.reader.json(GetApi().BuildGetEpisodesRequest(input.id, { SortBy: "Random", Limit: 200 }), "shuffleSeriesEpisodes")
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "Season"
-    data = fetchJson(GetApi().BuildGetEpisodesRequest(input.seriesId, { SeasonId: input.id, SortBy: "Random", Limit: 200 }), "shuffleSeasonEpisodes")
+    data = m.reader.json(GetApi().BuildGetEpisodesRequest(input.seriesId, { SeasonId: input.id, SortBy: "Random", Limit: 200 }), "shuffleSeasonEpisodes")
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "Person"
     ' Movies featuring this person (rewatching is fine)
-    moviesData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+    moviesData = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       personIds: input.id,
       recursive: true,
       includeItemTypes: "Movie",
       Limit: 250
     }), "shufflePersonMovies")
     ' Watched episodes/recordings only, which avoids spoiling in-progress shows
-    episodesData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+    episodesData = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       personIds: input.id,
       recursive: true,
       includeItemTypes: "Episode,Recording",
@@ -42,7 +51,7 @@ sub getShuffleItems()
     if isValid(episodesData) and isValid(episodesData.Items) then items.append(episodesData.Items)
 
   else if input.type = "BoxSet"
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+    data = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       "ParentId": input.id,
       "SortBy": "Random",
       "Limit": 200,
@@ -51,7 +60,7 @@ sub getShuffleItems()
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "MusicArtist"
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+    data = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       "ArtistIds": input.id,
       "includeitemtypes": "Audio",
       "SortBy": "Random",
@@ -62,7 +71,7 @@ sub getShuffleItems()
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "MusicAlbum"
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+    data = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       "parentId": input.id,
       "includeitemtypes": "Audio",
       "SortBy": "SortName",
@@ -72,11 +81,17 @@ sub getShuffleItems()
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "Playlist"
-    data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
+    data = m.reader.json(GetApi().BuildGetPlaylistItemsRequest(input.id, {
       "Limit": 500,
       "EnableTotalRecordCount": false
     }), "shufflePlaylist")
     if isValid(data) and isValid(data.Items) then items = data.Items
+  else
+    ' No branch for this type: a remote Shuffle of a type nothing here shuffles (it arrives as
+    ' a deep link for any item), or a caller bug. Not an empty item, and trying again cannot
+    ' help, so it is told as unsupported.
+    m.log.error("unhandled shuffle type", input.type)
+    unsupported = true
   end if
 
   ' One copy per episode (episodeQueue), except in a collection or playlist, whose entries
@@ -85,5 +100,7 @@ sub getShuffleItems()
     items = episodeQueue.collapseQueue(items, false, "shuffle_copies")
   end if
 
+  ' `status` before `shuffleItems`: the caller reads it in its `shuffleItems` handler.
+  m.top.status = quickplayOutcome.statusOf(items.count(), m.reader.anyFailed, unsupported)
   m.top.shuffleItems = items
 end sub

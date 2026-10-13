@@ -11,7 +11,9 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/quickplay.bs"
+import "pkg:/source/utils/quickplayOutcome.bs"
 import "pkg:/source/utils/tasks.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = new log.Logger("QueueManager")
@@ -348,7 +350,11 @@ sub onQuickPlayTaskOutput(msg as object)
   cancelActiveQuickPlayTask()
 
   if not isValid(output) or not isValidAndNotEmpty(output.items)
-    endQuickPlayWithNothing()
+    if isValid(output)
+      endQuickPlayWithNothing(output.kind, output.status)
+    else
+      endQuickPlayWithNothing(quickplayOutcome.KIND_PLAY, quickplayOutcome.STATUS_FAILED)
+    end if
     return
   end if
 
@@ -384,19 +390,41 @@ sub onQuickPlayTaskOutput(msg as object)
       set(output.items)
       playQueue()
     else
-      endQuickPlayWithNothing()
+      ' Items came back, but not one the player can open.
+      endQuickPlayWithNothing(quickplayOutcome.KIND_TRAILER, quickplayOutcome.STATUS_FAILED)
     end if
   end if
 end sub
 
 ' A QuickPlayTask found nothing to play. A playback start fails; a photo-album run, which has
-' no start and uses the plain spinner (launchPhotoAlbum), stops that spinner.
-sub endQuickPlayWithNothing()
+' no start and uses the plain spinner (launchPhotoAlbum), stops that spinner. Then the viewer
+' is told why (showNothingToPlay).
+'
+' @param {dynamic} kind - quickplayOutcome.KIND_*, from the Task's output
+' @param {dynamic} status - quickplayOutcome.STATUS_*, from the Task's output
+sub endQuickPlayWithNothing(kind as dynamic, status as dynamic)
   if appWaits.isOpen(m.playbackStart)
     failPendingPlaybackStart("nothing to play")
   else
     stopLoadingSpinner()
   end if
+  showNothingToPlay(kind, status)
+end sub
+
+' Tells the viewer that a launch found nothing to play: try again when a read failed, nothing
+' there when every read answered, can't when nothing here builds it (quickplayOutcome). Only a
+' build whose output arrived gets here, and that means the viewer still waits on it. Back,
+' leaving the screen and a start's time limit end the start, which stops the Task
+' (onPlaybackStartEnded); a newer press of the same launcher stops its own Task first
+' (runQuickPlayAction, launchShuffle); and a slideshow's plain spinner holds the remote until
+' it ends. So none of those ever shows a message.
+'
+' @param {dynamic} kind - quickplayOutcome.KIND_*
+' @param {dynamic} status - quickplayOutcome.STATUS_*
+sub showNothingToPlay(kind as dynamic, status as dynamic)
+  key = quickplayOutcome.messageKey(kind, status)
+  if key = "" then return
+  displayToast(translate(key), quickplayOutcome.toastType(status))
 end sub
 
 ' Shuffle-play a Series / Season / Person via GetShuffleItemsTask (the API resolves the
@@ -433,6 +461,7 @@ sub onShuffleItemsLoaded(msg as object)
   if not m.shuffleTask.isSameNode(msg.getRoSGNode()) then return
 
   shuffleItems = m.shuffleTask.shuffleItems
+  status = m.shuffleTask.status
   cancelActiveShuffleTask()
 
   if isValid(shuffleItems) and shuffleItems.count() > 0
@@ -447,6 +476,7 @@ sub onShuffleItemsLoaded(msg as object)
     playQueue()
   else
     failPendingPlaybackStart("nothing to shuffle")
+    showNothingToPlay(quickplayOutcome.KIND_SHUFFLE, status)
   end if
 end sub
 

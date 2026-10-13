@@ -983,6 +983,22 @@ export async function waitFocusInHomeContent({
 }
 
 /**
+ * Wait until the scene toast says `message`.
+ *
+ * `#toast.message` keeps the last text after the toast hides (`JRScene.showToast` sets it and
+ * nothing clears it), so this proves a toast said `message` since the last relaunch, not that
+ * it is on screen now. Start from a relaunch, or from a different message, or an earlier toast
+ * with the same text satisfies it.
+ */
+export async function waitToast(message, { timeout = 15000, interval = 250, label } = {}) {
+  return waitFor('#toast.message', (v) => v === message, {
+    timeout,
+    interval,
+    label: label || `the toast "${message}"`,
+  });
+}
+
+/**
  * Home is ready once HomeRows has rendered its content, but only once the app is PAST
  * its login flow, which is a separate question and has to be asked first.
  *

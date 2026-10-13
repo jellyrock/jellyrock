@@ -165,7 +165,7 @@ m.global.audioPlayer.control = "play"
 
 - **`sceneManager`** no longer moves between screens; the router does that ([`navigation.md`](navigation.md)). It keeps the theme refresh, `reloadHome`, the background image, the clock reset and the `isDialogOpen` query.
 - **`queueManager`** owns the play queue and starts playback ([`playback.md`](playback.md)).
-- **`audioPlayer`** is the one audio player. Because it sits on `m.global` and not on a screen, music keeps playing while the user moves around the app. `AudioPlayerView` reads it from `m.global.audioPlayer` and observes its `state` and `position`.
+- **`audioPlayer`** is the one audio player. It sits on `m.global` and not on a screen, so the stream outlives the `/audio` view's own node, but every way out of that view stops it (Back, `AudioPlayerView.exitAudioPlayback()`, a deep link, a move to a video in a mixed queue). `AudioPlayerView` reads it from `m.global.audioPlayer` and observes its `state` and `position`.
 
 ## Debug flags: `m.global.debug`
 

@@ -1,4 +1,5 @@
 import "pkg:/source/api/apiFaults.bs"
+import "pkg:/source/api/apiResponse.bs"
 
 namespace tests
 
@@ -31,6 +32,14 @@ namespace tests
 
       m.assertEqual(faults, [{ prefix: "itemQuery_", kind: "slow", status: 0, ms: 20000, remaining: 1, passes: 1 }])
       m.assertTrue(apiFaults.isSlow(faults[0]))
+    end function
+
+    @it("keeps an empty rule, which needs neither a status nor a time")
+    function _()
+      faults = apiFaults.fromRules([{ prefix: "qp_videoContainerMovies", kind: "empty", times: 1 }])
+
+      m.assertEqual(faults, [{ prefix: "qp_videoContainerMovies", kind: "empty", status: 0, ms: 0, remaining: 1, passes: 0 }])
+      m.assertFalse(apiFaults.isSlow(faults[0]))
     end function
 
     @it("drops a rule it cannot honor rather than guessing")
@@ -192,6 +201,26 @@ namespace tests
       m.assertEqual(res.statusCode, 500)
       m.assertInvalid(res.json)
       m.assertEqual(res.text, "")
+    end function
+
+    @it("answers empty with an ok, empty query result")
+    function _()
+      res = apiFaults.responseFor({ prefix: "qp_", kind: "empty", status: 0, remaining: -1 }, "qp_videoContainerMovies")
+
+      m.assertEqual(res.requestId, "qp_videoContainerMovies")
+      m.assertTrue(res.ok)
+      m.assertEqual(res.statusCode, 200)
+      m.assertEqual(res.json, { Items: [], TotalRecordCount: 0 })
+      m.assertEqual(apiResponse.jsonFailure(res), "")
+    end function
+
+    @it("answers empty with a bare empty list for a list request, so a caller never gets an object")
+    function _()
+      res = apiFaults.responseFor({ prefix: "qp_", kind: "empty", status: 0, remaining: -1 }, "qp_trailers", true)
+
+      m.assertTrue(res.ok)
+      m.assertEqual(type(res.json), "roArray")
+      m.assertEqual(res.json.count(), 0)
     end function
 
   end class
