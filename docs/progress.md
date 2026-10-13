@@ -326,6 +326,12 @@ In `scripts/bsc-plugins/roku-log.cjs`, the visitor that finds `m.log = new log.L
 
 The `roku-deploy` and `rooibos-roku` group and the husky and lint-staged group descriptions in `renovate.json` say "CLI smoke-tested by `_smoke-test-deps.yml`". That workflow's header says it loads modules and does not run the CLIs, and no step covers `rooibos-roku`. Related: `smoke-test-checks-unused-roku-deploy-api`. Fix the wording (or add the coverage). Checked 2026-10-13.
 
+#### Server-upgrade triage ignores endpoints newly marked deprecated, so it reacts only at removal `[fid: server-upgrade-flag-deprecated-endpoints]` `[captured 2026-10-13]`
+
+Jellyfin 12.0 marked `GET /Artists`, `GET /Artists/{name}` and `GET /Artists/AlbumArtists` deprecated (`deprecated: true` in the 12.0 OpenAPI spec), and the app calls `/Artists` and `/Artists/AlbumArtists` (see `docs/architecture/api-usage-manifest.json`). The server-upgrade triage from 10.11.8 to 12.0 reported nothing about it: `scripts/generate/spec-diff.js` does not read the `deprecated` flag, so the pipeline only reacts when an endpoint is removed (`endpoint-removed`), at the release that breaks the app. Upstream deprecates at least one major release before removing, so reading the flag would give a release cycle of warning.
+
+Close it by adding a deprecation change kind to `spec-diff.js` (an operation whose `deprecated` turns true), surfacing it from `scripts/generate/findings-candidates.js` only for endpoints the app uses, with tests beside the existing `endpoint-removed` ones. Then rerun the findings from 10.11.8 to 12.0 so the `/Artists` deprecation shows up, and decide how the app moves off those endpoints. Found while closing the Jellyfin 12 readiness project, 2026-10-13.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
