@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Say why a quick play found nothing, and never guess an episode ([#1197](https://github.com/jellyrock/jellyrock/pull/1197))
+
 ### Fixed
 
 - Keep music artists out of search and Favorites people on 12.0+ ([#1195](https://github.com/jellyrock/jellyrock/pull/1195))

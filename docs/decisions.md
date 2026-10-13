@@ -2066,6 +2066,16 @@ ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `V
 
 It is not version-gated: 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11, 12.0.0 and 12.1.0 all accepted it with the same results before 12.0 (checked live 2026-10-13). jellyfin-web sends the same filter, marked to go once artists move to the persons endpoint; when upstream does that, drop the default and revisit how the app lists artists. The key is PascalCase so the API usage manifest records it, and a change upstream reaches server-upgrade triage.
 
+## decision-id: quick-play-nothing-toast
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/quickplayOutcome.bs`, `source/utils/quickplayRead.bs`, `components/manager/QueueManager.bs`, `components/tasks/QuickPlayTask.bs`, `components/GetShuffleItemsTask.bs`
+
+A quick play, Shuffle, trailer or slideshow that finds nothing to play ends its start, shows the screen it was pressed on again, and says why in a one-line toast (`QueueManager.showNothingToPlay`). A read that did not answer is a failure to try again ("Couldn't load that. Try again.", error style); a result the server answered as empty is nothing there ("Nothing to play here.", info style). A launch nothing builds, an action or shuffle type no dispatch branch matches, can't be done ("Can't play this.", "Can't shuffle this.", info style); it is reachable because a Jellyfin sender's Shuffle arrives as a deep link for any item. The text names what the build was (`quickplayOutcome.kindOf` reads the Task's output action, so Play on a photo library is a slideshow). Each Task reads through a `quickplayRead.Reader`, one per build with the Task's logger, which records a read that did not answer, and publishes a `status` (`quickplayOutcome.statusOf`). A failed read never falls back to a guess: `doSeries` stops when its resume or Next Up read fails, and `doSeason` when its continue-watching read fails. Back, leaving the screen, a newer press and the start's time limit stop the Task before it answers, so none of them shows a toast. The queue is still cleared before the read: once a quick play fails no player reads it, since Back from the music player stops the music.
+
+Ruled out: a retry dialog (it blocks the remote, and no failure before a player exists uses one), failure text on the spinner screen (`AppWaitHost` holds the focus and Back for every start), one message for both (an empty result would ask for a retry that cannot work), and naming server-rule reasons such as the TV library's watched-only rule (the toast is one line capped at 800 pixels, and the reasons drift as the server changes). Measured 2026-10-13 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: the new `playback-start.spec.js` cases for a failed library Play and a failed series Shuffle failed on the old app code (no toast), and the Back case passed there, as it must. With the change, the full `playback-start` spec passes 10/10, and the Back assertion fails when Back is made to show the toast on purpose.
+
 ## decision-id: video-load-release-not-stop
 
 **date**: 2026-10-13

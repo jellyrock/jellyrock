@@ -1,0 +1,115 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+
+' What a quick play's queue build ended with, and what the viewer is told when it found nothing
+' to play. QueueManager shows the message; QuickPlayTask and GetShuffleItemsTask report the
+' status. Pure, so the rules are unit-tested without a network seam.
+'
+' A read that failed says nothing about what the item holds, so it must never read as empty:
+' "failed" asks the viewer to try again, "empty" tells them there is nothing to try, and
+' "unsupported" tells them this can't be played that way, which no retry changes. The text
+' names what the build was (a slideshow, a trailer, a shuffle, or anything else that plays).
+namespace quickplayOutcome
+
+  const STATUS_OK = "ok"
+  const STATUS_EMPTY = "empty"
+  const STATUS_FAILED = "failed"
+  const STATUS_UNSUPPORTED = "unsupported"
+
+  const KIND_PLAY = "play"
+  const KIND_SHUFFLE = "shuffle"
+  const KIND_TRAILER = "trailer"
+  const KIND_SLIDESHOW = "slideshow"
+
+  ' The kind of launch a QuickPlayTask build is, from the output action its dispatch chose
+  ' ("queue", "photo" or "trailer"), so the message follows what the build turned into: Play
+  ' on a photo library is a slideshow. Shuffle runs on its own Task, whose caller passes
+  ' KIND_SHUFFLE itself.
+  '
+  ' @param {dynamic} outputAction - QuickPlayTask's output action
+  ' @return {string} a KIND_ constant
+  function kindOf(outputAction as dynamic) as string
+    if not isValidAndNotEmpty(outputAction) then return quickplayOutcome.KIND_PLAY
+    action = LCase(outputAction)
+    if action = "trailer" then return quickplayOutcome.KIND_TRAILER
+    if action = "photo" then return quickplayOutcome.KIND_SLIDESHOW
+    return quickplayOutcome.KIND_PLAY
+  end function
+
+  ' How a queue build ended: items arrived; or none did because nothing here builds this
+  ' launch, or because a read failed, or though every read answered. Items that arrived play
+  ' even when a fallback read failed.
+  '
+  ' @param {integer} itemCount - the items the build found
+  ' @param {boolean} anyReadFailed - a read did not answer
+  ' @param {boolean} unsupported - no dispatch branch builds this action or type
+  ' @return {string} a STATUS_ constant
+  function statusOf(itemCount as integer, anyReadFailed as boolean, unsupported as boolean) as string
+    if itemCount > 0 then return quickplayOutcome.STATUS_OK
+    if unsupported then return quickplayOutcome.STATUS_UNSUPPORTED
+    if anyReadFailed then return quickplayOutcome.STATUS_FAILED
+    return quickplayOutcome.STATUS_EMPTY
+  end function
+
+  ' The translation key of the toast for `kind` and `status`, or "" when there is nothing to
+  ' say (the build found items). A missing kind reads as play. A kind with no text of its own
+  ' for a status uses play's ("Can't play this." for a trailer). A status that is none of
+  ' these reads as failed: an answer nobody can vouch for is never told as "nothing here".
+  '
+  ' @param {dynamic} kind - a KIND_ constant
+  ' @param {dynamic} status - a STATUS_ constant
+  ' @return {string}
+  function messageKey(kind as dynamic, status as dynamic) as string
+    status = quickplayOutcome.knownStatus(status)
+    if status = quickplayOutcome.STATUS_OK then return ""
+
+    messages = quickplayOutcome.messageTable()
+    play = messages[quickplayOutcome.KIND_PLAY]
+    row = invalid
+    if isValidAndNotEmpty(kind) then row = messages[kind]
+    if not isValid(row) then row = play
+
+    key = row[status]
+    if not isValid(key) then key = play[status]
+    return key
+  end function
+
+  ' The toast's style for `status`: error for a read that failed (or a status nobody can
+  ' vouch for, which messageKey tells as failed), info for an empty answer or a launch nothing
+  ' builds.
+  '
+  ' @param {dynamic} status - a STATUS_ constant
+  ' @return {string} a displayToast type
+  function toastType(status as dynamic) as string
+    if quickplayOutcome.knownStatus(status) = quickplayOutcome.STATUS_FAILED then return "error"
+    return "info"
+  end function
+
+  ' `status` when it is one of the STATUS_ constants, otherwise STATUS_FAILED.
+  function knownStatus(status as dynamic) as string
+    if not isValidAndNotEmpty(status) then return quickplayOutcome.STATUS_FAILED
+    if status = quickplayOutcome.STATUS_OK or status = quickplayOutcome.STATUS_EMPTY or status = quickplayOutcome.STATUS_UNSUPPORTED then return status
+    return quickplayOutcome.STATUS_FAILED
+  end function
+
+  ' Every toast text, by kind and status. Each kind has a failed and an empty text; only the
+  ' launches that can be asked for something nothing builds (play, shuffle) have their own
+  ' unsupported text.
+  function messageTable() as object
+    messages = {}
+    messages[quickplayOutcome.KIND_PLAY] = quickplayOutcome.messageRow(translationKeys.MessageQuickPlayFailed, translationKeys.MessageQuickPlayEmpty, translationKeys.MessageQuickPlayUnsupported)
+    messages[quickplayOutcome.KIND_SHUFFLE] = quickplayOutcome.messageRow(translationKeys.MessageShuffleFailed, translationKeys.MessageShuffleEmpty, translationKeys.MessageShuffleUnsupported)
+    messages[quickplayOutcome.KIND_TRAILER] = quickplayOutcome.messageRow(translationKeys.MessageTrailerFailed, translationKeys.MessageTrailerEmpty, invalid)
+    messages[quickplayOutcome.KIND_SLIDESHOW] = quickplayOutcome.messageRow(translationKeys.MessageSlideshowFailed, translationKeys.MessageSlideshowEmpty, invalid)
+    return messages
+  end function
+
+  function messageRow(failed as string, empty as string, unsupported as dynamic) as object
+    row = {}
+    row[quickplayOutcome.STATUS_FAILED] = failed
+    row[quickplayOutcome.STATUS_EMPTY] = empty
+    if isValid(unsupported) then row[quickplayOutcome.STATUS_UNSUPPORTED] = unsupported
+    return row
+  end function
+
+end namespace

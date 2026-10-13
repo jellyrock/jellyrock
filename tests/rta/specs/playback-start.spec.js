@@ -13,7 +13,12 @@
  *    launch;
  *  - a slow start says it is still loading;
  *  - Play on a library the server is slow to list still plays it, and Back while it waits
- *    frees the request's pool slot (#811).
+ *    frees the request's pool slot (#811);
+ *  - a quick play or shuffle whose read fails says so in a toast and shows the screen again,
+ *    one the server answers empty says there is nothing to play, and Back while one waits
+ *    says nothing (QueueManager.showNothingToPlay);
+ *  - a series whose resume read fails stops there and says so, rather than start the next
+ *    episode instead (QuickPlayTask.doSeries).
  *
  * The grid and "Play all" cases were each measured wrong on an Ultra (2026-09-26) before
  * playback-start waits: the spinner stayed up over the grid and Home 35 s after Back, with the
@@ -45,13 +50,19 @@ import {
   press,
   sleep,
   stopPlayback,
+  waitFocusInHomeContent,
   waitFocusInside,
   waitFocused,
   waitFor,
+  waitToast,
 } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const STILL_LOADING = 'Still loading…';
+// locale/custom/en_US.json MessageQuickPlayFailed, MessageQuickPlayEmpty and MessageShuffleFailed.
+const QUICK_PLAY_FAILED = "Couldn't load that. Try again.";
+const QUICK_PLAY_EMPTY = 'Nothing to play here.';
+const SHUFFLE_FAILED = "Couldn't load the shuffle. Try again.";
 // Under a default-limit request's own wait (timeouts.API_WAIT_MS, 12 s), so the rule is
 // honored exactly and the answer still arrives: long enough to press Back into, short enough
 // that a start nobody stopped would reach its player inside the spec.
@@ -297,4 +308,57 @@ it('Back while Play on a library waits on the server frees its pool slot', async
   // Given back long before the hold would have let it go.
   await waitHeld(0, 'the slot was given back on Back');
   await expectStartEndedOn('Home');
+  // Back ended the start, which a failed launch also does: only a build's own answer may say
+  // anything. Read once the start has ended, when a toast tied to the start would already show.
+  expect(await getVal('#toast.message'), 'no toast after Back').toBe('');
+});
+
+it('a failed Play on a library says so and shows Home again', async () => {
+  await freshApp();
+  await failRequests([{ prefix: 'qp_videoContainerMovies', kind: 'http', status: 500, times: 1 }]);
+  await quickPlayMoviesLibrary();
+  await waitToast(QUICK_PLAY_FAILED, { label: 'the failed quick play toast' });
+  await expectStartEndedOn('Home');
+  expect(await getActiveVal('subtype()'), 'still on Home, nothing playing').toBe('Home');
+  await waitFocusInHomeContent({ label: 'focus back in Home, where Play was pressed' });
+});
+
+it('a failed Shuffle says so and stays on the series', async () => {
+  await freshApp();
+  await navSeriesDetails(ctx);
+  await focusDetailButton('shuffleButton');
+  await waitFocusInside('#buttons', { label: 'Shuffle focused', timeout: 8000 });
+  await failRequests([{ prefix: 'shuffleSeriesEpisodes', kind: 'http', status: 500, times: 1 }]);
+  await press(ecp.Key.Ok);
+  await waitToast(SHUFFLE_FAILED, { label: 'the failed shuffle toast' });
+  await expectStartEndedOn('the series details');
+  expect(await getActiveVal('subtype()'), 'still on the series details').toBe('ItemDetails');
+  await waitFocusInside('#buttons', { label: 'focus back on the buttons', timeout: 5000 });
+});
+
+it('an empty Play on a library says there is nothing to play and shows Home again', async () => {
+  await freshApp();
+  await failRequests([{ prefix: 'qp_videoContainerMovies', kind: 'empty', times: 1 }]);
+  await quickPlayMoviesLibrary();
+  await waitToast(QUICK_PLAY_EMPTY, { label: 'the nothing-to-play toast' });
+  await expectStartEndedOn('Home');
+  expect(await getActiveVal('subtype()'), 'still on Home, nothing playing').toBe('Home');
+  await waitFocusInHomeContent({ label: 'focus back in Home, where Play was pressed' });
+});
+
+it('a series whose resume read fails says so and plays nothing else instead', async () => {
+  await freshApp();
+  await navTvLibrary(ctx);
+  await waitFocusInside('#itemGrid', { label: 'TV grid focused', timeout: 15000 });
+  // The series' first read is its resume lookup. Before this was fixed, a failed one fell
+  // through to Next Up and started the next episode from the start, as if nothing were in
+  // progress.
+  await failRequests([{ prefix: 'qp_seriesResume', kind: 'http', status: 500, times: 1 }]);
+  await press(ecp.Key.Play);
+  await waitToast(QUICK_PLAY_FAILED, { label: 'the failed series quick play toast' });
+  await expectStartEndedOn('the TV grid');
+  expect(await getActiveVal('subtype()'), 'still on the TV grid, nothing playing').toBe(
+    'BaseGridView',
+  );
+  await waitFocusInside('#itemGrid', { label: 'focus back in the grid', timeout: 5000 });
 });

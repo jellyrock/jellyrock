@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-13
 ---
 
 # The user journey
@@ -239,6 +239,8 @@ Writing a field and then `invalid` makes the next write of the same value a chan
 | anything else | `runQuickPlayAction()`, which runs a `QuickPlayTask` | the Task finishes the queue |
 
 The types in the table carry everything needed to play. Anything else (a series, a season, an album, a playlist, a library) needs API calls to expand into a queue, so `QuickPlayTask` runs them. `runQuickPlayAction` is used here, not `launchQuickPlayAction`, because `launchItem()` has already opened the playback start. A read that searches a whole library (Play on a library, folder or collection tile) or every library for one person or artist gets `timeouts.QUICKPLAY_LIBRARY_MS` (60 s), as a grid page does (#811). The spinner says it is still loading meanwhile, and **Back** stops the Task, which frees the request's pool slot.
+
+When the build finds nothing to play, the start ends, the screen Play was pressed on shows again, and a toast says why (`QueueManager.showNothingToPlay`). A read that did not answer is told as a failure to try again ("Couldn't load that. Try again."), a result the server did answer as empty as nothing there ("Nothing to play here."), and a launch nothing builds as one that can't be done ("Can't shuffle this.", for a Shuffle another device sends for a movie). The text names what the build was, so Shuffle, a trailer and a slideshow each have their own; Play on a photo library is a slideshow. `QuickPlayTask` and `GetShuffleItemsTask` report which through a `status` (`source/utils/quickplayOutcome.bs`), so a failed read never reads as an empty item, and a failed read never falls back to a different episode: the build stops and says so. Back, leaving the screen and a newer press stop the Task before it answers, so none of them shows a toast.
 
 ### `QueueManager.playQueue`
 

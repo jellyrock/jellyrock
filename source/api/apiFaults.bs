@@ -1,12 +1,12 @@
 import "pkg:/source/utils/misc.bs"
 
-' Requests an RTA spec makes fail, or answer slowly, on purpose, so a spec can drive a screen's
-' failure and slow-server paths against a server that is healthy and fast. Pure: the API
-' coordinator holds the list and calls these from its own thread, and the only caller is
-' compiled in under ENABLE_RTA (ApiQueueTask).
+' Requests an RTA spec makes fail, answer slowly or answer empty on purpose, so a spec can
+' drive a screen's failure, slow-server and nothing-there paths against a server that is
+' healthy, fast and full. Pure: the API coordinator holds the list and calls these from its
+' own thread, and the only caller is compiled in under ENABLE_RTA (ApiQueueTask).
 '
 ' A spec writes rules to m.global.rtaFailRequests:
-'   { prefix: "itemQuery_usersItems", kind: "timeout" | "http" | "slow", status: 500, ms: 20000, times: 1, after: 0 }
+'   { prefix: "itemQuery_usersItems", kind: "timeout" | "http" | "slow" | "empty", status: 500, ms: 20000, times: 1, after: 0 }
 ' A rule matches a request whose requestId starts with `prefix`. `times` is how many
 ' matching requests it applies to; without it, every one. `after` is how many matching
 ' requests it lets through first, for a request id that repeats too quickly for a spec to set
@@ -14,9 +14,11 @@ import "pkg:/source/utils/misc.bs"
 '
 ' A failed request is answered with the response the pool itself delivers for that failure. A
 ' slow one is sent, and its real answer is held until `ms` after it was sent, with its slot kept
-' busy all that time: what a slow server costs the app, pool slot included. Nothing marks
-' either as injected: code that could tell them apart could handle a test differently from the
-' real thing, which is what these specs exist to catch.
+' busy all that time: what a slow server costs the app, pool slot included. An empty one is
+' answered as a server with nothing to give answers: ok, with an empty list in the shape its
+' request expects. Nothing marks any of them as injected: code that could tell them apart
+' could handle a test differently from the real thing, which is what these specs exist to
+' catch.
 namespace apiFaults
 
   ' The rules a spec wrote, checked. A rule that cannot be honored exactly is dropped rather
@@ -96,10 +98,19 @@ namespace apiFaults
     return due
   end function
 
-  ' The pool's response for a request that failed this way, the shape ApiTask.executeRequest
+  ' The pool's response for a request answered this way, the shape ApiTask.executeRequest
   ' builds. A timeout is what roku-requests returns when it gives up: not ok, and no status or
-  ' body, because it only reads those from a response that arrived.
-  function responseFor(fault as object, requestId as string) as object
+  ' body, because it only reads those from a response that arrived. An empty answer is ok with
+  ' nothing in it: a bare `[]` for a list request (ApiClient.listReq), which ApiTask's shape
+  ' check would otherwise demand, and an empty query result for any other.
+  '
+  ' @param expectsList - the request declared a bare-array body (apiResponse.expectsList)
+  function responseFor(fault as object, requestId as string, expectsList = false as boolean) as object
+    if fault.kind = "empty"
+      body = { Items: [], TotalRecordCount: 0 }
+      if expectsList then body = []
+      return { requestId: requestId, ok: true, statusCode: 200, json: body, text: FormatJson(body) }
+    end if
     if fault.kind = "http"
       return { requestId: requestId, ok: false, statusCode: fault.status, json: invalid, text: "" }
     end if
@@ -121,7 +132,7 @@ namespace apiFaults
     else if rule.kind = "slow"
       ms = wholeNumber(rule.ms)
       if ms < 1 then return invalid
-    else if rule.kind <> "timeout"
+    else if rule.kind <> "timeout" and rule.kind <> "empty"
       return invalid
     end if
 

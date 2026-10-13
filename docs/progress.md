@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-13: feat: Say why a quick play found nothing, and never guess an episode
 - 2026-10-13: test: Silence four unit-test build warnings
 - 2026-10-13: fix: Keep music artists out of search and Favorites people on 12.0+
 - 2026-10-13: docs(voice): Close the Charter review and route its held findings
@@ -551,8 +552,6 @@ JellyRock asks `PlaybackInfo` again with no `LiveStreamId` on every live retry (
 
 A live `PlaybackInfo` now waits up to `timeouts.LIVE_OPEN_MS` (120 s) and keeps its pool slot after Back, because the pool never stops a POST and the answer must be heard to close the stream. Predicted from the code, not measured: a few opens of a source that never answers (the server gives up at ~100 s) or answers with no data (the full 120 s) inside two minutes leave every slot busy, so Home, the guide, details and the next channel's own open all wait for one. **Measure first:** on the 512 MB Stick, a temporary `M3U` tuner pointing at a stalled source, several opens each left with Back, then time a Home load against a baseline. If it stalls, cap how many live opens the pool runs at once so reads keep free slots (the next channel's open would then wait behind a stalled one, so weigh that too).
 
-#### A failed quick play gives the viewer no message: `QueueManager.endQuickPlayWithNothing()` ends the playback start silently, so the viewer lands back where they pressed Play with no reason shown (found with #811). `[fid: failed-quick-play-no-message]` `[captured 2026-09-30]`
-
 #### Quick play of a Collections library still lists up to 500 box sets and picks one on the device (`QuickPlayTask.doCollectionFolder`, `qp_collectionBoxsets`); playlists and Live TV now ask the server for one at random (`sortBy=Random&limit=1`, checked 2026-09-30 on 12.1.0: 2 playlists split 5/5 over 10 calls, 10 distinct of 393 channels). Give box sets the same request after checking it on a 10.x server (from #1076). `[fid: quick-play-collections-500-box-sets]` `[captured 2026-09-30]`
 
 #### Quick play of a folder holding several series still asks once per series (`QuickPlayTask.doMultipleSeries`, from `doFolder`), each with the default request limit and one after another, so a slow server or a folder of many series can outlast the playback start's own limit. The TV library stopped doing this in #1076: one request for the folder's watched episodes (`quickplayLibrary.watchedEpisodesQuery`) would replace the loop; check it against a genre and a studio folder first, which filter by id rather than by parent. `[fid: quick-play-multiple-series-asks-each]` `[captured 2026-09-30]`
@@ -641,6 +640,14 @@ Not done now: no real source is known to use this layout. Act when a user report
 #### The `livetv` placeholder is built from the outlined `liveTV.svg`, against fill Rule 4 `[fid: livetv-placeholder-outlined-source]` `[captured 2026-10-13]`
 
 `resources/placeholders/placeholders.json` builds the `livetv` placeholder from `liveTV.svg`, the outlined (fill 0) icon source, while every other placeholder uses a filled source, as fill Rule 4 in `resources/icons/README.md` asks. The README now records it as the one exception (docs-voice Charter review, 2026-10-13); nothing recorded whether it was chosen. Close it by fetching a filled variant (`npm run icons:add -- live_tv --as liveTV_filled --filled`), pointing the `livetv` entry at it and running `npm run icons:build`, then checking the placeholder on a device; or record why it stays outlined and keep the exception in the README.
+
+#### The scene toast is one line capped at 800 pixels, so a long message is cut off, in English already and in every longer translation `[fid: toast-one-line-clips-long-messages]` `[captured 2026-10-13]`
+
+The scene toast is one line: `Toast.bs` sizes it to its text but clamps it at `TOAST_MAX_WIDTH` (800 pixels), which leaves about 696 pixels for text once the padding and icon are taken out. A longer message is cut off, and by length that already happens in English: `MessageContentOnUnknownServer` ("This content is on a Jellyfin server you haven't added to this device.", shown by `replayRoute.bs` through `displayToast`) and `MessageSubtitleDownloadFailed` (about 130 characters) are both far past it (estimated from the 654 pixels measured for a 39-character string; not measured themselves). A translation runs longer than English, so every toast in a long language is exposed. Measured 2026-10-13 on a Roku Ultra (Roku OS 15.3.4) with the scene's `testToast` field: the longest quick play string, "Couldn't load the slideshow. Try again.", lays out at 654 pixels; a German-length version of it lays out at the 800 pixels cap. The one-line shape dates from `eab29b03f` ("restyle Toast with icon, auto-width, and action safe anchoring").
+
+Options, raised while building the quick play failure toasts (decision `quick-play-nothing-toast`): `wrap` lets the toast grow to two or three lines past the cap (layout work in `Toast.bs`, a device check over the player and the grids); `shorten` rewrites the long English messages to fit one line (small, but translations can still overflow); or both. Recommended: decide `wrap` vs `shorten` first, then fix it in its own change.
+
+Not checked: the two English messages' widths on screen (estimated from length only); whether the clipped text ends in an ellipsis or is cut mid-word (Roku `Label` truncation was not looked at on screen); which other toasts overflow in English beyond the two named.
 
 ### source
 
