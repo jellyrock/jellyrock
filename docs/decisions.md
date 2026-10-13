@@ -2076,6 +2076,16 @@ A quick play, Shuffle, trailer or slideshow that finds nothing to play ends its 
 
 Ruled out: a retry dialog (it blocks the remote, and no failure before a player exists uses one), failure text on the spinner screen (`AppWaitHost` holds the focus and Back for every start), one message for both (an empty result would ask for a retry that cannot work), and naming server-rule reasons such as the TV library's watched-only rule (the toast is one line capped at 800 pixels, and the reasons drift as the server changes). Measured 2026-10-13 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: the new `playback-start.spec.js` cases for a failed library Play and a failed series Shuffle failed on the old app code (no toast), and the Back case passed there, as it must. With the change, the full `playback-start` spec passes 10/10, and the Back assertion fails when Back is made to show the toast on purpose.
 
+## decision-id: search-failure-state
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/searchOutcome.bs`, `source/api/apiRead.bs`, `components/search/SearchTask.bs`, `components/search/SearchResults.bs`
+
+A search whose four reads all failed shows "Couldn't load search results." where the results go, with a Try again that runs the same query through the keystroke path; an answered empty search shows "No results." in the help text's place, which used to stay blank. A search where some reads failed shows what answered and raises one toast, "Some results couldn't load.", only while the screen is shown; a partial search that found nothing is a failure, never empty (`searchOutcome.view`). `SearchTask` reads through an `apiRead.Reader` and publishes `status` in its one `results` assignment. The failure does not take focus from the keyboard (the viewer may be typing); Right reaches Try again. The Live TV program read is skipped for a user without Live TV access, since Jellyfin's `LiveTvAccess` policy refuses it and every search would count as partial.
+
+Ruled out: a toast alone for a full failure (failed would look like empty once it fades), hiding answered results when one read fails (the Favorites precedent, `favorites-row-failure-stand-in`), and counting only the library read (a missing People row would stay silent). Measured 2026-10-13 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: all four `search-failure.spec.js` cases failed on the old code and pass on the new.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
