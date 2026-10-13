@@ -53,7 +53,7 @@ describe('roku-log plugin (Tier 2)', () => {
         { rokuLog: { strip: false, insertPkgPath: true, guard: false, removeComments: false } },
       );
       // SourceLocationLiteral transpiles to `"file" + ":///<absolute>:<line>"`.
-      // We just need to confirm a source-location literal was prepended ahead
+      // We only need to confirm a source-location literal was prepended ahead
       // of the original "hi" arg.
       expect(out['source/foo.bs']).toMatch(/m\.log\.info\([^)]*source\/foo\.bs[^)]*"hi"\s*\)/);
     });
@@ -79,7 +79,7 @@ describe('roku-log plugin (Tier 2)', () => {
   describe('guard', () => {
     it('wraps m.log.* calls in if m.__le = true then ... end if', async () => {
       // Combine with insertPkgPath so the plugin's visitedLines dedup fires
-      // — see tech-debt.md#roku-log-guard-without-pkgpath-recurses. Asserting
+      // (see tech-debt.md#roku-log-guard-without-pkgpath-recurses). Asserting
       // on both behaviors here doubles as a combined-mode check.
       const out = await transpileWithPlugin(
         rokuLogPlugin,
@@ -133,7 +133,7 @@ describe('roku-log plugin (Tier 2)', () => {
     // and the read itself dots into an `m.log` the scope need not have.
     //
     // This crashed the app on device (&hec, 'Dot' operator on invalid) the first time the
-    // screen-readiness ledger — whose logger lives on `m.screenLoadLog` — was called from
+    // screen-readiness ledger (whose logger lives on `m.screenLoadLog`) was called from
     // main-thread `source/loginRouter.bs`, a scope with no `m.log`. Every instrumented
     // COMPONENT sets `m.log` in `init()`, which is why it stayed hidden.
     it('does NOT inject the cache line for a logger stored under another name', async () => {

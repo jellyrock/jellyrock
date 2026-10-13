@@ -4,7 +4,7 @@
  * This is the layer every defect in the measurement subsystem has been found in, and
  * until this file existed every one of them was found by hand on a Roku. The rule lived
  * inline in `measure.js`, which claims the device on import and so cannot be imported by
- * a test — the same reason `measure-args.js` was carved out, with more force here,
+ * a test: the same reason `measure-args.js` was carved out, with more force here,
  * because arg parsing never had a defect and this has had four.
  *
  * The cases below are the four real ones, not invented shapes: a chained nav, a playback
@@ -39,7 +39,7 @@ const playbackLaunch = (launch) => [
   s(launch, 1, 'videoPlayer', 'Movie'),
 ];
 
-/** A CHAINED nav: reaching a Season loads its Series first — one component, two variants. */
+/** A CHAINED nav: reaching a Season loads its Series first. One component, two variants. */
 const chainedLaunch = (launch) => [
   s(launch, 0, 'itemDetails', 'Series'),
   s(launch, 1, 'itemDetails', 'Season'),
@@ -104,7 +104,7 @@ describe('refusing to publish a median', () => {
 
   it('refuses a flag that matched nothing, ahead of any ambiguity', () => {
     // Order matters: reported as "matched nothing" rather than as ambiguity, or the
-    // message would tell the operator to pass a flag they have just passed.
+    // message would tell the operator to pass a flag they have already passed.
     expect(selectionRefusalFor(playbackLaunch(0), { component: 'searchResults' })).toMatch(
       /--component searchResults matched no sample.*itemDetails, videoPlayer/s,
     );
@@ -139,7 +139,7 @@ describe('refusing to publish a median', () => {
 
   it('refuses a series whose LAUNCHES measured different variants, one mount each', () => {
     // The case no per-launch check can see: every launch mounted exactly one screen, so
-    // nothing was ambiguous at the time — but which variant you got was decided by the
+    // nothing was ambiguous at the time. But which variant you got was decided by the
     // ENVIRONMENT. `setServer` stamps `discovered` when SSDP answered that launch and
     // `savedOnly` when it did not, so an intermittent LAN yields two populations.
     const mixed = [
@@ -182,7 +182,7 @@ describe('refusing to publish a median', () => {
 
   it('ignores a family that stamps no variant at all', () => {
     // An unstamped series is one population by definition, not a mixed one. ⚠️ "Unstamped"
-    // means no `component`/`variant` — NOT "carries no dimensions at all": `home-latest-rows`
+    // means no `component`/`variant`, not "carries no dimensions at all": `home-latest-rows`
     // now emits a non-identity dimension (`sizeAt`), and the case below pins that the two
     // are different questions.
     const unstamped = [s(0, 0), s(1, 0), s(2, 0)];
@@ -209,7 +209,7 @@ describe('selecting the cold sample of each launch', () => {
   });
 
   it('falls back to first-mount when the SAMPLES stamped nothing, whatever the record says', () => {
-    // The two legacy families emit no dimensions, and older records predate stamping —
+    // The two legacy families emit no dimensions, and older records predate stamping,
     // while the record may still carry a `screenVariant`. Matching a named mount against
     // unstamped samples would select none and read as "this series is empty", quietly
     // losing every historical series the moment compare started honouring the field.
@@ -237,7 +237,7 @@ describe('naming the mounts a launch produced but did not publish', () => {
   it('names the mount that came BEFORE the selected one, rather than calling it later', () => {
     // The search screen opens (`open`) and then runs a query (`query`), so `--variant query`
     // selects the SECOND sample. The other one precedes it, and the line used to call every
-    // unselected sample a "later run" — reporting a screen-open as a re-render that followed
+    // unselected sample a "later run", reporting a screen-open as a re-render that followed
     // the search.
     const launch = [s(0, 0, 'searchResults', 'open'), s(0, 1, 'searchResults', 'query')];
     const cold = selectColdSamples(launch, { variant: 'query' })[0];
@@ -268,11 +268,11 @@ describe('naming the mounts a launch produced but did not publish', () => {
   it('a NON-IDENTITY dimension must not arm mount selection', () => {
     // The regression this exists to catch, and it is a live hazard rather than a theoretical
     // one. `selectColdSamples` gates named selection on `stamped`, which is
-    // `mountIdOf(dimensions)` — deliberately only `component` + `variant`. Several comments
+    // `mountIdOf(dimensions)`: only `component` + `variant`, by design. Several comments
     // used to justify that by saying `home-latest-rows` emits purely numeric lines and
     // stamps nothing; since the row-size recompute attribution landed, that family DOES
     // carry a dimension (`sizeAt`, which row was dropped). The behaviour is unchanged
-    // because `mountIdOf` ignores it — but anyone "simplifying" `stamped` to
+    // because `mountIdOf` ignores it. But anyone "simplifying" `stamped` to
     // `Object.keys(dimensions).length > 0` would arm named selection on a family that
     // cannot answer it, and a `--variant` would then silently empty the series, which is
     // precisely the failure the gate was added to prevent.
@@ -286,7 +286,7 @@ describe('naming the mounts a launch produced but did not publish', () => {
       { launch: 0, indexInLaunch: 1, complete: true, dimensions: { sizeAt: '-' } },
     ];
     expect(mountIdOf(withNonIdentityDim[0].dimensions)).toBe('');
-    // Still positional, and — the part that matters — NOT empty.
+    // Still positional, and (the part that matters) not empty.
     const picked = selectColdSamples(withNonIdentityDim, { variant: 'Movie' });
     expect(picked).toHaveLength(1);
     expect(picked[0].indexInLaunch).toBe(0);

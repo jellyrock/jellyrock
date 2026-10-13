@@ -1,4 +1,4 @@
-// Unit tests for scripts/lib/catchup-typed.cjs — the banner rules of
+// Unit tests for scripts/lib/catchup-typed.cjs: the banner rules of
 // .claude/skills/catchup/jellyrock.md as the typed lines the shared reader
 // (.claude/skills/catchup/catchup-state.sh) ranks. Pure: each case hands it a
 // state object shaped like catchup-state.js's JSON.

@@ -47,7 +47,7 @@ namespace tests
 
     ' This answers a question the OSD's inactivity timer asks before hiding
     ' itself. It was answered by Roku's modal channel alone, which the JRDialog
-    ' family does not use — so it said "no dialog" while a dialog was on screen,
+    ' family does not use, so it said "no dialog" while a dialog was on screen,
     ' and the OSD hid out from under it, taking focus with it.
     @it("is false with nothing on screen")
     function _()
@@ -122,7 +122,8 @@ namespace tests
       m.assertFalse(secondSelected)
     end function
 
-    ' Every existing caller — the three playback pickers — omits the argument.
+    ' Every existing caller omits the argument: the three playback pickers (through
+    ' showTrackPicker) and showChoiceDialog's list fallback.
     @it("builds undecorated rows when the argument is omitted")
     function _()
       presented = showListDialog("Select audio", ["English", "Spanish"], "", 0, 1)
@@ -140,7 +141,7 @@ namespace tests
     @describe("cancelOpenDialog vs abandonDialog")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' The two verbs differ in exactly one thing — whether the OWNER is told — and
+    ' The two verbs differ in exactly one thing (whether the OWNER is told), and
     ' that difference is the whole reason both exist. abandonDialog is for an
     ' owner whose scope is being torn down (onDestroy); cancelOpenDialog is for a
     ' third party clearing the screen while the owner is alive and holding state
@@ -218,7 +219,7 @@ namespace tests
 
       ' Asserted by IDENTITY, not by id: both carry the shared overlay id by
       ' construction, so comparing ids would pass even if findNode resolved to
-      ' the dialog that was just detached.
+      ' the dialog that had been detached.
       open = m.top.getScene().findNode("jrDialog")
       m.assertNotInvalid(open)
       m.assertTrue(open.isSameNode(second))
@@ -227,8 +228,8 @@ namespace tests
     end function
 
     ' Superseding must be indistinguishable from the user pressing Back, or an
-    ' owner holding state until its dialog answers is stranded. All ten
-    ' result.confirmed consumers in app code gate positively, so this is a no-op
+    ' owner holding state until its dialog answers is stranded. Every
+    ' `result.confirmed` read in app code gates positively, so this is a no-op
     ' at every call site rather than a half-action.
     @it("delivers a cancelled result to the incumbent's owner")
     function _()
@@ -250,13 +251,13 @@ namespace tests
 
     ' THE ORDERING GATE. lastFocusedChild walks focusedChild down to the deepest
     ' focused node, so computing returnFocusTo while the incumbent is still
-    ' mounted resolves INSIDE the incumbent — and closing the newcomer would then
+    ' mounted resolves INSIDE the incumbent, and closing the newcomer would then
     ' restore focus to a detached node. Cancel first, measure second.
     '
     ' Asserted as REACHABILITY FROM THE SCENE, not as "not the superseded dialog".
     ' That proxy was tried first and is vacuous: lastFocusedChild descends to a
     ' BUTTON inside the dialog, so isSameNode(first) is false either way and the
-    ' test passed against a deliberately reverted ordering. Walking up to the
+    ' test passed against an ordering reverted on purpose. Walking up to the
     ' scene is the property that actually distinguishes them, because a node
     ' inside the superseded dialog is detached along with it.
     @it("leaves the newcomer's returnFocusTo attached to the scene")
@@ -295,7 +296,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' A caller that KNOWS its opener passes it. Derivation walks focusedChild down
-    ' from the scene, which lands on the same node only incidentally — the opener
+    ' from the scene, which lands on the same node only incidentally: the opener
     ' is whoever asked for the dialog, not whoever happened to hold focus.
     @it("uses an explicitly passed node instead of deriving one")
     function _()
@@ -343,20 +344,21 @@ namespace tests
       scene.removeChild(opener)
     end function
 
-    ' abandonDialog() DOES NOT RESTORE FOCUS, and the next derived returnFocusTo
+    ' abandonDialog() does not restore focus, and the next derived returnFocusTo
     ' collapses to the scene. Measured on device, not assumed.
     '
-    ' That is correct for the verb: every abandonDialog() caller but one is an
-    ' onDestroy, where the view is going away and there is no focus to return to
-    ' — restoring it there would point at a node about to be detached. The dialog
-    ' family's OTHER exit, closeDialog(), does restore focus, and the asymmetry
-    ' stayed invisible while the two never met on a live screen.
+    ' That is correct for the verb: most abandonDialog() callers are an onDestroy
+    ' or a teardown it runs, where the view is going away and there is no focus
+    ' to return to. Restoring it there would point at a node about to be
+    ' detached. The dialog family's OTHER exit, closeDialog(), does restore
+    ' focus, and the asymmetry stayed invisible while the two never met on a live
+    ' screen.
     '
     ' It becomes a trap the moment a screen abandons a dialog and STAYS ON THE
     ' AIR, because presentOverlayDialog derives returnFocusTo from whatever holds
-    ' focus at that instant — so the next dialog inherits the scene root and hands
+    ' focus at that instant. So the next dialog inherits the scene root and hands
     ' focus back to nothing on close. UserSelect.abandonQuickConnectDialog() is
-    ' the one caller in that position and re-focuses its button row itself.
+    ' such a caller, and re-focuses its button row itself.
     '
     ' Pinned as CHARACTERIZATION rather than as a defect: if abandonDialog ever
     ' does start restoring focus, this fails and points at the call site whose
@@ -367,7 +369,7 @@ namespace tests
 
       ' A REAL focusable node, asserted to actually hold focus before the
       ' measurement begins. Without that precondition this would pass on a model
-      ' where nothing was ever focused, measuring nothing — the vacuous-proxy
+      ' where nothing was ever focused, measuring nothing: the vacuous-proxy
       ' failure recorded on the supersede test above.
       opener = CreateObject("roSGNode", "Button")
       opener.text = "opener"
@@ -400,7 +402,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' abandonDialog used unobserveFieldScoped, which removes only the CALLING
-    ' component's connection — so it missed a main-thread dialog observed with
+    ' component's connection, so it missed a main-thread dialog observed with
     ' observeField("result", m.port). unobserveField drops every observer on the
     ' field, which is what "abandon" means. Gated by writing `result` by hand
     ' after the abandon: a surviving observer would put an event on the port.
@@ -425,10 +427,10 @@ namespace tests
     ' The parameter exists because its absence caused a bypass: the playback
     ' error dialog needed [Details] beside OK, could not say so through the
     ' helper, and dropped a layer down to presentOverlayDialog to hand-build the
-    ' node — the one call site in the app doing that, and a shape the
+    ' node: the one call site in the app doing that, and a shape the
     ' no-hand-rolled-dialog plugin does not catch.
     '
-    ' SHAPE ONLY. These assert the button row and the focus index; they do not
+    ' Shape only. These assert the button row and the focus index; they do not
     ' assert what pressing a button returns, because driving a press needs
     ' synthetic key events this suite does not do. buttonDialogResult's index ->
     ' result mapping is covered in dialogResult.spec.bs.
@@ -467,7 +469,7 @@ namespace tests
       abandonDialog(presented)
     end function
 
-    ' subheading and the secondary are independent slots — the cast notice uses
+    ' subheading and the secondary are independent slots: the cast notice uses
     ' the first, the error dialog uses the second, and nothing should couple them.
     @it("still honours subheading alongside a secondary action")
     function _()

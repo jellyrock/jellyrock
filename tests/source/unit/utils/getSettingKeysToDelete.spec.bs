@@ -108,7 +108,7 @@ namespace tests
       result = getSettingKeysToDelete(allKeys, preserveKeys)
 
       m.assertEqual(result.Count(), 6)
-      ' Verify session keys are NOT in the delete list
+      ' Verify session keys are not in the delete list
       m.assertFalse(inArray(result, "authtoken"))
       m.assertFalse(inArray(result, "username"))
       m.assertFalse(inArray(result, "serverid"))

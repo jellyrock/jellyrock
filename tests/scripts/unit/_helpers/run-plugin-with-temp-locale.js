@@ -5,12 +5,13 @@
 //
 // Why fake the lifecycle: beforeProvideProgram and afterProvideProgram are
 // emitted from ProgramBuilder.loadPlugins() / createProgram(), not from
-// `new Program(...)`. Running a full ProgramBuilder is overkill — the plugin
+// `new Program(...)`. Running a full ProgramBuilder is overkill: the plugin
 // only reads `event.builder.options.{rootDir,translationKeys}` and
 // `event.program`. A two-property stub is sufficient.
 //
-// Read back the injected source via `program.getFile(VIRTUAL_PATH).fileContents`
-// — this is the canonical accessor for the source text of an injected file.
+// Read back the injected source via
+// `program.getFile(VIRTUAL_FILE_LOOKUP_PATH).fileContents`: this is the canonical
+// accessor for the source text of an injected file.
 
 import { Program } from 'brighterscript';
 import fs from 'node:fs';
@@ -24,7 +25,7 @@ const DEFAULT_BASE_FILE = 'locale/custom/en_US.json';
 
 /**
  * Builder-style harness with explicit setup/teardown so tests can drive
- * regenerate() directly (e.g. to test the beforeValidateProgram fallback)
+ * regenerate() directly (for example to test the beforeValidateProgram fallback)
  * and use vitest beforeEach/afterEach for cleanup.
  *
  * @param {() => object} pluginFactory  Plugin factory (`module.exports = () => new X()`).

@@ -48,7 +48,7 @@ fi
 
 # Per-USER log for postmortem on silent breakage; matches the convention
 # used by log-tool-use.sh and check-touched-related-files.sh.
-LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${HOME}/.claude/jellyrock-telemetry}"
+LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/jellyrock/telemetry}"
 LOG_FILE="$LOG_DIR/bsfmt-on-write-errors.log"
 mkdir -p "$LOG_DIR" 2>/dev/null
 

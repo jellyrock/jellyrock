@@ -1,7 +1,7 @@
 namespace tests
 
-  ' The playback error dialog's decision logic, which had NO coverage before —
-  ' the component that owned it (VideoPlayerView) cannot be instantiated in a
+  ' The playback error dialog's decision logic, which had no coverage before.
+  ' The component that owned it (VideoPlayerView) cannot be instantiated in a
   ' spec (its init() needs a mounted scene, a queue manager and a task), which is
   ' exactly why this logic was extracted into a pure module rather than left in
   ' the handler. Every test here is a plain function call.
@@ -31,7 +31,7 @@ namespace tests
     end function
 
     @it("still honours a real message when a title is supplied")
-    ' The guard must not swallow genuine server text just because a title exists.
+    ' The guard must not swallow real server text only because a title exists.
     function _()
       m.assertEqual(playbackErrorCause(-5, "No compatible streams.", "Error During Playback"), "No compatible streams.")
     end function
@@ -55,8 +55,8 @@ namespace tests
     end function
 
     @it("falls through to the generic cause for unknown, generic and empty-list codes")
-    ' -3 generic, -4 empty list, 0 no-error and an undocumented code must NOT
-    ' invent an explanation — a confident wrong cause is worse than none.
+    ' -3 generic, -4 empty list, 0 no-error and an undocumented code must not
+    ' invent an explanation: a confident wrong cause is worse than none.
     function _()
       generic = playbackErrorCause(-3)
       m.assertEqual(playbackErrorCause(-4), generic)
@@ -69,7 +69,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("is EMPTY when there is no device-side code")
-    ' A server-explained failure must not grow a "(0)" suffix — the inline label
+    ' A server-explained failure must not grow a "(0)" suffix: the inline label
     ' exists to classify a device failure, and 0 means there wasn't one.
     function _()
       m.assertEqual(playbackErrorCodeLabel(0), "")
@@ -89,7 +89,7 @@ namespace tests
 
     @it("is false when nothing at all was captured")
     ' A button promising help then opening a blank panel is worse than no button.
-    ' This is the ONLY state that loses it — not "the paths that never reached the
+    ' This is the one state that loses it, not "the paths that never reached the
     ' player", which normally still know the item and get a thinner panel instead.
     function _()
       m.assertFalse(hasPlaybackErrorDetails(0, invalid, invalid))
@@ -199,8 +199,8 @@ namespace tests
     end function
 
     @it("survives a context with no media source at all")
-    ' The three failure paths that never reach the player have none, and this
-    ' runs on a failure path — it must not be able to fail itself.
+    ' The failure paths that never reach the player have none, and this runs
+    ' on a failure path: it must not be able to fail itself.
     function _()
       values = m.rowValues(playbackErrorSections(-1, invalid, "", { itemName: "Elf" }))
       m.assertEqual(values.item, "Elf")
@@ -215,7 +215,7 @@ namespace tests
       m.assertEqual(playbackErrorSections(0, invalid, "", invalid).count(), 0)
     end function
 
-    ' Flatten every section's rows to { id: value } — each test asserts on a few
+    ' Flatten every section's rows to { id: value }: each test asserts on a few
     ' specific rows, and reading them positionally would break whenever a row is
     ' added.
     private function rowValues(sections as object) as object

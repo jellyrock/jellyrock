@@ -4,15 +4,15 @@
 // WHY THIS EXISTS
 // ---------------
 // Both triggers are hand-maintained regexes in different files and different
-// languages — a bash `grep -qE` in the hook, a `pattern:` input to the
+// languages: a bash `grep -qE` in the hook, a `pattern:` input to the
 // changed-paths action in the workflow. They have now drifted TWICE:
 //
 //   1. The workflow matched only `\.(brs|bs)$` while pre-push already covered
 //      `.xml`. Several BSC plugins read a component's XML half, so an XML-only
 //      edit could weaken a gate without ever re-running it.
 //   2. Neither `bsconfig.json` nor `scripts/bsc-plugins/` was matched, so a PR
-//      that removed a plugin from the plugin list — or edited a plugin into
-//      producing false positives against the real tree — skipped the job that
+//      that removed a plugin from the plugin list (or edited a plugin into
+//      producing false positives against the real tree) skipped the job that
 //      would have caught it.
 //
 // `ci-parity-check.js` guards the layer above this (every `npm run lint` leaf has
@@ -21,7 +21,7 @@
 // keeps happening.
 //
 // It samples representative paths rather than trying to prove one regex is a
-// superset of another — that is not decidable in general, and the string surgery
+// superset of another: that is not decidable in general, and the string surgery
 // it would take on alternation branches would be more fragile than the drift it
 // guards.
 
@@ -66,7 +66,7 @@ const MUST_TRIGGER = [
   ],
 ];
 
-// Paths that legitimately skip the job — guards against "fix" it by matching
+// Paths that legitimately skip the job. This guards against a "fix" that matches
 // everything, which would make the filter meaningless.
 const MUST_NOT_TRIGGER = [
   'README.md',

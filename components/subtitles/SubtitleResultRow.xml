@@ -3,7 +3,7 @@
   SubtitleResultRow: one remote subtitle search result inside SubtitlePanel's
   results MarkupList.
 
-  Exactly two lines — identity, then detail:
+  Exactly two lines, identity then detail:
 
     Sintel.2010.1080p.BluRay.x264-CtrlHD                             <- release name, marquees on focus
     561,277 downloads · pirosasz · 2012      * Perfect match  CC HI  <- meta line, badges right-anchored
@@ -23,15 +23,15 @@
   and 6 episodes on a real server (see source/utils/remoteSubtitles.bs):
 
     * DownloadCount is populated on 100% of results and spans 130..561,277, so
-      it leads the meta line — it is the only broadly-available quality signal.
-    * CommunityRating is deliberately ABSENT from this row: it was 0 on 44 of 50
-      results in the sample, so a rating column would read "0" almost always.
-    * IsHashMatch is a badge, never the sort key or the layout's organising
-      principle — hit rate swings from 0/50 to 6/20 depending on the title.
+      it leads the meta line: it is the only broadly-available quality signal.
+    * CommunityRating is ABSENT from this row on purpose: it was 0 on 44 of 50
+      results in the sample (2026-09-14), so a rating column would read "0" almost always.
+    * IsHashMatch is a badge, never the sort key or the layout's organizing
+      principle: hit rate swings from 0/50 to 6/20 depending on the title.
     * Format and ProviderName are omitted unless the result set actually mixes
       them (a single-provider install reports the same two values on every row).
 
-  Release names run long — 85 characters was the longest in the sample — so the
+  Release names run long (85 characters was the longest in the sample), so the
   name line is a ScrollingLabel that marquees only while the row has focus.
 -->
 <component name="SubtitleResultRow" extends="Group">
@@ -44,15 +44,15 @@
 
     <!-- Right-aligned on the row's right padding edge, so badges grow leftward.
          The row measures them and drops whole badges that would not fit rather
-         than drawing past the gutter into the column beside it — see
-         subtitleLayout.badgesThatFit(). itemSpacings is set from
+         than drawing past the gutter into the column beside it (see
+         subtitleLayout.badgesThatFit()). itemSpacings is set from
          subtitleLayout.BADGE_SPACING in init().
 
-         vertAlignment is deliberately left at its default of "top". A HORIZ
+         vertAlignment is left at its default of "top" on purpose. A HORIZ
          LayoutGroup set to "center" puts its local y-origin at the group's
          vertical CENTRE, not its top edge, so translating it to the second
-         line's y drew the badges half their height too high — measured at 12px
-         above the detail text's baseline on a Stick 4K. The inner per-badge
+         line's y drew the badges half their height too high, measured at 12px
+         above the detail text's baseline on a Stick 4K (2026-09-14). The inner per-badge
          groups DO use center, which is what keeps each icon aligned with its
          own label. -->
     <LayoutGroup id="badgeRow" layoutDirection="horiz" horizAlignment="right" />

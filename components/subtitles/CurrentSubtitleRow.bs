@@ -9,7 +9,7 @@ import "pkg:/source/utils/translate.bs"
 const BADGE_ICON_SIZE = 22
 
 ' Which icon a badge draws. Both Posters live in every slot with their uri
-' assigned once — see SubtitleResultRow.buildBadgePool for the full reasoning.
+' assigned once. See SubtitleResultRow.buildBadgePool for the full reasoning.
 const BADGE_ICON_NONE = ""
 const BADGE_ICON_CC = "cc"
 
@@ -25,11 +25,11 @@ sub init()
 
   m.titleLabel.color = m.global.constants.colorTextPrimary
   m.titleLabel.repeatCount = 0
-  ' Until a content node says otherwise, assume the compact shape — a row sized
+  ' Until a content node says otherwise, assume the compact shape: a row sized
   ' for two lines that only ever draws one leaves a visible gap.
   m.isExternal = false
   ' Likewise assume no action: a row that reserves space for an affordance it
-  ' never draws is indistinguishable from one that is simply misaligned.
+  ' never draws is indistinguishable from one that is misaligned.
   m.canDelete = false
   ' Badges this row's content asks for, each { text, color, iconKind, width },
   ' and the width of the ones actually shown. Empty until content arrives, so a
@@ -51,12 +51,12 @@ sub init()
   m.deleteIcon.loadWidth = subtitleLayout.ROW_ACTION_ICON_SIZE
   m.deleteIcon.loadHeight = subtitleLayout.ROW_ACTION_ICON_SIZE
   m.deleteIcon.loadDisplayMode = "limitSize"
-  ' Same synchronous local load as the badge icons — this one appears on focus,
+  ' Same synchronous local load as the badge icons. This one appears on focus,
   ' where a late bitmap reads as the affordance lagging the focus ring.
   m.deleteIcon.loadSync = true
   ' Tracks the row's text rather than an error colour. colorError is this app's
   ' signal for an outcome that already went wrong (Toast), not for an action
-  ' that is merely available — the weight of the action belongs in the
+  ' that is merely available. The weight of the action belongs in the
   ' confirmation, not in the affordance.
   m.deleteIcon.blendColor = m.global.constants.colorTextPrimary
 
@@ -84,11 +84,11 @@ sub buildBadgePool()
     badge.vertAlignment = "center"
     badge.visible = false
 
-    ' Resident, pre-bound icon in a holder — the uri is assigned once and never
+    ' Resident, pre-bound icon in a holder. The uri is assigned once and never
     ' rebound, so a recycled row cannot make the icon pop in. This row type only
     ' ever draws the CC mark, but it keeps the holder so both row types collapse
     ' an unused icon the same way (by WIDTH, because an invisible LayoutGroup
-    ' child still occupies its slot — measured on device).
+    ' child still occupies its slot, measured on device).
     holder = badge.createChild("Group")
     icons = {}
     icons[BADGE_ICON_CC] = newBadgeIcon(holder, "pkg:/images/icons/closedCaptions_$$RES$$.png")
@@ -100,7 +100,7 @@ sub buildBadgePool()
 end sub
 
 ' newBadgeIcon: one resident, pre-bound badge Poster, collapsed until used.
-' Starts at zero WIDTH rather than merely hidden — an invisible LayoutGroup
+' Starts at zero WIDTH rather than merely hidden: an invisible LayoutGroup
 ' child still takes its place in the layout, which is what leaves a badge with
 ' no icon indented from one that has it.
 function newBadgeIcon(holder as object, uri as string) as object
@@ -111,7 +111,7 @@ function newBadgeIcon(holder as object, uri as string) as object
   icon.loadWidth = BADGE_ICON_SIZE
   icon.loadHeight = BADGE_ICON_SIZE
   icon.loadDisplayMode = "limitSize"
-  ' Synchronous load, set BEFORE uri — Poster.loadSync defaults to false, i.e.
+  ' Synchronous load, set BEFORE uri. Poster.loadSync defaults to false, that is
   ' async, "may not appear immediately". That async default is the icon pop-in AND
   ' the ~28px rightward jump of whatever badge follows, because a Poster with no
   ' bitmap yet contributes nothing to the LayoutGroup. Full reasoning in
@@ -140,7 +140,7 @@ sub onItemContentChanged()
   m.sourceLabel.visible = m.isExternal and m.sourceLabel.text <> ""
 
   ' Whether OK does anything on this row. Resolved by the panel, which is the
-  ' only scope that knows the user's delete permission; the row just draws it.
+  ' only scope that knows the user's delete permission; the row only draws it.
   ' Explicitly `= true` so an absent field reads as "no action", never as one.
   m.canDelete = content.canDelete = true
 
@@ -174,11 +174,11 @@ end function
 
 ' badgesFor: Only the flags that change what the track IS, most significant first.
 '
-' Order is load-bearing: when a row cannot fit every badge, the ones dropped are
+' Order matters: when a row cannot fit every badge, the ones dropped are
 ' the last in this list (see placeBadges).
 '
-' No "perfect match" here — that is a property of a provider search result, not
-' of a file already on disk — and no download count, which an installed subtitle
+' No "perfect match" here (that is a property of a provider search result, not
+' of a file already on disk), and no download count, which an installed subtitle
 ' does not have. Rendering those was what made the first draft's right-hand
 ' column read as broken.
 function badgesFor(content as object) as object
@@ -271,7 +271,7 @@ sub onSizeChanged()
   ' the FIRST line for both shapes so they align down the column regardless of
   ' whether a row has a second line.
   '
-  ' The action icon takes NOTHING from this line — it lives on line 2. Reserving
+  ' The action icon takes nothing from this line: it lives on line 2. Reserving
   ' here instead ellipsized the title on a real row (see actionZoneWidth).
   firstLineY = subtitleLayout.ROW_V_PADDING
 
@@ -282,7 +282,7 @@ sub onSizeChanged()
   m.badgeRow.translation = [rowWidth - subtitleLayout.ROW_H_PADDING, firstLineY]
 
   ' Line 2: the filename, and the action icon at the far right. This line has no
-  ' badges, so the icon is the only thing competing with the text here — and the
+  ' badges, so the icon is the only thing competing with the text here, and the
   ' filename tail it holds is short enough that giving up the icon's strip costs
   ' nothing visible. A Label with wrap off and a width ellipsizes any overflow.
   secondLineY = firstLineY + constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP
@@ -301,7 +301,7 @@ end sub
 sub onFocusChanged()
   hasFocus = m.top.itemHasFocus
 
-  ' Drawn only while focused — an icon on every row would read as a column of
+  ' Drawn only while focused: an icon on every row would read as a column of
   ' delete buttons rather than as what OK does to the row you are on. Its space
   ' is reserved regardless (see onSizeChanged), so this cannot shift the layout.
   m.deleteIcon.visible = hasFocus and m.canDelete

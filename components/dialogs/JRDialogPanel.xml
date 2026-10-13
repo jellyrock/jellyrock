@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- JRDialogPanel: the chrome every JellyRock dialog shares — the dimmed
+<!-- JRDialogPanel: the chrome every JellyRock dialog shares: the dimmed
      backdrop, the panel, its edge, the title, and the accent rule under it.
-     Everything a dialog does NOT have in common (a message, a list, a scroll
+     Everything a dialog does not have in common (a message, a list, a scroll
      viewport, buttons) stays in the dialog itself.
 
      It exists because this node set was copy-pasted three times and then only
@@ -42,7 +42,7 @@
     <field id="title" type="string" onChange="onTitleChanged" />
 
     <!-- Published once the title has rendered. alwaysNotify because a dialog
-         re-titled to the same height still needs its layout recomputed — the
+         re-titled to the same height still needs its layout recomputed: the
          body that prompted it may have changed. -->
     <field id="titleHeight" type="integer" value="0" alwaysNotify="true" />
 

@@ -2,9 +2,10 @@ import "pkg:/source/remotecontrol/remoteProtocol.bs"
 
 namespace tests
 
-  ' Remote-control receiver: the transport-agnostic protocol helpers — the http-gate,
-  ' the session-socket URL builder (must bind the same session as the REST API), and the
-  ' client KeepAlive frame. Reconnect backoff is backoff.nextDelayMs (utils/backoff.spec.bs).
+  ' Remote-control receiver: the transport-agnostic protocol helpers: the http-gate,
+  ' the session-socket URL builder (must bind the same session as the REST API), the companion
+  ' plugin's long-poll, probe and pairing helpers, and the client KeepAlive frame. Reconnect
+  ' backoff is backoff.nextDelayMs (utils/backoff.spec.bs).
   @suite("remoteProtocol — protocol helpers")
   class RemoteProtocolTests extends tests.BaseTestSuite
 
@@ -141,7 +142,7 @@ namespace tests
 
     @it("returns 0 for a non-numeric contractVersion (never throws on a hostile body)")
     function _()
-      ' JSON bodies built via FormatJson rather than @params string literals — an embedded-quote
+      ' JSON bodies built via FormatJson rather than @params string literals. An embedded-quote
       ' string in a @params annotation transpiles to a broken expression.
       m.assertEqual(remoteProtocol.parseContractVersion(FormatJson({ contractVersion: "two" })), 0)
       m.assertEqual(remoteProtocol.parseContractVersion(FormatJson({ contractVersion: true })), 0)
@@ -161,11 +162,11 @@ namespace tests
     @describe("keepAliveFrame()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' Asserted as a RAW STRING, deliberately. The previous version of this spec did
+    ' Asserted as a RAW STRING, on purpose. The previous version of this spec did
     ' `ParseJson(keepAliveFrame()).MessageType = "KeepAlive"` and passed for the whole life of #934,
     ' because ParseJson returns a case-INsensitive AA: it resolved the broken `messagetype` key
     ' without complaint. Only the serialized bytes can show the casing, and the casing is the whole
-    ' contract — Jellyfin's socket path binds `MessageType` case-SENSITIVELY, so a lowercased key is
+    ' contract. Jellyfin's socket path binds `MessageType` case-SENSITIVELY, so a lowercased key is
     ' silently ignored and the server reaps the socket ~60s later.
     @it("serializes MessageType with the exact casing Jellyfin's socket binding requires")
     function _()

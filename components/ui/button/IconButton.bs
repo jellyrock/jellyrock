@@ -6,8 +6,8 @@ import "pkg:/source/utils/misc.bs"
 ' thing it caps. See that file's header for the surfaces that depend on it.
 import "pkg:/source/utils/buttonOverflow.bs"
 
-const focusBorderOffset = 6 ' Used for positioning calculations only (matches 6px border in 9-patch image); does NOT control actual border rendering
-const spinnerSize = 42 ' Spinner rendered smaller than 64px icon frame — icons have transparent padding so this matches the visible icon area
+const focusBorderOffset = 6 ' Used for positioning calculations only (matches 6px border in 9-patch image); does not control actual border rendering
+const spinnerSize = 42 ' Spinner rendered smaller than 64px icon frame: icons have transparent padding so this matches the visible icon area
 
 ' LAYOUT NOTE FOR DEVELOPERS:
 ' IconButton text extends 12px wider than the button (6px on each side) to prevent label wrapping.
@@ -132,7 +132,7 @@ sub layoutForIconSize(iconWidth as float, iconHeight as float)
   ' Width goes through the shared function because the row-overflow cap is
   ' computed from it; height does not, so it only shares the constant.
   ' int() because bitmapWidth is a float field and the metric is in whole
-  ' design-space pixels — our icon assets are square whole numbers.
+  ' design-space pixels, and our icon assets are square whole numbers.
   m.buttonBackground.width = iconButtonBackgroundWidth(int(iconWidth)) ' extra horiz padding for text
   m.buttonBackground.height = iconHeight + (ICON_BUTTON_PADDING * 2)
 
@@ -201,7 +201,7 @@ sub setFocusBorderSize()
 end sub
 
 ' onLoadingChanged: Swap icon for a spinner while loading.
-' Does NOT set enabled=false — button stays focusable. OK blocking is handled by JRButtonGroup.
+' Does not set isEnabled=false: the button stays focusable. OK blocking is handled by JRButtonGroup.
 sub onLoadingChanged()
   if m.top.isLoading
     m.buttonIcon.visible = false

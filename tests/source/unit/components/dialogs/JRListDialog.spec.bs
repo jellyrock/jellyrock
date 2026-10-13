@@ -64,7 +64,7 @@ namespace tests
 
     ' THE DEFAULT IS "NOTHING IS CURRENT". A choice dialog reaches this component
     ' through showChoiceDialog's fallback, where defaultIndex means "focus this
-    ' one" and nothing is active yet — marking the focused row would claim an
+    ' one" and nothing is active yet: marking the focused row would claim an
     ' option was already in effect, which the button route it falls back FROM
     ' never does.
     @it("marks nothing when no option is current, even with a focus index set")
@@ -121,7 +121,7 @@ namespace tests
 
     ' THE REGRESSION. This dialog used to switch the list to `fixedFocusWrap`
     ' once it exceeded the visible cap. Roku's wrap consumes UP and DOWN at both
-    ' ends, which silently took away the dialog's only two dPad gestures — above
+    ' ends, which silently took away the dialog's only two dPad gestures. Above
     ' 8 rows there was no way to leave except Back. Wrapping is ours now
     ' (listDialogKeyAction), so the list must never be handed back to Roku's.
     @it("keeps floatingFocus no matter how long the list is")
@@ -165,7 +165,7 @@ namespace tests
       m.assertTrue(row.findNode("selectedBackground").visible)
     end function
 
-    ' The label is NOT one of the signals, and this is the assertion that keeps
+    ' The label is not one of the signals, and this is the assertion that keeps
     ' it that way. Recolouring it to match the check was tried and read as too
     ' much contrast on device: with the surface already there, three treatments
     ' on one row is louder than the state warrants.
@@ -256,9 +256,9 @@ namespace tests
       m.assertEqual(rowIcon.uri, "pkg:/images/icons/refresh_$$RES$$.png")
     end function
 
-    ' The gutter holds ONE thing. The two cannot co-occur through the helpers — a
+    ' The gutter holds one thing. The two cannot co-occur through the helpers (a
     ' picker marks a current option and passes no icons, an action list passes
-    ' icons and marks nothing — but "unreachable" is not a layout rule, and two
+    ' icons and marks nothing), but "unreachable" is not a layout rule, and two
     ' posters stacked in the same 36px slot is what the alternative looks like.
     @it("yields the gutter to the check when a row is somehow both")
     function _()
@@ -377,7 +377,7 @@ namespace tests
       m.assertTrue(m.dialog.titleVisible)
     end function
 
-    ' REGRESSION GUARD for every existing caller — the track pickers and the
+    ' REGRESSION GUARD for every existing caller: the track pickers and the
     ' choice dialogs all rely on the fixed 900.
     @it("keeps the fixed 900px panel when nothing opts out of it")
     function _()
@@ -472,7 +472,7 @@ namespace tests
     end function
 
     ' THE ACCESSIBILITY HALF. Hiding the heading must not take the announcement
-    ' with it — narration reads `title`, the panel draws `chrome.title`, and this
+    ' with it: narration reads `title`, the panel draws `chrome.title`, and this
     ' is the assertion that keeps the two separable.
     @it("hides the drawn title without discarding the announced one")
     function _()
@@ -515,13 +515,13 @@ namespace tests
     @it("the option list holds focus after the present sequence")
     function _()
       ' Reproduces exactly what source/utils/dialogs.bs presentOverlayDialog does.
-      ' The list takes focus in onItemsChanged, i.e. BEFORE the node is in the
+      ' The list takes focus in onItemsChanged, that is, BEFORE the node is in the
       ' scene, and the helper's dialog.setFocus(true) runs after appendChild.
-      ' That ordering is load-bearing: `focusable` is only a HINT (see
+      ' The test depends on that ordering: `focusable` is only a HINT (see
       ' REFERENCES/scenegraph/node.md), so RSG leaves focus on the already-focused
       ' descendant instead of hoisting it to the group. If a future refactor sets
-      ' `items` after appending, or makes the group genuinely take focus, the list
-      ' becomes unreachable and OK does nothing — which is exactly what this
+      ' `items` after appending, or makes the group itself take focus, the list
+      ' becomes unreachable and OK does nothing, which is exactly what this
       ' test exists to catch.
       scene = m.top.getScene()
       m.assertNotInvalid(scene)
@@ -545,7 +545,7 @@ namespace tests
     @describe("cancelDialog — third-party dismissal")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' Cancelling from outside must be indistinguishable from Back — see
+    ' Canceling from outside must be indistinguishable from Back: see
     ' cancelOpenDialog() in source/utils/dialogs.bs. A list dialog has no buttons,
     ' so a cancel is optionIndex -1.
     @it("delivers a cancelled result and closes")
@@ -563,7 +563,7 @@ namespace tests
       m.assertInvalid(m.dialog.getParent())
     end function
 
-    ' Indistinguishable in what it delivers, not in where it came from — see
+    ' Indistinguishable in what it delivers, not in where it came from: see
     ' JRDialog's matching test and source/utils/dialogResult.bs.
     @it("records that the close came from code")
     function _()

@@ -14,7 +14,7 @@ import "pkg:/source/utils/translate.bs"
 const BADGE_ICON_SIZE = 22
 
 ' Which icon a badge draws. A slot can show either, so both Posters exist in
-' every slot with their uri assigned ONCE — see buildBadgePool.
+' every slot with their uri assigned once. See buildBadgePool.
 const BADGE_ICON_NONE = ""
 const BADGE_ICON_STAR = "star"
 const BADGE_ICON_CC = "cc"
@@ -69,11 +69,11 @@ sub buildBadgePool()
 
     ' ONE holder, TWO overlapping Posters, and a uri that is never reassigned.
     '
-    ' A slot shows whichever icon its badge needs, so the free-pool version just
+    ' A slot shows whichever icon its badge needs, so the free-pool version
     ' wrote the uri it wanted onto the slot's single Poster. That churned: a
     ' result WITH a perfect match put the star in slot 0 and one without put the
     ' CC icon there, so every recycle that changed which kind came first rebound
-    ' slot 0's texture — and a Poster draws nothing until the new bitmap is
+    ' slot 0's texture, and a Poster draws nothing until the new bitmap is
     ' bound, which is the icon visibly popping in mid-scroll even though the
     ' asset was already in Roku's texture cache. Keeping both Posters resident
     ' and switching which one is SHOWN costs two nodes and rebinds nothing.
@@ -93,14 +93,14 @@ end sub
 
 ' newBadgeIcon: one resident, pre-bound badge Poster, collapsed until used.
 '
-' Starts at zero SIZE, not merely hidden, and that distinction is load-bearing:
+' Starts at zero SIZE, not merely hidden, and that distinction matters:
 ' measured on device, an invisible LayoutGroup child still occupies its slot in
-' the layout — hiding a 22px icon left a 22px hole plus its spacing, which is
+' the layout. Hiding a 22px icon left a 22px hole plus its spacing, which is
 ' how a badge with no icon ends up indented from one that has it. Width is
-' therefore what this row toggles; `visible` just follows it.
+' therefore what this row toggles; `visible` only follows it.
 function newBadgeIcon(holder as object, uri as string) as object
   icon = holder.createChild("Poster")
-  ' Downscale into TEXTURE MEMORY, not just on the way to the screen.
+  ' Downscale into TEXTURE MEMORY, not only on the way to the screen.
   '
   ' All THREE fields are required and none is optional: loadWidth/loadHeight
   ' state the cap, and loadDisplayMode is what makes the cap apply at load time
@@ -131,15 +131,15 @@ function newBadgeIcon(holder as object, uri as string) as object
   ' It also explains the SHIFT that came with it, which is the more telling half:
   ' until the bitmap arrives the Poster has no content to contribute, so the
   ' LayoutGroup lays the row out as though the icon were not there and re-flows
-  ' when it lands — measured as a badge after it jumping right by ~28px, which is
-  ' exactly this icon (22) plus its gutter (6). A label measuring late would have
+  ' when it lands. Measured 2026-09-14: a badge after it jumped right by ~28px,
+  ' which is exactly this icon (22) plus its gutter (6). A label measuring late would have
   ' moved it by a label's width; 28px names the icon specifically.
   '
   ' The docs' caveat ("might cause brief glitches in the rendering while the image
   ' is being fetched and loaded") is about paying the fetch on the render thread.
   ' That is the right trade for a handful of tiny local PNGs already in the
   ' package, and the load happens once per uri at row construction rather than
-  ' per scroll — NOT the trade to copy for a remote poster.
+  ' per scroll. It is not the trade to copy for a remote poster.
   icon.loadSync = true
   ' Assigned once, here, for the row component's whole life.
   icon.uri = uri
@@ -233,14 +233,14 @@ end function
 ' badgesFor: The flags that sit at the right of the meta line, most significant
 ' first.
 '
-' Order is significance order, and that is load-bearing rather than cosmetic:
+' Order is significance order, and that matters beyond the cosmetic:
 ' when a row cannot fit every badge, the ones dropped are the last in this list
 ' (see placeBadges).
 '
 ' Only truths worth acting on get a badge. "Perfect match" leads because a
 ' hash-matched subtitle is the one signal that reliably predicts sync; the
 ' translation/impairment flags follow because they change whether the file is
-' the right KIND of subtitle, not just whether it fits.
+' the right KIND of subtitle, not only whether it fits.
 '
 ' Each badge is an icon plus its label. The icons carry the meaning at a glance
 ' and the words disambiguate them, which matters because "perfect match" is not
@@ -255,7 +255,7 @@ function badgesFor(content as object) as object
     ' colorSecondary, not colorPrimary. The theme encodes interaction state: primary
     ' is for what you can focus or act on (it is the focus ring on this very row),
     ' secondary is for non-focusable emphasis. A perfect-match mark is emphasis on a
-    ' property of the result, not something you can move focus to — and tinting it
+    ' property of the result, not something you can move focus to, and tinting it
     ' primary put the same colour on the badge and the focus ring in one frame.
     wanted.push(newBadge(translate(translationKeys.LabelPerfectMatch), constants.colorSecondary, BADGE_ICON_STAR))
   end if
@@ -319,7 +319,7 @@ sub fillBadgeSlot(slot as object, badge as object)
   slot.label.color = badge.color
 
   ' Collapse every icon in this slot, then open the one asked for. Width rather
-  ' than visibility is what takes it out of the layout — see newBadgeIcon.
+  ' than visibility is what takes it out of the layout (see newBadgeIcon).
   for each kind in slot.icons
     icon = slot.icons[kind]
     wanted = (kind = badge.iconKind)

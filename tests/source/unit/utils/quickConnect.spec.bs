@@ -8,10 +8,10 @@ namespace tests
   '   /QuickConnect/Connect   200 / 404 on every version; 503 added at 10.11.0
   '   /QuickConnect/Initiate  200 / 401 on every version; 503 added at 10.11.0
   '   AuthenticateWithQC      200 / 400 on every version; 503 added at 10.11.0
-  '   QuickConnectResult.Error exists ONLY on 10.7.x
+  '   QuickConnectResult.Error exists only on 10.7.x
   '
   ' Two of those codes therefore do not exist on every server, and one field
-  ' exists on only the oldest — so these are version-matrix tests, not
+  ' exists on only the oldest, so these are version-matrix tests, not
   ' single-version ones. The original 404 finding came from probing one live
   ' server, which is exactly how the infinite-poll bug this module fixes got
   ' shipped; the spec sweep is what turned it into a claim about all of them.
@@ -71,7 +71,7 @@ namespace tests
     end function
 
     @it("reports failed for a 200 whose body did not parse")
-    ' NOT pending: pending is a fact the server stated, and this response stated
+    ' Not pending: pending is a fact the server stated, and this response stated
     ' nothing. Calling it pending is what turns a broken proxy into a spinner
     ' that never resolves.
     function _()
@@ -175,8 +175,8 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("reports failed for a 200 that carries an Error string")
-    ' 10.7.x ONLY: its QuickConnectResult has an `Error` field that 10.8 dropped.
-    ' A server stating an error is not saying "not yet" — treating it as pending
+    ' 10.7.x only: its QuickConnectResult has an `Error` field that 10.8 dropped.
+    ' A server stating an error is not saying "not yet". Treating it as pending
     ' leaves the oldest supported server with the infinite spinner this module
     ' exists to remove.
     function _()
@@ -248,7 +248,7 @@ namespace tests
     end function
 
     @it("reports SPENT for the 404 a live server actually answers")
-    ' UNDECLARED by every spec, which declares only 400 here — and observed on
+    ' UNDECLARED by every spec, which declares only 400 here, and observed on
     ' 10.11.11. The classifier does not enumerate codes for exactly that reason.
     function _()
       m.assertEqual(quickConnectExchangeFailure(m.poolResponse(404, invalid)), QC_FAIL_SPENT)
@@ -288,8 +288,8 @@ namespace tests
     ' A 200 is not a session. Before this gate, an exchange that answered OK with
     ' an unusable body sailed past UserSelect, the user answered the
     ' save-credentials question, and then the coordinator dropped it with nothing
-    ' on screen — no message, no navigation. These pin the exact payload shapes
-    ' the DOWNSTREAM chain needs, which is why User.Id is checked and not just User.
+    ' on screen: no message, no navigation. These pin the exact payload shapes
+    ' the DOWNSTREAM chain needs, which is why User.Id is checked and not only User.
 
     @it("accepts a complete AuthenticationResult")
     function _()
@@ -313,7 +313,7 @@ namespace tests
 
     @it("rejects a User carrying no Id")
     ' The one that is easy to under-check. UserData.loadFromJSON reads json.User.id
-    ' and user.Login refuses a payload without it — but loginRouter calls
+    ' and user.Login refuses a payload without it, but loginRouter calls
     ' finishLogin() either way, so accepting this lands on Home with nobody signed
     ' in. Worse than the failure it replaces, and silent.
     function _()

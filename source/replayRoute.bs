@@ -7,7 +7,7 @@ import "pkg:/source/utils/tasks.bs"
 '   1. The auth guard (components/auth/AuthManager.bs) stashes the PATH of any
 '      signed-out in-app navigation on m.global.AuthManager.stashedRoute (a string).
 '      Its queue (for a /play path) was already populated by the launcher, so replay
-'      just re-walks Home -> [Details ->] target (buildReplayRoutes).
+'      re-walks Home -> [Details ->] target (buildReplayRoutes).
 '
 '   2. A DEEP LINK (cold-start launchArgs or runtime roInputEvent) stashes a STRUCTURED
 '      intent on m.global.AuthManager.stashedDeepLink ({ itemId, mediaType, serverGuid }).
@@ -24,14 +24,14 @@ import "pkg:/source/utils/tasks.bs"
 ' Parse a Roku deep-link contentId into { itemId, serverGuid, action }. contentId is the only
 ' deep-link field that survives BOTH Roku ingress paths intact (cold-start /launch standardizes
 ' only contentId+mediaType; /input forwards arbitrary params but /launch does not), and Roku
-' forbids "&" inside it — so the whole contract rides inside contentId, pipe-delimited (Roku's
-' own documented convention, e.g. series=x|Season=1). We mint it as
+' forbids "&" inside it, so the whole contract rides inside contentId, pipe-delimited (Roku's
+' own documented convention, for example series=x|Season=1). We mint it as
 ' "id=<itemId>|serverId=<serverGuid>|action=<verb>" (key names mirror Jellyfin web's ?id=&serverId=),
 ' and still accept a bare itemId (manual ECP tests, legacy). serverGuid is "" when absent (=> the
 ' active server). action defaults to "open" (land on the page, no autoplay) and is normalized to
 ' lower case; the consumer treats any UNKNOWN action as "open" too, so the contract is
-' forward-compatible — a future verb degrades gracefully on an older build.
-' Duplicate keys are LAST-WINS ("id=a|id=b" => "b") — an emergent property of the loop, pinned
+' forward-compatible: a future verb degrades gracefully on an older build.
+' Duplicate keys are last-wins ("id=a|id=b" => "b"), an emergent property of the loop, pinned
 ' by a spec so a refactor can't silently change it. A value may itself contain "=" (we split each
 ' pair on the FIRST "=" only), so a key=value whose value carries an "=" is preserved, not dropped.
 function parseDeepLinkContentId(raw as string) as object
@@ -53,7 +53,7 @@ function parseDeepLinkContentId(raw as string) as object
       value = Mid(pair, eq + 1).trim()
       if key = "id"
         ' Guard like action/server below: an explicit empty "id=" must not clobber a value an
-        ' earlier bare segment already supplied (e.g. "abc|id=").
+        ' earlier bare segment already supplied (for example "abc|id=").
         if isValidAndNotEmpty(value) then result.itemId = value
       else if key = "server" or key = "serverid"
         ' Jellyfin server GUIDs are canonical lower-case hex; normalize so a sender that
@@ -69,20 +69,20 @@ end function
 
 ' A deep-link itemId is concatenated raw into the details route AND the metadata-fetch URL
 ' ("/Items/<id>"), neither of which is URL-encoded. Reject an id carrying URL-structural
-' characters (/ ? # & = | % or whitespace) so a crafted contentId can't reshape either — a
-' whitelist of the characters real Jellyfin ids (GUIDs, hex +/- dashes) actually use. Deliberately
-' NOT a strict GUID match: the goal is to block injection, not to assume an exact id format.
+' characters (/ ? # & = | % or whitespace) so a crafted contentId can't reshape either: a
+' whitelist of the characters real Jellyfin ids (GUIDs, hex +/- dashes) actually use. It is not
+' a strict GUID match: the goal is to block injection, not to assume an exact id format.
 function isPlausibleDeepLinkItemId(id as string) as boolean
   if not isValidAndNotEmpty(id) then return false
   re = CreateObject("roRegex", "^[A-Za-z0-9_\-]{1,128}$", "")
   return re.isMatch(id)
 end function
 
-' Safe-token check for deep-link fields that ride UNENCODED into the details route — mediaType
+' Safe-token check for deep-link fields that ride unencoded into the details route: mediaType
 ' in the PATH ("/details/<mediaType>/...") and action in the QUERY ("?deeplink=<action>"). Both
 ' come from sender-controlled launch params. Blocks the URL-structural characters (/ ? # & = | %
 ' and whitespace) a crafted value would use to inject extra path/query segments, while still
-' allowing clean-but-unknown values through — a future Jellyfin item type or a forward-compat
+' allowing clean-but-unknown values through. A future Jellyfin item type or a forward-compat
 ' action verb degrades gracefully downstream (ItemDetails resolves the real type; an unknown
 ' action is treated as "open"). Mirrors isPlausibleDeepLinkItemId's whitelist approach.
 function isPlausibleDeepLinkToken(value as string) as boolean
@@ -96,19 +96,19 @@ end function
 
 ' Stash a deep link (cold-start or runtime) as a structured intent for replayAfterLogin.
 ' Parses the contentId; records itemId + mediaType (+ serverGuid for the server resolver).
-' Replaces the old queue-seed approach — ItemDetails now builds the queue from the
+' Replaces the old queue-seed approach: ItemDetails now builds the queue from the
 ' validated item (real type + bookmark), so no queue work happens here.
 ' itemName is an OPTIONAL display title the sender (a casting client) may include so the
-' server-switch prompt can name what's being cast — we can't fetch it ourselves before the
+' server-switch prompt can name what's being cast; we can't fetch it ourselves before the
 ' switch (it lives on a server we're not yet authed to). Empty for bare/unknown senders.
 sub stashDeepLink(rawContentId as string, mediaType as string, itemName = "" as string)
   parsed = parseDeepLinkContentId(rawContentId)
-  ' Drop a missing or structurally-implausible id BEFORE it reaches a route/URL — the same
+  ' Drop a missing or structurally-implausible id BEFORE it reaches a route/URL: the same
   ' silent no-stash the empty-id case already used (a junk id is garbage, not a deferrable link).
   if not isPlausibleDeepLinkItemId(parsed.itemId) then return
 
   ' mediaType is only a display hint (ItemDetails resolves the REAL type from the fetched item),
-  ' but it lands raw in the route PATH — so an empty OR injection-bearing value falls back to the
+  ' but it lands raw in the route PATH, so an empty OR injection-bearing value falls back to the
   ' safe default rather than reshaping the route.
   routeMediaType = mediaType
   if not isPlausibleDeepLinkToken(routeMediaType) then routeMediaType = "Video"
@@ -135,8 +135,8 @@ sub replayAfterLogin()
   deepLink = m.global.AuthManager.stashedDeepLink
   if isValid(deepLink) and isValidAndNotEmpty(deepLink.itemId)
     m.global.AuthManager.stashedDeepLink = invalid
-    ' homeFirst: land on Home (the back-stack root) THEN validate. An invalid id just toasts on
-    ' Home — good post-login UX. A valid id navigates on from Home.
+    ' homeFirst: land on Home (the back-stack root) THEN validate. An invalid id only toasts on
+    ' Home, which is good post-login UX. A valid id navigates on from Home.
     m.scene.callFunc("resolveDeepLink", {
       itemId: deepLink.itemId,
       action: deepLink.action,
@@ -154,12 +154,12 @@ sub replayAfterLogin()
 end sub
 
 ' Runtime replay (app already signed in, deep link for the active server). Unlike the post-login
-' path above, this does NOT prepend Home — an in-app cast shouldn't flash through the Home screen.
+' path above, this does not prepend Home: an in-app cast shouldn't flash through the Home screen.
 '   - already on the target item's LOADED details -> launch the action in place (no fetch, no
 '     re-mount); for "open" we're already showing it, so nothing to do. The itemContent guard
 '     matters: a lingering empty details would otherwise swallow the cast.
 '   - otherwise -> hand the intent to JRScene.resolveDeepLink, which VALIDATES the id (a fetch)
-'     BEFORE navigating. An invalid id never disturbs the active session — it just toasts. A valid
+'     BEFORE navigating. An invalid id never disturbs the active session; it only toasts. A valid
 '     id then navigates (replacing an active player for a playback cast, else a plain push).
 sub replayDeepLinkRuntime()
   deepLink = m.global.AuthManager.stashedDeepLink
@@ -171,13 +171,13 @@ sub replayDeepLinkRuntime()
 
   onLoadedDetails = isValid(active) and active.subtype() = "ItemDetails" and active.itemId = deepLink.itemId and isValid(active.itemContent) and isValidAndNotEmpty(active.itemContent.id)
   if onLoadedDetails
-    ' Already on this item's loaded details — no need to re-validate. Launch in place; "open" no-op.
+    ' Already on this item's loaded details, so no need to re-validate. Launch in place; "open" no-op.
     if isPlayback then active.callFunc("playFromDeepLink", deepLink.action)
     return
   end if
 
   ' Drop an incidental "open" that would stack details on top of live playback (jellyfin-web
-  ' display-mirroring, or a Roku OS deep link arriving mid-playback). Silent — mirroring fires on
+  ' display-mirroring, or a Roku OS deep link arriving mid-playback). Silent: mirroring fires on
   ' every browse, so a toast would spam. Playback actions fall through to replacePlayer below.
   if isValid(active) and wouldStackOverActivePlayer(deepLink.action, active.subtype()) then return
 
@@ -200,8 +200,8 @@ end function
 
 ' True when a non-playback ("open") deep link would stack a details screen on TOP of an active media
 ' player, and so must be dropped rather than enacted. jellyfin-web's display-mirroring fires a
-' DisplayContent ("open") on EVERY item-detail browse while JellyRock is the cast target, and the Roku
-' OS can hand us an "open" deep link mid-playback — neither is an intent to interrupt playback, so the
+' DisplayContent ("open") on every item-detail browse while JellyRock is the cast target, and the Roku
+' OS can hand us an "open" deep link mid-playback. Neither is an intent to interrupt playback, so the
 ' controller's browsing must never yank the cast target off the video. A PLAYBACK action
 ' (play/shuffle/trailer/instantmix) is exempt: it legitimately REPLACES the player (replacePlayer
 ' below). activeSubtype is the active routed view's subtype ("" / invalid when there's no active view).
@@ -212,14 +212,14 @@ function wouldStackOverActivePlayer(action as string, activeSubtype as dynamic) 
   return isDeepLinkPlayerView(activeSubtype)
 end function
 
-' Build the /details route for a deep link. The :type is just a display hint (ItemDetails
+' Build the /details route for a deep link. The :type is only a display hint (ItemDetails
 ' resolves the REAL type from the fetched item). The ?deeplink=<action> query does double duty:
 ' it marks this as an untrusted deep-link entry (so ItemDetails validates the id, sending an
-' invalid one back to Home per cert), AND it carries the intent — "open" lands on the springboard;
+' invalid one back to Home per cert), AND it carries the intent: "open" lands on the springboard;
 ' "play"/"shuffle"/"trailer" auto-launch the matching action once the item resolves. The intent is
 ' the SENDER'S explicit choice (the route decides), never inferred from the resolved item.
 ' The "Playing <title>" toast is fired by the player on mount using the REAL resolved title
-' (ItemDetails sets m.global.deepLinkOpeningTitle) — not the sender's param, which may be a
+' (ItemDetails sets m.global.deepLinkOpeningTitle), not the sender's param, which may be a
 ' placeholder. So nothing is toasted here.
 function deepLinkDetailsRoute(deepLink as object) as string
   base = "/details/" + deepLink.mediaType + "/" + deepLink.itemId + "?deeplink="
@@ -227,7 +227,7 @@ function deepLinkDetailsRoute(deepLink as object) as string
   return base + "open"
 end function
 
-' Toast shown when a deep link arrives but the user must authenticate first — it explains why
+' Toast shown when a deep link arrives but the user must authenticate first. It explains why
 ' nothing happened yet and that the content will open after sign-in. No-op if nothing stashed.
 sub notifyDeepLinkDeferred()
   dl = m.global.AuthManager.stashedDeepLink
@@ -256,10 +256,10 @@ function buildReplayRoutes(stashed as dynamic) as object
 end function
 
 ' ---------------------------------------------------------------------------
-' Server resolution — a deep link's contentId may name a serverId (GUID). The whole app
+' Server resolution: a deep link's contentId may name a serverId (GUID). The whole app
 ' is one-server-at-a-time, so a link for a DIFFERENT server means switching (a full re-auth,
 ' like Change Server). We only have URLs for SAVED servers, so an unknown GUID can't be
-' fulfilled. See docs/architecture/navigation.md ("Deep links").
+' fulfilled. See docs/architecture/bootstrap.md ("Deep links").
 ' ---------------------------------------------------------------------------
 
 ' Look up a saved server entry by its Jellyfin server id (GUID). Returns the entry
@@ -270,7 +270,7 @@ function findSavedServerByGuid(guid as string) as object
 end function
 
 ' COLD start: if the stashed deep link names a saved server, point the login at it BEFORE
-' beginLogin runs (no prompt — there is no active session to disrupt). An unknown/absent
+' beginLogin runs (no prompt: there is no active session to disrupt). An unknown/absent
 ' GUID is left alone: login proceeds normally and the deep link validates on whatever server
 ' we land on (graceful error -> Home if the item isn't there).
 sub steerColdStartDeepLinkServer()
@@ -286,7 +286,7 @@ end sub
 '   - no/absent server, or it's the active one -> replay now.
 '   - a different SAVED server -> prompt to switch.
 '   - an unknown server -> can't connect; toast + discard.
-' When NOT signed in (user at pre-login), do nothing: the stash rides until login and
+' When not signed in (user at pre-login), do nothing: the stash rides until login and
 ' validates on whatever server they sign into.
 sub onRuntimeDeepLink()
   if not isValidAndNotEmpty(m.global.user.authToken)
@@ -317,7 +317,7 @@ end sub
 '
 ' This runs on the MAIN thread, which has no component scope for
 ' observeFieldScoped, so the result comes back through Main()'s message port
-' instead of a scoped observer — see the two-channel contract at the top of
+' instead of a scoped observer; see the two-channel contract at the top of
 ' source/utils/dialogs.bs. main.bs routes every `result` event on its port to
 ' onServerSwitchDialogResult below.
 sub promptServerSwitch(entry as object)
@@ -343,7 +343,7 @@ end sub
 ' switch; on cancel, discard the stashed deep link.
 '
 ' IDENTITY, not a flag. Every dialog delivers its result on its OWN node, so holding the
-' node we opened and comparing it against the event's is what tells us the event is ours —
+' node we opened and comparing it against the event's is what tells us the event is ours,
 ' and it stays correct if a second main-thread flow ever observes `result` on the same port.
 ' The old path could not do this: every dialog wrote one shared SceneManager field, so it
 ' needed an isPendingServerSwitch flag to keep routed views' dialogs from cross-firing here.
@@ -352,12 +352,12 @@ end sub
 ' mechanism is worth stating because it rests on port delivery being ASYNCHRONOUS. Cast B
 ' overwrites the stash and calls promptServerSwitch again; presentOverlayDialog supersedes
 ' dialog A, which resolves as cancelled inside that call. But that result only reaches us at
-' Main()'s next wait(0, m.port) — by which time promptServerSwitch has already reassigned
+' Main()'s next wait(0, m.port), by which time promptServerSwitch has already reassigned
 ' m.serverSwitchDialog to dialog B. So A's event arrives and this guard rejects it: no toast,
 ' no stash wipe, and the prompt on screen is the one whose state the stash actually matches.
 ' Were delivery synchronous the guard would not save us: A's cancel would run while
 ' m.serverSwitchDialog still POINTED at A, so it would be accepted as the live dialog and
-' wipe m.pendingSwitchServer and the stash — out from under the prompt B is about to show.
+' wipe m.pendingSwitchServer and the stash out from under the prompt B is about to show.
 sub onServerSwitchDialogResult(dialog as object)
   if not isValid(m.serverSwitchDialog) or not dialog.isSameNode(m.serverSwitchDialog) then return
 
@@ -387,7 +387,7 @@ sub performServerSwitch(entry as object)
   if not isValid(entry) then return
 
   startLoadingSpinner()
-  ' Hold the entry for the async callback — the probe outcome decides whether we tear down the
+  ' Hold the entry for the async callback: the probe outcome decides whether we tear down the
   ' session, and the result arrives later via the main loop's "reachable" handler.
   m.serverSwitchEntry = entry
   task = CreateObject("roSGNode", "ServerReachableTask")
@@ -413,7 +413,7 @@ sub onServerProbeDone(reachable as boolean)
     return
   end if
 
-  ' Tell the user what's happening — the switch tears down the session and re-logs into the
+  ' Tell the user what's happening: the switch tears down the session and re-logs into the
   ' new server, so Home re-loading from scratch (the "everything's changing" moment) has context.
   displayToast(Substitute(translate(translationKeys.MessageSwitchingToServer), entry.name), "info")
 

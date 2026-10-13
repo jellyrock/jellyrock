@@ -1,5 +1,5 @@
 /**
- * Unit tests for scripts/lib/pr-title.js — the one map from a PR title's type to its
+ * Unit tests for scripts/lib/pr-title.js: the one map from a PR title's type to its
  * CHANGELOG.md section, shared by the changelog, the PR-title gate and the /pr skill.
  *
  * The word-boundary cases are real titles the previous categorizer got wrong: it matched

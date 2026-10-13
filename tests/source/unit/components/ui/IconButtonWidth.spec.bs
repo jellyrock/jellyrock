@@ -2,12 +2,12 @@ import "pkg:/source/utils/buttonOverflow.bs"
 
 namespace tests
 
-  ' The button-row overflow cap budgets EVERY button at
+  ' The button-row overflow cap budgets every button at
   ' iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE). That is only true because the
   ' icon Poster is declared with a 64px load box and loadDisplayMode="limitSize",
-  ' which scales an oversized source down AT LOAD — two icons on the capped
-  ' ItemDetails row ship a 96px FHD asset (album, person) and still render a
-  ' 64px bitmap in a 124px plate.
+  ' which scales an oversized source down AT LOAD. Two icons on the capped
+  ' ItemDetails row shipped a 96px FHD asset (album, person) until #890 resized
+  ' them, and still rendered a 64px bitmap in a 124px plate.
   '
   ' Measured on a Streaming Stick 4K (OS 15.3.4, 1080p UI) via RTA, since a
   ' Rooibos test cannot complete an image load synchronously:

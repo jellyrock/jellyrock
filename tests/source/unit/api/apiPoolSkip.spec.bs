@@ -102,7 +102,7 @@ namespace tests
       m.assertInvalid(entry.resultNode.owner, "a queued node must not keep a stopped Task alive")
     end function
 
-    ' The reference is dropped only where it is known DEAD — a skip. A dispatched
+    ' The reference is dropped only where it is known dead: a skip. A dispatched
     ' entry's owner is by definition still waiting for the answer, so clearing it buys
     ' nothing and costs the coordinator a cross-thread write on the path every request
     ' takes. The node releases it when it is released itself, which the coordinator's

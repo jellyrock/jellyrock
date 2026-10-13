@@ -11,11 +11,12 @@ end sub
 
 ' Fetch this device's live session. That is ALL this task does.
 '
-' It used to build the whole report here — reading user settings, choosing
-' labels, calling translate() — which was the wrong split three times over. The
+' It used to build the whole report here (reading user settings, choosing
+' labels, calling translate()), which was the wrong split three times over. The
 ' work is pure computation that needed no Task thread; every `m.global` read it
-' made cost ~93 µs from here against ~2 µs from the render thread; and the built
-' report was then cached for the life of the player, so a DoVi buffer-overflow
+' made cost ~93 µs from here against ~2 µs from the render thread (measured
+' 2026-08-23 on a Stick 4K); and the built report was then cached for the life of
+' the player, so a DoVi buffer-overflow
 ' fallback (transcode -> direct play) left the "i" button still reporting a
 ' transcode that had stopped.
 '
@@ -24,7 +25,7 @@ end sub
 ' is cheap enough to do every time, which is what makes the report honest about a
 ' stream that changed underneath it.
 '
-' `session` is left invalid when the server returns nothing — that is a real
+' `session` is left invalid when the server returns nothing: that is a real
 ' state (the server has not registered playback yet), and the renderer says so
 ' rather than the task inventing an error section.
 sub getPlaybackInfoTask()
@@ -37,7 +38,7 @@ sub getPlaybackInfoTask()
     m.log.warn("No session returned for this device; the playback report will have no transcode detail")
   end if
 
-  ' alwaysNotify on `data` — the observer has to fire on a refresh that returns
+  ' alwaysNotify on `data`: the observer has to fire on a refresh that returns
   ' an identical session, or the live rows would stop updating the moment the
   ' transcode settled into a steady state.
   m.top.data = { session: session }

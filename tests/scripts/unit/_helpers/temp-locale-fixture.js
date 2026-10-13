@@ -24,10 +24,10 @@ function writeFile(dir, relPath, contents) {
  * Build a temp locale fixture directory.
  *
  * @param {object} opts
- * @param {object|string} [opts.en_US]         Becomes locale/custom/en_US.json. Object → JSON-stringified; string → written verbatim (use for malformed-JSON scenarios).
+ * @param {object|string} [opts.en_US]         Becomes locale/custom/en_US.json. An object is JSON-stringified; a string is written verbatim (use for malformed-JSON scenarios).
  * @param {Object<string, object|string>} [opts.locales]  Additional locale/custom/<code>.json files keyed by locale code.
  * @param {Array<object>|string} [opts.languagesJson]     Optional locale/languages.json contents.
- * @param {Object<string, string>} [opts.sources]         Synthetic source-tree files keyed by repo-relative path (e.g. 'source/Foo.bs').
+ * @param {Object<string, string>} [opts.sources]         Synthetic source-tree files keyed by repo-relative path (for example 'source/Foo.bs').
  * @returns {{ dir: string, write: (relPath: string, contents: any) => void, cleanup: () => void }}
  */
 export function createLocaleFixture(opts = {}) {

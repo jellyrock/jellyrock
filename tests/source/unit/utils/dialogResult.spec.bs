@@ -32,10 +32,10 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' The key exists for handlers that ACT on their result. `cancelled` cannot
-    ' tell the user pressing Back from code clearing the screen, deliberately, so
+    ' tell the user pressing Back from code clearing the screen on purpose, so
     ' an acting handler needs a second signal or it fires from inside someone
-    ' else's flow. Defaulting FALSE is the load-bearing half: every one of the
-    ' fourteen reading handlers keeps behaving exactly as before.
+    ' else's flow. Defaulting to false is the half that matters: every one of the
+    ' reading handlers keeps behaving exactly as before.
     @it("defaults to false on every builder, user cancels included")
     function _()
       results = [

@@ -1,18 +1,18 @@
-// Tests for scripts/lint/rta-wait-inventory.js — the gate that keeps the wait inventory in
+// Tests for scripts/lint/rta-wait-inventory.js: the gate that keeps the wait inventory in
 // tests/rta/CLAUDE.md matching the suite.
 //
 // Two halves are tested here and they are tested differently on purpose:
 //
 //   - `classifyWait` is the SHARED ladder, and the reason it was extracted was so the gate
 //     and the checker cannot classify a wait differently. So the cases below are the five
-//     categories, asserted against the exported function directly — if this drifts from
+//     categories, asserted against the exported function directly. If this drifts from
 //     rta-wait-justified.test.js's expectations, the two consumers have diverged, which is
 //     the failure the extraction exists to prevent.
 //   - `publishedCounts` / `extractBlock` are the DOC parsers, and their failure mode is
 //     silent: a parser that matches nothing reports "0 rows" rather than a wrong number, so
 //     the cases pin the shapes that must and must not be picked up.
 //
-// The end-to-end count (does the real doc match the real suite?) is deliberately NOT here —
+// The end-to-end count (does the real doc match the real suite?) is not here, on purpose:
 // it needs ESLint over the whole tree, which is `npm run lint:rta-waits`'s job and has a CI
 // home of its own. Duplicating it in a unit test would double a slow check for no signal.
 
@@ -26,7 +26,7 @@ import { publishedCounts, extractBlock } from '../../../../scripts/lint/rta-wait
 
 // Driven through ESLint's own Linter rather than a parser of our own. `espree` is one of
 // eslint's transitive dependencies, not one of ours, so importing it directly is what
-// `n/no-extraneous-import` exists to stop — and going through the Linter is the better test
+// `n/no-extraneous-import` exists to stop, and going through the Linter is the better test
 // anyway: `classifyWait` sees exactly the node shapes it will see in production, from the
 // same parser at the same `ecmaVersion` the rule runs under.
 const linter = new Linter();

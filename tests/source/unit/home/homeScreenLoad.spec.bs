@@ -5,7 +5,7 @@ namespace tests
   ' Contract tests for Home's paint decision (source/home/homeScreenLoad.bs).
   '
   ' Wrong in one direction, Home reports paint while the user is still looking at skeleton
-  ' rows — an optimistic number every comparison would inherit. Wrong in the other, Home never
+  ' rows: an optimistic number every comparison would inherit. Wrong in the other, Home never
   ' paints and every sample reads as unmeasurable. Both are pinned here.
   @suite("homeScreenLoad - Home visible-rows paint decision")
   class HomeScreenLoadTests extends tests.BaseTestSuite

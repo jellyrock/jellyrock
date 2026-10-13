@@ -1,7 +1,7 @@
 /**
  * Structural invariants of the committed `settings/settings.json`.
  *
- * These are not tests of a script — they run against the shipped data file, the same shape
+ * These are not tests of a script: they run against the shipped data file, the same shape
  * as `roku-hardware.test.js`'s invariant half. They exist because the declared-range
  * capability (`min` / `max`, enforced at SAVE in `components/settings/settings.bs`) is read
  * out of untyped JSON by BrightScript, where the failure mode for a malformed entry is a
@@ -12,8 +12,8 @@
  *   settingRangeBounds({ min: "1", max: "200" })  ->  Type Mismatch (crash)
  *   settingRangeBounds({ min: 1 })                ->  Type Mismatch (crash), before its guard
  *
- * `settingRangeBounds` now refuses both — a malformed entry degrades to "declares no range"
- * instead of taking the Settings screen down — but that is a floor, not enforcement: it
+ * `settingRangeBounds` now refuses both (a malformed entry degrades to "declares no range"
+ * instead of taking the Settings screen down), but that is a floor, not enforcement: it
  * makes the bad entry SILENT (unbounded setting, no Range row in the generated docs, no
  * error anywhere). This file is what makes it loud, at PR time, on a gate that needs no
  * hardware. `npm run test:scripts` runs in CI on every push.
@@ -54,7 +54,7 @@ describe('settings.json declared ranges', () => {
 
   it.each(BOUNDED)('$path declares BOTH bounds', ({ node }) => {
     // `settingRangeBounds` refuses a half-declared range, so declaring one bound enforces
-    // nothing and prints no Range row — the author's intent is dropped on the floor.
+    // nothing and prints no Range row: the author's intent is dropped on the floor.
     expect(node.min, 'declares `max` but not `min`').toBeDefined();
     expect(node.max, 'declares `min` but not `max`').toBeDefined();
   });
@@ -68,7 +68,7 @@ describe('settings.json declared ranges', () => {
   });
 
   it.each(BOUNDED)('$path declares min <= max', ({ node }) => {
-    // Inverted bounds do not crash — they produce a clamp that returns a value OUTSIDE the
+    // Inverted bounds do not crash: they produce a clamp that returns a value OUTSIDE the
     // range it was asked to enforce (`clampToSettingRange` tests `< min` first), so the
     // confirm dialog offers to save an illegal number. Silent, and worse than a crash.
     expect(node.min).toBeLessThanOrEqual(node.max);
@@ -88,8 +88,8 @@ describe('settings.json declared ranges', () => {
 
   it.each(BOUNDED)('$path declares its range on an `integer` setting', ({ node }) => {
     // The save-time check lives in `onKeyGridSubmit`, which is observed on the integer
-    // keypad's `submit` field ONLY (`components/settings/settings.bs`). A range on a bool
-    // or radio entry is inert — it would document a rule in the generated settings page
+    // keypad's `submit` field only (`components/settings/settings.bs`). A range on a bool
+    // or radio entry is inert: it would document a rule in the generated settings page
     // that nothing applies.
     expect(node.type).toBe('integer');
   });

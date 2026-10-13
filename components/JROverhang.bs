@@ -21,7 +21,7 @@ sub init()
   m.userDropdown.visible = false ' hidden until user logs in
   m.top.appendChild(m.userDropdown)
 
-  ' Reposition dropdown when trigger button width changes (e.g., username change while clock is hidden)
+  ' Reposition dropdown when trigger button width changes (for example, username change while clock is hidden)
   m.userDropdown.observeField("triggerWidth", "onDropdownTriggerWidthChanged")
 
   ' Create overhang icon buttons (search and settings shortcuts)
@@ -39,7 +39,7 @@ sub init()
   m.settingsIcon.visible = false
   m.top.appendChild(m.settingsIcon)
 
-  ' Observe icon actions — proxy to overhang-level iconAction field
+  ' Observe icon actions: proxy to overhang-level iconAction field
   m.searchIcon.observeField("selectedAction", "onIconAction")
   m.settingsIcon.observeField("selectedAction", "onIconAction")
 
@@ -112,12 +112,12 @@ sub onCurrentUserChanged()
   username = m.top.currentUser
 
   if username = ""
-    ' No user logged in — hide the dropdown
+    ' No user logged in: hide the dropdown
     m.userDropdown.visible = false
     m.userDropdown.triggerText = ""
     m.userDropdown.triggerIconUri = ""
   else
-    ' User logged in — configure and show the dropdown
+    ' User logged in: configure and show the dropdown
     m.userDropdown.triggerText = username
     m.userDropdown.visible = true
 
@@ -133,7 +133,7 @@ sub onCurrentUserChanged()
       m.userDropdown.triggerIconUri = "pkg:/images/icons/person_36px_$$RES$$.png"
     end if
 
-    ' Set menu items — user-related actions only
+    ' Set menu items: user-related actions only
     m.userDropdown.items = [
       { title: translate(translationKeys.LabelChangeUser), id: HomeAction.CHANGE_USER },
       { title: translate(translationKeys.LabelChangeServer), id: HomeAction.CHANGE_SERVER },
@@ -141,13 +141,13 @@ sub onCurrentUserChanged()
     ]
   end if
 
-  ' Refresh icon visibility — depends on both currentUser and showIcons
+  ' Refresh icon visibility: depends on both currentUser and showIcons
   updateIconVisibility()
 end sub
 
 ' Controls icon visibility. Icons require both showIcons=true (set by the active screen)
 ' AND a logged-in user. This lets screens opt in (Home) without icons appearing on
-' screens that only set currentUser (e.g., Settings).
+' screens that only set currentUser (for example, Settings).
 sub onShouldShowIconsChanged()
   updateIconVisibility()
 end sub
@@ -186,25 +186,25 @@ end sub
 ' ============================================
 ' FOCUS BRIDGING: TAB BAR <-> ICONS <-> DROPDOWN
 ' ============================================
-' Focus chain (left to right): TabBar → Search → Settings → Dropdown
-' Wraps: TabBar LEFT at first tab → Dropdown, Dropdown RIGHT → TabBar first tab
+' Focus chain (left to right): TabBar, Search, Settings, Dropdown
+' Wraps: TabBar LEFT at first tab goes to Dropdown, Dropdown RIGHT goes to TabBar first tab
 
-' Called when tab bar signals at its boundary — route into the icon/dropdown chain.
+' Called when tab bar signals at its boundary: route into the icon/dropdown chain.
 sub onTabBarRequestsUserMenu()
   direction = m.tabBar.requestFocusToUserMenu
 
   if direction = "right"
-    ' Last tab → next element rightward: search icon (or dropdown if icons hidden)
+    ' Last tab to next element rightward: search icon (or dropdown if icons hidden)
     if m.searchIcon.visible
       m.searchIcon.setFocus(true)
     else if isValid(m.userDropdown) and m.userDropdown.visible
       m.userDropdown.setFocus(true)
     else
-      ' Nothing to the right — wrap to first tab
+      ' Nothing to the right: wrap to first tab
       m.tabBar.focusedTabIndex = 0
     end if
   else if direction = "left"
-    ' First tab → wrap to rightmost element: dropdown (or settings/search if dropdown hidden)
+    ' First tab wraps to rightmost element: dropdown (or settings/search if dropdown hidden)
     if isValid(m.userDropdown) and m.userDropdown.visible
       m.userDropdown.setFocus(true)
     else if m.settingsIcon.visible
@@ -212,7 +212,7 @@ sub onTabBarRequestsUserMenu()
     else if m.searchIcon.visible
       m.searchIcon.setFocus(true)
     else
-      ' Nothing — wrap to last tab
+      ' Nothing: wrap to last tab
       tabCount = m.tabBar.findNode("tabContainer").getChildCount()
       m.tabBar.focusedTabIndex = tabCount - 1
     end if
@@ -224,7 +224,7 @@ sub onSearchIconRequestsFocusExit()
   direction = m.searchIcon.requestFocusExit
 
   if direction = "left"
-    ' Search → left: tab bar last tab (or wrap to dropdown if no tabs)
+    ' Search, left: tab bar last tab (or wrap to dropdown if no tabs)
     if isValid(m.tabBar) and m.tabBar.visible
       tabCount = m.tabBar.findNode("tabContainer").getChildCount()
       m.tabBar.focusedTabIndex = tabCount - 1
@@ -235,7 +235,7 @@ sub onSearchIconRequestsFocusExit()
       m.settingsIcon.setFocus(true)
     end if
   else if direction = "right"
-    ' Search → right: settings icon
+    ' Search, right: settings icon
     if m.settingsIcon.visible
       m.settingsIcon.setFocus(true)
     else if isValid(m.userDropdown) and m.userDropdown.visible
@@ -249,7 +249,7 @@ sub onSettingsIconRequestsFocusExit()
   direction = m.settingsIcon.requestFocusExit
 
   if direction = "left"
-    ' Settings → left: search icon
+    ' Settings, left: search icon
     if m.searchIcon.visible
       m.searchIcon.setFocus(true)
     else if isValid(m.tabBar) and m.tabBar.visible
@@ -258,7 +258,7 @@ sub onSettingsIconRequestsFocusExit()
       m.tabBar.setFocus(true)
     end if
   else if direction = "right"
-    ' Settings → right: dropdown
+    ' Settings, right: dropdown
     if isValid(m.userDropdown) and m.userDropdown.visible
       m.userDropdown.setFocus(true)
     else if isValid(m.tabBar) and m.tabBar.visible
@@ -273,7 +273,7 @@ sub onUserDropdownRequestsTabs()
   direction = m.userDropdown.requestFocusExit
 
   if direction = "left"
-    ' Dropdown → left: settings icon (or search, or tab bar)
+    ' Dropdown, left: settings icon (or search, or tab bar)
     if m.settingsIcon.visible
       m.settingsIcon.setFocus(true)
     else if m.searchIcon.visible
@@ -284,7 +284,7 @@ sub onUserDropdownRequestsTabs()
       m.tabBar.setFocus(true)
     end if
   else if direction = "right"
-    ' Dropdown → right: wrap to tab bar first tab (or search if no tabs)
+    ' Dropdown, right: wrap to tab bar first tab (or search if no tabs)
     if isValid(m.tabBar) and m.tabBar.visible
       m.tabBar.focusedTabIndex = 0
       m.tabBar.setFocus(true)
@@ -337,7 +337,7 @@ sub positionUserDropdown()
     if triggerWidth > 0
       xPos = 1824 - triggerWidth - dropdownPadding
     else
-      ' Trigger hasn't rendered yet — use default position; will reposition on triggerWidth change
+      ' Trigger hasn't rendered yet: use default position; will reposition on triggerWidth change
       xPos = 1450 - dropdownPadding
     end if
   else
@@ -421,7 +421,7 @@ sub onTabsChanged()
   tabs = m.top.tabs
 
   if not isValidAndNotEmpty(tabs)
-    ' No tabs — hide the tab bar (preserve it for instant reuse on return)
+    ' No tabs: hide the tab bar (preserve it for instant reuse on return)
     ' and restore the title label
     if isValid(m.tabBar)
       m.tabBar.unobserveField("isReady") ' cancel any pending ready observer before restoring title
@@ -455,8 +455,8 @@ sub onTabsChanged()
   m.tabBar.tabs = tabs
 
   ' After setting tabs, check if they were preserved (return path) or rebuilt (init).
-  ' Preserved tabs are already sized → hide title instantly.
-  ' Rebuilt tabs need render tracking → keep title visible until ready.
+  ' Preserved tabs are already sized, so hide title instantly.
+  ' Rebuilt tabs need render tracking, so keep title visible until ready.
   if m.tabBar.isReady
     m.title.visible = false
   else
@@ -466,7 +466,7 @@ sub onTabsChanged()
 end sub
 
 ' Called when newly created tabs finish sizing. Swaps the title for the
-' fully-formed tab bar in a single frame — no blank gap or sizing dance.
+' fully-formed tab bar in a single frame: no blank gap or sizing dance.
 sub onTabBarReady()
   if isValid(m.tabBar)
     m.tabBar.unobserveField("isReady")

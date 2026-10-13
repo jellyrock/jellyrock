@@ -29,7 +29,7 @@ namespace tests
     function _()
       ' The TEST starts the timer, so the expectation cannot be computed from the
       ' code under test: only onDestroy() actually running can turn it back off.
-      ' This is the case that proves callFunc() reaches the component at all — it
+      ' This is the case that proves callFunc() reaches the component at all: it
       ' fails outright if CaptionRenderer.xml stops declaring <function name="onDestroy" />.
       timer = m.captionRenderer.findNode("captionTimer")
       timer.control = "start"
@@ -64,7 +64,7 @@ namespace tests
       m.captionRenderer.playerState = "playingOn"
       m.captionRenderer.currentPos = 500
       m.captionRenderer.callFunc("onDestroy")
-      ' Simulate a late timer fire — the defensive guard in updateCaption()
+      ' Simulate a late timer fire. The defensive guard in updateCaption()
       ' should return early when m.tags/m.captionList are invalid
       m.captionRenderer.callFunc("updateCaption")
       m.assertTrue(true)
@@ -92,7 +92,7 @@ namespace tests
     @it("switching track clears the previous track's captions immediately")
     function _()
       ' The old track must leave the screen the moment the track changes, not one
-      ' thread crossing later when the fetch replies — clearCaptions() runs
+      ' thread crossing later when the fetch replies: clearCaptions() runs
       ' synchronously in onUrlChange, before the fetch is even launched.
       m.captionRenderer.url = m.unreachableVtt("a")
       timer = m.captionRenderer.findNode("captionTimer")

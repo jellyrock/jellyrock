@@ -5,8 +5,8 @@ import "pkg:/source/utils/translate.bs"
 
 namespace tests
 
-  ' The OSD's left row holds 7 buttons at its busiest against a cap of 10, so like
-  ' ItemDetails its overflow is not reachable through real data — and unlike
+  ' The OSD's left row held 7 buttons at its busiest against a cap of 10 (2026-09-07), so like
+  ' ItemDetails its overflow is not reachable through real data, and unlike
   ' ItemDetails it is three buttons short rather than none. This suite is therefore
   ' the entire deliverable for the OSD half: it proves the split works before the
   ' button that needs it exists.
@@ -105,7 +105,7 @@ namespace tests
     @describe("the cap is 10 here, not ItemDetails' 8")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' The load-bearing assertion of this suite. Nine buttons already overflow on
+    ' The central assertion of this suite. Nine buttons already overflow on
     ' ItemDetails; here they must not, because the spacing and the bound differ.
     @it("still fits 10 buttons without a More button")
     function _()
@@ -152,7 +152,7 @@ namespace tests
       buttonMenuRight = m.osd.findNode("buttonMenuRight")
       m.assertEqual(buttonMenuRight.getChildCount(), 1)
       m.assertEqual(buttonMenuRight.getChild(0).id, "showVideoInfoPopup")
-      ' Membership is checked by walking the stash, NOT with findNode: findNode
+      ' Membership is checked by walking the stash, not with findNode: findNode
       ' resolves from the nearest COMPONENT ancestor, and the stash is a plain Group,
       ' so `stash.findNode(id)` would search the whole OSD and answer yes for a node
       ' that never left the right group.

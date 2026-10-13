@@ -1,9 +1,9 @@
 /**
  * Unit tests for the PR-description gate.
  *
- * The load-bearing case is `the shipped template fails`: this check only earns its CI
+ * The key case is `fails the shipped template`: this check only earns its CI
  * slot if an unedited template is red. If the template ever drifts into a shape that
- * passes — a placeholder that reads as prose, a pre-ticked box — the gate silently
+ * passes (a placeholder that reads as prose, a pre-ticked box), the gate silently
  * becomes decorative and nothing else in the repo would notice. That test reads the
  * REAL file rather than a fixture copy, so template edits are what break it.
  */
@@ -25,7 +25,7 @@ import { spawnScript } from '../_helpers/spawn-script.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = resolve(HERE, '../../../../.github/pull_request_template.md');
 
-/** A body that answers every section — the shape `/pr` renders. */
+/** A body that answers every section: the shape `/pr` renders. */
 const FILLED = `# Overview
 
 Stops the router retaining screens the user backed out of.
@@ -129,7 +129,7 @@ describe('sectionBody', () => {
   });
 
   // Regression: the template's `# Overview` is an h1 and every other section an h2, so
-  // the markdown "same or higher level" rule never closed it — Overview absorbed the
+  // the markdown "same or higher level" rule never closed it. Overview absorbed the
   // whole document and inherited another section's content, so it could never be
   // reported empty. Any heading must close a section.
   it('closes a section at the next heading of ANY level', () => {

@@ -1,11 +1,11 @@
 /**
- * The ledger's reader — see `scripts/flake-baseline.js`.
+ * The ledger's reader. See `scripts/flake-baseline.js`.
  *
  * These gates exist because every version of this logic that lived as a DOC SNIPPET
  * was wrong: `variant === 'test:rta'` selected only the first run of a series, and
  * `outcome !== 'passed'` counted a crashed run as a failure. Both produced a
  * plausible number rather than an error, which is the whole reason the selection
- * moved into code — so the cases that used to be prose caveats are asserted here.
+ * moved into code, so the cases that used to be prose caveats are asserted here.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -31,7 +31,7 @@ const row = (over = {}) => ({
   // carries it. Cases that need an ABSENT flag delete it explicitly, below.
   crossedHourBoundary: false,
   // Likewise always written, and `[]` rather than absent BECAUSE it is a selection
-  // key — see `runnerArgs` in `summarizeRun`.
+  // key. See `runnerArgs` in `summarizeRun`.
   runnerArgs: [],
   ...over,
 });
@@ -43,7 +43,7 @@ const rowWithoutHourFlag = () => {
   return r;
 };
 
-/** A row written before `runnerArgs` existed — every line in the ledger until 2026-09-07. */
+/** A row written before `runnerArgs` existed: every line in the ledger until 2026-09-07. */
 const rowWithoutRunnerArgs = () => {
   const r = row();
   delete r.runnerArgs;
@@ -105,7 +105,7 @@ describe('selecting a baseline series', () => {
   it('excludes a scoped run, which did not run the suite the rate is about', () => {
     // The gap this key closes: a `-t` run appends a line identical in every OTHER
     // filter key to a full suite, so it joined the population as a clean sample. Hit
-    // live 2026-08-12 — three targeted single-screen runs, each of which would have
+    // live 2026-08-12: three targeted single-screen runs, each of which would have
     // counted, and only a moved `HEAD` excluded them by accident.
     const sel = selectBaseline(
       [row(), row({ runnerArgs: ['-t', 'moviesLibraryGenres'] })],
@@ -118,7 +118,7 @@ describe('selecting a baseline series', () => {
   it('excludes on ANY forwarded arg, not on a list of the narrowing ones', () => {
     // Vitest narrows on eight flags and the set moves between majors, so an allowlist
     // here would silently stop matching and count a one-test run as a clean suite. The
-    // conservative rule fails the other way — loudly, costing a sample. `--bail` is the
+    // conservative rule fails the other way: loudly, costing a sample. `--bail` is the
     // case that shows the difference: it truncates execution without narrowing intent.
     const runs = [
       row({ runnerArgs: ['screens.spec.js'] }),
@@ -152,11 +152,11 @@ describe('selecting a baseline series', () => {
   });
 
   it('counts a line from before the key as a full suite, unlike an absent outcome', () => {
-    // Deliberately the OPPOSITE reading from `outcome`, where absent means unknown and
+    // On purpose the OPPOSITE reading from `outcome`, where absent means unknown and
     // therefore not a sample. Checked rather than assumed: all 26 lines in
     // `.device-runs/rta/runs.jsonl` on 2026-09-07 were full suites (1239-1390 s, plus
     // one 31 s interrupted and two blocked, already non-samples), so nothing
-    // historical is silently admitted — and treating them as unknown would instead
+    // historical is silently admitted, and treating them as unknown would instead
     // invalidate every baseline taken to date.
     const sel = selectBaseline([rowWithoutRunnerArgs(), rowWithoutRunnerArgs()], CRITERIA);
     expect(sel.samples).toHaveLength(2);
@@ -198,7 +198,7 @@ describe('selecting a baseline series', () => {
 describe('a selection that finds nothing', () => {
   it('reports no rate rather than NaN', () => {
     // `0/0` is the ordinary result of an over-tight filter, and as a percentage it
-    // renders as a number — which is how an empty selection reads as an answer.
+    // renders as a number, which is how an empty selection reads as an answer.
     const sel = selectBaseline([row({ dirty: true })], CRITERIA);
     expect(sel.rate).toBeNull();
     expect(sel.samples).toHaveLength(0);
@@ -208,7 +208,7 @@ describe('a selection that finds nothing', () => {
     const text = reportBaseline(selectBaseline([row({ dirty: true })], CRITERIA)).join('\n');
     expect(text).toContain('no rate');
     expect(text).toContain('1 dirty tree');
-    // No COMPUTED figure — the prose still says the words "not 0%", which is the
+    // No COMPUTED figure: the prose still says the words "not 0%", which is the
     // point being made rather than a result being reported.
     expect(text).not.toContain('flake rate');
     expect(text).not.toMatch(/=\s*[\d.]+%/);

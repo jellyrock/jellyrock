@@ -132,7 +132,7 @@ namespace tests
       ' WHEN: Migration runs
       runRegistryUserMigrations([testUserId])
 
-      ' THEN: Migration skipped — setting untouched
+      ' THEN: Migration skipped, setting untouched
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertTrue(reg.exists("uiTvShowsGoStraightToEpisodes"), "Setting should remain (migration skipped)")
     end function

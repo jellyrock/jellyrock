@@ -64,7 +64,7 @@ function DeterminePresenterType(libraryItem as object) as string
     return "movie" ' default studios to movie
   end if
 
-  ' Music genre — either via folderType (when IsFolder=true) or raw type (when IsFolder is absent)
+  ' Music genre, either via folderType (when IsFolder=true) or raw type (when IsFolder is absent)
   if folderType = "musicgenre" or LCase(libraryItem.type) = "musicgenre"
     return "music"
   end if

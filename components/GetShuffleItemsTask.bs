@@ -30,7 +30,7 @@ sub getShuffleItems()
       includeItemTypes: "Movie",
       Limit: 250
     }), "shufflePersonMovies")
-    ' Watched episodes/recordings only — avoids spoiling in-progress shows
+    ' Watched episodes/recordings only, which avoids spoiling in-progress shows
     episodesData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       personIds: input.id,
       recursive: true,

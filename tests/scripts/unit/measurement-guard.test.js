@@ -1,7 +1,7 @@
 /**
- * The measurement guard — see `scripts/measurement-guard.js`.
+ * The measurement guard. See `scripts/measurement-guard.js`.
  *
- * The load-bearing case is `sameServer`: tier 1 was CORRECTED to assert
+ * The case that matters most is `sameServer`: tier 1 was CORRECTED to assert
  * `serverUrl` because the demo `/stable` and `/unstable` backends are cloned from
  * one seed database and report an identical `serverId` AND `userId` (measured
  * 2026-08-12). The pair therefore cannot see the likeliest wrong-server mistake,
@@ -59,7 +59,7 @@ describe('sameServer', () => {
   });
 
   it('leaves the path case alone, where the scheme and host are lowercased', () => {
-    // Deliberately shallow normalisation: an over-eager normaliser is how a guard
+    // Shallow normalization, on purpose: an over-eager normalizer is how a guard
     // goes quietly blind, so anything past the provably-equivalent spellings is
     // left as a mismatch for a human to look at.
     expect(sameServer('https://host/Stable', 'https://host/stable')).toBe(false);
@@ -94,7 +94,7 @@ describe('checkServerIdentity (tier 1)', () => {
 
   it('says explicitly that it did NOT assert when no expectation was declared', () => {
     // "Nobody told me which server to expect" and "the server is the one you
-    // expected" must never look alike in the output — the entire value of the
+    // expected" must never look alike in the output: the entire value of the
     // tier is the difference between them.
     const v = checkServerIdentity(identity, undefined);
     expect(v.asserted).toBe(false);
@@ -143,7 +143,7 @@ describe('checkServerIdentity — the no-server arm (--no-server)', () => {
 
   it('offers the OTHER exit too, so a `userSelect` operator is not sent in a circle', () => {
     // The failure this pins. Change user and Sign out both leave `server` in place, so
-    // an operator measuring `userSelect` who reaches for this flag lands here — and a
+    // an operator measuring `userSelect` who reaches for this flag lands here, and a
     // message naming only "Change server" would send them off the screen they were
     // measuring. The run needs no declaration at all in that state.
     const v = checkServerIdentity(hasServer, undefined, { expectNoServer: true });
@@ -200,7 +200,7 @@ describe('checkSeriesConsistency', () => {
 
 describe('readAppVersion', () => {
   it('reads the version THIS CHECKOUT would build, from the manifest', () => {
-    // Not "what the device is running" — `npm run measure` defaults to measuring a
+    // Not "what the device is running": `npm run measure` defaults to measuring a
     // build it did not deploy. The record files this under `checkout` and carries
     // `deployedFromCheckout` beside it for exactly that reason.
     const p = writeManifest(
@@ -228,8 +228,8 @@ describe('readCheckoutBuildFlags', () => {
   it('REFUSES to report ENABLE_RTA, which the checkout cannot know', () => {
     // The committed value is always `false`; RTA's deploy flips it to `true` in the
     // STAGED build dir only. Reading it here reported `ENABLE_RTA: false` on every
-    // run, including runs that had just deployed with it on and recorded
-    // `enableRta: true` two fields away — one record, two answers, and the
+    // run, including runs that had deployed with it on and recorded
+    // `enableRta: true` two fields away: one record, two answers, and the
     // contradiction manufactured by reading a file that cannot know. It is derived
     // from a responding ODC instead.
     const p = writeManifest('bs_const=debug=false;ENABLE_RTA=false;perfTiming=true\n');
@@ -263,7 +263,7 @@ describe('buildFlagsAgree — is the device running THIS checkout?', () => {
 
   it('is false when the running build was compiled differently', () => {
     // The only available evidence that a non-deploy run measured something other
-    // than what this checkout would build — which is exactly the case where the
+    // than what this checkout would build, which is exactly the case where the
     // record's appVersion and commit describe the wrong artifact.
     expect(
       buildFlagsAgree({ debug: true, perfTiming: true }, { debug: false, perfTiming: true }),
@@ -271,7 +271,7 @@ describe('buildFlagsAgree — is the device running THIS checkout?', () => {
   });
 
   it('is NULL, never true, when there is nothing to compare', () => {
-    // "The flags match" and "no flags were seen" must not look alike — the same
+    // "The flags match" and "no flags were seen" must not look alike: the same
     // rule that keeps `asserted: false` from looking like a tier-1 pass.
     expect(buildFlagsAgree(undefined, { debug: false })).toBeNull();
     expect(buildFlagsAgree({ debug: false }, undefined)).toBeNull();
@@ -299,7 +299,7 @@ describe('missingIdentityFields — the quiet half of a failed read', () => {
   });
 
   it('names a field ODC answered but could not find', () => {
-    // `readIdentity` throws when the BATCH fails — the loud case. This is the quiet
+    // `readIdentity` throws when the BATCH fails, the loud case. This is the quiet
     // one: ODC answers and reports `found: false`, which otherwise becomes
     // `serverUrl: undefined` in a written record. That is the laundering the throw
     // exists to prevent, one layer down.
@@ -344,10 +344,10 @@ describe('fatalIdentityFields — which absent field aborts the series', () => {
   });
 
   it('never aborts on the `userSelect` state, with or without the flag', () => {
-    // The screen that is NOT what this option is for, pinned so the two pre-login states
+    // The screen that is not what this option is for, pinned so the two pre-login states
     // cannot drift back together. Change user / Sign out clear `active_user` and leave
-    // `server` alone, so identity reads a real `serverUrl` and only `userId` is absent —
-    // which is deliberately not fatal. That is what already makes `userSelect`
+    // `server` alone, so identity reads a real `serverUrl` and only `userId` is absent,
+    // which is not fatal by design. That is what already makes `userSelect`
     // measurable with no declaration at all.
     const onUserSelect = { serverUrl: 'http://192.0.2.10:8096', serverId: 'abc' };
     expect(fatalIdentityFields(onUserSelect)).toEqual([]);
@@ -372,7 +372,7 @@ describe('enclosedServerIdentity — tier 1 for an arm with no ODC (ADR 0030)', 
 
   it('records `observed: null` rather than echoing the declaration back', () => {
     // An `observed` equal to `expected` is exactly what a reader takes as a passing
-    // read, which would launder the caller's inference into this arm's own observation —
+    // read, which would launder the caller's inference into this arm's own observation:
     // the failure ADR 0030 rejected "carry the paired arm's identity across" over.
     expect(enclosedServerIdentity(url).observed).toBeNull();
   });
@@ -430,7 +430,7 @@ describe('enclosureVerdict — may the enclosed block be published?', () => {
 
   it('catches drift in a field tier 1 does not assert on', () => {
     // `serverId` / `userId` cannot tell the demo stable/unstable backends apart, which is
-    // why tier 1 asserts the URL — but a MOVE in one of them is still the server changing
+    // why tier 1 asserts the URL. But a MOVE in one of them is still the server changing
     // under the block, and the enclosure is the only thing watching here.
     const verdict = enclosureVerdict({
       before: identity(),
@@ -442,7 +442,7 @@ describe('enclosureVerdict — may the enclosed block be published?', () => {
   });
 
   it('fails when the agreed identity is not the declared one', () => {
-    // The enclosure is sound and the run is measuring the wrong server — a distinct
+    // The enclosure is sound and the run is measuring the wrong server: a distinct
     // failure from the brackets disagreeing, and it needs a distinct sentence.
     const other = 'http://192.0.2.11:8096';
     const verdict = enclosureVerdict({
@@ -498,7 +498,7 @@ describe('odcIsResident — testing for the ODC WITHOUT using RTA to do it', () 
     // The case that matters: a build with no on-device component refuses on 9000, and
     // this must resolve rather than reject. Trying the same question through RTA's client
     // instead retries the refusal internally and rejects a CACHED promise later, with
-    // nobody attached — an `unhandledRejection` that killed both plain-arm blocks of the
+    // nobody attached: an `unhandledRejection` that killed both plain-arm blocks of the
     // first calibration run AFTER they had passed the check (2026-08-17).
     const server = await listening();
     const port = server.port;

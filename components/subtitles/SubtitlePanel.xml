@@ -24,8 +24,8 @@
 
   SELF-CONTAINED BY DESIGN. This component owns its own API calls, focus model
   and state; ItemDetails only sets inputs and observes two outbound fields. That
-  boundary is what makes the deferred OSD variant cheap — the player can mount
-  this same component — and it is a deliberate departure from ExtrasSlider,
+  boundary is what makes the deferred OSD variant cheap (the player can mount
+  this same component), and it is a chosen departure from ExtrasSlider,
   which is a dumb container whose logic all lives in ItemDetails and is a
   meaningful part of why that file is the repo's largest.
 -->
@@ -65,17 +65,17 @@
         <!-- ── Results (left) ─────────────────────────────────────────────
              1120px wide. Release names ran to 85 characters in the sampled
              results, so width here directly buys fewer marquees. -->
-        <!-- Plain Groups with hard-coded child translations, NOT LayoutGroups.
+        <!-- Plain Groups with hard-coded child translations, not LayoutGroups.
              A LayoutGroup aligns children by their boundingRect, and a
              MarkupList's rect is offset by its focus-footprint margins even
-             with drawFocusFeedback off — so the list gets nudged right and the
+             with drawFocusFeedback off, so the list gets nudged right and the
              rows stop lining up with the heading above them. ItemDetails hit
              the same class of drift on the vertical axis with its trackCluster
              and resolved it the same way; see the comment there. -->
         <Group id="resultsGroup" translation="[96, 190]">
           <LabelPrimaryMedium id="resultsHeading" translation="[0, 0]" />
           <!-- "3 of 47", right-aligned on the heading's own line. A MarkupList has
-               no counter of its own — showRowCounter is a RowList field — so this
+               no counter of its own (showRowCounter is a RowList field), so this
                is hand-built, but the STRING is the app's existing Message1Of2, the
                same one the grid overhang and the audio player use, so a position
                readout means the same thing wherever it appears. On the heading
@@ -86,7 +86,7 @@
                one focus indicator that FLOATS between rows, which is what every
                other list in the app does. The rows previously hand-drew their own
                border and surface from the same two 9-patches and the same two
-               theme colours, toggled per row — identical pixels, but a static
+               theme colors, toggled per row: identical pixels, but a static
                indicator that can only appear, never travel. Chrome comes from
                applyListFocusChrome() in SubtitlePanel.init(). -->
           <MarkupList id="resultsList"
@@ -97,7 +97,7 @@
 
         <!-- Loading indicator for the results column, in place of the rows.
              Sized in init(): 64px, chosen the way every other Spinner in the app
-             is — for legibility in ITS region, not from a ratio. The column is
+             is: for legibility in ITS region, not from a ratio. The column is
              1120x486, so the scene-level 125px reads as content rather than as
              a wait, and skeleton's 48px is tuned for one recycled cell. Nothing
              in the app derives a spinner size from its container: skeleton draws
@@ -121,7 +121,7 @@
              deleted) and in what there is to say about them (only a file has a
              name). Tagging every row with its category instead made the word
              "Embedded" the most repeated text in the column while telling the
-             user nothing — a heading says it once.
+             user nothing. A heading says it once.
 
              BOTH sections take focus, and the built-in one must keep doing so.
              It was once excluded on the grounds that a track you cannot act on
@@ -129,7 +129,7 @@
              sectionRowCounts() rations visible rows on the promise that a
              trimmed section still scrolls to the rest, and a MarkupList that
              cannot be focused cannot be scrolled. Re-narrowing this silently
-             hides content — see the warning on sectionRowCounts() and
+             hides content; see the warning on sectionRowCounts() and
              canFocusDownloaded / canFocusEmbedded.
 
              Section positions and row counts are computed in layoutExistingSections()
@@ -166,7 +166,7 @@
     </Rectangle>
 
     <!-- Language picker overlay. Reuses components/settings/LanguagePicker
-         UNCHANGED — it already pairs a type-to-filter mini keyboard with an
+         unchanged: it already pairs a type-to-filter mini keyboard with an
          8-row RadioButtonList, which is the only sane way to pick from 192
          cultures on a remote. Reusing it also means the language picker here
          behaves identically to the one in Settings. -->
@@ -192,7 +192,7 @@
 
     <!-- ── Outputs, observed by the host ── -->
     <!-- Fires when the item's subtitle streams changed on the server. The host
-         MUST re-fetch the item and repopulate any stream-index-bearing UI. -->
+         has to re-fetch the item and repopulate any stream-index-bearing UI. -->
     <field id="subtitlesChanged" type="boolean" alwaysNotify="true" />
     <!-- Fires when the panel wants to hand focus back (BACK from the root). -->
     <field id="requestClose" type="boolean" alwaysNotify="true" />

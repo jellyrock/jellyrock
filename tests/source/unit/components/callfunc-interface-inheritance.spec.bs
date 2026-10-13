@@ -5,7 +5,7 @@ namespace tests
   '
   ' Not a style question. `OSD` and `liveTv/Schedule` are both reached by
   ' `callFunc("onDestroy")` from another component, and NEITHER declares
-  ' `<function name="onDestroy" />` of its own — both rely on inheriting the
+  ' `<function name="onDestroy" />` of its own: both rely on inheriting the
   ' declaration from `JRScreen`. If that inheritance does not hold, their teardown
   ' silently never runs.
   '
@@ -17,14 +17,14 @@ namespace tests
   ' A THIRD outcome is possible besides "runs" and "does not run": dispatch could
   ' reach `JRScreen`'s own `onDestroy` (whose whole body is `abandonApiPromises()`)
   ' instead of the subclass's override, leaving the subclass's timers and observers
-  ' attached. This suite does not separate that case from a non-dispatch, and
-  ' deliberately so — both are bugs, both are fixed by declaring the function
+  ' attached. This suite does not separate that case from a non-dispatch, on
+  ' purpose: both are bugs, both are fixed by declaring the function
   ' explicitly on the subclass, and both imply the same rule for any future lint:
   ' an INHERITED declaration cannot be trusted to dispatch to your override.
   '
   ' The instrument is the one `CaptionRenderer.spec.bs` uses: the TEST starts a
   ' timer that `onDestroy` stops, so the expectation cannot be computed from the
-  ' code under test — only the body actually running turns it back off.
+  ' code under test: only the body actually running turns it back off.
   @suite("SceneGraph - is a <function> declaration inherited through extends?")
   class CallFuncInterfaceInheritanceTests extends tests.BaseTestSuite
 
@@ -65,9 +65,9 @@ namespace tests
       osd.callFunc("onDestroy")
 
       ' A FAILURE here means OSD's teardown does not run when reached this way:
-      ' its inactivity timer, its six m.top observers and its More-menu dialog
-      ' all leak for the life of the app. The fix is one line in OSD.xml —
-      ' <function name="onDestroy" /> — and the same line in schedule.xml.
+      ' its inactivity timer, its m.top observers and its More-menu dialog
+      ' all leak for the life of the app. The fix is one line in OSD.xml,
+      ' `<function name="onDestroy" />`, and the same line in schedule.xml.
       m.assertEqual(timer.control, "stop", "OSD.onDestroy() did not run via callFunc on an INHERITED declaration")
     end function
 

@@ -26,6 +26,16 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-13: chore(tooling): Keep agent telemetry in the `XDG` state folder
+- 2026-10-13: docs(voice): Rewrite the `tests/source` comments
+- 2026-10-13: docs(voice): Rewrite the `tests/scripts` comments
+- 2026-10-13: test(scripts): Stop `test:scripts` emptying and writing `out/`
+- 2026-10-12: docs(voice): Rewrite the remaining `components` comments
+- 2026-10-12: ci(lint): Stop the voice gate skipping `components/tasks`
+- 2026-10-12: docs(voice): Rewrite the UI, dialog, home, grid and API comments
+- 2026-10-12: fix(grid): Stop asking for `MediaSourceCount` on the music grids
+- 2026-10-12: docs(voice): Rewrite the `components/video` and `subtitles` comments
+- 2026-10-12: docs(voice): Rewrite the `source` comments outside `source/utils`
 - 2026-10-12: docs(voice): Rewrite the `source/utils` comments
 - 2026-10-12: fix(playback): Direct-play `.strm` and DASH; fall back if unreachable
 - 2026-10-12: docs(voice): Rewrite the root config and workflow comments
@@ -154,10 +164,6 @@ It refuses two arms sharing a commit — a correct guard against the common mist
 #### Nothing in the repo catches a journal LOSING content — the doc gates validate what is present, never what is absent. `[fid: journal-losing-content-undetected]` `[captured 2026-08-23]`
 
 Proved the hard way 2026-08-23: a scripted edit truncated [`docs/progress.md`](progress.md) from **182 lines to 105** — five whole `###` sections and roughly sixty open followups — and `lint:docs`, `markdownlint` and `lint:spelling` **all passed**, because each validates frontmatter, schema, anchors, formatting and the prose that survived. It surfaced only by accident, when `main` moved and the merge forced a per-side diff; on a clean fast-forward it would have shipped silently and `/catchup` would have read the truncated file as authoritative. A spot-check of the lines around the insertion point does NOT substitute — the insertion was correct and the tail was gone. **Fix shape (two candidates, needs a call):** teach [`docs-check.cjs`](../scripts/lint/docs-check.cjs) a structural postcondition — the `###` heading set of `progress.md` / `signals-backlog.md` may gain sections but never lose one — or a cheaper pre-commit guard flagging any large line-count DROP in a journal for confirmation. The first is precise and journal-aware; the second is generic and catches classes the first does not. **Scoped OUT of `task-thread-budget` 2026-08-23** — the project surfaced it, but it is repo tooling work with no dependency on that project's phases.
-
-#### `npm run test:scripts` mutates the real checkout's `out/` — the same class as the `.device-runs/` leak the `no-durable-writes` guard closes, one directory over and unguarded. `[fid: test-scripts-mutates-checkout-out]` `[captured 2026-08-24]`
-
-Measured 2026-08-24 reviewing `fix/test-scripts-durable-ledger-writes`, with sentinel files: a full run leaves `out/` EMPTY. **Two independent causes.** *(1) It WIPES it* — bisected per-file to [`bsc-plugins/auto-abandon-promises.test.js`](../tests/scripts/unit/bsc-plugins/auto-abandon-promises.test.js) and [`bsc-plugins/roku-log.test.js`](../tests/scripts/unit/bsc-plugins/roku-log.test.js), then reproduced standalone: [`_helpers/transpile-with-plugin.js`](../tests/scripts/unit/_helpers/transpile-with-plugin.js) builds `new Program({ rootDir })` with no `stagingDir`, so BrighterScript's staging resolves under `./out` relative to `cwd` and clears it. *(2) It WRITES a 6.4 MB `out/jellyrock.zip`* — [`create-package.smoke.test.js`](../tests/scripts/unit/create-package.smoke.test.js) correctly spawns with `cwd: <tmpdir>`, but [`create-package.cjs`](../scripts/create-package.cjs) anchors `outDir` to `path.resolve(__dirname, '..')`, so the `cwd` isolation is defeated and it zips the real `build/` over the real package. **Why it matters:** `out/<kind>/` is where an in-flight device run keeps `run-meta.json` and its failure records, and `out/jellyrock.zip` is what [`run-roku-tests.js`](../scripts/run-roku-tests.js) sideloads — so a `test:scripts` overlapping a device run destroys that run's evidence. The new guard's own error text names this collision and nothing enforces it. **Fix shape:** give the transpile harness an explicit temp-root `stagingDir`, let `create-package.cjs` honor `cwd` (or have the smoke test pass an explicit output directory), then widen the guard to `out/` so the third instance fails instead of being found by hand.
 
 #### `measure.js` throws away its console capture on a HEALTHY run, so any probe output a family pattern does not capture is unrecoverable. `[fid: measure-discards-healthy-console-capture]` `[captured 2026-08-25]`
 
@@ -558,6 +564,16 @@ The device check before an upstream direct play (`LoadVideoContentTask.upstreamM
 
 This is the non-manifest half of the closed followup `live-channel-buffers-forever-unreachable-url`, found in review of the manifest direct-play fix (decision `manifest-upstream-direct-play`). Not done there because it needs a different probe: a GET of an endless progressive stream never completes, so the check would need a ranged or HEAD request, or to read only the first bytes. Closes when an unreachable server-allowed non-manifest live URL falls back to the server's stream, measured on a device.
 
+#### A mixed queue leaves a stopped `AudioPlayerView` under the player `[fid: mixed-queue-stopped-audio-view]` `[captured 2026-10-12]`
+
+In a mixed audio and video queue, the non-audio branches of `AudioPlayerView` (`advanceToNextItem`, `previousClicked`, `nextClicked`) stop the audio and call `playQueue`, which plain-navigates to the play route. A covered view is suspended, not closed (the route comment in `JRScene.initRouter`), so `/audio` stays under the player; `PlayerHostView.exitPlayback` (`sgrouter.goBack()`) then resumes a stopped `AudioPlayerView`, which has no `onScreenShown`. It broke in #677: before it, `previousClicked` and `nextClicked` called `sceneManager.callFunc("clearPreviousScene")` before `playQueue`. Found by the batch 9 comment pass.
+
+Recommended fix (`close`): one `AudioPlayerView` helper for the three branches that stops, moves the queue, `goBack()`s to close `/audio`, then calls `playQueue` once that navigation settles, with an RTA spec driving a mixed queue on a device first (it must fail before the fix). Alternatives: `scene` (`JRScene.onPlaybackLaunchRequested` goes back first when the active view is `AudioPlayerView` and the target is a play route); `exit` (an `onScreenShown` that leaves when resumed with nothing playing; hides the symptom, with a flash).
+
+Not checked: what the screen actually shows on a device; whether `PlayerHostView` can play an audio item that comes after the video in the queue; how often users build mixed playlists.
+
+Not built now: it needs a new RTA spec and a device run, outside the comment pass.
+
 #### The app cannot select among audio tracks muxed into one HLS variant: Roku lists none of them `[fid: muxed-hls-audio-tracks-unselectable]` `[captured 2026-10-13]`
 
 On an HLS stream that carries several audio tracks in one variant, Roku lists none of them (`availableAudioTracks` empty, `currentAudioTrack` ""), so the app cannot play the viewer's pick. `getRokuAudioTrackPosition()` then falls back to index + 1 and writes a track id that does not exist. Playback Info now says "Playing track: Unknown" for this case (commit `25697e39`), but the audio menu still offers every track and choosing one changes nothing audible.
@@ -665,6 +681,20 @@ before treating the 6-channel DTS cap as settled. `DTS_MAX_DIRECT_PLAY_CHANNELS`
 Not investigated: whether the early load in `Main()` is needed for strings shown before `reenterLogin()` runs (migrations, the scene's init). Not fixed now because that needs a device check of the launch path. Closes when one of the two loads is removed with that check done, or the double load is shown to be needed and the reason is written beside it.
 
 Found 2026-10-10 by the `translations.md` fact-check (docs-voice project, session 9).
+
+#### `TRANSCODE_CAUSE_STEREO_CAPPED_CODECS` hand-copies `getStereoOutputCodecs()`, and nothing checks the two agree `[fid: transcode-cause-stereo-codecs-hand-copy]` `[captured 2026-10-12]`
+
+`TRANSCODE_CAUSE_STEREO_CAPPED_CODECS` in `source/utils/transcodeCause.bs` is a hand-written string of the codec list `getStereoOutputCodecs()` returns in `source/utils/deviceCapabilities.bs`. The two hold the same eight codecs on 2026-10-12, but nothing checks that they stay equal, so a codec added to one list silently drifts from the other and the explanation `transcodeCause.bs` gives stops matching what the device profile caps. Found in the docs-voice comment pass (batch 5, recorded at batch 6's PR). Not fixed now: closing it is a code change with a test (derive the constant from `getStereoOutputCodecs()`, or a unit test asserting the two agree), outside a comment-only PR. Closes when one list is derived from the other or a test holds them equal.
+
+#### `lastFocusedChild()` caps its focus walk at the root's child count `[fid: last-focused-child-depth-bound]` `[captured 2026-10-13]`
+
+`lastFocusedChild()` in `source/utils/misc.bs` loops `for i = 0 to obj.getChildCount()` and tests `obj.focusedChild` (the root) on every pass, where it means the node it has reached. So it walks at most the root's child count plus one levels down the focus chain, whatever the chain's real depth. Its one app caller, `presentOverlayDialog` in `source/utils/dialogs.bs`, passes the scene to derive `returnFocusTo`; `JRScene.xml` declares 12 children, so that call walks up to 13 levels. The loop dates from the 2025-06-28 fork and is unchanged since. Found by the docs-voice batch 11 comment pass (2026-10-12), triaged with `/snag`.
+
+Not reproduced: it needs a device spec with a focus chain deeper than its root's child count. Not checked: how deep real focus chains get (if none passes 13, the flaw is latent in production), and what `focusedChild` returns on the focused node itself (the walk relies on it returning the node, not `invalid`; Roku's `node.md` does not say).
+
+Options: `walk` (recommended): descend while `child.focusedChild` is valid and not `child` itself, with a fixed safety cap, and add a spec with a deep chain under a one-child root (`misc.bs` plus one spec; low risk, the cap and the self-check end the loop whatever the leaf returns). `bound`: test `child.focusedChild` but bound the loop by a constant (a guess to keep). `note`: document the limit only (the flaw stays).
+
+Why not now: the fix needs a device test run, and the batch that found it changed only comments. Closes when `lastFocusedChild()` walks the real focus chain and a spec pins it on a device.
 
 ### api
 

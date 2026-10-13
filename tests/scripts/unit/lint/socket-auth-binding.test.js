@@ -1,10 +1,10 @@
-// Tests for scripts/lint/socket-auth-binding-check.js — the static guard on the
+// Tests for scripts/lint/socket-auth-binding-check.js: the static guard on the
 // ws:// session-identity binding (#743).
 //
 // Pure layer: hand-written source strings exercise each rule and its ordering
 // logic. Plus a smoke pass over the REAL committed RemoteControlTask.bs +
 // WebSocketClientTask.brs, so reverting the fix in either file fails here
-// (offline — no Roku hardware and no Jellyfin server, which is the point: the
+// (offline, with no Roku hardware and no Jellyfin server, which is the point: the
 // true end-to-end check is unreachable from RTA, see the lint's header).
 
 import { describe, it, expect } from 'vitest';
@@ -19,7 +19,7 @@ import {
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..');
 
-// Minimal well-formed sources — the shape the guard wants, nothing more.
+// Minimal well-formed sources: the shape the guard wants, nothing more.
 const GOOD_RECEIVER = `
 sub connectAndPump(url as string)
   m.ws = CreateObject("roSGNode", "WebSocketClient")
@@ -138,9 +138,9 @@ describe('rule 4 — the dead m.task_port typo stays dead', () => {
   });
 });
 
-// Load-bearing, not decorative: BOTH real files quote every banned pattern
-// inside their explanatory comments (that is how the local modifications are
-// documented). Without comment-stripping the guard would fail on the very tree
+// Needed, not decorative: the real WebSocketClientTask.brs quotes every banned
+// pattern inside its explanatory comments (that is how the local modifications
+// are documented). Without comment-stripping the guard would fail on the very tree
 // it is meant to bless.
 describe('comment stripping', () => {
   it('ignores banned patterns that appear only in comments', () => {

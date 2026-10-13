@@ -132,7 +132,7 @@ describe('docs-stale-blocking', () => {
 
   it('exits 2 when no resolvable base ref', () => {
     // To force the unresolvable case, run in a directory that ISN'T a git
-    // repo at all — every fallback candidate will fail to resolve.
+    // repo at all: every fallback candidate will fail to resolve.
     dir = mkdtempSync(join(tmpdir(), 'jellyrock-docs-stale-blocking-nogit-'));
     mkdirSync(join(dir, 'docs', 'architecture'), { recursive: true });
     const { exitCode, stderr } = spawnScript(SCRIPT, ['--base', 'main'], {

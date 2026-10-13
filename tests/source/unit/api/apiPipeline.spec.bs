@@ -6,15 +6,15 @@ namespace tests
 
   ' Contract tests for the request-pipelining primitive (source/api/apiPipeline.bs).
   '
-  ' These drive the PURE CORE directly — the slot accounting, take, drain and
-  ' done predicates — the same way apiPromise.spec.bs drives settleApiPromiseIn.
+  ' These drive the pure core directly (the slot accounting, take, drain and
+  ' done predicates), the same way apiPromise.spec.bs drives settleApiPromiseIn.
   ' The core takes the pipe state AA explicitly and touches no node, port or
   ' clock, so a test can build a pipe by hand and step the state machine without
   ' a live pool.
   '
   ' What this canNOT cover: apiPipelineNext's I/O shell (submit / wait /
   ' unobserve), which needs a running pool and a Task thread. `submitPending()`
-  ' below mirrors that shell's top-up loop with the I/O removed — so a drift
+  ' below mirrors that shell's top-up loop with the I/O removed, so a drift
   ' between the two is a real (if narrow) blind spot, the price of the split.
   ' The shell's end-to-end behaviour is covered on device by the Home rows it
   ' drives, not here.
@@ -285,7 +285,7 @@ namespace tests
     function _()
       pipe = m.makePipe(5)
       m.submitPending(pipe)
-      ' r1 came back before the budget ran out — it must not be yielded again.
+      ' r1 came back before the budget ran out, so it must not be yielded again.
       apiPipelineTake(pipe, "r1")
 
       m.assertEqual(m.drainAll(pipe), ["lib0", "lib2", "lib3", "lib4"])
@@ -330,12 +330,12 @@ namespace tests
     @describe("apiPipelineBudgetSpent - one deadline test, used in both places")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' The budget is checked twice per iteration — at the top of the loop, and
-    ' again after a completion before the pool is topped up. Those two used to be
-    ' separate expressions, and the second one read a flag computed BEFORE a
-    ' wait() that could consume the entire remaining budget, so a run past its
-    ' deadline still submitted requests the next iteration threw away. One shared
-    ' predicate is what stops them drifting apart again.
+    ' The budget is checked once per iteration, at the top of the loop. A second
+    ' check, after a completion before the pool was topped up, once used its own
+    ' expression and read a flag computed before a wait() that could consume the
+    ' entire remaining budget, so a run past its deadline still submitted requests
+    ' the next iteration threw away. Any check added again must call this shared
+    ' predicate, so the two cannot drift apart.
     @it("is false while budget remains")
     function _()
       m.assertFalse(apiPipelineBudgetSpent(5000, 4999))
@@ -429,7 +429,7 @@ namespace tests
     end function
 
     ' The two tests below drive apiPipelineNext itself, so they fail if its pause/resume
-    ' wiring is removed — the helpers above can't notice that. A run with nothing queued and
+    ' wiring is removed, which the helpers above can't notice. A run with nothing queued and
     ' nothing in flight returns at once, without submitting or waiting.
     private function makeFinishedPipe() as object
       pipe = m.makePipe(1)

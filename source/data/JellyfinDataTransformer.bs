@@ -1,4 +1,4 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
+' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
 import "pkg:/source/api/image.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/translationKeys.bs"
@@ -30,7 +30,7 @@ class JellyfinDataTransformer
   ' Transform a BaseItemDto to a JellyfinBaseItem content node.
   ' @param apiData - Raw BaseItemDto assocarray from the Jellyfin API
   ' @param serverVersion - Server version string (auto-detected from global session if omitted)
-  ' @param preferredSubtitleLanguage - BCP-47 language code for subtitle sort priority (e.g. "eng")
+  ' @param preferredSubtitleLanguage - BCP-47 language code for subtitle sort priority (for example "eng")
   ' @returns JellyfinBaseItem node, or invalid if apiData is invalid
   function transformBaseItem(apiData as object, serverVersion = "" as string, preferredSubtitleLanguage = "" as string) as object
     if not isValid(apiData)
@@ -69,9 +69,9 @@ class JellyfinDataTransformer
       item.displayOrder = apiData.DisplayOrder ?? ""
       item.isFolder = apiData.IsFolder ?? false
       ' folderType only applies to folder items; leave at XML default for non-folders.
-      ' Resolved design decision: Genre/MusicGenre/Studio items are folder sub-types —
+      ' Resolved design decision: Genre/MusicGenre/Studio items are folder sub-types:
       ' keep item.type = "Folder" for routing and store the real API type in folderType.
-      ' CollectionFolder and plain Folder items use CollectionType (e.g. "movies", "music").
+      ' CollectionFolder and plain Folder items use CollectionType (for example "movies", "music").
       if isValid(apiData.IsFolder) and apiData.IsFolder = true
         apiItemType = apiData.Type ?? ""
         if apiItemType = "Genre" or apiItemType = "MusicGenre" or apiItemType = "Studio"
@@ -212,7 +212,7 @@ class JellyfinDataTransformer
       else if itemType = "Series"
         m.transformSeriesFields(item, apiData)
       else if itemType = "TvChannel"
-        ' TV channels are always live — set the ContentNode live built-in so applyLiveDirectPlayFallback
+        ' TV channels are always live: set the ContentNode live built-in so applyLiveDirectPlayFallback
         ' can arm the transcode retry path, and isLive in the JellyfinBaseItem field for consistency.
         item.isLive = true
         item.live = true
@@ -222,7 +222,7 @@ class JellyfinDataTransformer
         ' integer. Assigning a non-string to a string-typed ContentNode field silently no-ops on Roku.
         item.channelNumber = (apiData.Number ?? "").toStr().trim()
         ' CurrentProgram is a nested BaseItemDto returned by default on all TvChannel items
-        ' (not gated behind ItemFields — no extra fields= param needed). Transform it so the
+        ' (not gated behind ItemFields, so no extra fields= param is needed). Transform it so the
         ' OSD and playback stack can read typed program fields (name, episode info, artwork,
         ' runtime, end time) directly from the TvChannel node.
         if isValid(apiData.CurrentProgram)
@@ -396,7 +396,7 @@ class JellyfinDataTransformer
     item.userRating = userData.Rating ?? 0.0
     item.playAccess = userData.PlayAccess ?? ""
 
-    ' Likes: only set when explicitly present (null = no opinion → stays at XML default false)
+    ' Likes: only set when explicitly present (null = no opinion, so it stays at XML default false)
     if isValid(userData.Likes)
       item.userLikes = userData.Likes
     end if
@@ -456,7 +456,7 @@ class JellyfinDataTransformer
   ' Transform program/recording (Live TV) specific fields.
   private sub transformProgramFields(item as object, apiData as object)
     item.channelName = apiData.ChannelName ?? ""
-    ' Normalize to string: same defensive guard as TvChannel's Number field — assigning a non-string
+    ' Normalize to string: same defensive guard as TvChannel's Number field: assigning a non-string
     ' to a string-typed ContentNode field silently no-ops on Roku.
     item.channelNumber = (apiData.ChannelNumber ?? "").toStr().trim()
     item.channelType = apiData.ChannelType ?? ""
@@ -776,7 +776,7 @@ class JellyfinDataTransformer
   ' Takes a SPEC rather than a raw BaseItemPerson because a card is not a person entry:
   ' the server sends one entry per credit, so the merge and the label both have to happen
   ' over the whole array before any node exists. `people.bs` owns that rule; this owns the
-  ' node. Note primaryImageTag is set directly, NOT nested under ImageTags like a
+  ' node. primaryImageTag is set directly, not nested under ImageTags like a
   ' BaseItemDto.
   '
   ' @param spec - one { id, name, primaryImageTag, subtitle } from castCardSpecs()
@@ -784,7 +784,7 @@ class JellyfinDataTransformer
   function transformPersonCard(spec as object) as object
     if not isValid(spec) then return invalid
     item = CreateObject("roSGNode", "JellyfinBaseItem")
-    ' Individual assignments, NOT setFields(): the "prefer setFields" rule is about
+    ' Individual assignments, not setFields(): the "prefer setFields" rule is about
     ' writes that CROSS a thread boundary, and this node was created on this thread and
     ' has not been handed over yet. Here setFields only adds an AA to allocate.
     item.id = spec.id ?? ""
@@ -803,7 +803,7 @@ end class
 ' propagate `m` (the class instance) into private subs invoked via method
 ' dispatch, so any helper called from a private sub must be a plain function.
 
-' Normalize container format strings (m4v/mov → mp4).
+' Normalize container format strings (m4v/mov to mp4).
 function JDT_normalizeContainer(container as string) as string
   if not isValidAndNotEmpty(container)
     return ""
@@ -816,9 +816,9 @@ function JDT_normalizeContainer(container as string) as string
 end function
 
 ' Sort subtitle streams: forced > default > normal, preferred language first within each group.
-' Ports the ordering logic from Subtitles.bs sortSubtitles() for use at transform time.
+' Ports the ordering logic from source/utils/subtitles.bs sortSubtitles() for use at transform time.
 ' @param streams - Array of subtitle MediaStream AAs
-' @param preferredLanguage - BCP-47 language code (e.g. "eng"), or "" for no preference
+' @param preferredLanguage - BCP-47 language code (for example "eng"), or "" for no preference
 ' @returns Sorted subtitle stream array
 function JDT_sortSubtitleStreams(streams as object, preferredLanguage as string) as object
   if not isValid(streams) or streams.Count() = 0

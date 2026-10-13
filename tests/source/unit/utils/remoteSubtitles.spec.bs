@@ -2,7 +2,7 @@ import "pkg:/source/utils/remoteSubtitles.bs"
 
 ' Unit tests for the remote-subtitle helpers (issue #750).
 '
-' The permission expectations below are not guesses — they encode a truth table
+' The permission expectations below are not guesses. They encode a truth table
 ' measured against a live Jellyfin 10.11.11 server, plus the [Authorize] policy
 ' attributes read at the v10.7.7 / v10.8.13 / v10.9.11 / v10.10.7 / v10.11.11
 ' tags. If a future server release changes the gate, these are the tests that
@@ -46,7 +46,7 @@ namespace tests
 
     @it("allows an admin whose EnableSubtitleManagement is false - the server default")
     function _()
-      ' Jellyfin seeds EnableSubtitleManagement=false for EVERY account, admins
+      ' Jellyfin seeds EnableSubtitleManagement=false for every account, admins
       ' included, but DefaultAuthorizationHandler lets admins through anyway.
       ' Gating purely on the flag would hide the feature from most installs.
       policy = { isAdministrator: true, enableSubtitleManagement: false }

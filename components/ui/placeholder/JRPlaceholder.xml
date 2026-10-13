@@ -7,13 +7,13 @@
   Encapsulates the historical JRRowItem inline pattern (RectangleBackgroundSecondary
   backdrop + Poster with blendColor=colorBackgroundPrimary + getPlaceholderImagePath
   URI mapping) so future surfaces drop in a single declarative child instead of
-  re-implementing the composition. Driven by `itemType` — the component handles
+  re-implementing the composition. Driven by `itemType`; the component handles
   the URI mapping internally via getPlaceholderImagePath().
 
   States:
-    - itemType=""       → backdrop visible, glyph hidden (loading state)
-    - itemType="Movie"  → backdrop visible, glyph visible (placeholder fallback state)
-    - top.visible=false → entire placeholder hidden (real image loaded)
+    - itemType="":       backdrop visible, glyph hidden (loading state)
+    - itemType="Movie":  backdrop visible, glyph visible (placeholder fallback state)
+    - top.visible=false: entire placeholder hidden (real image loaded)
 -->
 <component name="JRPlaceholder" extends="Group">
   <children>
@@ -22,7 +22,7 @@
   </children>
   <interface>
     <!--
-      itemType: Jellyfin item type string (e.g., "Movie", "Person"). Maps via
+      itemType: Jellyfin item type string (for example, "Movie", "Person"). Maps via
       getPlaceholderImagePath() to a placeholder URI. Empty string hides the
       glyph (loading state); non-empty shows the corresponding glyph.
     -->

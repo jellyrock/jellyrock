@@ -1,7 +1,7 @@
 namespace tests
 
   ' Tests for Episode support in ItemDetails: populateInfoGroupEpisode(), specifically the
-  ' community/critic rating rows added by the shared displayRatingNodes() helper (#695 —
+  ' community/critic rating rows added by the shared displayRatingNodes() helper (#695:
   ' Episode previously showed officialRating only, unlike Movie/Series/BoxSet).
   @suite("ItemDetails - Episode support")
   class ItemDetailsEpisodeTests extends tests.BaseTestSuite

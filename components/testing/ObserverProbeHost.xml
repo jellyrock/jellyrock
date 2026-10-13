@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ObserverProbeHost — the OBSERVING PARENT in tests/source/unit/platform/ObserverRegistry.spec.bs.
+  ObserverProbeHost: the OBSERVING PARENT in tests/source/unit/platform/ObserverRegistry.spec.bs.
 
   Plays the part of PlayerHostView: it owns an ObserverProbeSubject child and observes a
   field on it from its own, separate component scope.

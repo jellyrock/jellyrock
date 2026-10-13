@@ -2,7 +2,7 @@
 //
 // Four surfaces invoke spellchecker-cli (repo-wide lint, pre-commit, the end-of-turn hook,
 // and journal-sync's bullet check). They each used to carry their own copy of the dictionary
-// path, plugin list and ignore regex, held together by a "keep in sync" comment — and they
+// path, plugin list and ignore regex, held together by a "keep in sync" comment, and they
 // drifted: an ignore rule was added to two of them, so the hook went on reporting a word CI
 // had already stopped flagging.
 //
@@ -10,18 +10,18 @@
 // suite fails if any surface starts re-specifying a setting the config owns, which is the only
 // way that class of divergence can come back.
 //
-// The suite has a second half that is NOT about drift: it spawns the real binary over a fixture
+// The suite has a second half that is not about drift: it spawns the real binary over a fixture
 // and asserts what the configuration actually SPELLCHECKS. That exists because the first version
 // of the sentence-final fix was a broad `ignore` regex matching any token ending in a period,
-// and its unit test asserted the regex against hand-written tokens — which cannot catch a
+// and its unit test asserted the regex against hand-written tokens, which cannot catch a
 // TOKENIZATION problem, because the test supplies the token the author assumed. The regex
 // silently stopped reporting real typos at the end of any paragraph above a list, a numbered
 // list, a blockquote or a lowercase heading. Only spawning the tool shows that.
 //
 // ⚠️ The scan is over the whole CALL EXPRESSION, not the matching line. A line-scoped version
 // shipped first and had the very hole this gate exists to close: flags on a continuation line
-// were invisible, so re-adding `-p` in the multi-line argv shape — the shape the migration
-// deleted — left the suite green, and `journal-sync.js`'s args line matched no token at all so
+// were invisible, so re-adding `-p` in the multi-line argv shape (the shape the migration
+// deleted) left the suite green, and `journal-sync.js`'s args line matched no token at all so
 // that surface was never scanned. The fixture suite at the bottom is what keeps that fixed:
 // it drives the extractor with the broken shapes directly, so "confirmed red" is a standing
 // property rather than an experiment someone has to remember to repeat.
@@ -34,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-// js-yaml, not `yaml` — it is the repo's declared YAML parser (scripts/lib/version-boundaries,
+// js-yaml, not `yaml`: it is the repo's declared YAML parser (scripts/lib/version-boundaries,
 // scripts/lint/issue-templates-check, scripts/lib/endpoint-availability all use it).
 const require = createRequire(import.meta.url);
 const yaml = require('js-yaml');
@@ -52,7 +52,7 @@ const SURFACES = [
   { file: '.lintstagedrc.cjs', allowedFlags: ['--files'] },
   { file: 'scripts/lint/check-touched-lint.cjs', allowedFlags: ['--files'] },
   // No exception for journal-sync. It used to pass an absolute `-d` because its CWD can
-  // differ from its repo root — but that only rescued the dictionary, while the CONFIG was
+  // differ from its repo root, but that only rescued the dictionary, while the CONFIG was
   // still being looked for from the wrong CWD and silently not found. Spawning with
   // `cwd: repoRoot` fixes both, so this surface inherits like every other one.
   { file: 'scripts/journal-sync.js', allowedFlags: ['--files'] },
@@ -62,15 +62,15 @@ const SURFACES = [
 const OWNED_FLAGS = ['-p', '--plugins', '-i', '--ignore', '-d', '--dictionaries'];
 
 // Any mention of the tool. `SPELLCHECKER_BIN` is journal-sync's resolved-path constant, which
-// is what appears at its spawn site — the literal string "spellchecker" does not.
+// is what appears at its spawn site; the literal string "spellchecker" does not.
 const TOKEN = /spellchecker|SPELLCHECKER_BIN/gi;
 
 // Bound on how far the paren walk will travel. Large enough for any real invocation, small
 // enough that a mis-parse degrades to one line rather than swallowing the file.
 const MAX_REGION = 4000;
 
-// Strip whole-line `//` comments. Deliberately only line-leading ones, so a `//` inside a URL
-// or a string literal survives — and every flag-mentioning comment in these files (they all
+// Strip whole-line `//` comments. Only line-leading ones, on purpose, so a `//` inside a URL
+// or a string literal survives, and every flag-mentioning comment in these files (they all
 // explain which flags the config now owns) is a full line.
 function stripLineComments(source) {
   return source.replace(/^[ \t]*\/\/.*$/gm, '');
@@ -78,7 +78,7 @@ function stripLineComments(source) {
 
 // The innermost call expression enclosing `index`: walk back to the unclosed `(`, then forward
 // to its match. Falls back to the matched LINE when there is no such call within MAX_REGION, or
-// when the walk lands somewhere that no longer contains `index` — which is what an unbalanced
+// when the walk lands somewhere that no longer contains `index`, which is what an unbalanced
 // paren inside a string literal would produce.
 function enclosingCall(code, index) {
   const lineStart = code.lastIndexOf('\n', index) + 1;
@@ -127,7 +127,7 @@ export function ownedFlagsPassed(regions, allowedFlags = []) {
   const joined = regions.join('\n');
   return OWNED_FLAGS.filter((flag) => {
     if (allowedFlags.includes(flag)) return false;
-    // Match the flag as a whole argument — quoted, bare, or in an argv array.
+    // Match the flag as a whole argument: quoted, bare, or in an argv array.
     return new RegExp(`(^|[\\s'"\`\\[,])${flag}($|[\\s'"\`\\],=])`, 'm').test(joined);
   });
 }
@@ -242,7 +242,7 @@ describe('spellchecker config / the gate can actually fail', () => {
 // What the configuration actually spellchecks, taken from the real binary rather than from a
 // regex the test wrote itself. ONE spawn (~0.5 s) covers every case: the tool reports each
 // unknown word once, so a single fixture is both cheaper and a stricter assertion than a file
-// per case — anything unexpected shows up as a surplus entry.
+// per case: anything unexpected shows up as a surplus entry.
 describe('spellchecker config / behaviour against the real binary', () => {
   // retext stops treating a paragraph's final period as sentence-final when the next block is
   // a lowercase heading, a list or a blockquote, and looks the word up with the period glued
@@ -275,7 +275,7 @@ describe('spellchecker config / behaviour against the real binary', () => {
     '',
   ].join('\n');
 
-  // Resolved from the repo's own node_modules, and spawned with `cwd: REPO_ROOT` — the same
+  // Resolved from the repo's own node_modules, and spawned with `cwd: REPO_ROOT`: the same
   // two requirements every production call site has, for the same reason: spellchecker-cli
   // discovers .spellcheckerrc.yaml by walking up from process.cwd().
   const BIN = join(REPO_ROOT, 'node_modules', '.bin', 'spellchecker');
@@ -291,7 +291,7 @@ describe('spellchecker config / behaviour against the real binary', () => {
         status: res.status,
         error: res.error,
         output,
-        // Trailing period included when present — the mis-tokenized form is the evidence.
+        // Trailing period included when present: the mis-tokenized form is the evidence.
         reported: [...output.matchAll(/unknown word `([^`]+)`/g)].map((m) => m[1]),
       };
     } finally {
@@ -301,8 +301,8 @@ describe('spellchecker config / behaviour against the real binary', () => {
   const reported = run.reported;
 
   it('actually spawned the binary', () => {
-    // Non-vacuity guard, and it is not paranoia: if the spawn failed — binary absent, config
-    // not discovered from this cwd — `reported` would be empty and the "does not report"
+    // Non-vacuity guard, and it is not paranoia: if the spawn failed (binary absent, config
+    // not discovered from this cwd), `reported` would be empty and the "does not report"
     // case below would pass by checking nothing. spellchecker-cli exits 1 when it reports a
     // warning, so a successful run over this fixture is exit 1 with output, not exit 0.
     expect(run.error, `spawn failed: ${run.error?.message}`).toBeUndefined();

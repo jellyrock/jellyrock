@@ -41,7 +41,7 @@ sub onButtonSelected()
   m.top.close = true
 end sub
 
-' Back button (or any close without a button press) — resolve as cancelled so the
+' Back button (or any close without a button press): resolve as cancelled so the
 ' caller's observer always fires exactly once.
 sub onWasClosed()
   resolveDialog(true)

@@ -55,7 +55,7 @@ sub init()
   ' Set lastFocus for JRScreen lifecycle management
   m.top.lastFocus = m.buttons
 
-  ' Show "Playing <title>" for an audio cast — the launcher set the title before navigating
+  ' Show "Playing <title>" for an audio cast. The launcher set the title before navigating
   ' here; this mount is the stable point (nothing churns after). One-shot: clear it.
   if isValidAndNotEmpty(m.global.deepLinkOpeningTitle)
     displayToast(Substitute(translate(translationKeys.MessagePlayingContent), m.global.deepLinkOpeningTitle), "info")
@@ -316,7 +316,7 @@ sub audioStateChanged()
         return
       end if
 
-      ' Queue exhausted — leave the routed /audio view.
+      ' Queue exhausted: leave the routed /audio view.
       exitAudioPlayback()
     end if
   end if
@@ -324,8 +324,8 @@ end sub
 
 ' Advance to the next queue item on auto-finish. Audio stays in this routed /audio view
 ' (reload the stream in place via LoadNextSong). A non-audio next item in a mixed queue leaves
-' /audio for the player route — playQueue routes it to /play, and /audio is popped, so it
-' is destroyed.
+' /audio for the player route: playQueue routes it to /play, which covers /audio, so the
+' router suspends it rather than destroying it.
 sub advanceToNextItem()
   nextPosition = m.queueManager.callFunc("getPosition") + 1
   if nextPosition > m.queueManager.callFunc("getCount") - 1 then return
@@ -383,8 +383,8 @@ function previousClicked() as boolean
     previousItemType = m.queueManager.callFunc("getItemType", previousItem)
 
     if previousItemType <> "audio"
-      ' A non-audio previous item leaves /audio for the player route (playQueue -> /play;
-      ' /audio is popped, so it is destroyed).
+      ' A non-audio previous item leaves /audio for the player route (playQueue -> /play,
+      ' which covers /audio, so the router suspends it rather than destroying it).
       m.audioPlayer.control = "stop"
       m.queueManager.callFunc("moveBack")
       m.queueManager.callFunc("playQueue")
@@ -440,7 +440,7 @@ sub setLoopButtonImage()
 end sub
 
 ' Returns false at end-of-queue so callers can distinguish "advanced" from "no-op".
-' Side effects (timestamp reset) only fire when an advance actually happens —
+' Side effects (timestamp reset) only fire when an advance actually happens:
 ' pressing Next on the last track is a no-op, not a partial reset.
 function nextClicked() as boolean
   currentQueuePosition = m.queueManager.callFunc("getPosition")
@@ -451,8 +451,8 @@ function nextClicked() as boolean
     nextItemType = m.queueManager.callFunc("getItemType", nextItem)
 
     if nextItemType <> "audio"
-      ' A non-audio next item leaves /audio for the player route (playQueue -> /play; /audio
-      ' is popped, so it is destroyed).
+      ' A non-audio next item leaves /audio for the player route (playQueue -> /play, which
+      ' covers /audio, so the router suspends it rather than destroying it).
       m.audioPlayer.control = "stop"
       m.queueManager.callFunc("moveForward")
       m.queueManager.callFunc("playQueue")
@@ -551,7 +551,7 @@ sub pageContentChanged()
   currentItem = m.queueManager.callFunc("getCurrentItem")
 
   ' Update the queue-derived display NOW (same tick as the position-bar/timestamp reset the
-  ' caller just did) so the title + "Track X of Y" don't lag behind until the async stream task
+  ' caller did) so the title + "Track X of Y" don't lag behind until the async stream task
   ' returns. onAudioStreamLoaded/onMetaDataLoaded re-apply once the fuller item resolves.
   applyTrackInfo(currentItem)
 
@@ -623,7 +623,7 @@ sub onMetaDataLoaded(event as object)
   m.LoadMetaDataTask.unobserveField("content")
 
   ' A failed fetch publishes [invalid]. The song is already playing, and nothing has set its
-  ' artwork yet — the screen still shows the PREVIOUS song's — so use the queue item's own.
+  ' artwork yet (the screen still shows the PREVIOUS song's), so use the queue item's own.
   if not isValid(data) or not isValidAndNotEmpty(data.id)
     m.log.warn("song metadata did not load; showing the queue item's own artwork", m.LoadMetaDataTask.itemId)
     currentItem = m.queueManager.callFunc("getCurrentItem")
@@ -660,7 +660,7 @@ sub applyItemArtwork(item as object)
 end sub
 
 ' Set poster image on screen. Empty string clears the URI on both the main album cover
-' and the screensaver cover — the JRPlaceholder behind albumCover surfaces, and the
+' and the screensaver cover: the JRPlaceholder behind albumCover surfaces, and the
 ' screensaver activator at startScreenSaver() routes to the audio-logo branch instead
 ' of drifting a fallback glyph around.
 sub setPosterImage(posterURL as dynamic)
@@ -677,7 +677,7 @@ sub onAlbumCoverLoadStatusChanged()
   if m.albumCover.loadStatus = "ready" and m.albumCover.uri <> ""
     m.albumPlaceholder.visible = false
   else if m.albumCover.loadStatus = "failed" and m.albumCover.uri <> ""
-    ' Real image failed — clear both URIs so the placeholder shows and the screensaver
+    ' Real image failed: clear both URIs so the placeholder shows and the screensaver
     ' gate at startScreenSaver() sees an empty albumCover.uri (audio-logo branch).
     m.albumCover.uri = ""
     m.screenSaverAlbumCover.uri = ""
@@ -688,7 +688,7 @@ sub onAlbumCoverLoadStatusChanged()
 end sub
 
 ' Set screen's title text to "Artist / Song" when both are available,
-' just song name if no album artist, or empty string to reset the title.
+' only the song name if no album artist, or empty string to reset the title.
 sub setScreenTitle(item as object)
   newTitle = ""
   if isValidAndNotEmpty(item.albumArtist) and isValidAndNotEmpty(item.name)
@@ -697,7 +697,7 @@ sub setScreenTitle(item as object)
     newTitle = item.name
   end if
 
-  ' Always assign — resets title when newTitle is ""
+  ' Assign even when empty: resets title when newTitle is ""
   if m.top.overhangTitle <> newTitle
     m.top.overhangTitle = newTitle
   end if
@@ -721,7 +721,7 @@ end sub
 ' from the current item. Called SYNCHRONOUSLY on a track change (pageContentChanged) so these
 ' update on the same tick as the position-bar/timestamp reset instead of lagging until the async
 ' stream load returns, and re-applied from the async stream/metadata callbacks once a fuller item
-' resolves (idempotent — setFieldTextValue/setScreenTitle no-op when unchanged or invalid). The
+' resolves (idempotent: setFieldTextValue/setScreenTitle no-op when unchanged or invalid). The
 ' poster/backdrop stay in the async path: image loads are inherently async.
 sub applyTrackInfo(item as object)
   if not isValid(item) then return
@@ -892,9 +892,10 @@ end function
 
 ' Stop + tear down without navigating (a deep link arrived while audio plays; the caller
 ' reroutes to the new content). Stops the audio the same way the back key does
-' (onKeyEvent "back" -> control "stop") — the caller's goBack is programmatic, so it bypasses
-' that key handler. NOT a full onDestroy: the caller's goBack triggers onDestroy for cleanup,
-' and running onDestroy twice (it nulls m.audioPlayer) crashes the second pass.
+' (onKeyEvent "back" -> control "stop"): the caller's navigation is programmatic, so it
+' bypasses that key handler. Not a full onDestroy: the caller then navigates to "/", whose
+' clearStackOnResolve closes this view and runs onDestroy (JRScreen.beforeViewClose), and
+' running onDestroy twice (it nulls m.audioPlayer) crashes the second pass.
 sub teardownForDeepLink()
   if isValid(m.audioPlayer) then m.audioPlayer.control = "stop"
 end sub
@@ -906,7 +907,7 @@ sub onDestroy()
   ' A start still open here never loaded a stream: Back, or a sign-out, before it did.
   appWaits.fail(m.playbackStart, "player closed before its stream loaded")
 
-  ' Unobserve global audioPlayer fields (m.audioPlayer is m.global.audioPlayer — don't destroy it)
+  ' Unobserve global audioPlayer fields (m.audioPlayer is m.global.audioPlayer: don't destroy it)
   m.audioPlayer.unobserveField("state")
   m.audioPlayer.unobserveField("position")
   m.audioPlayer.unobserveField("bufferingStatus")
@@ -914,7 +915,7 @@ sub onDestroy()
   ' Unobserve button observer
   m.buttons.unobserveField("buttonSelected")
 
-  ' Detach EVERY task observer before releasing ANY task reference. Interleaving
+  ' Detach every task observer before releasing any task reference. Interleaving
   ' them leaves a window: a handler that reads another task's ref, arriving after
   ' that ref was nulled but before its own observer came off, would dot into
   ' invalid (&hec) - the #733 teardown shape. The metadata node is detached by
@@ -931,7 +932,7 @@ sub onDestroy()
   m.LoadScreenSaverTimeoutTask.control = "STOP"
   m.LoadScreenSaverTimeoutTask = invalid
 
-  ' Release global node references (nulling local refs only — global nodes are unaffected)
+  ' Release global node references (nulling local refs only; global nodes are unaffected)
   m.audioPlayer = invalid
   m.queueManager = invalid
 
@@ -973,11 +974,11 @@ end sub
 '
 ' JellyRock-specific behaviors (audio has no continuous trickplay, no media segments):
 '   - "forward"/"rewind" are discrete 10s seeks.
-'   - "replay" seeks backward by playbackInstantReplaySeconds (same setting as video) —
-'     matches the Roku platform spec; users wanting loop control use the "loop" command.
+'   - "replay" seeks backward by playbackInstantReplaySeconds (same setting as video),
+'     which matches the Roku platform spec; users wanting loop control use the "loop" command.
 '   - "skip" advances to the next track.
 '
-' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+' See https://github.com/rokudev/dev-doc, file docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
 function handleTransport(evt as object) as object
   if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
   cmd = LCase(evt.command)
@@ -1000,7 +1001,7 @@ function handleTransport(evt as object) as object
   end if
 
   if cmd = "stop"
-    ' Mirror back-key behavior — stop playback, clear loop, and leave the routed /audio view.
+    ' Mirror back-key behavior: stop playback, clear loop, and leave the routed /audio view.
     ' The physical back key bubbles to the outlet's goBack; voice transport doesn't, so we exit
     ' explicitly.
     exitAudioPlayback()
@@ -1008,7 +1009,7 @@ function handleTransport(evt as object) as object
   end if
 
   if cmd = "ok"
-    ' No idle "open menu" equivalent for audio — the player is its own menu.
+    ' No idle "open menu" equivalent for audio: the player is its own menu.
     return { status: "unhandled" }
   end if
 
@@ -1076,7 +1077,7 @@ function audioSeekRelative(deltaSeconds as integer) as object
   return audioSeekTo(m.audioPlayer.position + deltaSeconds)
 end function
 
-' 5s end-slack (vs 30s for video) — songs are short, and we still want the seek to
+' 5s end-slack (vs 30s for video): songs are short, and we still want the seek to
 ' land before the track auto-advances to the next.
 function audioSeekTo(targetSeconds as float) as object
   if not isValid(m.audioPlayer) then return { status: "error.generic" }
@@ -1097,7 +1098,7 @@ function audioNextTrack() as object
   return { status: "success" }
 end function
 
-' Returns the metadata in the response — main.bs's transport dispatcher does the
+' Returns the metadata in the response: main.bs's transport dispatcher does the
 ' roAppManager call on the MAIN thread (roAppManager isn't creatable on render).
 function announceAudioNowPlaying() as object
   if not isValid(m.queueManager) then return { status: "error.generic" }

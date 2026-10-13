@@ -1,7 +1,7 @@
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/skeleton.bs"
 
-' Decision layer for a Home row whose load failed — what the row shows, and when it goes back
+' Decision layer for a Home row whose load failed: what the row shows, and when it goes back
 ' to loading. HomeRows applies these; they live in source/ so a Rooibos suite can reach them
 ' without a callFunc seam on the component (same move as source/home/latestRows.bs).
 '
@@ -19,7 +19,7 @@ namespace homeRowFailure
 
   ' Which placeholder `row` shows, or "" when it shows items or is absent.
   '
-  ' A placeholder is only ever a row's ONLY child: createSkeletonRow and
+  ' A placeholder is only ever a row's sole child: createSkeletonRow and
   ' insertLatestMediaSkeletons give a new row exactly one, and populateRowFromData replaces
   ' all of a row's children when items land.
   '
@@ -56,7 +56,7 @@ namespace homeRowFailure
   end function
 
   ' Whether a section's result may act on its row: only an answered load says what the
-  ' section holds. Anything else — "failed", or a task that set no status — must not.
+  ' section holds. Anything else ("failed", or a task that set no status) must not.
   '
   ' @param status - the load's status field ("ok" / "failed" / "")
   ' @return true only for "ok"
@@ -86,7 +86,7 @@ namespace homeRowFailure
   ' row, and a failed tile on every one would stack up to fifteen identical messages; they
   ' are replaced by one row that says the same thing once. A stand-in already there (a
   ' retry that failed again) goes back to its failed tile. After an answered load no row of
-  ' those types is loading — each was filled or removed — so a later failure changes nothing
+  ' those types is loading (each was filled or removed), so a later failure changes nothing
   ' and the rows keep their items.
   '
   ' @param rowStates - placeholderState of each on-screen row the items load fills

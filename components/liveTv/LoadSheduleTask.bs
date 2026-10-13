@@ -16,7 +16,7 @@ end sub
 ' A fetch of a block's whole time window, or of the part before what it holds, sends minEndDate
 ' (programs still airing at its start or later); a fetch of the part after sends minStartDate
 ' (programs starting at or after what the block holds). The server compares both inclusively,
-' so an extension repeats the programs the block holds at its edge — the guide drops them
+' so an extension repeats the programs the block holds at its edge, and the guide drops them
 ' (Schedule.applyPrograms).
 sub loadSchedule()
   channelIds = m.top.channelIds
@@ -49,7 +49,7 @@ sub loadSchedule()
   if ok
     ' The array form, not transformBaseItem per program: the per-item form reads
     ' m.global.server.version for every program, a render-thread rendezvous each time, and
-    ' while the guide scrolls each one waits on the animating grid — a block took most of a
+    ' while the guide scrolls each one waits on the animating grid: a block took most of a
     ' minute. The nodes are this thread's own, so reading them below crosses nothing.
     transformed = JellyfinDataTransformer().transformBaseItemArray(res.json.Items)
     for i = 0 to transformed.count() - 1

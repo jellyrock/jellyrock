@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- DEBUG ONLY: Error injection flags for testing error paths and toast notifications.
-     This node is ONLY created when bs_const=debug=true (sideloaded dev builds).
+<!-- Debug only: Error injection flags for testing error paths and toast notifications.
+     This node is only created when bs_const=debug=true (sideloaded dev builds).
      It does not exist in production builds. See docs/dev/debug-flags.md for usage. -->
 <component name="DebugFlags" extends="ContentNode">
   <interface>

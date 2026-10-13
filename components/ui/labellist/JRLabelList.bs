@@ -1,4 +1,4 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
+' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
 import "pkg:/source/utils/listTheme.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -7,7 +7,7 @@ sub init()
   globalUser = m.global.user
 
   m.top.vertFocusAnimationStyle = "floatingFocus"
-  ' Shared with every other list in the app — see source/utils/listTheme.bs
+  ' Shared with every other list in the app; see source/utils/listTheme.bs
   applyListFocusChrome(m.top)
   m.top.font.size = constants.fontSizeMedium
   m.top.color = constants.colorTextPrimary

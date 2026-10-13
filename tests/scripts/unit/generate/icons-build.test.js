@@ -9,7 +9,7 @@ import { spawnScript } from '../_helpers/spawn-script.js';
 
 const SCRIPT = 'scripts/generate/icons-build.js';
 
-// 24×24 viewBox SVG — a filled black square. Tiny and deterministic.
+// 24×24 viewBox SVG: a filled black square. Tiny and deterministic.
 const SQUARE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" fill="#000000"/></svg>`;
 
 // 24×24 viewBox SVG with an 8×8 black glyph centered (8 units of transparent
@@ -122,7 +122,7 @@ describe('icons-build', () => {
   it('trims Material design padding so the rendered glyph matches glyphSize', async () => {
     // PADDED_SVG has an 8×8 glyph in a 24×24 viewBox (66% padding around the
     // glyph). With glyphSize=40 in a canvas=64, the rendered glyph should
-    // occupy ~40×40 of the 64×64 canvas, NOT scale linearly with the viewBox.
+    // occupy ~40×40 of the 64×64 canvas, not scale linearly with the viewBox.
     dir = setupTree({
       svgs: { 'square.svg': PADDED_SVG },
       iconsJson: { square: { sizeFhd: 64, glyphSize: 40 } },
@@ -179,7 +179,7 @@ describe('icons-build', () => {
   });
 
   it('falls back to glyphSize default when no override and no existing PNG', async () => {
-    // PADDED_SVG with no overrides → default glyphSize of 54 inside default
+    // PADDED_SVG with no overrides: default glyphSize of 54 inside default
     // canvas of 96. Glyph should occupy 54×54 (square, since PADDED_SVG glyph
     // is square).
     dir = setupTree({ svgs: { 'fresh.svg': PADDED_SVG } });
@@ -207,7 +207,7 @@ describe('icons-build', () => {
     const trimmed = await sharp(join(dir, 'images', 'icons', 'tall_fhd.png'))
       .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 1 })
       .toBuffer({ resolveWithObject: true });
-    // Source aspect 4:16 = 1:4. Bounded by 40 in the larger dim → height ~40,
+    // Source aspect 4:16 = 1:4. Bounded by 40 in the larger dim: height ~40,
     // width ~10 (preserving 1:4 aspect, ±1 antialiasing tolerance).
     expect(trimmed.info.height).toBeGreaterThanOrEqual(39);
     expect(trimmed.info.height).toBeLessThanOrEqual(41);
@@ -248,7 +248,7 @@ describe('icons-build', () => {
   // bump from sharp 0.34.5 to 0.35.1 left `icons:check` reporting 55 drifted
   // files whose pixels were byte-identical, and it stayed that way for three
   // months because nothing in CI ran the check and the pre-push hook only runs
-  // it when an icon SOURCE is in the push range — which a dep bump never is.
+  // it when an icon source is in the push range, which a dep bump never is.
   describe('encoder independence', () => {
     // Re-encode a PNG at a different compression level: same pixels out, a
     // different IDAT stream in. This is exactly the shape of a sharp upgrade.
@@ -282,7 +282,7 @@ describe('icons-build', () => {
       const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
       expect(exitCode).toBe(0);
       expect(stdout).toMatch(/already in sync/);
-      // Left exactly as it was found — this is what stops a rebuild on one
+      // Left exactly as it was found. This is what stops a rebuild on one
       // machine churning every committed PNG for the next contributor.
       expect(readFileSync(pngPath).equals(after)).toBe(true);
     });
@@ -321,7 +321,7 @@ describe('icons-build', () => {
 
   // icons:check's CI home. `_test-scripts.yml` runs this suite and its path
   // filter matches package-lock.json, so a Renovate bump of sharp re-renders the
-  // committed PNGs here — the exact case that went unnoticed for three months.
+  // committed PNGs here: the exact case that went unnoticed for three months.
   // Mirrors gradient-assets.test.js's gate for the ramps.
   it('committed assets match the generator (repo drift gate)', () => {
     const { exitCode, stderr } = spawnScript(SCRIPT, ['--check']);
@@ -336,7 +336,7 @@ describe('icons-build', () => {
 
       const pngPath = join(dir, 'images', 'icons', 'play_fhd.png');
       const canonical = readFileSync(pngPath);
-      // Same pixels, different bytes — write mode leaves this alone (asserted
+      // Same pixels, different bytes: write mode leaves this alone (asserted
       // above). --force is the only way back to the canonical encoding.
       const reencoded = await sharp(canonical).png({ compressionLevel: 0 }).toBuffer();
       writeFileSync(pngPath, reencoded);

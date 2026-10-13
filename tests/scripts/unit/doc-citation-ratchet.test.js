@@ -1,8 +1,8 @@
 // Tests for the line-number citation ratchet (scripts/lint/doc-citation-ratchet.js).
 //
 // The gate exists because a `file.bs:623` citation rots on ANY edit above line 623,
-// faster than a review or a freshness gate can catch — see
-// .claude/rules/derive-dont-duplicate.md. What the tests below actually pin is the
+// faster than a review or a freshness gate can catch (see
+// .claude/rules/derive-dont-duplicate.md). What the tests below actually pin is the
 // set of judgment calls the regex and the walk encode, because each one is a place a
 // naive implementation would either miss the problem or cry wolf:
 //   - fenced code blocks are transcripts, not citations (rewriting one would falsify it)
@@ -190,7 +190,7 @@ describe('doc-citation-ratchet — scope', () => {
     expect(res.stderr).toContain('.claude/skills/x/SKILL.md');
   });
 
-  // An AUDIT-LOG entry records what a run saw on a date — a historical measurement,
+  // An AUDIT-LOG entry records what a run saw on a date: a historical measurement,
   // which the rule's third clause explicitly allows.
   it('ignores append-only AUDIT-LOG.md records', () => {
     const r = makeRoot({ '.claude/skills/pr/AUDIT-LOG.md': 'Run saw `a.bs:1`.\n' });
@@ -362,6 +362,18 @@ describe('doc-citation-ratchet — house-voice scope', () => {
   it('ignores gitignored ephemeral prose', () => {
     const r = makeRoot({ 'docs/projects/2026-10-x/PLAN.md': 'One — two.\n' });
     expect(run(r).exitCode).toBe(0);
+  });
+
+  // The root `tasks/` is gitignored; a nested `components/tasks/` is tracked source.
+  it('skips tasks/ at the repo root only', () => {
+    const line = "' One — two.\n";
+    const ignored = run(makeRoot({ 'tasks/X.bs': line }));
+    expect(ignored.exitCode).toBe(0);
+    rmSync(root, { recursive: true, force: true });
+    root = undefined;
+    const gated = run(makeRoot({ 'components/tasks/X.bs': line }));
+    expect(gated.exitCode).toBe(1);
+    expect(gated.stderr).toContain('em-dash');
   });
 });
 

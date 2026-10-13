@@ -1,8 +1,8 @@
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/utils/misc.bs"
 
-' NOTE: JRScreen deliberately has no init(). The roku-log manager is owned by JRScene.init()
-' — see docs/architecture/logging.md. A duplicate call here was a no-op in the app
+' JRScreen has no init() on purpose. The roku-log manager is owned by JRScene.init():
+' see docs/architecture/logging.md. A duplicate call here was a no-op in the app
 ' (`addFields` ignores an existing field) and in Rooibos (BaseTestSuite provisions `rLog`
 ' before any screen mounts), while allocating a throwaway log_Log + Timer node on every
 ' screen mount.
@@ -27,7 +27,7 @@ end sub
 ' Floor for screens that DON'T override onDestroy(): abandon any pending
 ' fetchAsync promises so a late pool response can't fire into the destroyed
 ' node. Screens that override onDestroy() get this via the auto-abandon-promises
-' BSC plugin (it injects abandonApiPromises() into their own onDestroy) — SG
+' BSC plugin (it injects abandonApiPromises() into their own onDestroy). SG
 ' component onDestroy does not chain to this base.
 sub onDestroy()
   abandonApiPromises()
@@ -43,7 +43,7 @@ end sub
 ' restoration via lastFocus. These overrides bridge the two contracts so every
 ' screen works under the router with NO per-screen changes.
 '
-' The router is the only thing that mounts/suspends/resumes/destroys screens —
+' The router is the only thing that mounts/suspends/resumes/destroys screens:
 ' there is no scene stack.
 '
 ' These names override sgrouter_View's no-op defaults; the interface
@@ -51,7 +51,7 @@ end sub
 ' entries are needed in JRScreen.xml.
 ' ---------------------------------------------------------------------------
 
-' Router: this view has just become active for the first time. Publish it as the
+' Router: this view has become active for the first time. Publish it as the
 ' active routed view BEFORE onScreenShown so JRScene's overhang controller and
 ' main.bs's playback-event observer-attach react to the right node. Screens that
 ' need route data read m.top.route (routeParams / queryParams / context) inside

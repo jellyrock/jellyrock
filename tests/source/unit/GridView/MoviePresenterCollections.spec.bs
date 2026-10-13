@@ -6,7 +6,7 @@ namespace tests
   ' The movie library's Collections view: what the menu offers, and what the view asks the
   ' server for. Both halves are version-gated, and the gate is on the SERVER VERSION
   ' because no response shape distinguishes a server that scoped the query from one that
-  ' ignored it — see collectionsView for the measured behavior of each line.
+  ' ignored it. See collectionsView for the measured behavior of each line.
   @suite("MoviePresenter - the Collections view")
   class MoviePresenterCollectionsTests extends tests.BaseTestSuite
 
@@ -28,7 +28,7 @@ namespace tests
     ' it. Plain AAs rather than nodes: `currentView` is not a field on any stock node, and
     ' nothing here needs the render tree.
     '
-    ' `top.callFunc` records instead of dispatching — it is how a presenter asks the host
+    ' `top.callFunc` records instead of dispatching: it is how a presenter asks the host
     ' to run the filter load, so recording it is what lets a test see whether the load was
     ' requested at all.
     private sub attach(serverVersion as string, currentView = "MoviesGrid" as string)
@@ -132,7 +132,7 @@ namespace tests
 
     @it("drops the sorts a collection has no value for")
     ' CriticRating, DatePlayed, PlayCount and Runtime belong to a movie, not to the
-    ' collection holding it — offering them is a control that appears to do nothing. The
+    ' collection holding it: offering them is a control that appears to do nothing. The
     ' surviving list is the one jellyfin-web uses on its own Collections tab.
     function _()
       m.attach("12.0.0", collectionsView.VIEW_NAME)
@@ -154,7 +154,7 @@ namespace tests
     @it("offers no dynamic filter category, because every one of them describes a movie")
     ' /Items/Filters answers with empty Genres / OfficialRatings / Years for a BoxSet
     ' query (measured on a local 12.0.0, 2026-09-23), and a movie-genre filter applied to
-    ' BoxSets returns nothing at all. The cached lists are still present here — this is
+    ' BoxSets returns nothing at all. The cached lists are still present here: this is
     ' the view suppressing them, not the load never having run.
     function _()
       m.attach("12.0.0", collectionsView.VIEW_NAME)

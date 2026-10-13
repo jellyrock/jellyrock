@@ -19,11 +19,11 @@ sub init()
   m.top.focusBackground = constants.colorBackgroundSecondary
   m.top.textFocusColor = constants.colorTextPrimary
 
-  ' Selected state is shown as the underline TextButton owns — it draws and
+  ' Selected state is shown as the underline TextButton owns. It draws and
   ' positions it from its own measured geometry, so there is nothing to place here.
   m.top.showSelectedIndicator = true
 
-  ' isFocused is declared by TextButton (parent) without onChange — observe here.
+  ' isFocused is declared by TextButton (parent) without onChange, so observe here.
   ' isButtonSelected only affects the text colour from this class's point of view;
   ' the underline's own visibility is TextButton's business.
   m.top.observeField("isButtonSelected", "onStateChanged")
@@ -36,7 +36,7 @@ sub onTitleChanged()
 end sub
 
 ' Overrides TextButton.onFocusChanged to use the virtual isFocused field.
-' Individual tabs never receive real Roku focus — JRTabBar manages focus
+' Individual tabs never receive real Roku focus; JRTabBar manages focus
 ' externally via the isFocused field.
 sub onFocusChanged()
   isFocused = m.top.isFocused
@@ -58,7 +58,7 @@ sub onFocusChanged()
   end if
 end sub
 
-' Called when isFocused or isButtonSelected changes — updates all visual state
+' Called when isFocused or isButtonSelected changes; updates all visual state
 sub onStateChanged()
   onFocusChanged()
 end sub

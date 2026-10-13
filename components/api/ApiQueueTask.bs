@@ -10,7 +10,7 @@ sub init()
   m.top.functionName = "runQueueLoop"
 end sub
 
-' FIFO request queue coordinator (Architecture C — continuous-server).
+' FIFO request queue coordinator (Architecture C, continuous-server).
 '
 ' Receives ApiResultNode children appended by fetchRes() callers. Each node carries
 ' the request AA on its 'request' field. The coordinator reads ALL unprocessed
@@ -18,8 +18,8 @@ end sub
 ' routes the completed response back to the ApiResultNode so the orchestrator unblocks.
 '
 ' A queued READ whose caller has stopped waiting is completed as abandoned instead of
-' being sent, so the slot goes to the next request. The decision — including which
-' entries are worth the cross-thread check at all — is apiPoolNextDispatch in
+' being sent, so the slot goes to the next request. The decision (including which
+' entries are worth the cross-thread check at all) is apiPoolNextDispatch in
 ' apiPool.bs ("Skipping a request nobody is waiting for"); this file is its shell.
 '
 ' A long request already SENT is stopped the same way once its caller has gone: the
@@ -28,7 +28,7 @@ end sub
 '
 ' Why children instead of a shared field:
 '   SceneGraph can coalesce port events when multiple Task threads write to the same
-'   field in rapid succession — the coordinator would see fewer events than writes,
+'   field in rapid succession: the coordinator would see fewer events than writes,
 '   silently losing requests. Children are immune: even if wakeup events coalesce,
 '   the coordinator reads ALL pending children from the node tree, so no request is
 '   ever lost regardless of timing.
@@ -38,11 +38,11 @@ end sub
 '   2. This coordinator waits for ALL pool slots to be ready before registering its
 '      own observers and setting isReady=true.
 '   3. fetchRes() waits for this coordinator's isReady=true before appending children.
-'   Result: pool observers → coordinator ready → fetchRes appends.  No startup race.
+'   Result: pool observers, then coordinator ready, then fetchRes appends.  No startup race.
 '
 ' Thread safety:
-'   Only this task thread reads/writes m.queue, m.inFlight, and m.processedIndex —
-'   no TOCTOU race. Child appends from other threads go through SceneGraph rendezvous.
+'   Only this task thread reads/writes m.queue, m.inFlight, and m.processedIndex,
+'   so there is no TOCTOU race. Child appends from other threads go through SceneGraph rendezvous.
 sub runQueueLoop()
   m.queue = []
   #if perfTiming
@@ -72,12 +72,12 @@ sub runQueueLoop()
 
   ' ── Wait for all pool tasks to register their request observers ──
   ' Without this, dispatching a request to a slot that hasn't called
-  ' observeField("request", port) yet would silently drop the write —
+  ' observeField("request", port) yet would silently drop the write:
   ' the slot would never wake up, m.inFlight would never clear, and
   ' the slot would be permanently dead for the rest of the session.
   '
   ' Strategy: observe ready on all not-yet-ready slots, then check ACTUAL
-  ' field state in each iteration (never count events — event counting is
+  ' field state in each iteration (never count events: event counting is
   ' vulnerable to double-counting when a slot becomes ready between
   ' observeField() and a subsequent field read).
   waitPort = CreateObject("roMessagePort")
@@ -86,7 +86,7 @@ sub runQueueLoop()
       slot.observeField("isReady", waitPort)
     end if
   end for
-  ' Check actual state until every slot is ready. Events just wake us up.
+  ' Check actual state until every slot is ready. Events only wake us up.
   for attempts = 0 to 50
     allReady = true
     for each slot in pool
@@ -96,7 +96,7 @@ sub runQueueLoop()
       end if
     end for
     if allReady then exit for
-    ' At least one slot isn't ready — wait for any ready event to recheck.
+    ' At least one slot isn't ready: wait for any ready event to recheck.
     ' 5s timeout per attempt; pool tasks start before us so this is fast.
     wait(5000, waitPort)
   end for
@@ -120,7 +120,7 @@ sub runQueueLoop()
   #end if
   ' Signal readiness AFTER pool slots are confirmed ready and our enqueue
   ' observer is registered. fetchRes() callers waiting on this flag can
-  ' now safely append children — the full pipeline is operational.
+  ' now safely append children: the full pipeline is operational.
   m.top.isReady = true
 
   ' Store node IDs so we can match response events back to slot indices.
@@ -136,10 +136,10 @@ sub runQueueLoop()
   end for
 
   ' Process any children that were appended BEFORE the enqueue observer was
-  ' registered. If fetchRes() callers bypassed the ready guard (e.g. ready
+  ' registered. If fetchRes() callers bypassed the ready guard (for example, ready
   ' became true between their check and the appendChild), their wakeup events
   ' were lost because our observer wasn't registered yet. Reading children
-  ' here catches those stragglers — the node tree is the source of truth.
+  ' here catches those stragglers: the node tree is the source of truth.
   processNewChildren(pool)
 
   while true
@@ -160,7 +160,7 @@ sub runQueueLoop()
       #end if
 
       if field = "enqueue"
-        ' Wake-up signal from fetchRes — actual data is in children, not here.
+        ' Wake-up signal from fetchRes; actual data is in children, not here.
         ' processNewChildren below handles it.
 
       else if field = "state"
@@ -227,7 +227,7 @@ end sub
 ' The pool's width is chosen per device class (apiPool.widthFor, stored as
 ' m.global.apiPoolWidth), but its slots are separately named globals (apiPool0,
 ' apiPool1, ...) that setGlobalNodes() in source/utils/globals.bs creates one guarded
-' block at a time — `no-task-fanout` rejects launching fresh Task nodes in a loop.
+' block at a time, because `no-task-fanout` rejects launching fresh Task nodes in a loop.
 ' Nothing else ties those blocks to the width, so they are checked against it here, in
 ' both directions. A slot the width expects but globals.bs never created (a width raised
 ' past the blocks that exist) would dispatch to invalid; one created beyond the width is a
@@ -269,7 +269,7 @@ sub processNewChildren(pool as object)
 
   ' Prune processed children to prevent unbounded node accumulation in long sessions.
   ' Safe: entry objects (in m.queue/m.inFlight) and fetchRes() callers hold direct node
-  ' references — removing from the child tree only detaches the parent link; node fields
+  ' references. Removing from the child tree only detaches the parent link; node fields
   ' and observers remain valid until all references are dropped.
   if m.processedIndex >= 50
     m.top.removeChildrenIndex(m.processedIndex, 0)
@@ -278,7 +278,7 @@ sub processNewChildren(pool as object)
 end sub
 
 ' Dispatch queued requests to free pool slots (FIFO).
-' Only ever called from this coordinator's task thread — no concurrent access.
+' Only ever called from this coordinator's task thread, so there is no concurrent access.
 sub tryDispatch(pool as object)
   while true
     #if perfTiming
@@ -348,8 +348,8 @@ end sub
 
 ' A watched Task changed state. Once it is no longer running, nobody will read the answers
 ' its requests are still waiting for, so every slot it was waiting on is stopped. A Task
-' that finished normally also reports "stop", but only after its answers were delivered —
-' and delivery ends the watch — so it matches no slot here.
+' that finished normally also reports "stop", but only after its answers were delivered
+' (and delivery ends the watch), so it matches no slot here.
 sub onCallerStateChanged(pool as object, msg as object)
   if taskStateIsLive(msg.getData()) then return
   for each slotIdx in apiPoolSlotsWatchedBy(m.inFlight, msg.getRoSGNode())

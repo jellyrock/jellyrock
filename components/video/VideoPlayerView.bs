@@ -1,4 +1,4 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
+' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
@@ -54,7 +54,7 @@ sub init()
 
   ' Open the readiness ledger for one playback start. This is the RTA `osd` and
   ' `trickplay` screens' load: both navs drive `startPlayback` and then wait for the
-  ' player, so the number a reader wants is time-to-first-frame — not the OSD's own
+  ' player, so the number a reader wants is time-to-first-frame, not the OSD's own
   ' populate, which is three label assignments off a node the player already fetched.
   '
   ' `init()` is the right open because the player is mounted fresh per playback
@@ -99,8 +99,8 @@ sub init()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' The two waits that make up time-to-first-frame, declared as fills so the split line
   ' says WHICH of them the wait was. `metadata` is the server round trip (playback info,
-  ' the transcode decision, the stream URL); `buffer` — declared once the content is
-  ' handed to the Video node — is the device pulling enough stream to start.
+  ' the transcode decision, the stream URL); `buffer` (declared once the content is
+  ' handed to the Video node) is the device pulling enough stream to start.
   '
   ' Both RESOLVE BEFORE paint, which is unusual for this ledger but well within it: a
   ' fill records a span inside the run, and `settleIfDone` will not fire until painted.
@@ -128,7 +128,7 @@ sub init()
 
   ' Every m.top observer is registered here, once, and released only in onDestroy.
   ' Never unobserve an m.top field mid-life: it can remove observers OTHER components
-  ' hold on this node — it removed PlayerHostView's `state` observer, which advances the
+  ' hold on this node: it removed PlayerHostView's `state` observer, which advances the
   ' queue (#898; tests/source/unit/platform/ObserverRegistry.spec.bs). Handlers ignore
   ' what they must not act on instead, using these three flags.
   m.isContentLoaded = false ' true from the first stream handed to the Video node
@@ -149,8 +149,8 @@ sub init()
   m.playbackTimer.observeField("fire", "reportPlayback")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
-  m.isEndReported = false ' this stream's end has been reported — see reportPlaybackEnd
-  ' The source reports name, and the source most recently loaded — see reportPlayback.
+  m.isEndReported = false ' this stream's end has been reported (see reportPlaybackEnd)
+  ' The source reports name, and the source most recently loaded (see reportPlayback).
   m.reportedMediaSourceId = ""
   m.loadedMediaSourceId = ""
   m.playerParked = false ' see parkPlayerAfterSupersede
@@ -197,7 +197,7 @@ sub init()
   ' Live TV channel navigation: queue is populated with all channels in background.
   ' Every Live TV entry point (main.bs, quickplay) clears the queue and pushes a single
   ' TvChannel, so count=1 means this is the first playback and we need to fetch the list.
-  ' count>1 means a prior VideoPlayerView already populated the queue — skip the refetch
+  ' count>1 means a prior VideoPlayerView already populated the queue: skip the refetch
   ' and reuse it. Staleness is bounded by the app lifecycle (Roku cold-boots each session).
   m.channelListLoaded = isLiveTvPlayback() and m.global.queueManager.callFunc("getCount") > 1
 
@@ -338,7 +338,7 @@ sub switchToQueueItem(queueManager as object, targetPosition as integer)
   ' An item the viewer skips to starts from its beginning (QueueManager.advanceTo).
   queueManager.callFunc("advanceTo", targetPosition)
   updateQueueBackdrop()
-  ' The player is a child of PlayerHostView — remount it for the new queue position. The host
+  ' The player is a child of PlayerHostView: remount it for the new queue position. The host
   ' destroys this player + mounts the next.
   host = m.top.getParent()
   if isValid(host) then host.callFunc("skipToCurrentQueueItem")
@@ -390,7 +390,7 @@ sub handleHideAction(resume as boolean)
     m.top.control = "resume"
   end if
 
-  ' Re-check segments after OSD closes — re-shows paused notification if still in segment
+  ' Re-check segments after OSD closes: re-shows paused notification if still in segment
   checkMediaSegments()
 end sub
 
@@ -582,7 +582,7 @@ sub onAllowCaptionsChange()
   m.captionRenderer = createObject("roSGNode", "CaptionRenderer")
   ' Parented, unlike the Task node this replaced. A Task runs detached by design; a
   ' Group is a scene-graph node, and whether an orphaned one's Timer child still
-  ' fires is undocumented — so put it in the tree rather than depend on the answer.
+  ' fires is undocumented, so put it in the tree rather than depend on the answer.
   ' It draws nothing itself: the lines it builds are appended to captionGroup.
   m.top.appendChild(m.captionRenderer)
   m.captionRenderer.observeField("currentCaption", "updateCaption")
@@ -681,8 +681,8 @@ sub onSubtitleChange()
   m.LoadMetaDataTask.itemId = m.currentItem.id
   keepLoadedVersionOnReload()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  ' Every launch of this task declares the fill its one handler resolves — see
-  ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
+  ' Every launch of this task declares the fill its one handler resolves (see
+  ' onVideoContentLoaded). Silent on this path in practice: a mid-playback reload happens
   ' long after the run settled, and the ledger ignores both sides after that.
   screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
@@ -691,18 +691,18 @@ end sub
 ' Event handler for when audioIndex changes.
 ' For direct play: switches audio track directly using Roku's availableAudioTracks
 ' (no stop/reload needed since all tracks are in the container).
-' For transcoded — or when the newly-selected stream exceeds the device's audio
-' capability (e.g. switching from stereo back to an 8ch track on a stereo Roku) —
+' For transcoded, or when the newly-selected stream exceeds the device's audio
+' capability (for example, switching from stereo back to an 8ch track on a stereo Roku),
 ' must reload so the server transcodes the new selection.
 sub onAudioIndexChange()
   if m.isApplyingOwnSelection then return
 
   m.log.info("Audio index changed by user", "newIndex", m.top.audioIndex, "isTranscoded", m.top.isTranscoded, "position", m.top.position, "currentAudioTrack", m.top.audioTrack)
 
-  ' Direct play: all audio tracks are in the container — just switch the Roku track,
+  ' Direct play: all audio tracks are in the container, so switch the Roku track,
   ' but only if the newly-selected stream is actually decodable by the device.
   ' Roku's native audioTrack switch can't make an undecodable track playable, so
-  ' picking e.g. an 8ch track on a stereo device must go through the reload path.
+  ' picking, for example, an 8ch track on a stereo device must go through the reload path.
   if not m.top.isTranscoded and isValid(m.top.availableAudioTracks) and isSelectedAudioStreamDirectPlayable(m.top.audioIndex, m.top.fullAudioData)
     newTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
     m.log.info("Direct play audio switch", "jellyfinIndex", m.top.audioIndex, "rokuTrack", newTrack)
@@ -724,8 +724,8 @@ sub onAudioIndexChange()
   m.LoadMetaDataTask.itemId = m.currentItem.id
   keepLoadedVersionOnReload()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  ' Every launch of this task declares the fill its one handler resolves — see
-  ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
+  ' Every launch of this task declares the fill its one handler resolves (see
+  ' onVideoContentLoaded). Silent on this path in practice: a mid-playback reload happens
   ' long after the run settled, and the ledger ignores both sides after that.
   screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
@@ -742,7 +742,7 @@ sub onVideoSourceChange()
 
   ' The version being switched TO, read once: its streams pick the audio track below, and its
   ' runtime decides where playback continues. mediaSourceForId rather than an `=` compare,
-  ' because the id reaches here from a different server field than the one on the source —
+  ' because the id reaches here from a different server field than the one on the source:
   ' the case-sensitivity class #947 fixed on the details screen.
   newSource = mediaSourceForId(m.top.fullVideoSourceData, newSourceId)
 
@@ -753,12 +753,12 @@ sub onVideoSourceChange()
 
   ' Map the position into the NEW version's timeline instead of reusing the raw one. Two
   ' releases of one cut are offset by a constant and can differ in runtime by a minute, so
-  ' the current position is not automatically a place the new file reaches — and seeding a
+  ' the current position is not automatically a place the new file reaches, and seeding a
   ' position past its end starts the stream at nothing. switchTicksFor() keeps the exact time
   ' whenever the new version has it and falls back to the same percentage.
   '
   ' int() before scaling on BOTH values: getEffectiveDuration() is a FLOAT, and a float
-  ' cannot hold a tick count (~1e10) without rounding — the trap that made a 1-tick margin
+  ' cannot hold a tick count (~1e10) without rounding: the trap that made a 1-tick margin
   ' difference vanish in versionResume. Whole seconds is the resolution the position already
   ' uses anyway.
   newRuntimeTicks = invalid
@@ -787,44 +787,44 @@ sub onVideoSourceChange()
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.mediaSourceId = newSourceId
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  ' Every launch of this task declares the fill its one handler resolves — see
-  ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
+  ' Every launch of this task declares the fill its one handler resolves (see
+  ' onVideoContentLoaded). Silent on this path in practice: a mid-playback reload happens
   ' long after the run settled, and the ledger ignores both sides after that.
   screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
 end sub
 
-' Fires on any REAL resolution of the error dialog — the user pressing OK, or
+' Fires on any REAL resolution of the error dialog: the user pressing OK, or
 ' Back (result.cancelled, same as OK here: there's nothing to cancel back to).
 ' Either way, leave the play route.
 '
 ' A close driven by PLAYBACK TEARDOWN instead of the user must never reach this
-' handler — abandonErrorDialog() below is how teardown clears the dialog
-' without firing it, so this always means a genuine user action. Routing
+' handler. abandonErrorDialog() below is how teardown clears the dialog
+' without firing it, so this always means a real user action. Routing
 ' teardown through the ordinary result path was the old bug
 ' (playback-error-dialog-closed-by-teardown): the old raw Dialog's `wasClosed`
 ' observer could not tell "user pressed OK" from "code closed me", so a
 ' teardown-triggered close both delivered a result AND raced the teardown's own
-' navigation. PlayerHostView.onPlayerStateChange is the call site that matters —
-' it abandons before it cancels, and the comment there says why the order is
-' load-bearing.
+' navigation. PlayerHostView.prepareToLeaveMount is the call site that matters:
+' it abandons before it cancels, and the comment there says why the order
+' matters.
 sub onPlaybackErrorDialogResult()
   result = m.playbackErrorDialog.result
 
   ' A SUPERSEDE is not a dismissal, and this is the one handler in the app that
   ' has to care. presentOverlayDialog cancels the incumbent when a cast message
   ' or the deep-link server prompt needs the screen, and that cancel is shaped
-  ' like the user pressing Back — so without this branch the exit below fired
+  ' like the user pressing Back, so without this branch the exit below fired
   ' from inside the new dialog's mount, popping the player while its
   ' returnFocusTo was being derived and leaving that dialog able to hand focus
   ' back to a destroyed node.
   '
-  ' The player is left alive and stopped rather than exiting later — every
-  ' alternative navigates on someone else's schedule — but PARKED, not just
+  ' The player is left alive and stopped rather than exiting later (every
+  ' alternative navigates on someone else's schedule), but PARKED, not only
   ' abandoned in place: see parkPlayerAfterSupersede for what a live player with
   ' no stream actually puts on screen. The error text is gone with the dialog; a
-  ' second surface deliberately took the screen, and re-presenting over it would
-  ' just restart the fight.
+  ' second surface took the screen on purpose, and re-presenting over it would
+  ' only restart the fight.
   if result.externallyCancelled
     parkPlayerAfterSupersede()
     return
@@ -832,7 +832,7 @@ sub onPlaybackErrorDialogResult()
 
   m.playbackErrorDialog = invalid
 
-  ' [Details] is button 1 when it is offered. It does NOT leave the route: the
+  ' [Details] is button 1 when it is offered. It does not leave the route: the
   ' user asked to see more about this failure, so the report replaces the alert
   ' and the exit waits until they close that instead.
   if result.buttonIndex = 1 and isValid(m.playbackErrorDetailSections)
@@ -843,7 +843,7 @@ sub onPlaybackErrorDialogResult()
   exitFromPlaybackError()
 end sub
 
-' The diagnostic readout behind [Details]. A plain report overlay — it owns no
+' The diagnostic readout behind [Details]. A plain report overlay: it owns no
 ' result contract (OverviewDialog self-closes), so the exit is driven by its
 ' `closed` field instead.
 sub showPlaybackErrorDetails()
@@ -859,8 +859,8 @@ sub onPlaybackErrorDetailsClosed()
 
   ' Same rule as the alert above, through the second mechanism: OverviewDialog
   ' has no `result` to carry the family's externallyCancelled key, so it reports
-  ' who closed it on a field of its own. This handler ACTS — it leaves the play
-  ' route — which is exactly the kind that must not fire on a supersede.
+  ' who closed it on a field of its own. This handler ACTS (it leaves the play
+  ' route), which is exactly the kind that must not fire on a supersede.
   if isValid(dialog) and dialog.externallyCancelled
     parkPlayerAfterSupersede()
     return
@@ -887,7 +887,7 @@ end sub
 ' `serverMessage` is a message the SERVER already explained in words (the
 ' LoadVideoContentTask failures); when it is empty the cause is derived from the
 ' Video node's own errorCode. Either way the diagnostics come off the node, so a
-' failure that never reached the player simply has fewer rows.
+' failure that never reached the player has fewer rows.
 sub showPlaybackErrorDialog(serverMessage = "" as string)
   errorCode = 0
   if isValid(m.top.errorCode) then errorCode = m.top.errorCode
@@ -920,19 +920,21 @@ sub showPlaybackErrorDialog(serverMessage = "" as string)
 
   m.playbackErrorDialog = showAlertDialog(translate(translationKeys.ErrorDuringPlayback), message, "onPlaybackErrorDialogResult", "", detailsButton)
 
-  ' Claim the exit. No caller leaves a stream progressing, but only ONE issues a
-  ' stop — bufferCheck, on the line after this call. The other three are already
-  ' past it: onState's `error` branch stops the two timers and not the stream,
-  ' and the two content-load failures never started one. So bufferCheck is the
-  ' only caller that can leave a state event in flight behind this dialog, and if
-  ' that stop surfaces as `finished` rather than `stopped` the host would tear
-  ' the dialog down and advance the queue — a genuine stall reporting nothing and
-  ' playing the next episode.
+  ' Claim the exit. No caller leaves a stream progressing, but two of them stop
+  ' it right after this call: bufferCheck's stall error and
+  ' showLiveStreamStalledError (a Live TV stall the host will not restart). The
+  ' rest are already past it: onState's `error` branch stops the two timers and
+  ' not the stream, the content-load failures in onVideoContentLoaded never
+  ' started one, and showLiveStreamStoppedError is for a stream that already
+  ' ended. So the two stall callers are the ones that can leave a state event in
+  ' flight behind this dialog, and if that stop surfaces as `finished` rather
+  ' than `stopped` the host would tear the dialog down and act on the end (the
+  ' next episode, or a Live TV restart): a real stall reporting nothing.
   '
-  ' Set HERE rather than at the four call sites so none of them can order it
-  ' wrong: after the dialog is on screen, before any caller's stop. And only when
-  ' the dialog actually mounted — a claim with no dialog to release it would
-  ' strand the player.
+  ' Set HERE rather than at each call site so none of them can order it wrong:
+  ' after the dialog is on screen, before any caller's stop. And only when the
+  ' dialog actually mounted: a claim with no dialog to release it would strand
+  ' the player.
   m.top.errorDialogOwnsExit = isValid(m.playbackErrorDialog)
 end sub
 
@@ -945,7 +947,7 @@ function playbackErrorContext() as object
 
   container = textOrEmpty(m.top.container)
 
-  ' The SAME MediaSource the playback report reads — one helper, so the two
+  ' The SAME MediaSource the playback report reads: one helper, so the two
   ' surfaces can never describe the same stream differently. Codec extraction
   ' lives in the pure module; this only hands over the source and which tracks
   ' were selected, because WHICH audio track was playing is the whole point on a
@@ -1003,7 +1005,7 @@ sub trackLiveProgress()
   if jumpMs > 0 then m.log.debug("Live TV position jumped; not counted as playing", "jumpMs", jumpMs, "maxStepMs", LIVE_PROGRESS_MAX_STEP_MS)
 end sub
 
-' Called by PlayerHostView just before it restarts a Live TV channel whose stream stalled. Without
+' Called by PlayerHostView right before it restarts a Live TV channel whose stream stalled. Without
 ' it, each stall restart left the server one consumer holding the live stream (on a
 ' tuner-limited server, a tuner): measured on a Stick 4K against 12.1, where Back, voice "stop"
 ' and a channel switch from a playing channel all report their stop.
@@ -1023,11 +1025,11 @@ sub showLiveStreamStalledError(causeKey as string)
 end sub
 
 ' Called by PlayerHostView BEFORE it clears the modal/overlay channels during its
-' own teardown (onPlayerStateChange's finished-state path) — see the call site
-' for why this has to run first. Abandon, not cancel: nothing should observe a
-' result from a dialog that playback is walking away from regardless.
+' own teardown (prepareToLeaveMount, shared by the finished and Live TV stall paths).
+' See the call site for why this has to run first. Abandon, not cancel: nothing should
+' observe a result from a dialog that playback is walking away from regardless.
 sub abandonErrorDialog()
-  ' The slot holds EITHER tier — the alert or the Details report — so release the
+  ' The slot holds EITHER tier (the alert or the Details report), so release the
   ' report's `closed` observer before dropping the node. OverviewDialog has no
   ' result contract, so that observer is the only thing tying it to this scope,
   ' and leaving it attached would fire exitFromPlaybackError() into a component
@@ -1039,9 +1041,9 @@ end sub
 
 ' The state one shown error owns: the dialog slot, the text both tiers render,
 ' and the exit claim PlayerHostView reads. One place, because the three ways an
-' error ends — acknowledged, superseded, abandoned by teardown — all have to
+' error ends (acknowledged, superseded, abandoned by teardown) all have to
 ' leave exactly the same nothing behind. A claim outliving its dialog would gag
-' the host's queue logic for the life of this player node — every queue advance
+' the host's queue logic for the life of this player node. Every queue advance
 ' builds a fresh one (PlayerHostView.playCurrentQueueItem), so it cannot leak
 ' past that, which is the bound and not a reason to be sloppy about clearing it.
 sub clearPlaybackErrorState()
@@ -1051,17 +1053,17 @@ sub clearPlaybackErrorState()
   m.top.errorDialogOwnsExit = false
 end sub
 
-' A superseded error leaves the player alive and stopped. PARK it — clear the
+' A superseded error leaves the player alive and stopped. PARK it: clear the
 ' error state, hide the node, and stop treating it as a controllable player.
 '
 ' Not cosmetic. The Video node draws Roku's OWN buffering indicator (the internal
-' `retrievingBar` / `bufferingBar` ProgressBars — `bufferingBar` is the one styled
+' `retrievingBar` / `bufferingBar` ProgressBars; `bufferingBar` is the one styled
 ' in init) and it keeps drawing after the stream stops: a black screen with a ring
 ' reading 0%, which is the app telling the user it is loading, forever. Hiding the
 ' node removes it and reveals the backdrop the host already set for this item.
 '
 ' The OSD goes with it. stateAllowsOSD() admits "stopped", so without the flag Up
-' would open an OSD inside a hidden parent — a control surface that renders
+' would open an OSD inside a hidden parent: a control surface that renders
 ' nothing and takes the focus Back needs. Parked there is nothing to control and
 ' Back is the only action, which is what the state actually is.
 '
@@ -1076,13 +1078,13 @@ sub parkPlayerAfterSupersede()
 end sub
 
 sub onVideoContentLoaded()
-  ' The ONE resolve for `metadata`, and the reason every one of the five
-  ' `launchTask(m.LoadMetaDataTask)` sites declares the fill rather than only the two that
+  ' The ONE resolve for `metadata`, and the reason every
+  ' `launchTask(m.LoadMetaDataTask)` site declares the fill rather than only the two that
   ' can run before the first frame: this handler cannot tell which of them launched the
   ' task, so pairing them individually is the only way the ledger stays balanced. The
   ' three mid-playback reload sites (audio / subtitle / source switch) are silent in
-  ' practice — the run has long since settled and the ledger ignores both sides after that
-  ' — but "silent in practice" is not an invariant, and an unbalanced `resolve` warns.
+  ' practice (the run has long since settled and the ledger ignores both sides after that),
+  ' but "silent in practice" is not an invariant, and an unbalanced `resolve` warns.
   ' That warning has to keep meaning something, so it must never fire on an ordinary path.
   '
   ' Resolved at the TOP, before the no-content early return below. An error path that
@@ -1103,7 +1105,7 @@ sub onVideoContentLoaded()
   loadedLiveStream = m.LoadMetaDataTask.liveStream
 
   ' If we have nothing to play, show an error dialog and return.
-  ' Prefer the task's specific errorMsg (e.g. NoCompatibleStream) over the generic fallback
+  ' Prefer the task's specific errorMsg (for example NoCompatibleStream) over the generic fallback
   ' so the user sees an actionable message rather than a generic one.
   if not isValid(videoContent) or not isValid(videoContent[0])
     ' A load that opened a live stream and then failed (no transcoding URL, a localhost path it
@@ -1136,8 +1138,8 @@ sub onVideoContentLoaded()
   if handedOverId <> "" then m.LoadMetaDataTask.liveStream = { stage: LiveStreamStage.HANDED_OVER, id: handedOverId }
 
   ' From here this player acts on its own `state` and `position` (observed since init).
-  ' Anything the Video node reported before a stream existed — a Back pressed while
-  ' loading surfaces as `stopped` — is not a playback this player has to report.
+  ' Anything the Video node reported before a stream existed (a Back pressed while
+  ' loading surfaces as `stopped`) is not a playback this player has to report.
   ' A stream loaded after a terminal error is a fresh playback, so onState acts on it again.
   m.isContentLoaded = true
   m.hasPlaybackFailed = false
@@ -1146,7 +1148,7 @@ sub onVideoContentLoaded()
 
   ' The second half of the wait starts here: handing `content` to the Video node is what
   ' sets it buffering. Declared after the early return above, so a playback that failed
-  ' to resolve a stream leaves the run unpainted and reports unmeasurable — never a
+  ' to resolve a stream leaves the run unpainted and reports unmeasurable, never a
   ' first-frame time for a frame that never arrived.
   screenLoad.pending("buffer")
 
@@ -1170,7 +1172,7 @@ sub onVideoContentLoaded()
   m.top.isDoviDirectPlayFallbackAvailable = isValid(videoContent[0].isDoviDirectPlayFallbackAvailable) and videoContent[0].isDoviDirectPlayFallbackAvailable
   m.top.isTranscodeAvailable = isValid(videoContent[0].isTranscodeAvailable) and videoContent[0].isTranscodeAvailable
 
-  ' Not a user selection either — without this, onVideoSourceChange reloads in a loop.
+  ' Not a user selection either: without this, onVideoSourceChange reloads in a loop.
   m.isApplyingOwnSelection = true
   m.top.mediaSourceId = videoContent[0].mediaSourceId
   m.isApplyingOwnSelection = false
@@ -1184,7 +1186,7 @@ sub onVideoContentLoaded()
   ' Pass JellyfinBaseItem node to OSD for typed field access
   if isValid(videoContent[0].meta)
     ' Populate video source data for OSD source switching.
-    ' Only update if the new metadata has more sources than what we already have —
+    ' Only update if the new metadata has more sources than what we already have:
     ' a source-switch reload fetches metadata for a single MediaSource ID,
     ' which loses the parent item's full source list.
     if isValid(videoContent[0].meta.mediaSourcesData) and isValidAndNotEmpty(videoContent[0].meta.mediaSourcesData.mediaSources)
@@ -1202,7 +1204,7 @@ sub onVideoContentLoaded()
     if isValid(m.top.fullVideoSourceData) and m.top.fullVideoSourceData.Count() > 1
       m.osd.numVideoSources = m.top.fullVideoSourceData.Count()
       ' Tag the OSD title with the active version, labeled as the version pickers label it
-      ' (the short form: e.g. "720p", or "[B&W]" when the versions differ only by name)
+      ' (the short form: for example "720p", or "[B&W]" when the versions differ only by name)
       m.osd.videoSourceTag = versionLabels.triggerLabelFor(m.top.fullVideoSourceData, videoContent[0].mediaSourceId)
     else
       m.osd.videoSourceTag = ""
@@ -1253,7 +1255,7 @@ sub onVideoContentLoaded()
 
   ' Allow default subtitles. The player's own subtitle writes below are not a user
   ' selection, so onSubtitleChange ignores them until the flag drops again. The caption
-  ' observers (loadCaption / toggleCaption) are NOT suppressed — they must see these.
+  ' observers (loadCaption / toggleCaption) are not suppressed: they must see these.
   m.isApplyingOwnSelection = true
 
   ' Set subtitleTrack property if subs are natively supported by Roku
@@ -1307,7 +1309,7 @@ sub onVideoContentLoaded()
       m.log.debug("Transcoded stream: reset audioTrack for auto-select", "jellyfinIndex", m.top.audioIndex)
     else
       ' Direct play: map Jellyfin index to Roku Track identifier.
-      ' Pass availableAudioTracks for language-based matching when available (e.g., audio change reload).
+      ' Pass availableAudioTracks for language-based matching when available (for example, audio change reload).
       m.top.audioTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
       m.log.debug("Direct play: mapped audioTrack", "jellyfinIndex", m.top.audioIndex, "rokuTrack", m.top.audioTrack)
     end if
@@ -1319,7 +1321,7 @@ sub onVideoContentLoaded()
   appWaits.done(m.playbackStart)
   stopLoadingSpinner()
   ' A reload during an open dialog (a queue advance, a DoVi retry) must not pull
-  ' focus out of it — same rule as handleHideAction.
+  ' focus out of it: same rule as handleHideAction.
   if not m.global.sceneManager.callFunc("isDialogOpen") then m.top.setFocus(true)
   m.top.control = "play"
 end sub
@@ -1347,13 +1349,13 @@ sub populateChapterMenu()
 end sub
 
 ' Fetches the current + next episode (Limit 2) to decide whether the Next
-' Episode button should be enabled. Render-thread promise — replaces the former
+' Episode button should be enabled. Render-thread promise; replaces the former
 ' GetNextEpisodeTask, a pure-fetch Task that existed only to move one fetchRes
 ' off the render thread (Phase-3a collapse; canonical example in docs/dev/promises.md).
 sub fetchNextEpisode()
   ' Claim the check up front: "playing" fires on every resume/seek, so this guards
   ' against a duplicate in-flight request (a reused requestId is a pool-contract bug).
-  ' The catch path clears it again so a transient failure can retry — matching the
+  ' The catch path clears it again so a transient failure can retry, matching the
   ' old Task, which left the flag clear whenever the fetch never completed.
   m.checkedForNextEpisode = true
 
@@ -1363,7 +1365,7 @@ sub fetchNextEpisode()
   })
   promises.chain(fetchAsync(req, "nextEpisode-" + m.top.id)).then(sub(res as object)
     ' Any HTTP response lands here (incl. 4xx/5xx). Only a 2xx body tells us
-    ' about the next episode; a non-ok response falls through to retry, just
+    ' about the next episode; a non-ok response falls through to retry,
     ' like the old Task, which only acted when res.ok.
     if not res.ok
       onNextEpisodeFetchFailed()
@@ -1376,7 +1378,7 @@ sub fetchNextEpisode()
       m.nextupbuttonseconds = 0
     end if
   end sub).catch(sub(err as object)
-    ' Transport failure / timeout (see the error contract) — never completed,
+    ' Transport failure / timeout (see the error contract): never completed,
     ' so allow a retry on the next "playing" transition.
     onNextEpisodeFetchFailed()
     m.log.warn("next-episode fetch failed", err.reason)
@@ -1443,7 +1445,7 @@ sub checkTimeToDisplayNextEpisode()
   ' Don't show Next Episode button if trickPlayBar is visible
   if m.top.trickPlayBar.visible then return
 
-  ' Don't show while segment notification is active (including fade-out) — it takes priority
+  ' Don't show while segment notification is active (including fade-out): it takes priority
   if isNotificationVisible(m.segmentNotification) then return
 
   if isValid(m.top.duration) and isValid(m.top.position)
@@ -1456,7 +1458,7 @@ sub checkTimeToDisplayNextEpisode()
       if m.nextEpisodeNotification.state <> "showing"
         showNextEpisodeButton()
       else
-        ' Notification already showing — just update the countdown text
+        ' Notification already showing: only update the countdown text
         updateNextEpisodeCount()
       end if
       return
@@ -1471,7 +1473,7 @@ end sub
 
 ' Forces playback to finished state for proper watched-status and auto-play.
 ' Triggers synchronous teardown (onState -> PlayerHostView.onPlayerStateChange -> destroy/
-' goBack -> onDestroy), invalidating all m. references. Callers MUST return immediately after.
+' goBack -> onDestroy), invalidating all m. references. Callers must return immediately after.
 sub forceFinishPlayback()
   ' Explicitly mark as watched via dedicated API endpoint.
   ' Uses the API pool (not SideEffectTask) so it can't be overwritten
@@ -1493,7 +1495,7 @@ sub forceFinishPlayback()
   end if
 
   ' Tell reportPlayback to report position at end of video so the server
-  ' sees a natural completion — matching the mark-played request.
+  ' sees a natural completion, matching the mark-played request.
   m.forceFinished = true
 
   m.top.control = "stop"
@@ -1529,7 +1531,7 @@ sub checkMediaSegments()
         return
       end if
 
-      ' Dismiss notification from a prior segment (e.g. back-to-back askToSkip → skip)
+      ' Dismiss notification from a prior segment (for example, a back-to-back askToSkip then skip)
       if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
         m.segmentNotification.callFunc("dismiss")
       end if
@@ -1544,7 +1546,7 @@ sub checkMediaSegments()
       ' that an already-skipped Skip segment degrades to AskToSkip.
       m.dismissedSegmentId = segmentId
     else if action = MediaSegmentAction.ASK_TO_SKIP
-      ' Dismissed this visit — don't re-show until user leaves and re-enters the segment
+      ' Dismissed this visit: don't re-show until user leaves and re-enters the segment
       if segmentId = m.dismissedSegmentId then return
 
       ' Re-show notification if it was paused (hidden for OSD)
@@ -1577,14 +1579,14 @@ sub checkMediaSegments()
         m.segmentNotification.callFunc("show")
       end if
     else
-      ' MediaSegmentAction.NONE — dismiss stale notification from a prior segment
+      ' MediaSegmentAction.NONE: dismiss stale notification from a prior segment
       if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
         m.segmentNotification.callFunc("dismiss")
       end if
       m.activeSegmentId = ""
     end if
   else
-    ' Not inside any segment — dismiss segment notification if visible or paused
+    ' Not inside any segment: dismiss segment notification if visible or paused
     if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
       m.log.verbose("Left segment, dismissing notification")
       m.segmentNotification.callFunc("dismiss")
@@ -1627,7 +1629,7 @@ sub onSegmentNotificationAction()
     m.top.setFocus(true)
   else if action = "dismissed"
     m.log.verbose("Segment notification dismissed", m.activeSegmentId)
-    ' Mark as dismissed for this visit — allows re-show if user leaves and re-enters the segment
+    ' Mark as dismissed for this visit; allows re-show if user leaves and re-enters the segment
     if m.activeSegmentId <> ""
       m.dismissedSegmentId = m.activeSegmentId
       m.activeSegmentId = ""
@@ -1819,8 +1821,8 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   keepLoadedVersionOnReload()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Unlike the three reload paths, this one CAN run before the first frame, and when it
-  ' does the retry is still the same load — the user has been waiting since init and has
-  ' seen no frame — so the second fetch is recorded as a second `metadata` fill rather than
+  ' does the retry is still the same load (the user has been waiting since init and has
+  ' seen no frame), so the second fetch is recorded as a second `metadata` fill rather than
   ' dropped. `contentMs` is a sum over fills, so a playback that fell back from direct play
   ' to transcode reports both round trips, which is exactly why its first frame took as
   ' long as it did. `buffer` stays open across the retry (`pending` keeps the first
@@ -1845,7 +1847,7 @@ end sub
 
 ' keepLoadedVersionOnReload: Hand the version this session loaded to the loader's next run.
 '
-' A reload — a subtitle or audio change, or a retry — runs LoadVideoContentTask again for the
+' A reload (a subtitle or audio change, or a retry) runs LoadVideoContentTask again for the
 ' same item, and a run given no mediaSourceId CHOOSES a version: on a per-version server from
 ' the positions the server holds, which lag the viewer and can name a different file. So each
 ' reload names the loaded version as an input of that run rather than trusting the field to
@@ -1886,7 +1888,7 @@ sub onState()
 
   if m.top.state = "buffering"
     ' Each buffering episode gets its own progress baseline. `bufferingStatus` is
-    ' per-episode — Roku invalidates it once buffering completes — so carrying the
+    ' per-episode (Roku invalidates it once buffering completes), so carrying the
     ' previous episode's high-water mark forward compares a fresh 10% against an old
     ' 80% and reports a stall that never happened.
     m.bufferPercentage = 0
@@ -1931,14 +1933,14 @@ sub onState()
       m.playbackTimer.control = "stop"
       m.bufferCheckTimer.control = "stop"
       m.bufferCheckTimer.unobserveField("fire")
-      ' Ensure trickplay carousel is cleaned up on error just like stopped/finished states
+      ' Ensure trickplay carousel is cleaned up on error, like stopped/finished states
       if isValid(m.trickplayCarousel)
         m.trickplayCarousel.isVisible = false
       end if
       stopLoadingSpinner()
       ' NO message argument on purpose. This is the Video node's own error state,
       ' so the cause is derived from `errorCode` (see playbackErrorCause). Passing
-      ' a string here would OVERRIDE that mapping — which is exactly how this
+      ' a string here would OVERRIDE that mapping, which is exactly how this
       ' dialog used to render its own title twice: the call site handed it
       ' `ErrorDuringPlayback`, the same key the title already uses.
       showPlaybackErrorDialog()
@@ -1956,8 +1958,8 @@ sub onState()
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
 
-    ' Un-park. A `play` that did not come through onVideoContentLoaded — a voice or
-    ' remote-control resume of a stopped player — is the one route back from
+    ' Un-park. A `play` that did not come through onVideoContentLoaded (a voice or
+    ' remote-control resume of a stopped player) is the one route back from
     ' parkPlayerAfterSupersede, and it restores neither the visibility nor the OSD
     ' on its own.
     if m.playerParked = true
@@ -1965,8 +1967,8 @@ sub onState()
       m.top.visible = true
     end if
 
-    ' PAINT. `playing` is this screen's first frame — Roku is rendering the stream and the
-    ' spinner comes down on the line above — so it is the same "content ready, spinner
+    ' PAINT. `playing` is this screen's first frame (Roku is rendering the stream and the
+    ' spinner comes down at the top of this branch), so it is the same "content ready, spinner
     ' down" moment every other instrumented screen marks.
     '
     ' Marked BEFORE the background work below (next-episode prefetch, the `start` report,
@@ -1975,8 +1977,8 @@ sub onState()
     ' waited for it would report a `settled` measured in minutes for a screen that was
     ' usable in seconds.
     '
-    ' Both fills resolve by here — `metadata` in onVideoContentLoaded, `buffer` on the line
-    ' above — so `paint` settles the run in the same call. Re-entry on pause→play is a
+    ' Both fills resolve by here (`metadata` in onVideoContentLoaded, `buffer` on the line
+    ' below), so `paint` settles the run in the same call. Re-entry on pause then play is a
     ' no-op: `paint` is once-per-run and `resolve` is silent after settle.
     screenLoad.resolve("buffer")
     if isValid(m.currentItem) and isValidAndNotEmpty(m.currentItem.type)
@@ -2087,7 +2089,7 @@ sub submitPlaybackReport(state as string, failed as boolean, closesLiveStream = 
   m.log.debug("start reportPlayback", state, int(m.top.position))
 
   ' When force-finished, report position at end of video so the server
-  ' sees a natural completion — matching the mark-played request.
+  ' sees a natural completion, matching the mark-played request.
   positionSeconds = m.top.position
   if m.forceFinished and (state = "stop" or state = "finished")
     positionSeconds = m.top.duration
@@ -2107,7 +2109,7 @@ sub submitPlaybackReport(state as string, failed as boolean, closesLiveStream = 
   ' On an in-player version switch the old stream's stop report can still be pending when
   ' the new source has loaded, and naming the new file there would save the old file's
   ' position on it. So a stop or finished report keeps naming the file reports have been
-  ' naming, and only start and update — sent by the stream that is playing — move on to
+  ' naming, and only start and update (sent by the stream that is playing) move on to
   ' the loaded one. Keyed on the report, not on event order: nothing then depends on
   ' `stopped` arriving before the new source loads, or arriving at all.
   if (state <> "stop" and state <> "finished") or m.reportedMediaSourceId = ""
@@ -2208,7 +2210,7 @@ sub onLiveTvMetadataRefreshed()
 
   m.osd.itemData = meta
 
-  ' Logo priority: program logo → program primary → channel icon. Always write the result
+  ' Logo priority: program logo, then program primary, then channel icon. Always write the result
   ' (empty string included) so the prior program's logo doesn't linger when the new one
   ' has no artwork. Mirrors the initial-load chain in LoadVideoContentTask.
   newLogoUrl as string = ""
@@ -2231,7 +2233,7 @@ end sub
 
 ' Collapsed from LoadChannelListForQueueTask, a pure-fetch Task that existed only to
 ' move one fetchRes off the render thread (Phase-4 collapse; see docs/dev/promises.md).
-' Fire-once per playback (guarded by m.channelListLoaded), so no seq guard is needed —
+' Fire-once per playback (guarded by m.channelListLoaded), so no seq guard is needed:
 ' a single .then can't race itself the way a hot re-fire would.
 sub loadChannelListForQueue()
   currentChannelId = m.top.id
@@ -2256,7 +2258,7 @@ sub loadChannelListForQueue()
       return
     end if
 
-    ' buildChannelQueueList is a light array→array transform (source/utils/liveTv.bs) —
+    ' buildChannelQueueList is a light array-to-array transform (source/utils/liveTv.bs),
     ' render-thread-safe (no node creation), which is why this Task was a collapse candidate.
     built = buildChannelQueueList(res.json.Items, ctx.currentChannelId)
 
@@ -2272,7 +2274,7 @@ sub loadChannelListForQueue()
 
     m.log.info("Channel list loaded into queue", "count", built.items.count(), "position", built.currentIndex)
   end sub).catch(sub(err as object)
-    ' Transport failure / timeout (see the error contract) — never completed.
+    ' Transport failure / timeout (see the error contract): never completed.
     m.log.warn("Failed to load channel list", err.reason)
   end sub)
 end sub
@@ -2281,7 +2283,7 @@ end sub
 '
 ' @return {boolean} indicating if video state allows the OSD to show
 function stateAllowsOSD() as boolean
-  ' A PARKED player (a superseded error — see parkPlayerAfterSupersede) is hidden,
+  ' A PARKED player (a superseded error; see parkPlayerAfterSupersede) is hidden,
   ' so an OSD opened over it would render nothing while still taking focus.
   if m.playerParked = true then return false
 
@@ -2346,7 +2348,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' For non-OK keys, hide notifications (paused state) so they can re-show after OSD closes.
   ' Next Episode is dismissed but will re-appear on subsequent position updates if still in the time window.
   if isNotificationVisible(m.nextEpisodeNotification) or isNotificationVisible(m.segmentNotification)
-    ' OK is handled by the notification's onKeyEvent — don't intercept here
+    ' OK is handled by the notification's onKeyEvent: don't intercept here
     if key <> "OK"
       if m.segmentNotification.state = "showing"
         m.segmentNotification.callFunc("hide")
@@ -2463,10 +2465,10 @@ sub releaseVideoLoad(task as object)
 end sub
 
 ' onDestroy: Full teardown releasing all resources before component removal
-' Called by SceneManager when popping this scene
+' Called by PlayerHostView.destroyPlayer, on every remount and on the host's own teardown
 sub onDestroy()
   ' Mark torn-down first so any observer that still fires during teardown
-  ' (e.g. onPositionChanged from a final engine position update) bails early.
+  ' (for example onPositionChanged from a final engine position update) bails early.
   m.isDestroyed = true
   ' A start still open here never reached a stream: Back, a channel switch away, a sign-out.
   appWaits.fail(m.playbackStart, "player closed before its stream loaded")
@@ -2481,7 +2483,7 @@ sub onDestroy()
   m.top.unobserveField("position")
 
   ' One line per live mount: the steps its progress was built from, the evidence for tuning
-  ' LIVE_PROGRESS_MAX_STEP_MS. A largest step near that cap, or a smallest jump just above it,
+  ' LIVE_PROGRESS_MAX_STEP_MS. A largest step near that cap, or a smallest jump right above it,
   ' means playing is being cut short.
   if isLiveTvPlayback()
     progress = m.liveProgress
@@ -2494,7 +2496,7 @@ sub onDestroy()
   end if
 
   ' This scope is going away, so the error dialog's result (if it hasn't
-  ' answered yet) has nowhere to be delivered — abandon, not cancel. The SAME
+  ' answered yet) has nowhere to be delivered: abandon, not cancel. The SAME
   ' call teardown uses, not a partial copy of it: whichever tier is in the slot,
   ' the Details report's `closed` observer has to come off before the node is
   ' dropped, and one entry point is how the two paths stay identical.
@@ -2514,7 +2516,7 @@ sub onDestroy()
   end if
 
   ' Stop and release task nodes. The video load is released by releaseVideoLoad, because a load
-  ' whose live stream is opening must not simply be stopped.
+  ' whose live stream is opening needs more than a stop.
   if isValid(m.LoadMetaDataTask)
     m.LoadMetaDataTask.unobserveField("content")
     releaseVideoLoad(m.LoadMetaDataTask)
@@ -2587,7 +2589,7 @@ sub onDestroy()
   m.captionGroup = invalid
 end sub
 
-' Pause and show the OSD in its paused state — what the Play key does to a playing video.
+' Pause and show the OSD in its paused state: what the Play key does to a playing video.
 ' Also PlayerHostView's when nobody answers the still-watching prompt, so a viewer who
 ' comes back finds the same paused player they would have left themselves.
 sub pauseWithOsd()
@@ -2598,17 +2600,18 @@ sub pauseWithOsd()
   m.osd.setFocus(true)
 end sub
 
-' handleTransport: Roku voice transport handler. Called from source/main.bs when an
-' roInputEvent with info.type = "transport" arrives and the active scene is this player.
+' handleTransport: Roku voice and remote-control transport handler. Reached through
+' remoteDispatch.dispatchTransport (main.bs's voice roInputEvent branch, and the ws://
+' receiver) and PlayerHostView.handleTransport, which forwards to this player.
 '
-' Returns { status: "<code>" } per roInput.EventResponse() — Roku OS uses the status
+' Returns { status: "<code>" } per roInput.EventResponse(). Roku OS uses the status
 ' to render the appropriate HUD message. Codes used here:
-'   - success / success.seek-start / success.seek-end — op completed (with bounds note)
-'   - error.redundant — state already matches request (e.g. pause-while-paused)
-'   - error.generic — op semantically unsupported in this context
-'   - unhandled — command we don't recognize; lets Roku show "Command not available"
+'   - success / success.seek-start / success.seek-end: op completed (with bounds note)
+'   - error.redundant: state already matches request (for example pause-while-paused)
+'   - error.generic: op semantically unsupported in this context
+'   - unhandled: command we don't recognize; lets Roku show "Command not available"
 '
-' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+' See https://github.com/rokudev/dev-doc, docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
 function handleTransport(evt as object) as object
   if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
   cmd = lcase(evt.command)
@@ -2641,7 +2644,7 @@ function handleTransport(evt as object) as object
   end if
 
   if cmd = "ok"
-    ' Mirror physical OK in idle video state — open the OSD. If already visible,
+    ' Mirror physical OK in idle video state: open the OSD. If already visible,
     ' physical OK activates the focused button; voice can't replicate that without
     ' synthesizing a key event, so treat the second voice-OK as a redundant noop.
     if not stateAllowsOSD() then return { status: "error.generic" }
@@ -2738,7 +2741,7 @@ function seekRelativeWithBounds(deltaSeconds as integer) as object
   return seekToWithBounds(m.top.position + deltaSeconds)
 end function
 
-' 30s end-slack matches the Roku transport-controls reference example for video —
+' 30s end-slack matches the Roku transport-controls reference example for video:
 ' clamping shy of duration prevents the player from firing end-of-content immediately.
 function seekToWithBounds(targetSeconds as float) as object
   result = voiceTransport.computeSeekStatus(targetSeconds, m.top.duration, 30)
@@ -2778,7 +2781,7 @@ function tryActiveSegmentSkip() as boolean
 end function
 
 ' Reuse the OSD itemNext code path so Live-TV channel advance, queue advance, and
-' Episode→next-Episode all behave identically to pressing the on-screen Next button.
+' Episode-to-next-Episode all behave identically to pressing the on-screen Next button.
 function handleVoiceNextItem() as object
   queueManager = m.global.queueManager
   if not isValid(queueManager) then return { status: "error.generic" }
@@ -2799,7 +2802,7 @@ function handleVoiceNextItem() as object
 end function
 
 ' Remote "PreviousTrack": step back one queue item, symmetric with handleVoiceNextItem.
-' error.generic at the head of the queue (no previous item) — no chapter-back concept here.
+' error.generic at the head of the queue (no previous item): no chapter-back concept here.
 function handleVideoPreviousItem() as object
   queueManager = m.global.queueManager
   if not isValid(queueManager) then return { status: "error.generic" }
@@ -2809,7 +2812,7 @@ function handleVideoPreviousItem() as object
   return { status: "success" }
 end function
 
-' Returns the metadata in the response — main.bs's transport dispatcher calls
+' Returns the metadata in the response: main.bs's transport dispatcher calls
 ' roAppManager.SetNowPlayingContentMetaData() on the MAIN thread (roAppManager
 ' can't be created on the render thread, where this callFunc executes).
 function announceNowPlaying() as object

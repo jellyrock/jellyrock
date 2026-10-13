@@ -2,9 +2,9 @@
 //
 // The script walks components/roku_modules/ and source/roku_modules/ and
 // rewrites three patterns inside .xml files:
-//   /roku_modules/undefined/bslib.brs   → /roku_modules/rokucommunity_bslib/bslib.brs
-//   /roku_modules/bslib/bslib.brs       → /roku_modules/rokucommunity_bslib/bslib.brs
-//   /roku_modules/undefined             → /roku_modules/maestro
+//   `/roku_modules/undefined/bslib.brs` becomes `/roku_modules/rokucommunity_bslib/bslib.brs`
+//   `/roku_modules/bslib/bslib.brs` becomes `/roku_modules/rokucommunity_bslib/bslib.brs`
+//   `/roku_modules/undefined` becomes `/roku_modules/maestro`
 //
 // Tests use a temp dir simulating the post-ropm-copy layout.
 
@@ -40,7 +40,7 @@ describe('ropm-hook', () => {
     // The script computes the modules dir relative to __dirname, which
     // means it walks the REAL repo's components/source/roku_modules,
     // not the temp dir. Cwd doesn't change that path. So this smoke
-    // check just ensures the script doesn't throw on a clean run.
+    // check only ensures the script doesn't throw on a clean run.
     const { exitCode } = spawnScript(SCRIPT, [], { cwd: dir });
     expect(typeof exitCode).toBe('number');
   });

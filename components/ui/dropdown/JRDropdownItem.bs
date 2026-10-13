@@ -32,7 +32,7 @@ end sub
 
 ' Updates visual state based on virtual isFocused and isSelected fields.
 ' Focused state uses button-like styling: 9-patch border + background (same as TextButton).
-' JRDropdown manages focus externally — this item never receives real Roku focus.
+' JRDropdown manages focus externally; this item never receives real Roku focus.
 sub onFocusStateChanged()
   constants = m.global.constants
   if m.top.isFocused

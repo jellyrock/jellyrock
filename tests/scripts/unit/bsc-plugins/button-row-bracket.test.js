@@ -11,7 +11,7 @@
 //
 // The reason this needs a build-time gate rather than a convention: the bracket
 // is a no-op until a row actually exceeds its cap, so a forgotten one is
-// completely silent — no failing test, no visual difference — until a LATER PR
+// completely silent (no failing test, no visual difference) until a LATER PR
 // adds the button that pushes the row over.
 //
 // The plugin is self-configuring: it reads the managed node out of each file's
@@ -54,7 +54,7 @@ describe('button-row-bracket', () => {
 
     // Half a bracket is the likelier mistake than none: a contributor copies a
     // neighbouring mutator, keeps the unsplit and drops the re-split, and the row
-    // stays whole — correct-looking, and permanently unsplit.
+    // stays whole: correct-looking, and permanently unsplit.
     it('flags a mutator missing only applyOverflow()', () => {
       const found = check(`
         ${BRACKET}
@@ -139,7 +139,7 @@ describe('button-row-bracket', () => {
 
     // A read cannot corrupt the row on its own. getButtonIndex() answering -1 for
     // a stashed button only misplaces something in combination with a mutation,
-    // which is flagged in its own right — so reads are deliberately not gated.
+    // which is flagged in its own right, so reads are not gated.
     it('ignores a function that only READS the row', () => {
       expect(
         check(`
@@ -211,7 +211,7 @@ describe('button-row-bracket', () => {
 
   describe('discovers the managed node from the file itself', () => {
     // The OSD names its row m.buttonMenuLeft, not m.buttonGrp. Nothing in the
-    // plugin knows either name — both come out of the file's own unsplitButtons().
+    // plugin knows either name: both come out of the file's own unsplitButtons().
     const OSD_BRACKET = `
       sub unsplitButtons()
         restoreOverflowedButtons(m.buttonMenuLeft, m.buttonOverflow)

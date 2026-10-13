@@ -8,7 +8,7 @@ namespace tests
     protected override function setup()
       super.setup()
       ' Set up translation AAs directly on m.global for unit testing
-      ' (avoids file I/O — loadTranslations() is tested separately in integration)
+      ' (avoids file I/O: loadTranslations() is tested separately in integration)
       m.global.setFields({
         translations: {
           "ButtonPlay": "Lire",

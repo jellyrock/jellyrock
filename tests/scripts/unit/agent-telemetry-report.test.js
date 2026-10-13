@@ -4,7 +4,7 @@
 // the env-var override to point at a temp dir with synthetic events.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnScript } from './_helpers/spawn-script.js';
@@ -85,5 +85,81 @@ describe('agent-telemetry-report', () => {
     });
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/1 events in window/); // only the valid line counted
+  });
+});
+
+// Without JELLYROCK_TELEMETRY_DIR, the log lives in the per-user state folder
+// (`$XDG_STATE_HOME/jellyrock/telemetry`, default `~/.local/state/jellyrock/telemetry`), where
+// the hooks write it. Checkouts that have not pulled the move still write the old
+// `~/.claude/jellyrock-telemetry`, so the report reads that log too while it exists.
+describe('agent-telemetry-report: where the log is', () => {
+  let home;
+
+  afterEach(() => {
+    if (home) rmSync(home, { recursive: true, force: true });
+  });
+
+  function writeLog(folder, events) {
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, 'tool-use.jsonl'),
+      events.map((e) => JSON.stringify(e)).join('\n') + '\n',
+    );
+  }
+
+  it('reads $XDG_STATE_HOME/jellyrock/telemetry when no override is set', () => {
+    home = mkdtempSync(join(tmpdir(), 'jellyrock-telemetry-home-'));
+    writeLog(join(home, 'state', 'jellyrock', 'telemetry'), [
+      { timestamp: today, tool: 'Read', file: 'a.bs' },
+    ]);
+    const { exitCode, stdout } = spawnScript(SCRIPT, [], {
+      env: { HOME: home, XDG_STATE_HOME: join(home, 'state'), JELLYROCK_TELEMETRY_DIR: '' },
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/1 events in window/);
+  });
+
+  it('defaults to ~/.local/state/jellyrock/telemetry, and reads the old ~/.claude folder too', () => {
+    home = mkdtempSync(join(tmpdir(), 'jellyrock-telemetry-home-'));
+    writeLog(join(home, '.local', 'state', 'jellyrock', 'telemetry'), [
+      { timestamp: today, tool: 'Read', file: 'a.bs' },
+    ]);
+    writeLog(join(home, '.claude', 'jellyrock-telemetry'), [
+      { timestamp: today, tool: 'Read', file: 'b.bs' },
+      { timestamp: today, tool: 'Edit', file: 'b.bs' },
+    ]);
+    const { exitCode, stdout } = spawnScript(SCRIPT, [], {
+      env: { HOME: home, XDG_STATE_HOME: '', JELLYROCK_TELEMETRY_DIR: '' },
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/3 events in window/);
+    expect(stdout).toMatch(/\.claude\/jellyrock-telemetry/);
+    expect(stdout).toMatch(/\bmv\b/);
+  });
+
+  it('reads the old folder alone when the new one has no log yet', () => {
+    home = mkdtempSync(join(tmpdir(), 'jellyrock-telemetry-home-'));
+    writeLog(join(home, '.claude', 'jellyrock-telemetry'), [
+      { timestamp: today, tool: 'Read', file: 'b.bs' },
+    ]);
+    const { exitCode, stdout } = spawnScript(SCRIPT, [], {
+      env: { HOME: home, XDG_STATE_HOME: '', JELLYROCK_TELEMETRY_DIR: '' },
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/1 events in window/);
+  });
+
+  it('reads only the override folder when JELLYROCK_TELEMETRY_DIR is set', () => {
+    home = mkdtempSync(join(tmpdir(), 'jellyrock-telemetry-home-'));
+    writeLog(join(home, 'mine'), [{ timestamp: today, tool: 'Read', file: 'a.bs' }]);
+    writeLog(join(home, '.claude', 'jellyrock-telemetry'), [
+      { timestamp: today, tool: 'Read', file: 'b.bs' },
+    ]);
+    const { exitCode, stdout } = spawnScript(SCRIPT, [], {
+      env: { HOME: home, XDG_STATE_HOME: '', JELLYROCK_TELEMETRY_DIR: join(home, 'mine') },
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/1 events in window/);
+    expect(stdout).not.toMatch(/\.claude\/jellyrock-telemetry/);
   });
 });

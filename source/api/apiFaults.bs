@@ -9,12 +9,12 @@ import "pkg:/source/utils/misc.bs"
 '   { prefix: "itemQuery_usersItems", kind: "timeout" | "http" | "slow", status: 500, ms: 20000, times: 1, after: 0 }
 ' A rule matches a request whose requestId starts with `prefix`. `times` is how many
 ' matching requests it applies to; without it, every one. `after` is how many matching
-' requests it lets through first — for a request id that repeats too quickly for a spec to set
+' requests it lets through first, for a request id that repeats too quickly for a spec to set
 ' the rule in between (a grid's page 1 and page 2).
 '
 ' A failed request is answered with the response the pool itself delivers for that failure. A
 ' slow one is sent, and its real answer is held until `ms` after it was sent, with its slot kept
-' busy all that time — what a slow server costs the app, pool slot included. Nothing marks
+' busy all that time: what a slow server costs the app, pool slot included. Nothing marks
 ' either as injected: code that could tell them apart could handle a test differently from the
 ' real thing, which is what these specs exist to catch.
 namespace apiFaults
@@ -37,7 +37,7 @@ namespace apiFaults
   end function
 
   ' The first fault that applies to `requestId`, counted as used; invalid when none does.
-  ' Mutates `faults` — the caller keeps the list across requests.
+  ' Mutates `faults`: the caller keeps the list across requests.
   '
   ' A rule still letting requests through (`after`) claims each match and passes it, rather
   ' than handing it to a later rule: the spec asked for those requests to succeed.
@@ -78,7 +78,7 @@ namespace apiFaults
   end function
 
   ' The held answers that are due, taken out of `held` in the order they were held. Mutates
-  ' `held` — the caller keeps the list across events.
+  ' `held`: the caller keeps the list across events.
   '
   ' @param held - the held answers, each with `dueAt`
   ' @param nowMs - the coordinator's clock now
@@ -96,7 +96,7 @@ namespace apiFaults
     return due
   end function
 
-  ' The pool's response for a request that failed this way — the shape ApiTask.executeRequest
+  ' The pool's response for a request that failed this way, the shape ApiTask.executeRequest
   ' builds. A timeout is what roku-requests returns when it gives up: not ok, and no status or
   ' body, because it only reads those from a response that arrived.
   function responseFor(fault as object, requestId as string) as object

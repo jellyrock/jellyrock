@@ -5,7 +5,7 @@
 //
 // The plugin is a build-failing gate, so a false positive blocks correct work.
 // Most scenarios here pin one way SceneGraph reaches code BY NAME (a string, an
-// XML attribute, the firmware) that a plain call graph would miss — each one was
+// XML attribute, the firmware) that a plain call graph would miss. Each one was
 // either a real false positive while the plugin was built against the app, or a
 // real dead-code case a naive grep missed.
 
@@ -20,7 +20,7 @@ const CODE = 'dead-code';
 const KEEP = 'dead-code-keep';
 const BASELINE = 'dead-code-baseline';
 
-// Qualified names the plugin reported dead, e.g. ["getButton", "imageSize.LOGO"].
+// Qualified names the plugin reported dead, for example ["getButton", "imageSize.LOGO"].
 function deadNames(diagnostics) {
   return diagnosticsByCode(diagnostics, CODE)
     .map((d) => /The [a-z ]+ '([^']+)'/.exec(d.message)?.[1])
@@ -251,7 +251,7 @@ describe('dead-code — scope resolution', () => {
   });
 
   it('checks a codebehind function only in the component scopes that include it', () => {
-    // IconButton observes "height" → onHeightChanged; TextButton's own onHeightChanged
+    // IconButton observes "height" with onHeightChanged; TextButton's own onHeightChanged
     // was never wired and stayed hidden behind it under program-wide matching.
     expect(
       dead({

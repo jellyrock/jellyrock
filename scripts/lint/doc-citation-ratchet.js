@@ -158,7 +158,6 @@ const SKIP_DIRS = new Set([
   'build',
   'build-analysis',
   'out',
-  'tasks',
   '.git',
   'roku_modules',
 ]);
@@ -184,6 +183,10 @@ function codeLang(rel) {
 // inside one rots privately and cheaply. The root AGENTS.md already forbids
 // citing these paths FROM tracked content for the same reason.
 const EPHEMERAL_RELS = ['docs/projects', '.claude/handoffs', '.claude/plans'];
+
+// The repo-root `tasks/` is gitignored (`/tasks/`, anchored to the root). A nested
+// `components/tasks/` is tracked source, so only the root one is skipped.
+const ROOT_ONLY_SKIP_RELS = ['tasks'];
 
 // Append-only dated records. A skill's AUDIT-LOG entry says what a given run saw
 // on a given date, so a line number in one is a historical measurement: the one
@@ -229,7 +232,7 @@ function collectDocs(rootDir) {
         // Walk only the dot-dirs in `DOT_DIRS_WALKED`; skip the rest.
         if (e.name.startsWith('.') && !DOT_DIRS_WALKED.has(e.name)) continue;
         const rel = path.relative(rootDir, full).split(path.sep).join('/');
-        if (EPHEMERAL_RELS.includes(rel)) continue;
+        if (EPHEMERAL_RELS.includes(rel) || ROOT_ONLY_SKIP_RELS.includes(rel)) continue;
         if (rel === '.husky/_') continue;
         // A directory with its own `.git` (a file for a worktree, a directory for a
         // clone) is a separate checkout (`.claude/worktrees/<name>` holds a whole copy

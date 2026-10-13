@@ -1,9 +1,11 @@
 // Vitest unit tests for scripts/crash-report.js.
 //
-// Tests are grouped by the pipeline stage they cover (parse → group →
-// threshold → categorize → draft → dedup-search → CLI). Side effects (worktree
-// build, GH writes) are exercised via injected fakes (gitExec, ghExec) so
-// nothing in this suite shells out or touches the network.
+// Tests are grouped by the pipeline stage they cover (parse, group, threshold,
+// categorize, draft, dedup search, enrich, route, file, CLI). Side effects
+// (worktree build, GH writes) are exercised via injected fakes (gitExec, ghExec)
+// so nothing touches the network. Two groups do shell out: the CLI tests spawn
+// the script, and the TTL-0 worktree-cache test runs real `git worktree` calls
+// that fail on its fake tag.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -70,7 +72,7 @@ import {
 } from '../../../scripts/crash-report.js';
 
 // ────────────────────────────────────────────────────────────────────
-// Test fixtures (matches the format of Roku's emailed weekly CSV — note the
+// Test fixtures (matches the format of Roku's emailed weekly CSV; mind the
 // leading row-index column with no header, which our parser tolerates).
 
 const SAMPLE_CSV = `,Date,Roku OS Release,App Version,Error Text,Total Count of Crashes,Total Count of Devices with Crashes
@@ -188,7 +190,7 @@ describe('parseErrorText', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────
-// Dashboard CSV (manually exported from Roku analytics — carries the
+// Dashboard CSV (manually exported from Roku analytics; carries the
 // multi-frame backtrace + local-variable snapshot the weekly email omits).
 // ────────────────────────────────────────────────────────────────────
 
@@ -224,7 +226,7 @@ describe('validateDashboardCsv', () => {
   });
 
   it('accepts the REAL Roku export header (columns prefixed, matched by suffix)', () => {
-    // Roku's actual 2-column export — the logical names are SUFFIXES of longer
+    // Roku's actual 2-column export: the logical names are suffixes of longer
     // prefixed column titles, not standalone columns. Regression for the bug
     // where exact-match validation rejected every real dashboard export.
     const realHeader =
@@ -241,7 +243,7 @@ describe('validateDashboardCsv', () => {
       '~~Backtrace: ~~#0  Function init() As $1 file/line: pkg:/x.brs(15) ' +
       '~~Local Variables: ~~m roAssociativeArray refcnt=2 count:2 ~~';
     const cell = normalizeBacktraceText(real);
-    // Must be the backtrace cell only — NOT the header text joined with ~~.
+    // Must be the backtrace cell only, not the header text joined with ~~.
     expect(cell).not.toMatch(/Agg Channel/);
     expect(cell).toMatch(/Too many task threads/);
     const bt = parseBacktraceCell(cell);
@@ -357,7 +359,7 @@ describe('groupBySignature', () => {
   it('aggregates rows with the same signature across dates/OS releases', () => {
     const rows = parseCsv(SAMPLE_CSV);
     const groups = groupBySignature(rows);
-    // Same JRLabel signature appears twice — should collapse to one group.
+    // Same JRLabel signature appears twice: should collapse to one group.
     const jrLabel = groups.get('pkg:/components/ui/label/JRLabel.brs(5)');
     expect(jrLabel).toBeDefined();
     expect(jrLabel.totalCrashes).toBe(2);
@@ -389,13 +391,13 @@ describe('applyThreshold', () => {
     const groups = groupBySignature(rows);
     const { kept, filtered } = applyThreshold(groups, { minDevices: 2, minDates: 2 });
     const keptSigs = kept.map((g) => g.signature);
-    // FontDownloadTask: 2 devices, 1 date → kept (devices threshold)
+    // FontDownloadTask: 2 devices, 1 date: kept (devices threshold)
     expect(keptSigs).toContain('pkg:/components/tasks/FontDownloadTask.brs(29)');
-    // RectangleSecondary: 2 devices, 1 date → kept (devices threshold)
+    // RectangleSecondary: 2 devices, 1 date: kept (devices threshold)
     expect(keptSigs).toContain('pkg:/components/ui/rectangle/RectangleSecondary.brs(2)');
-    // JRLabel: 1 device, 2 dates → kept (dates threshold)
+    // JRLabel: 1 device, 2 dates: kept (dates threshold)
     expect(keptSigs).toContain('pkg:/components/ui/label/JRLabel.brs(5)');
-    // JRPoster: 1 device, 1 date → filtered
+    // JRPoster: 1 device, 1 date: filtered
     expect(filtered.map((g) => g.signature)).toContain('pkg:/components/ui/poster/JRPoster.brs(8)');
   });
 
@@ -1086,12 +1088,12 @@ describe('getOrBuildAnalysis (worktree cache)', () => {
   it('treats a TTL of 0 as immediate staleness (forces rebuild path)', () => {
     const gitExec = () => `${tag}\n`;
     const logs = [];
-    // ttlMs: 0 → the existsSync(buildDir) check still passes but the ageMs < ttlMs
+    // With ttlMs: 0, the existsSync(buildDir) check still passes but the ageMs < ttlMs
     // check fails (any age is > 0), so we expect a rebuild log.
     expect(() => getOrBuildAnalysis('9.99.99', { gitExec, ttlMs: 0, logger: (m) => logs.push(m) }))
       // Will throw because resolveVersionTag returns our fake tag but no real
       // worktree can be built from it. We only care that we entered the rebuild
-      // branch — verified via the staleness log message.
+      // branch, verified via the staleness log message.
       .toThrow();
     expect(logs.some((m) => m.includes('stale') && m.includes('rebuilding'))).toBe(true);
   });
@@ -1100,7 +1102,7 @@ describe('getOrBuildAnalysis (worktree cache)', () => {
 describe('enrichIssue (orchestrator wiring)', () => {
   // The full end-to-end requires a real `buildAnalysisInWorktree` call. We
   // exercise the wiring shape via the failure paths that bail before the build
-  // step — title-shape rejection and missing-label rejection. The happy path
+  // step: title-shape rejection and missing-label rejection. The happy path
   // is covered by composition: parseCrashIssueTitle + normalizeBacktraceText +
   // parseBacktraceCell + resolveBacktraceFrames + backtraceSection are each
   // independently tested above.
@@ -1183,7 +1185,7 @@ describe('searchExistingIssues', () => {
     ];
     const fakeGh = () =>
       JSON.stringify([
-        // Manually-filed bug — title does NOT have the [crash] prefix.
+        // Manually-filed bug: its title lacks the [crash] prefix.
         { number: 5, state: 'OPEN', title: 'x.brs:2 sometimes crashes', updatedAt: '' },
       ]);
     expect(searchExistingIssues(groups, { ghExec: fakeGh }).get('pkg:/x.brs(2)')).toBeNull();
@@ -1393,7 +1395,7 @@ describe('matchNoisePattern', () => {
   });
 
   it('cannot match a code-gated pattern during stage (no errorCode yet)', () => {
-    // group has no errorCode — the two-phase invariant: code-gated patterns
+    // group has no errorCode. The two-phase invariant: code-gated patterns
     // stay unmatched until the enrich phase populates it.
     expect(matchNoisePattern(group, source, { match: { exception_code: '&h29' } })).toBe(false);
   });
@@ -1408,7 +1410,7 @@ describe('matchNoisePattern', () => {
       },
     };
     expect(matchNoisePattern(enriched, source, pattern)).toBe(true);
-    // Same code + snippet but a different function → not the init race.
+    // Same code + snippet but a different function: not the init race.
     expect(matchNoisePattern({ ...enriched, function: 'toms' }, source, pattern)).toBe(false);
   });
 });
@@ -1513,7 +1515,7 @@ describe('routeCrash', () => {
 
   it('routes an unmatched crash to file', () => {
     const group = { function: 'isnotificationvisible', errorCode: '&hec' };
-    // &hec but NOT the init-race shape (function/snippet miss) → scoped bug.
+    // &hec but not the init-race shape (function/snippet miss): a scoped bug.
     expect(routeCrash(group, { codeSnippet: 'return notification.state' }, config)).toEqual({
       disposition: 'file',
       pattern: null,
@@ -1521,7 +1523,7 @@ describe('routeCrash', () => {
   });
 
   it('an unenriched crash (no code) never routes to a code-gated epic', () => {
-    const group = { function: 'init' }; // stage phase — no errorCode
+    const group = { function: 'init' }; // stage phase: no errorCode
     expect(routeCrash(group, source, config).disposition).toBe('file');
   });
 });
@@ -1541,9 +1543,9 @@ describe('epic record upsert', () => {
 
   it('key is stable across line/version dimensions', () => {
     expect(epicRecordKey(baseRecord)).toContain('|init|15|2.23.0');
-    // Different line → different key (never auto-merged).
+    // A different line gives a different key (never auto-merged).
     expect(epicRecordKey({ ...baseRecord, line: 17 })).not.toBe(epicRecordKey(baseRecord));
-    // Different version → different key.
+    // A different version gives a different key.
     expect(epicRecordKey({ ...baseRecord, version: '2.22.0' })).not.toBe(epicRecordKey(baseRecord));
   });
 
@@ -1742,7 +1744,7 @@ describe('executeWorksheet (file phase — disposition routing)', () => {
     const agg = results.find((r) => r.action === 'aggregate');
     expect(agg.trackerIssue).toBe(900);
     expect(agg.upsert.action).toBe('created');
-    // The aggregate crash was NOT filed as a standalone issue.
+    // The aggregate crash was not filed as a standalone issue.
     const createCalls = calls.filter((a) => a[0] === 'issue' && a[1] === 'create');
     expect(createCalls).toHaveLength(1);
   });
@@ -1776,7 +1778,7 @@ describe('executeWorksheet (file phase — disposition routing)', () => {
           versions: ['2.23.0'],
           totalCrashes: 17,
           maxDevicesPerRow: 4,
-          action: 'create', // dedup action, but NOT yet enriched
+          action: 'create', // dedup action, but not yet enriched
           disposition: 'pending',
           mechanismHint: 'task-launch',
           verdict: 'needs-backtrace',
@@ -2021,7 +2023,7 @@ describe('resolveSourceLocations', () => {
       'sub bar()\n    print "line two"\n    print "line three"\nend sub\n',
     );
 
-    // Synthetic source map: build/source/foo.brs(N) → ../../source/foo.bs(N) for N=1..3.
+    // Synthetic source map: build/source/foo.brs(N) to ../../source/foo.bs(N) for N=1..3.
     const gen = new SourceMapGenerator({ file: 'foo.brs' });
     for (let i = 1; i <= 3; i++) {
       gen.addMapping({
@@ -2099,7 +2101,7 @@ describe('resolveBacktraceFrames', () => {
     mkdirSync(join(dir, 'build-analysis', 'components'), { recursive: true });
     mkdirSync(join(dir, 'components'), { recursive: true });
 
-    // Source .bs has 200 lines of comments — enough to satisfy any line lookup.
+    // Source .bs has 200 lines of comments, enough to satisfy any line lookup.
     writeFileSync(
       join(dir, 'components', 'captionTask.bs'),
       Array.from({ length: 200 }, (_, i) => `' source line ${i + 1}`).join('\n'),
@@ -2324,7 +2326,7 @@ describe('CLI: plan subcommand', () => {
       dashPath,
       '--no-build',
     ]);
-    // --no-build skips builds → no source resolution → no backtrace resolution
+    // --no-build skips builds, so no source resolution and no backtrace resolution
     // (since both need a build dir). But the flag itself must parse cleanly
     // and the dashboard CSV must parse without throwing.
     expect(r.exitCode).toBe(0);

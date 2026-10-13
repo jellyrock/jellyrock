@@ -1,7 +1,7 @@
 // Tests for scripts/generate/spec-fingerprint.js.
 //
 // The pure reducer (buildFingerprint) is driven with tiny hand-written fixture
-// specs — never the ~2 MB real ones — exercising every reduction the diff
+// specs (never the megabyte-scale real ones), exercising every reduction the diff
 // depends on (type signatures, format-bearing retypes, nullable, refs, params,
 // request/response shapes, enums, description stripping). A final block runs the
 // CLI --from-file write/--check drift gate against a temp tree via spawnScript.
@@ -113,7 +113,7 @@ describe('buildFingerprint — schemas + type signatures', () => {
   const fp = buildFingerprint(fixtureSpec(), { specVersion: '9.9.9' });
 
   it('records format so int64→int32-style retypes are visible', () => {
-    expect(fp.schemas.BaseItem.properties.RunTimeTicks).toBe('integer:int64?'); // nullable → ?
+    expect(fp.schemas.BaseItem.properties.RunTimeTicks).toBe('integer:int64?'); // nullable: `?`
     expect(fp.schemas.ItemsResult.properties.TotalRecordCount).toBe('integer:int32');
   });
 

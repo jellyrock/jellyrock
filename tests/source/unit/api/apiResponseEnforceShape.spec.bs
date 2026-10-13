@@ -2,7 +2,7 @@ import "pkg:/source/api/apiResponse.bs"
 
 namespace tests
 
-  ' Contract tests for apiResponse.enforceShape — the pool's hold on a list request's body.
+  ' Contract tests for apiResponse.enforceShape: the pool's hold on a list request's body.
   ' Every pooled response passes through it (ApiTask.executeRequest), so a list request's caller
   ' never sees a body it cannot iterate: an ok response carries an roArray, and anything else
   ' arrives as not-ok.

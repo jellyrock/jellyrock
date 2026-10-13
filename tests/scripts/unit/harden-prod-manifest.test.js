@@ -2,11 +2,11 @@
 //
 // The script rewrites `build/manifest` so no development-only `bs_const` reaches a
 // release artifact. It is the last thing standing between a `debug=true` working tree
-// and the store, and nothing else in the repo reads the built manifest — so its
-// behavior is worth pinning rather than eyeballing the build log.
+// and the store, and nothing else in the repo checks the built manifest's `bs_const`,
+// so its behavior is worth pinning rather than eyeballing the build log.
 //
 // It resolves `build/manifest` from process.cwd(), so each case runs in a temp
-// workspace and gets full behavioral coverage (not just "the script loaded").
+// workspace and gets full behavioral coverage (not only "the script loaded").
 
 import { describe, it, expect } from 'vitest';
 import { spawnScript } from './_helpers/spawn-script.js';

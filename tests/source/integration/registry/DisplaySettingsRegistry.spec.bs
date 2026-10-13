@@ -335,7 +335,7 @@ namespace tests
       displaySettings[m.testLibraryId] = libSettings
       m.settingsNode.displaySettings = displaySettings
 
-      ' Should NOT write to registry yet
+      ' Should not write to registry yet
       reg = CreateObject("roRegistrySection", m.testUserId)
       m.assertFalse(reg.exists("display." + m.testLibraryId + ".sortField"), "Should NOT save before enableAutoSync")
 
@@ -363,7 +363,7 @@ namespace tests
       ' Try to set invalid display settings
       m.settingsNode.displaySettings = invalid
 
-      ' Should not crash, just skip
+      ' Should not crash, only skip
       ' No assertions needed - test passes if no crash
       m.assertTrue(true, "Should handle invalid displaySettings without crashing")
     end function

@@ -76,9 +76,9 @@ describe('probeFixture', () => {
     expect(r.error).toMatch(/bad server url/);
   });
 
-  // NOTE: there is deliberately no test for "settles once when a late answer races the
+  // NOTE: there is on purpose no test for "settles once when a late answer races the
   // timeout". `resolve` is idempotent, so that behaviour holds with or without the guard
-  // in the source — a test for it passes either way and proves nothing. Mutation caught it
+  // in the source: a test for it passes either way and proves nothing. Mutation caught it
   // as vacuous on 2026-09-06, which is the same defect class the suite's own gates are
   // audited for; the guard's comment records why it stays anyway.
   it('gives up on its own deadline rather than hanging the run it measures', async () => {

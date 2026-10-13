@@ -3,7 +3,7 @@
 // The bug this guards: git resolves its repo from GIT_DIR before cwd, and git
 // exports GIT_DIR to hooks run in a linked worktree. Without scrubbing, running
 // these tests under the pre-push hook from a worktree rewrote the real
-// repository — branch ref, shared config and tags. See git-env.js.
+// repository: branch ref, shared config and tags. See git-env.js.
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';

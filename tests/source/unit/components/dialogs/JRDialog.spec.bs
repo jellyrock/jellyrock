@@ -130,7 +130,7 @@ namespace tests
 
     ' The subheading is a lead-in to the body, not a second title: it renders
     ' BELOW the accent rule and ABOVE the message. Asserted against the rendered
-    ' translations rather than the layout function, which is gated separately —
+    ' translations rather than the layout function, which is gated separately:
     ' this is the wiring between them.
     @it("renders above the message when set")
     function _()
@@ -155,8 +155,8 @@ namespace tests
       m.assertTrue(subheadingY < messageY, "subheading must render above the message")
     end function
 
-    ' It is BOLD because that is the only thing separating it from the body — it
-    ' shares the body's size, colour and centring. Losing the weight would leave
+    ' It is bold because that is the only thing separating it from the body: it
+    ' shares the body's size, color and centering. Losing the weight would leave
     ' two indistinguishable lines.
     @it("renders bold, to distinguish it from the body it leads")
     function _()
@@ -192,7 +192,7 @@ namespace tests
     ' play route) must be able to decline a close the user did not make, or
     ' presentOverlayDialog's supersede fires that action from inside the mount of
     ' the dialog replacing it.
-    ' Only the cancelDialog() path is reachable from a spec — onKeyEvent is not in
+    ' Only the cancelDialog() path is reachable from a spec: onKeyEvent is not in
     ' the <interface>, so a callFunc to it would silently do nothing. The
     ' user-resolution side (every other route leaves the key false) is gated
     ' where it is reachable, on the pure builders in dialogResult.spec.bs.

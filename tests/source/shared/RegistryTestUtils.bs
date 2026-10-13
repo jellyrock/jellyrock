@@ -1,7 +1,7 @@
 namespace RegistryTestUtils
 
   ' Delete all registry sections that match test pattern
-  ' This fully removes the sections from the registry, not just their keys
+  ' This fully removes the sections from the registry, not only their keys
   sub CleanupTestRegistrySections(pattern = "test-" as string)
     registry = CreateObject("roRegistry")
     allSections = registry.GetSectionList()

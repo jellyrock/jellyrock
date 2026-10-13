@@ -5,7 +5,7 @@ namespace tests
   ' The DISPLAY half of the per-version work: what a poster or episode row should show when
   ' the bar's version is not the one Play would start (12.0+). Choosing a version to PLAY is
   ' versionResume.spec.bs; the carry guard and whole-decision function have their own files
-  ' (one @suite per file — tests/CLAUDE.md).
+  ' (one @suite per file, see tests/CLAUDE.md).
   '
   ' The shape under test is two requests reduced to three pure steps: multiVersionIds() says
   ' whether either request is worth making, resumeRanking() turns the server's DatePlayed order
@@ -47,8 +47,8 @@ namespace tests
 
     @it("treats an absent MediaSourceCount as a single version")
     function _()
-      ' The server omits the field entirely unless an item HAS alternates — measured
-      ' 2026-09-19 on every server from 10.7.7 to 12.0.0.
+      ' The server omits the field entirely unless an item HAS alternates (measured
+      ' 2026-09-19 on every server from 10.7.7 to 12.0.0).
       m.assertEqual(versionResume.multiVersionIds([{ Id: "a" }]).Count(), 0)
     end function
 
@@ -82,7 +82,7 @@ namespace tests
     @it("counts a skipped row in the rank, so the order stays faithful")
     function _()
       ' A row with no position contributes nothing, but it still occupied a place in the
-      ' server's recency order — dropping it would move everything after it forward.
+      ' server's recency order: dropping it would move everything after it forward.
       ranking = versionResume.resumeRanking([
         m.row("nothing", 0&, 0.0),
         m.row("real", 500&, 50.0)

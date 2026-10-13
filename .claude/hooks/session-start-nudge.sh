@@ -26,7 +26,7 @@ cat >/dev/null
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" || exit 0
 
-LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${HOME}/.claude/jellyrock-telemetry}"
+LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/jellyrock/telemetry}"
 LOG_FILE="$LOG_DIR/session-start-nudge-errors.log"
 mkdir -p "$LOG_DIR" 2>/dev/null
 

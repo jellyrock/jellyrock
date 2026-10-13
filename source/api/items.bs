@@ -47,8 +47,8 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
   ' and playlist-too-large errors during HLS playback.
   '
-  ' Everything below that reads the source — its bitrate and runtime here, its streams and
-  ' container for the Dolby Vision, H264 and audio decisions — reads the version this request
+  ' Everything below that reads the source (its bitrate and runtime here, its streams and
+  ' container for the Dolby Vision, H264 and audio decisions) reads the version this request
   ' is for, not the server's default (mediaSourceForId).
   playedSource = invalid
   if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData)
@@ -81,7 +81,7 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
       end if
 
       ' Reduce max streaming bitrate only when segment length alone isn't enough.
-      ' Never set MaxStreamingBitrate below the reported source bitrate + 10% headroom —
+      ' Never set MaxStreamingBitrate below the reported source bitrate + 10% headroom:
       ' Jellyfin would reject a remux/direct-stream as exceeding the limit.
       if transcodingParams.maxBitrate > 0
         minAllowedBitrate& = sourceBitrate& * 11& \ 10&
@@ -159,7 +159,7 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
 
   ' Cap H264 codec profile when the source video is H264.
   ' Applied dynamically here rather than in the static device profile so it doesn't
-  ' interfere with non-H264 content (e.g. HEVC DoVi remux needs unrestricted resolution).
+  ' interfere with non-H264 content (for example, HEVC DoVi remux needs unrestricted resolution).
   ' 1080p (1920x1080) is the H264 hardware ceiling on all Roku devices, but a lower
   ' user resolution cap is respected if set.
   if isValid(mediaStreams)
@@ -264,7 +264,7 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   return postData
 end function
 
-' MetaData about an item — returns a JellyfinBaseItem node.
+' MetaData about an item. Returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.
 function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string, forceRefresh = false as boolean)
   req = GetApi().BuildGetItemRequest(id, { "fields": fields })
@@ -280,7 +280,7 @@ function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string, for
 end function
 
 ' inheritSeriesOriginalLanguage: Give an episode its series' OriginalLanguage when track
-' selection needs it (needsSeriesOriginalLanguage()) — as the server does for its own pick.
+' selection needs it (needsSeriesOriginalLanguage()), as the server does for its own pick.
 ' One extra request, made only for a viewer whose audio preference is "Original language".
 '
 ' @param {dynamic} item - JellyfinBaseItem from ItemMetaData()
@@ -293,7 +293,7 @@ sub inheritSeriesOriginalLanguage(item as dynamic)
   end if
 end sub
 
-' MetaData for an item detail screen — includes People, Genres, and Studios in addition to
+' MetaData for an item detail screen. Includes People, Genres, and Studios in addition to
 ' Chapters and Trickplay. Use this instead of ItemMetaData() when populating a detail view.
 function ItemDetailsMetaData(id as string, forceRefresh = false as boolean)
   return ItemMetaData(id, "Chapters,Trickplay,Genres,Studios,People", forceRefresh)
@@ -301,13 +301,13 @@ end function
 
 ' ── Music extras requests ─────────────────────────────────────────────────
 ' Request builders for ItemDetails' music extras rows, which LoadExtrasRowsTask pipelines.
-' They return a request AA rather than fetching, so the orchestrator owns the round trip —
-' but the params are built HERE, in the API layer, because that is the scope the API usage
+' They return a request AA rather than fetching, so the orchestrator owns the round trip,
+' but the params are built here, in the API layer, because that is the scope the API usage
 ' manifest reads its request fields from (scripts/generate/api-usage-manifest.js). Built in
 ' a component instead, these fields would silently drop out of server-upgrade triage.
 
 ' Albums where this artist is the album artist (strict: AlbumArtistIds only), newest first.
-' Does NOT include albums the artist merely contributes to — see BuildArtistAppearsOnRequest.
+' Does not include albums the artist only contributes to. See BuildArtistAppearsOnRequest.
 function BuildArtistAlbumsRequest(artistId as string) as dynamic
   return GetApi().BuildGetItemsByQueryRequest({
     "AlbumArtistIds": artistId,
@@ -318,7 +318,7 @@ function BuildArtistAlbumsRequest(artistId as string) as dynamic
   })
 end function
 
-' Albums an artist appears on as a contributing artist but is NOT the album artist of —
+' Albums an artist appears on as a contributing artist but is not the album artist of:
 ' Jellyfin's ContributingArtistIds, so mutually exclusive with BuildArtistAlbumsRequest.
 ' Newest first.
 function BuildArtistAppearsOnRequest(artistId as string) as dynamic
@@ -666,7 +666,7 @@ end function
 ' in docs/dev/jellyfin-endpoint-availability.yml, and lint:endpoint-availability fails a
 ' file that sends it without calling this.
 '
-' @param {string} serverVersion - Server version string, e.g. "10.10.7"
+' @param {string} serverVersion - Server version string, for example "10.10.7"
 ' @returns {boolean} - true below 10.11.0
 function honorsDisableFirstEpisode(serverVersion as string) as boolean
   return not versionChecker(serverVersion, "10.11.0")
@@ -689,7 +689,7 @@ end function
 ' buildHomeNextUpParams: Query parameters for the Home Next Up row.
 '
 ' On 10.7–10.10, a user with no watch history inside the cutoff gets the first episode of
-' EVERY series (one per series, not a short list). DisableFirstEpisode=true drops those, but
+' every series (one per series, not a short list). DisableFirstEpisode=true drops those, but
 ' on 10.8–10.10 it also makes the server ignore NextUpDateCutoff. So it is sent only where
 ' it costs nothing: always on 10.7 (which has no cutoff), and on 10.8–10.10 only when Max
 ' Days is off. With Max Days on, those servers keep the cutoff and still add first episodes.
@@ -699,7 +699,7 @@ end function
 ' user with no finished episode gets no Next Up row. That is intended, and differs from
 ' jellyfin-web, which shows those first episodes.
 '
-' @param {string} serverVersion - Server version string, e.g. "10.10.7"
+' @param {string} serverVersion - Server version string, for example "10.10.7"
 ' @param {boolean} enableRewatching - uiDetailsEnableRewatchingNextUp
 ' @param {dynamic} maxDays - uiDetailsMaxDaysNextUp; 0 or invalid means off
 ' @param {integer} nowSeconds - Current time as epoch seconds, for the cutoff
@@ -710,13 +710,13 @@ function buildHomeNextUpParams(serverVersion as string, enableRewatching as bool
   params["SortBy"] = "DatePlayed"
   params["SortOrder"] = "Descending"
   params["EnableRewatching"] = enableRewatching
-  ' DELIBERATELY NO `limit`. Next Up is a WORKLIST — the user is trying to get through it,
+  ' No `limit`, on purpose. Next Up is a worklist: the user is trying to get through it,
   ' so any cap hides episodes they are part-way into a series on, and no number is the right
   ' one to hide at. It sent 69 for a long time, which was arbitrary rather than derived.
-  ' `uiHomeRowLimit` deliberately does NOT reach here: that setting sizes the browse FEEDS
+  ' `uiHomeRowLimit` does not reach here, on purpose: that setting sizes the browse feeds
   ' (Recently Added / On Now / Active Recordings), where a limit chooses how much of a
   ' larger set to sample. Continue Watching, the other worklist, sends no limit either and
-  ' has shipped that way — the two now match on purpose rather than by omission.
+  ' has shipped that way. The two now match on purpose rather than by omission.
   params["EnableTotalRecordCount"] = false
   params["EnableResumable"] = false
   ' Drives the alternate-versions badge. The server only emits the field for an item that
@@ -782,7 +782,7 @@ end sub
 '   Strips ALL stereo-output codecs (aac, mp3, flac, alac, pcm, lpcm, wav, vorbis). Without this,
 '   Jellyfin's HLS muxer offers BOTH the surround codec AND a stereo fallback as separate variants
 '   in the master playlist, and Roku's HLS player has been observed (via in-house testing on
-'   physical hardware; no upstream tracking issue at time of writing) to pick the stereo variant —
+'   physical hardware; no upstream tracking issue at time of writing) to pick the stereo variant,
 '   defeating the entire point of having surround passthrough hardware. Caller must already have
 '   verified the device has surround passthrough before invoking with channelCount > 2.
 '
@@ -792,7 +792,7 @@ end sub
 '   If filtering empties a previously non-empty list, falls back to "mp3" (the intended target).
 '
 ' Multichannel surround target (issue #573):
-'   For a >2ch source, the stripped list MUST lead with a server-encodeable surround codec.
+'   For a >2ch source, the stripped list must lead with a server-encodeable surround codec.
 '   Two failure modes this prevents, both observed on Jellyfin 10.11 via PlaybackInfo probes:
 '     - Empty list: Jellyfin's StreamBuilder omits the audioCodec query param, the server's
 '       InferAudioCodec falls through to the container name ("m3u8"), ffmpeg gets
@@ -802,7 +802,7 @@ end sub
 '       opus resolves server-side to opus, silently abandoning the user's surround/passthrough
 '       intent for a decoded stereo-ish path.
 '   Fix: prepend the user's preferred multichannel codec (playbackPreferredMultichannelCodec),
-'   clamped to a reliably-encodeable HLS surround target — eac3 or ac3 (dts is excluded: the
+'   clamped to a reliably-encodeable HLS surround target, eac3 or ac3 (dts is excluded: the
 '   server emits no audio stream for a dts transcode target). This is a no-op for healthy
 '   profiles (their stripped list already leads with eac3/ac3) and only rescues the degenerate
 '   truehd/dtshd-only shape.
@@ -811,12 +811,12 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
   if not isValid(deviceProfile) then return
   if not isValid(deviceProfile.TranscodingProfiles) then return
 
-  ' Codecs that, as a server transcode target, can't carry surround channels — strip these for
+  ' Codecs that, as a server transcode target, can't carry surround channels. Strip these for
   ' multichannel sources so the server is forced to pick a surround codec from the remaining list.
   ' Note: this list is intentionally distinct from `stereoOutputCodecs` in deviceCapabilities.bs;
   ' that list represents Roku decode-path behavior (different concept), so the contents differ.
   stereoOnlyCodecs = ["aac", "mp3", "flac", "alac", "pcm", "lpcm", "wav", "vorbis"]
-  ' Surround passthrough codecs — pointless for stereo sources, strip them.
+  ' Surround passthrough codecs: pointless for stereo sources, strip them.
   surroundCodecs = ["eac3", "ac3", "dts"]
 
   for each rule in deviceProfile.TranscodingProfiles
@@ -843,9 +843,9 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
 
         if channelCount > 2 and rule.AudioCodec <> ""
           ' Multichannel with a real source list: guarantee a user-preferred, server-encodeable
-          ' surround codec leads the list so the server can never resolve to an empty list (→ m3u8)
+          ' surround codec leads the list so the server can never resolve to an empty list (which becomes m3u8)
           ' or an on-device-decode codec (opus/aac). See block comment above for the server-side
-          ' bugs this prevents. (An originally-empty AudioCodec is left untouched — optimize rescues
+          ' bugs this prevents. (An originally-empty AudioCodec is left untouched: optimize rescues
           ' lists it would otherwise empty, it doesn't invent a codec where the profile had none.)
           surroundTarget = resolveMultichannelSurroundTarget(preferredMultichannelCodec)
           finalList = [surroundTarget]
@@ -863,7 +863,7 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
           end if
           rule.AudioCodec = newCodecList.join(",")
         else
-          ' Multichannel but the profile had an originally-empty AudioCodec — leave it empty
+          ' Multichannel but the profile had an originally-empty AudioCodec: leave it empty
           ' (handled gracefully; optimize does not invent a codec where the profile had none).
           rule.AudioCodec = newCodecList.join(",")
         end if
@@ -874,7 +874,7 @@ end sub
 
 ' Resolve the surround transcode target for a multichannel source from the user's preferred
 ' multichannel codec setting (playbackPreferredMultichannelCodec). Clamped to the reliably-
-' encodeable HLS surround targets: eac3 (default) and ac3. dts is intentionally excluded — the
+' encodeable HLS surround targets: eac3 (default) and ac3. dts is intentionally excluded: the
 ' Jellyfin server emits no audio stream for a dts transcode target (verified on 10.11), so a dts
 ' fallback would itself re-trigger the issue #573 failure. Both eac3 and ac3 are valid HLS audio
 ' targets in every video transcoding container (ts and mp4), so no per-container clamp is needed.

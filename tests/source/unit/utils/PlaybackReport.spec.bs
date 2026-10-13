@@ -113,7 +113,7 @@ namespace tests
 
     ' This test used to assert "Direct playing" here, which PINNED the defect: a
     ' session we never received is not a session that told us anything. The two
-    ' cases below are the ones that must not be conflated — an absent session and
+    ' cases below are the ones that must not be conflated: an absent session and
     ' a present session with no TranscodingInfo both leave `transcoding` invalid,
     ' and only the second is a direct play.
     @it("claims nothing about a session it never received")
@@ -128,7 +128,7 @@ namespace tests
     @it("still describes the FILE when the session is missing, source-only")
     function _()
       ' The static half comes from cached PlaybackInfo and is not in doubt, so the
-      ' report is still worth opening — every row just renders without a target,
+      ' report is still worth opening. Every row renders without a target,
       ' which is the honest rendering of "nothing known about the output".
       m.input.session = invalid
       report = buildPlaybackReport(m.input)
@@ -171,7 +171,7 @@ namespace tests
     @it("drops the arrow for a stream that is being copied")
     function _()
       ' The absence of an arrow is how the report says "untouched". A remux must
-      ' not render "EAC3 → EAC3" just because a transcode session exists.
+      ' not render `EAC3 → EAC3` only because a transcode session exists.
       m.input.session.TranscodingInfo.IsAudioDirect = true
       m.input.session.TranscodingInfo.AudioCodec = "eac3"
       report = buildPlaybackReport(m.input)
@@ -183,7 +183,7 @@ namespace tests
     function _()
       ' REGRESSION. Source channels used to come from ChannelLayout ("stereo")
       ' while the target could only come from TranscodingInfo.AudioChannels (a
-      ' number), so an unchanged stereo track rendered "stereo -> 2.0" — an arrow
+      ' number), so an unchanged stereo track rendered "stereo -> 2.0": an arrow
       ' claiming a conversion that never happened. Caught in a device capture, not
       ' by any gate. Both sides go through formatAudioChannels now.
       m.input.audioStreamIndex = 1
@@ -194,8 +194,8 @@ namespace tests
 
     @it("falls back to the server's layout wording when the count is missing")
     function _()
-      ' Still paired against the real 2-channel target — the fallback replaces the
-      ' SOURCE half only, and this fixture genuinely downmixes 6ch to 2ch.
+      ' Still paired against the real 2-channel target: the fallback replaces the
+      ' SOURCE half only, and this fixture does downmix 6ch to 2ch.
       m.input.mediaSource.MediaStreams[2].delete("Channels")
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.channels"), "5.1" + PLAYBACK_INFO_ARROW + "2.0")
     end function
@@ -262,8 +262,8 @@ namespace tests
     @it("shows source-only when rangetype is a list of ALLOWED values")
     function _()
       ' StreamBuilder writes a comma-joined permitted set here, and in one branch
-      ' the complement of a set. A list of genuinely different outcomes is a
-      ' constraint, not an outcome — reading it as the target would be the most
+      ' the complement of a set. A list of truly different outcomes is a
+      ' constraint, not an outcome. Reading it as the target would be the most
       ' convincing wrong thing this report could say. SDR and HDR10 are both
       ' reachable by an encode, so which one comes out is the server's business.
       m.input.mediaSource.TranscodingUrl = Substitute("{0}", m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,HDR10,HLG"))
@@ -274,8 +274,8 @@ namespace tests
     ' one. JellyRock sends `EqualsAny` with "SDR|DOVIWithSDR" for h264, and
     ' StreamBuilder's EqualsAny branch re-joins that permitted set into the URL as
     ' `h264-rangetype=SDR,DOVIWithSDR`. The old guard rejected anything with a
-    ' comma, so an HDR10 source tone-mapped to h264 rendered "HDR10" with NO
-    ' ARROW — which by this report's own rule means untouched, the opposite of
+    ' comma, so an HDR10 source tone-mapped to h264 rendered "HDR10" with no
+    ' arrow, which by this report's own rule means untouched: the opposite of
     ' what was happening.
     @it("names SDR when the only non-DoVi member of the permitted set is SDR")
     function _()
@@ -295,7 +295,7 @@ namespace tests
 
     @it("claims nothing when every permitted value is a DoVi variant")
     function _()
-      ' An encode cannot author Dolby Vision — DoVi survives only by copy, and a
+      ' An encode cannot author Dolby Vision. DoVi survives only by copy, and a
       ' copy would have suppressed the target already. So a set with nothing else
       ' in it describes an outcome that cannot happen, and silence is the answer.
       m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=DOVIWithSDR,DOVIWithHDR10")
@@ -326,7 +326,7 @@ namespace tests
     @it("leaves bit depth alone when the source already fits under the ceiling")
     function _()
       ' videobitdepth is a MAXIMUM. An 8-bit source under an 8-bit ceiling is
-      ' untouched, and "8-bit → 8-bit" would imply a conversion that never ran.
+      ' untouched, and `8-bit → 8-bit` would imply a conversion that never ran.
       m.input.mediaSource.MediaStreams[0].BitDepth = 8
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitdepth"), "8-bit")
     end function
@@ -399,8 +399,8 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("every reason the server can give has a row that shows it")
 
-    ' AudioProfileNotSupported was the one reason in Jellyfin's 27-value
-    ' vocabulary naming a property this report did not render — found on device
+    ' AudioProfileNotSupported was the one reason in Jellyfin's vocabulary
+    ' naming a property this report did not render. It was found on device
     ' by a user watching an AAC -> MP3 transcode with no audio profile in sight.
     @it("shows the audio profile, which AudioProfileNotSupported is about")
     function _()
@@ -522,7 +522,7 @@ namespace tests
 
     @it("never claims a delivery method the server did not state")
     ' REGRESSION. This used to return "Embedded" unconditionally when nothing
-    ' said otherwise — a guess presented as a fact, which is the same shape as
+    ' said otherwise: a guess presented as a fact, which is the same shape as
     ' the status line claiming "Direct playing" on a failed fetch. An absent row
     ' is the honest answer and matches every other unknown in this report.
     function _()
@@ -568,7 +568,7 @@ namespace tests
     @it("reports transcode speed as a real-time multiplier")
     function _()
       ' 52 fps encoded against a 23.976 fps source is 2.2x real time. Below 1.0x
-      ' the server cannot keep up — the single most actionable figure here.
+      ' the server cannot keep up: the single most actionable figure here.
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps (2.2x)")
     end function
 
@@ -661,7 +661,7 @@ namespace tests
 
     @it("drops the acceleration row on a server too old to report it")
     function _()
-      ' HardwareAccelerationType arrives from 10.8. Absent means no row — no
+      ' HardwareAccelerationType arrives from 10.8. Absent means no row, with no
       ' version check anywhere, because presence IS the check.
       m.input.session.TranscodingInfo.delete("HardwareAccelerationType")
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.acceleration"), "<missing>")
@@ -723,7 +723,7 @@ namespace tests
     @it("withholds the path when we do not know who is watching")
     function _()
       ' Policy is server-authoritative and can legitimately be absent. Absent must
-      ' read as NOT an administrator — the safe direction is the one that withholds.
+      ' read as not an administrator: the safe direction is the one that withholds.
       m.input.isAdministrator = invalid
       report = buildPlaybackReport(m.input)
       for each row in m.sectionById(report, "file").rows
@@ -819,7 +819,7 @@ namespace tests
 
     @it("omits size on a live stream, which has no file to have one")
     function _()
-      ' A live channel still reports a Size — of its HLS playlist, not its
+      ' A live channel still reports a Size: that of its HLS playlist, not its
       ' content. Measured against a real server: a channel's PlaybackInfo comes
       ' back with IsInfiniteStream true, and the figure rendered as "27.5 KiB"
       ' beside a film's "24.2 GiB".
@@ -835,7 +835,7 @@ namespace tests
 
     @it("keeps size for anything that is not an infinite stream")
     function _()
-      ' Absent must read as "not live" — an older server that never sends the flag
+      ' Absent must read as "not live": an older server that never sends the flag
       ' has to keep behaving as it does today.
       m.input.mediaSource.IsInfiniteStream = invalid
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.size"), "24.2 GiB")
@@ -892,7 +892,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' REGRESSION. The report divided every level by ten, so an HEVC stream at
-    ' level 153 rendered "Main 10 @ L15.3" — and the device capture that caught it
+    ' level 153 rendered "Main 10 @ L15.3", and the device capture that caught it
     ' showed "L15.0" for a level-150 stream. HEVC's maximum defined level is 6.2,
     ' so those are not levels that exist.
     '

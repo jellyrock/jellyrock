@@ -1,9 +1,9 @@
-// Tests for scripts/lib/bsc-rule.cjs — the shared lifecycle for BSC convention
+// Tests for scripts/lib/bsc-rule.cjs: the shared lifecycle for BSC convention
 // plugins.
 //
 // The lifecycle is tested with SYNTHETIC rules rather than through a real
 // plugin, so a failure here points at the lifecycle and not at somebody's
-// wiring logic. The rules below are deliberately trivial: what matters is WHEN
+// wiring logic. The rules below are trivial on purpose: what matters is WHEN
 // their findings appear and disappear, not what they detect.
 //
 // The regression this module exists for: a rule whose verdict depends on the
@@ -27,7 +27,7 @@ const {
 
 const CODE = 'synthetic-rule';
 
-// Component XML whose interface optionally carries an onChange — the "other
+// Component XML whose interface optionally carries an onChange: the "other
 // half" whose edits must move the verdict.
 const xml = (withOnChange) =>
   `<?xml version="1.0" encoding="utf-8" ?>

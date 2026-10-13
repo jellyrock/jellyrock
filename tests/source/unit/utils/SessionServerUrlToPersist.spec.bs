@@ -1,6 +1,6 @@
 namespace tests
 
-  ' `server.UrlToPersist()` — which server URL `server.UpdateURL()` writes to the
+  ' `server.UrlToPersist()`: which server URL `server.UpdateURL()` writes to the
   ' registry after a successful connection.
   '
   ' The rule: save what the user ENTERED, never the canonical URL it was normalized

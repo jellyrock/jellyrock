@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  LOADING STATE PATTERN: ALWAYS LOADED
+  LOADING STATE PATTERN: always loaded
 
-  Settings are ALWAYS loaded (synchronously from registry or defaults).
+  Settings are always loaded (synchronously from registry or defaults).
   Empty values represent "use app default" (valid state).
   No loading states needed - settings node always exists and is valid.
 
   DEFAULT VALUES:
-  Default values are NOT hardcoded in this XML file. They are loaded at runtime
+  Default values are not hardcoded in this XML file. They are loaded at runtime
   from settings/settings.json via user.settings.SaveDefaults() during app startup.
   This ensures a single source of truth and prevents drift between XML and JSON.
 
-  Field definitions below have NO value attributes - all defaults come from settings.json.
+  Setting fields below have NO value attributes - all defaults come from settings.json
+  (only the loading-state fields, isLoaded and loadedAt, declare one).
 -->
 <component name="JellyfinUserSettings" extends="ContentNode">
   <interface>

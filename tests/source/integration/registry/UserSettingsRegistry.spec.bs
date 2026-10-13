@@ -369,7 +369,7 @@ namespace tests
 
       ' Verify user settings exist in user registry section
       reg = CreateObject("roRegistrySection", testUserId)
-      m.assertFalse(reg.exists("globalRememberMe")) ' Global setting should NOT be in user section
+      m.assertFalse(reg.exists("globalRememberMe")) ' Global setting should not be in user section
       m.assertTrue(reg.exists("uiDesignHideClock"))
       m.assertTrue(reg.exists("uiRowLayout"))
       m.assertTrue(reg.exists("itemGridTitles"))
@@ -419,7 +419,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' Settings reset brackets its bulk rewrite with disableAutoSync / enableAutoSync, so
-    ' nothing written while disabled may reach the registry — and sync must come back.
+    ' nothing written while disabled may reach the registry, and sync must come back.
     @it("disableAutoSync stops registry writes, and enableAutoSync resumes them")
     function _()
       testUserId = "test-autosync-toggle-001"
@@ -464,7 +464,7 @@ namespace tests
       m.assertEqual(userKeys.Count(), 0, "No default may reach the user section: " + FormatJson(userKeys))
       m.assertEqual(FormatJson(RegistryReadAll(getGlobalRegistrySection())), FormatJson(globalBefore), "No default may reach the global section")
 
-      ' And sync is genuinely on afterwards, so the empty section is not a dead observer
+      ' And sync is on afterwards, so the empty section is not a dead observer
       user.settings.Save("playbackBitrateLimit", 4000)
       m.assertEqual(CreateObject("roRegistrySection", testUserId).read("playbackBitrateLimit"), "4000", "Should sync once enabled")
 

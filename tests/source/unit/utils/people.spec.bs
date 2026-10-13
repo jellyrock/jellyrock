@@ -259,7 +259,7 @@ namespace tests
     @it("renders nothing for a kind we deliberately leave unlabelled")
     function _()
       ' `Unknown` is the enum's serialization default, so it means "the server did not
-      ' say" — which must read the same as no type at all, not as the literal word.
+      ' say", which must read the same as no type at all, not as the literal word.
       m.assertEqual(personCreditLabel("Unknown", ""), "")
       m.assertEqual(personCreditLabel("Unknown", "Unknown"), "")
     end function
@@ -433,7 +433,7 @@ namespace tests
         { Id: "c2", Name: "Kerri Kenney", Type: "Creator" }
       ])
       m.assertEqual(specs.count(), 2)
-      ' Row order comes from creditRowKinds(), NOT from the order People arrived in —
+      ' Row order comes from creditRowKinds(), not from the order People arrived in:
       ' the director is first in the array above and still lands second.
       m.assertEqual(specs[0].id, "creator")
       m.assertEqual(specs[0].text, "Created by Thomas Lennon, Kerri Kenney")
@@ -443,7 +443,7 @@ namespace tests
 
     ' The single pass buckets per kind, so each kind keeps its OWN `seen` map. One shared
     ' map would let the creator line swallow the identical Id and drop "Directed by"
-    ' entirely — green tests, missing line.
+    ' entirely: green tests, missing line.
     @it("shows someone credited as both creator and director on BOTH lines")
     function _()
       specs = creditRowSpecs([
@@ -455,7 +455,7 @@ namespace tests
       m.assertEqual(specs[1].text, "Directed by Mike Judge")
     end function
 
-    ' Otherwise the line renders the literal "Created by" followed by blanks — the one
+    ' Otherwise the line renders the literal "Created by" followed by blanks: the one
     ' shape the row must never take.
     @it("drops a name that is only whitespace rather than padding the line")
     function _()

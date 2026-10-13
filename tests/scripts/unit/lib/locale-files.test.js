@@ -1,5 +1,5 @@
 /**
- * `scripts/lib/locale-files.cjs` — the canonical locale-file form and the key-level
+ * `scripts/lib/locale-files.cjs`: the canonical locale-file form and the key-level
  * merge release prep uses instead of overwriting main's locale files with weblate's.
  */
 import { describe, expect, it } from 'vitest';
@@ -68,7 +68,7 @@ describe('mergeLocales', () => {
     });
 
   it.each([
-    // ancestor, ours, theirs → result
+    // ancestor, ours, theirs, then the result
     ['a', 'a', 'a', 'a'], //            nobody changed it
     ['a', 'main', 'a', 'main'], //      fixed on main: main's fix survives
     ['a', 'a', 'web', 'web'], //        changed in Weblate

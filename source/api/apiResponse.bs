@@ -1,6 +1,6 @@
 import "pkg:/source/utils/misc.bs"
 
-' Shape checks for parsed response bodies — the one place a caller learns whether a body holds
+' Shape checks for parsed response bodies: the one place a caller learns whether a body holds
 ' what its endpoint promised, before it iterates or indexes it.
 namespace apiResponse
 
@@ -20,12 +20,12 @@ namespace apiResponse
   '
   ' Also accepts the `{ Items: [...] }` query-result wrapper. Stock Jellyfin does not send it for
   ' bare-array endpoints, but a server has sent exactly that for /Items/Latest in the field, and
-  ' its `Items` is the same list — so reading it shows the user their content where rejecting it
+  ' its `Items` is the same list, so reading it shows the user their content where rejecting it
   ' would leave the row empty on every retry. The same property makes this the reader for a
   ' query-result endpoint too, when a caller wants its list and nothing else.
   '
   ' invalid means "no list", which callers must treat as NO ANSWER, not as an authoritative
-  ' empty list — an empty array is returned as-is and is the only way to say "empty".
+  ' empty list. An empty array is returned as-is and is the only way to say "empty".
   '
   ' @param json - a parsed response body (`res.json`), any type
   ' @return the roArray, or invalid
@@ -48,7 +48,7 @@ namespace apiResponse
   ' this, so a caller of a list request never sees a body it cannot iterate.
   '
   ' For a request built with `expect: "list"`, an ok response leaves with `json` set to the list
-  ' (unwrapped by listFrom), or — when the body holds none — with `ok = false`, `json = invalid`
+  ' (unwrapped by listFrom), or, when the body holds none, with `ok = false`, `json = invalid`
   ' and `error = "unexpectedShape"`. `statusCode` stays the server's, so a log line still says
   ' what came back. Reporting it as not-ok is deliberate: every caller already treats `not ok` as
   ' "no answer", which is what an unreadable body is. Any other response is returned untouched.
@@ -83,7 +83,7 @@ namespace apiResponse
   end function
 
   ' Why a request that should have answered with JSON did not, in the few words a warning log
-  ' line needs — "" when the reply is usable. A caller that shows a failure state keeps the
+  ' line needs, or "" when the reply is usable. A caller that shows a failure state keeps the
   ' cause for its log and tells its screen only that the load failed.
   '
   ' The shapes are the pool's: `invalid` from fetchRes when the caller's wait ran out; no

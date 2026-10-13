@@ -9,7 +9,7 @@ end sub
 ' rest of the suite.
 '
 ' `blockMode` exists because the app's Tasks do not all block alike, and the question a
-' relaunch raises is what the OLD run does, not just whether a new one starts:
+' relaunch raises is what the OLD run does, not only whether a new one starts:
 '   pollLoop  - wait() on a port in a loop, re-reading a field each pass (the original probe)
 '   waitOnce  - ONE long wait() on a port, which is what `fetchJson` does inside the pool
 '   sleepOnce - sleep(), which parks the thread without a port at all
@@ -23,9 +23,9 @@ end sub
 '               (TaskStopProgress.spec.bs)
 '
 ' `seq` is read TWICE: once at entry and once after the block. A caller that stops the task,
-' writes a new `seq` and relaunches is doing what every app site does with its input field
-' (`m.searchTask.query = query` then launch). If the relaunch is ignored but the old run
-' survives its block, `endSeq` shows the run finishing against the NEW input — which looks
+' writes a new `seq` and relaunches is doing what every app site did with its input field
+' before #961 (`m.searchTask.query = query` then launch). If the relaunch is ignored but the old
+' run survives its block, `endSeq` shows the run finishing against the NEW input, which looks
 ' correct on screen and hides the ignored launch.
 sub holdUntilReleased()
   m.top.starts = m.top.starts + 1

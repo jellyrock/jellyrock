@@ -98,7 +98,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-10-11
+last-reviewed: 2026-10-12
 ---
 
 # Build and tooling
@@ -508,7 +508,7 @@ Both shapes ride `lint:js`, which already has a CI home, so they need no new scr
 - [`.prettierrc.json`](../../.prettierrc.json) matches the `bsfmt` style: 2-space indent, single quotes, semicolons, trailing commas, 100 columns. `.vscode/*.json` uses the JSONC parser.
 - [`.prettierignore`](../../.prettierignore) leaves out `package-lock.json`, `locale/`, the vendored OpenAPI specs, `CHANGELOG.md` and the formats other tools own (`.bs`, `.brs`, `.xml`, `.md`). Every Prettier run trusts it.
 - [`vitest.config.js`](../../vitest.config.js) picks up `tests/scripts/**/*.test.js` and `tests/rta/**/*.test.js`, the RTA harness's hardware-free parts. The suffix matters: `tests/rta/specs/**/*.spec.js` drives a real device and belongs to `vitest.rta.config.js`.
-- Its `globalSetup`, [`no-durable-writes.js`](../../tests/scripts/setup/no-durable-writes.js), fails the run if a test wrote into `.device-runs/`, the ledger of real device runs ([scripts-development.md](../dev/scripts-development.md#a-test-must-not-write-into-device-runs)).
+- Its `globalSetup`, [`no-durable-writes.js`](../../tests/scripts/setup/no-durable-writes.js), fails the run if a test wrote into `.device-runs/`, the ledger of real device runs, or into `out/`, where a device run's package lives ([scripts-development.md](../dev/scripts-development.md#a-test-must-not-write-into-device-runs)).
 
 ### Surfaces for JS and JSON
 
@@ -668,7 +668,7 @@ It skips what the editor covers (`lint:bs`, `validate`, formatting), `lint:docs`
 
 ## Agent telemetry
 
-`.claude/settings.json` registers a `PostToolUse` hook for Read, Grep, Glob, Edit, Write and `MultiEdit`. [`log-tool-use.sh`](../../.claude/hooks/log-tool-use.sh) appends a JSON line to `~/.claude/jellyrock-telemetry/tool-use.jsonl`, or `$JELLYROCK_TELEMETRY_DIR`. The log is per user, so several checkouts feed one picture, and it is never committed. The hook never delays the tool, and without `jq` it does nothing.
+`.claude/settings.json` registers a `PostToolUse` hook for Read, Grep, Glob, Edit, Write and `MultiEdit`. [`log-tool-use.sh`](../../.claude/hooks/log-tool-use.sh) appends a JSON line to `${XDG_STATE_HOME:-~/.local/state}/jellyrock/telemetry/tool-use.jsonl`, or `$JELLYROCK_TELEMETRY_DIR`. The report also reads the older `~/.claude/jellyrock-telemetry` log while it exists, for checkouts that still write there. The log is per user, so several checkouts feed one picture, and it is never committed. The hook never delays the tool, and without `jq` it does nothing.
 
 `npm run agent-telemetry` reports the most-read and most-edited files and the most common search patterns. Use it to decide where a scoped `CLAUDE.md` would pay off.
 

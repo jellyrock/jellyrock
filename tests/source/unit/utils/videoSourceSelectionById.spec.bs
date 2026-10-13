@@ -2,7 +2,7 @@ import "pkg:/source/utils/streamSelection.bs"
 
 namespace tests
 
-  ' mediaSourceForId — which MediaSource a playback request is for.
+  ' mediaSourceForId: which MediaSource a playback request is for.
   '
   ' Playback used to read the file being played from mediaSources[0], the server's default.
   ' A version picked in the Video dropdown sits elsewhere in the list, and from Jellyfin 12.0

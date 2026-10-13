@@ -290,7 +290,7 @@ namespace tests
     @describe("Edge Cases - Missing Server URL (no-userId methods)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' These methods have NO userId guard — validatedReq() is their
+    ' These methods have no userId guard: validatedReq() is their
     ' only protection against a missing server URL.
 
     @it("returns invalid from BuildGetArtistSimilarRequest when serverUrl is empty")
@@ -854,7 +854,7 @@ namespace tests
       m.setApiVersion(2)
 
       ' buildParams() silently skips roArray values, so honoring mere key presence here
-      ' would send the query with NO mediaTypes at all — the #784 bug, silently.
+      ' would send the query with no mediaTypes at all: the #784 bug, silently.
       result = m.apiClient.BuildGetResumeItemsRequest({ MediaTypes: ["Video", "Audio"] })
 
       m.assertNotInvalid(result)
@@ -915,7 +915,7 @@ namespace tests
     ' Each endpoint below answers with a bare array (Jellyfin OpenAPI, 10.8.13 and 10.11.11), so
     ' its builder must use listReq: the pool then holds the body to that shape
     ' (apiResponse.enforceShape). A builder that drops it hands callers an unchecked body, and an
-    ' object body iterates as its KEYS — the v2.30.0 latest-media crash.
+    ' object body iterates as its keys: the v2.30.0 latest-media crash.
 
     private function listRequestsFor(apiVersion as integer) as object
       originalApiVersion = m.global.server.apiVersion

@@ -133,7 +133,7 @@ namespace tests
 
       result = transformer.transformBaseItem(apiData, "10.8.0")
 
-      ' UserData absent → user data fields stay at RSG zero-value defaults
+      ' UserData absent, so the user data fields stay at RSG zero-value defaults
       m.assertEqual(result.isWatched, false)
       m.assertEqual(result.isFavorite, false)
       m.assertEqual(result.playbackPositionTicks, 0&)
@@ -197,7 +197,7 @@ namespace tests
     function _()
       transformer = new JellyfinDataTransformer()
 
-      ' Studios can be objects with Name property or just strings
+      ' Studios can be objects with Name property or plain strings
       apiData = MockDataLoader.LoadItem("movie-with-studios")
 
       result = transformer.transformBaseItem(apiData, "10.8.0")
@@ -392,13 +392,13 @@ namespace tests
       ' Fields explicitly set by transformer (type=Movie)
       m.assertEqual(result.id, "item1")
       m.assertEqual(result.type, "Movie")
-      m.assertEqual(result.subtitle, "") ' no year or rating → empty string explicitly set
+      m.assertEqual(result.subtitle, "") ' no year or rating, so an empty string is set explicitly
 
       ' String fields the transformer never sets stay at "" (RSG default)
       m.assertEqual(result.primaryImageTag, "")
 
       ' type="array"/assocarray fields the transformer never sets stay invalid
-      ' type="stringarray" fields (e.g. backdropImageTags) default to [] not invalid
+      ' type="stringarray" fields (for example backdropImageTags) default to [] not invalid
       m.assertEqual(result.backdropImageTags.Count(), 0)
       m.assertInvalid(result.videoStreams)
       m.assertInvalid(result.audioStreams)
@@ -676,7 +676,7 @@ namespace tests
     function _()
       transformer = new JellyfinDataTransformer()
 
-      ' ChildCount absent from API response — ?? 0 guard should return ""
+      ' ChildCount absent from API response: the ?? 0 guard should return ""
       apiData = {
         Id: "pl1", Type: "Playlist", Name: "New Playlist"
       }
@@ -970,7 +970,7 @@ namespace tests
       result = transformer.transformBaseItem(apiData, "10.8.0", "eng")
 
       streams = result.subtitleStreams
-      m.assertEqual(streams[0].Index, 1) ' eng preferred → front of normal group
+      m.assertEqual(streams[0].Index, 1) ' eng preferred, so it leads the normal group
     end function
 
     @it("hasMultipleVideoSources is true when multiple sources present")
@@ -1356,8 +1356,8 @@ namespace tests
     @describe("JellyfinDataTransformer.transformPersonCard")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' The merge and the label are people.bs's job and are covered in people.spec.bs —
-    ' what is asserted here is only that a spec becomes the right node.
+    ' The merge and the label are people.bs's job and are covered in people.spec.bs.
+    ' What is asserted here is only that a spec becomes the right node.
 
     @it("returns invalid for invalid input")
     function _()

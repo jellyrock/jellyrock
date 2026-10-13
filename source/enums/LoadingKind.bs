@@ -1,5 +1,5 @@
 ' What the scene's loading spinner is waiting on. Each kind has its own rules for what the
-' viewer is told and what Back does — see docs/architecture/navigation.md ("What kind of wait
+' viewer is told and what Back does: see docs/architecture/navigation.md ("What kind of wait
 ' a spinner is") and source/utils/loadingStages.bs.
 enum LoadingKind
   ' Not yet assigned a kind: the spinner and the caller's text, nothing else. Every

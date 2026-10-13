@@ -9,7 +9,7 @@
  *
  * - a cell whose series all produced zero cold samples rendered `—`, indistinguishable
  *   from a screen nobody had ever measured. `settings` on 1 GB had thirteen such series.
- * - the detail block published a median for a cell the grid had just refused to average
+ * - the detail block published a median for a cell the grid had refused to average
  *   as `mixed`, which is the well-formed-figure-about-two-experiments this whole
  *   subsystem exists to prevent.
  *
@@ -40,9 +40,9 @@ import { mixedPopulations, buildArm, parseSelector } from '../../../scripts/meas
 /**
  * One cold sample as `measure.js` writes it.
  *
- * `launch` is deliberately NOT defaulted, exactly as in `measure-compare.test.js`:
+ * `launch` is not defaulted, on purpose, exactly as in `measure-compare.test.js`:
  * `series()` assigns it per sample index, and a default here would win the spread and
- * put every sample of a series in launch 0 — where cold selection keeps only one.
+ * put every sample of a series in launch 0, where cold selection keeps only one.
  */
 const sample = (paintMs, over = {}) => ({
   launchAt: '2026-08-13T10:00:00.000Z',
@@ -89,7 +89,7 @@ const series = (over = {}) =>
  * Finish a record: stamp each sample with its own launch index and the record's own
  * identity. Split out because both have to happen AFTER the overrides are merged.
  *
- * The launch index matters as much as the dimensions — one series' samples come from
+ * The launch index matters as much as the dimensions: one series' samples come from
  * different app LAUNCHES and cold selection is per-launch, so leaving them all on
  * launch 0 contributes ONE cold sample per series however many it lists.
  */
@@ -117,7 +117,7 @@ const cellAt = (matrix, screen, tier) => {
 describe('RAM tier ordering', () => {
   it('orders tiers by the RAM the hardware table records, not by their spelling', () => {
     // The point of deriving the order from `ramMb`: as strings these sort 1GB, 1.5GB,
-    // 2GB, 256MB, 512MB — every megabyte tier after every gigabyte one.
+    // 2GB, 256MB, 512MB: every megabyte tier after every gigabyte one.
     expect(['2GB', '512MB', '1GB', '256MB', '1.5GB'].sort(compareRamTiers)).toEqual([
       '256MB',
       '512MB',
@@ -206,7 +206,7 @@ describe('a mixed cell is refused in EVERY view, not just the grid', () => {
 
   it('does not publish a median for it in the detail block', () => {
     // The cell has an `n` and a median like any other; printing them under a heading
-    // naming one screen is the figure-about-two-experiments the grid just refused.
+    // naming one screen is the figure-about-two-experiments the grid already refused.
     const matrix = matrixOf(mixed);
     expect(cellAt(matrix, 'settings', '1GB').n).toBe(4);
     expect(renderDetail(matrix).join('\n')).not.toMatch(/settings · 1GB/);
@@ -241,7 +241,7 @@ describe('the numbers', () => {
     const arm = buildArm('x', records, parseSelector('screen=settings'), 'paintMs');
     expect(cell.median).toBe(60);
     expect(cell.median).toBe(
-      // Same records, same field, through `buildArm` directly — the report may not have
+      // Same records, same field, through `buildArm` directly: the report may not have
       // a median of its own to disagree with.
       arm.values.sort((a, b) => a - b)[1],
     );
@@ -372,7 +372,7 @@ describe('integrity — what weakens a median, beside the number', () => {
 
   it('uses the SAME predicates measure:compare uses', () => {
     // The whole point of sharing them. If this drifts, one reader discloses and the
-    // other averages silently — which is what shipped before.
+    // other averages silently, which is what shipped before.
     const dirty = [series({ ...clean(), dirty: true })];
     const cell = cellAt(matrixOf(dirty), 'settings', '1GB');
     expect(cell.integrity.map((f) => f.key)).toEqual(
@@ -406,7 +406,7 @@ describe('the sample floor — n is visible, what it must be read against was no
 describe('a workload headline earns a row of its own', () => {
   it('gives the headline field a median row and the ← marker', () => {
     // `--field items` headlines a workload count, which lives in `sample.workload` rather
-    // than `sample.timings` — so the grid published `28 ×5` while the detail block showed
+    // than `sample.timings`, so the grid published `28 ×5` while the detail block showed
     // no row for it and marked nothing. The workload line tallies per-sample VALUES; it
     // never states the median or the range.
     // `fills` is a workload field the `screen-load` family actually DECLARES. That is what
@@ -459,15 +459,15 @@ describe('two devices of one RAM tier are a refusal, not a pooled column', () =>
   // axes were extracted out of `comparability()`, and for the paired comparison that was
   // obviously right. For a table whose COLUMNS are tiers it is a real decision, because
   // it means the tier axis cannot pool the thing it is named after: a RAM tier is a
-  // memory label, not a hardware class — a 1 GB Express 4K and a 1 GB Stick 4K differ in
-  // SoC — and this project's own 512 MB result is a +130.5 ms inversion with no
+  // memory label, not a hardware class (a 1 GB Express 4K and a 1 GB Stick 4K differ in
+  // SoC), and this project's own 512 MB result is a +130.5 ms inversion with no
   // established mechanism, which is the evidence that sub-tier differences are not
   // understood well enough to average across.
   //
   // The failure modes decide it: a refusal is recoverable with `--select model=`, and a
   // wrong median is not recoverable at all.
   //
-  // It has never fired — the ledger is one model per tier — so this test is the only
+  // It has never fired (the ledger is one model per tier), so this test is the only
   // thing standing between the decision and a future reader "simplifying" it away.
   const twoModelsOneTier = [
     series(),
@@ -524,7 +524,7 @@ describe('provenance — the axes a cell POOLS instead of refusing', () => {
   // The counterpart to the refusal set, and the distinction is the design: pooling on a
   // `POPULATION_AXES` entry changes what the number says ABOUT THE APP and is refused;
   // pooling on one of these changes only WHICH BUILD of the app it is about, and that is
-  // the axis this reader exists to span — refusing it would refuse nearly every cell.
+  // the axis this reader exists to span: refusing it would refuse nearly every cell.
   //
   // What is not an option is silence, which is what shipped before this: on the real
   // ledger `search · 1GB` publishes a 14-sample median where five of its seven series
@@ -588,7 +588,7 @@ describe('provenance — the axes a cell POOLS instead of refusing', () => {
 
   it('describes the series that fed the median, not every record the selector saw', () => {
     // A blocked series is excluded from the arm, so it must not appear in the tally that
-    // says where the published number came from — `yield` is the line that owns dropouts.
+    // says where the published number came from: `yield` is the line that owns dropouts.
     const out = renderDetail(
       matrixOf([series({ commit: 'aaa1111' }), series({ commit: 'ccc3333', outcome: 'blocked' })]),
     ).join('\n');
@@ -605,7 +605,7 @@ describe('provenance — the axes a cell POOLS instead of refusing', () => {
 describe('a unit is a claim, and a count has none', () => {
   it('does not call a workload field milliseconds', () => {
     // `unitFor` derives `ms` from a name suffix, which is right for a duration and wrong
-    // for a count — `--field items` headlined an item count as `median 28 ms`. Only the
+    // for a count: `--field items` headlined an item count as `median 28 ms`. Only the
     // family can say which a field is, so the report hands it over.
     const matrix = matrixOf([series()], { measurement: 'item-grid' });
     expect(matrix.unit).toBe('ms');
@@ -638,8 +638,8 @@ describe('a selection that matched nothing', () => {
   });
 
   it('still renders the grid when the matrix is genuinely all gaps', () => {
-    // The opposite case, and it must NOT be refused: series exist, every registry screen
-    // is simply unmeasured. That is a successful report about an empty matrix.
+    // The opposite case, and it must not be refused: series exist, every registry screen
+    // is unmeasured. That is a successful report about an empty matrix.
     const matrix = matrixOf([series({ screen: 'settings' })]);
     expect(isEmpty(matrix)).toBe(false);
     expect(renderMatrix(matrix).join('\n')).toMatch(/home\s+—/);
@@ -676,7 +676,7 @@ describe('the command line', () => {
     // The worst of the three unvalidated-flag failures, because it does not merely drop
     // the flag: an unknown field resolves on no sample, so every cell holding series
     // renders `0 cold` and the gaps block asserts they "were measured and yielded no
-    // usable number — that is a fact about the app or the run". A typo produced a
+    // usable number", calling that "a fact about the app or the run". A typo produced a
     // confident, exit-0 report blaming the app for the operator's slip.
     expect(() => parseReportArgs(['--field', 'paintMsTypo'])).toThrow(/unknown field/);
     expect(() => parseReportArgs(['--measurement', 'item-grid', '--field', 'paintMs'])).toThrow(

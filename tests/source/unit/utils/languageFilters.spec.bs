@@ -11,7 +11,7 @@ namespace tests
     end function
 
     ' One entry as /Items/Filters2 sends it. The Name is the server's English
-    ' library-science label, deliberately ugly here, because nothing should be
+    ' library-science label, ugly here on purpose, because nothing should be
     ' reading it.
     private function pair(name as string, value as string) as object
       return { Name: name, Value: value }
@@ -47,7 +47,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("merges the two ISO 639-2 spellings of one language into a single option")
-    ' The server does not canonicalize /T against /B — it matches the literal tag on the
+    ' The server does not canonicalize /T against /B: it matches the literal tag on the
     ' file, so `fra` and `fre` select DIFFERENT films. Measured on the local 12.0 fixture
     ' 2026-09-22: fra 1 film, fre 10, fra,fre 11. Two rows both labelled "French" would
     ' make picking one an arbitrary partial answer.
@@ -77,7 +77,7 @@ namespace tests
 
     @it("keeps the codes in the order the server listed them")
     ' Both have to be sent and either order selects the same films, but a stable order
-    ' keeps the saved query — and so the restore pass's string match — reproducible.
+    ' keeps the saved query (and so the restore pass's string match) reproducible.
     function _()
       options = languageFilters.optionsFrom([m.pair("x", "fre"), m.pair("y", "fra")])
 
@@ -125,7 +125,7 @@ namespace tests
 
     @it("sorts by the displayed title, not by the code")
     ' Sorted by code these would be jpn, eng, spa; by title they read English, Japanese,
-    ' Spanish — which is the order on screen.
+    ' Spanish, which is the order on screen.
     function _()
       options = languageFilters.optionsFrom([
         m.pair("x", "jpn"),
@@ -194,7 +194,7 @@ namespace tests
     end function
 
     @it("never labels an option with the string the server would match nothing against")
-    ' The case that makes the title/value split load-bearing: codes are case-sensitive
+    ' The case that makes the title/value split necessary: codes are case-sensitive
     ' 3-letter tags (ENG and en both return 0), so a label can never be sent as a value.
     function _()
       options = languageFilters.optionsFrom([m.pair("English (eng)", "eng")])
@@ -210,7 +210,7 @@ namespace tests
 
     @it("never produces a value containing the delimiter the panel separates options with")
     ' THE invariant. An option value that contains its category's delimiter still applies
-    ' correctly as a query, but the restore pass tears it apart and ticks nothing — so the
+    ' correctly as a query, but the restore pass tears it apart and ticks nothing. So the
     ' filter is active with no box checked, and one confirming keypress clears it. This is
     ' the check that would have caught shipping "," as both.
     function _()
@@ -249,7 +249,7 @@ namespace tests
     end function
 
     @it("copies a non-language category through unchanged")
-    ' Genres stores exactly what it sends, pipes and all — converting it would break it.
+    ' Genres stores exactly what it sends, pipes and all: converting it would break it.
     function _()
       wire = languageFilters.toWire({ Genres: "Action|Science Fiction" })
 

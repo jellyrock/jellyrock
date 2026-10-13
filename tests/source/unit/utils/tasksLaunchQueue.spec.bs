@@ -6,7 +6,7 @@ namespace tests
   '
   ' Saturation is simulated the way tasks.spec.bs does it: the ledger is seeded with
   ' NEVER-LAUNCHED nodes, which report `state = "init"` and so count as live while starting
-  ' no thread. "A slot frees" is then just re-seeding the ledger shallower.
+  ' no thread. "A slot frees" is then only re-seeding the ledger shallower.
   @suite("tasks.bs - the launch queue past the watermark")
   class TaskLaunchQueueTests extends tests.BaseTestSuite
 

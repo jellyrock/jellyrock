@@ -1,4 +1,4 @@
-// Tests for scripts/lib/png-compare.js — the pixel-vs-bytes comparison shared by
+// Tests for scripts/lib/png-compare.js: the pixel-vs-bytes comparison shared by
 // the icon and gradient asset generators.
 
 import { describe, it, expect } from 'vitest';
@@ -55,7 +55,7 @@ describe('matchesRenderedOutput', () => {
     expect(await matchesRenderedOutput(Buffer.alloc(0), await solid(8, 8, RED))).toBe(false);
   });
 
-  // Asymmetric on purpose. An undecodable EXISTING file is drift — the caller
+  // Asymmetric on purpose. An undecodable EXISTING file is drift: the caller
   // regenerates it. An undecodable FRESH buffer is a bug in the generator, and
   // swallowing it would report that bug as "content drift" in a committed asset
   // the user never touched, then rewrite every asset from a broken render.

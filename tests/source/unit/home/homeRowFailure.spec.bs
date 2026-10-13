@@ -7,7 +7,7 @@ namespace tests
   ' and the failed placeholder it shows (source/utils/skeleton.bs).
   '
   ' Wrong in one direction, a failed load deletes or empties a row the server never said was
-  ' empty — the bug this exists to prevent. Wrong in the other, a row that failed spins as if
+  ' empty, the bug this exists to prevent. Wrong in the other, a row that failed spins as if
   ' still loading, or a failed tile slips past a skeleton guard into the media render path.
   @suite("homeRowFailure - Home row failure-vs-empty contract")
   class HomeRowFailureTests extends tests.BaseTestSuite

@@ -1,5 +1,5 @@
 /**
- * The Roku device dictionary's READ side — see `scripts/roku-devices.js`.
+ * The Roku device dictionary's READ side. See `scripts/roku-devices.js`.
  *
  * What these pin is the lookup CONTRACT, not the data: that a model number Roku never
  * published still resolves through its family, that a letter-prefixed model number
@@ -19,7 +19,7 @@ import {
 
 describe('the RAM tier lookup', () => {
   it('resolves the three local devices, including a model number Roku never published', () => {
-    // `.177` reports `3820RW`, which appears in no Roku table — the family does
+    // `.177` reports `3820RW`, which appears in no Roku table. The family does
     // (`3820X`, `3820X2`, both 1 GB), which is why the key is the model FAMILY.
     expect(ramTierFor('3600X')).toBe('512MB');
     expect(ramTierFor('3820RW')).toBe('1GB');
@@ -28,12 +28,12 @@ describe('the RAM tier lookup', () => {
 
   it('resolves the Roku TVs and the Projector, which the old four-DIGIT key could not', () => {
     // The regression this dataset exists for: `/^(\d{4})/` returned null for every
-    // letter-prefixed model number — sixteen families from 512 MB to 2 GB, and the
+    // letter-prefixed model number: families from 512 MB to 2 GB, and the
     // largest device class Roku ships.
     expect(ramTierFor('J000X')).toBe('2GB'); // 4K Roku TV (Trinidad)
     expect(ramTierFor('K8PXX')).toBe('512MB'); // Projector (Avery)
     expect(ramTierFor('A000X')).toBe('1.5GB'); // 4K Roku TV (Reno)
-    expect(ramTierFor('C000GB')).toBe('1GB'); // 4K Roku TV (EU) — a six-char model number
+    expect(ramTierFor('C000GB')).toBe('1GB'); // 4K Roku TV (EU), a six-char model number
   });
 
   it('returns null for a family it does not know, rather than the commonest value', () => {
@@ -46,7 +46,7 @@ describe('the RAM tier lookup', () => {
 
   it('says whether it matched the exact model or only its family', () => {
     // A family match can answer RAM and nothing else, because nothing else is
-    // invariant across a family — `3820X` and `3820X2` differ in code name and year.
+    // invariant across a family: `3820X` and `3820X2` differ in code name and year.
     expect(deviceFor('3820X2').matchedBy).toBe('model');
     expect(deviceFor('3820X2').variants[0].codeName).toBe('Logan');
     const loose = deviceFor('3820RW');
@@ -68,7 +68,7 @@ describe('the RAM tier lookup', () => {
 
   it('knows which devices cannot run JellyRock at all', () => {
     // Roku's legacy table says outright that those models "cannot be used to run IDK
-    // apps". Recorded rather than omitted — "cannot run" and "not in the table" are
+    // apps". Recorded rather than omitted: "cannot run" and "not in the table" are
     // different facts, and the second sends someone hunting for a missing entry.
     expect(cannotRunApps('N1000')).toBe(true); // Roku DVP, capped at Roku OS 3.1
     expect(cannotRunApps('3820X2')).toBe(false);

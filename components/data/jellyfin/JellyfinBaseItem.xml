@@ -5,8 +5,8 @@
   All fields have explicit type-appropriate defaults (value="", value="0", value="false").
   Roku ContentNode fields cannot be invalid - they always have a type default when declared.
 
-  RULE: If field = default ("", 0, false) → No data (not applicable for type, or API returned empty/null)
-  RULE: If field = non-empty/non-zero → Field has real data
+  RULE: If field = default ("", 0, false), then no data (not applicable for type, or API returned empty/null)
+  RULE: If field = non-empty/non-zero, then the field has real data
 
   Sentinel: item.id = "" means the node itself is unloaded.
   UI pattern: Check item.type for layout decisions, check field values for display decisions.
@@ -40,7 +40,7 @@
     <field id="isPlaceHolder" type="boolean" value="false" />
     <field id="path" type="string" value="" />
 
-    <!-- Pre-computed secondary display text (e.g., "2024 • PG-13", "S2E5 - Title") -->
+    <!-- Pre-computed secondary display text (for example, "2024 • PG-13", "S2E5 - Title") -->
     <field id="subtitle" type="string" value="" />
 
     <!-- ==================== -->
@@ -197,7 +197,7 @@
     <field id="timerId" type="string" value="" />
     <field id="completionPercentage" type="float" value="0.0" />
     <!-- Currently airing program (TvChannel type only). Populated from apiData.CurrentProgram
-         by JellyfinDataTransformer — a nested BaseItemDto returned by default on all TvChannel
+         by JellyfinDataTransformer: a nested BaseItemDto returned by default on all TvChannel
          items. Used by the OSD to display program title, episode info, artwork, runtime, and
          end time instead of raw channel metadata. -->
     <field id="currentProgram" type="node" />
@@ -301,7 +301,7 @@
     <!-- VERSION & DEBUG      -->
     <!-- ==================== -->
     <field id="serverVersion" type="string" value="" />
-    <!-- DEBUG ONLY: Raw API data for debugging - only populated when bs_const=debug=true -->
+    <!-- Debug only: Raw API data for debugging - only populated when bs_const=debug=true -->
     <field id="rawApiData" type="assocarray" />
     <field id="transformedAt" type="longinteger" value="0" />
 

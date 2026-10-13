@@ -1,14 +1,14 @@
 namespace tests
 
-  ' The three Quick Connect request builders on ApiClient. They replaced three
-  ' SYNCHRONOUS sdk.* methods, so the two version boundaries they carry moved with
-  ' them — and those boundaries are load-bearing, not cosmetic:
+  ' Three Quick Connect request builders on ApiClient. They replaced three
+  ' synchronous sdk.* methods, so the two version boundaries they carry moved with
+  ' them, and those boundaries matter; they are not cosmetic:
   '
   '   /QuickConnect/Initiate        GET on 10.7-10.8, POST on 10.9+.  Sending the
   '     wrong method to a modern server answers 401 ("Quick connect is not active
   '     on this server"), which reads as a feature gate but is a route mismatch.
-  '   AuthenticateWithQuickConnect  body field renamed at 10.8.0 — a FINER
-  '     boundary than the apiVersion split, so it reads the server VERSION.
+  '   AuthenticateWithQuickConnect  body field renamed at 10.8.0, a finer
+  '     boundary than the apiVersion split, so it reads the server version.
   @suite("ApiClient - Quick Connect request builders")
   class QuickConnectRequestTests extends tests.BaseTestSuite
 

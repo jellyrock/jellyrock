@@ -2,12 +2,12 @@ import "pkg:/source/utils/versionResume.bs"
 
 namespace tests
 
-  ' `resumeStateFor` — the whole per-version Resume decision, as one pure function.
+  ' `resumeStateFor`: the whole per-version Resume decision, as one pure function.
   '
   ' This is the coverage the component itself cannot give: ItemDetails reaches this logic
   ' only after up to two HTTP replies, and no component spec in this repo has a way to stub
   ' fetchAsync. Expressing the decision over plain values is what makes the carry guard,
-  ' the loading states and the fallbacks checkable at all — ItemDetails is left holding
+  ' the loading states and the fallbacks checkable at all. ItemDetails is left holding
   ' only "fetch what the answer names, then ask again".
   @suite("versionResume - the resume decision")
   class VersionResumeStateTests extends tests.BaseTestSuite
@@ -53,7 +53,7 @@ namespace tests
 
     @it("offers no Resume and asks for nothing")
     ' The server leads a primary's sources with the in-progress version, so an unchanged
-    ' order means there is nothing to resume — no request, no loading placeholder.
+    ' order means there is nothing to resume: no request, no loading placeholder.
     function _()
       state = versionResume.resumeStateFor(m.ctx({}))
 

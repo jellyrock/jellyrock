@@ -42,7 +42,7 @@
       <IconButton id="videoPlayPause" icon="pkg:/images/icons/play_$$RES$$.png" />
       <IconButton id="itemNext" icon="pkg:/images/icons/itemNext_$$RES$$.png" />
       <!-- Go to Live: removed from the row by setButtonStates() for anything that is not
-           a TvChannel, and kept for the whole item when it IS one — greyed at the live
+           a TvChannel, and kept for the whole item when it IS one: greyed at the live
            edge rather than detached, so the row never reshuffles mid-playback. See the
            setButtonStates() comment in OSD.bs. visible="false" is defense-in-depth for
            the frame between XML load and setButtonStates running. -->
@@ -59,7 +59,7 @@
 
     <!-- Overflow stash. Holds the left-row buttons that did not fit, in order, while
          "More" stands in for them (see applyOverflow in OSD.bs). A child of the SCREEN
-         and deliberately NOT of buttonMenuLeft: a hidden child of a LayoutGroup still
+         and, on purpose, not of buttonMenuLeft: a hidden child of a LayoutGroup still
          reserves its slot, so an overflowed button has to leave the group entirely. -->
     <Group id="buttonOverflow" visible="false" />
 
@@ -70,10 +70,10 @@
          OSD reads typed fields directly: type, name, seriesName, officialRating, etc.
          Set by VideoPlayerView when video content loads.
 
-         DELIBERATELY NO onChange: the observer is registered in init() instead, so
+         No onChange, on purpose: the observer is registered in init() instead, so
          onDestroy can detach it. VideoPlayerView owns this field and can deliver one
          last change while teardown is running, which is the case components/CLAUDE.md
-         requires an unobserveField for — and an XML onChange does not appear to be
+         requires an unobserveField for, and an XML onChange does not appear to be
          removable by unobserveField, so it could not be undone here.
          Declaring both registers TWO observers and runs the handler twice. -->
     <field id="itemData" type="node" />
@@ -84,7 +84,7 @@
     <field id="hasChapters" type="boolean" value="false" />
     <field id="numAudioStreams" type="integer" />
     <field id="numVideoSources" type="integer" />
-    <!-- Active video source tag (e.g., "[B&W]", "[Colorized]") appended to OSD title
+    <!-- Active video source tag (for example, "[B&W]", "[Colorized]") appended to OSD title
          when multiple video sources exist. Set by VideoPlayerView. -->
     <field id="videoSourceTag" type="string" value="" />
     <field id="runTimeMinutes" type="integer" />

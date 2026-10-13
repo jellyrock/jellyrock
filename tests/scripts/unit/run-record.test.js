@@ -5,11 +5,11 @@
  * lands.
  *
  * These are the parts a device run cannot check for you. The hour-crossing flag in
- * particular is a claim about a fixture that resets on the hour — if it were only
+ * particular is a claim about a fixture that resets on the hour. If it were only
  * ever eyeballed, the one time it mattered would be the run where it was wrong,
  * and the whole point is to attribute a failure nobody was watching.
  *
- * `.test.js` (Vitest, `npm run test:scripts`, no device) — distinct from the
+ * `.test.js` (Vitest, `npm run test:scripts`, no device), distinct from the
  * `.spec.js` files under `tests/rta/specs/`, which drive real hardware.
  */
 import fs from 'node:fs';
@@ -42,16 +42,16 @@ import {
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 /**
- * Failure-kind slugs as LITERALS in the RECORD-SHAPE tests below, deliberately.
+ * Failure-kind slugs as LITERALS in the RECORD-SHAPE tests below, on purpose.
  *
  * The record round-trip, the ledger and the summary all treat `kind` as an opaque
- * string — that is the point of the module split (`decisions.md` ->
+ * string: that is the point of the module split (`decisions.md` ->
  * `run-record-per-run-kind`), and what lets the Rooibos runner share this record
  * without dragging the RTA harness in. Spelling them out keeps those tests honest
  * about handling ANY slug, including one this file has never heard of.
  *
  * That is a statement about the record's plumbing, not about the registry. The
- * registry itself now LIVES in `run-record.js` — it grew a second producer
+ * registry itself now LIVES in `run-record.js`: it grew a second producer
  * (`tests/rta/lib/jellyfin.js`, a pure REST helper that must not import the device
  * client to reach it), so it moved to the module both sides can import. Its own
  * invariants are gated below, beside the definition; `FAILURE_KINDS` is imported for
@@ -93,7 +93,7 @@ describe('crossesHourBoundary', () => {
   });
 
   it('does not flag #800 s window, which never crossed :00', () => {
-    // 15:45–15:52 UTC — the run whose red is still unattributed. If this said
+    // 15:45–15:52 UTC: the run whose red is still unattributed. If this said
     // true it would hand that investigation a cause it does not have.
     expect(crossesHourBoundary('2026-08-10T15:45:00Z', '2026-08-10T15:52:00Z')).toBe(false);
   });
@@ -118,7 +118,7 @@ describe('runDir — one directory per run kind', () => {
   });
 
   it('shares one directory between the suite and its watch mode', () => {
-    // Same records, same consumer — only the summary differs.
+    // Same records, same consumer: only the summary differs.
     expect(runDir('test:rta:tdd')).toBe(runDir('test:rta'));
   });
 
@@ -164,14 +164,14 @@ describe('the failure record round-trip', () => {
 
 describe('the run ledger lives outside the build output directory', () => {
   // THE regression gate for a bug that shipped invisibly: the ledger was under
-  // `out/`, and all eight `build*` npm scripts open with `npx rimraf build/ out/`.
-  // `npm run test:rta` builds first, so the file was deleted immediately before
-  // each run that was meant to append to it — the documented N-run baseline would
-  // have ended with exactly one line, and nothing would have said so.
+  // `out/`, and every `build*` npm script a device run uses opens with
+  // `npx rimraf build/ out/`. `npm run test:rta` builds first, so the file was deleted
+  // immediately before each run that was meant to append to it. The documented N-run
+  // baseline would have ended with exactly one line, and nothing would have said so.
 
   // `LEDGER_ROOT` is the RELATIVE path `.device-runs`, so anything in here that
   // opens a run resolves it against `process.cwd()` and writes into the real
-  // checkout's ledger. Any block that calls `beginRun` needs its own cwd — the
+  // checkout's ledger. Any block that calls `beginRun` needs its own cwd: the
   // lifecycle describe below chdir's for the same reason. Not optional even
   // where a case looks read-only: `close()` is what appends, and it is easy to
   // add a case that opens a run to reach the path it wants to assert on.
@@ -205,14 +205,14 @@ describe('the run ledger lives outside the build output directory', () => {
   it('keeps the per-run files OUT of out/, because a concurrent wipe is not harmless', async () => {
     // This asserted the opposite until 2026-08-23, on the reasoning that the per-run
     // files "are truncated at open anyway, so a preceding wipe costs nothing". True of
-    // ONE run at a time, and false the moment two overlap — which the locking model
+    // ONE run at a time, and false the moment two overlap, which the locking model
     // permits, because the device lock is keyed per DEVICE and two runs from one
     // checkout against two Rokus both acquire cleanly.
     //
-    // What that cost, both arms visible in the ledger: a `.177` run (21:04→21:24) and a
-    // `.178` run (21:18→21:37) overlapped, the `.178` run hit a real failure at 21:19,
+    // What that cost, both arms visible in the ledger: a `.177` run (21:04 to 21:24) and
+    // a `.178` run (21:18 to 21:37) overlapped, the `.178` run hit a real failure at 21:19,
     // the `.177` run closed first and folded that failure into ITS summary, and the run
-    // that actually failed closed with `failures: []` — a passing row carrying someone
+    // that actually failed closed with `failures: []`: a passing row carrying someone
     // else's failure, and a failed run with no device dump at all.
     const { failuresPath: fp } = await import('../../../scripts/run-record.js');
     expect(fp().startsWith(`out${path.sep}`)).toBe(false);
@@ -220,8 +220,8 @@ describe('the run ledger lives outside the build output directory', () => {
 
   it('scopes the per-run files by device, so two devices cannot share one record', async () => {
     // Resolved through `beginRun`, because that is the branch that derives the durable
-    // path — a bare call has no run to record against and lands in a throwaway dir
-    // (see the test above). Two runs, two devices, two record directories: the whole
+    // path. A bare call has no run to record against and lands in a throwaway dir
+    // (see the test below). Two runs, two devices, two record directories: the whole
     // point, since the device LOCK is per-device and lets them overlap.
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.resetModules();
@@ -245,7 +245,7 @@ describe('the run ledger lives outside the build output directory', () => {
   it('writes NOWHERE durable when there is no run to record against', async () => {
     // Records belong to a run. Before they moved out of `out/`, a stray write was
     // swept by the next `npm run build`; moving them removed that sweep, and it bit
-    // at once — two intermediate states in one session left 124 stray directories
+    // at once: two intermediate states in one session left 124 stray directories
     // under `.device-runs/`, named after test tmpdirs, that had to be hand-cleaned.
     // A fresh module: `beginRun` sets `activeRecordDir` as module state, and a
     // neighbouring test that opens a run would otherwise decide this one's answer.
@@ -278,7 +278,7 @@ describe('the run ledger lives outside the build output directory', () => {
 
 describe('the run ledger', () => {
   // The accumulator that makes an N-run baseline a read instead of N manual
-  // copies — the run record is per-run and truncating, this one is not.
+  // copies. The run record is per-run and truncating, this one is not.
   it('accumulates one entry per run and survives a truncated line', () => {
     const ledger = path.join(tmpDir, 'runs.jsonl');
     appendJsonLine(ledger, summarizeRun({ startedAt: 'a', endedAt: 'b', run: 'test:rta' }));
@@ -291,8 +291,8 @@ describe('the run ledger', () => {
 describe('the run lifecycle — where a run s records actually land', () => {
   // The rest of this file passes explicit file paths, which means the mechanism
   // that CHOOSES those paths had no gate: a regression in `getRunDir`'s precedence
-  // would silently send a screenshots run's records into `out/rta/` — the exact
-  // clobber the per-kind split exists to remove — with every other test still
+  // would silently send a screenshots run's records into `out/rta/` (the exact
+  // clobber the per-kind split exists to remove) with every other test still
   // green. These exercise the real relative-path resolution by chdir'ing into a
   // temp root, and re-import the module per case so the module-level run state
   // (active directory, start-time cache, close guard) cannot leak between them.
@@ -306,7 +306,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
   };
 
   // Each `fresh()` mints a NEW module instance whose `netArmed` starts false, so
-  // every one arms its own `process.on('exit')` net on the single real process —
+  // every one arms its own `process.on('exit')` net on the single real process,
   // and past ten of them Node warns about a listener leak. That warning is an
   // artifact of the harness, not of the module: production loads `run-record.js`
   // once per process and `netArmed` holds it to exactly one listener. Raised (and
@@ -365,7 +365,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
 
     it('survives the run directory being deleted mid-run, as `--deploy` deletes it', async () => {
       // The regression: `run-meta.json` lives under `out/`, and `measure --deploy` runs
-      // `npm run build` AFTER opening the run — which starts with `rimraf build/ out/`.
+      // `npm run build` AFTER opening the run, which starts with `rimraf build/ out/`.
       // `runProvenance()` then read a file that no longer existed and degraded every
       // field to null, so a `--deploy` measurement series published no commit, no dirty
       // flag, no deviceKey and no startedAt.
@@ -377,17 +377,17 @@ describe('the run lifecycle — where a run s records actually land', () => {
 
       // NOTHING may read provenance before the delete. An earlier draft of this test
       // took a `before` snapshot to compare against, which warmed the very cache the
-      // fix installs — so it passed with the fix REMOVED. The read has to be the first
+      // fix installs, so it passed with the fix REMOVED. The read has to be the first
       // one of the run, exactly as it is in `measure.js`.
       fs.rmSync(getRunDir(), { recursive: true, force: true });
 
       const after = runProvenance();
       expect(after.run).toBe('measure');
       expect(after.startedAt).toBe(run.startedAt);
-      // `commit` / `dirty` are deliberately NOT asserted: `fresh()` runs in a temp cwd
+      // `commit` / `dirty` are not asserted, on purpose: `fresh()` runs in a temp cwd
       // where git resolves nothing, so they are legitimately null here. `run` and
       // `startedAt` are set by `beginRun` itself, so they isolate the cache from the
-      // environment — and they are two of the four fields that were null in production.
+      // environment, and they are two of the four fields that were null in production.
       expect(after.variant).not.toBeUndefined();
       run.close();
     });
@@ -411,7 +411,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
       // 1's window, which is precisely the attribution the record exists for.
       //
       // The clock is FAKED because the two opens otherwise land in the same
-      // millisecond and mint an identical ISO string — which makes the assertion
+      // millisecond and mint an identical ISO string, which makes the assertion
       // pass whether the cache was invalidated or not. (Measured: the real-clock
       // version failed 7 of 8 runs.)
       const { beginRun, runStartedAt } = await fresh();
@@ -436,7 +436,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
       // Asserted BEFORE any close, because that is the whole point: the closed
       // summary also carries `cumulative`, but a spawned child needs it WHILE the
       // run is in flight. It is what tells the child its origin belongs to a
-      // session rather than an iteration — without which every failure past the
+      // session rather than an iteration. Without it, every failure past the
       // first hour of a watch session is stamped as post-reset.
       const { beginRun, runIsCumulative } = await fresh();
       const run = beginRun({ lock: LOCK, run: 'test:rta:tdd', cumulative: true });
@@ -459,7 +459,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
 
     it('re-reads `cumulative` for a second run rather than serving a cached one', async () => {
       // `runStartedAt` and `runIsCumulative` share one cached parse, so an
-      // invalidation bug would strand the FLAG as well as the origin — and a watch
+      // invalidation bug would strand the FLAG as well as the origin, and a watch
       // session opened after a normal run would silently stamp its failures.
       const { beginRun, runIsCumulative } = await fresh();
       beginRun({ lock: LOCK, run: 'test:rta' }).close();
@@ -504,7 +504,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
       // what closes it, and the net only knows what `beginRun` was told.
       const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
       const run = beginRun({ lock: LOCK, run: 'test:rta:tdd', cumulative: true });
-      run.close(); // the handle carries it — no caller restates it, none can get it wrong
+      run.close(); // the handle carries it: no caller restates it, none can get it wrong
       expect(ledger(runsLedgerPath())[0].cumulative).toBe(true);
     });
   });
@@ -512,7 +512,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
   describe('invocation provenance — what lets a baseline SELECT its runs', () => {
     // Without these a ledger of N runs cannot tell a full `test:rta` from a
     // `test:rta:fast` (no deploy) or a `test:rta:capture` (extra per-screen PNG
-    // work), nor `test:unit` from `test:all` — they share a run kind. The
+    // work), nor `test:unit` from `test:all`: they share a run kind. The
     // documented alternative was "remember to `rm` the ledger first", which is
     // exactly the kind of human bookkeeping this file exists to remove.
     it('records the npm script that produced the run, not just the run kind', async () => {
@@ -546,9 +546,9 @@ describe('the run lifecycle — where a run s records actually land', () => {
     });
 
     it('always emits the key, as `[]`, for a run that forwarded nothing', async () => {
-      // A SELECTION key, so it follows the four around it and NOT the "omitted when
+      // A SELECTION key, so it follows the four around it and not the "omitted when
       // empty" rule `assertions` / `recoveries` / `fixture` use. `[]` is a positive
-      // statement — this run declared no filter — where an absent key would mean
+      // statement (this run declared no filter), where an absent key would mean
       // "written before this existed", and a key that vanishes at its default is how
       // a row gets silently mis-selected.
       const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
@@ -560,8 +560,8 @@ describe('the run lifecycle — where a run s records actually land', () => {
 
     it('records the device the run drove, off the lock', async () => {
       // The ledger is the only record that survives the next run, and `run-meta.json`
-      // is NOT a fallback for this: it is per-run and lives under `out/`, which the
-      // next `build*` wipes. So if the device is not on the ledger line it is nowhere.
+      // is not a fallback for this: it is per-run, and the next run on that device
+      // overwrites it. So if the device is not on the ledger line it is nowhere.
       const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
       const lock = { meta: { ...LOCK.meta, deviceKey: 'ac4701ca4a5d8a0b' } };
       beginRun({ lock, run: 'test:rta' }).close();
@@ -571,7 +571,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
     it('reports a null device rather than inventing one on the degraded lock path', async () => {
       // `acquireDeviceLock` degrades to an unlocked run when GitHub is unreachable
       // or the device cannot be identified over ECP, and that meta carries no
-      // `deviceKey`. Such a run genuinely IS of unknown provenance — which is the
+      // `deviceKey`. Such a run really IS of unknown provenance, which is the
       // honest thing for a baseline to see, and a reason to exclude it.
       const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
       const degraded = { meta: { locked: false, mode: 'degraded', degraded: true } };
@@ -612,7 +612,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
 
     it('reports nulls rather than failing the run when git cannot answer', async () => {
       // These cases chdir into a temp dir that is not a git checkout, so this is
-      // the real unavailable path — not a mock. Bookkeeping must never fail a
+      // the real unavailable path, not a mock. Bookkeeping must never fail a
       // device run, and an export/tarball checkout is a fine place to run one.
       const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
       expect(() => beginRun({ lock: LOCK, run: 'test:rta' }).close()).not.toThrow();
@@ -677,7 +677,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
 
     it('is resolved at the OPEN, so the exit net folds it too', async () => {
       // Provenance is captured in `beginRun` and closed over, exactly as
-      // `cumulative` is above — the handle's `close()` and the process-exit net
+      // `cumulative` is above: the handle's `close()` and the process-exit net
       // fold the SAME args object, so a run abandoned to a signal handler carries
       // what an explicit close would. Capturing it at the open is also what keeps a
       // git subprocess off the exit path, where only synchronous work is legal.
@@ -685,7 +685,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
       process.env.npm_lifecycle_event = 'screenshots:capture';
       try {
         const run = beginRun({ lock: LOCK, run: 'capture-screenshots' });
-        delete process.env.npm_lifecycle_event; // gone by close time — the open already read it
+        delete process.env.npm_lifecycle_event; // gone by close time; the open already read it
         run.close();
         expect(ledger(runsLedgerPath())[0].variant).toBe('screenshots:capture');
       } finally {
@@ -695,7 +695,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
   });
 
   it('writeRunMeta refuses an implicit directory', async () => {
-    // The default this used to carry was `out/rta` — an alias onto one known run
+    // The default this used to carry was `out/rta`: an alias onto one known run
     // kind, which is the clobber the split removes. A silent no-op would be worse
     // than a throw: it loses the record it exists to write.
     const { writeRunMeta } = await import('../../../scripts/device-lock.js');
@@ -708,7 +708,7 @@ describe('the process-exit net — the fold nobody calls', () => {
    * These need a REAL process exit, so they run in a subprocess.
    *
    * `armCloseOnExit` is the only fold three of the four entry points have on their
-   * interrupt path — `capture-screenshots` and `demos` both hand their exit to
+   * interrupt path: `capture-screenshots` and `demos` both hand their exit to
    * `armRestoreOnInterrupt`, whose handler ends in `process.exit()`, so nothing they
    * could write runs after it. It is also the whole fold for any path that throws.
    * In-process that mechanism cannot be exercised at all: emitting `exit` by hand
@@ -746,7 +746,7 @@ describe('the process-exit net — the fold nobody calls', () => {
     return { lines: lines.map((l) => JSON.parse(l)), stdout: result.stdout };
   };
 
-  // The lock shape `beginRun` is handed in production — see the lifecycle block above.
+  // The lock shape `beginRun` is handed in production: see the lifecycle block above.
   const LOCK = { meta: { locked: true, mode: 'test', degraded: false } };
 
   it('folds a run whose entry point exited without closing it', () => {
@@ -767,7 +767,7 @@ describe('the process-exit net — the fold nobody calls', () => {
 
   it('carries the open s runnerArgs, so a SCOPED run that crashed still reads as scoped', () => {
     // Same argument as `variant` above, on the key that says what actually ran. A
-    // crashed run is already excluded from a baseline as a non-sample — but the net
+    // crashed run is already excluded from a baseline as a non-sample, but the net
     // also folds the INTERRUPT path, and an operator who Ctrl-Cs a `-t` debugging run
     // must not leave a line that reads like an abandoned full suite.
     const { lines } = inSubprocess('process.exit(0);', {
@@ -794,8 +794,8 @@ describe('the process-exit net — the fold nobody calls', () => {
   it('labels a run nobody closed `crashed`, so it cannot pass as a clean pass', () => {
     // The measured case this exists for: `ROKU_IP=192.168.1.200 npm run test:rta`
     // threw out of the deploy on a 401 and appended `durationMs: 621, failures: []`
-    // — a line the documented baseline recipe (`variant`/`commit`/`dirty`/
-    // `deviceKey`) selected, on a run where no test ever executed.
+    // (a line the documented baseline recipe (`variant`/`commit`/`dirty`/
+    // `deviceKey`) selected), on a run where no test ever executed.
     const { lines } = inSubprocess("throw new Error('deploy 401');", { exitCode: 1 });
     expect(lines[0].outcome).toBe('crashed');
     // The point of the field: BOTH runs fold with an empty failure list, so this is
@@ -804,8 +804,8 @@ describe('the process-exit net — the fold nobody calls', () => {
   });
 
   it('distinguishes a crashed run from a passed one, though both record no failures', () => {
-    // Both subprocesses append to the one ledger in this test's temp dir — which is
-    // the ledger's whole contract — so the second run is the LAST line, not line 0.
+    // Both subprocesses append to the one ledger in this test's temp dir (which is
+    // the ledger's whole contract), so the second run is the LAST line, not line 0.
     const crashed = inSubprocess("throw new Error('deploy 401');", { exitCode: 1 }).lines[0];
     const passed = inSubprocess("run.close('passed');\nprocess.exit(0);").lines.at(-1);
     expect([crashed.failures.length, passed.failures.length]).toEqual([0, 0]);
@@ -813,7 +813,7 @@ describe('the process-exit net — the fold nobody calls', () => {
   });
 
   it('does not relabel a run the entry point closed as an outcome of its own', () => {
-    // The net must not overwrite a deliberate `interrupted` with `crashed` — the
+    // The net must not overwrite an intended `interrupted` with `crashed`: the
     // abandon path in `rta-run.js` closes explicitly for exactly that reason.
     const { lines } = inSubprocess("run.close('interrupted');\nprocess.exit(130);", {
       exitCode: 130,
@@ -858,8 +858,8 @@ describe('the run outcome — whether the suite actually ran', () => {
   });
 
   it('speaks up for a red run that captured no failure records', () => {
-    // The specs assert with plain `expect()` as well as through the five diagnosed
-    // throw sites, so a genuinely red suite can fold with `failures: []`. Reading
+    // The specs assert with plain `expect()` as well as through the diagnosed throw
+    // sites, so a truly red suite can fold with `failures: []`. Reading
     // the empty list as the outcome would score it green and print nothing.
     const lines = formatRunSummary(
       { ...at, run: 'test:rta', failures: [], outcome: RUN_OUTCOMES.FAILED },
@@ -926,8 +926,8 @@ describe('the run outcome — whether the suite actually ran', () => {
 
   it('tells a blocked run neither that it was stopped nor that nobody closed it', () => {
     // Both existing non-sample clauses are FALSE of `blocked`: its entry point closed
-    // it deliberately, and no operator interrupted it. Same overclaim the
-    // `interrupted` case above already cost us once — a shared clause may only assert
+    // it on purpose, and no operator interrupted it. Same overclaim the
+    // `interrupted` case above already cost us once: a shared clause may only assert
     // what every member of the set actually did.
     const advice = formatRunSummary(
       { ...at, run: 'test:rta', failures: [], outcome: RUN_OUTCOMES.BLOCKED },
@@ -943,7 +943,7 @@ describe('the run outcome — whether the suite actually ran', () => {
     // The clause used to say a fixture request had failed. True while the RTA suite
     // was its only producer; false as soon as `measure.js` began blocking a run for
     // being pointed at the wrong server, where nothing failed at all. A shared
-    // clause may only assert what every producer's record supports — the same rule
+    // clause may only assert what every producer's record supports, the same rule
     // the `interrupted` and `crashed` wordings were already corrected under.
     const advice = formatRunSummary(
       { ...at, run: 'measure', failures: [], outcome: RUN_OUTCOMES.BLOCKED },
@@ -991,7 +991,7 @@ describe('the run outcome — whether the suite actually ran', () => {
     it('leaves no `assertions` key in the LEDGER LINE when nothing recorded one', () => {
       // Asserted on the serialized line, not the object: the field is set to
       // `undefined` (matching `cumulative` / `what` / `outcomeUnknown` beside it),
-      // so the property exists but `JSON.stringify` drops it — and the ledger line
+      // so the property exists but `JSON.stringify` drops it. And the ledger line
       // is what has to stay comparable with entries written before this field.
       const s = summarizeRun({ ...at, run: 'test:rta', outcome: RUN_OUTCOMES.PASSED });
       expect(JSON.parse(JSON.stringify(s))).not.toHaveProperty('assertions');
@@ -1022,7 +1022,7 @@ describe('the run outcome — whether the suite actually ran', () => {
   describe('FAILURE_KINDS — the registry, gated beside its definition', () => {
     // Moved here with the registry itself. Two ways a bucket goes wrong and they
     // need different guards: two names for one class SPLITS the count (covered at
-    // runtime by `kindUnknown`), one name for two classes MERGES it — invisible in
+    // runtime by `kindUnknown`), one name for two classes MERGES it: invisible in
     // review and invisible at runtime, because both sites look perfectly valid.
     const entries = Object.entries(FAILURE_KINDS);
 
@@ -1046,7 +1046,7 @@ describe('the run outcome — whether the suite actually ran', () => {
     it('recognises its own members and rejects anything else', () => {
       for (const slug of Object.values(FAILURE_KINDS)) expect(isUnknownKind(slug)).toBe(false);
       expect(isUnknownKind('detail-rows-missing')).toBe(true);
-      // A typo'd property reads as undefined — it must not pass as registered.
+      // A typo'd property reads as undefined: it must not pass as registered.
       expect(isUnknownKind(FAILURE_KINDS.DETAIL_ROW_NOT_FOND)).toBe(true);
       expect(isUnknownKind(undefined)).toBe(true);
     });
@@ -1087,13 +1087,13 @@ describe('the run outcome — whether the suite actually ran', () => {
   it('does not tell an interrupted run nobody closed it — an entry point did', () => {
     // `interrupted` is only ever written by an explicit `close()` (rta-run's abandon
     // path, run-roku-tests' `done(130)`); the exit net writes `crashed` and nothing
-    // else. So "its entry point never closed it" — true of a crash by definition —
+    // else. So "its entry point never closed it" (true of a crash by definition)
     // is false here. The shared clause may only claim the missing verdict.
     const advice = (outcome) =>
       formatRunSummary({ ...at, run: 'test:rta', failures: [], outcome }, 'x.jsonl').join('\n');
     expect(advice(RUN_OUTCOMES.INTERRUPTED)).not.toMatch(/never closed it|[Nn]obody closed it/);
     expect(advice(RUN_OUTCOMES.INTERRUPTED)).toContain('never reached a verdict');
-    // The crash keeps the claim that IS true of it — that is the definition of the
+    // The crash keeps the claim that IS true of it: that is the definition of the
     // value, not a guess about what it managed to run.
     expect(advice(RUN_OUTCOMES.CRASHED)).toContain('Nobody closed it');
     expect(advice(RUN_OUTCOMES.CRASHED)).toContain('never reached a verdict');
@@ -1158,7 +1158,7 @@ describe('summarizeRun', () => {
 
   it('records which take a demo run was, since the ledger outlives run-meta.json', () => {
     // `run` is `demo` for every take, and run-meta.json is overwritten by the next
-    // run — so the ledger line is the only surviving record of which choreography
+    // run, so the ledger line is the only surviving record of which choreography
     // this was. Measured case: five demo runs in one session, all reading `demo`.
     const summary = summarizeRun({
       startedAt: '2026-08-11T15:44:00Z',
@@ -1209,8 +1209,8 @@ describe('summarizeRun', () => {
   it('records WHICH device the run drove', () => {
     // The baseline is specified on one device (`.200`) because the three Rokus on
     // this LAN are not interchangeable. `variant` and `commit` cannot separate a
-    // stray `.177` run from that series — a baseline's whole point is that those
-    // two are identical across its runs — so the device has to be its own key.
+    // stray `.177` run from that series (a baseline's whole point is that those
+    // two are identical across its runs), so the device has to be its own key.
     const summary = summarizeRun({
       startedAt: 'a',
       endedAt: 'b',
@@ -1223,7 +1223,7 @@ describe('summarizeRun', () => {
   it('keeps `variant` even when it equals the run kind — unlike `what`', () => {
     // A full `npm run test:rta` has variant === run. Omitting it there is exactly
     // the case that would break a filter, so the redundancy rule that governs
-    // `what` deliberately does NOT apply here.
+    // `what` does not apply here, on purpose.
     const summary = summarizeRun({
       startedAt: 'a',
       endedAt: 'b',
@@ -1252,7 +1252,7 @@ describe('summarizeRun', () => {
 describe('formatRunSummary', () => {
   /**
    * A summary for an RTA run. Every case names its run kind, because the `[tag]`
-   * on each printed line is derived from it — and `endRun`, the only real caller,
+   * on each printed line is derived from it, and `endRun`, the only real caller,
    * always supplies one. A `run`-less summary is not a shape this receives.
    */
   const rta = (fields) => summarizeRun({ run: 'test:rta', ...fields });
@@ -1287,8 +1287,8 @@ describe('formatRunSummary', () => {
 
   it('tags each line with the RUN KIND, not with the RTA harness', () => {
     // This module is shared with the Rooibos runner, so a hardcoded `[rta]` would
-    // print over `npm run test:unit` — the same "named for the other harness"
-    // dishonesty the per-kind directory split removed, just in the output rather
+    // print over `npm run test:unit`: the same "named for the other harness"
+    // dishonesty the per-kind directory split removed, only in the output rather
     // than on disk. The tag is derived from the record directory's own name, so
     // there is no second mapping that can drift out of sync with `runDir`.
     const rooibos = formatRunSummary(
@@ -1363,7 +1363,7 @@ describe('formatRunSummary', () => {
             test: 'screen "seasonDetails" loads',
             afterHourBoundary: true,
             state: {
-              // ItemDetails extends JRScreen, which has no `loadState` — that
+              // ItemDetails extends JRScreen, which has no `loadState`: that
               // field is BaseGridView's. A detail-screen record legitimately
               // carries none, and the shell fields are what answer instead.
               view: { subtype: 'ItemDetails' },
@@ -1383,7 +1383,7 @@ describe('formatRunSummary', () => {
 
   it('surfaces a swallowed-input failure in the roll-up', () => {
     // `isRemoteDisabled` means JRScene.onKeyEvent was returning true for every key
-    // we sent — the north-star failure mode, and the one a roll-up must not bury.
+    // we sent: the north-star failure mode, and the one a roll-up must not bury.
     const lines = formatRunSummary(
       rta({
         startedAt: '2026-08-10T14:02:00Z',
@@ -1420,7 +1420,7 @@ describe('formatRunSummary', () => {
 
   it('names the demo take, the other label Vitest cannot supply', () => {
     // A demo failure carries neither a test name nor a screen, so without this it
-    // printed a bare kind — which does not say which choreography was running.
+    // printed a bare kind, which does not say which choreography was running.
     const lines = formatRunSummary(
       rta({
         startedAt: '2026-08-10T14:02:00Z',
@@ -1453,7 +1453,7 @@ describe('formatRunSummary', () => {
   });
 
   it('still names a failure whose device state could not be read', () => {
-    // An unreachable device is itself the finding — it must not format away.
+    // An unreachable device is itself the finding: it must not format away.
     const lines = formatRunSummary(
       rta({
         startedAt: '2026-08-10T14:02:00Z',
@@ -1481,7 +1481,7 @@ describe('foldResolutions — coverage first, then the two defects', () => {
   });
 
   it('separates a DUPLICATE from a NOT-PRESENTED read', () => {
-    // They are different defects with different fixes — a shared list would merge them
+    // They are different defects with different fixes. A shared list would merge them
     // the way a shared failure-kind slug merges two failure classes.
     const folded = foldResolutions([
       {

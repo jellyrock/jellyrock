@@ -38,10 +38,10 @@ sub configure(args as object)
   m.top.task.setFields({ blockMode: args.blockMode, blockMs: args.blockMs, seq: args.seq })
 end sub
 
-' The app's full sequence, which is not just STOP-then-launch: every site writes its INPUT
-' field between the two (`m.searchTask.query = query`, `m.loadDetailsTask.itemId = itemId`).
-' That write is why an ignored relaunch can still look right — the old run, if it survives,
-' reads the new value.
+' The app's full sequence before #961 moved these sites to replaceTask, which was not only
+' STOP-then-launch: every site wrote its INPUT field between the two (`m.searchTask.query =
+' query`, `m.loadDetailsTask.itemId = itemId`). That write is why an ignored relaunch can still
+' look right: the old run, if it survives, reads the new value.
 sub stopWriteRelaunch(newSeq as integer)
   task = m.top.task
   task.control = "STOP"
@@ -51,7 +51,7 @@ sub stopWriteRelaunch(newSeq as integer)
 end sub
 
 ' What a site with a persistent Task node does on every run after the first: write the input
-' field and launch, with no STOP — whether or not the previous run has finished
+' field and launch, with no STOP, whether or not the previous run has finished
 ' (`MoviePresenter.loadLogo` did this with `itemId` before it moved to replaceTask).
 sub writeAndLaunch(newSeq as integer)
   task = m.top.task
@@ -59,7 +59,7 @@ sub writeAndLaunch(newSeq as integer)
   launchTask(task)
 end sub
 
-' What a view's teardown does to a load whose answer has just arrived: the answer is written,
+' What a view's teardown does to a load whose answer has only now arrived: the answer is written,
 ' then the Task is STOPped, in one render-thread callback, before the Task thread can run.
 sub deliverThenStop()
   task = m.top.task
@@ -81,9 +81,9 @@ end sub
 ' ── Many nodes at once, for TaskThreadSlots.spec.bs ──────────────────────────
 '
 ' That spec counts threads against Roku's 100-thread cap, so these launch with a raw
-' `control = "RUN"` rather than launchTask(): the ledger's watermark would refuse at 50
-' and the spec could never reach the cap it is measuring. Every node is held here until
-' dropHeld(), so a stopped node stays VALID — the case Roku's rule is about.
+' `control = "RUN"` rather than launchTask(): the ledger's watermark would start no thread past
+' 50, and the spec could never reach the cap it is measuring. Every node is held here until
+' dropHeld(), so a stopped node stays VALID: the case Roku's rule is about.
 
 ' Creates, configures and launches one more held node. Returns { ok, node } on success, or
 ' { ok: false, code, message } when the launch threw (the cap's `&h29` is documented as

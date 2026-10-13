@@ -1,15 +1,15 @@
 import "pkg:/source/constants/subtitleLayout.bs"
 
 ' The focus indicator is drawn OUTSIDE the row it marks. Measured on a Streaming
-' Stick 4K from a device capture: a 72px row's ring spanned y 602..693, i.e. 92px
-' — ~10px beyond each edge. Named here so the gap assertions state what they are
-' clearing rather than a bare number.
+' Stick 4K from a device capture (2026-09-14): a 72px row's ring spanned y 602..693, that is
+' 92px, ~10px beyond each edge. Named here so the gap assertions state what they
+' are clearing rather than a bare number.
 const FOCUS_RING_OVERSHOOT = 10
 
 ' Unit tests for the subtitle panel's row geometry (issue #750).
 '
-' Three components derive from these helpers — SubtitlePanel sizes the list
-' slot, SubtitleResultRow and CurrentSubtitleRow lay out their contents — and
+' Three components derive from these helpers (SubtitlePanel sizes the list
+' slot, SubtitleResultRow and CurrentSubtitleRow lay out their contents), and
 ' the panel's first draft shipped with the slot height and the rendered row
 ' disagreeing, which showed up as rows drifting out of their slots and the two
 ' columns failing to line up. These tests pin the arithmetic they all share.
@@ -25,7 +25,7 @@ namespace tests
 
     @it("is padding, two lines and the gap between them - nothing else")
     function _()
-      ' Guards the shape, not just the number: a row that reserves a third line
+      ' Guards the shape, not only the number: a row that reserves a third line
       ' for a badge strip is what made badge-free rows read as broken, and the
       ' regression would be invisible in a build.
       expected = (subtitleLayout.ROW_V_PADDING * 2) + 25 + subtitleLayout.ROW_LINE_GAP + 21
@@ -67,7 +67,7 @@ namespace tests
       ' The reason SECTION_HEADING_TOP_GAP exists. A section heading sits between
       ' two things it could belong to, and whitespace is the only cue saying
       ' which: it must be nearer the list it names than the column heading above
-      ' it. It used to be neither — 12px above and 9px below — and being the
+      ' it. It used to be neither (12px above and 9px below), and being the
       ' smaller type of the two it read as a subtitle of the column heading, so a
       ' column with only one section rendered as a run-on title.
       '
@@ -105,7 +105,7 @@ namespace tests
 
     @it("shows both sections in full when they fit")
     function _()
-      ' The invariant is "do not ration what already fits" — the fixture just has
+      ' The invariant is "do not ration what already fits": the fixture only has
       ' to be a shape that fits, and a modest one keeps this test about the
       ' invariant rather than about the current row heights. The measured 1 + 6
       ' item gets its own test below, and the sweep after that proves nothing
@@ -120,8 +120,8 @@ namespace tests
       ' This briefly rationed to five when the rows carried their old double
       ' padding and the gaps landed on top of it. Trimming the padding took the
       ' compact row from 45 to 27 and gave the sixth track back, so the column's
-      ' original target holds again — pinned here so a future padding change says
-      ' so out loud rather than quietly costing a row.
+      ' original target holds again. It is pinned here so a future padding change
+      ' says so out loud rather than quietly costing a row.
       counts = m.rowCounts(1, 6)
       m.assertEqual(counts.downloadedRows, 1)
       m.assertEqual(counts.embeddedRows, 6, "all six built-in tracks fit")
@@ -151,7 +151,7 @@ namespace tests
     function _()
       ' The failure this guards: enough downloaded files to fill the column would
       ' otherwise leave the built-in section with no room, and the earlier draft
-      ' resolved that by drawing one row anyway — past the panel's clip, which is
+      ' resolved that by drawing one row anyway, past the panel's clip, which is
       ' precisely the half-row bug the results column shipped with.
       for each downloaded in [1, 3, 6, 12, 50]
         counts = m.rowCounts(downloaded, 6)
@@ -248,7 +248,7 @@ namespace tests
     @it("never hands a Label a width of zero or less, at any row width")
     function _()
       ' A Label with width <= 0 renders its text UNCLIPPED. This has to hold even
-      ' at widths no column uses — the guard is worthless if it only survives the
+      ' at widths no column uses: the guard is worthless if it only survives the
       ' two inputs we pass today.
       for each rowWidth in [subtitleLayout.RESULTS_WIDTH, subtitleLayout.EXISTING_WIDTH, 400, 200, 100, 24, 0]
         m.assertTrue(subtitleLayout.maxBadgeRunWidth(rowWidth) >= 0, "the badge budget must never go negative")
@@ -297,7 +297,7 @@ namespace tests
 
     @it("keeps the icon below the badges it shares a right edge with")
     function _()
-      ' Both are pinned to the row's right padding edge, so the ONLY thing
+      ' Both are pinned to the row's right padding edge, so the only thing
       ' keeping them apart is that the badges sit on line 1 and the icon on
       ' line 2. If the icon ever rose into line 1 it would land on a badge.
       firstLineY = subtitleLayout.ROW_V_PADDING
@@ -312,7 +312,7 @@ namespace tests
     function _()
       ' Bounded by the RING, not the row. The icon is centred on line 2 and is
       ' taller than that line, so on a tightly padded row it ends a fraction below
-      ' the row's own bottom edge — which is invisible and harmless, because the
+      ' the row's own bottom edge, which is invisible and harmless, because the
       ' chrome the user sees is the ring 10px further out. What would actually
       ' show is an icon escaping THAT, so that is what this pins.
       rowHeight = subtitleLayout.rowHeight(25, 21)
@@ -326,8 +326,8 @@ namespace tests
     @it("keeps a row's own padding clearly tighter than the gap between rows")
     function _()
       ' Proximity: things inside a group must sit closer to each other than to
-      ' things outside it. The row's padding and the inter-row gap were 21 and 24
-      ' — near enough to equal that nothing read as grouped, which is what made a
+      ' things outside it. The row's padding and the inter-row gap were 21 and 24,
+      ' near enough to equal that nothing read as grouped, which is what made a
       ' correct-looking layout feel off. The insets below are measured from the
       ' RING, so they carry its overshoot.
       insetV = FOCUS_RING_OVERSHOOT + subtitleLayout.ROW_V_PADDING
@@ -345,8 +345,8 @@ namespace tests
 
     @it("clears the focus ring's measured overshoot, for BOTH row shapes")
     function _()
-      ' The list draws the indicator OUTSIDE the row — measured on a Stick 4K, a
-      ' 72px row's ring spanned 92px, i.e. ~10px per side. A gap smaller than that
+      ' The list draws the indicator OUTSIDE the row. Measured on a Stick 4K, a
+      ' 72px row's ring spanned 92px, that is ~10px per side. A gap smaller than that
       ' puts the ring on the next row's first line of text, which is the bug this
       ' constant exists to prevent.
       m.assertTrue(subtitleLayout.ROW_SPACING >= FOCUS_RING_OVERSHOOT, "the two-line row gap must clear the focus ring")
@@ -357,7 +357,7 @@ namespace tests
     function _()
       ' 1080/720 means an absolute edge divisible by 3 lands on an output row and
       ' stays sharp. The column origin is already on the grid (306 panel + 190
-      ' column + 44 heading = 540), so the PITCH is what has to preserve it — and
+      ' column + 44 heading = 540), so the PITCH is what has to preserve it, and
       ' the pitch is the row plus the gap. See dialogLayout.bs's PIXEL_GRID note.
       m.assertEqual((subtitleLayout.COLUMNS_Y + subtitleLayout.COLUMN_HEADING_HEIGHT + 306) mod 3, 0, "the column origin must be on the grid")
       m.assertEqual((subtitleLayout.rowHeight(25, 21) + subtitleLayout.ROW_SPACING) mod 3, 0, "two-line row pitch must stay divisible by 3")
@@ -375,8 +375,8 @@ namespace tests
 
     @it("rowsThatFit is the exact inverse of rowsHeight")
     function _()
-      ' These two are used on opposite sides of the same decision — one rations
-      ' rows to a height, the other places them — so a disagreement is a clipped
+      ' These two are used on opposite sides of the same decision (one rations
+      ' rows to a height, the other places them), so a disagreement is a clipped
       ' row that no build would catch.
       for each pair in [[subtitleLayout.rowHeight(25, 21), subtitleLayout.ROW_SPACING], [subtitleLayout.rowHeightCompact(25), subtitleLayout.ROW_SPACING_COMPACT]]
         for each available in [0, 40, 100, 200, 300, 486, 700]
@@ -400,7 +400,7 @@ namespace tests
     ' sectionHeadingSpace() rather than SECTION_HEADING_HEIGHT: a heading is never
     ' drawn without its top gap, so restating only the slot here would let this
     ' sweep under-count by that gap and go green over a layout that really does
-    ' clip a row — the sweep would still be measuring the shape from before the
+    ' clip a row: the sweep would still be measuring the shape from before the
     ' gap existed.
     function sectionFits(downloadedRows as integer, embeddedRows as integer) as boolean
       used = 0

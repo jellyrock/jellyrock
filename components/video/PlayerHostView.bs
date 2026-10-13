@@ -18,15 +18,16 @@ import "pkg:/source/utils/translate.bs"
 '
 ' 5s rather than the 10s Jellyfin's web client uses, because that client's panel
 ' is a cache TTL on an always-open overlay while this is a dialog someone opened
-' deliberately, usually because something looked wrong. The figure that matters —
-' transcode speed — is a level to be confirmed, and halving the wait for the first
+' on purpose, usually because something looked wrong. The figure that matters
+' (transcode speed) is a level to be confirmed, and halving the wait for the first
 ' confirmation is the whole benefit.
 '
 ' TWO GATES keep that from becoming an open-ended poll, and neither invents a
 ' number:
 '
-'   1. The timer only STARTS when the report has live rows — i.e. a transcode is
-'      running. On direct play nothing in the report can change, so it never polls
+'   1. The timer only STARTS when the report has live rows (a transcode is
+'      running) or has no session yet (reportNeedsPolling). On a direct play with
+'      its session in hand nothing in the report can change, so it never polls
 '      at all, which is most sessions.
 '   2. A tick makes no request once the device has been idle longer than the
 '      screensaver timeout THE USER CONFIGURED. That is their own statement about
@@ -34,13 +35,13 @@ import "pkg:/source/utils/translate.bs"
 '      the opposite, and is never suspended.
 '
 ' Gate 2 is an IDLE threshold, not a claim about what is on screen. Roku suppresses
-' the screensaver during video playback, so it may never actually appear here — the
+' the screensaver during video playback, so it may never actually appear here. The
 ' reason to lean on that number anyway is that the user picked it, not that the
 ' screen is covered.
 '
 ' Being wrong is cheap in exactly one direction, which is why the threshold can be
 ' loose: TimeSinceLastKeypress resets itself, so the first tick after any keypress
-' fetches again — at most 5s of staleness, no state, no resume path, no key
+' fetches again: at most 5s of staleness, no state, no resume path, no key
 ' handling. Polling forever has no such recovery.
 const PLAYBACK_INFO_REFRESH_SECONDS = 5
 
@@ -54,7 +55,7 @@ const PLAYBACK_INFO_REFRESH_SECONDS = 5
 
 sub init()
   m.log = new log.Logger("PlayerHostView")
-  ' The player is fullscreen — keep the shared overhang hidden while this view is the
+  ' The player is fullscreen: keep the shared overhang hidden while this view is the
   ' router-active view (JRScene's overhang controller reads isOverhangVisible on mount).
   m.top.isOverhangVisible = false
   ' Reaching this screen is where a video playback start goes (appWaits.leftBehind).
@@ -64,7 +65,7 @@ sub init()
   m.liveRestart = newLiveRestartBudget()
 
   ' "Are you still watching?" (stillWatching.bs). The session spans every video this route
-  ' plays; pending means "ask when the video just mounted starts playing"; pausedForAnswer
+  ' plays; pending means "ask when the newly mounted video starts playing"; pausedForAnswer
   ' means the prompt timed out and paused it, so the next `playing` is an answer.
   m.stillWatching = newStillWatchingSession(UpTime(0))
   m.stillWatchingPending = false
@@ -77,8 +78,8 @@ end sub
 
 ' Router lifecycle (via JRScreen's onViewOpen bridge): mount the player for the
 ' current queue item. The launching code (QueueManager.playQueue -> JRScene) has
-' already built the queue, so the host just reads getCurrentItem. Guard against a
-' redundant call (e.g. screensaver-exit re-fires onScreenShown).
+' already built the queue, so the host only reads getCurrentItem. Guard against a
+' redundant call (for example, screensaver-exit re-fires onScreenShown).
 sub onScreenShown()
   if not isValid(m.view)
     mountPlayer()
@@ -179,10 +180,10 @@ sub restartLiveChannel()
 end sub
 
 ' A deep link arrived while this player is active. Stop + report the player NOW (synchronously)
-' WITHOUT navigating — the caller (JRScene.replayDeepLinkReplacingPlayer) then
-' goBacks, whose beforeViewClose -> onDestroy does the full teardown. destroyPlayer is idempotent
-' (guards m.view), so that second teardown is a safe no-op — NOT a full onDestroy here, which
-' would run twice and double-tear-down.
+' WITHOUT navigating. The caller (JRScene.replayDeepLinkReplacingPlayer) then navigates to "/",
+' whose route clears the stack, and the router's beforeViewClose -> onDestroy does the full
+' teardown. destroyPlayer is idempotent (guards m.view), so that second teardown is a safe no-op.
+' This is not a full onDestroy, which would run twice and double-tear-down.
 sub teardownForDeepLink()
   destroyPlayer()
 end sub
@@ -195,13 +196,14 @@ sub exitPlayback()
   sgrouter.goBack()
 end sub
 
-' Router: this view is being destroyed (goBack / sign-out resetRouter). Tear down the
-' player child. abandonApiPromises() is injected here by the auto-abandon-promises BSC
-' plugin (JRScreen.onDestroy's floor doesn't chain to SG-component overrides).
+' Router: this view is being destroyed (goBack, a stack clear such as the deep link's
+' navigation to "/", or sign-out resetRouter). Tear down the player child. This file
+' makes no fetchAsync call, so the auto-abandon-promises BSC plugin injects no
+' abandonApiPromises() here.
 sub onDestroy()
   m.stillWatchingTimer.unobserveField("fire")
   ' The picker / info overlays are appended to the SCENE, so they outlive this
-  ' view — anything that navigates without the user closing the dialog first
+  ' view. Anything that navigates without the user closing the dialog first
   ' (deep link, session expiry, voice "stop") would strand one over the incoming
   ' screen. See abandonDialog in source/utils/dialogs.bs.
   abandonPlaybackDialogs()
@@ -209,7 +211,7 @@ sub onDestroy()
 end sub
 
 ' Drop the report and any track picker this view opened, delivering nothing. Both
-' observers this view owns for the report go too — the timer's `fire` and the
+' observers this view owns for the report go too: the timer's `fire` and the
 ' dialog's `closed`. The dialogs outlive this view (they are appended to the
 ' SCENE), so an unreleased observer on one would keep calling into a dead scope.
 sub abandonPlaybackDialogs()
@@ -261,7 +263,7 @@ sub onPlayerStateChange()
     queueManager.callFunc("advanceTo", position + 1)
     updateQueueBackdrop()
     playCurrentQueueItem()
-    ' After the remount: destroyPlayer clears it, and it belongs to the player just mounted.
+    ' After the remount: destroyPlayer clears it, and it belongs to the newly mounted player.
     m.stillWatchingPending = askStillWatching
     return
   end if
@@ -280,51 +282,52 @@ function currentMountProgressMs() as integer
   return progressMs
 end function
 
-' The checks and screen-clearing every exit from the current mount shares — a stream that
+' The checks and screen-clearing every exit from the current mount shares: a stream that
 ' finished (onPlayerStateChange) and a Live TV stream that stalled (onLiveStreamStalled).
 ' Returns false when a guard says to leave the mount alone, before anything is torn down.
 function prepareToLeaveMount() as boolean
   ' Don't advance mid-retry; the DoVi fallback calls stop which can fire "finished".
   if isValid(m.view.isRetrying) and m.view.isRetrying then return false
 
-  ' Don't advance — or tear anything down — while an error dialog owns the exit.
+  ' Don't advance (or tear anything down) while an error dialog owns the exit.
   ' Same class of "finished" as the line above, and the same asymmetry it fixes:
-  ' bufferCheck shows the dialog and stops the stream on the very next line, with
-  ' nothing claiming the exit. A `stop` usually surfaces as `stopped`, which
-  ' onPlayerStateChange's state check already ignores — but it can surface as
+  ' two callers (bufferCheck's stall error and showLiveStreamStalledError) show
+  ' the dialog and stop the stream on the very next line, and before the claim
+  ' nothing held the exit. A `stop` usually surfaces as `stopped`, which
+  ' onPlayerStateChange's state check already ignores. But it can surface as
   ' `finished`, which is precisely why isRetrying exists, and on that landing the
   ' teardown below would abandon the dialog and the queue logic would advance to
   ' the next episode with the error unread.
   '
   ' Bailing does not strand the dialog: the only routes out of the player still
-  ' tear it down — the dialog's own resolution calls exitFromPlaybackError ->
+  ' tear it down. The dialog's own resolution calls exitFromPlaybackError ->
   ' exitPlayback, and anything that navigates without it (deep link, sign-out)
   ' reaches VideoPlayerView.onDestroy, which abandons it.
   if isValid(m.view.errorDialogOwnsExit) and m.view.errorDialogOwnsExit then return false
 
   ' Clear the screen before playback teardown navigates: a dialog left open would
-  ' end up over the incoming screen, having lost focus to it — visible but deaf.
+  ' end up over the incoming screen, having lost focus to it (visible but deaf).
   '
   ' Three calls because the dialogs mean different things. Ours (the playback-info
-  ' report AND VideoPlayerView's error dialog) are ABANDONED — this host owns the
+  ' report AND VideoPlayerView's error dialog) are ABANDONED: this host owns the
   ' player, and the scope that would receive either result is about to be torn
-  ' down or has already moved on. Anything else is CANCELLED — a main-thread flow
+  ' down or has already moved on. Anything else is CANCELLED: a main-thread flow
   ' (a cast notice, the deep-link server-switch prompt) can open a dialog over the
   ' player, and it holds state until that dialog answers, so it has to be told.
   '
-  ' abandonErrorDialog() MUST run before cancelOpenDialog(), and that ordering is
+  ' abandonErrorDialog() has to run before cancelOpenDialog(), and that ordering is
   ' the general rule even though the guard above now means there is normally
   ' nothing here to abandon. Both the error dialog and cancelOpenDialog() live on
   ' the overlay channel (the dialog moved off a raw modal Dialog in the
   ' dialog-standardization migration), and cancelOpenDialog() delivers a
-  ' CANCELLED result indistinguishable from the user pressing Back — which
+  ' CANCELLED result indistinguishable from the user pressing Back, which
   ' VideoPlayerView's result handler treats as a real dismissal and navigates on.
   ' Abandoning first drops the dialog and its observer before cancelOpenDialog()
   ' can reach either.
   '
-  ' Kept as the belt to the guard's braces, NOT as the fix. The claim and the
+  ' Kept as the belt to the guard's braces, not as the fix. The claim and the
   ' dialog are set together (showPlaybackErrorDialog), so reaching this line with
-  ' a live error dialog means something showed one without claiming the exit —
+  ' a live error dialog means something showed one without claiming the exit:
   ' worth surviving, not worth relying on. The stall path this used to catch is
   ' now caught by the guard, which is what lets the user actually read the error.
   m.view.callFunc("abandonErrorDialog")
@@ -460,7 +463,7 @@ end function
 ' All four go through the standard dialog helpers (source/utils/dialogs.bs): the
 ' three pickers are JRListDialogs, the info report an OverviewDialog. Each result
 ' arrives on its own dialog node's `result` field, so every picker has its OWN
-' handler — the old path shared SceneManager.returnData between all three and
+' handler. The old path shared SceneManager.returnData between all three and
 ' told them apart with a `type` string stamped into every option.
 '
 ' Only ONE of these can be open at a time (the OSD is unreachable behind a modal),
@@ -486,7 +489,7 @@ sub showTrackPicker(title as string, options as object, onResult as string)
 end sub
 
 ' The option the user picked, or invalid if they backed out. Clears the dialog
-' slot — every result handler starts here.
+' slot. Every result handler starts here.
 function resolvePickedValue() as object
   dialog = m.trackPickerDialog
   options = m.trackPickerOptions
@@ -541,7 +544,7 @@ sub onSelectSubtitlePressed()
   showTrackPicker(translate(translationKeys.LabelSelectSubtitles), options, "onSubtitleTrackSelected")
 end sub
 
-' Subtitle selection handler. `selected` is { index, isEncoded, trackName } — the
+' Subtitle selection handler. `selected` is { index, isEncoded, trackName }. The
 ' "None" row is the one whose index is SubtitleSelection.NONE, which is why this
 ' no longer compares the row's LABEL against the literal string "none" (that
 ' comparison is why the None row could never be translated).
@@ -553,12 +556,12 @@ sub onSubtitleTrackSelected()
   ' not load", and every branch below can end in nothing visibly happening.
   m.log.info("onSubtitleTrackSelected", "pickedIndex", selected.index, "isEncoded", selected.isEncoded, "wasIndex", m.view.selectedSubtitle)
 
-  ' Nothing changed — leave the stream alone.
+  ' Nothing changed: leave the stream alone.
   '
-  ' Both-NONE is deliberately NOT treated as "no change": an EXTERNAL subtitle
+  ' Both-NONE is not treated as "no change", on purpose: an EXTERNAL subtitle
   ' track leaves selectedSubtitle at NONE (only in-file tracks are tracked by
   ' index), so picking None while one is showing hits this with both sides NONE
-  ' and still has real work to do — clearing subtitleTrack below is what actually
+  ' and still has real work to do. Clearing subtitleTrack below is what actually
   ' turns it off.
   if m.view.selectedSubtitle <> SubtitleSelection.NONE or selected.index <> SubtitleSelection.NONE
     if m.view.selectedSubtitle = selected.index then return
@@ -576,7 +579,7 @@ sub onSubtitleTrackSelected()
     m.view.globalCaptionMode = "Off"
     m.view.subtitleTrack = ""
 
-    ' SelectedSubtitle is alwaysNotify — writing the value it already holds still
+    ' SelectedSubtitle is alwaysNotify: writing the value it already holds still
     ' fires its observers, so only write it when it actually changes.
     if m.view.selectedSubtitle <> SubtitleSelection.NONE
       m.view.selectedSubtitle = SubtitleSelection.NONE
@@ -618,7 +621,7 @@ sub onSelectPlaybackInfoPressed()
   startPlaybackInfoLoad()
 end sub
 
-' One fetch of the live session, on a NEW node per run (ADR 0037) — a node that
+' One fetch of the live session, on a NEW node per run (ADR 0037): a node that
 ' is still running ignores a relaunch. Replaces any run in flight, which is what a
 ' press wants; the refresh tick lets one finish instead (onPlaybackInfoRefreshDue).
 sub startPlaybackInfoLoad()
@@ -635,8 +638,8 @@ sub onPlaybackInfoLoaded(event as object)
   ' dialog below and opened the report again by itself.
   if not isCurrentTaskEvent(event, m.getPlaybackInfoTask) then return
 
-  ' Not open yet, and another dialog took the screen while this was in flight — a
-  ' server message, the player's error. It was asked for AFTER the press, so it
+  ' Not open yet, and another dialog took the screen while this was in flight (a
+  ' server message, the player's error). It was asked for AFTER the press, so it
   ' wins: opening the report now would supersede it, and the error dialog reads a
   ' supersede as a deliberate takeover and parks the player with its message gone.
   ' The user can press "i" again.
@@ -648,7 +651,7 @@ sub onPlaybackInfoLoaded(event as object)
 
   ' A FAILED fetch is not "the transcode ended", and telling them apart matters:
   ' an invalid session builds a report with no transcode section, which would trip
-  ' the live-rows check below and stop the refresh permanently — one dropped
+  ' the live-rows check below and stop the refresh permanently, one dropped
   ' request killing the dialog's updates for as long as it stays open. Skip the
   ' rebuild entirely and let the next tick try again; the dialog keeps showing the
   ' last good figures, which is what it would show anyway.
@@ -656,12 +659,12 @@ sub onPlaybackInfoLoaded(event as object)
 
   report = buildPlaybackReport(playbackReportInputs(session))
   if report.sections.count() = 0
-    ' Nothing at all to show — no session AND no cached PlaybackInfo to build the
+    ' Nothing at all to show: no session AND no cached PlaybackInfo to build the
     ' static half from. Pressing a button and having literally nothing happen
     ' reads as a broken button, so say so; that silence is what the old flow's
     ' "Unable to get playback information" used to cover.
     '
-    ' Only when the dialog is NOT already open. Behind an open one the same rule
+    ' Only when the dialog is not already open. Behind an open one the same rule
     ' as a failed refresh applies: keep showing the last good report rather than
     ' throwing a toast over it, and let the next tick try again.
     if not isValid(m.reportDialog) then displayToast(translate(translationKeys.ErrorUnableToGetPlaybackInformation), "error")
@@ -680,8 +683,8 @@ sub onPlaybackInfoLoaded(event as object)
     ' so the live figures change and the scroll position does not.
     '
     ' The status line is refreshed too. It is nearly always the same word, but a
-    ' transcode can END while the report is open — a DoVi buffer-overflow fallback
-    ' does exactly that — and leaving "Transcoding" above a body that has just
+    ' transcode can END while the report is open (a DoVi buffer-overflow fallback
+    ' does that), and leaving "Transcoding" above a body that has
     ' rebuilt itself into a direct-play report is the stale answer this whole
     ' refresh exists to prevent.
     m.reportDialog.tagline = report.status
@@ -709,9 +712,9 @@ function playbackReportInputs(session as dynamic) as object
   ' (canPlay4k() and the display reporting DolbyVision). Attribution is only
   ' honest if both sides ask the identical question.
   '
-  ' READ ONCE PER HOST, not per call — `m.deviceVideoCapabilities` is never
+  ' READ ONCE PER HOST, not per call: `m.deviceVideoCapabilities` is never
   ' cleared, so it spans every item across the whole `mountPlayer()` lifetime of
-  ' this host, not just one mount. This is not a field read: canPlay4k()
+  ' this host, not only one mount. This is not a field read: canPlay4k()
   ' builds an roDeviceInfo AND an roHdmiStatus and then asks the hardware two
   ' questions (IsHdcpActive, CanDecodeVideo), and getDeviceVideoCapabilities adds
   ' GetDisplayProperties on top. Re-running that every 5 seconds on the RENDER
@@ -745,7 +748,7 @@ function playbackReportInputs(session as dynamic) as object
     settings: m.global.user.settings,
     ' Gates the Path row, which is admin-only. Read defensively rather than
     ' assumed present: `policy` is server-authoritative and only populated from a
-    ' real session, so it can legitimately be absent — and absent must mean NOT an
+    ' real session, so it can legitimately be absent, and absent must mean not an
     ' administrator, never the other way round.
     isAdministrator: userIsAdministrator(),
     apiVersion: getApiVersionFromGlobal(),
@@ -784,9 +787,9 @@ end function
 ' Keep the live rows live.
 '
 ' Transcode speed is the one figure in the report that is only meaningful RIGHT
-' NOW — it says whether the server is keeping ahead of playback, and a value from
+' NOW: it says whether the server is keeping ahead of playback, and a value from
 ' four minutes ago answers nothing. Progress and output bitrate move with it.
-' Everything else in the report is fixed for the session and simply re-resolves to
+' Everything else in the report is fixed for the session and re-resolves to
 ' the same text, which the dialog then skips.
 '
 ' The timer drives the same task the button does, so there is one fetch path and
@@ -805,7 +808,7 @@ function reportHasLiveRows(report as object) as boolean
   return false
 end function
 
-' True when the report still has an unanswered question — either something that
+' True when the report still has an unanswered question: either something that
 ' changes while you watch it, or something we have not been told yet.
 '
 ' Two ways to qualify, and the second is what makes a failed first fetch
@@ -817,7 +820,7 @@ end function
 ' timer on the next pass.
 '
 ' A direct play with a session in hand qualifies as neither, which is the case
-' that must never poll — and it is most sessions.
+' that must never poll, and it is most sessions.
 function reportNeedsPolling(report as object, session as dynamic) as boolean
   if not isValid(session) then return true
   return reportHasLiveRows(report)
@@ -826,12 +829,12 @@ end function
 sub startPlaybackInfoRefresh()
   ' The idle threshold is the screensaver timeout the USER configured, read once.
   ' Preferred over a constant of ours because it is the one duration they have
-  ' already told the device counts as away — someone who set two minutes wants
+  ' already told the device counts as away. Someone who set two minutes wants
   ' aggressive idling and someone who set an hour does not, and a single number
   ' here would be wrong for one of them. Zero means they switched the screensaver
   ' off, which is the opposite instruction, so nothing suspends.
   '
-  ' roAppManager is NOT creatable on the render thread, which is why this goes
+  ' roAppManager is not creatable on the render thread, which is why this goes
   ' through the existing LoadScreenSaverTimeoutTask rather than being read inline.
   ' AudioPlayerView already pairs that same task with TimeSinceLastKeypress for its
   ' own screensaver; this is that pattern reused, not a second one.
@@ -857,8 +860,8 @@ sub stopPlaybackInfoRefresh()
 end sub
 
 ' Stop the timer AND let it go. Kept distinct from stopPlaybackInfoRefresh
-' because closing the dialog only pauses polling — the same timer is reused the
-' next time the report is opened — while onDestroy has to release the observer.
+' because closing the dialog only pauses polling (the same timer is reused the
+' next time the report is opened), while onDestroy has to release the observer.
 sub releasePlaybackInfoRefresh()
   if not isValid(m.playbackInfoTimer) then return
 
@@ -887,7 +890,7 @@ sub onPlaybackInfoRefreshDue()
   ' calls cancelDialog() -> closeDialog(), which sets `closed` and fires
   ' onPlaybackInfoDialogClosed() same as any other close. This guard is here for
   ' any OTHER way the dialog could leave the scene without that field ever being
-  ' set — stop rather than poll into nothing.
+  ' set: stop rather than poll into nothing.
   if not isValid(m.reportDialog) or not isValid(m.reportDialog.getParent())
     stopPlaybackInfoRefresh()
     return
@@ -895,11 +898,11 @@ sub onPlaybackInfoRefreshDue()
 
   ' Idle longer than the user's own screensaver timeout: stop making requests. The
   ' timer keeps ticking, which costs nothing and is what removes the need for any
-  ' resume path — TimeSinceLastKeypress resets the moment the remote is touched,
+  ' resume path: TimeSinceLastKeypress resets the moment the remote is touched,
   ' so the very next tick fetches again. A timeout of 0 means the screensaver is
   ' switched off, and that is an instruction not to idle at all.
   if m.screenSaverTimeout > 0
-    ' The handle is cached rather than rebuilt each tick — CreateObject is not
+    ' The handle is cached rather than rebuilt each tick: CreateObject is not
     ' free and this runs on the render thread while video is playing.
     if not isValid(m.deviceInfo) then m.deviceInfo = CreateObject("roDeviceInfo")
     if m.deviceInfo.TimeSinceLastKeypress() >= m.screenSaverTimeout then return
@@ -916,11 +919,11 @@ sub onPlaybackInfoRefreshDue()
   startPlaybackInfoLoad()
 end sub
 
-' The dialog closed — stop polling into it and let it go.
+' The dialog closed: stop polling into it and let it go.
 '
 ' It reports that on its own `closed` field. It USED to be observed through
 ' `parentNode`, on the reasoning that a dialog which dismisses itself by removing
-' itself from the scene has a detached parent — but `parentNode` is not a field
+' itself from the scene has a detached parent. But `parentNode` is not a field
 ' on Node (its observable fields are id, focusable, focusedChild and change), so
 ' that observer never fired even once. Nothing cleared m.reportDialog, so the
 ' NEXT press of the "i" button found a dialog it believed was still open and

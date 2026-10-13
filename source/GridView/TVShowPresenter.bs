@@ -38,7 +38,7 @@ class TVShowPresenter extends GridPresenterBase
       { "Title": translate(translationKeys.LabelGenres), "Name": "Genres" }
     ]
 
-    ' The library itself on 12.0+ only — see collectionsView for both rules. A TV library
+    ' The library itself on 12.0+ only; see collectionsView for both rules. A TV library
     ' gets the view for the same reason a movie library does: the server scopes BoxSets by
     ' library, a collection can hold series, and jellyfin-web lists a Collections tab on
     ' both library kinds.

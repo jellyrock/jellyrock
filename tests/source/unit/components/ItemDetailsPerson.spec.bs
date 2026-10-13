@@ -8,7 +8,7 @@ namespace tests
   ' ExtrasRowList.contentReady declares.
   '
   ' The chain here is real and finds nothing (no server in a unit run), so a test that
-  ' needs media sets personHasMedia itself after that answer — and waits for the answer
+  ' needs media sets personHasMedia itself after that answer, and waits for the answer
   ' rather than racing it, since it arrives on another thread while the test runs.
   @suite("ItemDetails - Person Shuffle button")
   class ItemDetailsPersonTests extends tests.BaseTestSuite
@@ -65,7 +65,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("keeps Shuffle when a new run resets personHasMedia")
-    ' The reset every run starts with, delivered on its own — what Refresh does first.
+    ' The reset every run starts with, delivered on its own: what Refresh does first.
     function _()
       m.loadPersonWithShuffle("person-1")
 
