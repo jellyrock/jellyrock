@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (search) Show and announce when a search failed or found nothing ([#1199](https://github.com/jellyrock/jellyrock/pull/1199))
 - Say why a quick play found nothing, and never guess an episode ([#1197](https://github.com/jellyrock/jellyrock/pull/1197))
 
 ### Fixed
