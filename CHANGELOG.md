@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- (playback) Test the Dolby Vision remux decision itself ([#1193](https://github.com/jellyrock/jellyrock/pull/1193))
+
 ### Fixed
 
 - (playback) Pick `.strm` tracks on first play; fill Playback Info ([#1184](https://github.com/jellyrock/jellyrock/pull/1184))
