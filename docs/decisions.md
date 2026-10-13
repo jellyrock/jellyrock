@@ -2096,6 +2096,16 @@ Ruled out: a toast alone for a full failure (failed would look like empty once i
 
 Ruled out: an optional release hook on the shared `replaceTask()`, which would touch every caller and the build rule's tests for one component's need.
 
+## decision-id: subtitle-search-failure-state
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/remoteSubtitles.bs`, `components/subtitles/SubtitlePanel.bs`
+
+A subtitle search that got no usable reply (a timeout, an HTTP or network error, or a body that is not a list) shows "Couldn't search for subtitles. Press Search to try again." where the results go, in place of "No subtitles found…". The Search button above it is the retry, so the panel gets no new control. An answered empty list keeps "No subtitles found…" and its provider hint, because Jellyfin catches each provider's error and still answers `200 []` (`SubtitleManager.SearchSubtitles`, read in 10.11.0 and master): a provider that is down or has no credentials looks the same as no match. Both texts are spoken through `narrateStatus`, queued and only while the panel is open, since focus stays on the header and the screen reader speaks only what has focus (the rule `search-failure-state` set). `remoteSubtitles.searchFailure` and `searchStatusKey` hold the rule.
+
+Ruled out: a Try again button in the results column (a second retry beside Search, and new focus paths in a modal panel), and a toast alone (a failure would look empty once it faded). Measured 2026-10-13 on `.178` (Ultra) against a local 10.11.11 server with Open Subtitles 24.0.0.0 and no credentials: the plugin's login fails, the server logs it and answers `200 []` in 14 to 29 ms; `subtitle-search-failure.spec.js` failed 3 of 4 cases on the old code and passes 4 of 4 on the new. The spec skips on the public demo, whose user cannot manage subtitles.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
