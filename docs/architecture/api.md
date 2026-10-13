@@ -5,6 +5,7 @@ related-files:
   - source/api/apiPool.bs
   - source/api/apiPipeline.bs
   - source/api/apiResponse.bs
+  - source/api/apiRead.bs
   - source/constants/apiPool.bs
   - source/api/baseRequest.bs
   - source/api/apiTimeout.bs
@@ -251,7 +252,7 @@ This blocks the Task thread, not the render thread, for up to `apiTimeout.waitMs
 
 `fetchJson(req, id)` returns only `res.json`, or `invalid` on a timeout, an HTTP error or a list body that failed its shape check ([Reading a list endpoint's body](#reading-a-list-endpoints-body)).
 
-`fetchJson` drops the reason. A caller that must tell a failed load from an empty one, and log why, calls `fetchRes` and asks [`apiResponse.jsonFailure(res)`](../../source/api/apiResponse.bs). It returns `""` for a usable body, and otherwise a short cause (`timed out`, `HTTP 500`, `network error -7`, `unreadable reply`) for the warning line. `LoadItemsTask2.executeItemQuery()` is the reference.
+`fetchJson` drops the reason. A caller that must tell a failed load from an empty one, and log why, calls `fetchRes` and asks [`apiResponse.jsonFailure(res)`](../../source/api/apiResponse.bs). It returns `""` for a usable body, and otherwise a short cause (`timed out`, `HTTP 500`, `network error -7`, `unreadable reply`) for the warning line. `LoadItemsTask2.executeItemQuery()` is the reference. A Task that makes several reads in one run and must say whether any of them failed reads through an [`apiRead.Reader`](../../source/api/apiRead.bs): one per run, built with the Task's logger, it does that per read and counts the reads sent and failed (`QuickPlayTask`, `SearchTask`).
 
 ### Pattern 2: `fetchAsync` (non-blocking, from the render thread)
 

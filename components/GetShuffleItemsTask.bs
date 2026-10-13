@@ -1,10 +1,10 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiRead.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/quickplayOutcome.bs"
-import "pkg:/source/utils/quickplayRead.bs"
 
 sub init()
   m.top.functionName = "getShuffleItems"
@@ -18,8 +18,8 @@ end sub
 sub getShuffleItems()
   input = m.top.shuffleInput
   items = []
-  ' Every read of this build, which remembers one that did not answer (quickplayRead.Reader).
-  m.reader = new quickplayRead.Reader(m.log)
+  ' Every read of this build, which remembers one that did not answer (apiRead.Reader).
+  m.reader = new apiRead.Reader(m.log, "quick play")
   ' No branch shuffles this type, which no retry changes.
   unsupported = false
 
