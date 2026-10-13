@@ -1,6 +1,6 @@
 // Aggregates the agent tool-use log into a human-readable report.
 //
-// Reads $HOME/.claude/jellyrock-telemetry/tool-use.jsonl by default
+// Reads ${XDG_STATE_HOME:-~/.local/state}/jellyrock/telemetry/tool-use.jsonl by default
 // (override with $JELLYROCK_TELEMETRY_DIR). The log is populated by the
 // PostToolUse hook at .claude/hooks/log-tool-use.sh, which writes per-USER
 // (not per-worktree) so contributors with multiple jellyrock copies see a
@@ -53,11 +53,28 @@ for (let i = 0; i < args.length; i++) {
 
 const DAYS = Number(flagValue('--days')) || 7;
 const TOP = Number(flagValue('--top')) || 20;
+// The default folder is read exactly as the hooks write it: `${XDG_STATE_HOME:-$HOME/.local/state}`
+// (unset or empty means the default), so the reader and the writers always agree.
+const STATE_HOME = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
 const TELEMETRY_DIR =
-  process.env.JELLYROCK_TELEMETRY_DIR || path.join(os.homedir(), '.claude', 'jellyrock-telemetry');
+  process.env.JELLYROCK_TELEMETRY_DIR || path.join(STATE_HOME, 'jellyrock', 'telemetry');
 const LOG_PATH = path.join(TELEMETRY_DIR, 'tool-use.jsonl');
+// Where the hooks wrote before the log moved to the state folder. A checkout that has not pulled
+// the move still writes here, so the default report reads both logs while this one exists. Remove
+// this read once no checkout writes here: the report prints when the old log last grew.
+const OLD_LOG_PATH = path.join(os.homedir(), '.claude', 'jellyrock-telemetry', 'tool-use.jsonl');
+const logPaths = [LOG_PATH];
+if (!process.env.JELLYROCK_TELEMETRY_DIR && fs.existsSync(OLD_LOG_PATH)) {
+  logPaths.push(OLD_LOG_PATH);
+  const last = fs.statSync(OLD_LOG_PATH).mtime.toISOString().slice(0, 10);
+  console.log(`Also read the old log at ${OLD_LOG_PATH} (last written ${last}).`);
+  console.log(
+    `Once no checkout writes there, retire it: mv "${path.dirname(OLD_LOG_PATH)}" "${TELEMETRY_DIR}"`,
+  );
+}
+const presentLogs = logPaths.filter((p) => fs.existsSync(p));
 
-if (!fs.existsSync(LOG_PATH)) {
+if (presentLogs.length === 0) {
   console.log(`No telemetry log at ${LOG_PATH}.`);
   console.log(`Hook setup: see .claude/settings.json + .claude/hooks/log-tool-use.sh`);
   console.log(`Once an agent runs Read/Grep/Glob/Edit, the log will appear.`);
@@ -66,7 +83,7 @@ if (!fs.existsSync(LOG_PATH)) {
 }
 
 const cutoff = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000);
-const lines = fs.readFileSync(LOG_PATH, 'utf8').split(/\n/).filter(Boolean);
+const lines = presentLogs.flatMap((p) => fs.readFileSync(p, 'utf8').split(/\n/).filter(Boolean));
 
 const counts = {
   byTool: new Map(),

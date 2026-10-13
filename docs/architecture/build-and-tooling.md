@@ -668,7 +668,7 @@ It skips what the editor covers (`lint:bs`, `validate`, formatting), `lint:docs`
 
 ## Agent telemetry
 
-`.claude/settings.json` registers a `PostToolUse` hook for Read, Grep, Glob, Edit, Write and `MultiEdit`. [`log-tool-use.sh`](../../.claude/hooks/log-tool-use.sh) appends a JSON line to `~/.claude/jellyrock-telemetry/tool-use.jsonl`, or `$JELLYROCK_TELEMETRY_DIR`. The log is per user, so several checkouts feed one picture, and it is never committed. The hook never delays the tool, and without `jq` it does nothing.
+`.claude/settings.json` registers a `PostToolUse` hook for Read, Grep, Glob, Edit, Write and `MultiEdit`. [`log-tool-use.sh`](../../.claude/hooks/log-tool-use.sh) appends a JSON line to `${XDG_STATE_HOME:-~/.local/state}/jellyrock/telemetry/tool-use.jsonl`, or `$JELLYROCK_TELEMETRY_DIR`. The report also reads the older `~/.claude/jellyrock-telemetry` log while it exists, for checkouts that still write there. The log is per user, so several checkouts feed one picture, and it is never committed. The hook never delays the tool, and without `jq` it does nothing.
 
 `npm run agent-telemetry` reports the most-read and most-edited files and the most common search patterns. Use it to decide where a scoped `CLAUDE.md` would pay off.
 

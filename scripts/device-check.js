@@ -147,7 +147,7 @@ export function report(results) {
 export function verdict(results) {
   const up = results.filter((r) => r.reachable);
   if (!results.length) {
-    return 'No device configured — set ROKU_IP (or ROKU_DEVICES) in .env or ~/.config/jellyrock/env. Hardware tests cannot run, and that is now a checked fact rather than an assumption.';
+    return 'No device configured — set ROKU_IP (or ROKU_DEVICES) in .env or ${XDG_CONFIG_HOME:-~/.config}/jellyrock/env. Hardware tests cannot run, and that is now a checked fact rather than an assumption.';
   }
   if (!up.length) {
     return `No device answered (${results.length} tried). Hardware tests cannot run — say so, and say the probe failed rather than that you lack access.`;
