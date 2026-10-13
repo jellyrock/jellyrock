@@ -85,9 +85,11 @@ const APP_MADE_RESPONSE_FIELDS = new Map([
   ],
 ]);
 
-// Request-body fields are built in the API layer.
+// Request-body fields are built in the API layer. apiFaults.bs builds no request: its AA
+// literals are the fake answers an RTA spec asks for (an empty query result), so its
+// PascalCase keys are a test fixture's, not fields the app sends.
 const REQUEST_FIELD_GLOBS = ['source/api/**/*.bs'];
-const REQUEST_FIELD_EXCLUDE = new Set(['source/api/baseRequest.bs']);
+const REQUEST_FIELD_EXCLUDE = new Set(['source/api/baseRequest.bs', 'source/api/apiFaults.bs']);
 
 const ENDPOINT_SINK_NAMES = new Set(['buildurl', 'apirequest']);
 const PATH_TEMPLATE_NAMES = new Set(['substitute']);
