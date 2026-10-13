@@ -2054,7 +2054,7 @@ ADR 0011 replaced part (b) of ADR 0009, but its header names only ADR 0008. Part
 **status**: accepted
 **related-files**: `docs/adr/0041-task-launch-queue.md`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
 
-ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `VideoPlayerView`'s `LoadMetaDataTask`, `AudioPlayerView`'s, two in `ItemDetails` and `Home`'s remote-control receiver. As of 2026-10-13 only `VideoPlayerView` remains, with four `LoadMetaDataTask` entries; the other sites moved to a new node per run. The plugin's `PENDING_MIGRATIONS` is the live list, and followup `pending-migrations-same-node-relaunch` tracks the rest.
+ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `VideoPlayerView`'s `LoadMetaDataTask`, `AudioPlayerView`'s, two in `ItemDetails` and `Home`'s remote-control receiver. As of 2026-10-13 the list is empty: `VideoPlayerView`'s four `LoadMetaDataTask` entries were the last, moved to a new node per run by `startVideoLoad()`, and followup `pending-migrations-same-node-relaunch` is closed. The sites ADR 0041's gap still applies to are those tech-debt `queued-relaunch-stale-stop` lists: `TrickplayCarousel.m.tileLoader`, `VideoPlayerView.m.liveTvRefreshTask`, and `Home`'s remote-control receiver, suppressed for good.
 
 ## decision-id: persons-exclude-music-artists
 
