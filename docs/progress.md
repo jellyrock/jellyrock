@@ -650,6 +650,24 @@ Options, raised while building the quick play failure toasts (decision `quick-pl
 
 Not checked: the two English messages' widths on screen (estimated from length only); whether the clipped text ends in an ellipsis or is cut mid-word (Roku `Label` truncation was not looked at on screen); which other toasts overflow in English beyond the two named.
 
+#### Home's texture window has five unmeasured tails: edge churn, a buffer-row cell with no texture, scroll-direction bias, loads per unique item, and pop-in on Home `[fid: home-texture-window-tails]` `[captured 2026-10-13]`
+
+The `task-thread-budget` project closed on 2026-10-13 with these left open. Two of them are its unmet success criteria. The rest are phase C's leftovers from the windowing audit (#919), which found no defect but measured only the window's geometry:
+
+- Churn at the window's edge: `reloads`, `wipesReload`, `bindsRedundant` while scrolling across the boundary.
+- The one cell of 8 with no texture on a buffer row (suspected cause: an item with no artwork, never checked).
+- Whether the window should load further ahead in the scroll direction (weakened by the `focusXOffset` peek).
+- Loads ÷ unique items traversed reaching 1.0 on Home. `ExtrasRowList` reads 1.05 after #840; never measured on Home.
+- Pop-in near zero on Home. Measurable since #843 (`popIns`, read with `loadMsMax`), never shown on Home.
+
+Why not now: each needs a pre-registered device campaign on the cell sweeps (`RTA_BENCH=1`). Closes when each is measured, and fixed where it shows a defect, on `JRRowItem` and `source/utils/textureManager.bs`.
+
+#### Home binds about 16 more cells on some launches than others over an identical workload `[fid: home-binds-variance]` `[captured 2026-10-13]`
+
+Over an identical, settled Home workload, `binds` still spans about 16 cells from launch to launch (224 to 240 in one 2026-09-14 run where every census field was identical). A 2026-08-22 campaign of 40 launches pinned the itinerary, the items, the unloads and the row structure, so the harness is not the cause: the variance comes from the app. It was parked inside `task-thread-budget` and carried here when that project closed on 2026-10-13.
+
+Why not now: it needs a device campaign tracing which cells `HomeRows` / `JRRowItem` bind beyond the visible set. Closes when the extra binds are explained, and removed if they turn out redundant.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
