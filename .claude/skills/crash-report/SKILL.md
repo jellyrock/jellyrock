@@ -80,7 +80,7 @@ node scripts/crash-report.js file --worksheet "$WS"
 
 Read the handoff and recap: N filed (#…), N commented, N reopened, N aggregated to epics (#…), N suppressed, N skipped. Name any action that failed, for a retry by hand. **Next:** for a deep dive on a filed issue, `/issue-triage <N>`. Delete the worksheet: `rm "$WS"`.
 
-## When NOT to use
+## When not to use
 
 - One crash log from a developer's device: use `/runtime-triage`.
 - One crash issue someone filed by hand: use `/issue-triage <N>`.

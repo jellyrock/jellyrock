@@ -1,11 +1,4 @@
 {
-  ".claude/agents/log-reviewer.md": {
-    "caps-emphasis": 1
-  },
-  ".claude/agents/pattern-finder.md": {
-    "caps-emphasis": 1,
-    "filler": 1
-  },
   ".claude/rules/american-spelling.md": {
     "filler": 1
   },
@@ -50,9 +43,6 @@
     "em-dash": 8,
     "filler": 1
   },
-  ".claude/skills/README.md": {
-    "caps-emphasis": 1
-  },
   ".claude/skills/catchup/SKILL.md": {
     "caps-emphasis": 3,
     "em-dash": 30,
@@ -75,24 +65,10 @@
     "em-dash": 14,
     "filler": 1
   },
-  ".claude/skills/crash-backtrace/SKILL.md": {
-    "em-dash": 5,
-    "prose-arrow": 3
-  },
-  ".claude/skills/crash-report/SKILL.md": {
-    "caps-emphasis": 1
-  },
   ".claude/skills/create-issue/SKILL.md": {
     "caps-emphasis": 1,
     "em-dash": 21,
     "prose-arrow": 3
-  },
-  ".claude/skills/dep-major/SKILL.md": {
-    "caps-emphasis": 1
-  },
-  ".claude/skills/docs-lint/SKILL.md": {
-    "caps-emphasis": 1,
-    "filler": 1
   },
   ".claude/skills/done/SKILL.md": {
     "caps-emphasis": 2,
@@ -130,21 +106,8 @@
     "filler": 7,
     "prose-arrow": 15
   },
-  ".claude/skills/log/jellyrock.md": {
-    "filler": 1,
-    "prose-arrow": 2
-  },
   ".claude/skills/log/journal.sh": {
     "em-dash": 2
-  },
-  ".claude/skills/new-api-version/SKILL.md": {
-    "caps-emphasis": 1
-  },
-  ".claude/skills/new-migration/SKILL.md": {
-    "caps-emphasis": 1
-  },
-  ".claude/skills/new-setting/SKILL.md": {
-    "caps-emphasis": 1
   },
   ".claude/skills/pr/AUDIT-LOG.md": {
     "caps-emphasis": 3,
@@ -161,9 +124,6 @@
   ".claude/skills/pr/forge.sh": {
     "em-dash": 1
   },
-  ".claude/skills/ramp/SKILL.md": {
-    "caps-emphasis": 1
-  },
   ".claude/skills/resume-project/SKILL.md": {
     "caps-emphasis": 4,
     "em-dash": 25,
@@ -171,9 +131,6 @@
   },
   ".claude/skills/resume-project/resume-state.sh": {
     "em-dash": 2
-  },
-  ".claude/skills/runtime-triage/SKILL.md": {
-    "caps-emphasis": 1
   },
   ".claude/skills/second-opinion/SKILL.md": {
     "caps-emphasis": 2,
@@ -215,12 +172,6 @@
     "caps-emphasis": 3,
     "em-dash": 11,
     "latin-abbrev": 1
-  },
-  ".claude/skills/tech-debt-scan/SKILL.md": {
-    "caps-emphasis": 1
-  },
-  ".claude/skills/translation-add/SKILL.md": {
-    "caps-emphasis": 1
   },
   "docs/adr/0001-triage-opus-inline-investigation.md": {
     "prose-arrow": 1
@@ -408,17 +359,8 @@
     "em-dash": 14,
     "prose-arrow": 1
   },
-  "docs/architecture/async.md": {
-    "filler": 2
-  },
   "docs/architecture/remote-control-longpoll-contract.md": {
     "caps-emphasis": 6
-  },
-  "docs/architecture/tech-debt.md": {
-    "filler": 3
-  },
-  "docs/architecture/testing.md": {
-    "filler": 1
   },
   "docs/decisions.md": {
     "caps-emphasis": 19,
@@ -427,28 +369,12 @@
     "latin-abbrev": 1,
     "prose-arrow": 30
   },
-  "docs/dev/measuring-performance.md": {
-    "filler": 2
-  },
-  "docs/dev/registry-migrations.md": {
-    "filler": 1
-  },
-  "docs/dev/rta-tests.md": {
-    "prose-arrow": 1
-  },
-  "docs/dev/scripts-development.md": {
-    "filler": 1
-  },
   "docs/progress.md": {
     "caps-emphasis": 38,
     "em-dash": 440,
     "filler": 56,
     "latin-abbrev": 9,
     "prose-arrow": 35
-  },
-  "docs/screenshots/README.md": {
-    "caps-emphasis": 1,
-    "em-dash": 2
   },
   "docs/signals-backlog.md": {
     "caps-emphasis": 2,
@@ -461,19 +387,7 @@
     "em-dash": 1,
     "latin-abbrev": 2
   },
-  "docs/user/playback-troubleshooting.md": {
-    "filler": 1
-  },
-  "resources/icons/README.md": {
-    "caps-emphasis": 1,
-    "em-dash": 26,
-    "filler": 1,
-    "latin-abbrev": 5
-  },
   "scripts/ropm-hook.cjs": {
     "caps-emphasis": 1
-  },
-  "tests/CLAUDE.md": {
-    "filler": 2
   }
 }

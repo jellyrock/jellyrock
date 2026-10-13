@@ -92,7 +92,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `rooibos-setup-not-per-test`
 
 - **area**: spec files under [`tests/source/unit/`](../../tests/source/unit/) and [`tests/source/integration/`](../../tests/source/integration/) that build or mutate node state in `setup()`
-- **github**: #786 (epic with the per-file checklist; its checklist and its "once per suite" wording are stale)
+- **github**: #786 (epic with the per-file checklist, refreshed 2026-10-13)
 - **issue**: Rooibos runs `setup()` and `teardown()` once per `@describe` group, and `beforeEach()` and `afterEach()` once per test. A suite that builds a node in `setup()` and then mutates it lets each test inherit the last one's leftovers, so it passes on declaration order rather than isolation. The visible failure is the benign direction. The hazard is a test that never sets a field it depends on and passes on a neighbor's value, until someone reorders or deletes the neighbor. Of #786's 23 files on 2026-10-11, 20 still build in `setup()` (one is converted, two were deleted), and 7 files not on the list build there too.
 - **direction**: Move construction and mutated state to `beforeEach()` (chaining `super.beforeEach()`) and cleanup to `afterEach()`; leave immutable per-suite fixtures in `setup()`. Audit rather than rewrite blind: a suite where every test sets every field it reads is already order-independent. The cheap check is to reverse the test order and re-run. Split by the epic's groups, one PR each. Prevention is already in [`tests/CLAUDE.md`](../../tests/CLAUDE.md).
 
@@ -264,7 +264,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `remotecontrol-no-keepalive-longevity-gate`
 
 - **area**: [`source/remotecontrol/remoteProtocol.bs`](../../source/remotecontrol/remoteProtocol.bs) (`keepAliveFrame`), [`components/remotecontrol/RemoteControlTask.bs`](../../components/remotecontrol/RemoteControlTask.bs) (`runWsReceiver`, `connectAndPump`), the RTA suite under `tests/rta/`
-- **issue**: Nothing holds a session socket open past Jellyfin's inactivity reap, so a `KeepAlive` the server ignores fails no test. That is how #934 stayed hidden: `keepAliveFrame()` sent a lowercased key for the whole life of the `ws://` transport, every 10.11+ session socket was reaped and reconnected forever, and the only symptom users saw was Live TV stopping about a minute into playback on 12.0. The #974 commit has the reap timings and the capture. The unit spec now pins the frame's bytes, but that guards one function, not the behavior. A regression in cadence, framing or teardown would be just as silent.
+- **issue**: Nothing holds a session socket open past Jellyfin's inactivity reap, so a `KeepAlive` the server ignores fails no test. That is how #934 stayed hidden: `keepAliveFrame()` sent a lowercased key for the whole life of the `ws://` transport, every 10.11+ session socket was reaped and reconnected forever, and the only symptom users saw was Live TV stopping about a minute into playback on 12.0. The #974 commit has the reap timings and the capture. The unit spec now pins the frame's bytes, but that guards one function, not the behavior. A regression in cadence, framing or teardown would be equally silent.
 - **severity**: Medium. It is the only gate that would have caught #934 by symptom rather than by review, at the cost of about 90 s of run time.
 - **direction**: Expose a client-side signal for "the socket stayed up N seconds without a forced reconnect". Nothing counts reconnects today; `runWsReceiver` logs one. Then add an RTA spec that idles past the reap window and asserts on it. Whether the public demo server reaps the same way is unchecked.
 
@@ -324,7 +324,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `onstate-error-branch-not-reentrant`
 
 - **area**: [`components/video/VideoPlayerView.bs`](../../components/video/VideoPlayerView.bs) (`onState`, the `error` branch)
-- **issue**: The Dolby Vision and transcode fallbacks each clear their guard flag (`isDoviDirectPlayFallbackAvailable`, then `isTranscodeAvailable`) just before calling `retryPlayback(...)`. The branch is correct only while `onState` runs once per `state` notification. A second run for the same notification falls through to the next test. It then either fires a second retry with other parameters, or reaches the final `else`, which sets `m.hasPlaybackFailed`, stops both timers and shows the error dialog while the retry is in flight. That is unreachable today: `state` is observed once, in `init()`, and moving an `m.top` observer elsewhere is a build error ([ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md)). Before that fix, #898 measured a duplicate `onState` on a Roku Ultra; the branch itself was never driven. `bufferCheck` had the same shape and is fixed (#899), but nothing tests either, since `VideoPlayerView` has no unit spec.
+- **issue**: The Dolby Vision and transcode fallbacks each clear their guard flag (`isDoviDirectPlayFallbackAvailable`, then `isTranscodeAvailable`) right before calling `retryPlayback(...)`. The branch is correct only while `onState` runs once per `state` notification. A second run for the same notification falls through to the next test. It then either fires a second retry with other parameters, or reaches the final `else`, which sets `m.hasPlaybackFailed`, stops both timers and shows the error dialog while the retry is in flight. That is unreachable today: `state` is observed once, in `init()`, and moving an `m.top` observer elsewhere is a build error ([ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md)). Before that fix, #898 measured a duplicate `onState` on a Roku Ultra; the branch itself was never driven. `bufferCheck` had the same shape and is fixed (#899), but nothing tests either, since `VideoPlayerView` has no unit spec.
 - **direction**: Make the clear-then-retry pair safe to re-enter (read and clear into a local before branching, or claim the `error` block with an in-flight flag as `errorDialogOwnsExit` does), or state the invariant in a comment at the head of the branch citing this slug. Do not add another observer guard; that guard is already in place. A related route this branch leaves dead is tracked as followup `park-player-after-supersede-not-reversed`.
 - **severity**: Low. Unreachable from any known path; filed because the branch does not defend itself.
 
@@ -539,7 +539,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 - **area**: `source/api/userAuth.bs` (`SignOut`, `StopRemoteControlReceiver`), `components/remotecontrol/RemoteControlTask.bs`
 - **issue**: `StopRemoteControlReceiver` stops the receiver with `control = "STOP"`, which ends the Task thread before the transport is torn down. On `ws://` (#666) the socket gets no close handshake. On long-poll (#667) an in-flight poll, held up to `POLL_TIMEOUT_MS`, is abandoned rather than canceled. Both are harmless: Jellyfin reaps the session on its inactivity timeout, and the same sign-out invalidates the token. But each leaves a short-lived dangling resource on every sign-out or server switch. It also STOPs the socket child through the `socketNode` field `RemoteControlTask` publishes ([`remote-control.md`](remote-control.md) explains why the teardown is abrupt).
-- **direction**: Have the receiver watch for a shutdown signal and close the transport before exiting: `close = [1000]` on the `WebSocketClient`, `AsyncCancel` on the outstanding poll. What the graceful path needs is the sequence (request close, wait for the handshake or a timeout, then STOP), not just the call. Low priority, unless a half-open socket ever proves visible.
+- **direction**: Have the receiver watch for a shutdown signal and close the transport before exiting: `close = [1000]` on the `WebSocketClient`, `AsyncCancel` on the outstanding poll. What the graceful path needs is the sequence (request close, wait for the handshake or a timeout, then STOP), not only the call. Low priority, unless a half-open socket ever proves visible.
 
 #### `api-usage-manifest-no-per-endpoint-binding`
 
@@ -633,6 +633,48 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: `startLatestMediaLoads` sets `m.isLoadingLatestRows` and `m.rowSizesBatching` before `launchTask`, and returns `false` without clearing either when the launch is refused. Home then believes a latest-rows run is going: a refresh skips the Recently Added rows, and OK on a failed one waits for a retry instead of starting one. Only `resetLatestRowsRun` clears them, when a later `startLatestMediaLoads` finds the run stalled (`latestRows.runIsStalled`). There is no timer, so that waits for the next refresh or retry past the stall budget.
 - **severity**: Low. `launchTask` returns `false` only for an invalid node or a full launch queue ([ADR 0041](../adr/0041-task-launch-queue.md)). Named when the direct Recently Added retry (decision `home-row-failure-tile`) became the first caller to act on the `false` return.
 - **direction**: Set both flags only after the launch is accepted, or clear them on the `false` path, then re-run `home-failure.spec.js` on a device.
+
+#### `subtitle-track-name-matchers-duplicated`
+
+- **area**: `VideoPlayerView.availSubtitleTrackIdx()`, `trackPickerOptions.availableSubtitleTrackIndex()`
+- **issue**: Two functions match a subtitle stream to Roku's rewritten `TrackName` by substring (`inStr`). The `VideoPlayerView` copy has no `isValid` guards and no `> 0` test, so the two can disagree on the same track.
+- **direction**: Keep one matching function, with the guards, and call it from both places; one spec covers it.
+
+#### `two-plugins-bypass-bsc-rule`
+
+- **area**: [`unobserve-before-release.cjs`](../../scripts/bsc-plugins/unobserve-before-release.cjs), [`auto-abandon-promises.cjs`](../../scripts/bsc-plugins/auto-abandon-promises.cjs)
+- **issue**: Both define their own `afterValidateFile` and call `hasSiblingComponentXml()` by hand, the two-file shape [`scripts/lib/bsc-rule.cjs`](../../scripts/lib/bsc-rule.cjs) exists for and eight other plugins use.
+- **direction**: Move both onto `bsc-rule.cjs`; their existing tests should pass unchanged.
+
+#### `lint-exclude-lists-drifted`
+
+- **area**: [`scripts/lib/lint-excludes.cjs`](../../scripts/lib/lint-excludes.cjs), the `lint:*` scripts in `package.json`, `.lintstagedrc.cjs`
+- **issue**: The pre-commit excludes and the `package.json` excludes are meant to match and have drifted: `package.json` also leaves `**/copilot-instructions.md` out of spelling, `build-analysis/` out of markdown and JSON, and `tests/rta/` out of JSON. Both file headers admit it, and nothing checks parity.
+- **direction**: Build the `package.json` globs from `lint-excludes.cjs`, or add a test that the two lists agree.
+
+#### `docs-check-skips-claude-dir`
+
+- **area**: [`scripts/lint/docs-check.cjs`](../../scripts/lint/docs-check.cjs)
+- **issue**: `lint:docs` skips every directory whose name starts with a dot, so links and anchors in `.claude/` (skills, rules, agents) are never checked. They were probed by hand once, on 2026-10-11 for #1161.
+- **direction**: Scan `.claude/` too, or record the exclusion as a decision if scanning it costs more than it finds.
+
+#### `dead-selecteditem-fields`
+
+- **area**: `components/home/Home.xml`, `components/search/SearchResults.xml`
+- **issue**: `Home.selectedItem` and `SearchResults.selectedItem` are declared, and nothing writes or observes them. A reader can wire to a field that never fires.
+- **direction**: Remove both fields, or list them in the dead-code epic #1072.
+
+#### `path-normalization-triplicated`
+
+- **area**: `normalizeSpecPath()` in [`scripts/lib/spec-path.cjs`](../../scripts/lib/spec-path.cjs), `normalizePath()` in `scripts/generate/api-usage-manifest.js` and in `scripts/lib/endpoint-availability.cjs`
+- **issue**: Three copies of the endpoint-path rule must agree for the server-upgrade join to work. They agree today; `spec-path.cjs`'s header names the other two, and no test checks them.
+- **direction**: Have the other two import `normalizeSpecPath()`.
+
+#### `prod-bsconfig-plugin-gap-unrecorded`
+
+- **area**: `bsconfig-prod.json`, `bsconfig.json`
+- **issue**: The prod config leaves out six plugins the dev config runs (`brighterscript-xml-plugin`, `callfunc-interface`, `button-row-bracket`, `field-observer-wiring`, `register-once-observer`, `dead-code`) with no recorded reason. `validate` still runs them on every PR, so nothing slips today; the gap is a silent carve-out.
+- **direction**: Record why (most likely: lint-only plugins change nothing in a prod build) as a decision, or add them to match.
 
 ## Recently removed: don't go searching for these
 

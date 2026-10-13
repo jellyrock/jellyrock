@@ -72,7 +72,7 @@ Then on hardware: `npm run device:check`, and when a device answers, `npm run te
 - **A global setting without the `global` prefix**, or a user setting with it: the value is saved in the wrong section.
 - **A registry test without `m.needsRegistrySetup = true`.** Sections leak into the next suite and fail it.
 
-## When NOT to use
+## When not to use
 
 - The value is owned by the server: read it from `m.global.user`.
 - You're renaming or removing an existing setting: use `/new-migration`.

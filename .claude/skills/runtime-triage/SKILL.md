@@ -115,7 +115,7 @@ Full pasted log (untruncated):
 
 4. Then **continue at once** into [`INVESTIGATION.md`](INVESTIGATION.md). Don't stop or wait.
 
-## When NOT to use
+## When not to use
 
 - The paste is a CI failure log: use `/ci-triage`.
 - The paste is a GitHub issue body with a log in it: use `/issue-triage <N>`, whose investigation reads the log.

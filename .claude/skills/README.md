@@ -107,7 +107,7 @@ The rules for writing one are in [`CLAUDE.md`](CLAUDE.md). The steps:
    ---
    ```
 
-3. The body: a short tagline, Inputs, numbered steps, "When NOT to use", and "Sub-agent invocation" if it can run from a sub-agent.
+3. The body: a short tagline, Inputs, numbered steps, "When not to use", and "Sub-agent invocation" if it can run from a sub-agent.
 4. Add a row to the right table in this README.
 5. If the skill runs a new command shape, add an allow rule to `.claude/settings.json` in the same change.
 6. Test it: start a sub-agent with `Read .claude/skills/<name>/SKILL.md and follow the steps for <test input>; report the output`, and check the output is structured and usable with no further help.
