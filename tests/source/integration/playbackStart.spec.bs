@@ -4,7 +4,7 @@ import "pkg:/source/utils/appWaits.bs"
 namespace tests
 
   ' QueueManager's playback starts (beginPlaybackStart / takePlaybackStart): one open start at a
-  ' time, and a newer launch replaces the one still pending. Runs against the real components —
+  ' time, and a newer launch replaces the one still pending. Runs against the real components:
   ' a fresh QueueManager per test, and an AppWaitHost mounted in the test scene, where
   ' appWaits.begin finds it.
   @suite("QueueManager - playback starts")

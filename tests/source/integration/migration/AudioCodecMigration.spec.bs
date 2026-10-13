@@ -21,7 +21,7 @@ namespace tests
 
       reg = CreateObject("roRegistrySection", testUserId)
       reg.write("serverId", m.global.server.id)
-      reg.write("LastRunVersion", "1.1.4") ' Between v1.1.0 and v1.1.5 - runs ONLY v1.1.5
+      reg.write("LastRunVersion", "1.1.4") ' Between v1.1.0 and v1.1.5: skips v1.1.0, runs v1.1.5 and later
       reg.write("playbackPreferredAudioCodec", "eac3")
       reg.flush()
 
@@ -213,7 +213,7 @@ namespace tests
 
       reg = CreateObject("roRegistrySection", testUserId)
       reg.write("serverId", m.global.server.id)
-      reg.write("LastRunVersion", "1.1.4") ' Just before v1.1.5
+      reg.write("LastRunVersion", "1.1.4") ' The patch before v1.1.5
       reg.write("playbackPreferredAudioCodec", "dts")
       reg.flush()
 

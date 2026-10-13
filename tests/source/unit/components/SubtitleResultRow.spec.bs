@@ -1,4 +1,4 @@
-' Unit tests for SubtitleResultRow — one search result in SubtitlePanel's
+' Unit tests for SubtitleResultRow, one search result in SubtitlePanel's
 ' "Available to download" column. Covers the badge run beside the meta line:
 ' right-aligned, measured, and dropped whole when it cannot fit.
 

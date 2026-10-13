@@ -1,23 +1,23 @@
 namespace tests
 
-  ' A RECORD of what Roku OS did in one narrow configuration — not a model of how observer
+  ' A RECORD of what Roku OS did in one narrow configuration, not a model of how observer
   ' registration, and in particular observeFieldScoped, works. First run on a Roku Ultra
   ' and a Streaming Stick 4K, both OS 15.3.4.
   '
   ' What it covers, and nothing else: a parent component observing ONE field on a child
   ' component it created, with a function-name handler, plain or scoped; the child
   ' observing that same field on itself; every call made through callFunc, so it runs in
-  ' the owning component's scope on the render thread. NOT covered: message-port observers,
+  ' the owning component's scope on the render thread. Not covered: message-port observers,
   ' Task threads, siblings or unrelated components, m.global nodes, observeFieldScopedEx,
-  ' infoFields, and every OS version below 15.3.4 the app supports. Do not generalise a
-  ' row past that — in particular, do not read the scoped rows as "how scoped works".
+  ' infoFields, and every OS version below 15.3.4 the app supports. Do not generalize a
+  ' row past that. In particular, do not read the scoped rows as "how scoped works".
   '
-  ' The one result the observer rules DEPEND on is the first @it below: a component
-  ' unobserving its own field removed the parent's plain observer, which is the #898
-  ' regression. The rules treat observeField and observeFieldScoped identically so that
+  ' The one result the observer rules DEPEND on is the "host observeField" @it below: a
+  ' component unobserving its own field removed the parent's plain observer, which is the
+  ' #898 regression. The rules treat observeField and observeFieldScoped identically so that
   ' nothing rests on the rest. The other rows are kept as tripwires: they disagree with
   ' rokudev's ifSGNodeField page, and a firmware change that alters them is worth knowing
-  ' about — if one goes red, re-examine, don't just flip the expectation.
+  ' about. If one goes red, re-examine; don't only flip the expectation.
   '
   ' The spec body itself does not run on the render thread (see
   ' components/testing/TaskLedgerBench.xml), which is why every call goes through callFunc.

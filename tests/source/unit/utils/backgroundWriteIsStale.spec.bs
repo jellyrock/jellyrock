@@ -14,7 +14,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' The cold deep-link race: Home routes on to ItemDetails, then Home's late row load fires a backdrop
-    ' write while ItemDetails (or a player) is the active routed view — that write must be dropped.
+    ' write while ItemDetails (or a player) is the active routed view. That write must be dropped.
     @it("suppresses Home's write when the active view is not Home")
     @params("ItemDetails")
     @params("VideoPlayerView")

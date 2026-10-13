@@ -356,7 +356,7 @@ namespace tests
     ' stashDeepLink composes the (separately-tested) parser + plausibility predicates into the
     ' stash that actually reshapes the route PATH/QUERY. These cases lock that composition: a junk
     ' id never stashes, and an injection-bearing mediaType/action is scrubbed to its safe default
-    ' before it can land in a route — the predicates being green in isolation does not prove the
+    ' before it can land in a route. The predicates being green in isolation does not prove the
     ' wiring here is.
 
     @it("does not stash a structurally-implausible id (junk never reaches a route)")

@@ -35,7 +35,7 @@ namespace tests
         '
         ' Once per test session, not once per group. Rooibos runs setup() for every
         ' @describe group, and setGlobals() writes only through m.global.addFields, which
-        ' leaves an existing field's value untouched — so every call after the first built
+        ' leaves an existing field's value untouched. So every call after the first built
         ' nodes and read device/app info only to throw them away. `device` is its last
         ' write, so a call that threw partway still retries in the next group.
         if not m.global.doesExist("device")
@@ -54,8 +54,8 @@ namespace tests
         ' (mirrors Main.bs which calls loadTranslations() right after setGlobals())
         loadTranslations("en_US")
       catch e
-        ' If setGlobals() fails (e.g., roAppInfo/roDeviceInfo not available in test env),
-        ' create minimal mock data to allow tests to run
+        ' If setGlobals() fails (for example, roAppInfo/roDeviceInfo not available in the
+        ' test env), create minimal mock data to allow tests to run
         if not m.global.doesExist("constants")
           m.global.addFields({
             appLoaded: false,
@@ -203,7 +203,8 @@ namespace tests
       ' This ensures tests don't interfere with each other
       if isValid(m.global) and isValid(m.global.server)
         ' Ensure server URL is always valid for image URL generation
-        ' Reload from JSON if somehow lost during test (e.g., if test-global was cleaned)
+        ' Reload it from the mock JSON when a test emptied it (for example resetServer(),
+        ' which restores the JellyfinServer.xml default of "")
         if not isValidAndNotEmpty(m.global.server.serverUrl)
           mockServer = MockDataLoader.LoadServer("default")
           if isValid(mockServer) and isValid(mockServer.serverUrl)
@@ -332,7 +333,7 @@ namespace tests
 
     ' Load and apply a specific mock device configuration. The changes last until
     ' the next test: beforeEach() restores the device node.
-    ' @param deviceName - Name of device mock file (e.g., "roku-en-us", "roku-es-mx")
+    ' @param deviceName - Name of device mock file (for example, "roku-en-us", "roku-es-mx")
     protected function loadTestDevice(deviceName as string) as void
       ' Load mock device data
       mockDeviceData = MockDataLoader.LoadDevice(deviceName)
@@ -392,9 +393,9 @@ namespace tests
     ' DISPLAY SETTINGS TEST HELPERS
     ' ===================================================================
 
-    ' Set a single display setting for testing
-    ' This is the ONLY acceptable way to set individual settings in tests
-    ' Uses proper ContentNode field access, not direct assignment
+    ' Set a single display setting for testing. Set one this way, never in place:
+    ' reading displaySettings returns a copy of the AA, so the change only sticks
+    ' when the field is reassigned
     protected function setTestDisplaySetting(libraryId as string, key as string, value as dynamic) as void
       localUser = m.global.user
       if not isValid(localUser) or not isValid(localUser.settings)

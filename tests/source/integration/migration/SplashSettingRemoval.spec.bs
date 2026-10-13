@@ -116,7 +116,7 @@ namespace tests
       ' WHEN: Migration runs
       runRegistryUserMigrations([testUserId])
 
-      ' THEN: Setting is NOT deleted (migration skipped)
+      ' THEN: Setting is kept (migration skipped)
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertTrue(reg.exists("uiHomeSplashBackground"), "Migration should be skipped")
       m.assertEqual(reg.read("uiHomeSplashBackground"), "true")

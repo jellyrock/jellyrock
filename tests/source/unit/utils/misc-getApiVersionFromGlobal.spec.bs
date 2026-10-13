@@ -7,7 +7,7 @@ namespace tests
     protected override function setup()
       super.setup()
       ' BaseTestSuite already creates m.global.server as JellyfinServer
-      ' Just ensure it's reset to a known state with apiVersion = 0 (default)
+      ' Ensure it's reset to a known state with apiVersion = 0 (default)
       m.global.server.apiVersion = 0
     end function
 

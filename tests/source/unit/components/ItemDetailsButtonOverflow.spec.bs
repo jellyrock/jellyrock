@@ -4,15 +4,15 @@ import "pkg:/source/utils/translate.bs"
 
 namespace tests
 
-  ' The overflow split is NOT reachable through real item data: the busiest item
+  ' The overflow split is not reachable through real item data: the busiest item
   ' types (Series, Season, Episode, MusicAlbum with a trailer and delete rights)
-  ' reach exactly 8 buttons against a cap of 8. So this suite is the only thing
-  ' that exercises it until someone adds the ninth button — which is the whole
+  ' reached exactly 8 buttons against a cap of 8 (2026-09-07). So this suite is the only thing
+  ' that exercises it until someone adds the ninth button. That is the whole
   ' reason it exists, and why it drives the REAL production path rather than
   ' reaching for the internals.
   '
   ' `trailerAvailable` is that path: it is a public interface field whose observer
-  ' is one of the nine row mutators, so setting it runs the genuine
+  ' is one of the row mutators, so setting it runs the real
   ' unsplit -> mutate -> applyOverflow bracket.
   @suite("ItemDetails - button row overflow")
   class ItemDetailsButtonOverflowTests extends tests.BaseTestSuite
@@ -71,7 +71,7 @@ namespace tests
     end function
 
     ' Stand-ins for the buttons a future item type will carry. Ids are positional so
-    ' the assertions can state WHICH buttons moved, not just how many.
+    ' the assertions can state WHICH buttons moved, not only how many.
     private sub fillRow(count as integer)
       for i = 0 to count - 1
         button = CreateObject("roSGNode", "IconButton")
@@ -83,7 +83,7 @@ namespace tests
     end sub
 
     ' Fire onTrailerAvailableChanged twice. The round trip adds a trailer button and
-    ' takes it away again, so the row ends at the count fillRow() produced — but it
+    ' takes it away again, so the row ends at the count fillRow() produced, but it
     ' has been through the full bracket in both directions.
     private sub settleRow()
       m.itemDetails.trailerAvailable = true
@@ -275,7 +275,7 @@ namespace tests
     ' holds focus, which is a different property and the one that broke.
     '
     ' Detaching the focused child nulls out focus for the ENTIRE tree, so the
-    ' original code's `if group.isInFocusChain()` — read AFTER the detach — always
+    ' original code's `if group.isInFocusChain()`, read AFTER the detach, always
     ' answered false and skipped its own restore. Measured on an Ultra before the
     ' fix: buttonFocused was correct, and no node in the scene held focus, so the
     ' screen stopped responding to the remote entirely. Both triggers are gated
@@ -321,9 +321,9 @@ namespace tests
 
     ' An open menu holds this node as its returnFocusTo, so a fresh one each
     ' re-derive would leave the dialog restoring focus to an orphan. Re-looking it
-    ' up in the ROW cannot work: the nine mutators call unsplitButtons() before they
+    ' up in the ROW cannot work: the row mutators call unsplitButtons() before they
     ' mutate, so it has already left the row by the time the split runs. The stash
-    ' holds custody instead, and this asserts node identity rather than presence —
+    ' holds custody instead, and this asserts node identity rather than presence:
     ' the previous implementation passed a presence check while failing this.
     @it("puts the SAME node back after a row mutation, not a fresh one")
     function _()

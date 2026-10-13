@@ -3,16 +3,17 @@ namespace tests
   ' Locks the ramp-asset selection matrix introduced in #777 (ADR 0025). The
   ' component renders as ONE Poster whose uri picks the ramp orientation and
   ' whose blendColor carries the tint, so "which asset + which tint" IS the
-  ' whole rendering contract — and a wrong pick is silent (a fade running the
+  ' whole rendering contract, and a wrong pick is silent (a fade running the
   ' wrong way reads as a design change, not a bug).
   @suite("Gradient - ramp asset selection and tinting")
   class GradientTests extends tests.BaseTestSuite
 
     private gradient as object
 
-    ' beforeEach, NOT setup: rooibos runs setup() once per SUITE, so building the
-    ' node there leaks field state between tests (a stray rotateDegrees=270 from
-    ' one test silently retargets the next one's asset lookup).
+    ' beforeEach, not setup: rooibos runs setup() once per @describe group, so
+    ' building the node there leaks field state between tests (a stray
+    ' rotateDegrees=270 from one test silently retargets the next one's asset
+    ' lookup).
     protected override function beforeEach()
       super.beforeEach()
       m.gradient = CreateObject("roSGNode", "Gradient")
@@ -53,7 +54,7 @@ namespace tests
     @it("stretches the ramp to the node bounds, ignoring aspect ratio")
     function _()
       ' Roku normalizes Poster.loadDisplayMode to lowercase on read. scaleToFill
-      ' is load-bearing: the ramp is 4px on its non-fade axis and MUST distort to
+      ' matters: the ramp is 4px on its non-fade axis and has to distort to
       ' fill, not letterbox or crop.
       m.assertEqual(m.ramp().loadDisplayMode, "scaletofill")
     end function
@@ -151,7 +152,7 @@ namespace tests
     function _()
       ' ItemDetails' itemTextGradient: a 60% black scrim, not a 100% one. The
       ' ramp is white with a 255->0 alpha ramp, so the tint's alpha byte is the
-      ' ONLY thing that caps the scrim's opacity - if it were dropped the scrim
+      ' only thing that caps the scrim's opacity. If it were dropped the scrim
       ' would render fully opaque. Verified on hardware (#777 review).
       m.gradient.startColor = &h00000099
       m.gradient.rotateDegrees = 180

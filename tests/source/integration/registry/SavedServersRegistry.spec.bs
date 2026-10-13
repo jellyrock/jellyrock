@@ -165,7 +165,7 @@ namespace tests
       ' WHEN
       SaveServerList()
 
-      ' THEN: no duplicate — same entry updated in-place with the new canonical baseUrl
+      ' THEN: no duplicate: same entry updated in-place with the new canonical baseUrl
       saved = getSetting("saved_servers")
       parsed = ParseJson(saved)
       m.assertArrayCount(parsed.serverList, 1)
@@ -263,10 +263,10 @@ namespace tests
       })
       setSetting("saved_servers", list)
 
-      ' WHEN: delete is triggered with the same id in a different case (e.g. mis-cased sender)
+      ' WHEN: delete is triggered with the same id in a different case (for example a mis-cased sender)
       DeleteFromServerList("ABCD1234EF")
 
-      ' THEN: entry is removed — id match folds case (would not match pre-fix)
+      ' THEN: entry is removed: id match folds case (would not match pre-fix)
       saved = getSetting("saved_servers")
       parsed = ParseJson(saved)
       m.assertArrayCount(parsed.serverList, 0)
@@ -297,7 +297,7 @@ namespace tests
 
     @it("falls back to canonical baseUrl for originalUrl when registry server key is missing")
     function _()
-      ' GIVEN: no "server" key in registry (edge case — e.g. first-ever run after upgrade)
+      ' GIVEN: no "server" key in registry (edge case, for example first-ever run after upgrade)
       ' Do not call setSetting("server", ...) here
 
       ' WHEN

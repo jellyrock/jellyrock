@@ -66,13 +66,13 @@ namespace tests
     @it("handles missing id field gracefully")
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
-      ' Don't set id — ContentNode defaults to empty string
+      ' Don't set id: ContentNode defaults to empty string
       sourceNode.addFields({ type: "Movie" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
       m.assertNotInvalid(queueItem)
-      ' id is empty string so isValidAndNotEmpty fails — should not be copied
+      ' id is empty string so isValidAndNotEmpty fails: should not be copied
       m.assertFalse(queueItem.DoesExist("id"))
     end function
 
@@ -134,7 +134,7 @@ namespace tests
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
-      ' title is empty string so isValidAndNotEmpty fails — should not be copied
+      ' title is empty string so isValidAndNotEmpty fails: should not be copied
       m.assertFalse(queueItem.DoesExist("title"))
     end function
 
@@ -290,7 +290,7 @@ namespace tests
         seriesId: "",
         seasonId: "",
         playbackPositionTicks: 0&,
-        ' Extra fields that should NOT be copied
+        ' Extra fields that should not be copied
         extraField1: "should not copy",
         extraField2: 12345,
         focusable: true,
@@ -306,7 +306,7 @@ namespace tests
       m.assertEqual(queueItem.mediaSourceId, "source-123")
       m.assertEqual(queueItem.runTimeTicks, 1000&)
 
-      ' Should NOT have extra fields
+      ' Should not have extra fields
       m.assertFalse(queueItem.DoesExist("extraField1"))
       m.assertFalse(queueItem.DoesExist("extraField2"))
       m.assertFalse(queueItem.DoesExist("focusable"))
@@ -391,7 +391,7 @@ namespace tests
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
-      ' Field must always exist — callers rely on .Count() without isValid()
+      ' Field must always exist: callers rely on .Count() without isValid()
       m.assertTrue(queueItem.DoesExist("backdropImageTags"))
       m.assertEqual(queueItem.backdropImageTags.Count(), 0)
     end function
@@ -449,7 +449,7 @@ namespace tests
 
     @it("works with a raw API associative array (PascalCase fields)")
     function _()
-      ' Simulates a Jellyfin API response item — BrightScript AA lookup is case-insensitive
+      ' Simulates a Jellyfin API response item. BrightScript AA lookup is case-insensitive
       ' so camelCase access finds PascalCase keys
       rawApiItem = {
         Id: "movie-abc",
@@ -518,7 +518,7 @@ namespace tests
     @describe("createQueueItem(sourceNode) - now-playing display contract (audio)")
     '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     ' Audio plays IN PLACE, so AudioPlayerView renders the now-playing text/poster directly off
-    ' the queue item — these fields MUST survive the projection or the artist/album pop in late
+    ' the queue item. These fields have to survive the projection or the artist/album pop in late
     ' (a redundant per-track metadata fetch). This is the enforced gate behind the QueueItem
     ' interface contract: trimming any of these from createQueueItem fails here.
 
@@ -550,7 +550,7 @@ namespace tests
     @it("carries the audio display fields from a RAW API source (PascalCase + nested ImageTags)")
     function _()
       ' album / playlist / instant-mix queues hold raw items: Album (not albumName) and
-      ' ImageTags.Primary (not primaryImageTag) — createQueueItem's fallbacks bridge both shapes
+      ' ImageTags.Primary (not primaryImageTag). createQueueItem's fallbacks bridge both shapes
       ' onto the one QueueItem contract.
       rawApiItem = {
         Id: "song-2",
@@ -684,7 +684,7 @@ namespace tests
 
     @it("does not invent a start on a queue item that was never created")
     function _()
-      ' Neither setter may throw on invalid — createQueueItem returns invalid for a bad source.
+      ' Neither setter may throw on invalid: createQueueItem returns invalid for a bad source.
       nodeHelpers.setResumeStart(invalid, 3180000000&)
       nodeHelpers.setExactStart(invalid, 3180000000&)
       m.assertTrue(true)

@@ -23,7 +23,7 @@ namespace tests
 
     @it("is false for an unknown server version, so the view is withheld rather than wrong")
     ' There is nothing in a 10.11 reply that says it ignored the scope: it is a 200 with
-    ' plausible items in it (measured 2026-09-23 — every library returns every collection
+    ' plausible items in it (measured 2026-09-23: every library returns every collection
     ' on the server). So a permissive guess is not a degraded view, it is a wrong one.
     @params("")
     @params("not-a-version")
@@ -72,7 +72,7 @@ namespace tests
 
     @it("is the one spelling the presenters, the query branch and the title branch share")
     ' Every site compares it under LCase(), so the constant's own casing is what a saved
-    ' `landing` setting carries — it must stay stable or a saved view stops restoring.
+    ' `landing` setting carries. It must stay stable or a saved view stops restoring.
     function _()
       m.assertEqual(collectionsView.VIEW_NAME, "Collections")
     end function

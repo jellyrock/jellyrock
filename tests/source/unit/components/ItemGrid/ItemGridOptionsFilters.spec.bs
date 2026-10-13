@@ -6,12 +6,12 @@ namespace tests
   ' The property both halves of the filter panel depend on: what the user checked must
   ' survive being joined into the saved query and split back out again. Each half is
   ' self-consistently correct on its own while the PAIR disagrees, which is a filter that
-  ' applies while showing no ticks — so the pair is what gets tested.
+  ' applies while showing no ticks. So the pair is what gets tested.
   '
   ' It runs through the panel the app builds: ItemGridOptions turns the options into
   ' FilterOptionNodes, and the save reads them back off those same nodes (the CheckList's
   ' content is the focused category node). A test that built its own nodes would keep
-  ' passing if the component stopped normalizing values — the leading space Str() gives a
+  ' passing if the component stopped normalizing values: the leading space Str() gives a
   ' numeric year is that bug.
   @suite("ItemGridOptions - filter save and restore round trip")
   class ItemGridOptionsFiltersTests extends tests.BaseTestSuite

@@ -85,7 +85,7 @@ namespace tests
     @describe("on a LoadItemsTask2 node")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' The grid hands this AA to replaceTask, which sets it with one setFields call — where it
+    ' The grid hands this AA to replaceTask, which sets it with one setFields call, where it
     ' used to assign each field on the node directly. A value setFields coerced differently
     ' (a boolean, an AA, the " " alpha sentinel) would change the request. CreateObject does
     ' not start the task's thread, so nothing is fetched.
@@ -307,7 +307,7 @@ namespace tests
 
     @it("returns an empty default untouched for the presenters that run without a named view")
     ' Live TV, Photos and Generic get "" from getDefaultView(), and "" is in no presenter's
-    ' views list — so a rule of "reset anything not offered" would reset them on every
+    ' views list, so a rule of "reset anything not offered" would reset them on every
     ' load. Only a non-empty SAVED name is checked.
     function _()
       m.assertEqual(gridQuery.resolveView(invalid, [{ Name: "livetv" }, { Name: "tvGuide" }], ""), "")

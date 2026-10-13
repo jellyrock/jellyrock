@@ -2,7 +2,7 @@ import "pkg:/source/GridView/gridPaging.bs"
 
 namespace tests
 
-  ' gridPaging — when a library grid asks for its next page (keep a runway of loaded rows
+  ' gridPaging: when a library grid asks for its next page (keep a runway of loaded rows
   ' below the focus, sized from the measured scroll speed and page time), and what it does when
   ' a later page fails: tell the user once until a page loads, never while another screen is up.
   @suite("gridPaging - when to ask for a page, and a later page that failed")

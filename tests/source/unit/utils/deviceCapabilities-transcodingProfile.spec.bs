@@ -142,7 +142,7 @@ namespace tests
 
     @it("surround codecs are ordered eac3 before ac3 (auto mode)")
     function _()
-      allSurroundCodecs = ["ac3", "eac3"] ' deliberately reversed input
+      allSurroundCodecs = ["ac3", "eac3"] ' input reversed to test the ordering
       result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "auto", [])
 
       ' Find indices
@@ -237,7 +237,7 @@ namespace tests
       m.assertFalse(arrayHasValue(result, "dts"))
       m.assertFalse(arrayHasValue(result, "truehd"))
       m.assertTrue(arrayHasValue(result, "mp3"))
-      ' flac/alac/opus NOT in TS server target set
+      ' flac/alac/opus are not in the TS server target set
       m.assertFalse(arrayHasValue(result, "flac"))
       m.assertFalse(arrayHasValue(result, "alac"))
       m.assertFalse(arrayHasValue(result, "opus"))
@@ -340,7 +340,7 @@ namespace tests
 
     @it("PCM is never added to a TS profile even if caller listed it as decodable")
     function _()
-      ' Caller could accidentally include pcm — the helper should still filter it
+      ' Caller could accidentally include pcm; the helper should still filter it
       result = buildVideoTranscodingAudioCodecsForContainer("ts", [], "auto", ["mp3", "pcm"])
       m.assertFalse(arrayHasValue(result, "pcm"), "pcm not in TS server target set — must be filtered")
     end function

@@ -1,7 +1,7 @@
 namespace tests
 
   ' QueueManager's queue-level rules: an item the queue ARRIVES at starts fresh, and the
-  ' viewer's version pick belongs to the queue. Runs against the real component — a fresh node
+  ' viewer's version pick belongs to the queue. Runs against the real component: a fresh node
   ' per test, so no queue state leaks between tests.
   @suite("QueueManager - arrival and version pick")
   class QueueArrivalTests extends tests.BaseTestSuite

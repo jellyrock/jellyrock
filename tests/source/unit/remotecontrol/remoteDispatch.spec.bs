@@ -2,7 +2,7 @@ import "pkg:/source/remotecontrol/remoteDispatch.bs"
 
 namespace tests
 
-  ' Remote-control receiver: the main-thread dispatch adapter's PURE marshalling layer —
+  ' Remote-control receiver: the main-thread dispatch adapter's PURE marshaling layer:
   ' the contentId minted for a play cast and the evt handed to a player's handleTransport. The
   ' node-touching wrappers (dispatchPlay/dispatchNavigate ride the deep-link seam; dispatchTransport
   ' reads getActiveView + callFunc a player) are exercised on device in the E2E cast pass, matching
@@ -66,7 +66,7 @@ namespace tests
     ' Jellyfin's contract is Header = title, Text = body. JellyRock keeps the
     ' dialog TITLE for its own provenance line ("Message from another device"),
     ' because a sender-supplied title would be indistinguishable from an
-    ' app-native prompt — so the Header keeps its title ROLE as the bold
+    ' app-native prompt. So the Header keeps its title ROLE as the bold
     ' subheading instead.
     @it("maps Header to the subheading and Text to the body")
     function _()
@@ -75,7 +75,7 @@ namespace tests
       m.assertEqual(parts.body, "Restarting in five minutes.")
     end function
 
-    ' A bold lead line with nothing under it is not a heading, it is just a
+    ' A bold lead line with nothing under it is not a heading, it is a
     ' message in the wrong slot.
     @it("promotes a Header with no Text to the body")
     function _()

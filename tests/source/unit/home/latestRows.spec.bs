@@ -6,10 +6,10 @@ namespace tests
 
   ' Contract tests for Home's latest-media drain (source/home/latestRows.bs).
   '
-  ' What it decides is load-bearing in both directions: treating a failed request as
+  ' What it decides matters in both directions: treating a failed request as
   ' authoritative deletes a populated row (populateRowFromData removes a row when handed an
   ' empty list), while wrong cursor arithmetic either re-delivers a row or silently drops
-  ' one. Both are driven here against a hand-built ContentNode tree — no orchestrator, no
+  ' one. Both are driven here against a hand-built ContentNode tree: no orchestrator, no
   ' pool, no callFunc seam on HomeRows.xml.
   @suite("latestRows - Home latest-media drain contract")
   class LatestRowsDrainTests extends tests.BaseTestSuite
@@ -116,8 +116,8 @@ namespace tests
 
     @it("passes an ok row through even when its item list is empty")
     function _()
-      ' An authoritative empty result is how a genuinely empty library removes its row —
-      ' the caller must still see it.
+      ' An authoritative empty result is how an empty library removes its row, so the
+      ' caller must still see it.
       task = m.makeResults([{ libId: "a", items: [], status: "ok" }])
 
       drained = latestRows.drainReady(task, 0, m.makeClock())
@@ -189,7 +189,7 @@ namespace tests
 
     @it("stays stalled for an arbitrarily long silence")
     function _()
-      ' The guard must reclaim a dead thread no matter how long ago it died — otherwise a
+      ' The guard must reclaim a dead thread no matter how long ago it died. Otherwise a
       ' single crashed orchestrator freezes Home's latest rows for this Home's lifetime.
       m.assertTrue(latestRows.runIsStalled(600000))
     end function
@@ -270,9 +270,9 @@ namespace tests
 
     @it("never defers a section the run does not deliver, even mid-run")
     function _()
-      ' The load-bearing case. These four are fired by startParallelLoads, which RACES the
-      ' orchestrator, and onProgramsExpired / Home.refresh() can re-fire them mid-run — so a
-      ' queued removal could outlive a repopulate and delete a row that had just been filled.
+      ' The case that matters most. These four are fired by startParallelLoads, which RACES the
+      ' orchestrator, and onProgramsExpired / Home.refresh() can re-fire them mid-run. So a
+      ' queued removal could outlive a repopulate and delete a row that had only now been filled.
       ' Batching them would also make the collapse race-dependent rather than deterministic.
       for each sectionId in ["resume", "nextup", "livetv", "activeRecordings"]
         m.assertFalse(latestRows.removalIsDeferrable(sectionId, true), sectionId + " must not defer")
@@ -281,7 +281,7 @@ namespace tests
 
     @it("never defers the My Media row")
     function _()
-      ' populateLibraryRow runs before the batch opens today, so this cannot be reached — but
+      ' populateLibraryRow runs before the batch opens today, so this cannot be reached, but
       ' the rule is the same one, and pinning it stops a reordering from changing the answer.
       m.assertFalse(latestRows.removalIsDeferrable("library", true))
     end function

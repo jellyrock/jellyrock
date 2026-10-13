@@ -3,7 +3,7 @@ namespace tests
 
   ' Covers the two functions that decide whether a now-anchored time carries an am/pm suffix.
   ' The pure half of the rule has its own suite (misc-meridianDiffers.spec.bs); this one exercises
-  ' what that predicate is wired into — the 24h short-circuit, the 12-hour inference horizon, and
+  ' what that predicate is wired into: the 24h short-circuit, the 12-hour inference horizon, and
   ' the formatting both "Ends at" call sites (ItemDetails and the playback OSD) share.
   '
   ' Every case is anchored to the real clock instead of a fixed hour, so each asserts the same
@@ -68,7 +68,7 @@ namespace tests
 
     @it("suffixes past the 12-hour horizon even when the meridian repeats")
     function _()
-      ' +23h lands one hour before the current hour — the SAME half of the day for 22 of the 24
+      ' +23h lands one hour before the current hour: the SAME half of the day for 22 of the 24
       ' possible start hours, so the meridian test alone would drop the suffix and "Ends at 12:00"
       ' would read as noon today rather than tomorrow. The horizon is what forces it here.
       target = m.localTimeIn(82800)

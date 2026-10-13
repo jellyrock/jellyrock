@@ -2,11 +2,11 @@
 ' into every component declaring both `onDestroy` and `onKeyEvent` (ADR 0032).
 '
 ' The plugin emits `if m.isDestroyed = true then return false` rather than the
-' shorter `if m.isDestroyed then return false`. That choice is NOT style: Roku's
+' shorter `if m.isDestroyed then return false`. That choice is not style: Roku's
 ' BrightScript reference documents the comparison operators for numerics and
 ' strings only, and separately warns that "an `invalid` value is not considered
-' false". So the behavior of both forms against an UNINITIALISED flag is
-' exactly the undocumented corner the injected code must survive — a component
+' false". So the behavior of both forms against an UNINITIALIZED flag is
+' exactly the undocumented corner the injected code must survive: a component
 ' whose `init()` is shadowed by a subclass's own `init()` (SceneGraph does not
 ' chain `init`) would reach `onKeyEvent` with the flag still `invalid`.
 '
@@ -53,7 +53,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' If this ever starts passing without throwing, the `= true` comparison is no
-    ' longer load-bearing and ADR 0032's second-layer argument can be revisited.
+    ' longer needed and ADR 0032's second-layer argument can be revisited.
     @it("bare truthiness on an uninitialised flag throws")
     function _()
       scope = {}

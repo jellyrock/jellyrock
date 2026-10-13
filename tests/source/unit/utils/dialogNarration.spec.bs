@@ -18,7 +18,7 @@ namespace tests
 
     @it("announces the message alone when there is no title")
     function _()
-      ' Alert dialogs opened with an empty title (e.g. the unsupported-image error)
+      ' An alert dialog opened with an empty title
       m.assertEqual(composeDialogAnnouncement("", "Image type not supported"), "Image type not supported")
     end function
 

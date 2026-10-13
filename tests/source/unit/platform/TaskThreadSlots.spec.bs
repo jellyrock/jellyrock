@@ -8,10 +8,10 @@ namespace tests
   ' thread stopped while parked in `wait()` or `sleep()` has terminated. replaceTask() depends
   ' on the answer: it stops the old node and starts a new one, so if the stopped thread lingers,
   ' a site that replaces quickly (a search per keystroke) stacks threads toward the cap, and
-  ' neither the ledger nor `task-thread-peak` could see it — both judge a thread by `state`.
+  ' neither the ledger nor `task-thread-peak` could see it: both judge a thread by `state`.
   '
   ' Answer, measured 2026-09-23 (Stick 4K, Roku OS 15.3.4): a stopped thread frees its slot in
-  ' every block mode, while live threads hit `&h29` — so replacing a node does not stack
+  ' every block mode, while live threads hit `&h29`. So replacing a node does not stack
   ' threads. The numbers are in docs/architecture/threading.md "Measured findings".
   '
   ' Each arm launches up to MAX_LAUNCHES nodes, one at a time, and reports the launch at which
@@ -19,7 +19,7 @@ namespace tests
   ' its block and keep every node referenced. The LIVE arm never stops: it must hit the cap, or
   ' a clean stopped arm says nothing about the question.
   '
-  ' Tagged `measurement` — it deliberately runs the app up to Roku's thread cap and takes about
+  ' Tagged `measurement`: it runs the app up to Roku's thread cap on purpose and takes about
   ' three minutes, so `test:unit` and CI skip it. Run it on purpose with `test:tdd`.
   @suite("Platform - thread slots held by stopped Tasks")
   @tags("measurement")
@@ -60,7 +60,7 @@ namespace tests
           result.neverStarted++
           continue for
         end if
-        ' `starts` is written just BEFORE the block; give the thread time to be inside it, so
+        ' `starts` is written right BEFORE the block; give the thread time to be inside it, so
         ' the STOP lands on a parked thread rather than between two statements.
         sleep(50)
 

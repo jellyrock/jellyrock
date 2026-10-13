@@ -39,8 +39,8 @@ namespace tests
 
     ' Yield the render thread long enough for a render pass, then come back.
     '
-    ' `wait` on a port is the only way a Rooibos test can let the renderer run —
-    ' the test body IS render-thread work, so without this nothing between two
+    ' `wait` on a port is the only way a Rooibos test can let the renderer run.
+    ' The test body IS render-thread work, so without this nothing between two
     ' reads can ever have rendered. Observing the button's `isReady` makes it
     ' return as soon as the thing we care about happens, with the timeout as the
     ' floor rather than the expected cost. Same mechanism dialogs.spec.bs uses to
@@ -62,7 +62,7 @@ namespace tests
     ' backwards: Roku stops `renderTracking` firing for a node whose `visible` is
     ' false, so it is tempting to conclude a hidden dialog can never lay out. It
     ' can. renderTracking is only the wake-up signal; the heights come from
-    ' localBoundingRect(), which answers while hidden — the same property
+    ' localBoundingRect(), which answers while hidden. That is the same property
     ' FontScalingTask has always relied on to measure two `visible="false"`
     ' labels in JRScene.
     @it("lays out to the SAME panel height hidden as it does visible")
@@ -132,11 +132,11 @@ namespace tests
     ' dialog types. A fifth added later without the <function> line on its .xml
     ' fails silently - callFunc no-ops and the dialog stays hidden until the
     ' 0.15s onOpeningAnnouncementDue failsafe - so this covers every type
-    ' presentOverlayDialog actually dispatches to, not just the one that
+    ' presentOverlayDialog actually dispatches to, not only the one that
     ' happened to be under test when settleLayout was added.
     '
     ' settleLayout has to be reachable through the component interface or the
-    ' callFunc is a silent no-op — the failure the callfunc-interface plugin
+    ' callFunc is a silent no-op: the failure the callfunc-interface plugin
     ' exists for. Asserting the OUTCOME rather than the call: a dialog whose
     ' fields were set while detached still ends up laid out.
     @it("settles the layout and shows the dialog in one step")
@@ -181,14 +181,14 @@ namespace tests
     @describe("revealed fully formed")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' THE PROPERTY THE WHOLE APPROACH PROMISES: "it simply is not there, and then
-    ' it is, fully formed". Everything above proves the dialog is LAID OUT while
+    ' THE PROPERTY THE WHOLE APPROACH PROMISES: "it is not there, and then it
+    ' is, fully formed". Everything above proves the dialog is LAID OUT while
     ' hidden; none of it proves the geometry does not move again once shown.
     '
     ' That gap is not hypothetical. TextButton sizes itself only when its own
     ' `renderTracking` reads "full" (TextButton.bs onTextChanged / onRenderComplete),
     ' and dialogReveal.bs's own premise is that Roku reports "none" for a hidden
-    ' node — so across the hidden window the buttons may not have sized, and
+    ' node. So across the hidden window the buttons may not have sized, and
     ' JRDialog derives the PANEL WIDTH from `naturalButtonRowWidth()`. If that
     ' measured short, the panel would be placed at the default width and then grow
     ' when `isReady` finally fires, one pass after the dialog became visible.
@@ -199,14 +199,14 @@ namespace tests
     ' grow-or-stack path that exists for long translations.
     '
     ' Asserted as WIDTH EQUALITY across a render pass rather than by watching for
-    ' a flash, because a one-frame artifact is not observable from a test — but a
+    ' a flash, because a one-frame artifact is not observable from a test. A
     ' geometry change across the boundary is, and it is the same defect.
     '
     ' THE ANSWER, measured rather than argued: the panel is 1140 wide at reveal and
     ' 1140 after, against a 762 default. The buttons ARE measurable while hidden,
     ' because naturalButtonRowWidth() reads the TextButton group's bounding rect
-    ' and that includes its `buttonText` Label — which reports font metrics with no
-    ' render pass, the same property this whole file rests on. TextButton not
+    ' and that includes its `buttonText` Label, which reports font metrics with no
+    ' render pass: the same property this whole file rests on. TextButton not
     ' having applied its background size yet never entered into the width. So this
     ' is a guard against a regression, not a fix for a live defect.
     @it("does not re-flow the panel after it becomes visible")
@@ -232,8 +232,8 @@ namespace tests
       ' JRDialog's PANEL_WIDTH default is 762 (file-scoped, so not referenceable
       ' from here). If the row fit inside that, the panel would sit at the default
       ' whether or not the buttons had sized, and a re-flow would be
-      ' indistinguishable from a correct layout. Measured 1140 on a Stick 4K with
-      ' the labels above — comfortably grown, and under PANEL_MAX_WIDTH's 1200 so
+      ' indistinguishable from a correct layout. Measured 1140 on a Stick 4K (2026-08-29) with
+      ' the labels above: comfortably grown, and under PANEL_MAX_WIDTH's 1200 so
       ' it grows rather than stacking.
       m.assertTrue(widthAtReveal > 762, "the button row did not exceed the default panel width, so this test cannot tell a re-flow from a no-op")
       m.assertEqual(widthAtReveal, widthAfterRender, "the panel width changed AFTER the dialog was shown, so it was revealed before it was fully formed")

@@ -2,7 +2,7 @@ import "pkg:/source/utils/remoteSubtitles.bs"
 
 ' Unit tests for the remote-subtitle helpers (issue #750).
 '
-' The permission expectations below are not guesses — they encode a truth table
+' The permission expectations below are not guesses. They encode a truth table
 ' measured against a live Jellyfin 10.11.11 server, plus the [Authorize] policy
 ' attributes read at the v10.7.7 / v10.8.13 / v10.9.11 / v10.10.7 / v10.11.11
 ' tags. If a future server release changes the gate, these are the tests that
@@ -96,7 +96,7 @@ namespace tests
       ' SubtitlePanel seeds the language BUTTON from the user's stored
       ' three-letter preference before the culture list has loaded, so the button
       ' is never an empty box during the round-trip. That seed is only safe while
-      ' this equality holds — otherwise the label would visibly change to a
+      ' this equality holds. Otherwise the label would visibly change to a
       ' different string a second after the panel opens.
       cultures = [{
         DisplayName: "German",

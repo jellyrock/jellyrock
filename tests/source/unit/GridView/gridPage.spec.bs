@@ -2,7 +2,7 @@ import "pkg:/source/GridView/gridPage.bs"
 
 namespace tests
 
-  ' gridPage — the "#" letter filter as two exact ranges of names (before "a", and from "{" on),
+  ' gridPage: the "#" letter filter as two exact ranges of names (before "a", and from "{" on),
   ' paged as one list: where each page's requests start, when a page needs the second range, and
   ' how the two replies combine.
   @suite("gridPage - the # filter's two name ranges")
@@ -98,7 +98,7 @@ namespace tests
     function _()
       ' 250 names before "a" and 120 from "{" on, 100 a page: the page starting at 200 takes the
       ' last 50 of the first range and the first 50 of the second; the next starts at 300, which
-      ' is 50 into the second range — exactly where the page before stopped.
+      ' is 50 into the second range, exactly where the page before stopped.
       first = gridPage.hashFirstRequest(200, 100, 250)
       second = gridPage.hashSecondRequest(first, 50, 100)
       m.assertEqual(second.startIndex + second.limit, 50)
