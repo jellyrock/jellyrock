@@ -2054,7 +2054,7 @@ ADR 0011 replaced part (b) of ADR 0009, but its header names only ADR 0008. Part
 **status**: accepted
 **related-files**: `docs/adr/0041-task-launch-queue.md`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
 
-ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `VideoPlayerView`'s `LoadMetaDataTask`, `AudioPlayerView`'s, two in `ItemDetails` and `Home`'s remote-control receiver. As of 2026-10-13 only `VideoPlayerView` remains, with four `LoadMetaDataTask` entries; the other sites moved to a new node per run. The plugin's `PENDING_MIGRATIONS` is the live list, and followup `pending-migrations-same-node-relaunch` tracks the rest.
+ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `VideoPlayerView`'s `LoadMetaDataTask`, `AudioPlayerView`'s, two in `ItemDetails` and `Home`'s remote-control receiver. As of 2026-10-13 the list is empty: `VideoPlayerView`'s four `LoadMetaDataTask` entries were the last, moved to a new node per run by `startVideoLoad()`, and followup `pending-migrations-same-node-relaunch` is closed. The sites ADR 0041's gap still applies to are those tech-debt `queued-relaunch-stale-stop` lists: `TrickplayCarousel.m.tileLoader`, `VideoPlayerView.m.liveTvRefreshTask`, and `Home`'s remote-control receiver, suppressed for good.
 
 ## decision-id: persons-exclude-music-artists
 
@@ -2075,6 +2075,16 @@ It is not version-gated: 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11, 12.0.0 and
 A quick play, Shuffle, trailer or slideshow that finds nothing to play ends its start, shows the screen it was pressed on again, and says why in a one-line toast (`QueueManager.showNothingToPlay`). A read that did not answer is a failure to try again ("Couldn't load that. Try again.", error style); a result the server answered as empty is nothing there ("Nothing to play here.", info style). A launch nothing builds, an action or shuffle type no dispatch branch matches, can't be done ("Can't play this.", "Can't shuffle this.", info style); it is reachable because a Jellyfin sender's Shuffle arrives as a deep link for any item. The text names what the build was (`quickplayOutcome.kindOf` reads the Task's output action, so Play on a photo library is a slideshow). Each Task reads through a `quickplayRead.Reader`, one per build with the Task's logger, which records a read that did not answer, and publishes a `status` (`quickplayOutcome.statusOf`). A failed read never falls back to a guess: `doSeries` stops when its resume or Next Up read fails, and `doSeason` when its continue-watching read fails. Back, leaving the screen, a newer press and the start's time limit stop the Task before it answers, so none of them shows a toast. The queue is still cleared before the read: once a quick play fails no player reads it, since Back from the music player stops the music.
 
 Ruled out: a retry dialog (it blocks the remote, and no failure before a player exists uses one), failure text on the spinner screen (`AppWaitHost` holds the focus and Back for every start), one message for both (an empty result would ask for a retry that cannot work), and naming server-rule reasons such as the TV library's watched-only rule (the toast is one line capped at 800 pixels, and the reasons drift as the server changes). Measured 2026-10-13 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: the new `playback-start.spec.js` cases for a failed library Play and a failed series Shuffle failed on the old app code (no toast), and the Back case passed there, as it must. With the change, the full `playback-start` spec passes 10/10, and the Back assertion fails when Back is made to show the toast on purpose.
+
+## decision-id: video-load-release-not-stop
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `components/video/VideoPlayerView.bs`, `source/utils/liveStreamHandoff.bs`
+
+`VideoPlayerView.startVideoLoad()` lets a replaced video load go through `releaseVideoLoad()`, then creates the new node with `replaceTask(invalid, …)`, rather than passing the old node to `replaceTask()`. `replaceTask()` releases with a bare STOP, and a load still opening a Live TV stream must instead be marked abandoned so it closes the stream itself once `PlaybackInfo` answers: a STOP loses the only answer that names the stream, and the server keeps it open. Passing `invalid` keeps the `no-same-node-relaunch` guard check on the handler.
+
+Ruled out: an optional release hook on the shared `replaceTask()`, which would touch every caller and the build rule's tests for one component's need.
 
 ## Migrated to ADRs
 
