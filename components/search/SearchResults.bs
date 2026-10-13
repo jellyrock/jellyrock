@@ -360,6 +360,7 @@ sub loadResults(event as object)
   else if outcome.toastKey <> "" and m.isShown
     displayToast(translate(outcome.toastKey))
   end if
+  if outcome.announceKey <> "" and m.isShown then announceSearchOutcome(outcome)
 
   if results.TotalRecordCount = 0
     ' make sure focus is on the keyboard
@@ -389,6 +390,18 @@ sub clearSearchOutcome()
     m.searchHelpText.visible = false
     m.isShowingNoResults = false
   end if
+end sub
+
+' Speaks a failed or empty search, which the screen reader would not: focus stays on the
+' keyboard, and it speaks only what has focus. Queued, not flushed, as "Loading more" is
+' (BaseGridView.onLoadingMoreDue): nothing moved, so what is being read is still true. A failure
+' names Try again too, so the viewer knows there is something to reach.
+sub announceSearchOutcome(outcome as object)
+  text = translate(outcome.announceKey)
+  if outcome.show = searchOutcome.SHOW_FAILED
+    text = composeDialogAnnouncement("", text, m.searchRetryButton.text)
+  end if
+  narrateStatus(text)
 end sub
 
 sub focusRetryButton()

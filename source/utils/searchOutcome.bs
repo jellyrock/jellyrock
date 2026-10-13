@@ -31,24 +31,29 @@ namespace searchOutcome
     return searchOutcome.STATUS_OK
   end function
 
-  ' What the screen shows for a search that ended with `status` and `itemCount` items, and the
-  ' toast to raise with it ("" for none). A partial search that found nothing is a failure: the
-  ' reads that answered say nothing about the ones that did not. A status that is none of these
-  ' reads as failed, since nobody can vouch for its empty list.
+  ' What the screen shows for a search that ended with `status` and `itemCount` items, the
+  ' toast to raise with it, and what the screen reader announces ("" for none). A partial search
+  ' that found nothing is a failure: the reads that answered say nothing about the ones that did
+  ' not. A status that is none of these reads as failed, since nobody can vouch for its empty
+  ' list.
+  '
+  ' Failed and empty are announced because focus stays on the keyboard, and the screen reader
+  ' speaks only what has focus: without it, neither is heard. Results need no announcement (the
+  ' viewer moves into them), and a partial search's toast is its notice.
   '
   ' @param {dynamic} status - a STATUS_ constant
   ' @param {integer} itemCount - the items the search found
-  ' @return {object} { show: a SHOW_ constant, toastKey: a translation key or "" }
+  ' @return {object} { show: a SHOW_ constant, toastKey and announceKey: a translation key or "" }
   function view(status as dynamic, itemCount as integer) as object
     if not isValidAndNotEmpty(status) then status = searchOutcome.STATUS_FAILED
     if status = searchOutcome.STATUS_OK
-      if itemCount > 0 then return { show: searchOutcome.SHOW_RESULTS, toastKey: "" }
-      return { show: searchOutcome.SHOW_EMPTY, toastKey: "" }
+      if itemCount > 0 then return { show: searchOutcome.SHOW_RESULTS, toastKey: "", announceKey: "" }
+      return { show: searchOutcome.SHOW_EMPTY, toastKey: "", announceKey: translationKeys.MessageSearchNoResults }
     end if
     if status = searchOutcome.STATUS_PARTIAL and itemCount > 0
-      return { show: searchOutcome.SHOW_RESULTS, toastKey: translationKeys.MessageSearchPartial }
+      return { show: searchOutcome.SHOW_RESULTS, toastKey: translationKeys.MessageSearchPartial, announceKey: "" }
     end if
-    return { show: searchOutcome.SHOW_FAILED, toastKey: "" }
+    return { show: searchOutcome.SHOW_FAILED, toastKey: "", announceKey: translationKeys.MessageSearchFailed }
   end function
 
   ' Whether a search sends its Live TV program read. Jellyfin refuses that read to a user
