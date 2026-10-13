@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update actions/setup-node action to v7.1.0 ([#1177](https://github.com/jellyrock/jellyrock/pull/1177))
 - Update prettier from v3.9.9 to v3.9.10 ([#1153](https://github.com/jellyrock/jellyrock/pull/1153))
 - Update actions/upload-artifact action to v7.0.2 ([#1176](https://github.com/jellyrock/jellyrock/pull/1176))
 
