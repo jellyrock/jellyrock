@@ -628,6 +628,10 @@ Not done now: no real source is known to use this layout. Act when a user report
 
 `VideoPlayerView.xml` declares `transcodeReasons`, and `init()` sets it to `[]`; nothing reads it (`LoadVideoContentTask` uses its own `transcodeReasons` on an AA). `docs/architecture/playback.md` already says so. Remove the field and the line, and update that doc. Checked 2026-10-13.
 
+#### The `livetv` placeholder is built from the outlined `liveTV.svg`, against fill Rule 4 `[fid: livetv-placeholder-outlined-source]` `[captured 2026-10-13]`
+
+`resources/placeholders/placeholders.json` builds the `livetv` placeholder from `liveTV.svg`, the outlined (fill 0) icon source, while every other placeholder uses a filled source, as fill Rule 4 in `resources/icons/README.md` asks. The README now records it as the one exception (docs-voice Charter review, 2026-10-13); nothing recorded whether it was chosen. Close it by fetching a filled variant (`npm run icons:add -- live_tv --as liveTV_filled --filled`), pointing the `livetv` entry at it and running `npm run icons:build`, then checking the placeholder on a device; or record why it stays outlined and keep the exception in the README.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
