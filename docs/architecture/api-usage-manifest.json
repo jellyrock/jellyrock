@@ -1070,6 +1070,12 @@
       ]
     },
     {
+      "name": "ExcludePersonTypes",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "name": "Fields",
       "sourceFiles": [
         "source/api/items.bs"
@@ -3311,7 +3317,7 @@
     },
     "counts": {
       "endpoints": 79,
-      "requestFields": 49,
+      "requestFields": 50,
       "responseFields": 223,
       "unresolvedEndpointSinks": 2
     },

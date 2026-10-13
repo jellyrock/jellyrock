@@ -199,12 +199,20 @@ class ApiClient
 
   ' Build a request AA for GetPersons, for use with fetchRes() or fetchJson().
   ' Mirrors GetPersons(): applies injectDefaults and injects UserId.
+  '
+  ' Leaves out the Artist and AlbumArtist kinds unless the caller passes its own
+  ' ExcludePersonTypes. From 12.0 the server lists music artists as people (jellyfin#16721),
+  ' and the app lists artists from /Artists, so search showed a musician twice. jellyfin-web
+  ' sends the same filter, marked to go once artists move to /Persons; drop it here then.
+  ' Every supported server accepts the parameter, so it is not version-gated.
   ' @param params - Query parameters (for example IsFavorite, searchTerm)
   ' @returns Request AA: { method, url } or invalid if no userId
   function BuildGetPersonsRequest(params = {} as object) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    mergedParams = m.injectDefaults(params)
+    personParams = { "ExcludePersonTypes": "Artist,AlbumArtist" }
+    personParams.append(params)
+    mergedParams = m.injectDefaults(personParams)
     mergedParams.UserId = userId
     return m.validatedReq("GET", buildURL("/persons", mergedParams))
   end function

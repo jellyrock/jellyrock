@@ -2040,6 +2040,16 @@ When the device plays a stream itself and Roku lists none of its audio tracks, a
 
 Ruled out: reloading through the server's stream so the pick plays. The track list is known only after playback starts, so it would restart the play and load the server, and it assumes which muxed track Roku plays by default, which is unmeasured. Also ruled out: leaving the pick in the report, which names a track nobody may be hearing. Making the pick selectable is followup `muxed-hls-audio-tracks-unselectable`.
 
+## decision-id: persons-exclude-music-artists
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/api/ApiClient.bs`
+
+`BuildGetPersonsRequest()` sends `ExcludePersonTypes=Artist,AlbumArtist` unless the caller passes its own. From 12.0 the server lists music artists as people (jellyfin#16721): search showed a musician twice, as a Person and as the `/Artists` hit, and an artist Person marked as a favorite reached the Favorites people row. The app lists artists from `/Artists`, so a person here never means an artist. The default sits in the builder, not at the two callers (search and the Favorites people row), so a future caller inherits it and removing it is one edit. Filtering search only was ruled out because it leaves the Favorites row wrong.
+
+It is not version-gated: 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11, 12.0.0 and 12.1.0 all accepted it with the same results before 12.0 (checked live 2026-10-13). jellyfin-web sends the same filter, marked to go once artists move to the persons endpoint; when upstream does that, drop the default and revisit how the app lists artists. The key is PascalCase so the API usage manifest records it, and a change upstream reaches server-upgrade triage.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
