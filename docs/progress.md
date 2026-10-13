@@ -638,6 +638,10 @@ Options, raised while building the quick play failure toasts (decision `quick-pl
 
 Not checked: the two English messages' widths on screen (estimated from length only); whether the clipped text ends in an ellipsis or is cut mid-word (Roku `Label` truncation was not looked at on screen); which other toasts overflow in English beyond the two named.
 
+#### A failed resume read in a series quick play falls through to Next Up and plays the wrong episode without saying so `[fid: quick-play-series-resume-read-failure-plays-next-up]` `[captured 2026-10-13]`
+
+`QuickPlayTask.doSeries` reads the series' in-progress episode first (`qp_seriesResume`) and, when that read returns nothing, falls through to Next Up and then to a whole-series shuffle. It cannot tell a read that did not answer from an answered empty one, so a failed resume read plays the next episode not yet started from the start instead of resuming the viewer's place, with no message (the fallback answered, so the build counts as `ok`). Found 2026-10-13 while adding `fetchBuildJson` to the quick play reads (the failed-vs-empty toast change); the same shape is possible wherever a later read stands in for an earlier one. **Fix shape:** have `fetchBuildJson` expose that the read failed (not only record it in `m.buildFailed`), then have `doSeries` stop with a failed status when the resume read failed, so the viewer gets "Couldn't load that. Try again." instead of the wrong episode. Not checked: whether the other fallback chains in `QuickPlayTask` (`doSeason`'s continue-watching read, `doUserView`'s playlist read) share it.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
