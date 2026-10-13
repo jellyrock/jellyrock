@@ -235,7 +235,7 @@ function main() {
       try {
         return [{ name: rel, text: readFileSync(path.join(rootDir, rel), 'utf8') }];
       } catch {
-        return []; // absent, so check() reports the leaf MISSING, with the reason
+        return []; // absent, so check() reports the leaf MISSING like any other
       }
     });
   } catch (err) {

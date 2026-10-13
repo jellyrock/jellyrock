@@ -15,7 +15,7 @@ help:
 	@echo "  build-tests             build all tests (unit + integration)"
 	@echo "  build-tests-unit        build unit tests only"
 	@echo "  build-tests-integration build integration tests only"
-	@echo "  build-tdd               build in watch mode for TDD"
+	@echo "  build-tdd               build the TDD config (bsconfig-tdd.json)"
 	@echo "  format                  format brighscripts"
 	@echo "  lint                    lint code and documentation"
 	@echo "  make_images             generate branding images from SVGs"

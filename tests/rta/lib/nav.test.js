@@ -561,7 +561,7 @@ describe('reportSweep — the BEFORE segment, and when it must not print', () =>
 // Hardware-free for the same reason as the rest of this file: what is asserted is the
 // comparison, which is pure control flow over a reading `pressProbe` already takes.
 describe('navHomeLibraryTile — did the walk land where it aimed', () => {
-  it('records a ROW drift, which is the reading the row-axis decision is waiting on', async () => {
+  it('records a ROW drift with axis row', async () => {
     // Aimed at [0,1]; focus sits at [1,1] one read before the press: a Down that landed
     // after the row wait that sent it had already returned. This is the shape the column
     // axis was measured producing before its walk moved to `scrollFocus`.

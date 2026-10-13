@@ -24,7 +24,8 @@
 //      unlabeled on purpose). A value with NO row in either table is
 //      rendered as raw English enum text. This is not a compile error
 //      (a missing row has no expression to fail on), which is exactly how
-//      nine of the twenty-six values shipped untranslated. The enum is
+//      nine of the twenty-six values shipped untranslated (found
+//      2026-09-20). The enum is
 //      read from the committed spec fingerprints, so the check needs no
 //      network and no gitignored API cache.
 //

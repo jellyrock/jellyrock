@@ -62,8 +62,8 @@ export const WS_TASK_REL =
   'components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs';
 
 // Strip whole-line BrightScript comments so a rule can't be satisfied (or
-// tripped) by prose. The banned-pattern rules especially: every one of these
-// patterns is quoted in an explanatory comment in the very files we scan.
+// tripped) by prose. The banned-pattern rules especially: WebSocketClientTask
+// quotes the `get_headers` pattern in an explanatory comment.
 // Exported for socket-thread-release-check.js, which guards the other
 // critical invariant of the same two files.
 export function stripComments(src) {

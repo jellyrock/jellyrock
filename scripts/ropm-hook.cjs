@@ -1,3 +1,6 @@
+// The license below is quoted word for word, so its one house-voice hit (a
+// phrase in capitals) stays in `.doc-voice-baseline.json` on purpose.
+
 // MIT License
 
 // Copyright (c) 2019 George Cook

@@ -427,16 +427,6 @@
     "latin-abbrev": 1,
     "prose-arrow": 30
   },
-  "docs/dev/jellyfin-endpoint-availability.yml": {
-    "caps-emphasis": 6,
-    "em-dash": 7,
-    "filler": 1,
-    "prose-arrow": 3
-  },
-  "docs/dev/jellyfin-version-boundaries.yml": {
-    "em-dash": 6,
-    "prose-arrow": 1
-  },
   "docs/dev/measuring-performance.md": {
     "filler": 2
   },

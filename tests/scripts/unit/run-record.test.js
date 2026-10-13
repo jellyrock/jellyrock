@@ -364,7 +364,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
     });
 
     it('survives the run directory being deleted mid-run, as `--deploy` deletes it', async () => {
-      // The regression: `run-meta.json` lives under `out/`, and `measure --deploy` runs
+      // The regression: `run-meta.json` lived under `out/`, and `measure --deploy` runs
       // `npm run build` AFTER opening the run, which starts with `rimraf build/ out/`.
       // `runProvenance()` then read a file that no longer existed and degraded every
       // field to null, so a `--deploy` measurement series published no commit, no dirty

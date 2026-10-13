@@ -75,8 +75,9 @@ const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 // `related-files` overlap with architecture docs (for example, `apiPool.bs`
 // appears in both `api.md` and `api-patterns.md`); blocking on the
 // dev-guide variant would force a `last-reviewed` bump on an unrelated
-// how-to. The soft signal in `docs:stale` continues to surface dev-guide
-// staleness: that's where the pressure for those lives.
+// how-to. Their freshness pressure is the end-of-turn reminder in
+// `check-touched-related-files.cjs`; `npm run docs:stale` also lists them
+// when someone runs it.
 
 function daysBetween(isoDate, today) {
   const d = new Date(isoDate + 'T00:00:00Z');

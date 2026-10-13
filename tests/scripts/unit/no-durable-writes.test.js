@@ -95,7 +95,7 @@ describe('the no-durable-writes guard', () => {
     expect(() => teardown()).toThrow(/~ rta[\\/]runs\.jsonl/);
   });
 
-  it('sets a non-zero exit code — Vitest does NOT fail the run on the throw alone', async () => {
+  it('sets a non-zero exit code, so the gate holds whatever Vitest does with the throw', async () => {
     // THE case that matters. Measured on Vitest 4.1.11: a globalSetup teardown
     // that throws prints `error during close` and exits 0, so the throw is a
     // diagnostic and this is the gate. (Vitest 5.0.3 exits 1, measured

@@ -1248,7 +1248,6 @@ async function focusGridTile(target) {
   });
 }
 
-/** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
 /**
  * Put focus on a named button in `ItemDetails`' action-button group.
  *
@@ -1354,6 +1353,7 @@ export async function focusDetailButton(buttonId, { maxButtons = 12, timeout = 8
   return { pressedOn, pressedIndex, wantedIndex: targetIndex };
 }
 
+/** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
 export async function navMovieDetails(ctx) {
   await navLibraryGrid(ctx);
   await focusGridTile(ctx?.heroIndex || 0);
