@@ -29,12 +29,15 @@ import {
   waitToast,
   walkFocusUntil,
 } from '../lib/steps.js';
+import { captureRawUI } from '../capture.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const SEARCH_FAILED = "Couldn't load search results.";
 const SEARCH_PARTIAL = "Some results couldn't load.";
 const SEARCH_EMPTY = 'No results.';
 const EVERY_READ = 4;
+// RTA_CAPTURE=1 also saves each state to out/rta-captures/ for review.
+const CAPTURE = process.env.RTA_CAPTURE === '1';
 
 let session;
 
@@ -77,6 +80,7 @@ it('a failed search says so, keeps the keyboard, and Try again runs it again', a
     action: walkFocusUntil(ecp.Key.Right, atRetry),
     label: 'Try again, right of the keyboard',
   });
+  if (CAPTURE) await captureRawUI('searchFailed');
   await press(ecp.Key.Ok);
   await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
     read: getActiveVal,
@@ -96,6 +100,7 @@ it('a search with one failed read shows what answered and says some is missing',
     label: 'the results that answered',
   });
   await waitToast(SEARCH_PARTIAL, { label: 'the some-results-missing toast' });
+  if (CAPTURE) await captureRawUI('searchPartial');
   expect(await getActiveVal('#searchFailed.visible'), 'not the failure state').toBe(false);
 });
 
@@ -110,6 +115,7 @@ it('a search that finds nothing says so', async () => {
     label: 'the no-results message',
   });
   expect(await getActiveVal('#SearchHelpText.visible'), 'the message shows').toBe(true);
+  if (CAPTURE) await captureRawUI('searchNoResults');
   expect(await getActiveVal('#searchFailed.visible'), 'not the failure state').toBe(false);
 });
 
