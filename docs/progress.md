@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-13: feat(search): Show and announce when a search failed or found nothing
 - 2026-10-13: fix(playback): Play the last track or version picked, and every retry
 - 2026-10-13: feat: Say why a quick play found nothing, and never guess an episode
 - 2026-10-13: test: Silence four unit-test build warnings
