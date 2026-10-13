@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Keep music artists out of search and Favorites people on 12.0+ ([#1195](https://github.com/jellyrock/jellyrock/pull/1195))
 - (playback) Pick `.strm` tracks on first play; fill Playback Info ([#1184](https://github.com/jellyrock/jellyrock/pull/1184))
 - (grid) Stop asking for `MediaSourceCount` on the music grids ([#1181](https://github.com/jellyrock/jellyrock/pull/1181))
 

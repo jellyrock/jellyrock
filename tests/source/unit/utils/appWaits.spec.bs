@@ -125,9 +125,9 @@ namespace tests
 
     @it("fails a start when the viewer goes to another screen (Back during Play all)")
     function _()
-      left = appWaits.leftBehind({ w1: m.start(0, m.launcher) }, m.other)
-      m.assertEqual(left.count(), 1)
-      m.assertEqual(left[0], "w1")
+      keys = appWaits.leftBehind({ w1: m.start(0, m.launcher) }, m.other)
+      m.assertEqual(keys.count(), 1)
+      m.assertEqual(keys[0], "w1")
     end function
 
     @it("fails a start when no screen is left at all (sign-out)")

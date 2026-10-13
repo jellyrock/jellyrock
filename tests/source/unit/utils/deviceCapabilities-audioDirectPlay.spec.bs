@@ -309,7 +309,7 @@ namespace tests
       called = { count: 0 }
       di = {
         called: called,
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           m.called.count = m.called.count + 1
           return { Result: true }
         end function

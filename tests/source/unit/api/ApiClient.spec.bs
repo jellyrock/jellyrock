@@ -704,6 +704,33 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildGetPersonsRequest() - people, never music artists")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("excludes the Artist and AlbumArtist kinds by default, on both API versions")
+    function _()
+      for each version in [1, 2]
+        m.setApiVersion(version)
+
+        result = m.apiClient.BuildGetPersonsRequest({ "searchTerm": "Quill" })
+
+        m.assertEqual(result.method, "GET", "v" + version.toStr())
+        m.assertTrue(result.url.inStr("/persons?") >= 0, "v" + version.toStr() + " should use /persons")
+        m.assertTrue(result.url.inStr("ExcludePersonTypes=Artist%2CAlbumArtist") >= 0, "v" + version.toStr() + " should exclude both music kinds")
+        m.assertTrue(result.url.inStr("searchTerm=Quill") >= 0, "v" + version.toStr() + " should keep the caller's params")
+      end for
+      m.setApiVersion(2)
+    end function
+
+    @it("lets a caller's own excludePersonTypes replace the default")
+    function _()
+      result = m.apiClient.BuildGetPersonsRequest({ "excludePersonTypes": "GuestStar" })
+
+      m.assertTrue(result.url.inStr("=GuestStar") >= 0, "should send the caller's value, whatever case its key")
+      m.assertEqual(result.url.inStr("AlbumArtist"), -1, "should not also send the default")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("BuildCloseLiveStreamRequest() - releases one consumer of a live stream")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
