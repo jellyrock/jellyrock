@@ -22,7 +22,7 @@ description: "This skill should be used when the user explicitly types \"/end-se
 - An updated `PLAN.md`: Status holding live state only (the current phase with its id first, one line per phase, today's dated decisions prepended with the ones past the list's size moved — never deleted — to `DECISIONS.md` beside the PLAN, open questions still open, `waits-on:` current, `last-updated:` today), detail moved to its `## Reference` section, a kickoff rewritten in the template's skeleton, and one appended Session-log line.
 - Cross-cutting deferred tails routed through `/log` (written to the journal and committed on their own, or left to ride with the change that prompted them where this repo commits journal writes that way) — project-scoped tails stay in the PLAN, not double-booked — and a `Cross-cutting tails routed: {{N}}` line.
 - The project's end-of-session status set (`active` by default; `paused` / `completed` / `abandoned` only on a real signal, with archival for the terminal states).
-- A PLAN that passes `resume-state.sh --check`, committed and pushed by explicit pathspec in the repo that holds the projects folder (nothing to commit where that folder is gitignored), a clean cold load, and the claim released.
+- A PLAN that passes `resume-state.sh --check`, committed and pushed by explicit pathspec in the repo that holds the projects folder (through `projects-write.sh` when that is a projects home, a repo of its own; nothing to commit where that folder is gitignored), a clean cold load, and the claim released. A push to a projects home that fails never stops the close: the PLAN stays written there, and the next resume shows it as a pending sync.
 
 **Success criteria.**
 
@@ -72,9 +72,9 @@ Run `bash .claude/skills/resume-project/resume-state.sh {{slug}}`. It prints Sta
 
 ### Step 3 — Update Status: live state only
 
-- **Current phase** starts with the phase's id (`D — the build`), the one the kickoff will start at.
+- **Current phase** starts with the phase's id (`D: the build`), the one the kickoff will start at.
 - **Rewriting Status whole:** put it in place with `replace-section.sh` (Step 4 shows the call; the section name is `"Status"`), and before running `move-old-decisions.sh` below, since a later rewrite could undo its move.
-- **Phase progress:** one line per phase, ✅ / 🚧 / ⬜ first after the id. A finished phase is one line: `- C ✅ done (commits a1b2..c3d4) — {{outcome in a clause}}`, its range (first and last commit) taken from `git log --oneline`, never from memory; as a git range `a1b2..c3d4` leaves out `a1b2`, so a command built from it (a revert, a diff) says `a1b2^..c3d4` (a phase that made no commits says `no commits` and where its result lives); its detail moves to `## Reference` under a heading naming the phase.
+- **Phase progress:** one line per phase, ✅ / 🚧 / ⬜ first after the id. A finished phase is one line: `- C ✅ done (commits a1b2..c3d4): {{outcome in a clause}}`, its range (first and last commit) taken from `git log --oneline`, never from memory; as a git range `a1b2..c3d4` leaves out `a1b2`, so a command built from it (a revert, a diff) says `a1b2^..c3d4` (a phase that made no commits says `no commits` and where its result lives); its detail moves to `## Reference` under a heading naming the phase.
 - **Decisions:** prepend today's, dated, a few lines each (the full reasoning lives in the commit message), skipping any `/log decision` already added this session. Then run `bash .claude/skills/end-session/move-old-decisions.sh {{project-dir}}/PLAN.md`: it keeps the newest few and moves the rest to `DECISIONS.md`, never deleting one. If it refuses (a duplicate, no decisions heading), fix what it names and run it again; never trim the list by hand.
 - **Open questions / blockers:** delete the ones this session answered. A blocker only a person or an outside event can clear is tagged `[external-gate: {{reason, with a date when known}}]`; remove the tag when it clears.
 - **`waits-on:`** in the frontmatter lists what another project or a followup must finish first, comma-separated: `{{slug}}` (met when that project completes), `{{slug}}:{{phase id}}` (met when that phase is ✅), `fid:{{id}}` (met when the followup closes), `{{repo}}/{{slug}}` (another repo's project; recorded, not checkable here). Add one when this session found such a wait; remove each reference the reader showed as met.
@@ -86,7 +86,7 @@ Run `bash .claude/skills/resume-project/resume-state.sh {{slug}}`. It prints Sta
 Write the whole section in the template's shape (its `<…>` fill-ins stay the PLAN template's own, which the scripts read as unfilled text), for a reader with no memory of this session, then put it in place with the script below (the body only: the script keeps the heading):
 
 ```markdown
-**Starts at:** <Current phase's id> — <the step to start with>
+**Starts at:** <Current phase's id>: <the step to start with>
 
 **Last session stopped:** <where it stopped and why, in a sentence or two>
 
@@ -94,7 +94,7 @@ Write the whole section in the template's shape (its `<…>` fill-ins stay the P
 
 ### Verify first
 
-- `<command>` → `<the one line it printed at the close>` <what its numbers mean, when the line does not say>
+- `<command>` prints `<the one line it printed at the close>` <what its numbers mean, when the line does not say>
 
 ### Next, in order
 
@@ -115,7 +115,7 @@ bash .claude/skills/end-session/replace-section.sh {{project-dir}}/PLAN.md "Next
 
 It replaces exactly one `## ` section and leaves the rest of the PLAN byte for byte; it refuses, writing nothing, a name that matches no section or several, an empty body, and a body with a `#` or `##` heading outside a code block. If it refuses, fix what it names and run it again; never splice a section by hand.
 
-- **Each fact has one owner.** What this session did is stated in Status and the log with its evidence (a commit, an artifact), not re-described here. A value that can change after the close goes in **Verify first** as `` `command` → `the line it printed` `` — only the ones the next work depends on. The command prints one line (a value whose text holds a backtick is written in double backticks), and a note after the backticked value may say what each number in it means; a command cut down with `| tail` or `| grep` keeps that meaning in the note, since the next session cannot read a column whose header was cut off. Run each command first and copy what it printed: Step 8 runs every one again and fails a value that differs.
+- **Each fact has one owner.** What this session did is stated in Status and the log with its evidence (a commit, an artifact), not re-described here. A value that can change after the close goes in **Verify first** as `` `command` prints `the line it printed` ``. Only the ones the next work depends on go there. The command prints one line (a value whose text holds a backtick is written in double backticks), and a note after the backticked value may say what each number in it means; a command cut down with `| tail` or `| grep` keeps that meaning in the note, since the next session cannot read a column whose header was cut off. Run each command first and copy what it printed: Step 8 runs every one again and fails a value that differs.
 - **Landmines carry forward.** Keep every one the last kickoff had unless it has stopped being true, and add the ones this session found. A trap that bites outside this project is not a landmine here: Step 6 routes it.
 - A part with nothing in it holds the single line `none` (no bullet): the check reads every bullet under Verify first as a command and its value.
 - Cite a followup by its fid (`[fid: …]`), never by its position in the journal.
@@ -142,6 +142,8 @@ Default to `active`: no change, and no question, while phases are still in progr
 - **completed** — `status: completed`; move the project directory into the projects folder's `_archive/` (`git mv` where the folder is tracked, plain `mv` where it is gitignored); move its README row to the Archived list with a one-line closing summary and the date. Before `completed`, read each Charter success criterion against what shipped: one not met is written UNMET in the closing summary, never counted met through a substitute; one waiting on an event that may never come closes as a recorded defer, with a followup that tracks it.
 - **abandoned** — as completed, plus a one-line reason in Status and on the archived row.
 
+For `paused`, `completed` or `abandoned`, run `bash .claude/skills/start-project/priorities.sh line . --project {{folder}}` before any archive move and show the user its line in the closing message: a project still ranked there is dropped at the list's next review. It prints nothing on a machine that keeps no list.
+
 For a terminal close, the kickoff becomes one line, `Project closed {{date}}: {{why}}`, put in place with `replace-section.sh` as in Step 4; its landmines drop with it, and the Step 5 log line says so, since Step 8's check skips its landmine review on a closed PLAN. After an archive move, search the whole repo (not only the docs) for the old path and re-point every hit in the same commit: a moved PLAN breaks links, registries and tests that name it. Decide this before Step 8 so every change lands in one commit.
 
 ### Step 8 — Check the PLAN
@@ -157,9 +159,11 @@ The PLAN is committed in the repo that holds the projects folder. If `git -C {{p
 3. `git commit -m "{{subject naming the project and the session's outcome}}" -- {{paths}}` (`-m` before `--`). When [this repo's public posture](../../../AGENTS.md#public-posture) is `public`, re-read the subject and body first: no other repository or host, no person, email or home path, no secret. If a hook refuses, fix what it names and commit again, never `--no-verify`.
 4. Push, then re-check the branch. If the commit landed on the wrong branch, cherry-pick it onto the right one and move the stray branch back.
 
+When the projects folder sits in another repo than this one (a projects home: `git -C {{projects folder}} rev-parse --show-toplevel` is not this repo's top), steps 1 to 4 do not apply. Run `(cd {{projects folder}} && bash {{repo}}/.claude/skills/start-project/projects-write.sh --subject "{{subject}}" -- {{paths}})` with the same paths: for an archive move, the old and the new directory. It commits only those paths and pushes, and other sessions' files in that shared clone stay as they were. Exit 0 means pushed. On exit 3 (the change overlaps the remote) or 4 (not pushed) the PLAN stays written there, uncommitted: say so in the report, never push it another way, and go on; the next resume shows it as a pending sync. In a session whose machine will not last (a cloud session), also print the whole PLAN in chat, so the record outlives the machine.
+
 ### Step 10 — Prove it loads cold, then release the claim
 
-Run `bash .claude/skills/resume-project/resume-state.sh {{slug}}` once more: it is what the next session will see. Every `BANNER:` line is something to fix now (a dirty tree, an unpushed commit, a commit after the PLAN's save, a PLAN check), not to hand on. After a terminal close its `is closed (archived)` banner is the cold load, the one `BANNER:` to leave, and the read stops before its own checks, so check them by hand: `git status --short` lists nothing of yours, and `git status -sb` shows no `ahead`. Then `bash .claude/skills/resume-project/resume-state.sh --release {{slug}}`, so the next session is not warned about this one.
+Run `bash .claude/skills/resume-project/resume-state.sh {{slug}}` once more: it is what the next session will see. Every `BANNER:` line is something to fix now (a dirty tree, an unpushed commit, a commit after the PLAN's save, a PLAN check), not to hand on. After a push to a projects home that failed in Step 9, its pending-sync banner is expected: run its command once more, and if it still cannot push, leave it and say so in the report. After a terminal close its `is closed (archived)` banner is the cold load, the one `BANNER:` to leave, and the read stops before its own checks, so check them by hand: `git status --short` lists nothing of yours, and `git status -sb` shows no `ahead`. Then `bash .claude/skills/resume-project/resume-state.sh --release {{slug}}`, so the next session is not warned about this one.
 
 ### Notes
 

@@ -89,6 +89,8 @@ First the `ERROR`, `BANNER` and `PIN` lines in the block's order, never re-order
 - **In-flight work / running jobs / recurring cadences** — the journal's other sections, as the reader printed them.
 - **This repo's own sections** — what the reader printed under `=== OWN READER ===`, per `## This repo` (none, and no heading, when it names none).
 - **Recent commits** — the reader's 7- and 14-day counts, then its 10 recent commits, listed. Nothing here knows when the last session was, so never call a count "since last session".
+- **Your priorities**: the reader's `=== PRIORITIES ===` lines as printed, ranks and flags kept (no heading when the reader printed no such section: this machine keeps no list).
+- **Messages from other repos**: the reader's `=== MAILBOX ===` lines as printed, one per open message (no heading when the reader printed no such section: this machine has no mailbox). Each is also a candidate above, so it is not repeated as a suggestion here.
 - **Suggested next** — Step 5.
 
 Use this repo's actual vocabulary: service names, command names, file paths. The reader of the briefing is you (or a fresh sub-agent) in the next moment; concrete is faster to act on than abstract.

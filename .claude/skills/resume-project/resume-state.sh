@@ -2,9 +2,10 @@
 #
 # resume-state.sh — the one read /resume-project makes. It picks the project, records this
 # session's claim on it, prints the PLAN sections a resume needs in full (Status, the open
-# punch-list, the kickoff, the last session-log entry), resolves what the project waits on, and runs
-# the continuity checks and the PLAN check, so the model orients instead of gathering. Sections are
-# labeled `=== NAME ===` and read top to bottom; text copied from the PLAN, git or the operator's
+# punch-list, the kickoff, the last session-log entry), resolves what the project waits on, says
+# where it sits on your priorities list and the open messages other repos left about it when this
+# machine keeps them, and runs the continuity checks and the PLAN check, so the model orients
+# instead of gathering. Sections are labeled `=== NAME ===` and read top to bottom; text copied from the PLAN, git or the operator's
 # words sits inside an XML tag (`<kickoff>`…`</kickoff>`), so it reads as data, never as this
 # script's own BANNER, NOTE or ERROR lines, which stay outside every tag. The same PLAN check, run by /end-session before it
 # commits (--check), is the gate that keeps a kickoff from contradicting its own Status.
@@ -132,11 +133,11 @@ field_value() {
       gsub(/^[ \t]+|[ \t]+$/, "", v); print v; exit }' "$1"
 }
 
-# phase_id <text> -> the phase id the text starts with (A, C1, 3; after an optional "Phase "), or
+# phase_id <text> -> the phase id the text starts with (A, C1, 3, 3d; after an optional "Phase "), or
 # nothing when it starts with anything else ("ALL FOUR PHASES SHIP" has none)
 phase_id() {
   local t="$1"; t="${t#"${t%%[![:space:]*]*}"}"; t="${t#Phase }"; t="${t#phase }"
-  if [[ "$t" =~ ^([A-Z][0-9]?|[0-9]+)([^A-Za-z0-9]|$) ]]; then printf '%s' "${BASH_REMATCH[1]}"; fi
+  if [[ "$t" =~ ^([A-Z][0-9]?|[0-9]+[a-z]?)([^A-Za-z0-9]|$) ]]; then printf '%s' "${BASH_REMATCH[1]}"; fi
 }
 
 # phase_marks <Status text on stdin> -> "id<TAB>mark" for each Phase progress line, the mark being
@@ -145,7 +146,7 @@ phase_marks() {
   awk "$MD_LIB"'{ s = md_skip($0, 0) } s { next }
     /^\*\*Phase progress/ { p=1; next } p && (/^\*\*/ || /^## /) { p=0 }
     p && /^- / { l=substr($0, 3); sub(/^[Pp]hase /, "", l)
-      if (!match(l, /^([A-Z][0-9]?|[0-9]+)/)) next
+      if (!match(l, /^([A-Z][0-9]?|[0-9]+[a-z]?)/)) next
       id=substr(l, 1, RLENGTH); if (substr(l, RLENGTH+1, 1) ~ /[A-Za-z0-9]/) next
       m=""; best=0; n=split("✅ 🚧 ⬜", M, " ")
       for (i=1; i<=n; i++) { k=index(l, M[i]); if (k > 0 && (best == 0+0 || k < best+0)) { best=k; m=M[i] } }
@@ -182,11 +183,11 @@ plan_check() {
     # A value holding a backtick is a double-backtick code span (CommonMark): it ends at the first
     # run of exactly two, and one space is stripped from each end when both ends have one.
     local dbl=0 hint=""
-    if [[ "$line" =~ ^-\ \`([^\`]+)\`\ →\ \`\`(([^\`]|\`[^\`])*)\`\`([^\`]|$) ]]; then
+    if [[ "$line" =~ ^-\ \`([^\`]+)\`\ prints\ \`\`(([^\`]|\`[^\`])*)\`\`([^\`]|$) ]]; then
       dbl=1; val="${BASH_REMATCH[2]}"
       [[ "$val" == " "*" " && "$val" == *[!\ ]* ]] && { val="${val# }"; val="${val% }"; }
-    elif [[ "$line" =~ ^-\ \`([^\`]+)\`\ →\ \`([^\`]*)\` ]]; then val="${BASH_REMATCH[2]}"
-    else fail "a Verify first value is not in backticks (write \`command\` → \`what it printed\`): $line"; return; fi
+    elif [[ "$line" =~ ^-\ \`([^\`]+)\`\ prints\ \`([^\`]*)\` ]]; then val="${BASH_REMATCH[2]}"
+    else fail "a Verify first value is not in backticks (write \`command\` prints \`what it printed\`): $line"; return; fi
     cmd="${BASH_REMATCH[1]}"
     if command -v timeout >/dev/null; then got="$(timeout "$t" bash -c "$cmd" 2>&1)"; rc=$?
     else got="$(bash -c "$cmd" 2>&1)"; rc=$?; fi
@@ -214,7 +215,7 @@ plan_check() {
     sub_section "Next, in order" <<<"$kick" | grep -q '^[0-9][0-9]*\. ' \
       || fail "the kickoff has no ### Next, in order section with a numbered step"
     while IFS= read -r k; do
-      [[ "$k" =~ ^-\ \`[^\`]+\`\ →\ .+ ]] || { fail "a Verify first line is not \`command\` → value: $k"; continue; }
+      [[ "$k" =~ ^-\ \`[^\`]+\`\ prints\ .+ ]] || { fail "a Verify first line is not \`command\` prints \`value\`: $k"; continue; }
       [ "$how" = check ] && verify_first "$k"
     done < <(sub_section "Verify first" <<<"$kick" | grep '^- ')
   fi
@@ -374,7 +375,9 @@ case "$mode" in waits|plancheck) given_plan="$(readlink -f "$slug" 2>/dev/null)"
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || {
   echo "ERROR: not inside a git repository"; echo "BANNER: nothing to resume here"; exit 2; }
 cd "$top" || exit 2
-dir="$(bash "$here/../start-project/projects-dir.sh" 2>/dev/null)"
+dir="$(bash "$here/../start-project/projects-dir.sh" 2>&1)" || {
+  [ "$?" = 3 ] && { echo "ERROR: projects ${dir#projects-dir: }"; echo "BANNER: nothing to resume here until the projects are reachable"; exit 2; }
+  dir=""; }
 if [ -z "$dir" ] || [ ! -d "$dir" ]; then
   echo "ERROR: no projects folder at ${dir:-(the resolver answered nothing)}"
   echo "BANNER: nothing to resume; use /start-project"; exit 2
@@ -458,7 +461,23 @@ if [ -n "$dirty" ]; then
 else echo "clean"; fi
 case "$plan" in
   "$top"/*) git check-ignore -q "$plan" && echo "NOTE: the projects folder is not tracked here: a PLAN edit never shows above, so anything listed is real work" ;;
-  *) echo "NOTE: the projects folder is outside this repo: a PLAN edit never shows above" ;;
+  *) echo "NOTE: the projects folder is outside this repo: a PLAN edit never shows above"
+     # A projects home: a write that could not push (projects-write.sh keeps the files, uncommitted)
+     # or a commit made there by hand is a pending sync, read from the clone's own git state.
+     pdir="$(dirname "$plan")"
+     if ptop="$(cd "$(git -C "$pdir" rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null && pwd -P)"; then
+       prel="$(cd "$pdir" && pwd -P)"; prel="${prel#"$ptop"/}"
+       pdirty="$(git -C "$ptop" status --porcelain -- "$prel" 2>/dev/null)"
+       pahead="$(git -C "$ptop" rev-list --count '@{upstream}..HEAD' -- "$prel" 2>/dev/null || echo 0)"
+       if [ -n "$pdirty" ] || [ "${pahead:-0}" != 0 ]; then
+         echo "BANNER: a sync to the projects home is pending: this project's files there are not on its remote (an /end-session or landing that could not push, or work there by hand); push them before working"
+         if [ -n "$pdirty" ]; then
+           printf '%s\n' "$pdirty"
+           echo "  push them: (cd $ptop && bash $top/.claude/skills/start-project/projects-write.sh --subject \"$pslug: push a pending PLAN change\" -- $prel)"
+         fi
+         [ "${pahead:-0}" = 0 ] || echo "  $pahead commit(s) there not pushed: git -C $ptop push"
+       fi
+     fi ;;
 esac
 if up="$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null)"; then
   # Fetch first: a checkout behind its remote would load an old PLAN and kickoff with no word of
@@ -553,6 +572,22 @@ echo "${pc:-ok}"
 
 section "WAITS"
 waits_report "$plan"
+
+# Where this project sits on your priorities list, through the shared helper: nothing, and no
+# section, on a machine that keeps no list. Its line quotes titles from other files, so it is tagged.
+p_out=""; [ -f "$here/../start-project/priorities.sh" ] \
+  && p_out="$(bash "$here/../start-project/priorities.sh" line "$top" --project "$name" 2>&1 </dev/null)"
+if [ -n "$p_out" ]; then section "PRIORITIES"; tagged priorities "$p_out"; fi
+
+# The open messages other repos left about this project (the mailbox), through the shared helper:
+# nothing, and no section, on a machine with no mailbox. Their titles are other repos' text: tagged.
+m_out=""; [ -f "$here/../start-project/mailbox.sh" ] \
+  && m_out="$(bash "$here/../start-project/mailbox.sh" list --project "$name" 2>/dev/null </dev/null)"
+if [ -n "$m_out" ]; then
+  section "MAILBOX"
+  echo "BANNER: $(grep -c . <<<"$m_out") open message(s) from other repos about this project: read each (bash .claude/skills/start-project/mailbox.sh show {{id}}) before starting, and close it with /done message {{id}} once handled"
+  tagged mailbox "$m_out"
+fi
 
 section "PLAN — STATUS"
 # Printed in full whatever its size (its blockers are at the end), but an overgrown one is flagged:

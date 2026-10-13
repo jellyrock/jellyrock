@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
 # catchup-state.sh — the one read /catchup makes (and /focus through it). It prints the repo's git
-# position, the journal, the projects and this repo's own reader, then one CANDIDATES block: every
-# check that fired, as a typed line, ranked in code, so the model takes the first line instead of
-# ordering banners itself. Sections are labeled `=== NAME ===` and read top to bottom.
+# position, the journal, the projects, this repo's own reader, the recent commits and, when this
+# machine keeps them, your ranked priorities list and the open messages other repos left this one,
+# then one CANDIDATES block: every check that fired, as a typed line, ranked in code, so the model
+# takes the first line instead of ordering banners itself. Sections are labeled `=== NAME ===` and
+# read top to bottom.
 # Shared code: maintained upstream and updated in place. A local edit is not overwritten
 # silently — it is reviewed (kept, or taken upstream) at the next update.
 #
@@ -76,6 +78,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 journal_sh="$here/../log/journal.sh"
 resolver="$here/../start-project/projects-dir.sh"
 resume_sh="$here/../resume-project/resume-state.sh"
+priorities_sh="$here/../start-project/priorities.sh"
+mailbox_sh="$here/../start-project/mailbox.sh"
 conf_file="$here/catchup.conf"
 # MD_LIB: the awk function md_skip, the one rule for what is not a heading (CommonMark fenced code),
 # read from the log skill's md-skip.awk, which every script that reads headings shares.
@@ -99,9 +103,9 @@ serr() { local s="$1" t="$2"; shift 2; cand 1 1 0 "ERROR$TAB$s$TAB$t" "$@"; } # 
 oerr() { local s="$1" t="$2"; shift 2; cand 1 0 0 "ERROR$TAB$s$TAB$t" "$@"; } # an own error
 declare -A RANK=([fire]=2 [resume]=4 [overdue]=5 [debt]=7)
 # shared ids: "<rank> <position>"; a shared id's class is fixed (catchup.conf cannot move it)
-declare -A SHARED=([dirty-tree]="2 1" [work-running]="4 1" [project-unblocked]="4 2"
+declare -A SHARED=([dirty-tree]="2 1" [work-running]="4 1" [project-unblocked]="4 2" [mail-project]="4 3"
   [journal-stale]="5 1" [wait-unknown]="5 2" [plan-contradicts]="5 3" [project-dormant]="5 4"
-  [cadence-overdue]="5 5" [followups-unreviewed]="5 6" [cadence-unfilled]="7 1"
+  [cadence-overdue]="5 5" [followups-unreviewed]="5 6" [mail-open]="5 7" [cadence-unfilled]="7 1"
   [off-branch]="9 1" [unpushed]="9 2" [gate-missing]="9 3" [journal-shaped]="9 4")
 shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, with its route
   local id="$1" r p route type=BANNER
@@ -109,7 +113,8 @@ shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, 
   case "$id" in
     dirty-tree) route="look at it first: finish and commit it, or /resume-project {{slug}} if it is a project's" ;;
     work-running) route="check on it" ;;
-    project-unblocked|wait-unknown|plan-contradicts|project-dormant) route="/resume-project $3" ;;
+    project-unblocked|wait-unknown|plan-contradicts|project-dormant|mail-project) route="/resume-project $3" ;;
+    mail-open) route="read it (bash .claude/skills/start-project/mailbox.sh show $3), act on it, then /done message $3" ;;
     journal-stale) route="/log what landed, or /done what finished" ;;
     followups-unreviewed) route="re-read each against today's state, then /done followup {{fid}}, or keep it with a dated Re-checked YYYY-MM-DD note (journal.sh replace)" ;;
     cadence-overdue) route="run the command its row names" ;;
@@ -367,8 +372,9 @@ if [ ! -f "$resolver" ]; then
   echo "projects: not read (no resolver)"
   serr PROJECTS "no projects resolver at .claude/skills/start-project/projects-dir.sh; projects are not read"
 else
-  dir="$(bash "$resolver" 2>/dev/null)"
-  if [ -z "$dir" ] || [ ! -d "$dir" ]; then echo "NOTE: no projects folder${dir:+ at ${dir#"$top"/}}"
+  dir="$(bash "$resolver" 2>&1)" || dir="unreachable:${dir#projects-dir: }"
+  if [ "${dir%%:*}" = unreachable ]; then echo "NOTE: projects ${dir#unreachable:}"
+  elif [ -z "$dir" ] || [ ! -d "$dir" ]; then echo "NOTE: no projects folder${dir:+ at ${dir#"$top"/}}"
   else
     echo "folder: ${dir#"$top"/}"
     lines=(); declare -A count=()
@@ -470,5 +476,29 @@ fi
 
 section "RECENT COMMITS"
 git log --oneline -10 2>/dev/null || serr "RECENT COMMITS" "git log failed"
+
+# Your ranked priorities list, through the shared helper. It prints nothing on a machine that keeps
+# no list, and then this section is left out. The list labels; it is never a candidate.
+p_out=""; [ -f "$priorities_sh" ] && p_out="$(bash "$priorities_sh" top "$top" 2>&1 </dev/null)"
+if [ -n "$p_out" ]; then section "PRIORITIES"; printf '%s\n' "$p_out"; fi
+
+# The open messages other repos left this one (the mailbox), through the shared helper: nothing on
+# a machine with no mailbox. One about a project ranks with work to resume, any other as overdue.
+m_out=""; [ -f "$mailbox_sh" ] && m_out="$(bash "$mailbox_sh" list --tsv 2>/dev/null </dev/null)"
+if [ -n "$m_out" ]; then
+  section "MAILBOX"
+  while IFS= read -r row; do
+    # a tab is whitespace to read, which merges empty columns: split on a separator that is not
+    IFS=$'\037' read -r mid mfrom msent mdays mproj mtitle <<<"$(tr "$TAB" '\037' <<<"$row")"
+    when="sent $msent, $mdays day(s) ago"; age="$mdays day(s) old"
+    [ -n "$msent" ] || { when="undated"; age="undated"; }
+    printf 'mail: %s from %s (%s)%s: %s\n' "$mid" "$mfrom" "$when" "${mproj:+, about $mproj}" "$mtitle"
+    if [ -n "$mproj" ]; then
+      shared mail-project "an open message from $mfrom about $mproj, $age: $mtitle (mail: $mid)" "${mproj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}"
+    else
+      shared mail-open "an open message from $mfrom, $age: $mtitle (mail: $mid)" "$mid"
+    fi
+  done <<<"$m_out"
+fi
 
 finish

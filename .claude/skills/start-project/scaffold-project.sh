@@ -31,9 +31,12 @@
 #   goal:  one-line goal for the README row (the full Charter is filled by the skill)
 #   --check: only say whether the slug is free, by the same rule the scaffold uses; writes nothing
 #   --commit: commit the scaffolded stub (the PLAN, the README, each --with file) path-restricted, so
-#     other staged or modified files are left as they were; never pushes. The subject is the repo's
+#     other staged or modified files are left as they were; in-repo it never pushes. The subject is the repo's
 #     own commit style, so the skill passes it. --with: a file a repo hook regenerates from the
 #     projects folder. Where the projects folder is gitignored it says so and does nothing (exit 0).
+#     Where it sits in another repo (a projects home), projects-write.sh commits the same paths there
+#     and pushes; each --with path must be inside that home. On a refusal or a failed push nothing is
+#     committed and the stub stays in the home, uncommitted (exit 1).
 #
 # Exit 1 (no mutation) on: missing args or a slug collision (an existing
 # *-<slug>/ dir, active OR archived) — so the skill can never scaffold over a
@@ -137,6 +140,23 @@ if [ "$COMMIT" -eq 1 ]; then
       die "$README holds uncommitted changes other than the row for $DIRNAME: commit or stash the other edits first, then run --commit again. Nothing was staged or committed."
     fi
   fi
+  # A projects folder in another repo (a projects home that many sessions and machines write into)
+  # is committed and pushed there by projects-write.sh, which takes only these paths' change.
+  home="$(cd "$(git -C "$PROJECTS" rev-parse --show-toplevel)" && pwd -P)"
+  if [ "$home" != "$(cd "$(git rev-parse --show-toplevel)" && pwd -P)" ]; then
+    for p in "${paths[@]}"; do
+      case "$p/" in "$home"/?*) ;; *) die "--with: $p is outside the projects home ($home): nothing was written" ;; esac
+    done
+    rc=0; out="$(cd "$PROJECTS" && bash "$(dirname "$RESOLVER")/projects-write.sh" --subject "$SUBJECT" -- "${paths[@]}" 2>&1)" || rc=$?
+    case $rc in
+      0) printf '%s\n' "$out" | grep '^NOTE:' || true
+         echo "committed and pushed as $(git -C "$PROJECTS" rev-parse --short HEAD) to the projects home" ;;
+      3) printf '%s\n' "$out"; die "refused: nothing was committed; the stub is kept in the projects home, uncommitted" ;;
+      4) printf '%s\n' "$out"; die "not pushed: nothing was committed; the stub is kept in the projects home, uncommitted: run --commit again once its remote is reachable" ;;
+      *) printf '%s\n' "$out"; die "projects-write.sh failed (exit $rc): nothing was committed" ;;
+    esac
+    exit 0
+  fi
   git -C "$PROJECTS" add -- "${paths[@]}" || die "could not stage the stub's files: nothing was committed"
   if ! out="$(git -C "$PROJECTS" commit -m "$SUBJECT" -- "${paths[@]}" 2>&1)"; then
     printf '%s\n' "$out"; die "the commit was refused (a hook, most likely): nothing was committed"
@@ -177,7 +197,7 @@ last-updated: YYYY-MM-DD
 
 ## ⛰ Charter
 
-> Lightweight stub that grows. Intent stays mutable — record scope changes as dated decisions in the Status section (a big shift gets an explicit scope-cut decision) rather than rewriting the Charter in place (that keeps the original intent as an anchor). No mandatory immutability flip.
+> A lightweight stub that grows. Intent stays mutable: record a scope change as a dated decision in the Status section (a big shift gets an explicit scope-cut decision) instead of rewriting the Charter in place, so the original intent stays as an anchor. No mandatory immutability flip.
 
 - **Goal**: <one sentence>
 - **Success criteria**:
@@ -187,13 +207,13 @@ last-updated: YYYY-MM-DD
 
 ## 🗺 Phases (rarely changes)
 
-- Phase A — <name>
-- Phase B — <name>
+- Phase A: <name>
+- Phase B: <name>
 - ...
 
 ## 📍 Status (updated every session via /end-session)
 
-**Current phase:** A — <name>
+**Current phase:** A: <name>
 
 **Phase progress:**
 - A 🚧 in progress
@@ -207,7 +227,7 @@ last-updated: YYYY-MM-DD
 
 ## 🚀 Next-session kickoff (rewritten by /end-session each time)
 
-**Starts at:** A — <the step to start with>
+**Starts at:** A: <the step to start with>
 
 **Last session stopped:** <where it stopped and why, in a sentence or two>
 
@@ -215,7 +235,7 @@ last-updated: YYYY-MM-DD
 
 ### Verify first
 
-- `<command>` → `<the one line it printed at the close>` <what its numbers mean, when the line does not say>
+- `<command>` prints `<the one line it printed at the close>` <what its numbers mean, when the line does not say>
 
 ### Next, in order
 
@@ -235,7 +255,7 @@ last-updated: YYYY-MM-DD
 
 ## 📜 Session log (append-only)
 
-- YYYY-MM-DD — <session summary>
+- YYYY-MM-DD: <session summary>
 TEMPLATE_EOF
 fi
 if [ ! -f "$README" ]; then

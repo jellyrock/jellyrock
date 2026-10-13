@@ -58,7 +58,7 @@ Use the slug the user passed. If none, propose a short kebab-case slug from the 
 
 ### Step 2 — Check the slug is free
 
-Run `bash .claude/skills/start-project/scaffold-project.sh --check {{slug}}`. It writes nothing. Exit 1 with "already exists" means the project is there: stop and route the user to `/resume-project {{slug}}`. Exit 1 for a bad slug: propose another. Exit 0: go on. (The scaffold re-checks atomically in Step 4; this check only keeps the Charter co-design from being spent on a taken slug.)
+Run `bash .claude/skills/start-project/scaffold-project.sh --check {{slug}}`. It writes nothing. Exit 1 with "already exists" means the project is there: stop and route the user to `/resume-project {{slug}}`. Exit 1 for a bad slug: propose another. Exit 0: run `bash .claude/skills/start-project/priorities.sh line . --none` and show the user the line it prints (your #1, so new work is started knowing what it is not), then go on. It prints nothing on a machine that keeps no list. (The scaffold re-checks atomically in Step 4; this check only keeps the Charter co-design from being spent on a taken slug.)
 
 ### Step 3 — Co-design the Charter with the user (the judgment)
 
@@ -93,7 +93,7 @@ Write into the scaffolded `PLAN.md`, replacing each placeholder:
 
 - The Charter and Phases from Step 3.
 - `waits-on:` from Step 3 (`{{slug}}`, `{{slug}}:{{phase id}}`, `fid:{{id}}`, `{{repo}}/{{slug}}`), or leave it empty. When this project holds up a parent, add this slug to the parent's `waits-on:` too.
-- Status: `**Current phase:** A — {{name}}`, Phase progress with the first phase 🚧 and the rest ⬜, and "none" for open questions until there are some. Leave the decisions list's placeholder line as it is: the decision script drops it when the first real decision arrives, and a `- none` line would be kept as a decision. A project that will keep a findings queue gets a `## 📋 Punch-list` section right after Status, one `- [ ]` line per item.
+- Status: `**Current phase:** A: {{name}}`, Phase progress with the first phase 🚧 and the rest ⬜, and "none" for open questions until there are some. Leave the decisions list's placeholder line as it is: the decision script drops it when the first real decision arrives, and a `- none` line would be kept as a decision. A project that will keep a findings queue gets a `## 📋 Punch-list` section right after Status, one `- [ ]` line per item.
 - The kickoff in the template's skeleton, for a session with no memory of this one: `Starts at` the first phase and its first step, what this session stopped at, questions still unanswered, then Verify first, Next in order, Required reading and Landmines as far as they are known; a part with nothing yet holds the single line `none` (no bullet).
 - The first dated line in the Session log.
 
