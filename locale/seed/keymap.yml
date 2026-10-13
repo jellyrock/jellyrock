@@ -416,3 +416,10 @@ MessageDirectedBy1:
   en: "Directed by {0}"
   from:
     jellyfin-web: { key: RecommendationDirectedBy, en: "Directed by {0}" }
+
+# ── Search (components/search/SearchResults.bs) ─────────────────────────────────
+
+MessageSearchNoResults:
+  en: No results.
+  from:
+    swiftfin: { key: noResults, en: No results. }

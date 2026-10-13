@@ -1,15 +1,15 @@
-import "pkg:/source/utils/quickplayRead.bs"
+import "pkg:/source/api/apiRead.bs"
 
 namespace tests
 
-  ' Contract tests for the reads of a quick play build (source/utils/quickplayRead.bs).
+  ' Contract tests for the reads of a Task run that tells failed from empty (source/api/apiRead.bs).
   '
   ' The failure path is the one that matters and the one least often run: a read that did not
-  ' answer must come back as invalid, mark the build failed, and log why through the logger
+  ' answer must come back as invalid, mark the run failed, and log why through the logger
   ' the Task handed in. A request that could not be built fails without the network, so it
   ' drives that path here.
-  @suite("quickplayRead - the reads of a quick play build")
-  class QuickplayReadTests extends tests.BaseTestSuite
+  @suite("apiRead - the reads of a Task run")
+  class ApiReadTests extends tests.BaseTestSuite
 
     ' A stand-in for the Task's log.Logger that keeps what it was asked to warn. Takes extra
     ' arguments because dev builds insert the call's file location first (roku-log plugin).
@@ -32,13 +32,13 @@ namespace tests
 
     @it("starts with no failed read")
     function _()
-      reader = new quickplayRead.Reader(m.newLogger())
+      reader = new apiRead.Reader(m.newLogger(), "test")
       m.assertFalse(reader.anyFailed)
     end function
 
-    @it("returns invalid for a read that could not be sent, and marks the build failed")
+    @it("returns invalid for a read that could not be sent, and marks the run failed")
     function _()
-      reader = new quickplayRead.Reader(m.newLogger())
+      reader = new apiRead.Reader(m.newLogger(), "test")
       m.assertInvalid(reader.json(invalid, "qp_test"))
       m.assertTrue(reader.anyFailed)
     end function
@@ -46,19 +46,38 @@ namespace tests
     @it("logs which read failed and why, through the logger it was given")
     function _()
       logger = m.newLogger()
-      reader = new quickplayRead.Reader(logger)
+      reader = new apiRead.Reader(logger, "test")
       reader.json(invalid, "qp_test")
       m.assertEqual(logger.warnings.count(), 1)
       m.assertTrue(logger.warnings[0].instr("qp_test") >= 0, logger.warnings[0])
       m.assertTrue(logger.warnings[0].instr("not sent") >= 0, logger.warnings[0])
     end function
 
-    @it("keeps one build's failure out of another's")
+    @it("keeps one run's failure out of another's")
     function _()
-      failed = new quickplayRead.Reader(m.newLogger())
+      failed = new apiRead.Reader(m.newLogger(), "test")
       failed.json(invalid, "qp_test")
-      fresh = new quickplayRead.Reader(m.newLogger())
+      fresh = new apiRead.Reader(m.newLogger(), "test")
       m.assertFalse(fresh.anyFailed)
+    end function
+
+    @it("names what the reads are for in the warning")
+    function _()
+      logger = m.newLogger()
+      reader = new apiRead.Reader(logger, "search")
+      reader.json(invalid, "qp_test")
+      m.assertTrue(logger.warnings[0].instr("search") >= 0, logger.warnings[0])
+    end function
+
+    @it("counts the reads asked for and the ones that failed")
+    function _()
+      reader = new apiRead.Reader(m.newLogger(), "test")
+      m.assertEqual(reader.sentCount, 0)
+      m.assertEqual(reader.failedCount, 0)
+      reader.json(invalid, "qp_one")
+      reader.json(invalid, "qp_two")
+      m.assertEqual(reader.sentCount, 2)
+      m.assertEqual(reader.failedCount, 2)
     end function
 
   end class

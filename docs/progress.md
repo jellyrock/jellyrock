@@ -650,6 +650,25 @@ Options, raised while building the quick play failure toasts (decision `quick-pl
 
 Not checked: the two English messages' widths on screen (estimated from length only); whether the clipped text ends in an ellipsis or is cut mid-word (Roku `Label` truncation was not looked at on screen); which other toasts overflow in English beyond the two named.
 
+#### Search sends its four reads one after another, so a server that never answers takes up to four HTTP limits to show the failure `[fid: search-reads-serial-slow-failure]` `[captured 2026-10-13]`
+
+Found 2026-10-13 reviewing `feat/search-failure-state` (#1199). `SearchTask.searchMedia` sends its reads (`/Items`, `/Persons`, `/Artists`, `/LiveTv/Programs`) one after another through `apiRead.Reader`, each with the default HTTP limit (`timeouts.HTTP_MS`). A server that accepts the connection but never answers makes the viewer wait for every limit in turn before the failure state ("Couldn't load search results.") shows: up to four times `HTTP_MS`. Before #1199 that wait ended in a blank screen; now it ends in the failure state, so the slow path is part of that feature's experience. The success path pays the serial cost too: four round trips took 1676 ms for a one-character query (measured on `.177`, recorded in `SearchResults.loadResults`).
+
+`timeouts.PIPELINE_RUN_MS` exists for the same shape on Home (per-request waits stacking on a dead server, measured 2026-08-03). **Fix:** run the four reads through `apiPipeline` with one run budget, keep the failed and sent counts that `searchOutcome.statusOf` needs, and still assign `results` once as the Task's last act (the comment on `searchMedia` says why). Measure a search before and after on a Stick 4K, and the time to the failure state with every read timing out (`rtaFailRequests` can stand in for a dead server). Not done in #1199: it changes how the reads are sent, a separate change with its own measurement.
+
+#### No toast is spoken by the screen reader: Toast never narrates and never takes focus `[fid: toast-not-spoken-screen-reader]` `[captured 2026-10-13]`
+
+Found 2026-10-13 while adding the search failure announcement (`feat/search-failure-state`, #1199). Nothing in `Toast.bs` calls `roAudioGuide`, and a toast never takes focus, so every `displayToast` message reaches a screen-reader user as nothing: quick play's "Couldn't load that. Try again.", the grid's "couldn't load more", Search's "Some results couldn't load." and the rest of the 33 call sites.
+
+**Root cause:** for a group the app draws, the screen reader speaks only the focused element; a dialog's title and message were never spoken until the app spoke them itself (measured 2026-08-01, recorded in `source/utils/dialogNarration.bs`). `Toast` is a group that never holds focus. Roku's text-to-speech table (`rokudev/dev-doc`, `text-to-speech.md`) says a Label "speaks `text` field", but the dialog measurement shows an unfocused label is not spoken. Narration was never there: the toast arrived in `46150743` and was restyled in `eab29b03`.
+
+**Options:**
+
+- `speak` (recommended): `Toast.onShouldShow` queues the message with `narrateStatus`, the helper Search's announcement and the grid's "Loading more" use. One file, about two lines; checked by ear. Covers all 33 call sites and every new one. A toast that follows a focus move is spoken after that move's speech; a caller that also speaks its own message would be heard twice (none does today: Search's announcement leaves its partial toast out for this reason).
+- `per-caller`: each important caller speaks its own message beside `displayToast`. 33 sites, and each new toast is another chance to forget; it drifts.
+
+**Not checked:** that a toast is silent when heard on a device; whether speech from inside `Toast` would be cut off by the platform's own focus speech when a toast and a focus move happen together.
+
 #### Home's texture window has five unmeasured tails: edge churn, a buffer-row cell with no texture, scroll-direction bias, loads per unique item, and pop-in on Home `[fid: home-texture-window-tails]` `[captured 2026-10-13]`
 
 The `task-thread-budget` project closed on 2026-10-13 with these left open. Two of them are its unmet success criteria. The rest are phase C's leftovers from the windowing audit (#919), which found no defect but measured only the window's geometry:
@@ -1124,6 +1143,22 @@ The `getOrBuildAnalysis` case with a TTL of 0 in `tests/scripts/unit/crash-repor
 #### `BaseTestSuite.setTestDisplaySetting()` has no callers and is still documented `[fid: set-test-display-setting-unused]` `[captured 2026-10-13]`
 
 `tests/source/BaseTestSuite.spec.bs` defines `setTestDisplaySetting()`; nothing in `tests/` calls it, and `docs/dev/unit-tests.md` lists it in the helper table and an error row. Remove it and both doc mentions, or use it in the suites that set display settings by hand. Checked 2026-10-13.
+
+#### `home-failure.spec.js` fails 10 of 11 cases on `main`: the demo server's `demo` user no longer has the Home layout or favorite Movie the spec needs `[fid: home-failure-spec-demo-layout-drift]` `[captured 2026-10-13]` `[pinned]`
+
+Found 2026-10-13 while verifying the search failure state (`feat/search-failure-state`). `ROKU_IP=192.168.1.178 npm run test:rta -- tests/rta/specs/home-failure.spec.js` on `main` (`511c91c1`) printed `Tests  10 failed | 1 skipped (11)`, the same 10 as on the branch: the six Home-row cases time out, and the four Favorites cases throw "the server user has no favorite Movie". A full `test:rta` the same day was red on these 10 only.
+
+**Root cause:** the demo server's `demo` user changed, not the app or the spec. Its home layout (`DisplayPreferences`, client `emby`) is now `smalllibrarytiles, librarybuttons, none, none, livetv, none…`, so there is no Continue Watching (`resume`) row to fail, and it has no favorite Movie, only one Series (queried 2026-10-13). The server reports 12.2.0. The spec's snapshots match: no `resume` section in its results. Nothing in `tests/rta` writes the server's layout or favorites; the public demo's `demo` user is editable by anyone signed in as it. Related: `[fid: demo-server-hourly-reset-suite-flake]`.
+
+**Options:**
+
+- `pin-layout` (recommended): the spec sets the Home layout it needs (`resume`, `nextup`, `latestmedia`, …) in app memory before each first load, through `odc.setValue` as its stand-in case already does, never writing the server; the Favorites cases keep their check but accept any favorite type the user has. One spec file. Removes the Home cases' dependence on a public server's settings; Favorites still rest on the demo keeping some favorite, and the spec keeps throwing (not skipping) when it has none.
+- `local-fixture`: run `home-failure` against a local server (`RTA_SERVER_URL`, port 8101) with a known layout and favorites. Same result every time, but setup and CI wiring (CI uses the demo, so it needs a skip there).
+- `write-demo`: restore the demo user's layout and a favorite Movie through the API before running. Writes to a shared public server others use, and recurs.
+
+While open, these 10 cases are red in every full `test:rta`, so a real regression in the Home and Favorites failure tiles (#1051, #1057) would go unnoticed.
+
+**Not checked:** when the demo user changed, and when the spec last passed against the demo; whether the Home cases pass once the layout is set in app memory; whether the Favorites assertions hold for a favorite Series.
 
 ### docs
 

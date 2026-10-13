@@ -2,25 +2,34 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/utils/misc.bs"
 
-namespace quickplayRead
+namespace apiRead
 
-  ' The reads of one quick play queue build (QuickPlayTask, GetShuffleItemsTask). It remembers
-  ' whether any read did not answer, so an empty result is not told as "nothing here"
-  ' (quickplayOutcome.statusOf), and logs why each one failed at warn: the viewer's message
-  ' says only that it failed, so the log is where the cause lives (timeout, HTTP status,
-  ' unreadable reply). A Task builds one per run, with its own logger.
+  ' The reads of one Task run that has to tell a failed load from an empty one (QuickPlayTask,
+  ' GetShuffleItemsTask, SearchTask). It counts the reads that did not answer, so an empty
+  ' result is not told as "nothing here", and logs why each one failed at warn: the viewer's
+  ' message says only that it failed, so the log is where the cause lives (timeout, HTTP
+  ' status, unreadable reply). A Task builds one per run, with its own logger.
   class Reader
 
     ' A read did not answer, or could not be sent.
     anyFailed = false
 
+    ' How many reads were asked for, and how many of them did not answer.
+    sentCount = 0
+    failedCount = 0
+
     ' The Task's logger. Named `log` so its calls are `m.log.*`, which the roku-log plugin
     ' strips from a production build like every other log line.
     private log
 
+    ' What the reads are for, named in the warning ("quick play", "search").
+    private label
+
     ' @param logger - the Task's log.Logger
-    sub new(logger as object)
+    ' @param label - what the reads are for, named in the warning
+    sub new(logger as object, label as string)
       m.log = logger
+      m.label = label
     end sub
 
     ' The parsed body of `req`, or invalid when the read did not answer. Only a failed read
@@ -31,6 +40,7 @@ namespace quickplayRead
     ' @param requestId - the pool request id, also the log's label
     ' @return the parsed body, or invalid
     function json(req as dynamic, requestId as string) as dynamic
+      m.sentCount++
       cause = "not sent"
       if isValid(req)
         res = fetchRes(req, requestId)
@@ -38,7 +48,8 @@ namespace quickplayRead
         if cause = "" then return res.json
       end if
       m.anyFailed = true
-      m.log.warn("quick play read failed", requestId, "cause", cause)
+      m.failedCount++
+      m.log.warn("read failed", m.label, requestId, "cause", cause)
       return invalid
     end function
 

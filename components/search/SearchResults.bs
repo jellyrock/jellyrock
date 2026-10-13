@@ -9,10 +9,12 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/screenWaits.bs"
+import "pkg:/source/utils/searchOutcome.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
@@ -42,6 +44,24 @@ sub init()
 
   m.searchHelpText = m.top.findNode("SearchHelpText")
   m.searchHelpText.text = translate(translationKeys.MessageYouCanSearchForTitlesPeople)
+  ' The help text also says "No results." for an answered empty search; this says which.
+  m.isShowingNoResults = false
+
+  ' Search-failure state. The button centers itself in the results area once it has measured
+  ' its label.
+  m.searchFailed = m.top.findNode("searchFailed")
+  m.searchFailedText = m.top.findNode("searchFailedText")
+  m.searchRetryButton = m.top.findNode("searchRetryButton")
+  m.failureNarrationTimer = m.top.findNode("failureNarrationTimer")
+  m.searchFailedText.text = translate(translationKeys.MessageSearchFailed)
+  m.searchRetryButton.text = translate(translationKeys.ButtonTryAgain)
+  m.searchRetryButton.observeField("isReady", "onRetryButtonReady")
+  m.failureNarrationTimer.duration = narration.OPENING_DELAY
+  m.failureNarrationTimer.observeField("fire", "onFailureNarrationDue")
+
+  ' Whether this view is the one on screen: a search answer can land while a result's details
+  ' screen covers this one, and its toast must not show over that screen.
+  m.isShown = false
 
   ' Cache search keyboard reference and observe focus changes
   ' to adjust alphabet layout when voice button popup appears
@@ -106,6 +126,7 @@ sub onScreenShown()
   ' nothing is mis-timed by it and the warning is the only way that ordering would ever be
   ' seen. Same reasoning as `onResultRowsReady`.
   screenLoad.resolve("focus")
+  m.isShown = true
 
   ' Voice search arrives as route.context.query: pre-populate the search box and focus its
   ' text entry, skipping normal focus restoration.
@@ -138,6 +159,7 @@ end sub
 
 sub onScreenHidden()
   m.log.info("onScreenHidden")
+  m.isShown = false
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     hideTextureManager(m.searchSelect.content)
   end if
@@ -236,6 +258,8 @@ end sub
 
 sub searchMedias()
   query = m.top.searchAlpha
+  ' A new query (or a retry) clears what the last one ended with.
+  clearSearchOutcome()
   ' An emptied search box waits on nothing.
   if query.len() = 0
     screenWaits.finish(m.top, "results")
@@ -326,6 +350,18 @@ sub loadResults(event as object)
   ' For this variant the two FILLS are the split, not paint against settled.
   screenLoad.paint("query")
 
+  outcome = searchOutcome.view(results.status, results.TotalRecordCount)
+  if outcome.show = searchOutcome.SHOW_FAILED
+    showSearchFailure()
+  else if outcome.show = searchOutcome.SHOW_EMPTY
+    m.searchHelpText.text = translate(translationKeys.MessageSearchNoResults)
+    m.searchHelpText.visible = true
+    m.isShowingNoResults = true
+  else if outcome.toastKey <> "" and m.isShown
+    displayToast(translate(outcome.toastKey))
+  end if
+  if outcome.announceKey <> "" and m.isShown then announceSearchOutcome(outcome)
+
   if results.TotalRecordCount = 0
     ' make sure focus is on the keyboard
     if m.searchSelect.isinFocusChain()
@@ -333,6 +369,59 @@ sub loadResults(event as object)
     end if
     return
   end if
+end sub
+
+' Every read of the search failed: say so where the results go, with Try again. Focus stays
+' where it is: the viewer may still be typing, and results arriving do not take it either.
+sub showSearchFailure()
+  m.searchHelpText.visible = false
+  m.isShowingNoResults = false
+  m.searchFailed.visible = true
+end sub
+
+' Hides the failure state and the no-results text before a new query or a retry. Focus on Try
+' again goes back to the keyboard, as the button it is on is going.
+sub clearSearchOutcome()
+  if m.searchFailed.visible
+    m.searchFailed.visible = false
+    if m.searchRetryButton.hasFocus() then m.searchAlphabox.setFocus(true)
+  end if
+  if m.isShowingNoResults
+    m.searchHelpText.visible = false
+    m.isShowingNoResults = false
+  end if
+end sub
+
+' Speaks a failed or empty search, which the screen reader would not: focus stays on the
+' keyboard, and it speaks only what has focus. Queued, not flushed, as "Loading more" is
+' (BaseGridView.onLoadingMoreDue): nothing moved, so what is being read is still true. A failure
+' names Try again too, so the viewer knows there is something to reach.
+sub announceSearchOutcome(outcome as object)
+  text = translate(outcome.announceKey)
+  if outcome.show = searchOutcome.SHOW_FAILED
+    text = composeDialogAnnouncement("", text, m.searchRetryButton.text)
+  end if
+  narrateStatus(text)
+end sub
+
+sub focusRetryButton()
+  m.searchRetryButton.setFocus(true)
+  ' The platform speaks only the focused button; the message is ours to announce.
+  m.failureNarrationTimer.control = "stop"
+  m.failureNarrationTimer.control = "start"
+end sub
+
+sub onRetryButtonReady()
+  area = m.searchFailedText.translation
+  width = m.searchRetryButton.localBoundingRect().width
+  x = int(area[0] + (m.searchFailedText.width - width) / 2)
+  ' On the 720p output grid (every 3 pixels of 1080p); see dialogLayout.bs.
+  m.searchRetryButton.translation = [x - (x mod 3), m.searchRetryButton.translation[1]]
+end sub
+
+sub onFailureNarrationDue()
+  if not m.isShown or not m.searchFailed.visible or not m.searchRetryButton.hasFocus() then return
+  narrateDialogOpening("", m.searchFailedText.text, m.searchRetryButton.text)
 end sub
 
 ' The result rows are built and on screen: closes the `rows` fill.
@@ -357,8 +446,15 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  if key = "left" and m.searchSelect.isinFocusChain()
+  if key = "left" and (m.searchSelect.isinFocusChain() or m.searchRetryButton.hasFocus())
     m.searchAlphabox.setFocus(true)
+    return true
+  else if key = "OK" and m.searchRetryButton.hasFocus()
+    ' Runs the same query again, through the path a keystroke takes.
+    if m.searchFailed.visible then searchMedias()
+    return true
+  else if key = "right" and m.searchFailed.visible and m.searchAlphabox.isInFocusChain()
+    focusRetryButton()
     return true
   else if key = "right" and isValid(m.searchSelect.content) and m.searchSelect.content.getChildCount() > 0
     m.searchSelect.setFocus(true)
@@ -407,6 +503,9 @@ sub onDestroy()
   m.searchSelect.unobserveField("contentReady") ' readiness ledger's `rows` fill
   m.searchSelect.unobserveField("itemSelected") ' self-navigation observer
   m.top.unobserveField("quickPlayNode") ' playback launcher
+  m.searchRetryButton.unobserveField("isReady")
+  m.failureNarrationTimer.unobserveField("fire")
+  m.failureNarrationTimer.control = "stop"
 
   ' Drop the row content, same shape and same reason as BaseGridView.onDestroy: SearchRow's
   ' cells are BrowseRowItem (a JRRowItem), which caches m.contentRoot and observes a field
@@ -423,4 +522,8 @@ sub onDestroy()
   m.searchSelect = invalid
   m.searchAlphabox = invalid
   m.searchHelpText = invalid
+  m.searchFailed = invalid
+  m.searchFailedText = invalid
+  m.searchRetryButton = invalid
+  m.failureNarrationTimer = invalid
 end sub

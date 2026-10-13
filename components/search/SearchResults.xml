@@ -9,6 +9,18 @@
 
     <LabelPrimaryLarge id="SearchHelpText" width="1394" horizAlign="center" text="" translation="[470, 440]" />
 
+    <!-- Search-failure state: the server did not answer, which says nothing about what it
+         holds, so it is not the no-results text. Sits where the results go; the button's x is
+         set once it has measured itself (onRetryButtonReady), so a longer translation stays
+         centered in that area. -->
+    <Group id="searchFailed" visible="false">
+      <LabelPrimaryLarge id="searchFailedText" isBold="true" width="1394" horizAlign="center" vertAlign="center" height="64" translation="[470, 440]" />
+      <TextButton id="searchRetryButton" translation="[0, 542]" />
+    </Group>
+    <!-- Delays only the failure state's announcement; see narration.OPENING_DELAY in
+         source/utils/dialogNarration.bs for why it cannot be event-driven. -->
+    <Timer id="failureNarrationTimer" repeat="false" />
+
     <OptionsSlider id="options" />
   </children>
   <interface>
