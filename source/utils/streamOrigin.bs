@@ -2,8 +2,8 @@
 '
 ' A Jellyfin URL carries the user's access token in its query (`ApiKey`, `api_key` on older
 ' servers). An upstream URL (a Live TV channel, a .strm item) belongs to someone else's service,
-' whose token names are unknown, so every query value is hidden there, and so is any
-' `user:password@` before the host. A screenshot of the playback-info report must be safe to
+' whose token names are unknown, so every query value is hidden there. Any `user:password@`
+' before the host is hidden on every URL. A screenshot of the playback-info report must be safe to
 ' attach to a bug report.
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/url.bs"
@@ -53,7 +53,9 @@ function maskUrlSecrets(url as dynamic, serverUrl as dynamic) as string
 
   ' Worked on the text itself rather than rebuilt from parseUrlComponents, which lowercases
   ' the host: everything that is not a secret reads exactly as the server or provider wrote it.
-  if isUrl and not isServer
+  ' User information is hidden whoever the URL belongs to: isServerUrl compares hosts with it
+  ' already dropped, so a source Path on the server's own host can still carry it.
+  if isUrl
     authorityStart = Instr(1, text, "://") + 3
     authorityEnd = Len(text) + 1
     for each delimiter in ["/", "?", "#"]

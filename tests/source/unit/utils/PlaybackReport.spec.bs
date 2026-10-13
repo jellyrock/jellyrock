@@ -326,7 +326,7 @@ namespace tests
     function _()
       section = m.sectionById(buildPlaybackReport(m.input), "reasons")
       m.assertEqual(section.rows[0].label, "VideoRangeTypeNotSupported", "the server's vocabulary passes through untranslated")
-      m.assertEqual(section.rows[0].value, "The video's dynamic range needs converting for this device. Caused by the Preserve DoVi setting")
+      m.assertEqual(section.rows[0].value, "The video's dynamic range needs converting for this device. Caused by the Preserve DoVi setting.")
     end function
 
     @it("explains a reason no setting of ours caused")
@@ -372,9 +372,9 @@ namespace tests
 
       rows = m.sectionById(buildPlaybackReport(m.input), "reasons").rows
       m.assertEqual(rows.count(), 3)
-      m.assertEqual(rows[0].value, "The video's dynamic range needs converting for this device. Caused by the Preserve DoVi setting")
+      m.assertEqual(rows[0].value, "The video's dynamic range needs converting for this device. Caused by the Preserve DoVi setting.")
       m.assertEqual(rows[1].value, "The audio codec needs converting for this device.")
-      m.assertEqual(rows[2].value, "The audio's channel count needs converting for this device. Caused by the Decode Multichannel Audio setting")
+      m.assertEqual(rows[2].value, "The audio's channel count needs converting for this device. Caused by the Decode Multichannel Audio setting.")
     end function
 
     @it("gives the reasons section a wide label column for the codes")

@@ -71,6 +71,14 @@ namespace tests
       m.assertEqual(maskUrlSecrets(url, m.SERVER), "http://***@iptv.example.com:8080/play/1.m3u8")
     end function
 
+    @it("hides the user information on the server's own host too")
+    function _()
+      ' The host comparison drops user information, so this URL counts as the server's.
+      url = "https://user:pass@jellyfin.example.com/media/clip.m3u8?ApiKey=secret"
+      m.assertTrue(isServerUrl(url, m.SERVER))
+      m.assertEqual(maskUrlSecrets(url, m.SERVER), "https://***@jellyfin.example.com/media/clip.m3u8?ApiKey=***")
+    end function
+
     @it("leaves a URL with no query and no user information as it is")
     function _()
       url = "https://jellyfin.example.com:8190/vod/hls/master.m3u8"
