@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-12
+last-updated: 2026-10-13
 ---
 
 # Progress
@@ -409,14 +409,6 @@ The `dialogs` RTA spec asserts "no row is ever a placeholder for missing data" a
 
 `playbackAudioLanguagePreference` offers `webclient` / `roku` / `custom`, so a viewer can only get the original audio by setting it in the web client. Add an `original` option that `wantsOriginalAudio()` treats like the web client's sentinel, hidden on servers older than 12.0, where no item carries `OriginalLanguage`.
 
-#### Playback Info shows no Audio section for a Live TV stream (follow-up to the live HLS direct-play fix). `[fid: playback-info-no-audio-live-tv]` `[captured 2026-09-21]`
-
-On 12.x the server returns a live channel's media streams without probing them (`Index: -1`), so the dialog has nothing to list, even when the stream carries audio (the server's remuxing of a home tuner channel had AAC in every segment). A display gap only. Fill it from what the player reports (`audioFormat`, `availableAudioTracks`) when the server has no stream data.
-
-#### Show the playback URL in Playback Info, admin-only (idea raised with the live HLS direct-play fix). `[fid: playback-url-in-info-admin-only]` `[captured 2026-09-21]`
-
-Knowing whether a stream is the upstream URL or the server's transcode would have shortened the 12.x Live TV investigation. Admin-only because the URL can carry session tokens; never log it.
-
 #### The TV guide's channel list is paged 25 at a time; larger later pages would shorten a big lineup's load — measure before changing. `[fid: tv-guide-channel-paging-25]` `[captured 2026-09-22]`
 
 A 2,000-channel lineup takes 18 s to finish loading idle (Stick 4K, 2026-09-21), ~180 ms per page of which the transform is now the smaller part, and while the user scrolls each page costs 3.6–4.7 s, mostly per-request overhead (see the API pool followup under `### api`). Keep page 1 small for first paint; bigger later pages trade fewer round trips for a larger single handoff, so compare both on a 512 MB device.
@@ -565,6 +557,18 @@ Closes when #1072's `DeviceInfo` item names all eight fields, or they are remove
 The device check before an upstream direct play (`LoadVideoContentTask.upstreamManifestAnswers()`) runs only for HLS and DASH manifests: `getUpstreamManifestBlocker()` returns `NOT_MANIFEST` for anything else and the server's answer stands. The device profile still allows direct play of `mp4`, `mkv` and `ism` (`supportedContainers` in `GetDirectPlayProfiles`), so a live channel in one of those containers over HTTP that the TV cannot reach is still handed to the Video node, which buffers instead of failing, and the transcode retry does not run in time. MPEG-TS is unaffected: it is left out of the direct-play profiles, so the server always remuxes it.
 
 This is the non-manifest half of the closed followup `live-channel-buffers-forever-unreachable-url`, found in review of the manifest direct-play fix (decision `manifest-upstream-direct-play`). Not done there because it needs a different probe: a GET of an endless progressive stream never completes, so the check would need a ranged or HEAD request, or to read only the first bytes. Closes when an unreachable server-allowed non-manifest live URL falls back to the server's stream, measured on a device.
+
+#### The app cannot select among audio tracks muxed into one HLS variant: Roku lists none of them `[fid: muxed-hls-audio-tracks-unselectable]` `[captured 2026-10-13]`
+
+On an HLS stream that carries several audio tracks in one variant, Roku lists none of them (`availableAudioTracks` empty, `currentAudioTrack` ""), so the app cannot play the viewer's pick. `getRokuAudioTrackPosition()` then falls back to index + 1 and writes a track id that does not exist. Playback Info now says "Playing track: Unknown" for this case (commit `25697e39`), but the audio menu still offers every track and choosing one changes nothing audible.
+
+Evidence (2026-10-12, Stick 4K, 12.1): the muxed fixture `vod2a` gave an empty track list for 20 s, with and without a pick; the same clip with two `#EXT-X-MEDIA` renditions (`vod2r`) listed both, and French played when picked (`currentAudioTrack` "2"). A direct-played MKV with two audio tracks lists them.
+
+Options weighed in `/snag`: reload through the server's stream when Roku lists no tracks and the pick differs from what plays (the pick then plays, but the list is known only after playback starts, so it restarts the play and loads the server); leave it as a known limitation.
+
+Not checked: which track is audible on the muxed stream; how common muxed multi-audio HLS is in real `.strm` or Live TV provider sources (no user report); Live TV TS channels.
+
+Not done now: no real source is known to use this layout. Act when a user report or a real source shows it.
 
 ### source
 
