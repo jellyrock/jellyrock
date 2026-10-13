@@ -72,6 +72,26 @@ namespace tests
       m.assertEqual(searchOutcome.view("somethingNew", 0), { show: searchOutcome.SHOW_FAILED, toastKey: "" })
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("canSearchLiveTv")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("searches Live TV for a user with Live TV access")
+    function _()
+      m.assertTrue(searchOutcome.canSearchLiveTv({ enableLiveTvAccess: true }))
+    end function
+
+    @it("does not search Live TV for a user without Live TV access")
+    function _()
+      m.assertFalse(searchOutcome.canSearchLiveTv({ enableLiveTvAccess: false }))
+    end function
+
+    @it("searches Live TV when the policy, or its field, is missing")
+    function _()
+      m.assertTrue(searchOutcome.canSearchLiveTv(invalid))
+      m.assertTrue(searchOutcome.canSearchLiveTv({}))
+    end function
+
   end class
 
 end namespace

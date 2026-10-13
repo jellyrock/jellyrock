@@ -3,7 +3,8 @@ import "pkg:/source/utils/misc.bs"
 
 ' What a search ended with, and what the search screen shows for it. SearchTask reports the
 ' status; SearchResults shows the view. Pure, so the rules are unit-tested without a network
-' seam.
+' seam. Also which reads a search sends (canSearchLiveTv), since a read the server refuses
+' would make every search look partial.
 '
 ' A read that failed says nothing about what the server holds, so a search that got no answer
 ' must never read as one that found nothing: "failed" offers Try again, "empty" says there are
@@ -48,6 +49,20 @@ namespace searchOutcome
       return { show: searchOutcome.SHOW_RESULTS, toastKey: translationKeys.MessageSearchPartial }
     end if
     return { show: searchOutcome.SHOW_FAILED, toastKey: "" }
+  end function
+
+  ' Whether a search sends its Live TV program read. Jellyfin refuses that read to a user
+  ' without Live TV access (its LiveTvAccess policy), so asking would count every one of that
+  ' user's searches as partial. A policy, or a field, that is missing reads as allowed, as
+  ' SessionDataTransformer defaults it.
+  '
+  ' @param {dynamic} policy - m.global.user.policy (JellyfinUserPolicy node or AA), or invalid
+  ' @return {boolean} true when the search asks for Live TV programs
+  function canSearchLiveTv(policy as dynamic) as boolean
+    if not isValid(policy) then return true
+    access = policy.enableLiveTvAccess
+    if not isValid(access) then return true
+    return access <> false
   end function
 
 end namespace

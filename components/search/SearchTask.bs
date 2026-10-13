@@ -91,10 +91,10 @@ function searchMedia(query as string)
   end if
 
   ' Live TV Programs: /LiveTv/Programs searches the full EPG; /Items only covers recordings.
-  ' Jellyfin refuses it to a user without Live TV access (its LiveTvAccess policy), so that
-  ' user's every search would count it as failed: it is not asked for. Read once, as this
-  ' runs on a Task thread, where each m.global read crosses to the render thread.
-  if canSearchLiveTv()
+  ' Not asked for a user without Live TV access (searchOutcome.canSearchLiveTv). The policy is
+  ' read once, as this runs on a Task thread, where each m.global read crosses to the render
+  ' thread.
+  if searchOutcome.canSearchLiveTv(m.global.user.policy)
     programData = reader.json(GetApi().BuildGetLiveTVProgramsRequest({
       "SearchTerm": query,
       "Limit": 20,
@@ -113,12 +113,4 @@ function searchMedia(query as string)
   result.query = query
   result.status = searchOutcome.statusOf(reader.sentCount, reader.failedCount)
   return result
-end function
-
-' Whether the signed-in user may search Live TV programs. A user whose policy is missing reads
-' as allowed, as SessionDataTransformer defaults it.
-function canSearchLiveTv() as boolean
-  policy = m.global.user.policy
-  if not isValid(policy) then return true
-  return policy.enableLiveTvAccess <> false
 end function
