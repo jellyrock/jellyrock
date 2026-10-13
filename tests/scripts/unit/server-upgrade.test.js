@@ -1,8 +1,8 @@
 // Tests for scripts/server-upgrade.js (Phase 3: mechanical filer).
 //
-// The judgment layer (the /server-upgrade agent skill) is out of scope here —
+// The judgment layer (the /server-upgrade agent skill) is out of scope here:
 // these exercise the deterministic, IO-free seam: stable version-independent
-// finding identity, title drafting + dedup confirm, the scaffold (report →
+// finding identity, title drafting + dedup confirm, the scaffold (report to
 // verdict template), verdict validation, action reconciliation (create /
 // comment / reopen / skip / monitor / missing- + invalid-verdict), plan counts,
 // and the run-summary render. A final block drives the CLI scaffold + plan
@@ -249,11 +249,11 @@ describe('dedup search + confirm', () => {
   it('confirms a hit only when it is ours AND carries the version-independent identity', () => {
     const c = opCandidate();
     expect(issueMatchesFinding(draftIssueTitle(c), c)).toBe(true);
-    // same identity, different version → still our finding (recurrence)
+    // same identity, different version: still our finding (recurrence)
     expect(
       issueMatchesFinding('[server-upgrade] endpoint removed: GET /Items/{itemId} (→ 10.13.0)', c),
     ).toBe(true);
-    // a manually-filed issue mentioning the path but not our prefix → no match
+    // a manually-filed issue mentioning the path but not our prefix: no match
     expect(issueMatchesFinding('Bug: GET /Items/{itemId} is slow', c)).toBe(false);
   });
   it('disambiguates two kinds that share a locator', () => {
@@ -294,7 +294,7 @@ describe('investigationCandidates + buildScaffold', () => {
     expect(v.severityGuess).toBe('high'); // hint preserved
     expect(v.appUsage.sites).toEqual(['source/api/ApiClient.bs']);
     expect(v.labels).toEqual(['server-upgrade', 'bug']); // base labels prefilled
-    // judgment fields blank — the agent must decide
+    // judgment fields blank: the agent must decide
     expect(v.real).toBeNull();
     expect(v.severity).toBeNull();
     expect(v.recommendedAction).toBeNull();
@@ -503,7 +503,7 @@ describe('buildPlan + counts', () => {
     const verdicts = [
       fileVerdict(findingKey(c1)),
       { findingKey: findingKey(c2), recommendedAction: 'skip', rationale: 'dynamic typing no-op' },
-      // c3 has no verdict → missing
+      // c3 has no verdict, so it is missing
     ];
     const plan = buildPlan({ report: r, verdicts, dedupMatches: new Map() });
     expect(plan.counts).toMatchObject({
@@ -852,13 +852,13 @@ describe('clearedThroughFrom — resolved-through derived from the digest issues
   });
 
   it('ignores OPEN digests, the current version, and titles without a version token', () => {
-    // 10.11.10 is OPEN here → excluded; falls back to the next closed-below (10.11.9).
+    // 10.11.10 is `OPEN` here, so excluded; falls back to the next closed-below (10.11.9).
     const withOpen10 = [
       { title: '[server-upgrade] Jellyfin 10.11.9 — release triage', state: 'CLOSED' },
       { title: '[server-upgrade] Jellyfin 10.11.10 — release triage', state: 'OPEN' },
     ];
     expect(clearedThroughFrom(withOpen10, '10.11.11')).toBe('10.11.9');
-    // Nothing strictly below 10.11.9 → null.
+    // Nothing strictly below 10.11.9: null.
     expect(clearedThroughFrom(withOpen10, '10.11.9')).toBe(null);
   });
 
@@ -944,7 +944,7 @@ describe('executePlan — digest edit + sub-issue attach + close guard (Phase 6)
     const flat = calls.map((c) => c.join(' '));
     // promotion created
     expect(flat.some((c) => c.startsWith('issue create'))).toBe(true);
-    // sub-issue linked (child 901 → digest 840)
+    // sub-issue linked (child 901 to digest 840)
     expect(calls).toContainEqual(['api', 'repos/{owner}/{repo}/issues/901', '--jq', '.id']);
     expect(calls).toContainEqual([
       'api',
@@ -983,7 +983,7 @@ describe('executePlan — digest edit + sub-issue attach + close guard (Phase 6)
       },
     );
     expect(calls.some((c) => c[0] === 'issue' && c[1] === 'edit')).toBe(true); // still edits
-    expect(calls.some((c) => c[0] === 'issue' && c[1] === 'close')).toBe(false); // but does NOT close
+    expect(calls.some((c) => c[0] === 'issue' && c[1] === 'close')).toBe(false); // but does not close
   });
 
   it('records a sub-issue link failure without aborting (promotion still filed)', () => {
@@ -1054,13 +1054,13 @@ describe('CLI scaffold + plan via spawnScript', () => {
     const c = opCandidate();
     writeFileSync(reportPath, JSON.stringify(report([c, coverageGapCandidate()])));
 
-    // scaffold → stdout
+    // scaffold to stdout
     const sc = spawnScript(SCRIPT, ['scaffold', '--report', reportPath]);
     expect(sc.exitCode).toBe(0);
     const tmpl = JSON.parse(sc.stdout);
     expect(tmpl.verdicts).toHaveLength(2);
 
-    // fill one verdict (file), leave the other unset → plan should show missing
+    // fill one verdict (file), leave the other unset: plan should show missing
     const verdicts = {
       verdicts: [fileVerdict(findingKey(c))],
     };

@@ -1,12 +1,12 @@
-// Unit tests for scripts/lib/process-liveness.cjs — the shared "is the process
+// Unit tests for scripts/lib/process-liveness.cjs: the shared "is the process
 // that wrote this record still running?" predicate.
 //
 // Thin, but it is the hinge two independent decisions turn on: whether
 // `device:status` recommends a restore, and whether `rta:restore` performs one.
-// The cases that matter are the NON-obvious answers — a pid that exists but is
+// The cases that matter are the non-obvious answers: a pid that exists but is
 // not ours (EPERM is alive), and every shape of "no pid recorded" (a snapshot
 // written before the field, a truncated write) reading as DEAD, which is what
-// keeps a genuinely stranded device recoverable.
+// keeps a stranded device recoverable.
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 
@@ -34,7 +34,7 @@ describe('isProcessAlive', () => {
   it('is false for every shape of "no pid recorded"', () => {
     // A snapshot written before `ownerPid` existed, or a truncated one. Dead is
     // the safe reading: it keeps the recovery command available for exactly the
-    // files that genuinely are stranded.
+    // files that are stranded.
     for (const pid of [undefined, null, 0, -1, NaN, '1234', 12.5, {}]) {
       expect(isProcessAlive(pid)).toBe(false);
     }

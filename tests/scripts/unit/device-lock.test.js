@@ -1,8 +1,8 @@
-// Tests for scripts/device-lock.js — the shared-Roku mutex.
+// Tests for scripts/device-lock.js, the shared-Roku mutex.
 //
-// Everything here runs against a stubbed `fetch`, so no device and no network.
+// Everything here runs against a stubbed transport, so no device and no network.
 // What is worth testing is the PROTOCOL, not the HTTP: who wins a CAS race, what
-// happens when GitHub is unreachable, and — the case that motivated the module —
+// happens when GitHub is unreachable, and (the case that motivated the module)
 // that a local run yields to an in-flight CI device job even after it has already
 // published its own ref.
 //
@@ -18,14 +18,14 @@ import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const REPO = 'jellyrock/jellyrock';
-const DEVICE = '192.168.1.177'; // how we REACH it — the shared dev device
-const DEVICE_ID = 'S09042179A2U'; // who it IS — the real .177 Stick 4K's ECP device-id
+const DEVICE = '192.168.1.177'; // how we REACH it: the shared dev device
+const DEVICE_ID = 'S09042179A2U'; // who it IS: the real .177 Stick 4K's ECP device-id
 /** What the ref is actually named: a hash, never the raw id (the repo is public). */
 const lockKey = (id) => createHash('sha256').update(id).digest('hex').slice(0, 16);
 const DEVICE_KEY = lockKey(DEVICE_ID);
 
 /**
- * A fake GitHub with just enough surface for the lock: one ref namespace, a tag
+ * A fake GitHub with only enough surface for the lock: one ref namespace, a tag
  * object store, and a list of in-progress workflow runs.
  */
 function fakeGitHub({ refs = new Map(), tags = new Map(), failWith = null } = {}) {
@@ -84,7 +84,7 @@ function fakeGitHub({ refs = new Map(), tags = new Map(), failWith = null } = {}
 }
 
 /**
- * Genuinely tokenless: dropping GITHUB_TOKEN is not enough, because getToken()
+ * Truly tokenless: dropping GITHUB_TOKEN is not enough, because getToken()
  * falls back to `gh auth token` and this repo's developers are logged in. Empty
  * PATH makes that lookup fail the way it would on a runner with no gh.
  */
@@ -100,7 +100,7 @@ async function goTokenless() {
 /**
  * Default every test to a transport that THROWS. Without this, a test that
  * forgets its stub silently falls through to the real https transport and starts
- * creating refs on the live repo — which happened during development when the
+ * creating refs on the live repo, which happened during development when the
  * module moved off `fetch` and the old `stubGlobal('fetch')` doubles went inert.
  */
 function installNetworkGuard() {
@@ -144,7 +144,7 @@ describe('device-lock: acquiring', () => {
 
     expect(lock.held).toBe(true);
     expect(lock.degraded).toBe(false);
-    // Keyed by a HASH of the device's identity — not its address, not the raw id.
+    // Keyed by a HASH of the device's identity: not its address, not the raw id.
     expect(gh.refs.has(`device-lock/${DEVICE_KEY}`)).toBe(true);
   });
 
@@ -162,13 +162,13 @@ describe('device-lock: acquiring', () => {
 
   it('still refuses when the CAS conflicts but the follow-up read comes back stale', async () => {
     // Regression: GitHub's ref READ is eventually consistent while the CAS is
-    // not. Measured 2026-08-10 against the real API — a read of an aged ref
+    // not. Measured 2026-08-10 against the real API: a read of an aged ref
     // (the shape of a real 10-25min hold) returned stale 2/24 times, while the
     // create path returned 422 reliably every time.
     //
     // So "422, then a read that says free" means the READ is wrong. An earlier
     // draft inferred the contender purely from that read, which turned this into
-    // a silent unlocked run reporting degraded:false — the precise failure this
+    // a silent unlocked run reporting degraded:false, the precise failure this
     // module exists to prevent.
     const gh = fakeGitHub();
     mod._internals.setTransport(async (pathname, opts) => {
@@ -201,7 +201,7 @@ describe('device-lock: acquiring', () => {
     // The refusal names one device and then says "run `npm run device:status`",
     // but `status` resolves its host from ROKU_IP. On a LAN with three Rokus,
     // following that advice literally after a `ROKU_IP=<other> npm run test:rta`
-    // reported on the wrong device — and said `free` about one that was not the
+    // reported on the wrong device, and said `free` about one that was not the
     // one refusing. The invocation has to carry the host the error is about.
     const gh = fakeGitHub();
     mod._internals.setTransport(gh.handler);
@@ -231,7 +231,7 @@ describe('device-lock: no CI-yield', () => {
 
 describe('device-lock: read-only (CI) mode', () => {
   it('runs tokenless in CI as an observer, without degrading', async () => {
-    // device-unit-tests.yml deliberately passes NO GITHUB_TOKEN, because that
+    // device-unit-tests.yml passes no GITHUB_TOKEN on purpose, because that
     // job's env is readable by fork code. The repo is public and the two read
     // endpoints answer anonymously, so the check must still work.
     await goTokenless();
@@ -253,7 +253,7 @@ describe('device-lock: read-only (CI) mode', () => {
     await mod.acquireDeviceLock({ what: 'test:rta', deviceHost: DEVICE }); // local, with token
 
     // goTokenless() re-imports the module, so the new instance needs the SAME
-    // fake wired up again — its `refs` map is what carries the local holder over.
+    // fake wired up again: its `refs` map is what carries the local holder over.
     await goTokenless();
     mod._internals.setTransport(gh.handler);
     process.env.GITHUB_ACTIONS = 'true';
@@ -327,7 +327,7 @@ describe('device-lock: helpers', () => {
   it('keys the ref by a hash, never the raw device-id — the repo is PUBLIC', () => {
     // `git ls-remote` on a public repo exposes every ref name, and a Roku's
     // device-id partially encodes its serial (.177 reports serial X01700M79A2U
-    // and device-id S09042179A2U — note the shared tail). The pinned value is
+    // and device-id S09042179A2U; mind the shared tail). The pinned value is
     // what the CI self-test printed for the real device, so this also locks the
     // algorithm: change the hash or the truncation and both sides stop agreeing.
     const key = mod._internals.deviceKey('S09042179A2U');
@@ -341,7 +341,7 @@ describe('device-lock: helpers', () => {
   it('treats a ref whose tag it cannot read as HELD, not free', async () => {
     // The REF existing is the authority; the tag only names the holder. An
     // earlier revision returned null on a failed tag fetch, which let a tokenless
-    // CI observer — whose only signal is this read — conclude "free" on a
+    // CI observer (whose only signal is this read) conclude "free" on a
     // transient 5xx while a local run held the lock.
     const gh = fakeGitHub();
     mod._internals.setTransport(gh.handler);
@@ -392,7 +392,7 @@ describe('device-lock: helpers', () => {
   it('locks the same device across hosts that address it differently', async () => {
     // The defect that motivated identity-keying: local .env and CI's
     // ROKU_DEVICE_IP secret naming the same Roku by different addresses (DHCP
-    // change, or simply different values) would split the lock in two, and BOTH
+    // change, or plain different values) would split the lock in two, and BOTH
     // sides would read "free".
     const gh = fakeGitHub();
     mod._internals.setTransport(gh.handler);
@@ -446,9 +446,9 @@ describe('device-lock: helpers', () => {
 
 // A snapshot under `.device-runs/` means a run did not put that device back. It is
 // both the only recovery path and a file holding a live authToken, and it had no
-// operator surface at all until `device:status` grew one — which is how one got
-// deleted by an `rm -rf` aimed at the ledger beside it. The lines it prints are
-// therefore load-bearing, and the recovery command in them has to actually RUN.
+// operator surface at all until `device:status` grew one, which is how one got
+// deleted by an `rm -rf` aimed at the ledger beside it. The lines it prints
+// therefore matter, and the recovery command in them has to actually RUN.
 describe('device-lock: stranded-snapshot report', () => {
   let dir;
 
@@ -482,7 +482,7 @@ describe('device-lock: stranded-snapshot report', () => {
   });
 
   it('recovers the host from the FILENAME when the snapshot is truncated', () => {
-    // What a killed write leaves — and precisely when an operator needs the
+    // What a killed write leaves, and precisely when an operator needs the
     // command most. Reading the host only from the contents produced
     // `ROKU_IP=an unknown device npm run rta:restore`, which the shell parses as
     // `ROKU_IP=an` and then tries to execute `unknown`. The host is in the name.
@@ -510,7 +510,7 @@ describe('device-lock: stranded-snapshot report', () => {
 
   // The defect this report was rewritten for. `rta-run.js` writes the snapshot
   // right after the deploy and clears it only after the suite, so the file is
-  // present for the whole of a HEALTHY ~21min run — and this said "left
+  // present for the whole of a healthy run (tens of minutes), and this said "left
   // mid-restore, run rta:restore" about every one of them. Following that advice
   // would have reverted the registry underneath the live run and relaunched the
   // channel mid-suite: the exact inverse of the right move.
@@ -529,7 +529,7 @@ describe('device-lock: stranded-snapshot report', () => {
   });
 
   it('still advises a restore once the owning run is gone', () => {
-    // The genuinely stranded case, and the one the report exists for. 2**30 is
+    // The truly stranded case, and the one the report exists for. 2**30 is
     // above any pid Linux hands out, so this is not a race against a real one.
     write(
       `registry-${DEVICE}.json`,
@@ -554,7 +554,7 @@ describe('device-lock: stranded-snapshot report', () => {
   it('does not claim an accepted-residue record as a stranded snapshot', () => {
     // The two reports share a directory, and the snapshot glob is greedy. Naming the
     // record `registry-<host>.accepted.json` would have matched it here as a device
-    // called `192.168.1.177.accepted` — and printed a recovery command with that as
+    // called `192.168.1.177.accepted`, and printed a recovery command with that as
     // its ROKU_IP. The distinct prefix is what prevents it; this pins that.
     write(`accepted-${DEVICE}.json`, JSON.stringify({ host: DEVICE, differences: [] }));
     expect(lines()).toEqual([]);
@@ -606,7 +606,7 @@ describe('device-lock: accepted-residue report', () => {
     expect(line).toContain('2 accepted difference(s)');
     expect(line).toContain('2026-08-11T20:00:00Z');
     expect(line).toContain(path.join(dir, `accepted-${DEVICE}.json`));
-    // Unlike a snapshot, this file is safe to delete — that IS the acknowledgement.
+    // Unlike a snapshot, this file is safe to delete: that IS the acknowledgment.
     expect(line).toContain(`rm ${path.join(dir, `accepted-${DEVICE}.json`)}`);
     // One accept reads as one thing, not as "across 1 accepts".
     expect(line).not.toContain('across');
@@ -629,7 +629,7 @@ describe('device-lock: accepted-residue report', () => {
     const [line] = lines();
     expect(line).toContain('3 accepted difference(s)');
     expect(line).toContain('across 2 accepts');
-    // The LATEST, not the first — an operator wants to know how recent the damage is.
+    // The LATEST, not the first: an operator wants to know how recent the damage is.
     expect(line).toContain('latest 2026-08-11T20:00:00Z');
     expect(line).not.toContain('latest 2026-08-10');
   });

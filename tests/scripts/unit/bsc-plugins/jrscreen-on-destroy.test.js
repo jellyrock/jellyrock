@@ -7,11 +7,11 @@
 // JRScreen must declare a top-level `onDestroy` function in its codebehind.
 // The function name check is case-sensitive (exact `onDestroy`, not
 // `OnDestroy` / `ondestroy` / `destroy`). The base JRScreen.xml is skipped
-// by name. Three escape hatches exist (`' bsc-disable-file jrscreen-on-destroy`
-// in the XML or in the codebehind).
+// by name. One escape hatch exists (`' bsc-disable-file jrscreen-on-destroy`,
+// honored in the XML or in the codebehind).
 //
-// It is a CROSS-FILE rule — the diagnostic anchors on the XML's component name
-// but the verdict comes from the codebehind's function list — so it runs on the
+// It is a CROSS-FILE rule (the diagnostic anchors on the XML's component name
+// but the verdict comes from the codebehind's function list), so it runs on the
 // shared scope lifecycle in scripts/lib/bsc-rule.cjs. The incremental block at
 // the bottom is what guards that: before the migration, adding the onDestroy()
 // the message asks for did not clear the warning until the XML was touched.
@@ -96,9 +96,9 @@ describe('jrscreen-on-destroy', () => {
   });
 
   it('does not flag JRScreen.xml itself (skipped by name)', () => {
-    // Synthetic JRScreen base — extends Group like the real one, no onDestroy().
-    // The plugin must NOT flag a component literally named "JRScreen"
-    // regardless of the parent chain.
+    // Synthetic JRScreen base: extends Group (the real one extends JRGroup) and,
+    // unlike the real one, has no onDestroy(). The plugin must not flag a
+    // component literally named "JRScreen" regardless of the parent chain.
     const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
       'components/JRScreen.xml': xml('JRScreen', 'Group'),
       'components/JRScreen.bs': `
@@ -239,7 +239,7 @@ describe('jrscreen-on-destroy — incremental validation (the staleness the life
     expect(remaining[0].message).toMatch(/BScreen/);
   });
 
-  // requiresCodebehind:false — a component with no codebehind at all cannot
+  // requiresCodebehind:false: a component with no codebehind at all cannot
   // declare onDestroy, so it is the strongest instance of this finding, not an
   // absent one. No live example today; the gate would narrow silently without it.
   it('flags a JRScreen subclass that has no codebehind at all', () => {

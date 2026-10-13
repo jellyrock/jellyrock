@@ -1,11 +1,11 @@
-// Tests for scripts/lint/rta-capability-coverage.cjs — the gate that keeps the ODC
+// Tests for scripts/lint/rta-capability-coverage.cjs: the gate that keeps the ODC
 // capability inventory in tests/rta/CLAUDE.md in step with the installed
 // roku-test-automation client.
 //
 // Two behaviours carry the weight and both are covered against a synthetic --root:
-// UNCOVERED (the library ships a method the inventory never judged — what fires on a
-// library upgrade) and STALE (an inventory TABLE row names a method the client dropped
-// — what fires on a rename). The last test runs the real repo, so a row deleted from
+// UNCOVERED (the library ships a method the inventory never judged: what fires on a
+// library upgrade) and STALE (an inventory TABLE row names a method the client dropped:
+// what fires on a rename). The last test runs the real repo, so a row deleted from
 // the real doc fails here as well as in the lint step.
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -91,8 +91,8 @@ describe('rta-capability-coverage', () => {
   });
 
   it('accepts a verdict given in prose rather than a table row', () => {
-    // The family paragraphs are prose; requiring a table row for each of the ~25
-    // not-applicable primitives is the bulk this inventory deliberately avoids.
+    // The family paragraphs are prose; requiring a table row for each of the
+    // not-applicable primitives is the bulk this inventory avoids on purpose.
     const dir = setup({
       members: [...CONFIG_MEMBERS, method('statPath')],
       doc: block('**Device filesystem — `statPath`.** Not a SceneGraph capability.'),
@@ -101,8 +101,8 @@ describe('rta-capability-coverage', () => {
   });
 
   it('does not treat an incidental prose identifier as a stale claim', () => {
-    // Only table cells are claims. A paragraph mentioning `getVals` — our own helper,
-    // not a library method — must not be read as naming a dropped primitive.
+    // Only table cells are claims. A paragraph mentioning `getVals` (our own helper,
+    // not a library method) must not be read as naming a dropped primitive.
     const dir = setup({
       members: [...CONFIG_MEMBERS, method('getValues')],
       doc: block(
@@ -114,7 +114,7 @@ describe('rta-capability-coverage', () => {
 
   it('counts a method whose parameters contain parens of their own', () => {
     // onFieldChange takes `callback: (response: …) => …`. A `\([^)]*\)` parameter regex
-    // stops at that inner paren and silently drops the method — the failure that would
+    // stops at that inner paren and silently drops the method: the failure that would
     // make this gate under-report the surface and pass.
     const dir = setup({
       members: [

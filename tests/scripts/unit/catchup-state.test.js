@@ -20,7 +20,7 @@ function setupFixture() {
   mkdirSync(join(fix.dir, 'docs/adr'), { recursive: true });
   mkdirSync(join(fix.dir, 'scripts/lib'), { recursive: true });
   // The aggregator does `require('./lib/*.cjs')` relative to its
-  // OWN location, not cwd — so we ALWAYS use the real script via spawnScript
+  // own location, not cwd, so we always use the real script via spawnScript
   // (which resolves to repo root). The fixture only needs the data files.
   return fix;
 }
@@ -75,9 +75,9 @@ describe('catchup-state', () => {
   it('signals section flags stale when latest_upstream != latest_acknowledged', () => {
     fix = setupFixture();
     // Three rows exercising the stale rule:
-    //   in-sync: latest_upstream == latest_acknowledged → not stale
-    //   ahead:   latest_upstream != latest_acknowledged AND status=watching → stale
-    //   ahead-pending: ahead BUT status=action_pending → NOT stale (already triaged)
+    //   in-sync: latest_upstream == latest_acknowledged, so not stale
+    //   ahead:   latest_upstream != latest_acknowledged AND status=watching, so stale
+    //   ahead-pending: ahead BUT status=action_pending, so not stale (already triaged)
     fix.commit('seed', {
       'docs/signals-backlog.md':
         `---\nlast-updated: ${TODAY}\n---\n# Signals\n\n## Watching\n\n` +
@@ -130,7 +130,7 @@ describe('catchup-state', () => {
     expect(parsed.tech_debt.high_count).toBe(2);
     expect(parsed.tech_debt.medium_count).toBe(1);
     expect(parsed.tech_debt.low_count).toBe(2);
-    // Top-3 takes file order (which is High → Medium → Low); within severity,
+    // Top-3 takes file order (which is High, then Medium, then Low); within severity,
     // file order is preserved (= author intent).
     expect(parsed.tech_debt.top_3).toHaveLength(3);
     expect(parsed.tech_debt.top_3[0]).toMatchObject({ slug: 'high-1', severity: 'High' });

@@ -4,7 +4,7 @@
  *
  * `git log` and `gh pr view` are mocked: changelog-syncer.test.js drives the real script
  * against a git fixture, but that fixture cannot answer `gh`, which is the part tested
- * here. The load-bearing case is the journal-sync commit: its subject ends in the PR's
+ * here. The key case is the journal-sync commit: its subject ends in the PR's
  * `(#N)` too, and resolving it to the PR's title listed every PR twice (caught rendering
  * v2.29.1..v2.32.0 with the old and new syncer, 2026-09-24).
  */

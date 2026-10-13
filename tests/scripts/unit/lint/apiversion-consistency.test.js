@@ -1,10 +1,10 @@
-// Tests for scripts/lint/apiversion-consistency-check.js — the static cross-check
+// Tests for scripts/lint/apiversion-consistency-check.js: the static cross-check
 // that source/utils/misc.bs resolveApiVersion() matches the boundary map.
 //
 // Pure layer: parse fixture .bs strings into ASTs (the same BrighterScript parser
 // the lint uses), extract, and diff against hand-written boundary maps. Plus a
 // smoke pass over the REAL committed misc.bs + boundary map so a drift in either
-// fails here (offline — no Roku hardware, which is the whole point of this lint).
+// fails here (offline: no Roku hardware, which is the whole point of this lint).
 
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
@@ -48,7 +48,7 @@ const TWO_TIER = {
   },
 };
 
-// A V3 split where Jellyfin drops the "10." major — 12.0.0 is the new active tier.
+// A V3 split where Jellyfin drops the "10." major: 12.0.0 is the new active tier.
 const THREE_TIER_CROSS_MAJOR = {
   floor: '10.7.0',
   tiers: {

@@ -5,7 +5,7 @@
 //
 // What the plugin enforces: dialogs come from the JRDialog family, and get
 // mounted by source/utils/dialogs.bs. The family exists because convention
-// failed once — three components each carried a private copy of the chrome, and
+// failed once: three components each carried a private copy of the chrome, and
 // when #757 restyled one the other two silently kept the old look with every
 // gate green. This plugin is the gate that was missing.
 //
@@ -45,7 +45,7 @@ describe('no-hand-rolled-dialog', () => {
     });
 
     // BOTH conditions are required. A full-screen Rectangle with no opacity is an
-    // opaque background — a screen's base fill, not a dialog scrim.
+    // opaque background: a screen's base fill, not a dialog scrim.
     it('leaves a full-screen Rectangle with no opacity alone', () => {
       expect(
         check({
@@ -138,8 +138,8 @@ describe('no-hand-rolled-dialog', () => {
   describe('mounting an overlay by hand', () => {
     // The helpers are the only path that stamps the shared overlay id, so an
     // overlay appended directly to the scene is invisible to isOverlayDialogOpen
-    // / isDialogOpen / cancelOpenDialog — it cannot be superseded, queried or
-    // cancelled, and nothing about it looks wrong at the call site.
+    // / isDialogOpen / cancelOpenDialog. It cannot be superseded, queried or
+    // canceled, and nothing about it looks wrong at the call site.
     it('flags appendChild onto appScene()', () => {
       const found = check({
         'components/MyScreen.bs': `
@@ -197,8 +197,8 @@ describe('no-hand-rolled-dialog', () => {
       ).toHaveLength(1);
     });
 
-    // The binding does NOT leak between functions — a local named `scene` that
-    // was never assigned a scene is just a node like any other.
+    // The binding does not leak between functions: a local named `scene` that
+    // was never assigned a scene is a node like any other.
     it('does not carry a scene binding into another function', () => {
       expect(
         check({
@@ -217,7 +217,7 @@ describe('no-hand-rolled-dialog', () => {
       ).toHaveLength(1);
     });
 
-    // appendChild is ubiquitous and legitimate — every LayoutGroup fills itself
+    // appendChild is ubiquitous and legitimate: every LayoutGroup fills itself
     // this way. Only the SCENE target is the dialog-mounting shape.
     it('leaves appendChild onto an ordinary node alone', () => {
       expect(
@@ -246,7 +246,7 @@ describe('no-hand-rolled-dialog', () => {
       ).toHaveLength(0);
     });
 
-    // Written in the real shape — a local bound to the scene — because that is
+    // Written in the real shape (a local bound to the scene) because that is
     // the one the local-binding rule above now catches everywhere else.
     it('leaves the mounting helpers alone — they ARE the sanctioned path', () => {
       expect(
@@ -277,7 +277,7 @@ describe('no-hand-rolled-dialog', () => {
     });
 
     // The grandfathering path for a known un-migrated surface (ItemGridOptions),
-    // written on the line ABOVE — which is the only form a multi-line XML comment
+    // written on the line ABOVE, which is the only form a multi-line XML comment
     // can take.
     it('honours bsc-disable-next-line from the preceding line', () => {
       expect(

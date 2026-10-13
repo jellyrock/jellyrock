@@ -1,6 +1,6 @@
 // Tests for the endpoint-availability registry (Phase 6 of server-upgrade-automation):
-//   - scripts/lib/endpoint-availability.cjs — loader/validator/matcher (schema only)
-//   - scripts/lint/endpoint-availability-check.cjs — the regression-safety gate that
+//   - scripts/lib/endpoint-availability.cjs: loader/validator/matcher (schema only)
+//   - scripts/lint/endpoint-availability-check.cjs: the regression-safety gate that
 //     validates each entry's CODE claim against current source + the manifest.
 //
 // The loader is exercised directly; the lint is driven offline via spawnScript

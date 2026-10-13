@@ -350,8 +350,8 @@ describe('docs-check — same-file anchor links', () => {
 });
 
 describe('docs-check — progress.md frontmatter (structural, not temporal)', () => {
-  // Temporal staleness (how OLD last-updated is) is intentionally NOT gated
-  // here — it moved to the non-blocking progress-cursor-nudge.cjs + the weekly
+  // Temporal staleness (how OLD last-updated is) is intentionally not gated
+  // here: it moved to the non-blocking progress-cursor-nudge.cjs + the weekly
   // docs-stale-tracker.yml. docs-check only validates the *structure* of the
   // frontmatter, which is a per-PR property. See progress-cursor-nudge.test.js
   // for the temporal-staleness + maintenance-filter coverage.
@@ -381,8 +381,8 @@ describe('docs-check — progress.md frontmatter (structural, not temporal)', ()
   });
 
   it('does NOT fail on an OLD-but-well-formed date, even with commits since', () => {
-    // Regression guard: the relocated behavior — an ancient last-updated with a
-    // pile of feature commits must NOT block a PR from docs-check anymore.
+    // Regression guard for the relocated behavior: an ancient last-updated with a
+    // pile of feature commits must not block a PR from docs-check anymore.
     fixture = withDocsDir(createGitFixture());
     fixture.commit('seed: progress.md from 2020', {
       'docs/progress.md': makeProgress('2020-01-01'),
@@ -552,8 +552,8 @@ describe('docs-check — decisions.md supersede chain', () => {
   });
 
   // A decisions.md note. Pass null for a field to omit it. The partial fields
-  // take a RAW value (e.g. '`old` (fill axis only)') so malformed ones can be
-  // exercised too.
+  // take a RAW value (for example '`old` (fill axis only)') so malformed ones
+  // can be exercised too.
   function note(
     slug,
     {
@@ -674,7 +674,7 @@ describe('docs-check — decisions.md supersede chain', () => {
   });
 
   // Fields live in the header block only. Body prose that happens to begin
-  // with `**status**:` used to be read as a field — and, last-write-wins,
+  // with `**status**:` used to be read as a field and, last-write-wins,
   // silently override the real one.
   it('does not read body prose beginning with `**status**:` as a field', () => {
     const { exitCode } = write(
@@ -739,8 +739,8 @@ describe('docs-check — decisions.md supersede chain', () => {
       expect(exitCode).toBe(0);
     });
 
-    // Withdrawn and superseded are different fates — so the advice here must
-    // NOT be the usual "flip it to `superseded`".
+    // Withdrawn and superseded are different fates, so the advice here must
+    // not be the usual "flip it to `superseded`".
     it('FAILs when a supersede target is withdrawn', () => {
       const { exitCode, stdout } = write(
         note('old-one', { status: 'withdrawn', supersededBy: 'new-one' }) +
@@ -801,7 +801,7 @@ describe('docs-check — decisions.md supersede chain', () => {
     });
 
     // A partial supersede that doesn't say WHICH part moved isn't a usable
-    // record — both ADR precedents carry the annotation.
+    // record: the ADR precedents all carry the annotation.
     it('FAILs when the scope annotation is missing', () => {
       const { exitCode, stdout } = write(
         note('old-one', { partiallySupersededBy: '`new-one`' }) +

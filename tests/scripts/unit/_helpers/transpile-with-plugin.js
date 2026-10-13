@@ -1,5 +1,5 @@
 // Tier 2 harness for BSC plugins that mutate the transpile pipeline
-// (e.g. roku-log: AST edits via beforePrepareFile + post-serialization
+// (for example roku-log: AST edits via beforePrepareFile + post-serialization
 // Buffer rewrites via afterSerializeFile).
 //
 // Why getTranspiledFileContents and not program.build():
@@ -30,15 +30,15 @@ import { Program } from 'brighterscript';
  * @param {(() => object)|Array<() => object>} pluginFactory
  *        Factory exported by the plugin (the `module.exports = () => new X()`
  *        form), or an ARRAY of them to exercise a chain. A fresh instance is
- *        created per call — never share across calls. Array order is the order
+ *        created per call: never share across calls. Array order is the order
  *        plugins run in, so mirror the `bsconfig.json` `plugins` order when a
  *        test is about how two injecting plugins interact.
- * @param {Record<string,string>} files Map of pkgPath → BS/XML source.
+ * @param {Record<string,string>} files Map of pkgPath to BS/XML source.
  * @param {object} [options]            Extra options merged into the Program
  *                                       constructor. Use this to pass plugin
  *                                       config (for example `{rokuLog: {strip: true}}`).
  *                                       An `outDir` here replaces the temp one.
- * @returns {Promise<Record<string,string>>} Map of pkgPath → transpiled code.
+ * @returns {Promise<Record<string,string>>} Map of pkgPath to transpiled code.
  */
 export async function transpileWithPlugin(pluginFactory, files, options = {}) {
   const tempOutDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jellyrock-plugin-out-'));

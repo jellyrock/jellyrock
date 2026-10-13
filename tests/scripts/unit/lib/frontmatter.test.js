@@ -108,7 +108,7 @@ describe('frontmatter / pathMatches', () => {
   });
 
   it('returns false when entry is missing on disk and paths differ', () => {
-    // Stale related-files entries silently stop matching here — that's
+    // Stale related-files entries silently stop matching here. That's
     // by design; lint:docs catches the staleness.
     expect(pathMatches('source/foo.bs', 'source/renamed.bs')).toBe(false);
   });

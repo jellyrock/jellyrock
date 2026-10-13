@@ -1,10 +1,10 @@
-// Tests for scripts/lint/progress-cursor-nudge.cjs — specifically its
+// Tests for scripts/lint/progress-cursor-nudge.cjs, specifically its
 // --json mode, which is the single source of the progress.md temporal-
 // staleness computation that used to live (blocking) in docs-check.cjs.
 //
 // The script reads the repo from CLAUDE_PROJECT_DIR (falling back to cwd),
-// so tests point it at a temp git fixture via that env var. It ALWAYS exits
-// 0 — progress.md freshness is never a blocking gate.
+// so tests point it at a temp git fixture via that env var. It always exits
+// 0: progress.md freshness is never a blocking gate.
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -26,7 +26,7 @@ function withDocsDir(fix) {
 
 // Run the nudge in --json mode against the fixture repo and return { exitCode,
 // json }. Points CLAUDE_PROJECT_DIR at the fixture so both the file read and
-// the git commands target it (hermetic — never touches the real repo).
+// the git commands target it (hermetic: never touches the real repo).
 function runJson(fixture) {
   const { exitCode, stdout } = spawnScript(SCRIPT, ['--json'], {
     cwd: fixture.dir,
@@ -109,7 +109,7 @@ describe('progress-cursor-nudge --json — temporal staleness', () => {
 
   it('stale is null when last-updated frontmatter is missing (nudge cannot compute)', () => {
     // Structural validity of the frontmatter is docs-check's job (blocking);
-    // the nudge simply can't compute staleness without a date, so it stays quiet.
+    // the nudge can't compute staleness without a date, so it stays quiet.
     fixture = withDocsDir(createGitFixture());
     fixture.commit('feat: work', { 'docs/progress.md': '# Progress\n\nno frontmatter\n' });
     expect(runJson(fixture).json.stale).toBeNull();
@@ -126,7 +126,7 @@ describe('progress-cursor-nudge --json — cursor extraction', () => {
   });
 
   // The cursor-shipped heuristic compares the `## Currently running` paragraph
-  // against recent commit subjects. Extracting that paragraph is the load-bearing
+  // against recent commit subjects. Extracting that paragraph is the critical
   // step: get it wrong and the heuristic fires on text that isn't the cursor.
   // TWO recently-shipped bullets, each mirroring a commit made below. That is what
   // makes the empty-cursor case actually reproduce the bug: checkCursorShipped only
@@ -150,8 +150,8 @@ describe('progress-cursor-nudge --json — cursor extraction', () => {
     // Regression: `\s*\n` after the heading greedily ate the blank line of an
     // empty cursor, so the lookahead had no `\n##` to anchor on and the capture
     // ran on through `## Recently shipped`. The recently-shipped bullets were then
-    // treated as the cursor and matched against recent commits — a permanent false
-    // positive on every repo whose cursor is empty (i.e. right after a merge).
+    // treated as the cursor and matched against recent commits: a permanent false
+    // positive on every repo whose cursor is empty (that is, right after a merge).
     // Mutation-checked: reverting the regex turns this red.
     fixture = withDocsDir(createGitFixture());
     fixture.commit('chore: seed', { 'docs/progress.md': withSections(todayIso(), '') });
@@ -163,7 +163,7 @@ describe('progress-cursor-nudge --json — cursor extraction', () => {
 
   it('still reports an overlap when a NON-empty cursor matches recent commits', () => {
     // The other half of the fix: narrowing the newline match must not stop the
-    // heuristic working on a real cursor. Two matching subjects are required —
+    // heuristic working on a real cursor. Two matching subjects are required:
     // checkCursorShipped only fires at `matchingSubjects.length >= 2`.
     fixture = withDocsDir(createGitFixture());
     fixture.commit('chore: seed', {

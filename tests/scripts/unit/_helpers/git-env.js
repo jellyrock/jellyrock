@@ -8,7 +8,7 @@
 // `GIT_DIR` names, and `cwd` decides nothing.
 //
 // Normally nothing sets `GIT_DIR`, so this never shows. Git sets it for hooks run
-// in a LINKED WORKTREE — measured 2026-09-17: `git hook run pre-push` exports
+// in a LINKED WORKTREE. Measured 2026-09-17: `git hook run pre-push` exports
 // `GIT_DIR=<repo>/.git/worktrees/<name>` from a worktree and exports nothing from
 // the main checkout. So `npm run test:scripts` under the pre-push hook, from a
 // worktree, ran every fixture's `git init` / `config` / `commit` / `tag` against

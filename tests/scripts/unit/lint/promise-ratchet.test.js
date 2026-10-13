@@ -1,9 +1,9 @@
 // Tests for scripts/lint/promise-ratchet.cjs.
 //
-// The ratchet counts the observer-spaghetti signature — a literal
+// The ratchet counts the observer-spaghetti signature: a literal
 // `.observeField("isDone"` in app code (source/ + components/), excluding the
-// pool engine (apiPool.bs) and the promise adapter (apiPromise.bs) — and gates
-// it against a committed `.promise-ratchet-baseline` integer. Tests build a
+// pool engine (apiPool.bs) and the promise adapter (apiPromise.bs). It gates
+// that count against a committed `.promise-ratchet-baseline` integer. Tests build a
 // throwaway root dir with fixture .bs files and a baseline, then assert exit
 // code + output. See the script header for the full fail policy.
 

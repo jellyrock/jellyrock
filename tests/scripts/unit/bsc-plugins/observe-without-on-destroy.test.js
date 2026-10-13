@@ -58,8 +58,8 @@ describe('observe-without-on-destroy', () => {
   });
 
   it('passes when unobserve lives in a non-destroy function (e.g. onScreenHidden)', () => {
-    // The plugin intentionally does NOT require unobserve to live in
-    // destroy() — anywhere in the file is enough.
+    // The plugin intentionally does not require unobserve to live in
+    // onDestroy(): anywhere in the file is enough.
     const diagnostics = runOnBody(`
       sub init()
         m.button.observeField("buttonSelected", "onSelect")
@@ -228,7 +228,7 @@ describe('observe-without-on-destroy', () => {
 
 // Half this rule's verdict comes from the XML (does the component descend from
 // JRScreen?) while the warning is anchored in the .bs. Moving a component out of
-// the JRScreen hierarchy therefore has to CLEAR its warnings — and did not,
+// the JRScreen hierarchy therefore has to CLEAR its warnings, and did not
 // until the plugin moved onto the shared scope lifecycle. `runPluginOnSource`
 // validates once and cannot express any of this.
 describe('incremental re-validation', () => {

@@ -6,7 +6,7 @@
 // Guards the silent-no-op bug: callFunc("X") only dispatches when the target
 // component exposes <function name="X" /> in its <interface>. The plugin errors
 // when X is a method DEFINED in one of our component codebehinds but declared in
-// NO interface anywhere — the exact shape that shipped a dead watched-toggle in
+// NO interface anywhere: the exact shape that shipped a dead watched-toggle in
 // #551 Batch 2.
 
 import { describe, it, expect } from 'vitest';
@@ -41,7 +41,7 @@ describe('callfunc-interface — the bug it catches', () => {
     });
     const flagged = diagnosticsByCode(diagnostics, CODE);
     expect(flagged).toHaveLength(1);
-    expect(flagged[0].severity).toBe(1); // Error — silent no-op
+    expect(flagged[0].severity).toBe(1); // Error: silent no-op
     expect(flagged[0].message).toMatch(/doThing/);
   });
 
@@ -92,7 +92,7 @@ describe('callfunc-interface — does not false-positive', () => {
 
   it('passes when ANY component declares the name (program-wide membership)', () => {
     // Foo exposes doThing; Bar defines-but-does-not-expose it. The program-wide
-    // DECLARED set suppresses — a deliberate false-negative that keeps FPs at zero.
+    // DECLARED set suppresses: a deliberate false-negative that keeps FPs at zero.
     const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {
       'components/Foo.xml': xml('Foo', { functions: ['doThing'] }),
       'components/Foo.bs': `
@@ -133,7 +133,7 @@ describe('callfunc-interface — does not false-positive', () => {
 
 // `m.top` is decidable: the node is a component whose scope includes the file (its own, or one
 // extending it), exposing its own interface plus its ancestors'. VideoPlayerView's Live TV stall
-// handler called m.top.callFunc("refresh") for years — a no-op, hidden because Home declares one.
+// handler called m.top.callFunc("refresh") for years: a no-op, hidden because Home declares one.
 describe('callfunc-interface — m.top is checked exactly', () => {
   it('errors on m.top.callFunc("X") when only an UNRELATED component declares X', () => {
     const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {
@@ -276,7 +276,7 @@ describe('callfunc-interface — escape hatches', () => {
   });
 });
 
-// The verdict for a call site lives in a DIFFERENT file — the target component's
+// The verdict for a call site lives in a DIFFERENT file: the target component's
 // <interface>. So adding the <function> declaration this diagnostic asks for has
 // to clear the error on the caller's .bs, and before the plugin moved onto the
 // shared program-rule lifecycle it did not: the author performed the exact fix

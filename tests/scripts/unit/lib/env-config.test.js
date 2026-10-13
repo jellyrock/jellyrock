@@ -1,10 +1,10 @@
-// Tests for scripts/lib/env-config.cjs — where the tooling's environment comes from.
+// Tests for scripts/lib/env-config.cjs: where the tooling's environment comes from.
 //
 // The pure half is driven with an explicit env object and an in-memory file table,
 // so nothing here reads the developer's real `.env` or user file. The last block
 // runs the real `load-env.cjs` in a child process against temp files, because the
-// promise `measure-devices.js` rests on — an inherited `ROKU_IP` survives both
-// files — is only worth something if it holds for the actual entry point.
+// promise `measure-devices.js` rests on (an inherited `ROKU_IP` survives both
+// files) is only worth something if it holds for the actual entry point.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createRequire } from 'node:module';

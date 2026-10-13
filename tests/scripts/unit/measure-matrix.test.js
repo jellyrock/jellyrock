@@ -14,7 +14,7 @@ import {
 } from '../../../scripts/measure-matrix.js';
 
 /**
- * A live probe, in the shape `fetchDeviceInfo` really returns — a flat map of the ECP
+ * A live probe, in the shape `fetchDeviceInfo` really returns: a flat map of the ECP
  * `device-info` tags. The three defaults are the three devices this was developed
  * against, so a fixture here cannot drift into a model number Roku does not publish.
  */
@@ -70,20 +70,20 @@ describe('resolveDevices', () => {
   });
 
   /**
-   * Deliberately NOT a fallback to `ROKU_IP`. A one-device matrix is what
+   * Not a fallback to `ROKU_IP`, on purpose. A one-device matrix is what
    * `npm run measure` already is, and delivering one under this command would leave an
    * operator believing they had measured every tier they own.
    */
   it('refuses when ROKU_DEVICES is unset, and points at the single-device tool', () => {
     expect(() => resolveDevices({ ROKU_IP: '192.0.2.10' })).toThrow(MatrixError);
     expect(() => resolveDevices({})).toThrow(/npm run measure/);
-    expect(() => resolveDevices({})).not.toThrow(/ROKU_IP=/); // no "just export it" advice
+    expect(() => resolveDevices({})).not.toThrow(/ROKU_IP=/); // no "export it instead" advice
   });
 });
 
 /**
  * The one rule the driver keeps that `measure` cannot. The server is the WORKLOAD, and
- * only this layer knows there is more than one arm — so a matrix whose devices might be
+ * only this layer knows there is more than one arm, so a matrix whose devices might be
  * signed into different servers is refused here or nowhere. It has bitten twice on the
  * real devices: two on `demo.jellyfin.org` beside one on a real server, reading as a
  * hardware difference until the `rows` column was checked.
@@ -205,7 +205,7 @@ describe('parseSignIn', () => {
 
   /**
    * Refused rather than ignored. Dropping them would run the matrix against whatever the
-   * devices are already signed into — the exact state the mode exists to replace — and
+   * devices are already signed into (the exact state the mode exists to replace), and
    * nothing in the output would say so.
    */
   it('refuses --user or --password with no --sign-in to attach them to', () => {
@@ -218,7 +218,7 @@ describe('parseSignIn', () => {
   });
 
   /**
-   * Not a redundancy — `measure` takes the LAST `--server` on its line, so forwarding two
+   * Not a redundancy: `measure` takes the LAST `--server` on its line, so forwarding two
    * would settle a disagreement between the seed and the assert SILENTLY, which is how this
    * subsystem produces a well-formed record of the wrong thing.
    */
@@ -255,7 +255,7 @@ describe('parseSignIn', () => {
     );
   });
 
-  /** The refusal must not echo the value it is refusing — one of these flags is a password. */
+  /** The refusal must not echo the value it is refusing: one of these flags is a password. */
   it('does not print the password when refusing a repeated --password', () => {
     const run = () =>
       parseSignIn(['--sign-in', URL, '--user', 'a', '--password', 's3cret', '--password', 'other']);
@@ -280,8 +280,8 @@ describe('parseSignIn', () => {
 
 /**
  * The rules an interrupt follows. These live here rather than in the driver for a
- * specific reason: the first cut of this policy was DEAD CODE — recorded in a flag the
- * synchronous `spawnSync` loop never let a handler set — and it shipped because there
+ * specific reason: the first cut of this policy was DEAD CODE (recorded in a flag the
+ * synchronous `spawnSync` loop never let a handler set), and it shipped because there
  * was nowhere to pin it. Every rule below is now a red/green gate instead of a comment.
  */
 describe('wasInterrupted', () => {
@@ -294,7 +294,7 @@ describe('wasInterrupted', () => {
 
   it('INFERS an interrupt from the exit code when the child trapped the signal', () => {
     // The case the helper exists for. Both measurement children have to trap their signals
-    // — releasing the device lock is an `await`, and a dying process never gets one — so
+    // (releasing the device lock is an `await`, and a dying process never gets one), so
     // they exit under their own power and Node reports no signal at all. Without this the
     // driver saw a bare non-zero status and blamed the device.
     expect(wasInterrupted(INTERRUPTED_EXIT, null)).toBe(true);
@@ -302,7 +302,7 @@ describe('wasInterrupted', () => {
   });
 
   it('does not call an ordinary failure an interrupt', () => {
-    // The direction that would be worse to get wrong: a device that genuinely failed to
+    // The direction that would be worse to get wrong: a device that really failed to
     // sign in, reported as the operator having stopped the run, stops the whole matrix and
     // hides a real fault behind a plausible story.
     expect(wasInterrupted(0)).toBe(false);
@@ -316,7 +316,7 @@ describe('wasInterrupted', () => {
   it('is pinned to the same constant the children exit with', () => {
     // The two halves of one contract: `measure.js` and `measure-signin.js` import
     // `INTERRUPTED_EXIT` to exit with, this reads it back. Asserting the round trip rather
-    // than the literal is what makes a future change to the value safe — the alternative
+    // than the literal is what makes a future change to the value safe. The alternative
     // is two 130s in two files whose disagreement is invisible until a real interrupt.
     expect(wasInterrupted(INTERRUPTED_EXIT)).toBe(true);
     expect(INTERRUPTED_EXIT).toBe(130);
@@ -337,7 +337,7 @@ describe('signalPolicy', () => {
 
   /**
    * The window that used to be unreachable: a signal landing between two spawns. It
-   * still has to STOP the run — the alternative is a matrix that carries on to the next
+   * still has to STOP the run. The alternative is a matrix that carries on to the next
    * device after the operator asked it not to.
    */
   it('stops the run when no child is running', () => {
@@ -371,7 +371,7 @@ describe('signalPolicy', () => {
   /**
    * `kill` names what to send the RUNNING child. With none running there is nothing to
    * send it to, and a policy that returns a signal for a child that does not exist is a
-   * rule nobody can read back — even though the caller's optional chain would no-op.
+   * rule nobody can read back, even though the caller's optional chain would no-op.
    */
   it('asks for no kill when there is no child, on either path', () => {
     expect(signalPolicy('SIGINT', { kind: null, interrupted: true })).toMatchObject({
@@ -422,7 +422,7 @@ describe('preflightRefusal', () => {
   });
 
   /**
-   * The refusal has to carry the SUBSET COMMAND, not just the diagnosis. A three-device
+   * The refusal has to carry the SUBSET COMMAND, not only the diagnosis. A three-device
    * run is tens of minutes long and the commonest cause is one device asleep; making the
    * operator reassemble the list by hand is where a preflight stops being worth having.
    */
@@ -453,7 +453,7 @@ describe('preflightRefusal', () => {
 
   /**
    * An address is not an identity. A DHCP lease that moved makes two entries one Roku,
-   * which would be relaunched twice and recorded twice — and nothing downstream could
+   * which would be relaunched twice and recorded twice, and nothing downstream could
    * tell that from two devices agreeing to the millisecond.
    */
   it('refuses two addresses that resolve to ONE device', () => {
@@ -486,7 +486,7 @@ describe('preflightRefusal', () => {
   /**
    * Order matters: a device that never answered has no model to compare, so a
    * same-model check run first would report a two-device duplicate as a three-device
-   * one — diagnosing the wrong problem on the way to the right one.
+   * one, diagnosing the wrong problem on the way to the right one.
    */
   it('reports an unreachable device before a duplicate model', () => {
     const probes = [
@@ -498,7 +498,7 @@ describe('preflightRefusal', () => {
   });
 
   /**
-   * A missing tag must not become a group key — two devices that both fail to report a
+   * A missing tag must not become a group key: two devices that both fail to report a
    * `device-id` are not the same device, and calling them one would refuse a matrix
    * that is fine.
    */
@@ -562,8 +562,8 @@ describe('summariseMatrix', () => {
   });
 
   /**
-   * The child that TRAPPED its signal. Node reports no `signal` for it — it exited under
-   * its own power — so the only evidence is the exit code, and that says THAT it was
+   * The child that TRAPPED its signal. Node reports no `signal` for it (it exited under
+   * its own power), so the only evidence is the exit code, and that says THAT it was
    * interrupted and not which signal did it. The bare word is the honest rendering; a
    * plausible name here would be a deduction printed in the line an operator reads to
    * decide whether their own Ctrl-C caused this. It must still not count as measured.
@@ -594,7 +594,7 @@ describe('summariseMatrix', () => {
 
   /**
    * "It failed" and "it failed BEFORE it measured anything" send an operator to different
-   * places — a sign-in failure is a server or a credential, a measure failure is the app or
+   * places: a sign-in failure is a server or a credential, a measure failure is the app or
    * the nav. The stage is the only thing that separates them in a summary printed after
    * three devices' worth of scrollback.
    */
@@ -619,7 +619,7 @@ describe('summariseMatrix', () => {
 
   /**
    * A device left seeded is damage to someone's own Roku rather than a lost datapoint, and
-   * it compounds — the next run to snapshot it adopts the leftovers as the user's state. So
+   * it compounds: the next run to snapshot it adopts the leftovers as the user's state. So
    * it gets its own line WITH the repair command, and it fails the run even when the
    * measurement itself was perfect.
    */

@@ -1,9 +1,11 @@
 // Tests for scripts/lib/signals-fetch.cjs.
 //
-// We test the pure parsers (parseJellyfinIndex, parseRokuOsMarkdown,
-// compareSemverBase) — not the network wrappers. Network fetching is a thin
-// stdlib glue and is exercised by the live-endpoint smoke test that runs
-// when `node scripts/catchup-state.js` itself runs without --no-network.
+// We test the pure parsers and version helpers (parseJellyfinIndex,
+// parseUnstableIndex, parseRokuOsMarkdown, compareSemverBase,
+// isReleaseVersionBase, isUnstableVersion), not the network wrappers. Network
+// fetching is a thin stdlib glue and is exercised by the live-endpoint smoke
+// test that runs when `node scripts/catchup-state.js` itself runs without
+// --no-network.
 
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
@@ -59,7 +61,7 @@ describe('parseJellyfinIndex', () => {
       // RCs whose base is <= latest stable are historical and ignored.
       '<a href="jellyfin-openapi-10.11.0-rc1.json">old rc</a>\n' +
       '<a href="jellyfin-openapi-10.11.0-rc6.json">old rc</a>\n' +
-      // RC for the next minor → counts.
+      // RC for the next minor: counts.
       '<a href="jellyfin-openapi-10.12.0-rc1.json">new rc</a>\n' +
       '<a href="jellyfin-openapi-10.12.0-rc2.json">new rc</a>\n';
     expect(parseJellyfinIndex(html)).toEqual({ stable: '10.11.8', rc: '10.12.0-rc2' });
@@ -71,7 +73,7 @@ describe('parseJellyfinIndex', () => {
       '<a href="jellyfin-openapi-11.0.0-rc1.json">rc</a>\n' +
       '<a href="jellyfin-openapi-11.0.0-rc10.json">rc</a>\n' +
       '<a href="jellyfin-openapi-11.0.0-rc2.json">rc</a>\n';
-    // Numeric ordering on rc number — rc10 > rc2 > rc1.
+    // Numeric ordering on rc number: rc10 > rc2 > rc1.
     expect(parseJellyfinIndex(html).rc).toBe('11.0.0-rc10');
   });
 

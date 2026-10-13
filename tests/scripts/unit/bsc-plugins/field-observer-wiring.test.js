@@ -1,16 +1,17 @@
 // Tests for the field-observer-wiring plugin.
 //
 // Plugin under test: scripts/bsc-plugins/field-observer-wiring.cjs
-// Diagnostic codes: duplicate-field-observer, ineffective-unobserve
+// Diagnostic codes: duplicate-field-observer, ineffective-unobserve,
+// undetachable-observer, top-unobserve-outside-ondestroy, top-observer-outside-init
 //
-// Guards two silent wiring bugs, both established by PR #891:
+// The first two guard silent wiring bugs, both established by PR #891:
 //
-//   duplicate-field-observer — a field wired by BOTH an XML `onChange` and an
+//   duplicate-field-observer: a field wired by BOTH an XML `onChange` and an
 //   `m.top.observeField()` registers two observers and runs the handler twice
 //   per write. Invisible whenever the handler is idempotent, which is how
 //   `OSD.itemData` and `IconButton.isButtonSelected` each survived months.
 //
-//   ineffective-unobserve — an `unobserveField()` against a field whose only
+//   ineffective-unobserve: an `unobserveField()` against a field whose only
 //   registration is an XML `onChange`. That does not appear to detach it, and
 //   `unobserveField` returns true regardless, so the line reads as teardown
 //   protection and provides none.
@@ -296,7 +297,7 @@ describe('case-insensitive field matching', () => {
   // BrightScript field names are case-insensitive, so `<field id="isSelected">`
   // and `observeField("isselected")` name the SAME field and are still a double
   // registration. A case-sensitive compare reads them as unrelated and says
-  // nothing. No instance exists in the tree today — this keeps it that way.
+  // nothing. No instance exists in the tree today; this keeps it that way.
   it('flags a duplicate whose spellings differ only in case', () => {
     const diagnostics = run({
       'components/Foo.xml': xml('Foo', [{ id: 'isSelected', onChange: 'onSelected' }]),
@@ -325,7 +326,7 @@ describe('case-insensitive field matching', () => {
 // The verdict depends on BOTH halves of the component, but the diagnostic is
 // anchored in the .bs. Before the plugin moved onto the shared scope lifecycle,
 // a fix made on the XML side left the error sitting on the codebehind until the
-// codebehind itself was touched — the author does exactly what the message says
+// codebehind itself was touched: the author does exactly what the message says
 // and the IDE keeps saying no. `runPluginOnSource` validates once and so cannot
 // see any of this; these use the edit-sequence harness.
 describe('incremental re-validation', () => {
@@ -401,8 +402,8 @@ describe('incremental re-validation', () => {
 // The structural half of the wiring rule: an onDestroy is the declaration that a
 // component releases state, and an XML onChange is the one registration form that
 // cannot be detached. The two must not coexist. Keying on onDestroy's PRESENCE is
-// deliberately blunter than asking "can a writer outlive teardown?" — that
-// question is true but undecidable by a linter, and left every site to a human.
+// blunter than asking "can a writer outlive teardown?", a question that is
+// true but undecidable by a linter, and left every site to a human.
 describe('undetachable-observer', () => {
   const withDestroy = `
     sub init()
@@ -515,7 +516,7 @@ describe('undetachable-observer', () => {
 
 // A registration is not private to the component that made it. On device
 // (tests/source/unit/platform/ObserverRegistry.spec.bs), a component calling
-// m.top.unobserveField — or m.top.unobserveFieldScoped — removed the plain observer its
+// m.top.unobserveField (or m.top.unobserveFieldScoped) removed the plain observer its
 // parent held on that field. #898 did exactly that to PlayerHostView's `state` observer,
 // and every natural episode end stranded the player.
 // So m.top observers are wired once in init() and released once in onDestroy(), and
@@ -689,8 +690,8 @@ describe('top-unobserve-outside-ondestroy — what it must NOT flag', () => {
 });
 
 describe('top-observer-outside-init — the bug it catches', () => {
-  // With a mid-life unobserve banned, a re-running observe can no longer be de-duplicated
-  // — it accumulates, and the handler runs N times per write (#896, #898). Deleting the
+  // With a mid-life unobserve banned, a re-running observe can no longer be de-duplicated:
+  // it accumulates, and the handler runs N times per write (#896, #898). Deleting the
   // unobserve that the diagnostic above flags would produce exactly this.
   it('errors on m.top.observeField with a handler outside init', () => {
     const diagnostics = run({
