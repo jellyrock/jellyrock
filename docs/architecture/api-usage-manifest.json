@@ -1118,6 +1118,12 @@
       ]
     },
     {
+      "name": "Items",
+      "sourceFiles": [
+        "source/api/apiFaults.bs"
+      ]
+    },
+    {
       "name": "Limit",
       "sourceFiles": [
         "source/api/items.bs"
@@ -1235,6 +1241,12 @@
       "name": "Token",
       "sourceFiles": [
         "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "TotalRecordCount",
+      "sourceFiles": [
+        "source/api/apiFaults.bs"
       ]
     },
     {
@@ -3317,7 +3329,7 @@
     },
     "counts": {
       "endpoints": 79,
-      "requestFields": 50,
+      "requestFields": 52,
       "responseFields": 223,
       "unresolvedEndpointSinks": 2
     },
