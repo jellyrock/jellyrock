@@ -166,8 +166,10 @@ const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-same-node-relau
 
 /**
  * Sites that relaunched a node before this rule flagged them, each awaiting an
- * audit and, where a run can overlap, a move to a new node per run
- * (docs/progress.md, same-node relaunch followup). Maps a file to [function,
+ * audit and, where a run can overlap, a move to a new node per run. Empty since
+ * 2026-10-13, when VideoPlayerView's video load moved to a new node per run. It
+ * stays for the case that filled it before: a change that lets the rule see a new
+ * shape parks the sites already in the tree here. Maps a file to [function,
  * launched path]. An entry covers the first launch of that path in that function, and every
  * finding at it; a second launch is still flagged. Delete an entry
  * when its site is migrated, or suppressed with its reason once audited safe; the

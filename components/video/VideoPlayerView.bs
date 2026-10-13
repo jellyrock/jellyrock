@@ -87,6 +87,9 @@ sub init()
   ' later the one that loaded or the one the viewer switched to. "" lets the load choose.
   m.videoLoadMediaSourceId = ""
   if isValidAndNotEmpty(m.currentItem.mediaSourceId) then m.videoLoadMediaSourceId = m.currentItem.mediaSourceId
+  ' True from a version switch until its load delivers (onVideoContentLoaded): see
+  ' isTrackPickAgainstOldVersion.
+  m.isVersionSwitchLoading = false
   ' 0 lets the load pick the audio track, as a queue item that names none asks for.
   audioStreamIndex = 0
   if isValid(m.currentItem.selectedAudioStreamIndex) then audioStreamIndex = m.currentItem.selectedAudioStreamIndex
@@ -668,6 +671,7 @@ sub onSubtitleChange()
   end if
 
   if shouldSwitchWithoutRefresh then return
+  if isTrackPickAgainstOldVersion() then return
 
   m.log.info("Subtitle change requires stream reload", "subtitleIndex", m.top.SelectedSubtitle, "position", m.top.position)
 
@@ -676,7 +680,6 @@ sub onSubtitleChange()
 
   m.top.control = "stop"
 
-  keepLoadedVersionOnReload()
   startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
 end sub
 
@@ -704,6 +707,7 @@ sub onAudioIndexChange()
   end if
 
   ' Transcoded, availableAudioTracks not available, or stream not direct-playable: must reload
+  if isTrackPickAgainstOldVersion() then return
   m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded)
 
   ' Save the current video position
@@ -711,7 +715,6 @@ sub onAudioIndexChange()
 
   m.top.control = "stop"
 
-  keepLoadedVersionOnReload()
   startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
 end sub
 
@@ -767,6 +770,7 @@ sub onVideoSourceChange()
   end if
 
   m.videoLoadMediaSourceId = newSourceId
+  m.isVersionSwitchLoading = true
   ' Subtitles reset to auto-detect for the new source
   startVideoLoad(audioStreamIdx, SubtitleSelection.NOT_SET)
 end sub
@@ -1154,6 +1158,13 @@ sub onVideoContentLoaded(event as object)
   m.top.mediaSourceId = videoContent[0].mediaSourceId
   m.isApplyingOwnSelection = false
   m.loadedMediaSourceId = videoContent[0].mediaSourceId ?? ""
+  ' A reload (a subtitle or audio change, or a retry) asks for the version that loaded. A run
+  ' given no mediaSourceId CHOOSES one: on a per-version server from the positions the server
+  ' holds, which lag the viewer and can name a different file (ADR 0037). Set here, not when a
+  ' reload starts, so a version switch still loading stays the version the next run asks for.
+  ' Live TV loads no version, so the one asked for stands.
+  if isValidAndNotEmpty(m.loadedMediaSourceId) then m.videoLoadMediaSourceId = m.loadedMediaSourceId
+  m.isVersionSwitchLoading = false
 
   ' A later reload (an audio or subtitle change) is a fresh evaluation, not a retry: its run
   ' starts with both retry flags off (startVideoLoad), and the report must say so too.
@@ -1789,7 +1800,6 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' Surfaced so the playback report does not attribute a range transcode to the
   ' Preserve DoVi setting on a pass where that profile was not sent.
   m.top.isDoviPreservationBypassed = bypassDovi
-  keepLoadedVersionOnReload()
   ' Unlike the three reload paths, this one CAN run before the first frame, and when it
   ' does the retry is still the same load (the user has been waiting since init and has
   ' seen no frame), so the second fetch is recorded as a second `metadata` fill rather than
@@ -1814,17 +1824,19 @@ sub releaseUnplayedLiveStream(loadedLiveStream as dynamic, why as string)
   m.LoadMetaDataTask.liveStream = { stage: LiveStreamStage.RELEASED, id: liveStreamId }
 end sub
 
-' keepLoadedVersionOnReload: Hand the version this session loaded to the loader's next run.
+' isTrackPickAgainstOldVersion: True when an audio or subtitle pick that needs a reload arrives
+' while a version switch is still loading, and the pick must then be ignored.
 '
-' A reload (a subtitle or audio change, or a retry) runs LoadVideoContentTask again for the
-' same item, and a run given no mediaSourceId CHOOSES a version: on a per-version server from
-' the positions the server holds, which lag the viewer and can name a different file. So each
-' reload names the loaded version as an input of its run (startVideoLoad). Before the first load
-' completes, and for live TV, there is none; the version is then left alone, so a mediaSourceId
-' the queue item supplied, or a version switch whose load failed, still stands.
-sub keepLoadedVersionOnReload()
-  if isValidAndNotEmpty(m.loadedMediaSourceId) then m.videoLoadMediaSourceId = m.loadedMediaSourceId
-end sub
+' The pickers list the tracks of the version that was playing until the new one delivers, so the
+' picked index belongs to that version's streams, not the new one's. Reloading would either undo
+' the switch or ask the new version for a track it may not have. Ignoring it lets the switch's
+' run finish with the tracks it chose for the new version. The pick also rewrites no start point:
+' the switch already mapped the position into the new version's timeline.
+function isTrackPickAgainstOldVersion() as boolean
+  if not m.isVersionSwitchLoading then return false
+  m.log.info("Ignoring a track pick made while a version switch loads", "audioIndex", m.top.audioIndex, "subtitleIndex", m.top.SelectedSubtitle)
+  return true
+end function
 
 ' startVideoLoad: Start a run of the video load for the current item, on a NEW
 ' LoadVideoContentTask node, and declare the `metadata` fill onVideoContentLoaded resolves.

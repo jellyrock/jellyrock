@@ -244,7 +244,7 @@ These turn conventions from `components/CLAUDE.md` and `source/CLAUDE.md` into e
 
 The three Task rules work together. `no-raw-run` bounds where a thread may start, `no-task-fanout` bounds how many start at once, and `no-same-node-relaunch` catches a launch the platform can ignore ([threading.md](threading.md#measured-findings)). Epic #728 needed the first two: its crash came from concurrent launches in one screen load, through an ordinary launch site.
 
-`no-same-node-relaunch` lists the app sites that predate it in its own `PENDING_MIGRATIONS`, not as inline markers, so there is no marker to copy onto a new site. The list can only shrink. Every state an entry can be in raises an error except the one where it matches its site, whether the fault is in the code or in the list.
+`no-same-node-relaunch` lists the app sites that predate it, or predate a change that lets it see a new shape, in its own `PENDING_MIGRATIONS`, not as inline markers, so there is no marker to copy onto a new site. The list can only shrink, and it has been empty since 2026-10-13. Every state an entry can be in raises an error except the one where it matches its site, whether the fault is in the code or in the list.
 
 #### Cross-file rules clear before they re-derive
 
