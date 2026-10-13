@@ -432,7 +432,7 @@ Two instances overlay playback:
 
 ## `AudioPlayer` engine
 
-`components/mediaPlayers/AudioPlayer` extends `Video` but plays only audio. It lives at `m.global.audioPlayer` for the whole app, so music keeps playing while the viewer moves between screens. It observes its own `state` and reports to Jellyfin on each change: `start` on the first `playing`, `stop` on `stopped` or `finished`, `update` otherwise, through the same `BuildPlaystateRequest` and `SubmitSideEffect` as video. It reports nothing while its position is invalid. It sets `disableScreenSaver` while playing, which keeps Roku's screensaver off during audio, and has a `loopMode` field for repeat.
+`components/mediaPlayers/AudioPlayer` extends `Video` but plays only audio. It lives at `m.global.audioPlayer` for the whole app, but music does not play on once the viewer leaves `/audio`: every exit from `AudioPlayerView` stops it (Back, `exitAudioPlayback()`, a deep link, a move to a video in a mixed queue). It observes its own `state` and reports to Jellyfin on each change: `start` on the first `playing`, `stop` on `stopped` or `finished`, `update` otherwise, through the same `BuildPlaystateRequest` and `SubmitSideEffect` as video. It reports nothing while its position is invalid. It sets `disableScreenSaver` while playing, which keeps Roku's screensaver off during audio, and has a `loopMode` field for repeat.
 
 Video reports differently: an end once, through `reportPlaybackEnd()`, and updates on a timer.
 

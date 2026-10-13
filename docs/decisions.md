@@ -2056,6 +2056,16 @@ ADR 0011 replaced part (b) of ADR 0009, but its header names only ADR 0008. Part
 
 ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `VideoPlayerView`'s `LoadMetaDataTask`, `AudioPlayerView`'s, two in `ItemDetails` and `Home`'s remote-control receiver. As of 2026-10-13 only `VideoPlayerView` remains, with four `LoadMetaDataTask` entries; the other sites moved to a new node per run. The plugin's `PENDING_MIGRATIONS` is the live list, and followup `pending-migrations-same-node-relaunch` tracks the rest.
 
+## decision-id: quick-play-nothing-toast
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/quickplayOutcome.bs`, `source/utils/quickplayRead.bs`, `components/manager/QueueManager.bs`, `components/tasks/QuickPlayTask.bs`, `components/GetShuffleItemsTask.bs`
+
+A quick play, Shuffle, trailer or slideshow that finds nothing to play ends its start, shows the screen it was pressed on again, and says why in a one-line toast (`QueueManager.showNothingToPlay`). A read that did not answer is a failure to try again ("Couldn't load that. Try again.", error style); a result the server answered as empty is nothing there ("Nothing to play here.", info style). The text names what was pressed: play, shuffle, trailer and slideshow each have a pair. `QuickPlayTask` and `GetShuffleItemsTask` read through `fetchBuildJson`, which records a read that did not answer, and publish a `status` (`quickplayOutcome.statusOf`); an action no branch matches counts as failed. Back, leaving the screen, a newer press and the start's time limit stop the Task before it answers, so none of them shows a toast. The queue is still cleared before the read: once a quick play fails no player reads it, since Back from the music player stops the music.
+
+Ruled out: a retry dialog (it blocks the remote, and no failure before a player exists uses one), failure text on the spinner screen (`AppWaitHost` holds the focus and Back for every start), one message for both (an empty result would ask for a retry that cannot work), and naming server-rule reasons such as the TV library's watched-only rule (the toast is one line capped at 800 pixels, and the reasons drift as the server changes). Measured 2026-10-13 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: the new `playback-start.spec.js` cases for a failed library Play and a failed series Shuffle failed on the old app code (no toast), and the Back case passed there, as it must. With the change, the full `playback-start` spec passes 10/10, and the Back assertion fails when Back is made to show the toast on purpose.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
