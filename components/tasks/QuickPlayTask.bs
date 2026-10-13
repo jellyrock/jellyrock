@@ -5,6 +5,8 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/quickplayLibrary.bs"
+import "pkg:/source/utils/quickplayOutcome.bs"
+import "pkg:/source/utils/quickplayRead.bs"
 
 ' QuickPlayTask: Orchestrator task for all quickplay, Play All, Instant Mix,
 ' Trailer, and Photo Album flows that require API calls.
@@ -28,6 +30,9 @@ import "pkg:/source/utils/quickplayLibrary.bs"
 '   startsFresh (boolean) - the first item starts from the beginning: nobody chose it to
 '                           resume (QueueManager.startCurrentFresh). False only when a
 '                           builder picked the first item to resume or continue it.
+'   status (string)       - quickplayOutcome.STATUS_*: "ok", or why nothing arrived ("failed"
+'                           when a read did not answer, "empty" when every read did)
+'   kind (string)         - quickplayOutcome.KIND_*, which names the launch in the viewer's message
 '
 ' Every queue gets one copy per episode (episodeQueue.collapseQueue) except playlists and
 ' collections, whose entries the viewer put there.
@@ -42,6 +47,8 @@ sub executeQuickPlay()
   if not isValid(input) or not isValidAndNotEmpty(input.action) then return
 
   action = LCase(input.action)
+  ' Set by fetchBuildJson: a read did not answer, so an empty result is not "nothing here".
+  m.buildFailed = false
   items = []
   shouldShuffle = false
   outputAction = "queue"
@@ -133,6 +140,7 @@ sub executeQuickPlay()
     ' matches, so items stays empty and the UI stops the spinner silently.
     ' Surface it loudly so a future type mismatch is debuggable, not invisible.
     m.log.error("unhandled action — no dispatch branch matched", input.action)
+    m.buildFailed = true
   end if
 
   ' One copy per episode. A first item resumed at its own position stays exactly that copy.
@@ -145,25 +153,27 @@ sub executeQuickPlay()
     items: items,
     shuffle: shouldShuffle,
     firstItemStartingPoint: launch.startingPoint,
-    startsFresh: not launch.resumes
+    startsFresh: not launch.resumes,
+    status: quickplayOutcome.statusOf(items.count(), m.buildFailed),
+    kind: quickplayOutcome.kindOf(input)
   }
 end sub
 
 ' --- Requests ---
 
-' fetchJson for a read that searches a whole library, or every library for one person or
+' fetchBuildJson for a read that searches a whole library, or every library for one person or
 ' artist, which a large library on a slow server answers long after an ordinary request's limit
 ' (timeouts.QUICKPLAY_LIBRARY_MS). Back stops this Task, which frees the request's pool slot at
 ' once (apiPool.bs, "Stopping a request nobody is waiting for").
 function fetchLibraryJson(req as dynamic, requestId as string) as dynamic
   if isValid(req) then req.timeoutMs = timeouts.QUICKPLAY_LIBRARY_MS
-  return fetchJson(req, requestId)
+  return fetchBuildJson(req, requestId)
 end function
 
 ' --- QuickPlay actions (from quickplay.bs) ---
 
 sub doAlbum(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+  data = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
     "parentId": input.id,
     "imageTypeLimit": 1,
     "sortBy": "SortName",
@@ -193,7 +203,7 @@ sub doArtist(input as object, items as object)
 end sub
 
 sub doBoxset(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+  data = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
     "parentid": input.id,
     "limit": 500,
     "EnableTotalRecordCount": false
@@ -209,7 +219,7 @@ function doSeries(input as object, items as object) as object
   localUser = m.global.user
 
   ' Check for a resumable (in-progress) episode first
-  resumeData = fetchJson(GetApi().BuildGetResumeItemsRequest({
+  resumeData = fetchBuildJson(GetApi().BuildGetResumeItemsRequest({
     "parentId": input.id,
     "Limit": 1,
     "ImageTypeLimit": 1,
@@ -224,7 +234,7 @@ function doSeries(input as object, items as object) as object
     end if
   else
     ' Fall back to next unstarted episode
-    data = fetchJson(GetApi().BuildGetNextUpRequest({
+    data = fetchBuildJson(GetApi().BuildGetNextUpRequest({
       "seriesId": input.id,
       "Limit": 1,
       "ImageTypeLimit": 1,
@@ -236,7 +246,7 @@ function doSeries(input as object, items as object) as object
       items.push(data.Items[0])
     else
       ' All episodes fully watched and rewatching disabled: shuffle the whole series
-      allEps = fetchJson(GetApi().BuildGetEpisodesRequest(input.id, {
+      allEps = fetchBuildJson(GetApi().BuildGetEpisodesRequest(input.id, {
         "SortBy": "Random",
         "limit": 500,
         "EnableTotalRecordCount": false
@@ -257,7 +267,7 @@ function doSeason(input as object, items as object) as object
   seriesId = isValidAndNotEmpty(input.seriesId) ? input.seriesId : ""
   if seriesId = "" then return launch
 
-  episodesData = fetchJson(GetApi().BuildGetEpisodesRequest(seriesId, {
+  episodesData = fetchBuildJson(GetApi().BuildGetEpisodesRequest(seriesId, {
     "seasonId": input.id,
     "limit": 500,
     "EnableTotalRecordCount": false
@@ -293,7 +303,7 @@ function doSeason(input as object, items as object) as object
       end for
     else
       ' try to find a "continue watching" episode
-      continueData = fetchJson(GetApi().BuildGetResumeItemsRequest({
+      continueData = fetchBuildJson(GetApi().BuildGetResumeItemsRequest({
         "parentId": input.id,
         "EnableTotalRecordCount": false
       }), "qp_seasonContinue")
@@ -346,7 +356,7 @@ sub doPerson(input as object, items as object)
 end sub
 
 sub doPlaylist(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
+  data = fetchBuildJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
     "limit": 500
   }), "qp_playlist")
   if isValid(data) and isValidAndNotEmpty(data.Items)
@@ -355,7 +365,7 @@ sub doPlaylist(input as object, items as object)
 end sub
 
 sub doPhotoAlbum(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+  data = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
     "parentId": input.id,
     "includeItemTypes": "Photo",
     "sortBy": "Random",
@@ -474,7 +484,7 @@ function doCollectionFolder(input as object) as dynamic
     if isValid(boxsetData) and isValidAndNotEmpty(boxsetData.items)
       arrayIndex = Rnd(boxsetData.items.count()) - 1
       myBoxset = boxsetData.items[arrayIndex]
-      innerData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+      innerData = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
         "parentId": myBoxset.id,
         "EnableTotalRecordCount": false
       }), "qp_collectionBoxsetInner")
@@ -543,7 +553,7 @@ function doUserView(input as object) as dynamic
     }), "qp_userViewPlaylists")
     if isValid(playlistData) and isValidAndNotEmpty(playlistData.items)
       myPlaylist = playlistData.items[0]
-      playlistItems = fetchJson(GetApi().BuildGetPlaylistItemsRequest(myPlaylist.id, {
+      playlistItems = fetchBuildJson(GetApi().BuildGetPlaylistItemsRequest(myPlaylist.id, {
         "EnableTotalRecordCount": false,
         "limit": 500
       }), "qp_userViewPlaylistItems")
@@ -630,7 +640,7 @@ sub doMultipleSeries(tvshows as object, items as object)
   numTotal = 0
   numLimit = 500
   for each tvshow in tvshows
-    showData = fetchJson(GetApi().BuildGetEpisodesRequest(tvshow.id, {
+    showData = fetchBuildJson(GetApi().BuildGetEpisodesRequest(tvshow.id, {
       "SortBy": "Random",
       "imageTypeLimit": 0,
       "EnableTotalRecordCount": false,
@@ -653,7 +663,7 @@ end sub
 ' --- Play All actions (from Main.bs button handlers) ---
 
 sub doPlayAllSeries(input as object, items as object)
-  allEpData = fetchJson(GetApi().BuildGetEpisodesRequest(input.id, {
+  allEpData = fetchBuildJson(GetApi().BuildGetEpisodesRequest(input.id, {
     SortBy: "IndexNumber,SortName",
     SortOrder: "Ascending"
   }), "qp_playAllSeries")
@@ -668,7 +678,7 @@ sub doPlayAllSeries(input as object, items as object)
 end sub
 
 sub doPlayAllSeason(input as object, items as object)
-  allEpData = fetchJson(GetApi().BuildGetEpisodesRequest(input.seriesId, {
+  allEpData = fetchBuildJson(GetApi().BuildGetEpisodesRequest(input.seriesId, {
     SeasonId: input.id,
     SortBy: "IndexNumber,SortName",
     SortOrder: "Ascending"
@@ -679,7 +689,7 @@ sub doPlayAllSeason(input as object, items as object)
 end sub
 
 sub doPlayAllBoxset(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+  data = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
     "ParentId": input.id,
     "SortBy": "PremiereDate,ProductionYear,SortName",
     "SortOrder": "Ascending",
@@ -691,7 +701,7 @@ sub doPlayAllBoxset(input as object, items as object)
 end sub
 
 sub doPlayAllAlbum(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+  data = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
     "parentId": input.id,
     "includeitemtypes": "Audio",
     "SortBy": "ParentIndexNumber,IndexNumber,SortName",
@@ -722,7 +732,7 @@ sub doPlayAllArtist(input as object, items as object)
 end sub
 
 sub doPlayAllPlaylist(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
+  data = fetchBuildJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
     "SortBy": "ListItemOrder",
     "SortOrder": "Ascending",
     "EnableTotalRecordCount": false,
@@ -734,14 +744,14 @@ sub doPlayAllPlaylist(input as object, items as object)
 end sub
 
 sub doInstantMix(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetInstantMixRequest(input.id, { "Limit": 201 }), "qp_instantMix")
+  data = fetchBuildJson(GetApi().BuildGetInstantMixRequest(input.id, { "Limit": 201 }), "qp_instantMix")
   if isValid(data) and isValid(data.Items)
     items.append(data.Items)
   end if
 end sub
 
 sub doLoadTrailers(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetLocalTrailersRequest(input.id), "qp_trailers")
+  data = fetchBuildJson(GetApi().BuildGetLocalTrailersRequest(input.id), "qp_trailers")
   if isValid(data)
     items.append(data)
   end if

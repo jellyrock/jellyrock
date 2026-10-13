@@ -1,0 +1,105 @@
+import "pkg:/source/utils/quickplayOutcome.bs"
+
+namespace tests
+
+  ' Contract tests for what a quick play tells the viewer when it found nothing to play
+  ' (source/utils/quickplayOutcome.bs).
+  '
+  ' Wrong in one direction, a failed read reads as "nothing here", so the viewer gives up on
+  ' something that would play on a second try. Wrong in the other, an answered empty result
+  ' asks for a retry that can never succeed, or a found queue shows a message at all.
+  @suite("quickplayOutcome - failed vs empty quick play")
+  class QuickplayOutcomeTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("kindOf")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads a trailer launch as a trailer")
+    function _()
+      m.assertEqual(quickplayOutcome.kindOf({ action: "loadTrailers" }), quickplayOutcome.KIND_TRAILER)
+    end function
+
+    @it("reads both photo-album actions as a slideshow")
+    function _()
+      m.assertEqual(quickplayOutcome.kindOf({ action: "photoalbum" }), quickplayOutcome.KIND_SLIDESHOW)
+      m.assertEqual(quickplayOutcome.kindOf({ action: "loadPhotoAlbum" }), quickplayOutcome.KIND_SLIDESHOW)
+    end function
+
+    @it("reads a photo-album folder as a slideshow")
+    function _()
+      m.assertEqual(quickplayOutcome.kindOf({ action: "folder", folderType: "PhotoAlbum" }), quickplayOutcome.KIND_SLIDESHOW)
+    end function
+
+    @it("reads any other folder as play")
+    function _()
+      m.assertEqual(quickplayOutcome.kindOf({ action: "folder", folderType: "genre" }), quickplayOutcome.KIND_PLAY)
+      m.assertEqual(quickplayOutcome.kindOf({ action: "folder" }), quickplayOutcome.KIND_PLAY)
+    end function
+
+    @it("reads every other action as play")
+    function _()
+      for each action in ["series", "musicalbum", "collectionfolder", "playAllSeries", "instantMix", "unknownThing"]
+        m.assertEqual(quickplayOutcome.kindOf({ action: action }), quickplayOutcome.KIND_PLAY, action)
+      end for
+    end function
+
+    @it("reads a missing input or action as play")
+    function _()
+      m.assertEqual(quickplayOutcome.kindOf(invalid), quickplayOutcome.KIND_PLAY)
+      m.assertEqual(quickplayOutcome.kindOf({}), quickplayOutcome.KIND_PLAY)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("statusOf")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is ok when items arrived, even if a fallback read failed")
+    function _()
+      m.assertEqual(quickplayOutcome.statusOf(3, false), quickplayOutcome.STATUS_OK)
+      m.assertEqual(quickplayOutcome.statusOf(1, true), quickplayOutcome.STATUS_OK)
+    end function
+
+    @it("is failed when nothing arrived and a read failed")
+    function _()
+      m.assertEqual(quickplayOutcome.statusOf(0, true), quickplayOutcome.STATUS_FAILED)
+    end function
+
+    @it("is empty when nothing arrived and every read answered")
+    function _()
+      m.assertEqual(quickplayOutcome.statusOf(0, false), quickplayOutcome.STATUS_EMPTY)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("messageKey")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("says nothing when the build found items")
+    function _()
+      for each kind in [quickplayOutcome.KIND_PLAY, quickplayOutcome.KIND_SHUFFLE, quickplayOutcome.KIND_TRAILER, quickplayOutcome.KIND_SLIDESHOW]
+        m.assertEqual(quickplayOutcome.messageKey(kind, quickplayOutcome.STATUS_OK), "", kind)
+      end for
+    end function
+
+    @it("names what was pressed, for a failure and for an empty result")
+    function _()
+      cases = [
+        [quickplayOutcome.KIND_PLAY, translationKeys.MessageQuickPlayFailed, translationKeys.MessageQuickPlayEmpty],
+        [quickplayOutcome.KIND_SHUFFLE, translationKeys.MessageShuffleFailed, translationKeys.MessageShuffleEmpty],
+        [quickplayOutcome.KIND_TRAILER, translationKeys.MessageTrailerFailed, translationKeys.MessageTrailerEmpty],
+        [quickplayOutcome.KIND_SLIDESHOW, translationKeys.MessageSlideshowFailed, translationKeys.MessageSlideshowEmpty]
+      ]
+      for each c in cases
+        m.assertEqual(quickplayOutcome.messageKey(c[0], quickplayOutcome.STATUS_FAILED), c[1], c[0])
+        m.assertEqual(quickplayOutcome.messageKey(c[0], quickplayOutcome.STATUS_EMPTY), c[2], c[0])
+      end for
+    end function
+
+    @it("never tells an unknown status as empty")
+    function _()
+      m.assertEqual(quickplayOutcome.messageKey(quickplayOutcome.KIND_PLAY, ""), translationKeys.MessageQuickPlayFailed)
+    end function
+
+  end class
+
+end namespace

@@ -1,0 +1,73 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+
+' What a quick play's queue build ended with, and what the viewer is told when it found nothing
+' to play. QueueManager shows the message; QuickPlayTask and GetShuffleItemsTask report the
+' status. Pure, so the rules are unit-tested without a network seam.
+'
+' A read that failed says nothing about what the item holds, so it must never read as empty:
+' "failed" asks the viewer to try again, "empty" tells them there is nothing to try. The text
+' names what was pressed (a slideshow, a trailer, a shuffle, or anything else that plays).
+namespace quickplayOutcome
+
+  const STATUS_OK = "ok"
+  const STATUS_EMPTY = "empty"
+  const STATUS_FAILED = "failed"
+
+  const KIND_PLAY = "play"
+  const KIND_SHUFFLE = "shuffle"
+  const KIND_TRAILER = "trailer"
+  const KIND_SLIDESHOW = "slideshow"
+
+  ' The kind of launch a QuickPlayTask input is. Shuffle runs on its own Task, whose caller
+  ' passes KIND_SHUFFLE itself.
+  '
+  ' @param {dynamic} input - the QuickPlayTask input AA
+  ' @return {string} a KIND_ constant
+  function kindOf(input as dynamic) as string
+    if not isValid(input) then return quickplayOutcome.KIND_PLAY
+    action = ""
+    if isValidAndNotEmpty(input.action) then action = LCase(input.action)
+    if action = "loadtrailers" then return quickplayOutcome.KIND_TRAILER
+    if action = "photoalbum" or action = "loadphotoalbum" then return quickplayOutcome.KIND_SLIDESHOW
+    if action = "folder" and isValidAndNotEmpty(input.folderType) and LCase(input.folderType) = "photoalbum" then return quickplayOutcome.KIND_SLIDESHOW
+    return quickplayOutcome.KIND_PLAY
+  end function
+
+  ' How a queue build ended: items arrived, or none did because a read failed, or none did
+  ' though every read answered. Items that arrived play even when a fallback read failed.
+  '
+  ' @param {integer} itemCount - the items the build found
+  ' @param {boolean} anyReadFailed - a read did not answer, or the build could not run
+  ' @return {string} a STATUS_ constant
+  function statusOf(itemCount as integer, anyReadFailed as boolean) as string
+    if itemCount > 0 then return quickplayOutcome.STATUS_OK
+    if anyReadFailed then return quickplayOutcome.STATUS_FAILED
+    return quickplayOutcome.STATUS_EMPTY
+  end function
+
+  ' The translation key of the toast for `kind` and `status`, or "" when there is nothing to
+  ' say (the build found items). A status that is neither empty nor ok reads as failed: an
+  ' answer nobody can vouch for is never told as "nothing here".
+  '
+  ' @param {string} kind - a KIND_ constant
+  ' @param {string} status - a STATUS_ constant
+  ' @return {string}
+  function messageKey(kind as string, status as string) as string
+    if status = quickplayOutcome.STATUS_OK then return ""
+    isEmpty = status = quickplayOutcome.STATUS_EMPTY
+    if kind = quickplayOutcome.KIND_SHUFFLE
+      if isEmpty then return translationKeys.MessageShuffleEmpty
+      return translationKeys.MessageShuffleFailed
+    else if kind = quickplayOutcome.KIND_TRAILER
+      if isEmpty then return translationKeys.MessageTrailerEmpty
+      return translationKeys.MessageTrailerFailed
+    else if kind = quickplayOutcome.KIND_SLIDESHOW
+      if isEmpty then return translationKeys.MessageSlideshowEmpty
+      return translationKeys.MessageSlideshowFailed
+    end if
+    if isEmpty then return translationKeys.MessageQuickPlayEmpty
+    return translationKeys.MessageQuickPlayFailed
+  end function
+
+end namespace

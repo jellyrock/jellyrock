@@ -1,0 +1,26 @@
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
+import "pkg:/source/utils/misc.bs"
+
+' fetchJson for the Tasks that build a quick play's queue (QuickPlayTask, GetShuffleItemsTask)
+' that remembers a read which did not answer in m.buildFailed, so an empty result is not told
+' as "nothing here" (quickplayOutcome.statusOf). Logs why at warn, once, through the Task's
+' m.log: the viewer's message says only that it failed, so the log is where the cause lives
+' (timeout, HTTP status, unreadable reply).
+'
+' The calling Task sets m.buildFailed = false before its first read.
+'
+' @param req - the request AA, or invalid when it could not be built
+' @param requestId - the pool request id, also the log's label
+' @return the parsed body, or invalid
+function fetchBuildJson(req as dynamic, requestId as string) as dynamic
+  cause = "not sent"
+  if isValid(req)
+    res = fetchRes(req, requestId)
+    cause = apiResponse.jsonFailure(res)
+    if cause = "" then return res.json
+  end if
+  m.buildFailed = true
+  m.log.warn("quick play read failed", requestId, "cause", cause)
+  return invalid
+end function

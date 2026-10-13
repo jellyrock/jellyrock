@@ -13,7 +13,9 @@
  *    launch;
  *  - a slow start says it is still loading;
  *  - Play on a library the server is slow to list still plays it, and Back while it waits
- *    frees the request's pool slot (#811).
+ *    frees the request's pool slot (#811);
+ *  - a quick play or shuffle whose read fails says so in a toast and shows the screen again,
+ *    and Back while one waits says nothing (QueueManager.showNothingToPlay).
  *
  * The grid and "Play all" cases were each measured wrong on an Ultra (2026-09-26) before
  * playback-start waits: the spinner stayed up over the grid and Home 35 s after Back, with the
@@ -45,6 +47,7 @@ import {
   press,
   sleep,
   stopPlayback,
+  waitFocusInHomeContent,
   waitFocusInside,
   waitFocused,
   waitFor,
@@ -52,6 +55,9 @@ import {
 
 const LOCALE = RTA_CONFIG.languages[0];
 const STILL_LOADING = 'Still loading…';
+// locale/custom/en_US.json MessageQuickPlayFailed and MessageShuffleFailed.
+const QUICK_PLAY_FAILED = "Couldn't load that. Try again.";
+const SHUFFLE_FAILED = "Couldn't load the shuffle. Try again.";
 // Under a default-limit request's own wait (timeouts.API_WAIT_MS, 12 s), so the rule is
 // honored exactly and the answer still arrives: long enough to press Back into, short enough
 // that a start nobody stopped would reach its player inside the spec.
@@ -297,4 +303,39 @@ it('Back while Play on a library waits on the server frees its pool slot', async
   // Given back long before the hold would have let it go.
   await waitHeld(0, 'the slot was given back on Back');
   await expectStartEndedOn('Home');
+  // Back ended the start, which a failed launch also does: only a build's own answer may say
+  // anything. Read once the start has ended, when a toast tied to the start would already show.
+  expect(await getVal('#toast.message'), 'no toast after Back').toBe('');
+});
+
+/** The toast says `message`: a failed launch told the viewer why nothing played. */
+function waitToast(message, label) {
+  return waitFor('#toast.message', (v) => v === message, {
+    timeout: 15000,
+    interval: 250,
+    label,
+  });
+}
+
+it('a failed Play on a library says so and shows Home again', async () => {
+  await freshApp();
+  await failRequests([{ prefix: 'qp_videoContainerMovies', kind: 'http', status: 500, times: 1 }]);
+  await quickPlayMoviesLibrary();
+  await waitToast(QUICK_PLAY_FAILED, 'the failed quick play toast');
+  await expectStartEndedOn('Home');
+  expect(await getActiveVal('subtype()'), 'still on Home, nothing playing').toBe('Home');
+  await waitFocusInHomeContent({ label: 'focus back in Home, where Play was pressed' });
+});
+
+it('a failed Shuffle says so and stays on the series', async () => {
+  await freshApp();
+  await navSeriesDetails(ctx);
+  await focusDetailButton('shuffleButton');
+  await waitFocusInside('#buttons', { label: 'Shuffle focused', timeout: 8000 });
+  await failRequests([{ prefix: 'shuffleSeriesEpisodes', kind: 'http', status: 500, times: 1 }]);
+  await press(ecp.Key.Ok);
+  await waitToast(SHUFFLE_FAILED, 'the failed shuffle toast');
+  await expectStartEndedOn('the series details');
+  expect(await getActiveVal('subtype()'), 'still on the series details').toBe('ItemDetails');
+  await waitFocusInside('#buttons', { label: 'focus back on the buttons', timeout: 5000 });
 });
