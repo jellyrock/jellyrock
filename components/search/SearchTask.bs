@@ -1,10 +1,14 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiRead.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/searchOutcome.bs"
 
 sub init()
+  m.log = new log.Logger("SearchTask")
   m.top.functionName = "search"
 end sub
 
@@ -15,7 +19,7 @@ sub search()
 end sub
 
 ' Searches multiple Jellyfin endpoints for media matching the query.
-' Runs on SearchTask thread: fetchJson blocks waiting for ApiPool responses.
+' Runs on SearchTask thread: each read blocks waiting for its ApiPool response.
 ' Every result echoes the query it ANSWERS. The caller gives each keystroke a new node and
 ' drops a delivery from any node it has since replaced (`SearchResults.loadResults`); the
 ' echo is what that drop logs, so a superseded delivery names the query it answered. Taken
@@ -26,15 +30,21 @@ end sub
 ' superseded query from delivering at all (measured 2026-08-14: 12 keystrokes, 6 deliveries, every one
 ' current). Publishing partial results as each fetch lands would widen the window of
 ' superseded deliveries that `SearchResults.loadResults` has to drop.
+'
+' Every result also carries a `status` (searchOutcome.statusOf): a read that did not answer
+' says nothing about what the server holds, so the screen never shows a search whose reads
+' failed as one that found nothing.
 function searchMedia(query as string)
-  if query = "" then return { Items: [], TotalRecordCount: 0, query: query }
+  if query = "" then return { Items: [], TotalRecordCount: 0, query: query, status: searchOutcome.STATUS_OK }
 
   transformer = JellyfinDataTransformer()
   allItems = []
+  ' One per search, so one search's failed reads never count against the next.
+  reader = new apiRead.Reader(m.log, "search")
 
   ' Regular library items. Person and MusicArtist are fetched via dedicated endpoints below.
   ' LiveTvProgram is excluded here because /Items EPG search is incomplete; /LiveTv/Programs is used instead.
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+  data = reader.json(GetApi().BuildGetItemsByQueryRequest({
     "searchTerm": query,
     "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
     ' ChildCount gives a collection or photo album tile its "N items" line, as in the details
@@ -57,7 +67,7 @@ function searchMedia(query as string)
   end if
 
   ' People: /Items does not return Person type; /Persons endpoint required.
-  personData = fetchJson(GetApi().BuildGetPersonsRequest({
+  personData = reader.json(GetApi().BuildGetPersonsRequest({
     "searchTerm": query,
     "Limit": 20,
     "EnableTotalRecordCount": false
@@ -69,7 +79,7 @@ function searchMedia(query as string)
   end if
 
   ' Artists: /Items does not return MusicArtist type; /Artists endpoint required.
-  artistData = fetchJson(GetApi().BuildGetArtistsRequest({
+  artistData = reader.json(GetApi().BuildGetArtistsRequest({
     "searchTerm": query,
     "Limit": 20,
     "EnableTotalRecordCount": false
@@ -81,20 +91,34 @@ function searchMedia(query as string)
   end if
 
   ' Live TV Programs: /LiveTv/Programs searches the full EPG; /Items only covers recordings.
-  programData = fetchJson(GetApi().BuildGetLiveTVProgramsRequest({
-    "SearchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  }), "searchPrograms")
-  if isValid(programData) and isValid(programData.Items)
-    for each item in programData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
+  ' Jellyfin refuses it to a user without Live TV access (its LiveTvAccess policy), so that
+  ' user's every search would count it as failed: it is not asked for. Read once, as this
+  ' runs on a Task thread, where each m.global read crosses to the render thread.
+  if canSearchLiveTv()
+    programData = reader.json(GetApi().BuildGetLiveTVProgramsRequest({
+      "SearchTerm": query,
+      "Limit": 20,
+      "EnableTotalRecordCount": false
+    }), "searchPrograms")
+    if isValid(programData) and isValid(programData.Items)
+      for each item in programData.Items
+        allItems.push(transformer.transformBaseItem(item))
+      end for
+    end if
   end if
 
   result = {}
   result.Items = allItems
   result.TotalRecordCount = allItems.count()
   result.query = query
+  result.status = searchOutcome.statusOf(reader.sentCount, reader.failedCount)
   return result
+end function
+
+' Whether the signed-in user may search Live TV programs. A user whose policy is missing reads
+' as allowed, as SessionDataTransformer defaults it.
+function canSearchLiveTv() as boolean
+  policy = m.global.user.policy
+  if not isValid(policy) then return true
+  return policy.enableLiveTvAccess <> false
 end function

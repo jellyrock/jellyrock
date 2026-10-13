@@ -112,6 +112,15 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // leaves `message` holding the last text. Terminal, not a pulse. Read against the app
   // source 2026-09-25 (JRScene.showToast, Toast.onShouldShow).
   '#toast.message',
+  // `SearchResults.showSearchFailure` sets it true when every read of a search failed, and
+  // `clearSearchOutcome` is the only write back to false, on the next query or a retry. Both
+  // values hold until the viewer types or presses Try again: terminal, not a pulse. Read
+  // against the app source 2026-10-13, both write sites.
+  '#searchFailed.visible',
+  // `SearchResults.init` sets the help text and `loadResults` replaces it with "No results."
+  // for an answered empty search; nothing writes it back. Terminal. Read against the app
+  // source 2026-10-13, both write sites.
+  '#SearchHelpText.text',
   // `BaseGridView.onLoadingMoreDue` sets it true and `updateLoadingMore` is the only write
   // back to false, when the page lands (or fails, or the view is hidden). `true` holds for as
   // long as the user waits at the last loaded row, and `false` until the next wait: neither

@@ -1,0 +1,77 @@
+import "pkg:/source/utils/searchOutcome.bs"
+
+namespace tests
+
+  ' Contract tests for what the search screen shows when a search ends
+  ' (source/utils/searchOutcome.bs).
+  '
+  ' Wrong in one direction, a search that got no answer reads as "No results", so the viewer
+  ' believes the server has nothing. Wrong in the other, an answered empty search offers a
+  ' retry that can never find anything, or a partial one hides the results that did arrive.
+  @suite("searchOutcome - failed vs partial vs empty search")
+  class SearchOutcomeTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("statusOf")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is ok when every read answered")
+    function _()
+      m.assertEqual(searchOutcome.statusOf(4, 0), searchOutcome.STATUS_OK)
+    end function
+
+    @it("is partial when some reads failed and some answered")
+    function _()
+      m.assertEqual(searchOutcome.statusOf(4, 1), searchOutcome.STATUS_PARTIAL)
+      m.assertEqual(searchOutcome.statusOf(4, 3), searchOutcome.STATUS_PARTIAL)
+    end function
+
+    @it("is failed when every read failed")
+    function _()
+      m.assertEqual(searchOutcome.statusOf(4, 4), searchOutcome.STATUS_FAILED)
+      m.assertEqual(searchOutcome.statusOf(3, 3), searchOutcome.STATUS_FAILED)
+    end function
+
+    @it("is failed when no read was sent")
+    function _()
+      m.assertEqual(searchOutcome.statusOf(0, 0), searchOutcome.STATUS_FAILED)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("view")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the results of an answered search, with no toast")
+    function _()
+      m.assertEqual(searchOutcome.view(searchOutcome.STATUS_OK, 5), { show: searchOutcome.SHOW_RESULTS, toastKey: "" })
+    end function
+
+    @it("shows no results for an answered search that found nothing")
+    function _()
+      m.assertEqual(searchOutcome.view(searchOutcome.STATUS_OK, 0), { show: searchOutcome.SHOW_EMPTY, toastKey: "" })
+    end function
+
+    @it("shows the results of a partial search, with the some-missing toast")
+    function _()
+      m.assertEqual(searchOutcome.view(searchOutcome.STATUS_PARTIAL, 3), { show: searchOutcome.SHOW_RESULTS, toastKey: translationKeys.MessageSearchPartial })
+    end function
+
+    @it("shows a partial search that found nothing as failed, never as empty")
+    function _()
+      m.assertEqual(searchOutcome.view(searchOutcome.STATUS_PARTIAL, 0), { show: searchOutcome.SHOW_FAILED, toastKey: "" })
+    end function
+
+    @it("shows a failed search as failed")
+    function _()
+      m.assertEqual(searchOutcome.view(searchOutcome.STATUS_FAILED, 0), { show: searchOutcome.SHOW_FAILED, toastKey: "" })
+    end function
+
+    @it("shows an unknown or missing status as failed, never as empty")
+    function _()
+      m.assertEqual(searchOutcome.view(invalid, 0), { show: searchOutcome.SHOW_FAILED, toastKey: "" })
+      m.assertEqual(searchOutcome.view("somethingNew", 0), { show: searchOutcome.SHOW_FAILED, toastKey: "" })
+    end function
+
+  end class
+
+end namespace

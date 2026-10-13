@@ -1,0 +1,53 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+
+' What a search ended with, and what the search screen shows for it. SearchTask reports the
+' status; SearchResults shows the view. Pure, so the rules are unit-tested without a network
+' seam.
+'
+' A read that failed says nothing about what the server holds, so a search that got no answer
+' must never read as one that found nothing: "failed" offers Try again, "empty" says there are
+' no results. A search whose reads partly answered shows what arrived and says some is missing.
+namespace searchOutcome
+
+  const STATUS_OK = "ok"
+  const STATUS_PARTIAL = "partial"
+  const STATUS_FAILED = "failed"
+
+  const SHOW_RESULTS = "results"
+  const SHOW_EMPTY = "empty"
+  const SHOW_FAILED = "failed"
+
+  ' How a search's reads ended: every one answered, some did, or none did. A search that sent
+  ' nothing (no read could be built) failed, since nothing answered for it.
+  '
+  ' @param {integer} sentCount - the reads asked for
+  ' @param {integer} failedCount - the reads that did not answer
+  ' @return {string} a STATUS_ constant
+  function statusOf(sentCount as integer, failedCount as integer) as string
+    if sentCount < 1 or failedCount >= sentCount then return searchOutcome.STATUS_FAILED
+    if failedCount > 0 then return searchOutcome.STATUS_PARTIAL
+    return searchOutcome.STATUS_OK
+  end function
+
+  ' What the screen shows for a search that ended with `status` and `itemCount` items, and the
+  ' toast to raise with it ("" for none). A partial search that found nothing is a failure: the
+  ' reads that answered say nothing about the ones that did not. A status that is none of these
+  ' reads as failed, since nobody can vouch for its empty list.
+  '
+  ' @param {dynamic} status - a STATUS_ constant
+  ' @param {integer} itemCount - the items the search found
+  ' @return {object} { show: a SHOW_ constant, toastKey: a translation key or "" }
+  function view(status as dynamic, itemCount as integer) as object
+    if not isValidAndNotEmpty(status) then status = searchOutcome.STATUS_FAILED
+    if status = searchOutcome.STATUS_OK
+      if itemCount > 0 then return { show: searchOutcome.SHOW_RESULTS, toastKey: "" }
+      return { show: searchOutcome.SHOW_EMPTY, toastKey: "" }
+    end if
+    if status = searchOutcome.STATUS_PARTIAL and itemCount > 0
+      return { show: searchOutcome.SHOW_RESULTS, toastKey: translationKeys.MessageSearchPartial }
+    end if
+    return { show: searchOutcome.SHOW_FAILED, toastKey: "" }
+  end function
+
+end namespace
