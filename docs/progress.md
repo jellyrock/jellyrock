@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-13: docs(voice): Rewrite the `tests/rta` comments
 - 2026-10-13: fix(playback): Pick `.strm` tracks on first play; fill Playback Info
 - 2026-10-13: test(device-lock): Replace real device IDs with fixtures
 - 2026-10-13: chore(tooling): Keep agent telemetry in the `XDG` state folder
