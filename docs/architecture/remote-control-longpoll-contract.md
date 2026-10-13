@@ -14,6 +14,8 @@ The fixed HTTP contract between JellyRock and the companion Jellyfin server plug
 
 The contract is published and versioned, not an internal plugin detail, so any other client can use it against a stable spec without plugin changes. That includes the official Roku app, which has the same TLS socket limit.
 
+The key words `MUST`, `MUST NOT` and `MAY` in this contract are to be read as described in `BCP 14` ([RFC 2119](https://www.rfc-editor.org/rfc/rfc2119), [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174)) when, and only when, they appear in capitals. They are requirements on an implementation, not emphasis, which is why this file keeps them under the house voice.
+
 ## Direction and scope
 
 - **Server to client only.** The long poll carries remote-control commands to JellyRock. JellyRock's own reporting (playback progress, the capabilities POST, marking items played) stays on the normal Jellyfin REST API, unchanged. The channel carries nothing from the client beyond the poll request itself.

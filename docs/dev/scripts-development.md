@@ -160,7 +160,7 @@ Don't point `RTA_RECORD_DIR` at a temporary folder instead. Several of these tes
 
 A `globalSetup` guard, [`tests/scripts/setup/no-durable-writes.js`](../../tests/scripts/setup/no-durable-writes.js), fails the suite if `.device-runs/` or `out/` changed during the run, and prints what changed. `out/` holds the `jellyrock.zip` a device run sideloads, so a test that runs BrighterScript or `create-package.cjs` gives it a temporary folder: `transpileWithPlugin` makes its own, and `create-package.cjs` takes `--out-dir` and `--staging-dir`. It runs once around the whole suite, not per file, so it can say what was written but not which test wrote it. The leaked record usually tells you, since it carries the fixture's own `deviceKey` and `run`.
 
-Under `test:scripts:tdd` (watch mode), the guard reports when you quit, not between reruns: Vitest only tears down a `globalSetup` in `Vitest.close()`. It takes its snapshot when the session starts, so nothing escapes; the report just arrives late.
+Under `test:scripts:tdd` (watch mode), the guard reports when you quit, not between reruns: Vitest only tears down a `globalSetup` in `Vitest.close()`. It takes its snapshot when the session starts, so nothing escapes; the report arrives late.
 
 ## Common mistakes
 

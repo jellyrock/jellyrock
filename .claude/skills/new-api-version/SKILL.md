@@ -95,7 +95,7 @@ Standing up a tier is verified entirely by **static analysis of the `.bs` source
 
 Standing up a tier is decision-shaped (it closes off cramming the new shape into the existing tier). Offer to invoke `/log decision` with a slug like `apiversion-v<N>-split` capturing why `X` warranted a new tier. Summarize the surfaces touched and flag any `TODO(V<N>)` stubs left for when the spec finalizes. If this came from a `/server-upgrade <rc>` triage, remind the user to re-run that against the FINAL stable when it ships (the RC can still change).
 
-## When NOT to use
+## When not to use
 
 - A routine new endpoint or an added field on a current-tier server: use the existing `if m.getApiVersion() >= 2` shape directly; no new tier.
 - A registry-schema change for a user setting: use [`/new-migration`](../new-migration/SKILL.md).

@@ -40,7 +40,7 @@ Sending surround sound to a receiver and decoding to stereo on the Roku behave v
 
 Either one lets us reproduce the problem. Pick whichever is easier.
 
-**Option A: a short sample clip (best).** A whole movie is too large to send. A short slice that keeps every stream exactly as it is reproduces the bug just as well. See [Make a sample clip](#make-a-sample-clip) for a command to copy.
+**Option A: a short sample clip (best).** A whole movie is too large to send. A short slice that keeps every stream exactly as it is reproduces the bug equally well. See [Make a sample clip](#make-a-sample-clip) for a command to copy.
 
 **Option B: the Jellyfin server's ffmpeg log for that playback.** You send no file and change nothing on your Roku. See [Grab the Jellyfin transcode log](#grab-the-jellyfin-transcode-log).
 

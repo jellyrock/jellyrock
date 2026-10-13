@@ -82,7 +82,7 @@ At Tier 2, append:
 - ...
 ```
 
-## When NOT to use this agent
+## When not to use this agent
 
 - The file is new and has no logging: that isn't an audit, it's a question of what logging belongs there, which the developer answers with judgment.
 - The user wants blanket logging: refuse, as Tier 3 says.

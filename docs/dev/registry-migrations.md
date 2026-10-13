@@ -152,7 +152,7 @@ Cover these cases:
 | The old key is missing | Nothing is written |
 | Old and new keys both there | The result is what you decided, and the old key is gone |
 | `LastRunVersion` at the constant's version | The block does not run |
-| `LastRunVersion` just below it | The block runs |
+| `LastRunVersion` below the constant's version | The block runs |
 | The block runs twice | The second run changes nothing |
 | Two users | Each keeps their own value |
 

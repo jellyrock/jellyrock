@@ -21,7 +21,7 @@ Every suite extends `tests.BaseTestSuite`, which extends `rooibos.BaseTestSuite`
 
 ### One `@suite` per file
 
-**Put exactly one `@suite` class in a `.spec.bs` file.** Breaking this breaks the runner, not just the tidiness. A file with two or more suites builds and validates cleanly, then crashes the Rooibos runner on the device (`&hec` in `TestRunner.brs`), because the generated `.brs` gives only the last class a `getTestSuiteData()`; Rooibos prints `ERROR RETRIEVING TEST SUITE DATA` just before (observed 2026-09-22 on a Roku Ultra). The crash leaves the Roku hung until an ECP `Home` key press.
+**Put exactly one `@suite` class in a `.spec.bs` file.** Breaking this breaks the runner, not only the tidiness. A file with two or more suites builds and validates cleanly, then crashes the Rooibos runner on the device (`&hec` in `TestRunner.brs`), because the generated `.brs` gives only the last class a `getTestSuiteData()`; Rooibos prints `ERROR RETRIEVING TEST SUITE DATA` right before (observed 2026-09-22 on a Roku Ultra). The crash leaves the Roku hung until an ECP `Home` key press.
 
 To split a growing suite, keep the base name and add the aspect (`remoteSubtitles.spec.bs`, `remoteSubtitlesStreams.spec.bs`, `remoteSubtitlesResults.spec.bs`), as the existing `misc.spec.bs` and `miscAudioStreams.spec.bs` pair does.
 

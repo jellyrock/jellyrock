@@ -104,7 +104,7 @@ When `/pr` opens the PR, its **Follow-ups** section links each new slug. A relat
 - [`itemdetails-size`](https://github.com/jellyrock/jellyrock/blob/main/docs/architecture/tech-debt.md#itemdetails-size): split the per-type renderers into modules
 ```
 
-## When NOT to use
+## When not to use
 
 - A trivial change (a typo fix, a dependency bump): no scan needed.
 - You're not opening a PR: mid-feature, the slugs aren't stable yet.

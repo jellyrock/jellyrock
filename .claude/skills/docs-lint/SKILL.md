@@ -107,9 +107,9 @@ Repeat until `errorsCount` is 0. Don't go beyond what the diagnostic names: if a
 
 `last-reviewed:` records a real review against the current code. Bump it only when the user confirms "I read this doc against the current code and its shape and why still hold", or "I updated the body to match the current shape". A date bumped by reflex defeats the field.
 
-## When NOT to use
+## When not to use
 
-- The pre-push hook already showed the failure and the fix is mechanical (one missing path): just make the edit. `/docs-lint` helps when there are several failures, when the category is unclear, or when staleness needs a decision.
+- The pre-push hook already showed the failure and the fix is mechanical (one missing path): make the edit yourself. `/docs-lint` helps when there are several failures, when the category is unclear, or when staleness needs a decision.
 - You aren't touching docs: let CI report any drift on the PR.
 
 ## Sub-agent invocation

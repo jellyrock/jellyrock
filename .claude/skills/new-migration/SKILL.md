@@ -96,7 +96,7 @@ Then try it with real data: sideload the last release, store the old key, sidelo
 
 If the reason for the new name isn't obvious, invoke `/log decision` with a slug like `rename-<old>-to-<new>`.
 
-## When NOT to use
+## When not to use
 
 - A new setting: use `/new-setting`.
 - A changed default: update `settings/settings.json`; existing users keep their saved value.

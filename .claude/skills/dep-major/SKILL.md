@@ -86,7 +86,7 @@ If a migration is needed and the user approves, apply it with `Edit` on the affe
 
 If anything was deferred (a device run that couldn't happen, for example), record it with [`/log followup`](../log/SKILL.md) so it isn't lost.
 
-## When NOT to use
+## When not to use
 
 - A patch or minor bump: it merges automatically after a soak, so no skill is needed.
 - A Jellyfin server release: use [`/server-upgrade`](../server-upgrade/SKILL.md).
