@@ -186,7 +186,7 @@ The `popin` line measures work done in time. The ±2-row, ±1-column texture buf
 Rules for reading it:
 
 - **Read `popIns` against `appearances`, never alone.** A raw count moves with how far the sweep went.
-- **Quote the split, or don't quote the number.** The three kinds need different remedies. **Cold:** the user outran the buffer's depth, and more depth would help. **Reload:** the network was slower than the scroll, and depth can't fix that. **First:** the data had only just arrived, and no buffer could win. Any sweep that opens its screen is dominated by `popInsFirst`.
+- **Quote the split, or don't quote the number.** The three kinds need different remedies. **Cold:** the user outran the buffer's depth, and more depth would help. **Reload:** the network was slower than the scroll, and depth can't fix that. **First:** the data had barely arrived, and no buffer could win. Any sweep that opens its screen is dominated by `popInsFirst`.
 - **A pop-in counts only when the image arrives.** An image that never arrives is a glyph, which `loadsFailed` counts. So use `cellSweepGrid` to study pop-in, not `cellSweepExtras`: almost none of the extras fixture's person images load, so its `popIns` can hardly rise above zero, and a zero there says nothing. Extras is still the right sweep for the bind counters.
 - **`loadMs` is a sum over requests running at the same time,** so it can be many times the sweep's length. Never show it as a share of anything. `loadMsMax` is bounded by the sweep and is the one to act on. Divide by `loadMsCount`, not `loadsSucceeded`: a "ready" with no matching request is a real success with no interval to time.
 - **`popIns` has no minimum duration.** An image arriving 5 ms after its cell counts like one arriving a second later, so on a warm cache the count can be high while a viewer sees nothing. Read it with `loadMsMax` and the mean. There is no cutoff because no measured perceptual figure exists to set one; take one from a measurement, never a round number.
@@ -256,7 +256,7 @@ The matrix report is a separate reader over the ledger ([`npm run measure:report
 
 ### Calibrating the instrument: does the ODC component move the number?
 
-Every `measure` number is taken on an RTA build, because identity is read over ODC, so the on-device component is resident the whole session. That is a variable in every measurement, and the reason plain-build [baselines](home-first-paint-performance.md#reading-a-result) can't be compared with a `measure` series. `npm run measure:calibrate` measures it on one device:
+Every `measure` number is taken on an RTA build, because identity is read over ODC, so the on-device component is resident the whole session. That is a variable in every measurement, and the reason a plain-build measurement can't be compared with a `measure` series. `npm run measure:calibrate` measures it on one device:
 
 ```bash
 npm run measure:calibrate -- --server http://192.0.2.10:8096            # n=30, blocks of 5
@@ -266,7 +266,7 @@ npm run measure:calibrate -- --server <url> -n 10 --block-size 5 --label smoke
 - **Two arms from one build.** `rta` is the normal deploy. `plain` drops the component and sets `ENABLE_RTA=false` in the staged manifest, the same build state as a plain build. Dropping the component alone is not enough: RTA's manifest rewrite isn't behind `injectTestingFiles` ([`measure-arms.js`](../../scripts/measure-arms.js)).
 - **`home-latest-rows`, measured by launching,** because `--nav` runs over ODC and the plain arm has none.
 - **Blocks of 5, alternating,** so drift can't land on one arm. Fewer than two blocks per arm is refused.
-- **The plain arm's identity is checked by enclosure:** reads taken just before and after it, with nothing writing the registry between ([ADR 0030](../adr/0030-non-odc-arm-identity-by-enclosure.md)). A block whose two reads disagree is recorded `blocked` and not published; the summary names each one, and the exit code follows that count.
+- **The plain arm's identity is checked by enclosure:** reads taken right before and after it, with nothing writing the registry between ([ADR 0030](../adr/0030-non-odc-arm-identity-by-enclosure.md)). A block whose two reads disagree is recorded `blocked` and not published; the summary names each one, and the exit code follows that count.
 - **It always redeploys the RTA build at the end,** after a Ctrl-C or a failure too (the restore is in a `finally`). A device left on a build with no ODC refuses the next `measure`, `test:rta` and sign-in. If the restore fails, the run says which arm the device is stuck on and exits non-zero.
 - **The deploy checks the flag it shipped.** The `ENABLE_RTA` change is a string replace, so the deploy reads `bs_const` back and refuses to sideload if it is wrong; otherwise a `plain` arm could silently become a `no-component` arm.
 - **`--label <name>`** adds a suffix to both arm labels (`rta-smoke`, `plain-smoke`). Arms are selected across the whole ledger, so without one a second run pools into the first.

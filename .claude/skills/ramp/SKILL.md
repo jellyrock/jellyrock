@@ -116,7 +116,7 @@ If the briefing turns up something to act on (an open issue with traction, a tec
 
 This skill only reads. Don't edit anything: surface and summarize.
 
-## When NOT to use
+## When not to use
 
 - Starting a fresh session: use `/catchup` first. `/ramp` is for switching areas within a session.
 - The area isn't in the recognized list: ask the user, or treat it as cross-cutting and use `/catchup`.

@@ -6,8 +6,8 @@ Read by [SKILL.md](SKILL.md)'s `## This repo`. Pure local edits; commit nothing.
 
 Two tiers, both from the shared Step 3 flow (draft, significance gate, diff-and-confirm):
 
-- **ADR-grade** (architectural, hard-to-reverse, cross-component) → `docs/adr/NNNN-<slug>.md` in the newest ADR's shape (`# ADR NNNN: <title>`, `**Status:** Accepted`, `**Date:** <today>`, optional `**related-files**:`, one or two tight paragraphs) plus its row in the `docs/adr/README.md` index table. ADR supersede chains are prose in the `**Status:**` line and are not machine-checked: get them right by hand.
-- **Sub-architectural** (clears the bar, local blast radius) → a note in [`docs/decisions.md`](../../../docs/decisions.md), appended after the last `## decision-id:` note and before the trailing `## Migrated to ADRs` table. The bar is that file's "When to add a note": a non-obvious rationale, closes off alternatives, or a trade-off worth re-evaluating. A routine fix, an obvious choice or time-bound state is declined.
+- **ADR-grade** (architectural, hard-to-reverse, cross-component): write `docs/adr/NNNN-<slug>.md` in the newest ADR's shape (`# ADR NNNN: <title>`, `**Status:** Accepted`, `**Date:** <today>`, optional `**related-files**:`, one or two tight paragraphs) plus its row in the `docs/adr/README.md` index table. ADR supersede chains are prose in the `**Status:**` line and are not machine-checked: get them right by hand.
+- **Sub-architectural** (clears the bar, local blast radius): write a note in [`docs/decisions.md`](../../../docs/decisions.md), appended after the last `## decision-id:` note and before the trailing `## Migrated to ADRs` table. The bar is that file's "When to add a note": a non-obvious rationale, closes off alternatives, or a trade-off worth re-evaluating. A routine fix, an obvious choice or time-bound state is declined.
 
 Note schema:
 
@@ -22,11 +22,11 @@ Note schema:
 - Fields sit in one contiguous block directly under the heading: the linter stops at the first prose line.
 - **Slug unique** before writing: `grep -n '^## decision-id: <slug>$' docs/decisions.md` (an ADR: `ls docs/adr/`). On a collision show the existing record and ask: other slug, supersede, or abort. A free-form description gets a proposed slug, confirmed first.
 - **Full supersede of a note:** flip the old note to `**status**: superseded` and add `**superseded-by**: <new>` under it. Ask first whether it is really partial: then use the `partially-` pair with the `(<what moved>)` scope and leave both `accepted`.
-- `withdrawn` is terminal: never supersede one, never let one declare `**supersedes**`. A note that grew ADR-grade is promoted (a new ADR), not pointed at; pointers resolve only to slugs inside `docs/decisions.md`, cross-tier references are prose links.
+- `withdrawn` is terminal: never supersede one, never let one declare `**supersedes**`. A note grown ADR-grade is promoted (a new ADR), not pointed at; pointers resolve only to slugs inside `docs/decisions.md`, cross-tier references are prose links.
 
 ### `--revise=<slug>`
 
-`/log decision --revise=<slug>` edits an existing `docs/decisions.md` note in place: the one exception to append-only. Use it only when the record misdescribes what was decided or shipped (a function that no longer exists, a mechanism a later commit reverted, a measurement quoted wrong). A decision that changed is a supersede; wording polish is neither. Same gate as an append: draft the corrected text, show it as a diff, confirm, edit in place. Leave `**status**` alone and add no supersede pointer. The common case is a note written earlier on the same unmerged branch.
+`/log decision --revise=<slug>` edits an existing `docs/decisions.md` note in place: the one exception to append-only. Use it only when the record describes wrongly what was decided or shipped (a function that no longer exists, a mechanism a later commit reverted, a measurement quoted wrong). A decision that changed is a supersede; wording polish is neither. Same gate as an append: draft the corrected text, show it as a diff, confirm, edit in place. Leave `**status**` alone and add no supersede pointer. The common case is a note written earlier on the same unmerged branch.
 
 ## `signal`
 

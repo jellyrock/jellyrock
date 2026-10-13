@@ -87,7 +87,7 @@ An unused-key error means Step 6 hasn't used the key yet. For a sort-order failu
 
 Don't edit `locale/custom/<other>.json` by hand. Translators own the wording in Weblate; the only other writers are `translations:seed` (Step 7) and release prep's merge.
 
-## When NOT to use
+## When not to use
 
 - The string is for developers only (a debug log, an error only an agent sees): don't translate it. Use a plain English string in the source.
 - The string is a path, an identifier or an API field name: these are protocol constants, not text.

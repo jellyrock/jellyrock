@@ -636,7 +636,7 @@ comparison being refused — that means an axis is on the wrong list, and the li
 function (`comparability`) pinned by tests, so moving one is a small diff.
 
 The rank test moved into code for a reason worth recording beside it. Re-deriving the two
-p-values in [`home-first-paint-performance.md`](dev/home-first-paint-performance.md) found
+p-values then in `home-first-paint-performance.md` (removed in #1163; the values are quoted below) found
 they were computed by **different methods and neither said so**: the `apiPipeline` pair
 (n=5/6) is genuinely exact at 2/C(11,5) = 0.00433, while the batched-attach pair's
 "U = 0.0, p = 0.0002" is the normal approximation with a continuity correction (z = 3.742 →
@@ -2039,6 +2039,22 @@ Ruled out: `Protocol = Http`, which shipped first in #1184 and was replaced, bec
 When the device plays a stream itself and Roku lists none of its audio tracks, and the source lists more than one, the report says "Playing track: Unknown" and lists the tracks (`unidentifiedAudioSection()`), rather than describing the app's pick. Roku lists no tracks for audio muxed into one HLS variant, so the app cannot select one (measured 2026-10-12 on a Stick 4K against 12.1). With `#EXT-X-MEDIA` renditions, or a direct-played MKV, Roku lists the tracks, the pick plays, and the section describes it. This extends `playback-report-unidentified-audio` to a second way the playing track is unknown.
 
 Ruled out: reloading through the server's stream so the pick plays. The track list is known only after playback starts, so it would restart the play and load the server, and it assumes which muxed track Roku plays by default, which is unmeasured. Also ruled out: leaving the pick in the report, which names a track nobody may be hearing. Making the pick selectable is followup `muxed-hls-audio-tracks-unselectable`.
+
+## decision-id: adr-0009-tracker-partly-superseded
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `docs/adr/0009-server-upgrade-proactive-ci.md`, `docs/adr/0011-server-upgrade-phase6.md`, `docs/architecture/server-upgrade-automation.md`
+
+ADR 0011 replaced part (b) of ADR 0009, but its header names only ADR 0008. Part (b) was the single rolling tracker issue and its close-on-caught-up lifecycle; 0011 replaced it with one digest issue per server release and removed close-on-caught-up. The rest of ADR 0009 stands. ADRs are never edited, so this note is the pointer. `server-upgrade-automation.md` already says 0011 replaces parts of 0008 and 0009.
+
+## decision-id: adr-0041-pending-list-stale
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `docs/adr/0041-task-launch-queue.md`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
+
+ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `VideoPlayerView`'s `LoadMetaDataTask`, `AudioPlayerView`'s, two in `ItemDetails` and `Home`'s remote-control receiver. As of 2026-10-13 only `VideoPlayerView` remains, with four `LoadMetaDataTask` entries; the other sites moved to a new node per run. The plugin's `PENDING_MIGRATIONS` is the live list, and followup `pending-migrations-same-node-relaunch` tracks the rest.
 
 ## decision-id: persons-exclude-music-artists
 

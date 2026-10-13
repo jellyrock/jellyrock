@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-06
+last-updated: 2026-10-13
 ---
 
 # Signals backlog
@@ -49,7 +49,7 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **latest_upstream**: (no RC in flight)
 - **latest_acknowledged**: (no RC in flight)
 - **last_checked**: 2026-09-09
-- **action_when_moves**: spin up the RC against a test library; file findings as GitHub issues if breakage is detected before the stable release
+- **action_when_moves**: run `/server-upgrade` on the RC, which writes its findings to a `.claude/handoffs/` note; nothing is filed on GitHub until the stable release
 - **status**: watching
 
 ### roku-os: Roku OS firmware

@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-13: docs(voice): Close the Charter review and route its held findings
 - 2026-10-13: refactor(playback): Test the Dolby Vision remux decision itself
 - 2026-10-13: docs(voice): Fix the comments phase G found and left
 - 2026-10-13: docs(voice): Rewrite the `tests/rta` comments
@@ -299,6 +300,30 @@ The `roku-deploy` step in `.github/workflows/_smoke-test-deps.yml` checks that `
 #### `docs-stale-tracker.yml`'s close comment promises the issue will reopen; the job opens a new one `[fid: docs-stale-tracker-reopen-promise]` `[captured 2026-10-12]`
 
 `.github/workflows/docs-stale-tracker.yml` closes its tracker issue with a comment saying it "will reopen if it goes stale again", but its "Find existing tracker issue" step lists only open issues, so a later stale week opens a new issue instead. The message is a string, which phase G of the docs-voice pass leaves alone (found 2026-10-11, read from the workflow, not seen on a run). Closes when the comment says what happens, or when the job reopens the closed issue.
+
+#### The `roku-log` plugin injects `m.__le = m.log.enabled` even when `guard` is off `[fid: roku-log-guard-line-ignores-config]` `[captured 2026-10-13]` `[prompt: /snag The roku-log plugin injects m.__le = m.log.enabled after every logger creation even when guard is off]`
+
+In `scripts/bsc-plugins/roku-log.cjs`, the visitor that finds `m.log = new log.Logger(...)` (and the factory form) adds `createGuardSetStatement()` without testing `config.guard`; only the call-site wrapping checks it. No bsconfig sets `guard`, so every logger creation gains a line nothing reads. Confirmed in the code 2026-10-13. A `/snag` candidate: gate the injection on `config.guard` and add a plugin test.
+
+#### `server-upgrade.js executePlan` rewrites the body of a digest that is closed or already being triaged `[fid: server-upgrade-rewrites-closed-digest]` `[captured 2026-10-13]` `[prompt: /snag server-upgrade.js executePlan rewrites a closed or already-triaging digest body, erasing its earlier sub-issue lines]`
+
+`executePlan` runs `gh issue edit <digest> --body … --add-label server-upgrade:triaging` with no check of the digest's state or labels, so a rerun against a closed digest (such as #897) erases its filed sub-issue lines. The skill's Step 0.3 warns; the script has no guard. Read in the code 2026-10-13. A `/snag` candidate.
+
+#### `journal-sync.yml` never installs dependencies, so its spell-check always skips `[fid: journal-sync-spellcheck-always-skips]` `[captured 2026-10-13]` `[prompt: /snag journal-sync.yml has no npm ci, so the ship spell-check in scripts/journal-sync.js always skips in production]`
+
+`.github/workflows/journal-sync.yml` checks out and sets up Node but never runs `npm ci`. `defaultSpellRunner` in `scripts/journal-sync.js` returns "skipped: spellchecker binary not found" when `node_modules/.bin/spellchecker` is missing. Only `journal-sync-precheck.yml` (which does run `npm ci`) guards `progress.md` titles. Read in the workflow and script 2026-10-13, not seen in a run log. A `/snag` candidate.
+
+#### `server-upgrade.js` links a reused or reopened issue without `replace_parent` `[fid: subissue-attach-without-replace-parent]` `[captured 2026-10-13]`
+
+`attachSubIssue` POSTs only `sub_issue_id`, and `executePlan` calls it for `comment` and `reopen` as well as `file`. An issue that already has a parent may then fail to link; the error is stored as `subIssueError`, not fatal. Unverified: whether GitHub refuses without `replace_parent` needs a throwaway issue pair. Read in the code 2026-10-13.
+
+#### The Rooibos patch file is named for alpha.55 while alpha.56 is installed `[fid: rooibos-patch-name-version-mismatch]` `[captured 2026-10-13]`
+
+`patches/rooibos-roku+6.0.0-alpha.55.patch` sits beside a `package.json` pin of `rooibos-roku` 6.0.0-alpha.56 (since #1067). It still applies, but patch-package matches by name and version. Regenerate it against alpha.56 (`npx patch-package rooibos-roku`) and remove the old file. Checked 2026-10-13; not run.
+
+#### `renovate.json` says "CLI smoke-tested", but the smoke workflow only loads the modules `[fid: renovate-cli-smoke-tested-wording]` `[captured 2026-10-13]`
+
+The `roku-deploy` and `rooibos-roku` group and the husky and lint-staged group descriptions in `renovate.json` say "CLI smoke-tested by `_smoke-test-deps.yml`". That workflow's header says it loads modules and does not run the CLIs, and no step covers `rooibos-roku`. Related: `smoke-test-checks-unused-roku-deploy-api`. Fix the wording (or add the coverage). Checked 2026-10-13.
 
 ### components
 
@@ -591,6 +616,22 @@ Not checked: which track is audible on the muxed stream; how common muxed multi-
 
 Not done now: no real source is known to use this layout. Act when a user report or a real source shows it.
 
+#### An external bitmap subtitle track may take the custom caption path and draw nothing `[fid: external-bitmap-subtitle-custom-path]` `[captured 2026-10-13]` `[prompt: /snag An external bitmap subtitle track may take the custom caption path and draw nothing (VideoPlayerView keys custom subtitles on IsExternal alone)]`
+
+`VideoPlayerView`'s custom-subtitle decision returns `selectedSubtitle.IsExternal` and never checks the codec, so an external `.sub` or `.sup` track could be sent to the text renderer. Related but separate: `custom-subtitles-depend-on-vtt-first`. Read in the code 2026-10-13, not reproduced: whether Jellyfin marks such a track external needs a device and a library with one. A `/snag` candidate.
+
+#### `ExtrasRowList.onDestroy` keeps `m.top.content`, so its cells may keep a retain cycle `[fid: extras-rowlist-keeps-content-on-destroy]` `[captured 2026-10-13]` `[prompt: /snag ExtrasRowList.onDestroy does not drop m.top.content, so its BrowseRowItem cells may keep the retain cycle ADR 0029 breaks elsewhere]`
+
+`ExtrasRowList.onDestroy` clears its task, slot and result state but never sets `m.top.content = invalid`, unlike `BaseGridView` and `SearchResults`. Its `BrowseRowItem` cells may then keep the cycle ADR 0029 breaks. Tech-debt `observe-without-on-destroy-jrscreen-only` notes the gap but proposes no fix. The `leaks.spec.js` census on a device would settle it. A `/snag` candidate.
+
+#### Remove the unused `transcodeReasons` field from `VideoPlayerView` `[fid: videoplayer-transcodereasons-unused]` `[captured 2026-10-13]`
+
+`VideoPlayerView.xml` declares `transcodeReasons`, and `init()` sets it to `[]`; nothing reads it (`LoadVideoContentTask` uses its own `transcodeReasons` on an AA). `docs/architecture/playback.md` already says so. Remove the field and the line, and update that doc. Checked 2026-10-13.
+
+#### The `livetv` placeholder is built from the outlined `liveTV.svg`, against fill Rule 4 `[fid: livetv-placeholder-outlined-source]` `[captured 2026-10-13]`
+
+`resources/placeholders/placeholders.json` builds the `livetv` placeholder from `liveTV.svg`, the outlined (fill 0) icon source, while every other placeholder uses a filled source, as fill Rule 4 in `resources/icons/README.md` asks. The README now records it as the one exception (docs-voice Charter review, 2026-10-13); nothing recorded whether it was chosen. Close it by fetching a filled variant (`npm run icons:add -- live_tv --as liveTV_filled --filled`), pointing the `livetv` entry at it and running `npm run icons:build`, then checking the placeholder on a device; or record why it stays outlined and keep the exception in the README.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -777,6 +818,10 @@ Options weighed in `/snag` (`unprobed-limit` was recommended, then disproved: it
 Not checked: what the server spends the 10 s on (log lines show a metadata refresh for the item finishing as the answer arrives; not confirmed as the cause); whether it depends on the stream (a public HLS stream with 14 streams, against a local one with 2); how long the server takes at most; versions 10.7 to 10.10.
 
 Not done now because the Back and pool-slot design belongs with the `failure-not-empty` project's slow-server work, and the cause should be found first.
+
+#### `AudioStream()` and `setupVideoContentWithAuth()` can send the text `null` in stream URL params `[fid: stream-url-params-send-null]` `[captured 2026-10-13]`
+
+`items.AudioStream()` passes `mediaSources[0].container` and `.id` straight into `params`, and `LoadVideoContentTask.setupVideoContentWithAuth()` passes `PlaySessionId` and `Container`, which can be `invalid`. `buildParams` turns `invalid` into `k=null` (tech-debt `buildparams-no-array-support` records that behavior but says no caller sends such values; these two can). Found by the docs-voice comment pass, checked against the code 2026-10-13. Close it by guarding the fields (omit a missing one) and adding a spec case for each caller.
 
 ### tests
 
@@ -1027,6 +1072,22 @@ Options: `drop` (recommended): delete the line from the five configs and correct
 Not checked: on a device, whether the app's `Main` code after `Rooibos_init` runs when the test screen closes, and whether that has any effect; whether any spec has come to depend on the app's `Main` being in the build.
 
 Closes when the line is gone from every tracked config, the lint text is corrected, and `npm run test:unit` passes. Ships as its own PR from `main`.
+
+#### `ropm-hook.test.js` rewrites the real `roku_modules` XML on every run and asserts nothing that can fail `[fid: ropm-hook-test-rewrites-real-modules]` `[captured 2026-10-13]` `[prompt: /snag ropm-hook.test.js rewrites the real roku_modules XML on every test:scripts run and its only assertion cannot fail]`
+
+The test spawns `scripts/ropm-hook.cjs`, which resolves `components/roku_modules` and `source/roku_modules` from its own directory, so it rewrites the checkout's real `.xml` files in place (idempotent today). The script catches every error, and the only assertion is that the exit code is a number. Tech-debt `ropm-hook-fails-silently` (#986) covers the hook, not the test. A `/snag` candidate.
+
+#### The stale-budget test for `dialogs.spec.js` hardcodes the sleep count `[fid: rta-sleep-budget-test-hardcoded]` `[captured 2026-10-13]`
+
+In `tests/scripts/unit/lint/rta-sleep-budgeted.test.js`, the `dialogs.spec.js` case uses `sleep(1)` against a `BUDGETS` entry of 2 in `scripts/lint/eslint-rules/rta-sleep-budgeted.js`. The next budget change breaks it again, as one already did. Derive it as the entry minus one. Checked 2026-10-13.
+
+#### A `crash-report` test runs a real `git worktree add` against the checkout `[fid: crash-report-test-real-worktree-add]` `[captured 2026-10-13]`
+
+The `getOrBuildAnalysis` case with a TTL of 0 in `tests/scripts/unit/crash-report.test.js` reaches `buildAnalysisInWorktree`, which runs `git worktree add --detach` on the real repo with a fake tag; it is expected to fail before registering. A unit test should not run git against the checkout: inject the git runner for that step. Checked in the code 2026-10-13; not run.
+
+#### `BaseTestSuite.setTestDisplaySetting()` has no callers and is still documented `[fid: set-test-display-setting-unused]` `[captured 2026-10-13]`
+
+`tests/source/BaseTestSuite.spec.bs` defines `setTestDisplaySetting()`; nothing in `tests/` calls it, and `docs/dev/unit-tests.md` lists it in the helper table and an error row. Remove it and both doc mentions, or use it in the suites that set display settings by hand. Checked 2026-10-13.
 
 ### docs
 
