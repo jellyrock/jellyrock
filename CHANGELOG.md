@@ -7,10 +7,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Changed
-
-- (playback) Test the Dolby Vision remux decision itself ([#1193](https://github.com/jellyrock/jellyrock/pull/1193))
-
 ### Fixed
 
 - Keep music artists out of search and Favorites people on 12.0+ ([#1195](https://github.com/jellyrock/jellyrock/pull/1195))
