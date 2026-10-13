@@ -1,10 +1,10 @@
 /**
- * `resolveServer` — how `RTA_CONFIG.server` is derived from the environment.
+ * `resolveServer`: how `RTA_CONFIG.server` is derived from the environment.
  *
  * This exists because of a defect that shipped past every gate: `config.js` began
  * loading `.env` itself, `.env.example` shipped bare `RTA_SERVER_URL=` keys, and
  * the resolution used `??`. dotenv reads a bare key as the empty STRING, which
- * `??` accepts as an override — so a contributor who followed the documented
+ * `??` accepts as an override, so a contributor who followed the documented
  * onboarding step (copy `.env.example` to `.env`) got `server.url === ''` and a
  * functional suite that drove nothing. Nothing asserted the resolution, so there
  * was nothing to go red.
@@ -49,7 +49,7 @@ describe('resolveServer', () => {
   });
 
   // The asymmetry that makes this more than a `||` sweep: an empty PASSWORD is a
-  // real value — it is the public demo's actual password — so it has to survive
+  // real value (it is the public demo's actual password), so it has to survive
   // as an override while an empty url does not.
   it('keeps an explicitly empty password instead of falling back', () => {
     const resolved = resolveServer(
@@ -65,7 +65,7 @@ describe('resolveServer', () => {
 
   // dotenv strips whitespace around an UNQUOTED value but preserves it inside a
   // QUOTED one, so `RTA_SERVER_URL="  http://x  "` is the shape that actually
-  // arrives here still padded — and a padded url reaches the driver as a broken
+  // arrives here still padded, and a padded url reaches the driver as a broken
   // one. Trimming the emptiness TEST without trimming the VALUE would leave that.
   it('trims a padded url and username rather than passing the padding through', () => {
     const resolved = resolveServer({
@@ -91,14 +91,14 @@ describe('resolveServer', () => {
 });
 
 /**
- * `resolveContent` — the content-dependent knobs (`heroMovie`, the seek positions, the
+ * `resolveContent`: the content-dependent knobs (`heroMovie`, the seek positions, the
  * search query) resolved from the environment.
  *
  * These were literals until 2026-09-20, which made a repointed suite quietly wrong: the
  * defaults name films in the PUBLIC DEMO's library, and `findMovie` answers a miss with
  * `{ index: 0, id: '' }` rather than throwing. Measured against the local 12.0 test
  * server, `Dracula` and `The Boy in the Plastic Bubble` both return ZERO matches and the
- * suite still went green — driving a different film and skipping the seek entirely.
+ * suite still went green, driving a different film and skipping the seek entirely.
  *
  * Same testing rationale as `resolveServer` above: through the exported pure function,
  * never the module's own evaluation, so the result cannot depend on the running
@@ -146,7 +146,7 @@ describe('resolveContent', () => {
     expect(resolveContent({ RTA_HERO_MOVIE: '  Sintel  ' }).heroMovie).toBe('Sintel');
   });
 
-  // A seek is fed to the player. `Number('abc')` is NaN and `Number('')` is 0 — and 0 is
+  // A seek is fed to the player. `Number('abc')` is NaN and `Number('')` is 0, and 0 is
   // a LEGITIMATE seek target, which is exactly why a typo must not be able to produce it
   // silently. Anything non-finite or negative reads as unset instead.
   it('rejects a non-numeric or negative seek instead of seeking to NaN', () => {

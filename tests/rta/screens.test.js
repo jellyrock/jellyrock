@@ -1,5 +1,5 @@
 /**
- * `firstUnmetRequirement` — how a screen's `requires` gates are resolved.
+ * `firstUnmetRequirement`: how a screen's `requires` gates are resolved.
  *
  * This exists because the gate is honored by TWO consumers (the functional suite and the
  * store-screenshot orchestrator) and a screen gated in one but not the other is a silent
@@ -7,10 +7,10 @@
  * never renders, burning a ~15-minute matrix run. Both now call this one resolver, so the
  * contract it implements is worth pinning rather than re-reading at each call site.
  *
- * The SHORT-CIRCUIT is the load-bearing part. `trickplay` carries two gates, and the
+ * The SHORT-CIRCUIT is the part that matters. `trickplay` carries two gates, and the
  * second (`TRICKPLAY_DATA`) issues a server request keyed on the item id the first
  * (`HERO_PRESENT`) exists to establish. Run out of order, or without stopping at the
- * first failure, it queries with an empty id — which answers "no trickplay" for a reason
+ * first failure, it queries with an empty id, which answers "no trickplay" for a reason
  * that has nothing to do with trickplay.
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -62,7 +62,7 @@ describe('firstUnmetRequirement', () => {
     expect(gate.probe).toHaveBeenCalledWith(ctx);
   });
 
-  // A probe may be a plain synchronous predicate (HERO_PRESENT is one — it only reads a
+  // A probe may be a plain synchronous predicate (HERO_PRESENT is one: it only reads a
   // field), so the resolver must not require a promise.
   it('accepts a synchronous probe as well as an async one', async () => {
     const sync = { probe: (ctx) => Boolean(ctx.heroId), reason: 'no hero' };

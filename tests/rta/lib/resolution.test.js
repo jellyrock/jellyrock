@@ -2,14 +2,14 @@
  * Hardware-free gate on the resolution audit's classification.
  *
  * The audit's whole value is that it separates two defects a green suite cannot tell
- * apart — a DUPLICATE id, and a single id sitting in a view that is parked off-screen —
+ * apart (a DUPLICATE id, and a single id sitting in a view that is parked off-screen),
  * so what needs pinning is that it reports them separately and stays quiet on the ordinary
  * case. A classifier that collapsed the two, or that flagged every hidden font and timer,
  * would be worse than no audit: it would train its readers to skip the line.
  *
- * The census is a fixture rather than a device read, deliberately. The shape it returns
- * was measured on `.177` — `flatTree` entries carrying `id`, `subtype`, `ref`, `parentRef`,
- * `keyPath`, `visible`, `opacity` — and what needs a real Roku is whether a given keyPath
+ * The census is a fixture rather than a device read, on purpose. The shape it returns
+ * was measured on `.177` (`flatTree` entries carrying `id`, `subtype`, `ref`, `parentRef`,
+ * `keyPath`, `visible`, `opacity`), and what needs a real Roku is whether a given keyPath
  * resolves at all, which stays hardware-verified through `npm run test:rta`. The same
  * split `steps.test.js` already draws.
  */
@@ -101,7 +101,7 @@ describe('hiddenAncestor — a suspended view hides everything under it', () => 
   it('does NOT flag a node for being hidden ITSELF — that is usually the subject', () => {
     // Measured: the first full audited suite produced 19 anomaly records and 14 were
     // `#osd` flagged with `hiddenAt` pointing at `#osd`. Those are
-    // `waitFor('#osd.visible', (v) => v === false)` — a gate whose job is to wait until
+    // `waitFor('#osd.visible', (v) => v === false)`, a gate whose job is to wait until
     // the OSD is hidden. Reporting it flags a node for the exact state the caller
     // asserted. The defect is being hidden BECAUSE THE VIEW AROUND IT was suspended.
     const t = tree([
@@ -204,12 +204,12 @@ describe('classifyResolution — the two defects stay separate', () => {
   // `source/utils/buttonOverflow.bs` moves the tail into it once the row is over its cap,
   // leaving a `moreButton` in the last slot.
   //
-  // This is the `#homeRows` defect again, on a surface this suite reads 31 times: the
+  // This is the `#homeRows` defect again, on a surface this suite reads often: the
   // stashed button is still in the SCENE, so a scene-rooted `#watchedButton.id` resolves
   // and the gate goes green while describing a button nobody can see. Pinned here because
-  // the overflow is not reachable on the fixture today — main's own note puts ItemDetails
-  // at exactly 8 of 8 — so nothing else can exercise it until a ninth button lands, and by
-  // then the question is whether the instrument WOULD have caught it. It does, with no new
+  // the overflow is not reachable on the fixture today (the `buttonOverflow.bs` header
+  // counts ItemDetails at exactly 8 of 8, on 2026-09-07), so nothing else can exercise it
+  // until a ninth button lands, and by then the question is whether the instrument WOULD have caught it. It does, with no new
   // machinery: `hiddenAncestor` walks up and the stash is `visible: false`.
   it('reports a button the overflow menu has stashed as OFF-SCREEN', () => {
     const t = tree([
@@ -272,7 +272,7 @@ describe('the census budget reports that it stopped, rather than stopping silent
     // with no way to say whether N was the population or the point we stopped looking.
     //
     // Driven against the DEFAULT budget rather than a small override, because the module
-    // reads `RTA_AUDIT_BUDGET` once at import time — setting it here would change nothing
+    // reads `RTA_AUDIT_BUDGET` once at import time, so setting it here would change nothing
     // and would read as though it had.
     await audit(1005);
     const markers = recordResolution.mock.calls.map(([r]) => r).filter((r) => r.truncated);

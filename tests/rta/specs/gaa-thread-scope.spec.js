@@ -11,7 +11,7 @@
  *
  * The first version of this spec only compared a render-thread component against a
  * Task thread, and both sentinels came back empty in both directions. That was read
- * as "per thread" — but the experiment varied the THREAD and the COMPONENT at the
+ * as "per thread", but the experiment varied the THREAD and the COMPONENT at the
  * same time, so it could not tell the two explanations apart. The ledger was built on
  * the wrong one, and the symptom was the peak gate reading 0 live threads while the
  * app was plainly running several.
@@ -21,8 +21,8 @@
  * the count back in the same component. It reads 1 where two render-thread components
  * read each other as 0.
  *
- * Kept as a regression gate because the conclusion is load-bearing: if a future Roku
- * OS made GetGlobalAA thread-scoped, the ledger could move there and get ~500x
+ * Kept as a regression gate because the ledger design rests on that conclusion: if a
+ * future Roku OS made GetGlobalAA thread-scoped, the ledger could move there and get ~500x
  * cheaper, and this is the check that would notice.
  */
 import fs from 'node:fs';
@@ -71,7 +71,7 @@ it('determines whether GetGlobalAA is shared across threads', async () => {
   expect(started, 'the probe Task did not start').toBeTruthy();
 
   // Poll until the Task has actually finished. Reading before it runs would produce
-  // an empty result that looks exactly like "not shared" — the failure this spec
+  // an empty result that looks exactly like "not shared", the failure this spec
   // exists to avoid, so it is gated on the Task's own state rather than a sleep.
   let result = null;
   for (let i = 0; i < 40; i++) {
@@ -94,7 +94,7 @@ it('determines whether GetGlobalAA is shared across threads', async () => {
   fs.writeFileSync(outFile, JSON.stringify({ taskState, taskSaw, renderSaw, shared }, null, 2));
 
   // SEPARATE "per thread" from "per component". The result above varies BOTH at
-  // once, so on its own it cannot tell them apart — and the task ledger reading 0
+  // once, so on its own it cannot tell them apart, and the task ledger reading 0
   // across two render-thread components says the distinction matters.
   const self = await call('selfLaunchAndCount');
   const countInside = field(self, 'countInsideThisComponent');

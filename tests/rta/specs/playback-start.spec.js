@@ -2,7 +2,7 @@
  * A playback start on a server that is slow to answer, driven through the request-failure
  * switch's `slow` rule (`rtaFailRequests`). Every start opens a playback-start app wait
  * (`QueueManager.beginPlaybackStart`), a Promise that the player ends when it holds a stream,
- * and that anything else ending the start fails — so the spinner follows the start rather than
+ * and that anything else ending the start fails, so the spinner follows the start rather than
  * whichever stop ran last:
  *
  *  - Back mid-start from details or from a grid takes the spinner with it, and leaves the
@@ -173,8 +173,8 @@ it('Back during a Series "Play all" cancels it and stays on the series', async (
   await waitFocusInside('#buttons', { label: 'focus back on the buttons', timeout: 5000 });
 
   await waitHeld(0, 'the episode list answered', HOLD_MS + 5000);
-  // Timer window, proving a NON-EVENT: before this fix the answer started the series a moment
-  // after it landed. No app field reports that a launch did NOT happen, so this out-waits it.
+  // Timer window, proving a non-event: before this fix the answer started the series a moment
+  // after it landed. No app field reports that a launch did not happen, so this out-waits it.
   await sleep(3000);
   expect(await getActiveVal('subtype()'), 'still on the series details, nothing playing').toBe(
     'ItemDetails',

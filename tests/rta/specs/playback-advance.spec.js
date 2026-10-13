@@ -50,7 +50,7 @@ it('an episode that ends naturally advances to the next episode', async () => {
   // Auto-advance only happens when the queue holds the next episode, and
   // LoadVideoContentTask only queues it when this setting allows. Its default
   // ("webclient") defers to a per-user SERVER setting, which would make the result a
-  // fact about the fixture rather than the app — so pin it. rta-run.js restores the
+  // fact about the fixture rather than the app, so pin it. rta-run.js restores the
   // whole registry afterwards.
   await odc.writeRegistry({ values: { [session.userId]: { playbackPlayNextEpisode: 'enabled' } } });
   await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
@@ -67,7 +67,7 @@ it('an episode that ends naturally advances to the next episode', async () => {
       read: readPlayer(episode.id),
     });
 
-    // Seek from the SERVER's runtime, not the player's `duration` — see findEpisodeWithNext.
+    // Seek from the SERVER's runtime, not the player's `duration`; see findEpisodeWithNext.
     await odc.setValue({
       base: 'scene',
       keyPath: `#${episode.id}.seek`,

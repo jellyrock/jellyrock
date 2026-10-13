@@ -4,7 +4,7 @@
  *
  *  - the first page failing shows the failure state with Try again focused, focus comes back
  *    to it from the options dialog and the alpha menu, and pressing it loads the grid;
- *  - the "#" letter filter with its first query failing shows the same state — before, the
+ *  - the "#" letter filter with its first query failing shows the same state; before, the
  *    task went on to its second query and faulted on the failed first reply;
  *  - a later page failing keeps what is on screen and says so, and both moving through the
  *    grid and coming back to it from another screen ask again.
@@ -73,7 +73,7 @@ it('a failed first page shows Try again, keeps focus on it, and pressing it load
   expect(await getActiveVal('#loadFailed.visible')).toBe(true);
   expect(await getActiveVal('#emptyText.visible')).toBe(false);
 
-  // Closing the options dialog without a change hands focus back to what the grid shows —
+  // Closing the options dialog without a change hands focus back to what the grid shows:
   // Try again, not the empty grid behind it.
   await press(ecp.Key.Option);
   await waitFocusInside('#options', { label: 'options dialog opened' });

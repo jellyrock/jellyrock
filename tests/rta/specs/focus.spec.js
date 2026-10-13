@@ -5,7 +5,7 @@
  * with the JRScreen lifecycle bridge (saveLastFocus on onViewSuspend, handleFocus
  * on resume). This spec guards that contract end-to-end on a real device: after
  * Home -> Library -> Detail and two Backs, focus must return to exactly where it
- * was at each level — the suspended library grid's tile, then Home's content.
+ * was at each level: the suspended library grid's tile, then Home's content.
  *
  * The waitFocusInside gates ARE the assertions (they throw on timeout). Run:
  *   npx vitest run --config vitest.rta.config.js -t 'focus'

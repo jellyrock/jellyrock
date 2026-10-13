@@ -94,7 +94,7 @@ The bare ones fall into six categories:
 | Category | Why no signal was available |
 |---|---|
 | Paint or texture settle | A `waitFor` gate has already passed, and this waits for **pixels**. The app's only load-completion signal is the `cellLoad*` counter family, compiled only under `perfTiming`, which [`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) forces off in `build:prod`. These navs are shared with `screenshots:capture`, which runs that build, so on the path they serve there is no field to read. |
-| Timer window | Waiting out a period to prove a **non-event**. [`deeplink.spec.js`](specs/deeplink.spec.js) says so: `Assert we never leave Home (a non-event → a bounded wait).` The only signal would be the thing being disproved, and a dialog that must survive its own auto-hide can't be gated on the timer under test. |
+| Timer window | Waiting out a period to prove a **non-event**. [`deeplink.spec.js`](specs/deeplink.spec.js) says so: `Assert we never leave Home (a non-event, so a bounded wait).` The only signal would be the thing being disproved, and a dialog that must survive its own auto-hide can't be gated on the timer under test. |
 | App lifecycle | [`lib/driver.js`](lib/driver.js)'s `bootMs` and `exitMs`. The channel is down or starting, so ODC can't answer. |
 | Measurement window | The wait is the quantity being measured (a baseline phase, an extras-launch window, `navGridScroll`'s rest before and drain after its timed scroll). Gating it would change what is measured. |
 | Async teardown | `retainedAfter` in `leaks.spec.js`: no app field reports that the teardown the last Back started has finished. |

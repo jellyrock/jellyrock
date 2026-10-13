@@ -3,12 +3,12 @@
  *
  * The bench answers "what does one recordTaskLaunch call cost" (555.7 us at ledger
  * depth 10 on a Stick 4K). Turning that into a screen cost needs the number of
- * launches that screen really performs — and the figure floating around this project
+ * launches that screen really performs. The figure floating around this project
  * is "38", which came from counting `launchTask()` CALL SITES in ExtrasRowList. A
  * call site is not a runtime launch. This measures the screen instead of multiplying.
  *
  * `#if perfTiming` accumulates elapsed microseconds and a launch count inside
- * `admitTaskLaunch` — the `cellLoadInstrumentUs` precedent, including its trap: the
+ * `admitTaskLaunch`, the `cellLoadInstrumentUs` precedent, including its trap: the
  * roTimespan is cached, never created per call, because a fresh one costs ~22 us and
  * would dwarf what it is timing.
  *
@@ -63,22 +63,22 @@ afterAll(async () => {
 });
 
 /**
- * OPT-IN. This is a measurement, not a gate — it reports numbers and asserts only that
+ * OPT-IN. This is a measurement, not a gate: it reports numbers and asserts only that
  * the apparatus ran, so it has nothing to catch on a normal run. It stays in the suite
  * because re-deriving it costs a session, but it is not paid for on every `test:rta`:
  *
  *   RTA_BENCH=1 npm run test:rta
  *
  * Skipping the only `it` in the file skips its `beforeAll` too (verified on Vitest
- * 4.1.10: a file whose every test is skipped runs no hooks at all), which is the point —
- * this spec's `beforeAll` does a hardRelaunch + seedHome + waitHome, which is minutes
+ * 5.0.3, 2026-10-13: a file whose every test is skipped runs no hooks at all), which is the point.
+ * This spec's `beforeAll` does a hardRelaunch + seedHome + waitHome, which is minutes
  * of device time for a run that would report nothing.
  */
 const BENCH_ENABLED = process.env.RTA_BENCH === '1';
 
 it.skipIf(!BENCH_ENABLED)('reports what the ceiling costs a real ItemDetails open', async () => {
-  // COLD-START COST FIRST, before any reset. The 7 launches in `setGlobalNodes()` and
-  // `main.bs` run on the MAIN thread, and `m.global` is render-owned — so those pay the
+  // COLD-START COST FIRST, before any reset. The launches in `setGlobalNodes()` and
+  // `main.bs` run on the MAIN thread, and `m.global` is render-owned, so those pay the
   // OFF-thread price (~900 us at low depth) rather than the render-thread price the
   // ItemDetails figure below reports. That is ~3x per launch, on the cold-start path,
   // and nothing had measured it.
@@ -87,7 +87,7 @@ it.skipIf(!BENCH_ENABLED)('reports what the ceiling costs a real ItemDetails ope
   const bootLaunches = field(bootCost, 'launches');
 
   // Zero AT the grid, so the window covers only the details screen and its extras
-  // rows — not Home's bootstrap launches, which would otherwise be charged to it.
+  // rows, not Home's bootstrap launches, which would otherwise be charged to it.
   const wasReset = await call('resetLedgerCost');
   expect(wasReset, 'build carries no perfTiming ledger instrument').toBeTruthy();
 
@@ -128,7 +128,7 @@ it.skipIf(!BENCH_ENABLED)('reports what the ceiling costs a real ItemDetails ope
     ),
   );
 
-  // It must have RECORDED launches for the number to mean anything — 0 launches
+  // It must have RECORDED launches for the number to mean anything: 0 launches
   // would report 0 ms and read as "free" rather than "not measured".
   expect(launches, 'no launches were recorded during the ItemDetails open').toBeGreaterThan(0);
 });

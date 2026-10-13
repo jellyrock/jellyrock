@@ -8,7 +8,7 @@
  *
  * The OSD hides that bug in most cases: both notifications refuse to show while it is up,
  * and a dialog opened FROM the OSD keeps it up. What reaches it is a dialog that opens over
- * a playing video with the OSD down — a Jellyfin "send message", for one. The harness
+ * a playing video with the OSD down (a Jellyfin "send message", for one). The harness
  * cannot send one: the seeded token keeps the app's socket off every session (see
  * `authenticate` in lib/jellyfin.js), and minting a token under the app's own DeviceId
  * could log the device out of that server. So the spec puts a `JRDialog` under the scene
@@ -93,7 +93,7 @@ it('the next-episode button stays down while a dialog is open over the player', 
       'the OSD must be down, or it hides the button itself',
     ).toBe(false);
 
-    // Seek from the SERVER's runtime, not the player's `duration` — see findEpisodeWithNext.
+    // Seek from the SERVER's runtime, not the player's `duration`; see findEpisodeWithNext.
     const seekTo = episode.runTimeSeconds - SECONDS_BEFORE_END;
     await odc.setValue({ base: 'scene', keyPath: `#${episode.id}.seek`, value: seekTo });
 

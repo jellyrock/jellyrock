@@ -1,12 +1,12 @@
 /**
  * RTA functional tests for the deep-link / cast CONTRACT (the ECP `contentId`
- * consumer — ADR 0018). Each test lands logged-in on Home, fires a runtime cast
+ * consumer, ADR 0018). Each test lands logged-in on Home, fires a runtime cast
  * (`/input?contentId=...`, the same wire a Jellyfin sender mints), and asserts the
- * landing — regression-netting the contract beyond the manual `curl` recipes in
+ * landing, regression-netting the contract beyond the manual `curl` recipes in
  * docs/dev/deep-linking.md.
  *
  * Ids are resolved at runtime from the demo (never hardcoded). Assertions read the
- * ACTIVE routed view (getActiveVal → m.global.activeRoutedView) and the device's
+ * ACTIVE routed view (`getActiveVal` reads `m.global.activeRoutedView`) and the device's
  * media-player state, both robust to a suspended view lingering (see tests/rta/CLAUDE.md).
  *
  * Requires a reachable device + .env (ROKU_IP / ROKU_PASSWORD), same as screens.spec.
@@ -39,7 +39,7 @@ const VALIDATION_FETCH_BUDGET_MS = 6000;
 let session;
 let heroId; // a Movie (open / play targets)
 let moviesLibraryId; // a CollectionFolder (library-divert target)
-let audioId; // an Audio item (instantmix target — demo InstantMix returns a real mix)
+let audioId; // an Audio item (instantmix target; the demo InstantMix returns a real mix)
 
 beforeAll(async () => {
   session = await authenticate(RTA_CONFIG.server);
@@ -61,18 +61,18 @@ async function castFromHome(contentId) {
 }
 
 // An invalid id must never disturb the session: validate-before-navigate toasts and
-// stays put (ADR 0018). Assert we never leave Home (a non-event → a bounded wait).
+// stays put (ADR 0018). Assert we never leave Home (a non-event, so a bounded wait).
 it('invalid id leaves the session undisturbed (stays Home)', async () => {
   await castFromHome('deadbeefdeadbeefdeadbeefdeadbeef');
-  await sleep(VALIDATION_FETCH_BUDGET_MS); // let the (failed) validation fetch resolve — it must NOT navigate
-  // Resolved rather than named — the list id is a property of Home's selected tab. Still read
+  await sleep(VALIDATION_FETCH_BUDGET_MS); // let the (failed) validation fetch resolve; it must not navigate
+  // Resolved rather than named: the list id is a property of Home's selected tab. Still read
   // through `getActiveVal`: the assertion is that Home is the ACTIVE view and populated, and a
   // scene-rooted read would also be satisfied by a suspended Home sitting behind another screen.
   const list = await homeListId();
   expect(await getActiveVal(`${list}.content.getChildCount()`)).toBeGreaterThan(0);
 }, 60000);
 
-// Bare id (action defaults to open) → the item's details springboard, loaded with that id.
+// Bare id (action defaults to open) lands on the item's details springboard, loaded with that id.
 it('open (bare id) lands on the details springboard', async () => {
   await castFromHome(heroId);
   await waitFor('itemId', (id) => id === heroId, {
@@ -82,7 +82,7 @@ it('open (bare id) lands on the details springboard', async () => {
   });
 }, 90000);
 
-// action=play → playback actually starts (the per-type quickplay engine).
+// action=play: playback actually starts (the per-type quickplay engine).
 it('action=play starts playback', async () => {
   await castFromHome(`id=${heroId}|action=play`);
   await waitMediaPlaying('deep-link play');
@@ -92,16 +92,17 @@ it('action=play starts playback', async () => {
 // The once-per-navigation dedup keys off the router's per-navigation route.id
 // (ItemDetails.checkDeepLinkLaunch / replayDeepLinkRuntime). TWO OPPOSING requirements ride on
 // that one field, and castFromHome relaunches every time so the specs above never exercise either:
-//   - a back-from-player resume (SAME route.id) must NOT re-fire (else an infinite relaunch loop);
+//   - a back-from-player resume (SAME route.id) must not re-fire (else an infinite relaunch loop);
 //   - a repeat cast of the SAME item (its ItemDetails still the active view) must RE-fire.
 // This is the regression net docs/dev/deep-linking.md advertises for the same-path-resume bug.
 it('back-from-player does not re-fire; a repeat play cast does', async () => {
-  // First play cast → the movie plays (Home → Details(?deeplink=play) → Player back-stack).
+  // First play cast: the movie plays (Home, then Details(?deeplink=play), then the Player
+  // back-stack).
   await castFromHome(`id=${heroId}|action=play`);
   await waitMediaPlaying('deep-link first play');
 
   // Back from the player resumes the launching details (suspended, not popped). Same route.id, so
-  // checkDeepLinkLaunch must NOT re-fire — playback must stay stopped.
+  // checkDeepLinkLaunch must not re-fire, so playback must stay stopped.
   await press(ecp.Key.Back);
   await waitFor('itemId', (id) => id === heroId, {
     read: getActiveVal,
@@ -113,7 +114,7 @@ it('back-from-player does not re-fire; a repeat play cast does', async () => {
   const afterBack = await ecp.getMediaPlayer().catch(() => null);
   expect(PLAYING_STATES.includes(afterBack?.state)).toBe(false);
 
-  // Repeat cast of the SAME item, NO relaunch — we're on its loaded details, which the router
+  // Repeat cast of the SAME item, no relaunch, because we're on its loaded details, which the router
   // reuses on a same-path navigation. A fresh route.id (the in-place playFromDeepLink path)
   // must RE-fire playback.
   await ecp.sendInput({ params: { contentId: `id=${heroId}|action=play` } });
@@ -131,9 +132,9 @@ it('library/container id lands on its grid', async () => {
   });
 }, 90000);
 
-// action=instantmix → builds an instant mix from the item and starts playing it.
+// action=instantmix: builds an instant mix from the item and starts playing it.
 it('action=instantmix builds a mix and starts playback', async () => {
   await castFromHome(`id=${audioId}|action=instantmix`);
   await waitMediaPlaying('deep-link instantmix');
-  await stopPlayback(); // audio keeps playing while browsing by design — stop it so it can't leak
+  await stopPlayback(); // audio keeps playing while browsing by design, so stop it so it can't leak
 }, 120000);

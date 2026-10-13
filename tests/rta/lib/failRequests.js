@@ -12,7 +12,7 @@
  *  - `slow` needs `ms`: the answer arrives `ms` after the request was sent, its pool slot busy
  *    all that time.
  *  - `times` is how many matching requests the rule applies to; omit it for all of them.
- *  - `after` is how many matching requests go through before the rule starts failing — for an
+ *  - `after` is how many matching requests go through before the rule starts failing, for an
  *    id that repeats faster than a spec can set a rule in between (a grid's page 1 and 2).
  * A rule the app cannot honor exactly is dropped, not guessed at.
  *

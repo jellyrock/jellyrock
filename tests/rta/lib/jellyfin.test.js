@@ -2,7 +2,7 @@
  * Hardware-free gate on the REST helpers' failure contract and on session identity.
  *
  * Both properties here were defects that shipped, and neither was catchable by
- * reading the code — each produced a plausible, self-consistent result:
+ * reading the code, because each produced a plausible, self-consistent result:
  *
  *  - Every authenticated helper ended in `.catch(() => null)`, so a 401 returned the
  *    same value as a successful query that found nothing. The worst reachable case
@@ -104,7 +104,7 @@ describe('a failed request is never an empty result', () => {
   });
 
   it('still reports genuine absence from a request that SUCCEEDED', async () => {
-    // The other half of the contract, and the reason this is not just "throw on
+    // The other half of the contract, and the reason this is not only "throw on
     // everything": an empty library is a fact a caller may act on. Only a request
     // that never answered is disqualified from producing one.
     routes['/Users/'] = [200, { Items: [] }];
@@ -120,7 +120,7 @@ describe('a failed request is never an empty result', () => {
 
   it('records the failure into the run record, so the cause outlives the frame', async () => {
     // A 401 inside a helper surfaces several frames away as an assertion failure.
-    // Written down here or not at all — this is what lets the run be marked
+    // Written down here or not at all: this is what lets the run be marked
     // `blocked` rather than counted as app flake.
     routes['/Users/'] = [401, {}];
     await getLibraries(session()).catch(() => {});
@@ -134,7 +134,7 @@ describe('a failed request is never an empty result', () => {
 
   it('types getBuffer failures too, so the module rule has no exception', async () => {
     // Its only caller discards the error, so nothing reads the type today. The point
-    // is that "every request in this file throws JellyfinRequestError" stays true —
+    // is that "every request in this file throws JellyfinRequestError" stays true:
     // a rule with one silent straggler is one the next reader has to verify by hand.
     routes['/Items'] = [404, {}];
     const err = await getBuffer(`${base}/Items/x/Images/Primary`, {}).catch((e) => e);
@@ -262,7 +262,7 @@ describe('findEpisodeWithNext', () => {
 
   it('skips a series whose first episode has no known runtime', async () => {
     // A caller seeks relative to the end, and the device's own `duration` can read 0 on
-    // live-transcoded streams — so an episode the server cannot size is not usable.
+    // live-transcoded streams, so an episode the server cannot size is not usable.
     routes['/Items'] = [
       200,
       {

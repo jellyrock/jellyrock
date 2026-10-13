@@ -1,5 +1,5 @@
 /**
- * Cell-load instrumentation gate — does the ledger count things that actually happened?
+ * Cell-load instrumentation gate: does the ledger count things that actually happened?
  *
  * ## Why this exists as a GATE, and why nothing else could have been one
  *
@@ -7,19 +7,19 @@
  * that shipped it ran all of them green:
  *
  *  - **Unit tests could not see it.** `cellLoad.spec.bs` feeds the ledger synthetic call
- *    sequences and mutation-verifies each one. The defect was not in the ledger — it was a
+ *    sequences and mutation-verifies each one. The defect was not in the ledger. It was a
  *    call site being invoked in a state where the call is wrong. A spec that supplies the
  *    calls itself cannot observe who really makes them. (That gap is the repo-wide
  *    "no spec instantiates a SceneGraph cell component" followup; this spec does not close
  *    it, it routes around it by asserting on the DEVICE instead.)
- *  - **The sweep measurements could not see it.** `cellSweepGrid` reads identically —
- *    `appearances` 46, `popIns` 24, `popInsCold` 6 — with and without the bug, because a
+ *  - **The sweep measurements could not see it.** `cellSweepGrid` reads identically
+ *    (`appearances` 46, `popIns` 24, `popInsCold` 6) with and without the bug, because a
  *    sweep never suspends its screen. Five launches, every field identical, both arms.
  *  - **The functional suite could not see it.** Nothing about the app misbehaves. The only
  *    thing that changed was an integer, and it changed in the direction that makes the
  *    subsystem under test look BETTER.
  *
- * So this is deliberately not a perf test. There is nothing to average and nothing to
+ * So this is not a perf test, by design. There is nothing to average and nothing to
  * explain away: a cell either came on screen or it did not.
  *
  * ## The invariant, and why it is falsifiable rather than green-forever
@@ -29,12 +29,12 @@
  *
  *     appearances <= binds        (for a resume with no scrolling)
  *
- * This is not true in general — a scroll sweep runs `appearances` 46 against `binds` 28,
+ * This is not true in general: a scroll sweep runs `appearances` 46 against `binds` 28,
  * because a cell that scrolls off and back is not rebound. It is true for THIS walk, which
  * is what makes the assertion worth having rather than structurally unviolatable: measured
  * on `.177` 2026-08-22 against the demo server this suite already targets, the pre-fix build
  * read **18 appearances against 10 binds** here and the fixed build reads **0 against 10**.
- * Those two counts are the demo library's, and they will move when it does — which is
+ * Those two counts are the demo library's, and they will move when it does, which is
  * exactly why the assertion is a bound and not an equality.
  *
  * The 18 were `visible=false` propagating down to every cell's `renderTracking` when the
@@ -51,14 +51,14 @@
  *
  * ⚠️ The bind count in particular is not stable even on one fixture: this was written
  * against a run reading 10 binds, and a later run on the same demo server read **0 binds
- * against 11 items** — a correct resume that rebinds nothing at all. Both satisfy the
+ * against 11 items**: a correct resume that rebinds nothing at all. Both satisfy the
  * bound; neither is the number to assert. That second reading is also why the item-count
  * guard below the assertion exists: at 0 binds the bound degenerates to `0 <= 0`, which a
- * broken walk satisfies just as well as a correct one.
+ * broken walk satisfies as readily as a correct one.
  *
  * Re-verified on that second fixture rather than trusting the first: reverting the
  * `textureManagerState` gate in both cell components fails this at **11 appearances against
- * 0 binds** — one phantom per cell in an 11-item grid — where the original run failed it at
+ * 0 binds**: one phantom per cell in an 11-item grid, where the original run failed it at
  * 18 against 10. The counts moved; the direction and the failure did not. Anywhere those
  * two numbers appear as a pair (here, and in `appearance-signal-gates-departure-only` in
  * `docs/decisions.md`) read them as one fixture's reading of a bound, never as the bound.
@@ -86,15 +86,15 @@ it('resuming a suspended grid does not manufacture cell appearances', async (tes
   const moviesId = libraryIdFor(ctx.libraries, MOVIES_GRID.collectionType);
   if (!moviesId) testCtx.skip('server has no "movies" library');
 
-  // Seed the landing view, do NOT inherit it. `display.<id>.landing` is registry-PERSISTED
-  // and survives a relaunch, so the Movies library opens on whatever view ran last — and
+  // Seed the landing view, do not inherit it. `display.<id>.landing` is registry-PERSISTED
+  // and survives a relaunch, so the Movies library opens on whatever view ran last, and
   // `genre-skeleton.spec.js` leaves it on `Genres`, which is a RowList with no `#itemGrid`
   // in it at all. Without this the walk below times out waiting for focus that can never
-  // arrive, and it does so ONLY when the suite runs in the order that puts that spec first:
+  // arrive, and it does so only when the suite runs in the order that puts that spec first:
   // caught 2026-08-22 by the full suite after the spec had passed twice in isolation.
   const expectedServer = await seedHome(session, LOCALE);
   await seedLibraryLanding(session, moviesId, MOVIES_GRID.landing);
-  await hardRelaunch(); // never plain relaunch — the app re-persists over the seed
+  await hardRelaunch(); // never plain relaunch: the app re-persists over the seed
   await assertSeedTookEffect(expectedServer, 'cell-load suspend/resume');
 
   await waitHome();
@@ -108,7 +108,7 @@ it('resuming a suspended grid does not manufacture cell appearances', async (tes
   await press(ecp.Key.Back);
   await waitFocusInside('#itemGrid', { timeout: 20000 });
 
-  // Gate the read on the app's own quiescence rather than a sleep — `Appearances` is in
+  // Gate the read on the app's own quiescence rather than a sleep: `Appearances` is in
   // CELL_QUIET_COUNTERS, so this settles on the very field under test.
   const { counts, instrumented, resolved } = await waitCellsQuiet('#itemGrid');
   if (!resolved) testCtx.skip('#itemGrid did not resolve — nothing was watched');
@@ -119,7 +119,7 @@ it('resuming a suspended grid does not manufacture cell appearances', async (tes
 
   // The grid must actually HOLD cells for the bound below to have verified anything.
   // Measured on the demo server 2026-08-22: a correct resume reads `binds` 0 and
-  // `appearances` 0 against **11 items** — so the assertion is `0 <= 0`, which is exactly
+  // `appearances` 0 against **11 items**, so the assertion is `0 <= 0`, which is exactly
   // what the pre-fix build would have failed (11 phantom appearances against 0 binds) and
   // equally what a walk that silently stopped reaching the grid would PASS. Without this
   // line the two are indistinguishable and the spec goes green either way. Same rule the

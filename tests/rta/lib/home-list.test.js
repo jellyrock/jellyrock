@@ -1,4 +1,4 @@
-// Tests for tests/rta/lib/home-list.js — the module that owns Home's row list ids.
+// Tests for tests/rta/lib/home-list.js, the module that owns Home's row list ids.
 //
 // Hardware-free: everything here is pure. The device-touching half (`homeListId`,
 // `waitFocusInHomeContent`) is tested against the mocked ODC in `steps.test.js`.
@@ -20,9 +20,9 @@ describe('the id and subtype constants', () => {
   });
 
   it('keeps the two POSITIONALLY aligned — `homeListId` indexes one by the other', () => {
-    // Load-bearing and invisible at the call site: `homeListId` reads `subtype()` off both
+    // Invisible at the call site: `homeListId` reads `subtype()` off both
     // ids and maps the answer back through `HOME_ROW_LIST_SUBTYPES.indexOf(...)`. Reorder
-    // one array and the resolver returns the WRONG id — which resolves to nothing, so every
+    // one array and the resolver returns the WRONG id. That id resolves to nothing, so every
     // read under it comes back `undefined` and the failure names the wrong list.
     expect(HOME_ROW_LIST_IDS).toHaveLength(HOME_ROW_LIST_SUBTYPES.length);
     for (const [i, id] of HOME_ROW_LIST_IDS.entries()) {
@@ -46,7 +46,7 @@ describe('homeListKeyPaths', () => {
 
   it('returns the bare ids for an empty suffix, rather than a trailing dot', () => {
     // A trailing `.` is not a keyPath ODC can resolve, so this would fail as "not found"
-    // rather than as a bug — the quiet kind of wrong this module exists to stop.
+    // rather than as a bug: the quiet kind of wrong this module exists to stop.
     expect(homeListKeyPaths('')).toEqual(['#homeRows', '#favoritesRows']);
     expect(homeListKeyPaths()).toEqual(['#homeRows', '#favoritesRows']);
   });
@@ -64,9 +64,9 @@ describe('focusIsInHomeContent', () => {
   });
 
   it('rejects a FAILED focus read rather than treating it as arrival', () => {
-    // `getFocusedNode` is `.catch(() => null)`ed at every call site, so this is the shape a
+    // The focus polls turn a failed `getFocusedNode` read into `null`, so this is the shape a
     // dropped ODC read actually takes. Answering `true` here would let a gate pass on the
-    // device having stopped answering — a false positive, which is the one failure mode
+    // device having stopped answering. That false positive is the one failure mode
     // these predicates must not have.
     expect(focusIsInHomeContent(null)).toBe(false);
     expect(focusIsInHomeContent(undefined)).toBe(false);

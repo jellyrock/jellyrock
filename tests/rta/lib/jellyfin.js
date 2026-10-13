@@ -1,27 +1,27 @@
 /**
  * Minimal Jellyfin demo-server REST helpers used to authenticate and locate the
- * hero movie. Plain node http/https — no SDK dependency.
+ * hero movie. Plain node http/https, with no SDK dependency.
  *
  * ## A failed request is never an empty result
  *
  * Every authenticated helper below used to end in `.catch(() => null)`, so a 401 or
  * a dropped connection returned the same value as a successful query that found
  * nothing. Callers cannot tell those apart, and they read the sentinel as a fact
- * about the FIXTURE — which is how a transport failure becomes a confident false
+ * about the FIXTURE, which is how a transport failure becomes a confident false
  * statement about the demo server.
  *
  * That is not theoretical, and it is worse than a red run. Measured 2026-08-12:
  * `genreItemNames` queries its genres SEQUENTIALLY, and a session eviction partway
  * through the loop made the first two genres return their items and the remaining
- * twelve return empty sets. The output was not an error — it was a coherent, fully
+ * twelve return empty sets. The output was not an error. It was a coherent, fully
  * plausible picture of a demo server whose content had thinned to two genres, which
  * was then written up as a finding and reasoned from. All 14 genres were populated
  * the whole time. The reader who believed it had this exact defect open in front of
- * them, having just diagnosed it.
+ * them and had diagnosed it moments before.
  *
  * The rule that follows: **absence is only ever reported from a request that
  * SUCCEEDED.** `findMovie` may still say "not in the library", `getLibraries` may
- * still return `[]` — but only after the server actually answered. Anything else
+ * still return `[]`, but only after the server actually answered. Anything else
  * throws, and the run stops rather than reasoning from a fiction.
  *
  * The one deliberate exception is marked at its call site in `authenticate`.
@@ -33,7 +33,7 @@ import { FAILURE_KINDS, recordFailure } from '../../../scripts/run-record.js';
 import { RTA_CONFIG } from '../config.js';
 
 /**
- * A request that reached a verdict we cannot use — a non-2xx status, or a transport
+ * A request that reached a verdict we cannot use: a non-2xx status, or a transport
  * error with no status at all.
  *
  * Typed rather than a bare `Error` so the run record can tell an INFRASTRUCTURE
@@ -71,7 +71,7 @@ export const isRequestError = (e) => e instanceof JellyfinRequestError;
  * in a screen test several frames away, and the exit code cannot tell the parent
  * process the difference. This is the only place that still knows the request failed
  * and why. Same reasoning as `diagnostics.js` capturing device state at its throw
- * site — a cause not written down when it happens is not recoverable afterwards.
+ * site: a cause not written down when it happens is not recoverable afterwards.
  *
  * Best-effort by construction: a record that cannot be written must never replace the
  * error it was describing.
@@ -93,10 +93,10 @@ function fail(err) {
 }
 
 /**
- * Modern Jellyfin auth header for an authenticated request. Newer servers (e.g. the v12 unstable
- * demo) REJECT the legacy `X-Emby-Token` (401) and `X-Emby-Authorization` (400) headers; the
- * `Authorization: MediaBrowser ...` form is what current Jellyfin and JellyRock itself send, and
- * 10.x accepts it too — so this one header works across every demo server.
+ * Modern Jellyfin auth header for an authenticated request. Newer servers (for example the v12
+ * unstable demo) REJECT the legacy `X-Emby-Token` (401) and `X-Emby-Authorization` (400)
+ * headers; the `Authorization: MediaBrowser ...` form is what current Jellyfin and JellyRock
+ * itself send, and 10.x accepts it too, so this one header works across every demo server.
  */
 export const tokenHeader = (token) => ({ Authorization: `MediaBrowser Token="${token}"` });
 
@@ -147,12 +147,12 @@ export function getJson(urlStr, headers) {
 }
 
 /**
- * GET raw bytes (e.g. an image) as a Buffer.
+ * GET raw bytes (for example an image) as a Buffer.
  *
  * Types its failures like every other request here even though its only caller
  * (`capture-screenshots.js`, fetching a backdrop) discards the error and falls back.
- * An untyped straggler would make the module's rule — every request throws
- * `JellyfinRequestError` — false, and a rule with one undocumented exception is one
+ * An untyped straggler would make the module's rule (every request throws
+ * `JellyfinRequestError`) false, and a rule with one undocumented exception is one
  * a reader has to go and check rather than rely on.
  */
 export function getBuffer(urlStr, headers) {
@@ -183,8 +183,8 @@ export function getBuffer(urlStr, headers) {
  * 2026-08-12: a second `AuthenticateByName` with an identical DeviceId turned the
  * first token into a 401 on the next request.
  *
- * Every Node-side helper here — the RTA suite, `capture-screenshots.js`,
- * `demos/run.mjs` — used to authenticate as the literal string
+ * Every Node-side helper here (the RTA suite, `capture-screenshots.js`,
+ * `demos/run.mjs`) used to authenticate as the literal string
  * `"jellyrock-screenshots"`, so any two of them running at once logged each other
  * out. `device-lock.js` hid this by serializing them on ONE device; it becomes
  * reachable the moment two devices are driven at once, which is exactly the
@@ -195,14 +195,14 @@ export function getBuffer(urlStr, headers) {
  * Per ROLE and per DEVICE, so neither axis can collide: two tools on one device get
  * different ids, and one tool on two devices does too. Stable across runs rather
  * than random per process, so the demo server reuses a session instead of
- * accumulating one per invocation — and the id reads as what it is in the server's
+ * accumulating one per invocation, and the id reads as what it is in the server's
  * session list, which is the difference between debuggable and not.
  *
  * The discriminator is the run's `deviceKey` (the lock already resolved it, and
  * `run-record.js` puts it on the child's env). It falls back to a hash of `ROKU_IP`
- * for the degraded-lock path and for entry points that never took a lock — hashed,
- * not raw, because a LAN address is the device's own business and this string is
- * sent to a third-party server.
+ * for the degraded-lock path and for entry points that never took a lock. It is
+ * hashed, not raw, because a LAN address is the device's own business and this string
+ * is sent to a third-party server.
  */
 export function sessionDeviceId(role, deviceKey) {
   const disc =
@@ -219,13 +219,13 @@ export function sessionDeviceId(role, deviceKey) {
 /**
  * Authenticate against the demo Jellyfin server -> session used to seed registry.
  *
- * `role` names the tool, and rides into the DeviceId — see `sessionDeviceId` for why
- * two callers must never share one. Defaults to `rta` because the suite is the
+ * `role` names the tool, and rides into the DeviceId (see `sessionDeviceId` for why
+ * two callers must never share one). Defaults to `rta` because the suite is the
  * caller that matters most; the other entry points name themselves.
  *
  * ⚠️ **Not usable for asserting "Cast to JellyRock" on servers older than 10.11.** The token
  * this mints belongs to `Client="JellyRock-<role>"`, and before 10.11 Jellyfin binds the
- * app's session socket to the session keyed on the TOKEN's app name — so the socket lands
+ * app's session socket to the session keyed on the TOKEN's app name, so the socket lands
  * on a `JellyRock-rta` session while the app's capabilities sit on the `JellyRock` one, and
  * the app never reports `SupportsRemoteControl`. Casting works for real users (their token
  * is minted by the app itself); only this seeded token breaks it. A cast test must mint its
@@ -249,7 +249,7 @@ export async function authenticate(server, { role = 'rta', deviceKey } = {}) {
   // is a cosmetic label, the failure cannot be mistaken for a fact about the library
   // (an empty name renders an empty label; nothing downstream reasons from it), and
   // the request is unauthenticated so it cannot mask a session problem. Every other
-  // helper here throws — see the module header.
+  // helper here throws (see the module header).
   const info = await getJson(`${server.url}/System/Info/Public`, {}).catch(() => null);
   return {
     serverUrl: server.url,
@@ -261,7 +261,7 @@ export async function authenticate(server, { role = 'rta', deviceKey } = {}) {
     primaryImageTag: d.User?.PrimaryImageTag || '',
     // Carried so a failure can name the identity it was minted under. `serverId` and
     // `userId` cannot do that job: the stable and unstable demo backends are cloned
-    // from one seed DB and report IDENTICAL values for both (measured 2026-08-12 —
+    // from one seed DB and report IDENTICAL values for both (measured 2026-08-12:
     // 10.11.11 vs 12.0.0, same `f0b3381…`), so they distinguish neither the server
     // nor the client. `serverUrl` separates the backends; this separates the tools.
     deviceId,
@@ -271,30 +271,30 @@ export async function authenticate(server, { role = 'rta', deviceKey } = {}) {
 /**
  * Locate a movie by Name within the Movies grid. The grid is sorted by SortName
  * ascending (verified to match the app's grid order), so the item's index in this
- * list IS its grid tile index — the number of Right presses from the first tile to
+ * list IS its grid tile index: the number of Right presses from the first tile to
  * focus it.
  *
  * ## `parentId` is what makes the index mean anything
  *
  * The index is only a tile index if this query enumerates the SAME items the grid
- * renders — that is, ONE library. Without `parentId` it spans every library on the
+ * renders, that is, ONE library. Without `parentId` it spans every library on the
  * server, so on any server with more than one movies-ish library the number is an index
  * into a population the grid never shows, and the nav focuses an arbitrary tile.
  *
  * That went unnoticed because the public demo has a single movies library, where the two
  * populations coincide. Measured 2026-09-20 against the local 12.0 test server: 151
  * movies across NINE libraries, and `osd` opened item `e33c03fc…` while the configured
- * hero was `0363e2dc…` — the suite then timed out reading `#<heroId>.state` on a player
+ * hero was `0363e2dc…`. The suite then timed out reading `#<heroId>.state` on a player
  * that was happily playing something else, which reads as a broken player rather than a
  * mis-aimed nav.
  *
- * Callers pass the id `libraryIdFor(libraries, 'movies')` resolved — the same library
+ * Callers pass the id `libraryIdFor(libraries, 'movies')` resolved, the same library
  * `seedHome` landed on, so the grid and this query cannot disagree. Omitting it keeps the
- * old server-wide behaviour, which is still correct for a single-library server and is
- * what `firstMovie` (deliberately server-wide) wants.
+ * old server-wide behavior, which is still correct for a single-library server and is
+ * what `firstMovie` (server-wide on purpose) wants.
  *
  * Returns { index, id, backdropUrl } ({0, '', ''} if the movie isn't found).
- * backdropUrl is the promo still (a fallback only — see prepareBackdrop).
+ * backdropUrl is the promo still (a fallback only; see prepareBackdrop).
  */
 export async function findMovie(session, movieName, { parentId } = {}) {
   const url =
@@ -302,7 +302,7 @@ export async function findMovie(session, movieName, { parentId } = {}) {
     (parentId ? `&ParentId=${parentId}` : '') +
     `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending`;
   // Throws on a failed request. The `{ index: 0, id: '' }` miss below is reserved for
-  // a query that SUCCEEDED and did not list the movie — a fact about the library, and
+  // a query that SUCCEEDED and did not list the movie: a fact about the library, and
   // one a caller may legitimately act on. A request that never answered is not that.
   const data = await getJson(url, tokenHeader(session.token));
   const items = data?.Items || [];
@@ -320,16 +320,17 @@ export async function findMovie(session, movieName, { parentId } = {}) {
 
 /**
  * The movie used by movieDetails + osd (RTA_CONFIG.heroMovie), scoped to the movies
- * library the grid actually shows. See `findMovie` for why the scope is load-bearing.
+ * library the grid actually shows. See `findMovie` for why the scope matters.
  */
 export const getHero = (session, parentId) =>
   findMovie(session, RTA_CONFIG.heroMovie, { parentId });
 
 /**
- * First movie (by SortName) on a server, with its title — `{ id, name }` (or `{ '', '' }`).
+ * First movie (by SortName) on a server, with its title: `{ id, name }` (or `{ '', '' }`).
  * Resolved at runtime so a take never assumes a specific title exists on a given demo server
- * (e.g. the cast-to-another-server take needs a real movie + name on the TARGET server, which
- * may differ from RTA_CONFIG.heroMovie). The name feeds the cast's `itemName` switch-prompt arg.
+ * (for example the cast-to-another-server take needs a real movie + name on the TARGET
+ * server, which may differ from RTA_CONFIG.heroMovie). The name feeds the cast's
+ * `itemName` switch-prompt arg.
  */
 export async function firstMovie(session) {
   const url =
@@ -354,7 +355,7 @@ export async function getLibraries(session) {
   const url = `${session.serverUrl}/Users/${session.userId}/Views`;
   // Throws on a failed request, and this one is the sharpest case in the file.
   // `screens.spec.js` skips a screen when `libraryIdFor` finds no library of its
-  // collectionType — correctly, since a fixture without a Music library is a
+  // collectionType. That is correct, since a fixture without a Music library is a
   // statement about the fixture, not a regression. But a swallowed 401 here returned
   // `[]`, which drove that same skip with the message `server has no "movies"
   // library` — false, and GREEN. Since this runs once in `beforeAll`, one swallowed
@@ -375,7 +376,7 @@ export async function getLibraries(session) {
  * Mirrors the query `LoadItemsTask2` makes per genre row (same parentId, same
  * includeItemTypes, recursive) but without its `Limit: 6` / `SortBy: Random`, so
  * the result is the complete membership a sampled row must draw from. Resolved at
- * runtime — the demo server's content is not a fixed contract.
+ * runtime, because the demo server's content is not a fixed contract.
  */
 export async function genreItemNames(session, libraryId, includeItemTypes) {
   const headers = tokenHeader(session.token);
@@ -384,7 +385,7 @@ export async function genreItemNames(session, libraryId, includeItemTypes) {
   // the loop is why: it fetches the genres one at a time, so a session that dies
   // partway through returns real items for the genres before the break and empty sets
   // for every genre after it. Nothing errors, and the result is a perfectly coherent
-  // "this library's later genres are empty" — a shape no reader questions.
+  // "this library's later genres are empty", a shape no reader questions.
   //
   // The empty set is also the tell that it was always a lie: `/Genres` only lists
   // genres that EXIST in the library, so a genre with no items is self-contradictory.
@@ -418,9 +419,9 @@ export function libraryIdFor(libraries, collectionType) {
 /**
  * First item id of a given Jellyfin type (Recursive, SortName), or '' if none.
  * Used by the deep-link specs to cast a real id resolved at runtime (never
- * hardcoded), e.g. an 'Audio' item to exercise the instantmix action.
+ * hardcoded), for example an 'Audio' item to exercise the instantmix action.
  *
- * NOTE — the instantmix spec ASSUMES the demo server's library is large enough that
+ * The instantmix spec ASSUMES the demo server's library is large enough that
  * `/Items/<this id>/InstantMix` returns a NON-empty mix. The beforeAll guard only checks the
  * id resolved (not that it yields a mix), so on a too-small demo audio library the instantmix
  * test fails as a generic `waitMediaPlaying` timeout, not an obvious "demo can't build a mix".
@@ -437,15 +438,15 @@ export async function firstItemId(session, includeItemTypes) {
 }
 
 /**
- * How many items of `includeItemTypes` the user has marked favorite — the content a Favorites
- * tab spec depends on. Same query shape as the app's Favorites load (`LoadItemsTask`
+ * How many items of `includeItemTypes` the user has marked favorite, which is the content a
+ * Favorites tab spec depends on. Same query shape as the app's Favorites load (`LoadItemsTask`
  * `favorites`), narrowed to one type.
  *
  * Throws on a failed request; `0` means the server answered and the user has none, which a
  * spec must treat as a fixture that cannot support it, never as a pass.
  *
  * @param {{serverUrl: string, userId: string, token: string}} session
- * @param {string} includeItemTypes - e.g. `Movie`
+ * @param {string} includeItemTypes - for example `Movie`
  * @returns {Promise<number>}
  */
 export async function favoriteCount(session, includeItemTypes) {
@@ -463,18 +464,18 @@ export async function favoriteCount(session, includeItemTypes) {
  * same way: a false answer is a fact about the fixture that the caller acts on
  * by SKIPPING, never a regression.
  *
- * It mirrors the app's two gates deliberately rather than approximating them,
- * because neither is the obvious rule:
+ * It mirrors the app's two gates rather than approximating them, because neither is
+ * the obvious rule:
  *
- * 1. PERMISSION — `remoteSubtitles.canSearchSubtitles()`.
+ * 1. PERMISSION: `remoteSubtitles.canSearchSubtitles()`.
  *    - Below 10.9 the endpoints carry only DefaultAuthorization, so ANY
  *      authenticated user may search and the permission does not exist yet.
- *    - From 10.9 they carry Policies.SubtitleManagement — but
+ *    - From 10.9 they carry Policies.SubtitleManagement, but
  *      EnableSubtitleManagement defaults to FALSE for every account INCLUDING
  *      administrators, and Jellyfin lets admins through regardless. So the flag
  *      alone is the wrong question; admin OR the flag is the right one.
  *    The 10.9 boundary is `resolveApiVersion()` in `source/utils/misc.bs`.
- * 2. A SUBTITLE PROVIDER PLUGIN — `serverCapabilities.subtitleProviderStatusFrom()`:
+ * 2. A SUBTITLE PROVIDER PLUGIN: `serverCapabilities.subtitleProviderStatusFrom()`.
  *    `/Libraries/AvailableOptions` must list at least one `SubtitleFetchers` entry.
  *
  * Keep both in step with the app: the app deciding the button exists while the
@@ -484,8 +485,8 @@ export async function favoriteCount(session, includeItemTypes) {
  * Measured against the public demo (10.11.11) on 2026-09-06: user `demo` is
  * IsAdministrator=false with EnableSubtitleManagement=false. And on 12.0 on
  * 2026-09-14 it reports `SubtitleFetchers: []`. Either alone means the button does
- * NOT render there, so `subtitlePanel` skips on the default fixture — expected, not
- * a broken probe.
+ * not render there, so `subtitlePanel` skips on the default fixture. That is expected,
+ * not a broken probe.
  *
  * Throws on any failed request, like every other helper here: a 401 must not be
  * read as "this user cannot manage subtitles". (The APP fails open on a failed
@@ -524,13 +525,13 @@ export async function manageSubtitlesOffered(session) {
  *
  * `trickplay`'s nav reveals Roku's filmstrip by scrubbing, and the carousel only appears
  * when the server can serve thumbnails. Without them the spec waits out
- * `#trickplayCarousel.isVisible` and fails — a red that reads exactly like a broken
+ * `#trickplayCarousel.isVisible` and fails. That red reads exactly like a broken
  * scrubber in the app, which is the thing it must not do.
  *
  * Trickplay extraction is OFF by default (`EnableTrickplayImageExtraction`), and nothing
  * in the local test-server setup turns it on. Measured 2026-09-20 across the local 12.0
  * server: every one of its nine libraries reports it false and ZERO of 151 movies carry
- * trickplay data, while the "Generate Trickplay Images" task still reports a clean run —
+ * trickplay data, while the "Generate Trickplay Images" task still reports a clean run,
  * so "the task ran" is not evidence that thumbnails exist. The public demo does have
  * them, which is why the screen has a reference screenshot at all.
  *
@@ -538,7 +539,7 @@ export async function manageSubtitlesOffered(session) {
  * is the same source the app's own player consults, and an empty object is the server
  * saying "none", distinctly from a 404 on a guessed URL.
  *
- * Throws on a failed request, like every other helper here — a transport error must not
+ * Throws on a failed request, like every other helper here: a transport error must not
  * be read as "this server has no trickplay".
  *
  * @param {{serverUrl: string, token: string}} session
@@ -562,7 +563,7 @@ export async function trickplayAvailable(session, itemId) {
  * series has two.
  *
  * Found by capability rather than by name, so a spec built on it runs against any
- * configured server — see #910 for why that matters. Each series is asked for its
+ * configured server (see #910 for why that matters). Each series is asked for its
  * first two episodes through `/Shows/<id>/Episodes`, the same endpoint and ordering
  * `LoadVideoContentTask.addNextEpisodesToQueue` uses to queue what plays next, so
  * `nextId` is the episode the app itself will advance to.
@@ -603,8 +604,8 @@ export async function findEpisodeWithNext(session) {
  *
  * `GET /QuickConnect/Enabled` returns a bare JSON boolean, and 404s on servers
  * older than 10.8. Both are facts about the fixture that the caller acts on by
- * SKIPPING, so a 404 must not throw the way every other helper here does —
- * hence the narrow status check rather than a blanket catch. Any OTHER failure
+ * SKIPPING, so a 404 must not throw the way every other helper here does.
+ * Hence the narrow status check rather than a blanket catch. Any OTHER failure
  * (401, 500, transport) still propagates, because those say nothing about
  * whether the feature exists and must not be read as "off".
  */
@@ -630,8 +631,8 @@ export async function quickConnectEnabled(session) {
  * AccessToken), per the tests/rta/CLAUDE.md rule about checking a
  * content/capability-dependent assertion against the real server first.
  *
- * An UNKNOWN code answers 404, so this THROWS rather than returning false —
- * measured, not assumed (probed against 10.11.11 while writing the helper; the
+ * An UNKNOWN code answers 404, so this THROWS rather than returning false.
+ * That was measured, not assumed (probed against 10.11.11 while writing the helper; the
  * first draft of this comment claimed the opposite). That is the right shape for
  * the caller: a code the app displayed and the server does not recognise is a
  * real failure, not a fixture quirk to tolerate.

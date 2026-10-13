@@ -2,10 +2,10 @@
  * Registry seeding to land the app deterministically on a screen.
  *
  * NOTE: these write the REAL `JellyRock` registry (not a `test-*` section)
- * because the app reads the real keys to decide which screen to show — inherent
- * to driving the real app from outside (unlike in-process Rooibos tests, which
- * the `test-*` isolation rule governs). Putting the device back afterwards is
- * [`registry.js`](registry.js)'s job — it snapshots the WHOLE registry before
+ * because the app reads the real keys to decide which screen to show. That is
+ * inherent to driving the real app from outside (unlike in-process Rooibos tests,
+ * which the `test-*` isolation rule governs). Putting the device back afterwards
+ * is [`registry.js`](registry.js)'s job: it snapshots the whole registry before
  * any of this runs, so nothing here needs a matching "and undo it" list.
  */
 import { odc } from 'roku-test-automation';
@@ -17,14 +17,14 @@ export const GLOBAL = 'JellyRock';
  *
  * The failure this exists to catch is silent and expensive. `relaunch()` only
  * FOREGROUNDS an already-running channel, so the app keeps its in-memory session
- * and re-persists it over whatever was just seeded. The suite then drives an app
+ * and re-persists it over whatever was seeded. The suite then drives an app
  * pointed at the wrong server using the seeded server's item ids: every
  * content-dependent test fails with an unrelated-looking timeout, and a capture
  * run would silently photograph the wrong library. It cost a full CI run and two
- * device runs to trace once — hence a loud, specific assertion instead.
+ * device runs to trace once, hence a loud, specific assertion instead.
  *
  * Seeds return their own expected `server` value (a URL, or `null` for
- * server-select, where the key is deliberately deleted), so this stays correct
+ * server-select, where the key is deleted on purpose), so this stays correct
  * as seeds are added.
  *
  * @param {string|null} expectedServer - what the seed said it wrote
@@ -47,7 +47,7 @@ export async function assertSeedTookEffect(expectedServer, label) {
  * Clear all sticky per-library view settings (`display.<libraryId>.*` keys in the
  * user's registry section) so a screen starts from the presenter DEFAULT view.
  * Library views are sticky (set by the grid options dialog, persisted to registry),
- * so without this a view seeded for one screen leaks into the next — e.g. a
+ * so without this a view seeded for one screen leaks into the next. For example, a
  * Genres-view screen would leave the Movies library in Genres (which renders into
  * #genreList, no #itemGrid), breaking the next movie-grid nav. Reset-then-seed
  * makes every capture deterministic regardless of run order or prior device state.
@@ -92,7 +92,7 @@ export async function seedHome(session, locale) {
 export function savedServerEntry(session) {
   return {
     name: session.serverName,
-    id: session.serverId, // GUID — what a cast's serverId is matched against (findServerInList)
+    id: session.serverId, // GUID: what a cast's serverId is matched against (findServerInList)
     baseUrl: session.serverUrl, // canonical https URL; the reachability pre-flight probes this
     originalUrl: session.serverUrl, // becomes the `server` setting on switch (canonical = no redirect step)
     iconUrl: 'pkg:/images/branding/logo-icon120.jpg',
@@ -103,7 +103,7 @@ export function savedServerEntry(session) {
 
 /**
  * Seed registry to land logged-in on Home as `primary`'s user, with `saved_servers` listing
- * EVERY passed session. This is the state a cast-to-another-server demo needs: signed into one
+ * every passed session. This is the state a cast-to-another-server demo needs: signed into one
  * demo server while another is saved, so a cast naming the other server's GUID resolves to a
  * saved entry and prompts the switch (replayRoute.findSavedServerByGuid). All sessions are demo
  * servers (privacy). Composes seedHome's logged-in keys with the SaveServerList saved_servers shape.
@@ -136,8 +136,8 @@ export async function seedHomeWithSavedServers(primary, sessions, locale) {
  * Seed registry to land on the SERVER-select screen with exactly one saved server:
  * the demo server, saved under the bare scheme-less URL "demo.jellyfin.org/stable"
  * so the picker entry demonstrates the URL parser / http->https redirect we follow
- * on submit. LoginFlow shows server-select interactively whenever `server` is unset
- * (showScenes.bs), so we delete `server` (and `active_user`) and populate
+ * on submit. The login router shows server-select interactively whenever `server` is
+ * unset (`loginRouter.bs`), so we delete `server` (and `active_user`) and populate
  * `saved_servers`. The remote demo server isn't SSDP-discoverable, so it surfaces
  * via SetServerScreen's "Pass 2" saved-server injection. `id` matches the session's
  * serverId so that pass dedups correctly and marks the entry deletable.
@@ -150,7 +150,7 @@ export async function seedServerSelect(session, locale) {
         id: session.serverId,
         baseUrl: session.serverUrl, // canonical (https) URL the app connects to
         originalUrl: 'demo.jellyfin.org/stable', // bare URL shown in the picker
-        // Match SaveServerList()'s persisted shape (showScenes.bs) so the picker
+        // Match SaveServerList()'s persisted shape (`config.bs`) so the picker
         // renders the Jellyfin branding icon next to the entry, not a blank slot.
         iconUrl: 'pkg:/images/branding/logo-icon120.jpg',
         iconWidth: 120,
@@ -169,14 +169,14 @@ export async function seedServerSelect(session, locale) {
       },
     },
   });
-  return null; // `server` is deliberately absent on this screen
+  return null; // `server` is absent on this screen on purpose
 }
 
 /** Seed registry to land on the user-select screen (server known, no active user). */
 export async function seedUserSelect(session, locale) {
-  // Delete just active_user (null = delete that key) so LoginFlow stops at
+  // Delete only active_user (null = delete that key) so the login router stops at
   // user-select; set the pre-login language. Non-destructive: saved_servers /
-  // available_users are preserved. globalTranslationLocale is the ONLY lever that
+  // available_users are preserved. globalTranslationLocale is the only lever that
   // localizes this pre-login screen (the Part-1 feature this work depends on).
   await odc.writeRegistry({
     values: {
@@ -195,9 +195,10 @@ export async function seedUserSelect(session, locale) {
  * Seed a deterministic LANDING VIEW for a library so a capture doesn't depend on
  * whatever view is stickily persisted on the device. Views are sticky per library
  * in the user's registry under `display.<libraryId>.landing` (set by the grid's
- * options dialog; read at login by SessionDataTransformer). `libraryId` is resolved
- * at runtime (libraryIdFor) — never hardcoded. Call AFTER seedHome and before
- * relaunch; the per-key write merges into the user section seedHome wrote.
+ * options dialog; read at login by `TransformDisplaySettings` in `session.bs`).
+ * `libraryId` is resolved at runtime (libraryIdFor), never hardcoded. Call after
+ * seedHome and before relaunch; the per-key write merges into the user section
+ * seedHome wrote.
  */
 export async function seedLibraryLanding(session, libraryId, view) {
   if (!libraryId || !view) return;

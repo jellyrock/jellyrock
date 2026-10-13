@@ -6,15 +6,15 @@
  * The check and its recovery are, by construction, failure-path code: the branch that
  * added them shipped on the back of a full green suite that exercised none of them. A
  * green run cannot distinguish "the event did not occur" from "it occurred and the retry
- * recovered", so the on-device run is the wrong instrument for this particular property —
+ * recovered", so the on-device run is the wrong instrument for this particular property:
  * it can only ever confirm the success path.
  *
  * What is asserted here is the DECISION TABLE, which is pure control flow and needs no
  * device: match breaks, mismatch retries and re-presses, an exhausted budget throws with
  * the readings that were taken, an unresolved field is called out as its own thing rather
  * than reported as a wrong library, and an id-less caller keeps its previous behaviour.
- * What still needs a real Roku — whether `parentItem.id` resolves at all, whether Back
- * actually returns to Home — stays hardware-verified via `npm run test:rta`.
+ * What still needs a real Roku (whether `parentItem.id` resolves at all, whether Back
+ * actually returns to Home) stays hardware-verified via `npm run test:rta`.
  *
  * `steps.js` is mocked wholesale rather than `odc` stubbed: every device touch in the
  * function under test goes through it, and the seam keeps these tests about the nav's
@@ -66,7 +66,7 @@ vi.mock('./steps.js', () => ({
   sleep: (...a) => sleep(...a),
 }));
 
-// `ecp.Key` carries the REAL values, not invented ones — the same rule `steps.test.js`
+// `ecp.Key` carries the real values, not invented ones, the same rule `steps.test.js`
 // states: a helper asserted against a typo agrees with the typo.
 vi.mock('roku-test-automation', () => ({
   ecp: { Key: { Ok: 'Ok', Back: 'Back', Up: 'Up', Down: 'Down', Left: 'Left', Right: 'Right' } },
@@ -76,8 +76,8 @@ vi.mock('roku-test-automation', () => ({
 // The throw path runs through `diagnosedError`, which reaches for the device to dump
 // state. Stub it to a plain Error carrying the record, so these tests assert the DECISION
 // rather than re-testing the diagnostics module (which owns its own spec).
-// The recovery record is the point of the announcement — a `console.warn` dies with
-// the scrollback, so the DURABLE write is what makes "does this ever fire" answerable.
+// The recovery record is the point of the announcement: a `console.warn` dies with
+// the scrollback, so the durable write is what makes "does this ever fire" answerable.
 // Stubbed here so the decision is asserted without touching the real ledger.
 const recordRecovery = vi.fn();
 vi.mock('../../../scripts/run-record.js', async (importOriginal) => ({
@@ -150,7 +150,7 @@ describe('navLibraryByType — which library actually opened', () => {
   it('backs out and retries when the wrong library opened, then succeeds', async () => {
     opensInOrder(MOVIES, SHOWS);
     await navLibraryByType('tvshows', SHOWS);
-    // Ok, Back, Ok — the recovery re-runs the whole scan/walk/press.
+    // Ok, Back, Ok: the recovery re-runs the whole scan/walk/press.
     expect(press.mock.calls.map(([k]) => k)).toEqual(['Ok', 'Back', 'Ok']);
   });
 
@@ -172,7 +172,7 @@ describe('navLibraryByType — which library actually opened', () => {
     const [entry] = recordRecovery.mock.calls[0];
     expect(entry.what).toContain('library nav');
     expect(entry.observed).toMatchObject({ wanted: SHOWS, attempts: 2 });
-    // One reading per attempt — which attempt saw a mid-flight row is the question.
+    // One reading per attempt; which attempt saw a mid-flight row is the question.
     expect(entry.observed.probe).toHaveLength(2);
   });
 
@@ -186,7 +186,7 @@ describe('navLibraryByType — which library actually opened', () => {
     // The fix for the mechanism captured on .177 2026-09-07. The loop this replaced
     // decided whether to press from its own read of a LAGGING field, so it could send a
     // Right on top of one already in flight: focus reported [0,2], the tile there was the
-    // library asked for, Home's rows were unchanged — and `rowItemSelected` came back
+    // library asked for, Home's rows were unchanged, and `rowItemSelected` came back
     // [0,3]. `scrollFocus` sends the exact distance once and re-presses only for a key it
     // can prove was dropped.
     opensInOrder(SHOWS);
@@ -204,7 +204,7 @@ describe('navLibraryByType — which library actually opened', () => {
 
   it('selects the COLUMN component of rowItemFocused, not the row', async () => {
     // `rowItemFocused` is [row, item]. Selecting index 0 here would walk the vertical axis
-    // with horizontal keys — it would still terminate, on the wrong cell, and the failure
+    // with horizontal keys. It would still terminate, on the wrong cell, and the failure
     // would surface somewhere else entirely.
     opensInOrder(SHOWS);
     await navLibraryByType('tvshows', SHOWS);
@@ -258,7 +258,7 @@ describe('navLibraryByType — which library actually opened', () => {
     await navLibraryByType('tvshows', SHOWS);
 
     // All three asserted PRESENT first. `indexOf` answers -1 for a step that never ran,
-    // and -1 is less than every real index — so the ordering alone passes when the press
+    // and -1 is less than every real index, so the ordering alone passes when the press
     // or either read is missing entirely, which is the regression this test exists for.
     expect(order).toContain('read:pre');
     expect(order).toContain('press:Ok');
@@ -287,7 +287,7 @@ describe('navLibraryByType — which library actually opened', () => {
   it('does not let a failed SELECTION read fail a nav either', async () => {
     // The second probe is a second chance to break a healthy nav. It runs after the
     // press, when Home is suspended, so it is the likelier of the two to come back
-    // empty — and it still may not turn instrumentation into a failure.
+    // empty, and it still may not turn instrumentation into a failure.
     getVals.mockImplementation(async (keyPaths) => {
       if (keyPaths.includes('#homeRows.rowItemSelected')) throw new Error('odc timeout');
       return keyPaths.map(() => undefined);
@@ -312,7 +312,7 @@ describe('navLibraryByType — which library actually opened', () => {
     expect(err.message).toContain('opened the wrong library');
     expect(err.record.kind).toBe(FAILURE_KINDS.LIBRARY_OPENED_MISMATCH);
     expect(err.record.observed.attempts).toBe(3);
-    // One reading per attempt — which attempt saw a mid-flight row is the whole question,
+    // One reading per attempt; which attempt saw a mid-flight row is the whole question,
     // so a single reading would not answer it.
     expect(err.record.observed.probe).toHaveLength(3);
   });
@@ -331,7 +331,7 @@ describe('navLibraryByType — which library actually opened', () => {
     expect(err.message).toContain('unreadable');
     expect(err.message).not.toContain('opened the wrong library');
     expect(err.record.kind).toBe(FAILURE_KINDS.LIBRARY_OPENED_MISMATCH);
-    // Fails fast — "genuinely wrong", not "not there yet".
+    // Fails fast: "wrong", not "not there yet".
     expect(press.mock.calls.filter(([k]) => k === 'Ok')).toHaveLength(1);
   });
 
@@ -356,7 +356,7 @@ describe('navLibraryByType — which library actually opened', () => {
  *
  * It hand-rolled its own poll loop until 2026-09-05. Routing it through the shared
  * primitive buys read-failure attribution and brings it inside
- * `jellyrock-rta/wait-justified`'s view — but a naive conversion would also have taken
+ * `jellyrock-rta/wait-justified`'s view, but a naive conversion would also have taken
  * its failure slug, because `waitFor` recorded `wait-for-timeout` unconditionally.
  *
  * That merge is the regression this gates, and it is invisible by construction: the
@@ -369,7 +369,7 @@ describe('navLibraryByType — which library actually opened', () => {
  * The reader and cadence are asserted for the same reason Phase 3b stated every
  * converted site's timeout: a helper's defaults are not the defaults the call site had.
  * `loadState` recurs on every BaseGridView, so a scene-rooted read could answer from a
- * SUSPENDED view and pass this wait against the screen the user just left.
+ * SUSPENDED view and pass this wait against the screen the user came from.
  */
 describe('waitGridLoaded — converted to waitFor without losing its own failure bucket', () => {
   /** The `waitFor` call the grid wait issued, out of the several a nav makes. */
@@ -392,7 +392,7 @@ describe('waitGridLoaded — converted to waitFor without losing its own failure
     await navLibraryByType('tvshows', SHOWS);
     // Asserted by DELEGATION, not by reference: `steps.js` is mocked with wrappers, so
     // the reader `nav.js` holds is never the same object as the spy here. Calling it is
-    // the stronger check anyway — it proves which reader RUNS. Passing the scene-rooted
+    // the stronger check anyway: it proves which reader runs. Passing the scene-rooted
     // `getVal` instead would leave this spy untouched, which is the mistake being gated.
     getActiveVal.mockClear();
     await gridWait()[2].read('loadState');
@@ -435,8 +435,8 @@ describe('waitGridLoaded — converted to waitFor without losing its own failure
  *
  * Its branches are exactly the ones a green on-device run cannot tell apart: a build with
  * counters, a build without, and a keyPath that resolves to nothing all end in a plausible
- * console line and a passing test. The line is also the ONLY channel — `measure` records the
- * nav's name, not its itinerary — so a wrong one is not caught later by anything.
+ * console line and a passing test. The line is also the only channel: `measure` records the
+ * nav's name, not its itinerary, so a wrong one is not caught later by anything.
  */
 describe('reportSweep — the BEFORE segment, and when it must not print', () => {
   const legs = [{ axis: 'rows -> 2', walk: { from: 0, to: 2, recovered: 0 }, available: 5 }];
@@ -472,7 +472,7 @@ describe('reportSweep — the BEFORE segment, and when it must not print', () =>
 
   it('prints the per-row widths, which rows and items together cannot express', () => {
     // 128 items over 12 rows is the same total whether one row holds 64 or every row holds
-    // 11 — and only the first makes the horizontal texture window reachable. A per-row-limit
+    // 11, and only the first makes the horizontal texture window reachable. A per-row-limit
     // campaign reads this vector to know how many rows are even in scope.
     reportSweep('cellSweepHome', legs, endInstrumented, {
       settle: { rows: 4, items: 128, widths: [64, 33, 16, 15], settled: true, waitedMs: 1977 },
@@ -500,7 +500,7 @@ describe('reportSweep — the BEFORE segment, and when it must not print', () =>
   });
 
   it('WARNS when a baseline was asked for and came back empty against an instrumented end', () => {
-    // Not a production build — that one has no counters at EITHER end. This is the ledger
+    // Not a production build: that one has no counters at either end. This is the ledger
     // attaching after the gate, or a reader swapped for the single-keyPath one next door.
     reportSweep('cellSweepHome', legs, endInstrumented, {
       atStart: { counts: {}, instrumented: false, resolved: true },
@@ -524,7 +524,7 @@ describe('reportSweep — the BEFORE segment, and when it must not print', () =>
 
   it('stays silent on a production build, where NEITHER end has counters', () => {
     // `perfTiming` off is the correct state for a release build, so there is nothing to
-    // report and nothing to warn about — a warning here would fire on every store build.
+    // report and nothing to warn about; a warning here would fire on every store build.
     reportSweep(
       'cellSweepHome',
       legs,
@@ -552,9 +552,9 @@ describe('reportSweep — the BEFORE segment, and when it must not print', () =>
   });
 });
 
-// The instrument `walkHomeRowsTo`'s docblock defers to. That docblock declines to convert
-// the row half until a row over-press is CAPTURED — and until this comparison existed,
-// nothing could capture one. The recovery record asserted above is outcome-level and
+// The instrument that would show a walk axis regressing. Both axes go through `scrollFocus`
+// (the row half in stepped mode, see `walkHomeRowsTo`), and until this comparison existed,
+// nothing could capture an over-press on a green run. The recovery record asserted above is outcome-level and
 // strictly narrower: it fires only when a wrong library actually OPENED and the caller
 // supplied an id, so drift that still landed on the right library left no trace at all.
 //
@@ -562,9 +562,9 @@ describe('reportSweep — the BEFORE segment, and when it must not print', () =>
 // comparison, which is pure control flow over a reading `pressProbe` already takes.
 describe('navHomeLibraryTile — did the walk land where it aimed', () => {
   it('records a ROW drift, which is the reading the row-axis decision is waiting on', async () => {
-    // Aimed at [0,1]; focus sits at [1,1] one read before the press — a Down that landed
+    // Aimed at [0,1]; focus sits at [1,1] one read before the press: a Down that landed
     // after the row wait that sent it had already returned. This is the shape the column
-    // axis was measured producing, on the axis that is still walked by a press loop.
+    // axis was measured producing before its walk moved to `scrollFocus`.
     getVals.mockResolvedValue([[1, 1], 2]);
     opensInOrder(SHOWS);
     await navLibraryByType('tvshows', SHOWS);
@@ -575,7 +575,7 @@ describe('navHomeLibraryTile — did the walk land where it aimed', () => {
   });
 
   it('names the COLUMN axis when only the column drifted', async () => {
-    // Same instrument, the axis that already has a fix — kept so the field cannot silently
+    // Same instrument, the other axis, kept so the field cannot silently
     // start reporting one axis for both, which would make the row evidence unreadable.
     getVals.mockResolvedValue([[0, 2], 3]);
     opensInOrder(SHOWS);

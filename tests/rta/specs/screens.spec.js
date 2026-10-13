@@ -1,6 +1,6 @@
 /**
  * RTA functional tests: each screen in the registry is reached and asserted
- * loaded against a real device. The nav steps' odc waits are the assertions —
+ * loaded against a real device. The nav steps' odc waits are the assertions:
  * a screen that fails to render makes the nav throw, failing the test.
  *
  * Run: `npm run test:rta` (build + deploy + run) or `npm run test:rta:fast`
@@ -52,18 +52,18 @@ beforeAll(async () => {
   };
 });
 
-// A plain loop rather than `it.each` — `it.each` passes ONLY the case object, no
+// A plain loop rather than `it.each`: `it.each` passes only the case object, no
 // TestContext, so a case cannot skip itself at runtime. That matters because whether
 // a screen is testable depends on server content we only learn in beforeAll.
 for (const screen of SCREENS) {
   // `testCtx` is Vitest's per-test context (for .skip); `ctx` remains the shared nav context.
   it(`screen "${screen.name}" loads`, async (testCtx) => {
     // A `view` screen needs its library to exist on the server. The demo server's
-    // content is not a fixed contract — it resets and its libraries come and go (the
+    // content is not a fixed contract: it resets and its libraries come and go (the
     // playlists library was present when RTA was set up and has not been since), so a
     // missing library is a statement about the fixture, not a regression in the app.
-    // Skipping (visibly, with a reason) beats a red run nobody reads. Deliberately
-    // generic: any content-dependent screen self-skips, no per-screen allowlist to
+    // Skipping (visibly, with a reason) beats a red run nobody reads. It is generic
+    // on purpose: any content-dependent screen self-skips, no per-screen allowlist to
     // maintain.
     if (screen.view && !libraryIdFor(libraries, screen.view.collectionType)) {
       testCtx.skip(`server has no "${screen.view.collectionType}" library`);
@@ -71,7 +71,7 @@ for (const screen of SCREENS) {
     // Same shape, one axis over: a screen can also need a CAPABILITY the fixture's
     // user or server does not grant. `subtitlePanel`'s button only exists when the
     // server would let this user search subtitles, and the public demo's user is
-    // neither an administrator nor holds EnableSubtitleManagement — so on the default
+    // neither an administrator nor holds EnableSubtitleManagement, so on the default
     // fixture there is no button to press and the nav would fail obscurely. That is a
     // statement about the fixture, not a regression, so it skips visibly for the same
     // reason a missing library does. Generic on purpose: `requires` is a predicate on
@@ -94,7 +94,7 @@ for (const screen of SCREENS) {
         screen.view.landing,
       );
     }
-    // hardRelaunch, NOT relaunch: a plain relaunch only foregrounds the running
+    // hardRelaunch, not relaunch: a plain relaunch only foregrounds the running
     // channel, which then re-persists its in-memory session over everything seeded
     // above. See assertSeedTookEffect for what that failure looks like.
     await hardRelaunch();
@@ -106,8 +106,8 @@ for (const screen of SCREENS) {
     if (screen.assert) {
       // A content assertion that returns a NUMBER is reporting how much it actually
       // checked; record it. Green says the invariant held, not that it held over
-      // anything — an assertion whose fixture has quietly stopped supplying data
-      // passes just as loudly right up until the run it fails. Recorded, never
+      // anything: an assertion whose fixture has quietly stopped supplying data
+      // passes as loudly as ever right up until the run it fails. Recorded, never
       // asserted on: a floor here would redden runs over fixture churn, which is the
       // false-red this phase exists to remove. See `assertionsPath` in run-record.js.
       const verified = await screen.assert(ctx);
