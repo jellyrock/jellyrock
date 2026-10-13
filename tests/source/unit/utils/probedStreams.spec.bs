@@ -62,6 +62,33 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("serverAnswerPlays()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false when the device plays the upstream URL itself")
+    function _()
+      ' Measured 2026-10-12 on a Stick 4K against 12.1: a manifest .strm got a transcode answer
+      ' and the device then played the provider's URL, so a second answer was never used.
+      m.assertFalse(serverAnswerPlays(UpstreamManifestBlocker.NONE, true, false))
+    end function
+
+    @it("is false when the server allowed a URL the device cannot load, since the retry asks again")
+    function _()
+      m.assertFalse(serverAnswerPlays(UpstreamManifestBlocker.NONE, false, true))
+    end function
+
+    @it("is true when the device cannot load the URL and the server refused it")
+    function _()
+      m.assertTrue(serverAnswerPlays(UpstreamManifestBlocker.NONE, false, false))
+    end function
+
+    @it("is true when something keeps the source off its upstream URL")
+    function _()
+      m.assertTrue(serverAnswerPlays(UpstreamManifestBlocker.NOT_MANIFEST, false, false))
+      m.assertTrue(serverAnswerPlays(UpstreamManifestBlocker.FORCED_TRANSCODE, false, true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("probedPicksNeedNewAnswer()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

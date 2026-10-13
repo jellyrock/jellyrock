@@ -1,6 +1,7 @@
 ' A source the server has never probed (a .strm item before its first play) lists no media streams,
 ' so a track pick made from it has nothing to choose from. The PlaybackInfo that starts the play
 ' probes the source, and the server saves what it found.
+import "pkg:/source/enums/UpstreamManifestBlocker.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' True when the source exists and lists no media streams yet.
@@ -23,6 +24,21 @@ function serverAudioIndex(source as dynamic) as integer
   if match.count() > 1 then return match[1].toInt()
   if isValid(source.DefaultAudioStreamIndex) then return source.DefaultAudioStreamIndex
   return -1
+end function
+
+' True when the server's answer is the stream that plays, so the track picks it was built with
+' matter. The device plays the source's own manifest URL when nothing blocks it and the device can
+' load it; when it cannot but the server allowed direct play, the player's retry asks the server
+' again with our picks (retryPlayback). Only a blocker, or a URL the device cannot load and the
+' server refused, leaves the answer as it is.
+'
+' @param {string} blocker - an UpstreamManifestBlocker value for the source
+' @param {boolean} deviceLoadsUpstream - the device's check that it can load the manifest URL
+' @param {boolean} serverAllowed - the answer's SupportsDirectPlay
+' @returns {boolean}
+function serverAnswerPlays(blocker as string, deviceLoadsUpstream as boolean, serverAllowed as boolean) as boolean
+  if blocker <> UpstreamManifestBlocker.NONE then return true
+  return not deviceLoadsUpstream and not serverAllowed
 end function
 
 ' True when picks made from the probed streams differ from what a transcode answer was built
