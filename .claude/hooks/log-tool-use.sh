@@ -11,7 +11,8 @@
 # the aggregator. A single user-home path makes "what have my agents been
 # touching" a single npm command from any worktree.
 #
-# Default location: $HOME/.claude/jellyrock-telemetry/tool-use.jsonl
+# Default location: ${XDG_STATE_HOME:-$HOME/.local/state}/jellyrock/telemetry/tool-use.jsonl
+# (state you can throw away goes in the per-user XDG state folder, never in a checkout).
 # Override: set JELLYROCK_TELEMETRY_DIR to point elsewhere.
 #
 # Failure mode: this hook must not block or fail an agent's tool call.
@@ -19,7 +20,7 @@
 
 set +e
 
-LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${HOME}/.claude/jellyrock-telemetry}"
+LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/jellyrock/telemetry}"
 LOG_FILE="$LOG_DIR/tool-use.jsonl"
 
 mkdir -p "$LOG_DIR" 2>/dev/null
