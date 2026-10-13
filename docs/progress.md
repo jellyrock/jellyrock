@@ -653,6 +653,19 @@ Found 2026-10-13 reviewing `feat/search-failure-state` (#1199). `SearchTask.sear
 
 `timeouts.PIPELINE_RUN_MS` exists for the same shape on Home (per-request waits stacking on a dead server, measured 2026-08-03). **Fix:** run the four reads through `apiPipeline` with one run budget, keep the failed and sent counts that `searchOutcome.statusOf` needs, and still assign `results` once as the Task's last act (the comment on `searchMedia` says why). Measure a search before and after on a Stick 4K, and the time to the failure state with every read timing out (`rtaFailRequests` can stand in for a dead server). Not done in #1199: it changes how the reads are sent, a separate change with its own measurement.
 
+#### No toast is spoken by the screen reader: Toast never narrates and never takes focus `[fid: toast-not-spoken-screen-reader]` `[captured 2026-10-13]`
+
+Found 2026-10-13 while adding the search failure announcement (`feat/search-failure-state`, #1199). Nothing in `Toast.bs` calls `roAudioGuide`, and a toast never takes focus, so every `displayToast` message reaches a screen-reader user as nothing: quick play's "Couldn't load that. Try again.", the grid's "couldn't load more", Search's "Some results couldn't load." and the rest of the 33 call sites.
+
+**Root cause:** for a group the app draws, the screen reader speaks only the focused element; a dialog's title and message were never spoken until the app spoke them itself (measured 2026-08-01, recorded in `source/utils/dialogNarration.bs`). `Toast` is a group that never holds focus. Roku's text-to-speech table (`rokudev/dev-doc`, `text-to-speech.md`) says a Label "speaks `text` field", but the dialog measurement shows an unfocused label is not spoken. Narration was never there: the toast arrived in `46150743` and was restyled in `eab29b03`.
+
+**Options:**
+
+- `speak` (recommended): `Toast.onShouldShow` queues the message with `narrateStatus`, the helper Search's announcement and the grid's "Loading more" use. One file, about two lines; checked by ear. Covers all 33 call sites and every new one. A toast that follows a focus move is spoken after that move's speech; a caller that also speaks its own message would be heard twice (none does today: Search's announcement leaves its partial toast out for this reason).
+- `per-caller`: each important caller speaks its own message beside `displayToast`. 33 sites, and each new toast is another chance to forget; it drifts.
+
+**Not checked:** that a toast is silent when heard on a device; whether speech from inside `Toast` would be cut off by the platform's own focus speech when a toast and a focus move happen together.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
