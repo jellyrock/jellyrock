@@ -2066,6 +2066,16 @@ ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `V
 
 It is not version-gated: 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11, 12.0.0 and 12.1.0 all accepted it with the same results before 12.0 (checked live 2026-10-13). jellyfin-web sends the same filter, marked to go once artists move to the persons endpoint; when upstream does that, drop the default and revisit how the app lists artists. The key is PascalCase so the API usage manifest records it, and a change upstream reaches server-upgrade triage.
 
+## decision-id: video-load-release-not-stop
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `components/video/VideoPlayerView.bs`, `source/utils/liveStreamHandoff.bs`
+
+`VideoPlayerView.startVideoLoad()` lets a replaced video load go through `releaseVideoLoad()`, then creates the new node with `replaceTask(invalid, …)`, rather than passing the old node to `replaceTask()`. `replaceTask()` releases with a bare STOP, and a load still opening a Live TV stream must instead be marked abandoned so it closes the stream itself once `PlaybackInfo` answers: a STOP loses the only answer that names the stream, and the server keeps it open. Passing `invalid` keeps the `no-same-node-relaunch` guard check on the handler.
+
+Ruled out: an optional release hook on the shared `replaceTask()`, which would touch every caller and the build rule's tests for one component's need.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

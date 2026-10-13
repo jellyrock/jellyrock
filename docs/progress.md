@@ -333,6 +333,12 @@ Jellyfin 12.0 marked `GET /Artists`, `GET /Artists/{name}` and `GET /Artists/Alb
 
 Close it by adding a deprecation change kind to `spec-diff.js` (an operation whose `deprecated` turns true), surfacing it from `scripts/generate/findings-candidates.js` only for endpoints the app uses, with tests beside the existing `endpoint-removed` ones. Then rerun the findings from 10.11.8 to 12.0 so the `/Artists` deprecation shows up, and decide how the app moves off those endpoints. Found while closing the Jellyfin 12 readiness project, 2026-10-13.
 
+#### `lint:doc-citations` scans gitignored files, so local scratch files can block any push `[fid: doc-citation-ratchet-scans-gitignored]` `[captured 2026-10-13]`
+
+`collectDocs()` in [`scripts/lint/doc-citation-ratchet.js`](../scripts/lint/doc-citation-ratchet.js) (`npm run lint:doc-citations`, run by pre-push) says it collects "every tracked markdown or code file", but it walks the filesystem and enters `.claude/`. It skips gitignored paths only through a hand-kept list (`EPHEMERAL_RELS`, `ROOT_ONLY_SKIP_RELS`), so any other gitignored file is scanned. On 2026-10-13 five local perf scripts under the gitignored `.claude/logs/perf/` (em-dashes in their comments) blocked the push of `fix/video-load-new-node-per-run`, whose diff touched none of them. The push went through only after the folder was moved aside. Every new gitignored scratch folder can do this again.
+
+Closes when the gate reads only files git tracks or would track: list them with `git ls-files --cached --others --exclude-standard` instead of walking the tree (which also retires the hand-kept skip lists), with a test that a gitignored file holding an em-dash is not counted. Not done in that PR: it is a tooling change with its own test, separate from a playback fix.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
