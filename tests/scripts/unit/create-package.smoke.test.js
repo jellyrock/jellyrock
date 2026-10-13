@@ -1,30 +1,75 @@
 // Smoke test for scripts/create-package.cjs.
 //
-// The script wraps roku-deploy.zipPackage() to produce out/jellyrock.zip
-// from build/. Full coverage would require a build/ tree; this test just
-// confirms the script loads as a Node module without crashing on require.
+// The script wraps roku-deploy.zipPackage() to produce out/jellyrock.zip from
+// build/. This test points both directories at temp dirs with --staging-dir
+// and --out-dir, so the run never touches the checkout's real out/.
 
 import { describe, it, expect } from 'vitest';
 import { spawnScript } from './_helpers/spawn-script.js';
-import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REPO_ZIP = resolve(
+  fileURLToPath(import.meta.url),
+  '..',
+  '..',
+  '..',
+  '..',
+  'out',
+  'jellyrock.zip',
+);
+
+/** The real package's state, or null when it does not exist. */
+const stampOf = (file) =>
+  existsSync(file) ? `${statSync(file).size}:${statSync(file).mtimeMs}` : null;
 
 describe('create-package (smoke)', () => {
-  it('runs against a temp dir without throwing on require', () => {
-    // Run from a temp dir with no build/ — roku-deploy will reject
-    // (no files to zip), so we expect a non-zero exit, but the script
-    // itself must not crash on require.
+  it('zips the staging dir into the out dir it was given and leaves the real out/ alone', () => {
     const dir = mkdtempSync(join(tmpdir(), 'jellyrock-create-package-'));
-    mkdirSync(join(dir, 'build'), { recursive: true });
+    const stagingDir = join(dir, 'build');
+    const outDir = join(dir, 'out');
+    mkdirSync(stagingDir, { recursive: true });
+    writeFileSync(join(stagingDir, 'manifest'), 'title=test\n');
+    const before = stampOf(REPO_ZIP);
     try {
-      const { exitCode } = spawnScript('scripts/create-package.cjs', [], { cwd: dir });
-      // Either zipPackage rejects (non-zero) or it succeeds with empty zip
-      // (zero); both confirm the script ran. We just want "didn't crash on
-      // load with a SyntaxError or missing-module error."
-      expect(typeof exitCode).toBe('number');
+      const { exitCode, stderr } = spawnScript(
+        'scripts/create-package.cjs',
+        ['--staging-dir', stagingDir, '--out-dir', outDir],
+        { cwd: dir },
+      );
+      expect(stderr).toBe('');
+      expect(exitCode).toBe(0);
+      expect(existsSync(join(outDir, 'jellyrock.zip'))).toBe(true);
+      expect(stampOf(REPO_ZIP)).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('resolves relative flag values against the cwd', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jellyrock-create-package-'));
+    mkdirSync(join(dir, 'stage'), { recursive: true });
+    writeFileSync(join(dir, 'stage', 'manifest'), 'title=test\n');
+    try {
+      const { exitCode } = spawnScript(
+        'scripts/create-package.cjs',
+        ['--staging-dir', 'stage', '--out-dir', 'pkg'],
+        {
+          cwd: dir,
+        },
+      );
+      expect(exitCode).toBe(0);
+      expect(existsSync(join(dir, 'pkg', 'jellyrock.zip'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an unknown argument with exit 1', () => {
+    const { exitCode, stderr } = spawnScript('scripts/create-package.cjs', ['--bogus']);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('--bogus');
   });
 });

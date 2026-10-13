@@ -740,8 +740,8 @@
   },
   "tests/scripts/unit/_helpers/transpile-with-plugin.js": {
     "em-dash": 1,
-    "latin-abbrev": 2,
-    "prose-arrow": 4
+    "latin-abbrev": 1,
+    "prose-arrow": 2
   },
   "tests/scripts/unit/bsc-plugins/auto-destroyed-guard.test.js": {
     "em-dash": 6
@@ -819,10 +819,6 @@
     "caps-emphasis": 5,
     "em-dash": 11,
     "prose-arrow": 18
-  },
-  "tests/scripts/unit/create-package.smoke.test.js": {
-    "em-dash": 1,
-    "filler": 2
   },
   "tests/scripts/unit/create-signed-package.test.js": {
     "em-dash": 2
