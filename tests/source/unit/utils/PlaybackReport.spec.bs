@@ -725,14 +725,35 @@ namespace tests
 
     @it("omits size and bitrate for a .strm item, whose figures are the text file's")
     function _()
-      ' Measured 2026-10-12 on 10.11 and 12.1: a .strm source is Protocol Http, and its Size
-      ' is the .strm file (101 B) with a Bitrate worked out from it (11 bit/s).
+      ' Measured 2026-10-12 on 10.11 and 12.1: a .strm source's Size is the .strm file
+      ' (101 B), with a Bitrate worked out from it (11 bit/s).
+      m.input.isShortcut = true
       m.input.mediaSource.Protocol = "Http"
       m.input.mediaSource.Size = 101
       m.input.mediaSource.Bitrate = 11
       report = buildPlaybackReport(m.input)
       m.assertEqual(m.rowValue(report, "file.size"), "<missing>")
       m.assertEqual(m.rowValue(report, "file.bitrate"), "<missing>")
+    end function
+
+    @it("omits them for a .strm item whose URL is not Http")
+    function _()
+      ' A shortcut takes its URL's protocol, so an rtsp one is Rtsp with the same file figures.
+      m.input.isShortcut = true
+      m.input.mediaSource.Protocol = "Rtsp"
+      m.input.mediaSource.Size = 101
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "file.size"), "<missing>")
+      m.assertEqual(m.rowValue(report, "file.bitrate"), "<missing>")
+    end function
+
+    @it("keeps size and bitrate for an Http source that is not a .strm item")
+    function _()
+      ' A channel plugin's source: the plugin sets these, so they are not the text file's.
+      m.input.mediaSource.Protocol = "Http"
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "file.size"), "24.2 GiB")
+      m.assertNotEqual(m.rowValue(report, "file.bitrate"), "<missing>")
     end function
 
     @it("keeps the bitrate of a live stream, which the server measures")

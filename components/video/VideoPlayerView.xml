@@ -40,6 +40,9 @@
          VideoRangeTypeNotSupported on this pass cannot be the Preserve DoVi
          setting's doing, so the report must not name that setting. -->
     <field id="isDoviPreservationBypassed" type="boolean" value="false" />
+    <!-- True when the playing item is a .strm shortcut (its own path ends in .strm). Read by
+         the playback-info report: such a source's size and bitrate describe the text file. -->
+    <field id="isShortcut" type="boolean" value="false" />
 
     <field id="videoId" type="string" />
     <field id="mediaSourceId" type="string" />

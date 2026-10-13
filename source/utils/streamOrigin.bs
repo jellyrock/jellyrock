@@ -88,6 +88,16 @@ function maskUrlSecrets(url as dynamic, serverUrl as dynamic) as string
   return Left(text, queryStart) + pairs.join("&") + fragment
 end function
 
+' True when an item's own path is a .strm file: the server's own test for a shortcut
+' (BaseVideoResolver sets IsShortcut from the extension), which it does not send to clients.
+' Its media source then describes the text file: its Size is the .strm file's.
+'
+' @param {dynamic} itemPath - the item's Path, as the server reports it
+' @returns {boolean}
+function isShortcutPath(itemPath as dynamic) as boolean
+  return LCase(Right(textOrEmpty(itemPath), 5)) = ".strm"
+end function
+
 ' The query names a Jellyfin URL carries the user's access token in. The server's StreamInfo
 ' writes `api_key` at 10.7.7 and `ApiKey` at 10.11.0, and its authorization reads both.
 function isServerTokenName(name as string) as boolean

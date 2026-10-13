@@ -44,6 +44,25 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isShortcutPath()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for an item path that ends in .strm, whatever its case")
+    function _()
+      ' Measured 2026-10-12 on 10.11.11 and 12.1.0: the item read returns this to a non-admin too.
+      m.assertTrue(isShortcutPath("/fixtures/strm-fresh/JR Fresh Tears 01.strm"))
+      m.assertTrue(isShortcutPath("/media/Film.STRM"))
+    end function
+
+    @it("is false for a media file, a URL or no path")
+    function _()
+      m.assertFalse(isShortcutPath("/media/movies/Dune (2021)/Dune.2021.2160p.mkv"))
+      m.assertFalse(isShortcutPath("https://cdn.example.com/live/master.m3u8"))
+      m.assertFalse(isShortcutPath(""))
+      m.assertFalse(isShortcutPath(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("maskUrlSecrets()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

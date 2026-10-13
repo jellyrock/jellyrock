@@ -26,6 +26,7 @@ import "pkg:/source/utils/playbackErrorInfo.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/session.bs"
+import "pkg:/source/utils/streamOrigin.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
@@ -1165,6 +1166,7 @@ sub onVideoContentLoaded()
   m.chapters = videoContent[0].chapters
   m.top.showID = videoContent[0].showID
   m.top.cachedPlaybackInfo = videoContent[0].playbackInfo
+  m.top.isShortcut = isValid(videoContent[0].meta) and isShortcutPath(videoContent[0].meta.path)
   m.top.isDoviDirectPlayFallbackAvailable = isValid(videoContent[0].isDoviDirectPlayFallbackAvailable) and videoContent[0].isDoviDirectPlayFallbackAvailable
   m.top.isTranscodeAvailable = isValid(videoContent[0].isTranscodeAvailable) and videoContent[0].isTranscodeAvailable
 

@@ -459,13 +459,13 @@ function fileSection(source as object, transcoding as dynamic, input as object) 
   ' floor. Absent reads as false, so an older or unusual server shows the row
   ' exactly as it does today.
   '
-  ' NOR ON A .STRM ITEM. Its source is Protocol Http, and the Size the server reports
-  ' is the .strm text file's, with a Bitrate worked out from it: 101 B and 11 bit/s
-  ' for a two-hour film (measured 2026-10-12 on 10.11 and 12.1), which rendered as
-  ' "0 Kbps". A live stream is Http too, and its bitrate stays: the server takes it
-  ' from the stream.
+  ' NOR ON A .STRM ITEM. The Size the server reports is the .strm text file's, with a
+  ' Bitrate worked out from it: 101 B and 11 bit/s for a two-hour film (measured
+  ' 2026-10-12 on 10.11 and 12.1), which rendered as "0 Kbps". The item's own path
+  ' says so (isShortcutPath); the source's Protocol cannot, since a shortcut takes its
+  ' URL's protocol and a channel plugin's Http source can carry real figures.
   isLive = isBooleanTrue(source.IsInfiniteStream)
-  describesTextFile = not isLive and LCase(textOrEmpty(source.Protocol)) = "http"
+  describesTextFile = isBooleanTrue(input.isShortcut)
   if not isLive and not describesTextFile
     reportRow(rows, "file.size", translationKeys.LabelSize, getReadableSize(source.Size))
   end if

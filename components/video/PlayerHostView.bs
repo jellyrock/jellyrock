@@ -751,7 +751,8 @@ function playbackReportInputs(session as dynamic) as object
     apiVersion: getApiVersionFromGlobal(),
     deviceSupportsDovi: capabilities.supportsDolbyVision,
     deviceMaxHeight: capabilities.maxHeight,
-    doviPreservationBypassed: m.view.isDoviPreservationBypassed
+    doviPreservationBypassed: m.view.isDoviPreservationBypassed,
+    isShortcut: m.view.isShortcut
   }
 end function
 
