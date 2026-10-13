@@ -1,25 +1,25 @@
 /**
  * Take: "cast to another server" (#550). Signed into the STABLE demo server, cast an item that
  * lives on the UNSTABLE demo server. The cast names a different saved server's GUID, so the app
- * prompts to switch, re-authenticates against unstable (a full re-auth by design — see
- * replayRoute.bs / SignOut clears active_user), and the stashed cast replays → plays on unstable.
+ * prompts to switch, re-authenticates against unstable (a full re-auth by design: see
+ * replayRoute.bs, and SignOut clears active_user), and the stashed cast replays, then plays on unstable.
  *
  * Privacy: BOTH servers are public demo servers; the home server is never touched (the runner
  * refuses any non-demo host, and the seed writes only the two demo servers).
  *
- * Beats: Home (stable) → cast id|serverId|action=play → "Change Server?" → Switch → "Switching
- * to unstable…" → user picker (unstable) → select demo user → playback on unstable.
+ * Beats: Home (stable), cast id|serverId|action=play, "Change Server?", Switch, "Switching
+ * to unstable…", user picker (unstable), select demo user, playback on unstable.
  */
 
 /**
  * Confirm the "Change Server" prompt (a JRDialog overlay, buttons [Cancel, Switch]).
  *
- * The prompt is a scene-appended overlay stamped `#jrDialog`, NOT Roku's modal channel — the
+ * The prompt is a scene-appended overlay stamped `#jrDialog`, not Roku's modal channel. The
  * main-thread flows moved off `m.scene.dialog` in the #288 phase-3 migration. So every gate here
  * keys off the overlay: it is open while `#jrDialog.id` resolves, and answered once it stops.
  *
  * Buttons are identified by their RENDERED labels rather than by hardcoded translations, matching
- * tests/rta/specs/dialogs.spec.js. (`#buttonRow` is a recursive child id, not a field — don't chain
+ * tests/rta/specs/dialogs.spec.js. (`#buttonRow` is a recursive child id, not a field, so don't chain
  * it off `#jrDialog`.) Selecting is then verified by OUTCOME: on "Switch" (not "Cancel") the stashed
  * cast survives to replay.
  */
@@ -35,8 +35,8 @@ async function confirmServerSwitch(ctx) {
     label: 'server-switch: change-server dialog',
   });
 
-  // Hold on the dialog so a viewer can actually READ it ("Change Server? Switch to play '…'?")
-  // before the take answers — without this the prompt flashes by faster than a human can follow.
+  // Hold on the dialog so a viewer can actually read it ("Change Server? Switch to play '…'?")
+  // before the take answers. Without this the prompt flashes by faster than a human can follow.
   await ctx.hold(4500, 'Change Server? dialog (read)');
 
   // Read the labels off the rendered buttons instead of hardcoding translated strings, so the
@@ -55,16 +55,16 @@ async function confirmServerSwitch(ctx) {
     );
   }
 
-  // showConfirmDialog focuses the SAFE side first — assert it, because the single Right below
+  // showConfirmDialog focuses the safe side first. Assert it, because the single Right below
   // is only correct from Cancel.
   await ctx.waitFocused((f) => f.node?.text === cancelLabel, {
     label: 'server-switch: Cancel focused on open',
     timeout: 5000,
   });
 
-  // One Right lands on Switch. Asserted, not assumed: JRDialog.moveButtonFocus WRAPS
-  // ((index + delta + count) mod count) rather than clamping, so a second Right — or a third
-  // button — would land back on Cancel and this take would silently click the wrong thing.
+  // One Right lands on Switch. Asserted, not assumed: JRDialog.moveButtonFocus wraps
+  // ((index + delta + count) mod count) rather than clamping, so a second Right, or a third
+  // button, would land back on Cancel and this take would silently click the wrong thing.
   // (The Down this replaces was an orientation hedge for a vertical stack. JRDialog.onKeyEvent
   // handles only back/left/right/OK and swallows everything else, so it was always a no-op.)
   await ctx.press(ctx.ecp.Key.Right);
@@ -74,8 +74,8 @@ async function confirmServerSwitch(ctx) {
   });
   await ctx.press(ctx.ecp.Key.Ok);
 
-  // Self-gate on the dialog actually being answered — the overlay removes itself from the scene —
-  // then confirm it was SWITCH not Cancel: on Switch the stash survives (replays post-login); on
+  // Self-gate on the dialog actually being answered (the overlay removes itself from the scene),
+  // then confirm it was Switch, not Cancel: on Switch the stash survives (replays post-login); on
   // Cancel it's wiped.
   await ctx.waitDialogClosed('server-switch: change-server dialog dismissed', { timeout: 8000 });
   const stash = await ctx.odc
@@ -109,7 +109,7 @@ export default {
   servers: ['stable', 'unstable'], // signed into the first; cast targets the second
 
   async run(ctx) {
-    // Resolve a real movie + title on the TARGET (unstable) server — that's where the cast lands.
+    // Resolve a real movie + title on the target (unstable) server, where the cast lands.
     // target.serverId is unstable's DISTINCT id (the runner applies DEMO_SERVERS.syntheticServerId,
     // because the two demo servers are clones that share one real GUID); the cast targets it below.
     const target = ctx.sessionFor('unstable');
@@ -122,7 +122,7 @@ export default {
 
     await ctx.hold(3000, 'Home (stable)');
 
-    // Cast an item that lives on the OTHER saved server → triggers the switch prompt. itemName rides
+    // Cast an item that lives on the other saved server, which triggers the switch prompt. itemName rides
     // as a sibling param so the prompt reads "Switch to play '<title>'?".
     await ctx.cast(`id=${movie.id}|serverId=${target.serverId}|action=play`, {
       itemName: movie.name,
@@ -131,7 +131,7 @@ export default {
     await confirmServerSwitch(ctx); // wait for the dialog, select Switch, verify it took
     await ctx.hold(2500, 'Switching to unstable…'); // reachability pre-flight + re-login underway
 
-    await selectDemoUser(ctx); // unstable user picker → pick the demo user
+    await selectDemoUser(ctx); // unstable user picker: pick the demo user
 
     await ctx.waitPlaying(60000); // re-login + Home load + stashed-cast replay
     await ctx.hold(9000, 'playback (unstable)');

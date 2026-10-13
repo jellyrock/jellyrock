@@ -1,4 +1,4 @@
-// tests/rta/lib/timeout.js — bound a promise that may never settle.
+// tests/rta/lib/timeout.js: bound a promise that may never settle.
 //
 // Its own leaf module, importing nothing, because three callers on both sides of an
 // import cycle need it. `driver.js` imports `steps.js` (for `sleep`) and `steps.js`
@@ -13,7 +13,7 @@
  * Exported because the deploy is not the only step here that can wait forever, and the
  * second caller proved the shape general rather than deploy-specific. RTA's own timeouts
  * do not cover this class: `sendRequest` races the request against `getTimeOut(options)`,
- * but it `await`s `setupClientSocket()` FIRST — and that promise only self-rejects on
+ * but it `await`s `setupClientSocket()` FIRST, and that promise only self-rejects on
  * `ECONNREFUSED`/`EPIPE`. A connect to port 9000 that neither connects nor errors leaves
  * it unsettled, and `clientSocketPromise` is cached, so it stays that way. Read out of
  * `client/dist/OnDeviceComponent.js` on 2026-08-16, not inferred from a symptom.
@@ -23,7 +23,7 @@
  *
  * @param {Promise} promise the work to bound.
  * @param {number} ms the cap.
- * @param {string} message what to throw — say the likely CAUSE, not just the elapsed time.
+ * @param {string} message what to throw; say the likely CAUSE, not only the elapsed time.
  */
 export async function withTimeout(promise, ms, message) {
   let timer;

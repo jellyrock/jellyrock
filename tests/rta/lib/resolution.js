@@ -3,50 +3,50 @@
  *
  * ## The defect this measures
  *
- * `getVal('#homeRows.content.getChildCount()')` is `scene.findNode("homeRows")` — a
- * recursive search of the WHOLE scene, not of the screen the test is standing on. So a
+ * `getVal('#homeRows.content.getChildCount()')` is `scene.findNode("homeRows")`, a
+ * recursive search of the whole scene, not of the screen the test is standing on. So a
  * read can succeed and describe something other than what the call site names, in two
  * distinct ways:
  *
- *   (a) DUPLICATE — several nodes carry the id, and which one answers is a property of
- *       tree order rather than of the test. Seven components declare a node with id
- *       `buttons`; two declare `buttonRow`.
- *   (b) NOT PRESENTED — exactly one node carries the id and it sits in a view parked
- *       off-screen. sgRouter's default `suspendMode: "hide"` keeps a COVERED view in the
+ *   (a) Duplicate: several nodes carry the id, and which one answers is a property of
+ *       tree order rather than of the test. Several components declare a node with id
+ *       `buttons`, and a few declare `buttonRow`.
+ *   (b) Not presented: exactly one node carries the id and it sits in a view parked
+ *       off-screen. sgRouter's default `suspendMode: "hide"` keeps a covered view in the
  *       tree, so the read resolves happily against a screen nobody is looking at.
  *
  * Neither is visible in a result: the gate goes green either way. That is the whole
- * class — succeeding for a reason nobody chose.
+ * class: succeeding for a reason nobody chose.
  *
  * **(b) is the one that has actually bitten, and a uniqueness check misses it.**
  * `waitHome()` passed from a library grid because a scene-rooted `#homeRows` read found
- * a SUSPENDED Home — there was only ever ONE `#homeRows`, so counting ids would have
+ * a suspended Home. There was only ever one `#homeRows`, so counting ids would have
  * called it clean. The same mechanism ran across 30 more sites that named Home's row list
  * by id (converted 2026-09-08; see ./home-list.js). Any audit that only asks "is this id
  * unique" is answering the easier question.
  *
  * ## Why one device call answers both
  *
- * `odc.storeNodeReferences()` walks from `m.top.getScene()` — the same tree `findNode`
- * searches — and returns a flat list carrying `id`, `subtype`, `parentRef`, `keyPath`,
+ * `odc.storeNodeReferences()` walks from `m.top.getScene()` (the same tree `findNode`
+ * searches) and returns a flat list carrying `id`, `subtype`, `parentRef`, `keyPath`,
  * `visible` and `opacity` for every node. So uniqueness is a count over that list and
  * presented-ness is a walk up `parentRef`, both client-side, with no second round trip.
  *
  * Measured on `.177` (Streaming Stick 4K, 108 nodes on Home): a median **30 ms**, n=15
  * across two runs, range 25–64. `convertKeyPathToSceneKeyPath` was measured at ~6 ms and
- * is deliberately NOT used — when the id is unique the single match IS what `findNode`
- * resolved, and when it is not, the ambiguity is already the finding.
+ * is not used: when the id is unique the single match is what `findNode` resolved, and
+ * when it is not, the ambiguity is already the finding.
  *
  * `isShowingOnScreen` is likewise not used, though it looks like the natural primitive:
  * it answers in 5–10 ms when it answers, but one probe run hung on it indefinitely and
  * that has not been explained. The census carries `visible`/`opacity` anyway, so
  * depending on it would buy nothing and import an unexplained hang into the wait path.
  *
- * ## Why "presented", and NOT "inside the active view"
+ * ## Why "presented", and not "inside the active view"
  *
- * The obvious predicate — is the node under `m.global.activeRoutedView` — is wrong here,
- * and the device says so. `#jrDialog`, the most-read id in the suite (29 sites), is
- * appended to the SCENE by `presentOverlayDialog`, not to the view; `#imageFader` sits at
+ * The obvious predicate, whether the node is under `m.global.activeRoutedView`, is wrong
+ * here, and the device says so. `#jrDialog`, the most-read id in the suite, is
+ * appended to the scene by `presentOverlayDialog`, not to the view; `#imageFader` sits at
  * scene level too (`parentRef: 0`). An active-view rule would false-fail both, which is
  * how a gate teaches people to ignore it.
  *
@@ -54,14 +54,14 @@
  *
  * Nothing here throws. It runs inside the wait path of the only per-PR feedback nav
  * changes get, and a gate whose false-alarm rate has never been measured must not be able
- * to red a healthy suite — the rule `probeFixture` was built under, one layer up:
+ * to red a healthy suite. That is the rule `probeFixture` was built under, one layer up:
  * *instrumentation must never move a verdict*. Records land in the ledger's
  * `resolutions.jsonl` stream; promote to a throw once a full suite says the rate is zero.
  *
- * Deliberately WITHOUT an allowlist for now. `getVals`' own docblock says `#homeRows` is
- * "deliberately scene-rooted (Home is not the active view once a drill-down opens)", so
+ * There is no allowlist for now, on purpose. `getVals`' own docblock says `#homeRows` is
+ * scene-rooted on purpose (Home is not the active view once a drill-down opens), so
  * that site may well report not-presented and be correct to. Pre-seeding an allowlist
- * from that guess would launder exactly the assumption this exists to test — let the run
+ * from that guess would launder exactly the assumption this exists to test. Let the run
  * say which sites fire, then justify or fix each one.
  */
 // The ODC singleton comes straight from the package rather than through `driver.js`,
@@ -79,30 +79,30 @@ export const auditEnabled = () => process.env.RTA_AUDIT_RESOLUTION === '1';
  * How many censuses one process may take.
  *
  * A cap on the pathological shape rather than on cost: a `getVal` inside a poll `action`
- * re-runs every tick, so the call volume is not the ~106 static call sites and nobody can
+ * re-runs every tick, so the call volume is not the static call sites and nobody can
  * bound it by reading the code. Vitest runs one worker per spec FILE, so this is a
  * per-file budget.
  *
  * **It is not there for speed.** Measured 2026-09-09 on `.177`: two full audited suites took
  * 1330 s and 1339 s against a prior passing band of 1295 / 1321 / 1337 / 1352 s on the same
- * branch — the censuses cost nothing detectable at suite level. So do not tune this looking
+ * branch: the censuses cost nothing detectable at suite level. So do not tune this looking
  * for time; the only thing it buys is a bound on a runaway poll.
  *
  * **1000 rather than the 200 it shipped as, because 200 was arbitrary and demonstrably bit
- * a healthy run.** Both of those suites folded to exactly `audited: 525` — the same number
- * twice, which is the signature of a CAP rather than a population — and the second, once it
+ * a healthy run.** Both of those suites folded to exactly `audited: 525`, the same number
+ * twice, which is the signature of a cap rather than a population. The second, once it
  * could say so, reported `truncated: true`. A cap that trims a normal run is not bounding
  * pathology, it is silently narrowing coverage, and `audited` is a coverage claim. At ~30 ms
  * a census, 1000 is ~30 s per spec-file worker in the worst case, which still bounds the
- * runaway shape this exists for. If a run still reports `truncated`, this is still too low —
- * that marker is now the instrument for setting it, so the number never has to be guessed
+ * runaway shape this exists for. If a run still reports `truncated`, this is still too low.
+ * That marker is now the instrument for setting it, so the number never has to be guessed
  * again.
  */
 const CENSUS_BUDGET = Number(process.env.RTA_AUDIT_BUDGET ?? 1000);
 let spent = 0;
 let truncationRecorded = false;
 
-/** Test seam — reset the per-process budget state. */
+/** Test seam: reset the per-process budget state. */
 export function resetAuditBudget() {
   spent = 0;
   truncationRecorded = false;
@@ -133,15 +133,15 @@ export function leadingSceneId(keyPath) {
  * `visible === false` and `opacity === 0` both count as hidden: sgRouter's "hide" suspend
  * parks a view with `visible = false`, and the app's own reveal machinery
  * (`hideDialogUntilLaidOut`) uses opacity. A node carrying NEITHER field is treated as
- * presented rather than as suspect — 19 of 108 nodes on Home report no `visible` at all
+ * presented rather than as suspect: 19 of 108 nodes on Home report no `visible` at all
  * (fonts, timers, animations), and flagging those would bury the real signal.
  *
- * ## Why the node ITSELF is deliberately not checked
+ * ## Why the node itself is not checked
  *
  * Measured, not reasoned: the first full audited suite produced 19 anomaly records, and
  * 14 of them were `#osd` reported "off-screen" with `hiddenAt` pointing at `…#osd`
- * itself. Those are `waitFor('#osd.visible', (v) => v === false, { label: 'osd hidden' })`
- * — a gate whose whole job is to wait until the OSD IS hidden. Flagging it means flagging
+ * itself. Those are `waitFor('#osd.visible', (v) => v === false, { label: 'osd hidden' })`,
+ * a gate whose whole job is to wait until the OSD is hidden. Flagging it means flagging
  * a node for being in exactly the state the caller asserted, which is noise that would
  * have taught every reader to skip this line.
  *
@@ -169,8 +169,8 @@ export function hiddenAncestor(node, byRef) {
 /**
  * Classify one census against one id. Pure, so it has tests that need no device.
  *
- * `count: 0` is NOT an anomaly here. A poll reads a keyPath that is legitimately absent
- * on most of its ticks, and this is only ever called once a read has RESOLVED — but a
+ * `count: 0` is not an anomaly here. A poll reads a keyPath that is legitimately absent
+ * on most of its ticks, and this is only ever called once a read has resolved, but a
  * batched read reports a per-key miss as `undefined` without failing, so zero is a
  * reachable and uninteresting state. Reporting it would drown the two findings that
  * matter in noise from every wait that ever polled.
@@ -182,7 +182,7 @@ export function classifyResolution(id, flatTree) {
   const count = matches.length;
   if (!count) return { id, count, presented: null, hiddenAt: null, subtypes: [] };
   // With a duplicate the winner is a property of tree order, so "which one" is not a
-  // question worth answering — the duplication is the finding. Presented-ness is reported
+  // question worth answering: the duplication is the finding. Presented-ness is reported
   // for the FIRST match, which is what a depth-first `findNode` reaches first.
   const hiddenAt = hiddenAncestor(matches[0], byRef);
   return {
@@ -200,11 +200,11 @@ export function classifyResolution(id, flatTree) {
  *
  * Swallowing is the right contract for the same reason the readers swallow: this is
  * instrumentation on a path that has already succeeded, and an audit that can fail a
- * green wait is strictly worse than no audit. A census that errors is simply not
- * recorded — it cannot be reported as "clean", because the ledger's `audited` counts
+ * green wait is strictly worse than no audit. A census that errors is not
+ * recorded. It cannot be reported as "clean", because the ledger's `audited` counts
  * RECORDS, not attempts, so a failed census raises no number.
  *
- * It does spend budget, which is deliberate: a device answering nothing would otherwise
+ * It does spend budget, on purpose: a device answering nothing would otherwise
  * retry a census on every audited read for the whole file.
  */
 export async function auditSceneResolution(keyPath, options) {
@@ -213,10 +213,10 @@ export async function auditSceneResolution(keyPath, options) {
 
 /**
  * The batch form. ONE census answers every keyPath in a batched read, because the census
- * describes the whole scene — asking per id would pay ~30 ms each to re-read the same
+ * describes the whole scene; asking per id would pay ~30 ms each to re-read the same
  * tree, which is the mistake `getActiveVals` was written to avoid one layer up.
  *
- * It also keeps the observation WINDOW honest for the same reason that docblock gives:
+ * It also keeps the observation window honest for the same reason that docblock gives:
  * the keyPaths in a `getVals` call are read in one device round trip precisely so they
  * describe one frame, and auditing them against N different censuses would compare them
  * against N different frames.
@@ -226,21 +226,21 @@ export async function auditSceneResolutions(keyPaths, { label } = {}) {
   const ids = [...new Set((keyPaths ?? []).map(leadingSceneId).filter(Boolean))];
   if (!ids.length) return;
   if (spent >= CENSUS_BUDGET) {
-    // The budget stops the audit, and until this it stopped it SILENTLY: the ledger
+    // The budget stops the audit, and until this it stopped it silently: the ledger
     // reported `audited: N` with nothing to say whether N was the whole population or
     // the point at which we stopped looking. That is the exact failure this module's
-    // own docblock names — "a clean result is only readable next to its coverage" —
+    // own docblock names ("a clean result is only readable next to its coverage"),
     // reintroduced one level up.
     //
     // It is not hypothetical, and the run that proved it is worth stating: on
-    // 2026-09-09 a full audited suite folded to `audited: 525`, and NOTHING in the
+    // 2026-09-09 a full audited suite folded to `audited: 525`, and nothing in the
     // ledger could say whether any worker had capped. The raw records that might have
-    // answered it were reset by the very next run, which is correct — a fold may only
-    // ever see this run's — but it means the question becomes unanswerable the moment
-    // anyone runs the suite again. So the marker has to reach the FOLD, not just sit
+    // answered it were reset by the very next run, which is correct (a fold may only
+    // ever see this run's), but it means the question becomes unanswerable the moment
+    // anyone runs the suite again. So the marker has to reach the fold, and not only sit
     // in a stream that the next run deletes.
     //
-    // ONE record, on the first skip. Emitting per skip would flood the stream with the
+    // One record, on the first skip. Emitting per skip would flood the stream with the
     // one fact it is trying to state, and the fact is binary: this worker stopped
     // auditing. `foldResolutions` turns it into a flag on the ledger line.
     if (!truncationRecorded) {
@@ -260,6 +260,6 @@ export async function auditSceneResolutions(keyPaths, { label } = {}) {
     }
   } catch {
     // The device did not answer this census. The reads it describes already succeeded,
-    // so there is nothing to fail — and `audited` deliberately does not count it.
+    // so there is nothing to fail, and `audited` does not count it.
   }
 }

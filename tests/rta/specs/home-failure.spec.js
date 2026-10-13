@@ -1,14 +1,14 @@
 /**
  * A Home row whose load fails is never removed or emptied, and a row that fails on its FIRST
- * load says so instead of spinning — driven through the request-failure switch
+ * load says so instead of spinning. It is driven through the request-failure switch
  * (`rtaFailRequests`) against a healthy server:
  *
  *  - a section failing on first load (Continue Watching) shows the "couldn't load" tile, and
  *    pressing OK on it loads the row;
  *  - a section failing on a refresh (Continue Watching, on the way back from Search) keeps
- *    the items it showed — before, a flaky refresh deleted the row;
+ *    the items it showed (before, a flaky refresh deleted the row);
  *  - the libraries failing on first load show My Media's tile, and OK builds the Recently
- *    Added rows — before, My Media spun and no Recently Added row was ever made;
+ *    Added rows (before, My Media spun and no Recently Added row was ever made);
  *  - with no My Media row in the layout, the same failure shows as one "Recently Added" row;
  *  - one Recently Added row failing on first load shows the tile, not a spinner;
  *  - OK on that tile shows the spinner at once and loads the row, even when the libraries
@@ -18,7 +18,7 @@
  * row but People; `favoritePeople`, /Persons, for People):
  *
  *  - the items load failing on first load shows ONE "Favorites" row with the tile, not a tile
- *    on every type's row, and OK loads the favorites — before, the tab went blank;
+ *    on every type's row, and OK loads the favorites (before, the tab went blank);
  *  - People failing alone shows People's tile while the other rows load;
  *  - OK on People while the items load is still running leaves that load to finish rather
  *    than sending it again;
@@ -27,8 +27,8 @@
  * The Favorites cases need a favorite Movie on the server (the demo user has one); they throw,
  * not skip, when it is gone, so a thinned fixture is not read as a pass.
  *
- * A first load only runs when a HomeRows is mounted — at launch, before a spec can set a rule
- * — or when the Home tab is selected again, which mounts a fresh one. So the first-load cases
+ * A first load only runs when a HomeRows is mounted: at launch, before a spec can set a rule,
+ * or when the Home tab is selected again, which mounts a fresh one. So the first-load cases
  * go to Favorites, set the rule, and come back (`selectHomeTab`).
  *
  * What a row does with a result is `source/home/homeRowFailure.bs`'s rule and unit-tested
@@ -94,7 +94,7 @@ async function firstLoadWith(rules) {
 
 /**
  * Home has settled: no row is still showing a spinner. Every section has answered or failed, so
- * the rows have stopped being removed and inserted — and no failure was left spinning.
+ * the rows have stopped being removed and inserted, and no failure was left spinning.
  */
 const settled = (snap) => snap.rows.every((r) => r.firstType !== 'Loading' || r.loadFailed);
 
@@ -170,7 +170,7 @@ it('the libraries failing with no My Media row show one Recently Added row, and 
   await freshApp();
   // The layout is the server's (DisplayPreferences), held in memory on the user's settings.
   // Changing it there reaches only this app run and the local registry, which the runner
-  // restores — never the server.
+  // restores, and never the server.
   const sections = [];
   for (let i = 0; i < HOME_SLOT_COUNT; i++)
     sections.push(await getGlobalVal(`user.settings.homeSection${i}`));
@@ -276,7 +276,7 @@ it('OK on a failed Recently Added row while the rest are still loading spins it,
 
 /**
  * The fixture holds what the Favorites cases assert on: at least one favorite Movie. Thrown,
- * not skipped — a case that loads nothing would pass on the very blank tab it exists to catch.
+ * not skipped: a case that loads nothing would pass on the very blank tab it exists to catch.
  */
 async function assertFavoriteMovie() {
   const movies = await favoriteCount(session, 'Movie');
@@ -335,8 +335,8 @@ it('Favorites: People failing alone shows its failed tile while the other rows l
 it('Favorites: OK on People while the items load is still running does not send it again', async () => {
   await assertFavoriteMovie();
   await freshApp();
-  // People fails at once; the items load is held for 11 s, so it is still running at OK — just
-  // under the 12 s its caller waits for a default-limit answer (timeouts.API_WAIT_MS). `times:
+  // People fails at once; the items load is held for 11 s, so it is still running at OK, a
+  // little under the 12 s its caller waits for a default-limit answer (timeouts.API_WAIT_MS). `times:
   // 2` holds a second items request too, so one sent by the retry shows as a second held answer.
   await failRequests([
     { prefix: 'favoritePeople', kind: 'http', status: 500, times: 1 },

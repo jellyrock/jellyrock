@@ -74,7 +74,7 @@ function waitActive(subtype, label) {
 
 /**
  * Search, then start a NEWER query whose answer is held, then open one of the previous
- * query's results — still on screen, and reachable because a search keeps the remote live.
+ * query's results, still on screen and reachable because a search keeps the remote live.
  * Leaves the details screen active with the newer search still waiting behind it.
  */
 async function openOldResultWhileNewerSearchLoads(rules) {
@@ -149,9 +149,9 @@ it("a late search answer does not stop the details screen's spinner", async () =
   await waitHeld(2, "the details screen's metadata is on a slot too");
   await waitHeld(1, 'the search answered while details still waits', 15000);
 
-  // Timer window, proving a NON-EVENT: the search's results reach its (hidden) screen a few
+  // Timer window, proving a non-event: the search's results reach its (hidden) screen a few
   // round trips after this answer, and must not end the details spinner when they do. No
-  // app field reports that a delivery did NOT happen, so this out-waits it.
+  // app field reports that a delivery did not happen, so this out-waits it.
   await sleep(3000);
   expect(await getVal('isLoading'), "details' own spinner still up").toBe(true);
   expect(await getVal('isRemoteDisabled'), 'details still blocking while it loads').toBe(true);

@@ -1,8 +1,8 @@
 /**
  * Hardware-free gate on the one part of the deploy that decides WHICH BUILD a measurement
- * arm actually is — see `deployBuild` in `driver.js`.
+ * arm actually is (see `deployBuild` in `driver.js`).
  *
- * `.test.js` (Vitest, `npm run test:scripts`, no device) — distinct from the `.spec.js`
+ * `.test.js` (Vitest, `npm run test:scripts`, no device) is distinct from the `.spec.js`
  * files under `specs/`, which drive real hardware.
  */
 import fs from 'node:fs';
@@ -11,7 +11,7 @@ import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // `driver.js` re-exports the device clients at module scope, so they have to exist for it
-// to import at all. Only `odc.getValue` is driven — `shippedRtaFlagMismatch` is pure and
+// to import at all. Only `odc.getValue` is driven; `shippedRtaFlagMismatch` is pure and
 // never reaches any of this.
 const getValue = vi.fn();
 vi.mock('roku-test-automation', () => ({
@@ -35,7 +35,7 @@ describe('shippedRtaFlagMismatch — did the ENABLE_RTA flip actually take?', ()
 
   it('REFUSES the failure that matters: a `plain` deploy whose flip silently no-opped', () => {
     // The flip is an unanchored string replace against RTA's own output. If it ever stops
-    // matching, what ships is `ENABLE_RTA=true` with no component — which IS the
+    // matching, what ships is `ENABLE_RTA=true` with no component, which is the
     // `no-component` arm, and nothing downstream can tell the two apart: neither has an
     // ODC, so `odcIsResident` is false and `provenance.enableRta` records `false` for
     // both. The calibration would compare the wrong pair and refuse nothing.
@@ -62,7 +62,7 @@ describe('shippedRtaFlagMismatch — did the ENABLE_RTA flip actually take?', ()
   it('reads the REAL committed manifest, so the guard cannot drift from the build', () => {
     // Against the repo's actual `bs_const` rather than a synthetic string. The committed
     // value is `ENABLE_RTA=false` and RTA rewrites it to `true` in the staged copy on
-    // every deploy — so if this line's SHAPE ever changes, the guard that depends on
+    // every deploy, so if this line's SHAPE ever changes, the guard that depends on
     // matching it fails here rather than on a device mid-calibration.
     const manifest = fs.readFileSync(path.join(process.cwd(), 'manifest'), 'utf8');
     const bsConst = /^bs_const=.*$/m.exec(manifest)?.[0];
@@ -73,7 +73,7 @@ describe('shippedRtaFlagMismatch — did the ENABLE_RTA flip actually take?', ()
 });
 
 /**
- * `waitSceneAnswering` — the scene wait two specs had each written out.
+ * `waitSceneAnswering`: the scene wait two specs had each written out.
  *
  * The property gated is the one the two copies DISAGREED about: what happens on timeout.
  * One threw; the other ran a bounded `for` and fell through, so a scene that never
@@ -107,7 +107,7 @@ describe('waitSceneAnswering — the app being up is not something to fall throu
   });
 
   it('treats a rejected read as "not yet", not as an answer', async () => {
-    // The transport failing IS the expected state early on — the app is not up, so the
+    // The transport failing IS the expected state early on: the app is not up, so the
     // request has nothing to reach. Letting it escape would turn the normal case into a
     // crash, and swallowing it into `found: true` would pass the wait on a dead device.
     getValue.mockRejectedValueOnce(new Error('ECONNREFUSED')).mockResolvedValue({ found: true });
@@ -116,7 +116,7 @@ describe('waitSceneAnswering — the app being up is not something to fall throu
   });
 
   it('names what to check, so the message is actionable without a device dump', async () => {
-    // It cannot use `diagnosedError` — that reads the device that is not answering — so
+    // It cannot use `diagnosedError` (that reads the device that is not answering), so
     // the message is the whole diagnostic.
     getValue.mockResolvedValue({ found: false });
     const err = await waitSceneAnswering({ timeout: 60, interval: 10 }).catch((e) => e);
@@ -154,7 +154,7 @@ describe('ensureOdcReachable — refuse the first ODC call rather than hang on i
   it('POLLS a refused port instead of failing on the first answer', async () => {
     // The no-regression property, and the one a one-shot gate would break. `odcIsResident`
     // answers `false` the instant a port is refused, so a device 200 ms from finishing its
-    // boot would be reported as having no RTA build at all — turning a slow-but-working
+    // boot would be reported as having no RTA build at all, turning a slow-but-working
     // launch into a spurious failure. RTA itself retries a refused connect for 10 s, so
     // this gate has to be at least as patient or it fails runs that used to pass.
     const port = await freePort();
@@ -187,7 +187,7 @@ describe('ensureOdcReachable — refuse the first ODC call rather than hang on i
     }).catch((e) => e);
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toMatch(/no ODC/); //   a Rooibos / build:prod build
-    expect(err.message).toMatch(/channel is closed/); // the app simply exited
+    expect(err.message).toMatch(/channel is closed/); // the app exited
     expect(err.message).toMatch(/device:check/); //   wrong host, or asleep
     expect(err.message).toMatch(/PRECONDITION, not a timeout/);
   });

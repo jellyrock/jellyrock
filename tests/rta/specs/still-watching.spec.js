@@ -5,7 +5,7 @@
  * under a centered prompt that any key answers. With no answer in 30 s the video pauses with
  * its OSD up. Reaching the real trigger takes an hour or more of playback, so the spec turns
  * on the RTA-only `rtaForceStillWatching` hook (source/utils/globals.bs), which makes every
- * automatic advance ask. What the hook skips — when to ask — is unit-tested in
+ * automatic advance ask. What the hook skips (when to ask) is unit-tested in
  * tests/source/unit/utils/stillWatching.spec.bs.
  *
  * The episode is resolved at runtime by capability (`findEpisodeWithNext`), never by
@@ -71,7 +71,7 @@ async function advanceIntoPrompt() {
     label: `first episode playing (${episode.seriesName})`,
     read: readPlayer(episode.id),
   });
-  // Seek from the SERVER's runtime, not the player's `duration` — see findEpisodeWithNext.
+  // Seek from the SERVER's runtime, not the player's `duration`; see findEpisodeWithNext.
   await odc.setValue({
     base: 'scene',
     keyPath: `#${episode.id}.seek`,
@@ -95,7 +95,7 @@ it('any key answers the prompt and the next episode keeps playing', async () => 
     await advanceIntoPrompt();
     expect(await getVal('#jrDialog.subheading'), 'the prompt counts down').toMatch(/\d/);
 
-    // Down, not OK: any key answers, and the answer is all it does — on a bare player Down
+    // Down, not OK: any key answers, and the answer is all it does. On a bare player Down
     // would open the OSD.
     await press(ecp.Key.Down);
     await waitDialogClosed('a key answered the still-watching prompt');

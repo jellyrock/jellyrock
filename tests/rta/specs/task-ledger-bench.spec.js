@@ -3,39 +3,39 @@
  *
  * ## Why this spec exists at all
  *
- * The Rooibos suite `tests/source/unit/utils/taskLedgerCost.spec.bs` (since deleted —
+ * The Rooibos suite `tests/source/unit/utils/taskLedgerCost.spec.bs` (since deleted;
  * see docs/architecture/threading.md) measured what `recordTaskLaunch`
  * costs and proved, from its own data, that it could not measure the case that
  * matters: at depth 0 the identical operation cost 909.9 us against `m.global` and
- * 245.6 us against a locally-created node — a 3.7x gap that can only exist if
+ * 245.6 us against a locally-created node, a 3.7x gap that can only exist if
  * `m.global` is owned by another thread. So Rooibos does not run on the render
  * thread, and every figure in that table is rendezvous-laden.
  *
- * The app's Task launches happen on the render thread. `ExtrasRowList` alone runs
- * 38 of them. On that thread a node op against a render-owned node does not
- * rendezvous at all, so the production cost could be ~60-100x lower than the spec
- * reports — or not, if `m.global` turns out not to be render-owned. Nothing had
- * measured it; the number was an EXTRAPOLATION, and the ceiling design was waiting
- * on it.
+ * The app's Task launches happen on the render thread. On 2026-08-23 `ExtrasRowList`
+ * alone ran 38 of them (it now starts one orchestrator Task per run). On that thread a
+ * node op against a render-owned node does not rendezvous at all, so the production cost
+ * could be ~60-100x lower than the spec reports, or not, if `m.global` turns out not to
+ * be render-owned. Nothing had measured it; the number was an EXTRAPOLATION, and the
+ * ceiling design was waiting on it.
  *
  * ## Why an RTA spec is the vehicle
  *
  * RTA's on-device component receives requests on a Task thread, sets
- * `renderThreadRequest`, and its observer runs the handler — and an observer
+ * `renderThreadRequest`, and its observer runs the handler. An observer
  * callback for a field set from a Task thread executes on the Render thread
  * (rokudev/dev-doc v2.0, DEVELOPER/core-concepts/threads.md, "Task node objects
  * ownership"). So `odc.callFunc` IS render-thread execution, already wired, with
  * no app code path touched.
  *
- * `components/testing/TaskLedgerBench.bs` mirrors the Rooibos bench function for
- * function so the two tables differ in exactly ONE variable: the thread.
+ * `components/testing/TaskLedgerBench.bs` was written as a mirror of the Rooibos bench,
+ * function for function, so the two tables differed in exactly ONE variable: the thread.
  *
  * ## This prints a table and gates ONE thing
  *
- * The grid is a measurement, and measurements do not belong in an assertion — the
+ * The grid is a measurement, and measurements do not belong in an assertion: the
  * numbers are the device's and will move with it. The assertion is the same
- * platform property the Rooibos spec gates from the other side: a field read on a
- * node the reading thread owns is cheap. Here it also carries the discriminator,
+ * platform property `tests/source/unit/utils/tasks.spec.bs` gates from the other side:
+ * a field read on a node the reading thread owns is cheap. Here it also carries the discriminator,
  * which is the finding: if `m.global` reads at render-thread-local cost, the
  * production ledger pays no crossing per launch.
  */
@@ -56,7 +56,7 @@ const BENCH = '#taskLedgerBench';
  * guessed: the first run of this bench printed every lowercase key (`us`, `cell`,
  * `depth`) correctly and every camelCase one (`floorUs`, `localNodeUs`, `sinkLen`)
  * as `undefined`. Reading by exact camelCase name silently yields undefined, which
- * is the failure mode this whole spec is built to refuse — an assertion against
+ * is the failure mode this whole spec is built to refuse: an assertion against
  * `undefined` verifies nothing.
  */
 function field(obj, name) {
@@ -80,7 +80,7 @@ beforeAll(async () => {
   // argument for waiting on the scene rather than on Home, and for it being a hand-rolled
   // loop rather than a `waitFor`, lives on the helper.
   await waitSceneAnswering();
-  // Created under the scene, so the render thread owns it — which is the whole
+  // Created under the scene, so the render thread owns it, which is the whole
   // point. `createChild` is itself processed on the render thread.
   await odc.createChild({ base: 'scene', keyPath: '', subtype: 'TaskLedgerBench' });
 });
@@ -90,14 +90,14 @@ afterAll(async () => {
 });
 
 /**
- * OPT-IN. This is a measurement, not a gate — it reports numbers and asserts only that
+ * OPT-IN. This is a measurement, not a gate. It reports numbers and asserts only that
  * the apparatus ran, so it has nothing to catch on a normal run. It stays in the suite
  * because re-deriving it costs a session, but it is not paid for on every `test:rta`:
  *
  *   RTA_BENCH=1 npm run test:rta
  *
  * Skipping the only `it` in the file skips its `beforeAll` too (verified on Vitest
- * 4.1.10: a file whose every test is skipped runs no hooks at all), which is the point —
+ * 5.0.3, 2026-10-13: a file whose every test is skipped runs no hooks at all), which is the point:
  * the setup is what costs, not the assertions.
  */
 const BENCH_ENABLED = process.env.RTA_BENCH === '1';
@@ -116,9 +116,9 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
     rows.push({ depth, recordGlobal, recordLocal, count, prune });
   }
 
-  // Written to a FILE, not just logged. Vitest suppresses console output for a
+  // Written to a FILE, not only logged. Vitest suppresses console output for a
   // PASSING test in a non-TTY run, so a green measurement spec would print its
-  // table to nobody — the numbers would exist only when the run failed. A device
+  // table to nobody, so the numbers would exist only when the run failed. A device
   // measurement is the output here, so it gets a durable home next to the other
   // per-device run records.
   const outDir = path.join(process.cwd(), '.device-runs');
@@ -142,7 +142,7 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
     );
   }
   // These two return a length so "too cheap to measure" can be told apart from
-  // "did not happen" — a sub-floor reading is meaningless without it.
+  // "did not happen": a sub-floor reading is meaningless without it.
   for (const [cell, depth] of [
     ['aaAppendVerified', 10],
     ['aaAppendVerified', 50],
@@ -158,7 +158,7 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
     };
   }
 
-  // The launch queue's drain tick while its head is refused (ADR 0041) — what a
+  // The launch queue's drain tick while its head is refused (ADR 0041): what a
   // saturated app pays on the render thread per retry. Depth 50 is the watermark: the
   // depth at which the head is refused, so the only one this cell describes.
   const drainBlocked = await runCell({ cell: 'drainBlocked', depth: 50, iterations: ITERATIONS });
@@ -216,7 +216,7 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
   );
   console.log(`[LEDGER-COST/render] wrote ${outFile}`);
 
-  // The bench has to have RUN for the table to mean anything — a callFunc that
+  // The bench has to have RUN for the table to mean anything: a callFunc that
   // silently returned nothing would print a grid of "?" and pass.
   expect(field(reads, 'sinkLen'), 'the discriminator reads did not execute').toBeGreaterThan(0);
   // A drain that STARTED its head measured a productive tick, not a blocked one.
@@ -226,11 +226,11 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
   ).toBe(1);
 
   // THE PROOF THAT THIS RAN ON THE RENDER THREAD, and the reason the table above
-  // is evidence rather than just numbers.
+  // is evidence rather than only numbers.
   //
   // Everything here rests on `odc.callFunc` executing on the render thread. That is
   // read off RTA's architecture (a Task sets `renderThreadRequest`; the observer
-  // callback for a field set from a Task thread runs on the Render thread) — but an
+  // callback for a field set from a Task thread runs on the Render thread), but an
   // architectural reading is exactly the kind of claim this project keeps finding
   // wrong, and if it IS wrong every figure above is a second copy of the off-thread
   // table rather than its counterpart.
@@ -239,7 +239,7 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
   // docs state flatly that "Task nodes are owned by the Render thread", so a Task
   // node is a known-render-owned probe. Read from off-thread it costs 91-118 us
   // (measured, `.177`). Read from the render thread it must be thread-local-cheap.
-  // So this assertion cannot pass anywhere but the render thread — which is the
+  // So this assertion cannot pass anywhere but the render thread, which is the
   // same trick session 27 used in reverse to prove Rooibos ISN'T on it.
   expect(
     taskNodeUs,
@@ -249,7 +249,7 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
       'do not use it for the ceiling design.',
   ).toBeLessThan(10);
 
-  // THE GATE — the same platform property the Rooibos spec pins from off-thread.
+  // THE GATE: the same platform property `tasks.spec.bs` pins from off-thread.
   // A render-thread read of a render-owned node must be cheap, or a production
   // ledger is unaffordable everywhere and the cost model is wrong.
   expect(

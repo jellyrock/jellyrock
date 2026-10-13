@@ -2,20 +2,20 @@
  * Hardware-free gate on `getActiveVals`' failure semantics.
  *
  * The batch helper exists to cut a one-shot assertion's device round trips from ~112
- * to 2, but the property worth gating is not the count — it is that a DEAD BATCH and
+ * to 2, but the property worth gating is not the count. It is that a DEAD BATCH and
  * a MISSING FIELD stay distinguishable.
  *
  * The single-read `getActiveVal` swallows to `undefined`, which is correct for a poll
  * (callers retry; a persistent miss ends in a diagnosed timeout). Copying that into a
  * batch would be the `lib/jellyfin.js` defect one layer up: an ODC failure would make
  * every keyPath read `undefined` at once, and the assertion consuming them would
- * report "this screen has no rows" — a confident false statement about the app,
+ * report "this screen has no rows": a confident false statement about the app,
  * produced by an infrastructure failure.
  *
- * `odc` is stubbed rather than driven, deliberately: the behaviours under test are
+ * `odc` is stubbed rather than driven: the behaviors under test are
  * "the transport rejected" and "the device answered `found: false`", and both are
  * shapes at the module boundary. What needs a real Roku is whether a given keyPath
- * resolves — that stays hardware-verified via `npm run test:rta`.
+ * resolves. That stays hardware-verified via `npm run test:rta`.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -35,7 +35,7 @@ vi.mock('roku-test-automation', () => ({
     storeNodeReferences: (...a) => storeNodeReferences(...a),
   },
   // `Key` carries the REAL values (verified against the installed package), not invented
-  // ones — a helper that sends `ecp.Key.Up` must be asserted against what the device would
+  // ones. A helper that sends `ecp.Key.Up` must be asserted against what the device would
   // actually receive, or the test agrees with a typo.
   ecp: {
     sendKeypress: (...a) => sendKeypress(...a),
@@ -44,7 +44,7 @@ vi.mock('roku-test-automation', () => ({
     getMediaPlayer: async () => null,
     // Same reason: it also asks ECP whether a screensaver is up, which is the one
     // device state that explains an all-ODC-reads-failed record. `app` with no
-    // `screensaver` is the ordinary case — the channel in the foreground.
+    // `screensaver` is the ordinary case: the channel in the foreground.
     getActiveApp: async () => ({ app: { id: 'dev', title: 'JellyRock' } }),
     Key: { Up: 'Up', Down: 'Down', Left: 'Left', Right: 'Right' },
   },
@@ -97,7 +97,7 @@ const {
 // with a re-export that has drifted.
 const { FAILURE_KINDS, readRecoveries } = await import('../../../scripts/run-record.js');
 // The predicate `resendUntilFocused` is driven with here, imported from the module that
-// owns it rather than redefined — a test asserting against a hand-copied predicate would
+// owns it rather than redefined: a test asserting against a hand-copied predicate would
 // agree with a copy that had drifted.
 const { focusIsInHomeContent } = await import('./home-list.js');
 
@@ -112,7 +112,7 @@ beforeEach(() => {
   // `diagnosedError`, which calls `captureFailureState`, which issues its OWN
   // `getFocusedNode` + `getValues` against the same device. So a test that makes the
   // batch fail must fail only the FIRST call (`mockRejectedValueOnce`) and leave the
-  // diagnostic capture able to answer — otherwise it is testing a device that has
+  // diagnostic capture able to answer, otherwise it is testing a device that has
   // gone away entirely, not a failed batch. Both must return promises for the same
   // reason: the capture `.catch()`es them.
   getValues.mockReset().mockResolvedValue({ results: {} });
@@ -122,12 +122,12 @@ beforeEach(() => {
 /**
  * Settle a poll-driven wait on a FAKE clock, so its intervals cost no real time.
  *
- * Used only by the handful of cases that genuinely need SEVERAL polls to make their point —
+ * Used only by the handful of cases that need SEVERAL polls to make their point:
  * "keeps re-pressing when a key is swallowed" needs three ticks of a 2 s interval, and
  * asserting that on a real clock costs four seconds per run of `test:scripts`, which
  * pre-push runs on any JS change.
  *
- * The rest of this file stays on the real clock deliberately. Faking time everywhere would
+ * The rest of this file stays on the real clock. Faking time everywhere would
  * mean every future test here has to know about the clock, and two cases below assert on
  * real `Date.now()` deltas and would silently change meaning.
  *
@@ -199,7 +199,7 @@ describe('getActiveVals', () => {
 
   it('keys requests positionally, so a duplicate keyPath cannot collapse', async () => {
     // Keying by the keyPath itself would silently merge these into one request and
-    // return a short array — a miscount inside the thing that reports counts.
+    // return a short array: a miscount inside the thing that reports counts.
     getValues.mockResolvedValue({
       results: { k0: { found: true, value: 'x' }, k1: { found: true, value: 'x' } },
     });
@@ -239,8 +239,8 @@ describe('wait read-failure attribution', () => {
   });
 
   it('does NOT count a found:false answer as a failed read', async () => {
-    // THE case that keeps the signal worth having. The device answered — the field is
-    // simply not there — so a timeout here must read as a real absence, not as an
+    // THE case that keeps the signal worth having. The device answered: the field is
+    // not there, so a timeout here must read as a real absence, not as an
     // infrastructure fault. Conflating these would make the new clause fire on every
     // ordinary "not there yet" timeout and mean nothing.
     getValue.mockResolvedValue({ found: false });
@@ -294,17 +294,17 @@ describe('wait read-failure attribution', () => {
 });
 
 /**
- * `focusIsInside` — the one predicate every "is focus inside X" gate now shares.
+ * `focusIsInside`: the one predicate every "is focus inside X" gate now shares.
  *
  * The property under test is that a container id is matched as a whole keyPath SEGMENT,
  * never as a substring. It is a red/green gate rather than a review note on purpose: the
- * substring form fails by succeeding EARLY, which produces no failure of its own — the
+ * substring form fails by succeeding EARLY, which produces no failure of its own: the
  * gate passes, the next step acts against a screen that has not arrived, and whatever
  * times out later gets the blame. And a prefix collision is introduced by NAMING a node,
  * so nothing in a test diff reveals it.
  *
  * The keyPaths below are the real ones, captured off `.178` on 2026-09-04 (a full green
- * suite, 214 focused-node reads) rather than invented — an invented shape is exactly how
+ * suite, 214 focused-node reads) rather than invented: an invented shape is exactly how
  * a predicate ends up agreeing with a fixture and disagreeing with the device.
  */
 describe('focusIsInside', () => {
@@ -340,7 +340,7 @@ describe('focusIsInside', () => {
 
   it('still matches the real node when the overlay IS in the path', () => {
     // `OptionsSlider` reparents itself into that overlay when opened, and its own id is
-    // `options` — so the overlay being present must not be read as the collision above.
+    // `options`, so the overlay being present must not be read as the collision above.
     expect(focusIsInside('#optionsPanelOverlay.#options.0', '#options')).toBe(true);
   });
 
@@ -414,10 +414,10 @@ describe('waitFocusInside', () => {
 
 /**
  * The shared dialog-dismiss wait, gated because it is now a SINGLE point of failure for
- * ten call sites across two specs and a demo take. Before Phase 3b each of those spelled
+ * every dismiss site in the specs and demo takes. Before Phase 3b each of those spelled
  * out its own `#jrDialog.id` / `=== undefined` pair, so a typo could only break one site;
  * now a wrong keyPath or an inverted predicate breaks every dialog test at once, and it
- * would present as ten unrelated timeouts rather than as one broken helper.
+ * would present as many unrelated timeouts rather than as one broken helper.
  */
 describe('waitDialogClosed', () => {
   beforeEach(() => {
@@ -446,7 +446,7 @@ describe('waitDialogClosed', () => {
 
   it('does NOT resolve while the dialog is still open', async () => {
     // The inverse of the first case, and the one that matters: a predicate flipped to
-    // truthy would make all ten sites pass the instant the dialog OPENED.
+    // truthy would make every site pass the instant the dialog OPENED.
     getValue.mockResolvedValue({ found: true, value: 'jrDialog' });
     await expect(waitDialogClosed('confirm dialog dismissed', { timeout: 60 })).rejects.toThrow(
       /confirm dialog dismissed/,
@@ -467,8 +467,8 @@ describe('waitDialogClosed', () => {
  * The resend guard, gated without hardware.
  *
  * Two behaviours carry the whole helper and neither is visible by reading a call site:
- * it must NOT press on the first tick (waitFor invokes `action` before its first read,
- * and the caller has just pressed — resending there is a double-press into a screen
+ * it must not press on the first tick (waitFor invokes `action` before its first read,
+ * and the caller has already pressed, so resending there is a double-press into a screen
  * that is still mounting), and it must STOP once focus has left the container (or the
  * retry becomes the overshoot it was meant to avoid).
  *
@@ -570,7 +570,7 @@ describe('resendIfSwallowed', () => {
 describe("walkHomeToFirstRow — the precondition Home's Up-to-overhang escape requires", () => {
   beforeEach(() => {
     // The outer `beforeEach` does not own `sendKeypress`, and these tests install their own
-    // `getFocusedNode` implementations — both must be cleared or a later test inherits the
+    // `getFocusedNode` implementations, and both must be cleared or a later test inherits the
     // presses and the focus script of an earlier one.
     getFocusedNode.mockReset();
     sendKeypress.mockReset().mockResolvedValue(undefined);
@@ -600,7 +600,7 @@ describe("walkHomeToFirstRow — the precondition Home's Up-to-overhang escape r
 
   it('stops pressing the moment a read reports row 0, mid-walk', async () => {
     // The guard that keeps the walk from overshooting. Presses are counted against what the
-    // read SAYS, so a device that arrives at row 0 sooner than expected gets no extra Up —
+    // read SAYS, so a device that arrives at row 0 sooner than expected gets no extra Up,
     // which would leave focus in the overhang and the caller somewhere it never asked for.
     const rows = [2, 0, 0];
     let i = 0;
@@ -629,7 +629,7 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
   // Fixtures mirror what the device actually reports, ids included. RTA builds each keyPath
   // segment from `node.id` while it is non-empty and from the child INDEX otherwise
   // (`processGetFocusedNodeRequest`), so a node the app creates WITHOUT an id shows up as a
-  // bare number — which is why several of these carry no `#name`. Getting that wrong is what
+  // bare number, which is why several of these carry no `#name`. Getting that wrong is what
   // made an earlier revision of this suite assert against states the device cannot produce.
   const onIcon = {
     node: { subtype: 'JROverhangIcon', id: 'settingsIcon' },
@@ -654,11 +654,11 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
   });
 
   it('still recognises Home after a tab round trip, when the row list has NO id', () => {
-    // `Home.onTabChanged` re-creates the list with `CreateObject` and never re-assigns the
-    // id, so from here on the focused node reports `id: ''` and an index keyPath. Matching
-    // on id or keyPath would fall through to Right and quietly reinstate the defect above;
-    // subtype is set by the component, so it survives. Unreachable from the suite today
-    // (nothing in `specs/` selects a tab) — this pins the rule, not a live path.
+    // `Home.onTabChanged` re-creates the list with `CreateObject` and now assigns the id
+    // itself. A list created without one reports `id: ''` and an index keyPath, and matching
+    // on id or keyPath would then fall through to Right and quietly reinstate the defect
+    // above; subtype is set by the component, so it survives. Unreachable from the suite
+    // today (nothing in `specs/` selects a tab): this pins the rule, not a live path.
     const afterTabRoundTrip = {
       node: { subtype: 'HomeRows', id: '', rowItemFocused: [0, 2] },
       keyPath: '#routerOutlet.#viewTarget.#abc.0',
@@ -669,7 +669,8 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
   it('treats the favorites list as Home too (future-proofing, not coverage)', () => {
     // Home's active list is `m.activeContent`, which is the favorites list under that tab.
     // Nothing in `specs/` selects a tab, so this state is unreachable from `focusOverhangIcon`
-    // today — asserted so the predicate agrees with the app, NOT as evidence it is exercised.
+    // today. It is asserted so the predicate agrees with the app, not as evidence it is
+    // exercised.
     // See `focusIsInHomeContent` in ./home-list.js, which owns this question.
     const inFavorites = {
       node: { subtype: 'FavoritesRows', id: '', rowItemFocused: [0, 0] },
@@ -683,7 +684,7 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
   });
 
   it('falls back to Right when the focus read failed', () => {
-    // Unchanged from the pre-fix behaviour on purpose — a failed read is not evidence that
+    // Unchanged from the pre-fix behavior on purpose: a failed read is not evidence that
     // the escape is stuck, and Up from the overhang is inert anyway.
     expect(overhangWalkKey(null, 'settingsIcon')).toBe('Right');
   });
@@ -756,12 +757,12 @@ describe('homeListId — which row list Home actually has in the scene', () => {
     getValues.mockResolvedValue({ results: { k0: { found: false }, k1: { found: false } } });
 
     // The slug it aggregates under is asserted against the RECORD, in the failure-kind
-    // describe below — the message never carries it.
+    // describe below: the message never carries it.
     await expect(homeListId({ timeout: 1 })).rejects.toThrow(/neither #id resolved/);
   });
 
   it('keeps waiting through a dead batch instead of throwing the transport error', async () => {
-    // A poll must swallow a transport failure per tick — the loop retries, and a persistent
+    // A poll must swallow a transport failure per tick: the loop retries, and a persistent
     // miss ends in the diagnosed timeout above. Letting `getVals`' batch throw escape here
     // would turn one ODC hiccup into a failed nav.
     getValues.mockRejectedValue(new Error('odc timeout'));
@@ -844,7 +845,7 @@ describe('waitHome — the login flow is a separate question, asked first', () =
     // artifact. Same coupling the file-level `beforeEach` documents.
     getFocusedNode.mockReset().mockResolvedValue(null);
     sendKeypress.mockReset();
-    // Home's active list resolves to `HomeRows`. `waitHome` no longer NAMES a row list — it
+    // Home's active list resolves to `HomeRows`. `waitHome` no longer NAMES a row list. It
     // asks `homeListId` which of the two is in the scene, which is one batched read of both
     // candidate ids. These cases are about the LOGIN gate, so the resolution is arranged to
     // succeed; `homeListId`'s own behaviour is tested separately below.
@@ -856,7 +857,7 @@ describe('waitHome — the login flow is a separate question, asked first', () =
   it('resolves the row list only AFTER the view gate has named Home', async () => {
     // The ordering that makes a throwing resolver safe here. `steps.js` documents a window
     // between launch and Home where NEITHER list is in the tree, so asking which list is
-    // active before Home is up would fail on a login that had simply not finished — the
+    // active before Home is up would fail on a login that had not finished: the
     // exact misattribution the view gate exists to prevent, reintroduced one layer down.
     const order = [];
     let mounted = false;
@@ -880,7 +881,7 @@ describe('waitHome — the login flow is a separate question, asked first', () =
     // Presence FIRST: `indexOf` answers -1 for an absent step, and -1 is below every real
     // index, so the ordering assertions below would pass on a `waitHome` that never resolved
     // or never read the rows at all. (`jellyrock-tests/ordering-asserts-presence` catches
-    // exactly this — it caught this very test.)
+    // exactly this, and it caught this very test.)
     expect(order).toContain('view');
     expect(order).toContain('resolve');
     expect(order).toContain('rows');
@@ -891,7 +892,7 @@ describe('waitHome — the login flow is a separate question, asked first', () =
 
   it('waits for a routed view BEFORE it ever reads Home rows', async () => {
     // The ordering IS the fix. Reading `#homeRows` while the app is still logging in
-    // reports "home rows never appeared" — a claim about Home caused by an unfinished
+    // reports "home rows never appeared": a claim about Home caused by an unfinished
     // login (recorded on .177, 2026-08-18).
     const seen = [];
     getValue.mockImplementation(async ({ base, keyPath }) => {
@@ -935,7 +936,7 @@ describe('waitHome — the login flow is a separate question, asked first', () =
     // the caller's next step timed out blaming focus one nav later (.178, 2026-09-06).
     //
     // Both device answers below are the ones a real grid gives, including the rows read
-    // succeeding — so this fails ONLY because the view is named.
+    // succeeding, so this fails only because the view is named.
     getValue.mockImplementation(async ({ keyPath }) =>
       keyPath === 'activeRoutedView.subtype()'
         ? { found: true, value: 'BaseGridView' }
@@ -946,7 +947,7 @@ describe('waitHome — the login flow is a separate question, asked first', () =
   });
 
   it('does not fall through to the rows gate when the app is not on Home', async () => {
-    // Attribution, not just failure: the run must blame the view it is actually on, never
+    // Attribution, not only failure: the run must blame the view it is actually on, never
     // "home rows". A rows read here would mean the helper had gone on to ask a question
     // whose answer cannot be trusted.
     const seen = [];
@@ -962,11 +963,11 @@ describe('waitHome — the login flow is a separate question, asked first', () =
   });
 
   it('sends no keys — it detects a lost Back, it does not recover from one', async () => {
-    // Deliberate, and load-bearing. The recovery is a re-pressed Back, which is
+    // Deliberate. The recovery is a re-pressed Back, which is
     // destructive off the path to Home: `UserSelect.onKeyEvent` treats Back as CHANGE
     // SERVER and the coordinator DELETES the saved server. Routing four navs through the
     // re-pressing `backToHome` was tried on 2026-09-06 and came back signed out on
-    // `SetServerScreen`. 30-odd call sites share this helper; only detection is safe here.
+    // `SetServerScreen`. dozens of call sites share this helper; only detection is safe here.
     getValue.mockImplementation(async () => ({ found: true, value: 'BaseGridView' }));
 
     await expect(waitHome({ viewTimeout: 1 })).rejects.toThrow();
@@ -977,14 +978,14 @@ describe('waitHome — the login flow is a separate question, asked first', () =
 /**
  * `scrollFocus` is the whole correctness surface of the scripted cell workload: if it does
  * not land exactly on the target, the measurement's denominator moved and two runs stop
- * being comparable — which is the defect the scripted workload exists to remove. Its two
+ * being comparable, which is the defect the scripted workload exists to remove. Its two
  * hard cases are both about a device that is BEHIND: an index short of the target because
  * the burst is still draining (wait) versus short because a key was lost (press again), and
  * they are indistinguishable from a single read. Both are here.
  *
  * Driven entirely through the mocked device: the behaviours are "what did we send" and
- * "when did we stop", neither of which needs a Roku. What does need one — that a given
- * keyPath resolves at all — stays covered by `npm run test:rta`.
+ * "when did we stop", neither of which needs a Roku. What does need one (that a given
+ * keyPath resolves at all) stays covered by `npm run test:rta`.
  */
 describe('scrollFocus', () => {
   /** Serve a scripted sequence of index reads, one per `getValue` call. */
@@ -1065,7 +1066,7 @@ describe('scrollFocus', () => {
   it('re-presses once the index has STOPPED short — a dropped key is recoverable', async () => {
     // A device modelled rather than a read sequence scripted: it applies every press except
     // the third, which is exactly the swallow `resendIfSwallowed` documents. The index then
-    // stalls one short and STAYS there, and no amount of further waiting fixes it — the
+    // stalls one short and STAYS there, and no amount of further waiting fixes it. That is the
     // distinction the corrective press turns on.
     let pressed = 0;
     let index = 0;
@@ -1093,7 +1094,7 @@ describe('scrollFocus', () => {
     // correction lands before the next read, so the guard is never asked to hold twice.
     // Model a device where a press takes three polls to apply, and drop exactly one key.
     // Before the `lastSeen` reset, the tick after a correction still read the pre-press
-    // index, scored it as "stuck and short", and pressed AGAIN — two corrections for one
+    // index, scored it as "stuck and short", and pressed AGAIN: two corrections for one
     // lost key. The walk then returned reporting the target while a fifth press was still
     // in flight, and the list settled one PAST it: a denominator that moved after
     // `scrollFocus` said it had not, which is the whole defect the scripted workload exists
@@ -1275,8 +1276,8 @@ describe('scrollFocus', () => {
   });
 
   it('waits for the index to become readable before pressing anything', async () => {
-    // The north-star precondition: `itemFocused` reads as its retained value — or as
-    // nothing at all — until the list holds focus, and a burst sent then goes to whatever
+    // The north-star precondition: `itemFocused` reads as its retained value, or as
+    // nothing at all, until the list holds focus, and a burst sent then goes to whatever
     // does hold it. Not one key may be sent while the field is unreadable.
     let reads = 0;
     getValue.mockImplementation(async () => {
@@ -1300,7 +1301,7 @@ describe('scrollFocus', () => {
 
 /**
  * `readCellCounts` is the BEFORE half of every cell-load number this suite publishes. It has
- * one job — describe a single instant — and its failure modes are silent by construction: a
+ * one job (describe a single instant), and its failure modes are silent by construction: a
  * read spread across the settling screen, a production build whose counters do not exist
  * being reported as a screen that bound nothing, and a keyPath that names nothing being
  * reported as that same production build.
@@ -1376,9 +1377,9 @@ describe('readCellCounts', () => {
   });
 
   it('separates a list that resolved to NOTHING from that production build', async () => {
-    // These are identical from the counter reads alone — both come back `undefined` — and
+    // These are identical from the counter reads alone (both come back `undefined`) and
     // collapsing them is what `waitCellsQuiet`'s header calls out: it would report
-    // "perfTiming off" at an operator whose keyPath was simply wrong. One is a fact about
+    // "perfTiming off" at an operator whose keyPath was wrong. One is a fact about
     // the build; the other means this reading describes no list and every delta is fiction.
     getValues.mockResolvedValue({
       results: Object.fromEntries(
@@ -1406,8 +1407,8 @@ describe('readCellCounts', () => {
   it('carries the unload REASON split, which the total cannot substitute for', async () => {
     // Pinned by name rather than left to `CELL_REPORT_COUNTERS`'s length, because these two
     // are the only at-gate evidence that horizontal windowing engaged. `Unloads` is
-    // dominated by vertical eviction — Home reads ~57 of it on a sweep where no row is even
-    // long enough for the window to be reachable — so dropping the split would leave a
+    // dominated by vertical eviction: Home reads ~57 of it on a sweep where no row is even
+    // long enough for the window to be reachable, so dropping the split would leave a
     // report line that still looks complete while answering a different question.
     expect(CELL_REPORT_COUNTERS).toContain('UnloadsWindow');
     expect(CELL_REPORT_COUNTERS).toContain('UnloadsRange');
@@ -1425,7 +1426,7 @@ describe('readCellCounts', () => {
   it('takes its reader by injection, and the reader is a BATCH one', async () => {
     // `readMany`, not `read`: the neighbouring waits take a single-keyPath `read` and their
     // call sites sit two lines from this one in `nav.js`. This asserts the shape the name is
-    // protecting — one call, an ARRAY of keyPaths in, an array out.
+    // protecting: one call, an ARRAY of keyPaths in, an array out.
     const readMany = vi.fn(async (keyPaths) => keyPaths.map((_k, i) => i));
 
     const res = await readCellCounts('#homeRows', { readMany });
@@ -1440,8 +1441,8 @@ describe('readCellCounts', () => {
 
 /**
  * `waitCellsQuiet` decides WHERE the measured session ends. Its failure modes are silent by
- * construction — ending early undercounts `loadsFailed`, ending on a build with no counters
- * would hang a nav that has nothing to wait for — so both are gated here rather than left to
+ * construction (ending early undercounts `loadsFailed`, ending on a build with no counters
+ * would hang a nav that has nothing to wait for), so both are gated here rather than left to
  * a device run to notice.
  */
 describe('waitCellsQuiet', () => {
@@ -1450,9 +1451,9 @@ describe('waitCellsQuiet', () => {
   });
 
   it('returns immediately, and says so, when the build carries no counters', async () => {
-    // `perfTiming` off is the correct state for a production build, not an anomaly — so it
+    // `perfTiming` off is the correct state for a production build, not an anomaly, so it
     // is reported as uninstrumented rather than warned about or waited on. The content root
-    // resolving is what separates it from a keyPath that is simply wrong.
+    // resolving is what separates it from a keyPath that is wrong.
     getValue.mockImplementation(async ({ keyPath }) =>
       keyPath.endsWith('getChildCount()') ? { found: true, value: 12 } : { found: false },
     );
@@ -1467,7 +1468,7 @@ describe('waitCellsQuiet', () => {
 
   it('distinguishes an unreadable keyPath from an uninstrumented build', async () => {
     // Both read `undefined` from the counters alone, and collapsing them tells an operator
-    // whose keyPath was wrong that their production build has `perfTiming` off — while the
+    // whose keyPath was wrong that their production build has `perfTiming` off, while the
     // counts they go on to publish have no settle behind them at all.
     getValue.mockResolvedValue({ found: false });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -1475,9 +1476,9 @@ describe('waitCellsQuiet', () => {
     const res = await waitCellsQuiet('#nope', { quietMs: 10, interval: 1, timeout: 100 });
 
     expect(res).toMatchObject({ instrumented: false, resolved: false });
-    // NOT quiet. A caller that reads only `.quiet` must not be told a watch of nothing was
-    // a settle; the uninstrumented-but-resolved case above is the one that is genuinely
-    // quiet, because a production build has no counters to wait on.
+    // Not quiet. A caller that reads only `.quiet` must not be told a watch of nothing was
+    // a settle; the uninstrumented-but-resolved case above is the one that is quiet,
+    // because a production build has no counters to wait on.
     expect(res.quiet).toBe(false);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('watched nothing'));
     warn.mockRestore();
@@ -1498,8 +1499,8 @@ describe('waitCellsQuiet', () => {
 
   it('keeps waiting while ONLY an asynchronously-closing counter is still moving', async () => {
     // The counter set is the point of this function, so it gets a test that fails if the
-    // set shrinks back. `binds` and `loadsStarted` are stable from the first read — the
-    // shape a sweep is in the moment the last keypress lands — while `loadsFailed` is still
+    // set shrinks back. `binds` and `loadsStarted` are stable from the first read (the
+    // shape a sweep is in the moment the last keypress lands) while `loadsFailed` is still
     // arriving, because a request that has started and not yet failed is exactly the
     // in-flight case the settle exists to close. Gating on the old two-counter set would
     // declare quiet here and publish a truncated `loadsFailed`.
@@ -1538,7 +1539,7 @@ describe('waitCellsQuiet', () => {
     // The third field that can move while binds and loadsStarted sit still, and the one the
     // settle was blind to until 2026-08-22. A cell that scrolls back into view with its
     // texture ALREADY loaded bumps only this: no bind (it was never rebound), no load (the
-    // buffer held it), no unload. Measured on cellSweepGrid, that is 12 of 18 re-entries —
+    // buffer held it), no unload. Measured on cellSweepGrid, that is 12 of 18 re-entries,
     // so a settle gated on the old five would declare quiet mid-sweep and publish an
     // `appearances` short by most of the re-entries the pop-in line exists to count.
     const appearances = [28, 34, 41, 46, 46, 46, 46, 46, 46];
@@ -1562,7 +1563,7 @@ describe('waitCellsQuiet', () => {
     // It is still reported, because seeing it is the whole point.
     let popIns = 0;
     getValue.mockImplementation(async ({ keyPath }) => {
-      // Rises forever — if popIns were in the quiet set this could never settle.
+      // Rises forever: if popIns were in the quiet set this could never settle.
       if (keyPath.endsWith('cellLoadPopIns')) return { found: true, value: popIns++ };
       return { found: true, value: keyPath.endsWith('cellLoadBinds') ? 28 : 7 };
     });
@@ -1570,7 +1571,7 @@ describe('waitCellsQuiet', () => {
     const res = await waitCellsQuiet('#itemGrid', { quietMs: 20, interval: 5, timeout: 3000 });
 
     expect(res.quiet).toBe(true);
-    expect(typeof res.counts.PopIns).toBe('number'); // read and reported, just not watched
+    expect(typeof res.counts.PopIns).toBe('number'); // read and reported, but not watched
   });
 
   it('puts both new counters on the report line', async () => {
@@ -1584,7 +1585,7 @@ describe('waitCellsQuiet', () => {
   });
 
   it('reports a list that never settles instead of throwing', async () => {
-    // A runaway rebind is a FINDING — the very shape the ledger was built to catch — and
+    // A runaway rebind is a FINDING, the very shape the ledger was built to catch, and
     // every caller also runs as a functional test, where a throw would read as "the screen
     // did not load".
     let n = 100;
@@ -1601,7 +1602,7 @@ describe('waitCellsQuiet', () => {
 
 /**
  * `sweepBudget` and `axisEnd` decide how far a sweep travels, which IS the measurement's
- * denominator — so their arithmetic is the itinerary's correctness, and it was previously
+ * denominator, so their arithmetic is the itinerary's correctness, and it was previously
  * private to `nav.js` with no test at all. They are separated by what a shortfall MEANS: a
  * budget can be cut short by a thin fixture (news, because it changes every published
  * count), while a structurally-bounded axis reaching its end is the itinerary working.
@@ -1620,7 +1621,7 @@ describe('sweepBudget / axisEnd — how far a sweep is allowed to travel', () =>
 
   it('clamps to the last reachable index and ANNOUNCES it', () => {
     // A run that swept 3 rows and a run that swept 12 differ in every count the ledger
-    // publishes, and `measure` records the nav's NAME, not its itinerary — so this console
+    // publishes, and `measure` records the nav's NAME, not its itinerary, so this console
     // line is the only thing that tells the two records apart.
     expect(sweepBudget('cellSweepGrid rows', 12, 4)).toBe(3);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('clamps to 3 of 12'));
@@ -1636,7 +1637,7 @@ describe('sweepBudget / axisEnd — how far a sweep is allowed to travel', () =>
 
   it('does NOT announce a clamp for a whole-axis traverse — the layout is not a shortfall', () => {
     // The cry-wolf case, and the reason the two are separate functions. A grid row is
-    // `numColumns` wide by layout, so asking a 12-step budget for it warned on EVERY run
+    // `numColumns` wide by layout, so asking a 12-step budget for it warned on every run
     // and taught the operator to skip the channel that reports a changed workload.
     expect(axisEnd('cellSweepGrid columns', 6)).toBe(5);
     expect(warn).not.toHaveBeenCalled();
@@ -1649,7 +1650,7 @@ describe('sweepBudget / axisEnd — how far a sweep is allowed to travel', () =>
 /**
  * `waitRowsSettled` decides WHERE the measured session begins, and its failure is silent by
  * construction: a sweep that starts too early still travels, still reports a clean itinerary
- * and still emits a `cell-load` sample whose `items` field agrees with every other run —
+ * and still emits a `cell-load` sample whose `items` field agrees with every other run,
  * because that field is counted at emit time, after the screen finished building. Three
  * `cellSweepHome` campaigns spent their spread (222–253 binds) on exactly this, so the gate
  * gets tests rather than a device run to notice.
@@ -1673,13 +1674,13 @@ describe('waitRowsSettled', () => {
       if (!m) return { found: false };
       const width = shape[Number(m[1])];
       readsThisSample++;
-      if (readsThisSample >= shape.length) i++; // sample complete — advance the device
+      if (readsThisSample >= shape.length) i++; // sample complete: advance the device
       return { found: true, value: width };
     };
   };
 
   /**
-   * A device that answers ONE full 2-row sample and then goes away for good — the screen
+   * A device that answers ONE full 2-row sample and then goes away for good: the screen
    * replaced, the view swapped. Shared by the two tests that need it because they pin two
    * different properties of the same event: that it is not reported as settled, and that it
    * is not reported as a screen still being built.
@@ -1715,8 +1716,8 @@ describe('waitRowsSettled', () => {
   it('waits for a row FILLING, which does not move the row count at all', async () => {
     // The half a row-count gate would miss, and the one that actually moves the sweep: a
     // skeleton row carries ONE placeholder child and a populated one carries its items, so
-    // `populateRowFromData` changes the widest row — which is the row `sweepRowList` picks
-    // its horizontal leg from — while leaving the row count exactly where it was.
+    // `populateRowFromData` changes the widest row (the row `sweepRowList` picks its
+    // horizontal leg from) while leaving the row count exactly where it was.
     getValue.mockImplementation(
       structureReader([
         [1, 1, 1],
@@ -1749,7 +1750,7 @@ describe('waitRowsSettled', () => {
 
   it('holds the gate open for the whole quiet window, not just until two samples agree', async () => {
     // Two agreeing samples are what a screen mid-lull looks like: `LoadLatestRowsTask`
-    // delivers one row per observer wake, so the structure genuinely does hold still
+    // delivers one row per observer wake, so the structure does hold still
     // between arrivals. The window is the only thing separating that from a finished
     // screen, so a settle that returned on the first match would be gating on nothing.
     getValue.mockImplementation(structureReader([[16, 16]]));
@@ -1762,7 +1763,7 @@ describe('waitRowsSettled', () => {
 
   it('measures the quiet window from the LAST change, not from when the gate opened', async () => {
     // The window has to re-arm on every change or it degenerates into "quietMs after the
-    // gate opened", which is a fixed sleep wearing a settle's clothes — and it fails exactly
+    // gate opened", which is a fixed sleep wearing a settle's clothes, and it fails exactly
     // where Home needs it, because Home spends SECONDS building. Once the build outlasts
     // `quietMs`, a gate that never re-armed returns on the first agreeing pair, however
     // early that lands. Found by mutation: every other test here passed with the re-arm
@@ -1794,7 +1795,7 @@ describe('waitRowsSettled', () => {
   });
 
   it('reports a list that never resolved at all, rather than waiting out its timeout on it', async () => {
-    // The keyPath is simply wrong, or the list is not mounted. Waiting cannot fix either,
+    // The keyPath is wrong, or the list is not mounted. Waiting cannot fix either,
     // and the caller needs to know its sweep had no gate rather than to lose 20 s first.
     getValue.mockResolvedValue({ found: false });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -1808,8 +1809,8 @@ describe('waitRowsSettled', () => {
 
   it('does NOT call a list that stops answering MID-POLL settled', async () => {
     // The case the early return above cannot reach, and the one that would publish a
-    // confident falsehood: the list answered once and then went away — the screen was
-    // replaced, the view swapped — so every later sample is `{ rows: undefined, widths: [] }`,
+    // confident falsehood: the list answered once and then went away (the screen was
+    // replaced, the view swapped), so every later sample is `{ rows: undefined, widths: [] }`,
     // which compares EQUAL to itself. A structural compare without the resolved-ness guard
     // reads that as the quietest screen it has ever seen and returns `settled: true` for a
     // list that is not there. Found by mutation: the first version of the test above passed
@@ -1827,7 +1828,7 @@ describe('waitRowsSettled', () => {
     // `lastGood` has to track the latest successful sample, and the shared `vanishingReader`
     // cannot show that: it answers exactly ONE sample, so the last good read and the
     // gate-open read are the same object and the two are indistinguishable. Deleting the
-    // `lastGood = next` update passes every other test in this file — found by mutation.
+    // `lastGood = next` update passes every other test in this file, found by mutation.
     // A list that answers twice and THEN vanishes separates them, and it is also the honest
     // case: a screen replaced two seconds in has been read several times by that point, so
     // reporting its opening structure would describe a screen that had already moved on.
@@ -1878,7 +1879,7 @@ describe('waitRowsSettled', () => {
   });
 
   it('warns and hands back the unsettled structure when rows never stop moving', async () => {
-    // A screen that never settles is a FINDING, not a harness failure — every caller is a
+    // A screen that never settles is a FINDING, not a harness failure: every caller is a
     // nav that also runs as a functional test, where a throw would read as "the screen did
     // not load". The counts still describe a real session; the warning is what stops them
     // being compared against a settled run.
@@ -1906,10 +1907,10 @@ describe('a wait does not outlive its own timeout', () => {
   });
 
   // Both loops used to sleep a FULL interval after the tick had already failed, and only
-  // then re-check the deadline — so `timeout` was a floor rather than a bound, overshooting
+  // then re-check the deadline, so `timeout` was a floor rather than a bound, overshooting
   // by up to one interval. `waitOsdUp`'s OSD gate is 30 s at a 2 s interval, so "30 s" could
   // be 32 s, and a caller budgeting a chain of waits was budgeting against a number that was
-  // not true. Asserted on the real clock deliberately: a fake one cannot catch a real sleep.
+  // not true. Asserted on the real clock: a fake one cannot catch a real sleep.
   it('waitFor gives up within its budget, not a full interval past it', async () => {
     const start = Date.now();
     await expect(
@@ -1945,8 +1946,8 @@ describe("waitFor's caller-supplied observed", () => {
       timeout: 1,
       observed: { pressedOnId: 'watchedButton' },
     }).catch((e) => e);
-    // `diagnosedError` returns a plain Error and renders `observed` INTO the message —
-    // that is the artifact a human reads in the terminal, so it is what to assert on.
+    // `diagnosedError` returns a plain Error and renders `observed` INTO the message.
+    // That is the artifact a human reads in the terminal, so it is what to assert on.
     expect(err.message).toContain('pressedOnId="watchedButton"');
   });
 
@@ -1984,8 +1985,8 @@ describe('getVals', () => {
   beforeEach(() => getValues.mockReset().mockResolvedValue({ results: {} }));
 
   it('reads scene-rooted keyPaths verbatim, with no activeRoutedView prefix', async () => {
-    // The prefix is the ONLY difference from `getActiveVals`, and it is the whole point:
-    // `#homeRows` is deliberately scene-rooted because Home is not the active view once a
+    // The prefix is the only difference from `getActiveVals`, and it is the whole point:
+    // `#homeRows` is scene-rooted because Home is not the active view once a
     // drill-down opens. A prefix leaking in here would silently read nothing.
     getValues.mockResolvedValue({
       results: { k0: { found: true, value: [0, 3] }, k1: { found: true, value: 4 } },
@@ -2064,9 +2065,9 @@ describe('walkFocusInto', () => {
   it('sends NOTHING when focus is on ANOTHER routed view — the 2026-09-09 over-press', async () => {
     // The failure this gate was built from. `navSearch`'s walk timed out after 12.4 s with
     // the active view SearchResults and focus on Home's row list inside the suspended Home,
-    // every press delivered (`actionErrors: 0`) — ~34 Rights into a screen the walk was not
+    // every press delivered (`actionErrors: 0`): ~34 Rights into a screen the walk was not
     // on. A destination-only guard cannot tell "not arrived yet" from "on the wrong
-    // screen"; this one can. It does NOT explain why focus left, which is still open.
+    // screen"; this one can. It does not explain why focus left, which is still open.
     getFocusedNode.mockResolvedValue({
       keyPath: '#routerOutlet.#viewTarget.#c0d84208.#homeRows',
     });
@@ -2111,7 +2112,7 @@ describe('walkFocusInto', () => {
   });
 
   it('counts the container itself as arrived, not only its descendants', async () => {
-    // `#itemDescription` is a leaf the app focuses directly — if containment did not
+    // `#itemDescription` is a leaf the app focuses directly: if containment did not
     // include the node itself this would press forever at a target already reached.
     focusedAt('scene.#itemDescription');
     await walkFocusInto('up', '#itemDescription')();
@@ -2218,12 +2219,12 @@ describe('resendUntilFocusInside', () => {
  * `FAILURE_KINDS` is a closed set because the flake baseline groups by it, and its own
  * docblock names the two ways that goes wrong: two slugs for one class SPLIT the count,
  * one slug for two classes MERGES it. Routing a hand-rolled poll loop through `waitFor`
- * causes the merge — silently, since a converted loop's diff shows the loop leaving and
+ * causes the merge, silently, since a converted loop's diff shows the loop leaving and
  * nothing about the bucket it used to report. That is why `waitFor` takes a `kind` at
  * all, and it is only worth taking if it actually reaches the record.
  *
  * Asserted against `failures.jsonl` rather than the thrown Error, because the record is
- * the artifact the baseline reads — the message never carries the slug. `RTA_RECORD_DIR`
+ * the artifact the baseline reads: the message never carries the slug. `RTA_RECORD_DIR`
  * points it at a tmpdir, the same channel `diagnostics.test.js` uses and the same one a
  * spawned Vitest child gets in production.
  */
@@ -2301,20 +2302,20 @@ describe('waitFor — the failure kind that reaches the record', () => {
 });
 
 /**
- * `waitOsdUp` — the OSD-open sequence the three call sites used to each carry a copy of.
+ * `waitOsdUp`: the OSD-open sequence the three call sites used to each carry a copy of.
  *
  * ## What is actually being gated
  *
  * The app swallows Up until `stateAllowsOSD()` says otherwise, and that predicate reads
- * `m.top.state` on the player node — the same field this reads back over ODC, because
+ * `m.top.state` on the player node, the same field this reads back over ODC, because
  * `VideoPlayerView` stamps itself with the item id it is playing. All three sites used to
  * follow their playable gate with `await sleep(1500)`, and the two in `dialogs.spec.js`
  * NEEDED something there: they gate on `waitMediaPlaying`, which reads the OS media
  * player over ECP and goes true well before the app's own field does.
  *
- * So the property under test is not "it opens the OSD" — it is that no input is sent
+ * So the property under test is not "it opens the OSD": it is that no input is sent
  * until the app would accept it, with no fixed dwell standing in for that fact. A
- * regression here is silent: pressing early just wastes presses, the retry loop still
+ * regression here is silent: pressing early only wastes presses, the retry loop still
  * gets there, and the suite stays green while the guard is gone.
  *
  * The device is faked at the `odc`/`ecp` boundary. Whether `#osd.visible` is the right
@@ -2357,7 +2358,7 @@ describe('waitOsdUp — no input before the app will accept it', () => {
     await onFakeClock(() =>
       waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 5000, timeout: 2000 }),
     );
-    // Every Up was sent against a playable player — not merely "one Up was sent", which
+    // Every Up was sent against a playable player: not merely "one Up was sent", which
     // stays true with the gate removed and is what let an earlier version of this test
     // pass a mutation that deleted the guard outright.
     expect(p.pressedWhile()).not.toHaveLength(0);
@@ -2410,7 +2411,7 @@ describe('waitOsdUp — no input before the app will accept it', () => {
 // A scene census walks from the scene ROOT, so it only describes a read that was
 // scene-rooted too. `getActiveVal` resolves under `m.global.activeRoutedView` precisely to
 // dodge the cross-view id collisions the audit hunts for, so auditing ITS keyPath reports an
-// ambiguity that read was never exposed to — and a false positive lands in the same
+// ambiguity that read was never exposed to, and a false positive lands in the same
 // false-alarm count `resolution.js` names as the bar for promoting the audit to a throw.
 describe('waitFor audits only the reads a scene census can describe', () => {
   beforeEach(() => {
@@ -2476,7 +2477,7 @@ describe('readHomeRows — one snapshot describes one frame', () => {
   });
 
   it('rejects a snapshot whose row count changed between its two reads', async () => {
-    // Seen on the 512 MB Stick (2026-10-07): the count read answered 16 just before the
+    // Seen on the 512 MB Stick (2026-10-07): the count read answered 16 right before the
     // list's content was replaced by 2 rows, and the batch then reported rows 2-15 with
     // every field undefined. A snapshot like that must read as "not yet" so the wait polls
     // again, never as 16 rows a spec can take as its reference.

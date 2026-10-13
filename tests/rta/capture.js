@@ -1,6 +1,6 @@
 /**
  * Raw UI screenshot for the functional test runner (the RTA_CAPTURE flag). This
- * is the lightweight path for agents to view the GUI while designing UI — it
+ * is the lightweight path for agents to view the GUI while designing UI. It
  * captures the SceneGraph UI plane as-is (single locale, no backdrop, no
  * manifest). The OSD's video plane reads BLACK here (Roku can't screenshot it);
  * that's expected and fine for GUI viewing. The polished, backdrop-composited

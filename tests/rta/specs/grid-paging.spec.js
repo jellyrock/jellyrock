@@ -4,8 +4,8 @@
  * reaches the last loaded row while the next page is on its way.
  *
  * Both specs shrink the page (`rtaGridPageSize`) so the demo server's small Movies library spans
- * several pages. What the demo cannot stage — a library larger than one screen of runway, and
- * "#" titles to page across — is unit-tested in gridPaging / gridPage and measured on device
+ * several pages. What the demo cannot stage (a library larger than one screen of runway, and
+ * "#" titles to page across) is unit-tested in gridPaging / gridPage and measured on device
  * against a large local library.
  */
 import { beforeAll, it, expect } from 'vitest';

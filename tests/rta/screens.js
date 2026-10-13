@@ -1,23 +1,23 @@
 /**
- * THE SCREEN REGISTRY — single source of truth for both the functional tests
+ * The screen registry: the single source of truth for both the functional tests
  * (tests/rta/specs) and the store screenshot orchestrator
  * (scripts/capture-screenshots.js).
  *
  * Each screen declares:
- *  - state: 'home' (logged in) | 'userSelect' (signed out, server known) — the
+ *  - state: 'home' (logged in) | 'userSelect' (signed out, server known): the
  *           seed-to-land state reached by registry seed + relaunch.
  *  - nav:   optional async (ctx) => {} driving keypresses from the landed state.
- *           Its internal waitFor gates ARE the "loaded" assertion.
+ *           Its internal waitFor gates are the "loaded" assertion.
  *  - assert: optional async (ctx) => {} for seed-to-land screens with no nav,
  *           or to add explicit checks. Throwing = failure (don't wrap in expect).
- *  - capture: screenshot metadata, consumed ONLY by the store orchestrator /
+ *  - capture: screenshot metadata, consumed only by the store orchestrator /
  *           the RTA_CAPTURE flag:
  *      - eligible: include in screenshot capture (website gallery + RTA_CAPTURE).
  *      - store: ALSO part of the curated Roku-store / homepage set. The Roku store
  *           caps a listing at 6 screenshots, so this set is frozen at exactly those
- *           6 — `screenshots-store.js` bundles only these, and the website homepage
+ *           6. `screenshots-store.js` bundles only these, and the website homepage
  *           renders them (in registry order) while the gallery page renders every
- *           `eligible` screen. New screens are `eligible` (gallery) but NOT `store`.
+ *           `eligible` screen. New screens are `eligible` (gallery) but not `store`.
  *      - backdrop: inject the in-film frame behind the OSD (store only)
  *      - scope: 'shared' => language-agnostic; captured once, copied to all locales
  */
@@ -82,7 +82,7 @@ async function assertServerSelect() {
  * from the library query, in the server's sort order, while the sampled items come
  * from a pipelined per-genre fetch that completes OUT of order and is written back
  * by slot index. Cross those indices and one genre's items land on another genre's
- * row — with nothing visibly wrong: every row is still present, still titled, still
+ * row, with nothing visibly wrong: every row is still present, still titled, still
  * in order. Only the pairing is broken, so only the pairing can catch it.
  *
  * Subset, not set-equality: the app samples at most 6 items with `SortBy=Random`, so
@@ -95,7 +95,7 @@ async function assertServerSelect() {
  *
  * Reads via `getActiveVal`, not `getVal`: `#genreList` recurs on every `BaseGridView`, so a
  * recursive scene-root lookup can resolve to the wrong grid the moment anything navigates
- * twice. Today's spec relaunches before every screen so only one exists — a property of
+ * twice. Today's spec relaunches before every screen so only one exists, a property of
  * the harness, not of the app. Anchoring to the active routed view also fails the right
  * way: an
  * unresolvable node reads `undefined` and trips the guard below, where the scene-root
@@ -115,18 +115,19 @@ async function assertGenreRowsOwnTheirItems(ctx) {
 
   // TWO batches for the whole view, not two reads per row plus one per item.
   //
-  // This used to issue one `getActiveVal` per field — 1 + rowCount×(title + count) +
-  // one per item, which is 57 sequential round trips against the demo server's 14
-  // genres and 28 filed items, and scales up with a richer library. Measured, that is
-  // 303 ms of reads against 58 ms batched: NOT a meaningful saving inside a ~20 s
-  // test, and the before/after runs showed no wall-clock change. What it buys is the
-  // window — 57 looks at a still-settling screen spread over 303 ms, versus one look
-  // over 58. Batch 1 takes the whole row structure in a single message; batch 2 takes
-  // every item title across every row, and cannot merge into batch 1 because it needs
-  // the child counts batch 1 returns.
+  // This used to issue one `getActiveVal` per field: 1 + rowCount×(title + count) +
+  // one per item, which was 57 sequential round trips against the demo server's 14
+  // genres and 28 filed items, and scales up with a richer library. Measured, that was
+  // 303 ms of reads against 58 ms batched (2026-08-12 on `.177`, per
+  // `tests/rta/CLAUDE.md`): not a meaningful saving inside a ~20 s test, and the
+  // before/after runs showed no wall-clock change. What it buys is the window: 57
+  // looks at a still-settling screen spread over 303 ms, versus one look over 58.
+  // Batch 1 takes the whole row structure in a single message; batch 2 takes every
+  // item title across every row, and cannot merge into batch 1 because it needs the
+  // child counts batch 1 returns.
   //
-  // Reading every row's children and filtering afterwards — rather than skipping
-  // unknown genres before the read, as the sequential form did — is more VALUES for
+  // Reading every row's children and filtering afterwards (rather than skipping
+  // unknown genres before the read, as the sequential form did) is more values for
   // strictly fewer round trips, and it is what leaves the whole view in memory for
   // the failure record below.
   const rows = [...Array(rowCount).keys()];
@@ -145,7 +146,7 @@ async function assertGenreRowsOwnTheirItems(ctx) {
       `genre row ${missingTitle} has no title (read ${JSON.stringify(titles[missingTitle])})`,
       {
         kind: FAILURE_KINDS.GENRE_ROWS_NOT_READY,
-        // The whole view, not just the offending row — "row 7 is untitled" and "rows
+        // The whole view, not only the offending row: "row 7 is untitled" and "rows
         // 7-13 are all untitled" are different failures and the fix differs.
         observed: { rowCount, titles, counts },
       },
@@ -174,8 +175,8 @@ async function assertGenreRowsOwnTheirItems(ctx) {
     }
     // The optional leading child is a "View All <genre>" affordance, not an item.
     if (title.endsWith(genre)) continue;
-    // Deliberately a plain throw: this is a fail-fast that already names its own
-    // cause — the two-pass write-back crossed its slot indices — rather than a
+    // A plain throw on purpose: this is a fail-fast that already names its own
+    // cause (the two-pass write-back crossed its slot indices) rather than a
     // timeout reporting that something did not show up. Same carve-out as the
     // ambiguous-library refusal in `lib/nav.js`.
     // eslint-disable-next-line no-restricted-syntax
@@ -191,9 +192,9 @@ async function assertGenreRowsOwnTheirItems(ctx) {
       {
         kind: FAILURE_KINDS.GENRE_ROWS_UNVERIFIED,
         // Everything needed to tell the two live causes apart WITHOUT a re-run: rows
-        // present but empty (`counts` all zero — the items never landed) versus rows
+        // present but empty (`counts` all zero: the items never landed) versus rows
         // full of titles the server does not know (`serverGenres` disagreeing with
-        // `titles` — fixture drift). The batches already read all of it, so this
+        // `titles`: fixture drift). The batches already read all of it, so this
         // costs nothing. Note what `verified === 0` no longer means: a swallowed
         // query. `genreItemNames` throws now, so an empty map cannot reach here.
         observed: {
@@ -229,18 +230,18 @@ const vw = (name, nav, collectionType, landing, assert) => ({
  * The deterministic Movies landing view that every `#itemGrid` walk needs seeded, since
  * `display.<id>.landing` is registry-persisted and survives a relaunch. Exported because
  * `specs/leaks.spec.js` drives the same walks outside this registry and must seed the
- * same view — one definition, so the two cannot drift into testing different screens.
+ * same view. One definition, so the two cannot drift into testing different screens.
  */
 export const MOVIES_GRID = { collectionType: 'movies', landing: 'MoviesGrid' };
 
 /**
- * The hero film must actually be ON this server.
+ * The hero film must actually be on this server.
  *
  * Expressed through `requires` rather than a new key, because this is the same shape as
  * the other two content gates: a statement about the FIXTURE, not a regression in the
  * app. `findMovie` answers a miss with `{ index: 0, id: '' }` instead of throwing, which
- * is deliberate — but it means a screen that seeks by the hero's id silently seeks
- * NOWHERE (`navOsd` guards on `ctx.heroId`) while still reporting a pass, and one that
+ * is intended, but it means a screen that seeks by the hero's id silently seeks
+ * nowhere (`navOsd` guards on `ctx.heroId`) while still reporting a pass, and one that
  * seeks by position drives `RTA_CONFIG.seekSeconds` into whatever film happens to sort
  * first, which can be shorter than that position. Measured 2026-09-20: `Dracula` returns
  * zero matches on the local 12.0 test server, and the suite went green anyway.
@@ -249,12 +250,12 @@ export const MOVIES_GRID = { collectionType: 'movies', landing: 'MoviesGrid' };
  * never driven to the state it asserts about". Retune the film with `RTA_HERO_MOVIE`
  * (see `config.js`) and these run again.
  *
- * NOT applied to `movieDetails`: it uses only `heroIndex`, and tile 0 is a real tile, so
+ * Not applied to `movieDetails`: it uses only `heroIndex`, and tile 0 is a real tile, so
  * opening whatever sorts first is still a genuine "ItemDetails loads" assertion.
  */
 export const HERO_PRESENT = {
   probe: (ctx) => Boolean(ctx?.heroId),
-  // Deliberately does NOT name one film. The two consumers resolve a DIFFERENT film for
+  // Does not name one film, on purpose. The two consumers resolve a DIFFERENT film for
   // `trickplay`: the suite drives it with `heroMovie` (the hero exercises every nav),
   // while the store orchestrator gives it `trickplayMovie` so its frame matches the
   // reference screenshot. A message naming `heroMovie` would therefore be wrong in one
@@ -274,17 +275,17 @@ export const TRICKPLAY_DATA = {
 };
 
 /**
- * The first requirement this screen does NOT meet, or `null` when it meets them all.
+ * The first requirement this screen does not meet, or `null` when it meets them all.
  *
  * `requires` takes one gate or a list of them, and lives here rather than in each
  * consumer so the suite and the store orchestrator cannot drift on what "required"
- * means — they are the two callers, and a screen gated in one but not the other is a
- * silent hole. Returning the GATE (not a boolean) is what lets each one keep its own
+ * means. They are the two callers, and a screen gated in one but not the other is a
+ * silent hole. Returning the gate (not a boolean) is what lets each one keep its own
  * precise `reason`: `trickplay` needs both a film and thumbnails, and "one of two
  * preconditions failed" is not an actionable skip message.
  *
  * Gates run in declared order and short-circuit, so a cheap local check can guard an
- * expensive request — `HERO_PRESENT` is a field read and screens it from `TRICKPLAY_DATA`,
+ * expensive request: `HERO_PRESENT` is a field read and screens it from `TRICKPLAY_DATA`,
  * which would otherwise query the server with an empty item id.
  *
  * @returns {Promise<{probe: Function, reason: string} | null>}
@@ -332,7 +333,7 @@ export const SCREENS = [
     nav: navTrickplay,
     // Seeks to `RTA_CONFIG.seekSeconds` to reveal the filmstrip. Driven into an
     // arbitrary first-by-SortName film that position may be past the end, so this one
-    // can fail outright rather than merely read hollow — and the filmstrip itself only
+    // can fail outright rather than merely read hollow, and the filmstrip itself only
     // exists if the server extracted thumbnails, which is off by default.
     requires: [HERO_PRESENT, TRICKPLAY_DATA],
     // No backdrop injection: Roku's built-in trickPlayBar (the scrubber + position/
@@ -343,7 +344,7 @@ export const SCREENS = [
     // trickplaySeekSeconds) so the bar's film + time match the reference.
     capture: { eligible: true, store: true, scope: 'shared' },
   },
-  // --- Website-gallery screens (NOT in the frozen Roku-store 6) ----------------
+  // --- Website-gallery screens (not in the frozen Roku-store 6) ----------------
   {
     name: 'serverSelect',
     state: 'serverSelect',
@@ -353,26 +354,31 @@ export const SCREENS = [
   { name: 'settings', state: 'home', nav: navSettings, capture: { eligible: true } },
   { name: 'search', state: 'home', nav: navSearch, capture: { eligible: true } },
   {
-    // Subtitle management panel (#750). A CHILD of ItemDetails, not a routed
-    // screen — it opens over the detail view rather than replacing it.
+    // Subtitle management panel (#750). A child of ItemDetails, not a routed
+    // screen: it opens over the detail view rather than replacing it.
     //
-    // FIXTURE-GATED, AND IT SKIPS ON THE DEFAULT SERVER. The Manage Subtitles
-    // button only exists when the server would let this user search subtitles;
-    // from 10.9 that means administrator OR EnableSubtitleManagement, and the
-    // public demo's `demo` user is neither (measured 2026-09-06 against
-    // 10.11.11). So on `demo.jellyfin.org/stable` this reports a visible skip,
-    // exactly as a screen whose library the fixture lacks does. Point the suite
-    // at a server that grants it (`RTA_SERVER_*` in `.env`) and it runs.
+    // Fixture-gated, and it skips on the default server. The Manage Subtitles
+    // button only exists when two things hold. The server must let this user
+    // search subtitles: from 10.9 that means administrator or
+    // EnableSubtitleManagement, and the public demo's `demo` user is neither
+    // (measured 2026-09-06 against 10.11.11). And the server must have a subtitle
+    // provider plugin installed: `/Libraries/AvailableOptions` must list at least
+    // one `SubtitleFetchers` entry, which the public demo did not on 12.0
+    // (2026-09-14, per `manageSubtitlesOffered` in `lib/jellyfin.js`). Either
+    // alone hides the button. So on `demo.jellyfin.org/stable` this reports a
+    // visible skip, exactly as a screen whose library the fixture lacks does.
+    // Point the suite at a server that grants both (`RTA_SERVER_*` in `.env`) and
+    // it runs.
     //
-    // NO `capture` KEY YET, DELIBERATELY. Screenshots must come from the demo
-    // stable server, and that server cannot render this panel — so there is no
+    // No `capture` key yet, on purpose. Screenshots must come from the demo
+    // stable server, and that server cannot render this panel, so there is no
     // honest image to take today. Marking it `capture: { eligible: true }` would
     // also list `subtitlePanel` in the generated `screenshots.json`, claiming a
     // file that does not exist and would 404 wherever the docs render it.
     // Everything else is wired, and enabling it is two changes: add
     // `capture: { eligible: true }` here, and give `navSubtitlePanel` a paint
     // settle before it returns (budgeted in rta-sleep-budgeted.js, the way
-    // `navMovieDetails` carries one). It has none today on purpose — a nav that
+    // `navMovieDetails` carries one). It has none today on purpose: a nav that
     // only ever skips would spend a budgeted slot on a wait that never runs. The
     // capability probe and both registry consumers already honor `requires`.
     // Tracked as `subtitle-panel-rta-fixture-gated` in tech-debt.md.
@@ -389,14 +395,14 @@ export const SCREENS = [
   },
 
   // --- Measurement navs: `npm run measure -- --nav <name>` --------------------
-  // No `capture` — these are not screens, they are ROUND TRIPS that end back on
-  // Home, and a screenshot of them would just be Home. They are here because
-  // `measure.js` resolves `--nav` out of THIS registry (it is the third consumer
+  // No `capture`: these are not screens, they are round trips that end back on
+  // Home, and a screenshot of them would be only Home. They are here because
+  // `measure.js` resolves `--nav` out of this registry (it is the third consumer
   // after the suite and the store orchestrator), so a measurement nav has nowhere
   // else to live.
   //
   // The first two are a controlled experiment, not two independent screens: they
-  // differ ONLY in how many distinct ItemDetails are opened and backed out of before
+  // differ only in how many distinct ItemDetails are opened and backed out of before
   // returning. See `navHomeReturn` in lib/nav.js for what the comparison separates.
   //
   // They carry `view` for the two reasons every library-dependent entry does, and the
@@ -413,12 +419,12 @@ export const SCREENS = [
     view: MOVIES_GRID,
   },
   // No `view`: search depends on demo CONTENT matching RTA_CONFIG.searchQuery, not on a
-  // library landing — same as the `search` screen entry above.
+  // library landing, same as the `search` screen entry above.
   { name: 'searchReturn', state: 'home', nav: navSearchReturn },
 
   // --- Cell-load workloads: `npm run measure -- --measurement cell-load --nav <name>` ---
   // Scripted SCROLLS, not screens. Each opens a cell-bearing screen, travels a fixed
-  // distance through it, waits for its cell-load counters to go quiet, and then leaves — the
+  // distance through it, waits for its cell-load counters to go quiet, and then leaves. The
   // leaving is not politeness, it is what makes `hideTextureManager` publish the counters.
   //
   // They exist because a rebind rate needs a denominator. Every `cell-load` figure recorded
@@ -433,13 +439,13 @@ export const SCREENS = [
   { name: 'cellSweepGrid', state: 'home', nav: navCellSweepGrid, view: MOVIES_GRID },
   { name: 'cellSweepExtras', state: 'home', nav: navCellSweepExtras, view: MOVIES_GRID },
   // No `view`: search depends on server CONTENT matching RTA_CONFIG.searchQuery, not on a
-  // library landing — same as the `search` and `searchReturn` entries above.
+  // library landing, same as the `search` and `searchReturn` entries above.
   { name: 'cellSweepSearch', state: 'home', nav: navCellSweepSearch },
 
   // --- Grid paging workload: `npm run measure -- --measurement item-grid-paging --nav gridScroll` ---
   // A timed scroll through a library grid: did the user end up waiting at the last loaded row?
-  // Runs in the suite like every nav here, so a nav that breaks goes red rather than rotting —
-  // the probe it replaces was deleted and could not be re-run. `view` for the same reason as
+  // Runs in the suite like every nav here, so a nav that breaks goes red rather than rotting.
+  // The probe it replaces was deleted and could not be re-run. `view` for the same reason as
   // the cell sweeps above.
   { name: 'gridScroll', state: 'home', nav: navGridScroll, view: MOVIES_GRID },
 

@@ -5,7 +5,7 @@
  * Its own file rather than a block in `registry.test.js`, because it has to mock
  * `./driver.js` and that file imports the real one for `setupRtaEnv`.
  *
- * `.test.js` (Vitest, `npm run test:scripts`, no device) — distinct from the `.spec.js`
+ * `.test.js` (Vitest, `npm run test:scripts`, no device), distinct from the `.spec.js`
  * files under `specs/`, which drive real hardware.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -14,7 +14,7 @@ const calls = [];
 let readRegistry = vi.fn();
 let gateResult = Promise.resolve();
 
-// `withTimeout` is REAL — it is half of what is under test here. Everything that would
+// `withTimeout` is REAL: it is half of what is under test here. Everything that would
 // touch a device is not.
 vi.mock('./driver.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -50,8 +50,8 @@ describe('readRegistryBounded — the first ODC call of a run cannot hang, or cr
     await _internals.readRegistryBounded('the snapshot read');
     // Order, not merely presence. Reading first and bounding afterwards leaves RTA free to
     // reject a connect it cannot complete and take the process down with `exit 1` from an
-    // orphaned rejection no `catch` of ours can reach — the failure this ordering exists to
-    // prevent, and one a `withTimeout` cannot.
+    // orphaned rejection no `catch` of ours can reach. That is the failure this ordering
+    // exists to prevent, and one a `withTimeout` cannot.
     expect(calls).toEqual(['gate', 'read']);
   });
 
@@ -65,7 +65,7 @@ describe('readRegistryBounded — the first ODC call of a run cannot hang, or cr
 
   it('gives up on a read that never settles, instead of waiting forever', async () => {
     // The measured failure: a socket that accepts and never answers the handshake leaves
-    // RTA's cached promise unsettled, so the read has no bound of its own at all — still
+    // RTA's cached promise unsettled, so the read has no bound of its own at all: still
     // pending at 45 s in a probe, and 8+ minutes once on `.178`.
     readRegistry = vi.fn(() => new Promise(() => {}));
     const err = await _internals
