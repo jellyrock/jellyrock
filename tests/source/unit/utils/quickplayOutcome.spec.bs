@@ -6,48 +6,36 @@ namespace tests
   ' (source/utils/quickplayOutcome.bs).
   '
   ' Wrong in one direction, a failed read reads as "nothing here", so the viewer gives up on
-  ' something that would play on a second try. Wrong in the other, an answered empty result
-  ' asks for a retry that can never succeed, or a found queue shows a message at all.
-  @suite("quickplayOutcome - failed vs empty quick play")
+  ' something that would play on a second try. Wrong in the other, an answered empty result or
+  ' a launch nothing builds asks for a retry that can never succeed, or a found queue shows a
+  ' message at all.
+  @suite("quickplayOutcome - failed vs empty vs unsupported quick play")
   class QuickplayOutcomeTests extends tests.BaseTestSuite
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("kindOf")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("reads a trailer launch as a trailer")
+    @it("reads a trailer build as a trailer")
     function _()
-      m.assertEqual(quickplayOutcome.kindOf({ action: "loadTrailers" }), quickplayOutcome.KIND_TRAILER)
+      m.assertEqual(quickplayOutcome.kindOf("trailer"), quickplayOutcome.KIND_TRAILER)
     end function
 
-    @it("reads both photo-album actions as a slideshow")
+    @it("reads a photo build as a slideshow, whatever was pressed")
     function _()
-      m.assertEqual(quickplayOutcome.kindOf({ action: "photoalbum" }), quickplayOutcome.KIND_SLIDESHOW)
-      m.assertEqual(quickplayOutcome.kindOf({ action: "loadPhotoAlbum" }), quickplayOutcome.KIND_SLIDESHOW)
+      m.assertEqual(quickplayOutcome.kindOf("photo"), quickplayOutcome.KIND_SLIDESHOW)
     end function
 
-    @it("reads a photo-album folder as a slideshow")
+    @it("reads a queue build as play")
     function _()
-      m.assertEqual(quickplayOutcome.kindOf({ action: "folder", folderType: "PhotoAlbum" }), quickplayOutcome.KIND_SLIDESHOW)
+      m.assertEqual(quickplayOutcome.kindOf("queue"), quickplayOutcome.KIND_PLAY)
     end function
 
-    @it("reads any other folder as play")
-    function _()
-      m.assertEqual(quickplayOutcome.kindOf({ action: "folder", folderType: "genre" }), quickplayOutcome.KIND_PLAY)
-      m.assertEqual(quickplayOutcome.kindOf({ action: "folder" }), quickplayOutcome.KIND_PLAY)
-    end function
-
-    @it("reads every other action as play")
-    function _()
-      for each action in ["series", "musicalbum", "collectionfolder", "playAllSeries", "instantMix", "unknownThing"]
-        m.assertEqual(quickplayOutcome.kindOf({ action: action }), quickplayOutcome.KIND_PLAY, action)
-      end for
-    end function
-
-    @it("reads a missing input or action as play")
+    @it("reads a missing or unknown output action as play")
     function _()
       m.assertEqual(quickplayOutcome.kindOf(invalid), quickplayOutcome.KIND_PLAY)
-      m.assertEqual(quickplayOutcome.kindOf({}), quickplayOutcome.KIND_PLAY)
+      m.assertEqual(quickplayOutcome.kindOf(""), quickplayOutcome.KIND_PLAY)
+      m.assertEqual(quickplayOutcome.kindOf("somethingNew"), quickplayOutcome.KIND_PLAY)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -56,18 +44,24 @@ namespace tests
 
     @it("is ok when items arrived, even if a fallback read failed")
     function _()
-      m.assertEqual(quickplayOutcome.statusOf(3, false), quickplayOutcome.STATUS_OK)
-      m.assertEqual(quickplayOutcome.statusOf(1, true), quickplayOutcome.STATUS_OK)
+      m.assertEqual(quickplayOutcome.statusOf(3, false, false), quickplayOutcome.STATUS_OK)
+      m.assertEqual(quickplayOutcome.statusOf(1, true, false), quickplayOutcome.STATUS_OK)
+    end function
+
+    @it("is unsupported when nothing builds the launch, read failure or not")
+    function _()
+      m.assertEqual(quickplayOutcome.statusOf(0, false, true), quickplayOutcome.STATUS_UNSUPPORTED)
+      m.assertEqual(quickplayOutcome.statusOf(0, true, true), quickplayOutcome.STATUS_UNSUPPORTED)
     end function
 
     @it("is failed when nothing arrived and a read failed")
     function _()
-      m.assertEqual(quickplayOutcome.statusOf(0, true), quickplayOutcome.STATUS_FAILED)
+      m.assertEqual(quickplayOutcome.statusOf(0, true, false), quickplayOutcome.STATUS_FAILED)
     end function
 
     @it("is empty when nothing arrived and every read answered")
     function _()
-      m.assertEqual(quickplayOutcome.statusOf(0, false), quickplayOutcome.STATUS_EMPTY)
+      m.assertEqual(quickplayOutcome.statusOf(0, false, false), quickplayOutcome.STATUS_EMPTY)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -95,9 +89,50 @@ namespace tests
       end for
     end function
 
-    @it("never tells an unknown status as empty")
+    @it("says a play or a shuffle nothing builds can't be done")
+    function _()
+      m.assertEqual(quickplayOutcome.messageKey(quickplayOutcome.KIND_PLAY, quickplayOutcome.STATUS_UNSUPPORTED), translationKeys.MessageQuickPlayUnsupported)
+      m.assertEqual(quickplayOutcome.messageKey(quickplayOutcome.KIND_SHUFFLE, quickplayOutcome.STATUS_UNSUPPORTED), translationKeys.MessageShuffleUnsupported)
+    end function
+
+    @it("uses play's text for a kind with none of its own")
+    function _()
+      m.assertEqual(quickplayOutcome.messageKey(quickplayOutcome.KIND_TRAILER, quickplayOutcome.STATUS_UNSUPPORTED), translationKeys.MessageQuickPlayUnsupported)
+      m.assertEqual(quickplayOutcome.messageKey(quickplayOutcome.KIND_SLIDESHOW, quickplayOutcome.STATUS_UNSUPPORTED), translationKeys.MessageQuickPlayUnsupported)
+    end function
+
+    @it("reads a missing or unknown kind as play")
+    function _()
+      m.assertEqual(quickplayOutcome.messageKey(invalid, quickplayOutcome.STATUS_EMPTY), translationKeys.MessageQuickPlayEmpty)
+      m.assertEqual(quickplayOutcome.messageKey("somethingNew", quickplayOutcome.STATUS_EMPTY), translationKeys.MessageQuickPlayEmpty)
+    end function
+
+    @it("never tells an unknown or missing status as empty")
     function _()
       m.assertEqual(quickplayOutcome.messageKey(quickplayOutcome.KIND_PLAY, ""), translationKeys.MessageQuickPlayFailed)
+      m.assertEqual(quickplayOutcome.messageKey(quickplayOutcome.KIND_SHUFFLE, invalid), translationKeys.MessageShuffleFailed)
+      m.assertEqual(quickplayOutcome.messageKey(quickplayOutcome.KIND_TRAILER, "somethingNew"), translationKeys.MessageTrailerFailed)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("toastType")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("styles a failure as an error")
+    function _()
+      m.assertEqual(quickplayOutcome.toastType(quickplayOutcome.STATUS_FAILED), "error")
+    end function
+
+    @it("styles an empty or unsupported launch as info")
+    function _()
+      m.assertEqual(quickplayOutcome.toastType(quickplayOutcome.STATUS_EMPTY), "info")
+      m.assertEqual(quickplayOutcome.toastType(quickplayOutcome.STATUS_UNSUPPORTED), "info")
+    end function
+
+    @it("styles an unknown status as an error, as its text is a failure's")
+    function _()
+      m.assertEqual(quickplayOutcome.toastType(invalid), "error")
+      m.assertEqual(quickplayOutcome.toastType("somethingNew"), "error")
     end function
 
   end class

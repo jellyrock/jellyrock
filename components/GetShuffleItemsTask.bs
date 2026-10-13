@@ -18,26 +18,29 @@ end sub
 sub getShuffleItems()
   input = m.top.shuffleInput
   items = []
-  m.buildFailed = false
+  ' Every read of this build, which remembers one that did not answer (quickplayRead.Reader).
+  m.reader = new quickplayRead.Reader(m.log)
+  ' No branch shuffles this type, which no retry changes.
+  unsupported = false
 
   if input.type = "Series"
-    data = fetchBuildJson(GetApi().BuildGetEpisodesRequest(input.id, { SortBy: "Random", Limit: 200 }), "shuffleSeriesEpisodes")
+    data = m.reader.json(GetApi().BuildGetEpisodesRequest(input.id, { SortBy: "Random", Limit: 200 }), "shuffleSeriesEpisodes")
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "Season"
-    data = fetchBuildJson(GetApi().BuildGetEpisodesRequest(input.seriesId, { SeasonId: input.id, SortBy: "Random", Limit: 200 }), "shuffleSeasonEpisodes")
+    data = m.reader.json(GetApi().BuildGetEpisodesRequest(input.seriesId, { SeasonId: input.id, SortBy: "Random", Limit: 200 }), "shuffleSeasonEpisodes")
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "Person"
     ' Movies featuring this person (rewatching is fine)
-    moviesData = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
+    moviesData = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       personIds: input.id,
       recursive: true,
       includeItemTypes: "Movie",
       Limit: 250
     }), "shufflePersonMovies")
     ' Watched episodes/recordings only, which avoids spoiling in-progress shows
-    episodesData = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
+    episodesData = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       personIds: input.id,
       recursive: true,
       includeItemTypes: "Episode,Recording",
@@ -48,7 +51,7 @@ sub getShuffleItems()
     if isValid(episodesData) and isValid(episodesData.Items) then items.append(episodesData.Items)
 
   else if input.type = "BoxSet"
-    data = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
+    data = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       "ParentId": input.id,
       "SortBy": "Random",
       "Limit": 200,
@@ -57,7 +60,7 @@ sub getShuffleItems()
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "MusicArtist"
-    data = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
+    data = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       "ArtistIds": input.id,
       "includeitemtypes": "Audio",
       "SortBy": "Random",
@@ -68,7 +71,7 @@ sub getShuffleItems()
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "MusicAlbum"
-    data = fetchBuildJson(GetApi().BuildGetItemsByQueryRequest({
+    data = m.reader.json(GetApi().BuildGetItemsByQueryRequest({
       "parentId": input.id,
       "includeitemtypes": "Audio",
       "SortBy": "SortName",
@@ -78,15 +81,17 @@ sub getShuffleItems()
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "Playlist"
-    data = fetchBuildJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
+    data = m.reader.json(GetApi().BuildGetPlaylistItemsRequest(input.id, {
       "Limit": 500,
       "EnableTotalRecordCount": false
     }), "shufflePlaylist")
     if isValid(data) and isValid(data.Items) then items = data.Items
   else
-    ' No branch for this type: a caller bug, not an empty item, so it is told as a failure.
+    ' No branch for this type: a remote Shuffle of a type nothing here shuffles (it arrives as
+    ' a deep link for any item), or a caller bug. Not an empty item, and trying again cannot
+    ' help, so it is told as unsupported.
     m.log.error("unhandled shuffle type", input.type)
-    m.buildFailed = true
+    unsupported = true
   end if
 
   ' One copy per episode (episodeQueue), except in a collection or playlist, whose entries
@@ -96,6 +101,6 @@ sub getShuffleItems()
   end if
 
   ' `status` before `shuffleItems`: the caller reads it in its `shuffleItems` handler.
-  m.top.status = quickplayOutcome.statusOf(items.count(), m.buildFailed)
+  m.top.status = quickplayOutcome.statusOf(items.count(), m.reader.anyFailed, unsupported)
   m.top.shuffleItems = items
 end sub

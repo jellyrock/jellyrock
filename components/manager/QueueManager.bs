@@ -412,21 +412,19 @@ sub endQuickPlayWithNothing(kind as dynamic, status as dynamic)
 end sub
 
 ' Tells the viewer that a launch found nothing to play: try again when a read failed, nothing
-' there when every read answered (quickplayOutcome). Only a build whose output arrived gets
-' here, and that means the viewer still waits on it: Back, leaving the screen, a newer press
-' and a start's time limit all stop the Task first (onPlaybackStartEnded), and a slideshow's
-' plain spinner holds the remote until it ends. So none of those ever shows a message.
+' there when every read answered, can't when nothing here builds it (quickplayOutcome). Only a
+' build whose output arrived gets here, and that means the viewer still waits on it. Back,
+' leaving the screen and a start's time limit end the start, which stops the Task
+' (onPlaybackStartEnded); a newer press of the same launcher stops its own Task first
+' (runQuickPlayAction, launchShuffle); and a slideshow's plain spinner holds the remote until
+' it ends. So none of those ever shows a message.
 '
 ' @param {dynamic} kind - quickplayOutcome.KIND_*
 ' @param {dynamic} status - quickplayOutcome.STATUS_*
 sub showNothingToPlay(kind as dynamic, status as dynamic)
-  if not isValidAndNotEmpty(kind) then kind = quickplayOutcome.KIND_PLAY
-  if not isValidAndNotEmpty(status) then status = quickplayOutcome.STATUS_FAILED
   key = quickplayOutcome.messageKey(kind, status)
   if key = "" then return
-  toastType = "error"
-  if status = quickplayOutcome.STATUS_EMPTY then toastType = "info"
-  displayToast(translate(key), toastType)
+  displayToast(translate(key), quickplayOutcome.toastType(status))
 end sub
 
 ' Shuffle-play a Series / Season / Person via GetShuffleItemsTask (the API resolves the
