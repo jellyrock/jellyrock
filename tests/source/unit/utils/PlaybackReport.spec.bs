@@ -60,6 +60,19 @@ namespace tests
       }
     end sub
 
+    ' A direct play of a source with two indexed audio tracks, the second picked.
+    private sub directPlayTwoAudio()
+      m.input.session = { PlayState: {} }
+      m.input.mediaSource.TranscodingUrl = invalid
+      m.input.mediaSource.MediaStreams = [
+        { Type: "Video", Index: 0, Codec: "h264" },
+        { Type: "Audio", Index: 1, Codec: "aac", Channels: 2, DisplayTitle: "English - AAC - Stereo" },
+        { Type: "Audio", Index: 2, Codec: "ac3", Channels: 2, DisplayTitle: "French - AC3 - Stereo" }
+      ]
+      m.input.audioStreamIndex = 2
+      m.input.subtitleStreamIndex = -1
+    end sub
+
     private function sectionById(report as object, id as string) as dynamic
       for each section in report.sections
         if section.id = id then return section
@@ -460,6 +473,38 @@ namespace tests
       m.assertEqual(m.rowValue(report, "audio.playing"), "Unknown")
       m.assertEqual(m.rowValue(report, "audio.tracks"), "AAC - Stereo, AC3 - 5.1")
       m.assertEqual(m.rowValue(report, "audio.codec"), "<missing>")
+    end function
+
+    @it("says the playing track is unknown on a direct play whose audio tracks Roku does not list")
+    function _()
+      ' Several tracks muxed into one HLS variant: Roku lists none, so the app cannot
+      ' choose, and naming the pick would describe a track nobody is hearing.
+      m.directPlayTwoAudio()
+      m.input.audioTracksUnlisted = true
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.playing"), "Unknown")
+      m.assertEqual(m.rowValue(report, "audio.tracks"), "English - AAC - Stereo, French - AC3 - Stereo")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "<missing>")
+    end function
+
+    @it("describes the picked audio stream when Roku lists the audio tracks")
+    function _()
+      m.directPlayTwoAudio()
+      m.input.audioTracksUnlisted = false
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.playing"), "<missing>")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "AC3")
+    end function
+
+    @it("still describes the one audio stream when Roku lists no tracks")
+    function _()
+      m.directPlayTwoAudio()
+      m.input.mediaSource.MediaStreams = [m.input.mediaSource.MediaStreams[0], m.input.mediaSource.MediaStreams[2]]
+      m.input.audioStreamIndex = 2
+      m.input.audioTracksUnlisted = true
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.playing"), "<missing>")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "AC3")
     end function
 
     @it("still has no audio section for a source that lists no audio")

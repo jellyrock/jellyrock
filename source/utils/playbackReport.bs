@@ -63,9 +63,12 @@ function buildPlaybackReport(input as object) as object
   ' A source can list its audio without an index for it (a Live TV channel's M3U
   ' tuner sends -1 for every stream). With one audio stream, that stream is the one
   ' playing; with several, which one plays is unknown, and unidentifiedAudioSection
-  ' says so rather than leaving a gap that reads as "no audio".
+  ' says so rather than leaving a gap that reads as "no audio". The same holds when
+  ' the device plays the stream itself and Roku lists none of its audio tracks: the
+  ' app could not select the pick, so the report must not name it.
   audioStreams = streamsOfType(streams, "audio")
   if not isValid(selectedAudio) and audioStreams.count() = 1 then selectedAudio = audioStreams[0]
+  if isBooleanTrue(input.audioTracksUnlisted) and audioStreams.count() > 1 then selectedAudio = invalid
   subtitleStream = findStreamByIndex(streams, input.subtitleStreamIndex, "subtitle")
 
   transcoding = invalid
