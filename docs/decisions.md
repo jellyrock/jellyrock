@@ -2054,7 +2054,7 @@ ADR 0011 replaced part (b) of ADR 0009, but its header names only ADR 0008. Part
 **status**: accepted
 **related-files**: `docs/adr/0041-task-launch-queue.md`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
 
-ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `VideoPlayerView`'s `LoadMetaDataTask`, `AudioPlayerView`'s, two in `ItemDetails` and `Home`'s remote-control receiver. As of 2026-10-13 only `VideoPlayerView` remains, with four `LoadMetaDataTask` entries; the other sites moved to a new node per run. The plugin's `PENDING_MIGRATIONS` is the live list, and followup `pending-migrations-same-node-relaunch` tracks the rest.
+ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `VideoPlayerView`'s `LoadMetaDataTask`, `AudioPlayerView`'s, two in `ItemDetails` and `Home`'s remote-control receiver. As of 2026-10-13 the list is empty: `VideoPlayerView`'s four `LoadMetaDataTask` entries were the last, moved to a new node per run by `startVideoLoad()`, and followup `pending-migrations-same-node-relaunch` is closed. The sites ADR 0041's gap still applies to are those tech-debt `queued-relaunch-stale-stop` lists: `TrickplayCarousel.m.tileLoader`, `VideoPlayerView.m.liveTvRefreshTask`, and `Home`'s remote-control receiver, suppressed for good.
 
 ## decision-id: persons-exclude-music-artists
 
@@ -2085,6 +2085,16 @@ Ruled out: a retry dialog (it blocks the remote, and no failure before a player 
 A search whose four reads all failed shows "Couldn't load search results." where the results go, with a Try again that runs the same query through the keystroke path; an answered empty search shows "No results." in the help text's place, which used to stay blank. A search where some reads failed shows what answered and raises one toast, "Some results couldn't load.", only while the screen is shown; a partial search that found nothing is a failure, never empty (`searchOutcome.view`). `SearchTask` reads through an `apiRead.Reader` and publishes `status` in its one `results` assignment. The failure does not take focus from the keyboard (the viewer may be typing); Right reaches Try again. Since the screen reader speaks only what has focus, a failed search and an empty one are announced when they land, queued rather than cutting off speech and only while the screen is shown, and the failure names Try again (`searchOutcome.view` returns the `announceKey`). The partial toast is not spoken: no toast in the app is. The Live TV program read is skipped for a user without Live TV access, since Jellyfin's `LiveTvAccess` policy refuses it and every search would count as partial.
 
 Ruled out: a toast alone for a full failure (failed would look like empty once it fades), hiding answered results when one read fails (the Favorites precedent, `favorites-row-failure-stand-in`), and counting only the library read (a missing People row would stay silent). Measured 2026-10-13 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: all four `search-failure.spec.js` cases failed on the old code and pass on the new.
+
+## decision-id: video-load-release-not-stop
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `components/video/VideoPlayerView.bs`, `source/utils/liveStreamHandoff.bs`
+
+`VideoPlayerView.startVideoLoad()` lets a replaced video load go through `releaseVideoLoad()`, then creates the new node with `replaceTask(invalid, …)`, rather than passing the old node to `replaceTask()`. `replaceTask()` releases with a bare STOP, and a load still opening a Live TV stream must instead be marked abandoned so it closes the stream itself once `PlaybackInfo` answers: a STOP loses the only answer that names the stream, and the server keeps it open. Passing `invalid` keeps the `no-same-node-relaunch` guard check on the handler.
+
+Ruled out: an optional release hook on the shared `replaceTask()`, which would touch every caller and the build rule's tests for one component's need.
 
 ## Migrated to ADRs
 

@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-13: fix(playback): Play the last track or version picked, and every retry
 - 2026-10-13: feat: Say why a quick play found nothing, and never guess an episode
 - 2026-10-13: test: Silence four unit-test build warnings
 - 2026-10-13: fix: Keep music artists out of search and Favorites people on 12.0+
@@ -334,6 +335,12 @@ Jellyfin 12.0 marked `GET /Artists`, `GET /Artists/{name}` and `GET /Artists/Alb
 
 Close it by adding a deprecation change kind to `spec-diff.js` (an operation whose `deprecated` turns true), surfacing it from `scripts/generate/findings-candidates.js` only for endpoints the app uses, with tests beside the existing `endpoint-removed` ones. Then rerun the findings from 10.11.8 to 12.0 so the `/Artists` deprecation shows up, and decide how the app moves off those endpoints. Found while closing the Jellyfin 12 readiness project, 2026-10-13.
 
+#### `lint:doc-citations` scans gitignored files, so local scratch files can block any push `[fid: doc-citation-ratchet-scans-gitignored]` `[captured 2026-10-13]`
+
+`collectDocs()` in [`scripts/lint/doc-citation-ratchet.js`](../scripts/lint/doc-citation-ratchet.js) (`npm run lint:doc-citations`, run by pre-push) says it collects "every tracked markdown or code file", but it walks the filesystem and enters `.claude/`. It skips gitignored paths only through a hand-kept list (`EPHEMERAL_RELS`, `ROOT_ONLY_SKIP_RELS`), so any other gitignored file is scanned. On 2026-10-13 five local perf scripts under the gitignored `.claude/logs/perf/` (em-dashes in their comments) blocked the push of `fix/video-load-new-node-per-run`, whose diff touched none of them. The push went through only after the folder was moved aside. Every new gitignored scratch folder can do this again.
+
+Closes when the gate reads only files git tracks or would track: list them with `git ls-files --cached --others --exclude-standard` instead of walking the tree (which also retires the hand-kept skip lists), with a test that a gitignored file holding an em-dash is not counted. Not done in that PR: it is a tooling change with its own test, separate from a playback fix.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
@@ -429,10 +436,6 @@ It runs `m.view.unobserveField("state")` before `m.view.control = "stop"`, and [
 #### Manage Subtitles is offered on disc-rip items where the search can never return anything `[fid: manage-subtitles-offered-on-disc-rips]` `[captured 2026-09-14]`
 
 (#750). Jellyfin's `SubtitleManager.SearchSubtitles(Video, …)` returns an empty list unless `video.VideoType` is `VideoFile` — so an ISO image or DVD / Blu-ray folder always gets "no subtitles found" — read at the `v10.7.0`, `v10.7.7`, `v10.8.13`, `v10.9.11`, `v10.10.7`, `v10.11.11` and `v12.0` tags, unchanged. `ItemDetails` does not gate the button on the targeted version's `VideoType` (its only `VideoType = "VideoFile"` check is `buildVideoDropdownItems`), so the user is told to check provider setup when setup is fine. Documented for users in [`manage-subtitles.md`](user/manage-subtitles.md). **Decide:** hide the button for a non-`VideoFile` version, or keep the doc as the answer. A code change, so it needs device testing — kept out of #750's docs pass for that reason.
-
-#### Same-node relaunch migrations: every site left is in `PENDING_MIGRATIONS` (`scripts/bsc-plugins/no-same-node-relaunch.cjs`) — read the list, not this line; delete a site's entry when it is migrated or audited safe (the build fails until you do). `[fid: pending-migrations-same-node-relaunch]` `[captured 2026-09-22]`
-
-Since 2026-09-22 the rule flags both shapes: STOP then relaunch of the same node (a race), and a `launchTask(m.x)` with no new node assigned first, which is ignored every time the previous run is still going (40 of 40, Stick 4K + 512 MB Stick — [`threading.md`](architecture/threading.md#measured-findings)); it also requires a `replaceTask` node's same-file handler to open with `isCurrentTaskEvent` (decision `relaunch-gate-no-stop-shapes`). **Audit each listed site by reading its code:** can the launch happen while the previous run is still going? If not, replace the entry with a line suppression stating why (`TrickplayCarousel.startTileLoader` is the model); if so, migrate to `replaceTask()` plus an `isCurrentTaskEvent()`-guarded handler (`SearchResults.searchMedias` / `loadResults` is the reference), moving any state read back off the node onto the component first (`source/GridView/gridQuery.bs`, `schedule`'s `m.channelQuery`). **`HomeRows` is DONE** (decision `home-section-loads-new-node-per-run`): its `isLoading*` guards were cleared inside the node's own delivery handler while it still read `run`, which left a section unable to refresh (6/6 on a Stick 4K); each section load now gets a new node per run. **Captions are DONE** (decision `caption-fetch-render-split`): `captionTask` split into `LoadCaptionTask` (a new node per subtitle change) and a long-lived `CaptionRenderer` that owns the fetch node, so `VideoPlayerView` launches no Task for captions and both its caption entries are gone. **`PlayerHostView` is DONE** (decision `playback-report-fetch-per-run`): a new `GetPlaybackInfoTask` per fetch; the poll tick skips while one is running instead of replacing it, and closing the report releases it, which stopped a late poll reopening the report (8/8 on a Stick 4K). **The list GREW on 2026-09-22** when the rule started flagging the two no-STOP shapes — 14 sites it could not previously see were parked in `PENDING_MIGRATIONS` across `ItemDetails`, `Home`, `HomeRows`, `AudioPlayerView`, `PlayerHostView` and `VideoPlayerView`'s `LoadMetaDataTask`. Several may be suppressible with a stated reason rather than migrated; audit each before assuming it needs work.
 
 #### `ItemGridOptions` commits View / Sort / Filter on the key RELEASE, so a press guard would break selection. `[fid: item-grid-options-commits-on-key-release]` `[captured 2026-09-19]`
 
@@ -665,6 +668,24 @@ Found 2026-10-13 while adding the search failure announcement (`feat/search-fail
 - `per-caller`: each important caller speaks its own message beside `displayToast`. 33 sites, and each new toast is another chance to forget; it drifts.
 
 **Not checked:** that a toast is silent when heard on a device; whether speech from inside `Toast` would be cut off by the platform's own focus speech when a toast and a focus move happen together.
+
+#### Home's texture window has five unmeasured tails: edge churn, a buffer-row cell with no texture, scroll-direction bias, loads per unique item, and pop-in on Home `[fid: home-texture-window-tails]` `[captured 2026-10-13]`
+
+The `task-thread-budget` project closed on 2026-10-13 with these left open. Two of them are its unmet success criteria. The rest are phase C's leftovers from the windowing audit (#919), which found no defect but measured only the window's geometry:
+
+- Churn at the window's edge: `reloads`, `wipesReload`, `bindsRedundant` while scrolling across the boundary.
+- The one cell of 8 with no texture on a buffer row (suspected cause: an item with no artwork, never checked).
+- Whether the window should load further ahead in the scroll direction (weakened by the `focusXOffset` peek).
+- Loads ÷ unique items traversed reaching 1.0 on Home. `ExtrasRowList` reads 1.05 after #840; never measured on Home.
+- Pop-in near zero on Home. Measurable since #843 (`popIns`, read with `loadMsMax`), never shown on Home.
+
+Why not now: each needs a pre-registered device campaign on the cell sweeps (`RTA_BENCH=1`). Closes when each is measured, and fixed where it shows a defect, on `JRRowItem` and `source/utils/textureManager.bs`.
+
+#### Home binds about 16 more cells on some launches than others over an identical workload `[fid: home-binds-variance]` `[captured 2026-10-13]`
+
+Over an identical, settled Home workload, `binds` still spans about 16 cells from launch to launch (224 to 240 in one 2026-09-14 run where every census field was identical). A 2026-08-22 campaign of 40 launches pinned the itinerary, the items, the unloads and the row structure, so the harness is not the cause: the variance comes from the app. It was parked inside `task-thread-budget` and carried here when that project closed on 2026-10-13.
+
+Why not now: it needs a device campaign tracing which cells `HomeRows` / `JRRowItem` bind beyond the visible set. Closes when the extra binds are explained, and removed if they turn out redundant.
 
 ### source
 
