@@ -647,6 +647,12 @@ Options, raised while building the quick play failure toasts (decision `quick-pl
 
 Not checked: the two English messages' widths on screen (estimated from length only); whether the clipped text ends in an ellipsis or is cut mid-word (Roku `Label` truncation was not looked at on screen); which other toasts overflow in English beyond the two named.
 
+#### Search sends its four reads one after another, so a server that never answers takes up to four HTTP limits to show the failure `[fid: search-reads-serial-slow-failure]` `[captured 2026-10-13]`
+
+Found 2026-10-13 reviewing `feat/search-failure-state` (#1199). `SearchTask.searchMedia` sends its reads (`/Items`, `/Persons`, `/Artists`, `/LiveTv/Programs`) one after another through `apiRead.Reader`, each with the default HTTP limit (`timeouts.HTTP_MS`). A server that accepts the connection but never answers makes the viewer wait for every limit in turn before the failure state ("Couldn't load search results.") shows: up to four times `HTTP_MS`. Before #1199 that wait ended in a blank screen; now it ends in the failure state, so the slow path is part of that feature's experience. The success path pays the serial cost too: four round trips took 1676 ms for a one-character query (measured on `.177`, recorded in `SearchResults.loadResults`).
+
+`timeouts.PIPELINE_RUN_MS` exists for the same shape on Home (per-request waits stacking on a dead server, measured 2026-08-03). **Fix:** run the four reads through `apiPipeline` with one run budget, keep the failed and sent counts that `searchOutcome.statusOf` needs, and still assign `results` once as the Task's last act (the comment on `searchMedia` says why). Measure a search before and after on a Stick 4K, and the time to the failure state with every read timing out (`rtaFailRequests` can stand in for a dead server). Not done in #1199: it changes how the reads are sent, a separate change with its own measurement.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

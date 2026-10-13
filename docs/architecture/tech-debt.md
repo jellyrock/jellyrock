@@ -280,6 +280,13 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **severity**: Medium. The failure is silent, and the parity gate makes it easy to assume this is covered.
 - **direction**: Have each check declare the globs it reads (an export, or a manifest keyed by npm script), and extend `ci-parity-check.js` to assert the workflow's pattern covers them. The patterns are regular expressions and the inputs are globs, so compare after normalizing. For the required-check layer, a committed list of expected contexts drifts on its own, and an admin-scope token in CI is a cost; the doc step stays the fix for now.
 
+#### `failure-state-ui-copied`
+
+- **area**: `components/search/SearchResults.xml` and `.bs` (the `searchFailed` group; `onRetryButtonReady`, `focusRetryButton`, `onFailureNarrationDue`), `components/ItemGrid/BaseGridView.xml` and `.bs` (the `loadFailed` group and the same three handlers)
+- **issue**: The search failure state (#1199) copies the grid's load-failure state nearly line for line: a bold message label, a `TextButton` Try again centered on the 720p grid once it has measured itself, and a `Timer` that announces message and button after `narration.OPENING_DELAY` when Try again takes focus. A fix to one copy (its layout, its narration timing) can miss the other, and a third screen with a failure state would make a third copy.
+- **severity**: Medium. Two copies, small today; the drift risk grows with each screen that adds one.
+- **direction**: One failure-state component (message, button label, the area to center in) that does the centering and the opening announcement itself, and reports a retry press on a field. What stays with each screen: when to show it, where focus goes (the grid moves focus to Try again, Search keeps it on the keyboard), and Search's announcement on arrival (`announceSearchOutcome`).
+
 ### Low
 
 #### `playerhostview-second-subsystem`
