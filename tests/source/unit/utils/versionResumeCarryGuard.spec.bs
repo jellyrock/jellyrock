@@ -99,7 +99,7 @@ namespace tests
     ' rather than given a resume point, whatever the position. Carrying onto one would
     ' therefore mark every version played and clear the position being carried from.
     function _()
-      ' 1:00 into a 2:00 version — half way, nowhere near MaxResumePct.
+      ' 1:00 into a 2:00 version: half way, nowhere near MaxResumePct.
       m.assertTrue(versionResume.wouldMarkPlayed(m.secs(60), m.secs(120), m.defaultPolicy()))
     end function
 

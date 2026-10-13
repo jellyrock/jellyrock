@@ -64,9 +64,9 @@ namespace tests
     @describe("mistyped field values")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' `= true` faults with the same `&h18` the bare negation did, just with a
-    ' different operator: the first three crashed before isBooleanTrue(), and
-    ' the number one didn't crash — it silently answered true.
+    ' `= true` faults with the same `&h18` the bare negation did, only with a
+    ' different operator: the other three crashed before isBooleanTrue(), and
+    ' the number one didn't crash. It silently answered true.
 
     @it("false when the field is a string rather than a boolean")
     function _()

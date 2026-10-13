@@ -3,7 +3,7 @@ import "pkg:/source/enums/SubtitleSelection.bs"
 
 namespace tests
 
-  ' buildPlaybackInfoPostData — the PlaybackInfo body is tuned to the version being played,
+  ' buildPlaybackInfoPostData: the PlaybackInfo body is tuned to the version being played,
   ' not to mediaSources[0], the server's default.
   @suite("Items.bs - buildPlaybackInfoPostData() played version")
   class ItemsPlaybackInfoSourceTests extends tests.BaseTestSuite

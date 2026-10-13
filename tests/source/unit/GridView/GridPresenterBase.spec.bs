@@ -26,7 +26,7 @@ namespace tests
     @it("handles onDestroy when view is already invalid")
     function _()
       presenter = new GridPresenterBase()
-      ' No onInit called — view is invalid. Should not crash.
+      ' No onInit called, so view is invalid. Should not crash.
       presenter.onDestroy()
       m.assertTrue(true)
     end function
@@ -72,7 +72,7 @@ namespace tests
     @it("does not crash when view is invalid")
     function _()
       presenter = new GridPresenterBase()
-      ' view is invalid — should return early without crashing
+      ' view is invalid: should return early without crashing
       presenter.showToast("test message")
       m.assertTrue(true)
     end function
@@ -99,7 +99,7 @@ namespace tests
 
     @it("keeps the last good lists when a REVALIDATION fails")
     ' Every panel open refreshes over a populated cache, so a server going flaky mid-session
-    ' would otherwise replace working categories with an empty set — and the cache would
+    ' would otherwise replace working categories with an empty set, and the cache would
     ' still read as loaded, so nothing but another open would retry.
     function _()
       presenter = new tests.FilterCacheProbe()
@@ -173,7 +173,7 @@ namespace tests
 
   ' Exposes GridPresenterBase's protected filter-cache state so the cache rules can be
   ' asserted from a test. A subclass rather than a reach-in, because `protected` is exactly
-  ' the right visibility for this state — nothing outside the presenter should read it.
+  ' the right visibility for this state: nothing outside the presenter should read it.
   ' showToast is stubbed to a counter: the real one needs a live view and a scene.
   class FilterCacheProbe extends GridPresenterBase
 

@@ -102,7 +102,7 @@ namespace tests
 
     @it("returns 0 at live edge (position keeps pace with wall-clock)")
     function _()
-      ' epochAtPosition0=1700000000, position=100, now=1700000100 → behind = 0
+      ' epochAtPosition0=1700000000, position=100, now=1700000100, so behind = 0
       m.assertEqual(computeLiveTvBehindLive(1700000000, true, 100, 1700000100, 0, 0), 0)
     end function
 
@@ -115,7 +115,7 @@ namespace tests
 
     @it("increases when user scrubs backward during play")
     function _()
-      ' At live edge baseline, scrub backward 60s → position=40 → behind=60.
+      ' At live edge baseline, scrub backward 60s: position=40, so behind=60.
       m.assertEqual(computeLiveTvBehindLive(1700000000, true, 40, 1700000100, 0, 0), 60)
     end function
 
@@ -137,7 +137,7 @@ namespace tests
 
     @it("returns elapsed pause when paused with no prior accumulation")
     function _()
-      ' Just paused at 1700000100; 30s later behind=30.
+      ' Paused at 1700000100; 30s later behind=30.
       m.assertEqual(computeLiveTvBehindLive(0, true, 100, 1700000130, 1700000100, 0), 30)
     end function
 
@@ -150,7 +150,7 @@ namespace tests
     @it("ignores position entirely during pause (Roku live-HLS auto-advance is invisible)")
     function _()
       ' Roku may keep advancing m.top.position during pause for live HLS DVR. The pause-math
-      ' branch must not let position influence the result — only accumulated + wall-clock.
+      ' branch must not let position influence the result: only accumulated + wall-clock.
       withFrozenPosition = computeLiveTvBehindLive(1700000000, true, 100, 1700000130, 1700000100, 0)
       withAdvancedPosition = computeLiveTvBehindLive(1700000000, true, 130, 1700000130, 1700000100, 0)
       m.assertEqual(withFrozenPosition, 30)
@@ -164,7 +164,7 @@ namespace tests
 
     @it("returns accumulated unchanged when now equals pausedAtEpoch")
     function _()
-      ' Pause just started this exact second.
+      ' Pause started this exact second.
       m.assertEqual(computeLiveTvBehindLive(0, true, 100, 1700000100, 1700000100, 60), 60)
     end function
 
@@ -174,13 +174,13 @@ namespace tests
 
     @it("subtracts a forward-scrub delta from accumulated")
     function _()
-      ' 60s behind, scrub forward 20s → 40s behind.
+      ' 60s behind, scrub forward 20s, now 40s behind.
       m.assertEqual(applyScrubToAccumulatedBehind(60, 20), 40)
     end function
 
     @it("adds the magnitude of a backward-scrub delta to accumulated")
     function _()
-      ' 30s behind, scrub backward 15s (delta = -15) → 45s behind.
+      ' 30s behind, scrub backward 15s (delta = -15), now 45s behind.
       m.assertEqual(applyScrubToAccumulatedBehind(30, -15), 45)
     end function
 
@@ -205,7 +205,7 @@ namespace tests
 
     @it("folds elapsed pause duration into accumulated before applying forward scrub")
     function _()
-      ' GIVEN: paused 30s ago at live edge (accumulated=0, pauseDurationSoFar=30 → total behind=30)
+      ' GIVEN: paused 30s ago at live edge (accumulated=0, pauseDurationSoFar=30, so total behind=30)
       ' WHEN:  user scrubs forward 30s
       ' THEN:  new accumulated = 0 (snapped to live edge); caller resets pausedAtEpoch
       m.assertEqual(repartitionPauseStateOnScrub(0, 30, 30), 0)
@@ -240,7 +240,7 @@ namespace tests
 
     @it("clamps to 0 when forward scrub exceeds combined accumulated + pauseDuration")
     function _()
-      ' total=15+5=20, scrub forward 30 → would be -10 → clamped to 0
+      ' total=15+5=20, scrub forward 30 would make it -10, clamped to 0
       m.assertEqual(repartitionPauseStateOnScrub(15, 5, 30), 0)
     end function
 
@@ -343,7 +343,7 @@ namespace tests
     @it("returns true for a recording WITH a seriesId")
     function _()
       ' Covers the user's case: news bulletin recording tagged as a series
-      ' but with no S/E numbering — still treated as an episode.
+      ' but with no S/E numbering, still treated as an episode.
       m.assertTrue(shouldTreatAsEpisode("recording", { seriesId: "show-123" }))
     end function
 
@@ -533,8 +533,8 @@ namespace tests
 
     @it("requires LIVE_STALL_REPROVE_MS before a second stall restart in a row")
     function _()
-      ' Measured on a Stick 4K: a restart into a playlist that stopped growing counted 29.6 s of
-      ' its leftover with 10 s segments, just under LIVE_RESTART_HEALTHY_MS.
+      ' Measured on a Stick 4K (2026-09-24): a restart into a playlist that stopped growing counted 29.6 s of
+      ' its leftover with 10 s segments, slightly under LIVE_RESTART_HEALTHY_MS.
       budget = newLiveRestartBudget()
       liveRestartOnMount(budget, false)
       m.assertTrue(liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS), "first stall")

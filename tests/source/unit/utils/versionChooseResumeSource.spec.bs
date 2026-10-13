@@ -2,13 +2,13 @@ import "pkg:/source/utils/versionResume.bs"
 
 namespace tests
 
-  ' `chooseResumeSource` — the ONE answer to "which version resumes", shared by the details
+  ' `chooseResumeSource`: the one answer to "which version resumes", shared by the details
   ' screen, quick play, casts and queued items.
   '
   ' Before it, those paths each had their own rule: the details screen honored the server's
   ' source order while quick play and the progress bars used the item's own version, so with
   ' two versions in progress the screen marked one version and played another. Measured on
-  ' the 12.0 test server with S04E06 — 1080p at 318 s, 720p at 319 s and listed first —
+  ' the 12.0 test server with S04E06 (1080p at 318 s, 720p at 319 s and listed first),
   ' details resumed 1080p, the poster showed the 1080p bar, a cast played 1080p, and a brief
   ' fix to details alone split it from all three.
   '
@@ -22,7 +22,7 @@ namespace tests
   '     directly queried alternate's own source first. Another version in front is therefore
   '     proof; the item's own source in front is not, and the server's resume query decides.
   '   * A version is only ever resumed at its OWN position. Resuming one version at another's
-  '     would move the viewer somewhere else in the content — the two local releases of one
+  '     would move the viewer somewhere else in the content: the two local releases of one
   '     episode run 47 s apart.
   @suite("versionResume - choosing which version resumes")
   class VersionChooseResumeSourceTests extends tests.BaseTestSuite
@@ -95,7 +95,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' This is what gates the Cinema Mode preroll, which is decided before any position is read.
-    ' It cannot be checked on a device here — no test server has the third-party Intros plugin —
+    ' It cannot be checked on a device here (no test server has the third-party Intros plugin),
     ' so the rule is held by this spec rather than by an eyeball.
     @it("is true from the item's own position alone, on any server line")
     function _()
@@ -407,7 +407,7 @@ namespace tests
 
     @it("falls back to the most recent when the device pick names no tied version")
     function _()
-      ' Answers a question that was not asked — a version that is not in the tie, or gone.
+      ' Answers a question that was not asked: a version that is not in the tie, or gone.
       answer = versionResume.chooseResumeSource(m.ctx({
         mediaSources: m.alternateFirst(),
         itemPositionTicks: m.secs(318),

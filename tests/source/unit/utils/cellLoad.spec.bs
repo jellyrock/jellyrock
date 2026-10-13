@@ -3,7 +3,7 @@ namespace tests
   ' Clear the per-cell instrument state the ledger actually writes to.
   '
   ' It CANNOT be done from a suite method. A class method's `m` is the class instance,
-  ' while `cellLoad.*` resolves `m` from the enclosing scope — the same rule that makes
+  ' while `cellLoad.*` resolves `m` from the enclosing scope: the same rule that makes
   ' `cellState()` land on the CELL in production. So `m.cellLoadState = invalid` inside the
   ' suite clears a different AA and leaves the real one standing. A free function in this
   ' namespace resolves `m` the way the module does, so it reaches the same one. Identical
@@ -116,7 +116,7 @@ namespace tests
     function _()
       ' The reason is the whole point. `range` is driven by vertical scrolling and fires on
       ' every screen; `window` fires only inside a row longer than TEXTURE_BUFFER_THRESHOLD
-      ' and is the ONLY evidence that horizontal windowing engaged. A campaign that raises
+      ' and is the only evidence that horizontal windowing engaged. A campaign that raises
       ' the per-row item limit reads `window`; the total is dominated by `range` and cannot
       ' answer the question.
       root = CreateObject("roSGNode", "ContentNode") as dynamic
@@ -128,15 +128,17 @@ namespace tests
       m.assertEqual(root.getField("cellLoadUnloadsWindow"), 2)
       ' The invariant every reader of the split relies on: the halves PARTITION the total,
       ' so a sample where they do not sum to it has lost a call site rather than found a
-      ' third mechanism. Asserted here because the two call sites in JRRowItem are the only
-      ' ones, and a third added later would break this rather than score silently.
+      ' third mechanism. Asserted here because every unload passes one of the two reasons
+      ' (`JRRowItem.evaluateTextureState`'s two evictions through `unloadTexture()`, and
+      ' `GridItem`'s range unload), and a third added later would break this rather than
+      ' score silently.
       m.assertEqual(root.getField("cellLoadUnloads"), 3)
     end function
 
     @it("is a no-op on a root that was never attached")
     function _()
       ' Same guard every other counter carries: a screen whose content root predates the
-      ' ledger must not fault, it must simply not score.
+      ' ledger must not fault, it must not score.
       root = CreateObject("roSGNode", "ContentNode") as dynamic
       cellLoad.unload(root, cellLoad.UNLOAD_WINDOW)
       m.assertFalse(root.hasField("cellLoadUnloads"))
@@ -185,7 +187,7 @@ namespace tests
       cellLoad.attach(root, "ExtrasRowList")
       cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
       cellLoad.appeared(root, true, false)
-      ' A later "ready" with no request outstanding — Roku re-reporting a URI that was
+      ' A later "ready" with no request outstanding: Roku re-reporting a URI that was
       ' never re-requested. It must not retroactively invent a pop-in.
       cellLoad.loadSucceeded(root)
       m.assertEqual(root.getField("cellLoadAppearances"), 1)
@@ -206,9 +208,10 @@ namespace tests
 
     @it("does NOT score a pop-in for an image that never arrives")
     function _()
-      ' The load-bearing one. `ExtrasRowList` fails 117 of 140 loads against a real server
-      ' because the Person images are gone, so scoring at appearance time would report a
-      ' total buffer failure caused entirely by missing artwork. A broken image is already
+      ' The one that matters. `ExtrasRowList` failed 117 of 140 loads against a real server
+      ' (2026-08-22) because the Person images are gone, so scoring at appearance time
+      ' would report a total buffer failure caused entirely by missing artwork. A broken
+      ' image is already
       ' counted as `loadsFailed`; the user sees a glyph, never a fade-in.
       root = CreateObject("roSGNode", "ContentNode") as dynamic
       cellLoad.attach(root, "ExtrasRowList")
@@ -220,11 +223,11 @@ namespace tests
       m.assertEqual(root.getField("cellLoadLoadsFailed"), 1)
       m.assertEqual(root.getField("cellLoadPopIns"), 0)
 
-      ' Asserting the count at the failure is VACUOUS on its own — a pop-in only ever
-      ' materialises on a later success, so `popIns` reads 0 there whether or not the
+      ' Asserting the count at the failure is VACUOUS on its own: a pop-in only ever
+      ' materializes on a later success, so `popIns` reads 0 there whether or not the
       ' failure cleared the pending flag. Caught by mutation: deleting the clear in
       ' loadErrored left this test green. The cell must be driven through the retry that
-      ' DOES succeed — scroll out, scroll back, reload — which is where an uncleared flag
+      ' DOES succeed (scroll out, scroll back, reload), which is where an uncleared flag
       ' would score the failed appearance as a pop-in it never was. The user saw a glyph in
       ' between, not one continuous wait.
       cellLoad.loadStarted(root)
@@ -250,11 +253,11 @@ namespace tests
     function _()
       ' The three buckets carry different remedies and must never be derived from each
       ' other. Measured 2026-08-21 on cellSweepGrid: popIns 18 of 28 appearances with
-      ' popInsCold 0 — a number that reads as a two-thirds buffer failure and is nearly all
+      ' popInsCold 0, a number that reads as a two-thirds buffer failure and is nearly all
       ' first paint, because a sweep that OPENS its screen binds every visible cell while
       ' its data is still arriving.
 
-      ' FIRST — the cell's initial render was still loading. No buffer could have won.
+      ' FIRST: the cell's initial render was still loading. No buffer could have won.
       first = CreateObject("roSGNode", "ContentNode") as dynamic
       cellLoad.attach(first, "BaseGridView")
       cellLoad.bind(first, cellLoad.FROM_CONTENT, false)
@@ -266,7 +269,7 @@ namespace tests
       m.assertEqual(first.getField("cellLoadPopInsReload"), 0)
       m.assertEqual(first.getField("cellLoadPopInsCold"), 0)
 
-      ' RELOAD — a re-entry request was in flight and lost. This is the buffer's own race.
+      ' RELOAD: a re-entry request was in flight and lost. This is the buffer's own race.
       clearCellLoadState()
       again = CreateObject("roSGNode", "ContentNode") as dynamic
       cellLoad.attach(again, "BaseGridView")
@@ -290,8 +293,8 @@ namespace tests
       ' reload, quietly moving counts into the bucket that says "the buffer had a job here".
       '
       ' This started life asserting that `bind()` RESET the flag, and mutation testing
-      ' showed that assertion was vacuous — deleting the reset left it green, because
-      ' `loadStarted` assigns the origin unconditionally on every call and `popInFromReload`
+      ' showed that assertion was vacuous. Deleting the reset left it green, because
+      ' `loadStarted` assigns the origin unconditionally on every call and `loadFromReload`
       ' is only read when a load is pending. The reset was unreachable-effect code and was
       ' removed; what is left is the invariant that actually holds it up.
       root = CreateObject("roSGNode", "ContentNode") as dynamic
@@ -312,7 +315,7 @@ namespace tests
 
     @it("splits pop-ins by whether a request was in flight when the cell appeared")
     function _()
-      ' Cold — nothing was loading, so the cell arrived from outside the managed range and
+      ' Cold: nothing was loading, so the cell arrived from outside the managed range and
       ' the user outran the buffer's DEPTH. More depth would help.
       cold = CreateObject("roSGNode", "ContentNode") as dynamic
       cellLoad.attach(cold, "HomeRows")
@@ -323,7 +326,7 @@ namespace tests
       m.assertEqual(cold.getField("cellLoadPopIns"), 1)
       m.assertEqual(cold.getField("cellLoadPopInsCold"), 1)
 
-      ' Warm — the buffer had already issued the request and the network was slower. Depth
+      ' Warm: the buffer had already issued the request and the network was slower. Depth
       ' cannot fix that, which is why the two must not share a counter.
       clearCellLoadState()
       warm = CreateObject("roSGNode", "ContentNode") as dynamic
@@ -373,8 +376,8 @@ namespace tests
     @it("counts a cell that leaves the screen and comes back as a NEW appearance")
     function _()
       ' THE case the buffer exists for, and the one a per-bind gate alone cannot see. A
-      ' RowList/MarkupGrid does NOT rebind a cell that scrolls off and back onto the SAME
-      ' item — `onItemContentChanged` never fires — so the whole re-entry is invisible to a
+      ' RowList/MarkupGrid does not rebind a cell that scrolls off and back onto the SAME
+      ' item (`onItemContentChanged` never fires), so the whole re-entry is invisible to a
       ' gate that only re-arms on bind. Measured 2026-08-22 on cellSweepGrid: binds 28 for
       ' 28 items (nothing was ever rebound) against 7 reloads, so every one of those
       ' re-entry races went unevaluated while the ledger reported 1 reload pop-in.
@@ -389,7 +392,7 @@ namespace tests
       m.assertEqual(root.getField("cellLoadAppearances"), 1)
       m.assertEqual(root.getField("cellLoadPopIns"), 1)
 
-      ' Scrolls off — texture released, no rebind.
+      ' Scrolls off: texture released, no rebind.
       cellLoad.departed(root)
       cellLoad.unload(root, cellLoad.UNLOAD_RANGE)
 
@@ -405,7 +408,7 @@ namespace tests
 
     @it("does not score a pop-in for a cell that left before its image arrived")
     function _()
-      ' It appeared without its image and then went away — the user never watched it fade
+      ' It appeared without its image and then went away. The user never watched it fade
       ' in, so there is no pop-in to score when the late image finally lands.
       root = CreateObject("roSGNode", "ContentNode") as dynamic
       cellLoad.attach(root, "BaseGridView")
@@ -432,8 +435,8 @@ namespace tests
     @it("times only the loads it actually issued")
     function _()
       ' A "ready" with no matching issue is a real success with no interval to record.
-      ' Counting it would put a bogus reading — the time since some earlier, unrelated mark
-      ' — into the mean, which is exactly why loadMsCount exists rather than dividing by
+      ' Counting it would put a bogus reading (the time since some earlier, unrelated mark)
+      ' into the mean, which is exactly why loadMsCount exists rather than dividing by
       ' loadsSucceeded.
       root = CreateObject("roSGNode", "ContentNode") as dynamic
       cellLoad.attach(root, "HomeRows")
@@ -499,7 +502,7 @@ namespace tests
 
       ' Assert the counters are actually SET before emitting. A reset test whose subject
       ' was zero all along passes without testing anything, and `loadMsMax` reads a real
-      ' 0 ms on a run this fast — so it is deliberately not asserted here rather than
+      ' 0 ms on a run this fast, so it is not asserted here rather than
       ' asserted vacuously. `loadMsCount` covers the timing group.
       m.assertEqual(root.getField("cellLoadAppearances"), 1)
       m.assertEqual(root.getField("cellLoadPopIns"), 1)
@@ -523,7 +526,7 @@ namespace tests
       ' reporting a split that does not add up to it.
       m.assertEqual(root.getField("cellLoadUnloadsRange"), 0)
       m.assertEqual(root.getField("cellLoadUnloadsWindow"), 0)
-      ' The pop-in fields reset with the rest — a session that carried them forward would
+      ' The pop-in fields reset with the rest: a session that carried them forward would
       ' publish a race the next screen never ran.
       m.assertEqual(root.getField("cellLoadAppearances"), 0)
       m.assertEqual(root.getField("cellLoadPopIns"), 0)

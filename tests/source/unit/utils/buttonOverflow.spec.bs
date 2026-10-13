@@ -23,7 +23,7 @@ namespace tests
     private osdBound = 1670
 
     ' What a row of n items actually occupies. The gaps sit BETWEEN items, so this
-    ' is deliberately NOT n * (width + spacing) — reproducing the off-by-one-gap
+    ' is not n * (width + spacing), on purpose: reproducing the off-by-one-gap
     ' here is how a spec ends up agreeing with a bug.
     private function rowWidth(n as integer, itemWidth as integer, spacing as integer) as integer
       if n <= 0 then return 0
@@ -166,7 +166,7 @@ namespace tests
     end function
 
     ' The OSD's stride differs from ItemDetails', so the two anchors land in
-    ' different places from the same function — the same property the cap has.
+    ' different places from the same function: the same property the cap has.
     @it("lands somewhere DIFFERENT for the OSD, from the same arithmetic")
     function _()
       itemWidth = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
@@ -178,7 +178,7 @@ namespace tests
 
     ' A degenerate cap must still produce a usable rect. Anchoring at the row's
     ' own origin puts the menu at the start of the row, which is visibly wrong
-    ' rather than off-screen — the same direction every other guard here takes.
+    ' rather than off-screen. That is the same direction every other guard here takes.
     @it("falls back to the row origin when the cap is degenerate")
     function _()
       for each cap in [0, -3]
@@ -380,7 +380,7 @@ namespace tests
     end function
 
     ' An open More menu holds this node as its returnFocusTo. Recreating it on a
-    ' re-apply — which happens on every row mutation — would leave the dialog
+    ' re-apply (which happens on every row mutation) would leave the dialog
     ' restoring focus to a node no longer in the tree.
     @it("re-uses the SAME More node across re-applications")
     function _()
@@ -462,7 +462,7 @@ namespace tests
     ' THE REGRESSION: OK dispatches the button at buttonFocused. A late insert to
     ' the LEFT of the focused button (ItemDetails' Trailer, a subtitle button) used
     ' to leave the index naming the new button, so OK ran the wrong action. The
-    ' row fits here on purpose — the old early return skipped exactly this case.
+    ' row fits here on purpose: the old early return skipped exactly this case.
     @it("keeps the focus index on the same button across an insert to its left, when the row fits")
     function _()
       row = m.makeRow(3)
@@ -565,7 +565,7 @@ namespace tests
       m.assertEqual(row.group.buttonFocused, 1)
     end function
 
-    ' The caller's own choice stands when the focused button is gone — this is
+    ' The caller's own choice stands when the focused button is gone. This is
     ' what setupButtons' "fall back to index 0 when Delete is gone" relies on.
     @it("leaves the focus index alone when the focused button was removed")
     function _()
@@ -668,7 +668,7 @@ namespace tests
     @describe("overflowMenuEntries()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' The menu wears what the buttons wore, and resolves back to a button ID —
+    ' The menu wears what the buttons wore, and resolves back to a button ID,
     ' which is what lets a selection run through each surface's existing dispatch
     ' instead of a second copy of it. The three arrays must stay index-aligned.
     @it("reads label, icon and id off the stashed buttons in order")
@@ -728,8 +728,8 @@ namespace tests
       m.assertEqual(overflowMenuSelection(m.pick(2), m.menuIds), "trailerButton")
     end function
 
-    ' The mapping is positional, so an off-by-one here fires the WRONG item action
-    ' — picking Refresh and getting Delete. Asserted per index rather than in bulk.
+    ' The mapping is positional, so an off-by-one here fires the WRONG item action:
+    ' picking Refresh and getting Delete. Asserted per index rather than in bulk.
     @it("maps every index to the id at that position, with no drift")
     function _()
       for i = 0 to m.menuIds.count() - 1

@@ -21,7 +21,7 @@ namespace tests
     end function
 
     ' Loads `item`, waits for the extras run the first load starts to finish, then reports
-    ' `kind` as the extras' confirmed playlist kind — so nothing the run delivers later can
+    ' `kind` as the extras' confirmed playlist kind, so nothing the run delivers later can
     ' overwrite it.
     private sub loadWithConfirmedKind(item as object, kind as string)
       m.itemDetails.itemContent = item
@@ -134,7 +134,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' A reload is what returning to the screen does (onScreenShown -> refreshItemDetailsData):
-    ' it rebuilds the buttons and the info labels, and does NOT reload the extras.
+    ' it rebuilds the buttons and the info labels, and does not reload the extras.
 
     @it("keeps the Watched button for a video playlist")
     function _()

@@ -38,7 +38,7 @@ namespace tests
 
     @it("advertises m4a/m4b under the JELLYFIN container names while probing Roku mp4")
     function _()
-      ' Roku does not recognise "m4a"/"m4b" as containers at all — only "mp4".
+      ' Roku does not recognize "m4a"/"m4b" as containers at all, only "mp4".
       di = m.fakeDi(["aac/mp4", "alac/mp4"])
       profiles = getAudioDirectPlayProfiles(di, ["aac", "alac"])
 
@@ -69,9 +69,9 @@ namespace tests
 
     @it("emits mp3, flac, wav and aiff with NO AudioCodec field")
     function _()
-      ' wav and aiff MUST stay codec-open: Jellyfin reports the fine-grained codec name
+      ' wav and aiff must stay codec-open: Jellyfin reports the fine-grained codec name
       ' ("pcm_s16le" for a .wav, "pcm_s16be" for an .aiff), which never equals the "pcm"
-      ' this profile can probe — an AudioCodec list would match nothing at all.
+      ' this profile can probe, so an AudioCodec list would match nothing at all.
       di = m.fakeDi(["mp3/mp3", "flac/flac", "pcm/wav", "lpcm/wav", "pcm/"])
       profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac", "pcm", "lpcm"])
 
@@ -84,7 +84,7 @@ namespace tests
 
     @it("probes with NO container for formats Roku has no container name for")
     function _()
-      ' Roku answers false for the container strings "aac" and "aiff" for EVERY codec, so
+      ' Roku answers false for the container strings "aac" and "aiff" for every codec, so
       ' probing under the Jellyfin name would read as unsupported. These probe bare.
       di = m.fakeDi(["aac/", "pcm/"])
       profiles = getAudioDirectPlayProfiles(di, ["aac", "pcm"])
@@ -140,7 +140,7 @@ namespace tests
     @it("never puts a codec name in the Container field")
     function _()
       ' The bug this replaced shipped Container:"mp3,mp2,pcm,lpcm,flac,alac,aac,vorbis,mpg123"
-      ' — a CODEC list in a field Jellyfin matches against MediaSource.Container.
+      ' That is a CODEC list in a field Jellyfin matches against MediaSource.Container.
       di = m.fakeDi(["aac/mp4", "alac/mp4", "mp3/mp3", "flac/flac", "vorbis/ogg", "pcm/wav", "aac/"])
       profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac", "aac", "alac", "vorbis", "pcm", "lpcm", "mpg123"])
 
@@ -171,7 +171,7 @@ namespace tests
     @it("omits ac3 and eac3 on a device that cannot output them")
     function _()
       ' A Stick 4K in Stereo out answers false for every surround codec, including
-      ' PassThru — it must advertise neither container.
+      ' PassThru, so it must advertise neither container.
       di = m.fakeDi(["mp3/mp3"])
       profiles = getAudioDirectPlayProfiles(di, ["ac3", "eac3", "mp3"])
 
@@ -230,7 +230,7 @@ namespace tests
     function _()
       ' Regression guard on the REAL builder. The video mkv row used to add truehd off
       ' a bare CanDecodeAudio({ Codec: "mat" }), which is true on a Roku Ultra `4850X`
-      ' with a TrueHD soundbar — and a movie direct-played that way buffers with
+      ' with a TrueHD soundbar, and a movie direct-played that way buffers with
       ' audioFormat=mat and then fails. Only a device whose bare mat probe is true can
       ' fail this; elsewhere it passes trivially.
       for each profile in GetDirectPlayProfiles()
@@ -259,7 +259,7 @@ namespace tests
     @it("omits the Container parameter entirely when the Roku container name is empty")
     function _()
       ' Passing an unknown Container makes the API answer false for every codec, which is
-      ' indistinguishable from a real no — so the bare question must send no Container.
+      ' indistinguishable from a real no, so the bare question must send no Container.
       seen = {}
       di = {
         seen: seen,
@@ -293,18 +293,18 @@ namespace tests
 
     @it("keeps mat out of every container row, and sends no probe to decide it")
     function _()
-      ' Two separate reasons, and the second is the load-bearing one.
+      ' Two separate reasons, and the second is the one that decides it.
       '
       ' The probe cannot answer: Roku returns { container: ["mat"], result: false,
       ' updated: "container" } for mat + ANY container, because it wants Container to
-      ' BE "mat" — so that false is a rejected question, not a real "no".
+      ' BE "mat", so that false is a rejected question, not a real "no".
       '
       ' And truehd must stay OUT of the container rows regardless. Falling back to the
       ' bare probe here is the obvious-looking repair (the bare probe says yes on a
       ' TrueHD soundbar, so the rows look like they under-claim it) and it ships a HANG:
-      ' measured on a Roku Ultra `4850X` with a TrueHD-capable soundbar, a 6ch TrueHD
-      ' stream in .mka reaches buffering with audioFormat=mat and never reaches
-      ' playing — 45 s, under streamFormat mkv / mka / unset alike — while a
+      ' measured 2026-08-30 on a Roku Ultra `4850X` with a TrueHD-capable soundbar, a
+      ' 6ch TrueHD stream in .mka reaches buffering with audioFormat=mat and never
+      ' reaches playing (45 s, under streamFormat mkv / mka / unset alike), while a
       ' control holding DTS in `mka` played at 0.5 s in the same run.
       called = { count: 0 }
       di = {

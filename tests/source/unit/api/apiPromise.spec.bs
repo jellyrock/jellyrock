@@ -3,16 +3,16 @@ import "pkg:/source/roku_modules/promises/promises.brs"
 
 namespace tests
 
-  ' Contract tests for the pool → promises adapter (source/api/apiPromise.bs).
+  ' Contract tests for the pool-to-promises adapter (source/api/apiPromise.bs).
   '
-  ' These assert the SYNCHRONOUS state machine of the adapter — the resolve /
-  ' reject decision (decision #5) and the abandon model (decision #6) — by
-  ' driving settleApiPromise()/abandonApiPromises() directly against a populated
+  ' These assert the adapter's synchronous state machine, the resolve /
+  ' reject decision (decision #5) and the abandon model (decision #6), by
+  ' driving settleApiPromiseIn()/abandonApiPromisesIn() directly against a populated
   ' registry and reading the promise node's `promiseState` / `promiseResult`
   ' immediately. `promises.resolve()` / `.reject()` flip those fields
   ' synchronously, so no render-loop pump is needed. (Actual `.then` callback
   ' delivery rides the library's next-tick Timer, which a synchronous Rooibos
-  ' test can't pump — the state-transition assertions below are the contract.)
+  ' test can't pump: the state-transition assertions below are the contract.)
   @suite("apiPromise - pool → promises adapter contract")
   class ApiPromiseTests extends tests.BaseTestSuite
 
@@ -120,7 +120,7 @@ namespace tests
       m.assertFalse(promise.promiseResult.ok)
     end function
 
-    ' A timed-out request is one nobody will read, so it is also marked abandoned —
+    ' A timed-out request is one nobody will read, so it is also marked abandoned,
     ' which lets the pool skip it if it is still queued (apiPool.bs, "Skipping a request
     ' nobody is waiting for") rather than spending a slot on an answer with no reader.
     @it("marks the request abandoned on timeout, and still rejects the promise")
@@ -154,7 +154,7 @@ namespace tests
       settleApiPromiseIn(m.__apiPromisePending, "r5")
       m.assertFalse(m.__apiPromisePending.doesExist("r5"))
 
-      ' Second settle (e.g. the timeout firing just after isDone) is a no-op:
+      ' Second settle (for example the timeout firing right after isDone) is a no-op:
       ' the resolved state is unchanged and nothing throws.
       settleApiPromiseIn(m.__apiPromisePending, "r5")
       m.assertEqual(promise.promiseState, "resolved")
@@ -172,7 +172,7 @@ namespace tests
       abandonApiPromisesIn(m.__apiPromisePending)
 
       m.assertEqual(m.__apiPromisePending.count(), 0)
-      ' A late pool response now settles nothing — the callback can never fire
+      ' A late pool response now settles nothing, so the callback can never fire
       ' into the destroyed owner.
       settleApiPromiseIn(m.__apiPromisePending, "r6")
       m.assertEqual(promise.promiseState, "pending")

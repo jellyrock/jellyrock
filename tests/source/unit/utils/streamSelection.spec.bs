@@ -391,7 +391,7 @@ namespace tests
         { Type: "audio", index: 1, Language: "jpn", channels: 2, codec: "aac", IsDefault: false },
         { Type: "audio", index: 2, Language: "eng", channels: 2, codec: "aac", IsDefault: false }
       ]
-      ' Blank language preference, should use Roku locale (en_US → eng)
+      ' Blank language preference, should use Roku locale (en_US becomes eng)
       result = findBestAudioStreamIndex(streams, false, "", m.createMockCapabilities(2, false))
       m.assertEqual(result, 2)
     end function
@@ -405,7 +405,7 @@ namespace tests
         { Type: "audio", index: 1, Language: "eng", channels: 2, codec: "aac", IsDefault: false },
         { Type: "audio", index: 2, Language: "spa", channels: 2, codec: "aac", IsDefault: false }
       ]
-      ' Invalid language preference, should use Roku locale (es_MX → spa)
+      ' Invalid language preference, should use Roku locale (es_MX becomes spa)
       result = findBestAudioStreamIndex(streams, false, invalid, m.createMockCapabilities(2, false))
       m.assertEqual(result, 2)
     end function

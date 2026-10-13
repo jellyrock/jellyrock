@@ -177,7 +177,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("drops a name that only repeats the stream info")
-    ' Jellyfin 12.0 names "Movie - 1080p.mkv" and "Movie - 720p.mkv" just "1080p" and "720p".
+    ' Jellyfin 12.0 names "Movie - 1080p.mkv" and "Movie - 720p.mkv" only "1080p" and "720p".
     function _()
       labels = versionLabels.labelsFor([m.source("a", "1080p", m.video(1920, 1080, "h264")), m.source("b", "720p", m.video(1280, 720, "h264"))], "")
       m.assertEqual(m.titles(labels), ["1080p", "720p"])

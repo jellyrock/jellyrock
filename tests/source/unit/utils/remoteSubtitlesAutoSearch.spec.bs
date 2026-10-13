@@ -2,8 +2,8 @@ import "pkg:/source/utils/remoteSubtitles.bs"
 
 ' Unit tests for the subtitle panel's auto-search decision (issue #750).
 '
-' This predicate exists because the previous shape — an m.autoSearchPending flag
-' armed on open and consumed "when the language lands" — shipped with two writes
+' This predicate exists because the previous shape (an m.autoSearchPending flag
+' armed on open and consumed "when the language lands") shipped with two writes
 ' and ZERO readers, so no first open ever searched. A flag can lose its reader
 ' silently and still build; a predicate cannot, because these tests call it.
 '
@@ -100,7 +100,7 @@ namespace tests
     function _()
       ' A boolean refused this, so picking a language mid-search started nothing.
       ' The original reply was then dropped by the stale-language guard WITHOUT
-      ' clearing the flag — because that guard's premise is "a newer search
+      ' clearing the flag, because that guard's premise is "a newer search
       ' already owns it", and the refusal is what stopped one existing. The panel
       ' spun forever and only a close-and-reopen recovered it.
       m.assertTrue(remoteSubtitles.shouldStartSearch("en", "fr"))
@@ -119,7 +119,7 @@ namespace tests
 
     @it("treats a regional code as distinct from its base language")
     function _()
-      ' pt-br and pt return genuinely different result sets (the server resolves
+      ' pt-br and pt return different result sets (the server resolves
       ' our path param through FindLanguageInfo), so switching between them is a
       ' new question, not a repeat.
       m.assertTrue(remoteSubtitles.shouldStartSearch("pt", "pt-br"))
@@ -137,7 +137,7 @@ namespace tests
     @it("does not spin once cultures loaded without the user's language")
     function _()
       ' THE REGRESSION: on a reopen with cultures cached, the panel showed "choose a
-      ' language" and then this spinner replaced it — and nothing ever stopped it.
+      ' language" and then this spinner replaced it, and nothing ever stopped it.
       m.assertFalse(remoteSubtitles.shouldShowOpeningSpinner(0, "", true))
     end function
 

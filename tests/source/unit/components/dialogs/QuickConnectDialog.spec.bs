@@ -5,8 +5,8 @@ namespace tests
   ' QuickConnectDialog after the #288 phase-4 migration: a VIEW, on the scene
   ' overlay channel, with the standard `result` contract. It used to extend Roku's
   ' StandardMessageDialog, live on the modal channel, spawn a QuickConnect Task
-  ' node every three seconds, and mutate itself into a second prompt — none of
-  ' which is true any more, so the old interface assertions were replaced wholesale
+  ' node every three seconds, and mutate itself into a second prompt. None of
+  ' that is true any more, so the old interface assertions were replaced wholesale
   ' rather than edited.
   @suite("QuickConnectDialog - interface, chrome and cancel contract")
   class QuickConnectDialogTests extends tests.BaseTestSuite
@@ -74,7 +74,7 @@ namespace tests
     ' THE GATE ON THE PANEL WIDTH.
     '
     ' This dialog picks 762 to be indistinguishable from a standard alert at a
-    ' glance, and JRDialog picks 762 for the 720p grid — two file-scoped constants
+    ' glance, and JRDialog picks 762 for the 720p grid: two file-scoped constants
     ' with no compiler relationship, so either could move without the other. Assert
     ' the RENDERED panels against each other rather than either literal, so the
     ' claim "it looks like an alert" is a red/green gate instead of an opinion.
@@ -122,7 +122,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("offers exactly one button")
-    ' One focusable class of thing, per the dialog-family convention — and one
+    ' One focusable class of thing, per the dialog-family convention, and one
     ' button means there is no row navigation to get wrong at all.
     function _()
       m.assertEqual(m.dialog.findNode("buttonRow").getChildCount(), 1)
@@ -140,8 +140,8 @@ namespace tests
 
     @it("resolves cancelled and takes itself off the scene")
     ' presentOverlayDialog supersedes an incumbent through this same entry point,
-    ' and a long-lived dialog like this one is the likeliest incumbent there is —
-    ' so it has to deliver a result its owner can act on, not just disappear.
+    ' and a long-lived dialog like this one is the likeliest incumbent there is,
+    ' so it has to deliver a result its owner can act on, not only disappear.
     function _()
       scene = m.top.getScene()
       m.dialog.code = "523522"
@@ -159,7 +159,7 @@ namespace tests
     end function
 
     @it("is once-only, like every other route out of the dialog")
-    ' A supersede landing on a dialog the user just dismissed must not overwrite
+    ' A supersede landing on a dialog the user already dismissed must not overwrite
     ' the first result. (Same shape and same limits as JRDialog's own once-only
     ' test: it pins the surviving VALUE, not the observer call count, which a
     ' synchronous spec cannot see.)

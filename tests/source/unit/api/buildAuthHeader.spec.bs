@@ -1,7 +1,7 @@
 namespace tests
 
-  ' buildAuthHeader() is the ONLY place JellyRock advertises its Jellyfin DeviceId. Jellyfin resolves
-  ' DeviceId from this header exclusively — never from a query string — and silently falls back to the
+  ' buildAuthHeader() is where JellyRock advertises its Jellyfin DeviceId. From 10.11 Jellyfin resolves
+  ' DeviceId from this header only, never from a query string, and silently falls back to the
   ' DeviceId the auth token was minted under when the header omits it. A channel that opens a session
   ' without this header therefore lands on a DIFFERENT session than the rest of the app, which is the
   ' #743 cold-launch cast failure: /pair resolves the REST session while the ws:// command channel sits

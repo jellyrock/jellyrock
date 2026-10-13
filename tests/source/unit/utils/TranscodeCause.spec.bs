@@ -5,8 +5,8 @@ namespace tests
 
   ' Every predicate is tested in BOTH directions, and the negatives are the point.
   ' A false positive here sends a user to a Settings screen to change something
-  ' that will not help, which is worse than showing them the bare server code —
-  ' so each conjunct of each predicate gets a test that removes only that conjunct
+  ' that will not help, which is worse than showing them the bare server code.
+  ' So each conjunct of each predicate gets a test that removes only that conjunct
   ' and asserts the attribution disappears.
   @suite("transcodeCause.bs - attributing a transcode to a JellyRock setting")
   class TranscodeCauseTests extends tests.BaseTestSuite
@@ -20,7 +20,7 @@ namespace tests
     protected override sub beforeEach()
       super.beforeEach()
 
-      ' Built per TEST, not per suite — every case below mutates its own copy.
+      ' Built per TEST, not per suite: every case below mutates its own copy.
       m.doviCtx = {
         settings: { playbackPreserveDovi: true },
         doviPreservationBypassed: false,
@@ -161,8 +161,8 @@ namespace tests
     @it("says nothing for a codec the 2-channel cap never touches")
     function _()
       ' The cap lists aac/flac/alac/pcm/lpcm/wav/opus/vorbis. A 5.1 EAC3 source
-      ' transcoding for channels was limited by the device, not by this setting —
-      ' this is the case the setting NAME alone would get wrong.
+      ' transcoding for channels was limited by the device, not by this setting.
+      ' This is the case the setting NAME alone would get wrong.
       m.channelsCtx.audioStream.Codec = "eac3"
       m.assertEqual(transcodeCauseSettingKey("AudioChannelsNotSupported", m.channelsCtx), "")
     end function
@@ -209,7 +209,7 @@ namespace tests
 
     @it("says nothing when the source bitrate is under the limit")
     function _()
-      ' The setting is on but not BINDING — something else caused this transcode.
+      ' The setting is on but not BINDING: something else caused this transcode.
       m.bitrateCtx.videoStream.BitRate = 4000000
       m.assertEqual(transcodeCauseSettingKey("VideoBitrateNotSupported", m.bitrateCtx), "")
     end function
@@ -241,18 +241,18 @@ namespace tests
       m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "")
     end function
 
-    ' REGRESSION GUARD. This block used to assert the OPPOSITE — that 1080/1440/2160
-    ' never attribute — because getResolutionConditions collapsed any value at or
-    ' above 1080 to a 1080 cap, so nothing was genuinely the user's doing. That was a
+    ' REGRESSION GUARD. This block used to assert the OPPOSITE (that 1080/1440/2160
+    ' never attribute), because getResolutionConditions collapsed any value at or
+    ' above 1080 to a 1080 cap, so nothing was the user's doing. That was a
     ' bug (jellyrock#866), and the old assertion mirrored it. Worth knowing: those old
     ' cases would still PASS against the fixed code, because the fixture's source is
-    ' 1080p and so fits under every one of those caps — they had gone vacuous rather
+    ' 1080p and so fits under every one of those caps. They had gone vacuous rather
     ' than red, which is exactly why they are replaced rather than deleted.
     @it("names the setting for a cap at or above 1080 that the source still exceeds")
     function _()
       ' A 4K device, a 4K source, and the user asking for 1080. `auto` would have
       ' given them 2160, so the cap is theirs and changing it would change the
-      ' outcome — the definition this module attributes on.
+      ' outcome, the definition this module attributes on.
       m.resolutionCtx.settings.playbackResolutionMax = "1080"
       m.resolutionCtx.deviceMaxHeight = 2160
       m.resolutionCtx.videoStream = { Codec: "hevc", Height: 2160, Width: 3840 }
@@ -290,7 +290,7 @@ namespace tests
     function _()
       ' ItemPostPlaybackInfo caps h264 at 1920x1080 regardless of any setting, so
       ' this transcode would have happened with the setting at its default. Two
-      ' candidate causes and no way to tell them apart — so we claim neither.
+      ' candidate causes and no way to tell them apart, so we claim neither.
       m.resolutionCtx.videoStream = { Codec: "h264", Height: 2160, Width: 3840 }
       m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "")
     end function

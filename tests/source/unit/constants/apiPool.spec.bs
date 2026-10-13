@@ -8,7 +8,7 @@ const API_POOL_SLOT_BLOCKS = 6
 ' The widths are measured values, so they are pinned here: a change to either has to
 ' be a deliberate edit to this file too, next to the doc that holds the measurements.
 ' The range assertion ties them to the slot blocks in setGlobalNodes(), which stop at
-' 6 — a width above that would otherwise only surface as a startup error on device.
+' 6: a width above that would otherwise only surface as a startup error on device.
 '
 ' ⚠️ currentWidth() reads the SHARED global node. Every test that writes
 ' `apiPoolWidth` is undone in afterEach(), so no later suite inherits it.

@@ -2,7 +2,7 @@ import "pkg:/source/utils/remoteSubtitles.bs"
 
 ' Unit tests for the remote-subtitle helpers (issue #750).
 '
-' The permission expectations below are not guesses — they encode a truth table
+' The permission expectations below are not guesses. They encode a truth table
 ' measured against a live Jellyfin 10.11.11 server, plus the [Authorize] policy
 ' attributes read at the v10.7.7 / v10.8.13 / v10.9.11 / v10.10.7 / v10.11.11
 ' tags. If a future server release changes the gate, these are the tests that
@@ -314,7 +314,7 @@ namespace tests
     @it("finds the chosen file at its NEW index after a renumber")
     function _()
       ' THE REGRESSION: the server deletes by index, and a download inserts at
-      ' index 0 — so the index from the list the user chose from names a different
+      ' index 0, so the index from the list the user chose from names a different
       ' file. The key is the path, which does not move.
       chosen = { Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/movie.en.srt" }
       fresh = [

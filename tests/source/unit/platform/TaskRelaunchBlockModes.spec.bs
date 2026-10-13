@@ -17,13 +17,13 @@ namespace tests
   ' `fetchJson` does inside the pool), `sleep()`, and a `wait()` poll loop.
   '
   ' A rate, not a gate: the counts are printed and the assertions only pin what must hold
-  ' whatever the race decides — the task ends stopped or running, never a third state, and a
+  ' whatever the race decides: the task ends stopped or running, never a third state, and a
   ' run that finished read one of the two inputs. Recording an exact ratio would fail on a
   ' firmware change for a reason that is not a regression.
   '
   ' Tagged `measurement`, so `test:unit` and `test:all` (CI's gating run) skip it: the sweep
   ' is 60 trials of about a second each and cannot fail on the rate it measures. Run it on
-  ' purpose — `test:tdd` with this spec selected, or `test:complete`. The property the app
+  ' purpose: `test:tdd` with this spec selected, or `test:complete`. The property the app
   ' relies on (a new node starts; a stopped run makes no progress) is gated in
   ' `TaskRelaunch.spec.bs`, which stays in every run.
   @suite("Platform - relaunch outcomes by block mode")

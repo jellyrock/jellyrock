@@ -6,8 +6,8 @@ namespace tests
 
   ' Contract tests for the extras-row decision layer (source/extras/extrasRows.bs).
   '
-  ' Two properties are load-bearing. The PLAN must reproduce, per item type, the row order,
-  ' slot shape and request identity the old observer chain produced — a wrong entry is a row
+  ' Two properties matter most. The PLAN must reproduce, per item type, the row order, slot
+  ' shape and request identity the old observer chain produced: a wrong entry is a row
   ' that silently disappears or renders at the wrong size. And the COMMIT rules must never write
   ' to the RowList when nothing changed: every write to an on-screen row redraws its row
   ' counter, which is the flicker this layer exists to remove.
@@ -725,7 +725,7 @@ namespace tests
 
     @it("Special Features after a missing Additional Parts row keeps its WIDE slot")
     function _()
-      ' Chapters, Cast, More Like This, Special Features — no Additional Parts row. Sizes come
+      ' Chapters, Cast, More Like This, Special Features, with no Additional Parts row. Sizes come
       ' from the committed rows themselves, so a row that is absent cannot shift the ones below.
       sizes = extrasRows.rowSizes(["WIDE", "PORTRAIT", "PORTRAIT", "WIDE"])
 

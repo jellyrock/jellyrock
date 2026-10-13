@@ -27,7 +27,7 @@ namespace tests
     end function
 
     @it("returns true when the end time crosses midnight (pm now, am end)")
-    ' 11:40 pm now, ends 12:15 am / 1:15 am — the case that motivated the rule
+    ' 11:40 pm now, ends 12:15 am / 1:15 am: the case that motivated the rule
     @params(0, 23)
     @params(1, 23)
     @params(2, 22)
@@ -36,7 +36,7 @@ namespace tests
     end function
 
     @it("returns true when the end time crosses noon (am now, pm end)")
-    ' 11:30 am now, ends 12:15 pm / 1:15 pm — same ambiguity class as the midnight case
+    ' 11:30 am now, ends 12:15 pm / 1:15 pm: same ambiguity class as the midnight case
     @params(12, 11)
     @params(13, 11)
     @params(14, 10)

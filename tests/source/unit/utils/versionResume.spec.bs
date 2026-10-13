@@ -4,7 +4,7 @@ namespace tests
 
   ' Picking WHICH alternate version to play or describe, plus the two reply parsers.
   ' The carry guard is versionResumeCarryGuard.spec.bs; the whole-decision function is
-  ' versionResumeState.spec.bs (one @suite per file — tests/CLAUDE.md).
+  ' versionResumeState.spec.bs (one @suite per file, see tests/CLAUDE.md).
   @suite("versionResume - choosing a version")
   class VersionResumeTests extends tests.BaseTestSuite
 
@@ -118,7 +118,7 @@ namespace tests
     end function
 
     @it("treats the leading source as the item's regardless of casing")
-    ' Otherwise a differently-spelled id would read as "an alternate leads", i.e. as
+    ' Otherwise a differently-spelled id would read as "an alternate leads", that is, as
     ' progress on a version that has none.
     function _()
       m.assertEqual(versionResume.inProgressSourceIndex("PRIMARY", 0, m.primaryFirst(), true), -1)

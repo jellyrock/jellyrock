@@ -680,6 +680,16 @@ Found 2026-10-10 by the `translations.md` fact-check (docs-voice project, sessio
 
 `TRANSCODE_CAUSE_STEREO_CAPPED_CODECS` in `source/utils/transcodeCause.bs` is a hand-written string of the codec list `getStereoOutputCodecs()` returns in `source/utils/deviceCapabilities.bs`. The two hold the same eight codecs on 2026-10-12, but nothing checks that they stay equal, so a codec added to one list silently drifts from the other and the explanation `transcodeCause.bs` gives stops matching what the device profile caps. Found in the docs-voice comment pass (batch 5, recorded at batch 6's PR). Not fixed now: closing it is a code change with a test (derive the constant from `getStereoOutputCodecs()`, or a unit test asserting the two agree), outside a comment-only PR. Closes when one list is derived from the other or a test holds them equal.
 
+#### `lastFocusedChild()` caps its focus walk at the root's child count `[fid: last-focused-child-depth-bound]` `[captured 2026-10-13]`
+
+`lastFocusedChild()` in `source/utils/misc.bs` loops `for i = 0 to obj.getChildCount()` and tests `obj.focusedChild` (the root) on every pass, where it means the node it has reached. So it walks at most the root's child count plus one levels down the focus chain, whatever the chain's real depth. Its one app caller, `presentOverlayDialog` in `source/utils/dialogs.bs`, passes the scene to derive `returnFocusTo`; `JRScene.xml` declares 12 children, so that call walks up to 13 levels. The loop dates from the 2025-06-28 fork and is unchanged since. Found by the docs-voice batch 11 comment pass (2026-10-12), triaged with `/snag`.
+
+Not reproduced: it needs a device spec with a focus chain deeper than its root's child count. Not checked: how deep real focus chains get (if none passes 13, the flaw is latent in production), and what `focusedChild` returns on the focused node itself (the walk relies on it returning the node, not `invalid`; Roku's `node.md` does not say).
+
+Options: `walk` (recommended): descend while `child.focusedChild` is valid and not `child` itself, with a fixed safety cap, and add a spec with a deep chain under a one-child root (`misc.bs` plus one spec; low risk, the cap and the self-check end the loop whatever the leaf returns). `bound`: test `child.focusedChild` but bound the loop by a constant (a guess to keep). `note`: document the limit only (the flaw stays).
+
+Why not now: the fix needs a device test run, and the batch that found it changed only comments. Closes when `lastFocusedChild()` walks the real focus chain and a spec pins it on a device.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`

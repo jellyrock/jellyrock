@@ -97,7 +97,7 @@ namespace tests
     end function
 
     ' THE BUG this function was extracted to fix. applyButtonLayout stacks the row
-    ' vertically when the labels are too wide, and up/down were swallowed — so a row
+    ' vertically when the labels are too wide, and up/down were swallowed, so a row
     ' the user could see was stacked navigated sideways and ignored the axis it was
     ' actually laid out on.
     @it("steps the row on up and down when it is STACKED")
@@ -134,7 +134,7 @@ namespace tests
     end function
 
     ' The still-watching prompt: any press is the answer, so no key may cancel,
-    ' step or be swallowed — Back included.
+    ' step or be swallowed, Back included.
     @it("resolves on EVERY key when any key answers the dialog")
     function _()
       keys = ["OK", "back", "left", "right", "up", "down", "play", "replay", "rewind", "fastforward", "options"]

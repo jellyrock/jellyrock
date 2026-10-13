@@ -226,7 +226,7 @@ namespace tests
       ' Set a valid range first
       updateTextureBufferRange(root, 0, 0, 3)
       m.assertNotEqual(root.loadedRowRange, [-1, -1, -1, -1])
-      ' Now pass invalid focusedRow — should reset, not retain stale range
+      ' Now pass invalid focusedRow: should reset, not retain stale range
       updateTextureBufferRange(root, invalid, 0, 3)
       m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
     end function
@@ -241,7 +241,7 @@ namespace tests
       ' Set a valid range first
       updateTextureBufferRange(root, 0, 0, 3)
       m.assertNotEqual(root.loadedRowRange, [-1, -1, -1, -1])
-      ' Now pass invalid focusedColumn — should reset, not retain stale range
+      ' Now pass invalid focusedColumn: should reset, not retain stale range
       updateTextureBufferRange(root, 0, invalid, 3)
       m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
     end function
@@ -412,7 +412,7 @@ namespace tests
       ' Set a valid range first
       updateGridTextureBufferRange(root, 0, 6, 3)
       m.assertNotEqual(root.loadedRowRange, [-1, -1, -1, -1])
-      ' Now pass invalid focusedIndex — should reset, not retain stale range
+      ' Now pass invalid focusedIndex: should reset, not retain stale range
       updateGridTextureBufferRange(root, invalid, 6, 3)
       m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
     end function
@@ -427,7 +427,7 @@ namespace tests
       ' Set a valid range first
       updateGridTextureBufferRange(root, 0, 6, 3)
       m.assertNotEqual(root.loadedRowRange, [-1, -1, -1, -1])
-      ' Now pass numColumns=0 — should reset, not retain stale range
+      ' Now pass numColumns=0: should reset, not retain stale range
       updateGridTextureBufferRange(root, 0, 0, 3)
       m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
     end function
@@ -440,7 +440,7 @@ namespace tests
         root.createChild("ContentNode")
       end for
       updateGridTextureBufferRange(root, 15, 6, 3)
-      ' focusedColumns should remain empty — grid doesn't track per-row column
+      ' focusedColumns should remain empty: grid doesn't track per-row column
       m.assertEqual(root.focusedColumns, [])
     end function
 
@@ -453,9 +453,9 @@ namespace tests
       end for
       updateGridTextureBufferRange(root, 0, 6, 3)
       expectedRange = root.loadedRowRange
-      ' Call again with same focus — range should be identical
+      ' Call again with focus in the same row: range should be identical
       updateGridTextureBufferRange(root, 1, 6, 3)
-      ' Row 0 → row 0 (item 1 is still in row 0), so range unchanged
+      ' Row 0 to row 0 (item 1 is still in row 0), so range unchanged
       m.assertEqual(root.loadedRowRange, expectedRange)
     end function
 
@@ -470,7 +470,7 @@ namespace tests
 
     @it("does NOT reload a cell whose image failed but was never unloaded")
     function _()
-      ' showPlaceholder() clears the poster URI to reveal the type glyph, and it does NOT
+      ' showPlaceholder() clears the poster URI to reveal the type glyph, and it does not
       ' set isTextureUnloaded. The URI compare this predicate replaced could not tell that
       ' apart from an unload, so a permanently-broken image was re-requested on every pass.
       m.assertFalse(shouldReloadTexture(false, "http://server/Items/abc/Images/Primary"))
@@ -483,7 +483,7 @@ namespace tests
 
     @it("does NOT reload an unloaded cell with no cached URI to restore")
     function _()
-      ' Unloaded but nothing to put back — reloading would assign "" and wipe the glyph
+      ' Unloaded but nothing to put back: reloading would assign "" and wipe the glyph
       ' for no gain.
       m.assertFalse(shouldReloadTexture(true, ""))
     end function
@@ -517,7 +517,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' The expected sets below are what an RTA cell census read on a Stick 4K (Home, fullwidth,
-    ' portrait row, 3 launches identical) — not derived from this function.
+    ' portrait row, 3 launches identical), not derived from this function.
 
     @it("keeps every column of a row at the threshold")
     function _()

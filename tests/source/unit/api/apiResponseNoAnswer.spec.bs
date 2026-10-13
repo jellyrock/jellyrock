@@ -2,7 +2,7 @@ import "pkg:/source/api/apiResponse.bs"
 
 namespace tests
 
-  ' apiResponse.noAnswer — whether a request got no answer at all, as opposed to a refusal. A
+  ' apiResponse.noAnswer: whether a request got no answer at all, as opposed to a refusal. A
   ' Live TV open that got no answer may still be opening the stream on the server, so its
   ' message says the channel took too long rather than that the server refused
   ' (LoadVideoContentTask). The shapes are the pool's, as in apiResponseJsonFailure.spec.bs.

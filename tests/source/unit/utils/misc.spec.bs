@@ -367,8 +367,8 @@ namespace tests
 
     @it("reads a longinteger that fits in the 32-bit return")
     function _()
-      ' Bitrates can arrive as longintegers. Byte counts also do, and those do NOT
-      ' belong here — a 32-bit return overflows past ~2.1 GB, so file sizes are
+      ' Bitrates can arrive as longintegers. Byte counts also do, and those don't
+      ' belong here: a 32-bit return overflows past ~2.1 GB, so file sizes are
       ' formatted from the raw value instead. See the function's own note.
       m.assertEqual(mediaNumber(96000000&), 96000000)
     end function
@@ -401,8 +401,8 @@ namespace tests
       m.assertEqual(source.Id, "abc")
     end function
 
-    ' This runs on a FAILURE path — a playback that never reached the player has
-    ' no cached response at all — so every absent shape must return invalid
+    ' This runs on a FAILURE path (a playback that never reached the player has
+    ' no cached response at all), so every absent shape must return invalid
     ' rather than fault.
     @it("is invalid for every shape of missing data")
     function _()

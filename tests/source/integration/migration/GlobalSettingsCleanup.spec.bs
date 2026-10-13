@@ -112,7 +112,7 @@ namespace tests
       ' WHEN: Migration runs
       runRegistryUserMigrations([testUserId])
 
-      ' THEN: globalRememberMe is NOT deleted (only globalSplashScreen is cleaned up)
+      ' THEN: globalRememberMe is kept (only globalSplashScreen is cleaned up)
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertTrue(reg.exists("globalRememberMe"), "globalRememberMe should NOT be deleted by this migration")
       m.assertEqual(reg.read("globalRememberMe"), "true")
@@ -136,7 +136,7 @@ namespace tests
       ' WHEN: Migration runs
       runRegistryUserMigrations([testUserId])
 
-      ' THEN: Setting is NOT deleted (migration skipped)
+      ' THEN: Setting is kept (migration skipped)
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertTrue(reg.exists("globalSplashScreen"), "Migration should be skipped for v1.5.2+")
       m.assertEqual(reg.read("globalSplashScreen"), "enabled")

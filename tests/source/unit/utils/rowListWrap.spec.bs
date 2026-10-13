@@ -196,7 +196,7 @@ namespace tests
     @it("accounts for focusXOffset in visible width calculation")
     function _()
       ' 9 items * 200px + 8 * 20px = 1960px total content
-      ' With focusXOffset=96: visibleWidth = 1920 - 96 = 1824 → 1960 > 1824 → long row
+      ' With focusXOffset=96: visibleWidth = 1920 - 96 = 1824, and 1960 > 1824, so a long row
       content = m.buildContent(9)
       m.assertInvalid(getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [96], [1920, 400]))
     end function
@@ -215,8 +215,8 @@ namespace tests
     @it("uses itemSize width instead of hardcoded 1920")
     function _()
       ' 8 items * 200px + 7 * 20px = 1740px total content
-      ' With itemSize[0]=1703: 1740 > 1703 → long row (native wrap)
-      ' With hardcoded 1920: 1740 < 1920 → would incorrectly classify as short
+      ' With itemSize[0]=1703: 1740 > 1703, so a long row (native wrap)
+      ' With hardcoded 1920: 1740 < 1920, so it would incorrectly classify as short
       content = m.buildContent(8)
       result = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [], [1703, 400])
       m.assertInvalid(result)
@@ -224,7 +224,7 @@ namespace tests
 
     @it("correctly identifies short row in narrower container")
     function _()
-      ' 3 items * 200px + 2 * 20px = 640px total content < 1703 → short row
+      ' 3 items * 200px + 2 * 20px = 640px total content < 1703, so a short row
       content = m.buildContent(3)
       result = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [], [1703, 400])
       m.assertNotInvalid(result)

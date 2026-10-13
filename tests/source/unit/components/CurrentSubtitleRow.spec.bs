@@ -1,4 +1,4 @@
-' Unit tests for CurrentSubtitleRow — the "On this item" row in SubtitlePanel.
+' Unit tests for CurrentSubtitleRow, the "On this item" row in SubtitlePanel.
 '
 ' This component had no coverage at all when it shipped, which matters more than
 ' the usual gap for two reasons: it is a MarkupList itemComponent, so it is
@@ -8,7 +8,7 @@
 ' duplication needs a red/green gate rather than an eyeball.
 '
 ' The row's geometry is arithmetic over subtitleLayout, m.top.rowWidth and its
-' badge labels' localBoundingRect() — font metrics, which a detached node
+' badge labels' localBoundingRect(): font metrics, which a detached node
 ' answers (the first badge test below fails loudly if that stops being true).
 
 import "pkg:/source/constants/subtitleLayout.bs"
@@ -145,7 +145,7 @@ namespace tests
     @it("a single badge takes the LAST slot, which sits on the right edge")
     function _()
       ' badgeRow is right-aligned, and a hidden slot still takes its place in a
-      ' LayoutGroup — so unused slots must be the leading ones.
+      ' LayoutGroup, so unused slots must be the leading ones.
       m.row.itemContent = m.rowContent({ forced: true })
       m.assertFalse(m.badgeSlot(0).visible)
       m.assertTrue(m.badgeSlot(1).visible)
@@ -272,7 +272,7 @@ namespace tests
     @it("gives a non-deletable row's second line the width the icon would have taken")
     function _()
       ' int() because a SceneGraph width is a float and these constants are
-      ' integers — the values are exact, the types are not.
+      ' integers: the values are exact, the types are not.
       fullTextWidth = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2)
 
       m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: false })
@@ -284,7 +284,7 @@ namespace tests
 
     @it("takes nothing from the FIRST line for the action icon")
     function _()
-      ' Reserving on line 1 ellipsized real titles — see actionZoneWidth().
+      ' Reserving on line 1 ellipsized real titles (see actionZoneWidth()).
       m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: false })
       wide = m.row.findNode("titleLabel").maxWidth
       m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: true })
@@ -294,7 +294,7 @@ namespace tests
     @it("the title gives up exactly the measured badges plus one gutter")
     function _()
       ' The title ends where the right-aligned badges begin, so it can never run
-      ' underneath them — whatever the translation's width.
+      ' underneath them, whatever the translation's width.
       usable = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2)
       m.row.itemContent = m.rowContent({ forced: true })
       expected = usable - m.forcedWidth() - subtitleLayout.ROW_BADGE_GUTTER

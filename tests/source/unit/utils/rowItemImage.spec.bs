@@ -343,7 +343,7 @@ namespace tests
       item.id = "mov1"
       item.type = "Movie"
       item.primaryImageTag = "movtag"
-      ' No thumbImageTag or backdropImageTags — wide URL returns ""
+      ' No thumbImageTag or backdropImageTags, so the wide URL returns ""
 
       url = getRowItemImageUrl(item, 468, 258, invalid)
 

@@ -37,7 +37,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' The Outro on that same episode ends 12 s before the end, followed by the Preview.
-    ' Skipping it must seek, not finish — the user still has the Preview to skip or watch.
+    ' Skipping it must seek, not finish: the user still has the Preview to skip or watch.
     @it("seeks when the segment ends before the end-of-media window")
     function _()
       m.assertFalse(skipEndsPlayback(1425.049, 1437.0719999))

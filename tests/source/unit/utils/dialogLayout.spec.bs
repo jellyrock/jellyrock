@@ -63,7 +63,7 @@ namespace tests
       untitled = computeDialogLayout({ panelWidth: 760, titleHeight: 0, bodyHeight: 120, footerHeight: 60 })
 
       m.assertFalse(untitled.hasTitle)
-      ' Nothing is merely hidden — the body moves up by the whole title block
+      ' Nothing is merely hidden: the body moves up by the whole title block
       m.assertEqual(untitled.body.y - untitled.panel.y, PANEL_PADDING)
       m.assertTrue(untitled.panel.height < titled.panel.height)
     end function
@@ -73,7 +73,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' A dialog that does not set one must lay out EXACTLY as it did before the
-    ' slot existed — not "near enough". Every other dialog in the family is a
+    ' slot existed, not "near enough". Every other dialog in the family is a
     ' caller that passes no subheadingHeight at all, so this is the regression
     ' gate for all of them, and it is asserted against a layout computed without
     ' the key rather than against copied numbers.
@@ -174,7 +174,7 @@ namespace tests
       m.assertTrue(layout.footer.y + layout.footer.height <= layout.panel.y + layout.panel.height)
     end function
 
-    ' The footer is INSIDE, always — there is no outside-footer mode to compare
+    ' The footer is INSIDE, always: there is no outside-footer mode to compare
     ' against any more. This is the assertion that says so: a footer occupies the
     ' panel's own space, and the panel is tall enough to hold it.
     @it("flows the footer inside the panel, which grows to hold it")
@@ -190,7 +190,7 @@ namespace tests
     end function
 
     ' Found in an on-device capture, not by a test: JRListDialog has no footer at
-    ' all, and the panel still reserved a footer's gap under the list — 84px of
+    ' all, and the panel still reserved a footer's gap under the list: 84px of
     ' dead space below the last row. A gap only exists BETWEEN things.
     @it("adds no trailing gap when there is no footer")
     function _()
@@ -207,7 +207,7 @@ namespace tests
     ' This replaced the fixed-panel mode. A scrolling body used to need the panel
     ' to decide its size first; now the panel is derived like everyone else's and
     ' the BODY is clamped, which gives a scroll viewport the same number it used
-    ' to get from a fixed height — without a second layout shape existing.
+    ' to get from a fixed height, without a second layout shape existing.
     @it("clamps the body so the panel stops exactly at the ceiling")
     function _()
       layout = computeDialogLayout({ panelWidth: 1602, titleHeight: 54, bodyHeight: 5000, footerHeight: 72 })
@@ -218,8 +218,8 @@ namespace tests
       m.assertTrue(layout.body.height < 5000, "the body was not clamped")
     end function
 
-    ' The clamped body still has to leave the footer its room INSIDE the panel —
-    ' this is the assertion that would fail if the clamp forgot the footer, which
+    ' The clamped body still has to leave the footer its room INSIDE the panel.
+    ' This is the assertion that would fail if the clamp forgot the footer, which
     ' is how the outside-footer placement used to push a button off the screen.
     @it("keeps the footer inside the panel at the ceiling")
     function _()
@@ -243,8 +243,8 @@ namespace tests
     end function
 
     ' The clamp bounds the BODY, which is the whole story only while the body is
-    ' what grew. A title tall enough to blow the ceiling on its own clamps nothing
-    ' — the panel must still report that it does not fit.
+    ' what grew. A title tall enough to blow the ceiling on its own clamps nothing,
+    ' yet the panel must still report that it does not fit.
     @it("still reports overflow when the body is not what overflowed")
     function _()
       layout = computeDialogLayout({ panelWidth: 760, titleHeight: 2000, bodyHeight: 0, footerHeight: 60 })
@@ -332,7 +332,7 @@ namespace tests
     end function
 
     ' THE FLIP. A panel too wide to clear the right margin goes the other way,
-    ' toward the room — 1256px on ItemDetails against the 704px it just failed.
+    ' toward the room: 1256px on ItemDetails against the 704px it failed.
     @it("flips to RIGHT-aligned when the panel will not fit leftward")
     function _()
       layout = computeDialogLayout({
@@ -362,7 +362,7 @@ namespace tests
       end for
     end function
 
-    ' The OSD flips far sooner than ItemDetails, from the same rule — its anchor
+    ' The OSD flips far sooner than ItemDetails, from the same rule: its anchor
     ' sits 362px further right. This is the whole point of deriving the side from
     ' the anchor rather than assigning it per surface.
     @it("flips at a different width on each surface, from one rule")
@@ -397,8 +397,8 @@ namespace tests
       m.assertTrue(gap < ANCHOR_GAP + PIXEL_GRID, "gap " + gap.toStr() + " is more than a snap wider than ANCHOR_GAP")
     end function
 
-    ' An anchor near the LEFT edge is the preferred side's natural home — the
-    ' panel simply opens rightward from it, no flip and no clamp.
+    ' An anchor near the LEFT edge is the preferred side's natural home: the
+    ' panel opens rightward from it, no flip and no clamp.
     @it("opens leftward from a left-edge anchor without clamping")
     function _()
       layout = computeDialogLayout({
@@ -521,8 +521,8 @@ namespace tests
     '
     ' Divisible CONSTANTS were never enough to deliver that. Every offset is
     ' added to `panelY`, which is derived from a MEASURED title/body height, so
-    ' the absolute positions were divisible by 3 about a third of the time —
-    ' i.e. by chance. This asserts the property the constants were chosen for.
+    ' the absolute positions were divisible by 3 about a third of the time,
+    ' that is, by chance. This asserts the property the constants were chosen for.
     @it("puts every hard edge on an output-row boundary, whatever the measured heights")
     function _()
       for titleHeight = 44 to 69
@@ -584,7 +584,7 @@ namespace tests
 
     ' A panel that GROWS to fit its content (JRDialog's button row) derives its
     ' width from a measured row, so the constant being on the scale buys nothing
-    ' unless the growth is snapped too — the case the fixed widths were fixed for.
+    ' unless the growth is snapped too (the case the fixed widths were fixed for).
     @it("snapPanelWidthToScale puts any grown width back on the scale")
     function _()
       for each width in [761, 762, 763, 800, 1043, 1199]
@@ -621,8 +621,8 @@ namespace tests
     @describe("the footer-button height fallback")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' It was three verbatim copies — JRDialog's row, QuickConnectDialog's row and
-    ' OverviewDialog's OK — each with its own literal 60, and each free to drift
+    ' It was three verbatim copies (JRDialog's row, QuickConnectDialog's row and
+    ' OverviewDialog's OK), each with its own literal 60, and each free to drift
     ' from TextButton and from the other two. It is here because it is pure
     ' arithmetic over one number, which is the same reason the rest of this
     ' module is here.
@@ -635,7 +635,7 @@ namespace tests
 
     ' The fallback exists so a dialog with nothing measured yet still lays out
     ' rather than parking forever, so it has to produce a usable button at every
-    ' size the theme can hand it — never zero, and never smaller than its padding.
+    ' size the theme can hand it: never zero, and never smaller than its padding.
     @it("is always taller than the padding it is built from")
     function _()
       for each fontSize in [24, 30, 40, 48, 60]

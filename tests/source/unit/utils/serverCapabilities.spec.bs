@@ -3,8 +3,8 @@ import "pkg:/source/utils/serverCapabilities.bs"
 ' Unit tests for server plugin capabilities.
 '
 ' The reply shape is /Libraries/AvailableOptions' LibraryOptionsResultDto, whose
-' SubtitleFetchers lists installed subtitle provider plugins — read from Jellyfin's
-' LibraryController at 10.7.0 through 12.0, and confirmed live against the public
+' SubtitleFetchers lists installed subtitle provider plugins. That was read from
+' Jellyfin's LibraryController at 10.7.0 through 12.0, and confirmed live against the public
 ' demo (12.0), which returns an empty list.
 
 namespace tests

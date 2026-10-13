@@ -2,7 +2,7 @@ import "pkg:/source/api/apiResponse.bs"
 
 namespace tests
 
-  ' Contract tests for apiResponse.listFrom — the shape gate every bare-array endpoint's body
+  ' Contract tests for apiResponse.listFrom: the shape gate every bare-array endpoint's body
   ' goes through before a caller iterates or indexes it.
   '
   ' The object case is the one that matters: iterating an AA yields its KEYS, so an object body

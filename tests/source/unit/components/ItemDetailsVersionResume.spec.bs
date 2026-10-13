@@ -4,7 +4,7 @@ namespace tests
   '
   ' Only the paths that settle WITHOUT a request are covered here. A version other than the
   ' item needs GET /UserItems/{id}/UserData, and component specs have no way to stub
-  ' fetchAsync — so the carry guard, the loading states and every other choice are tested
+  ' fetchAsync, so the carry guard, the loading states and every other choice are tested
   ' as a pure function in versionResumeState.spec.bs, and this suite checks only that the
   ' component wires the no-request answers onto the real button row.
   @suite("ItemDetails - per-version resume")
@@ -70,7 +70,7 @@ namespace tests
 
     @it("shows no Resume and no loading placeholder when no version is in progress")
     ' The item's own source leads and it has no position, so nothing is in progress and
-    ' nothing is fetched — a placeholder here would mean a request was started.
+    ' nothing is fetched: a placeholder here would mean a request was started.
     function _()
       m.itemDetails.itemContent = m.makeMovie(0, m.primaryFirst())
 

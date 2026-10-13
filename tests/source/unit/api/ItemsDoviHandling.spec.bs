@@ -247,7 +247,7 @@ namespace tests
         end if
       end for
 
-      ' Then: Should NOT process DOVI logic for av1 codec
+      ' Then: Should not process DOVI logic for av1 codec
       m.assertFalse(shouldProcessDovi, "Should NOT force remux for av1 codec with DOVI")
     end function
 

@@ -5,11 +5,11 @@ namespace tests
 
   ' The spare-button padder, tested through its PURE half.
   '
-  ' This suite is the reason that half exists. The behaviour it covers used to live
-  ' entirely inside `#if debug`, which the device strips from every test build — so
+  ' This suite is the reason that half exists. The behavior it covers used to live
+  ' entirely inside `#if debug`, which the device strips from every test build, so
   ' the accumulation bug below shipped, and proving the fix required hand-editing
   ' the manifest and throwing the spec away afterwards. Splitting the logic out
-  ' means these assertions run in EVERY build, including the coverage ones.
+  ' means these assertions run in every build, including the coverage ones.
   @suite("buttonOverflow - debug spare buttons")
   class DebugSpareButtonsTests extends tests.BaseTestSuite
 
@@ -91,8 +91,8 @@ namespace tests
       m.assertEqual(m.spareCount(), 3)
     end function
 
-    ' THE REGRESSION. OSD.setButtonStates() runs again on every item change — for
-    ' live TV, every program boundary — and does not clear its row first. The
+    ' THE REGRESSION. OSD.setButtonStates() runs again on every item change (for
+    ' live TV, every program boundary) and does not clear its row first. The
     ' original append-only version grew the row by `count` each pass.
     @it("stays at the requested count across repeated calls")
     function _()
@@ -111,7 +111,7 @@ namespace tests
       m.assertEqual(m.spareCount(), 2)
     end function
 
-    ' Lowering the flag to 0 must actually clear the row — the clear runs BEFORE
+    ' Lowering the flag to 0 must actually clear the row: the clear runs BEFORE
     ' the zero-return, which is the only reason this passes.
     @it("clears the spares entirely at a count of 0")
     function _()
