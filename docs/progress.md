@@ -1169,6 +1169,8 @@ Why not now: the toggle appears only with more than `subtitleLayout.VISIBLE_ROWS
 
 Close it with a `results` kind in `source/api/apiFaults.bs` that answers a matching request with a list the rule carries (the shape `responseFor` builds, with `apiFaults.spec.bs` cases), documented in `tests/rta/lib/failRequests.js`. Then add a case to `tests/rta/specs/subtitle-search-failure.spec.js`: canned mixed results, Perfect match on, a failed search, the filter off, and the status still reads the failed text. Canned results also lower the panel's fixture from "a provider with credentials" to "the plugin installed", which is what the deeper focus and scroll spec in tech-debt `subtitle-panel-rta-fixture-gated` waits on. Related: `perfect-match-filter-rule-untested` (the toggle's visibility rule as a pure function).
 
+The same RTA case should also press the toggle while a search is in flight (a `slow` rule on the search), now that `togglePerfectMatch()` skips the redraw then: that path's guard today is only the pure predicate `remoteSubtitles.shouldRerenderOnPerfectMatchToggle()`, not the wiring.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
