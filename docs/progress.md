@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-14: feat(subtitles): Show and announce a failed or empty subtitle search
 - 2026-10-13: ci: Re-check open PRs for merge conflicts when main moves
 - 2026-10-13: feat(search): Show and announce when a search failed or found nothing
 - 2026-10-13: fix(playback): Play the last track or version picked, and every retry
@@ -100,8 +101,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-03 — refactor: Remove unused components, dev dependencies and JS exports
 - 2026-10-01 — fix: Silent DTS, failing TrueHD over passthrough, and track switching
 - 2026-09-30 — fix: Quick play slow, TV and mixed libraries, and resume music videos
-- 2026-09-29 — chore(journal-sync): Rebuild the Recently shipped section on every sync
-- 2026-09-29 — build(tooling): Fail the build on code the app never uses
 
 ## Open followups
 
