@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-13
+last-updated: 2026-10-14
 ---
 
 # Progress
@@ -1161,6 +1161,14 @@ Found 2026-10-13 while verifying the search failure state (`feat/search-failure-
 While open, these 10 cases are red in every full `test:rta`, so a real regression in the Home and Favorites failure tiles (#1051, #1057) would go unnoticed.
 
 **Not checked:** when the demo user changed, and when the spec last passed against the demo; whether the Home cases pass once the layout is set in app memory; whether the Favorites assertions hold for a favorite Series.
+
+#### The `SubtitlePanel` Perfect match toggle after a failed search has no automated guard `[fid: subtitle-toggle-after-failure-unguarded]` `[captured 2026-10-14]`
+
+`SubtitlePanel`'s Perfect match toggle after a failed search has no automated guard. Found in review of PR #1203: `togglePerfectMatch()` re-rendered without the failed flag, so turning the filter off after a failed search showed "No subtitles found". The fix is structural (`m.searchFailed` beside `m.allResults`, written only by `showSearchOutcome()`, and `renderResults()` takes no flag), but nothing fails if a later render path bypasses it.
+
+Why not now: the toggle appears only with more than `subtitleLayout.VISIBLE_ROWS` results, some but not all hash matches. `failRequests` can inject only an empty list, a provider without credentials answers `[]`, and a Rooibos `@sgnode` suite is blocked (see `no-spec-instantiates-cell-component`).
+
+Close it with a `results` kind in `source/api/apiFaults.bs` that answers a matching request with a list the rule carries (the shape `responseFor` builds, with `apiFaults.spec.bs` cases), documented in `tests/rta/lib/failRequests.js`. Then add a case to `tests/rta/specs/subtitle-search-failure.spec.js`: canned mixed results, Perfect match on, a failed search, the filter off, and the status still reads the failed text. Canned results also lower the panel's fixture from "a provider with credentials" to "the plugin installed", which is what the deeper focus and scroll spec in tech-debt `subtitle-panel-rta-fixture-gated` waits on. Related: `perfect-match-filter-rule-untested` (the toggle's visibility rule as a pure function).
 
 ### docs
 
