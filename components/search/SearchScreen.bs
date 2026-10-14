@@ -63,6 +63,11 @@ sub init()
 
   m.top.isOptionsAvailable = false
 
+  ' Page title in the overhang, as Settings declares its own. The logo is hidden here
+  ' (JRGroup's default), so the overhang draws the title at x=96, above the suggestions
+  ' column, with the search pill above the keyboard.
+  m.top.overhangTitle = translate(translationKeys.ButtonSearch)
+
   ' Show the app-wide overhang — but configure it to clock-only in
   ' OnScreenShown. This respects the user's uiDesignHideClock setting and
   ' keeps a single overhang chrome path across screens instead of a

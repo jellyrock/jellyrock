@@ -11,7 +11,7 @@
       translation="[24, 18]"
       width="24"
       height="24"
-      uri="pkg:/images/icons/search.png" />
+      uri="pkg:/images/icons/search_$$RES$$.png" />
 
     <!-- Query text label. Pinned width so the pill doesn't grow with text;
          long queries marquee-scroll within the fixed pill bounds. -->
