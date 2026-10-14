@@ -817,7 +817,7 @@ end function
 ' setStatus: Show the status line, and say it aloud while the panel is open.
 '
 ' Spoken because focus stays in the header while a status lands, and the screen
-' reader speaks only what has focus. Queued, as SearchResults does, since nothing
+' reader speaks only what has focus. Queued, as SearchScreen does, since nothing
 ' moved. Results need no announcement: the user moves into them.
 sub setStatus(text as string)
   m.statusLabel.text = text

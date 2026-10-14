@@ -106,7 +106,7 @@ A fixed wait before an action usually stands in for a state you can read. These 
 
 | Before | Wait for | Why it is the right signal |
 |---|---|---|
-| `ecp.sendText` | `waitFocusInside('#searchKey')` | `sendText` types into whatever holds focus, and `SearchResults.bs` focuses the keyboard in `onScreenShown`, a later turn of the event loop. |
+| `ecp.sendText` | `waitFocusInside('#kbd')` | `sendText` types into whatever holds focus, and `SearchScreen.bs` focuses the keyboard only once `onScreenShown` (a later turn of the event loop) opens its overlay. |
 | The first OSD press | `waitOsdUp`'s state gate | `stateAllowsOSD()` reads `m.top.state` on the player node, and `VideoPlayerView` stamps that node with the item id, so the key's precondition is readable. |
 | Reading `#buttons.buttonFocused` | `waitFocusInside('#buttons')` | `onGroupFocusChanged` re-asserts the group's index when it takes focus, so focus arriving is what makes the index meaningful. |
 | Reading focus after a dialog closes | `waitFocusInside` on the opener | The dialog restores focus to its opener, so waiting for focus to arrive there can only pass once that has happened. |
