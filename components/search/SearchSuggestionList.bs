@@ -1,4 +1,5 @@
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -21,28 +22,23 @@ sub init()
   m.sectionLabel = m.top.findNode("sectionLabel")
   m.clearButton = m.top.findNode("clearButton")
 
-  constants = m.global.constants
-  m.list.color = constants.colorTextPrimary
-  m.list.focusedColor = constants.colorTextPrimary
-  m.list.focusBitmapBlendColor = constants.colorPrimary
-
-  ' LabelList needs a font assigned explicitly — it does not inherit from any
-  ' base. Assigning the URI string auto-creates a Font node on the field.
-  m.list.font = "font:MediumSystemFont"
-  m.list.font.size = constants.fontSizeMedium
-  m.list.focusedFont = "font:MediumBoldSystemFont"
-  m.list.focusedFont.size = constants.fontSizeMedium
+  ' Colors, fonts (the user's fallback font included) and the focus border come from
+  ' JRLabelList. What differs here is the shape: left-aligned text, and three rows of
+  ' the list dialog's height (dialogLayout LIST_ROW_HEIGHT) with JRLabelList's spacing,
+  ' to fit above Clear History.
+  m.list.textHorizAlign = "left"
+  m.list.itemSize = [480, LIST_ROW_HEIGHT]
+  m.list.numRows = 3
+  ' Two focusable lists share this screen (these suggestions and the results), so the
+  ' idle footprint is hidden: drawn, it reads as a selection while focus is elsewhere
+  ' (components/CLAUDE.md, custom list rows).
+  m.list.focusFootprintBitmapUri = "pkg:/images/1px-transparent.png"
 
   m.list.observeField("itemSelected", "onItemSelected")
   m.list.observeField("escape", "onListEscape")
 
-  ' Configure the pinned Clear History button.
+  ' The pinned Clear History button keeps TextButton's standard colors.
   m.clearButton.text = translate(translationKeys.ButtonClearHistory)
-  m.clearButton.background = constants.colorBackgroundSecondary
-  m.clearButton.focusBackground = constants.colorPrimary
-  m.clearButton.textColor = constants.colorTextSecondary
-  m.clearButton.textFocusColor = constants.colorTextPrimary
-  m.clearButton.enableBorder = false
 
   renderSectionLabel()
   renderItems()

@@ -6,22 +6,16 @@
          text is set in bs by the mode-change handler. -->
     <LabelSecondarySmall id="sectionLabel" width="480" height="36" translation="[0, 0]" />
 
-    <!-- EscapingLabelList — LabelList subclass that emits an "escape"="down"
-         signal when the user presses DOWN on the last content row, so the
-         pinned Clear History button below can be reached via DOWN. Roku's
-         stock LabelList edge-stops on DOWN and doesn't bubble the event.
-         numRows=5 so the section label (36) + list (5×56=280) + 8px gap +
-         Clear button (56) sums to 380, fitting within OVERLAY_HEIGHT=400. -->
-    <EscapingLabelList id="list"
-      translation="[0, 56]"
-      itemSize="[480, 56]"
-      numRows="5"
-      drawFocusFeedback="true" />
+    <!-- EscapingLabelList — the app's standard JRLabelList, plus an "escape"
+         signal when the user presses DOWN on the last row (Clear History, or
+         the results, are below it). Rows are sized in bs: three 60px rows with
+         JRLabelList's 24px spacing (the list dialog's measure), y 56–284. -->
+    <EscapingLabelList id="list" translation="[0, 56]" />
 
     <!-- Pinned Clear History button — visible only in recent mode with a
          non-empty history. Sits below the list so it never scrolls off when
-         the history grows past numRows. Width matches the list; height 56
-         matches a list row for visual consistency.
+         the history grows past numRows, and ends at y=400 with the keyboard
+         beside it. Standard TextButton colors (a colorPrimary focus border).
          padding=12: TextButton sizes its background to
          max(minHeight, textHeight + 2*padding). With the default padding of
          30 the button rendered ~90px tall and clipped past the overlay's

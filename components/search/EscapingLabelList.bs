@@ -21,10 +21,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
   end if
 
-  ' UP at the first row: edge-stop. Without this LabelList wraps to the last
-  ' row, which reads as the focus jumping unpredictably. Consume the press
-  ' and emit an "up" escape so the parent can route focus elsewhere if it
-  ' wants to (currently a no-op).
+  ' UP at the first row: edge-stop. Nothing sits above the list inside the
+  ' overlay, so consume the press and emit an "up" escape for the parent to
+  ' route if it ever needs to (currently a no-op).
   if key = "up" and m.top.itemFocused = 0
     m.top.escape = "up"
     return true
