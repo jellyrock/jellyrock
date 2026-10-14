@@ -97,8 +97,9 @@ sub init()
 
   m.searchHelpText.text = translate(translationKeys.MessageYouCanSearchForTitlesPeople)
 
-  ' Full-search task — single instance, reused across submits.
-  m.searchTask = CreateObject("roSGNode", "SearchTask")
+  ' Full-search task: a NEW node per run (runFullSearch), never a relaunch of the last one.
+  ' Invalid until the first search.
+  m.searchTask = invalid
 
   ' Typeahead single-flight state. /Search/Hints rides the API pool via
   ' fetchAsync (no Task node, so no Task thread), and at most ONE request is
@@ -306,11 +307,7 @@ sub onDestroy()
     m.fullSearchTimer.control = "stop"
   end if
 
-  if isValid(m.searchTask)
-    m.searchTask.unobserveField("results")
-    m.searchTask.control = "STOP"
-    m.searchTask = invalid
-  end if
+  m.searchTask = releaseTask(m.searchTask, "results")
 
   m.searchSelect = invalid
   m.peekChip = invalid
@@ -529,10 +526,7 @@ sub onQueryChanged()
     ' An in-flight hints request needs no cancelling: its handler drops the result
     ' because the query no longer matches, and the re-fire it would otherwise do
     ' is refused by startHintsFetch's empty-query guard.
-    if isValid(m.searchTask)
-      m.searchTask.unobserveField("results")
-      m.searchTask.control = "stop"
-    end if
+    m.searchTask = releaseTask(m.searchTask, "results")
     if isValid(m.searchSelect)
       m.searchSelect.itemdata = invalid
       m.searchSelect.query = ""
@@ -744,16 +738,13 @@ sub runFullSearch(query as string)
   ' Declared before launchTask below, so the resolve can never outrun its own pending.
   screenLoad.pending("results")
 
-  ' Stop any in-flight task cleanly before restarting.
-  m.searchTask.unobserveField("results")
-  m.searchTask.control = "stop"
+  ' A NEW node per run, never a relaunch of the previous one (see replaceTask): a relaunch
+  ' of a node still searching is sometimes ignored, and then the query last typed is never
+  ' searched at all.
+  m.searchTask = replaceTask(m.searchTask, "SearchTask", "results", { query: query })
 
   m.searchHelpText.visible = false
   m.searchTask.observeField("results", "onFullSearchResults")
-  m.searchTask.query = query
-  ' launchTask() is the single accounted chokepoint for starting a Task thread
-  ' (source/utils/tasks.bs). A bare control = "RUN" is a build error under the
-  ' no-raw-run plugin, and would launch outside the thread-watermark budget.
   launchTask(m.searchTask)
 end sub
 
@@ -798,17 +789,30 @@ sub onFullSearchDebounceFire()
   runFullSearch(query)
 end sub
 
-sub onFullSearchResults()
-  results = m.searchTask.results
-
-  ' A DETECTOR, not a guard — it reports the invariant breaking and carries on. The
-  ' invariant: a delivery arriving here answers the query currently typed. SearchTask
-  ' assigns m.top.results exactly once as its last statement, so the `control = "stop"` a
-  ' new query issues lands before that assignment and a superseded query does not deliver at
-  ' all. Measured on `.177`: 12 launches, 6 deliveries, all answering the current query.
-  if isValid(results) and isValid(results.query) and results.query <> m.top.query
-    m.log.warn("superseded search delivery - answered", results.query, "current", m.top.query)
+sub onFullSearchResults(event as object)
+  if not isCurrentTaskEvent(event, m.searchTask)
+    ' An invalid m.searchTask is teardown or an emptied query: the run was released, so
+    ' there is nothing to report. Otherwise this is a delivery from a node runFullSearch has
+    ' since replaced, queued before its observer was removed. Reading m.searchTask in its
+    ' place would read the NEW run's empty results, resolve its fill early and unobserve it,
+    ' so the live query's results would never arrive; hence the drop.
+    '
+    ' WARN, not info: this line is the only field evidence that Roku delivers an event
+    ' queued before `unobserveField`, which its docs neither promise nor rule out. The
+    ' measured expectation is that it never fires: SearchTask publishes once, as its last
+    ' act, so a stopped search does not deliver at all (measured on `.177`: 12 launches,
+    ' 6 deliveries, all answering the current query).
+    if isValid(m.searchTask)
+      stale = event.getData()
+      answered = ""
+      if isValid(stale) and isValid(stale.query) then answered = stale.query
+      m.log.warn("superseded search delivery dropped - answered", answered, "current", m.top.query)
+    end if
+    return
   end if
+
+  ' Read ONCE and used for everything below.
+  results = m.searchTask.results
 
   ' The server work is done. Resolved at the TOP because this handler returns early on the
   ' no-results path.
