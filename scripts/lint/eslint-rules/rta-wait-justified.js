@@ -164,6 +164,16 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#quickConnectCode.text',
   '#scrollContent.translation',
   '#scrollTrack.visible',
+  // Roku's LabelList sets it as focus moves between rows. SearchSuggestionList writes it only
+  // through jumpToItem (Up from Clear History, focusItem when the overlay reopens), and a
+  // content swap resets it; neither happens while the typed query stands still. It holds
+  // until the next key: terminal, not a pulse. Read against the app source 2026-10-14.
+  '#suggestions.#list.itemFocused',
+  // `SearchSuggestionList.renderItems` writes each row's description from the items the screen
+  // sends (recent searches, then each query's hints) and nothing else writes it, so row 0's
+  // holds until the next items write, which only a keystroke, a pick or a history change
+  // makes. Terminal for a query that stands still. Read against the app source 2026-10-14.
+  '#suggestions.#list.content.0.description',
   '#trickplayCarousel.isVisible',
   '#userRow',
   '#versionLabel.text',

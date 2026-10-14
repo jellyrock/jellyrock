@@ -156,6 +156,11 @@ sub init()
   ' surface in both collapsed and expanded states.
   m.kbd = m.overlay.findNode("kbd")
   m.suggestions = m.overlay.findNode("suggestions")
+  m.suggestionList = m.suggestions.findNode("list")
+  ' Where focus left the overlay ("keyboard" | "suggestions") and the suggestion last
+  ' picked, so the overlay reopens where the viewer was (onExpansionChanged).
+  m.overlayFocusColumn = "keyboard"
+  m.lastPickedSuggestion = ""
 
   ' Keyboard → query pipeline. DynamicCustomKeyboard emits typed characters
   ' into its own text field; mirror every change into m.top.query so the rest
@@ -368,6 +373,7 @@ sub onDestroy()
   m.overlay = invalid
   m.kbd = invalid
   m.suggestions = invalid
+  m.suggestionList = invalid
   m.searchHelpText = invalid
   m.searchFailed = invalid
   m.searchFailedText = invalid
@@ -522,16 +528,30 @@ sub onExpansionChanged()
     ' Overlay covers the top of the screen — clear any item backdrop so it
     ' doesn't bleed through the alpha layer.
     m.global.sceneManager.callFunc("setBackgroundImage", "")
-    m.kbd.setFocus(true)
+    ' Back to the column focus left the overlay from: the suggestions (on the picked
+    ' term's row, or the first when the rebuilt list no longer has it) or the keyboard,
+    ' whose grid keeps its last key. An empty suggestion list falls back to the keyboard.
     ' lastFocus must move WITH the focus, not just on collapse. sgRouter calls
     ' handleFocus() after onViewOpen has already run onScreenShown, and
-    ' JRScreen.handleFocus restores m.top.lastFocus — so a keyboard focus taken here
+    ' JRScreen.handleFocus restores m.top.lastFocus — so a focus taken here
     ' and not recorded is silently overwritten by whatever lastFocus still points at.
     ' Measured on device (.178): the overlay opened with isExpanded=true while focus
     ' sat on SearchRow, so every keypress went to an empty results list and the
     ' keyboard could not be typed on at all.
-    m.top.lastFocus = m.kbd
+    if m.overlayFocusColumn = "suggestions" and m.suggestions.callFunc("focusItem", m.lastPickedSuggestion)
+      m.top.lastFocus = m.suggestionList
+    else
+      m.kbd.setFocus(true)
+      m.top.lastFocus = m.kbd
+    end if
   else
+    ' Remember which column focus leaves the overlay from, for the reopen above. Only
+    ' when focus is in the overlay: a collapse with focus elsewhere keeps the last one.
+    if m.suggestions.isInFocusChain()
+      m.overlayFocusColumn = "suggestions"
+    else if m.kbd.isInFocusChain()
+      m.overlayFocusColumn = "keyboard"
+    end if
     ' Collapse: always focus the results list — even when empty — so the
     ' screen has a single, consistent focus target. onKeyEvent treats "in
     ' focus chain with no row currently focused" as the empty-state signal
@@ -713,6 +733,7 @@ end sub
 sub onSuggestionSelected()
   term = m.suggestions.selectedSuggestion
   if not isValid(term) or term = "" then return
+  m.lastPickedSuggestion = term
 
   ' Mirror the choice into the keyboard's text field so the header + query
   ' stay consistent (user may re-open the overlay to edit).
@@ -788,8 +809,16 @@ end sub
 ' RIGHT from the suggestion list — return focus to the keyboard (which sits
 ' to the right of the suggestion list) so the user can resume typing.
 sub onSuggestionEscape()
-  if m.suggestions.escape <> "right" then return
-  if isValid(m.kbd) then m.kbd.setFocus(true)
+  direction = m.suggestions.escape
+  if direction = "right"
+    if isValid(m.kbd) then m.kbd.setFocus(true)
+  else if direction = "down"
+    ' DOWN past the last suggestion (or Clear History) does what DOWN off the keyboard's
+    ' bottom row does: submit what is typed and move to the results. With nothing typed
+    ' (recent searches) there is nothing below to reach, so focus stays.
+    query = m.top.query
+    if isValid(query) and query <> "" then submitSearch(query)
+  end if
 end sub
 
 ' Fire the full multi-endpoint search without collapsing the overlay. Used

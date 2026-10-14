@@ -106,21 +106,46 @@ sub onItemSelected()
   m.top.selectedSuggestion = row.description
 end sub
 
-' Fired by EscapingLabelList when the user presses DOWN on the last row.
-' Hand focus to the pinned Clear History button if it's visible; otherwise
-' the DOWN press is absorbed harmlessly (nothing below the list to reach).
+' Fired by EscapingLabelList when the user presses DOWN on the last row: on to the
+' pinned Clear History button when it is shown, else out of the column ("down"),
+' which the screen treats as Down off the keyboard (on to the results).
 sub onListEscape()
   if m.list.escape <> "down" then return
   if isValid(m.clearButton) and m.clearButton.visible
     m.clearButton.setFocus(true)
+  else
+    m.top.escape = "down"
   end if
 end sub
+
+' Focuses the row whose activation value is `value`, else the first row. Returns false,
+' focusing nothing, when the list is empty. The screen calls it when its overlay reopens
+' on this column: the list is rebuilt for the picked term while the overlay is closed,
+' so the picked row may have moved or gone.
+function focusItem(value as dynamic) as boolean
+  content = m.list.content
+  if not isValid(content) or content.getChildCount() = 0 then return false
+  index = 0
+  if isValidAndNotEmpty(value)
+    for i = 0 to content.getChildCount() - 1
+      if content.getChild(i).description = value
+        index = i
+        exit for
+      end if
+    end for
+  end if
+  m.list.jumpToItem = index
+  m.list.setFocus(true)
+  return true
+end function
 
 ' Key handling:
 '   RIGHT on any row (or the Clear button) → escape to the keyboard.
 '   OPTIONS on a list row in recent mode → emit removeRequested for that term.
-'   DOWN on the last list row → focus the Clear button (if visible).
+'   DOWN on the last list row → focus the Clear button if visible, else escape "down".
+'   DOWN on the Clear button → escape "down".
 '   UP on the Clear button → return focus to the list (last row).
+'   OK on a row → consumed here, after the list has acted on it.
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
@@ -128,6 +153,19 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' internal OK handling), so the parent emits clearHistoryRequested here.
   if key = "OK" and isValid(m.clearButton) and m.clearButton.isInFocusChain()
     m.top.clearHistoryRequested = true
+    return true
+  end if
+
+  ' Every other OK that reaches this column was a row's: the list has already acted on it
+  ' (itemSelected). Consume it. Passed on, it reaches SearchScreen after the pick has
+  ' collapsed the overlay, and while the results are still empty its "OK in the empty
+  ' state" reopens the overlay onto the keyboard. Measured on a Stick 4K with the full
+  ' search's first read held: the pick submitted, then focus landed back on the keyboard.
+  if key = "OK" then return true
+
+  ' DOWN from Clear History leaves the column, like DOWN past the last row.
+  if key = "down" and isValid(m.clearButton) and m.clearButton.isInFocusChain()
+    m.top.escape = "down"
     return true
   end if
 

@@ -56,7 +56,11 @@
     <field id="removeRequested" type="string" alwaysNotify="true" />
 
     <!-- Set to "right" when the user presses RIGHT to escape back to the
-         keyboard column (which sits to the right of this list). -->
+         keyboard column (which sits to the right of this list), or "down"
+         when DOWN leaves the column past its last row or Clear History. -->
     <field id="escape" type="string" alwaysNotify="true" />
+    <!-- focusItem(value) as boolean: focus the row with that activation value,
+         else the first; false when the list is empty. -->
+    <function name="focusItem" />
   </interface>
 </component>
