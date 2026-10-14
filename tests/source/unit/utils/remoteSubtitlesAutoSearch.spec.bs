@@ -147,6 +147,23 @@ namespace tests
       m.assertFalse(remoteSubtitles.shouldShowOpeningSpinner(3, "", false))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldRerenderOnPerfectMatchToggle() - no redraw over a pending search")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("redraws when no search is running")
+    function _()
+      m.assertTrue(remoteSubtitles.shouldRerenderOnPerfectMatchToggle(""))
+    end function
+
+    @it("does not redraw while a search is in flight")
+    function _()
+      ' The held results belong to the previous search, and a redraw would also hide
+      ' the spinner. The reply's own render applies the new filter.
+      m.assertFalse(remoteSubtitles.shouldRerenderOnPerfectMatchToggle("en"))
+      m.assertFalse(remoteSubtitles.shouldRerenderOnPerfectMatchToggle("zh-TW"))
+    end function
+
   end class
 
 end namespace

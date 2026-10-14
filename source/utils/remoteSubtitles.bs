@@ -197,6 +197,19 @@ namespace remoteSubtitles
     return ""
   end function
 
+  ' shouldRerenderOnPerfectMatchToggle: Whether the Perfect match toggle may redraw the list now.
+  '
+  ' Not while a search is in flight. A new search clears the visible list and shows
+  ' the spinner, but the panel still holds the previous search's answer, so a redraw
+  ' would show those stale results and hide the spinner. The toggle still flips its
+  ' flag; the reply's own render applies the filter to the new answer.
+  '
+  ' @param {string} inFlightLanguage - language a search is running for; "" when idle
+  ' @return {boolean} true when the toggle may re-render the results now
+  function shouldRerenderOnPerfectMatchToggle(inFlightLanguage as string) as boolean
+    return inFlightLanguage = ""
+  end function
+
   ' externalSubtitleStreams: The subtitle streams that are safe to offer for
   ' deletion, in server-index order.
   '
