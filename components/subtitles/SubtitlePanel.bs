@@ -693,21 +693,16 @@ sub runSearch()
   end sub)
 end sub
 
-' showSearchOutcome: Show what a search ended with, and say it aloud.
+' showSearchOutcome: Show what a search ended with.
 '
 ' A failure keeps its own status line rather than the empty one: no answer says
 ' nothing about which subtitles exist, and the empty text sends an admin to set
 ' up a provider that may be working. The Search button is the retry, so the text
 ' names it instead of adding a second control.
-'
-' The status is spoken because focus stays in the header while it lands, and the
-' screen reader speaks only what has focus. Queued, as SearchResults does, since
-' nothing moved. Results need no announcement: the user moves into them.
 sub showSearchOutcome(results as object, failed as boolean)
   m.allResults = results
   m.searchFailed = failed
   renderResults(applyPerfectMatchFilter(results))
-  if m.top.isOpen and m.statusLabel.visible then narrateStatus(m.statusLabel.text)
 end sub
 
 ' renderResults: Build the results list.
@@ -814,9 +809,15 @@ function applyPerfectMatchFilter(results as object) as object
   return filtered
 end function
 
+' setStatus: Show the status line, and say it aloud while the panel is open.
+'
+' Spoken because focus stays in the header while a status lands, and the screen
+' reader speaks only what has focus. Queued, as SearchResults does, since nothing
+' moved. Results need no announcement: the user moves into them.
 sub setStatus(text as string)
   m.statusLabel.text = text
   m.statusLabel.visible = text <> ""
+  if text <> "" and m.top.isOpen then narrateStatus(text)
 end sub
 
 ' clearResults: Empty the results column so the status line is the only thing in it.
