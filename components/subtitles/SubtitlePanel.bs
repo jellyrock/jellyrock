@@ -174,6 +174,10 @@ sub init()
   m.selectedLanguageCode = ""
   m.results = []
   m.allResults = []
+  ' Whether m.allResults stands for a search that got no usable reply. Written
+  ' with it, by showSearchOutcome() alone, so every re-render (the Perfect match
+  ' toggle included) shows the failure rather than "no subtitles found".
+  m.searchFailed = false
   m.perfectMatchOnly = false
   m.pollAttempt = 0
   ' The language a search is running for, "" when idle: a string, not a
@@ -701,7 +705,8 @@ end sub
 ' nothing moved. Results need no announcement: the user moves into them.
 sub showSearchOutcome(results as object, failed as boolean)
   m.allResults = results
-  renderResults(applyPerfectMatchFilter(results), failed)
+  m.searchFailed = failed
+  renderResults(applyPerfectMatchFilter(results))
   if m.top.isOpen and m.statusLabel.visible then narrateStatus(m.statusLabel.text)
 end sub
 
@@ -711,7 +716,7 @@ end sub
 ' results sorted by download count descending (verified across the sample), and
 ' the alternative sort keys are worse: CommunityRating was 0 on 44 of 50 results
 ' in the same sample, so sorting by it would be close to sorting by noise.
-sub renderResults(results as object, failed = false as boolean)
+sub renderResults(results as object)
   m.results = results
   hideResultsSpinner()
 
@@ -748,7 +753,7 @@ sub renderResults(results as object, failed = false as boolean)
   ' The empty text names the provider-configuration possibility on purpose: an
   ' unconfigured provider, absent credentials and a genuine no-match all return
   ' 200 [], so a bare "no results" would send people looking in the wrong place.
-  statusKey = remoteSubtitles.searchStatusKey(failed, results.count())
+  statusKey = remoteSubtitles.searchStatusKey(m.searchFailed, results.count())
   if statusKey = ""
     setStatus("")
   else
