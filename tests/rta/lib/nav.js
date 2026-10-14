@@ -258,14 +258,20 @@ export async function navSearch() {
  * `walkFocusUntil`, not a hand-rolled press, because the hand-rolled version pressed
  * wherever focus WAS. On 2026-09-09 that meant 12.4 s of Right delivered into Home's row
  * list while the active view was the search screen (see that helper for the dump).
+ *
+ * `arrived` is where focus lands: the result rows by default. A submit that fails moves focus
+ * on to Try again (`#searchRetryButton`), so a spec driving a failure passes a predicate that
+ * accepts either.
  */
-export async function submitSearchFromKeyboard() {
-  const arrivedAtResults = (f) => f?.node?.id === 'searchSelect';
-  await waitFocused(arrivedAtResults, {
+export async function submitSearchFromKeyboard({
+  arrived = (f) => f?.node?.id === 'searchSelect',
+  label = 'search results (off keyboard)',
+} = {}) {
+  await waitFocused(arrived, {
     timeout: 12000,
     interval: 350,
-    action: walkFocusUntil(ecp.Key.Down, arrivedAtResults),
-    label: 'search results (off keyboard)',
+    action: walkFocusUntil(ecp.Key.Down, arrived),
+    label,
   });
 }
 

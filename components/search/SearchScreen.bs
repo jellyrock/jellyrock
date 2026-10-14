@@ -10,6 +10,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
@@ -17,6 +18,7 @@ import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/screenWaits.bs"
 import "pkg:/source/utils/searchHints.bs"
 import "pkg:/source/utils/searchHistory.bs"
+import "pkg:/source/utils/searchOutcome.bs"
 import "pkg:/source/utils/searchRoute.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -97,6 +99,27 @@ sub init()
   end if
 
   m.searchHelpText.text = translate(translationKeys.MessageYouCanSearchForTitlesPeople)
+
+  ' Search-failure state. The button centers itself under the message once it has measured
+  ' its label. Only a submitted search reports its outcome (see showSearchOutcome).
+  m.searchFailed = m.top.findNode("searchFailed")
+  m.searchFailedText = m.top.findNode("searchFailedText")
+  m.searchRetryButton = m.top.findNode("searchRetryButton")
+  m.failureNarrationTimer = m.top.findNode("failureNarrationTimer")
+  m.searchFailedText.text = translate(translationKeys.MessageSearchFailed)
+  m.searchRetryButton.text = translate(translationKeys.ButtonTryAgain)
+  m.searchRetryButton.observeField("isReady", "onRetryButtonReady")
+  m.failureNarrationTimer.duration = narration.OPENING_DELAY
+  m.failureNarrationTimer.observeField("fire", "onFailureNarrationDue")
+  ' Whether the run in flight was submitted, and what the last delivered run ended with: a
+  ' submit that finds the live results already answering its query re-reports that outcome
+  ' instead of searching again (submitSearch).
+  m.isSubmittedRun = false
+  m.lastOutcome = invalid
+
+  ' Whether this view is the one on screen: a search answer can land while a result's details
+  ' screen covers this one, and its toast or announcement must not reach that screen.
+  m.isShown = false
 
   ' Full-search task: a NEW node per run (runFullSearch), never a relaunch of the last one.
   ' Invalid until the first search.
@@ -217,6 +240,7 @@ sub OnScreenShown()
   ' screen permanently unsettled. Silent on later calls: `resolve` ignores a run that is
   ' already over (screenReadiness.bs), which is what a back-resume produces.
   screenLoad.resolve("focus")
+  m.isShown = true
 
   ' Voice search arrives as route.context.query — populate, search and take focus,
   ' skipping normal focus restoration.
@@ -248,6 +272,7 @@ end sub
 
 sub OnScreenHidden()
   m.log.info("OnScreenHidden")
+  m.isShown = false
 
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     hideTextureManager(m.searchSelect.content)
@@ -293,6 +318,12 @@ sub onDestroy()
 
   m.top.unobserveField("quickPlayNode") ' playback launcher
 
+  if isValid(m.searchRetryButton) then m.searchRetryButton.unobserveField("isReady")
+  if isValid(m.failureNarrationTimer)
+    m.failureNarrationTimer.unobserveField("fire")
+    m.failureNarrationTimer.control = "stop"
+  end if
+
   if isValid(m.searchSelect)
     m.searchSelect.unobserveField("rowItemFocused")
     m.searchSelect.unobserveField("contentReady") ' readiness ledger's `rows` fill
@@ -329,6 +360,10 @@ sub onDestroy()
   m.kbd = invalid
   m.suggestions = invalid
   m.searchHelpText = invalid
+  m.searchFailed = invalid
+  m.searchFailedText = invalid
+  m.searchRetryButton = invalid
+  m.failureNarrationTimer = invalid
   m.voiceBox = invalid
 end sub
 
@@ -457,9 +492,15 @@ sub onExpansionChanged()
   '   5% bottom safe edge = 1080 × 0.95 = 1026. Midpoint = 758.
   '   Collapsed — mid-screen (y=540), out of the way of the peek chip and
   '   the eventual results row at RESULTS_Y=140.
-  '   Hidden when results are present.
+  '   Hidden when results are present, or while the failure state takes its place.
+  '   The failure state moves with it: its group offset is the help label's travel.
+  if expanded
+    m.searchFailed.translation = [0, 758 - 540]
+  else
+    m.searchFailed.translation = [0, 0]
+  end if
   haveResults = hasResults()
-  if haveResults
+  if haveResults or m.searchFailed.visible
     m.searchHelpText.visible = false
   else if expanded
     m.searchHelpText.translation = [263, 758]
@@ -541,8 +582,10 @@ sub onQueryChanged()
     ' because the query no longer matches, and the re-fire it would otherwise do
     ' is refused by startHintsFetch's empty-query guard.
     m.searchTask = releaseTask(m.searchTask, "results")
-    ' An emptied search box waits on nothing.
+    ' An emptied search box waits on nothing, and has no outcome to show.
     screenWaits.finish(m.top, "results")
+    clearSearchOutcome()
+    m.lastOutcome = invalid
     if isValid(m.searchSelect)
       m.searchSelect.itemdata = invalid
       m.searchSelect.query = ""
@@ -744,8 +787,14 @@ end sub
 ' Fire the full multi-endpoint search without collapsing the overlay. Used
 ' by the live-while-typing debounce path so results populate under the
 ' still-open overlay as the user keeps typing.
-sub runFullSearch(query as string)
+'
+' `isSubmitted` says whether this run reports its outcome when it lands (showSearchOutcome).
+sub runFullSearch(query as string, isSubmitted = false as boolean)
   m.log.verbose("runFullSearch query=" + query)
+
+  ' A new query (or a retry) clears what the last one ended with.
+  clearSearchOutcome()
+  m.isSubmittedRun = isSubmitted
 
   ' A new query is a NEW run, not a continuation — `begin` restarts the ledger so the clock
   ' starts at the keystroke rather than at the screen opening. A superseded run simply never
@@ -787,6 +836,11 @@ sub submitSearch(query as string)
   ' user presses Go / picks a matching suggestion to confirm.
   if isValid(m.searchSelect.query) and m.searchSelect.query = query and hasResults()
     m.log.verbose("submit: skipping re-run — results already match query")
+    ' The live search that found these reported nothing, so a partial answer says so now.
+    ' Only results reach this path, so the toast is the whole outcome.
+    if isValid(m.lastOutcome) and m.lastOutcome.toastKey <> "" and m.isShown
+      displayToast(translate(m.lastOutcome.toastKey))
+    end if
     m.top.isExpanded = false
     return
   end if
@@ -798,7 +852,7 @@ sub submitSearch(query as string)
   ' would sit on the keyboard's bottom edge. A wait already open restarts, since the viewer
   ' is now waiting on this query.
   screenWaits.begin(m.top, "results")
-  runFullSearch(query)
+  runFullSearch(query, true)
   m.top.isExpanded = false
 end sub
 
@@ -859,18 +913,18 @@ sub onFullSearchResults(event as object)
   screenLoad.paint("query")
 
   total = (results.TotalRecordCount ?? 0)
-  m.log.info("full results total=" + total.toStr())
+  m.log.info("full results total=" + total.toStr(), "status", results.status)
 
-  if total = 0
-    ' No hits — show the no-results label only when the overlay is already
-    ' collapsed. While typing (overlay expanded) the label would sit behind
-    ' the keyboard uselessly, and "no results for STA" is unhelpful mid-typo.
-    if not m.top.isExpanded
-      m.searchHelpText.text = translate(translationKeys.MessageNoResultsFor1, [m.top.query])
-      m.searchHelpText.visible = true
-    end if
-    return
-  end if
+  ' What the search ended with. A read that failed says nothing about what the server holds,
+  ' so a failed search must never read as one that found nothing (searchOutcome.view).
+  outcome = searchOutcome.view(results.status, total)
+  m.lastOutcome = outcome
+  ' Only a submitted search reports: the live search runs on every pause in typing, and
+  ' reporting each one would toast and announce mid-word (decision
+  ' search-outcome-on-submit-only).
+  if m.isSubmittedRun then showSearchOutcome(outcome)
+
+  if total = 0 then return
 
   m.searchHelpText.visible = false
   ' Only steal focus when the overlay is collapsed (user submitted). During
@@ -880,6 +934,82 @@ sub onFullSearchResults(event as object)
     m.searchSelect.setFocus(true)
     m.top.lastFocus = m.searchSelect
   end if
+end sub
+
+' ============================================================================
+' SEARCH OUTCOME — failed / empty / partial
+' ============================================================================
+
+' Shows what a submitted search ended with. Failed: the message and Try again where the
+' results go; with the overlay collapsed (the submit just closed it) Try again takes focus,
+' since there is nothing else to act on, and the message is announced once focus lands.
+' With the overlay open the viewer is typing again, so focus stays and the failure is
+' announced instead. Empty: the no-results label, only while collapsed: "no results for STA"
+' is unhelpful mid-word, and the label would sit behind the keyboard. Partial: the results
+' that answered, and a toast saying some are missing.
+'
+' Announced because the screen reader speaks only what has focus, and neither state moves it
+' there on its own. Queued, not flushed, as "Loading more" is (BaseGridView.onLoadingMoreDue):
+' nothing moved, so what is being read is still true.
+sub showSearchOutcome(outcome as object)
+  if outcome.show = searchOutcome.SHOW_FAILED
+    m.searchHelpText.visible = false
+    m.searchFailed.visible = true
+    if not m.top.isExpanded
+      focusRetryButton()
+    else if m.isShown
+      narrateStatus(composeDialogAnnouncement("", m.searchFailedText.text, m.searchRetryButton.text))
+    end if
+  else if outcome.show = searchOutcome.SHOW_EMPTY
+    if not m.top.isExpanded
+      m.searchHelpText.text = translate(translationKeys.MessageNoResultsFor1, [m.top.query])
+      m.searchHelpText.visible = true
+      if m.isShown then narrateStatus(m.searchHelpText.text)
+    end if
+  else if outcome.toastKey <> "" and m.isShown
+    displayToast(translate(outcome.toastKey))
+  end if
+end sub
+
+' Hides the failure state before a new query or a retry. Focus on Try again moves to where
+' the screen would put it now (the keyboard while open, else the result rows), as the button
+' it is on is going; lastFocus moves with it so the router's focus restore does not return it.
+sub clearSearchOutcome()
+  if not m.searchFailed.visible then return
+  m.searchFailed.visible = false
+
+  hadRetry = m.searchRetryButton.hasFocus()
+  if isValid(m.top.lastFocus) and m.top.lastFocus.isSameNode(m.searchRetryButton) then hadRetry = true
+  if not hadRetry then return
+  m.failureNarrationTimer.control = "stop"
+  if m.top.isExpanded
+    m.kbd.setFocus(true)
+    m.top.lastFocus = m.kbd
+  else
+    m.searchSelect.setFocus(true)
+    m.top.lastFocus = m.searchSelect
+  end if
+end sub
+
+sub focusRetryButton()
+  m.searchRetryButton.setFocus(true)
+  m.top.lastFocus = m.searchRetryButton
+  ' The platform speaks only the focused button; the message is ours to announce.
+  m.failureNarrationTimer.control = "stop"
+  m.failureNarrationTimer.control = "start"
+end sub
+
+sub onRetryButtonReady()
+  area = m.searchFailedText.translation
+  width = m.searchRetryButton.localBoundingRect().width
+  x = int(area[0] + (m.searchFailedText.width - width) / 2)
+  ' On the 720p output grid (every 3 pixels of 1080p); see dialogLayout.bs.
+  m.searchRetryButton.translation = [x - (x mod 3), m.searchRetryButton.translation[1]]
+end sub
+
+sub onFailureNarrationDue()
+  if not m.isShown or not m.searchFailed.visible or not m.searchRetryButton.hasFocus() then return
+  narrateDialogOpening("", m.searchFailedText.text, m.searchRetryButton.text)
 end sub
 
 ' ============================================================================
@@ -951,6 +1081,17 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' consciously opened; collapsing it first surprised users by revealing an
   ' unseen results state that they hadn't viewed yet.
   if key = "back" then return false
+
+  ' Try again: OK runs the same query again through the submit path, Up reopens the
+  ' keyboard. Every other key stays on the button: there is nothing beside it to move to.
+  if isValid(m.searchRetryButton) and m.searchRetryButton.hasFocus()
+    if key = "OK"
+      if m.searchFailed.visible then submitSearch(m.top.query)
+    else if key = "up"
+      m.top.isExpanded = true
+    end if
+    return true
+  end if
 
   ' UP (or OK in the empty state) expands the overlay. Gated on the
   ' searchSelect being in focus chain — onExpansionChanged always focuses

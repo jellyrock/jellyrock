@@ -2116,6 +2116,16 @@ Ruled out: a Try again button in the results column (a second retry beside Searc
 
 Cost accepted: a slow search while typing shows no "Still loading" text, and the updating suggestion list is the only feedback. If that turns out to matter, revisit by hiding the waits while the overlay is expanded. `slow-search.spec.js` submits before it asserts.
 
+## decision-id: search-outcome-on-submit-only
+
+**date**: 2026-10-14
+**status**: accepted
+**related-files**: `components/search/SearchScreen.bs`, `tests/rta/specs/search-failure.spec.js`
+
+`SearchScreen` reports a search's outcome (`searchOutcome.view`: the failed state with Try again, the no-results label, the partial toast, the screen-reader announcement) only for a submitted search, never for the live search that runs 0.15 s after each pause in typing. Reporting every search, as `SearchResults` did, was ruled out because on a slow or flaky server it toasts and announces mid-word. A failed submit with the overlay collapsed moves focus to Try again (OK runs it again through `submitSearch`, Up reopens the keyboard). With the overlay open, focus stays and the failure is announced. A submit skipped because the live results already answer its query raises the stored partial toast then.
+
+Cost accepted: a server that dies while the viewer types leaves the live results empty until they submit. The visible empty text stays `MessageNoResultsFor1` and is what the screen reader reads. Same submit-only rule as `search-spinner-on-submit-only`.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
