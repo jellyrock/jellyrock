@@ -9,8 +9,8 @@
  * FIXTURE-GATED, like the `subtitlePanel` screen: Manage Subtitles is offered only to a user
  * who may search subtitles, on a server with a subtitle provider (`manageSubtitlesOffered`).
  * The public demo is neither, so every case skips there. Run it against a local server with
- * the Open Subtitles plugin installed, with or without credentials: the server catches the
- * provider's error and answers `200 []`, which is the empty case here.
+ * the Open Subtitles plugin installed, with or without credentials: the plugin is needed only
+ * to open the panel, and every search answer here comes from a rule, not from the provider.
  *
  *   RTA_SERVER_URL=http://<host>:<port> RTA_SERVER_USER=… RTA_SERVER_PASS=… \
  *     npm run test:rta -- tests/rta/specs/subtitle-search-failure.spec.js
@@ -93,7 +93,12 @@ it('a search the server answered empty says no subtitles were found', async (t) 
 
 it('Search after a failed search runs it again', async (t) => {
   if (!offered) t.skip(SKIP_REASON);
-  await openPanelWith([{ prefix: 'subtitleSearch', kind: 'http', status: 500, times: 1 }]);
+  // The first rule fails the opening search once and is then spent, so the second answers
+  // the retry: rules apply in order (apiFaults.take), whatever the provider would return.
+  await openPanelWith([
+    { prefix: 'subtitleSearch', kind: 'http', status: 500, times: 1 },
+    { prefix: 'subtitleSearch', kind: 'empty' },
+  ]);
   await waitStatus(SEARCH_FAILED, 'the failed search message');
 
   const atSearch = (f) => f?.node?.id === 'searchButton';
