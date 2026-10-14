@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-14: fix(subtitles): Stop Perfect match showing old results mid-search
 - 2026-10-14: feat(subtitles): Show and announce a failed or empty subtitle search
 - 2026-10-13: ci: Re-check open PRs for merge conflicts when main moves
 - 2026-10-13: feat(search): Show and announce when a search failed or found nothing
