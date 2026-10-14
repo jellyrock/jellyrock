@@ -1,12 +1,12 @@
 /**
- * BrighterScript plugin — auto-abandon pending API promises on destroy.
+ * BrighterScript plugin: auto-abandon pending API promises on destroy.
  *
  * Companion to the `fetchAsync` adapter (source/api/apiPromise.bs). A render-
  * thread promise registers a pending entry on its owning component's `m`; if
  * the component is destroyed while a request is in flight, the late pool
- * response must NOT fire a callback into the dead node. `abandonApiPromises()`
- * tears the pending entries down — but SceneGraph component `onDestroy()` does
- * NOT chain to a base class (no `super`), so the call can't simply live in a
+ * response must not fire a callback into the dead node. `abandonApiPromises()`
+ * tears the pending entries down, but SceneGraph component `onDestroy()` does
+ * not chain to a base class (no `super`), so the call can't live only in a
  * base `onDestroy`. Every component that owns promises has to abandon in its
  * own `onDestroy`.
  *
@@ -15,13 +15,13 @@
  *
  *  1. INJECT (beforePrepareFile): for any codebehind that calls `fetchAsync`,
  *     prepend `abandonApiPromises()` as the first statement of its `onDestroy()`
- *     at transpile time. Idempotent — skipped if onDestroy already abandons.
+ *     at transpile time. Idempotent: skipped if onDestroy already abandons.
  *     A `fetchAsync` caller already `import`s apiPromise.bs, so the injected
  *     `abandonApiPromises` reference is guaranteed in scope.
  *
  *  2. ENFORCE (afterValidateFile): if a COMPONENT codebehind (one with a
  *     sibling component .xml) calls `fetchAsync` but declares NO `onDestroy()`
- *     at all, there's nothing to inject into — a guaranteed leak. That's a
+ *     at all, there's nothing to inject into: a guaranteed leak. That's a
  *     build ERROR (not a warning): the whole point of the plugin is that the
  *     leak is impossible to ship. The dev adds an `onDestroy()` (the injection
  *     then fills it in). Errors block the build, so the escape hatch below
@@ -37,7 +37,7 @@
  *
  * Known limitation: detection keys on a DIRECT `fetchAsync(...)` call in the
  * component file. A component that reaches the pool only through a shared
- * source/ helper that itself calls `fetchAsync` won't be detected — call
+ * source/ helper that itself calls `fetchAsync` won't be detected. Call
  * `fetchAsync` directly from the component (the designed usage), or abandon
  * by hand.
  */
@@ -64,7 +64,7 @@ class AutoAbandonPromisesPlugin {
     this.name = 'jellyrock-auto-abandon-promises';
   }
 
-  // INJECT — prepend abandonApiPromises() to onDestroy() in fetchAsync callers.
+  // INJECT: prepend abandonApiPromises() to onDestroy() in fetchAsync callers.
   beforePrepareFile(event) {
     try {
       const file = event.file;
@@ -81,12 +81,12 @@ class AutoAbandonPromisesPlugin {
 
       event.editor.addToArray(statements, 0, makeAbandonStatement());
     } catch (_e) {
-      // Never crash the build — injection is best-effort; the diagnostic still
+      // Never crash the build: injection is best-effort; the diagnostic still
       // guards the missing-onDestroy case.
     }
   }
 
-  // ENFORCE — error when a component codebehind uses fetchAsync but has no
+  // ENFORCE: error when a component codebehind uses fetchAsync but has no
   // onDestroy() to abandon in.
   afterValidateFile(event) {
     try {
@@ -111,7 +111,7 @@ class AutoAbandonPromisesPlugin {
 
       event.program.diagnostics.register({
         code: DIAGNOSTIC_CODE,
-        severity: 1, // Error — a fetchAsync caller with no onDestroy is a guaranteed leak.
+        severity: 1, // Error: a fetchAsync caller with no onDestroy is a guaranteed leak.
         source: this.name,
         message: `This component calls ${FETCH_FN}() but declares no top-level '${ON_DESTROY}' function. A pending promise would fire its callback into the destroyed node. Add 'sub ${ON_DESTROY}()' — the auto-abandon plugin injects ${ABANDON_FN}() into it. Suppress with ' bsc-disable-file auto-abandon-promises only if you are certain no request can outlive this component.`,
         location: location,
@@ -162,7 +162,7 @@ function findOnDestroy(brsFile) {
   return null;
 }
 
-// True if the brs file has a sibling component .xml (i.e. it's a codebehind).
+// True if the brs file has a sibling component .xml (that is, it's a codebehind).
 function hasSiblingComponentXml(program, brsFile) {
   if (!program || !brsFile) return false;
   const bases = [];
@@ -188,3 +188,6 @@ function makeAbandonStatement() {
 }
 
 module.exports = () => new AutoAbandonPromisesPlugin();
+// Calls this plugin injects at transpile time. They never appear in source, so the
+// dead-code plugin reads this list to keep their targets from looking unused.
+module.exports.injectedCalls = [ABANDON_FN];

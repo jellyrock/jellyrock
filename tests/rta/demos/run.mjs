@@ -1,17 +1,17 @@
 /**
- * Demo-take runner — the ONE entry point for capturing feature videos hands-free.
+ * Demo-take runner: the ONE entry point for capturing feature videos hands-free.
  *
  *   npm run demo                 # list the available takes (your feature checklist)
  *   npm run demo -- cast-play    # run one take
  *   DEMO_NO_WAIT=1 npm run demo -- cast-play   # validation pass (skips the record gates)
  *
  * It owns the privacy-safe LIFECYCLE so individual takes never have to: snapshot the real
- * session, drive the take against a PUBLIC demo server (never the home server — enforced
+ * session, drive the take against a PUBLIC demo server (never the home server, enforced
  * structurally below), gate on the operator's capture card, and restore the real session
  * cleanly off-camera. A take (takes/*.js) declares only its choreography.
  *
  * Branding-agnostic: the same runner drives the dev-branded build (in-PR demos) and a
- * prod-branded build (marketing) — branding is a build-time asset swap, the automation hook
+ * prod-branded build (marketing). Branding is a build-time asset swap, and the automation hook
  * (ENABLE_RTA) is independent. Prereq: an RTA-enabled build is already sideloaded (run
  * `npm run test:rta` once, or any deploy with injectTestingFiles). The runner only drives.
  */
@@ -27,6 +27,7 @@ import {
   press,
   waitHome,
   waitFor,
+  waitDialogClosed,
   waitFocused,
   getVal,
   getActiveVal,
@@ -58,15 +59,15 @@ const DEMO_SERVERS = {
     password: '',
     // CLONE WORKAROUND (infra fact, not a take concern). The public demo servers are clones of one
     // image, so BOTH report the same Jellyfin server GUID. JellyRock (correctly) keys server identity
-    // on that GUID — that's what unifies one server reached via several URLs (LAN / reverse-proxy /
-    // VPN) — so it cannot distinguish these two clones, and a cast-to-another-server switch never
-    // fires. The servers ARE genuinely different (names / URLs / versions 10.11 vs 12.0); only their
+    // on that GUID, which is what unifies one server reached via several URLs (LAN / reverse-proxy /
+    // VPN), so it cannot distinguish these two clones, and a cast-to-another-server switch never
+    // fires. The servers are different (names / URLs / versions 10.11 vs 12.0); only their
     // internal id got duplicated by sloppy cloning. We give the server a stable, distinct synthetic
     // id so multi-server features behave exactly as they would against two real distinct servers.
-    // The id is never shown in any UI (verified by grep) — it only steers a cast's switch target.
+    // The id is never shown in any UI (verified by grep). It only steers a cast's switch target.
     // Scope: this is the identity a server presents when it's a cast TARGET (its saved-list entry +
     // the cast's serverId). A take that LOGS INTO this server would also inherit it as its user
-    // binding — fine as long as overridden servers are used as switch targets, which is their purpose.
+    // binding, which is fine as long as overridden servers are used as switch targets, which is their purpose.
     syntheticServerId: 'de504c0011114a0d8b1de13c1a9d0b71',
   },
 };
@@ -106,7 +107,7 @@ function waitForEnter(prompt) {
 }
 
 /**
- * The choreography toolkit handed to each take's run(). The take touches ONLY this. Exposes the
+ * The choreography toolkit handed to each take's run(). The take touches only this. Exposes the
  * primary demo session plus low-level primitives (press/waitFor/getActiveVal/odc) so a take can
  * drive its own UI beats (dialogs, pickers) without the runner growing a helper per feature.
  */
@@ -122,6 +123,7 @@ function makeContext(sessions, serversByName, primaryName) {
     press,
     sleep,
     waitFor,
+    waitDialogClosed,
     waitFocused,
     getVal,
     getActiveVal,
@@ -134,13 +136,13 @@ function makeContext(sessions, serversByName, primaryName) {
       if (screen !== 'home')
         // eslint-disable-next-line no-restricted-syntax -- fail-fast on a take asking for a seed that does not exist
         throw new Error(`land(): unsupported screen "${screen}" (add a seed for it)`);
-      await seedHome(session, LOCALE); // demo server only — the home server is never written
+      await seedHome(session, LOCALE); // demo server only; the home server is never written
       await hardRelaunch(); // soft relaunch lets the running app re-persist over the seed
       await waitHome();
     },
 
     /**
-     * Land logged into the primary demo server with EVERY take server saved — the state a
+     * Land logged into the primary demo server with every take server saved, the state a
      * cast-to-another-server take needs (signed into one, another saved to switch to).
      */
     async landWithSavedServers() {
@@ -160,8 +162,8 @@ function makeContext(sessions, serversByName, primaryName) {
     },
 
     /**
-     * Fire a runtime cast — the same ECP wire a Jellyfin sender mints. `extraParams` carries the
-     * sibling ECP params a real sender adds (e.g. `itemName` for the server-switch prompt title).
+     * Fire a runtime cast, over the same ECP wire a Jellyfin sender mints. `extraParams` carries the
+     * sibling ECP params a real sender adds (for example `itemName` for the server-switch prompt title).
      */
     async cast(contentId, extraParams = {}) {
       console.log(`· casting ${contentId} ...`);
@@ -199,19 +201,19 @@ async function main() {
   const serversByName = {};
   for (const name of serverNames) serversByName[name] = resolveServer(name); // throws early if not a demo host
   setupRtaEnv();
-  // Claim the device before waking it. A demo take is a RECORDING — another
-  // party driving the device mid-take does not just fail, it silently ruins
+  // Claim the device before waking it. A demo take is a recording: another
+  // party driving the device mid-take does not only fail, it silently ruins
   // footage that looks fine until playback.
   activeLock = await acquireDeviceLock({ what: `demo:${take.name}` });
-  // Records to `out/demo/`. Takes drive the same navs as the suite, so a nav that
-  // times out mid-recording now leaves the device state behind instead of just a
+  // Records to `.device-runs/demo/runs/<device>/`. Takes drive the same navs as the suite, so a nav that
+  // times out mid-recording now leaves the device state behind instead of only a
   // ruined take.
   const run = beginRun({ lock: activeLock, run: 'demo' });
   setFailureContext({ take: take.name });
   // Registered BEFORE armRestoreOnInterrupt() below, because that installs its
   // own signal handlers which end in process.exit(). Node runs listeners in
   // registration order, so this gets to start the release first. It is
-  // fire-and-forget by necessity — on the abandon path the process leaves
+  // fire-and-forget by necessity: on the abandon path the process leaves
   // before the DELETE lands, and the lock's TTL is what covers that.
   //
   // Exiting is conditional for the same reason it is in capture-screenshots: once
@@ -230,23 +232,23 @@ async function main() {
     });
   }
   // Wake the device + bring the RTA channel (and its ODC component) up BEFORE the first registry
-  // call — snapshotRegistry is an ODC call and would fail on a suspended/relaunched device.
+  // call: snapshotRegistry is an ODC call and would fail on a suspended/relaunched device.
   await relaunch();
   const saved = await snapshotRegistry(); // restore the real session afterward, no matter what
   armRestoreOnInterrupt(saved); // ...including when the operator Ctrl-Cs a recording
-  restoreArmed = true; // from here the restore handler owns the exit — see above
+  restoreArmed = true; // from here the restore handler owns the exit (see above)
   let cleanlyRestored = false;
   try {
     const sessions = {};
     for (const name of serverNames) {
       const cfg = serversByName[name];
-      // Its own role — see `sessionDeviceId`. A demo take and an RTA run on two
+      // Its own role; see `sessionDeviceId`. A demo take and an RTA run on two
       // devices would otherwise share a DeviceId and log each other out.
       const session = await authenticate(cfg, {
         role: 'demos',
         deviceKey: activeLock?.meta?.deviceKey,
       });
-      // Apply a declared synthetic id (clone workaround — see DEMO_SERVERS) so takes can read
+      // Apply a declared synthetic id (clone workaround, see DEMO_SERVERS) so takes can read
       // session.serverId transparently without knowing the demo servers share a real GUID. Pure
       // identity data layered on an immutable copy; the real url / token / name are untouched.
       sessions[name] = cfg.syntheticServerId
@@ -267,14 +269,14 @@ async function main() {
     console.log('✓ take complete.');
 
     // Stop gate guarantees recording is stopped BEFORE we touch the session, so it's now safe to
-    // fully restore AND relaunch into the real session — leaving the app in a clean, expected
+    // fully restore and relaunch into the real session, leaving the app in a clean, expected
     // state rather than a torn one (registry restored but the running app still on the demo token).
     await waitForEnter('\n⏹ Stop your capture card, then press ENTER to restore your session... ');
     await stopPlayback().catch(() => {});
     // Folded HERE rather than left to the exit net, for the same reason `rta-run`
     // does it before its restore: order. The net's `console.log` runs inside a
     // `process.on('exit')` handler, where a write to a PIPE is asynchronous on
-    // macOS — so `npm run demo | tee` can lose the summary entirely
+    // macOS, so `npm run demo | tee` can lose the summary entirely
     // (`exit-net-summary-lost-on-macos-pipe` in tech-debt.md). This is the path
     // that can afford an explicit close, so it takes it; the net still covers the
     // interrupt and early-exit paths, where nothing here could run.
@@ -285,7 +287,7 @@ async function main() {
     console.log('· session restored — app relaunched into your real session.');
   } finally {
     // Error-path safety net: if the take threw BEFORE the stop gate, the operator may still be
-    // recording, so restore the registry (real session back in storage) but do NOT relaunch — a
+    // recording, so restore the registry (real session back in storage) but do not relaunch: a
     // relaunch could flash the real session on camera mid-take.
     if (!cleanlyRestored) {
       await restoreRegistry(saved);

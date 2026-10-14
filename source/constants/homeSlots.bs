@@ -1,0 +1,18 @@
+' @fileoverview Home screen section slot count.
+'
+' How many `homesectionN` slots JellyRock reads from the Jellyfin server's
+' DisplayPreferences CustomPrefs. Mirrors MAX_SECTIONS in the Jellyfin web client
+' (jellyfin-web, src/components/homesections/homesections.js), which has stored ten
+' slots since server 10.10.0. The server itself does not cap the count, so this
+' number follows the web client, not an API.
+'
+' Slots are numbered 0 to SLOT_COUNT - 1. Every slot needs a matching
+' `homeSection<N>` field in components/data/jellyfin/JellyfinUserSettings.xml,
+' because user.settings.Save() refuses a name the node does not declare. The
+' HomeSlots spec fails if the two ever disagree.
+
+namespace homeSlots
+
+  const SLOT_COUNT = 10
+
+end namespace

@@ -1,0 +1,50 @@
+import "pkg:/source/api/items.bs"
+
+namespace tests
+
+  @suite("items.bs - hasWatchedRegularEpisode()")
+  class HasWatchedRegularEpisodeTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("series not started")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns false when the response is invalid")
+    function _()
+      m.assertFalse(hasWatchedRegularEpisode(invalid))
+    end function
+
+    @it("returns false when the response has no Items field")
+    function _()
+      m.assertFalse(hasWatchedRegularEpisode({}))
+    end function
+
+    @it("returns false when no episode has been played")
+    function _()
+      m.assertFalse(hasWatchedRegularEpisode({ Items: [] }))
+    end function
+
+    @it("returns false when the top played episode is a special")
+    function _()
+      m.assertFalse(hasWatchedRegularEpisode({ Items: [{ ParentIndexNumber: 0, IndexNumber: 2 }] }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("series started")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns true when the top played episode is in a regular season")
+    @params(1)
+    @params(4)
+    function _(seasonNumber)
+      m.assertTrue(hasWatchedRegularEpisode({ Items: [{ ParentIndexNumber: seasonNumber, IndexNumber: 1 }] }))
+    end function
+
+    @it("returns true when the top played episode has no season number")
+    function _()
+      m.assertTrue(hasWatchedRegularEpisode({ Items: [{ IndexNumber: 3 }] }))
+    end function
+
+  end class
+
+end namespace

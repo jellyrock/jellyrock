@@ -1,10 +1,10 @@
-// scripts/lint/socket-auth-binding-check.js — guards the ws:// session-identity
+// scripts/lint/socket-auth-binding-check.js: guards the ws:// session-identity
 // binding (issue #743).
 //
 // WHY THIS EXISTS
 // ---------------
 // Jellyfin resolves a request's DeviceId from the `Authorization` header and
-// NOWHERE else — never from a query string — and when the header omits it the
+// nowhere else (never from a query string), and when the header omits it the
 // server silently substitutes the DeviceId the auth TOKEN was minted under
 // (AuthorizationContext, identical 10.7 -> 10.11). So the `&deviceId=` parameter
 // on the socket URL is inert, and a header-less ws:// upgrade lands on a
@@ -13,16 +13,16 @@
 // isn't listening. That was #743.
 //
 // The fix is four lines spread across two files, and NONE of them fail loudly
-// when broken — the app still builds, still connects, still passes every unit
-// test. It just silently stops receiving cast commands. This check is the only
+// when broken: the app still builds, still connects, still passes every unit
+// test. It only silently stops receiving cast commands. This check is the only
 // automated gate on them.
 //
-// WHY NOT AN END-TO-END TEST
-// --------------------------
+// WHY NO END-TO-END TEST
+// -----------------------
 // The natural gate would be an RTA functional test. It can't reach this path:
 // RTA drives https://demo.jellyfin.org/stable (tests/rta/config.js), and the
 // ws:// receiver only runs against an http:// server (remoteProtocol.isHttpServer,
-// gated in RemoteControlTask.runReceiver) — on https it takes the long-poll
+// gated in RemoteControlTask.runReceiver); on https it takes the long-poll
 // branch instead. Verifying the real binding needs a local http:// Jellyfin plus
 // a token minted under a mismatched DeviceId; that is a manual procedure, and
 // the measured result is recorded in PR #747. This static check guards the
@@ -33,17 +33,17 @@
 // --------------
 //   1. RemoteControlTask sets `m.ws.headers` BEFORE `m.ws.open`. The client
 //      builds its handshake string inside open(), so a header set afterwards
-//      never reaches the wire. Reordering does NOT fail cleanly: the task's
+//      never reaches the wire. Reordering does not fail cleanly: the task's
 //      startup seed reads m.top.headers before calling open, so whether it
-//      breaks depends on which thread wins — i.e. INTERMITTENT cast failures.
+//      breaks depends on which thread wins, which means INTERMITTENT cast failures.
 //   2. WebSocketClientTask does not restore upstream's
 //      `m.top.headers = m.ws.get_headers()`, which overwrites the caller's
 //      header with the client's empty default.
 //   3. Its replacement seed (`m.ws.set_headers(m.top.headers)`) sits between
-//      the observer registration and the open() call — after, so a write that
+//      the observer registration and the open() call: after, so a write that
 //      landed early is picked up; before, so it reaches the handshake.
-//   4. `m.task_port` (never assigned anywhere in the component: 3 reads, 0
-//      writes) has not come back. It rebinds fields to an invalid port and is
+//   4. `m.task_port` (never assigned anywhere in the upstream component: 3 reads,
+//      0 writes on 2026-07-30) has not come back. It rebinds fields to an invalid port and is
 //      only reachable now that we call set_headers.
 //
 // 2-4 all live in vendored BrightWebSocket code, whose local modifications are
@@ -51,7 +51,7 @@
 // re-sync is the single likeliest way they get reverted, and a large vendor
 // diff is exactly where a four-line semantic change hides during review.
 //
-// Only Node stdlib — no npm ci needed.
+// Only Node stdlib, so no npm ci needed.
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -61,11 +61,11 @@ export const RECEIVER_REL = 'components/remotecontrol/RemoteControlTask.bs';
 export const WS_TASK_REL =
   'components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs';
 
-// Strip whole-line BrightScript comments so a rule can't be satisfied — or
-// tripped — by prose. The banned-pattern rules especially: every one of these
-// patterns is quoted in an explanatory comment in the very files we scan.
+// Strip whole-line BrightScript comments so a rule can't be satisfied (or
+// tripped) by prose. The banned-pattern rules especially: WebSocketClientTask
+// quotes the `get_headers` pattern in an explanatory comment.
 // Exported for socket-thread-release-check.js, which guards the other
-// load-bearing invariant of the same two files.
+// critical invariant of the same two files.
 export function stripComments(src) {
   return src
     .split('\n')
@@ -81,7 +81,7 @@ export function indexOf(src, re) {
 }
 
 /**
- * @param {{receiver: string, wsTask: string}} sources — file contents
+ * @param {{receiver: string, wsTask: string}} sources file contents
  * @returns {string[]} violations; empty means the invariant holds
  */
 export function check({ receiver, wsTask }) {

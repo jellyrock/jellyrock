@@ -2,7 +2,7 @@
 # Logs PostToolUse events for Read/Grep/Glob/Edit/Write/MultiEdit into a
 # per-USER JSONL log (not per-worktree). The aggregator
 # (scripts/agent-telemetry-report.cjs) reads the log to surface what files
-# agents actually read vs. ignore — the signal we use to decide where to
+# agents actually read vs. ignore: the signal we use to decide where to
 # expand subdir CLAUDE.md coverage.
 #
 # Why per-user, not per-worktree: contributors who keep multiple worktrees
@@ -11,15 +11,16 @@
 # the aggregator. A single user-home path makes "what have my agents been
 # touching" a single npm command from any worktree.
 #
-# Default location: $HOME/.claude/jellyrock-telemetry/tool-use.jsonl
+# Default location: ${XDG_STATE_HOME:-$HOME/.local/state}/jellyrock/telemetry/tool-use.jsonl
+# (state you can throw away goes in the per-user XDG state folder, never in a checkout).
 # Override: set JELLYROCK_TELEMETRY_DIR to point elsewhere.
 #
-# Failure mode: this hook MUST NOT block or fail an agent's tool call.
+# Failure mode: this hook must not block or fail an agent's tool call.
 # Every error path is silenced and the script exits 0.
 
 set +e
 
-LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${HOME}/.claude/jellyrock-telemetry}"
+LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/jellyrock/telemetry}"
 LOG_FILE="$LOG_DIR/tool-use.jsonl"
 
 mkdir -p "$LOG_DIR" 2>/dev/null

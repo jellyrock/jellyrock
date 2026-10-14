@@ -191,6 +191,113 @@ namespace tests
       m.assertEqual(result, "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Web client 'Original language' (Jellyfin 12.0+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("resolves the sentinel to the item's OriginalLanguage")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("OriginalLanguage")
+      m.assertEqual(resolveAudioLanguagePreference(settings, config, "ko"), "ko")
+    end function
+
+    @it("recognizes the sentinel case-insensitively")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("originallanguage")
+      m.assertEqual(resolveAudioLanguagePreference(settings, config, "ko"), "ko")
+    end function
+
+    @it("returns no language when the item has no OriginalLanguage, never the sentinel")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("OriginalLanguage")
+      m.assertEqual(resolveAudioLanguagePreference(settings, config, ""), "")
+    end function
+
+    @it("ignores the item's OriginalLanguage when the preference is a language code")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("jpn")
+      m.assertEqual(resolveAudioLanguagePreference(settings, config, "ko"), "jpn")
+    end function
+
+    @it("lets a JellyRock custom override win over the sentinel")
+    function _()
+      settings = m.createMockUserSettings("custom", "eng")
+      config = m.createMockUserConfig("OriginalLanguage")
+      m.assertEqual(resolveAudioLanguagePreference(settings, config, "ko"), "eng")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wantsOriginalAudio()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for the web client sentinel, in any case")
+    function _()
+      m.assertTrue(wantsOriginalAudio(m.createMockUserSettings("webclient"), m.createMockUserConfig("OriginalLanguage")))
+      m.assertTrue(wantsOriginalAudio(m.createMockUserSettings(""), m.createMockUserConfig("originallanguage")))
+    end function
+
+    @it("is false when a JellyRock Roku or custom language overrides it")
+    function _()
+      config = m.createMockUserConfig("OriginalLanguage")
+      m.assertFalse(wantsOriginalAudio(m.createMockUserSettings("roku"), config))
+      m.assertFalse(wantsOriginalAudio(m.createMockUserSettings("custom", "eng"), config))
+    end function
+
+    @it("is false for a language code or a missing preference")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      m.assertFalse(wantsOriginalAudio(settings, m.createMockUserConfig("kor")))
+      m.assertFalse(wantsOriginalAudio(settings, m.createMockUserConfig(invalid)))
+      m.assertFalse(wantsOriginalAudio(settings, invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("needsSeriesOriginalLanguage()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for an episode without its own OriginalLanguage when the viewer wants the original")
+    function _()
+      item = { type: "Episode", originalLanguage: "", seriesId: "series1" }
+      m.assertTrue(needsSeriesOriginalLanguage(item, m.createMockUserSettings("webclient"), m.createMockUserConfig("OriginalLanguage")))
+    end function
+
+    @it("is false when the episode has its own OriginalLanguage, or no series")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("OriginalLanguage")
+      m.assertFalse(needsSeriesOriginalLanguage({ type: "Episode", originalLanguage: "ko", seriesId: "series1" }, settings, config))
+      m.assertFalse(needsSeriesOriginalLanguage({ type: "Episode", originalLanguage: "", seriesId: "" }, settings, config))
+    end function
+
+    @it("is false for a movie, a missing item, or a viewer who does not want the original")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("OriginalLanguage")
+      m.assertFalse(needsSeriesOriginalLanguage({ type: "Movie", originalLanguage: "" }, settings, config))
+      m.assertFalse(needsSeriesOriginalLanguage(invalid, settings, config))
+      m.assertFalse(needsSeriesOriginalLanguage({ type: "Episode", originalLanguage: "", seriesId: "series1" }, settings, m.createMockUserConfig("eng")))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("selectAudioStreamIndex()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("picks the original-language track for 'Original language', ignoring the default dub")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = { audioLanguagePreference: "OriginalLanguage", playDefaultAudioTrack: false }
+      ' Severance on a 12.0 server: French dub flagged default, English flagged IsOriginal
+      streams = [
+        { Type: "Audio", index: 1, Language: "fra", IsDefault: true, IsOriginal: false, channels: 6, codec: "eac3" },
+        { Type: "Audio", index: 2, Language: "eng", IsDefault: false, IsOriginal: true, channels: 6, codec: "eac3" }
+      ]
+      m.assertEqual(selectAudioStreamIndex(streams, settings, config, "en"), 2)
+    end function
+
   end class
 
 end namespace

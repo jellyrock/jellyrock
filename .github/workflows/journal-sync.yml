@@ -2,21 +2,23 @@
 #
 # When a PR merges to main, this workflow runs scripts/journal-sync.js to
 # perform the mechanical close-loop edit on docs/progress.md:
-#   - Prepend "- YYYY-MM-DD — <pr-title>" to ## Recently shipped
+#   - Prepend "- YYYY-MM-DD: <pr-title>" to ## Recently shipped
 #   - Clear ## Currently running when its text overlaps the PR title
 #   - Bump frontmatter last-updated:
 #
 # Judgment-bearing entries (decisions, tech-debt, followups) stay on the
-# user-driven /pr → /log path. This workflow is the auto-close-loop side
-# only — see docs/architecture/system-shape.md for the full four-pillar
+# user-driven /pr, then /log path. This workflow is the auto-close-loop side
+# only: see docs/architecture/system-shape.md for the full four-pillar
 # pattern, and .claude/skills/pr/SKILL.md for the judgment side.
 #
 # Skips (no commit pushed):
-#   - PRs labeled dependencies / documentation / docs-only / ci / automated
+#   - PRs labeled dependencies / documentation / docs-only / ci / automated /
+#     chore-only
 #   - PRs authored by app/dependabot, app/renovate, jellyrock[bot]
-#   - PR titles matching Renovate / Dependabot / Weblate patterns
+#   - PR titles matching Renovate / Dependabot / Weblate patterns, or a
+#     `chore(agents):` agent-tooling update
 #   - Idempotency: today's date already has a Recently shipped bullet
-#     overlapping the PR title (re-runs are safe)
+#     containing the PR title (re-runs are safe)
 #
 # Concurrency: ONE GROUP PER PR, and that is a fix rather than a style choice.
 #
@@ -25,23 +27,23 @@
 # The queue does that, and it also silently destroys work: GitHub keeps only ONE
 # pending run per concurrency group, so a run waiting behind jellyrock-bot is
 # CANCELLED the moment a newer run enters the group. `cancel-in-progress: false`
-# does not help — it protects a run that is already executing, not a pending one.
+# does not help: it protects a run that is already executing, not a pending one.
 #
 # For jellyrock-bot that is survivable, because its jobs are idempotent recomputes:
 # the superseding run redoes whatever the superseded one would have done (see the
 # "do not re-add the actor guard" comment in jellyrock-bot.yml, which is this same
-# hazard). This workflow has no such property — it ships only the ONE PR in its own
+# hazard). This workflow has no such property: it ships only the ONE PR in its own
 # trigger payload, so a superseded run's bullet is lost permanently, and a cancelled
 # run is indistinguishable from a successful one in the run list unless somebody
 # checks for the commit that never appeared.
 #
-# Measured, not theorised: of the runs on 2026-08-12 and 2026-08-14, #808's sync was
-# cancelled and its bullet NEVER landed, and #813's was cancelled and its bullet
+# Measured, not theorized: of the runs on 2026-08-12 and 2026-08-14, #808's sync was
+# cancelled and its bullet never landed, and #813's was cancelled and its bullet
 # exists only because a human wrote the commit by hand.
 #
 # Keying the group on the PR number means a journal-sync can never evict another
 # journal-sync, and can never be evicted by jellyrock-bot. The stale-base risk the
-# shared queue was covering is handled where it actually occurs — at the push, which
+# shared queue was covering is handled where it actually occurs: at the push, which
 # rebases and retries (see "Commit and push"). That converts a silent, permanent
 # loss into either a success or a loud red run.
 
@@ -59,6 +61,7 @@ jobs:
   sync:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -83,7 +86,7 @@ jobs:
           ref: main
           token: ${{ steps.app-token.outputs.token }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "lts/*"
 
@@ -91,9 +94,9 @@ jobs:
       # Using the event payload directly avoids an extra `gh pr view` call.
       - name: Run journal-sync
         id: sync
-        # All PR-controlled values come in via env, NOT interpolated into the shell.
+        # All PR-controlled values come in via env, not interpolated into the shell.
         # A `${{ ...title }}` expanded into a `run:` line lets a `'` end the quote
-        # (and backticks / $(...) execute) as the line is parsed — GitHub Actions
+        # (and backticks / $(...) execute) as the line is parsed: GitHub Actions
         # script-injection. env values are not shell-parsed, so "$PR_TITLE" is inert.
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -135,7 +138,7 @@ jobs:
           # Retry the rebase-and-push rather than relying on a shared queue to make
           # races impossible. Now that this workflow has its own per-PR concurrency
           # group, another writer to main (jellyrock-bot, or another PR's sync) CAN
-          # land between our fetch and our push — which is the stale-base failure the
+          # land between our fetch and our push, which is the stale-base failure the
           # shared group used to prevent, and it is cheap to absorb here: the commit
           # is already made, so a retry only has to replay it onto the new tip.
           #

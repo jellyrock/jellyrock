@@ -5,7 +5,8 @@ import "pkg:/source/utils/misc.bs"
 ' @param version - Image type/version (default: "Primary")
 ' @param params - URL parameters object. If "tag" or "Tag" key exists but contains
 '                 invalid/empty value, function returns empty string to prevent 404 requests
-function ImageURL(id, version = "Primary", params = {})
+' @param serverURL - the server URL, when the caller already has it (see buildURL)
+function ImageURL(id, version = "Primary", params = {}, serverURL = invalid)
   ' Validate tag parameter if provided - return empty string for invalid tags to prevent 404 requests
   if params.doesExist("tag") or params.doesExist("Tag")
     tagValue = invalid
@@ -35,7 +36,7 @@ function ImageURL(id, version = "Primary", params = {})
 
   url = Substitute("Items/{0}/Images/{1}", id, version)
   ' ?maxHeight=384&maxWidth=256&tag=<tag>&quality=90"
-  fullURL = buildURL(url, params)
+  fullURL = buildURL(url, params, serverURL)
 
   ' Return empty string if server URL not configured (buildURL returns invalid)
   if not isValid(fullURL) then return ""

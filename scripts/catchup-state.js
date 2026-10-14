@@ -1,23 +1,27 @@
-// scripts/catchup-state.js — Aggregator for /catchup, /ramp, sub-agents.
+// scripts/catchup-state.js: the aggregator for /catchup, /ramp and sub-agents.
 //
-// Single Node call returns JSON describing the repo's current state — git,
-// open PRs, recent issues, CI runs, pending handoffs, journal staleness,
-// signal watchlist age, etc. Replaces ~13 parallel-bash calls with one
-// allowlisted invocation. Banner-detection in /catchup becomes deterministic
+// Single Node call returns JSON describing the repo state the shared reader
+// (.claude/skills/catchup/catchup-state.sh) does not cover: open PRs, recent
+// issues, CI runs, pending handoffs, signal watchlist age, recent ADRs, tech
+// debt, doc staleness. Git position and the followup journal are the shared
+// reader's. Replaces ~13 parallel-bash calls with one allowlisted invocation. Banner-detection in /catchup becomes deterministic
 // JSON compares instead of agent text-parsing of mixed tool outputs.
 //
 // Usage:
-//   node scripts/catchup-state.js [--pretty] [--area=<name>] [--no-gh] [--no-network]
+//   node scripts/catchup-state.js [--pretty] [--typed] [--area=<name>] [--no-gh] [--no-network]
 //
 // Flags:
 //   --pretty       indent JSON output (default is single-line)
+//   --typed        first the banner rules of .claude/skills/catchup/jellyrock.md as
+//                  the shared reader's typed lines (scripts/lib/catchup-typed.cjs),
+//                  then the JSON under one `=== STATE ===` line. catchup.conf runs
+//                  it so; without the flag the output is the JSON alone.
 //   --area=<name>  scope to one of: components, components/video,
 //                  components/data, source, source/api, source/utils,
 //                  tests, locale, scripts. Filters PR/issue gh queries
-//                  via the area→keyword map (mirrors /ramp/SKILL.md) and
-//                  filters progress.open_followups_by_area.
+//                  via the area-to-keyword map (mirrors /ramp/SKILL.md).
 //   --no-gh        skip all `gh` API calls (offline / fast tests)
-//   --no-network   skip ALL network I/O — same as --no-gh PLUS skip the
+//   --no-network   skip all network I/O: --no-gh, plus skip the
 //                  signals upstream-version fetch. Used by tests and any
 //                  fully offline invocation.
 //
@@ -39,13 +43,14 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { readFrontmatter, getLastUpdated } = require('./lib/frontmatter.cjs');
 const {
   fetchJellyfinVersions,
   fetchRokuOs,
   compareSemverBase,
+  isReleaseVersionBase,
 } = require('./lib/signals-fetch.cjs');
 const { signalStaleness, STABLE_SLUG } = require('./lib/signal-staleness.cjs');
+const { typedLines } = require('./lib/catchup-typed.cjs');
 
 // The server-upgrade per-version digest labels. Single-sourced in
 // scripts/server-upgrade.js (DIGEST_LABEL / TRIAGING_LABEL); duplicated here as
@@ -55,7 +60,7 @@ const STABLE_TRIAGING_LABEL = 'server-upgrade:triaging';
 
 // The stable row's open-digest context, queried once in run('signals') and reused
 // by maintainSignals()'s post-fetch staleness recompute. { stableDigest } where
-// stableDigest is an object (open) / null (none) / undefined (offline → fallback).
+// stableDigest is an object (open) / null (none) / undefined (offline, so fallback).
 let stableDigestCtx = {};
 
 // Resolve sibling script paths relative to THIS script's location, not cwd.
@@ -69,6 +74,7 @@ const DOCS_STALE_SCRIPT = join(SCRIPT_DIR, 'lint/docs-stale.cjs');
 
 const args = process.argv.slice(2);
 const PRETTY = args.includes('--pretty');
+const TYPED = args.includes('--typed');
 const NO_NETWORK = args.includes('--no-network');
 // --no-network implies --no-gh (gh ops are network).
 const NO_GH = NO_NETWORK || args.includes('--no-gh');
@@ -103,7 +109,7 @@ if (AREA && !VALID_AREAS.includes(AREA)) {
   process.exit(2);
 }
 
-// Area → keyword map. Mirrors .claude/skills/ramp/SKILL.md lines 41-50.
+// Area-to-keyword map. Mirrors the keyword table in .claude/skills/ramp/SKILL.md.
 // Used to scope gh PR/issue queries when --area= is set. Keep in sync with
 // /ramp; if the map drifts, /ramp's hand-rolled bash and the aggregator
 // return different scopes for the same area.
@@ -139,12 +145,6 @@ function todayIso() {
 
 function isoDaysAgo(n) {
   return new Date(Date.now() - n * 86400 * 1000).toISOString().slice(0, 10);
-}
-
-function daysBetween(isoStart, isoEnd) {
-  const a = new Date(isoStart + 'T00:00:00Z');
-  const b = new Date(isoEnd + 'T00:00:00Z');
-  return Math.floor((b - a) / (1000 * 60 * 60 * 24));
 }
 
 // Compress a tech-debt **issue** bullet body to a single short line for the
@@ -185,35 +185,6 @@ function run(section, fn) {
 
 // ────────────────────────────────────────────────────────────────────
 // Sections
-
-run('git', () => {
-  const branch = execTrim('git rev-parse --abbrev-ref HEAD');
-  const lastCommit = execTrim('git log -1 --format=%H%x09%s%x09%cI').split('\t');
-  const status_porcelain = exec('git status --porcelain');
-  const total_7d = parseInt(execTrim('git rev-list --count --since="7 days ago" HEAD'), 10) || 0;
-
-  const by_area = {};
-  for (const area of VALID_AREAS) {
-    try {
-      const out = exec(`git log --oneline --since="7 days ago" -- ${area}`);
-      const count = out.split('\n').filter(Boolean).length;
-      if (count > 0) by_area[area] = count;
-    } catch {
-      // area doesn't exist on disk yet; skip
-    }
-  }
-
-  return {
-    branch,
-    last_commit: {
-      sha: (lastCommit[0] || '').slice(0, 8),
-      subject: lastCommit[1] || '',
-      committed_at: lastCommit[2] || '',
-    },
-    status_porcelain: status_porcelain.trim() || null,
-    commits_7d: { total: total_7d, by_area },
-  };
-});
 
 run('prs', () => {
   if (NO_GH) return { review_requested: [], yours_open: [] };
@@ -270,12 +241,22 @@ run('issues', () => {
 run('ci', () => {
   if (NO_GH) return { current_branch_runs: [] };
   const branch = execTrim('git rev-parse --abbrev-ref HEAD');
-  const current_branch_runs = JSON.parse(
+  // Filtered to the branch here, not with --branch: GitHub often serves a --branch
+  // run list stale on a cold call (months old, measured 2026-10-07); the unfiltered
+  // list was fresh every time.
+  const runs = JSON.parse(
     exec(
-      `gh run list --branch "${branch}" --limit 3 --json status,conclusion,name,createdAt,event`,
+      // the run id is the /ci-triage route; asked for only under --typed, so the
+      // JSON alone stays as it was
+      `gh run list --limit 100 --json headBranch,status,conclusion,name,createdAt,event${TYPED ? ',databaseId' : ''}`,
     ),
   );
-  return { current_branch_runs };
+  const current_branch_runs = runs
+    .filter((r) => r.headBranch === branch)
+    .slice(0, 3)
+    .map(({ headBranch: _headBranch, ...r }) => r);
+  if (current_branch_runs.length > 0) return { current_branch_runs };
+  return { current_branch_runs, note: `no CI runs for ${branch} among the 100 newest runs` };
 });
 
 run('handoffs', () => {
@@ -319,89 +300,6 @@ run('handoffs', () => {
   return { pending, pruned_count };
 });
 
-run('progress', () => {
-  const path = 'docs/progress.md';
-  if (!existsSync(path)) return null;
-  const content = readFileSync(path, 'utf8');
-  const fm = readFrontmatter(content);
-  const last_updated = getLastUpdated(fm);
-  const days_since = last_updated ? daysBetween(last_updated, todayIso()) : null;
-
-  let commits_since = 0;
-  if (last_updated) {
-    try {
-      commits_since =
-        parseInt(execTrim(`git rev-list --count --since="${last_updated}T00:00:00" HEAD`), 10) || 0;
-    } catch {
-      // ignore
-    }
-  }
-
-  // Line-by-line state machine: parse "## Currently running" (single
-  // paragraph) and "## Open followups" (grouped by ### area subsection).
-  // "(none)" bullets are NOT counted; they're placeholders for empty areas.
-  const lines = content.split(/\r?\n/);
-  let section = null; // 'running' | 'followups' | null
-  let currentArea = null;
-  const runningLines = [];
-  const followupsByArea = {};
-
-  for (const line of lines) {
-    if (/^##\s+Currently running\s*$/.test(line)) {
-      section = 'running';
-      continue;
-    }
-    if (/^##\s+Open followups\s*$/.test(line)) {
-      section = 'followups';
-      currentArea = null;
-      continue;
-    }
-    if (/^##\s+/.test(line)) {
-      section = null;
-      currentArea = null;
-      continue;
-    }
-
-    if (section === 'running') {
-      runningLines.push(line);
-      continue;
-    }
-
-    if (section === 'followups') {
-      const areaMatch = line.match(/^###\s+(\S+)\s*$/);
-      if (areaMatch) {
-        currentArea = areaMatch[1];
-        if (!(currentArea in followupsByArea)) followupsByArea[currentArea] = 0;
-        continue;
-      }
-      if (currentArea && /^-\s+(?!\(none\)).+$/.test(line)) {
-        followupsByArea[currentArea]++;
-      }
-    }
-  }
-
-  // Drop areas with zero real bullets (placeholders only)
-  for (const k of Object.keys(followupsByArea)) {
-    if (followupsByArea[k] === 0) delete followupsByArea[k];
-  }
-  const open_followups_total = Object.values(followupsByArea).reduce((a, b) => a + b, 0);
-
-  const open_followups_by_area = AREA
-    ? Object.fromEntries(Object.entries(followupsByArea).filter(([k]) => k === AREA))
-    : followupsByArea;
-
-  const currently_running_summary = runningLines.join('\n').trim() || null;
-
-  return {
-    last_updated,
-    days_since,
-    commits_since,
-    open_followups_total,
-    open_followups_by_area,
-    currently_running_summary,
-  };
-});
-
 // Query the live open server-upgrade digest (if any) for the stable row's
 // staleness. Returns { number, triaging } for the newest-versioned open digest,
 // null when none are open, or undefined when gh is unavailable (so staleness
@@ -418,8 +316,8 @@ function fetchStableDigest() {
     // ≤1 open digest is the norm; if several, pick the newest by title version.
     const versioned = open
       .map((iss) => {
-        const m = typeof iss.title === 'string' && iss.title.match(/Jellyfin (\d+\.\d+\.\d+)/);
-        return m ? { iss, version: m[1] } : { iss, version: null };
+        const m = typeof iss.title === 'string' && iss.title.match(/Jellyfin (\S+)/);
+        return m && isReleaseVersionBase(m[1]) ? { iss, version: m[1] } : { iss, version: null };
       })
       .sort((a, b) => {
         if (a.version && b.version) return compareSemverBase(b.version, a.version);
@@ -500,8 +398,8 @@ run('signals', () => {
 
 run('decisions', () => {
   // ADR-grade decisions live as numbered, immutable records in docs/adr/.
-  // Sub-ADR notes (docs/decisions.md) are deliberately NOT surfaced here —
-  // they're below the architectural bar and would dilute the briefing.
+  // Sub-ADR notes (docs/decisions.md) are left out on purpose: they're below
+  // the architectural bar and would dilute the briefing.
   const dir = 'docs/adr';
   if (!existsSync(dir)) return { recent_3: [] };
 
@@ -533,13 +431,13 @@ run('tech_debt', () => {
     return { top_3: [], high_count: 0, medium_count: 0, low_count: 0 };
   }
   const content = readFileSync(path, 'utf8');
-  // Structure: `## Refactor candidates` → `### High|Medium|Low` → `#### `slug``
-  // items, each followed by an `- **issue**: <text>` bullet. A non-severity H3
-  // or any H2 closes the current severity section. We capture {slug, severity,
-  // issue_oneline} in file order — file order encodes author priority within
-  // severity, and the High → Medium → Low file ordering means top_3 just slices
-  // the first 3 (cross-severity) and naturally surfaces the most-important
-  // remaining work.
+  // Structure: `## Refactor candidates`, then `### High|Medium|Low`, then
+  // `#### `slug`` items, each followed by an `- **issue**: <text>` bullet. A
+  // non-severity H3 or any H2 closes the current severity section. We capture
+  // {slug, severity, issue_oneline} in file order: file order encodes author
+  // priority within severity, and the High, Medium, Low file ordering means
+  // top_3 only slices the first 3 (cross-severity) and naturally surfaces the
+  // most-important remaining work.
   const counts = { High: 0, Medium: 0, Low: 0 };
   const items = [];
   let currentSeverity = null;
@@ -684,7 +582,7 @@ async function maintainSignals() {
   }
 }
 
-// In-place line-targeted rewrite of the signals file. ONLY touches lines we
+// In-place line-targeted rewrite of the signals file. Touches only the lines we
 // own (latest_upstream/last_checked bullets in known slug blocks, plus the
 // frontmatter last-updated date). Everything else is preserved byte-for-byte.
 function applySignalUpdates(content, updatesBySlug, today) {
@@ -750,5 +648,6 @@ function applySignalUpdates(content, updatesBySlug, today) {
       .slice(0, 200);
   }
   const result = { ...state, _errors };
+  if (TYPED) process.stdout.write([...typedLines(result), '=== STATE ==='].join('\n') + '\n');
   process.stdout.write(JSON.stringify(result, null, PRETTY ? 2 : 0) + '\n');
 })();

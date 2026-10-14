@@ -4,17 +4,17 @@
 
   Structure: this component renders the TRIGGER (scrolling text + focus chrome) and
   the dropdown MENU only. Category labels ("Video"/"Audio"/"Subtitles") are rendered
-  by the parent ItemDetails as a separate static row above the dropdowns — they are
-  explicitly NOT part of this component.
+  by the parent ItemDetails as a separate static row above the dropdowns. They are
+  explicitly not part of this component.
 
-  Menu styling follows JRDropdown / overhang user menu: a LayoutGroup of JRDropdownItem
+  Menu styling follows JRDropdown / overhang user menu: a LayoutGroup of TrackDropdownRow
   children with manual focus management (m.focusedItemIndex drives isFocused). A
   clipping viewport caps the visible row count; longer lists scroll by translating the
   inner LayoutGroup.
 
-  Open-menu key semantics (match JRDropdown):
+  Open-menu key semantics (as in JRDropdown, except DOWN on the last item: JRDropdown closes):
     - UP on first item    -> close menu, focus returns to trigger
-    - DOWN on last item   -> close menu, fires requestFocusDown (parent routes to buttons)
+    - DOWN on last item   -> wraps to the first item (the menu never exits on DOWN)
     - OK on any item      -> fires selectedAction, close menu
     - LEFT/RIGHT          -> close menu, fires requestFocusExit
     - BACK                -> close menu
@@ -46,7 +46,7 @@
     <LabelPrimarySmaller id="measureLabel" visible="false" />
 
     <!-- Dropdown menu: background + clipped viewport containing a LayoutGroup of
-         JRDropdownItem children. The viewport's clippingRect caps visible rows; the
+         TrackDropdownRow children. The viewport's clippingRect caps visible rows; the
          inner LayoutGroup translation scrolls longer lists in and out of view. -->
     <Group id="menuContainer" visible="false">
       <Poster id="menuBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
@@ -57,14 +57,14 @@
   </children>
   <interface>
     <!-- Input -->
-    <field id="triggerText" type="string" onChange="onTriggerTextChanged" />
-    <field id="items" type="array" onChange="onItemsChanged" />
-    <field id="selectedItemId" type="string" onChange="onSelectedItemChanged" />
+    <field id="triggerText" type="string" />
+    <field id="items" type="array" />
+    <field id="selectedItemId" type="string" />
     <!-- 2 * IconButton icon frame (124 each) + the 30px visible gap between adjacent
          icons = 278. Slot spans from button[N]'s visible left edge to button[N+1]'s
          visible right edge in the button group below. -->
-    <field id="slotWidth" type="integer" value="278" onChange="onSlotWidthChanged" />
-    <field id="isInteractive" type="boolean" value="true" onChange="onIsInteractiveChanged" />
+    <field id="slotWidth" type="integer" value="278" />
+    <field id="isInteractive" type="boolean" value="true" />
 
     <!-- Output -->
     <field id="selectedAction" type="string" alwaysNotify="true" />
@@ -72,7 +72,7 @@
     <field id="requestFocusDown" type="boolean" value="false" alwaysNotify="true" />
     <field id="requestFocusExit" type="string" alwaysNotify="true" />
     <!-- Mirrors internal m.isOpen so the parent can react to menu open/close without
-         poking at private state — used by ItemDetails to toggle the full-screen
+         poking at private state. Used by ItemDetails to toggle the full-screen
          dimmer when ANY dropdown opens. alwaysNotify so consecutive same-value
          writes still fire (defensive; current code only writes on transitions). -->
     <field id="menuOpen" type="boolean" value="false" alwaysNotify="true" />

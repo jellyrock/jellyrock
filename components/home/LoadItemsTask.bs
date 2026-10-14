@@ -1,11 +1,15 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/items.bs"
+import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/versionDisplay.bs"
 
 sub init()
   m.log = new log.Logger("LoadItemsTask")
@@ -17,13 +21,16 @@ sub loadItems()
   m.transformer = JellyfinDataTransformer()
 
   results = []
+  ' Set by the Home row and Favorites loads only; see the `status` field.
+  status = ""
 
   ' Load Libraries
   if m.top.itemsToLoad = "libraries"
 
-    data = fetchJson(GetApi().BuildGetViewsRequest(), "libraries")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
+    items = fetchRowItems(GetApi().BuildGetViewsRequest(), "libraries")
+    status = statusOf(items)
+    if isValid(items)
+      for each item in items
         ' Skip Books for now as we don't support it (issue #525)
         if item.CollectionType <> "books"
           results.push(m.transformer.transformBaseItem(item))
@@ -34,56 +41,46 @@ sub loadItems()
     ' Load Next Up
   else if m.top.itemsToLoad = "nextUp"
     userSettings = globalUser.settings
+    params = buildHomeNextUpParams(m.global.server.version, userSettings.uiDetailsEnableRewatchingNextUp, userSettings.uiDetailsMaxDaysNextUp, CreateObject("roDateTime").AsSeconds())
 
-    params = {}
-    params["recursive"] = true
-    params["SortBy"] = "DatePlayed"
-    params["SortOrder"] = "Descending"
-    params["EnableRewatching"] = userSettings.uiDetailsEnableRewatchingNextUp
-    params["DisableFirstEpisode"] = false
-    ' DELIBERATELY NO `limit`. Next Up is a WORKLIST — the user is trying to get through it,
-    ' so any cap hides episodes they are part-way into a series on, and no number is the right
-    ' one to hide at. It sent 69 for a long time, which was arbitrary rather than derived.
-    ' `uiHomeRowLimit` deliberately does NOT reach here: that setting sizes the browse FEEDS
-    ' (Recently Added / On Now / Active Recordings), where a limit chooses how much of a
-    ' larger set to sample. Continue Watching, the other worklist, sends no limit either and
-    ' has shipped that way — the two now match on purpose rather than by omission.
-    params["EnableTotalRecordCount"] = false
-    params["EnableResumable"] = false
-
-    maxDaysInNextUp = userSettings.uiDetailsMaxDaysNextUp
-    if isValid(maxDaysInNextUp)
-      if maxDaysInNextUp > 0
-        dateToday = CreateObject("roDateTime")
-        dateCutoff = CreateObject("roDateTime")
-
-        dateCutoff.FromSeconds(dateToday.AsSeconds() - (maxDaysInNextUp * 86400))
-
-        params["NextUpDateCutoff"] = dateCutoff.ToISOString()
-      end if
-    end if
-
-    data = fetchJson(GetApi().BuildGetNextUpRequest(params), "nextUp")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
+    ' Only a server not asked to drop unstarted series needs the client to (and to pay for
+    ' its lookups). The played-specials lookup does not need Next Up's answer, so it is sent
+    ' first and its wait overlaps Next Up's. Not sent while the pool is still coming up, and
+    ' the filter then goes without it (keepStartedSeries).
+    needsStartedFilter = nextUpNeedsStartedFilter(params)
+    specialsPort = CreateObject("roMessagePort")
+    specialsReq = invalid
+    if needsStartedFilter then specialsReq = submitApiRequest(GetApi().BuildGetItemsByQueryRequest(playedSpecialsQuery()), "nextUpPlayedSpecials", specialsPort)
+    items = fetchRowItems(GetApi().BuildGetNextUpRequest(params), "nextUp")
+    status = statusOf(items)
+    if isValid(items)
+      if needsStartedFilter then items = keepStartedSeries(items, specialsReq, specialsPort)
+      for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
+    else
+      dropApiRequest(specialsReq)
     end if
 
     ' Load Continue Watching
   else if m.top.itemsToLoad = "continue"
     activeUser = globalUser.id
+    ' No user means no request was made, which is not an answer.
+    status = "failed"
     if isValid(activeUser)
-      ' DELIBERATELY NO `limit`, and now stated rather than merely absent — the silence here
+      ' No `limit`, on purpose, and now stated rather than merely absent: the silence here
       ' was previously indistinguishable from nobody having got round to it. Continue Watching
       ' is a WORKLIST: capping it can only hide something the user is mid-way through. Next Up
       ' is uncapped for the same reason; `uiHomeRowLimit` sizes the browse feeds only.
       params = {}
       params["EnableTotalRecordCount"] = false
+      ' Alternate-versions badge: see buildHomeNextUpParams for the measured cost.
+      params["Fields"] = "MediaSourceCount"
 
-      data = fetchJson(GetApi().BuildGetResumeItemsRequest(params), "continue")
-      if isValid(data) and isValid(data.Items)
-        for each item in data.Items
+      items = fetchRowItems(GetApi().BuildGetResumeItemsRequest(params), "continue")
+      status = statusOf(items)
+      if isValid(items)
+        for each item in items
           ' Skip Books for now as we don't support it (issue #558)
           if item.Type <> "Book"
             results.push(m.transformer.transformBaseItem(item))
@@ -100,10 +97,22 @@ sub loadItems()
     params["SortBy"] = "SortName"
     params["SortOrder"] = "Ascending"
     params["EnableTotalRecordCount"] = false
+    ' ChildCount gives a collection or photo album tile its "N items" line, as in the details
+    ' Collections row; a list query returns it for those only when asked.
+    params["Fields"] = "MediaSourceCount,ChildCount"
 
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "favorites")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
+    items = fetchRowItems(GetApi().BuildGetItemsByQueryRequest(params), "favorites")
+    status = statusOf(items)
+    if isValid(items)
+      ' A favorited movie is the same tile the library grid draws, so it gets the same
+      ' correction: from 12.0 its own UserData can belong to a version other than the one Play
+      ' would start. Unscoped, since favorites span every library. Continue Watching and the series
+      ' resume row below need none of this: they are built FROM the resume list, so each row
+      ' already IS the version in progress.
+      changed = versionDisplay.correctDisplayProgress(items, m.global.server.version, "", "favoritesVersionDisplay", {})
+      if changed > 0 then m.log.debug("Corrected version progress on favorites", "count", changed)
+
+      for each item in items
         ' Skip Books for now as we don't support it (issue #558)
         if item.Type <> "Book"
           ' Live TV recordings come back from /Items as the content type (Movie/Episode).
@@ -117,27 +126,30 @@ sub loadItems()
       end for
     end if
 
-    ' People — favorited persons are not returned by /Items; requires /Persons endpoint.
-    personData = fetchJson(GetApi().BuildGetPersonsRequest({
+    ' Note: MusicArtist items ARE returned by /Items above (they are regular library items),
+    ' so no separate /Artists call is needed here (unlike search, where /Items misses them).
+
+    ' People: favorited persons are not returned by /Items; requires /Persons endpoint. Its own
+    ' load, so a failure of one request says nothing about the other's rows.
+  else if m.top.itemsToLoad = "favoritePeople"
+    items = fetchRowItems(GetApi().BuildGetPersonsRequest({
       "IsFavorite": true,
       "SortBy": "SortName",
       "SortOrder": "Ascending",
       "EnableTotalRecordCount": false
     }), "favoritePeople")
-    if isValid(personData) and isValid(personData.Items)
-      for each item in personData.Items
+    status = statusOf(items)
+    if isValid(items)
+      for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
     end if
-
-    ' Note: MusicArtist items ARE returned by /Items above (they are regular library items),
-    ' so no separate /Artists call is needed here (unlike search, where /Items misses them).
 
   else if m.top.itemsToLoad = "onNow"
     params = {}
     params["userId"] = globalUser.id
     params["isAiring"] = true
-    ' The comment this replaces read "16 to be consistent with Latest In" — a parity three
+    ' The comment this replaces read "16 to be consistent with Latest In": a parity three
     ' files asserted by hand and nothing enforced. Reading the same setting makes it hold.
     params["limit"] = resolveHomeRowLimit(globalUser.settings.uiHomeRowLimit)
     params["imageTypeLimit"] = 1
@@ -145,9 +157,10 @@ sub loadItems()
     params["enableTotalRecordCount"] = false
     params["fields"] = "ChannelInfo,PrimaryImageAspectRatio"
 
-    data = fetchJson(GetApi().BuildGetLiveTvRecommendedProgramsRequest(params), "onNow")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
+    items = fetchRowItems(GetApi().BuildGetLiveTvRecommendedProgramsRequest(params), "onNow")
+    status = statusOf(items)
+    if isValid(items)
+      for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
     end if
@@ -162,105 +175,38 @@ sub loadItems()
     params["enableTotalRecordCount"] = false
     params["fields"] = "ChannelInfo,PrimaryImageAspectRatio"
 
-    data = fetchJson(GetApi().BuildGetLiveTvRecordingsRequest(params), "activeRecordings")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
+    items = fetchRowItems(GetApi().BuildGetLiveTvRecordingsRequest(params), "activeRecordings")
+    status = statusOf(items)
+    if isValid(items)
+      for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
     end if
 
-    ' Extract array of persons from Views and download full metadata for each
-  else if m.top.itemsToLoad = "people"
-    if not isValid(m.top.peopleList)
-      m.top.content = results
-      return
-    end if
-    for each person in m.top.peopleList
-      node = m.transformer.transformPerson(person)
-      if isValid(node) then results.push(node)
-    end for
-  else if m.top.itemsToLoad = "specialfeatures"
-    data = fetchJson(GetApi().BuildGetSpecialFeaturesRequest(m.top.itemId), "specialfeatures")
-    if isValid(data) and data.count() > 0
-      for each specfeat in data
-        node = m.transformer.transformBaseItem(specfeat)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "additionalparts"
-    data = fetchJson(GetApi().BuildGetAdditionalPartsRequest(m.top.itemId), "additionalparts")
-    if isValid(data)
-      for each part in data.items
-        node = m.transformer.transformBaseItem(part)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "likethis"
-    params = { "userId": globalUser.id, "limit": 16 }
-    data = fetchJson(GetApi().BuildGetSimilarItemsRequest(m.top.itemId, params), "likethis")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "personMovies"
-    getPersonVideos("Movie", results)
-  else if m.top.itemsToLoad = "personTVShows"
-    getPersonVideos("Episode", results)
-  else if m.top.itemsToLoad = "personSeries"
-    getPersonVideos("Series", results)
-  else if m.top.itemsToLoad = "seasons"
-    data = fetchJson(GetApi().BuildGetSeasonsRequest(m.top.itemId, { Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true }), "seasons")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "seasonEpisodes"
-    ' itemId = seriesId, metadata.seasonId = season to load
-    if not isValid(m.top.metadata) or not isValidAndNotEmpty(m.top.metadata.seasonId)
-      m.log.warn("seasonEpisodes requested but metadata.seasonId is missing or empty; skipping GetEpisodes call")
-      m.top.content = results
-      return
-    end if
-    data = fetchJson(GetApi().BuildGetEpisodesRequest(m.top.itemId, {
-      SeasonId: m.top.metadata.seasonId,
-      Fields: "PrimaryImageAspectRatio,Overview",
-      EnableImages: true
-    }), "seasonEpisodes")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "seriesFirstEpisode"
-    data = fetchJson(GetApi().BuildGetEpisodesRequest(m.top.itemId, { Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" }), "seriesFirstEpisode")
-    if isValid(data) and isValid(data.Items) and data.Items.count() > 0
-      node = m.transformer.transformBaseItem(data.Items[0])
-      if isValid(node) then results.push(node)
-    end if
+    ' ItemDetails' extras rows are not loaded here: LoadExtrasRowsTask owns all of them.
   else if m.top.itemsToLoad = "seriesResume"
     ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
     ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
     resumeData = fetchJson(GetApi().BuildGetResumeItemsRequest({
       ParentId: m.top.itemId,
       Limit: 1,
-      Fields: "PrimaryImageAspectRatio",
+      Fields: "PrimaryImageAspectRatio,MediaSourceCount",
       EnableTotalRecordCount: false
     }), "seriesResume")
     if isValid(resumeData) and isValid(resumeData.Items) and resumeData.Items.Count() > 0
       node = m.transformer.transformBaseItem(resumeData.Items[0])
       if isValid(node) then results.push(node)
     else
-      ' No resumable episode — fall back to next unstarted episode.
-      ' DisableFirstEpisode: true so a Resume button never appears for a completely unwatched series.
-      nextUpData = fetchJson(GetApi().BuildGetNextUpRequest({ SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" }), "seriesNextUp")
-      if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
-        node = m.transformer.transformBaseItem(nextUpData.Items[0])
-        if isValid(node) then results.push(node)
+      ' No resumable episode: fall back to next unstarted episode, but only once a regular
+      ' episode has been watched: a Resume button must never appear for an unwatched series.
+      ' Checked here because Next Up's DisableFirstEpisode is ignored from Jellyfin 10.11 (#925).
+      playedData = fetchJson(GetApi().BuildGetItemsByQueryRequest(watchedRegularEpisodeQuery(m.top.itemId)), "seriesPlayed")
+      if hasWatchedRegularEpisode(playedData)
+        nextUpData = fetchJson(GetApi().BuildGetNextUpRequest({ SeriesId: m.top.itemId, Limit: 1, Fields: "PrimaryImageAspectRatio" }), "seriesNextUp")
+        if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
+          node = m.transformer.transformBaseItem(nextUpData.Items[0])
+          if isValid(node) then results.push(node)
+        end if
       end if
     end if
   else if m.top.itemsToLoad = "metaData"
@@ -271,44 +217,6 @@ sub loadItems()
     results.push(AudioStream(m.top.itemId))
   else if m.top.itemsToLoad = "backdropImage"
     results.push(BackdropImage(m.top.itemId))
-  else if m.top.itemsToLoad = "boxsetitems"
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "ParentId": m.top.itemId,
-      "SortBy": "PremiereDate,ProductionYear,SortName",
-      "SortOrder": "Ascending",
-      "Fields": "PrimaryImageAspectRatio,Overview",
-      "EnableTotalRecordCount": false
-    }), "boxsetitems")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "artistAlbums"
-    ' Albums where this artist is the album artist (AlbumArtistIds), sorted by year descending
-    data = MusicAlbumList(m.top.itemId)
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        results.push(item)
-      end for
-    end if
-  else if m.top.itemsToLoad = "artistAppearsOn"
-    ' Albums where this artist contributes (ContributingArtistIds) but is not the album artist
-    data = AppearsOnList(m.top.itemId)
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        results.push(item)
-      end for
-    end if
-  else if m.top.itemsToLoad = "albumSongs"
-    ' All Audio tracks under a MusicAlbum, sorted by track number
-    data = MusicSongList(m.top.itemId)
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        results.push(item)
-      end for
-    end if
   else if m.top.itemsToLoad = "lyrics"
     ' Fetch lyrics for an Audio item and join lines into a single string.
     ' Returns a one-element array containing the lyrics string, or empty on failure.
@@ -324,87 +232,96 @@ sub loadItems()
         results.push(lines.join(Chr(10)))
       end if
     end if
-  else if m.top.itemsToLoad = "artistSimilar"
-    ' Similar artists via the artist-specific endpoint (more reliable than Items/{id}/Similar for MusicArtist)
-    params = { "userId": globalUser.id, "limit": 16 }
-    data = fetchJson(GetApi().BuildGetArtistSimilarRequest(m.top.itemId, params), "artistSimilar")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "artistSongs"
-    ' All Audio tracks by this artist (ArtistIds = any capacity: album artist OR contributing).
-    ' Sorted by album then track number so songs group naturally even without album rows.
-    ' Limit 100 to avoid overwhelming the row for prolific artists.
-    data = GetSongsByArtistBroad(m.top.itemId)
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        results.push(item)
-      end for
-    end if
-  else if m.top.itemsToLoad = "playlistItems"
-    ' All items in a Playlist, sorted newest-added first.
-    data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(m.top.itemId, {
-      "SortBy": "DateCreated",
-      "SortOrder": "Descending",
-      "Fields": "PrimaryImageAspectRatio,Overview",
-      "EnableTotalRecordCount": false
-    }), "playlistItems")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "photoAlbumItems"
-    ' All photos in a PhotoAlbum, sorted by name.
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "ParentId": m.top.itemId,
-      "IncludeItemTypes": "Photo",
-      "SortBy": "SortName",
-      "SortOrder": "Ascending",
-      "Fields": "PrimaryImageAspectRatio",
-      "EnableTotalRecordCount": false
-    }), "photoAlbumItems")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "channelPrograms"
-    ' Upcoming (not yet aired) programs on a Live TV channel, sorted by start time.
-    ' ChannelInfo required for subtitle display (channel name) in JRRowItem.
-    data = fetchJson(GetApi().BuildGetLiveTVProgramsRequest({
-      "ChannelIds": m.top.itemId,
-      "HasAired": false,
-      "SortBy": "StartDate",
-      "SortOrder": "Ascending",
-      "Limit": 20,
-      "Fields": "ChannelInfo,PrimaryImageAspectRatio,Overview",
-      "EnableTotalRecordCount": false
-    }), "channelPrograms")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
   end if
 
+  ' `status` before `content`: the caller reads it in its `content` handler.
+  if status <> "" then m.top.status = status
+  ' Keep this the LAST statement: a caller may release (STOP) the node in its `content`
+  ' handler, before this function returns (see releaseTask), and work added below would
+  ' then silently not run.
   m.top.content = results
 
 end sub
 
-sub getPersonVideos(videoType as string, dest as object)
-  params = { personIds: m.top.itemId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" }
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "personVideos_" + videoType)
-  if isValid(data) and data.count() > 0
-    for each item in data.items
-      node = m.transformer.transformBaseItem(item)
-      if isValid(node) then dest.push(node)
-    end for
+' The items a Home row's request answered with, or invalid when it did not answer. Logs why
+' at warn, once: the row's failure tile says only that it failed, so the log is where the
+' cause lives (timeout, HTTP status, unreadable reply).
+'
+' Every Home row endpoint answers with a query result (`{ Items: [...] }`), read through
+' apiResponse.listFrom, so a 200 whose body holds no list is a failure too, not an empty row.
+'
+' @param req - the request AA, or invalid when it could not be built
+' @param requestId - the pool request id, also the log's label
+' @return an roArray of BaseItemDto AAs (possibly empty), or invalid
+function fetchRowItems(req as dynamic, requestId as string) as dynamic
+  if not isValid(req)
+    m.log.warn("home row load failed", requestId, "cause", "not sent")
+    return invalid
   end if
-end sub
+  res = fetchRes(req, requestId)
+  cause = apiResponse.jsonFailure(res)
+  items = invalid
+  if cause = ""
+    items = apiResponse.listFrom(res.json)
+    if not isValid(items) then cause = "unexpected reply shape"
+  end if
+  if cause <> ""
+    m.log.warn("home row load failed", requestId, "cause", cause)
+    return invalid
+  end if
+  return items
+end function
+
+' Drops the Next Up items whose series has no watched regular episode (classifyNextUpSeries).
+'
+' The played-specials lookup was sent alongside Next Up (specialsReq). Its answer splits the
+' series (planNextUpSeriesLookups), so the count lookups and the exact per-series checks go out
+' together and only one round of requests waits after Next Up's. The Next Up fetch before this
+' blocked on the pool, so the pool is up for apiPipeline.
+'
+' The whole filter gets one request's wait (timeouts.API_WAIT_MS), shared by collecting the
+' specials and the round, so a slow server holds the row back by that much at most. A lookup
+' with no answer, including the specials when they could not be sent early, keeps the items it
+' would have judged.
+function keepStartedSeries(items as object, specialsReq as dynamic, specialsPort as object) as object
+  seriesIds = nextUpSeriesIds(items)
+  if seriesIds.count() = 0
+    dropApiRequest(specialsReq)
+    return items
+  end if
+
+  clock = CreateObject("roTimespan")
+  found = newNextUpLookups()
+  playedSpecials = invalid
+  res = collectApiRequest(specialsReq, specialsPort, timeouts.API_WAIT_MS)
+  if isValid(res) and res.ok then playedSpecials = apiResponse.listFrom(res.json)
+  if not isValid(playedSpecials) then found.unanswered++
+
+  api = GetApi()
+  entries = nextUpLookupQueries(planNextUpSeriesLookups(seriesIds, playedSpecials))
+  for each entry in entries
+    entry.req = api.BuildGetItemsByQueryRequest(entry.query)
+  end for
+  pipe = apiPipelineBegin(entries, timeouts.API_WAIT_MS - clock.TotalMilliseconds())
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    foldNextUpLookup(found, result.entry, result.res)
+    result = apiPipelineNext(pipe)
+  end while
+
+  starts = classifyNextUpSeries(found.seriesItems)
+  starts.append(found.starts)
+  kept = keepStartedSeriesItems(items, starts)
+
+  specialsCount = -1
+  if isValid(playedSpecials) then specialsCount = playedSpecials.count()
+  if found.unanswered > 0 then m.log.warn("Next Up kept series it could not check", "unanswered lookups", found.unanswered)
+  m.log.debug("Next Up started-series filter", "dropped", items.count() - kept.count(), "series", seriesIds.count(), "played specials", specialsCount, "ms", clock.TotalMilliseconds())
+  return kept
+end function
+
+' `status` for a Home row load from what fetchRowItems returned.
+function statusOf(items as dynamic) as string
+  if isValid(items) then return "ok"
+  return "failed"
+end function

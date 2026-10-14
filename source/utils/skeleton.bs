@@ -2,17 +2,17 @@ import "pkg:/source/utils/misc.bs"
 
 ' The SKELETON-cell convention: a row that exists before its items have landed.
 '
-' Both cell components render skeletons — `JRRowItem` for Home's rows and `GridItem` for
-' the item grid's genre rows — and several views build and guard against them. The whole
-' convention lives here: the placeholder a producer appends, the predicate a consumer
-' guards with, and the spinner the cells draw. A hand-typed `"Loading"` literal at any
-' site is drift waiting to happen — a misspelled construction site would send a bare
-' ContentNode into the media render path, where reading absent fields crashes the
-' render thread.
+' Both cell components render skeletons (`JRRowItem` for the Home and Favorites rows,
+' `GridItem` for the item grid's genre rows), and several views build and guard against
+' them. The whole convention lives here: the placeholder a producer appends, the
+' predicate a consumer guards with, and the spinner the cells draw. A hand-typed
+' `"Loading"` literal at any site is drift waiting to happen: a misspelled construction
+' site would send a bare ContentNode into the media render path, where reading absent
+' fields crashes the render thread.
 namespace skeleton
 
   ' The `type` field value that marks a placeholder. Compare via isPlaceholder(),
-  ' construct via createPlaceholder() — never hand-type this string elsewhere.
+  ' construct via createPlaceholder(). Never hand-type this string elsewhere.
   const PLACEHOLDER_TYPE = "Loading"
 
   ' Builds the placeholder child a skeleton row carries so the RowList renders the row
@@ -31,6 +31,26 @@ namespace skeleton
     return node.type = skeleton.PLACEHOLDER_TYPE
   end function
 
+  ' Builds the placeholder a row shows when its first load FAILED: drawn as a "couldn't
+  ' load" tile instead of a spinner, so a failure does not read as still loading.
+  '
+  ' Still a placeholder to isPlaceholder(), on purpose: every guard that keeps a skeleton
+  ' out of selection, quick play and the media render path keeps this one out too. Only a
+  ' site that means to treat the failure differently asks isFailedPlaceholder().
+  function createFailedPlaceholder() as object
+    placeholder = CreateObject("roSGNode", "ContentNode")
+    placeholder.addFields({ type: skeleton.PLACEHOLDER_TYPE, loadFailed: true })
+    return placeholder
+  end function
+
+  ' True when `node` is a placeholder whose load failed (createFailedPlaceholder). Safe on
+  ' invalid and on nodes with no `loadFailed` field.
+  function isFailedPlaceholder(node as dynamic) as boolean
+    if not skeleton.isPlaceholder(node) then return false
+    failed = node.loadFailed
+    return isValid(failed) and failed = true
+  end function
+
   ' Diameter of the spinner graphic, in px. Small enough to read as "this cell is
   ' waiting" rather than as content in its own right.
   const SPINNER_SIZE = 48
@@ -42,8 +62,8 @@ namespace skeleton
   ' the reference (one spinner per recycled cell); this only knows how to size, place
   ' and start it.
   '
-  ' Creation work (sizing the graphic, parenting to `owner`) happens ONCE, in the
-  ' create branch — cells are recycled and re-bound often, an appendChild of an
+  ' Creation work (sizing the graphic, parenting to `owner`) happens once, in the
+  ' create branch. Cells are recycled and re-bound often, an appendChild of an
   ' already-parented child is a detach+reattach scene-graph mutation, and
   ' `control = "start"` on a running spinner visibly resets the animation. The
   ' steady-state path only re-places (slot sizes differ across rows) and re-shows.
@@ -51,7 +71,7 @@ namespace skeleton
   ' @param owner - the cell node the spinner is parented to (constant per caller)
   ' @param spinner - the caller's existing spinner, or invalid on first use
   ' @param slotWidth - the cell's width
-  ' @param posterHeight - the poster area's height (the spinner centers within it, NOT
+  ' @param posterHeight - the poster area's height (the spinner centers within it, not
   '        within the full cell, whose height includes the title area below the poster)
   ' @param posterTop - the poster area's y offset within the cell (0 when the poster
   '        sits at the cell origin, as in JRRowItem; GridItem offsets it)
@@ -78,7 +98,7 @@ namespace skeleton
 
   ' Hides and stops `spinner` if the caller ever created one.
   '
-  ' Call this on every non-skeleton render, not just when leaving a skeleton: cells are
+  ' Call this on every non-skeleton render, not only when leaving a skeleton: cells are
   ' RECYCLED, so the cell now rendering a real item may be the same node that showed a
   ' spinner a moment ago. A spinner left running would keep animating over real content.
   sub hideSpinner(spinner as dynamic)

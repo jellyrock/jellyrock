@@ -19,10 +19,20 @@ import "pkg:/source/utils/translate.bs"
 const PANEL_WIDTH = 900
 const MAX_VISIBLE_ROWS = 8
 
+' Floor for a `sizeToContent` panel. Derived, not picked: DIALOG_BUTTON_MIN_WIDTH
+' is already this app's answer to "how narrow may a focusable control get before
+' it stops reading as one", and a menu row is exactly that. A three-letter label
+' would otherwise produce a ~180px panel that looks broken rather than compact.
+const MIN_CONTENT_PANEL_WIDTH = DIALOG_BUTTON_MIN_WIDTH + (PANEL_PADDING * 2)
+
 sub init()
   m.log = new log.Logger("JRListDialog")
 
   m.chrome = m.top.findNode("chrome")
+  m.widthProbe = m.top.findNode("widthProbe")
+  ' contentWidth is published from applyLayout rather than pinned here, because a
+  ' `sizeToContent` panel does not know its width until it has measured its rows.
+  ' The fixed-width path still lands on exactly this value.
   m.chrome.contentWidth = PANEL_WIDTH - (PANEL_PADDING * 2)
   ' The chrome measures the title and publishes its height; layout can only be
   ' computed once that exists.
@@ -32,7 +42,7 @@ sub init()
   m.optionList.observeField("itemSelected", "onItemSelected")
   applyListFocusChrome(m.optionList)
 
-  ' floatingFocus, ALWAYS — never fixedFocusWrap. Roku's own wrap engages only
+  ' floatingFocus, always, never fixedFocusWrap. Roku's own wrap engages only
   ' "as long as the list contains enough items to fill the list", so the dialog's
   ' behaviour would change shape with its content. Wrapping is implemented here
   ' instead (see onKeyEvent), where it is unconditional and unit-tested.
@@ -40,18 +50,25 @@ sub init()
 
   m.resolved = false
 
-  ' Screen-reader announcement — mirrors JRDialog: focus changes drive it, and
+  ' Screen-reader announcement. It mirrors JRDialog: focus changes drive it, and
   ' the opening announcement additionally needs the timer (see
-  ' OPENING_ANNOUNCEMENT_DELAY in JRDialog.bs for why it cannot be event-driven).
+  ' narration.OPENING_DELAY in dialogNarration.bs for why it cannot be event-driven).
   m.top.observeField("focusedChild", "onDialogFocusChanged")
   m.narrationTimer = m.top.findNode("narrationTimer")
-  m.narrationTimer.duration = 0.15
+  m.narrationTimer.duration = narration.OPENING_DELAY
   m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
   m.hasNarrated = false
 end sub
 
+' Drives the panel's title, which is the DRAWN one. `m.top.title` is left alone
+' because narration reads it (see onOpeningAnnouncementDue): a menu with no
+' visible heading still announces "More" before its focused row.
 sub onTitleChanged()
-  m.chrome.title = m.top.title
+  if m.top.titleVisible
+    m.chrome.title = m.top.title
+  else
+    m.chrome.title = ""
+  end if
 end sub
 
 sub onTitleMeasured()
@@ -68,25 +85,30 @@ sub onItemsChanged()
     content.removeChildIndex(0)
   end while
   ' The CURRENT option is marked on the row itself, so it stays visible once the
-  ' user moves focus off it. selectedIndex — NOT defaultIndex, which is only
+  ' user moves focus off it. selectedIndex, not defaultIndex, which is only
   ' which row to focus and falls back to 0. -1 marks nothing, which is what a
   ' choice dialog and a picker with no matching track both want.
   selectedIndex = m.top.selectedIndex
+  ' Optional and positionally paired with `items`: see the field comment in the
+  ' XML for why it is a parallel array rather than a richer `items` shape.
+  icons = m.top.icons
   index = 0
   for each item in items
     row = CreateObject("roSGNode", "ContentNode")
     row.title = toString(item)
-    row.addFields({ isSelected: index = selectedIndex })
+    rowIconUri = ""
+    if isValid(icons) and index < icons.count() then rowIconUri = toString(icons[index])
+    row.addFields({ isSelected: index = selectedIndex, icon: rowIconUri })
 
     ' The three visual markers (check glyph, surface, hue) are all sighted-only,
     ' so the current option is also announced. AUDIO_GUIDE_SUFFIX is a PREDEFINED
     ' ContentNode field that MarkupList speaks after the row title and the
-    ' platform's own "1 of 3" navigation hint — see the per-node table in
+    ' platform's own "1 of 3" navigation hint: see the per-node table in
     ' docs/DEVELOPER/media-playback/text-to-speech.md (rokudev/dev-doc).
     '
     ' setField, not dot access: the field is absent from BrighterScript's
     ' roSGNodeContentNode type, so `row.AUDIO_GUIDE_SUFFIX = ...` fails
-    ' validation with cannot-find-name. Same reason as JRKeyboardDialog.bs:30.
+    ' validation with cannot-find-name. Same reason as JRKeyboardDialog.onSecureChanged.
     if index = selectedIndex
       row.setField("AUDIO_GUIDE_SUFFIX", translate(translationKeys.LabelCurrentlySelected))
     end if
@@ -110,15 +132,27 @@ sub applyLayout()
   visibleRows = items.count()
   if visibleRows > MAX_VISIBLE_ROWS then visibleRows = MAX_VISIBLE_ROWS
 
+  panelWidth = resolvePanelWidth(items)
+  ' Guarded because the chrome re-measures its title whenever this changes, which
+  ' comes back here through onTitleMeasured. Setting it unconditionally would make
+  ' every layout pass schedule another one.
+  contentWidth = panelWidth - (PANEL_PADDING * 2)
+  if m.chrome.contentWidth <> contentWidth then m.chrome.contentWidth = contentWidth
+
+  ' invalid when unset, which computeDialogLayout reads as "center it", so the
+  ' fixed-width dialogs reach exactly the layout they always did.
+  anchor = m.top.anchor
+
   layout = computeDialogLayout({
-    panelWidth: PANEL_WIDTH,
+    panelWidth: panelWidth,
     titleHeight: m.chrome.titleHeight,
     bodyHeight: listHeightFor(visibleRows),
-    footerHeight: 0
+    footerHeight: 0,
+    anchor: anchor
   })
 
   ' The flow CLAMPS the body at the ceiling, so a body that did not fit comes
-  ' back shorter than it asked for — and a list drawn at the height it wanted
+  ' back shorter than it asked for, and a list drawn at the height it wanted
   ' would then run past the panel's bottom padding. MAX_VISIBLE_ROWS keeps this
   ' out of reach for a one-line title (8 rows = 648 against ~705 available), but
   ' a title that wraps to two lines eats the margin. Drop rows to what the panel
@@ -128,16 +162,17 @@ sub applyLayout()
   if layout.overflows
     visibleRows = rowsThatFit(layout.body.height)
     layout = computeDialogLayout({
-      panelWidth: PANEL_WIDTH,
+      panelWidth: panelWidth,
       titleHeight: m.chrome.titleHeight,
       bodyHeight: listHeightFor(visibleRows),
-      footerHeight: 0
+      footerHeight: 0,
+      anchor: anchor
     })
 
     ' Dropping rows fixes a body that was too tall; it cannot fix a TITLE that
     ' blows the ceiling on its own, which leaves the flow no body to give back
-    ' and pins rowsThatFit at its floor of one row. Lay it out anyway — a panel
-    ' slightly over is visible and recoverable — but SAY SO, because JRDialog
+    ' and pins rowsThatFit at its floor of one row. Lay it out anyway (a panel
+    ' slightly over is visible and recoverable), but SAY SO, because JRDialog
     ' warns in exactly this position and a silent list is the harder of the two
     ' to notice.
     if layout.overflows
@@ -152,6 +187,42 @@ sub applyLayout()
   m.optionList.numRows = visibleRows
   m.optionList.translation = [layout.body.x, layout.body.y]
 end sub
+
+' The panel's width. Fixed at PANEL_WIDTH unless the caller opted into
+' `sizeToContent`, in which case it is derived from the widest row label.
+'
+' The row's own arithmetic, inverted. JRListDialogRow puts its label at
+' LIST_ROW_CHECK_GUTTER and gives it `rowWidth - LIST_ROW_CHECK_GUTTER -
+' LIST_ROW_PADDING`, so the width that makes the longest label exactly fit is
+' that expression solved for rowWidth. Reading it off the row rather than
+' inventing a padding figure is what keeps the two from drifting.
+'
+' Snapped onto the 6px scale for the same reason every other panel width is:
+' anchored placement does not halve it, but the panel's RIGHT edge is
+' panelX + panelWidth, and only a width divisible by 3 keeps that edge on the
+' grid once panelX is there.
+function resolvePanelWidth(items as object) as integer
+  if not m.top.sizeToContent then return PANEL_WIDTH
+
+  ' Every item, not only the visible ones: a list taller than MAX_VISIBLE_ROWS
+  ' scrolls, and a row that scrolls into view must not be wider than the panel
+  ' holding it. At overflow-menu sizes this is a handful of measurements on the
+  ' render thread, where they are thread-local and cheap.
+  widestLabel = 0
+  for each item in items
+    m.widthProbe.text = toString(item)
+    labelWidth = m.widthProbe.localBoundingRect().width
+    if labelWidth > widestLabel then widestLabel = labelWidth
+  end for
+
+  width = snapPanelWidthToScale(int(widestLabel) + LIST_ROW_CHECK_GUTTER + LIST_ROW_PADDING + (PANEL_PADDING * 2))
+
+  if width < MIN_CONTENT_PANEL_WIDTH then return MIN_CONTENT_PANEL_WIDTH
+  ' Never WIDER than the fixed width either. Past that the menu has stopped being
+  ' a menu, and the centred list dialog is the surface that suits it.
+  if width > PANEL_WIDTH then return PANEL_WIDTH
+  return width
+end function
 
 ' A row is LIST_ROW_HEIGHT tall and the gaps sit BETWEEN rows, so n rows occupy
 ' n * height + (n - 1) * spacing. The two helpers below are inverses of each
@@ -174,7 +245,7 @@ end function
 ' Screen-reader announcement, driven by the focus event itself rather than a
 ' guessed delay (see JRDialog.onButtonFocusChanged for the full reasoning).
 '
-' Only the opening announcement is ours. The list is a real LabelList, which the
+' Only the opening announcement is ours. The list is a real MarkupList, which the
 ' platform narrates itself (focused row title plus a navigation hint), and there
 ' is nothing else in this dialog to announce.
 sub onDialogFocusChanged()
@@ -185,7 +256,7 @@ end sub
 sub onOpeningAnnouncementDue()
   ' FAILSAFE for the layout cover, riding a timer that already exists and already
   ' means "this dialog has been open for 0.15s". A dialog that never completes a
-  ' layout would otherwise stay covered — i.e. invisible while still holding the
+  ' layout would otherwise stay covered, that is, invisible while still holding the
   ' remote. Uncovering it here means the worst case is the pre-existing broken
   ' paint, not a black screen. See dialogReveal.bs.
   revealDialog(m.top)
@@ -197,7 +268,7 @@ sub onOpeningAnnouncementDue()
   index = m.top.defaultIndex
   if isValid(items) and index >= 0 and index < items.count()
     focusedText = toString(items[index])
-    ' If the row we open on is the current option, say so — otherwise the SAME
+    ' If the row we open on is the current option, say so. Otherwise the SAME
     ' row gets described two different ways depending on how you arrived at it.
     ' Measured on a Roku Ultra: opening said "Select video source. B&W 1080p
     ' h264", but arrowing away and back said "B&W 1080p h264, 1 of 2, currently
@@ -215,20 +286,20 @@ sub onOpeningAnnouncementDue()
     end if
   end if
 
-  ' The platform's "1 of 2" navigation hint is deliberately NOT reproduced here.
+  ' The platform's "1 of 2" navigation hint is not reproduced here.
   ' It is unconditional for any ArrayGrid-derived list and not suppressible, so
-  ' the user hears it the moment they move — but its wording is Roku's and
-  ' localised by Roku, and a hand-rolled "{0} of {1}" would drift from it in
+  ' the user hears it the moment they move, but its wording is Roku's and
+  ' localized by Roku, and a hand-rolled "{0} of {1}" would drift from it in
   ' every locale but English. Saying less beats saying it differently.
   '
-  ' No `message` field on this dialog — the title carries the whole prompt
+  ' No `message` field on this dialog: the title carries the whole prompt
   narrateDialogOpening(m.top.title, "", focusedText)
 end sub
 
 ' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
 '
 ' The dialog is hidden until this returns, so there is no renderTracking to wait
-' on — and none is needed, because localBoundingRect() answers while hidden. See
+' on, and none is needed, because localBoundingRect() answers while hidden. See
 ' dialogReveal.bs.
 sub settleLayout()
   applyLayout()
@@ -249,11 +320,11 @@ sub resolveDialog(index as integer, externallyCancelled = false as boolean)
   closeDialog()
 end sub
 
-' Cancel this dialog from OUTSIDE — see cancelOpenDialog() in source/utils/dialogs.bs.
+' Cancel this dialog from OUTSIDE: see cancelOpenDialog() in source/utils/dialogs.bs.
 ' Routed through resolveDialog so the once-only guard and the standard cancelled
 ' result both apply: a third party clearing the screen must be indistinguishable
 ' from the user pressing Back, or the owner waiting on the result is stranded.
-' The result still records that it came from code — see JRDialog.cancelDialog.
+' The result still records that it came from code: see JRDialog.cancelDialog.
 sub cancelDialog()
   resolveDialog(-1, true)
 end sub
@@ -289,6 +360,6 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   end if
 
-  ' "consume" — modal containment: nothing escapes to the scene behind us.
+  ' "consume" is modal containment: nothing escapes to the scene behind us.
   return true
 end function

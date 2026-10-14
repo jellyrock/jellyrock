@@ -1,15 +1,15 @@
 /**
- * BrighterScript plugin — print-statement location enforcement.
+ * BrighterScript plugin: print-statement location enforcement.
  *
- * Flags `print` statements that should be `m.log.*` calls — so production
+ * Flags `print` statements that should be `m.log.*` calls, so production
  * builds can strip the call-sites entirely (see `docs/architecture/logging.md`,
- * `components/CLAUDE.md` "No raw print statements").
+ * "Where `print` is allowed").
  *
  * Smart-skipped contexts (no `m.log` access available, so `print` is the only
- * option and flagging it would just create noise):
- *  - `source/main.bs` — early bootstrap, runs before the log manager is up.
- *  - The `#if debug` block in `source/utils/globals.bs` — developer console hints.
- *  - Any free function in `source/*.bs` — top-level subs/functions outside a
+ * option and flagging it would only create noise):
+ *  - `source/main.bs`: early bootstrap, runs before the log manager is up.
+ *  - The `#if debug` block in `source/utils/globals.bs`: developer console hints.
+ *  - Any free function in `source/*.bs`: top-level subs/functions outside a
  *    class can't carry an `m.log` instance (no `init()` / no constructor).
  *
  * Flagged contexts (do have access to `m.log` via component instance or class):
@@ -18,9 +18,9 @@
  *  - Any class method in any `.bs` file (the class can hold an `m.log`).
  *
  * Escape hatches:
- *  - `' bsc-disable-file print-locations` — suppress all warnings in this file
- *  - `' bsc-disable-line print-locations` — on the same line as the print
- *  - `' bsc-disable-next-line print-locations` — on the line above
+ *  - `' bsc-disable-file print-locations`: suppress all warnings in this file
+ *  - `' bsc-disable-line print-locations`: on the same line as the print
+ *  - `' bsc-disable-next-line print-locations`: on the line above
  */
 'use strict';
 

@@ -1,5 +1,5 @@
 /**
- * BrighterScript plugin — callFunc() targets must be declared in a component
+ * BrighterScript plugin: callFunc() targets must be declared in a component
  * <interface>.
  *
  * THE BUG THIS PREVENTS
@@ -7,15 +7,15 @@
  * `node.callFunc("doThing")` only dispatches to a function that the target
  * component EXPOSES via `<function name="doThing" />` in its `<interface>`.
  * If the codebehind defines `sub doThing()` but the `.xml` interface never
- * declares it, the `callFunc` is a SILENT no-op — no compile error, no runtime
- * error, the method simply never runs. This bit us shipping the watched-toggle
+ * declares it, the `callFunc` is a silent no-op: no compile error, no runtime
+ * error, the method never runs. This bit us shipping the watched-toggle
  * migration (#551 Batch 2): `ItemDetails.toggleWatched()` was written and
  * `main.bs` called `group.callFunc("toggleWatched")`, but the
  * `<function name="toggleWatched" />` interface line was missing, so the build
  * passed clean and the toggle did nothing on-device. The transpiler can't catch
- * this on its own — so this plugin does.
+ * this on its own, so this plugin does.
  *
- * THE RULE (deliberately conservative — near-zero false positives)
+ * THE RULE (conservative on purpose: near-zero false positives)
  * ---------------------------------------------------------------
  * For every `callFunc("X")` string-literal call site in our (non-vendored) code,
  * ERROR when BOTH hold:
@@ -24,18 +24,36 @@
  *   - X is declared in NO component `<interface><function>` anywhere in the
  *     program.
  * That pair is, by construction, always the "wrote the method, forgot the
- * interface line" bug — there is no legitimate version of it (an undeclared
+ * interface line" bug: there is no legitimate version of it (an undeclared
  * target is always a no-op). Membership is checked PROGRAM-WIDE and
  * case-insensitively (BrightScript identifiers are case-insensitive): if ANY
  * component declares `<function name="X" />`, no `callFunc("X")` is flagged.
  * That makes the check err toward false NEGATIVES (a callFunc to a non-declaring
  * component whose name another component happens to declare slips through) and
- * away from false POSITIVES — the right trade for a build-FAILING error.
+ * away from false POSITIVES, the right trade for a build-FAILING error.
  *
  * Targets we don't own (X defined only in `roku_modules` vendored components,
- * e.g. the log library's `logItem`) are out of scope and never flagged.
+ * such as the log library's `logItem`) are out of scope and never flagged.
  *
- * Escape hatches (rare — an undeclared target is normally a real bug):
+ * `m.top.callFunc("X")` IS decidable exactly, so it gets an exact rule instead.
+ * `m.top` is always a component whose scope includes this file (the file's own
+ * component, or one that extends it), and that node exposes its own interface
+ * plus every ancestor's. So the call is a no-op unless X is declared on one of
+ * those components or their ancestors, whatever other component happens to
+ * declare an X. The program-wide rule missed exactly that: VideoPlayerView's
+ * Live TV stall handler called `m.top.callFunc("refresh")`, which never ran
+ * because only Home declared a `refresh` at the time. A file in no component scope (plain
+ * `source/`) falls back to the program-wide rule.
+ *
+ * Runs once per validation via `scripts/lib/bsc-rule.cjs`'s program-rule
+ * lifecycle, which drops the previous run's findings before this one re-derives
+ * them. That matters here more than anywhere: the verdict for a call site lives
+ * in a DIFFERENT file (the target component's `<interface>`), so adding the
+ * `<function>` declaration this message asks for used to leave the error sitting
+ * on the caller's `.bs` until that file was separately touched: the author does
+ * exactly what the diagnostic says and the IDE keeps saying no.
+ *
+ * Escape hatches (rare: an undeclared target is normally a real bug):
  *  - `' bsc-disable-line callfunc-interface` on the callFunc line
  *  - `' bsc-disable-next-line callfunc-interface` on the line above
  *  - `' bsc-disable-file callfunc-interface` anywhere in the file
@@ -43,28 +61,22 @@
 'use strict';
 
 const brighterscript = require('brighterscript');
+const { createProgramRule, stringLiteralValue } = require('../lib/bsc-rule.cjs');
 
 const CALLFUNC = 'callFunc';
 const DIAGNOSTIC_CODE = 'callfunc-interface';
-const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+callfunc-interface\b/i;
-const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+callfunc-interface\b/i;
-const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+callfunc-interface\b/i;
 const VENDORED = /(^|[\\/])roku_modules([\\/])/;
 
-class CallFuncInterfacePlugin {
-  constructor() {
-    this.name = 'jellyrock-callfunc-interface';
-  }
-
-  // Program-wide cross-check: needs every interface decl + every component
-  // method name before it can judge a single callFunc site, so it runs once
-  // after all files validate (see Program.js: "use afterValidateProgram").
-  afterValidateProgram(event) {
-    try {
-      const program = event.program;
+// Program-wide cross-check: needs every interface decl + every component method
+// name before it can judge a single callFunc site, so it runs once after all
+// files validate (see Program.js: "use afterValidateProgram").
+module.exports = () =>
+  createProgramRule({
+    name: 'jellyrock-callfunc-interface',
+    analyze({ program, report }) {
       const files = Object.values(program.files || {});
 
-      // 1. DECLARED — every <function name> across ALL component interfaces
+      // 1. DECLARED: every <function name> across ALL component interfaces
       //    (vendored included; that only makes the guard more conservative).
       const declared = new Set();
       for (const file of files) {
@@ -74,7 +86,7 @@ class CallFuncInterfacePlugin {
         }
       }
 
-      // 2. DEFINED — every top-level function/sub in a NON-vendored component
+      // 2. DEFINED: every top-level function/sub in a NON-vendored component
       //    codebehind. That's the precise universe of callFunc targets we own.
       const definedInComponents = new Set();
       for (const file of files) {
@@ -85,38 +97,79 @@ class CallFuncInterfacePlugin {
         }
       }
 
-      // 3. FLAG — callFunc("X") where X is one of our component methods but is
+      // Every component scope a file runs in. A component's scope includes its ancestors'
+      // files, so this reaches the components EXTENDING the file's own, which getScopesForFile
+      // does not (it returns only the component that names the file).
+      const scopesByFile = new Map();
+      for (const scope of program.getScopes?.() || []) {
+        if (!brighterscript.isXmlScope(scope)) continue;
+        for (const f of scope.getAllFiles()) {
+          if (!scopesByFile.has(f)) scopesByFile.set(f, []);
+          scopesByFile.get(f).push(scope);
+        }
+      }
+
+      // 3. FLAG: callFunc("X") where X is one of our component methods but is
       //    declared in no interface (the silent no-op).
       for (const file of files) {
         if (!brighterscript.isBrsFile(file) || isVendored(file)) continue;
-        const contents = file.fileContents;
-        if (typeof contents === 'string' && DISABLE_FILE_MARKER.test(contents)) continue;
-        const sourceLines = (contents || '').split(/\r?\n/);
 
+        const onTop = mTopInterfaceNames(scopesByFile.get(file));
         for (const site of findCallFuncSites(file)) {
           const key = site.method.toLowerCase();
-          if (!definedInComponents.has(key)) continue; // external/vendored target — out of scope
-          if (declared.has(key)) continue; // exposed somewhere — fine
+          if (site.isMTop && onTop) {
+            if (!onTop.has(key)) report(mTopFinding(file, site));
+            continue;
+          }
+          if (!definedInComponents.has(key)) continue; // external/vendored target, out of scope
+          if (declared.has(key)) continue; // exposed somewhere, fine
 
-          const srcLine = sourceLines[site.line] ?? '';
-          if (DISABLE_LINE_MARKER.test(srcLine)) continue;
-          const prevLine = site.line > 0 ? (sourceLines[site.line - 1] ?? '') : '';
-          if (DISABLE_NEXT_LINE_MARKER.test(prevLine)) continue;
-          if (!site.location) continue;
-
-          program.diagnostics.register({
+          report({
             code: DIAGNOSTIC_CODE,
-            severity: 1, // Error — an undeclared callFunc target is a silent no-op.
-            source: this.name,
-            message: `callFunc("${site.method}") targets a method defined in a component codebehind but declared in NO component <interface>. callFunc only dispatches to functions exposed via <function name="${site.method}" />; without that line the call is a SILENT no-op (the transpiler does not catch it). Add <function name="${site.method}" /> to the target component's <interface>. Suppress with ' bsc-disable-next-line callfunc-interface only if this is deliberate.`,
+            severity: 1, // Error: an undeclared callFunc target is a silent no-op.
+            file,
             location: site.location,
+            message: `callFunc("${site.method}") targets a method defined in a component codebehind but declared in NO component <interface>. callFunc only dispatches to functions exposed via <function name="${site.method}" />; without that line the call is a SILENT no-op (the transpiler does not catch it). Add <function name="${site.method}" /> to the target component's <interface>. Suppress with ' bsc-disable-next-line callfunc-interface only if this is deliberate.`,
           });
         }
       }
-    } catch (_e) {
-      // Never crash the build — the plugin is a guard, not a hard dependency.
+    },
+  });
+
+function mTopFinding(file, site) {
+  return {
+    code: DIAGNOSTIC_CODE,
+    severity: 1, // Error: an undeclared callFunc target is a silent no-op.
+    file,
+    location: site.location,
+    message: `m.top.callFunc("${site.method}") targets a function that this component, the components extending it, and their ancestors all leave out of their <interface>, so the call is a SILENT no-op whatever other component declares it. Add <function name="${site.method}" /> to this component's <interface> (and define it), or call it directly if it is local. Suppress with ' bsc-disable-next-line callfunc-interface only if this is deliberate.`,
+  };
+}
+
+// Lower-cased <function> names `m.top` can expose, given the component scopes a file runs in
+// (its own component, and each one extending it), plus each one's ancestors. null when the file
+// is in no component scope, so the caller falls back to the program-wide rule.
+function mTopInterfaceNames(scopes) {
+  if (!scopes?.length) return null;
+  const names = new Set();
+  for (const scope of scopes) {
+    const seen = new Set();
+    for (let xml = scope.xmlFile; xml && !seen.has(xml); xml = xml.parentComponent) {
+      seen.add(xml);
+      for (const name of interfaceFunctionNames(xml)) names.add(name.toLowerCase());
     }
   }
+  return names;
+}
+
+// True for the receiver `m.top` (case-insensitive, like every BrightScript identifier).
+function isMTopReceiver(obj) {
+  return (
+    brighterscript.isDottedGetExpression(obj) &&
+    obj.tokens?.name?.text?.toLowerCase() === 'top' &&
+    brighterscript.isVariableExpression(obj.obj) &&
+    obj.obj.tokens?.name?.text?.toLowerCase() === 'm'
+  );
 }
 
 // All `<function name="...">` names declared in a component's <interface>.
@@ -145,7 +198,7 @@ function topLevelFunctionNames(brsFile) {
   return out;
 }
 
-// Every `<obj>.callFunc("X")` string-literal call site: { method, location, line }.
+// Every `<obj>.callFunc("X")` string-literal call site: { method, isMTop, location, line }.
 function findCallFuncSites(brsFile) {
   const ast = brsFile?.parser?.ast;
   if (!ast || typeof ast.walk !== 'function') return [];
@@ -157,10 +210,11 @@ function findCallFuncSites(brsFile) {
       if (callee.tokens?.name?.text !== CALLFUNC) return;
       const arg = call.args?.[0];
       if (!brighterscript.isLiteralExpression(arg)) return;
-      const method = unwrapStringLiteral(arg.tokens?.value?.text);
+      const method = stringLiteralValue(arg.tokens?.value?.text);
       if (!method) return;
       sites.push({
         method,
+        isMTop: isMTopReceiver(callee.obj),
         location: call.location,
         line: call.location?.range?.start?.line ?? 0,
       });
@@ -170,7 +224,7 @@ function findCallFuncSites(brsFile) {
   return sites;
 }
 
-// True if the brs file has a sibling component .xml (i.e. it's a codebehind).
+// True if the brs file has a sibling component .xml (that is, it's a codebehind).
 function hasSiblingComponentXml(program, brsFile) {
   if (!program || !brsFile) return false;
   const bases = [];
@@ -186,13 +240,3 @@ function hasSiblingComponentXml(program, brsFile) {
 function isVendored(file) {
   return VENDORED.test(file?.srcPath || '') || VENDORED.test(file?.pkgPath || '');
 }
-
-function unwrapStringLiteral(raw) {
-  if (typeof raw !== 'string') return null;
-  if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
-    return raw.slice(1, -1);
-  }
-  return raw;
-}
-
-module.exports = () => new CallFuncInterfacePlugin();

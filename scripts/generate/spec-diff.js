@@ -6,16 +6,16 @@
 // is a PURE function emitting the `change` objects that Phase 2 joins against
 // the API-usage manifest. Because the inputs are already-reduced fingerprints
 // (descriptions/examples stripped, keys sorted), every change this surfaces is a
-// real contract delta — cosmetic regeneration churn was neutralized upstream.
+// real contract delta: cosmetic regeneration churn was neutralized upstream.
 //
 // Scope discipline (Phase 1 note #4): this is spec-vs-spec, both sides Jellyfin,
-// so field names are compared with the spec's own casing — case-folding for the
+// so field names are compared with the spec's own casing. Case-folding for the
 // manifest join (the app sends PascalCase, the spec defines camelCase) is
-// Phase 2's concern, NOT the diff's.
+// Phase 2's concern, not the diff's.
 //
 // Change kinds (added/removed/changed across the four axes the fingerprint
-// records — endpoints, params, schema fields, enums — plus request/response
-// body shape):
+// records, which are endpoints, params, schema fields and enums, plus
+// request/response body shape):
 //   endpoint-added | endpoint-removed
 //   param-added | param-removed | param-changed
 //   requestbody-changed | response-changed
@@ -23,7 +23,7 @@
 //   enum-changed
 // `param-removed` and `field-removed` additionally carry `renameCandidates`
 // (always present, possibly empty): same-scope additions that could be a rename,
-// same-signature first — an empty list signals a likely-genuine removal. See
+// same-signature first. An empty list signals a likely real removal. See
 // rankRenameCandidates.
 // Each change is self-describing: { kind, ...locator, detail, fromVersion,
 // toVersion }, where the locator is `path`+`method` for operation-scoped changes
@@ -31,10 +31,11 @@
 //
 // CLI:
 //   node scripts/generate/spec-diff.js <fromVersion> <toVersion> [--root <dir>]
-//       → read the two committed fingerprints, write the diff to the gitignored
-//         .api-watch/cache/spec-diff-<from>..<to>.json (Phase 2's input)
+//       reads the two committed fingerprints and writes the diff to the gitignored
+//       .api-watch/cache/spec-diff-<from>..<to>.json, for inspection (Phase 2
+//       does not read it: findings-candidates.js calls diffFingerprints() itself)
 //   node scripts/generate/spec-diff.js <fromVersion> <toVersion> --stdout
-//       → print the diff JSON to stdout instead of writing the cache file
+//       prints the diff JSON to stdout instead of writing the cache file
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -50,12 +51,12 @@ const CACHE_DIR_REL = '.api-watch/cache';
 // Rank the same-scope additions that could be a RENAME of a removed param/field.
 // `additions` is [{name, sig}]; `sameSignature` is true when an addition's type
 // signature matches the removed item's `removedSig` (a high-confidence rename).
-// Always returns an array (possibly empty) — an EMPTY list is the load-bearing
-// signal: nothing in the same operation/schema could be the rename, so the removal
-// is very likely genuine (not a rename/move). Mirrors enum-changed always carrying
+// Always returns an array (possibly empty). An empty list is the signal that
+// matters: nothing in the same operation/schema could be the rename, so the removal
+// is very likely real (not a rename/move). Mirrors enum-changed always carrying
 // its full added/removed delta. The spec diff can surface candidates but never
-// proves intent — confirming a populated list is rename-vs-removal is the agent's
-// job (see the /server-upgrade skill's "Removal vs rename" edge case). Same-
+// proves intent. Confirming whether a populated list is a rename or a removal is the
+// agent's job (see the /server-upgrade skill's "Removal or rename" case). Same-
 // signature candidates sort first.
 function rankRenameCandidates(removedSig, additions) {
   return additions
@@ -71,7 +72,7 @@ function diffParameters(fromParams, toParams) {
   const fromMap = new Map((fromParams ?? []).map((p) => [key(p), p]));
   const toMap = new Map((toParams ?? []).map((p) => [key(p), p]));
 
-  // Additions in THIS operation — the pool a removed param could have been
+  // Additions in this operation: the pool a removed param could have been
   // renamed into. Empty ⇒ the removal has no in-scope rename candidate.
   const additions = [...toMap.values()]
     .filter((p) => !fromMap.has(key(p)))
@@ -165,7 +166,7 @@ function diffProperties(schemaName, fromProps, toProps) {
   const changes = [];
   const from = fromProps ?? {};
   const to = toProps ?? {};
-  // Added fields in THIS schema — the pool a removed field could have been
+  // Added fields in this schema: the pool a removed field could have been
   // renamed into (signature = the property's type signature string).
   const additions = Object.keys(to)
     .filter((name) => !(name in from))
@@ -225,9 +226,9 @@ function diffEnum(schemaName, fromEnum, toEnum) {
   ];
 }
 
-// Diff the schema maps. Note: a schema present on only one side produces field
+// Diff the schema maps. A schema present on only one side produces field
 // changes for each of its properties (so a removed DTO surfaces as field-removed
-// per field — the granularity Phase 2's manifest join needs); enum-only schemas
+// per field, the granularity Phase 2's manifest join needs); enum-only schemas
 // likewise diff their values.
 function diffSchemas(fromSchemas, toSchemas) {
   const changes = [];

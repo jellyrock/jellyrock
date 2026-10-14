@@ -1,4 +1,4 @@
-// Tests for scripts/lint/log-manager-init-check.js — the static guard on the
+// Tests for scripts/lint/log-manager-init-check.js: the static guard on the
 // roku-log manager's single initialization site.
 //
 // Pure layer: hand-written source strings exercise each rule. Plus a smoke pass

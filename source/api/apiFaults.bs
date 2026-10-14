@@ -1,0 +1,167 @@
+import "pkg:/source/utils/misc.bs"
+
+' Requests an RTA spec makes fail, answer slowly or answer empty on purpose, so a spec can
+' drive a screen's failure, slow-server and nothing-there paths against a server that is
+' healthy, fast and full. Pure: the API coordinator holds the list and calls these from its
+' own thread, and the only caller is compiled in under ENABLE_RTA (ApiQueueTask).
+'
+' A spec writes rules to m.global.rtaFailRequests:
+'   { prefix: "itemQuery_usersItems", kind: "timeout" | "http" | "slow" | "empty", status: 500, ms: 20000, times: 1, after: 0 }
+' A rule matches a request whose requestId starts with `prefix`. `times` is how many
+' matching requests it applies to; without it, every one. `after` is how many matching
+' requests it lets through first, for a request id that repeats too quickly for a spec to set
+' the rule in between (a grid's page 1 and page 2).
+'
+' A failed request is answered with the response the pool itself delivers for that failure. A
+' slow one is sent, and its real answer is held until `ms` after it was sent, with its slot kept
+' busy all that time: what a slow server costs the app, pool slot included. An empty one is
+' answered as a server with nothing to give answers: ok, with an empty list in the shape its
+' request expects. Nothing marks any of them as injected: code that could tell them apart
+' could handle a test differently from the real thing, which is what these specs exist to
+' catch.
+namespace apiFaults
+
+  ' The rules a spec wrote, checked. A rule that cannot be honored exactly is dropped rather
+  ' than guessed at, so a typo in a spec fails that spec's assertions instead of failing some
+  ' other request.
+  '
+  ' @param rules - the value of m.global.rtaFailRequests
+  ' @return an array of { prefix, kind, status, ms, remaining, passes }, remaining -1 meaning no limit
+  function fromRules(rules as dynamic) as object
+    faults = []
+    if type(rules) <> "roArray" then return faults
+
+    for each rule in rules
+      fault = checkedRule(rule)
+      if isValid(fault) then faults.push(fault)
+    end for
+    return faults
+  end function
+
+  ' The first fault that applies to `requestId`, counted as used; invalid when none does.
+  ' Mutates `faults`: the caller keeps the list across requests.
+  '
+  ' A rule still letting requests through (`after`) claims each match and passes it, rather
+  ' than handing it to a later rule: the spec asked for those requests to succeed.
+  function take(faults as object, requestId as string) as dynamic
+    for each fault in faults
+      if fault.remaining <> 0 and requestId.StartsWith(fault.prefix)
+        if fault.passes > 0
+          fault.passes = fault.passes - 1
+          return invalid
+        end if
+        if fault.remaining > 0 then fault.remaining = fault.remaining - 1
+        return fault
+      end if
+    end for
+    return invalid
+  end function
+
+  ' Whether `fault` delays a request rather than failing it.
+  function isSlow(fault as object) as boolean
+    return fault.kind = "slow"
+  end function
+
+  ' How long the coordinator may wait for its next event before a held answer is due: 0 (no
+  ' limit, as wait() reads it) when nothing is held, and never less than 1 ms otherwise, since
+  ' 0 would mean waiting forever past the due time.
+  '
+  ' @param held - the held answers, each with `dueAt` in ms on the coordinator's clock
+  ' @param nowMs - the coordinator's clock now
+  function nextWaitMs(held as object, nowMs as integer) as integer
+    if held.count() = 0 then return 0
+    earliest = held[0].dueAt
+    for each answer in held
+      if answer.dueAt < earliest then earliest = answer.dueAt
+    end for
+    waitMs = earliest - nowMs
+    if waitMs < 1 then return 1
+    return waitMs
+  end function
+
+  ' The held answers that are due, taken out of `held` in the order they were held. Mutates
+  ' `held`: the caller keeps the list across events.
+  '
+  ' @param held - the held answers, each with `dueAt`
+  ' @param nowMs - the coordinator's clock now
+  function takeDue(held as object, nowMs as integer) as object
+    due = []
+    i = 0
+    while i < held.count()
+      if held[i].dueAt <= nowMs
+        due.push(held[i])
+        held.delete(i)
+      else
+        i++
+      end if
+    end while
+    return due
+  end function
+
+  ' The pool's response for a request answered this way, the shape ApiTask.executeRequest
+  ' builds. A timeout is what roku-requests returns when it gives up: not ok, and no status or
+  ' body, because it only reads those from a response that arrived. An empty answer is ok with
+  ' nothing in it: a bare `[]` for a list request (ApiClient.listReq), which ApiTask's shape
+  ' check would otherwise demand, and an empty query result for any other.
+  '
+  ' @param expectsList - the request declared a bare-array body (apiResponse.expectsList)
+  function responseFor(fault as object, requestId as string, expectsList = false as boolean) as object
+    if fault.kind = "empty"
+      body = { Items: [], TotalRecordCount: 0 }
+      if expectsList then body = []
+      return { requestId: requestId, ok: true, statusCode: 200, json: body, text: FormatJson(body) }
+    end if
+    if fault.kind = "http"
+      return { requestId: requestId, ok: false, statusCode: fault.status, json: invalid, text: "" }
+    end if
+    return { requestId: requestId, ok: false, statusCode: invalid, json: invalid, text: invalid }
+  end function
+
+  function checkedRule(rule as dynamic) as dynamic
+    if type(rule) <> "roAssociativeArray" then return invalid
+
+    prefix = rule.prefix
+    if not isString(prefix) or prefix = "" then return invalid
+
+    status = 0
+    ms = 0
+    if rule.kind = "http"
+      status = wholeNumber(rule.status)
+      ' roku-requests counts 1-399 as ok, so anything below 400 would not be a failure
+      if status < 400 then return invalid
+    else if rule.kind = "slow"
+      ms = wholeNumber(rule.ms)
+      if ms < 1 then return invalid
+    else if rule.kind <> "timeout" and rule.kind <> "empty"
+      return invalid
+    end if
+
+    remaining = -1
+    if rule.doesExist("times")
+      remaining = wholeNumber(rule.times)
+      if remaining < 1 then return invalid
+    end if
+
+    passes = 0
+    if rule.doesExist("after")
+      passes = wholeNumber(rule.after)
+      if passes < 0 then return invalid
+    end if
+
+    return { prefix: prefix, kind: rule.kind, status: status, ms: ms, remaining: remaining, passes: passes }
+  end function
+
+  function isString(value as dynamic) as boolean
+    valueType = type(value)
+    return valueType = "String" or valueType = "roString"
+  end function
+
+  ' A number arrives with whatever numeric type the ODC write produced. -1 for anything else.
+  function wholeNumber(value as dynamic) as integer
+    if GetInterface(value, "ifInt") <> invalid then return value
+    if GetInterface(value, "ifLongInt") <> invalid then return value
+    if GetInterface(value, "ifFloat") <> invalid or GetInterface(value, "ifDouble") <> invalid then return Int(value)
+    return -1
+  end function
+
+end namespace

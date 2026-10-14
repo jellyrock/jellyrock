@@ -1,0 +1,40 @@
+import "pkg:/source/GridView/LiveTVPresenter.bs"
+
+namespace tests
+
+  @suite("LiveTVPresenter - TV guide view")
+  class LiveTVPresenterTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showsTVGuide()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the TV guide for the guide view, whatever the casing")
+    ' The saved `landing` setting and the views list may not agree on case.
+    function _()
+      presenter = new LiveTVPresenter()
+      m.assertTrue(presenter.showsTVGuide("tvGuide"))
+      m.assertTrue(presenter.showsTVGuide("TVGUIDE"))
+    end function
+
+    @it("shows the channel grid for every other view")
+    function _()
+      presenter = new LiveTVPresenter()
+      m.assertFalse(presenter.showsTVGuide("livetv"))
+      m.assertFalse(presenter.showsTVGuide(""))
+    end function
+
+    @it("offers the guide under the name it answers to")
+    ' The views list and showsTVGuide() both live here; if they drift apart the guide is
+    ' offered in the panel and never shown.
+    function _()
+      presenter = new LiveTVPresenter()
+      offered = false
+      for each view in presenter.getOptions(invalid).views
+        if presenter.showsTVGuide(view.Name) then offered = true
+      end for
+      m.assertTrue(offered)
+    end function
+
+  end class
+end namespace

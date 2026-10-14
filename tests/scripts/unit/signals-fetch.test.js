@@ -1,9 +1,11 @@
 // Tests for scripts/lib/signals-fetch.cjs.
 //
-// We test the pure parsers (parseJellyfinIndex, parseRokuOsMarkdown,
-// compareSemverBase) — not the network wrappers. Network fetching is a thin
-// stdlib glue and is exercised by the live-endpoint smoke test that runs
-// when `node scripts/catchup-state.js` itself runs without --no-network.
+// We test the pure parsers and version helpers (parseJellyfinIndex,
+// parseUnstableIndex, parseRokuOsMarkdown, compareSemverBase,
+// isReleaseVersionBase, isUnstableVersion), not the network wrappers. Network
+// fetching is a thin stdlib glue and is exercised by the live-endpoint smoke
+// test that runs when `node scripts/catchup-state.js` itself runs without
+// --no-network.
 
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
@@ -14,7 +16,35 @@ const {
   parseUnstableIndex,
   parseRokuOsMarkdown,
   compareSemverBase,
+  isReleaseVersionBase,
+  isUnstableVersion,
 } = require('../../../scripts/lib/signals-fetch.cjs');
+
+describe('isReleaseVersionBase', () => {
+  it('accepts three-segment and the patchless two-segment labels the 12.0 line publishes', () => {
+    expect(isReleaseVersionBase('10.11.8')).toBe(true);
+    expect(isReleaseVersionBase('12.0')).toBe(true);
+    expect(isReleaseVersionBase('12.0.1')).toBe(true);
+  });
+
+  it('rejects a legacy unstable datestamp, which is also MAJOR.MINOR-shaped', () => {
+    expect(isReleaseVersionBase('20240207.2')).toBe(false);
+    expect(isReleaseVersionBase('20240402201942')).toBe(false);
+  });
+
+  it('rejects pre-release suffixes, bare majors, and non-strings', () => {
+    expect(isReleaseVersionBase('12.0-rc4')).toBe(false);
+    expect(isReleaseVersionBase('12')).toBe(false);
+    expect(isReleaseVersionBase('10.11.8.1')).toBe(false);
+    expect(isReleaseVersionBase('latest')).toBe(false);
+    expect(isReleaseVersionBase(null)).toBe(false);
+  });
+
+  it('keeps isUnstableVersion available here (spec-fetch re-exports it)', () => {
+    expect(isUnstableVersion('20240207.2')).toBe(true);
+    expect(isUnstableVersion('12.0')).toBe(false);
+  });
+});
 
 describe('parseJellyfinIndex', () => {
   it('returns latest stable + null rc when only stable filenames exist', () => {
@@ -31,7 +61,7 @@ describe('parseJellyfinIndex', () => {
       // RCs whose base is <= latest stable are historical and ignored.
       '<a href="jellyfin-openapi-10.11.0-rc1.json">old rc</a>\n' +
       '<a href="jellyfin-openapi-10.11.0-rc6.json">old rc</a>\n' +
-      // RC for the next minor → counts.
+      // RC for the next minor: counts.
       '<a href="jellyfin-openapi-10.12.0-rc1.json">new rc</a>\n' +
       '<a href="jellyfin-openapi-10.12.0-rc2.json">new rc</a>\n';
     expect(parseJellyfinIndex(html)).toEqual({ stable: '10.11.8', rc: '10.12.0-rc2' });
@@ -43,7 +73,7 @@ describe('parseJellyfinIndex', () => {
       '<a href="jellyfin-openapi-11.0.0-rc1.json">rc</a>\n' +
       '<a href="jellyfin-openapi-11.0.0-rc10.json">rc</a>\n' +
       '<a href="jellyfin-openapi-11.0.0-rc2.json">rc</a>\n';
-    // Numeric ordering on rc number — rc10 > rc2 > rc1.
+    // Numeric ordering on rc number: rc10 > rc2 > rc1.
     expect(parseJellyfinIndex(html).rc).toBe('11.0.0-rc10');
   });
 

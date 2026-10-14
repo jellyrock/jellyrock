@@ -1,9 +1,0 @@
-{
-  "id": "test-user-string-setting",
-  "name": "Test User with String Setting",
-  "Configuration": {},
-  "Policy": {},
-  "settings": {
-    "display.library1.sortField": "DateCreated"
-  }
-}

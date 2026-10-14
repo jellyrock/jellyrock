@@ -1,398 +1,286 @@
 import "pkg:/source/api/items.bs"
-import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/streamSelection.bs"
 
 namespace tests
 
-  @suite("Items.bs - ItemPostPlaybackInfo() DOVI Logic")
+  @suite("Items.bs - doviRemuxContainerProfile()")
   class ItemsDoviHandlingTests extends tests.BaseTestSuite
 
-    protected override function setup()
-      super.setup()
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("DOVI Detection Logic")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("detects DOVI in VideoRangeType with case insensitivity")
-    function _()
-      ' Given: Various DOVI VideoRangeType values
-      doviValues = ["DOVI", "dovi", "DOVIWithSDR", "doviwithsdr", "DOVIHLG", "DOVIWithHDR10", "DOVIHDR10"]
-
-      for each doviValue in doviValues
-        ' When: Check for DOVI substring
-        hasDovi = inStr(LCase(doviValue), "dovi") > 0
-
-        ' Then: All should be detected as DOVI
-        m.assertTrue(hasDovi, "Should detect DOVI in: " + doviValue)
-      end for
-    end function
-
-    @it("does not detect SDR as DOVI")
-    function _()
-      ' Given: SDR VideoRangeType
-      sdrValue = "SDR"
-
-      ' When: Check for DOVI substring
-      hasDovi = inStr(LCase(sdrValue), "dovi") > 0
-
-      ' Then: Should not be detected as DOVI
-      m.assertFalse(hasDovi, "Should not detect DOVI in SDR")
-    end function
-
-    @it("does not detect HDR10 as DOVI")
-    function _()
-      ' Given: HDR10 VideoRangeType
-      hdr10Value = "HDR10"
-
-      ' When: Check for DOVI substring
-      hasDovi = inStr(LCase(hdr10Value), "dovi") > 0
-
-      ' Then: Should not be detected as DOVI
-      m.assertFalse(hasDovi, "Should not detect DOVI in HDR10")
-    end function
-
-    @it("does not detect empty VideoRangeType as DOVI")
-    function _()
-      ' Given: Empty VideoRangeType
-      emptyValue = ""
-
-      ' When: Check for DOVI substring
-      hasDovi = inStr(LCase(emptyValue), "dovi") > 0
-
-      ' Then: Should not be detected as DOVI
-      m.assertFalse(hasDovi, "Should not detect DOVI in empty string")
-    end function
-
-    @it("preserves original case when creating container profile")
-    function _()
-      ' Given: Mixed case DOVI VideoRangeType
-      originalValue = "DOVIwithHDR10"
-
-      ' When: Store in container profile (should preserve original case)
-      containerProfile = {
-        VideoRangeType: originalValue
+    ' Capabilities AA the function reads instead of the hardware (isMock = true)
+    private function mockCaps(supportsDolbyVision as boolean) as object
+      return {
+        maxHeight: 2160,
+        maxWidth: 3840,
+        canDecode4k: true,
+        supportsHdr10: true,
+        supportsDolbyVision: supportsDolbyVision,
+        supportsHlg: true,
+        isMock: true
       }
-
-      ' Then: Original case should be preserved
-      m.assertEqual(containerProfile.VideoRangeType, originalValue, "Should preserve original case")
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Media Stream Processing")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("processes first video stream when multiple streams exist")
-    function _()
-      ' Given: Media streams with multiple video streams
-      mediaStreams = [
-        {
-          Type: "Video",
-          VideoRangeType: "DOVIWithSDR"
-        },
-        {
-          Type: "Video",
-          VideoRangeType: "SDR"
-        },
-        {
-          Type: "Audio",
-          Codec: "aac"
-        }
-      ]
-
-      ' When: Process media streams (simulating the ItemPostPlaybackInfo logic)
-      processedFirstVideo = false
-      for each stream in mediaStreams
-        if stream.Type = "Video"
-          ' Process only the first video stream
-          processedFirstVideo = true
-          m.assertEqual(stream.VideoRangeType, "DOVIWithSDR", "Should process first video stream")
-          exit for
-        end if
-      end for
-
-      ' Then: Only first video stream should be processed
-      m.assertTrue(processedFirstVideo, "Should have processed a video stream")
+    private function videoStream(codec as dynamic, videoRangeType as dynamic) as object
+      stream = { Type: "Video" }
+      if codec <> invalid then stream.Codec = codec
+      if videoRangeType <> invalid then stream.VideoRangeType = videoRangeType
+      return stream
     end function
 
-    @it("ignores streams without Type field")
-    function _()
-      ' Given: Media streams with missing Type field
-      mediaStreams = [
-        {
-          VideoRangeType: "DOVIWithSDR"
-          ' Missing Type field
-        }
-      ]
-
-      ' When: Process media streams
-      hasVideoStream = false
-      for each stream in mediaStreams
-        if stream.Type = "Video"
-          hasVideoStream = true
-        end if
-      end for
-
-      ' Then: Should be ignored
-      m.assertFalse(hasVideoStream, "Should not find video streams without Type field")
-    end function
-
-    @it("handles missing VideoRangeType field gracefully")
-    function _()
-      ' Given: Video stream without VideoRangeType
-      mediaStreams = [
-        {
-          Type: "Video"
-          ' Missing VideoRangeType
-        }
-      ]
-
-      ' When: Check for DOVI (should handle missing field)
-      cantProcessDOVI = true
-      for each stream in mediaStreams
-        if stream.Type = "Video"
-          if stream.DoesExist("VideoRangeType") and stream.VideoRangeType <> ""
-            cantProcessDOVI = false
-          end if
-        end if
-      end for
-
-      ' Then: Should not process DOVI logic
-      m.assertTrue(cantProcessDOVI, "Should skip streams without VideoRangeType")
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Container Profile Structure")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("creates correct container profile structure")
-    function _()
-      ' Given: DOVI content in MKV container
-      videoRangeType = "DOVIWithHDR10"
-
-      ' When: Create container profile for DOVI
-      containerProfile = {
-        Type: "Video",
-        Container: "mkv",
-        Conditions: [
+    ' The profile the function returns for a stream whose VideoRangeType is the given value
+    private function expectedProfile(videoRangeType as string) as object
+      return {
+        "Type": "Video",
+        "Container": "mkv",
+        "Conditions": [
           {
-            Condition: "NotEquals",
-            Property: "VideoRangeType",
-            Value: videoRangeType,
-            IsRequired: true
+            "Condition": "NotEquals",
+            "Property": "VideoRangeType",
+            "Value": videoRangeType,
+            "IsRequired": true
           }
         ]
       }
-
-      ' Then: Profile structure should be correct
-      m.assertEqual(containerProfile.Type, "Video")
-      m.assertEqual(containerProfile.Container, "mkv")
-      m.assertEqual(containerProfile.Conditions.Count(), 1)
-      m.assertEqual(containerProfile.Conditions[0].Condition, "NotEquals")
-      m.assertEqual(containerProfile.Conditions[0].Property, "VideoRangeType")
-      m.assertEqual(containerProfile.Conditions[0].Value, videoRangeType)
-      m.assertTrue(containerProfile.Conditions[0].IsRequired)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Device Capability Decisions")
+    @describe("returns the remux profile")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("only checks for DOVI support on 4K devices")
+    @it("returns the whole profile for hevc DOVIWithHDR10 in mkv on tier 2 with the setting on and DoVi supported")
     function _()
-      ' Given: 1080p device (videoHeight < 2160)
-      deviceVideoHeight = 1080
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
 
-      ' When: Check if device should support DOVI
-      shouldCheckDovi = deviceVideoHeight >= 2160
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
 
-      ' Then: Should not check for DOVI support
-      m.assertFalse(shouldCheckDovi, "Should not check for DOVI on 1080p devices")
+      m.assertEqual(result, m.expectedProfile("DOVIWithHDR10"))
     end function
 
-    @it("checks for DOVI support on 4K devices")
+    @it("keeps the case of the stream's VideoRangeType in the condition value")
     function _()
-      ' Given: 4K device (videoHeight >= 2160)
-      deviceVideoHeight = 2160
+      streams = [m.videoStream("hevc", "DoViWithSDR")]
 
-      ' When: Check if device should support DOVI
-      shouldCheckDovi = deviceVideoHeight >= 2160
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
 
-      ' Then: Should check for DOVI support
-      m.assertTrue(shouldCheckDovi, "Should check for DOVI on 4K devices")
+      m.assertEqual(result.Conditions[0].Value, "DoViWithSDR")
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Codec-Specific Handling")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("does NOT force remux for av1 codec even with DOVI content")
+    @it("matches dovi in any case within VideoRangeType")
     function _()
-      ' Given: MKV container with AV1 codec and DOVI VideoRangeType
-      mediaStreams = [
-        {
-          Type: "Video",
-          Codec: "av1",
-          VideoRangeType: "DOVIWithSDR"
-        }
-      ]
+      for each rangeType in ["DOVI", "dovi", "DOVIWithSDR", "DOVIWithHLG", "DOVIWithHDR10", "DOVIInvalid"]
+        streams = [m.videoStream("hevc", rangeType)]
 
-      ' When: Check if stream should be processed for DOVI preservation
-      ' The logic: stream.Type = "Video" AND stream.Codec <> "av1"
-      shouldProcessDovi = false
-      for each stream in mediaStreams
-        if isValid(stream.Type) and stream.Type = "Video" and stream.Codec <> "av1"
-          shouldProcessDovi = true
-          exit for
-        end if
+        result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
+
+        m.assertEqual(result, m.expectedProfile(rangeType), "VideoRangeType " + rangeType)
       end for
-
-      ' Then: Should NOT process DOVI logic for av1 codec
-      m.assertFalse(shouldProcessDovi, "Should NOT force remux for av1 codec with DOVI")
     end function
 
-    @it("DOES force remux for hevc codec with DOVI content")
+    @it("returns the profile on tier 3 and above")
     function _()
-      ' Given: MKV container with HEVC codec and DOVI VideoRangeType
-      mediaStreams = [
-        {
-          Type: "Video",
-          Codec: "hevc",
-          VideoRangeType: "DOVIWithHDR10"
-        }
-      ]
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
 
-      ' When: Check if stream should be processed for DOVI preservation
-      ' The logic: stream.Type = "Video" AND stream.Codec <> "av1"
-      shouldProcessDovi = false
-      for each stream in mediaStreams
-        if isValid(stream.Type) and stream.Type = "Video" and stream.Codec <> "av1"
-          shouldProcessDovi = true
-          exit for
-        end if
-      end for
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 3, m.mockCaps(true))
 
-      ' Then: Should process DOVI logic for hevc codec
-      m.assertTrue(shouldProcessDovi, "Should force remux for hevc codec with DOVI")
-    end function
-
-    @it("DOES force remux for h264 codec with DOVI content")
-    function _()
-      ' Given: MKV container with H264 codec and DOVI VideoRangeType
-      mediaStreams = [
-        {
-          Type: "Video",
-          Codec: "h264",
-          VideoRangeType: "DOVI"
-        }
-      ]
-
-      ' When: Check if stream should be processed for DOVI preservation
-      ' The logic: stream.Type = "Video" AND stream.Codec <> "av1"
-      shouldProcessDovi = false
-      for each stream in mediaStreams
-        if isValid(stream.Type) and stream.Type = "Video" and stream.Codec <> "av1"
-          shouldProcessDovi = true
-          exit for
-        end if
-      end for
-
-      ' Then: Should process DOVI logic for h264 codec
-      m.assertTrue(shouldProcessDovi, "Should force remux for h264 codec with DOVI")
+      m.assertEqual(result, m.expectedProfile("DOVIWithHDR10"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Bypass DoVi Preservation")
+    @describe("returns invalid before looking at the streams")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("bypass=true prevents DOVI container profile from being added")
+    @it("returns invalid when bypass is true")
     function _()
-      ' Given: All conditions met for DOVI logic (setting enabled, valid DOVI stream), but bypass is active
-      bypassDoviPreservation = true
-      mediaStreams = [
-        {
-          Type: "Video",
-          Codec: "hevc",
-          VideoRangeType: "DOVIWithHDR10"
-        }
-      ]
-      userSettings = { playbackPreserveDovi: true }
-      containerProfiles = []
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
 
-      ' When: The top-level guard condition from ItemPostPlaybackInfo is evaluated
-      ' (line 85: if not bypassDoviPreservation and isValid(mediaStreams) and ...)
-      guardPasses = not bypassDoviPreservation and isValid(mediaStreams) and isValid(userSettings.playbackPreserveDovi) and userSettings.playbackPreserveDovi
+      result = doviRemuxContainerProfile(streams, "mkv", true, true, 2, m.mockCaps(true))
 
-      if guardPasses
-        containerProfiles.push({ Type: "Video", Container: "mkv" })
-      end if
-
-      ' Then: Guard should short-circuit and no container profile should be added
-      m.assertFalse(guardPasses, "Guard should fail when bypassDoviPreservation=true")
-      m.assertEqual(containerProfiles.Count(), 0, "Container profile should NOT be added when bypass is active")
+      m.assertInvalid(result)
     end function
 
-    @it("bypass=false (default) allows DOVI container profile to be added")
+    @it("returns invalid when the setting is false")
     function _()
-      ' Given: All conditions met - setting enabled, valid DOVI HEVC stream in MKV, bypass inactive
-      bypassDoviPreservation = false
-      mediaStreams = [
-        {
-          Type: "Video",
-          Codec: "hevc",
-          VideoRangeType: "DOVIWithHDR10"
-        }
-      ]
-      userSettings = { playbackPreserveDovi: true }
-      containerString = "mkv"
-      containerProfiles = []
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
 
-      ' When: Simulate the full DOVI injection logic from ItemPostPlaybackInfo
-      guardPasses = not bypassDoviPreservation and isValid(mediaStreams) and isValid(userSettings.playbackPreserveDovi) and userSettings.playbackPreserveDovi
+      result = doviRemuxContainerProfile(streams, "mkv", false, false, 2, m.mockCaps(true))
 
-      if guardPasses
-        for each stream in mediaStreams
-          if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
-            if isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
-              if inStr(LCase(stream.VideoRangeType), "dovi") > 0
-                containerProfiles.push({
-                  "Type": "Video",
-                  "Container": "mkv",
-                  "Conditions": [
-                    {
-                      "Condition": "NotEquals",
-                      "Property": "VideoRangeType",
-                      "Value": stream.VideoRangeType,
-                      "IsRequired": true
-                    }
-                  ]
-                })
-              end if
-            end if
-            exit for
-          end if
-        end for
-      end if
-
-      ' Then: Container profile should be added with the correct VideoRangeType value
-      m.assertTrue(guardPasses, "Guard should pass when bypassDoviPreservation=false")
-      m.assertEqual(containerProfiles.Count(), 1, "Container profile should be added when bypass is inactive")
-      m.assertEqual(containerProfiles[0].Conditions[0].Value, "DOVIWithHDR10", "Profile condition should reference the stream's VideoRangeType")
+      m.assertInvalid(result)
     end function
 
-    @it("bypass=true takes priority even when setting is enabled and DOVI stream is present")
+    @it("returns invalid when the setting is invalid")
     function _()
-      ' Given: Every other condition would pass - bypass is the only blocker
-      bypassDoviPreservation = true
-      mediaStreams = [{ Type: "Video", Codec: "hevc", VideoRangeType: "DOVI" }]
-      userSettings = { playbackPreserveDovi: true }
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
 
-      ' When: Evaluate the full guard condition (same as ItemPostPlaybackInfo line 85)
-      ' All secondary conditions are true - only the bypass flag differs from the bypass=false test
-      guardPasses = not bypassDoviPreservation and isValid(mediaStreams) and isValid(userSettings.playbackPreserveDovi) and userSettings.playbackPreserveDovi
+      result = doviRemuxContainerProfile(streams, "mkv", invalid, false, 2, m.mockCaps(true))
 
-      ' Then: The bypass flag alone is sufficient to prevent DOVI logic from running
-      m.assertFalse(guardPasses, "bypassDoviPreservation=true must prevent DOVI logic regardless of other conditions")
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when mediaStreams is invalid")
+    function _()
+      result = doviRemuxContainerProfile(invalid, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when the setting is false and no mock capabilities are given")
+    function _()
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
+
+      result = doviRemuxContainerProfile(streams, "mkv", false, false, 2, invalid)
+
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("device, server and container")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid when the device does not support Dolby Vision")
+    function _()
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
+
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(false))
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid on API tier 1, which has no VideoRangeType")
+    function _()
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
+
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 1, m.mockCaps(true))
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid for an mp4 container")
+    function _()
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
+
+      result = doviRemuxContainerProfile(streams, "mp4", true, false, 2, m.mockCaps(true))
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when the container is empty or invalid")
+    function _()
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
+
+      m.assertInvalid(doviRemuxContainerProfile(streams, "", true, false, 2, m.mockCaps(true)))
+      m.assertInvalid(doviRemuxContainerProfile(streams, invalid, true, false, 2, m.mockCaps(true)))
+    end function
+
+    @it("treats MKV in any case as mkv")
+    function _()
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
+
+      for each container in ["MKV", "Mkv", "mkv"]
+        result = doviRemuxContainerProfile(streams, container, true, false, 2, m.mockCaps(true))
+
+        m.assertEqual(result, m.expectedProfile("DOVIWithHDR10"), "container " + container)
+      end for
+    end function
+
+    @it("does not treat m4v or mov as mkv")
+    function _()
+      streams = [m.videoStream("hevc", "DOVIWithHDR10")]
+
+      for each container in ["m4v", "mov", "M4V", "MOV"]
+        result = doviRemuxContainerProfile(streams, container, true, false, 2, m.mockCaps(true))
+
+        m.assertInvalid(result, "container " + container)
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("VideoRangeType")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid for SDR and HDR10")
+    function _()
+      for each rangeType in ["SDR", "HDR10", "HLG", "HDR10Plus"]
+        streams = [m.videoStream("hevc", rangeType)]
+
+        result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
+
+        m.assertInvalid(result, "VideoRangeType " + rangeType)
+      end for
+    end function
+
+    @it("returns invalid for an empty VideoRangeType")
+    function _()
+      streams = [m.videoStream("hevc", "")]
+
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when VideoRangeType is missing")
+    function _()
+      streams = [m.videoStream("hevc", invalid)]
+
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("which video stream counts")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid for an av1 stream in lowercase and uppercase")
+    function _()
+      for each codec in ["av1", "AV1", "Av1"]
+        streams = [m.videoStream(codec, "DOVIWithHDR10")]
+
+        result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
+
+        m.assertInvalid(result, "codec " + codec)
+      end for
+    end function
+
+    @it("skips an av1 video stream and uses a later hevc DoVi stream")
+    function _()
+      streams = [m.videoStream("av1", "SDR"), m.videoStream("hevc", "DOVIWithHDR10")]
+
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertEqual(result, m.expectedProfile("DOVIWithHDR10"))
+    end function
+
+    @it("skips a video stream with no Codec and uses a later DoVi stream")
+    function _()
+      streams = [m.videoStream(invalid, "DOVIWithHDR10"), m.videoStream("hevc", "DOVIWithSDR")]
+
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertEqual(result, m.expectedProfile("DOVIWithSDR"))
+    end function
+
+    @it("skips audio streams before the video stream")
+    function _()
+      streams = [{ Type: "Audio", Codec: "eac3" }, m.videoStream("hevc", "DOVIWithHDR10")]
+
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertEqual(result, m.expectedProfile("DOVIWithHDR10"))
+    end function
+
+    @it("returns invalid when the first eligible video stream is not DoVi, even if a later one is")
+    function _()
+      streams = [m.videoStream("hevc", "HDR10"), m.videoStream("hevc", "DOVIWithHDR10")]
+
+      result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid for an empty stream list")
+    function _()
+      result = doviRemuxContainerProfile([], "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertInvalid(result)
     end function
 
   end class

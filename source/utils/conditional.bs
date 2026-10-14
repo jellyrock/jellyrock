@@ -17,8 +17,8 @@ end sub
 
 ' Print the DeviceProfile we advertise to Jellyfin.
 '
-' The profile is otherwise INVISIBLE at runtime — it is built, POSTed and
-' forgotten — so "why did this transcode?" begins with a value nobody can read
+' The profile is otherwise invisible at runtime (it is built, POSTed and
+' forgotten), so "why did this transcode?" begins with a value nobody can read
 ' back. Three video-level bugs lived in it for months, and confirming the fix
 ' still required writing a test to recover the emitted numbers, because no code
 ' path surfaced them.

@@ -1,9 +1,9 @@
 import "pkg:/source/api/baseRequest.bs"
 
-' V2 user endpoint shims — covers Jellyfin 10.9+
+' V2 user endpoint shims, covering Jellyfin 10.9+
 ' All /Users/{userId}/ paths were removed in 10.9. Endpoints moved to top-level
 ' with userId passed as a query parameter. Verified against jellyfin-openapi-10.9.0.json.
-' Do NOT call these functions directly. Use the ApiClient class via GetApi().
+' Do not call these functions directly. Use the ApiClient class via GetApi().
 namespace sdkV2
   namespace users
 

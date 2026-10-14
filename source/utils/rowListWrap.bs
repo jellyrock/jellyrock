@@ -61,7 +61,7 @@ function getWrapTarget(key as string, rowItemFocused as dynamic, content as dyna
     if rowIndex >= rowItemSize.count() then return invalid
     itemWidth = rowItemSize[rowIndex][0]
   else
-    ' Single flat pair [w, h] — same size for all rows
+    ' Single flat pair [w, h]: same size for all rows
     itemWidth = rowItemSize[0]
   end if
 
@@ -76,14 +76,14 @@ function getWrapTarget(key as string, rowItemFocused as dynamic, content as dyna
     end if
   end if
 
-  ' Determine focus X offset — handle empty or missing focusXOffset.
+  ' Determine focus X offset. Handle empty or missing focusXOffset.
   focusOffset = 0
   if type(focusXOffset) = "roArray" and focusXOffset.count() > 0
     focusOffset = focusXOffset[0]
   end if
 
   ' Derive visible width from itemSize (row container width) instead of hardcoding 1920.
-  ' itemSize[0] is the actual RowList row width, which varies by layout (e.g. 1920 vs 1703).
+  ' itemSize[0] is the actual RowList row width, which varies by layout (for example 1920 vs 1703).
   visibleWidth = 1920 ' fallback for safety
   if type(itemSize) = "roArray" and itemSize.count() > 0
     visibleWidth = itemSize[0]
@@ -92,7 +92,7 @@ function getWrapTarget(key as string, rowItemFocused as dynamic, content as dyna
 
   totalContentWidth = itemCount * itemWidth + (itemCount - 1) * spacing
 
-  ' Only intercept short rows — let native fixedFocusWrap handle long rows
+  ' Only intercept short rows; let native fixedFocusWrap handle long rows
   if totalContentWidth > visibleWidth then return invalid
 
   if atStart

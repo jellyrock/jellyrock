@@ -1,4 +1,5 @@
 {
+  "extends": "./bsconfig-base.json",
   "files": [
     "manifest",
     {
@@ -23,37 +24,23 @@
       "dest": "source/tests"
     },
     "!tests/source/e2e/**/*",
-    "!tests/source/**/*.md"
+    "!tests/source/**/*.md",
+    "!**/*.map"
   ],
-  "diagnosticFilters": [
-    {
-      "files": "node_modules/**/*"
-    },
-    {
-      "files": "**/roku_modules/**/*"
-    },
-    {
-      "files": "tests/**/*",
-      "codes": ["LINT3008"]
-    }
-  ],
-  "autoImportComponentScript": true,
-  "outDir": "build",
   "plugins": [
     "rooibos-roku",
     "@rokucommunity/bslint",
     "./scripts/bsc-plugins/translation-keys.cjs"
   ],
   "rooibos": {
-    "isRecordingCodeCoverage": true,
+    "isRecordingCodeCoverage": false,
     "testsFilePattern": null,
-    "tags": ["!migration", "!registry"],
+    "tags": ["!migration", "!registry", "!measurement"],
     "showOnlyFailures": true,
     "catchCrashes": true,
     "lineWidth": 70,
     "failFast": false,
     "sendHomeOnFinish": false,
     "printTestTimes": true
-  },
-  "sourceMap": true
+  }
 }

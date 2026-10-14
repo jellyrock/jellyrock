@@ -1,0 +1,169 @@
+import "pkg:/source/enums/UpstreamManifestBlocker.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/url.bs"
+
+' What the playback request knows that the server's PlaybackInfo answer does not carry, for
+' getUpstreamManifestBlocker.
+interface UpstreamManifestRequest
+  ' This load is the retry that asked the server for a transcode (EnableDirectPlay=false).
+  forceTranscoding as boolean
+  ' The configured Jellyfin server URL.
+  serverUrl as string
+  ' The user's policy "Force transcoding of remote media sources such as Live TV".
+  forceRemoteSourceTranscoding as boolean
+  ' The source's TranscodeReasons, from its TranscodingUrl (getTranscodeReasons), as the server sent
+  ' them; getUpstreamManifestBlocker decides which of them count.
+  transcodeReasons as object
+end interface
+
+' What keeps a source off its own HLS or DASH manifest URL, or UpstreamManifestBlocker.NONE when
+' nothing does: the device then checks it can load that URL (LoadVideoContentTask
+' .upstreamManifestAnswers) and plays it directly.
+'
+' Jellyfin 12.0 stopped offering direct play for any source whose container is a manifest
+' (StreamBuilder.ManifestContainers: hls, applehttp, dash; and M3UTunerHost for a channel URL with a
+' manifest extension, jellyfin/jellyfin#17768). It had been relaying the manifest through its own
+' /Videos/{id}/ URL, where the manifest's relative URIs 404. JellyRock never used that relay. It
+' plays the absolute upstream Path (setupVideoContentWithAuth), where relative URIs resolve against
+' the origin, which is how Live TV channels and .strm items played before 12.0. The server's
+' replacement is a remux or a full transcode: it drops audio that arrives as a separate HLS
+' rendition, and loads the server for a stream the device can play itself. If the device cannot
+' play the upstream stream after all, the transcode retry (isTranscodeAvailable) asks the server.
+'
+' The server's "no" does not say whether 12.0 is its only reason, so this rebuilds the answer the
+' server would have given before 12.0 from what the client can see. A source qualifies when the
+' server answered at all, its Protocol is HTTP, its Path is an absolute http(s) manifest URL that
+' does not go through Jellyfin (not a loopback host, not the server's own host and port, not the
+' LiveStreamFiles relay), and none of the server's older reasons applies: the tuner's "Auto-loop
+' live streams", the user's remote-source transcoding policy, or the server's internet streaming
+' bitrate limit. The tuner's "Simultaneous stream limit" is the one reason the client cannot see;
+' the server still enforces it when the live stream opens.
+'
+' A server "yes" qualifies too, so the device checks a URL the server allowed as well: a Roku handed
+' a URL it cannot reach buffers rather than failing, which ends in an error where the server's own
+' stream would have played.
+'
+' @param {dynamic} mediaSource - the source's PlaybackInfo MediaSource
+' @param {UpstreamManifestRequest} request - what this load asked for, and of whom
+' @returns {string} an UpstreamManifestBlocker value
+function getUpstreamManifestBlocker(mediaSource as dynamic, request as UpstreamManifestRequest) as string
+  ' The retry that forces a transcode must reach the server, or a stream this device cannot play
+  ' would be retried from its upstream URL forever.
+  if request.forceTranscoding then return UpstreamManifestBlocker.FORCED_TRANSCODE
+  if not isValid(mediaSource) or LCase(type(mediaSource)) <> "roassociativearray" then return UpstreamManifestBlocker.NO_SOURCE
+
+  ' An absent field is no answer to build on.
+  answeredType = LCase(type(mediaSource.SupportsDirectPlay))
+  if not (answeredType = "boolean" or answeredType = "roboolean") then return UpstreamManifestBlocker.NO_DIRECT_PLAY_ANSWER
+
+  if LCase(textOrEmpty(mediaSource.Protocol)) <> "http" then return UpstreamManifestBlocker.NOT_HTTP_PROTOCOL
+
+  upstream = parseUrlComponents(textOrEmpty(mediaSource.Path))
+  if not isValid(upstream) then return UpstreamManifestBlocker.NOT_HTTP_URL
+  scheme = LCase(upstream.scheme)
+  if (scheme <> "http" and scheme <> "https") or upstream.host = "" then return UpstreamManifestBlocker.NOT_HTTP_URL
+
+  if upstreamManifestFormat(mediaSource) = "" then return UpstreamManifestBlocker.NOT_MANIFEST
+
+  ' Through Jellyfin's own relay, relative URIs really do break: the case jellyfin/jellyfin#17768 fixed.
+  if Instr(1, LCase(upstream.path), "/livetv/livestreamfiles/") > 0 then return UpstreamManifestBlocker.SERVER_RELAY
+  bareHost = upstream.host
+  if Left(bareHost, 1) = "[" then bareHost = Mid(bareHost, 2, Len(bareHost) - 2)
+  if isLocalhost(bareHost) then return UpstreamManifestBlocker.LOOPBACK
+
+  jellyfin = parseUrlComponents(request.serverUrl)
+  if not isValid(jellyfin) or jellyfin.host = "" then return UpstreamManifestBlocker.NO_SERVER_URL
+  if upstream.host = jellyfin.host and upstream.port = jellyfin.port then return UpstreamManifestBlocker.SERVER_HOST
+
+  ' The server's reasons that predate 12.0, which it applied then too.
+  if isBooleanTrue(mediaSource.RequiresLooping) then return UpstreamManifestBlocker.AUTO_LOOP
+  if isBooleanTrue(mediaSource.IsRemote) and request.forceRemoteSourceTranscoding then return UpstreamManifestBlocker.REMOTE_SOURCE_POLICY
+  ' Of the transcode reasons, only the bitrate one is a verdict on direct play. For a manifest,
+  ' 12.x no longer judges direct play at all; the codec reasons it reports say whether its own
+  ' transcode can copy the stream, not whether this device can play it.
+  if isValid(request.transcodeReasons) and arrayHasValue(request.transcodeReasons, "ContainerBitrateExceedsLimit") then return UpstreamManifestBlocker.BITRATE_LIMIT
+
+  return UpstreamManifestBlocker.NONE
+end function
+
+' The manifest format of a source, from the container the server reports or, when that names no
+' manifest, the extension of its URL path (a query string cannot hide it).
+'
+' @param {dynamic} mediaSource - a PlaybackInfo MediaSource
+' @returns {string} "hls", "dash", or "" for anything else
+function upstreamManifestFormat(mediaSource as dynamic) as string
+  if not isValid(mediaSource) or LCase(type(mediaSource)) <> "roassociativearray" then return ""
+
+  container = LCase(textOrEmpty(mediaSource.Container))
+  if container = "hls" or container = "applehttp" then return "hls"
+  if container = "dash" then return "dash"
+
+  path = ""
+  parsed = parseUrlComponents(textOrEmpty(mediaSource.Path))
+  if isValid(parsed) then path = LCase(parsed.path)
+  if Right(path, 5) = ".m3u8" or Right(path, 4) = ".m3u" then return "hls"
+  if Right(path, 4) = ".mpd" then return "dash"
+  return ""
+end function
+
+' The Video content StreamFormat for a direct play of this source: the manifest's own format, so
+' the player never has to guess it from the URL. A live source whose format cannot be read keeps
+' "hls", which every live direct play was given before formats were told apart; none has been seen.
+'
+' @param {dynamic} mediaSource - the played PlaybackInfo MediaSource
+' @param {boolean} isLive - the source is a live channel
+' @returns {string} "hls", "dash", or "" to leave StreamFormat unset
+function directPlayStreamFormat(mediaSource as dynamic, isLive as boolean) as string
+  format = upstreamManifestFormat(mediaSource)
+  if format = "" and isLive then return "hls"
+  return format
+end function
+
+' Whether a response to the device check of an upstream manifest URL shows the device can play it,
+' for the manifest format the source declared (upstreamManifestFormat).
+'
+' @param {string} format - "hls" or "dash"
+' @param {integer} responseCode - roUrlEvent.GetResponseCode() (negative for a transport failure)
+' @param {dynamic} body - roUrlEvent.GetString()
+' @returns {boolean}
+function isUpstreamManifestResponse(format as string, responseCode as integer, body as dynamic) as boolean
+  if format = "dash" then return isMpdResponse(responseCode, body)
+  return isHlsPlaylistResponse(responseCode, body)
+end function
+
+' Whether a response is HTTP 200 with an HLS playlist body. The body check turns away a captive
+' portal or an HTML error page served with 200; RFC 8216 requires #EXTM3U as the first line, so only
+' leading whitespace is tolerated before it.
+'
+' @param {integer} responseCode - roUrlEvent.GetResponseCode() (negative for a transport failure)
+' @param {dynamic} body - roUrlEvent.GetString()
+' @returns {boolean}
+function isHlsPlaylistResponse(responseCode as integer, body as dynamic) as boolean
+  if responseCode <> 200 then return false
+  return Left(textOrEmpty(body).Trim(), 7) = "#EXTM3U"
+end function
+
+' Whether a response is HTTP 200 with a DASH manifest body: well-formed XML whose root element is
+' MPD (ISO/IEC 23009-1). Parsing rather than matching a prefix lets an XML declaration, comments or a
+' namespace prefix come first, and still turns away a captive portal's HTML.
+'
+' @param {integer} responseCode - roUrlEvent.GetResponseCode() (negative for a transport failure)
+' @param {dynamic} body - roUrlEvent.GetString()
+' @returns {boolean}
+function isMpdResponse(responseCode as integer, body as dynamic) as boolean
+  if responseCode <> 200 then return false
+  text = textOrEmpty(body)
+  ' A byte order mark ahead of the declaration is legal in an XML file.
+  if Left(text, 1) = Chr(&hFEFF) then text = Mid(text, 2)
+  if text = "" then return false
+
+  xml = CreateObject("roXMLElement")
+  if not xml.Parse(text) then return false
+  name = xml.GetName()
+  prefixEnd = Instr(1, name, ":")
+  while prefixEnd > 0
+    name = Mid(name, prefixEnd + 1)
+    prefixEnd = Instr(1, name, ":")
+  end while
+  return name = "MPD"
+end function

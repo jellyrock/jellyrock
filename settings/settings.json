@@ -545,6 +545,42 @@
         "descriptionKey": "MessagePreserveDolbyVisionContentWhenPossible"
       },
       {
+        "title": "Still Watching Prompt",
+        "description": "Ask if you're still watching when videos keep playing on their own with no button pressed. If nobody answers, playback pauses.",
+        "settingName": "playbackStillWatching",
+        "type": "radio",
+        "default": "default",
+        "options": [
+          {
+            "title": "Disabled",
+            "id": "disabled",
+            "titleKey": "LabelDisabled"
+          },
+          {
+            "title": "2 videos or 60 minutes",
+            "id": "short",
+            "titleKey": "Label2VideosOr60Minutes"
+          },
+          {
+            "title": "3 videos or 90 minutes",
+            "id": "default",
+            "titleKey": "Label3VideosOr90Minutes"
+          },
+          {
+            "title": "5 videos or 150 minutes",
+            "id": "long",
+            "titleKey": "Label5VideosOr150Minutes"
+          },
+          {
+            "title": "8 videos or 240 minutes",
+            "id": "veryLong",
+            "titleKey": "Label8VideosOr240Minutes"
+          }
+        ],
+        "titleKey": "LabelStillWatchingPrompt",
+        "descriptionKey": "MessageAskIfYoureStillWatchingWhen"
+      },
+      {
         "title": "Text Subtitles Only",
         "description": "Only display text subtitles to minimize transcoding.",
         "settingName": "playbackSubsOnlyText",

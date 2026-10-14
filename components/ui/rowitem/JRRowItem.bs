@@ -1,16 +1,20 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/rowItemImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' Vertical gap between the bottom of the poster (= bottom of the RowList focus ring)
 ' and the first text label. Prevents the focus border from overlapping the title.
 ' The title stays OUTSIDE the focus border because the RowList sets rowHeights taller
-' than rowItemSize — see docs/architecture/list-grid-item-layout.md.
+' than rowItemSize (see docs/architecture/list-grid-item-layout.md).
 const FOCUS_PADDING = 18
+' Space between the edge of a failed placeholder's tile and its "couldn't load" text.
+const FAILED_TEXT_INSET = 18
 
 sub init()
   m.log = new log.Logger("JRRowItem")
@@ -33,7 +37,7 @@ sub init()
   m.cachedLoadDisplayMode = "scaleToZoom"
   m.isTextureUnloaded = false
 
-  ' Reference to the RowList's root ContentNode — used to observe loadedRowRange.
+  ' Reference to the RowList's root ContentNode, used to observe loadedRowRange.
   ' Set once in setupTextureObserver() when the first itemContent is assigned.
   m.contentRoot = invalid
 
@@ -54,7 +58,7 @@ sub onItemContentChanged()
   ' new itemContent is invalid. renderItem()'s top-of-function teardown only
   ' covers transitions through a valid bind; transitions to invalid never
   ' reach renderItem() and would otherwise leak the observer onto a stale
-  ' content node — bounded by the next valid rebind, or unbounded if the cell
+  ' content node, bounded by the next valid rebind, or unbounded if the cell
   ' is destroyed (Roku exposes no destroy lifecycle hook to clean up later).
   if not isValid(m.top.itemContent)
     unobserveProgramProgress()
@@ -73,11 +77,11 @@ sub onSizeChanged()
   renderItem()
 end sub
 
-' True when this cell is being bound to the SAME item at the SAME size it already holds —
+' True when this cell is being bound to the SAME item at the SAME size it already holds:
 ' a bind that cannot change a single pixel and exists only to be counted as waste.
 ' Kept on the cell because its own previous bind is free to remember here, where storing
 ' it on the shared content root would cost a node round trip per bind.
-' Reads `id` rather than a title: a skeleton placeholder carries ONLY `type`, and anything
+' Reads `id` rather than a title: a skeleton placeholder carries only `type`, and anything
 ' that CASTS an absent field (`getRowItemTitle` returns `item.name as String`) is a &h18
 ' crash on that path. A field read compared with isValid is safe on every item shape.
 function isRepeatBind() as boolean
@@ -97,7 +101,7 @@ sub renderItem()
   ' Tear down any Program progress observer from the previous render before
   ' branching into tile/standard/loading modes. Must run unconditionally here
   ' (not inside applyPlayedPercentage) because the library-tile and loading
-  ' branches never reach applyPlayedPercentage — leaving a stale observer
+  ' branches never reach applyPlayedPercentage. Leaving a stale observer
   ' attached would land tick writes on the wrong recycled poster.
   unobserveProgramProgress()
 
@@ -116,8 +120,10 @@ sub renderItem()
   m.placeholder.itemType = ""
   m.placeholder.visible = true
 
-  ' Skeleton placeholder — show backdrop + centered spinner, no poster or text
+  ' Skeleton placeholder: show backdrop + centered spinner (or, when its load failed, the
+  ' "couldn't load" text), no poster or title
   if skeleton.isPlaceholder(item)
+    m.isLibraryTile = false
     m.cachedPosterUri = ""
     m.cachedIconUri = ""
     m.poster.uri = ""
@@ -125,12 +131,19 @@ sub renderItem()
     m.staticTitle.visible = false
     m.title.visible = false
     m.subtitle.visible = false
-    showLoadingSpinner(slotWidth, posterHeight)
+    if skeleton.isFailedPlaceholder(item)
+      hideLoadingSpinner()
+      showFailedText(slotWidth, posterHeight)
+    else
+      hideFailedText()
+      showLoadingSpinner(slotWidth, posterHeight)
+    end if
     return
   end if
 
-  ' Hide loading spinner if this recycled item previously showed one
+  ' Hide the spinner or the failed text if this recycled item previously showed one
   hideLoadingSpinner()
+  hideFailedText()
   m.poster.visible = true
 
   m.isLibraryTile = (item.type = "CollectionFolder" or item.type = "UserView" or item.type = "Channel")
@@ -147,7 +160,7 @@ end sub
 ' Renders a My Media library tile: themed backdrop + type icon + library name.
 ' The poster loads the library's Primary image; when it loads successfully the
 ' placeholder (and overlaid text) hide to reveal the image. Library tiles never
-' set placeholder.itemType — the type-specific itemIcon (live_tv_white etc.)
+' set placeholder.itemType: the type-specific itemIcon (live_tv_white etc.)
 ' overlays the backdrop, so the JRPlaceholder glyph stays empty.
 sub renderLibraryTile(item as object, slotWidth as float, posterHeight as float)
   m.placeholder.visible = true
@@ -187,7 +200,7 @@ sub renderLibraryTile(item as object, slotWidth as float, posterHeight as float)
     deferTextureLoad()
   end if
 
-  ' When the same URL is re-assigned (e.g. data refresh returns identical libraries),
+  ' When the same URL is re-assigned (for example, a data refresh returns identical libraries),
   ' Roku's Poster won't re-trigger loadStatus, so onPosterLoadStatusChanged() never
   ' fires to hide the placeholder. Detect this and hide immediately.
   if not m.isTextureUnloaded and m.poster.loadStatus = "ready" and posterUri <> ""
@@ -203,7 +216,7 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
   globalUser = m.global.user
   userSettings = globalUser.settings
 
-  ' Text — static title shown by default, scrolling title shown on focus
+  ' Text: static title shown by default, scrolling title shown on focus
   m.staticTitle.text = getRowItemTitle(item)
   m.title.text = m.staticTitle.text
   m.subtitle.text = getRowItemSubtitle(item)
@@ -239,13 +252,13 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
   end if
 
   if posterUri = ""
-    ' No image available — show placeholder icon centered on backdrop
+    ' No image available: show placeholder icon centered on backdrop
     showPlaceholder(item.type)
     m.cachedPosterUri = ""
   else
-    ' TvChannel logos may be any aspect ratio — use scaleToFit (letterbox) to show the full logo.
+    ' TvChannel logos may be any aspect ratio, so use scaleToFit (letterbox) to show the full logo.
     ' Audio album art is always square; scaleToFit prevents cropping when placed in a portrait slot
-    ' (e.g. a mixed-content Playlist row). In a square slot the result is identical to scaleToZoom.
+    ' (for example, a mixed-content Playlist row). In a square slot the result is identical to scaleToZoom.
     ' All other types use scaleToZoom (fill) since their images match the slot shape.
     m.poster.loadDisplayMode = (item.type = "TvChannel" or item.type = "Audio" or item.type = "Chapter") ? "scaleToFit" : "scaleToZoom"
     m.cachedPosterUri = posterUri
@@ -269,6 +282,9 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     m.poster.unplayedCount = item.unplayedItemCount
   end if
 
+  ' Alternate-versions badge (bottom-left): see JRPoster.onMediaSourceCountChanged.
+  m.poster.mediaSourceCount = item.mediaSourceCount
+
   applyPlayedPercentage(item)
 end sub
 
@@ -278,18 +294,18 @@ end sub
 '
 ' For Programs, also installs a reactive bridge observer on the content node's
 ' playedPercentage field. JRRowList's 60s tick rewrites that field, and this
-' observer forwards the change to m.poster.playedPercentage — updating any
+' observer forwards the change to m.poster.playedPercentage, updating any
 ' currently-mounted VideoProgressBar without a cell re-render.
 '
 ' Observer teardown is split across two sites to cover every itemContent
 ' transition this cell can see:
-'   • renderItem() top — handles transitions into a new valid bind (recycle
+'   • renderItem() top: handles transitions into a new valid bind (recycle
 '     into a different content node) and re-renders triggered by size changes
 '     on the same item. Required so applyPlayedPercentage doesn't double-
 '     install observers on size-change re-renders.
-'   • onItemContentChanged() invalid path — handles transitions to invalid,
+'   • onItemContentChanged() invalid path: handles transitions to invalid,
 '     which never reach renderItem() and would otherwise leak the observer.
-' This function therefore only needs to install — not clear.
+' This function therefore only needs to install, not clear.
 sub applyPlayedPercentage(item as object)
   if item.type = "Program" or item.type = "Recording"
     nowSeconds = CreateObject("roDateTime").AsSeconds()
@@ -303,12 +319,12 @@ end sub
 
 ' Tears down the bridge observer on the previously-bound Program content node.
 ' Called from two sites to cover every itemContent transition this cell sees:
-'   • Top of renderItem() — runs before tile/standard/loading branching so
+'   • Top of renderItem(): runs before tile/standard/loading branching so
 '     recycled cells never leak observers onto stale content nodes regardless
 '     of which render branch the new bind takes. Also covers size-change re-
 '     renders on the same item (without it, applyPlayedPercentage would stack
 '     duplicate observers on every size change).
-'   • Invalid path of onItemContentChanged() — covers transitions to invalid,
+'   • Invalid path of onItemContentChanged(): covers transitions to invalid,
 '     which never reach renderItem(). Without this site, an observer installed
 '     on a Program node would leak when the cell unbinds.
 sub unobserveProgramProgress()
@@ -377,14 +393,14 @@ end sub
 
 ' Maps a Jellyfin library collection type to a local icon image path.
 ' Used to display a type-appropriate icon on library tile backdrops.
-' @param collectionType - item.collectionType string (e.g., "music", "livetv")
+' @param collectionType - item.collectionType string (for example, "music", "livetv")
 ' @returns pkg:/ path to the icon image
 function getLibraryIconPath(collectionType as string) as string
   collectionTypeLower = LCase(collectionType)
   if collectionTypeLower = "livetv"
     return "pkg:/images/media_type_icons/live_tv_white.png"
   end if
-  ' No icon for this type — return "" so the icon Poster stays hidden
+  ' No icon for this type: return "" so the icon Poster stays hidden
   ' and backdropText remains vertically centered (standard library tile appearance).
   return ""
 end function
@@ -394,7 +410,7 @@ end function
 ' On failure, sets placeholder.itemType so JRPlaceholder surfaces a
 ' type-appropriate glyph on the themed backdrop.
 '
-' backdropText visibility is only toggled for library tiles — standard items
+' backdropText visibility is only toggled for library tiles. Standard items
 ' must not inherit a stale label when this component instance is recycled from
 ' a library row.
 sub onPosterLoadStatusChanged()
@@ -404,7 +420,7 @@ sub onPosterLoadStatusChanged()
   if m.isTextureUnloaded then return
 
   if m.poster.loadStatus = "ready" and m.poster.uri <> ""
-    ' Real image loaded — hide the placeholder so the poster shows through.
+    ' Real image loaded: hide the placeholder so the poster shows through.
     cellLoad.loadSucceeded(m.contentRoot)
     m.placeholder.visible = false
     if m.isLibraryTile
@@ -414,10 +430,10 @@ sub onPosterLoadStatusChanged()
       end if
     end if
   else if m.poster.loadStatus = "failed" and m.poster.uri <> ""
-    ' Real image failed — surface a type-appropriate placeholder glyph on the
+    ' Real image failed: surface a type-appropriate placeholder glyph on the
     ' themed backdrop. Library tiles already have their own fallback (backdrop
     ' + itemIcon + text), so skip the generic glyph to avoid covering them.
-    ' Keep cachedPosterUri intact so the cell can retry the original URL — but only
+    ' Keep cachedPosterUri intact so the cell can retry the original URL, but only
     ' once it has actually LEFT the loaded range, because `unloadTexture` is what sets
     ' `isTextureUnloaded` and that flag is what `shouldReloadTexture` gates on. Moving
     ' back and forth within the range no longer re-requests it, which is what stopped
@@ -434,7 +450,7 @@ sub onPosterLoadStatusChanged()
       showPlaceholder(itemType)
     end if
   else
-    ' Loading or no URI — keep the placeholder visible behind the (transparent)
+    ' Loading or no URI: keep the placeholder visible behind the (transparent)
     ' poster.
     m.placeholder.visible = true
     if m.isLibraryTile
@@ -484,16 +500,16 @@ end sub
 
 ' Shows a type-appropriate placeholder glyph on the themed backdrop. Delegated
 ' to JRPlaceholder, which owns the backdrop + glyph + themed-blendColor
-' composition and the itemType → URI mapping (via getPlaceholderImagePath).
+' composition and the itemType-to-URI mapping (via getPlaceholderImagePath).
 '
-' The poster URI is cleared to "" so a recycled cell's stale image (e.g.,
+' The poster URI is cleared to "" so a recycled cell's stale image (for example,
 ' the previous cell's photo) doesn't render on top of the placeholder.
 ' JRPoster sits ON TOP of JRPlaceholder per the XML order, so a stale URI
 ' would cover the placeholder glyph entirely. m.cachedPosterUri retains
 ' the real URL so reloadTexture() can retry it when the cell scrolls back
 ' on screen.
 '
-' @param itemType - Jellyfin item type string (e.g., "Movie", "Person")
+' @param itemType - Jellyfin item type string (for example, "Movie", "Person")
 sub showPlaceholder(itemType as string)
   m.log.verbose("showPlaceholder", itemType)
   m.placeholder.itemType = itemType
@@ -518,7 +534,7 @@ end sub
 
 ' One-time setup: observes loadedRowRange and focusedColumns on the RowList's content root.
 ' The content root is the grandparent of itemContent in the content tree:
-'   contentRoot → rowNode → itemNode (itemContent)
+'   `contentRoot → rowNode → itemNode (itemContent)`
 ' Called from onItemContentChanged. Skips if already connected.
 sub setupTextureObserver()
   if isValid(m.contentRoot) then return
@@ -546,7 +562,7 @@ end sub
 
 ' Returns this cell's row index by finding its row node in the content root's children.
 ' Computed on demand rather than cached because row indices shift when rows are
-' dynamically inserted or removed (e.g. HomeRows section loading).
+' dynamically inserted or removed (for example, HomeRows section loading).
 ' @returns row index, or -1 if the cell's position cannot be determined
 function getMyRowIndex() as integer
   if not isValid(m.top.itemContent) then return -1
@@ -580,10 +596,9 @@ function getRowItemCount() as integer
   return rowNode.getChildCount()
 end function
 
-' Checks whether this cell is in the horizontal buffer zone for its row.
-' The buffer keeps up to TEXTURE_BUFFER_THRESHOLD items loaded, split evenly
-' around the visible items: (threshold - numVisible) / 2 on each side.
-' Wrap-aware for fixedFocusWrap rows where items wrap around the end.
+' Checks whether this cell is in the horizontal buffer zone for its row. Reads the node
+' state; the geometry itself is isColumnInTextureWindow (textureManager.bs), where it is
+' unit-tested.
 ' Only applies to rows with > TEXTURE_BUFFER_THRESHOLD items.
 function isInHorizontalBuffer() as boolean
   if not isValid(m.contentRoot) then return false
@@ -603,46 +618,15 @@ function isInHorizontalBuffer() as boolean
     focusedCol = cols[rowIndex]
   end if
 
-  ' Calculate how many items fit in the visible area.
-  ' Ceiling via integer math — partial items at the edge still render.
   slotWidth = int(m.top.width)
   if slotWidth <= 0 then return false
+  numVisible = calculateTextureVisibleItemCount(int(m.contentRoot.textureVisibleWidth), slotWidth, int(m.contentRoot.textureItemSpacing))
 
-  visibleWidth = int(m.contentRoot.textureVisibleWidth)
-  itemSpacing = int(m.contentRoot.textureItemSpacing)
-  itemStride = slotWidth + itemSpacing
-  numVisible = int(visibleWidth / itemStride)
-  if itemStride > 0 and visibleWidth mod itemStride > 0 then numVisible++
-
+  ' Short-circuit before getMyColumnIndex(), which walks the row.
   totalItems = getRowItemCount()
-
-  ' If all items fit within the threshold, everything stays loaded
   if totalItems <= TEXTURE_BUFFER_THRESHOLD then return true
 
-  ' Split the remaining budget evenly: half on the left, half on the right.
-  ' e.g. threshold=20, numVisible=5 → 7 items buffered on each side, 19 total loaded.
-  ' Extra item (from odd remainder) goes to the right to favour forward scroll.
-  bufferBudget = TEXTURE_BUFFER_THRESHOLD - numVisible
-  if bufferBudget < 2 then bufferBudget = 2
-  leftBuffer = int(bufferBudget / 2)
-  rightBuffer = bufferBudget - leftBuffer
-
-  ' Wrap-aware range using modular arithmetic for fixedFocusWrap rows.
-  bufferStart = (focusedCol - leftBuffer + totalItems) mod totalItems
-  bufferEnd = focusedCol + numVisible - 1 + rightBuffer
-
-  colIndex = getMyColumnIndex()
-  if colIndex < 0 then return false
-
-  if bufferEnd >= totalItems
-    ' Buffer wraps around the end — item is in range if at the tail OR head
-    return colIndex >= bufferStart or colIndex <= (bufferEnd mod totalItems)
-  else if bufferStart > focusedCol
-    ' Buffer wraps around the start (focusedCol near 0, bufferStart near end)
-    return colIndex >= bufferStart or colIndex <= bufferEnd
-  end if
-
-  return colIndex >= bufferStart and colIndex <= bufferEnd
+  return isColumnInTextureWindow(getMyColumnIndex(), focusedCol, totalItems, numVisible)
 end function
 
 ' Determines whether this cell should load its texture during initial render.
@@ -669,24 +653,24 @@ function shouldLoadTexture() as boolean
     if getRowItemCount() > TEXTURE_BUFFER_THRESHOLD
       return isInHorizontalBuffer()
     end if
-    ' Short rows: all items fit in budget — always load
+    ' Short rows: all items fit in budget, so always load
     return true
   end if
 
-  ' Outside managed ranges — renderTracking decides
+  ' Outside managed ranges: renderTracking decides
   return m.top.renderTracking <> "none"
 end function
 
-' Central texture decision — called when renderTracking, textureManagerState,
+' Central texture decision, called when renderTracking, textureManagerState,
 ' loadedRowRange, or focusedColumns changes.
 '
 ' State machine:
-'   "destroyed" → force unload everything (no guards)
-'   "init"      → no-op (freeze state during layout changes)
-'   "hidden"    → renderTracking decides (keep Roku-allocated cells, unload rest)
-'   "active"    → managed rows (visible + buffer): our buffer logic decides,
-'                  renderTracking ignored (it's unreliable during layout recalcs).
-'                  Outside rows: renderTracking decides.
+'   "destroyed": force unload everything (no guards)
+'   "init":      no-op (freeze state during layout changes)
+'   "hidden":    no-op (freeze: textures stay loaded, renderTracking ignored)
+'   "active":    managed rows (visible + buffer): our buffer logic decides,
+'                renderTracking ignored (it's unreliable during layout recalcs).
+'                Outside rows: renderTracking decides.
 sub evaluateTextureState()
   state = getTextureManagerState()
 
@@ -696,12 +680,12 @@ sub evaluateTextureState()
     return
   end if
 
-  ' Init: freeze — layout recalculations cause spurious renderTracking changes.
+  ' Init: freeze. Layout recalculations cause spurious renderTracking changes.
   if state = "init"
     return
   end if
 
-  ' Hidden: freeze — screen is behind another on the stack. Textures stay
+  ' Hidden: freeze. The screen is behind another on the stack. Textures stay
   ' loaded so returning is instant. renderTracking flips to "none" when
   ' visible=false propagates, but we must not react to it.
   if state = "hidden"
@@ -710,19 +694,20 @@ sub evaluateTextureState()
 
   ' Active: for managed rows, trust our own buffer logic over renderTracking.
   ' Roku can briefly flip renderTracking to "none" during layout recalculations
-  ' (e.g. when a new screen's init() creates JRRowItem cells). Reacting to
+  ' (for example, when a new screen's init() creates JRRowItem cells). Reacting to
   ' those spurious changes causes a visible flash of empty backdrops.
   rowPosition = getRowPosition()
 
   if rowPosition = "buffer"
-    ' Buffer rows (±1 from visible): ALL items stay loaded for seamless scroll.
+    ' Buffer rows (±2 from visible): ALL items stay loaded for seamless scroll. Bounded
+    ' in practice by the cells RowList has created for the row, not by its item count.
     reloadTexture()
     return
   end if
 
   if rowPosition = "visible"
     ' Long rows (> threshold): horizontal buffer decides which items stay loaded.
-    ' Short rows (≤ threshold): all items fit in budget — always loaded.
+    ' Short rows (≤ threshold): all items fit in budget, so always loaded.
     if getRowItemCount() > TEXTURE_BUFFER_THRESHOLD
       if isInHorizontalBuffer()
         reloadTexture()
@@ -735,7 +720,7 @@ sub evaluateTextureState()
     return
   end if
 
-  ' Outside managed ranges — renderTracking decides
+  ' Outside managed ranges: renderTracking decides
   if m.top.renderTracking <> "none"
     reloadTexture()
   else
@@ -781,7 +766,7 @@ sub onRenderTrackingChanged()
   evaluateTextureState()
 end sub
 
-' Fires when textureManagerState changes (init → active, active → hidden, etc.)
+' Fires when textureManagerState changes (init to active, active to hidden, and so on)
 sub onTextureManagerStateChanged()
   evaluateTextureState()
 end sub
@@ -798,36 +783,36 @@ end sub
 
 ' Records that this cell is on screen, for the pop-in half of the cell-load ledger.
 '
-' Called from BOTH renderItem (the cell was bound while already on screen — Home's first
+' Called from both renderItem (the cell was bound while already on screen: Home's first
 ' paint) and onRenderTrackingChanged (it scrolled in), because for a recycled cell there is
 ' no ordering guarantee between the two. `cellLoad.appeared()` counts at most once per bind,
 ' so calling it from both is idempotent rather than double-counting.
 '
 ' `renderTracking` is the appearance signal rather than getRowPosition() +
-' isInHorizontalBuffer(), deliberately. Those are the app's own model of what is on screen,
-' and the horizontal half assumes the focused column is the LEFTMOST visible one — an
+' isInHorizontalBuffer(), by design. Those are the app's own model of what is on screen,
+' and the horizontal half assumes the focused column is the leftmost visible one, an
 ' assumption this file's buffer maths makes and that has never been verified. Scoring the
 ' buffer against its own coordinate system would bake that unverified premise into the
 ' number; renderTracking is the compositor's answer and carries no such premise.
 sub noteAppearance()
   ' Off screen: end the episode so a scroll-back counts as a new appearance. Without this
   ' the once-per-bind gate swallows every re-entry, which is the race the buffer exists
-  ' to win — see cellLoad.departed().
+  ' to win (see cellLoad.departed()).
   '
-  ' 🚨 GATED ON "active" — this is the same refusal `evaluateTextureState` makes two
-  ' functions below, and for the same reason. A "none" that arrives while the screen is
+  ' 🚨 Gated on "active": this is the same refusal `evaluateTextureState` makes, and
+  ' for the same reason. A "none" that arrives while the screen is
   ' `hidden` is `visible=false` propagating down, and one that arrives during `init` is a
   ' layout recalculation. Neither is the cell leaving the screen, and closing the episode
   ' on either re-arms the gate so the return scores a FRESH appearance the user never saw.
   ' The rule is that on a resume with no scrolling every appearance must be paid for by a
-  ' bind. Measured against the demo server, backing out of one item detail: 18 appearances
-  ' against 10 binds — every one a guaranteed non-pop-in, because `hidden` freezes textures
+  ' bind. Measured 2026-08-22 against the demo server, backing out of one item detail: 18 appearances
+  ' against 10 binds, every one a guaranteed non-pop-in, because `hidden` freezes textures
   ' loaded. They land in the denominator of `popIns / appearances` as free wins and flatter
   ' the buffer. Those counts are that fixture's; the bound is not, and it is gated in
   ' tests/rta/specs/cell-load.spec.js.
   '
   ' Only the DEPARTURE is gated, not `cellLoad.appeared()` below. Closing an episode is
-  ' the sole destructive step — an appearance is idempotent per episode, so an ungated
+  ' the sole destructive step: an appearance is idempotent per episode, so an ungated
   ' `appeared()` cannot double-count, while first paint legitimately happens during `init`
   ' (`activateTextureManager` runs only once initial content has loaded) and gating it
   ' would delete `popInsFirst` entirely.
@@ -835,7 +820,7 @@ sub noteAppearance()
     if getTextureManagerState() = "active" then cellLoad.departed(m.contentRoot)
     return
   end if
-  ' No real image expected — a skeleton, a library tile with no artwork, or an item whose
+  ' No real image expected: a skeleton, a library tile with no artwork, or an item whose
   ' poster URI is empty. There is nothing for the buffer to have raced.
   if m.cachedPosterUri = "" then return
   cellLoad.appeared(m.contentRoot, m.poster.loadStatus = "ready", m.isTextureUnloaded)
@@ -856,12 +841,12 @@ sub deferTextureLoad()
 end sub
 
 ' Clears poster/icon URIs to release texture memory when the cell is off-screen.
-' Items with no real image (cachedPosterUri = "") are skipped — they already show
+' Items with no real image (cachedPosterUri = "") are skipped: they already show
 ' a lightweight local placeholder that costs negligible texture memory.
 '
 ' @param reason - which mechanism evicted this cell, cellLoad.UNLOAD_RANGE or
 '                 cellLoad.UNLOAD_WINDOW. Required rather than defaulted: the two call
-'                 sites below are the ONLY eviction paths, and a default would let a third
+'                 sites in evaluateTextureState are the only eviction paths, and a default would let a third
 '                 one be added that silently scores as the wrong mechanism.
 sub unloadTexture(reason as string)
   if m.cachedPosterUri = "" or m.isTextureUnloaded then return
@@ -878,7 +863,8 @@ sub unloadTexture(reason as string)
   end if
 end sub
 
-' Force-unloads textures unconditionally — used only during onDestroy().
+' Force-unloads textures unconditionally. Used only in the "destroyed" state, which the
+' parent screen's onDestroy() sets through destroyTextureManager().
 ' Ignores m.isTextureUnloaded and m.cachedPosterUri guards so every cell releases memory.
 sub forceUnloadTexture()
   m.isTextureUnloaded = true
@@ -892,9 +878,9 @@ end sub
 ' The placeholder will show briefly while the real image reloads from Roku's
 ' HTTP cache.
 '
-' It is NOT a general retry path for a failed load. `shouldReloadTexture` deliberately
-' skips a cell that is showing its failure glyph but was never unloaded — see
-' `failed-poster-no-scroll-retry` in docs/decisions.md. Such a cell does get one fresh
+' It is not a general retry path for a failed load. `shouldReloadTexture` skips, by
+' design, a cell that is showing its failure glyph but was never unloaded (see
+' `failed-poster-no-scroll-retry` in docs/decisions.md). Such a cell does get one fresh
 ' attempt, but only after it leaves the loaded range and `unloadTexture` sets the flag.
 sub reloadTexture()
   if shouldReloadTexture(m.isTextureUnloaded, m.cachedPosterUri)
@@ -902,20 +888,20 @@ sub reloadTexture()
     cellLoad.reload(m.contentRoot)
     ' `true` = this request came from a RE-ENTRY, which is the case the texture buffer
     ' exists to win. A pop-in here means the buffer tried and the network was slower; one
-    ' on the initial-render path means the data had only just arrived and no buffer could
+    ' on the initial-render path means the data had only now arrived and no buffer could
     ' have helped. The ledger keeps them apart.
     cellLoad.loadStarted(m.contentRoot, true)
     m.isTextureUnloaded = false
     m.poster.loadDisplayMode = m.cachedLoadDisplayMode
     m.poster.uri = m.cachedPosterUri
-    ' Reset the placeholder to loading state (backdrop only, no glyph) — the
+    ' Reset the placeholder to loading state (backdrop only, no glyph): the
     ' real image is starting to load again.
     if m.placeholder.itemType <> "" then cellLoad.glyphWipe(m.contentRoot, cellLoad.WIPE_RELOAD)
     m.placeholder.itemType = ""
     m.placeholder.visible = true
   end if
-  ' The icon keeps the URI compare the poster gave up, and is NOT the same bug: nothing
-  ' clears itemIcon.uri on failure — onIconLoadStatusChanged only hides the icon — so a
+  ' The icon keeps the URI compare the poster gave up, and is not the same bug: nothing
+  ' clears itemIcon.uri on failure (onIconLoadStatusChanged only hides the icon), so a
   ' failed icon still compares EQUAL to its cached URI and is never re-requested. The
   ' compare only fires when an unload actually cleared it. Checked rather than assumed,
   ' because this line reads exactly like the predicate that was replaced.
@@ -930,6 +916,21 @@ end sub
 
 ' Toggles scrolling vs static title on focus, and speaks the title via audio guide.
 sub onFocusChanged()
+  ' A placeholder shows no title, so there is none to toggle: the labels still hold whatever
+  ' item this recycled cell drew last. A failed one is announced: it is the one placeholder a
+  ' viewer acts on (OK retries).
+  item = m.top.itemContent
+  if skeleton.isPlaceholder(item)
+    if m.top.itemHasFocus and skeleton.isFailedPlaceholder(item) and isValid(m.failedText)
+      if m.global.device.isAudioGuideEnabled
+        txt2Speech = CreateObject("roTextToSpeech")
+        txt2Speech.Flush()
+        txt2Speech.Say(m.failedText.text)
+      end if
+    end if
+    return
+  end if
+
   ' Library tiles have no scrolling text labels to toggle
   if m.isLibraryTile then return
 
@@ -962,4 +963,31 @@ end sub
 ' Hides and stops the loading spinner if it exists.
 sub hideLoadingSpinner()
   skeleton.hideSpinner(m.loadingSpinner)
+end sub
+
+' Shows the "couldn't load" text over the backdrop for a failed placeholder
+' (skeleton.createFailedPlaceholder), in place of the spinner. Created on first use and
+' placed on every render, like the spinner: cells are recycled across rows whose slot sizes
+' differ. Its own label rather than the library tile's backdropText, whose size and position
+' the library-tile path rearranges.
+sub showFailedText(slotWidth as float, posterHeight as float)
+  if not isValid(m.failedText)
+    m.failedText = CreateObject("roSGNode", "LabelPrimarySmaller")
+    m.failedText.isBold = true
+    m.failedText.horizAlign = "center"
+    m.failedText.vertAlign = "center"
+    m.failedText.wrap = true
+    m.failedText.text = translate(translationKeys.MessageHomeRowLoadFailed)
+    m.top.appendChild(m.failedText)
+  end if
+  m.failedText.width = slotWidth - 2 * FAILED_TEXT_INSET
+  m.failedText.height = posterHeight - 2 * FAILED_TEXT_INSET
+  m.failedText.translation = [FAILED_TEXT_INSET, FAILED_TEXT_INSET]
+  m.failedText.visible = true
+end sub
+
+' Hides the failed text if this cell ever showed it. Called on every other render, like
+' hideLoadingSpinner, because the cell drawing an item now may have drawn a failure a moment ago.
+sub hideFailedText()
+  if isValid(m.failedText) then m.failedText.visible = false
 end sub

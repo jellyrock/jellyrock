@@ -1,0 +1,21 @@
+' Track dropdown item helpers.
+'
+' Pure functions shared by ItemDetails (which seeds the collapsed trigger) and
+' TrackDropdown (which refreshes it after a pick). Lives here (not inside either
+' component) so the rule has one home and is directly unit-testable.
+
+namespace trackDropdownItems
+
+  ' triggerText: The text the collapsed trigger shows for a dropdown item. Prefers the
+  ' item's triggerTitle where it carries one: the video and subtitle slots use it to
+  ' keep the trigger free of what only reads correctly beside the other entries in the
+  ' open menu. Items without one (audio) fall through to title unchanged. Returns ""
+  ' for an invalid item.
+  function triggerText(item as object) as string
+    if not isValid(item) then return ""
+    if isValidAndNotEmpty(item.triggerTitle) then return item.triggerTitle
+    if isValid(item.title) then return item.title
+    return ""
+  end function
+
+end namespace

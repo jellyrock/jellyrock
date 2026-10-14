@@ -20,11 +20,17 @@
     "editor.defaultFormatter": "DavidAnson.vscode-markdownlint",
   },
   "markdownlint.lintWorkspaceGlobs": ["!tasks/**/*.md"],
+  // Prettier (esbenp.prettier-vscode) formats JS and JSON on save, so the editor
+  // matches the pre-commit hook and CI. It uses the repo's node_modules/prettier and
+  // skips everything in .prettierignore (generated JSON, locale/, .bs/.xml/.md).
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+  },
   "[json]": {
-    "editor.defaultFormatter": "vscode.json-language-features",
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
   "[jsonc]": {
-    "editor.defaultFormatter": "vscode.json-language-features",
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
   "xml.format.maxLineWidth": 0,
   "editor.detectIndentation": false,
@@ -33,26 +39,24 @@
   "editor.formatOnSave": true,
   "brightscript.output.hyperlinkFormat": "FilenameAndFunction",
   "brightscript.bsdk": "node_modules/brighterscript",
+  // Each project is a full copy of the app that the language server re-checks on
+  // every save, so load only projects that surface diagnostics no other one does:
+  // dev (every lint plugin) and all tests (the only one covering tests/). The
+  // unit / integration configs are subsets of all tests. Prod's plugins are a
+  // subset of dev's and CI builds it on every PR; flip `disabled` to check it live.
   "brightscript.projects": [
     {
       "path": "bsconfig.json",
       "name": "JellyRock dev",
     },
     {
-      "path": "bsconfig-prod.json",
-      "name": "JellyRock prod",
-    },
-    {
       "path": "bsconfig-tests.json",
       "name": "All Unit Tests",
     },
     {
-      "path": "bsconfig-tests-unit.json",
-      "name": "Unit tests (no integration)",
-    },
-    {
-      "path": "bsconfig-tests-integration.json",
-      "name": "Integration Unit tests",
+      "path": "bsconfig-prod.json",
+      "name": "JellyRock prod",
+      "disabled": true,
     },
   ],
   "search.exclude": {

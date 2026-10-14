@@ -1,5 +1,5 @@
 /**
- * The registry of on-device MEASUREMENTS the app emits — the single source of
+ * The registry of on-device MEASUREMENTS the app emits: the single source of
  * truth for what `npm run measure` can sample, and how a console line becomes a
  * number.
  *
@@ -11,7 +11,7 @@
  * lines the app was already emitting and those lines do not share a shape. A screen
  * instrumented with the readiness ledger
  * ([`source/utils/screenReadiness.bs`](../source/utils/screenReadiness.bs)) does share
- * one — the emit is uniform by construction, and the screen's name travels IN the line
+ * one: the emit is uniform by construction, and the screen's name travels IN the line
  * as a dimension. So `screen-load` is one entry that covers every such screen, present
  * and future, and instrumenting the next one is app-side work only.
  *
@@ -32,9 +32,9 @@
  * first thing to write. It would have baked in the instance instead of the class:
  * the app already emits a SECOND family from the item grid, which is what the
  * genres optimisation work reads, and every future instrumented screen adds a
- * third. The families do not share a line shape — Home's `run complete` puts the
+ * third. The families do not share a line shape. Home's `run complete` puts the
  * value BEFORE its label (`10 rows 2654 ms`, from `m.log.info(msg, count, "rows",
- * ms, "ms")`) while `orchestrator done` puts it after (`task 2546`) — so a
+ * ms, "ms")`) while `orchestrator done` puts it after (`task 2546`), so a
  * "generic key/value extractor" is not available either. An explicit pattern per
  * line, declared next to the fields it produces, is the honest shape.
  *
@@ -45,23 +45,24 @@
  *     latest-rows run complete 11 rows 2728 ms
  *
  * What arrives on port 8085 (captured on `.177`, 2026-08-12) is roku-log's full
- * form — a level, the emitting source file and line, and trailing padding:
+ * form: a level, the emitting source file and line, and trailing padding:
  *
  *     INFO file:///…/components/home/HomeRows.bs:459 latest-rows run complete 10 rows 2654 ms␠␠␠␠
  *
  * A pattern written from the doc anchors at the start of the message and matches
  * nothing. The prefix is stripped by `parseLogLine` below rather than repeated
- * into every family's pattern, and it is OPTIONAL there — a build configured
+ * into every family's pattern, and it is OPTIONAL there: a build configured
  * without the file transport still emits the message, and a measurement that
  * silently stopped matching would be worse than one that matched a bare line.
  *
  * ## Ground truth for each pattern
  *
- * `home-latest-rows` was captured off a device. `item-grid` is written from the
- * emitting call site — which IS authoritative for the message, since it is the
- * format string itself — but has not yet been observed on the wire. Its
- * `grounded` flag says so, and `npm run measure` reports it, so nobody quotes a
- * number from a pattern that has never matched a real line.
+ * `home-latest-rows` was captured off a device. `item-grid` was written from the
+ * emitting call site (which IS authoritative for the message, since it is the
+ * format string itself) and was observed on the wire later. Each family's
+ * `grounded` flag says which is true of it, and `npm run measure` reports an
+ * ungrounded one, so nobody quotes a number from a pattern that has never
+ * matched a real line.
  */
 
 /**
@@ -90,7 +91,7 @@ export function parseLogLine(raw) {
   const { level, source, sourceLine, message } = m.groups;
   return {
     level,
-    // Just the basename: the absolute path is the AGENT's checkout path, which is
+    // Only the basename: the absolute path is the AGENT's checkout path, which is
     // provenance about the machine that built the app rather than about the app,
     // and it would put a developer's home directory into every sample record.
     source: source ? source.split('/').pop() : undefined,
@@ -102,12 +103,12 @@ export function parseLogLine(raw) {
 /**
  * The compile-time state a sample was taken under, as the app itself stamps it.
  *
- * Two of the four Home lines and the item-grid line carry `[debug=… perfTiming=…]`,
- * added so "a number can never be silently compared against one measured in a
- * distorting build" — `debug=true` attaches the full raw API payload to every
- * transformed item, landing inside `emit`, the largest component of a Home run.
+ * Home's `orchestrator done` and `emit split` lines and the item-grid line carry
+ * `[debug=… perfTiming=…]`, added so "a number can never be silently compared against
+ * one measured in a distorting build": `debug=true` attaches the full raw API payload
+ * to every transformed item, landing inside `emit`, the largest component of a Home run.
  *
- * ⚠️ `ENABLE_RTA` is NOT in this bracket. It is the third compile-time flag that
+ * ⚠️ `ENABLE_RTA` is not in this bracket. It is the third compile-time flag that
  * can move a measurement (it makes the on-device ODC component resident), and a
  * line lifted out of a scrollback therefore cannot self-report it. `measure.js`
  * records it from the deploy it performed; a line found loose in a log cannot be
@@ -138,24 +139,24 @@ const nums = (groups) => {
 /**
  * One measurement family.
  *
- * - `id` — the record key and the `--measurement` argument.
- * - `screen` — WHERE the app was when the lines were emitted, or `null` when the
+ * - `id`: the record key and the `--measurement` argument.
+ * - `screen`: WHERE the app was when the lines were emitted, or `null` when the
  *   family alone cannot say. A measurement is a `(screen, family)` pair: the family
  *   says which loader emitted the timing, the screen says what was on the device.
- *   Today `measure.js` reaches a screen by RELAUNCHING, so only Home is reachable
- *   and the field looks redundant — it is not, and it is declared now rather than
- *   retrofitted, because tier 3's selection predicate is `(measurement, screen)`
+ *   Without `--nav`, `measure.js` reaches a screen by RELAUNCHING, so only Home is
+ *   reachable and the field looks redundant. It is not, and it is declared now rather
+ *   than retrofitted, because tier 3's selection predicate is `(measurement, screen)`
  *   and this project has already paid for the retrofit lesson once: `deviceKey` was
  *   added to the run ledger after the fact and the first four runs predate it
  *   entirely, so they can never join a series.
- * - `lines` — the console lines that together make ONE sample. `required` lines
+ * - `lines`: the console lines that together make ONE sample. `required` lines
  *   must all be seen before a sample is complete; an optional line enriches it.
- * - `workload` — which of the parsed fields describe HOW MUCH WORK the run did
+ * - `workload`: which of the parsed fields describe HOW MUCH WORK the run did
  *   rather than how long it took. This is the tier-2 split, declared per family
  *   because only the family knows which of its numbers is a workload: Home's
  *   `rows` is a workload and its `totalMs` is a timing, and no naming convention
  *   reliably separates them.
- * - `primary` — the field a comparison headlines. Named explicitly because the
+ * - `primary`: the field a comparison headlines. Named explicitly because the
  *   doc is emphatic that not every emitted number is trustworthy: `drain` is a
  *   remainder of two quantities measured on concurrently-running threads and
  *   must not be compared, so a tool that headlined "the biggest number" would
@@ -173,7 +174,7 @@ export const MEASUREMENTS = Object.freeze([
     grounded: true,
     primary: 'totalMs',
     workload: Object.freeze(['rows']),
-    // Counts, not durations — `sizeMs` beside them is the duration. Kept out of `workload`
+    // Counts, not durations: `sizeMs` beside them is the duration. Kept out of `workload`
     // because they are OUTCOMES of the run rather than what it was handed: `rows` is the
     // same across arms by construction, while a batching change is measured precisely by
     // `sizeCalls` moving. Putting them in workload would make `measure:compare` report that
@@ -181,15 +182,15 @@ export const MEASUREMENTS = Object.freeze([
     //
     // Found 2026-08-22 by the "classify every numeric field" test, not by a reader:
     // `unitFor('sizeCalls', family)` answered `'ms'`, so `measure:report --field sizeCalls`
-    // headlined a call count as milliseconds — the identical defect `counts` was added to
-    // fix for `cell-load`, sitting undetected in a second family the whole time.
+    // headlined a call count as milliseconds. That is the identical defect `counts` was added
+    // to fix for `cell-load`, sitting undetected in a second family the whole time.
     counts: Object.freeze([
       'sizeCalls',
       'sizeDrains',
       'sizeRemove',
       'sizeInsert',
       // `rowRemove*` are counts for the same reason `sizeRemove` is, and the two `/`-composed
-      // pairs are counts on BOTH sides — `unitFor` is keyed on the field, not on the line, so
+      // pairs are counts on BOTH sides: `unitFor` is keyed on the field, not on the line, so
       // omitting one half would headline it as milliseconds while its twin read as a count.
       'rowRemoveSeq',
       'rowRemoveLoads',
@@ -201,7 +202,7 @@ export const MEASUREMENTS = Object.freeze([
       Object.freeze({
         key: 'total',
         required: true,
-        // `m.log.info("latest-rows run complete", count, "rows", ms, "ms")` —
+        // `m.log.info("latest-rows run complete", count, "rows", ms, "ms")`:
         // value BEFORE label, which is why this cannot share a pattern with the
         // orchestrator line below.
         pattern: /latest-rows run complete (?<rows>\d+) rows (?<totalMs>\d+) ms/,
@@ -229,9 +230,9 @@ export const MEASUREMENTS = Object.freeze([
         // OWN line rather than three more groups on `populate split` because `m.log.*`
         // faults at runtime past nine call-site arguments.
         //
-        // OPTIONAL, and that is load-bearing rather than cautious: only a build carrying
+        // OPTIONAL, and that is a requirement rather than caution: only a build carrying
         // the row-size batching emits it at all, so a REQUIRED line here would drop every
-        // sample taken on a build without it — which is exactly the arm any comparison
+        // sample taken on a build without it, which is exactly the arm any comparison
         // needs as its baseline. An arm that emits nothing records the timings it does
         // have and reports the line as uncovered.
         key: 'sizeRecompute',
@@ -248,7 +249,7 @@ export const MEASUREMENTS = Object.freeze([
         // rather than four more groups above for the same reason that one is separate
         // from `populate split`: nine call-site arguments is the `m.log.*` ceiling.
         //
-        // OPTIONAL for the same reason as `sizeRecompute` — only a build carrying the
+        // OPTIONAL for the same reason as `sizeRecompute`: only a build carrying the
         // attribution emits it, and the baseline arm a comparison needs is exactly the
         // build that does not.
         //
@@ -259,8 +260,8 @@ export const MEASUREMENTS = Object.freeze([
         // A first cut of this pattern stopped before the tail on the grounds that a reader
         // could recover it from the run log. A reader cannot.
         //
-        // It is a string, so `splitWorkload` files it under `dimensions` — correctly, and
-        // by the same rule that puts `screen-load`'s `slowestContent` there. A dimension
+        // It is a string, so `splitWorkload` files it under `dimensions`. That is correct, and
+        // follows the same rule that puts `screen-load`'s `slowestContent` there. A dimension
         // is anything that is not a QUANTITY: `remove` and `insert` are counts a
         // comparison can subtract, while "which row was dropped" is not a number and
         // subtracting two of them means nothing.
@@ -271,36 +272,37 @@ export const MEASUREMENTS = Object.freeze([
       }),
       Object.freeze({
         // ONE immediate row removal, stamped at the instant it happened rather than
-        // summarised at run end — which is the whole point of it, and why it is a line of
+        // summarized at run end. That is the whole point of it, and why it is a line of
         // its own instead of more columns on `size recompute by`.
         //
         // `sizeRemove` above counts only removals landing INSIDE the run's window, because
         // its counters are zeroed at run start and read at run end. On this server the
-        // removal itself is unconditional (`logRowRemoved` in `HomeRows.bs` has the chain),
-        // so `sizeRemove` is a race outcome, not an occurrence count, and a launch reading
-        // `sizeRemove 0` had the SAME removal somewhere outside the window. This line is
-        // what says where.
+        // removal itself is unconditional (`logRowRemoved` in `HomeRows.bs` names the chain,
+        // and the #862 commit spells it out), so `sizeRemove` is a race outcome, not an
+        // occurrence count, and a launch reading `sizeRemove 0` had the SAME removal
+        // somewhere outside the window. This line is what says where.
         //
         // It can therefore arrive BEFORE the required lines or AFTER all of them, and
         // `assembleSamples` handles both: a sample opens on the first matching line
         // whichever it is, and whatever is still open at end of window is flushed. What it
-        // does NOT survive is the line REPEATING — that closes the sample — which is why the
+        // does not survive is the line REPEATING, which closes the sample. That is why the
         // app numbers each removal, so a split launch is visible as an ordinal above 1
         // rather than as a short read.
         //
         // OPTIONAL for the same reason as the two lines above: the baseline arm of any
         // comparison is the build that does not carry this.
         //
-        // GROUNDED on `.177` 2026-08-25 — 40 of 40 samples across two n=20 arms carried this
-        // line and every field parsed. Columns and what they read are documented in
-        // `docs/dev/home-first-paint-performance.md` ("`row removed`"), the same place
-        // `size recompute` above points at.
+        // GROUNDED on `.177` 2026-08-25: 40 of 40 samples across two n=20 arms carried this
+        // line and every field parsed. Its columns are documented in
+        // `docs/dev/home-first-paint-performance.md` ("`row removed`"), the doc the
+        // `sizeRecompute` line above points at. What the readings showed is in the #862
+        // commit and tech-debt `home-row-size-recompute-per-row`.
         //
         // `cells -1/-1` is the app's own "the content root carried no counters" reading, and
         // both halves are signed so it survives the parse. That guard cannot fire in
-        // `HomeRows` today — init creates the content root and attaches the counters to that
-        // same node before returning — so treat the signed capture as insurance against a call
-        // site, NOT as a case this family exercises. It is still worth having: a `\d+` here
+        // `HomeRows` today (init creates the content root and attaches the counters to that
+        // same node before returning), so treat the signed capture as insurance against a call
+        // site, not as a case this family exercises. It is still worth having: a `\d+` here
         // would drop the WHOLE line rather than one field, and a dropped line reads as "no
         // removal happened", which is the one wrong answer. Covered by unit test only, and
         // that is expected rather than a coverage gap.
@@ -314,24 +316,24 @@ export const MEASUREMENTS = Object.freeze([
   Object.freeze({
     id: 'item-grid',
     title: 'Item grid / genres load',
-    doc: 'docs/dev/home-first-paint-performance.md#the-grids-genre-loop--the-same-method-the-opposite-answer',
-    // NULL, deliberately, and not an oversight: `LoadItemsTask2` backs EVERY library
+    doc: 'docs/dev/home-first-paint-performance.md#the-grids-genre-loop',
+    // NULL on purpose, not an oversight: `LoadItemsTask2` backs every library
     // grid because they are all `BaseGridView`, so this family says nothing about
-    // which library was open — and a movies grid and a shows grid are different
+    // which library was open, and a movies grid and a shows grid are different
     // workloads under one id. Whoever navigates there has to say (`--screen`), and
     // until something can, a comparison of two null-screen series is warned about
     // rather than silently trusted.
     screen: null,
-    // Written from the emitting call site (LoadItemsTask2.bs:421), which is
-    // authoritative for the MESSAGE — it is the format string.
+    // Written from the emitting call site (`LoadItemsTask2.loadItems()`), which is
+    // authoritative for the MESSAGE: it is the format string.
     //
-    // GROUNDED 2026-08-19, on ledger evidence rather than recollection — the same
+    // GROUNDED 2026-08-19, on ledger evidence rather than recollection. That is the same
     // standard `screen-load` was flipped on, and this family was the last one left
     // ungrounded. `--nav moviesLibraryGrid --library <id>` on a Stick 4K produced
     // **5/5 cold samples** (taskMs median 426 ms, items 28, genreFetches 0). Until
     // then every run printed "the item-grid pattern has never matched a real device
-    // line", which on a genuine zero-sample run tells the operator the pattern is at
-    // least as likely at fault as the app — backwards once the pattern is proven.
+    // line", which on a real zero-sample run tells the operator the pattern is at
+    // least as likely at fault as the app: backwards once the pattern is proven.
     //
     // ⚠️ It stayed ungrounded this long for a reason worth knowing: reaching ANY
     // library grid needs `--library <id>` on a server with more than one library of a
@@ -349,7 +351,38 @@ export const MEASUREMENTS = Object.freeze([
         key: 'load',
         required: true,
         pattern:
-          /item-grid load done - items (?<items>\d+) genreFetches (?<genreFetches>\d+) firstPaint (?<firstPaintMs>-?\d+).*?task (?<taskMs>\d+) wait (?<waitMs>\d+) emit (?<emitMs>\d+)/,
+          // `handoff` is optional so lines from builds before it existed still parse.
+          /item-grid load done - items (?<items>\d+) genreFetches (?<genreFetches>\d+) firstPaint (?<firstPaintMs>-?\d+)(?: handoff (?<handoffMs>\d+))?.*?task (?<taskMs>\d+) wait (?<waitMs>\d+) emit (?<emitMs>\d+)/,
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: 'item-grid-paging',
+    title: 'Item grid paging while scrolling (stalls)',
+    doc: 'docs/dev/home-first-paint-performance.md#grid-paging-did-the-user-wait-at-the-last-loaded-row',
+    // NULL for the same reason as `item-grid`: `BaseGridView` backs every library grid. The
+    // workload that drives it (`--nav gridScroll`) is what says which grid and how it moved.
+    screen: null,
+    // GROUNDED 2026-09-26 on ledger evidence: `--nav gridScroll` series on `.176` (512 MB
+    // Stick) and `.177` (Stick 4K) against the 8,643-movie fixture, every sample complete.
+    grounded: true,
+    // Time spent at the last loaded row with a page in flight: the wait a user sees.
+    primary: 'stallMs',
+    // Empty on purpose. Nothing on the line is an input: `furthestRow`, `pages` and `items`
+    // all grow when pages arrive faster, because a press at the last loaded row goes nowhere
+    // (measured on the 512 MB Stick, 2026-09-25: `furthestRow` 83 before #1046, 107 after,
+    // same itinerary). The input is the nav's itinerary, which its own console line reports.
+    workload: Object.freeze([]),
+    counts: Object.freeze(['stalls', 'furthestRow', 'pages', 'items']),
+    lines: Object.freeze([
+      Object.freeze({
+        // One line per grid query, emitted when the query is replaced or the grid is
+        // destroyed, so a workload has to LEAVE the grid for it to print.
+        key: 'paging',
+        required: true,
+        pattern:
+          // `appendMs` / `appendMaxMs` are optional so lines from builds before #1046 still parse.
+          /item-grid paging - stalls (?<stalls>\d+) stallMs (?<stallMs>\d+) furthestRow (?<furthestRow>\d+)(?: appendMs (?<appendMs>\d+) appendMaxMs (?<appendMaxMs>\d+))? pages (?<pages>\d+) items (?<items>\d+) pageMs (?<pageMs>\d+)/,
       }),
     ]),
   }),
@@ -357,13 +390,13 @@ export const MEASUREMENTS = Object.freeze([
     id: 'screen-load',
     title: 'Screen readiness (paint + settle)',
     // The doc this family OWNS, as of 2026-08-19. It pointed at
-    // `home-first-paint-performance.md` only because that was the file that existed —
-    // a `doc:` naming a missing file is a dead link in every message that prints it, and
+    // `home-first-paint-performance.md` only because that was the file that existed:
+    // a `doc:` naming a missing file is a dead link for anyone who follows it, and
     // a registry test asserts every path here resolves. The two docs answer different
     // questions (see the note at the top of this file): `screen-load` is about WHEN a
     // screen became usable, which is what `measuring-performance.md` is for.
     doc: 'docs/dev/measuring-performance.md',
-    // NULL because this family covers EVERY instrumented screen — and unlike
+    // NULL because this family covers every instrumented screen, and unlike
     // `item-grid` above, that is not a gap waiting to be filled by `--screen`. The
     // app emits its own screen name into the line, so the screen arrives as a
     // DIMENSION of the sample rather than as something the operator asserts from
@@ -371,17 +404,17 @@ export const MEASUREMENTS = Object.freeze([
     // made `enableRta` derived rather than assumed in `measure.js`.
     screen: null,
     // Written from `source/utils/screenReadiness.bs`, which is authoritative for the
-    // MESSAGE (it is the format string) — and it has now been seen on the wire many
+    // MESSAGE (it is the format string), and it has now been seen on the wire many
     // times over. Flipped on evidence read out of the ledger rather than on the memory
-    // of having run it: `.device-runs/measure/measurements.jsonl` holds 35 `screen-load`
+    // of having run it: `.device-runs/measure/measurements.jsonl` then held 35 `screen-load`
     // series, 32 of them carrying at least one COMPLETE sample, across six distinct
     // components (`itemDetails`, `videoPlayer`, `settings`, `searchResults`, `preLogin`,
     // `setServer`) and three days.
     //
     // Left at `false` this was not a harmless stale flag: `measure.js` prints "the
-    // screen-load pattern has never matched a real device line" on EVERY run, and on a
-    // genuine zero-sample run it says the pattern is at least as likely at fault as the
-    // app. That is now backwards — a screen that emits nothing here is the app or the
+    // screen-load pattern has never matched a real device line" on every run, and on a
+    // real zero-sample run it says the pattern is at least as likely at fault as the
+    // app. That is now backwards: a screen that emits nothing here is the app or the
     // build, and the message was sending whoever hit it to audit a proven parser.
     grounded: true,
     primary: 'paintMs',
@@ -389,16 +422,16 @@ export const MEASUREMENTS = Object.freeze([
     // reason `component` + `variant` are repeated on all three lines rather than stated
     // once on the paint line.
     //
-    // A chained navigation mounts one component more than once per launch — reaching a
-    // Season means loading its Series first, and the details route is keepAlive with no
-    // allowReuse, so each is a FRESH component with its own ledger. Two ledgers emit
+    // A chained navigation mounts one component more than once per launch. Reaching a
+    // Season means loading its Series first, and the details route sets no allowReuse,
+    // so each is a FRESH component with its own ledger. Two ledgers emit
     // onto one console and interleave: the nav's gate waits on paint, so it presses into
-    // the Season while the Series' extras chain is still running (measured at 649 ms for
+    // the Season while the Series' extras chain is still running (measured 2026-08-14 at 649 ms for
     // a Series, 2677 ms for a Movie). Without an identity the assembler files the
     // Series' settle against the Season's paint, and the result is not a detectable
-    // error — every field is well-formed while describing two different screens.
+    // error: every field is well-formed while describing two different screens.
     //
-    // The legacy families below declare none, so their lines all share one identity and
+    // The legacy families above declare none, so their lines all share one identity and
     // they take exactly the path they took before this existed.
     identity: Object.freeze(['component', 'variant']),
     // Counts of fills, not durations. `fills` is the total; the two class counts sum
@@ -408,9 +441,9 @@ export const MEASUREMENTS = Object.freeze([
     lines: Object.freeze([
       Object.freeze({
         key: 'paint',
-        // The only REQUIRED line, and deliberately so. A screen that paints and then
+        // The only REQUIRED line, and on purpose. A screen that paints and then
         // never settles has an async fill that never landed, and that must show up as
-        // a sample with a paint time and no settle time — not as a dropped sample
+        // a sample with a paint time and no settle time, not as a dropped sample
         // (which would make a broken screen look like a device that ran fewer times)
         // and not as a silently shorter series.
         required: true,
@@ -422,27 +455,27 @@ export const MEASUREMENTS = Object.freeze([
         required: false,
         // Captures the identity rather than skipping to the numbers. The earlier form
         // (`settled -.*? ms …`) discarded both, which made the mis-filing above
-        // impossible to detect FROM THE RECORD — the burden is on being able to show it
+        // impossible to detect FROM THE RECORD. The burden is on being able to show it
         // did not happen, and a pattern that throws the evidence away cannot.
         pattern:
           /screen-load settled - component (?<component>\S+) variant (?<variant>\S+) ms (?<settledMs>\d+) fills (?<fills>\d+)/,
       }),
       Object.freeze({
         // The per-class breakdown, split off `settled` only because roku-log caps a
-        // call at nine arguments — see the note in screenReadiness.bs. It is one
+        // call at nine arguments (see the note in screenReadiness.bs). It is one
         // sample with the line above, not a second measurement.
         //
-        // ⚠️ `contentMs` / `textureMs` are SUMS OVER CONCURRENT FILLS and are NOT
+        // ⚠️ `contentMs` / `textureMs` are SUMS OVER CONCURRENT FILLS and are not
         // shares of `settledMs`. The fills overlap, so the sums can exceed the wall
-        // clock — observed on `.177`: a Series detail settled in 845 ms with
+        // clock, as observed on `.177` on 2026-08-14: a Series detail settled in 845 ms with
         // `contentMs 878`. Do not render either as a percentage of the load.
         // `slowestContentMs` IS bounded by `settledMs`, and is the one to act on.
         key: 'split',
         required: false,
-        // `instrumentUs` is OPTIONAL in the pattern and that is load-bearing rather
-        // than lazy: every `screen-load` line taken before the ledger began timing
+        // `instrumentUs` is OPTIONAL in the pattern, and that is a requirement rather
+        // than laziness: every `screen-load` line taken before the ledger began timing
         // itself lacks the field, and a required group would stop those lines matching
-        // at all — silently turning three days of recorded series into unparseable
+        // at all, silently turning three days of recorded series into unparseable
         // text. Absent reads as absent, which is the same rule the family already
         // applies to a settled line that never arrived.
         pattern:
@@ -454,7 +487,7 @@ export const MEASUREMENTS = Object.freeze([
     id: 'cell-load',
     title: 'Cell binds and image loads',
     doc: 'docs/dev/measuring-performance.md',
-    // NULL for the same reason `screen-load` is: this family covers EVERY screen that
+    // NULL for the same reason `screen-load` is: this family covers every screen that
     // uses the texture manager, and the app emits its own component name into the line,
     // so the screen arrives as a DIMENSION of the sample rather than as something the
     // operator asserts from outside.
@@ -462,13 +495,14 @@ export const MEASUREMENTS = Object.freeze([
     // GROUNDED 2026-08-20 on `.177`, on ledger evidence rather than on having written the
     // emit: one launch produced EIGHT lines across three distinct components (`HomeRows`,
     // `ExtrasRowList`, `BaseGridView` twice), every field populated, no crash. The
-    // multi-component run is what makes it grounded rather than merely seen — it exercised
+    // multi-component run is what makes it grounded rather than merely seen: it exercised
     // both content shapes (two-level RowList and flat MarkupGrid) and both emit triggers
     // (hide on navigate-away, destroy on teardown).
     grounded: true,
     primary: 'binds',
-    // What the run had to chew on. `items` is the content root's child count at emit —
-    // rows for a RowList, items for a grid — so `binds / items` is the REBIND RATE, which
+    // What the run had to chew on. `items` is the item count under the content root at emit
+    // (`cellLoad.countItems()`: every row's items for a RowList, the children of a flat
+    // grid), so `binds / items` is the REBIND RATE, which
     // is the number this family exists to publish.
     workload: Object.freeze(['items']),
     // Every other numeric field here is a COUNT, and a count is not milliseconds. Kept
@@ -511,9 +545,9 @@ export const MEASUREMENTS = Object.freeze([
         // change that starts re-issuing image requests has no other symptom, and a counter
         // that is almost always zero is the cheapest possible way to notice it moved.
         //
-        // It is NOT always zero, and the earlier note here saying so was withdrawn on
+        // It is not always zero, and the earlier note here saying so was withdrawn on
         // 2026-08-20 rather than qualified. Across the scripted cell sweeps it reads 0 on
-        // the grid, extras and search mounts on every launch, and on five of Home's six —
+        // the grid, extras and search mounts on every launch, and on five of Home's six,
         // but the sixth read 1, and that was the same launch that was the outlier on both
         // `binds` (253 against a median of 235) and `loadsStarted` (179 against 164). The
         // counter fired on exactly the anomalous run and nowhere else, which is the
@@ -523,14 +557,14 @@ export const MEASUREMENTS = Object.freeze([
       }),
       Object.freeze({
         // Split off `binds` only because roku-log caps a call at nine arguments once the
-        // BSC plugin has spent one on the injected pkg path — the same constraint that
+        // BSC plugin has spent one on the injected pkg path: the same constraint that
         // splits `screen-load settled` from `screen-load split`. One sample, two lines.
         key: 'work',
         required: false,
         // `loadsFailed` far exceeding the number of distinct broken images is the
         // signature of a retry that has no memory of the last failure. `wipesReload` vs
         // `wipesBind` separates a glyph wiped on a cell that was CHANGING anyway from one
-        // wiped on a cell sitting still — only the second reads to a user as flicker.
+        // wiped on a cell sitting still. Only the second reads to a user as flicker.
         //
         // `loadsSucceeded` is OPTIONAL in the pattern so records emitted before it existed
         // still parse. Read it with `loadsStarted`: their difference minus `loadsFailed` is
@@ -540,11 +574,11 @@ export const MEASUREMENTS = Object.freeze([
         // never came back as a success.
         //
         // `unloadsRange` / `unloadsWindow` are optional for the same reason and partition
-        // `unloads` exactly — the two are the only eviction call sites, so their sum is the
+        // `unloads` exactly: the two are the only eviction call sites, so their sum is the
         // total by construction and a sample where it is not has lost a line. They are
         // carried because the total cannot answer the question a per-row-limit campaign
         // asks: `range` (the cell left the managed vertical range) dominates every sweep
-        // and moves with how far it scrolled, while `window` is the ONLY signal that the
+        // and moves with how far it scrolled, while `window` is the only signal that the
         // horizontal item window inside a long row ran at all. See the UNLOAD_* constants
         // in `source/utils/cellLoad.bs`.
         pattern:
@@ -554,31 +588,31 @@ export const MEASUREMENTS = Object.freeze([
         // The RACE, where `binds` and `work` are the WORK. The buffer exists to load a
         // cell's image before the cell is on screen; `popIns` is how often it did not.
         //
-        // Read `popIns` against `appearances`, never on its own — a raw count moves with
+        // Read `popIns` against `appearances`, never on its own: a raw count moves with
         // how far the sweep travelled, which is the same trap `binds` needs `items` for.
         //
         // A pop-in is scored only once the image ACTUALLY ARRIVES, so a permanently broken
         // image lands in `loadsFailed` and not here. Without that, `ExtrasRowList` (117 of
-        // 140 loads fail against a real server) would report a total buffer failure caused
+        // 140 loads failed against a real server on 2026-08-22) would report a total buffer failure caused
         // entirely by missing artwork.
         //
         // `popInsCold` / `popInsReload` / `popInsFirst` partition `popIns` three ways, all
         // emitted so none has to be derived by subtraction. Cold: no request in flight, so
         // the user outran the buffer's DEPTH and more depth would help. Reload: a re-entry
-        // request was running and the network was slower — depth cannot fix it. First: the
-        // cell's FIRST render was still loading, so the data had only just arrived and no
+        // request was running and the network was slower, so depth cannot fix it. First: the
+        // cell's FIRST render was still loading, so the data had only now arrived and no
         // buffer could have won. **`popInsFirst` dominates any sweep that OPENS its
-        // screen** — measured 2026-08-21 on `cellSweepGrid`, where `popIns` read 18 of 28
+        // screen**, measured 2026-08-21 on `cellSweepGrid`, where `popIns` read 18 of 28
         // appearances with `popInsCold` 0. Reading that 18 as a buffer failure is the
         // mistake this split exists to prevent.
         //
-        // 🚨 `loadMs` is a SUM OVER CONCURRENT REQUESTS and is NOT a share of the wall
-        // clock — measured 16416 ms inside an ~1800 ms sweep, 9.1x, because the grid has
+        // 🚨 `loadMs` is a SUM OVER CONCURRENT REQUESTS and is not a share of the wall
+        // clock: measured 2026-08-22, 16416 ms inside an ~1800 ms sweep, 9.1x, because the grid has
         // ~34 posters in flight at once. Same hazard, and same wording, as `screen-load`'s
         // `contentMs`. `loadMsMax` IS bounded by the sweep.
         //
         // `loadMsMax` is the one to act on; `loadMs / loadMsCount` is the mean. Divide by
-        // `loadMsCount` and NOT by `loadsSucceeded`: a "ready" with no matching issue is a
+        // `loadMsCount`, not by `loadsSucceeded`: a "ready" with no matching issue is a
         // success with no interval, so the two counts legitimately differ.
         //
         // Not `required`, for the reason `screen-load split` is not: every cell-load record
@@ -588,6 +622,85 @@ export const MEASUREMENTS = Object.freeze([
         required: false,
         pattern:
           /cell-load popin - component (?<component>\S+) appearances (?<appearances>\d+) popIns (?<popIns>\d+) popInsCold (?<popInsCold>\d+) popInsReload (?<popInsReload>\d+) popInsFirst (?<popInsFirst>\d+) loadMs (?<loadMs>\d+) loadMsCount (?<loadMsCount>\d+) loadMsMax (?<loadMsMax>\d+)/,
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: 'extras-rows',
+    title: 'Item details extras rows',
+    doc: 'docs/architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes',
+    // NULL for the same reason `item-grid`'s is: ONE orchestrator
+    // (`LoadExtrasRowsTask`) backs the extras rows of every detail screen, so a movie's
+    // extras and a series' extras are different workloads under one id. Whoever
+    // navigates has to say which (`--nav movieDetails` / `--nav seriesDetails`).
+    screen: null,
+    grounded: true,
+    // `castMs`, not `taskMs`: the orchestrator's total is dominated by network wait for
+    // the rows that make requests, and the cast row makes none: its people are already
+    // on the item. So `taskMs` moves with the server and the library, while `castMs` is
+    // pure local work on the task thread, which is the thing a change to card building
+    // actually moves.
+    primary: 'castMs',
+    // `castPeople` is what the server sent: the INPUT, identical across arms by
+    // construction, which is what `workloadKey` builds a comparison identity out of.
+    workload: Object.freeze(['rows', 'castPeople']),
+    // `castCards` is an OUTCOME, not workload: it diverges from `castPeople` exactly
+    // when the merge fired, so it is SUPPOSED to differ between a pre-merge arm and a
+    // post-merge one. In `workload` it would make `measure:compare` report that the arms
+    // "did not all do the same work", the finding rather than a fault, which is the same
+    // reason `home-latest-rows` keeps `sizeCalls` out. `unitFor` answers '' either way,
+    // so this costs nothing in rendering and buys back the comparison.
+    counts: Object.freeze(['castCards']),
+    lines: Object.freeze([
+      Object.freeze({
+        key: 'orchestrator',
+        required: true,
+        pattern:
+          /extras-rows orchestrator done -.*?rows (?<rows>\d+) task (?<taskMs>\d+) wait (?<waitMs>\d+) emit (?<emitMs>\d+)/,
+      }),
+      Object.freeze({
+        // OPTIONAL because a detail screen whose type plans no cast row (music,
+        // playlists) emits the orchestrator line and not this one, and a REQUIRED line
+        // would throw away every such sample rather than recording the timings it does
+        // have. Same reason `latest-rows size recompute` is optional.
+        key: 'cast',
+        required: false,
+        pattern:
+          /extras-rows cast -.*?people (?<castPeople>\d+) cards (?<castCards>\d+) ms (?<castMs>\d+)/,
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: 'api-dispatch',
+    title: 'API pool dispatch cost (coordinator thread)',
+    doc: 'docs/architecture/api.md#a-request-nobody-is-waiting-for',
+    // NULL, and not an oversight: the coordinator is ONE task for the whole session and
+    // dispatches for every screen, so a window can span a navigation. Whoever runs it
+    // says what the app was doing (`--nav`), exactly as `item-grid` does.
+    screen: null,
+    // GROUNDED 2026-09-22 on `.177` (Stick 4K), `--nav home`: 30 samples over 6
+    // launches, `check`/`send`/`deliver` all populated, and a forced 1-wide-pool arm
+    // produced `waited` > 0, so the pattern is proven against both shapes of window.
+    grounded: true,
+    // `checkUs`: what the coordinator spends per window deciding whether a queued
+    // request still has a caller. That is the quantity the skip design adds, and the one
+    // an arm is supposed to move; `sendUs` is the unchanged slot write beside it, which
+    // is what makes a moved `checkUs` readable as a real difference rather than a
+    // busier device.
+    primary: 'checkUs',
+    // `entries` is fixed by DISPATCH_WINDOW, so two arms are comparable by construction;
+    // it is recorded as workload so a window that emitted short (a changed constant)
+    // cannot be silently averaged in.
+    workload: Object.freeze(['entries']),
+    // OUTCOMES, kept out of `workload` for the reason `extras-rows` keeps `castCards`
+    // out: `skipped` is SUPPOSED to differ between arms, because it is the finding.
+    counts: Object.freeze(['waited', 'skipped', 'delivered']),
+    lines: Object.freeze([
+      Object.freeze({
+        key: 'window',
+        required: true,
+        pattern:
+          /api-dispatch window entries (?<entries>\d+) waited (?<waited>\d+) skipped (?<skipped>\d+) delivered (?<delivered>\d+).*?check (?<checkUs>\d+) send (?<sendUs>\d+) deliver (?<deliverUs>\d+)/,
       }),
     ]),
   }),
@@ -627,8 +740,8 @@ export function matchLine(measurement, raw) {
  *
  * A window can hold more than one run. Home's `refresh()` re-runs the load on a
  * return to Home, and a console window that starts before a launch can also carry
- * a REPLAYED line — Roku replays recent output to a newly-connected socket, and a
- * probe on `.177` measured one arriving 10 ms after connect reading `10 rows 7241
+ * a REPLAYED line. Roku replays recent output to a newly-connected socket, and a
+ * probe on `.177` on 2026-08-12 measured one arriving 10 ms after connect reading `10 rows 7241
  * ms`, against a live range of 1439–2654 ms that session.
  *
  * Either way, collapsing a window to "the" number is how a stale or a warm run
@@ -644,15 +757,15 @@ export function matchLine(measurement, raw) {
  * ## The delimiting rule
  *
  * A sample opens on the first matching line and closes when a line it ALREADY
- * has repeats WITHIN ITS OWN IDENTITY — the app has moved on to another run of
- * that same thing. The four Home lines are
+ * has repeats WITHIN ITS OWN IDENTITY: the app has moved on to another run of
+ * that same thing. Home's lines are
  * emitted by two different threads and can interleave, so a strict order cannot
  * be assumed, but a repeat is unambiguous.
  *
- * It deliberately does NOT close as soon as every `required` line has arrived,
- * which was the first rule tried and which a test caught: on a real device the
- * order is `run complete` → `populate split` → `orchestrator done` → `emit
- * split`, so the required pair completes with one optional line still in flight.
+ * It does not close as soon as every `required` line has arrived, on purpose.
+ * That was the first rule tried, and a test caught it: on a real device the
+ * order is `run complete`, then `populate split`, then `orchestrator done`, then
+ * `emit split`, so the required pair completes with one optional line still in flight.
  * Closing there truncated every sample and filed the trailing `emit split` as the
  * start of a phantom third run. `required` decides whether a closed sample is
  * COMPLETE; it does not decide when to close.
@@ -660,7 +773,7 @@ export function matchLine(measurement, raw) {
  * An incomplete sample is emitted with `complete: false` rather than dropped or
  * merged forward. Dropping it would make a device that stopped mid-run look like
  * a device that ran fewer times, and merging would fabricate a run out of halves
- * of two — the same conflation `run-record.js` removed from the ledger's
+ * of two. That is the same conflation `run-record.js` removed from the ledger's
  * `failures: []`.
  */
 export function assembleSamples(measurement, rawLines) {
@@ -668,7 +781,7 @@ export function assembleSamples(measurement, rawLines) {
   const samples = [];
   // One open sample PER IDENTITY, not one open sample. A family that declares no
   // identity puts every line under the same key, which is byte-for-byte the previous
-  // single-open behaviour — the two legacy families take that path.
+  // single-open behavior. Every family without an `identity` takes that path.
   const open = new Map();
   let opened = 0;
 
@@ -720,24 +833,23 @@ export function assembleSamples(measurement, rawLines) {
 }
 
 /**
- * Split a sample's fields into the tier-2 halves — what the run had to do, and how
- * long it took — plus the DIMENSIONS that say which run it was.
+ * Split a sample's fields into the tier-2 halves (what the run had to do, and how
+ * long it took), plus the DIMENSIONS that say which run it was.
  *
  * The workload/timing split rests on being explicit rather than inferred: tier 2
  * RECORDS workload and never asserts on it, and tier 3 prints the workload delta
  * beside the timing delta so drift is visible instead of refused.
  *
  * The third bucket is inferred, and can be: a dimension is any field whose value is
- * not a number. `screen-load` emits `screen itemDetails`, `variant Movie` and
+ * not a number. `screen-load` emits `component itemDetails`, `variant Movie` and
  * `slowestContent extras` alongside its milliseconds, and none of the three is a
- * quantity — subtracting two of them is meaningless, so leaving them in `timings`
+ * quantity. Subtracting two of them is meaningless, so leaving them in `timings`
  * would hand `measure:compare` string operands for a numeric delta and a
  * Mann-Whitney. No per-family declaration is needed for the same reason the split
- * above needs one: "is this a count or a duration" genuinely requires the family to
- * say, while "is this a number at all" is decidable here and cannot drift.
+ * above needs one: "is this a count or a duration" requires the family to say,
+ * while "is this a number at all" is decidable here and cannot drift.
  *
- * Families that emit no non-numeric field get an empty object, which is why the two
- * pre-existing ones are unaffected.
+ * Families that emit no non-numeric field get an empty object.
  */
 export function splitWorkload(measurement, fields = {}) {
   const workload = {};
@@ -752,13 +864,13 @@ export function splitWorkload(measurement, fields = {}) {
 }
 
 /**
- * The unit a field is expressed in — from its NAME for a duration, from the FAMILY
+ * The unit a field is expressed in: from its NAME for a duration, from the FAMILY
  * for a count.
  *
  * Every reporting layer used to append a bare `ms` to whatever number a family
  * emitted, which was true for as long as every field was milliseconds. `instrumentUs`
  * is the first that is not, and printing it as `3200 ms` would not be a cosmetic
- * slip — it is the well-formed-but-wrong shape this subsystem exists to refuse, and
+ * slip. It is the well-formed-but-wrong shape this subsystem exists to refuse, and
  * a reader has no way to catch a unit error from the number alone.
  *
  * Durations are keyed on the name's suffix rather than a per-field table, so a family
@@ -767,20 +879,20 @@ export function splitWorkload(measurement, fields = {}) {
  * An OUTCOME COUNT is not a duration either, and it is not workload: workload is what the
  * run had to chew on and is expected to be IDENTICAL across arms (`workloadKey` builds a
  * comparison identity out of it, and `measure:compare` warns when two samples disagree),
- * while `popIns` and `binds` are results that are SUPPOSED to differ — putting them in
+ * while `popIns` and `binds` are results that are SUPPOSED to differ. Putting them in
  * `workload` would make every cell-load comparison report samples that "did not all do the
  * same work". Hence a separate `counts` list: same unit answer, opposite role. Verified
- * before it was added rather than supposed — `unitFor('binds', cellLoad)` returned `'ms'`,
+ * before it was added rather than supposed: `unitFor('binds', cellLoad)` returned `'ms'`,
  * so `measure:report --field popIns` would have headlined a pop-in count as milliseconds,
  * the same well-formed-but-wrong shape that `--field items` printed before workload took a
  * family.
  *
  * A WORKLOAD field is not a duration and has no unit at all, and no naming convention
- * can say which is which — `rows` is a count and `totalMs` is a duration, but so is
+ * can say which is which: `rows` is a count and `totalMs` is a duration, but so is
  * `items` a count and `taskMs` a duration, and only the family knows. That is the same
  * reason `splitWorkload` takes a `measurement`: *"is this a count or a duration"
- * genuinely requires the family to say.* So pass the family whenever the caller has
- * one. Every reader that headlines an arbitrary field does — `measure:report`'s
+ * requires the family to say.* So pass the family whenever the caller has
+ * one. Every reader that headlines an arbitrary field does: `measure:report`'s
  * `--field items` printed `median 28 ms` for an item count before this took one.
  *
  * @param key the field name.
@@ -803,7 +915,7 @@ export function unitFor(key, measurement) {
  *
  * Beside `unitFor` rather than private to a reader, because it has to agree with it:
  * a workload field's unit is the empty string, and a renderer that pastes it on anyway
- * emits `28 ` — a trailing space inside a padded column. That coupling is the argument
+ * emits `28 `, a trailing space inside a padded column. That coupling is the argument
  * for one copy; `measure.js` and `measure:compare` both had their own before this.
  *
  * `—` for a missing value, never `0`: no sample carrying the field and every sample
@@ -823,8 +935,8 @@ export const withUnit = (v, unit = 'ms') => {
  * field or a build that emitted nothing, and that must be reported rather than read as
  * "this family does not have one". Absence and inapplicability are different claims.
  *
- * De-duplicated because a family's lines repeat the fields that IDENTIFY a sample —
- * `screen-load` carries `component` and `variant` on all three — so the raw scan
+ * De-duplicated because a family's lines repeat the fields that IDENTIFY a sample
+ * (`screen-load` carries `component` and `variant` on all three), so the raw scan
  * returns them once per line. No caller today is harmed by that, but "every field name"
  * is the contract, and a count or a rendered list is the obvious next use.
  */
@@ -839,31 +951,31 @@ export function declaredFields(measurement) {
 }
 
 /**
- * A capture group whose matcher is a NUMBER — `\d+`, optionally signed.
+ * A capture group whose matcher is a NUMBER: `\d+`, optionally signed.
  *
  * Written against the pattern SOURCE, so `item-grid`'s `(?<firstPaintMs>-?\d+)` counts.
  * An earlier copy of this rule (inline in `measurements.test.js`) required a bare `\d+`
- * and therefore skipped that field silently — it stayed classified only because its NAME
+ * and therefore skipped that field silently. It stayed classified only because its NAME
  * ends `Ms`, which is the fallback the test exists to stop anyone relying on.
  */
 const NUMERIC_GROUP = /\(\?<(\w+)>(?:-\?)?\\d\+\)/g;
 
 /**
- * Every declared field split by what the family emits it AS — a quantity, or a label.
+ * Every declared field split by what the family emits it AS: a quantity, or a label.
  *
  * Distinct from `splitWorkload`, and the difference is which question is being asked and
  * WHEN. `splitWorkload` classifies a captured VALUE at runtime (`typeof v !== 'number'`),
  * which is decidable only once a sample exists. This classifies the PATTERN, statically,
- * which is what a caller needs BEFORE any device has run — `measure:report --field` has to
+ * which is what a caller needs BEFORE any device has run: `measure:report --field` has to
  * accept or reject a name with no ledger in hand.
  *
  * The two agree because the patterns say which is which: a quantity is captured with
- * `\d+` (optionally signed), and ANY other shape is a dimension. That is deliberately a
- * default-deny rather than an `\S+` allowlist — `home-latest-rows` already ships a third
+ * `\d+` (optionally signed), and ANY other shape is a dimension. That is a default-deny on
+ * purpose, rather than an `\S+` allowlist: `home-latest-rows` already ships a third
  * shape, `(?<rowRemoveAt>[^#\s]+)`, because that field is followed by a `#` the pattern has
  * to stop at. It lands in `dimensions`, which is the SAFE side: a dimension is rejected as a
  * headline, where a mis-filed quantity would be published as milliseconds. That is not a
- * convention someone has to remember — `measurements.test.js` asserts the partition is
+ * convention someone has to remember: `measurements.test.js` asserts the partition is
  * exhaustive and disjoint, so a new capture shape is bucketed by the stated rule rather than
  * by a guess, and the test names the choice so it stays one someone took.
  *
@@ -897,7 +1009,7 @@ export function fieldsByKind(measurement) {
  * `begin`, so dividing by it would overstate the footprint several-fold on exactly the
  * number people quote most.
  *
- * `null` — never 0 — when it cannot be computed. A screen that painted and never
+ * `null`, never 0, when it cannot be computed. A screen that painted and never
  * settled has no wall clock to be a fraction OF, and returning zero there would report
  * the most broken case as the cleanest one.
  */

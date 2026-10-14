@@ -7,7 +7,7 @@
  * device's full registry to `.device-runs/registry-<host>.json` BEFORE it seeds
  * anything, and deletes that file once its own verified restore succeeds. So a
  * file still sitting there means exactly one thing: the run did not put the
- * device back — it was killed, it crashed, or its restore failed.
+ * device back. It was killed, it crashed, or its restore failed.
  *
  * The next run repairs the device automatically (see `snapshotRegistry`); this
  * script is for when you want it back NOW, without starting a run. It targets
@@ -20,16 +20,22 @@
  * on failure by design, and `snapshotRegistry()` restores from it before its own,
  * so an unconvergeable one blocks every later run and this very command re-runs
  * the same loop. `--accept` is the way out that is not `rm` on the device's only
- * backup. It does not claim the device is clean — it prints what it accepted.
+ * backup. It does not claim the device is clean: it prints what it accepted.
  *
- * Requires the RTA-enabled build sideloaded — the on-device component is the
- * only way to reach the registry from outside — so it launches the dev channel
+ * Requires the RTA-enabled build sideloaded (the on-device component is the
+ * only way to reach the registry from outside), so it launches the dev channel
  * first if it is not already running.
+ *
+ *   npm run rta:restore -- --force
+ *
+ * ...restores even though the snapshot's owning process is still alive. See the
+ * refusal below for why that is normally the wrong thing to do.
  */
 import { setupRtaEnv, ecp, device } from '../tests/rta/lib/driver.js';
 import { readSnapshotFile, restoreRegistry } from '../tests/rta/lib/registry.js';
 import { sleep } from '../tests/rta/lib/steps.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
+import { isProcessAlive } from './lib/process-liveness.cjs';
 
 setupRtaEnv();
 const host = device.getCurrentDeviceConfig().host;
@@ -39,6 +45,30 @@ if (!snapshot) {
   console.log(`Nothing to restore: no saved registry snapshot for ${host}.`);
   console.log('(A snapshot only survives a run that failed to restore — this is the good case.)');
   process.exit(0);
+}
+
+// The premise of this whole script ("a file still sitting there means the run did
+// not put the device back") is false while that run is STILL GOING. The snapshot
+// is written before any seeding and removed only by a verified restore, so it is
+// present for the entire suite, and restoring from it here would put the registry
+// back underneath a live run and relaunch the channel mid-suite. `npm run
+// device:status` used to actively recommend exactly that; it no longer does, but
+// the recommendation also lives in older docs and in people's memory, so the
+// refusal belongs at the destructive end and not only at the signpost.
+//
+// A missing `ownerPid` (a snapshot from before that field, or a truncated write)
+// reads as not-alive and restores as it always did: the conservative direction,
+// since those are the stranded cases.
+if (isProcessAlive(snapshot.ownerPid) && !process.argv.includes('--force')) {
+  console.error(
+    `Refusing to restore ${host}: its snapshot belongs to a run that is STILL RUNNING ` +
+      `(pid ${snapshot.ownerPid}, taken ${snapshot.takenAt}).\n` +
+      '  Restoring now would revert the registry underneath that run and relaunch the\n' +
+      '  channel mid-suite. The run removes this file itself once it restores.\n' +
+      '  Let it finish, or stop it first. If the pid is not the run you think it is:\n' +
+      '    npm run rta:restore -- --force',
+  );
+  process.exit(1);
 }
 
 console.log(`Restoring ${host} from a snapshot taken ${snapshot.takenAt} ...`);

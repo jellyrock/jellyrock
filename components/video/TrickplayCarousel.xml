@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="TrickplayCarousel" extends="Group">
   <interface>
-    <field id="trickplayConfig" type="assocarray" onChange="onConfigChanged" />
-    <field id="thumbnailIndex" type="integer" value="-1" onChange="onThumbnailIndexChanged" />
-    <field id="playbackPosition" type="float" value="0" onChange="onPlaybackPositionChanged" />
+    <field id="trickplayConfig" type="assocarray" />
+    <field id="thumbnailIndex" type="integer" value="-1" />
+    <field id="playbackPosition" type="float" value="0" />
     <field id="videoDuration" type="float" />
-    <field id="isVisible" type="boolean" value="false" onChange="onIsVisibleChanged" />
+    <field id="isVisible" type="boolean" value="false" />
     <function name="onDestroy" />
     <function name="reset" />
   </interface>
@@ -15,7 +15,7 @@
     <Poster id="preloaderPoster" visible="false" />
 
     <Group id="posterGroup">
-      <!-- 5 clip groups: each clips a large tile image to show just one thumbnail -->
+      <!-- 5 clip groups: each clips a large tile image to show only one thumbnail -->
       <!-- The inner Poster is translated negatively to position the desired thumbnail in the clip area -->
       <!-- Side thumbnails: 320x180 display, Center: 480x270 display -->
 

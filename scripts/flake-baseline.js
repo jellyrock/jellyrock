@@ -22,8 +22,8 @@
  *
  * ## Why the exclusions are output, not a silent `filter`
  *
- * The selection is deliberately strict — five keys, and a run must satisfy all of
- * them — so the ordinary failure is selecting FEWER runs than you think, or none.
+ * The selection is strict on purpose (six keys, and a run must satisfy all of
+ * them), so the ordinary failure is selecting FEWER runs than you think, or none.
  * A bare `filter` reports that as a small number or a `NaN`, both of which read as
  * an answer. Every excluded row is therefore counted and attributed, and a
  * zero-sample selection refuses to produce a rate at all.
@@ -37,14 +37,14 @@ import { readRuns, runDir, RUN_OUTCOMES, SAMPLE_OUTCOMES } from './run-record.js
  * The variants that measure the same thing for a FLAKE rate.
  *
  * The protocol is one `test:rta` followed by `test:rta:fast` for runs 2..N, so that
- * the series measures one binary instead of N rebuilds of it — which means the
+ * the series measures one binary instead of N rebuilds of it. That means the
  * series spans two variant names by construction, and an equality filter on either
- * one silently reports a fraction of the runs taken. They are NOT interchangeable
- * for a DURATION comparison: `:fast` skips the deploy and is ~30 s shorter.
+ * one silently reports a fraction of the runs taken. They are not interchangeable
+ * for a DURATION comparison: `:fast` skips the deploy and is tens of seconds shorter.
  */
 export const FLAKE_VARIANTS = ['test:rta', 'test:rta:fast'];
 
-/** The ledger a run kind appends to — derived from `runDir`, never a second mapping. */
+/** The ledger a run kind appends to, derived from `runDir`, never a second mapping. */
 export const ledgerFor = (run) =>
   path.join('.device-runs', path.basename(runDir(run)), 'runs.jsonl');
 
@@ -54,13 +54,21 @@ export const ledgerFor = (run) =>
  * Every criterion is optional: omit one and it does not filter, which is what lets
  * the same function back both the describe mode and the rate mode. Each excluded row
  * is attributed to exactly ONE reason, first match wins, ordered from "not this
- * series at all" to "this series, but not usable evidence" — so the counts sum to
+ * series at all" to "this series, but not usable evidence", so the counts sum to
  * the rows read and a reader can see which criterion is doing the work.
  */
 export function selectBaseline(runs, { commit, deviceKey, variants } = {}) {
   const wanted = variants ? new Set(variants) : undefined;
-  const excluded = { otherCommit: 0, otherDevice: 0, otherVariant: 0, dirty: 0, nonSample: 0 };
+  const excluded = {
+    otherCommit: 0,
+    otherDevice: 0,
+    otherVariant: 0,
+    dirty: 0,
+    scoped: 0,
+    nonSample: 0,
+  };
   const nonSampleOutcomes = {};
+  const scopedArgs = [];
   const samples = [];
 
   for (const r of runs) {
@@ -71,7 +79,35 @@ export function selectBaseline(runs, { commit, deviceKey, variants } = {}) {
     // carries no content hash: two dirty runs are not provably the same code, which
     // is the one thing a baseline's `commit` key exists to establish.
     else if (r.dirty) excluded.dirty++;
-    else if (!SAMPLE_OUTCOMES.has(r.outcome)) {
+    // A run that forwarded ANY argument to the test runner did not run the suite this
+    // rate is about. Sits between `dirty` and `nonSample` because that is the
+    // progression: wrong code, then wrong SUITE, then no verdict.
+    //
+    // ANY argument, not a list of the scope-narrowing ones. Vitest 4.1.10 narrows on
+    // eight (positional filters, `-t`, `--dir`, `--shard`, `--changed`, `--exclude`,
+    // `--project`, `--tagsFilter`) and the set moves between majors, so an allowlist
+    // here would quietly stop matching and count a one-test run as a clean suite,
+    // silently, which is the failure `runnerArgs` was added to close. The conservative
+    // rule fails the other way: a purely non-narrowing flag costs a sample, LOUDLY,
+    // with the args printed beside the count. (It also catches `--bail`, which
+    // truncates execution without narrowing intent, which an allowlist would not have.)
+    //
+    // Not overridable, on purpose. The recovery for a lost sample is to re-run
+    // without the flag; the recovery for a wrong number nobody questioned is nothing.
+    // This file's own header is a list of three selection recipes that each produced a
+    // plausible number rather than an error, and a fourth knob is a fourth chance.
+    //
+    // An ABSENT `runnerArgs` is a line written before the key existed and counts as
+    // unscoped. Checked rather than assumed: every one of the 26 lines in
+    // `.device-runs/rta/runs.jsonl` on 2026-09-07 was a full suite (1239–1390 s, plus
+    // one 31 s `interrupted` and two `blocked`, all already non-samples), so no
+    // historical line is being silently admitted. This is the opposite reading from
+    // `outcome`, where absent means unknown and therefore not a sample: there the
+    // population was mixed.
+    else if (r.runnerArgs?.length) {
+      excluded.scoped++;
+      scopedArgs.push(r.runnerArgs.join(' '));
+    } else if (!SAMPLE_OUTCOMES.has(r.outcome)) {
       excluded.nonSample++;
       const key = r.outcome ?? 'unrecorded';
       nonSampleOutcomes[key] = (nonSampleOutcomes[key] || 0) + 1;
@@ -88,6 +124,10 @@ export function selectBaseline(runs, { commit, deviceKey, variants } = {}) {
     rate: samples.length ? failed / samples.length : null,
     excluded,
     nonSampleOutcomes,
+    // Distinct, in first-seen order: the operator needs to know WHICH filter cost them
+    // a sample, and a series carries few distinct arg sets. De-duplicated because three
+    // takes of the same `-t` should read as one reason, not three.
+    scopedArgs: [...new Set(scopedArgs)],
   };
 }
 
@@ -109,7 +149,7 @@ function binomialCdf(k, n, p) {
  *
  * This exists because the interesting result is the one the point estimate cannot
  * express: **a clean series does not measure a 0% flake rate.** Six green runs bound
- * the per-run probability at 39%, ten at 26%, thirty at 10% — so "0/8, we fixed it"
+ * the per-run probability at 39%, ten at 26%, thirty at 10%. So "0/8, we fixed it"
  * is a claim the data does not support, and no affordable N makes it one. Reporting
  * the bound beside the estimate is what keeps a green series honest, and it is also
  * why a single RED run is worth so much more than one more green one.
@@ -133,7 +173,7 @@ export function flakeUpperBound(failures, n, confidence = 0.95) {
 
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
 
-/** `a ×2   b ×1`, commonest first — one describe-mode row per filter key. */
+/** `a ×2   b ×1`, commonest first: one describe-mode row per filter key. */
 function tally(runs, valueOf) {
   const counts = {};
   for (const r of runs) {
@@ -152,7 +192,7 @@ function tally(runs, valueOf) {
  * What is IN the ledger, for before a series has been named.
  *
  * One row per selection key, because the keys are exactly what the operator has to
- * supply and the ledger records a device as a HASH — so without this, learning the
+ * supply and the ledger records a device as a HASH, so without this, learning the
  * value to filter on means running `device:status` against each Roku in turn.
  */
 export function describeLedger(runs) {
@@ -162,7 +202,18 @@ export function describeLedger(runs) {
     `  commit      ${tally(runs, (r) => r.commit)}`,
     `  outcome     ${tally(runs, (r) => r.outcome)}`,
     `  tree        ${tally(runs, (r) => (r.dirty == null ? null : r.dirty ? 'dirty' : 'clean'))}`,
-    // Not a selection key like the four above — you cannot filter on it, and the
+    // WHAT each run ran, which `variant` cannot say. See `runnerArgs` in
+    // `summarizeRun`. `(unrecorded)` here is a line from before the key existed, not a
+    // run that declared nothing; the rate mode counts those as full suites, and this
+    // row is where that assumption is visible rather than buried.
+    `  scope       ${tally(runs, (r) =>
+      r.runnerArgs === undefined
+        ? null
+        : r.runnerArgs.length
+          ? r.runnerArgs.join(' ')
+          : 'full suite',
+    )}`,
+    // Not a selection key like the rows above: you cannot filter on it, and the
     // rate mode warns rather than excludes. It is here because it is the one
     // property of a run that invalidates a series without changing any of them.
     `  hour        ${tally(runs, (r) =>
@@ -183,7 +234,7 @@ export function describeLedger(runs) {
  *
  * `crossedHourBoundary` is written by `summarizeRun` on every close, so an absent
  * value means a hand-edited or truncated line rather than a run that did not cross.
- * Counted separately for that reason — treating unknown as `false` is precisely the
+ * Counted separately for that reason: treating unknown as `false` is precisely the
  * "silently assume the good case" move this whole field exists to prevent.
  */
 export function hourCrossings(samples) {
@@ -198,12 +249,18 @@ export function hourCrossings(samples) {
 
 /** Lines reporting a selected series: what counted, what did not, and the rate. */
 export function reportBaseline(result) {
-  const { samples, passed, failed, rate, excluded, nonSampleOutcomes } = result;
+  const { samples, passed, failed, rate, excluded, nonSampleOutcomes, scopedArgs = [] } = result;
   const reasons = [
     [excluded.otherCommit, 'other commit'],
     [excluded.otherDevice, 'other device'],
     [excluded.otherVariant, 'other variant'],
     [excluded.dirty, 'dirty tree'],
+    // The args are named, not only counted, because "scoped" is the ONE exclusion an
+    // operator may believe is wrong: they know what they typed. Printing it lets them
+    // confirm it in the line rather than re-reading the ledger, and it is also what
+    // keeps the word honest on the case it over-claims: a run excluded for a purely
+    // non-narrowing flag says so, right there.
+    [excluded.scoped, `scoped run${scopedArgs.length ? ` (${scopedArgs.join(', ')})` : ''}`],
     [
       excluded.nonSample,
       `not a sample (${Object.entries(nonSampleOutcomes)
@@ -235,7 +292,7 @@ export function reportBaseline(result) {
     `  flake rate  ${failed}/${samples.length} = ${pct(rate)}   95% upper bound ${pct(bound)}`,
   );
 
-  // Warned, never excluded — and printed BEFORE the clean-series note, because it
+  // Warned, never excluded, and printed BEFORE the clean-series note, because it
   // qualifies the number both of those lines are about.
   //
   // Not an exclusion because whether it invalidates the series depends on the
@@ -246,8 +303,8 @@ export function reportBaseline(result) {
   //
   // This exists because everything above it is exact and this was not reported at
   // all: a series could carry a rate AND a 95% bound with no signal that most of it
-  // straddled a reset — and a confidence interval over a contaminated population
-  // reads as rigour, which is worse than no tool.
+  // straddled a reset. A confidence interval over a contaminated population
+  // reads as rigor, which is worse than no tool.
   const { crossed, unknown } = hourCrossings(samples);
   if (crossed || unknown) {
     const parts = [];
@@ -264,7 +321,7 @@ export function reportBaseline(result) {
   if (failed === 0) {
     // The instruction this replaces lived in a local planning note as a note-to-self,
     // which is the wrong place for the one conclusion a clean series most invites getting
-    // wrong — it belongs in the output, where whoever reads the number reads it too.
+    // wrong: it belongs in the output, where whoever reads the number reads it too.
     lines.push(
       `  A clean series BOUNDS the rate, it does not measure 0% — report "consistent with`,
       `  fixed, upper bound ${pct(bound)}", never a measured zero. One red run would say far more.`,
@@ -306,7 +363,7 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
   } else {
     // Defaulted only for the RTA ledger, whose two-variant protocol is a documented
     // trap. The Rooibos ledger carries `test:unit` / `test:integration` / `test:all`
-    // — different SUITES, not one suite deployed two ways — so guessing a set there
+    // (different SUITES, not one suite deployed two ways), so guessing a set there
     // would silently mix them. Left unfiltered instead, and named as such.
     const variants =
       arg('variant')?.split(',') ?? (run === 'test:rta' ? FLAKE_VARIANTS : undefined);

@@ -1,6 +1,7 @@
 # ADR 0031: A production Task-thread ceiling that refuses, backed by a pre-ship peak gate
 
 **Status:** Accepted
+**Partially superseded by:** [ADR 0041](0041-task-launch-queue.md) (refusal now applies only past the launch queue's cap)
 **Date:** 2026-08-23
 
 **related-files**: `source/utils/tasks.bs`, `tests/source/unit/utils/tasks.spec.bs`, `tests/rta/specs/task-thread-peak.spec.js`, `tests/rta/specs/gaa-thread-scope.spec.js`, `components/testing/TaskLedgerBench.bs`, `docs/architecture/threading.md`, `docs/architecture/global-state.md`
@@ -125,9 +126,9 @@ Most entries cost nothing extra, because the owning component holds the same nod
 `m.serverReachableTask` before it launches). Exactly **two** call sites launch a node held by
 nothing else, both main-thread bootstrap:
 
-- `main.bs:285` `fontDownloadTask` — a local, and `handleFontDownloadCompletion` explicitly
+- `fontDownloadTask` in `main.bs`'s `initializeFallbackFont()` — a local, and `handleFontDownloadCompletion` explicitly
   releases it (`unobserveField`, then `= invalid`). The ledger now outlives that release.
-- `main.bs:375` `fontTask` — a local that is unobserved, stopped, and falls out of scope.
+- `fontTask` in `main.bs`'s `calculateFontScaleFactor()` — a local that is unobserved, stopped, and falls out of scope.
 
 The consequence is **memory only**. Both nodes are terminated (`state = "stop"`) by the time
 they linger, so a retained one cannot fire an observer again, and both unobserve themselves

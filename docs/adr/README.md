@@ -44,3 +44,21 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0030](0030-non-odc-arm-identity-by-enclosure.md) | A measurement arm with no ODC asserts its identity by enclosure, and records that it did | Accepted (unimplemented) | 2026-08-16 |
 | [0031](0031-task-thread-ceiling.md) | A production Task-thread ceiling that refuses, backed by a pre-ship peak gate | Accepted | 2026-08-23 |
 | [0032](0032-teardown-key-guard-injected.md) | Key events after teardown are guarded by transpile-time injection, not per-screen discipline | Accepted | 2026-09-02 |
+| [0033](0033-contextual-doc-freshness.md) | Doc-freshness pressure is contextual; there is no calendar backlog of stale docs | Accepted | 2026-09-04 |
+| [0034](0034-component-observers-init-to-ondestroy.md) | A component's own observers live from `init()` to `onDestroy()`; handlers gate, observers never toggle | Accepted | 2026-09-13 |
+| [0035](0035-server-plugin-capabilities.md) | Features that need a server plugin are gated by a per-sign-in capability check; each capability chooses its own failure policy | Accepted | 2026-09-14 |
+| [0036](0036-api-pool-width-by-device-class.md) | The API pool width is chosen per device class — 4 on low-memory devices, 6 elsewhere | Accepted | 2026-09-16 |
+| [0037](0037-task-run-replacement.md) | A Task run that can restart gets a new node, and its handler ignores events from nodes it replaced | Accepted | 2026-09-18 |
+| [0038](0038-queue-arrival-starts-fresh.md) | An item the queue arrives at starts fresh, and the queue owns that rule | Accepted | 2026-09-19 |
+| [0039](0039-list-endpoint-shape-in-pool.md) | A bare-array endpoint's body is held to its shape in the pool, declared by its request | Accepted | 2026-09-22 |
+| [0040](0040-pool-skips-abandoned-reads.md) | The API pool skips a queued read whose caller has stopped waiting | Accepted | 2026-09-22 |
+| [0041](0041-task-launch-queue.md) | A Task launch past the thread watermark waits in a queue instead of being refused | Accepted | 2026-09-23 |
+| [0042](0042-pr-title-type-places-changelog.md) | A PR title's type decides where the change lands in the changelog | Accepted | 2026-09-24 |
+| [0043](0043-pool-stops-long-reads-of-gone-callers.md) | The API pool stops a long read whose caller has gone (partially supersedes 0040) | Accepted | 2026-09-25 |
+| [0044](0044-spinner-by-kind-of-wait.md) | A loading spinner is started by the kind of wait it covers | Accepted | 2026-09-25 |
+| [0045](0045-live-stream-open-handed-off-by-stage.md) | A live stream's open is handed off by stage, and waits as long as the server can | Accepted | 2026-09-26 |
+| [0046](0046-playback-start-wait-is-a-promise.md) | A playback start's wait is a Promise per start (partially supersedes 0044) | Accepted | 2026-09-27 |
+| [0047](0047-dead-code-gate.md) | Dead code is a build error, judged the way SceneGraph resolves names | Accepted | 2026-09-28 |
+| [0048](0048-translation-seeding-and-weblate-merge.md) | Missing translations are seeded from other Jellyfin clients, and release prep merges Weblate instead of overwriting | Accepted | 2026-10-04 |
+| [0049](0049-house-voice-ratchet.md) | Every doc is held to one house voice by a per-file ratchet | Accepted | 2026-10-07 |
+| [0050](0050-same-frame-screen-swap.md) | Screens change in one render pass: every route suspends with "show" and JellyRock drives the swap | Accepted | 2026-10-08 |

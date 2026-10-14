@@ -97,7 +97,7 @@ namespace tests
     end function
 
     ' THE BUG this function was extracted to fix. applyButtonLayout stacks the row
-    ' vertically when the labels are too wide, and up/down were swallowed — so a row
+    ' vertically when the labels are too wide, and up/down were swallowed, so a row
     ' the user could see was stacked navigated sideways and ignored the axis it was
     ' actually laid out on.
     @it("steps the row on up and down when it is STACKED")
@@ -130,6 +130,72 @@ namespace tests
       for each stacked in [true, false]
         m.assertEqual(buttonDialogKeyAction("replay", stacked), "consume")
         m.assertEqual(buttonDialogKeyAction("options", stacked), "consume")
+      end for
+    end function
+
+    ' The still-watching prompt: any press is the answer, so no key may cancel,
+    ' step or be swallowed, Back included.
+    @it("resolves on EVERY key when any key answers the dialog")
+    function _()
+      keys = ["OK", "back", "left", "right", "up", "down", "play", "replay", "rewind", "fastforward", "options"]
+      for each stacked in [true, false]
+        for each key in keys
+          m.assertEqual(buttonDialogKeyAction(key, stacked, true), "resolve", key)
+        end for
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("overviewDialogKeyAction")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("BACK closes wherever focus is")
+    function _()
+      m.assertEqual(overviewDialogKeyAction("back", true, 0, 300), "close")
+      m.assertEqual(overviewDialogKeyAction("back", false, 150, 300), "close")
+    end function
+
+    @it("OK closes from the button and moves to the button from the text")
+    function _()
+      m.assertEqual(overviewDialogKeyAction("OK", true, 0, 0), "close")
+      m.assertEqual(overviewDialogKeyAction("OK", false, 0, 300), "focusOk")
+    end function
+
+    @it("DOWN scrolls while text is left below, then moves to the button")
+    function _()
+      m.assertEqual(overviewDialogKeyAction("down", false, 0, 300), "scrollDown")
+      m.assertEqual(overviewDialogKeyAction("down", false, 150, 300), "scrollDown")
+      m.assertEqual(overviewDialogKeyAction("down", false, 300, 300), "focusOk")
+      m.assertEqual(overviewDialogKeyAction("down", false, 0, 0), "focusOk")
+    end function
+
+    @it("DOWN on the button is consumed")
+    function _()
+      m.assertEqual(overviewDialogKeyAction("down", true, 0, 300), "consume")
+      m.assertEqual(overviewDialogKeyAction("down", true, 0, 0), "consume")
+    end function
+
+    @it("UP on the button moves to the text only when the text scrolls")
+    function _()
+      m.assertEqual(overviewDialogKeyAction("up", true, 0, 300), "focusText")
+      m.assertEqual(overviewDialogKeyAction("up", true, 0, 0), "consume")
+    end function
+
+    @it("UP scrolls while text is left above and is consumed at the top")
+    function _()
+      m.assertEqual(overviewDialogKeyAction("up", false, 150, 300), "scrollUp")
+      m.assertEqual(overviewDialogKeyAction("up", false, 0, 300), "consume")
+      m.assertEqual(overviewDialogKeyAction("up", false, 0, 0), "consume")
+    end function
+
+    ' The defect: an unhandled key bubbled into JRScene, whose options branch
+    ' crashed on a view with no options panel.
+    @it("consumes every key it does not act on")
+    function _()
+      for each key in ["left", "right", "options", "play", "replay", "rewind", "fastforward"]
+        for each okFocused in [true, false]
+          m.assertEqual(overviewDialogKeyAction(key, okFocused, 150, 300), "consume", key)
+        end for
       end for
     end function
 

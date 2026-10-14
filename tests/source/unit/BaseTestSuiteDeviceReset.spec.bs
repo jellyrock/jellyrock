@@ -1,0 +1,91 @@
+namespace tests
+
+  @suite("BaseTestSuite - m.global.device is restored between tests")
+  class BaseTestSuiteDeviceResetTests extends tests.BaseTestSuite
+
+    ' Tests inside a group run in order, so each one leaves a change behind and
+    ' the next one asserts that the base suite undid it. The first setup() records
+    ' the baseline in suite fields, before any test in this file has written.
+    private originalLocale as string = ""
+    private originalClockFormat as string = ""
+
+    protected override sub setup()
+      super.setup()
+      if m.originalLocale = ""
+        localDevice = m.global.device
+        m.originalLocale = localDevice.locale
+        m.originalClockFormat = localDevice.clockFormat
+      end if
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Direct field writes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a test can overwrite locale and clockFormat")
+    function _()
+      m.global.device.locale = "xx_XX"
+      m.global.device.clockFormat = "24h"
+      m.assertEqual(m.global.device.locale, "xx_XX")
+    end function
+
+    @it("the next test sees the original locale and clockFormat")
+    function _()
+      m.assertEqual(m.global.device.locale, m.originalLocale)
+      m.assertEqual(m.global.device.clockFormat, m.originalClockFormat)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("loadTestDevice")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("loadTestDevice applies the mock locale")
+    function _()
+      m.loadTestDevice("roku-es-mx")
+      m.assertEqual(m.global.device.locale, "es_MX")
+    end function
+
+    @it("the next test does not see the mock locale")
+    function _()
+      m.assertNotEqual(m.global.device.locale, "es_MX")
+      m.assertEqual(m.global.device.locale, m.originalLocale)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Added fields")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a test can add a field to the device node")
+    function _()
+      m.global.device.addFields({ probeAdded: true })
+      m.assertTrue(m.global.device.hasField("probeAdded"))
+    end function
+
+    @it("the next test does not see the added field")
+    function _()
+      m.assertFalse(m.global.device.hasField("probeAdded"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Leaving a group dirty")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the last test of a group leaves a dirty device")
+    function _()
+      m.global.device.locale = "yy_YY"
+      m.global.device.addFields({ probeLeftBehind: true })
+      m.assertEqual(m.global.device.locale, "yy_YY")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Next group")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the first test of the next group sees a clean device")
+    function _()
+      m.assertEqual(m.global.device.locale, m.originalLocale)
+      m.assertFalse(m.global.device.hasField("probeLeftBehind"))
+    end function
+
+  end class
+end namespace

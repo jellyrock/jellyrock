@@ -1,10 +1,10 @@
 /**
- * BrighterScript plugin — detach observers before releasing the references
+ * BrighterScript plugin: detach observers before releasing the references
  * their handlers dereference.
  *
  * The observer half of the teardown-race class that ADR 0032 closes for key
- * events. An EXTERNAL writer — a Task thread, or the native playback engine —
- * can update an observed field just as teardown begins, and that callback is
+ * events. An EXTERNAL writer (a Task thread, or the native playback engine)
+ * can update an observed field as teardown begins, and that callback is
  * delivered while `onDestroy` is still running. If `onDestroy` has already set
  * a reference the handler dereferences to `invalid`, the handler dots into
  * `invalid` and throws `&hec`. This is what #733 was: `destroyPlayer` sets
@@ -16,40 +16,41 @@
  *     is a reference released while a handler that dereferences it
  *     is still attached?
  *
- * It is emphatically NOT "how many unguarded reads are there" (a read-site
- * count returns ~636 and means nothing), and not "does any unobserve follow any
- * release" (that flags 62 sites, effectively all of them noise, because the
- * paired `m.foo.unobserveField(…)` / `m.foo = invalid` idiom trips it).
+ * It is emphatically not "how many unguarded reads are there" (a read-site
+ * count, ~636 on 2026-09-03, means nothing), and not "does any unobserve follow
+ * any release" (that flagged 62 sites on 2026-09-03, effectively all of them
+ * noise, because the paired `m.foo.unobserveField(…)` / `m.foo = invalid` idiom
+ * trips it).
  *
- * Three things make the rule precise enough to be worth a diagnostic:
+ * Four things make the rule precise enough to be worth a diagnostic:
  *
- *   1. Handlers bind by (TARGET, FIELD), not by field name alone. Six tasks all
- *      observe `"content"`; binding on the field alone cross-matches every one
- *      of them to every other one's handler.
- *   2. Only RECEIVER-POSITION uses count — `m.X.foo`, `m.X.foo()`, `m.X[i]`.
+ *   1. Handlers bind by (TARGET, FIELD), not by field name alone. Many Task
+ *      nodes share the output field `"content"`; binding on the field alone
+ *      cross-matches every one of them to every other one's handler.
+ *   2. Only RECEIVER-POSITION uses count: `m.X.foo`, `m.X.foo()`, `m.X[i]`.
  *      Reading a released `m.X` into a variable yields `invalid` and a write to
  *      `m.X` replaces it; neither throws. Only dotting INTO it does.
  *   3. A handler that `isValid(m.X)`-checks the reference has handled the case
  *      itself and is not flagged.
  *   4. Nor is a handler that early-returns on this project's OWN teardown flag
  *      (`if m.isDestroyed = true then return`) when `onDestroy` arms that flag
- *      BEFORE releasing anything — `VideoPlayerView.onPositionChanged`'s shape.
- *      The ordering half is load-bearing: a flag armed only after a release
+ *      BEFORE releasing anything, `VideoPlayerView.onPositionChanged`'s shape.
+ *      The ordering half matters: a flag armed only after a release
  *      leaves a window where a delivered callback still finds it false. Without
  *      this, the rule fires on already-correct code, and a warning that cries
  *      wolf is one somebody turns off.
  *
- * Severity 2 (warning), matching `observe-without-on-destroy` — the house split
- * is that structural-absence rules error (`jrscreen-on-destroy`,
- * `auto-abandon-promises`, `auto-destroyed-guard`) while inference-heavy ones
+ * Severity 2 (warning), matching `observe-without-on-destroy`. The house split
+ * is that structural-absence rules error (`auto-abandon-promises`,
+ * `auto-destroyed-guard`) while inference-heavy ones
  * warn. This rule infers a handler binding through an alias graph, so a wrong
  * call must never block a push.
  *
  * The fix a hit asks for is REORDERING, not a guard: move the `unobserveField`
  * above the first release. Reordering suppresses nothing, whereas an early
  * return in an observer callback can skip a callback that legitimately runs
- * during teardown (stop-reporting, dialog cleanup) — which is exactly why
- * `auto-destroyed-guard` is deliberately not extended to observer callbacks.
+ * during teardown (stop-reporting, dialog cleanup), which is exactly why
+ * `auto-destroyed-guard` is not extended to observer callbacks.
  *
  * Escape hatch:
  *  - `' bsc-disable-line unobserve-before-release` on the unobserveField line
@@ -58,17 +59,16 @@
  *
  * Known gaps, all toward FALSE NEGATIVES (the safe direction for a rule whose
  * whole value is that a hit means something):
- *  - Detachment or release reached through a HELPER is invisible.
- *    `ExtrasRowList.onDestroy` calls `cancelInFlightChain()` as its first
- *    statement, which correctly stops 19 tasks and detaches their observers;
- *    this rule neither credits nor blames it.
+ *  - Detachment or release reached through a HELPER is invisible: an
+ *    `onDestroy` whose first statement is a helper that stops tasks and
+ *    detaches their observers is neither credited nor blamed.
  *  - A handler named by a non-literal, or observed on a target this file never
  *    names, is not bound to anything.
  *  - `isValid(m.X)` anywhere in a handler clears `m.X` for that handler, even
  *    if some path reads it unguarded.
  *  - An armed `m.isDestroyed` early return (refinement 4) exempts the whole
- *    handler, so a reference it dereferences before that return would be missed
- *    — but the guard is the first statement, so there is nothing before it.
+ *    handler, so a reference it dereferences before that return would be missed,
+ *    but the guard is the first statement, so there is nothing before it.
  */
 'use strict';
 
@@ -114,7 +114,7 @@ class UnobserveBeforeReleasePlugin {
 
         event.program.diagnostics.register({
           code: DIAGNOSTIC_CODE,
-          severity: 2, // Warning — the binding is inferred, so never block a push.
+          severity: 2, // Warning: the binding is inferred, so never block a push.
           source: this.name,
           message:
             `${hit.unobserveMethod}("${hit.field}") on '${hit.target}' runs AFTER ${ON_DESTROY} released ` +
@@ -176,15 +176,15 @@ function collectObservations(brsFile) {
 // Walks onDestroy in source order, tracking which `m.<ref>`s have been released,
 // and reports every still-attached observer whose handler dereferences one.
 function findOrderingHits(onDestroy, observations, aliases, functions) {
-  const released = new Map(); // lowercased ref → the ref as written
+  const released = new Map(); // lowercased ref to the ref as written
   // Set when `m.isDestroyed = true` runs BEFORE any release. A handler that
-  // early-returns on that flag is then genuinely safe, because the flag is
+  // early-returns on that flag is then safe, because the flag is
   // already true by the time any reference goes away.
   let flagSetBeforeAnyRelease = false;
   const hits = [];
   const seen = new Set();
-  // One walk per handler, not one per (unobserve x observation) pair — a file
-  // like ItemDetails pairs ~30 unobserves against ~30 observations, and this
+  // One walk per handler, not one per (unobserve x observation) pair: a file
+  // like ItemDetails pairs dozens of unobserves against dozens of observations, and this
   // runs on every validate, including in the language server as you type.
   const handlerCache = new Map();
   const handlerFacts = (name, fnStmt) => {
@@ -206,7 +206,7 @@ function findOrderingHits(onDestroy, observations, aliases, functions) {
         if (released.size === 0) flagSetBeforeAnyRelease = true;
         return;
       }
-      // `m.<ref> = invalid` — a release. `m.<ref>.<field> = …` is not.
+      // `m.<ref> = invalid` is a release. `m.<ref>.<field> = …` is not.
       if (!isInvalidLiteral(stmt.value)) return;
       released.set(name.toLowerCase(), name);
     },
@@ -264,7 +264,7 @@ function findOrderingHits(onDestroy, observations, aliases, functions) {
   return hits;
 }
 
-// For one handler: which `m.<ref>`s it DEREFERENCES (receiver position — the
+// For one handler: which `m.<ref>`s it DEREFERENCES (receiver position, the
 // only shape that throws), and which it validity-checks for itself.
 function analyzeHandler(fnStmt) {
   const derefs = new Set();
@@ -274,11 +274,11 @@ function analyzeHandler(fnStmt) {
   };
 
   const visitor = brighterscript.createVisitor({
-    // `m.X.field` / `m.X.method()` — the outer get's object is `m.X`.
+    // `m.X.field` / `m.X.method()`: the outer get's object is `m.X`.
     DottedGetExpression: (expr) => note(mFieldName(expr.obj)),
     // `m.X[i]`
     IndexedGetExpression: (expr) => note(mFieldName(expr.obj)),
-    // `m.X.field = …` — the set's object is `m.X`.
+    // `m.X.field = …`: the set's object is `m.X`.
     DottedSetStatement: (stmt) => note(mFieldName(stmt.obj)),
     CallExpression: (call) => {
       const callee = call?.callee;
@@ -293,7 +293,7 @@ function analyzeHandler(fnStmt) {
   return { derefs, guarded, destroyedGuard: opensWithDestroyedGuard(fnStmt) };
 }
 
-// True when the handler OPENS with an early return keyed on `m.isDestroyed` —
+// True when the handler OPENS with an early return keyed on `m.isDestroyed`:
 // `if m.isDestroyed = true then return` (the form `auto-destroyed-guard` emits
 // and `VideoPlayerView.onPositionChanged` carries) or the bare variant. Only the
 // FIRST statement counts: a bail-out further down leaves the statements above it
@@ -381,7 +381,7 @@ function referenceText(expr) {
   return null;
 }
 
-// True if the brs file has a sibling component .xml (i.e. it's a codebehind).
+// True if the brs file has a sibling component .xml (that is, it's a codebehind).
 function hasSiblingComponentXml(program, brsFile) {
   if (!program || !brsFile) return false;
   const bases = [];

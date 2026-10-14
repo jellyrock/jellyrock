@@ -2,28 +2,30 @@ import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/backoff.bs"
 import "pkg:/source/utils/misc.bs"
 
-' Remote-control receiver (#666) — the ws:// "Cast to JellyRock" listener. See RemoteControlTask.xml
+' Remote-control receiver (#666): the ws:// "Cast to JellyRock" listener. See RemoteControlTask.xml
 ' for the lifecycle/threading overview. This task owns the vendored WebSocketClient node and runs the
 ' Jellyfin session socket off the render thread: open -> parse frames -> answer keepalive -> marshal
-' commands to the main thread -> reconnect with backoff. It NEVER dispatches (that's remoteDispatch on
-' the main thread) and NEVER logs the socket url (it carries the auth token).
+' commands to the main thread -> reconnect with backoff. It never dispatches (that's remoteDispatch on
+' the main thread) and never logs the socket url (it carries the auth token).
 sub init()
   m.log = new log.Logger("RemoteControl")
   m.top.functionName = "runReceiver"
 end sub
 
-' Post-login entry point (control="RUN" from Home.isFirstRun, once the session token exists). Selects
-' the transport by server scheme: an http:// server uses the ws:// session socket (#666); an https://
-' server can't ws:// (Roku has no socket TLS) so it probes for the companion plugin and, if present,
-' runs the long-poll command channel (#667). SignOut sets control="STOP", terminating this thread.
+' Post-login entry point (launchTask from the first-run branch of Home.onScreenShown, once the session
+' token exists). Selects the transport by server scheme: an http:// server uses the ws:// session
+' socket (#666); an https:// server can't ws:// (Roku has no socket TLS) so it probes for the companion
+' plugin and, if present, runs the long-poll command channel (#667). SignOut sets control="STOP",
+' terminating this thread.
 sub runReceiver()
   serverUrl = m.global.server.serverUrl
 
-  ' NOTE: the cold-launch cast pairing report (#668) is NOT sent here — it fires as a fire-and-forget
-  ' SubmitSideEffect from Home.isFirstRun (alongside the capabilities POST), so it can never delay this
-  ' command channel. See remoteProtocol.buildPairRequest + docs/architecture/remote-control.md.
+  ' NOTE: the cold-launch cast pairing report (#668) is not sent here. It fires as a fire-and-forget
+  ' SubmitSideEffect from Home.onScreenShown's first run (alongside the capabilities POST), so it can
+  ' never delay this command channel. See remoteProtocol.buildPairRequest + docs/architecture/remote-control.md.
   if remoteProtocol.isHttpServer(serverUrl)
     runWsReceiver(serverUrl)
   else
@@ -34,7 +36,7 @@ end sub
 ' ws:// transport (#666): build the session-socket url and run the connect/reconnect loop until the
 ' session ends (token rotated, or control="STOP" kills the thread).
 sub runWsReceiver(serverUrl as string)
-  url = remoteProtocol.buildSocketUrl(serverUrl, m.global.user.authToken, m.global.device.serverDeviceName)
+  url = remoteProtocol.buildSocketUrl(serverUrl, m.global.user.authToken, m.global.device.serverDeviceName, m.global.server.version)
   if url = ""
     ' Missing credential (scheme already gated by runReceiver) -> stay dark.
     m.log.info("ws receiver disabled: missing session")
@@ -59,13 +61,13 @@ sub runWsReceiver(serverUrl as string)
 
     ' Backoff progression. A connection that was ESTABLISHED and STABLE (connectAndPump returned true:
     ' it opened and stayed up past the stable threshold) then dropped resets the counter so we
-    ' reconnect promptly — a real session that blips shouldn't wait out a stale 30s backoff. A
+    ' reconnect promptly: a real session that blips shouldn't wait out a stale 30s backoff. A
     ' never-opened or quickly-flapping connection leaves the counter climbing, so the exponential
-    ' backoff (1s, 2s, 4s, ... capped 30s) is UNCHANGED for a persistently-down/flapping server —
-    ' that path never resets, so it can't hot-loop. increment AFTER the sleep so the 0th tier (1s) is
+    ' backoff (1s, 2s, 4s, ... capped 30s) is unchanged for a persistently-down/flapping server.
+    ' That path never resets, so it can't hot-loop. increment AFTER the sleep so the 0th tier (1s) is
     ' actually used rather than skipped straight to 2s.
     if wasStable then attempt = 0
-    backoffMs = remoteProtocol.nextBackoffMs(attempt)
+    backoffMs = backoff.nextDelayMs(attempt)
     m.log.info("socket closed; reconnecting", "inMs", backoffMs)
     sleep(backoffMs)
     attempt++
@@ -75,40 +77,45 @@ end sub
 ' Open the socket and pump events until it closes or errors. Sends a KeepAlive whenever the wait
 ' times out at the interval Jellyfin's ForceKeepAlive requested (0 = block until an event, before any
 ' ForceKeepAlive arrives). Marshals each dispatchable command to the main thread. Returns on close.
-' Returns TRUE when the connection was ESTABLISHED and STABLE — it opened AND stayed up at least
-' STABLE_SESSION_MS — so runReceiver can reset its reconnect backoff. A never-opened socket, or one
+' Returns TRUE when the connection was ESTABLISHED and STABLE (it opened and stayed up at least
+' STABLE_SESSION_MS), so runWsReceiver can reset its reconnect backoff. A never-opened socket, or one
 ' that opened but dropped sooner than that (a flap), returns FALSE so the backoff keeps climbing.
 ' Threshold = the backoff cap (30s): a session that outlived the max backoff interval was clearly real.
 function connectAndPump(url as string) as boolean
   STABLE_SESSION_MS = 30000
 
   m.ws = CreateObject("roSGNode", "WebSocketClient")
-  ' Publish the child so SignOut can stop it — an external STOP on this task kills the thread
+  ' Publish the child so SignOut can stop it: an external STOP on this task kills the thread
   ' before closeSocket() can run. Published on the line after CreateObject so the window in which a
-  ' STOP could miss this child is as small as it can be (and bounded anyway — the vendored socket
+  ' STOP could miss this child is as small as it can be (and bounded anyway: the vendored socket
   ' loop self-exits once its connection reaches CLOSED).
   m.top.socketNode = m.ws
   m.ws.observeField("on_open", m.port)
   m.ws.observeField("on_message", m.port)
   m.ws.observeField("on_close", m.port)
   m.ws.observeField("on_error", m.port)
-  ' Terminal backstop (#728) — see the ready_state arm of the pump loop below.
+  ' Terminal backstop (#728): see the ready_state arm of the pump loop below.
   m.ws.observeField("ready_state", m.port)
 
-  ' Bind this socket to the SAME Jellyfin DeviceId the REST API advertises. Jellyfin parses DeviceId
-  ' from the Authorization header ONLY — the `deviceId` query param buildSocketUrl puts on the url is
-  ' never read — so a header-less upgrade falls back to the DeviceId the auth TOKEN was minted under.
-  ' On an install upgraded from a pre-#721 build that is the old suffixed id, which puts the command
-  ' channel on a DIFFERENT session than the REST API, the capabilities POST and the /pair report all
-  ' use: the cast target resolves but commands are delivered to a session this socket isn't on (#743).
+  ' Bind this socket to the SAME Jellyfin DeviceId the REST API advertises. 10.7.x binds from the
+  ' query string. 10.8 to 10.10 authenticate with this header, but the `deviceId` query param
+  ' buildSocketUrl puts on the url overrides the header's DeviceId (the two carry the same id).
+  ' 10.11 and later read DeviceId from the Authorization header only and ignore the query param, so
+  ' there a header-less upgrade falls back to the DeviceId the auth TOKEN was minted under (see
+  ' buildSocketUrl's header). On an install upgraded from a pre-#721 build that is the old suffixed
+  ' id, which puts the command channel on a DIFFERENT session than the REST API, the capabilities
+  ' POST and the /pair report all use: the cast target resolves but commands are delivered to a
+  ' session this socket isn't on (#743).
   ' Verified against Jellyfin 10.11.11: header absent -> session keyed on the token binding; header
   ' present -> session keyed on the header, and a command addressed to it arrives here.
-  ' The api_key query param stays on the url as the auth carrier: if a reverse proxy strips
-  ' Authorization on the upgrade we still connect, degrading to the old behavior instead of failing.
-  ' Must be set BEFORE `open` — the client reads its headers when it builds the handshake.
+  ' The token query param (ApiKey on 10.8.0+, api_key on 10.7.x) stays on the url as the auth carrier:
+  ' if a reverse proxy strips Authorization on the upgrade we still connect, degrading to the old
+  ' behavior instead of failing. It must not be api_key on 10.8.0+: that is legacy authorization,
+  ' disabled by default from Jellyfin 12.0, so the fallback would silently stop authenticating.
+  ' Must be set BEFORE `open`: the client reads its headers when it builds the handshake.
   m.ws.headers = ["Authorization", buildAuthHeader(false)]
 
-  m.log.info("opening session socket") ' NEVER log url — it carries the auth token
+  m.log.info("opening session socket") ' never log url: it carries the auth token
   m.ws.open = url
 
   sessionTimer = invalid ' marks when the socket opened; invalid => never opened (an unstable attempt)
@@ -132,29 +139,29 @@ function connectAndPump(url as string) as boolean
       if m.keepAliveIntervalMs > 0 then m.ws.send = [remoteProtocol.keepAliveFrame()]
     end if
   end while
-  return false ' unreachable (the loop only exits via the on_close/on_error return) — satisfies the analyzer
+  return false ' unreachable (the loop only exits via the terminal-event return); satisfies the analyzer
 end function
 
 ' True when this event means the connection is over, so the pump loop should tear down and let
 ' runWsReceiver reconnect. Two signals, because the receiver and the vendored socket loop key off
 ' DIFFERENT ones:
 '
-' - on_close / on_error — the fast path, and the only one that fires for an error raised while the
+' - on_close / on_error: the fast path, and the only one that fires for an error raised while the
 '   socket is still OPEN or CLOSING (a failed read, a rejected handshake). That lands here at once,
 '   ~30s before _CLOSING_DELAY would force the client to CLOSED.
-' - ready_state = CLOSED — the backstop. The vendored task loop releases its Task thread on that
+' - ready_state = CLOSED: the backstop. The vendored task loop releases its Task thread on that
 '   transition (#728), but the receiver would otherwise only ever wake on on_close/on_error. Those
-'   coincide in the client today — every _close() path in WebSocketClient.brs posts one of the two —
+'   coincide in the client today (every _close() path in WebSocketClient.brs posts one of the two),
 '   yet nothing enforces it, and no lint can see it (it is a property of the vendored CLIENT, not of
 '   the files lint:socket-thread-release reads). Without this arm, an upstream re-sync that broke the
 '   coincidence would leave the pump blocked forever on a socket whose thread is already gone: no
 '   crash, no failing test, cast silently dead.
 '
-' `opened` is load-bearing on the second arm. ready_state is CLOSED before open() is ever called AND
+' The second arm depends on `opened`. ready_state is CLOSED before open() is ever called AND
 ' the task seeds m.top.ready_state from it at startup, so an ungated test would race that seed and
 ' tear down every connection before it could open. Whichever signal arrives first wins; because
-' _close() posts ready_state before on_close, the backstop usually wins the normal server-close path
-' — the outcome is identical either way.
+' _close() posts ready_state before on_close, the backstop usually wins the normal server-close path;
+' the outcome is identical either way.
 function isTerminalSocketEvent(field as string, msg as object, opened as boolean) as boolean
   if field = "on_close" or field = "on_error" then return true
   return field = "ready_state" and opened and msg.getData() = m.ws.STATE_CLOSED
@@ -180,7 +187,7 @@ sub handleFrame(data as object)
   end if
 
   ' Marshal every dispatchable command to the main thread. keepalive already returned above; only
-  ' "ignore" is dropped here — so a new dispatchable kind (route/goback/message/…) is forwarded
+  ' "ignore" is dropped here, so a new dispatchable kind (route/goback/message/…) is forwarded
   ' without needing this gate updated again.
   if kind <> "ignore"
     marshalCommand(command)
@@ -189,7 +196,7 @@ sub handleFrame(data as object)
 end sub
 
 ' Marshal a normalized command to the main thread. Drops the bulky original 'raw' Data first (a whole
-' ItemIds list for a series/album can be large) — the normalized fields carry everything the main
+' ItemIds list for a series/album can be large): the normalized fields carry everything the main
 ' thread needs. Shared by both transports; callers gate out keepalive/ignore before calling.
 sub marshalCommand(command as object)
   command.delete("raw")
@@ -204,10 +211,10 @@ sub closeSocket()
   m.ws.unobserveField("on_close")
   m.ws.unobserveField("on_error")
   m.ws.unobserveField("ready_state")
-  ' STOP releases the child's thread — dropping the reference alone leaves its loop running.
+  ' STOP releases the child's thread: dropping the reference alone leaves its loop running.
   ' No close frame is requested here. This only runs after the connection is already terminal (the
   ' client has left OPEN in every path that gets us here), so `close = [1000]` had nothing to send
-  ' even before the STOP — and a STOP on the next line kills the thread that would deliver it
+  ' even before the STOP, and a STOP on the next line kills the thread that would deliver it
   ' anyway. Teardown is abrupt by design; see `remotecontrol-socket-abrupt-teardown` in tech-debt.md
   ' for the graceful-close direction and why it is not worth the sequencing today.
   m.ws.control = "STOP"
@@ -217,12 +224,12 @@ end sub
 
 ' HTTPS long-poll transport (#667). Roku can't ws:// a secure server, so on https we consume the
 ' companion plugin's authenticated long-poll command channel over TLS (roUrlTransfer). The poll
-' request ITSELF is the keepalive (it refreshes server-side session activity), so — unlike the ws
-' path — there's no client KeepAlive to send. See docs/architecture/remote-control-longpoll-contract.md.
+' request ITSELF is the keepalive (it refreshes server-side session activity), so, unlike the ws
+' path, there's no client KeepAlive to send. See docs/architecture/remote-control-longpoll-contract.md.
 sub runLongPollReceiver(serverUrl as string)
   PROBE_TIMEOUT_MS = 8000 ' presence probe (matches ServerReachableTask's pre-flight budget)
   POLL_WAIT_MS = 25000 ' server holds each poll up to this before returning 204
-  POLL_TIMEOUT_MS = 35000 ' client transfer timeout — longer than POLL_WAIT_MS so a 204 always lands first
+  POLL_TIMEOUT_MS = 35000 ' client transfer timeout, longer than POLL_WAIT_MS so a 204 always lands first
 
   probeUrl = remoteProtocol.buildProbeUrl(serverUrl)
   if probeUrl = ""
@@ -253,8 +260,8 @@ sub runLongPollReceiver(serverUrl as string)
   ' Snapshot the token so a poll can detect a server-side rotation and stop cleanly (mirrors the ws path).
   m.openedWithToken = m.global.user.authToken
 
-  ' At-least-once delivery state (contract v1). m.lastAckId is our cumulative ack — the newest MessageId
-  ' we've received — sent on every poll so the plugin can drop confirmed commands and redeliver the rest.
+  ' At-least-once delivery state (contract v1). m.lastAckId is our cumulative ack (the newest MessageId
+  ' we've received), sent on every poll so the plugin can drop confirmed commands and redeliver the rest.
   ' m.dispatchedIds/order is a small dedupe ring so a REDELIVERED command (a poll whose response we lost,
   ' resent by the plugin) can't double-apply a relative verb like NextTrack. Both reset per receiver start;
   ' a fresh receiver pairs with a fresh server-side session, so there's nothing to carry over.
@@ -276,18 +283,18 @@ sub runLongPollReceiver(serverUrl as string)
     pollUrl = remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS, m.lastAckId)
 
     ' Time the poll so an abnormally fast EMPTY response (a plugin that doesn't honor the hold) can be
-    ' floored below — a compliant plugin holds ~POLL_WAIT_MS, so the floor never fires on it.
+    ' floored below: a compliant plugin holds ~POLL_WAIT_MS, so the floor never fires on it.
     pollTimer = CreateObject("roTimespan")
     resp = httpGet(pollUrl, POLL_TIMEOUT_MS)
     if resp.code = 200
       ' Queued command(s). Dispatch in order, then re-poll immediately (no backoff on success). A 200
-      ' that dispatched nothing (empty array / garbled body) is abnormal — floor it like a fast 204 so
+      ' that dispatched nothing (empty array / garbled body) is abnormal: floor it like a fast 204 so
       ' a misbehaving plugin can't spin this loop with no backoff. A real command 200 returns fast and
-      ' is NOT floored, so command latency is untouched.
+      ' is not floored, so command latency is untouched.
       attempt = 0
       if dispatchBatch(resp.body) = 0 then throttleEmptyPoll(pollTimer)
     else if resp.code = 204
-      ' Healthy empty hold — re-poll immediately (floored only if the server returned it near-instantly
+      ' Healthy empty hold: re-poll immediately (floored only if the server returned it near-instantly
       ' instead of holding, which a compliant plugin never does).
       attempt = 0
       throttleEmptyPoll(pollTimer)
@@ -298,7 +305,7 @@ sub runLongPollReceiver(serverUrl as string)
     else
       ' Transient error / timeout (code 0) -> exponential backoff (1s..30s), then retry. A persistently
       ' unreachable server keeps the counter climbing so it can't hot-loop.
-      backoffMs = remoteProtocol.nextBackoffMs(attempt)
+      backoffMs = backoff.nextDelayMs(attempt)
       m.log.info("long-poll error; retrying", "code", resp.code, "inMs", backoffMs)
       sleep(backoffMs)
       attempt++
@@ -308,8 +315,8 @@ end sub
 
 ' Authenticated async GET on this Task thread. Blocks up to timeoutMs for the response. Returns
 ' { code, body }; code = 0 on a failed initiation or a timeout. A fresh roUrlTransfer + roMessagePort
-' per call avoids cross-call event bleed. NEVER logs the url — the Authorization header carries the
-' token. Mirrors the raw-transfer pattern in captionTask.bs / ServerReachableTask.bs.
+' per call avoids cross-call event bleed. Never logs the url: the Authorization header carries the
+' token. Mirrors the raw-transfer pattern in LoadCaptionTask.bs / ServerReachableTask.bs.
 function httpGet(url as string, timeoutMs as integer) as object
   req = CreateObject("roUrlTransfer")
   port = CreateObject("roMessagePort")
@@ -344,13 +351,13 @@ end function
 
 ' Normalize one long-poll envelope and marshal it if dispatchable; returns true iff it was dispatched.
 ' The long-poll contract never carries KeepAlive/ForceKeepAlive (the poll request is the keepalive), so
-' keepalive is treated like ignore here — there's no socket to answer on. Reuses the same pure
+' keepalive is treated like ignore here: there's no socket to answer on. Reuses the same pure
 ' parseMessage as the ws path.
 function dispatchEnvelope(envelope as object) as boolean
   if not isValid(envelope) then return false
   command = remoteCommand.parseMessage(envelope)
 
-  ' Advance the cumulative ack to the newest id we've received — of ANY kind, including ignore/keepalive —
+  ' Advance the cumulative ack to the newest id we've received (of ANY kind, including ignore/keepalive)
   ' so the plugin can drop it too. The body arrived atomically (roUrlTransfer is all-or-nothing), so the
   ' last id in the array acks the whole batch on our next poll.
   if isValidAndNotEmpty(command.messageId) then m.lastAckId = command.messageId
@@ -359,7 +366,7 @@ function dispatchEnvelope(envelope as object) as boolean
   if kind = "ignore" or kind = "keepalive" then return false
 
   ' Dedupe: at-least-once redelivers a batch whose response we lost, so a command we've ALREADY enacted
-  ' can arrive again — drop it, or a relative verb (NextTrack/Rewind/FastForward) would double-apply.
+  ' can arrive again: drop it, or a relative verb (NextTrack/Rewind/FastForward) would double-apply.
   if hasDispatched(command.messageId) then return false
 
   marshalCommand(command)
@@ -368,9 +375,9 @@ function dispatchEnvelope(envelope as object) as boolean
 end function
 
 ' Dedupe ring for at-least-once redelivery. Records ids we've actually dispatched and evicts the oldest
-' past a bounded window — a duplicate only ever arrives back-to-back (a redelivery on the very next poll),
+' past a bounded window: a duplicate only ever arrives back-to-back (a redelivery on the very next poll),
 ' so a small window is ample. An empty id (the ws path, or a malformed envelope) is never tracked, so it's
-' never deduped — those transports/paths don't redeliver.
+' never deduped: those transports/paths don't redeliver.
 function hasDispatched(messageId as dynamic) as boolean
   if not isValidAndNotEmpty(messageId) then return false
   return m.dispatchedIds.doesExist(messageId)

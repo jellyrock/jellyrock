@@ -5,16 +5,16 @@
   </children>
   <interface>
     <!-- Input: array of { title: string, id: string } -->
-    <field id="tabs" type="array" onChange="onTabsChanged" />
+    <field id="tabs" type="array" />
     <!-- Output: id of the currently selected (active) tab -->
     <field id="selectedTabId" type="string" alwaysNotify="true" />
-    <!-- Output: signals the parent screen to take focus back (e.g., on DOWN press) -->
+    <!-- Output: signals the parent screen to take focus back (on a DOWN press) -->
     <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
     <!-- Output: signals LEFT/RIGHT at tab boundary to transfer focus to user dropdown.
          Value is the direction pressed ("left" or "right") for correct fallback wrapping. -->
     <field id="requestFocusToUserMenu" type="string" alwaysNotify="true" />
-    <!-- Input/Output: externally settable focused tab index (e.g., when returning from user dropdown) -->
-    <field id="focusedTabIndex" type="integer" value="0" onChange="onFocusedTabIndexChanged" alwaysNotify="true" />
+    <!-- Input/Output: externally settable focused tab index (for example, when returning from user dropdown) -->
+    <field id="focusedTabIndex" type="integer" value="0" alwaysNotify="true" />
     <!-- Output: signals when the first tab has finished rendering/sizing -->
     <field id="isReady" type="boolean" value="false" alwaysNotify="true" />
     <function name="onDestroy" />

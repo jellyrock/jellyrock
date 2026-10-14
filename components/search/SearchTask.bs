@@ -1,10 +1,14 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiRead.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/searchOutcome.bs"
 
 sub init()
+  m.log = new log.Logger("SearchTask")
   m.top.functionName = "search"
 end sub
 
@@ -15,29 +19,37 @@ sub search()
 end sub
 
 ' Searches multiple Jellyfin endpoints for media matching the query.
-' Runs on SearchTask thread — fetchJson blocks waiting for ApiPool responses.
-' Every result echoes the query it ANSWERS, so the caller can check that it got the one it
-' asked for. This node is reused across keystrokes — each stops the run in flight and
-' relaunches it — so `m.top.query` already holds the NEXT query by the time a delivery is
-' handled, and without the echo a late one is indistinguishable from the live one. Taken
+' Runs on SearchTask thread: each read blocks waiting for its ApiPool response.
+' Every result echoes the query it ANSWERS. The caller gives each run a new node and
+' drops a delivery from any node it has since replaced (`SearchScreen.onFullSearchResults`); the
+' echo is what that drop logs, so a superseded delivery names the query it answered. Taken
 ' from the local the search actually ran with, so the echo and the items cannot disagree.
 '
-' ⚠️ `m.top.results` is assigned ONCE, below, as this function's last act — and that is
-' load-bearing, not incidental. It is what lets the caller's `control = "stop"` prevent a
-' superseded query from delivering at all (measured: 12 keystrokes, 6 deliveries, every one
-' current). Publishing partial results as each fetch lands would open exactly the race
-' `SearchScreen.onFullSearchResults` watches for.
+' ⚠️ `m.top.results` is assigned ONCE, by `search()` with this function's return value, as the
+' Task's last act, and that is essential, not incidental. It is what lets the caller's `control = "stop"` prevent a
+' superseded query from delivering at all (measured 2026-08-14: 12 keystrokes, 6 deliveries, every one
+' current). Publishing partial results as each fetch lands would widen the window of
+' superseded deliveries that `SearchScreen.onFullSearchResults` has to drop.
+'
+' Every result also carries a `status` (searchOutcome.statusOf): a read that did not answer
+' says nothing about what the server holds, so the screen never shows a search whose reads
+' failed as one that found nothing.
 function searchMedia(query as string)
-  if query = "" then return { Items: [], TotalRecordCount: 0, query: query }
+  if query = "" then return { Items: [], TotalRecordCount: 0, query: query, status: searchOutcome.STATUS_OK }
 
   transformer = JellyfinDataTransformer()
   allItems = []
+  ' One per search, so one search's failed reads never count against the next.
+  reader = new apiRead.Reader(m.log, "search")
 
-  ' Regular library items — Person and MusicArtist are fetched via dedicated endpoints below.
+  ' Regular library items. Person and MusicArtist are fetched via dedicated endpoints below.
   ' LiveTvProgram is excluded here because /Items EPG search is incomplete; /LiveTv/Programs is used instead.
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+  data = reader.json(GetApi().BuildGetItemsByQueryRequest({
     "searchTerm": query,
     "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
+    ' ChildCount gives a collection or photo album tile its "N items" line, as in the details
+    ' Collections row; a list query returns it for those only when asked.
+    "Fields": "ChildCount",
     "EnableTotalRecordCount": false,
     "Recursive": true,
     "limit": 100
@@ -54,8 +66,8 @@ function searchMedia(query as string)
     end for
   end if
 
-  ' People — /Items does not return Person type; /Persons endpoint required.
-  personData = fetchJson(GetApi().BuildGetPersonsRequest({
+  ' People: /Items does not return Person type; /Persons endpoint required.
+  personData = reader.json(GetApi().BuildGetPersonsRequest({
     "searchTerm": query,
     "Limit": 20,
     "EnableTotalRecordCount": false
@@ -66,8 +78,8 @@ function searchMedia(query as string)
     end for
   end if
 
-  ' Artists — /Items does not return MusicArtist type; /Artists endpoint required.
-  artistData = fetchJson(GetApi().BuildGetArtistsRequest({
+  ' Artists: /Items does not return MusicArtist type; /Artists endpoint required.
+  artistData = reader.json(GetApi().BuildGetArtistsRequest({
     "searchTerm": query,
     "Limit": 20,
     "EnableTotalRecordCount": false
@@ -78,21 +90,27 @@ function searchMedia(query as string)
     end for
   end if
 
-  ' Live TV Programs — /LiveTv/Programs searches the full EPG; /Items only covers recordings.
-  programData = fetchJson(GetApi().BuildGetLiveTVProgramsRequest({
-    "SearchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  }), "searchPrograms")
-  if isValid(programData) and isValid(programData.Items)
-    for each item in programData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
+  ' Live TV Programs: /LiveTv/Programs searches the full EPG; /Items only covers recordings.
+  ' Not asked for a user without Live TV access (searchOutcome.canSearchLiveTv). The policy is
+  ' read once, as this runs on a Task thread, where each m.global read crosses to the render
+  ' thread.
+  if searchOutcome.canSearchLiveTv(m.global.user.policy)
+    programData = reader.json(GetApi().BuildGetLiveTVProgramsRequest({
+      "SearchTerm": query,
+      "Limit": 20,
+      "EnableTotalRecordCount": false
+    }), "searchPrograms")
+    if isValid(programData) and isValid(programData.Items)
+      for each item in programData.Items
+        allItems.push(transformer.transformBaseItem(item))
+      end for
+    end if
   end if
 
   result = {}
   result.Items = allItems
   result.TotalRecordCount = allItems.count()
   result.query = query
+  result.status = searchOutcome.statusOf(reader.sentCount, reader.failedCount)
   return result
 end function

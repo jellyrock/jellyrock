@@ -41,7 +41,11 @@ describe('auto-abandon-promises — injection', () => {
     });
     const code = out['components/Foo.bs'];
     expect(code).toMatch(/sub onDestroy\(\)\s*\n\s*abandonApiPromises\(\)/);
-    // injected before the component's own teardown
+    // injected before the component's own teardown. Both asserted PRESENT first: a
+    // missing call answers -1, which is less than every real index, so the ordering
+    // alone passes when nothing was injected at all.
+    expect(code).toContain('abandonApiPromises()');
+    expect(code).toContain('m.x = invalid');
     expect(code.indexOf('abandonApiPromises()')).toBeLessThan(code.indexOf('m.x = invalid'));
   });
 

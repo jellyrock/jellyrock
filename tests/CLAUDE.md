@@ -1,83 +1,93 @@
 # Rules for `tests/`
 
-rooibos test framework with `@suite` / `@describe` / `@it` decorators. See [docs/architecture/testing.md](../docs/architecture/testing.md) for the test layout and how the `BaseTestSuite` base class works.
+The Rooibos test framework, with `@suite`, `@describe` and `@it` annotations. See [docs/architecture/testing.md](../docs/architecture/testing.md) for the test layout and how the `BaseTestSuite` base class works.
 
 ## Folder layout
 
-- `tests/source/unit/` — isolated unit tests, no I/O.
-- `tests/source/integration/` — component interactions, real I/O allowed; subfolders for `registry/` and `migration/`.
-- `tests/source/mocks/` — mock data and stubs.
-- `tests/source/shared/` — shared test helpers.
-- `tests/scripts/unit/` — **Vitest** unit tests for the Node-side build/lint tooling under [`scripts/`](../scripts/). Different framework (Vitest, not Rooibos) and runtime (Node, not Roku). Rules below DO NOT apply — see [`docs/dev/scripts-development.md`](../docs/dev/scripts-development.md) for that layout.
-- `tests/rta/` — **RTA functional tests** (roku-test-automation): Node/ESM under Vitest that drives a real device from outside (ECP + ODC) and asserts each screen loads. NOT Rooibos, NOT under `tests/source/**`. Rules below DO NOT apply — has its own [`tests/rta/CLAUDE.md`](rta/CLAUDE.md); how-to in [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md).
+- `tests/source/unit/`: isolated unit tests, no I/O.
+- `tests/source/integration/`: component interactions, real I/O allowed, with subfolders `registry/` and `migration/`.
+- `tests/source/mocks/`: mock data and stubs.
+- `tests/source/shared/`: shared test helpers.
+- `tests/scripts/unit/`: **Vitest** unit tests for the Node build and lint tooling under [`scripts/`](../scripts/). A different framework (Vitest, not Rooibos) and runtime (Node, not Roku), so the rules below don't apply; see [`docs/dev/scripts-development.md`](../docs/dev/scripts-development.md).
+- `tests/rta/`: **RTA functional tests** (roku-test-automation). Node ESM under Vitest that drives a real device from outside (ECP and ODC) and checks each screen loads. Not Rooibos, so the rules below don't apply: it has its own [`tests/rta/CLAUDE.md`](rta/CLAUDE.md), and the how-to is [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md).
 
 ## Test pattern
 
-Every test suite extends `tests.BaseTestSuite` (which extends `rooibos.BaseTestSuite`). The base provides:
+Every suite extends `tests.BaseTestSuite`, which extends `rooibos.BaseTestSuite`. The base provides:
 
-- `m.global` initialization with real content nodes + en_US translations.
-- Registry teardown between tests (only when `m.needsRegistrySetup = true` — opt-in per suite).
-- Test-mode marker: registry section names start with `test-` so production migration code skips real user data.
+- `m.global` set up with real content nodes and the `en_US` translations.
+- Registry cleanup between tests, for a suite that opts in with `m.needsRegistrySetup = true`.
+- The test-mode marker: test registry sections start with `test-`, so the migration runner never touches real user data.
 
-## Lifecycle hooks — `setup()` is per SUITE, `beforeEach()` is per TEST
+### One `@suite` per file
 
-rooibos gives `BaseTestSuite` four distinct hooks, and the two pairs run at different frequencies:
+**Put exactly one `@suite` class in a `.spec.bs` file.** Breaking this breaks the runner, not only the tidiness. A file with two or more suites builds and validates cleanly, then crashes the Rooibos runner on the device (`&hec` in `TestRunner.brs`), because the generated `.brs` gives only the last class a `getTestSuiteData()`; Rooibos prints `ERROR RETRIEVING TEST SUITE DATA` right before (observed 2026-09-22 on a Roku Ultra). The crash leaves the Roku hung until an ECP `Home` key press.
+
+To split a growing suite, keep the base name and add the aspect (`remoteSubtitles.spec.bs`, `remoteSubtitlesStreams.spec.bs`, `remoteSubtitlesResults.spec.bs`), as the existing `misc.spec.bs` and `miscAudioStreams.spec.bs` pair does.
+
+> A green `npm run validate` says nothing about this: the crash is a runtime fault in the generated runner, so only hardware shows it.
+
+## Lifecycle hooks: `setup()` runs per `@describe` group, `beforeEach()` per test
+
+Rooibos gives `BaseTestSuite` four hooks, and the two pairs run at different frequencies (read from `TestGroup.runSync` in `rooibos-roku` 6.0.0-alpha.56, 2026-10-11):
 
 | Hook | Runs |
 |---|---|
-| `setup()` / `teardown()` | **once per suite** |
-| `beforeEach()` / `afterEach()` | **once per test** |
+| `setup()` and `teardown()` | **Once per `@describe` group:** every test in a group shares one `setup()` |
+| `beforeEach()` and `afterEach()` | **Once per test** |
 
-- **Build anything a test MUTATES in `beforeEach()`, never `setup()`.** A node created in `setup()` is shared by every test in the suite, so each one inherits whatever the last left behind. Chain `super.beforeEach()` / `super.afterEach()` — the project base class overrides all four.
-- `setup()` is still right for genuinely immutable per-suite fixtures (read-only mock data, constants). The rule is about *mutated* state, not about relocating everything.
-- **This is not theoretical.** In #781 a `rotateDegrees = 270` set by one test leaked into the next one *in the same `@describe`* and made a correct component look broken — grouping by `@describe` does not re-run `setup()` either. The worse direction is silent: a test that never sets a field it reads can pass on a neighbor's leftovers, and stays green until someone reorders or deletes that neighbor.
-- **Cheap check:** reverse the order of the tests in a suite and re-run. A suite that only passes in declaration order is not isolated.
-- ~23 existing suites predate this rule — see [`rooibos-setup-not-per-test`](../docs/architecture/tech-debt.md#rooibos-setup-not-per-test) and epic [#786](https://github.com/jellyrock/jellyrock/issues/786). Fix them in passing when you touch one; don't copy their shape into a new spec.
+- **Build anything a test changes in `beforeEach()`, never in `setup()`.** A node created in `setup()` is shared by every test in its `@describe` group, so each test inherits what the last one left behind. Chain `super.beforeEach()` and `super.afterEach()`: the project's base class overrides all four hooks.
+- `setup()` is still right for fixtures nothing changes (read-only mock data, constants). The rule is about changed state, not about moving everything.
+- **It has happened.** In #781 a `rotateDegrees = 270` set by one test leaked into the next test in the same `@describe` and made a correct component look broken. The worse direction is silent: a test that never sets a field it reads can pass on a neighbor's leftovers, and stays green until someone reorders or deletes that neighbor.
+- **A cheap check:** reverse the order of a suite's tests and run it again. A suite that passes only in declaration order is not isolated.
+- Older suites predate this rule: see [`rooibos-setup-not-per-test`](../docs/architecture/tech-debt.md#rooibos-setup-not-per-test) and epic [#786](https://github.com/jellyrock/jellyrock/issues/786). Fix one when you're already in it; don't copy its shape into a new spec.
 
 ## Registry isolation
 
-- **All test registry writes must use `test-*` section names.** This isolates tests from real user data, even on a dev build deployed to a personal device.
-- If a suite touches the registry, set `m.needsRegistrySetup = true` in setup so the base class clears `test-*` sections between tests. Forgetting this opt-in produces flaky cross-suite leakage.
-- See `migrations.md`'s test-mode safety section for the migration runner's handling.
+- **Every test registry write uses a `test-` section name.** That isolates tests from real user data, even on a dev build installed on a personal device.
+- A suite that touches the registry sets `m.needsRegistrySetup = true` before `super.setup()`, so the base class deletes every `test-` section after each test. Without it, sections leak into the next suite and fail it.
+- How the migration runner treats `test-` sections is in [migrations.md](../docs/architecture/migrations.md#sections-the-user-runner-skips).
 
 ## Running tests
 
-Agents *can* and *should* run tests to verify fixes — do NOT commit changes based on reasoning alone.
+Agents can and should run tests to verify fixes: don't commit a change on reasoning alone.
 
-| Command | What |
+| Command | What it runs |
 |---|---|
-| `npm run test:tdd` | Build + run TDD config (single-suite iteration; copy `bsconfig-tdd-sample.json` to `bsconfig-tdd.json` and edit `files`) |
-| `npm run test:unit` | All unit tests |
-| `npm run test:integration` | All integration tests |
-| `npm run test:all` | Everything |
-| `npm run test:complete` | Complete coverage suite |
-| `npm run test:rta` | **RTA functional tests** (Vitest, drives a real device) — build + deploy + assert each screen loads. See [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md). |
+| `npm run test:tdd` | Your TDD config, for iterating on one suite (copy `bsconfig-tdd-sample.json` to `bsconfig-tdd.json` and edit `files`) |
+| `npm run test:unit` | Every unit test except the `measurement` tag |
+| `npm run test:integration` | The integration tests except the `migration` and `registry` tags |
+| `npm run test:all` | Every suite except the `migration`, `registry` and `measurement` tags, without code coverage; CI's gating run |
+| `npm run test:complete` | Everything, those tags included, **with code coverage recorded**. Much slower: the only build that instruments the code |
+| `npm run test:rta` | **RTA functional tests** (Vitest, driving a real device): build, install and check each screen loads. See [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md). |
 
-The Rooibos runner (`scripts/run-roku-tests.js`) zips the build, sideloads to the Roku at `ROKU_IP`, and tails the debug console for `[Rooibos Result]: PASS|FAIL`. The RTA tests instead run under Vitest (`vitest.rta.config.js`) and assert in Node.
+**`@tags("measurement")`** marks a suite that records a platform rate rather than gating behavior: it is slow and can't fail on the number it prints (`TaskRelaunchBlockModes.spec.bs`). It runs only when asked for: `test:tdd` with the spec selected, or `test:complete`. Put the property the app depends on in a spec without the tag, so every run still gates it.
+
+The Rooibos runner (`scripts/run-roku-tests.js`) zips the build, installs it on the Roku at `ROKU_IP` and reads the debug console for `[Rooibos Result]: PASS|FAIL`. It also fails a PASS whose summary doesn't add up (`Total` is not `Passed` + `Crashed` + `Failed` + `Ignored`): a test counted but never reported ran invisibly. The RTA tests run under Vitest instead (`vitest.rta.config.js`) and check in Node.
 
 ### Credentials
 
-Reads `ROKU_IP` and `ROKU_PASSWORD` from a gitignored `.env` at the repo root. If missing, source from VSCode `brightscript.debug.host` / `brightscript.debug.password` and write them to `.env`.
+The runner reads `ROKU_IP` and `ROKU_PASSWORD` from the environment, filled from the checkout's gitignored `.env` and then the per-user `~/.config/jellyrock/env` (the checkout wins). [`unit-tests-tdd.md`](../docs/dev/unit-tests-tdd.md) has the precedence rules and the fallback to VS Code's `brightscript.debug.host` and `brightscript.debug.password`.
 
 ### When hardware isn't available
 
-**First run `npm run device:check`** — it probes every device in `.env` over ECP and prints which answered. Claiming no device without running it is the failure mode this exists for; a device that answers is a device you can test on.
+**First run `npm run device:check`.** It probes every device in `.env` over ECP and prints which answered. Claiming there is no device without running it is the failure it exists to stop: a device that answers is a device you can test on.
 
-If the probe fails (no `.env`, no device on network, debugger holding the port), **say so explicitly** — and say *the probe failed*, not that you lack access. Do NOT claim a fix was tested when only the build (`npm run build:tdd`) was verified. A green build is not a green test run.
+If the probe fails (no `.env`, no device on the network, a debugger holding the port), say so, and say *the probe failed*, not that you lack access. Never call a fix tested when only the build (`npm run build:tdd`) was checked. A green build is not a green test run.
 
-### Debugger contention
+### A debugger already attached
 
-If a VSCode BrightScript debugger session is already attached to the test device, the deploy will fail (ECP refuses the second sideload) and may also kill the active debugger. Surface this to the user — do not retry blindly.
+If a VS Code BrightScript debugger is attached to the test device, the install can fail, and it can end that debugger session. Tell the user rather than retrying.
 
-`docs/dev/unit-tests.md` and `docs/dev/unit-tests-tdd.md` are the canonical how-tos with full troubleshooting.
+[`docs/dev/unit-tests.md`](../docs/dev/unit-tests.md) and [`docs/dev/unit-tests-tdd.md`](../docs/dev/unit-tests-tdd.md) are the how-tos, with full troubleshooting.
 
-## Other rules (reminders from root)
+## Other rules (reminders from the root)
 
-- **Cannot modify `CHANGELOG.md`** — CI-controlled.
-- **Cannot trigger production build / deploy** — that's IDE / CI territory; testing scripts above are scoped to test sideloads.
+- **Never modify `CHANGELOG.md`:** CI writes it.
+- **Never trigger a production build or deploy:** the test scripts above install test builds only.
 
-## What NOT to do
+## What not to do
 
 - Don't write to a registry section without a `test-` prefix from a test.
-- Don't mock the database / registry for migration tests — use real `test-*` sections so the integration is exercised. (Same lesson as the `feedback`-style guidance: mocked tests can pass while real schema breaks.)
-- Don't skip `BaseTestSuite` for "lightweight" tests — `m.global` setup matters for almost everything.
+- Don't mock the registry for a migration test: use real `test-` sections, so the integration is exercised. A mocked test can pass while the real schema breaks.
+- Don't skip `BaseTestSuite` for a "lightweight" test: the `m.global` setup matters for almost everything.

@@ -111,7 +111,7 @@ namespace tests
       ' WHEN: Migration runs
       runRegistryUserMigrations([testUserId])
 
-      ' THEN: Empty primaryImageTag is NOT deleted (migration skipped)
+      ' THEN: Empty primaryImageTag is kept (migration skipped)
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertTrue(reg.exists("primaryImageTag"), "Migration should be skipped")
       m.assertEqual(reg.read("primaryImageTag"), "")

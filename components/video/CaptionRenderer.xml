@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="CaptionRenderer" extends="Group">
+  <interface>
+    <!-- callFunc() only dispatches to a DECLARED function; without these lines the
+         call is a silent no-op and teardown never runs. -->
+    <function name="onDestroy" />
+    <function name="updateCaption" />
+    <field id="url" type="string" />
+    <field id="currentCaption" type="roArray" />
+    <field id="playerState" type="string" value="stopped" />
+    <field id="currentPos" type="int" />
+  </interface>
+  <children>
+    <timer id="captionTimer" repeat="true" duration="0.1" />
+  </children>
+</component>

@@ -1,16 +1,17 @@
 /**
- * Tier 3 — the paired comparison. See `scripts/measure-compare.js`.
+ * Tier 3: the paired comparison. See `scripts/measure-compare.js`.
  *
  * Two kinds of gate live here, and they fail differently:
  *
  * - The COMPARABILITY rules, which decide whether two series are two arms of one
  *   experiment or two experiments. Every one of them is a case that would otherwise
- *   print a confident delta about nothing — a different server, a different device, a
+ *   print a confident delta about nothing: a different server, a different device, a
  *   `debug=true` build worth +121 ms on its own.
- * - The STATISTICS, pinned against results computed by hand in
- *   `docs/dev/home-first-paint-performance.md`, because the whole reason they moved
- *   into code is that every recorded p-value in that doc was produced outside the
- *   repo and cannot be re-derived from it.
+ * - The STATISTICS, pinned against results computed by hand for the p-values the docs
+ *   recorded (now kept in ADR 0026 and in decision
+ *   `comparison-refuses-identity-reports-drift`), because the whole reason they moved
+ *   into code is that every recorded p-value was produced outside the repo and cannot
+ *   be re-derived from it.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -40,7 +41,7 @@ import { MeasureArgError } from '../../../scripts/measure-args.js';
 /**
  * One cold sample, as `measure.js` writes it.
  *
- * `launch` is deliberately NOT defaulted here — `series()` assigns it per sample index,
+ * `launch` is not defaulted here, on purpose: `series()` assigns it per sample index,
  * because `measure.js` writes `launch: i` and one series' samples come from DIFFERENT app
  * launches. This fixture used to hardcode `launch: 0` on every sample, which no assertion
  * could see while cold selection ignored the field; it became visible the moment
@@ -100,7 +101,7 @@ const series = (over = {}) => ({
   median: 2600,
   ...over,
   // One series' samples come from different app LAUNCHES, so give each the launch index
-  // `measure.js` would have written — unless a case pinned one deliberately, which is how
+  // `measure.js` would have written, unless a case pinned one on purpose, which is how
   // a warm refresh beside a cold paint is expressed.
   samples: (over.samples ?? [sample(2500), sample(2600), sample(2700)]).map((s, i) => ({
     launch: i,
@@ -145,12 +146,12 @@ describe('selecting an arm', () => {
   it('can select on `dirty`, which the integrity disclosure gives a reader to act on', () => {
     // Added 2026-08-19 alongside the report's integrity line: telling a reader their
     // median pools dirty-tree series and offering no way to exclude them is a dead end.
-    // Selectable, but deliberately NOT a refusal axis — mixing dirty and clean is
+    // Selectable, but on purpose not a refusal axis: mixing dirty and clean is
     // disclosed, not refused.
     expect(parseSelector('dirty=false')).toEqual({ dirty: 'false' });
     const records = [series({ dirty: true }), series({ dirty: false }), series({ dirty: null })];
     expect(selectSeries(records, { dirty: 'false' }).series).toHaveLength(1);
-    // `null` is `(unrecorded)`, NOT clean — "nobody wrote it down" is a third state.
+    // `null` is `(unrecorded)`, not clean: "nobody wrote it down" is a third state.
     expect(selectSeries(records, { dirty: '' }).series).toHaveLength(1);
     expect(POPULATION_AXES.some((a) => a.key === 'dirty')).toBe(false);
   });
@@ -171,7 +172,7 @@ describe('selecting an arm', () => {
   });
 
   it('pools only the cold first paints, never the refresh runs beside them', () => {
-    // All three in ONE launch — that is what a refresh run IS. Pinned explicitly, because
+    // All three in ONE launch: that is what a refresh run IS. Pinned explicitly, because
     // the default fixture spreads samples across launches like a real series does.
     const warm = sample(900, { launch: 0, indexInLaunch: 1 });
     const incomplete = sample(800, { launch: 0, complete: false });
@@ -209,7 +210,7 @@ describe('selecting an arm', () => {
 
   it('still selects by position for a family that stamps no mount identity', () => {
     // `home-latest-rows` (bare `npm run measure`) and `item-grid` stamp no `component` /
-    // `variant`, so there is no mount identity to match on — carrying some OTHER dimension
+    // `variant`, so there is no mount identity to match on. Carrying some OTHER dimension
     // (`home-latest-rows` emits `sizeAt`) does not change that. Honouring a record field
     // against identity-less samples would select none and read as an empty series.
     const record = series({ screenVariant: 'Movie' });
@@ -310,7 +311,7 @@ describe('comparability — what is refused', () => {
   it('keeps the run-script `variant` and the screen `screenVariant` apart', () => {
     // They are unrelated senses of one word and the record carries BOTH: `variant` is
     // `process.env.npm_lifecycle_event` from `runProvenance()`, `screenVariant` is the
-    // item type the app stamped. Caught on hardware — an earlier cut named the second one
+    // item type the app stamped. Caught on hardware: an earlier cut named the second one
     // `variant`, and because `runProvenance()` is spread BELOW it in the record literal,
     // every record read `variant: "measure"` while its samples plainly said Series/Season.
     const records = [
@@ -331,8 +332,9 @@ describe('comparability — what is refused', () => {
     // Until measurement reached a playback screen, `screen` implied the component and the
     // gate did not need this. A nav that walks through another instrumented screen breaks
     // the implication: an `itemDetails` arm and a `videoPlayer` arm can BOTH carry
-    // `screen: osd`, agree on every other key here, and be compared without a word —
-    // while the workload line prints "identical: not a run that did less work".
+    // `screen: osd`, agree on every other key here, and be compared without a word,
+    // while the workload line prints "identical: the delta below is not a run that did
+    // less work".
     const records = [
       series({ arm: 'before', screen: 'osd', component: 'itemDetails' }),
       series({ arm: 'after', screen: 'osd', component: 'videoPlayer' }),
@@ -358,8 +360,8 @@ describe('comparability — what is refused', () => {
   });
 
   it('refuses PARTIALLY overlapping arms, which is the shape an operator reaches', () => {
-    // Measuring an UNCOMMITTED change leaves both arms on one commit — the documented
-    // common case, and the reason `--arm` exists at all — so `--a commit=<sha>`
+    // Measuring an UNCOMMITTED change leaves both arms on one commit (the documented
+    // common case, and the reason `--arm` exists at all), so `--a commit=<sha>`
     // swallows the `after` arm whole while `--b after` names it again. Reproduced
     // against this repo's own ledger before this refusal existed: it printed a
     // confident `Δ -45.5 ms (-2.5%)`, a p, and a twelve-entry `order` line built from
@@ -372,7 +374,7 @@ describe('comparability — what is refused', () => {
     const verdict = comparability(a, b);
     expect(verdict.refusals.join(' ')).toMatch(/1 of commit=abc1234's 2 series is ALSO in after/);
     expect(verdict.refusals.join(' ')).toMatch(/counted on both sides/);
-    // Named so the operator can act on it — the ledger is append-only, so an index
+    // Named so the operator can act on it: the ledger is append-only, so an index
     // would mean nothing, but `measure:compare` with no arguments prints these.
     expect(verdict.refusals.join(' ')).toMatch(/arm after @ 2026-08-13/);
     // …and never as a delta. Probed on the statistic itself rather than the words
@@ -455,8 +457,8 @@ describe('the shared population axes', () => {
 
   it('names the axis and its values so a second caller can act on them', () => {
     // The matrix report asks this of one pooled cell rather than of two arms, and prints
-    // the values in the note that tells the operator how to narrow the selection — so
-    // both fields are contract, not just the boolean.
+    // the values in the hint telling the operator how to narrow the selection, so
+    // both fields are contract, not only the boolean.
     const [before, after] = twoArms();
     const [a] = armsFrom([before, { ...after, arm: 'before', screen: 'settings' }]);
     const screen = mixedPopulations(a).find((m) => m.key === 'screen');
@@ -474,8 +476,8 @@ describe('the shared population axes', () => {
 
   it('declares its own cross-arm wording on the axis, not in a key list at the loop', () => {
     // The three axes that word their differing-ACROSS-arms case themselves. Held here
-    // because the alternative — a list of key names two hundred lines from the axes it
-    // names — is how an axis added later silently inherits the generic message, which is
+    // because the alternative (a list of key names two hundred lines from the axes it
+    // names) is how an axis added later silently inherits the generic message, which is
     // the one-rule-two-implementations defect this extraction exists to prevent.
     expect(POPULATION_AXES.filter((x) => x.crossArm === 'custom').map((x) => x.key)).toEqual([
       'server',
@@ -522,7 +524,7 @@ describe('comparability — what is only said out loud', () => {
     comparability(...armsFrom(twoArms(overA, overB))).warnings.join(' ');
 
   it('reads the enclosed arm’s server out of its ENCLOSURE, not provenance.server', () => {
-    // ADR 0030 rejects writing an enclosed identity into `provenance.server.url` — that
+    // ADR 0030 rejects writing an enclosed identity into `provenance.server.url`: that
     // is where a reader takes a value as observed. So the no-ODC arm records null there
     // and the value lives under `enclosure.identity`; without this fallback the pair
     // would fail the same-server check and the calibration could never be read back.
@@ -544,7 +546,7 @@ describe('comparability — what is only said out loud', () => {
 
   it('does not warn about Jellyfin versions when the enclosed arm recorded one', () => {
     // The enclosed arm leaves `provenance.server` null on purpose, so every axis reading
-    // that object needs the enclosure fallback — not just the URL. Without it a clean
+    // that object needs the enclosure fallback, not only the URL. Without it a clean
     // calibration warns that its two arms ran against different server versions.
     const enclosed = {
       tier1: { asserted: true, ok: true },
@@ -567,7 +569,7 @@ describe('comparability — what is only said out loud', () => {
     // ADR 0030's sanctioned exception, and the reason it is a property of the records
     // rather than a flag: a bypass flag would be typed by exactly the person the refusal
     // exists for. Both arms assert an identity, each one's source fits its ODC state, and
-    // the two agree — which is what `npm run measure:calibrate` establishes by
+    // the two agree, which is what `npm run measure:calibrate` establishes by
     // construction.
     const enclosed = {
       provenance: { ...series().provenance, enableRta: false, identitySource: 'enclosed' },
@@ -578,7 +580,7 @@ describe('comparability — what is only said out loud', () => {
     expect(verdict.warnings.join(' ')).toMatch(/ADR 0030/);
     expect(verdict.warnings.join(' ')).toMatch(/delta below IS the resident component/);
     // Each arm's identity source NAMED in full. It printed `o` and `e` on the first real
-    // run — the message indexed `[0]` into what had become a string, and nothing caught it
+    // run: the message indexed `[0]` into what had become a string, and nothing caught it
     // because the assertions above both still passed.
     expect(verdict.warnings.join(' ')).toMatch(/before: observed/);
     expect(verdict.warnings.join(' ')).toMatch(/after: enclosed/);
@@ -621,8 +623,8 @@ describe('comparability — what is only said out loud', () => {
   it('warns when nobody can attribute the build to a checkout', () => {
     // NEW 2026-08-19, and it had no warning on either reader before: a dirty tree means
     // the recorded commit is incomplete; this means nobody can say the measured build
-    // came from that commit AT ALL. `!== true` deliberately covers a record predating
-    // the field — "we cannot say" is exactly what the warning claims.
+    // came from that commit AT ALL. `!== true` covers a record predating the field on
+    // purpose: "we cannot say" is exactly what the warning claims.
     const unattributed = { provenance: { ...series().provenance, checkout: {} } };
     expect(warn({}, unattributed)).toMatch(/nobody attributed to a checkout/);
   });
@@ -642,7 +644,7 @@ describe('comparability — what is only said out loud', () => {
 
   it('drives every integrity warning off the SHARED predicates', () => {
     // The whole point of extracting them: `measure:report` discloses the same facts, and
-    // before the extraction it disclosed none of them — so one reader could warn about a
+    // before the extraction it disclosed none of them, so one reader could warn about a
     // series the other silently averaged. If a predicate is edited here, both move.
     expect(SERIES_INTEGRITY.map((f) => f.key)).toEqual([
       'dirty',
@@ -672,7 +674,7 @@ describe('comparability — what is only said out loud', () => {
   });
 
   it('says out loud how many series it DROPPED, on the path that prints a delta', () => {
-    // `selectSeries`'s contract is that exclusions are output, not a silent filter —
+    // `selectSeries`'s contract is that exclusions are output, not a silent filter,
     // and the failure it names (a median over three samples when you took ten) lands
     // on the success path, not on the refusal path where this used to be printed.
     const records = [
@@ -690,7 +692,7 @@ describe('comparability — what is only said out loud', () => {
     expect(text).toMatch(/arm before matched 5 series but is using 1/); // …and says what it dropped
     expect(text).toMatch(/2 blocked, 1 unrecorded/);
     expect(text).toMatch(/1 produced no cold sample/);
-    // The arm that dropped nothing says nothing — a per-arm line, not a banner.
+    // The arm that dropped nothing says nothing: a per-arm line, not a banner.
     expect(text).not.toMatch(/arm after matched/);
   });
 });
@@ -761,13 +763,15 @@ describe('the statistics', () => {
   });
 
   it('reproduces BOTH methods for the batched-attach comparison, which used the approximation', () => {
-    // `home-first-paint-performance.md` records "Mann-Whitney U = 0.0, p = 0.0002" for
-    // n=10 per arm with complete separation. That p is the NORMAL approximation with a
-    // continuity correction (z = 3.742); the exact value is 2/C(20,10) = 1.08e-5. The
-    // doc did not say which method it used, and the sibling comparison below used the
-    // other one — so both are pinned here, and the doc now says so too.
+    // ADR 0026 records "U = 0.0, p = 0.0002" for n=10 per arm with complete
+    // separation. That p is the NORMAL approximation with a continuity correction
+    // (z = 3.742); the exact value is 2/C(20,10) = 1.08e-5. The doc that first recorded
+    // it did not say which method it used, and the sibling comparison below used the
+    // other one, so both are pinned here. Decision
+    // `comparison-refuses-identity-reports-drift` (`docs/decisions.md`) records which
+    // method produced each.
     //
-    // Complete separation is the only per-sample property the doc records, and it is
+    // Complete separation is the only per-sample property the record keeps, and it is
     // what fixes U at 0, so any two separated 10-sample arms reproduce the statistic.
     const before = [2600, 2610, 2620, 2630, 2640, 2650, 2660, 2670, 2680, 2690];
     const after = [2100, 2110, 2120, 2130, 2140, 2150, 2160, 2170, 2180, 2190];
@@ -783,8 +787,9 @@ describe('the statistics', () => {
   });
 
   it('reproduces the exact p recorded for the apiPipeline migration (n=5 vs n=6)', () => {
-    // "Every after sample is faster than every before sample — complete separation,
-    // exact Mann-Whitney p≈0.004."
+    // The doc recorded every after sample faster than every before sample (complete
+    // separation), exact Mann-Whitney p≈0.004. Decision
+    // `comparison-refuses-identity-reports-drift` keeps the exact 2/C(11,5) = 0.00433.
     const before = [1050, 1060, 1070, 1080, 1090];
     const after = [590, 600, 610, 620, 630, 640];
     const test = mannWhitney(before, after);
@@ -821,6 +826,10 @@ describe('the report', () => {
   it('prints the workload line ABOVE the timing line', () => {
     const [a, b] = armsFrom(twoArms());
     const text = reportComparison(a, b, comparability(a, b)).join('\n');
+    // Both asserted PRESENT first: an absent line answers -1, which is less than every
+    // real index, so the ordering alone passes when a line is missing from the report.
+    expect(text).toContain('workload');
+    expect(text).toContain('rank test');
     expect(text.indexOf('workload')).toBeLessThan(text.indexOf('rank test'));
     expect(text).toMatch(/identical: the delta below is not a run that did less work/);
     expect(text).toMatch(/Δ -500 ms \(-19.6%\)/);

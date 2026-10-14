@@ -3,20 +3,20 @@
  *
  * ## This is the PRIMARY defense against a Task-thread fan-out, not a measurement
  *
- * `launchTask()` refuses above 50 live threads, but a store build strips `roku-log`
- * and excludes `#if debug`, so a refusal has no channel to report on — it can only
- * degrade silently. A pre-ship gate names the culprit instead, which is why ADR 0031
+ * `launchTask()` queues a launch above 50 live threads and refuses only past the
+ * queue's cap (ADR 0041), but a store build strips `roku-log` and excludes
+ * `#if debug`, so a refusal has no channel to report on. It can only degrade silently. A pre-ship gate names the culprit instead, which is why ADR 0031
  * calls this the primary defense and the runtime ceiling the backstop.
  *
  * ⚠️ It fires at RELEASE PREP, not per-PR. `rta-functional-tests.yml` triggers only on
  * `push: release-*.*.*` and `workflow_dispatch`, because there is one physical device
  * shared with Rooibos and manual work. So a fan-out regression is caught already-merged,
- * and possibly stacked with other work. That is a deliberate trade, recorded in ADR 0031
+ * and possibly stacked with other work. That is a chosen trade, recorded in ADR 0031
  * and open as a followup in docs/progress.md.
  *
  * ## What it reads
  *
- * `m.global.taskLedger`, which `launchTask()` maintains in EVERY build — there is no
+ * `m.global.taskLedger`, which `launchTask()` maintains in every build, so there is no
  * conditional hook that could be missing. `tracked` is returned alongside `live`
  * regardless, because "the ledger recorded nothing" and "the app runs no Task threads"
  * are opposite findings that a bare `live` of 0 would conflate, and the bound below
@@ -26,7 +26,7 @@
  *
  * Polled concurrently with a scripted journey rather than read at the end: the peak
  * is a transient during screen loads, and a reading taken once everything settles
- * measures the persistent floor instead — a different (and much smaller) number.
+ * measures the persistent floor instead, a different (and much smaller) number.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -77,10 +77,10 @@ beforeAll(async () => {
   ctx = { libraries: await getLibraries(session) };
 
   // SEED, don't inherit. Without this the spec silently depends on whatever server
-  // the device was last signed into by another run — it would pass against the wrong
+  // the device was last signed into by another run. It would pass against the wrong
   // fixture and report a peak for a library nobody chose.
   const expectedServer = await seedHome(session, RTA_CONFIG.languages[0]);
-  await hardRelaunch(); // never plain relaunch — the app re-persists over the seed
+  await hardRelaunch(); // never plain relaunch: the app re-persists over the seed
   await assertSeedTookEffect(expectedServer, 'task-thread peak');
   await waitHome();
   await odc.createChild({
@@ -102,7 +102,7 @@ it("keeps peak live Task threads far below Roku's cap across a real journey", as
 
   // Each phase runs independently and a failure is RECORDED rather than thrown. The
   // deliverable is the sample series, and losing every sample because the last
-  // navigation step missed a focus gate is the worst possible trade — the first run
+  // navigation step missed a focus gate is the worst possible trade. The first run
   // of this spec did exactly that.
   //
   // `navCellSweepExtras` already chains home -> grid -> details -> extras, so calling
@@ -187,8 +187,30 @@ it("keeps peak live Task threads far below Roku's cap across a real journey", as
     console.log(`[PEAK] wrote ${outFile}`);
   }
 
+  // THE JOURNEY HAS TO HAVE HAPPENED. Every number below is measured ACROSS the walk this
+  // test is named for, so a phase that bailed early leaves a peak taken over an app that
+  // sat still, and the bound would pass on it, reporting a green gate that gated nothing.
+  //
+  // That is not hypothetical. `.177`, 2026-09-08: both phases timed out returning to Home
+  // (a swallowed Back, now guarded in `navHomeReturn`), the test PASSED, and it recorded
+  // `peakLive: 7` with `seven-screens: 7 / extras-sweep: 5`. The same test on the same
+  // commit minutes later, with the journey actually running, measured 9 / 9 / 8, and
+  // `docs/architecture/global-state.md` documents the real peak as 9-11, so the run that
+  // proved nothing was also the one that looked BEST. A quiet 7 is the failure signature.
+  //
+  // Asserted HERE, after the `finally` above has written the sample series to disk, so the
+  // deliverable survives the throw. That is the whole reason the phases record errors
+  // instead of throwing (see `phaseErrors` above): losing every sample to one missed
+  // focus gate is the worse trade, and it is not the trade this makes.
+  expect(
+    Object.entries(phaseErrors).map(([k, v]) => `${k}: ${v}`),
+    'a journey phase did not complete, so the peak below was measured over an app that ' +
+      'was not being driven. The measurement is void, not passing — see phaseErrors in ' +
+      '.device-runs/task-thread-peak-*.json.',
+  ).toEqual([]);
+
   // The ledger has to have RECORDED something for any of this to mean anything.
-  // `tracked` 0 reads identically to a peak of 0 — "not measured" vs "no threads"
+  // `tracked` 0 reads identically to a peak of 0: "not measured" vs "no threads"
   // are opposite findings and the bound below would pass on either.
   expect(
     Math.max(...samples.map((s) => s.tracked ?? 0)),
@@ -198,7 +220,7 @@ it("keeps peak live Task threads far below Roku's cap across a real journey", as
 
   expect(samples.length, 'no samples were taken').toBeGreaterThan(10);
 
-  // THE GATE — the reason this spec is permanent rather than a one-off measurement.
+  // THE GATE: the reason this spec is permanent rather than a one-off measurement.
   //
   // `no-raw-run` and `no-task-fanout` are compile-time ratchets, and they cannot see
   // the one thing that actually kills the app: the AGGREGATE count. Their own
@@ -207,11 +229,11 @@ it("keeps peak live Task threads far below Roku's cap across a real journey", as
   // bounded number that sum. This is the check that covers those.
   //
   // A BOUND, not a pin. Measured 2026-08-23 on `.177`: peak 7 against a 4-library
-  // demo server and 11 against a 13-library real one, median 6 — the count is
+  // demo server and 11 against a 13-library real one, median 6. The count is
   // dominated by the fixed bootstrap set, not by screen activity, which is
   // `no-task-fanout` working. 30 is ~3x the observed peak, under Roku's own
-  // 50-thread console warning, and half the runtime watermark. It will move with the
-  // fixture; it must not move with the app.
+  // 50-thread console warning, and under the runtime watermark of 50. It will move
+  // with the fixture; it must not move with the app.
   //
   // If this fails, something started fanning out Task threads. Read `peakByPhase` in
   // the written JSON to see which part of the journey did it.

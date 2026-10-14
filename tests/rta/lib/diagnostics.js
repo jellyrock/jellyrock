@@ -1,11 +1,11 @@
 /**
  * Failure-time diagnostics for the RTA harness: when a wait gives up, report the
- * state it ACTUALLY OBSERVED, not just the name of what it wanted.
+ * state it OBSERVED, not only the name of what it wanted.
  *
  * ## Why
  *
  * The suite's timeouts are its assertions, and their messages have been
- * describing the ask rather than the answer — "nav timed out waiting for X".
+ * describing the ask rather than the answer: "nav timed out waiting for X".
  * The one #789 data point worth anything read `detail row with tile type
  * "Season" not found after 15s (2 row(s) present)`, and it was only that useful
  * because a single call site happened to interpolate a count; `episodeDetails`,
@@ -17,21 +17,21 @@
  * ## What it costs
  *
  * Nothing on the success path. Every capture happens AFTER a poll loop has
- * already given up, at the throw site — never inside a tick. That is deliberate:
+ * already given up, at the throw site, never inside a tick. That is on purpose:
  * #785 may replace those loops with `onFieldChangeOnce`, and diagnostics must not
  * entrench a shape it might delete.
  *
  * At the failure boundary it is two device round-trips issued in PARALLEL, so the
  * wall-clock cost is one: `getFocusedNode` (which has no batch form) and one
  * `getValues` carrying every field in `CORE_REQUESTS`. `getValues` is a real
- * batch — the on-device component loops the requests inside a single message
- * (`processGetValuesRequest`) — and a keyPath that does not resolve comes back
+ * batch: the on-device component loops the requests inside a single message
+ * (`processGetValuesRequest`), and a keyPath that does not resolve comes back
  * `found: false` rather than failing the batch, which is what lets one fixed
  * request set cover every screen.
  *
  * ## What it never reads
  *
- * Identity is read by NAMED FIELD — `server.id`, `server.serverUrl`, `user.id` —
+ * Identity is read by NAMED FIELD (`server.id`, `server.serverUrl`, `user.id`),
  * never by dumping the node. `JellyfinUser` carries `authToken`, so a whole-node
  * read would put a live demo credential into an artifact.
  *
@@ -39,14 +39,14 @@
  * structurally guaranteed to be the demo one. Today it always is: every wait that
  * can reach here runs after a seed + `hardRelaunch`, and the demo runner refuses a
  * non-demo host outright. But a wait added BEFORE a seed would record the
- * developer's own server URL and user id — into `runs.jsonl`, which is never reset.
+ * developer's own server URL and user id into `runs.jsonl`, which is never reset.
  * Both are gitignored; keep it that way, and keep waits behind their seed.
  *
  * ## Two load signals, and why both
  *
  * `loadState` is GRID-ONLY. It is declared on `BaseGridView` alone
  * (`components/ItemGrid/BaseGridView.xml`), where it carries a real four-value
- * vocabulary — `loading` / `skeleton` / `loaded` / `empty`. `ItemDetails` extends
+ * vocabulary: `loading` / `skeleton` / `loaded` / `empty`. `ItemDetails` extends
  * `JRScreen`, a SIBLING of BaseGridView, so on a detail screen it does not resolve
  * and prints `—`. That is correct, not a broken capture.
  *
@@ -55,7 +55,7 @@
  * `stopLoadingSpinner` (`source/utils/misc.bs`) from every screen including
  * ItemDetails. `isRemoteDisabled` is the highest-value field in the whole dump:
  * `JRScene.onKeyEvent` does `if m.top.isRemoteDisabled then return true`, so a
- * timeout with it set means THE APP WAS SWALLOWING OUR KEYPRESSES — the north-star
+ * timeout with it set means the app was swallowing our keypresses. That is the north-star
  * failure mode in `tests/rta/CLAUDE.md`, which until now could only be inferred.
  *
  * ## Where it lands
@@ -68,47 +68,63 @@
  * run-meta.json: a child read-modify-writing a file the parent also owns is how
  * that record would start losing fields.
  *
- * The record itself — where it lives, its lifecycle, the run ledger — belongs to
+ * The record itself (where it lives, its lifecycle, the run ledger) belongs to
  * [`scripts/run-record.js`](../../../scripts/run-record.js), which is shared with
  * the Rooibos runner and knows nothing about devices. This module only supplies
  * the RTA-specific capture that goes INTO it.
  */
 import { odc, ecp } from 'roku-test-automation';
+import { homeListKeyPaths } from './home-list.js';
+import { withTimeout } from './timeout.js';
 import {
   crossesHourBoundary,
   FAILURE_KINDS,
+  HOURLY_RESET_NOTE,
   isUnknownKind,
   recordFailure,
   runIsCumulative,
   runStartedAt,
 } from '../../../scripts/run-record.js';
 
+/** Both candidate keyPaths for Home's row count. See `homeRowCount` below. */
+const HOME_ROW_COUNT_PATHS = homeListKeyPaths('content.getChildCount()');
+
 /**
- * The fixed part of the dump — the questions worth asking about ANY failure.
+ * The fixed part of the dump: the questions worth asking about ANY failure.
  *
  * Scoped to `activeRoutedView` (the app's own "view the user is on") wherever the
- * id recurs across views, for the same reason `getActiveVal` exists: a suspended view can
- * still be in the scene tree, so a scene-rooted `#id` read can answer for the wrong screen. `#homeRows` is deliberately scene-rooted
- * — on a failure deep in a drill-down, "is Home still populated behind me?" is
- * itself a signal.
+ * id recurs across views, for the same reason `getActiveVal` exists: a suspended
+ * view can still be in the scene tree, so a scene-rooted `#id` read can answer for
+ * the wrong screen. Home's row list is scene-rooted on purpose: on a failure deep
+ * in a drill-down, "is Home still populated behind me?" is itself a signal.
  */
 const CORE_REQUESTS = {
   viewSubtype: { base: 'global', keyPath: 'activeRoutedView.subtype()' },
   viewId: { base: 'global', keyPath: 'activeRoutedView.id' },
-  // Grid-only, by design — see "Two load signals" in the header.
+  // Grid-only, by design. See "Two load signals" in the header.
   loadState: { base: 'global', keyPath: 'activeRoutedView.loadState' },
   // The app shell's own state, on the scene root, and therefore the one load
-  // signal that answers on EVERY screen. `isRemoteDisabled` is the north-star
+  // signal that answers on every screen. `isRemoteDisabled` is the north-star
   // tell: set means JRScene.onKeyEvent was returning true for every key we sent.
   isLoading: { base: 'scene', keyPath: 'isLoading' },
   loadingText: { base: 'scene', keyPath: 'loadingText' },
   isRemoteDisabled: { base: 'scene', keyPath: 'isRemoteDisabled' },
-  homeRowCount: { base: 'scene', keyPath: '#homeRows.content.getChildCount()' },
+  // What the viewer actually sees. `isLoading` is only the scene's OWN spinner; a screen's
+  // named waits (`screenWaits`) show it too, and are listed from the active view.
+  spinnerVisible: { base: 'scene', keyPath: '#spinner.visible' },
+  activeWaits: { base: 'global', keyPath: 'activeRoutedView.loadingWaits' },
+  // BOTH candidate row lists, because only one of them is in the scene and which one is a
+  // property of Home's selected tab, not of Home. They cost nothing extra: this is already
+  // one batched `getValues`, so a second keyPath adds no round trip, and asking only about
+  // `#homeRows` would report "Home has no rows" under the Favorites tab, misinforming a
+  // diagnosis with a confident wrong number, which is the one thing a failure dump must not do.
+  homeRowCount: { base: 'scene', keyPath: HOME_ROW_COUNT_PATHS[0] },
+  favoritesRowCount: { base: 'scene', keyPath: HOME_ROW_COUNT_PATHS[1] },
   detailRowCount: {
     base: 'global',
     keyPath: 'activeRoutedView.#extrasGrid.content.getChildCount()',
   },
-  // Named fields only — never the node. See the header.
+  // Named fields only, never the node. See the header.
   serverId: { base: 'global', keyPath: 'server.id' },
   serverUrl: { base: 'global', keyPath: 'server.serverUrl' },
   userId: { base: 'global', keyPath: 'user.id' },
@@ -121,11 +137,41 @@ const unwrap = (results, key) => (results?.[key]?.found ? results[key].value : u
  *
  * The read is a median 21 ms when the device is healthy (n=20 on `.177`, range
  * 18-30 with occasional ~70 ms spikes under a busy render thread), so this only
- * ever bites when the device has stopped answering — and there it is the point:
+ * ever bites when the device has stopped answering, and there it is the point:
  * a suite failing N times against a dead device would otherwise spend 10 s per
  * failure re-confirming the same thing. The unanswered read is still recorded.
+ *
+ * It bounds the two ECP readings below as well, but from OUTSIDE the call rather than
+ * as an option, because ECP has no timeout to pass. See `ecpReading`.
  */
 const CAPTURE_TIMEOUT_MS = 5000;
+
+/**
+ * An ECP reading that cannot hang, which it otherwise can, indefinitely.
+ *
+ * `HttpRequestOptions` carries `retryCount` and nothing else, and the client's
+ * `getNeedleOptions()` sets only auth and proxy, so needle's own defaults stand:
+ * `open_timeout` 10 s, but `response_timeout` and `read_timeout` both 0, which is disabled.
+ * So a device that accepts the socket and then never answers leaves the request
+ * pending forever, and `retryCount` bounds the number of attempts, not the length of
+ * one. (Read out of `roku-test-automation/client/dist/RokuDevice.js` and
+ * `needle/lib/needle.js` on 2026-09-08, not inferred from a symptom.)
+ *
+ * Unbounded matters more here than at a normal call site: both readings sit in the
+ * `Promise.all` below, where one unsettled promise withholds the whole capture, and
+ * this runs on every wait timeout, which is precisely when the device is least likely
+ * to be healthy. The failure that would produce is the worst shape available: a suite
+ * that hangs instead of reporting the timeout it had already detected.
+ *
+ * The rejection is caught by the caller's `.catch(() => null)` like any other, so a
+ * bounded-out reading costs one line of context and never the capture.
+ */
+const ecpReading = (promise, what) =>
+  withTimeout(
+    promise,
+    CAPTURE_TIMEOUT_MS,
+    `ECP ${what} did not answer within ${CAPTURE_TIMEOUT_MS / 1000}s`,
+  );
 
 /**
  * One batched read of device state, plus the focused node.
@@ -138,14 +184,14 @@ const CAPTURE_TIMEOUT_MS = 5000;
 export async function captureFailureState() {
   const started = Date.now();
   const opts = { timeout: CAPTURE_TIMEOUT_MS };
-  const [focused, batch, mediaPlayer] = await Promise.all([
+  const [focused, batch, mediaPlayer, activeApp] = await Promise.all([
     // `includeNode` already defaults to true; we need the node for its subtype.
-    // Only the four fields below are kept — the rest never reaches a record.
+    // Only the fields kept in `focus` below reach a record; the rest do not.
     odc.getFocusedNode({}, opts).catch(() => null),
     odc
       .getValues({ requests: CORE_REQUESTS }, opts)
       .catch((e) => ({ error: e?.message || String(e) })),
-    // ECP, not ODC — the OS media player is the only place playback state is
+    // ECP, not ODC: the OS media player is the only place playback state is
     // readable, and NO failure record carried it until now. That gap is not
     // theoretical: a run whose video never left `buffer` reported only
     // "osd visible (last=false)", because the app's own `stateAllowsOSD()` gate
@@ -153,7 +199,29 @@ export async function captureFailureState() {
     // playing/paused/stopped. Three separate investigations read that as a dialog
     // fault and had to be settled by a control run. One field ends that: a stalled
     // stream now says so in the record.
-    ecp.getMediaPlayer().catch(() => null),
+    ecpReading(ecp.getMediaPlayer(), 'getMediaPlayer').catch(() => null),
+    // ECP, and on the failure path on purpose: a screensaver is the one device state
+    // that can make every ODC read in this record fail while nothing is wrong with the
+    // app. Roku runs a screensaver in its own BrightScript context
+    // (`DEVELOPER/media-playback/screensavers.md`), and roku-test-automation's README
+    // states ODC communication is not possible while one is up, so without this field a
+    // screensaver presents as `device did not answer ODC`, which reads as a harness or
+    // app fault and is neither.
+    //
+    // ECP is what makes it readable: it answers from the OS, not from inside the
+    // channel, so it keeps working exactly when ODC may not. Verified 2026-09-05:
+    // `query/active-app` named the running screensaver (`type="ssvr"`) on an idle
+    // device whose ODC was not answering at all. That a screensaver CAUSES the ODC
+    // failure is not claimed: the one host showing both had a fault of its own, and
+    // the mechanism above is cited to the two docs, not measured here. See
+    // `rta-screensaver-detect-not-suppress` in `docs/decisions.md`.
+    //
+    // `retryCount: 0` because this is a diagnostic, not a measurement: one attempt is
+    // enough context and three would triple the delay on an unreachable device. It is not
+    // what bounds the call (retries and duration are different things), and `ecpReading`
+    // is what makes a single attempt unable to hang. A missed reading costs one line of
+    // context; a slow one delays every failure in the run.
+    ecpReading(ecp.getActiveApp({ retryCount: 0 }), 'getActiveApp').catch(() => null),
   ]);
 
   const results = batch?.results;
@@ -166,7 +234,7 @@ export async function captureFailureState() {
           // The focused list's [row, item]. Kept because the keyPath ALONE cannot tell a
           // healthy Home from a stuck one: both rest on the `#homeRows` CONTAINER with an
           // identical keyPath, and only this field says which ROW. That gap cost two
-          // investigations of a `focusOverhangIcon` timeout — each read the container
+          // investigations of a `focusOverhangIcon` timeout: each read the container
           // keyPath as the anomaly, which it is not, and neither could see that Home's
           // `onKeyEvent` releases focus upward only from row 0. Free: `getFocusedNode`
           // already returns the whole field set, so this adds no device call.
@@ -174,7 +242,7 @@ export async function captureFailureState() {
           // The APP's own playback state, which is not the OS player's and is the
           // one the app gates on: VideoPlayerView.stateAllowsOSD() accepts only
           // playing/paused/stopped, so `buffering` or `error` here means the OSD is
-          // being refused ON PURPOSE. Free — getFocusedNode already returns the
+          // being refused on purpose. Free: getFocusedNode already returns the
           // whole field set, and when the focused node is the player this is the
           // field that explains an OSD that never opens.
           state: focused.node.state ?? undefined,
@@ -191,9 +259,14 @@ export async function captureFailureState() {
       isLoading: unwrap(results, 'isLoading'),
       loadingText: unwrap(results, 'loadingText'),
       isRemoteDisabled: unwrap(results, 'isRemoteDisabled'),
+      spinnerVisible: unwrap(results, 'spinnerVisible'),
+      // Names only: each wait's value is its kind and start time, which the name already
+      // locates in the screen that opened it.
+      activeWaits: Object.keys(unwrap(results, 'activeWaits') ?? {}),
     },
     counts: {
-      homeRows: unwrap(results, 'homeRowCount'),
+      // Whichever list answered. Absence is the normal reading for one of the two.
+      homeRows: unwrap(results, 'homeRowCount') ?? unwrap(results, 'favoritesRowCount'),
       detailRows: unwrap(results, 'detailRowCount'),
     },
     identity: {
@@ -201,8 +274,8 @@ export async function captureFailureState() {
       serverUrl: unwrap(results, 'serverUrl'),
       userId: unwrap(results, 'userId'),
     },
-    // `state` is the OS player's, which is NOT the same vocabulary as the app's
-    // Video node — notably `buffer` here reads as playing to PLAYING_STATES while
+    // `state` is the OS player's, which is not the same vocabulary as the app's
+    // Video node. Notably `buffer` here reads as playing to PLAYING_STATES while
     // the app refuses to open the OSD. Recorded verbatim so a record greps back to
     // what Roku actually said.
     player: mediaPlayer
@@ -210,6 +283,11 @@ export async function captureFailureState() {
           state: mediaPlayer.state,
           error: mediaPlayer.error || undefined,
         }
+      : undefined,
+    // Present only when one is running, so the field's existence is the
+    // finding and every other record stays the shape it was.
+    screensaver: activeApp?.screensaver
+      ? { title: activeApp.screensaver.title, id: activeApp.screensaver.id }
       : undefined,
     unreachable: batch?.error,
     captureMs: Date.now() - started,
@@ -221,7 +299,7 @@ export async function captureFailureState() {
  * here, unchanged, so every existing `from './diagnostics.js'` import keeps working.
  *
  * It moved because a SECOND producer needs to register a kind: `lib/jellyfin.js`
- * records a failed server request, and it is a pure REST helper — importing this
+ * records a failed server request, and it is a pure REST helper, so importing this
  * module to reach the registry would drag `roku-test-automation` into it, and into
  * everything that imports it. The registry is ledger vocabulary ("the key a flake
  * baseline aggregates by"), so it belongs with the ledger, which is device-agnostic
@@ -235,7 +313,7 @@ export { FAILURE_KINDS, isUnknownKind };
  *
  * Imported DYNAMICALLY and on the failure path only. `steps.js` / `nav.js` are
  * shared with `scripts/capture-screenshots.js` and `tests/rta/demos/run.mjs`,
- * neither of which runs under Vitest — a static import would drag the whole test
+ * neither of which runs under Vitest, a static import would drag the whole test
  * runner into the store-screenshot build for a label.
  */
 async function currentTestName() {
@@ -269,12 +347,21 @@ const short = (v) => (typeof v === 'string' && v.length > 12 ? `${v.slice(0, 8)}
 /**
  * The 2–4 lines a human reads in the terminal. The JSONL record carries everything.
  *
- * The shell fields print only when they are the INTERESTING value — a loaded,
+ * The shell fields print only when they are the INTERESTING value: a loaded,
  * responsive app says nothing about either, so a normal failure stays as short as
  * it was before they existed and `input=BLOCKED` keeps its signal value.
  */
 function formatState(state, observed) {
   const lines = [];
+  // BEFORE the ODC line, because it explains it. On its own `device did not answer ODC`
+  // invites a hunt through the app; with this line above it the record has already named
+  // the cause, which is the whole point of reading it.
+  if (state.screensaver) {
+    lines.push(
+      `a SCREENSAVER is running ("${state.screensaver.title}") — the app is not on ` +
+        'screen, so treat every reading below as describing a backgrounded app',
+    );
+  }
   if (state.unreachable) lines.push(`device did not answer ODC: ${state.unreachable}`);
   // Source field name verbatim (`rowItemFocused`), for the same reason the shell fields
   // are: a record greps back to the component that wrote it. Printed only when the
@@ -291,10 +378,12 @@ function formatState(state, observed) {
     shell.isLoading === true
       ? `spinner=on${shell.loadingText ? `("${shell.loadingText}")` : ''}`
       : null,
+    // A screen's own waits show the spinner without `isLoading` (screenWaits).
+    shell.activeWaits?.length ? `waits=[${shell.activeWaits.join(',')}]` : null,
     // Printed whenever playback is up, because a stalled stream looks like a UI
     // fault from every other field here: the app swallows keys until its Video
-    // node leaves `buffer`, so the OSD simply never opens and nothing else in this
-    // line says why. `buffer` is the value worth spotting — PLAYING_STATES counts
+    // node leaves `buffer`, so the OSD never opens and nothing else in this
+    // line says why. `buffer` is the value worth spotting: PLAYING_STATES counts
     // it as playing, the app does not.
     player.state ? `player=${player.state}` : null,
     // The app's Video node state, printed beside the OS player's because the two
@@ -304,7 +393,7 @@ function formatState(state, observed) {
   ].filter(Boolean);
   lines.push(
     // A routed view's id is the item GUID, so it is truncated here for the same
-    // reason the identity line is — the untruncated value stays in the record.
+    // reason the identity line is. The untruncated value stays in the record.
     `view=${state.view.subtype ?? '?'}${state.view.id ? `#${short(state.view.id)}` : ''} ` +
       `loadState=${state.view.loadState ?? '—'} · focus=${focus}` +
       (shellBits.length ? ` · ${shellBits.join(' · ')}` : ''),
@@ -332,8 +421,8 @@ function formatState(state, observed) {
  * Build the Error a timed-out wait should throw: the original message, plus what
  * the harness saw, plus a durable record of both.
  *
- * Returns rather than throws so call sites read `throw await diagnosedError(...)`
- * — the control flow stays visible at the throw site instead of hiding inside a
+ * Returns rather than throws so call sites read `throw await diagnosedError(...)`,
+ * which keeps the control flow visible at the throw site instead of hiding inside a
  * helper that only sometimes ends the function.
  *
  * @param {string} message - the existing, human-written failure message
@@ -348,12 +437,12 @@ export async function diagnosedError(message, { kind, label, waitedMs, observed 
   const at = new Date().toISOString();
   const startedAt = runStartedAt();
   // UNKNOWN in a cumulative window, not false. In watch mode the origin is the
-  // SESSION's — the record opens once at start and folds once at exit — so any
+  // SESSION's (the record opens once at start and folds once at exit), so any
   // session running over an hour would stamp every failure from then on, which is
   // the same always-fires noise `formatRunSummary` already suppresses for
   // `cumulative`. `false` would be a claim we cannot make (the reset may well have
   // happened); `undefined` says the question is unanswerable here, matching how a
-  // missing origin is treated. The origin itself is still recorded — a session's
+  // missing origin is treated. The origin itself is still recorded: a session's
   // start is provenance either way.
   const afterHourBoundary =
     startedAt && !runIsCumulative() ? crossesHourBoundary(startedAt, at) : undefined;
@@ -375,7 +464,7 @@ export async function diagnosedError(message, { kind, label, waitedMs, observed 
     afterHourBoundary,
   });
   const reset = afterHourBoundary
-    ? '\n        ↳ this run has crossed the top of the hour — the demo server resets then, changing its own content and any state this run created through the app'
+    ? `\n        ↳ this run has crossed the top of the hour: ${HOURLY_RESET_NOTE}`
     : '';
   return new Error(`${message}\n${formatState(state, observed)}${reset}`);
 }

@@ -13,7 +13,7 @@ sub init()
   m.log.verbose("Initializing UserSelect component")
 
   m.top.isOptionsAvailable = false
-  ' Overhang config — declarative field projected onto the overhang by JRScene (registerOverhangData).
+  ' Overhang config: declarative field projected onto the overhang by JRScene (registerOverhangData).
   m.top.isLogoVisible = true
   m.top.findNode("selectUserLabel").text = translate(translationKeys.LabelSelectAUser)
   m.top.findNode("manualLoginButton").text = translate(translationKeys.ButtonManualLogin)
@@ -46,15 +46,22 @@ sub init()
   m.quickConnectTimer.observeField("fire", "pollQuickConnect")
 
   m.buttons.callFunc("center")
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField; see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("itemContent", "onItemContentChanged")
 end sub
 
 ' Probe the server's /QuickConnect/Enabled endpoint and remove the QC button if
 ' the server reports it disabled. Render-thread promise (#551 Batch 1, 3b pattern)
-' — replaces the former QuickConnectEnabledTask (createObject + observeFieldScoped
+' that replaces the former QuickConnectEnabledTask (createObject + observeFieldScoped
 ' on responseCode). Fail-open: only a definitive `false` removes the button; any
 ' non-ok HTTP response, transport failure, or timeout leaves it visible.
 sub probeQuickConnectAvailability()
-  ' Already removed this session (cached-disabled in init) → nothing to probe.
+  ' Already removed this session (cached-disabled in init): nothing to probe.
   if not isValid(m.quickConnectButton) then return
 
   req = GetApi().BuildGetQuickConnectEnabledRequest()
@@ -66,7 +73,7 @@ sub probeQuickConnectAvailability()
 
   promises.chain(fetchAsync(req, "quickConnectEnabled")).then(sub(res as object)
     if not res.ok
-      ' Server reachable but returned a non-2xx status (e.g. 10.7 has no endpoint).
+      ' Server reachable but returned a non-2xx status (for example, 10.7 has no endpoint).
       ' Fail-open: leave the button and the cached global field as-is.
       m.log.warn("Quick Connect probe got non-OK response - failing open", "statusCode:", res.statusCode)
       return
@@ -87,7 +94,7 @@ sub probeQuickConnectAvailability()
       removeQuickConnectButton("server reports Quick Connect disabled")
     end if
   end sub).catch(sub(err as object)
-    ' Transport failure / timeout — fail-open, leave the button visible.
+    ' Transport failure / timeout: fail-open, leave the button visible.
     m.log.warn("Quick Connect probe failed - failing open", err.reason)
   end sub)
 end sub
@@ -128,7 +135,7 @@ sub onUserSelected(event as object)
   m.top.getScene().preLoginIntent = "userSelected"
 end sub
 
-' Manual-login / Quick Connect buttons → intents the loginRouter coordinator handles.
+' Manual-login / Quick Connect buttons emit intents the loginRouter coordinator handles.
 sub onButtonSelected(event as object)
   buttonGroup = event.getRoSGNode()
   btn = buttonGroup.getChild(event.getData())
@@ -136,7 +143,7 @@ sub onButtonSelected(event as object)
   if btn.id = "manualLoginButton"
     m.top.getScene().preLoginIntent = "manualLogin"
   else if btn.id = "quickConnect"
-    ' NOT an intent: Quick Connect's first three steps are network calls with no
+    ' Not an intent: Quick Connect's first three steps are network calls with no
     ' navigation between them, so they belong on the render thread where
     ' fetchAsync works. The coordinator is handed the finished session at the
     ' end (quickConnectAuthenticated), which is the only step that needs it.
@@ -150,7 +157,7 @@ end sub
 ' The whole render-thread half of the flow lives here, because all three of its
 ' requests are `fetchAsync` promises and the promise registry lives on the `m` of
 ' the component that called fetchAsync (see source/api/apiPromise.bs). Only the
-' last step — turning an AuthenticationResult into a signed-in session — needs
+' last step (turning an AuthenticationResult into a signed-in session) needs
 ' the main thread, and that is handed to the loginRouter coordinator as the
 ' `quickConnectAuthenticated` intent.
 '
@@ -159,7 +166,7 @@ end sub
 '   approve-> exchangeQuickConnect   POST /Users/AuthenticateWithQuickConnect
 '   finish -> askToSaveCredentials   -> intent -> loginRouter.user.Login()
 '
-' This replaces a QuickConnect Task NODE that was created fresh on every poll —
+' This replaces a QuickConnect Task NODE that was created fresh on every poll:
 ' roughly one task thread every three seconds for as long as the user took to
 ' walk to their phone, which is the fan-out shape source/api/CLAUDE.md forbids
 ' and the &h29 "too many task threads" class from #728. It also ran user.Login()
@@ -180,7 +187,7 @@ sub startQuickConnect()
   ' A blocking spinner, briefly: the user pressed a button and nothing can happen
   ' until the server issues a code. This used to be a SYNCHRONOUS call on the
   ' main thread (loginRouter.onQuickConnectRequested), which froze the whole
-  ' event loop — remote input included — for up to timeouts.HTTP_MS (10s) on an
+  ' event loop (remote input included) for up to timeouts.HTTP_MS (10s) on an
   ' unreachable server.
   startLoadingSpinner()
   m.log.info("Starting Quick Connect", "method:", req.method)
@@ -198,7 +205,7 @@ sub startQuickConnect()
 
     session = quickConnectSession(res.json)
     if not isValid(session)
-      ' The server answered 200 with nothing usable in it. Not "disabled" — it
+      ' The server answered 200 with nothing usable in it. Not "disabled": it
       ' said the feature is on and then failed to issue a code.
       m.log.warn("Quick Connect initiate returned no usable secret/code")
       reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
@@ -235,8 +242,8 @@ sub pollQuickConnect()
     return
   end if
 
-  ' A fresh requestId per poll. They are never concurrent — the timer is re-armed
-  ' only after a poll settles — but reusing one across requests is the pool's
+  ' A fresh requestId per poll. They are never concurrent (the timer is re-armed
+  ' only after a poll settles), but reusing one across requests is the pool's
   ' documented foot-gun, and a numbered id says which poll a log line is about.
   m.quickConnectPolls++
   promises.chain(fetchAsync(req, "quickConnectPoll-" + stri(m.quickConnectPolls).trim())).then(sub(res as object)
@@ -247,9 +254,9 @@ sub pollQuickConnect()
   end sub)
 end sub
 
-' Act on one poll outcome. The classification itself is pure and unit-tested —
+' Act on one poll outcome. The classification itself is pure and unit-tested:
 ' see quickConnectPollOutcome in source/utils/quickConnect.bs for the measured
-' server behaviour behind it.
+' server behavior behind it.
 sub handleQuickConnectPoll(outcome as string)
   ' Cancelled while this poll was in flight: the dialog is already gone.
   if not isValidAndNotEmpty(m.quickConnectSecret) then return
@@ -279,7 +286,7 @@ sub handleQuickConnectPoll(outcome as string)
       return
     end if
   else
-    ' A clean "not yet" clears the tolerance — the cap is for a run of failures,
+    ' A clean "not yet" clears the tolerance: the cap is for a run of failures,
     ' not for a total across a session that is otherwise healthy.
     m.quickConnectFailures = 0
   end if
@@ -291,7 +298,7 @@ end sub
 sub exchangeQuickConnect()
   secret = m.quickConnectSecret
   ' Stop polling and take the dialog down BEFORE the exchange: the code on it is
-  ' spent, and abandonDialog delivers no result, which is right here — the user
+  ' spent, and abandonDialog delivers no result, which is right here: the user
   ' did not dismiss it, so onQuickConnectDialogResult must not run.
   m.quickConnectTimer.control = "stop"
   abandonQuickConnectDialog()
@@ -307,7 +314,7 @@ sub exchangeQuickConnect()
   promises.chain(fetchAsync(req, "quickConnectAuthenticate")).then(sub(res as object)
     stopLoadingSpinner()
     if not res.ok or not isValid(res.json)
-      ' Almost always the secret being spent — it is consumed on first use and
+      ' Almost always the secret being spent: it is consumed on first use and
       ' it expires. The exception is a 503, which is the server starting rather
       ' than anything wrong with the code. See quickConnectExchangeFailure.
       m.log.warn("Quick Connect token exchange refused", "statusCode:", res.statusCode)
@@ -320,7 +327,7 @@ sub exchangeQuickConnect()
     ' coordinator has no dialog and no view field to report through, and the user
     ' would answer the save-credentials question and then get nothing at all.
     '
-    ' UNAVAILABLE rather than SPENT — the same reading startQuickConnect gives an
+    ' UNAVAILABLE rather than SPENT: the same reading startQuickConnect gives an
     ' initiate that answers 200 with nothing usable in it. The server did not
     ' reject the code, it agreed and then failed to produce a session, so the
     ' honest advice is to try again rather than to go and fetch a new code.
@@ -340,7 +347,7 @@ sub exchangeQuickConnect()
 end sub
 
 ' Signed in, but nothing is persisted yet. Ask the same question LoginScene asks
-' with its "save credentials" checkbox, in the standard confirm dialog — the app
+' with its "save credentials" checkbox, in the standard confirm dialog. The app
 ' is holding a live session either way, so a cancel is a legitimate "no", not a
 ' failure.
 sub askToSaveQuickConnectCredentials()
@@ -355,7 +362,7 @@ sub onSaveQuickConnectCredentialsResult()
   if not isValid(auth) then return
 
   ' Back (cancelled) means the same thing as No: sign in, persist nothing. The
-  ' session is already live either way — this question is only about the registry.
+  ' session is already live either way; this question is only about the registry.
   m.top.saveCredentials = isValid(dialog) and isValid(dialog.result) and dialog.result.confirmed = true
   m.top.quickConnectAuth = auth
   m.log.info("Quick Connect complete", "saveCredentials:", m.top.saveCredentials)
@@ -372,7 +379,7 @@ end sub
 ' Stop polling and drop the dialog + session state. Safe to call repeatedly, and
 ' safe to call with no flow in progress.
 '
-' `returnFocusToPicker` is false for exactly one caller — onDestroy. See
+' `returnFocusToPicker` is false for exactly one caller: onDestroy. See
 ' abandonQuickConnectDialog for why the two cases differ.
 sub endQuickConnect(returnFocusToPicker = true as boolean)
   if isValid(m.quickConnectTimer) then m.quickConnectTimer.control = "stop"
@@ -388,7 +395,7 @@ end sub
 ' back into this scope would re-enter the teardown we are in the middle of.
 '
 ' The re-focus is the part that is easy to miss. abandonDialog() removes the node
-' and restores nothing — correct for its other callers, which are all onDestroy,
+' and restores nothing. That is correct for its usual caller, onDestroy,
 ' where the view is going away and there is no focus to hand back. This screen
 ' STAYS ON THE AIR, and what comes next (the failure alert, or the
 ' save-credentials confirm) DERIVES its returnFocusTo from whatever holds focus at
@@ -491,7 +498,7 @@ sub loadSplashscreen()
   end if
 
   ' Always refresh in case the cached value is stale. Render-thread promise (#551
-  ' Batch 1, 3b pattern) — replaces the former BrandingConfigTask (createObject +
+  ' Batch 1, 3b pattern) that replaces the former BrandingConfigTask (createObject +
   ' observeFieldScoped on responseCode) plus its companion observer on the global
   ' isSplashscreenEnabled field. The task also wrote that global session-cache
   ' field; we keep that write here and apply the result directly in .then().
@@ -503,14 +510,14 @@ sub loadSplashscreen()
       m.log.info("Branding config cached successfully", "splashscreenEnabled:", res.json.SplashscreenEnabled)
     else
       ' Any non-ok HTTP response (the error contract resolves these) or a missing
-      ' SplashscreenEnabled field → default to disabled, matching the old task's
+      ' SplashscreenEnabled field: default to disabled, matching the old task's
       ' failure path.
       serverNode.isSplashscreenEnabled = false
       m.log.warn("Branding config fetch returned no usable data - defaulting splashscreen to disabled")
     end if
     applySplashscreen(serverNode.isSplashscreenEnabled)
   end sub).catch(sub(err as object)
-    ' Transport failure / timeout — default to disabled, same as the old failure path.
+    ' Transport failure / timeout: default to disabled, same as the old failure path.
     m.log.warn("Branding config fetch failed", err.reason)
     m.global.server.isSplashscreenEnabled = false
     applySplashscreen(false)
@@ -554,7 +561,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
   if key = "back"
-    ' Back → change server (coordinator deletes the server and navigates to /server).
+    ' Back: change server (coordinator deletes the server and navigates to /server).
     m.top.getScene().preLoginIntent = "userBack"
     return true
   else if key = "up"
@@ -575,6 +582,10 @@ end function
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 ' Note: onScreenHidden already cleared the backdrop; this handles task/ref cleanup.
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below: these handlers dereference them.
+  m.top.unobserveField("itemContent")
+
   m.log.verbose("onDestroy")
 
   ' The branding-config + Quick Connect probes are now render-thread promises
@@ -583,10 +594,10 @@ sub onDestroy()
 
   ' Any Quick Connect flow in progress: stop the poll timer and take the code
   ' dialog down. Overlay dialogs are appended to the SCENE, not to this view, so
-  ' one left open here would strand a modal over whatever screen replaces us —
+  ' one left open here would strand a modal over whatever screen replaces us,
   ' with a scoped observer pointing into a torn-down scope.
   '
-  ' `false` = do NOT hand focus back to our button row. Every other caller wants
+  ' `false` = do not hand focus back to our button row. Every other caller wants
   ' that; this one must not have it, because the view replacing us is the thing
   ' that should end up focused.
   endQuickConnect(false)

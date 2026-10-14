@@ -38,8 +38,9 @@ sub init()
   m.isTextureUnloaded = false
   m.lastBindKey = ""
 
-  ' Reference to the MarkupGrid's root ContentNode — used to observe loadedRowRange.
-  ' Set once in setupGridTextureObserver() when the first itemContent is assigned.
+  ' Reference to the MarkupGrid's root ContentNode, used to observe loadedRowRange.
+  ' Set in setupGridTextureObserver() when the first itemContent is assigned, and
+  ' again whenever the content root changes.
   m.contentRoot = invalid
   ' Cached flat index of this cell's itemContent within the content root.
   ' Recomputed on each cell recycle (onItemContentChanged).
@@ -60,7 +61,7 @@ end sub
 ' RowList nests them deeper. The old fixed GetParent().GetParent() walk missed
 ' BaseGridView for RowList cells, so genre tiles silently fell back to scaleToZoom
 ' (cropping posters the presenter intended as scaleToFit) and an empty gridTitles
-' (no titles ever). Idempotent — caches m.gridView on first success.
+' (no titles ever). Idempotent: caches m.gridView on first success.
 sub resolveGridViewConfig()
   if isValid(m.gridView) then return
 
@@ -91,7 +92,7 @@ sub onItemContentChanged()
   renderItem()
 end sub
 
-' Mirror of JRRowItem.isRepeatBind — same waste question, same skeleton-safety constraint
+' Mirror of JRRowItem.isRepeatBind: same waste question, same skeleton-safety constraint
 ' (a placeholder carries only `type`, so read `id` and compare rather than casting).
 function isRepeatBind() as boolean
   item = m.top.itemContent
@@ -124,25 +125,25 @@ sub renderItem()
 
   itemType = LCase(itemData.type)
 
-  ' Skeleton cell — a row that exists but whose items haven't landed yet. Same
+  ' Skeleton cell: a row that exists but whose items haven't landed yet. Same
   ' skeleton convention JRRowItem renders for Home's rows (source/utils/skeleton.bs),
   ' so one content shape covers both cell components.
   '
-  ' This MUST come before anything reads a media field. A placeholder is a bare
+  ' This has to come before anything reads a media field. A placeholder is a bare
   ' ContentNode, so renderMediaItem's `itemData.isWatched` reads `invalid`, and
-  ' `if invalid` is a runtime type mismatch — not a falsy check. A skeleton reaching
+  ' `if invalid` is a runtime type mismatch, not a falsy check. A skeleton reaching
   ' that branch crashes the render thread rather than drawing nothing.
   if skeleton.isPlaceholder(itemData)
     renderLoadingCell()
     return
   end if
 
-  ' A recycled cell may have been a skeleton a moment ago — stop that spinner and put
+  ' A recycled cell may have been a skeleton a moment ago: stop that spinner and put
   ' the poster back before rendering real content.
   skeleton.hideSpinner(m.loadingSpinner)
   m.itemPoster.visible = true
 
-  ' Title text + default (always-on) visibility — recomputed every recycle.
+  ' Title text + default (always-on) visibility, recomputed every recycle.
   m.itemText.text = getRowItemTitle(itemData)
   m.itemText.visible = m.gridTitles = "showalways"
 
@@ -150,11 +151,11 @@ sub renderItem()
   if isValid(itemData.folderType) then itemFolderType = LCase(itemData.folderType)
 
   if itemType = "genre" or itemFolderType = "genre"
-    ' "View All [Genre]" action tiles are navigation buttons, not media — they get a
+    ' "View All [Genre]" action tiles are navigation buttons, not media. They get a
     ' themed backdrop + in-cell label rather than going through JRPlaceholder, so they
     ' don't read as failed-to-load placeholders. Check both type and folderType: if
     ' Jellyfin returns IsFolder=false/absent the transformer leaves type="Genre" and
-    ' folderType="" so we must match on type directly. MusicGenre/Studio do NOT match
+    ' folderType="" so we must match on type directly. MusicGenre/Studio don't match
     ' here and keep the regular poster path.
     renderGenreTile(itemData)
   else
@@ -167,7 +168,7 @@ end sub
 ' Sizes and positions every child to the current cell dimensions. The focus slot is
 ' rowItemSize/itemSize; the poster fills it at POSTER_TOP_OFFSET so the poster overflows
 ' the slot bottom and the focus border (drawn behind it) reads with a top margin and no
-' overlap. The title sits below at POSTER_TOP_OFFSET + h + TITLE_GAP — kept OUTSIDE the
+' overlap. The title sits below at POSTER_TOP_OFFSET + h + TITLE_GAP, kept outside the
 ' focus border because the container sets rowHeights/itemSize taller than the slot (the
 ' focus border pins to the slot, not the cell's full bounding box).
 sub updateLayout(w as float, h as float)
@@ -199,21 +200,21 @@ end sub
 ' Renders a skeleton cell: themed backdrop only, no poster, title or tile.
 '
 ' The poster is hidden rather than left with an empty uri so the cell reads as "waiting"
-' instead of as a failed image — JRPlaceholder's typed glyph is the *missing artwork*
-' signal, and a row that simply hasn't loaded yet has not failed at anything.
+' instead of as a failed image. JRPlaceholder's typed glyph is the *missing artwork*
+' signal, and a row that hasn't loaded yet has not failed at anything.
 ' cachedPosterUri is cleared so texture management skips this cell.
 '
-' The spinner costs render-thread time (measured ~100 ms across an 8-genre load) but that
-' cost is bounded by the VIEWPORT, not by genre count — the RowList lays out ~3 rows and
+' The spinner costs render-thread time (measured 2026-08-08: ~100 ms across an 8-genre load) but that
+' cost is bounded by the viewport, not by genre count: the RowList lays out ~3 rows and
 ' recycles GridItem cells, so a 40-genre library has no more spinners on screen than an
 ' 8-genre one. The wait it covers, by contrast, grows linearly with genre count and with
 ' server latency. So it gets relatively cheaper exactly where it matters most.
 sub renderLoadingCell()
   m.itemPoster.uri = ""
   m.itemPoster.visible = false
-  ' Clear the text, not just visibility: a recycled cell keeps its previous item's
+  ' Clear the text, not only visibility: a recycled cell keeps its previous item's
   ' title, and under gridTitles="showonhover" onFocusChanged re-shows the label on
-  ' focus — the skeleton window is interactive, so a stale title would surface.
+  ' focus. The skeleton window is interactive, so a stale title would surface.
   m.itemText.text = ""
   m.itemText.visible = false
   m.genreBackdrop.visible = false
@@ -227,7 +228,7 @@ sub renderLoadingCell()
 end sub
 
 ' Renders a "View All [Genre]" action tile: themed backdrop + centered genre label,
-' no poster image. The below-tile item title is hidden — the tile's own centered label
+' no poster image. The below-tile item title is hidden: the tile's own centered label
 ' already names the genre, and the row's genre header sits directly above it, so a third
 ' copy is redundant. cachedPosterUri is cleared so texture management skips this cell.
 sub renderGenreTile(itemData as object)
@@ -256,6 +257,10 @@ sub renderMediaItem(itemData as object, itemType as string)
     end if
   end if
 
+  ' Alternate-versions badge (bottom-left). Independent of the watched-badge setting; see
+  ' JRPoster.onMediaSourceCountChanged.
+  m.itemPoster.mediaSourceCount = itemData.mediaSourceCount
+
   m.itemPoster.loadDisplayMode = resolveLoadDisplayMode(itemType)
 
   posterUri = getItemPosterUrl(itemData)
@@ -265,13 +270,13 @@ sub renderMediaItem(itemData as object, itemType as string)
   m.cachedLoadDisplayMode = m.itemPoster.loadDisplayMode
 
   if posterUri = ""
-    ' Known-missing image — eagerly surface the typed glyph on the backdrop.
+    ' Known-missing image: eagerly surface the typed glyph on the backdrop.
     ' Load-status never fires "failed" for an empty URI, so we must set the
     ' placeholder state here rather than waiting for onPosterLoadStatusChanged.
     m.itemPoster.uri = ""
     showPlaceholder(resolveItemPlaceholderType(m.top.itemContent))
   else if shouldLoadGridTexture()
-    ' Image expected and the texture manager wants this cell loaded — start
+    ' Image expected and the texture manager wants this cell loaded: start
     ' the placeholder in loading state; the load-status observer takes over.
     resetPlaceholderToLoading()
     cellLoad.loadStarted(m.contentRoot)
@@ -316,15 +321,15 @@ sub onPosterLoadStatusChanged()
   if m.isTextureUnloaded then return
 
   if m.itemPoster.loadStatus = "ready" and m.itemPoster.uri <> ""
-    ' Real image loaded — placeholder is no longer needed
+    ' Real image loaded: placeholder is no longer needed
     cellLoad.loadSucceeded(m.contentRoot)
     m.placeholder.visible = false
   else if m.itemPoster.loadStatus = "failed" and m.itemPoster.uri <> ""
-    ' Real image failed — surface a type-appropriate glyph on the backdrop
+    ' Real image failed: surface a type-appropriate glyph on the backdrop
     cellLoad.loadErrored(m.contentRoot)
     showPlaceholder(resolveItemPlaceholderType(m.top.itemContent))
   else
-    ' Loading or no URI — keep the placeholder visible in its current state
+    ' Loading or no URI: keep the placeholder visible in its current state
     m.placeholder.visible = true
   end if
 end sub
@@ -356,14 +361,14 @@ end sub
 ' Active when this component backs the MarkupGrid (itemGrid), whose content root is
 ' texture-managed via initTextureManager. In the genre RowList the content root has no
 ' textureManagerState/loadedRowRange fields, so getGridTextureManagerState() resolves to
-' "init" — which means "always load, never unload" — making this section naturally inert
+' "init" (which means "always load, never unload"), making this section naturally inert
 ' there (matching the former GridItemSmall, which had no texture management at all).
 ' ============================================================================
 
 ' One-time setup: observes loadedRowRange and textureManagerState on the
 ' MarkupGrid's content root. The content root is the direct parent of
 ' itemContent in the content tree (flat model, unlike RowList's 2-level hierarchy):
-'   contentRoot → itemNode (itemContent)
+'   contentRoot, then itemNode (itemContent)
 ' Called from onItemContentChanged. Skips if already connected.
 sub setupGridTextureObserver()
   item = m.top.itemContent
@@ -373,7 +378,7 @@ sub setupGridTextureObserver()
   if not isValid(contentRoot) then return
 
   ' Cache flat index for row position calculations (O(1) lookup via BaseGridView).
-  ' Returns -1 for items not in the texture-managed grid (e.g. genre RowList rows),
+  ' Returns -1 for items not in the texture-managed grid (genre RowList rows, for example),
   ' or when BaseGridView couldn't be resolved.
   m.cachedFlatIndex = -1
   if isValid(m.gridView)
@@ -381,10 +386,10 @@ sub setupGridTextureObserver()
     if isValid(flatIndex) then m.cachedFlatIndex = flatIndex
   end if
 
-  ' One-time observer setup — only run once per content root
+  ' One-time observer setup: only run once per content root
   if isValid(m.contentRoot) and m.contentRoot.isSameNode(contentRoot) then return
 
-  ' Content root changed (view switch, filter, etc.) — reconnect observers
+  ' Content root changed (view switch, filter, etc.): reconnect observers
   if isValid(m.contentRoot)
     if m.contentRoot.hasField("textureManagerState")
       m.contentRoot.unobserveField("textureManagerState")
@@ -463,19 +468,19 @@ function shouldLoadGridTexture() as boolean
     return true
   end if
 
-  ' Outside managed ranges — renderTracking decides
+  ' Outside managed ranges: renderTracking decides
   return m.top.renderTracking <> "none"
 end function
 
-' Central texture decision — called when renderTracking, textureManagerState,
+' Central texture decision, called when renderTracking, textureManagerState,
 ' or loadedRowRange changes.
 '
 ' State machine (same as JRRowItem but without horizontal buffer):
-'   "destroyed" → force unload everything (no guards)
-'   "init"      → no-op (freeze state during layout changes)
-'   "hidden"    → no-op (freeze — screen is behind another on the stack)
-'   "active"    → managed rows (visible + buffer): always loaded.
-'                  Outside rows: renderTracking decides.
+'   "destroyed": force unload everything (no guards)
+'   "init":      no-op (freeze state during layout changes)
+'   "hidden":    no-op (freeze: screen is behind another on the stack)
+'   "active":    managed rows (visible + buffer): always loaded.
+'                Outside rows: renderTracking decides.
 sub evaluateGridTextureState()
   state = getGridTextureManagerState()
 
@@ -485,12 +490,12 @@ sub evaluateGridTextureState()
     return
   end if
 
-  ' Init: freeze — layout recalculations cause spurious renderTracking changes.
+  ' Init: freeze. Layout recalculations cause spurious renderTracking changes.
   if state = "init"
     return
   end if
 
-  ' Hidden: freeze — screen is behind another on the stack. Textures stay
+  ' Hidden: freeze. Screen is behind another on the stack. Textures stay
   ' loaded so returning is instant. renderTracking flips to "none" when
   ' visible=false propagates, but we must not react to it.
   if state = "hidden"
@@ -506,7 +511,7 @@ sub evaluateGridTextureState()
     return
   end if
 
-  ' Outside managed ranges — renderTracking decides
+  ' Outside managed ranges: renderTracking decides
   if m.top.renderTracking <> "none"
     reloadGridTexture()
   else
@@ -515,7 +520,7 @@ sub evaluateGridTextureState()
 end sub
 
 ' Clears poster URI to release texture memory when the cell is off-screen.
-' Items with no real image (cachedPosterUri = "") are skipped — they already show
+' Items with no real image (cachedPosterUri = "") are skipped: they already show
 ' a lightweight local placeholder that costs negligible texture memory.
 sub unloadGridTexture()
   if m.cachedPosterUri = "" or m.isTextureUnloaded then return
@@ -528,7 +533,7 @@ sub unloadGridTexture()
   resetPlaceholderToLoading()
 end sub
 
-' Force-unloads textures unconditionally — used only during onDestroy().
+' Force-unloads textures unconditionally, used only during onDestroy().
 ' Ignores m.isTextureUnloaded and m.cachedPosterUri guards so every cell releases memory.
 sub forceUnloadGridTexture()
   m.isTextureUnloaded = true
@@ -541,7 +546,7 @@ end sub
 sub reloadGridTexture()
   if shouldReloadTexture(m.isTextureUnloaded, m.cachedPosterUri)
     cellLoad.reload(m.contentRoot)
-    ' Re-entry request — see JRRowItem.reloadTexture for why the origin is tracked.
+    ' Re-entry request; see JRRowItem.reloadTexture for why the origin is tracked.
     cellLoad.loadStarted(m.contentRoot, true)
     m.isTextureUnloaded = false
     m.itemPoster.loadDisplayMode = m.cachedLoadDisplayMode
@@ -549,19 +554,19 @@ sub reloadGridTexture()
   end if
 end sub
 
-' Mirror of JRRowItem.noteAppearance — same pop-in question, same two call sites, same
+' Mirror of JRRowItem.noteAppearance: same pop-in question, same two call sites, same
 ' reason for using renderTracking rather than getGridRowPosition(). See that function for
 ' the full rationale; the grid keeps its own copy because the two cell components are
 ' parallel by design and share no base.
 sub noteAppearance()
   ' Off screen: end the episode so a scroll-back counts as a new appearance. Without this
   ' the once-per-bind gate swallows every re-entry, which is the race the buffer exists
-  ' to win — see cellLoad.departed().
+  ' to win (see cellLoad.departed()).
   '
   ' 🚨 Gated on "active" for the reason `evaluateGridTextureState` refuses renderTracking
   ' in `init` and `hidden`: a "none" there is a layout recalculation or `visible=false`
   ' propagating, not a departure, and closing the episode makes the return score a
-  ' phantom appearance. THIS grid is where it was measured — against the demo server, 18
+  ' phantom appearance. THIS grid is where it was measured: on 2026-08-22 against the demo server, 18
   ' appearances against 10 binds on a suspend/resume with no scrolling. Full rationale, and
   ' why the BOUND rather than the counts is the durable part, in JRRowItem.noteAppearance.
   if m.top.renderTracking = "none"
@@ -578,7 +583,7 @@ sub onRenderTrackingChanged()
   evaluateGridTextureState()
 end sub
 
-' Fires when textureManagerState changes (init → active, active → hidden, etc.)
+' Fires when textureManagerState changes (init to active, active to hidden, etc.)
 sub onTextureManagerStateChanged()
   evaluateGridTextureState()
 end sub

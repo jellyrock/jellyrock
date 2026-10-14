@@ -3,7 +3,7 @@
 ' m.top.seek, m.audioPlayer.*) but delegate the math + setting resolution + payload
 ' parsing here so it's unit-testable without instantiating a full player.
 '
-' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+' See https://github.com/rokudev/dev-doc, file docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
 namespace voiceTransport
 
   ' Resolve the user's instant-replay setting (in seconds), falling back to 10s
@@ -29,9 +29,9 @@ namespace voiceTransport
   ' Compute the bounds-checked seek result. Returns:
   '   { clamped: <float seconds>, status: "<roInput status code>" }
   ' Status codes:
-  '   "success.seek-start" — target < 0; clamped to 0
-  '   "success.seek-end" — target >= duration; clamped to (duration - endSlackSeconds)
-  '   "success" — within bounds; clamped == target
+  '   "success.seek-start": target < 0; clamped to 0
+  '   "success.seek-end": target >= duration; clamped to (duration - endSlackSeconds)
+  '   "success": within bounds; clamped == target
   ' `endSlackSeconds` is how far before the duration to clamp end-of-content seeks
   ' so the player doesn't immediately fire end-of-playback (Roku reference uses 30
   ' for video; audio uses 5 since songs are short).
@@ -49,7 +49,7 @@ namespace voiceTransport
 
   ' Build the title string for SetNowPlayingContentMetaData(). For Episodes and
   ' Recordings with a populated `seriesName`, prepends the show name as
-  ' "SeriesName - EpisodeTitle" so Roku's HUD reads back the show, not just the
+  ' "SeriesName - EpisodeTitle" so Roku's HUD reads back the show, not only the
   ' episode title in isolation. Falls back to `name` for everything else (Movies,
   ' Episodes missing seriesName, …). Returns "" when no usable title exists.
   function formatNowPlayingTitle(item as object) as string

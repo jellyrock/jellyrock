@@ -45,7 +45,7 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      ' GIVEN: Ensure registry key does NOT exist in test-global (returns invalid)
+      ' GIVEN: Ensure registry key does not exist in test-global (returns invalid)
       testGlobalReg = CreateObject("roRegistrySection", "test-global")
       if testGlobalReg.exists("globalSplashScreen")
         testGlobalReg.delete("globalSplashScreen")

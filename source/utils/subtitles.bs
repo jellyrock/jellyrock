@@ -1,4 +1,6 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/streamSelection.bs"
 
 ' defaultSubtitleTrackFromVid: Identifies the default subtitle track given metadata and audio index
 '
@@ -19,24 +21,15 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
   end if
   if not isValid(mediaSources) then return SubtitleSelection.NONE
 
-  ' Use the selected source's MediaStreams when a specific mediaSourceId is provided,
-  ' matching the pattern used for audio stream selection in LoadVideoContentTask.
-  allStreams = invalid
-  if isValidAndNotEmpty(mediaSourceId)
-    for each source in mediaSources
-      if source.Id = mediaSourceId and isValidAndNotEmpty(source.MediaStreams)
-        allStreams = source.MediaStreams
-        exit for
-      end if
-    end for
-  end if
-  ' Fall back to first source if no match or no mediaSourceId provided
-  if not isValid(allStreams)
-    if not isValidAndNotEmpty(mediaSources[0].MediaStreams) then return SubtitleSelection.NONE
-    allStreams = mediaSources[0].MediaStreams
-  end if
+  ' The streams of the version being played (mediaSourceForId), as for audio selection in
+  ' LoadVideoContentTask.
+  playedSource = mediaSourceForId(mediaSources, mediaSourceId)
+  if not isValid(playedSource) or not isValidAndNotEmpty(playedSource.MediaStreams) then return SubtitleSelection.NONE
+  allStreams = playedSource.MediaStreams
 
-  subtitles = sortSubtitles(allStreams)
+  originalLanguage = meta.originalLanguage ?? ""
+  ' Picks a track only, so the labels would be thrown away.
+  subtitles = sortSubtitles(allStreams, originalLanguage, false)
 
   selectedAudioLanguage = ""
   ' Find the audio stream with the matching Jellyfin index
@@ -53,13 +46,13 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
     selectedAudioLanguage = audioMediaStream.Language ?? ""
   end if
 
-  defaultTextSubs = defaultSubtitleTrack(subtitles["text"], selectedAudioLanguage, true) ' Find correct subtitle track (forced text)
+  defaultTextSubs = defaultSubtitleTrack(subtitles["text"], selectedAudioLanguage, true, originalLanguage, subtitles["languageMatches"]) ' Find correct subtitle track (forced text)
   if defaultTextSubs <> SubtitleSelection.NONE
     return defaultTextSubs
   end if
 
   if not userSession.settings.playbackSubsOnlyText
-    return defaultSubtitleTrack(subtitles["all"], selectedAudioLanguage) ' if no appropriate text subs exist, allow non-text
+    return defaultSubtitleTrack(subtitles["all"], selectedAudioLanguage, false, originalLanguage, subtitles["languageMatches"]) ' if no appropriate text subs exist, allow non-text
   end if
 
   return SubtitleSelection.NONE
@@ -70,27 +63,36 @@ end function
 ' @param {dynamic} sortedSubtitles - array of subtitles sorted by type and language
 ' @param {string} selectedAudioLanguage - language for selected audio track
 ' @param {boolean} [requireText=false] - indicates if only text subtitles should be considered
+' @param {string} [originalLanguage=""] - the item's OriginalLanguage (JellyfinBaseItem.originalLanguage)
+' @param {dynamic} [languageMatches=invalid] - sortSubtitles()' languageMatches, computed over ALL the item's subtitles; derived from sortedSubtitles when omitted
 ' @return {integer} indicating the default track's server-side index. Defaults to {SubtitleSelection.NONE} if one is not found
-function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, requireText = false as boolean) as integer
+function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, requireText = false as boolean, originalLanguage = "" as string, languageMatches = invalid as dynamic) as integer
   ' ONE rendezvous to get user node
   localUser = m.global.user
 
   subtitleMode = isValid(localUser.config.subtitleMode) ? LCase(localUser.config.subtitleMode) : ""
 
-  prefLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config)
+  prefLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config, originalLanguage)
+  if not isValid(languageMatches)
+    codes = []
+    for each item in sortedSubtitles
+      codes.push(item.Track.Language)
+    end for
+    languageMatches = matchingLanguageCodes(codes, prefLang)
+  end if
 
   allowSmartMode = false
 
   ' Only evaluate selected audio language if we have a value
   if selectedAudioLanguage <> ""
-    allowSmartMode = selectedAudioLanguage <> prefLang
+    allowSmartMode = not languagesMatch(selectedAudioLanguage, prefLang)
   end if
 
   for each item in sortedSubtitles
     ' Only auto-select subtitle if language matches SubtitleLanguagePreference
     languageMatch = true
     if prefLang <> ""
-      languageMatch = (prefLang = item.Track.Language)
+      languageMatch = isLanguageMatch(languageMatches, item.Track.Language)
     end if
 
     ' Ensure textuality of subtitle matches preference passed as arg
@@ -147,11 +149,16 @@ function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, 
 end function
 
 'Checks available subtitle tracks and puts subtitles in forced, default, and non-default/forced but preferred language at the top
-function sortSubtitles(MediaStreams)
+'
+' withLabels = false leaves each Track.Description empty, for a caller that only picks a
+' track: the labels are most of this function's cost on a Task thread.
+function sortSubtitles(MediaStreams, originalLanguage = "" as string, withLabels = true as boolean)
   tracks = { "forced": [], "default": [], "normal": [], "textForced": [], "textDefault": [], "textNormal": [] }
+  labelCache = invalid
   ' ONE rendezvous to get user node
   localUser = m.global.user
-  preferredLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config)
+  preferredLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config, originalLanguage)
+  languageMatches = matchingLanguageCodes(streamLanguageCodes(MediaStreams, "subtitle"), preferredLang)
   for each stream in MediaStreams
     if stream.type = "Subtitle"
 
@@ -163,8 +170,22 @@ function sortSubtitles(MediaStreams)
         end if
       end if
 
+      ' Description is the label the playback picker shows. formatSubtitleTrackLabel()
+      ' is the one the details screen uses too, rather than the server's DisplayTitle,
+      ' which led with "Undefined" for a track with no language (#1004). Roku's docs say
+      ' its own * caption menu shows Description as well, but on Roku OS 15.3.4 that menu
+      ' listed language names only, so this is not what a user sees there.
+      description = ""
+      if withLabels
+        ' Seeded with the whole table, copied once, on the first label: a list can
+        ' need a different language name for every track, and each translate() a
+        ' Task thread makes copies that table (see translateCached).
+        if labelCache = invalid then labelCache = m.global.translations
+        description = formatSubtitleTrackLabel(stream, true, labelCache)
+      end if
+
       stream = {
-        "Track": { "Language": stream.language, "Description": stream.displaytitle, "TrackName": url },
+        "Track": { "Language": stream.language, "Description": description, "TrackName": url },
         "IsTextSubtitleStream": stream.IsTextSubtitleStream ?? false,
         "Index": stream.index,
         "IsDefault": stream.IsDefault ?? false,
@@ -184,7 +205,7 @@ function sortSubtitles(MediaStreams)
         textType = "textNormal"
       end if
 
-      if preferredLang <> "" and preferredLang = stream.Track.Language
+      if isLanguageMatch(languageMatches, stream.Track.Language)
         tracks[trackType].unshift(stream)
 
         if stream.IsTextSubtitleStream
@@ -207,5 +228,5 @@ function sortSubtitles(MediaStreams)
   tracks["textDefault"].append(tracks["textNormal"])
   tracks["textForced"].append(tracks["textDefault"])
 
-  return { "all": tracks["forced"], "text": tracks["textForced"] }
+  return { "all": tracks["forced"], "text": tracks["textForced"], "languageMatches": languageMatches }
 end function

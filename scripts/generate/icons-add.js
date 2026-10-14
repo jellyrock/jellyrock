@@ -6,35 +6,38 @@
 // Why this exists: JellyRock standardizes on the Material Symbols family
 // (Rounded variant, weight 500, 24px, **outlined by default**) for all
 // in-app icons. Letting contributors browse icons.google.com and manually
-// download SVGs invites drift — wrong variant, wrong weight, missing
+// download SVGs invites drift: wrong variant, wrong weight, missing
 // white-fill injection. This script encodes the convention as code so a
-// contributor's only choice is "which Material symbol do I want" —
+// contributor's only choice is "which Material symbol do I want";
 // everything else is locked.
 //
-// Fill convention: outlined (`fill=0`) is the default — outlined glyphs
+// Fill convention: outlined (`fill=0`) is the default. Outlined glyphs
 // read more clearly at 10-foot UI distance because the silhouette is
-// recognizable without color information. Use the `--filled` flag (or
-// document a per-icon override in resources/icons/README.md) ONLY when:
+// recognizable without color information. Use the `--filled` flag only
+// when one of the pinned-filled rules in resources/icons/README.md
+// ("Fill convention") applies. Two common ones:
 //   1. The icon is the "on" state of a toggle paired with an outlined
-//      "off" state (e.g. `favorite` outlined / `favorite_selected` filled).
+//      "off" state (for example `heart`, the filled on-state of the
+//      `ItemDetails` Favorite button).
 //   2. The glyph is a pure shape with no meaningful outlined variant
-//      (e.g. `play` triangle, `pause` bars, `circle`, rating-dot `star`).
-//   3. A documented per-icon visual review concluded outlined is illegible
-//      at the rendered size (rare; record the rationale inline).
+//      (for example `play` triangle, `pause` bars, `circle`).
 //
 // Source-of-truth: google/material-design-icons on GitHub. Path pattern:
-//   symbols/web/<material_name>/materialsymbolsrounded/<material_name>_wght500fill1_24px.svg
+//   symbols/web/<material_name>/materialsymbolsrounded/<material_name>_wght500_24px.svg
+// (`_wght500fill1_24px.svg` for --filled).
 //
 // Usage:
 //   node scripts/generate/icons-add.js <material_name> [--as <jellyrock_name>] [--filled]
 //
-//   <material_name>     Material Symbols name (snake_case), e.g. play_arrow.
+//   <material_name>     Material Symbols name (snake_case), for example
+//                       play_arrow.
 //   --as <name>         Save as resources/icons/<name>.svg instead of using
 //                       the Material name. Use this to preserve existing
-//                       JellyRock callsite names (e.g. play_arrow → play.svg).
+//                       JellyRock callsite names (for example play_arrow
+//                       saved as play.svg).
 //   --filled            Fetch the filled (fill=1) variant instead of the
-//                       outlined default. Use ONLY for the documented
-//                       exception cases (toggle on-states, pure shapes).
+//                       outlined default. Use only for the documented
+//                       exception cases (the README's pinned-filled rules).
 //   --dry-run           Print what would happen without writing any files.
 //
 // Examples:
@@ -150,8 +153,8 @@ function injectWhiteFill(svg) {
   // SVG must ship with white fill for the tint to actually colorize.
   // This regex targets <path d=…> (the only element Material Symbols ships).
   if (svg.includes('fill="')) {
-    // Already has a fill attribute — respect it. Contributor may have a
-    // reason (e.g. multi-color brand icon).
+    // Already has a fill attribute: respect it. Contributor may have a
+    // reason (for example a multi-color brand icon).
     return svg;
   }
   return svg.replace(/<path d=/g, '<path fill="#FFFFFF" d=');

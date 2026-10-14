@@ -10,7 +10,7 @@ import "pkg:/source/api/ApiClient.bs"
 '
 ' This coordinator is MAIN-THREAD code (it shares Main()'s `m`, the established
 ' source/ pattern). The bootstrap API calls it makes (server connect, AboutMe,
-' getToken, GetPublicUsers) are SYNCHRONOUS and block the main thread — which is
+' getToken, GetPublicUsers) are synchronous and block the main thread, which is
 ' permitted (sgRouter runs on the render thread, which may not block). Each call is
 ' isolated behind one step so a future sync->async swap is mechanical.
 '
@@ -21,14 +21,14 @@ import "pkg:/source/api/ApiClient.bs"
 ' Cold-start (and session-reset) fast path. Runs the saved-server resolution + saved-
 ' token validation WITHOUT showing any interactive UI, and returns a decision telling
 ' main.bs which route to bring the router up on (or that we are already logged in).
-' Mirrors LoginFlow()'s startLogin: server block + the saved-active-user branch.
+' It runs the server block, then the saved-active-user branch.
 function beginLogin() as object
   ' One ledger run per pre-login resolution. See the note above `enterDecision` for what
   ' `paint` means for a coordinator that is not a screen, and why the FILLS rather than the
   ' paint/settle split are what this run is read for.
   screenLoad.begin("preLogin")
 
-  ' === Server resolution (was LoginFlow startLogin:) ===
+  ' === Server resolution ===
   serverUrl = getSetting("server")
   startOver = true
   if isValid(serverUrl)
@@ -36,7 +36,7 @@ function beginLogin() as object
     ' Pass originalUrl to preserve the user's input for re-discovery on each connection.
     '
     ' Declared inside the branch rather than around it: with no saved server nothing is
-    ' fetched at all, and a fill recorded for work that never ran is not a 0 ms fill — it
+    ' fetched at all, and a fill recorded for work that never ran is not a 0 ms fill: it
     ' is a fill that did not happen. The `else` below is that path.
     screenLoad.pending("serverConnect")
     startOver = not server.UpdateURL(serverUrl, serverUrl)
@@ -55,7 +55,7 @@ function beginLogin() as object
     '
     ' Splitting them keeps this one's cost from being attributed to the connect, and names
     ' it correctly on the day it IS the slowest fill (a WAN server, where round trips stop
-    ' being ~30 ms). It does NOT by itself confirm the duplicate: the ledger publishes only
+    ' being ~30 ms). It does not by itself confirm the duplicate: the ledger publishes only
     ' the SLOWEST fill, so on a LAN both sit far under `userLoad` and never surface. The
     ' bootstrap's sync calls emit no `[http]` line either, so settling whether that second
     ' round trip is real needs a console probe, not this record.
@@ -70,25 +70,25 @@ function beginLogin() as object
     return { status: "server" }
   end if
 
-  ' Server is valid — resolve the user.
+  ' Server is valid: resolve the user.
   return resolveUser()
 end function
 
 ' Validate a saved auth token: set it on the local user and verify it with AboutMe().
-' On success, logs the user in (user.Login) and returns true. On failure returns false —
+' On success, logs the user in (user.Login) and returns true. On failure returns false:
 ' the caller owns the cleanup/fallback, which diverges between the two call sites (cold
 ' start unsets active_user + recurses; the user picker falls through to a no-password login).
 ' Shared by resolveUser (cold start) and onUserSelected (user picker).
 function validateSavedToken(localUser as object, token as string) as boolean
   localUser.authToken = token
   print "Attempting to use API with auth token"
-  ' TWO fills, because one number here was actively misleading. Measured on `.177`, the
+  ' TWO fills, because one number here was actively misleading. Measured on `.177` on 2026-08-15, the
   ' whole function took 407–461 ms and the round trip was 29–47 ms of it: `user.Login`
   ' below loads the user's settings out of the registry, on the main thread, and this
   ' function does not return until it finishes. A single `session` fill therefore read as
   ' "the server took 460 ms" when the server took 40.
   '
-  ' The fills no-op when no ledger is open, which is the `onUserSelected` path — the user
+  ' The fills no-op when no ledger is open, which is the `onUserSelected` path: the user
   ' picker calls this too, and that load is not one `beginLogin` opened.
   screenLoad.pending("session")
   currentUser = AboutMe()
@@ -104,20 +104,20 @@ function validateSavedToken(localUser as object, token as string) as boolean
 end function
 
 ' Decide the user step given a valid server. Returns one of:
-'   { status: "success" }                — already authenticated (fast path)
-'   { status: "users", users: [...] }    — show the user picker
-'   { status: "login", username: "" }    — go straight to manual sign-in
+'   { status: "success" }                already authenticated (fast path)
+'   { status: "users", users: [...] }    show the user picker
+'   { status: "login", username: "" }    go straight to manual sign-in
 ' enterDecision maps each status to its route; the decision carries only payload.
-' Mirrors LoginFlow()'s user section (active-user branch + no-active-user branch).
+' Covers both the active-user branch and the no-active-user branch.
 function resolveUser() as object
   localUser = m.global.user
   activeUser = getSetting("active_user")
 
   if not isValid(activeUser)
-    ' No active user — build the public + saved user list and decide.
+    ' No active user: build the public + saved user list and decide.
     print "No active user found in registry"
     ' The user picker's whole network wait. It happens HERE, before /users is routed to, so
-    ' `UserSelect` mounts with its list already in hand — the reason that screen carries no
+    ' `UserSelect` mounts with its list already in hand, which is why that screen carries no
     ' content fill of its own.
     screenLoad.pending("users")
     users = buildPublicUserList()
@@ -126,11 +126,11 @@ function resolveUser() as object
     if users.count() > 0
       return { status: "users", users: users }
     end if
-    ' No users to pick — go straight to manual sign-in.
+    ' No users to pick: go straight to manual sign-in.
     return { status: "login", username: "" }
   end if
 
-  ' Active user present — try the saved token, then a no-password login. All sync.
+  ' Active user present: try the saved token, then a no-password login. All sync.
   print "Active user found in registry"
   localUser.id = activeUser
   myUsername = getUserSetting("username")
@@ -142,7 +142,7 @@ function resolveUser() as object
     localUser.name = myUsername
     if isValidAndNotEmpty(myPrimaryImageTag) then localUser.primaryImageTag = myPrimaryImageTag
 
-    ' `validateSavedToken` declares its own `session` + `userLoad` fills — the split lives
+    ' `validateSavedToken` declares its own `session` + `userLoad` fills. The split lives
     ' there because that is where the two halves are, and because the user-picker path
     ' calls the same function.
     if not validateSavedToken(localUser, myAuthToken)
@@ -161,14 +161,14 @@ function resolveUser() as object
       if isValid(myPrimaryImageTag) then unsetUserSetting("primaryImageTag")
       unsetSetting("active_user")
       user.Logout()
-      ' active_user is now unset → recursion lands in the user-picker branch (no re-loop).
+      ' active_user is now unset, so recursion lands in the user-picker branch (no re-loop).
       return resolveUser()
     end if
   else
     print "No auth token found in registry"
   end if
 
-  ' Final guard (was LoginFlow 223-228): if we still have no usable session, restart.
+  ' Final guard: if we still have no usable session, restart.
   if not isValid(localUser.id) or not isValid(localUser.authToken)
     print "Login incomplete, restarting user resolution"
     unsetSetting("active_user")
@@ -180,8 +180,8 @@ function resolveUser() as object
 end function
 
 ' Build the public + saved user list for the picker. Public users from the server,
-' plus saved users for this server id not already in the public list. Mirrors
-' LoginFlow 60-104. Returns an array of PublicUserData nodes.
+' plus saved users for this server id not already in the public list. Returns an
+' array of PublicUserData nodes.
 function buildPublicUserList() as object
   publicUsers = GetPublicUsers()
   numPubUsers = 0
@@ -227,10 +227,10 @@ function buildPublicUserList() as object
 end function
 
 ' Enter (or re-enter) the login flow. Called at cold start AND on every session reset
-' (Change Server / User / Sign Out). Re-resolves the pre-login locale first — without
+' (Change Server / User / Sign Out). Re-resolves the pre-login locale first. Without
 ' this, a changed global sign-in language would only apply after a full app restart, and
-' the sign-in screens would render in the just-signed-out user's language rather than the
-' device-wide default (isPostLogin defaults false → pre-login cascade).
+' the sign-in screens would render in the signed-out user's language rather than the
+' device-wide default (isPostLogin defaults false, which selects the pre-login cascade).
 sub reenterLogin()
   loadTranslations(resolveTranslationLocale())
   enterDecision(beginLogin())
@@ -242,18 +242,18 @@ end sub
 ' async nav and clears at NavigationEnd instead of being stopped early (which re-shows the outgoing
 ' view for a frame). The success branch defers to finishLogin, which carries the spinner to Home.
 '
-' ## What `paint` means for `preLogin`, which is NOT a screen
+' ## What `paint` means for `preLogin`, which is not a screen
 '
 ' Everywhere else in this app `screenLoad.paint` is a screen that rendered something the user
 ' can act on. Here it is the coordinator handing a route to the router: the user is on a
-' spinner for the whole run and CANNOT act at this moment — the destination view has not
+' spinner for the whole run and cannot act at this moment: the destination view has not
 ' mounted yet (sgRouter resolves at NavigationEnd, on the render thread, where this ledger's
 ' `m` does not reach). The destination's own paint is a SEPARATE run, the same shape `search`
 ' established for a screen whose two loads are separated by a user.
 '
 ' So this run's paint/settle split says nothing: every fill is a synchronous main-thread call
 ' that has already resolved by the time we get here, so `settled` lands on the same
-' millisecond as `paint` — the `query` variant of `search` all over again. **Read the fills.**
+' millisecond as `paint`, the `query` variant of `search` all over again. **Read the fills.**
 ' They are the actionable decomposition: which of the blocking round trips cost what.
 '
 ' `variant` names WHICH load, not which destination: `start` is a cold start or a session
@@ -276,7 +276,7 @@ sub enterDecision(decision as object, clearSpinner = false as boolean, variant =
 end sub
 
 ' ---------------------------------------------------------------------------
-' Intent dispatch — called from main.bs's event loop when a pre-login view sets
+' Intent dispatch, called from main.bs's event loop when a pre-login view sets
 ' m.scene.preLoginIntent. The payload is read off the active routed view.
 ' ---------------------------------------------------------------------------
 sub handlePreLoginIntent(action as string)
@@ -297,22 +297,23 @@ sub handlePreLoginIntent(action as string)
   end if
 end sub
 
-' Server URL submitted from SetServerScreen. Mirrors CreateServerGroup's submit handler.
+' Server URL submitted from SetServerScreen: connect to it, then resolve the user step.
 sub onServerSubmitted()
   view = getActiveView()
   if not isValid(view) then return
   originalUrl = view.enteredUrl
-  ' enteredUrl reads invalid when the active view isn't SetServerScreen — a stale preLoginIntent that
-  ' drained after activeRoutedView advanced (e.g. a duplicate submit landing post-navigation). Ignore
+  ' enteredUrl reads invalid when the active view isn't SetServerScreen: a stale preLoginIntent that
+  ' drained after activeRoutedView advanced (for example, a duplicate submit landing post-navigation). Ignore
   ' it: passing invalid to inferServerUrl(as string) crashes, and coercing to "" would run a bogus
   ' connect whose failure path signs the user out.
   if not isValid(originalUrl) then return
 
-  ' previousServerUrl: the canonical URL before this connect attempt, used to detect a
-  ' server change and reset stale username/password (CreateServerGroup line 333/398).
+  ' previousServerUrl: the canonical URL before this connect attempt. When a successful
+  ' connect lands on a different canonical URL, the saved username and password belong
+  ' to the old server, so they are reset to "".
   previousServerUrl = m.global.server.serverUrl
 
-  ' The connect is this component's SECOND load, and a person types in between — so it is its
+  ' The connect is this component's SECOND load, and a person types in between, so it is its
   ' own run, told apart by `variant`, exactly as `search` separates its open from its query.
   screenLoad.begin("preLogin")
 
@@ -341,8 +342,8 @@ sub onServerSubmitted()
   end if
 
   if isConnected = false or not isValid(serverInfoResult) or (isValid(serverInfoResult.Error) and serverInfoResult.Error)
-    ' Failure stays here — stop the spinner so SetServerScreen re-shows with the error.
-    ' Deliberately NOT painted: a connect that failed is not a load, so the run stays open and
+    ' Failure stays here: stop the spinner so SetServerScreen re-shows with the error.
+    ' Not painted, on purpose: a connect that failed is not a load, so the run stays open and
     ' emits nothing rather than publishing a time for something that did not happen. The next
     ' attempt's `begin` restarts it.
     stopLoadingSpinner()
@@ -352,14 +353,14 @@ sub onServerSubmitted()
     return
   end if
 
-  ' Connected — persist, resolve the user step, navigate. Keep the spinner up across the async nav
+  ' Connected: persist, resolve the user step, navigate. Keep the spinner up across the async nav
   ' (clearSpinner=true, cleared at NavigationEnd) so the hidden SetServerScreen isn't re-shown for a
   ' frame before the destination mounts.
   SaveServerList()
   enterDecision(resolveUser(), true, "connect")
 end sub
 
-' A public/saved user was picked in UserSelect. Mirrors LoginFlow 120-163.
+' A public/saved user was picked in UserSelect.
 sub onUserSelected()
   view = getActiveView()
   if not isValid(view) then return
@@ -398,15 +399,15 @@ sub onUserSelected()
     return
   end if
 
-  ' Password required — go to manual sign-in with the username prefilled. Keep the blocking spinner
+  ' Password required: go to manual sign-in with the username prefilled. Keep the blocking spinner
   ' up across the async nav and clear it when LoginScene mounts (clearSpinner=true). Stopping it
-  ' here first re-shows the UserSelect row for a frame before LoginScene mounts — the same #677
+  ' here first re-shows the UserSelect row for a frame before LoginScene mounts, the same #677
   ' flash class as the login -> Home path.
   print "Auth failed. Password required"
   routerNav("/login", { username: userSelected }, true)
 end sub
 
-' Back from UserSelect → change server. Mirrors LoginFlow 114-119.
+' Back from UserSelect: forget the saved server and return to server select.
 sub onUserBack()
   server.Delete()
   unsetSetting("server")
@@ -414,15 +415,15 @@ sub onUserBack()
 end sub
 
 ' Quick Connect produced a session. UserSelect owns everything before this point
-' — it initiates, polls for approval, exchanges the secret and asks whether to
-' save credentials, all as render-thread promises — and hands over the finished
-' AuthenticationResult. What is left is the one step that must NOT run on the
+' (it initiates, polls for approval, exchanges the secret and asks whether to
+' save credentials, all as render-thread promises) and hands over the finished
+' AuthenticationResult. What is left is the one step that must not run on the
 ' render thread: user.Login() reads and writes the registry.
 '
-' Deliberately the same two lines the password path ends on, because it IS the
+' The same two lines the password path ends on, on purpose, because it is the
 ' same thing: an AuthenticationResult carrying an AccessToken and a UserDto. The
-' old Quick Connect ran its own login on a TASK thread, then re-fetched the user
-' with AboutMe() and re-loaded preferences that user.Login() had already loaded —
+' old Quick Connect ran its own login on a Task thread, then re-fetched the user
+' with AboutMe() and re-loaded preferences that user.Login() had already loaded:
 ' three round trips where the password path makes one.
 sub onQuickConnectAuthenticated()
   view = getActiveView()
@@ -444,13 +445,13 @@ sub onQuickConnectAuthenticated()
 
   user.Login(activeUser, saveCreds)
   ' user.Login persists authToken + primaryImageTag when saveCredentials is set,
-  ' but not the username — the same gap onCredentialsSubmitted fills by hand, and
-  ' the saved-user picker reads it (UserData.loadFromRegistry).
+  ' but not the username: the same gap onCredentialsSubmitted fills by hand, and
+  ' the saved-user picker reads it (getSavedUsers).
   if saveCreds then setUserSetting("username", activeUser.username)
   finishLogin()
 end sub
 
-' Credentials submitted from LoginScene. Mirrors CreateSigninGroup's submit handler.
+' Credentials submitted from LoginScene.
 sub onCredentialsSubmitted()
   view = getActiveView()
   if not isValid(view) then return
@@ -483,7 +484,7 @@ sub onCredentialsSubmitted()
   view.alert = translate(translationKeys.ErrorLoginAttemptFailed)
 end sub
 
-' Back from LoginScene. Mirrors CreateSigninGroup back (showScenes 170-178): return to
+' Back from LoginScene: return to
 ' the user picker if there were public users, otherwise drop back to server select.
 sub onLoginBack()
   hasUsers = isValid(m.loginCtx) and m.loginCtx.hasPublicUsers = true
@@ -496,11 +497,11 @@ sub onLoginBack()
   end if
 end sub
 
-' Login complete — run the post-login bootstrap (per-user font processing) and bring up
+' Login complete: run the post-login bootstrap (per-user font processing) and bring up
 ' Home. loadHomeScreen()/createAndShowHomeGroup() (main.bs) navigate the router to "/",
 ' deferring until font download completes when UI fallback fonts are enabled.
-' The single transition into the app. EVERY login path converges here — password,
-' no-password, saved-token and Quick Connect — either directly or through
+' The single transition into the app. Every login path converges here (password,
+' no-password, saved-token and Quick Connect), either directly or through
 ' enterDecision's `status = "success"` branch, which is where the two bootstrap
 ' paths (validateSavedToken, the no-password retry in resolveUser) land.
 '
@@ -508,39 +509,39 @@ end sub
 ' `user.Login()` is a `sub`: it silently returns when the payload carries no
 ' usable id (session.bs `hasValidId`), and having no return value it cannot say
 ' so. Before this guard, all five call sites answered that by re-implementing a
-' WEAKER check of their own — `isValid(<node>)` alone — and then booting the app
+' weaker check of their own (`isValid(<node>)` alone) and then booting the app
 ' regardless. A payload that satisfied the caller but not Login left
 ' `m.global.user` holding its setGlobals() defaults and put the user on Home with
 ' nobody signed in: no message, no recovery, and every request going out with an
 ' empty `Token=`.
 '
 ' One guard at the one choke point, rather than five copies of Login's own
-' precondition — so a sixth login path inherits it instead of having to remember
+' precondition, so a sixth login path inherits it instead of having to remember
 ' it. See user.IsAuthenticated() for why this reads `isLoaded` rather than the
 ' `id`/`authToken` rule JellyfinUser.xml states (those are written speculatively
 ' before auth, so they answer "yes" after a failed attempt).
 sub finishLogin()
   if not user.IsAuthenticated()
-    ' Not reachable from a healthy server — it needs a 200 whose AccessToken is
-    ' present but whose User carries no usable Id — so this is the honest report
+    ' Not reachable from a healthy server (it needs a 200 whose AccessToken is
+    ' present but whose User carries no usable Id), so this is the honest report
     ' of a should-not-happen, not a routine branch. It still has to be a report:
     ' silently returning here leaves the blocking login spinner up forever.
     print "Login did not establish a session - returning to the picker"
     stopLoadingSpinner()
     ' Clears the SPECULATIVE id/authToken this attempt left on the node. Without
     ' it the next screen still reads a half-populated user, which is the state
-    ' this whole guard exists to stop anyone acting on. Purely local — Logout
+    ' this whole guard exists to stop anyone acting on. Purely local: Logout
     ' resets the node and the theme; it makes no request.
     user.Logout()
-    ' A toast, NOT showAlertDialog: this branch navigates immediately, and an
+    ' A toast, not showAlertDialog: this branch navigates immediately, and an
     ' overlay dialog is appended to the SCENE, so it would outlive the navigation
     ' and land on top of the incoming screen while contending with it for focus.
     ' Toasts take no focus. Same main-thread reporting replayRoute.bs uses.
     displayToast(translate(translationKeys.ErrorLoginAttemptFailed), "error")
-    ' Deliberately NOT onLoginBack(), though it makes the same picker-vs-fallback
+    ' Not onLoginBack(), on purpose, though it makes the same picker-vs-fallback
     ' choice: its fallback branch runs `server.Delete()` + `unsetSetting("server")`.
-    ' That is right for the case it was written for — the user pressed Back from
-    ' sign-in because they want a DIFFERENT server — and wrong here, where nobody
+    ' That is right for the case it was written for (the user pressed Back from
+    ' sign-in because they want a different server) and wrong here, where nobody
     ' asked to forget anything. On a private server with no public users it would
     ' destroy a working server config over a failed sign-in.
     '
@@ -559,9 +560,9 @@ sub finishLogin()
   loadHomeScreen()
 end sub
 
-' Thin main-thread → render-thread navigation bridge. clearSpinner (login paths only) keeps a
-' blocking login spinner up across the async nav and clears it when the destination view mounts —
-' see JRScene.navigateThenFocus.
+' Thin main-thread to render-thread navigation bridge. clearSpinner (login paths only) keeps a
+' blocking login spinner up across the async nav and clears it when the destination view mounts
+' (see JRScene.navigateThenFocus).
 sub routerNav(routePath as string, context as object, clearSpinner = false as boolean)
   m.scene.callFunc("routerNavigate", routePath, context, clearSpinner)
 end sub

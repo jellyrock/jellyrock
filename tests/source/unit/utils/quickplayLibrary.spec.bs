@@ -1,0 +1,73 @@
+import "pkg:/source/utils/quickplayLibrary.bs"
+
+namespace tests
+
+  ' The rules a quick play of a whole library follows: watched episodes only, and no video the
+  ' viewer is partway through. QuickPlayTask makes the requests; this covers what it asks for
+  ' and what it keeps.
+  @suite("quickplayLibrary - what a library quick play plays")
+  class QuickplayLibraryTests extends tests.BaseTestSuite
+
+    private function video(id as string, userData = invalid as dynamic) as object
+      item = { Id: id, Type: "Movie" }
+      if isValid(userData) then item.UserData = userData
+      return item
+    end function
+
+    private function ids(items as object) as string
+      out = []
+      for each item in items
+        out.push(item.Id)
+      end for
+      return out.join(",")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("watchedEpisodesQuery()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for the library's watched episodes only, so a shuffle spoils nothing")
+    function _()
+      query = quickplayLibrary.watchedEpisodesQuery("lib-1")
+      m.assertEqual(query.parentId, "lib-1")
+      m.assertEqual(query.includeItemTypes, "Episode")
+      m.assertTrue(query.isPlayed)
+      m.assertTrue(query.recursive)
+    end function
+
+    @it("asks for a bounded random sample, not the whole library")
+    function _()
+      query = quickplayLibrary.watchedEpisodesQuery("lib-1")
+      m.assertEqual(query.sortBy, "Random")
+      m.assertEqual(query.limit, 500)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("withoutInProgress()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves out a video the viewer is partway through")
+    function _()
+      items = [
+        m.video("unstarted", { PlaybackPositionTicks: 0& }),
+        m.video("partway", { PlaybackPositionTicks: 600000000& }),
+        m.video("watched", { PlaybackPositionTicks: 0&, Played: true })
+      ]
+      m.assertEqual(m.ids(quickplayLibrary.withoutInProgress(items)), "unstarted,watched")
+    end function
+
+    @it("keeps a video with no user data, which says nothing about progress")
+    function _()
+      items = [m.video("no-user-data"), m.video("no-position", {})]
+      m.assertEqual(m.ids(quickplayLibrary.withoutInProgress(items)), "no-user-data,no-position")
+    end function
+
+    @it("returns an empty list for an empty or missing list")
+    function _()
+      m.assertEqual(quickplayLibrary.withoutInProgress([]).count(), 0)
+      m.assertEqual(quickplayLibrary.withoutInProgress(invalid).count(), 0)
+    end function
+
+  end class
+
+end namespace

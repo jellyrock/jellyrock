@@ -1,23 +1,33 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/api/items.bs"
 import "pkg:/source/api/userAuth.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/enums/LiveStreamStage.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/episodeQueue.bs"
+import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/probedStreams.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/subtitles.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
+import "pkg:/source/utils/upstreamManifest.bs"
+import "pkg:/source/utils/versionPick.bs"
+import "pkg:/source/utils/versionResume.bs"
 
 sub init()
   m.top.functionName = "loadItems"
@@ -30,17 +40,37 @@ sub loadItems()
   ' Reset per-run fields in case task gets reused
   m.top.isIntro = false
   m.top.errorMsg = ""
+  ' This run has opened no live stream yet (liveStreamHandoff.bs).
+  m.top.liveStream = { stage: LiveStreamStage.NONE, id: "" }
 
   ' Only show preroll once per queue
   if queueManager.callFunc("isPrerollActive")
-    ' Prerolls not allowed if we're resuming video
-    if queueManager.callFunc("getCurrentItem").startingPoint = 0
+    ' Prerolls not allowed if we're resuming video.
+    '
+    ' startingPoint alone no longer answers that on a per-version server: the item's own
+    ' version can sit at 0 while an alternate is partway through, and which version resumes is
+    ' settled further down, after the metadata fetch, too late to un-queue an intro. So the
+    ' caller passes hasVersionInProgress, read from the server's source order for free.
+    ' jellyfin-web draws the same line (getIntros() bails on options.startPositionTicks), and
+    ' keys it on the position actually being played, which is what this restores.
+    ' Both reads are explicitly guarded rather than compared against 0: an absent field reads
+    ' `invalid`, and "is it resuming?" must not be decided by how invalid happens to compare.
+    currentItem = queueManager.callFunc("getCurrentItem")
+    startsFromAPosition = isValid(currentItem) and isValid(currentItem.startingPoint) and currentItem.startingPoint > 0
+    otherVersionInProgress = isValid(currentItem) and currentItem.hasVersionInProgress = true
+    if not startsFromAPosition and not otherVersionInProgress
       preRoll = GetIntroVideos(m.top.itemId)
       if isValid(preRoll) and preRoll.TotalRecordCount > 0 and isValid(preRoll.items[0])
         ' If an error is thrown in the Intros plugin, instead of passing the error they pass the entire rick roll music video.
         ' Bypass the music video and treat it as an error message
         if lcase(preRoll.items[0].name) <> "rick roll'd"
-          queueManager.callFunc("push", queueManager.callFunc("getCurrentItem"))
+          ' The item plays after its intro, so it goes directly after the slot the intro plays
+          ' in: appending it would play the rest of the queue first. Moving on to it reaches
+          ' the same item, not a new one, so it keeps the start it was launched with
+          ' (QueueManager.advanceTo consumes followsIntro).
+          followingItem = queueManager.callFunc("getCurrentItem")
+          if isValid(followingItem) then followingItem.followsIntro = true
+          queueManager.callFunc("insertAfterCurrent", followingItem)
           m.top.itemId = preRoll.items[0].id
           queueManager.callFunc("setPrerollStatus", false)
           m.top.isIntro = true
@@ -59,6 +89,115 @@ sub loadItems()
   m.top.content = [LoadItems_VideoPlayer(id, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation)]
 end sub
 
+' resolveResumeVersion: Which of an item's versions resumes, and from where.
+'
+' The imperative shell around versionResume.chooseResumeSource(): that function owns every
+' rule and says what it still needs; this fetches it and asks again. Same division as
+' ItemDetails, so both entry points reach an identical answer. The split between them is
+' what made the app name one version on the details screen and play another.
+'
+' Reads ride apiPipeline rather than a fetch loop: the pipeline keeps as many requests on the
+' pool as it has slots, so N versions cost roughly one round trip instead of N. Each reply was
+' ~150 bytes against the item's ~17 KB (measured 2026-09-19), and nothing is fetched at all unless something is
+' already in progress, so an item nobody has started costs no requests on the playback path.
+' When the source order cannot say which version was played last, one more request asks the
+' server (fetchMostRecentVersionId).
+'
+' @param {string} itemId - the item being played
+' @param {object} meta - ItemMetaData() for it (its own UserData position comes from here)
+' @param {object} mediaSources - its MediaSources, in server order
+' @return {object} { sourceId, ticks }: sourceId "" when no version is in progress
+function resolveResumeVersion(itemId as string, meta as object, mediaSources as object) as object
+  ctx = {
+    itemId: itemId,
+    itemPositionTicks: meta.playbackPositionTicks,
+    mediaSources: mediaSources,
+    positions: {},
+    isPerVersion: true,
+    deviceBestId: ""
+  }
+
+  ' At most four passes: read the positions, ask which version the server would resume, settle
+  ' a near-level tie, and take the answer. Each pass records an answer (an unreadable one
+  ' included), so nothing is asked twice, and the bound means a request that cannot be built
+  ' cannot spin.
+  for attempt = 1 to 4
+    answer = versionResume.chooseResumeSource(ctx)
+
+    if answer.needsSourceIds.count() > 0
+      fetchVersionPositions(ctx.positions, answer.needsSourceIds)
+    else if answer.needsMostRecent
+      ctx.mostRecentId = fetchMostRecentVersionId(itemId, meta, mediaSources)
+    else if answer.tiedIds.count() > 1
+      ' Equally far along, so quality decides, and that needs the device, which
+      ' versionResume knows nothing about by design.
+      ctx.deviceBestId = findBestVideoSourceAmongIds(mediaSources, answer.tiedIds)
+      if not isValidAndNotEmpty(ctx.deviceBestId) then exit for
+    else
+      return { sourceId: answer.sourceId, ticks: answer.ticks }
+    end if
+  end for
+
+  ' A tie no device pick could settle: not reachable while tiedIds come from the item's own
+  ' sources, but it must not be re-asked: no per-version answer, so the caller's own rule applies.
+  return { sourceId: "", ticks: 0& }
+end function
+
+' fetchMostRecentVersionId: Ask the server which of an item's versions it would resume.
+'
+' The resume query returns the version that owns the resume point, which is the answer the
+' source order gives only from a primary (see versionResume.chooseResumeSource). Scoped to the
+' item's parent (its season, or the folder holding a movie), so the reply is that parent's
+' in-progress items rather than the whole of Continue Watching, and lean, because only ids are
+' read.
+'
+' @param {string} itemId - the item being played
+' @param {object} meta - ItemMetaData() for it
+' @param {object} mediaSources - its MediaSources
+' @return {string} the version's source id, or "" when the server cannot say, itself an
+'                  answer, so the caller falls back to the order instead of asking again
+function fetchMostRecentVersionId(itemId as string, meta as object, mediaSources as object) as string
+  if not isValidAndNotEmpty(meta.parentId) then return ""
+  req = GetApi().BuildGetResumeItemsRequest({ parentId: meta.parentId, EnableImages: false, EnableUserData: false })
+  if not isValid(req) then return ""
+  return versionResume.mostRecentIdFrom(fetchRes(req, "version-most-recent-" + itemId), mediaSources)
+end function
+
+' fetchVersionPositions: Read each named version's own position into `positions`.
+'
+' A version that does not answer is recorded as POSITION_UNREADABLE rather than left absent,
+' so the caller's next pass cannot ask for it again and loop, and so an unread position is
+' never mistaken for "this version has no progress", which would silently restart the content.
+'
+' @param {object} positions - sourceId -> ticks, filled in place
+' @param {object} sourceIds - the versions to read
+sub fetchVersionPositions(positions as object, sourceIds as object)
+  api = GetApi()
+  entries = []
+  for each sourceId in sourceIds
+    req = api.BuildGetItemUserDataRequest(sourceId)
+    if isValid(req)
+      entries.push({ requestId: "version-position-" + sourceId, req: req, sourceId: sourceId })
+    else
+      positions[sourceId] = versionResume.POSITION_UNREADABLE
+    end if
+  end for
+  if entries.count() = 0 then return
+
+  pipe = apiPipelineBegin(entries)
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    positions[result.entry.sourceId] = versionResume.playbackPositionFrom(result.res)
+    result = apiPipelineNext(pipe)
+  end while
+
+  ' Anything the pipeline never delivered (budget expiry) is still absent. Pin it so the
+  ' decision is made on what is known instead of waiting on a reply that is not coming.
+  for each sourceId in sourceIds
+    if not isValid(positions[sourceId]) then positions[sourceId] = versionResume.POSITION_UNREADABLE
+  end for
+end sub
+
 function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audioStreamIdx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean) as dynamic
 
   video = {}
@@ -68,9 +207,7 @@ function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audioStre
 
   LoadItems_AddVideoContent(video, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation)
 
-  if not isValid(video.content)
-    return invalid
-  end if
+  if not isValid(video.content) then return invalid
 
   return video
 end function
@@ -88,43 +225,67 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   userSession = m.global.user
   userSettings = userSession.settings
 
-  ' Cache mediaSourcesData.mediaSources once — accessed frequently below
+  ' Cache mediaSourcesData.mediaSources once: accessed frequently below
   mediaSources = invalid
   if isValid(meta.mediaSourcesData) and isValidAndNotEmpty(meta.mediaSourcesData.mediaSources)
     mediaSources = meta.mediaSourcesData.mediaSources
   end if
 
-  ' Select best video source if no specific source was requested
+  playbackPosition = 0!
+  currentItem = queueManager.callFunc("getCurrentItem")
+  if isValid(currentItem) and isValid(currentItem.startingPoint)
+    playbackPosition = currentItem.startingPoint
+  end if
+  ' A place the caller named (a chapter, Play from the start, a position saved before a
+  ' reload), as opposed to a saved resume position (nodeHelpers.setExactStart).
+  startsAtExactPosition = isValid(currentItem) and isValid(currentItem.startingPointIsExact) and currentItem.startingPointIsExact
+
+  ' Select a video source if no specific source was requested. On a per-version server this is
+  ' the one place that choice is made for every entry point that did not make it on screen
+  ' (quick play, casts, a queued item), because it is the only one that can read each version's
+  ' own position. The details screen still decides for itself and arrives with an explicit id,
+  ' which is honored untouched. An item that starts fresh (QueueManager.advanceTo /
+  ' startCurrentFresh) is the exception: it resumes nothing, so position has no say in its version.
   if not isValid(mediaSourceId) and isValid(mediaSources) and mediaSources.Count() > 1
-    bestSourceIndex = findBestVideoSource(mediaSources)
-    mediaSourceId = mediaSources[bestSourceIndex].Id
-    m.log.info("Auto-selected video source", "index", bestSourceIndex, "mediaSourceId", mediaSourceId)
+    if isValid(currentItem) and currentItem.startsFresh = true
+      ' No position decides this item's version: the viewer's explicit pick does when the item
+      ' has it, else the device (versionPick).
+      preference = queueManager.callFunc("getVersionPreference")
+      mediaSourceId = mediaSources[versionPick.sourceIndexFor(preference, mediaSources)].Id
+      m.log.info("Fresh start version", "mediaSourceId", mediaSourceId, "hasPick", isValid(preference))
+    else if versionResume.isPerVersionServer(m.global.server.version)
+      choice = resolveResumeVersion(video.id, meta, mediaSources)
+      if isValidAndNotEmpty(choice.sourceId)
+        mediaSourceId = choice.sourceId
+        ' The chosen version resumes at ITS OWN position, never the one the queue carried:
+        ' two versions of one item can be a minute apart in runtime, so reusing another
+        ' version's position would drop the viewer somewhere else in the content. Unless the
+        ' caller named the place: a chapter plays from the chapter, on whichever version.
+        if not startsAtExactPosition then playbackPosition = choice.ticks
+        m.log.info("Resume version chosen", "mediaSourceId", mediaSourceId, "ticks", playbackPosition.toStr(), "isExact", startsAtExactPosition)
+      else
+        mediaSourceId = mediaSources[findBestVideoSource(mediaSources)].Id
+        m.log.info("Auto-selected video source (nothing in progress)", "mediaSourceId", mediaSourceId)
+      end if
+    else
+      ' One position per item, so any version resumes at it: take the best for the device.
+      mediaSourceId = mediaSources[findBestVideoSource(mediaSources)].Id
+      m.log.info("Auto-selected video source (single-position server)", "mediaSourceId", mediaSourceId)
+    end if
   end if
 
   ' Re-determine audio stream index if no manual selection was made
   ' Task field = 0 means no manual selection (default value)
   ' Task field > 0 means user manually selected from MovieDetails/TVListDetails - preserve it
+  ' Read the version that is actually PLAYING, not the server's default (mediaSourceForId).
+  playedSource = mediaSourceForId(mediaSources, mediaSourceId)
+
   if m.top.selectedAudioStreamIndex = 0
-    ' Use the selected source's MediaStreams for audio selection when available
-    selectedSourceStreams = invalid
-    if isValid(mediaSourceId) and isValid(mediaSources)
-      for each source in mediaSources
-        if source.Id = mediaSourceId and isValid(source.MediaStreams)
-          selectedSourceStreams = source.MediaStreams
-          exit for
-        end if
-      end for
-    end if
-    if isValid(selectedSourceStreams)
-      ' Resolve playDefaultAudioTrack setting (JellyRock override or web client)
-      playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-      audioStreamIdx = findBestAudioStreamIndex(selectedSourceStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
-    else if isValid(mediaSources) and isValid(mediaSources[0].MediaStreams)
-      playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-      audioStreamIdx = findBestAudioStreamIndex(mediaSources[0].MediaStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
+    if isValid(playedSource) and isValid(playedSource.MediaStreams)
+      audioStreamIdx = selectAudioStreamIndex(playedSource.MediaStreams, userSettings, userSession.config, meta.originalLanguage ?? "")
     else
       ' MediaStreams not available - keep existing behavior of using 0
-      ' This should never happen since ItemMetaData() just fetched metadata
+      ' This should never happen since ItemMetaData() fetched metadata above
       audioStreamIdx = 0
     end if
     m.log.debug("Audio stream auto-selected", "audioStreamIdx", audioStreamIdx)
@@ -133,22 +294,22 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   end if
 
   ' Early metadata extraction - MediaSources may not exist yet for Live TV
-  if isValid(mediaSources) and isValidAndNotEmpty(mediaSources)
+  if isValid(playedSource)
     ' Duration source priority for setting video.content.length (needed for seeking):
-    '   1. mediaSource.RunTimeTicks  — file's probed duration (authoritative when available)
-    '   2. Size × 8 / Bitrate        — actual file duration estimate (good for recordings
-    '                                   where the file differs from the scheduled runtime)
-    '   3. meta.runTimeTicks         — movie/episode metadata (full runtime; may not match
-    '                                   a partial recording)
+    '   1. mediaSource.RunTimeTicks: file's probed duration (authoritative when available)
+    '   2. Size × 8 / Bitrate:       actual file duration estimate (good for recordings
+    '                                where the file differs from the scheduled runtime)
+    '   3. meta.runTimeTicks:        movie/episode metadata (full runtime; may not match
+    '                                a partial recording)
     ' MPEG-TS files have no duration header so #1 is often missing; #2 is ideal because
     ' it reflects the actual recorded bytes, not the program's scheduled length.
     effectiveLengthSeconds = 0
     durationSource = "none"
-    if isValid(mediaSources[0].RunTimeTicks) and mediaSources[0].RunTimeTicks > 0
-      effectiveLengthSeconds = int(mediaSources[0].RunTimeTicks / 10000000)
+    if isValid(playedSource.RunTimeTicks) and playedSource.RunTimeTicks > 0
+      effectiveLengthSeconds = int(playedSource.RunTimeTicks / 10000000)
       durationSource = "mediaSource.RunTimeTicks"
-    else if isValid(mediaSources[0].Size) and mediaSources[0].Size > 0 and isValid(mediaSources[0].Bitrate) and mediaSources[0].Bitrate > 0
-      effectiveLengthSeconds = int((mediaSources[0].Size * 8) / mediaSources[0].Bitrate)
+    else if isValid(playedSource.Size) and playedSource.Size > 0 and isValid(playedSource.Bitrate) and playedSource.Bitrate > 0
+      effectiveLengthSeconds = int((playedSource.Size * 8) / playedSource.Bitrate)
       durationSource = "size/bitrate"
     else if isValid(meta.runTimeTicks) and meta.runTimeTicks > 0
       effectiveLengthSeconds = int(meta.runTimeTicks / 10000000)
@@ -158,14 +319,6 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       video.content.length = effectiveLengthSeconds
     end if
     m.log.info("Duration resolved", "seconds", effectiveLengthSeconds, "source", durationSource)
-
-    ' Find first video stream - MediaStreams[0] might be subtitle/audio
-    if isValid(mediaSources[0].MediaStreams)
-      videoStream = getFirstVideoStream(mediaSources[0].MediaStreams)
-      if isValid(videoStream) and isValid(videoStream.Width) and isValid(videoStream.Height)
-        video.MaxVideoDecodeResolution = [videoStream.Width, videoStream.Height]
-      end if
-    end if
   end if
 
   subtitleIdx = m.top.selectedSubtitleIndex
@@ -209,9 +362,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   end if
 
   ' Set logo image using metadata (same logic as ItemDetails)
-  ' All OSD logo images are sized to imageSize.LOGO_OSD — the Poster node in OSD.xml enforces
-  ' this client-side via loadWidth/loadHeight with loadDisplayMode="noScale", so the API params and UI stay in sync.
-  osdLogoSize = imageSize.LOGO_OSD ' { width: 500, height: 300 } — BrightScript requires local var for namespace field access
+  ' All OSD logo images are sized to imageSize.LOGO_OSD. The OSD's videoLogo Poster enforces
+  ' this client-side via loadWidth/loadHeight (set in OSD.bs init()) with loadDisplayMode="noScale", so the API params and UI stay in sync.
+  osdLogoSize = imageSize.LOGO_OSD ' { width: 500, height: 300 }: BrightScript requires local var for namespace field access
   ' Check for logoImageTag first (movie/item logo)
   if isValidAndNotEmpty(meta.logoImageTag)
     video.logoImage = ImageURL(meta.id, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.logoImageTag })
@@ -219,10 +372,10 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     ' Series logo for episodes
     video.logoImage = ImageURL(meta.seriesId, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.parentLogoImageTag })
   else if videotype = "movie" and isValidAndNotEmpty(meta.primaryImageTag)
-    ' Movie with no logo — fall back to primary (poster) image
+    ' Movie with no logo: fall back to primary (poster) image
     video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
   else if videotype = "episode" or videotype = "recording"
-    ' Episode/recording with no series logo — fall back to series primary poster, then episode thumbnail
+    ' Episode/recording with no series logo: fall back to series primary poster, then episode thumbnail
     if isValidAndNotEmpty(meta.seriesPrimaryImageTag) and isValidAndNotEmpty(meta.seriesId)
       video.logoImage = ImageURL(meta.seriesId, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.seriesPrimaryImageTag })
     else if isValidAndNotEmpty(meta.primaryImageTag)
@@ -230,7 +383,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     end if
   else if videotype = "tvchannel"
     ' For live TV channels, prefer the currently-airing program's artwork over the channel icon.
-    ' Priority: program logo → program primary (poster) → channel icon (fallback).
+    ' Priority: program logo, then program primary (poster), then channel icon (fallback).
     currentProgram = meta.currentProgram
     if isValid(currentProgram)
       if isValidAndNotEmpty(currentProgram.logoImageTag)
@@ -249,14 +402,6 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     if userSettings.playbackPlayNextEpisode = "enabled" or userSettings.playbackPlayNextEpisode = "webclient" and userSession.config.enableNextEpisodeAutoPlay
       addNextEpisodesToQueue(meta.seriesId)
     end if
-  end if
-
-  playbackPosition = 0!
-
-  currentItem = queueManager.callFunc("getCurrentItem")
-
-  if isValid(currentItem) and isValid(currentItem.startingPoint)
-    playbackPosition = currentItem.startingPoint
   end if
 
   ' Determine final subtitleIdx BEFORE calling ItemPostPlaybackInfo to avoid duplicate API calls.
@@ -294,11 +439,48 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   if not isValid(mediaSourceId) then mediaSourceId = video.id
   if isLive then mediaSourceId = ""
 
-  ' Call ItemPostPlaybackInfo ONCE with final subtitleIdx
-  m.playbackInfo = ItemPostPlaybackInfo(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
+  ' Call ItemPostPlaybackInfo ONCE with final subtitleIdx. For a live item this request opens the
+  ' live stream, and only its answer names it, so it waits as long as the server itself can take
+  ' (timeouts.LIVE_OPEN_MS), and the stage it is at is recorded for the view (liveStreamHandoff.bs).
+  openLimitMs = 0
+  if isLive
+    openLimitMs = timeouts.LIVE_OPEN_MS
+    m.top.liveStream = { stage: LiveStreamStage.OPENING, id: "" }
+  end if
+  res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs)
+  m.playbackInfo = invalid
+  if isValid(res) and res.ok then m.playbackInfo = res.json
+
+  if isLive
+    liveStreamId = ""
+    if isValid(m.playbackInfo) and isValidAndNotEmpty(m.playbackInfo.MediaSources) and isValid(m.playbackInfo.MediaSources[0])
+      if isValidAndNotEmpty(m.playbackInfo.MediaSources[0].LiveStreamId) then liveStreamId = m.playbackInfo.MediaSources[0].LiveStreamId
+    end if
+    ' OPEN is written BEFORE isAbandoned is read: the view decides between the two on the render
+    ' thread, and this order is what leaves exactly one of us to close the stream.
+    if liveStreamId <> ""
+      m.top.liveStream = { stage: LiveStreamStage.OPEN, id: liveStreamId }
+    else
+      m.top.liveStream = { stage: LiveStreamStage.NONE, id: "" }
+    end if
+    if m.top.isAbandoned
+      ' The viewer left while the stream was opening: nobody will play it.
+      if liveStreamId <> ""
+        m.log.info("Closing the live stream opened for a view that has gone", "liveStreamId", liveStreamId, "itemId", video.id)
+        SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(liveStreamId))
+      end if
+      video.content = invalid
+      return
+    end if
+  end if
+
   if not isValid(m.playbackInfo)
-    m.log.error("ItemPostPlaybackInfo returned invalid response")
-    m.top.errorMsg = translate(translationKeys.ErrorThereWasAnErrorRetrievingPlayback)
+    m.log.error("PlaybackInfo failed", "cause", apiResponse.jsonFailure(res), "isLive", isLive)
+    if isLive and apiResponse.noAnswer(res)
+      m.top.errorMsg = translate(translationKeys.ErrorThisChannelTookTooLongToStart)
+    else
+      m.top.errorMsg = translate(translationKeys.ErrorThereWasAnErrorRetrievingPlayback)
+    end if
     video.content = invalid
     return
   end if
@@ -318,6 +500,60 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   m.log.debug("PlaybackInfo loaded", "mediaSourceCount", m.playbackInfo.MediaSources.Count())
 
+  ' Whether the device plays the source's own manifest URL is worked out once, from this first
+  ' answer, and applied further down. Nothing it reads depends on which tracks were picked, and the
+  ' probed picks below need it: a new answer is wasted when the device never plays the server's.
+  manifestSource = invalid
+  if isValidAndNotEmpty(m.playbackInfo.MediaSources) then manifestSource = m.playbackInfo.MediaSources[0]
+  manifestTranscodingUrl = ""
+  if isValid(manifestSource) then manifestTranscodingUrl = textOrEmpty(manifestSource.TranscodingUrl)
+  userPolicy = userSession.policy
+  upstreamBlocker = getUpstreamManifestBlocker(manifestSource, {
+    forceTranscoding: forceTranscoding,
+    serverUrl: textOrEmpty(getUrl()),
+    forceRemoteSourceTranscoding: isValid(userPolicy) and isBooleanTrue(userPolicy.forceRemoteSourceTranscoding),
+    transcodeReasons: getTranscodeReasons(manifestTranscodingUrl)
+  })
+  manifestFormat = ""
+  deviceLoadsUpstream = false
+  if upstreamBlocker = UpstreamManifestBlocker.NONE
+    manifestFormat = upstreamManifestFormat(manifestSource)
+    deviceLoadsUpstream = upstreamManifestAnswers(manifestSource.Path, manifestFormat)
+  end if
+
+  ' A source the server had never probed (a .strm item before its first play) listed no streams,
+  ' so the audio and subtitle picks above had nothing to choose from. This PlaybackInfo probed it
+  ' and the server saved what it found, so read the item again and pick from that.
+  if not isLive and sourceListsNoStreams(playedSource)
+    reloadProbedStreams(meta, mediaSourceId)
+    probedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
+    if not sourceListsNoStreams(probedSource)
+      if m.top.selectedAudioStreamIndex = 0
+        audioStreamIdx = selectAudioStreamIndex(probedSource.MediaStreams, userSettings, userSession.config, meta.originalLanguage ?? "")
+      end if
+      sentSubtitleIdx = subtitleIdx
+      if m.top.selectedSubtitleIndex = SubtitleSelection.NOT_SET
+        subtitleIdx = defaultSubtitleTrackFromVid(meta, audioStreamIdx, mediaSourceId)
+      end if
+      serverAllowedFirst = isValid(manifestSource) and isBooleanTrue(manifestSource.SupportsDirectPlay)
+      answerPlays = serverAnswerPlays(upstreamBlocker, deviceLoadsUpstream, serverAllowedFirst)
+      m.log.info("Tracks picked from the streams the first PlaybackInfo probed", "audioStreamIdx", audioStreamIdx, "subtitleIdx", subtitleIdx, "answerPlays", answerPlays, "itemId", video.id)
+      ' A transcode was built for the server's own picks, so ask for one built for ours, unless
+      ' the device plays the upstream URL or the player's retry asks the server with our picks.
+      if answerPlays and probedPicksNeedNewAnswer(manifestSource, audioStreamIdx, subtitleIdx, sentSubtitleIdx)
+        res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
+        if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
+          m.playbackInfo = res.json
+        else
+          ' Play the first answer, and describe it as the server built it.
+          m.log.warn("PlaybackInfo for the probed picks failed; keeping the server's", "cause", apiResponse.jsonFailure(res), "itemId", video.id)
+          audioStreamIdx = serverAudioIndex(manifestSource)
+          subtitleIdx = sentSubtitleIdx
+        end if
+      end if
+    end if
+  end if
+
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
   addSubtitlesToVideo(video, meta)
 
@@ -330,10 +566,6 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   video.playbackInfo = m.playbackInfo
 
   video.PlaySessionId = m.playbackInfo.PlaySessionId
-
-  if isLive
-    video.content.StreamFormat = "hls"
-  end if
 
   video.container = meta.container
 
@@ -349,7 +581,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     end if
   end if
 
-  ' All downstream code requires MediaSources[0] — fail fast if it's missing
+  ' All downstream code requires MediaSources[0]: fail fast if it's missing
   if not isValid(m.playbackInfo.MediaSources) or m.playbackInfo.MediaSources.Count() = 0 or not isValid(m.playbackInfo.MediaSources[0])
     video.errorMsg = "Error loading playback info: no valid media source returned"
     video.content = invalid
@@ -375,6 +607,33 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' 'TODO: allow user selection of subtitle track before playback initiated, for now set to no subtitles
   video.isDirectPlaySupported = m.playbackInfo.MediaSources[0].SupportsDirectPlay
 
+  ' A source whose URL is an upstream HLS or DASH manifest (a Live TV channel, a .strm item) plays
+  ' from that URL whenever the server had no reason of its own against it (getUpstreamManifestBlocker
+  ' says which), even though Jellyfin 12.0+ declines direct play for every manifest. Whatever the
+  ' server answered, the device must be able to load the URL itself first: one it cannot reach leaves
+  ' the Roku buffering rather than failing, so the fallback to the server would not run in time.
+  ' The blocker and that check ran on the first answer, above; whether the server allowed direct
+  ' play is read from the answer that plays.
+  if upstreamBlocker = UpstreamManifestBlocker.NONE
+    serverAllowed = isBooleanTrue(video.isDirectPlaySupported)
+    if deviceLoadsUpstream
+      video.isDirectPlaySupported = true
+      ' If the device cannot play the stream after all, the player retries through the server.
+      video.isTranscodeAvailable = true
+      m.log.info("Playing the upstream manifest URL", "format", manifestFormat, "serverAllowed", serverAllowed, "isLive", isLive, "itemId", video.id)
+    else if serverAllowed
+      ' The server's "yes" carries no stream of its own (no TranscodingUrl), so the player asks it
+      ' for one before playing anything: the retry a failed direct play takes.
+      video.needsServerStream = true
+      video.isTranscodeAvailable = true
+      m.log.info("This device cannot load the upstream manifest URL the server allowed; asking the server for its stream", "format", manifestFormat, "isLive", isLive, "itemId", video.id)
+    else
+      m.log.info("This device cannot load the upstream manifest URL; using the server's stream", "format", manifestFormat, "isLive", isLive, "itemId", video.id)
+    end if
+  else
+    m.log.debug("Source keeps the server's answer", "blocker", upstreamBlocker, "isLive", isLive, "itemId", video.id)
+  end if
+
   ' For h264/hevc video, Roku spec states that it supports specfic encoding levels
   ' The device can decode content with a Higher Encoding level but may play it back with certain
   ' artifacts. If the user preference is set, and the only reason the server says we need to
@@ -382,9 +641,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' fall back to the transcode if that fails.
   '
   ' Resolution guard: Only attempt the level override when the source resolution is within the
-  ' codec's hardware ceiling. Many encoders tag 1080p content with inflated levels (e.g. 5.1)
+  ' codec's hardware ceiling. Many encoders tag 1080p content with inflated levels (for example 5.1)
   ' even though the actual decode workload is within Roku's capability. But for resolutions
-  ' above the hardware limit (e.g. 4K h264), no level tolerance will help — skip the override.
+  ' above the hardware limit (for example 4K h264), no level tolerance will help: skip the override.
   ' Both height and width are checked to catch ultrawide or non-standard aspect ratios.
   if m.playbackInfo.MediaSources[0].MediaStreams.Count() > 0 and not isLive
     ' Find first video stream - MediaStreams[0] might be subtitle/audio
@@ -412,11 +671,14 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   if video.isDirectPlaySupported
     video.isTranscoded = false
     setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
+    if not isValid(video.content) then return
+    streamFormat = directPlayStreamFormat(m.playbackInfo.MediaSources[0], isLive)
+    if streamFormat <> "" then video.content.StreamFormat = streamFormat
     applyLiveDirectPlayFallback(video, meta)
     m.log.info("Playback path: DIRECT PLAY", "finalUrl", video.content.url, "streamFormat", video.content.StreamFormat)
   else
     if not isValid(m.playbackInfo.MediaSources[0].TranscodingUrl)
-      ' Server did not provide a transcode URL — surface a message to the user via the task field
+      ' Server did not provide a transcode URL: surface a message to the user via the task field
       ' so VideoPlayerView shows one dialog (not two).
       m.log.error("Server did not provide a TranscodingUrl", "itemId", video.id)
       m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
@@ -435,7 +697,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
     video.content.url = transcodingUrl
     ' Jellyfin reports the transcode protocol via TranscodingSubProtocol ("hls" or "http").
-    ' Only set StreamFormat="hls" for HLS — Roku auto-detects progressive MP4 from the URL
+    ' Only set StreamFormat="hls" for HLS: Roku auto-detects progressive MP4 from the URL
     ' and the moov atom, and explicitly setting StreamFormat="mp4" breaks that detection.
     subProtocol = ""
     if isValid(m.playbackInfo.MediaSources[0].TranscodingSubProtocol)
@@ -462,6 +724,53 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' Convert Jellyfin audio stream index to Roku Track identifier (Index + 1 for MKV)
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
 end sub
+
+' upstreamManifestAnswers: Whether THIS device can load a source's upstream manifest URL.
+'
+' The device check before playing a source from its own URL (getUpstreamManifestBlocker). The server
+' reaching a URL says nothing about the Roku reaching it, and a Roku handed one it cannot reach does
+' not error: an unroutable host or an unresolvable name leaves it buffering, so the direct-play
+' fallback does not run. A GET within timeouts.UPSTREAM_PREFLIGHT_MS that returns a manifest of the
+' declared format is the answer (isUpstreamManifestResponse); anything else uses the server's stream.
+' Raw roUrlTransfer on this Task thread, no Jellyfin auth (the URL is not Jellyfin's) and the URL is
+' never logged, because upstream URLs carry session tokens.
+'
+' @param {dynamic} url - the source's upstream manifest URL (MediaSource.Path)
+' @param {string} format - "hls" or "dash" (upstreamManifestFormat)
+' @returns {boolean}
+function upstreamManifestAnswers(url as dynamic, format as string) as boolean
+  target = textOrEmpty(url)
+  if target = "" then return false
+
+  req = CreateObject("roUrlTransfer")
+  port = CreateObject("roMessagePort")
+  req.setMessagePort(port)
+  req.setUrl(target)
+  if LCase(Left(target, 8)) = "https://" then req.setCertificatesFile("common:/certs/ca-bundle.crt")
+  ' The player decodes a gzip-encoded manifest, so the check must too: a CDN serving
+  ' pre-compressed objects sends one even to a request that did not ask for it.
+  req.EnableEncodings(true)
+
+  elapsed = CreateObject("roTimespan")
+  elapsed.mark()
+  if not req.AsyncGetToString() then return false
+
+  remaining = timeouts.UPSTREAM_PREFLIGHT_MS
+  while remaining > 0
+    msg = wait(remaining, port)
+    if type(msg) = "roUrlEvent"
+      fetchedMs = elapsed.TotalMilliseconds()
+      answers = isUpstreamManifestResponse(format, msg.GetResponseCode(), msg.GetString())
+      m.log.info("Upstream manifest check", "answers", answers, "responseCode", msg.GetResponseCode(), "fetchMs", fetchedMs, "checkMs", elapsed.TotalMilliseconds() - fetchedMs)
+      return answers
+    end if
+    remaining = timeouts.UPSTREAM_PREFLIGHT_MS - elapsed.TotalMilliseconds()
+  end while
+
+  req.AsyncCancel()
+  m.log.info("Upstream manifest check timed out", "format", format, "ms", elapsed.TotalMilliseconds())
+  return false
+end function
 
 ' setupVideoContentWithAuth: Configures video content URL and applies authentication
 '
@@ -538,9 +847,25 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
   end if
 end sub
 
+' reloadProbedStreams: Replace the item's media sources with the ones the server saved when the
+' first PlaybackInfo probed them. Leaves meta as it was when the read fails, so the caller's picks
+' stand and nothing else changes.
+'
+' @param {object} meta - item metadata (from ItemMetaData), updated in place
+' @param {dynamic} mediaSourceId - the MediaSource being played
+sub reloadProbedStreams(meta as object, mediaSourceId as dynamic)
+  probed = ItemMetaData(meta.id)
+  if not isValid(probed) or not isValid(probed.mediaSourcesData) then return
+  meta.mediaSourcesData = probed.mediaSourcesData
+  probedSource = mediaSourceForId(probed.mediaSourcesData.mediaSources, mediaSourceId)
+  streamCount = 0
+  if isValid(probedSource) and isValid(probedSource.MediaStreams) then streamCount = probedSource.MediaStreams.count()
+  m.log.info("Reloaded the streams the first PlaybackInfo probed", "streamCount", streamCount, "itemId", meta.id)
+end sub
+
 ' addAudioStreamsToVideo: Populate video.fullAudioData with the item's audio tracks.
 '
-' Sources from the original item metadata (meta.mediaSourcesData) — NOT from the
+' Sources from the original item metadata (meta.mediaSourcesData), not from the
 ' PlaybackInfo response. The /PlaybackInfo response can return a transcode-shaped
 ' MediaSource carrying only the chosen audio stream, which would shrink the OSD picker
 ' to a single entry (issue #500). The OSD picker must always list every original track
@@ -552,22 +877,12 @@ end sub
 sub addAudioStreamsToVideo(video as object, meta as dynamic, mediaSourceId as dynamic)
   mediaStreams = invalid
 
-  if isValid(meta) and isValid(meta.mediaSourcesData) and isValid(meta.mediaSourcesData.mediaSources)
-    sources = meta.mediaSourcesData.mediaSources
-    if isValidAndNotEmpty(mediaSourceId)
-      for each source in sources
-        if isValid(source) and source.Id = mediaSourceId and isValid(source.MediaStreams)
-          mediaStreams = source.MediaStreams
-          exit for
-        end if
-      end for
-    end if
-    if not isValid(mediaStreams) and isValid(sources[0]) and isValid(sources[0].MediaStreams)
-      mediaStreams = sources[0].MediaStreams
-    end if
+  if isValid(meta) and isValid(meta.mediaSourcesData)
+    playedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
+    if isValid(playedSource) then mediaStreams = playedSource.MediaStreams
   end if
 
-  ' Defensive fallback if metadata is unavailable (shouldn't happen — ItemMetaData ran above)
+  ' Defensive fallback if metadata is unavailable (shouldn't happen: ItemMetaData ran above)
   if not isValid(mediaStreams) and isValid(m.playbackInfo) and isValid(m.playbackInfo.MediaSources) and isValid(m.playbackInfo.MediaSources[0])
     mediaStreams = m.playbackInfo.MediaSources[0].MediaStreams
   end if
@@ -591,7 +906,7 @@ sub addSubtitlesToVideo(video, meta)
   if not isValidAndNotEmpty(m.playbackInfo.MediaSources) then return
   if not isValid(m.playbackInfo.MediaSources[0].MediaStreams) then return
 
-  subtitles = sortSubtitles(m.playbackInfo.MediaSources[0].MediaStreams)
+  subtitles = sortSubtitles(m.playbackInfo.MediaSources[0].MediaStreams, meta.originalLanguage ?? "")
   safesubs = subtitles["all"]
   subtitleTracks = []
 
@@ -606,46 +921,6 @@ sub addSubtitlesToVideo(video, meta)
   video.content.SubtitleTracks = subtitleTracks
   video.fullSubtitleData = safesubs
 end sub
-
-
-function directPlaySupported(meta as object) as boolean
-  devinfo = CreateObject("roDeviceInfo")
-  mediaSources = invalid
-  if isValid(meta.mediaSourcesData) and isValidAndNotEmpty(meta.mediaSourcesData.mediaSources)
-    mediaSources = meta.mediaSourcesData.mediaSources
-  end if
-  if not isValid(mediaSources) then return false
-  mediaSource = mediaSources[0]
-  if not isValid(mediaSource) then return false
-
-  if isValid(mediaSource.SupportsDirectPlay) and mediaSource.SupportsDirectPlay = false
-    return false
-  end if
-
-  ' Get the first video stream instead of blindly using MediaStreams[0]
-  ' which could be a subtitle or audio stream
-  videoStream = getFirstVideoStream(mediaSource.MediaStreams)
-  if not isValid(videoStream)
-    return false
-  end if
-
-  streamInfo = { Codec: videoStream.codec }
-  if isValid(videoStream.Profile) and videoStream.Profile.len() > 0
-    streamInfo.Profile = LCase(videoStream.Profile)
-  end if
-  if isValid(mediaSource.container) and mediaSource.container.len() > 0
-    'CanDecodeVideo() requires the .container to be format: "mp4", "hls", "mkv", "ism", "dash", "ts" if its to direct stream
-    if mediaSource.container = "mov"
-      streamInfo.Container = "mp4"
-    else
-      streamInfo.Container = mediaSource.container
-    end if
-  end if
-
-  decodeResult = devinfo.CanDecodeVideo(streamInfo)
-  return isValid(decodeResult) and decodeResult.result
-
-end function
 
 
 ' Add next episodes to the playback queue
@@ -684,9 +959,15 @@ sub addNextEpisodesToQueue(showID)
   }), "nextEpisodes")
 
   if isValid(data) and data.Items.Count() > 1
-    ' Start at index 1 to skip the current episode
+    ' The list starts at the current episode. Queue what follows it once per episode, leaving
+    ' out any other copy of the current one (episodeQueue); each starts fresh when the queue
+    ' arrives at it (QueueManager.advanceTo).
+    following = []
     for i = 1 to data.Items.Count() - 1
-      queueManager.callFunc("push", nodeHelpers.createQueueItem(data.Items[i]))
+      following.push(data.Items[i])
+    end for
+    for each episode in episodeQueue.collapseCopies(following, episodeQueue.episodeKey(data.Items[0]), "nextEpisodes-copies")
+      queueManager.callFunc("push", nodeHelpers.createQueueItem(episode))
     end for
   end if
 end sub

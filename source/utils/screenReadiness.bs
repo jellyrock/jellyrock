@@ -1,6 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 
-' The screen readiness ledger — when did a screen PAINT, and when did it stop CHANGING?
+' The screen readiness ledger: when did a screen PAINT, and when did it stop CHANGING?
 '
 ' ## Why a ledger rather than a per-screen clock
 '
@@ -21,7 +21,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 '
 ' This is the split the mature platforms publish rather than choose between: the web's
 ' first-contentful-paint against network-idle, and Android's time-to-initial-display
-' against `reportFullyDrawn()`. Both make the same admission — the framework can see
+' against `reportFullyDrawn()`. Both make the same admission: the framework can see
 ' the first frame, but only the APP knows when the content the user came for landed.
 ' Roku gives us neither for free, so this is the minimum that earns both numbers.
 '
@@ -31,8 +31,8 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 '    instrumented so far is discoverable synchronously in the same handler that
 '    paints, so this costs nothing and it keeps `settled` from firing in a gap
 '    between two declarations. A fill declared after paint but BEFORE settle is still
-'    honoured and simply extends the run; one declared after settle is ignored, because
-'    the run is over (see `pending`). Neither is warned about — the post-settle case is
+'    honored and extends the run; one declared after settle is ignored, because
+'    the run is over (see `pending`). Neither is warned about: the post-settle case is
 '    the ordinary user-driven refresh, not a defect.
 ' 2. **Every `pending` gets exactly one `resolve`, on every path.** An error path that
 '    returns early without resolving leaves the screen permanently unsettled, which
@@ -44,16 +44,16 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 ' ## Two classes, decided mechanically
 '
 ' A fill is `content` (it changes what the screen SAYS) or `texture` (an image or
-' texture load). The class is not a judgment about whether the user notices it — that
+' texture load). The class is not a judgment about whether the user notices it: that
 ' question has a different answer at every call site and drifts. It falls out of what
 ' resolved the fill: a texture `loadStatus` callback is `texture`, data arriving is
 ' `content`. `content` is the default so the common call site stays one argument.
 '
 ' ⚠️ `contentMs` and `textureMs` are SUMS OF CONCURRENT WAITS, not shares of the load.
 ' Fills are declared together and run in parallel, so their durations overlap and their
-' total can EXCEED the wall clock: measured on `.177`, a Series detail settled in 845 ms
-' with `contentMs 878`. Neither is a bug and neither is a percentage — dividing one by
-' `settledMs` is meaningless and will sometimes exceed 100%. The wall clock is
+' total can EXCEED the wall clock: measured 2026-08-14 on `.177`, a Series detail settled
+' in 845 ms with `contentMs 878`. Neither is a bug and neither is a percentage: dividing
+' one by `settledMs` is meaningless and will sometimes exceed 100%. The wall clock is
 ' `settledMs` alone; the sums say how much waiting the screen did, and `slowestContent`
 ' says which single wait to go and look at.
 '
@@ -61,7 +61,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 ' headlines. Recording both is deliberate and it is the irreversible half of the
 ' choice: a texture timing that is noisy because the device cache was warm can be
 ' ignored later, but a fill that was never recorded can never be joined to a series
-' taken before it existed. This project has already paid for that once — see the
+' taken before it existed. This project has already paid for that once: see the
 ' `deviceKey` note in `scripts/measurements.js`, where four runs can never join a
 ' series because a selection key was added after they were taken.
 '
@@ -69,27 +69,27 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 '
 ' The gate is INSIDE each sub rather than at every call site. `scripts/harden-prod-manifest.js`
 ' forces `perfTiming=false` into every release artifact, so a shipped build compiles
-' these to empty subs — one call and no allocation per fill — and an instrumented
+' these to empty subs (one call and no allocation per fill), and an instrumented
 ' screen reads as four plain lines instead of four `#if` blocks. That is the whole
 ' reason the ledger is worth having over per-screen clocks: adding a screen is a
 ' handful of ordinary-looking statements, and `scripts/measurements.js` never changes.
 '
-' ⚠️ That holds for the `screenLoad.*` calls themselves and NOT for a fill whose signal
+' ⚠️ That holds for the `screenLoad.*` calls themselves and not for a fill whose signal
 ' has to cross a component boundary. A child that cannot reach the screen's ledger marks
-' a field instead — `ExtrasRowList.contentReady`, `SearchRow.contentReady` — and the field
+' a field instead (`ExtrasRowList.contentReady`, `SearchRow.contentReady`), and the field
 ' write plus the parent's `observeField` are ordinary app code that ships. The cost is
 ' small and thread-local (both ends are on the render thread, so no rendezvous), but it is
 ' not zero and it is not compiled out, so a cross-component fill is the one kind that is
-' worth declaring only when the milestone is genuinely worth having.
+' worth declaring only when the milestone is worth having.
 '
 ' State lives on the CALLER's `m` (these are namespaced free functions, so `m` is the
 ' calling component's), which is what keeps two screens loading at once from sharing a
-' ledger — a chained navigation mounts a fresh component per screen, so each gets its own.
+' ledger: a chained navigation mounts a fresh component per screen, so each gets its own.
 '
-' ⚠️ "The caller's `m`" holds for a plain function in a component's scope, which is every
-' call site there is today. It does NOT hold inside a BrighterScript CLASS method: there
-' `m` is the class instance, while a global function it calls sees the enclosing scope's
-' `m`, so a class instrumenting itself would write one ledger and read another. Read
+' ⚠️ "The caller's `m`" holds for a plain function, in a component's scope or in `Main()`'s
+' (`loginRouter`), which is every call site there is today. It does not hold inside a
+' BrighterScript CLASS method: there `m` is the class instance, while a global function it
+' calls sees the enclosing scope's `m`, so a class instrumenting itself would write one ledger and read another. Read
 ' through `state()` rather than `m.screenLoad` and the distinction stops mattering.
 namespace screenLoad
 
@@ -102,7 +102,7 @@ namespace screenLoad
   '
   ' Exists because "the caller's `m`" is not the same `m` everywhere, and the difference
   ' is invisible until something reads back what it wrote. A plain function in a
-  ' component's scope — every call site in `ItemDetails` — shares its `m` with the
+  ' component's scope (every call site in `ItemDetails`) shares its `m` with the
   ' namespaced functions it calls, which is what makes the ledger work at all. A
   ' BrighterScript CLASS method does not: its `m` is the class instance, while a global
   ' function it calls sees the enclosing scope's `m`, so a class that instrumented itself
@@ -120,23 +120,23 @@ namespace screenLoad
   end function
 
   ' begin: open a ledger for one load of this component. Restarts any ledger already
-  ' open — a re-load (a refresh, a second item opened without leaving the screen) is a
+  ' open: a re-load (a refresh, a second item opened without leaving the screen) is a
   ' new run, not a continuation of the last one.
   '
-  ' @param {string} component - the COMPONENT's name, e.g. "itemDetails". Deliberately
-  '                             NOT an entry in `tests/rta/screens.js`: one component
+  ' @param {string} component - the COMPONENT's name, for example "itemDetails". It is
+  '                             not an entry in `tests/rta/screens.js`: one component
   '                             serves many screens there (`itemDetails` backs all nine
   '                             `*Details` entries), and the app has no way to know which
   '                             of them the operator navigated to. The RTA screen name is
   '                             established by `--nav` DRIVING there, and `measure.js`
-  '                             records the two separately for exactly that reason —
+  '                             records the two separately for exactly that reason:
   '                             conflating them under one word `screen` is what let a
   '                             `movieDetails` series and a `seriesDetails` series compare
   '                             as one population.
   sub begin(component as string)
     #if perfTiming
       ' The instrument's own stopwatch, marked FIRST so everything this sub does after
-      ' it — including creating and marking `clock` — is attributed to the instrument
+      ' it (including creating and marking `clock`) is attributed to the instrument
       ' rather than to the screen. See `instrumentUs` below.
       probe = CreateObject("roTimespan")
       probe.mark()
@@ -150,29 +150,29 @@ namespace screenLoad
         ' `roTimespan` per ledger call would make the measurement of the overhead a
         ' significant part of the overhead.
         probe: probe,
-        ' Microseconds this run spent INSIDE `screenLoad.*` — the ledger's own footprint
+        ' Microseconds this run spent INSIDE `screenLoad.*`: the ledger's own footprint
         ' on the numbers it publishes, measured rather than argued about.
         '
         ' Why it exists: `paintMs` and `settledMs` are wall clocks that necessarily
         ' contain the instrument's own bookkeeping and emits, so a reader has no way to
         ' tell a screen that got slower from an instrument that got heavier. This makes
-        ' that separable on EVERY sample instead of once, in an experiment somebody has
+        ' that separable on every sample instead of once, in an experiment somebody has
         ' to remember to re-run. `roTimespan.totalMicroseconds()` is what makes it
-        ' worth recording at all — at millisecond resolution the per-call cost rounds
+        ' worth recording at all: at millisecond resolution the per-call cost rounds
         ' to zero and the sum is dominated by rounding.
         '
-        ' It is NOT a strict bound in either direction, and the residue is named rather
+        ' It is not a strict bound in either direction, and the residue is named rather
         ' than argued: each `totalMicroseconds()` call sits inside the span it closes
         ' (over-reports), while the handful of guard checks each sub runs BEFORE marking
         ' are not counted at all (under-reports). Both are thread-local bookkeeping on
-        ' an AA, and every EMIT is counted — emits being three orders of magnitude
-        ' dearer — so the figure answers "is the instrument's footprint small enough to
+        ' an AA, and every EMIT is counted (emits being three orders of magnitude
+        ' dearer), so the figure answers "is the instrument's footprint small enough to
         ' ignore?" without pretending to be exact. That is the only question it is asked.
         '
         ' ⚠️ It covers begin -> the settled emit, which is everything inside the span
         ' `settledMs` measures. The `split` line's OWN emit cannot be in it (the value
         ' has to be stamped into that line), so the one unmeasured cost is a single
-        ' `info()` of the same shape as the settled one directly above it — bounded by
+        ' `info()` of the same shape as the settled one directly above it, bounded by
         ' the number this field reports, not unknown.
         instrumentUs: 0,
         painted: false,
@@ -194,25 +194,25 @@ namespace screenLoad
 
   ' paint: the screen has rendered. Emits the paint line.
   '
-  ' Stop the clock at the END of the handler that renders the content — the moment all
+  ' Stop the clock at the END of the handler that renders the content: the moment all
   ' render work is submitted and the loading spinner comes down. That is "content
   ' ready", not time-to-photons; the frame itself lands a beat later. The honest
   ' alternative is the first `renderTracking` callback, which is closer to what the eye
-  ' sees but fires repeatedly and needs a per-screen rule for which fire counts — which
+  ' sees but fires repeatedly and needs a per-screen rule for which fire counts, which
   ' is exactly the per-screen knowledge this ledger exists to remove.
   '
   ' @param {string} [variant] - what KIND of thing this load was, when one screen
   '                             serves several: the item type for `ItemDetails`, the
   '                             library type for a grid. It is what lets a sample be
-  '                             attributed rather than guessed at by position — a
+  '                             attributed rather than guessed at by position: a
   '                             chained navigation mounts `ItemDetails` more than once
   '                             per launch (a Season is reached THROUGH its Series), so
   '                             "the first sample in the window" is not the one asked
   '                             for.
   sub paint(variant = "" as string)
     #if perfTiming
-      ' A screen that paints with no ledger open is an instrumentation gap — `begin`
-      ' was never called on the path this load actually took — and it is the ONE
+      ' A screen that paints with no ledger open is an instrumentation gap (`begin`
+      ' was never called on the path this load actually took), and it is the one
       ' failure that must not be silent, because silence here is indistinguishable
       ' from a screen that never painted at all. That cost a device round trip to
       ' diagnose the first time: every other signal (the transpiled output, the
@@ -244,24 +244,24 @@ namespace screenLoad
     #end if
   end sub
 
-  ' pending: declare one outstanding async fill. See rule 1 in the header — declare
+  ' pending: declare one outstanding async fill. See rule 1 in the header: declare
   ' every fill before calling `paint`.
   '
-  ' @param {string} id - a short stable name for the fill, e.g. "extras", "trailer".
+  ' @param {string} id - a short stable name for the fill, for example "extras", "trailer".
   '                      It is what the settled line names as the slowest, so it should
   '                      say what was being waited on rather than which task ran.
   ' @param {string} [fillClass] - `screenLoad.CONTENT` (default) or `screenLoad.TEXTURE`.
-  sub pending(id as string, fillClass = "content" as string)
+  sub pending(id as string, fillClass = screenLoad.CONTENT as string)
     #if perfTiming
       if not isValid(m.screenLoad) then return
       ' A run ENDS at settle. A fill declared after that belongs to work nobody opened a
-      ' ledger for — in practice a user-driven refresh, which re-runs the same fills on a
-      ' screen that has long since settled — and admitting it would publish a second,
+      ' ledger for (in practice a user-driven refresh, which re-runs the same fills on a
+      ' screen that has long since settled), and admitting it would publish a second,
       ' later settled time for a load that already reported one. Ignored rather than
       ' warned about, because the refresh case is ordinary rather than a defect.
       ' `resolve` carries the SAME guard, and must: the refresh that re-declares these
       ' fills also re-resolves them, so guarding only this side left every ordinary
-      ' return-from-playback emitting an "unbalanced" warning — the one warning that is
+      ' return-from-playback emitting an "unbalanced" warning, the one warning that is
       ' supposed to mean the two sides have drifted. A warning that fires routinely is a
       ' warning nobody reads.
       if m.screenLoad.settled then return
@@ -285,7 +285,7 @@ namespace screenLoad
   ' which is the only ordering that is safe when the resolve could in principle land
   ' synchronously inside that call. `ItemDetails`' logo is the case: a Poster only loads
   ' when its `uri` actually changes, and whether it changed is knowable only after
-  ' `setItemLogo` returns — but if a warm texture cache could deliver `loadStatus`
+  ' `setItemLogo` returns. But if a warm texture cache could deliver `loadStatus`
   ' synchronously during the assignment, declaring afterwards would let the resolve
   ' outrun its own pending and strand the screen unsettled forever.
   '
@@ -313,13 +313,13 @@ namespace screenLoad
   ' sides have drifted, and an unbalanced ledger publishes a settled time describing a
   ' different set of fills than the reader will assume.
   '
-  ' After settle, though, it is silent — mirroring `pending`. The run is over, and the
+  ' After settle, though, it is silent, mirroring `pending`. The run is over, and the
   ' resolves that arrive next belong to work nobody opened a ledger for: a return from
   ' playback re-runs the trailer check, the refresh button re-runs the extras chain, and
   ' a Season re-sets its logo when the first one never became visible. All three are
   ' ordinary user actions, all three happen in every `perfTiming` build, and warning on
-  ' them would fire the drift alarm routinely — which trains the reader to ignore the
-  ' one signal that is supposed to mean something is genuinely wrong.
+  ' them would fire the drift alarm routinely, which trains the reader to ignore the
+  ' one signal that is supposed to mean something is wrong.
   sub resolve(id as string)
     #if perfTiming
       if not isValid(m.screenLoad) then return
@@ -330,7 +330,7 @@ namespace screenLoad
       if not isValid(entry)
         if not isValid(m.screenLoadLog) then m.screenLoadLog = new log.Logger("ScreenLoad")
         m.screenLoadLog.warn("screen-load unbalanced - component " + m.screenLoad.component + " resolved " + id + " which was never pending")
-        ' Counted, because this is an EMIT and emits are the expensive thing here — the
+        ' Counted, because this is an EMIT and emits are the expensive thing here: the
         ' same cost as the paint line, on a path that lands inside the span `settledMs`
         ' measures. Leaving it out would mean the drift case, the one where the reader
         ' most needs to know what the instrument cost, was the one case the footprint
@@ -366,26 +366,27 @@ namespace screenLoad
 
   ' ⚠️ These four are declared UNCONDITIONALLY and gate their own BODIES, exactly like the
   ' public subs above. An earlier cut wrapped the whole group in one namespace-level
-  ' `#if perfTiming`, which BSC accepts and `npm run validate` passes — and which the Roku
+  ' `#if perfTiming`, which BSC accepts and `npm run validate` passes, and which the Roku
   ' compiler REJECTS the moment code coverage is on.
   '
   ' Rooibos injects a line-report call at the start of every block it instruments, so a
-  ' `#if` wrapping DECLARATIONS gets one placed between the `#if` and the first `sub` —
-  ' i.e. an executable statement at file scope, outside any function:
+  ' `#if` wrapping DECLARATIONS gets one placed between the `#if` and the first `sub`:
+  ' that is, an executable statement at file scope, outside any function:
   '
   '     #if perfTiming
   '         RBS_CC_271_reportLine("306", 4)   <- not inside a sub
   '         sub screenLoad_settleIfDone()
   '
-  ' `bsconfig-tests-unit.json` has `isRecordingCodeCoverage: false` and
-  ' `bsconfig-tests.json` has it TRUE, so `npm run test:unit` passed on hardware and
-  ' `npm run test:all` failed in CI with a bare "Deployment failed: Compile error" — the
-  ' device does not send the detail back. Gate bodies, never declarations.
+  ' When this was found (2026-08-14), `bsconfig-tests-unit.json` had
+  ' `isRecordingCodeCoverage: false` and `bsconfig-tests.json` had it TRUE, so
+  ' `npm run test:unit` passed on hardware and `npm run test:all` failed in CI with a bare
+  ' "Deployment failed: Compile error": the device does not send the detail back. Coverage
+  ' is now on only in `bsconfig-tests-complete.json`. Gate bodies, never declarations.
 
   ' Emit the settled pair once every declared fill has resolved on a painted screen.
   '
-  ' Emits at most once per run. A fill that lands after the last one — a straggler
-  ' from a cancelled chain, a second callback on one task — must not publish a
+  ' Emits at most once per run. A fill that lands after the last one (a straggler
+  ' from a canceled chain, a second callback on one task) must not publish a
   ' second, later settled time for the same load: two lines that disagree, with
   ' nothing on the wire to say which one the reader meant.
   sub settleIfDone()
@@ -403,7 +404,7 @@ namespace screenLoad
 
       ' Stamped into a local BEFORE the line is built, rather than being read inline
       ' partway through the concatenation as it used to be. The inline form put part of
-      ' the settled line's OWN string building inside the number it reports — which is
+      ' the settled line's OWN string building inside the number it reports, which is
       ' precisely the instrument-measures-itself confusion `instrumentUs` exists to
       ' separate, so leaving it would have meant the two fields disagreed by
       ' construction. Sub-millisecond, so no recorded number is expected to move.
@@ -411,7 +412,7 @@ namespace screenLoad
 
       ' Two lines, because roku-log's Logger.info takes the message plus at most nine
       ' arguments once the BSC plugin has spent one on the injected pkg path, and
-      ' exceeding it is not a compile error — it faults at runtime with "Wrong number
+      ' exceeding it is not a compile error: it faults at runtime with "Wrong number
       ' of function parameters" (&hf1) and drops the app into the debugger. Same reason
       ' `LoadItemsTask2` carries `firstPaint` in its message. Everything rides in the
       ' message here so the format is one thing to read rather than two.
@@ -419,7 +420,7 @@ namespace screenLoad
       ' `assembleSamples` in scripts/measurements.js merges every line of a family into
       ' ONE sample, so splitting costs the reader nothing.
       '
-      ' BOTH lines repeat the component + variant, and that is not redundancy — it is the
+      ' BOTH lines repeat the component + variant, and that is not redundancy: it is the
       ' identity the assembler splits on. A chained navigation mounts this component more
       ' than once per launch and the two ledgers interleave on one console, so a settled
       ' line that could not say WHICH load it closed would be filed against whichever
@@ -427,8 +428,8 @@ namespace screenLoad
       ' would look perfectly well-formed while describing two different screens.
       m.screenLoadLog.info("screen-load settled - component " + m.screenLoad.component + " variant " + variantOrNone() + " ms " + settledMs.toStr() + " fills " + m.screenLoad.fills.toStr() + buildFlags())
 
-      ' Closed here, so the settled emit above — the largest single cost the instrument
-      ' has, and one that lands inside `settledMs` for any LATER load on this screen —
+      ' Closed here, so the settled emit above (the largest single cost the instrument
+      ' has, and one that lands inside `settledMs` for any LATER load on this screen)
       ' is inside the reported figure. Only the split emit below is outside it; see the
       ' `instrumentUs` note in `begin`.
       m.screenLoad.instrumentUs += m.screenLoad.probe.totalMicroseconds()
@@ -455,13 +456,13 @@ namespace screenLoad
   end function
 
   ' The build flags the sample was taken under, stamped by the app itself so a number
-  ' can never be silently compared against one measured in a distorting build — a
+  ' can never be silently compared against one measured in a distorting build: a
   ' `debug=true` build attaches `rawApiData` to every transformed item. Provenance
   ' belongs in the sample, not in someone's memory of which manifest was checked out.
   '
-  ' ENABLE_RTA is deliberately NOT here: it is the third flag that can move a
+  ' ENABLE_RTA is not here: it is the third flag that can move a
   ' measurement (it makes the on-device ODC component resident) and the app cannot
-  ' self-report it usefully — `scripts/measure.js` derives it from the deploy it
+  ' self-report it usefully: `scripts/measure.js` derives it from the deploy it
   ' performed. See the note in `scripts/measurements.js`.
   function buildFlags() as string
     #if debug

@@ -143,6 +143,28 @@ namespace tests
       m.assertTrue(result.inStr("tag=xyz789validtag") >= 0, "URL should contain tag parameter")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ImageURL() - server URL")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds on a server URL the caller passes")
+    function _()
+      result = ImageURL("item-1", "Primary", { maxHeight: 60, tag: "t1" }, "http://passed.example:8096")
+
+      m.assertEqual(result.left(Len("http://passed.example:8096/Items/item-1/Images/Primary?")), "http://passed.example:8096/Items/item-1/Images/Primary?")
+      m.assertTrue(result.inStr("tag=t1") >= 0, "URL should contain tag parameter")
+    end function
+
+    @it("reads the session's server URL when none is passed")
+    function _()
+      sessionUrl = m.global.server.serverUrl
+      m.assertNotEqual(sessionUrl, "", "precondition: the test session has a server URL")
+
+      result = ImageURL("item-1", "Primary", { tag: "t1" })
+
+      m.assertEqual(result.left(Len(sessionUrl)), sessionUrl)
+    end function
+
   end class
 
 end namespace

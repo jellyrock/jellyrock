@@ -108,6 +108,33 @@ describe('forwardFindings — endpoint changes + tier relevance', () => {
     expect(candidates[0].appUsage).toMatchObject({ used: true, apiVersionRange: [2, null] });
   });
 
+  it('keeps a removal on a [1, ∞) endpoint active-tier when the release is patchless (12.0)', () => {
+    const m = manifest({
+      endpoints: [
+        endpoint({
+          path: '/Shows/NextUp',
+          normalized: '/shows/nextup',
+          minApiVersion: 1,
+          maxApiVersion: null,
+        }),
+      ],
+    });
+    const d = diff(
+      [
+        {
+          kind: 'param-removed',
+          path: '/Shows/NextUp',
+          method: 'GET',
+          name: 'disableFirstEpisode',
+          detail: 'gone',
+        },
+      ],
+      { toVersion: '12.0' },
+    );
+    const { candidates } = forwardFindings(d, m, BOUNDARIES);
+    expect(candidates[0]).toMatchObject({ relevance: 'active-tier', needsInvestigation: true });
+  });
+
   it('marks a frozen-only endpoint frozen-skip (self-excludes, no allowlist)', () => {
     const m = manifest({
       endpoints: [
@@ -533,7 +560,7 @@ describe('suppression', () => {
   });
 
   it('does not match when a predicate references a field the change lacks', () => {
-    // `path` predicate against a schema-scoped change → no match.
+    // `path` predicate against a schema-scoped change: no match.
     expect(matchSuppression(breakingCandidate, { id: 'r', match: { path: '/items/{}' } })).toBe(
       false,
     );
@@ -565,14 +592,14 @@ describe('buildReport — integration over fingerprints', () => {
   const m = manifest({
     endpoints: [
       // floor-relevant (minApiVersion 1) and absent from the floor fixture below
-      // → both a forward breaking candidate and a backward coverage-gap.
+      // gives both a forward breaking candidate and a backward coverage-gap.
       endpoint({
         path: '/Items/{0}',
         normalized: '/items/{}',
         minApiVersion: 1,
         maxApiVersion: null,
       }),
-      // present on the floor → no coverage-gap.
+      // present on the floor: no coverage-gap.
       endpoint({
         path: '/Users/{0}/Items',
         normalized: '/users/{}/items',
@@ -658,7 +685,7 @@ describe('buildReport — integration over fingerprints', () => {
     const toFp = fp('10.12.0-rc1', { operations: {} }); // /Items/{} removed in the RC
     const report = buildReport({ fromFp, toFp, floorFp, manifest: m, boundaries: BOUNDARIES });
     expect(report).toMatchObject({ fromVersion: '10.11.10', toVersion: '10.12.0-rc1' });
-    // The forward removal lands in the active tier (RC base 10.12.0 → tier 2), so it's
+    // The forward removal lands in the active tier (RC base 10.12.0 is tier 2), so it's
     // a real breaking candidate, not dropped as frozen-tier.
     expect(report.counts.breaking).toBeGreaterThanOrEqual(1);
   });
@@ -714,7 +741,7 @@ describe('CLI --stdout against committed fixtures', () => {
     expect(ok.exitCode).toBe(0);
     const report = JSON.parse(ok.stdout);
     expect(report.fromVersion).toBe('10.11.8');
-    // /Items/{} GET removed on an active-tier endpoint we use → breaking
+    // /Items/{} GET removed on an active-tier endpoint we use: breaking
     expect(report.counts.breaking).toBeGreaterThanOrEqual(1);
 
     const missing = spawnScript(SCRIPT, ['10.11.8', '9.9.9', '--root', dir, '--stdout']);
@@ -728,7 +755,7 @@ describe('CLI --stdout against committed fixtures', () => {
     write(fpRel('10.7.0'), fp('10.7.0', { operations: {} }));
     write(fpRel('10.11.8'), fp('10.11.8', { operations: { 'GET /Items/{itemId}': {} } }));
     write(fpRel('10.11.10'), fp('10.11.10', { operations: {} })); // /items/{} removed
-    // committed manifest USES /items/{} → its removal is a breaking candidate.
+    // committed manifest uses /items/{}, so its removal is a breaking candidate.
     write(
       'docs/architecture/api-usage-manifest.json',
       manifest({ endpoints: [endpoint({ minApiVersion: 2 })] }),
@@ -738,7 +765,7 @@ describe('CLI --stdout against committed fixtures', () => {
       'floor: "10.7.0"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n',
     );
     write('.api-watch/suppressions.yml', 'rules: []\n');
-    // an ALTERNATE manifest that uses nothing → the same diff yields 0 breaking.
+    // an alternate manifest that uses nothing: the same diff yields 0 breaking.
     write('alt-manifest.json', manifest({ endpoints: [] }));
 
     const base = spawnScript(SCRIPT, ['10.11.8', '10.11.10', '--root', dir, '--stdout']);
@@ -782,7 +809,7 @@ describe('readManifestFrom + resolveFingerprint (dry-run helpers)', () => {
     const committed = await resolveFingerprint(dir, '10.11.8', { fetch: false });
     expect(committed.specVersion).toBe('10.11.8');
 
-    // missing + fetch:false → the helpful "no committed fingerprint" error, no network.
+    // missing + fetch:false: the helpful "no committed fingerprint" error, no network.
     await expect(resolveFingerprint(dir, '9.9.9', { fetch: false })).rejects.toThrow(
       /no committed fingerprint for 9\.9\.9/,
     );

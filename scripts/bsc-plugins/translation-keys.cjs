@@ -1,6 +1,6 @@
 /**
  * BrighterScript compiler plugin that auto-generates a `translationKeys` namespace
- * with string constants from locale/custom/en-us.json.
+ * with string constants from locale/custom/en_US.json.
  *
  * Gives compile-time safety (typos in key names become build errors) and IDE autocomplete.
  * The generated file is virtual (injected via program.setFile, not written to disk).
@@ -71,12 +71,12 @@ class TranslationKeysPlugin {
         }, DEBOUNCE_MS);
       });
       this.watcher.on('error', () => {
-        // File may have been deleted — watcher will be re-established
+        // File may have been deleted; the watcher will be re-established
         // in generateAndInject when the file reappears
         this.stopWatching();
       });
     } catch (_err) {
-      // File doesn't exist yet — beforeProgramValidate will handle it,
+      // File doesn't exist yet: beforeValidateProgram will handle it,
       // and the watcher will be started once the file appears
     }
   }
@@ -100,7 +100,7 @@ class TranslationKeysPlugin {
     try {
       json = fs.readFileSync(this.baseFilePath, 'utf8');
     } catch (err) {
-      // File missing — emit empty namespace so references show as compile errors
+      // File missing: emit empty namespace so references show as compile errors
       if (this.cachedJson !== '') {
         this.cachedJson = '';
         program.setFile(VIRTUAL_FILE_PKG_PATH, this.generateEmptyNamespace(err.message));
@@ -108,7 +108,7 @@ class TranslationKeysPlugin {
       return;
     }
 
-    // Re-establish watcher if it was lost (e.g. file was deleted and recreated)
+    // Re-establish watcher if it was lost (for example, the file was deleted and recreated)
     if (!this.watcher) {
       this.startWatching();
     }

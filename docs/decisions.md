@@ -138,7 +138,7 @@ Ruled out: (a) a **two-track `net8;net9` release** — keeps 10.9/10.10 receivin
 **superseded-by**: `deviceid-header-authoritative`
 **related-files**: source/utils/session.bs, source/api/baseRequest.bs, `source/remotecontrol/remoteProtocol.bs`, `docs/adr/0023-cold-launch-cast-producer.md`
 
-JellyRock derives its server `DeviceId` as `serverDeviceName = device.id + user.friendlyName` (`SetServerDeviceName`, `session.bs:494`). Appending the username was a workaround for **old Jellyfin servers that revoked a device's sibling auth tokens on re-authentication**, so multiple users' saved tokens could coexist on one Roku for fast user-switching. The suffix makes `serverDeviceName` **unstable across startup** — bare `device.id` before login, `device.id + username` after (`SetServerDeviceName` runs post-login, `session.bs:459`) — and the auth-header `DeviceId`, the `ws://` socket URL, and the `/pair` report each capture it at a different moment, splitting one physical device+user into **two** Jellyfin sessions. On the HTTP (`ws://`) path this breaks the #668 cold-launch producer: the phantom keys on the `/pair` `DeviceId` while the live `ws://` `WebSocketController` lands on the *other* `DeviceId`, so the phantom never sees the app as open (double-presence). Reproduced on-device against a real Jellyfin 10.11.11 container.
+JellyRock derives its server `DeviceId` as `serverDeviceName = device.id + user.friendlyName` (`user.SetServerDeviceName()` in `source/utils/session.bs`). Appending the username was a workaround for **old Jellyfin servers that revoked a device's sibling auth tokens on re-authentication**, so multiple users' saved tokens could coexist on one Roku for fast user-switching. The suffix makes `serverDeviceName` **unstable across startup** — bare `device.id` before login, `device.id + username` after (`SetServerDeviceName` runs post-login, from `Login()`) — and the auth-header `DeviceId`, the `ws://` socket URL, and the `/pair` report each capture it at a different moment, splitting one physical device+user into **two** Jellyfin sessions. On the HTTP (`ws://`) path this breaks the #668 cold-launch producer: the phantom keys on the `/pair` `DeviceId` while the live `ws://` `WebSocketController` lands on the *other* `DeviceId`, so the phantom never sees the app as open (double-presence). Reproduced on-device against a real Jellyfin 10.11.11 container.
 
 Decision: **version-gate the suffix at server ≥ 10.11.** On 10.11+ use a bare, stable `device.id` (known pre-auth, so every session-creating channel agrees → identity continuity holds); on <10.11 keep `device.id + username` (unchanged behavior — and those servers have no cold-cast producer anyway, since the plugin is `net9`/10.11-floored per `companion-net9-floor`). The 10.11 boundary needs no version archaeology: cold-cast already lives *only* at 10.11+, and 10.11.11 was **empirically shown to allow multiple auth tokens per `DeviceId`** (two users authenticated on the same `DeviceId` both kept valid tokens), so the suffix is provably unneeded there. Ruled out: (a) disabling cold-launch on suffix-needing servers — unnecessary, no cold-cast-capable server needs the suffix; (b) hunting the exact pre-10.11 version where the server token-revoke bug was fixed — unnecessary, the 10.11 floor is a safe conservative gate; (c) keeping the suffix but finalizing `serverDeviceName` before auth — blocked, `friendlyName` comes from the post-auth user object. Pending client implementation in `session.bs`; must verify multi-user switching still works on 10.11+ and nothing else keyed on the suffixed name regresses. Cross-referenced from [ADR 0023](adr/0023-cold-launch-cast-producer.md).
 
@@ -209,6 +209,7 @@ Ruled out: **reverting the vendored change and relying only on `closeSocket()`'s
 
 **date**: 2026-08-02
 **status**: accepted
+**partially-superseded-by**: home-row-failure-tile (the five-row asymmetry; recovery by user retry)
 **related-files**: `components/home/LoadLatestRowsTask.bs`, `source/home/latestRows.bs`, `components/home/HomeRows.bs`, `source/api/apiPipeline.bs`
 
 A request that never answered says nothing about what a library holds, so Home's latest-media rows distinguish it from an authoritative empty result. Result children carry a status: `ok` may act on the list (an empty one still removes the row — that is how a genuinely empty library clears), while a timeout or transport failure is skipped and the existing row stands untouched. Before this, any empty result removed the row, so a flaky network deleted good content on refresh — the failing path emitted an empty row and `populateRowFromData` removes a row it is handed an empty list for.
@@ -218,7 +219,9 @@ Ruled out: retry-in-place, which adds a second timeout budget to a path that alr
 ## decision-id: latest-rows-no-mid-run-restart
 
 **date**: 2026-08-02
-**status**: accepted
+**status**: superseded
+**superseded-by**: latest-rows-new-node-per-run
+**partially-superseded-by**: pipeline-budget-charges-wait-only (the stalled-run backstop now measures silence since the last delivered row, not time since the run started)
 **related-files**: `components/home/HomeRows.bs`, `source/home/latestRows.bs`, `source/constants/timeouts.bs`
 
 A Home refresh that lands while a latest-rows run is in flight now SKIPS, leaving the running orchestrator to finish, instead of STOPping it and setting `control = "RUN"` again on the same reused Task node — the rule `updateHomeRows()` already applies to the other five persistent tasks. Roku documents the hazard the old shape carried: "if a Task node is already in a given state as indicated by its state field, including RUN, setting its control field to that same state value has no effect" (dev-doc `DEVELOPER/core-concepts/threads.md`, "Re-running a task"). The restart therefore worked only if the STOP had already moved `state` to `stop` by the time the RUN was written; STOP-via-control is a documented path to that state, but nothing documents the transition as synchronous with the field write, and under the losing ordering the refresh silently did nothing. The guard removes the dependency — a running task is never STOPped, and a task that has returned is in `stop`, where RUN is documented to take.
@@ -633,7 +636,7 @@ comparison being refused — that means an axis is on the wrong list, and the li
 function (`comparability`) pinned by tests, so moving one is a small diff.
 
 The rank test moved into code for a reason worth recording beside it. Re-deriving the two
-p-values in [`home-first-paint-performance.md`](dev/home-first-paint-performance.md) found
+p-values then in `home-first-paint-performance.md` (removed in #1163; the values are quoted below) found
 they were computed by **different methods and neither said so**: the `apiPipeline` pair
 (n=5/6) is genuinely exact at 2/C(11,5) = 0.00433, while the batched-attach pair's
 "U = 0.0, p = 0.0002" is the normal approximation with a continuity correction (z = 3.742 →
@@ -941,7 +944,8 @@ The ODC calibration's `plain` arm drops the on-device component AND restores
 `ENABLE_RTA=false` in the staged manifest, rather than dropping the component alone as
 [ADR 0030](adr/0030-non-odc-arm-identity-by-enclosure.md) originally specified. That ADR
 assumed `injectTestingFiles: false` skips both jobs; it skips only the injection — the
-manifest rewrite sits outside that option's guard (`RokuDevice.js:71-76`) and `#if` is
+manifest rewrite sits outside that option's guard (the `createPackage` callback in RTA's
+`RokuDevice.createPackage()`) and `#if` is
 evaluated on the device from the shipped manifest, so the component-only arm would still
 run every `#if ENABLE_RTA` block. Three reasons to flip it: the resulting build is
 byte-for-byte the state the non-RTA n=30 baselines were taken on, which is the
@@ -1185,6 +1189,7 @@ The RTA suite tests Quick Connect end to end by approving its own code: `POST /Q
 
 **date**: 2026-08-25
 **status**: accepted
+**partially-superseded-by**: playback-report-unidentified-audio (the silence, when the source lists audio the report cannot tie to the playing track)
 **related-files**: `source/utils/playbackReport.bs`, `source/utils/transcodeCause.bs`, `docs/architecture/playback.md`
 
 The playback-info report renders a `source → target` pair for an aspect ONLY where the server declared the target. Where it did not, the row shows the source alone and no arrow. The arrow is a claim that something changed, and the report has no business making that claim from inference.
@@ -1243,6 +1248,7 @@ The audio half of the device profile advertises **containers** in `Container` an
 **date**: 2026-08-30
 **status**: accepted
 **partially-supersedes**: `audio-direct-play-containers-not-codecs` (which containers ship)
+**partially-superseded-by**: `audio-opus-transcoded-in-ogg` (opus in the ogg row)
 **related-files**: `source/utils/deviceCapabilities.bs`
 
 The standalone-audio profile advertises `ac3` and `eac3` and deliberately does NOT advertise `dts` or `truehd`, and the asymmetry is a measurement rather than caution. All four are elementary bitstreams whose container name IS their codec name — the same shape as `mp3` and `flac`, which is why the old joined string of codec names covered them by accident on a surround-capable device and why the per-container table dropped them. They probe **bare** (`CanDecodeAudio({ Codec: … })` with no `Container`), because Roku has no container name for an elementary bitstream; bare is also the honest question, since "can this device put ac3 out at all" is exactly the capability that makes the file playable. Measured on a Streaming Stick 4K in Stereo out — where every surround codec answers false, `PassThru` included — and on a Roku Ultra with a 5.1 soundbar, where `ac3` / `eac3` / `dts` / `dtshd` answer true and `mat` answers true bare only. So the probe gates the rows per device as intended, and the Ultra ships two rows the Stick does not. Container strings confirmed against a live 10.11.11: a `.ac3` reports `ac3`, a `.eac3` reports `eac3`, and a `.ec3` resolves to `eac3` at `/PlaybackInfo`, so the single token `eac3` covers both extensions.
@@ -1269,6 +1275,837 @@ The alert helper takes an OPTIONAL secondary button beside OK, rather than the f
 
 **`showChoiceDialog` is the near miss, and it is the wrong fit for two separate reasons.** It falls back to `JRListDialog` when the labels are too wide for a button row — which for a long translation would turn an error MESSAGE into a scrollable list, a presentation nobody chose and nobody would notice until it shipped in a locale nobody reads. And its contract deliberately marks nothing as current, because a choice dialog is asking the user to pick; an alert is not asking, OK is already the default and the secondary sits beside it. The dividing line for future callers: two ANSWERS to a question are `showConfirmDialog`, three or more are `showChoiceDialog`, and one answer plus one action that does not leave the alert's subject is this parameter.
 
+## decision-id: rta-waits-poll-not-observe
+
+**date**: 2026-09-05
+**status**: accepted
+**related-files**: `tests/rta/lib/steps.js`, `tests/rta/CLAUDE.md`, `scripts/lint/eslint-rules/rta-wait-justified.js`, `eslint.config.js`
+
+The RTA harness POLLS in every one of its waits rather than using `roku-test-automation`'s `onFieldChangeOnce` observer, and that is now settled rather than pending. (This record deliberately carries no COUNT. It said 101 while `tests/rta/CLAUDE.md` said 95 and the AST said 96 — a decision record is a point-in-time statement, so a live figure in one rots by construction and cannot be gated. The per-category counts live in that file, behind `npm run lint:rta-waits`.) Three of the four `waitFor` categories cannot use the observer at all: ODC observes a FIELD, so a function `keyPath` (`getChildCount()`) has nothing to observe; a wait for absence is watching a node that is gone; and an `action:` retry loop's per-tick re-press IS the mechanism, so an observer would sit and watch for a key that never landed. The focus waits have no applicable primitive either — the ODC request table offers `getFocusedNode` / `hasFocus` / `isInFocusChain`, all reads, and one observer that needs a node `keyPath` plus a field name, which cannot express "wherever focus now is". Only the 37 plain-field waits had a real choice, and every one was checked against the app source: each target state is either terminal (held until the next user action) or recurrent (re-entered if a tick misses it), and a poll can only miss a one-shot PULSE. The single genuine pulse in the suite, `loadState === 'skeleton'`, is handled by widening the window in the app under `ENABLE_RTA` (`rtaSkeletonHoldMs`) rather than by observing it — which keeps one answer to "how do we wait" instead of two competing ones. This reverses the hedge in `docs/dev/rta-tests.md`, which had deferred to [#785](https://github.com/jellyrock/jellyrock/issues/785) possibly migrating the poll loops; #785 is closed and that migration is not happening.
+
+**The justification is gated per FIELD, not per call site.** The first three categories prove themselves from the call's syntax, but "this field is not a pulse" is a fact about how the APP writes it, which no parser can see. So `jellyrock-rta/wait-justified` ratchets on the `keyPath`: one in `VERIFIED_SETTLE_KEYPATHS` inherits its verification for free, and one that is not there fails `lint:js`. That asymmetry is deliberate — a sixth `#osd.visible` wait costs nothing because the expensive part was verifying `#osd.visible` once, while a wait on an unchecked field trips the gate at exactly the moment the verification is owed. A per-site annotation was the alternative and was rejected: 37 annotations that say nothing a reader needs, against a ~20-entry allowlist that IS the inventory. It is a local ESLint rule module rather than a `no-restricted-syntax` selector because "matches none of four shapes" needs stacked `:not(:has(…))` plus a long alternation — writable, but not safely editable by the next reader, and a selector cannot have `RuleTester` unit tests.
+
+## decision-id: rta-screensaver-detect-not-suppress
+
+**date**: 2026-09-05
+**status**: accepted
+**related-files**: `tests/rta/lib/diagnostics.js`, `tests/rta/lib/diagnostics.test.js`, `docs/dev/rta-tests.md`
+
+The RTA harness DETECTS a running screensaver in its failure dump rather than suppressing it with `roku-test-automation`'s `disableScreenSaver`, the primitive the capability inventory had flagged for this phase. A screensaver is a real state on these devices — one was observed running on `.178` (`Aquatic Life`, `type="ssvr"`) — and Roku runs it in its own BrightScript context, so every ODC read fails while nothing is wrong with the app: the dump said `device did not answer ODC` and nothing in it separated that from a crashed app or a device off the network. ECP `query/active-app` answers from the OS rather than from inside the channel, so it still reports the screensaver when ODC cannot, and the library already models it as a typed field (`ActiveAppResponse.screensaver`). `captureFailureState` reads it as a fourth parallel probe with `retryCount: 0` — ECP options carry no timeout, and a diagnostic may not stretch the failure path — and prints it ABOVE the ODC line, because it explains it.
+
+**Suppression was declined on three grounds.** Its benefit is unverified in our topology: RTA builds its ODC node with `createObject` and never adds it to the scene, so the hidden `Video` node sits outside the render tree, and whether the field takes effect there was never measured — the device probe confirmed only that the node is created and removed (`Video` 0→1→0 on `.177`, with the arg spelling the client type documents, which works because BrightScript AA lookups are case-insensitive by default). Adopting it would owe a re-issue after every relaunch, on a `relaunch()` shared with `ENABLE_RTA=false` builds where an ODC call cannot succeed. And suppressing the screensaver would delete the very signal the detector reports. **What is NOT claimed is that a screensaver CAUSES the ODC failure on our hardware**: the one observation carrying both also had the hang survive dismissing the screensaver AND a clean channel restart, so that device had an independent fault — the causal link is cited to RTA's README and Roku's screensaver guide, not to our own measurement. Both new gates were confirmed by mutation, one of which was passing vacuously (`findIndex` returns -1, which is less than every real index). Revisit if the detector ever reports a screensaver in a real run — a healthy run never reaches the devices' 10-minute idle timeout, because the suite presses keys throughout — and verify suppression actually works before adopting it.
+
+## decision-id: rta-odc-transport-config-unset
+
+**date**: 2026-09-06
+**status**: accepted
+**related-files**: `tests/rta/lib/driver.js`, `tests/rta/CLAUDE.md`, `tests/rta/lib/steps.js`, `scripts/measurement-guard.js`
+
+`setupRtaEnv()` leaves all three of `roku-test-automation`'s transport knobs unset — `defaultTimeout`, `timeoutMultiplier` and `disableCallOriginationLine` — and the capability inventory's flag on them is answered rather than deferred. **`disableCallOriginationLine` must stay off, and it is the opposite of the optimization it looks like.** The library bills it as a small overhead because it constructs an `Error` per request purely to capture a stack; what that `Error` buys is that a failed request rejects with THAT error instead of one built inside the client's own socket callback, so the stack names the harness call site rather than the library's async internals. Enabling it would trade this suite's central property — a failure you can attribute — for a measured **1.54 µs per request** (the `.stack` string is only materialized on the failure path, at 6.22 µs), under 154 ms even at a wildly generous 100,000 requests. **`defaultTimeout` and `timeoutMultiplier` have no value worth setting either.** Unset, every request carries a 10 s ceiling; on `.177` — the *slower* of the two devices — a healthy round trip is ~5.4 ms and the two-round-trip failure capture runs a median 21 ms (18–30 ms, n=20), so the ceiling already sits some 1800× above what it bounds, with no tail at n=20 to argue about. Scaling it up only delays a failure no run has recorded, and scaling it down is not a per-device question, which is what `timeoutMultiplier` is for. The mode that genuinely takes a device out — `rta-odc-connect-hang` in `docs/signals-backlog.md` — is a socket handshake that never settles, while the per-request timeout wraps the request, so neither field can reach it.
+
+**One coherence gap is recorded as known rather than fixed.** `waitFor` checks its deadline at the top of a tick and then awaits a read the loop does not bound, and 23 wait sites carry a total budget under the 10 s ceiling (8 at 5 s, 15 at 8 s, derived from the syntax tree). So a single request that times out can outlast the whole wait, and a `waitFor` given `timeout: 5000` can report `waitedMs: 10500`. The bounded fix exists and was considered — pass the wait's REMAINING budget down as the read's own timeout, which needs no constant and would make "waited no longer than asked" an invariant a gate could check. It was declined on evidence: no run in the ledger has recorded such a timeout, the `readErrors` counter already attributes one when it happens, and any global ceiling low enough to fit the shortest wait would be chosen with no device baseline behind it — manufacturing the flake class this harness exists to remove. **Reopen on the first recorded read timeout on either device.**
+
+## decision-id: rta-focus-walked-not-teleported
+
+**date**: 2026-09-06
+**status**: accepted
+**related-files**: `tests/rta/lib/steps.js`, `tests/rta/specs/dialogs.spec.js`, `tests/rta/specs/quick-connect.spec.js`, `tests/rta/CLAUDE.md`, `eslint.config.js`
+
+The RTA suite WALKS focus with real key presses and does not teleport it with `roku-test-automation`'s `focusNode`, now gated by `no-restricted-syntax` rather than left to convention. `focusNode` sets focus straight onto a node, skipping the key handler that would have moved it — so a spec can arrange a state the remote cannot reach and still pass, which is the one failure a device suite exists to make impossible. The capability inventory recorded this primitive as "0, correctly unused" while it was being used FOUR times: once in `quick-connect.spec.js`, three times in `dialogs.spec.js`. All four now press the keys a viewer presses, through one shared `walkFocusInto(key, containerId)` action, and the claim the inventory made is finally true.
+
+**What the teleport calls stood in for was untested app code, and it is two-branched.** Up from `ItemDetails`' button group targets an interactive track dropdown when one exists and falls through to the description when none does (the `key = "up"` branch of `ItemDetails.onKeyEvent()`, via `pickTrackDropdownFromButtons()`); Up from a closed dropdown arrives by way of `requestFocusReturn` -> `ItemDetails.onDropdownRequestUp()`. So the number of rungs is a property of the FIXTURE's tracks, which is why the walks are guarded loops rather than counted presses — a fixed count is right on one server and wrong on another, while pressing until focus arrives is right on both. Converting was preferred over justifying the teleport calls because it removes the deviation instead of licensing it: no allowlist, no per-site disable, just a banned primitive. The costs are real and accepted — a walk spends a poll tick per rung (the two description sites went 5 s to 8 s), and specs now depend on the nav ladders they traverse, a dependency that buys coverage those ladders did not previously have. The containment test routes through `focusIsInside` rather than a hand-rolled `keyPath.includes(...)`, gated by unit tests including the `#options` inside `#optionsPanelOverlay` substring case.
+
+## decision-id: rta-odc-gated-before-bounded
+
+**date**: 2026-09-06
+**status**: accepted
+**related-files**: `scripts/lib/odc-probe.js`, `tests/rta/lib/driver.js`, `tests/rta/lib/registry.js`, `scripts/measurement-guard.js`, `tests/rta/CLAUDE.md`
+
+A run's first ODC call is now **gated on a raw TCP probe and only then bounded by a wall clock**, in that order, and the order is the decision rather than an implementation detail. `tech-debt.md`'s `rta-odc-connect-unbounded` framed this as one failure ("an ODC call can hang FOREVER") with one obvious fix — wrap it in `withTimeout`, plus a no-op `.catch()` on the cached promise. Measured against the real client on 2026-09-06, with no device, it is three failures and that fix reaches none of the common one. A **closed port** — no RTA build resident, or the channel simply exited — does not hang at all: RTA rejects at 10 s and then **hard-crashes the process, `exit 1`**, because `setupClientSocket` orphans its own rejection through the unattached `.finally()` in `OnDeviceComponent.setupClientSocket()`. A caller that awaits, catches and carries on still dies. Proven by control: patching `.catch(() => {})` onto that one derived promise removes the crash and changes nothing else. The prescribed no-op `.catch()` **cannot be written** — `setupClientSocket` returns the ORIGINAL promise, so the orphan is unreachable from our code, and `withTimeout` is irrelevant because the crash is not on our promise. The only escapes are a global `unhandledRejection` handler, which would mask real bugs, or not making the call. We do not make the call.
+
+So `ensureOdcReachable` polls `odcIsResident` before the first read, and the two remaining modes decide the rest of the shape. **Host unreachable** (device asleep, wrong `ROKU_IP`) is genuinely unbounded — `setupClientSocket` never calls `socket.setTimeout` — and the gate answers it in 2 s with a cause instead of an elapsed time. **Port open but the handshake unanswered** is the `rta-odc-connect-hang` mode, and the gate is BLIND to it by construction (`true` in ~1 ms against a socket that accepts and never replies, while the ODC call beside it was still pending at 45 s), which is why `REGISTRY_READ_TIMEOUT_MS` bounds the reads as well. Neither mechanism is sufficient alone; deleting either on the strength of the other reopens a different hole.
+
+Three things were considered and ruled out. **Per-entry-point gates** — the shape the debt entry itself predicted would "be forgotten by the fifth entry point" — were unnecessary once it turned out all four entry points reach the device through two functions in `lib/registry.js`, and they would also have missed `armRestoreOnInterrupt`'s SIGINT restore, which is the path that actually hung 8+ minutes. **Wrapping the `odc` export in a Proxy** would generalize to a fifth caller but adds a layer to every ODC call on a hot path, against a measured property `rta-odc-transport-config-unset` deliberately protects — that a rejection carries the CALLER's stack. **A one-shot gate** was rejected as a regression: `odcIsResident` answers `false` the instant a port is refused, so it would fail a device 200 ms from finishing its boot, where RTA retries for 10 s. The gate is therefore deliberately *more patient* than what it stands in front of (30 s vs 10 s), which is the whole no-regression argument — nothing RTA would have survived can fail here. **Reopen if upstream fixes the `.finally()` orphan**: the gate's reason narrows to speed and diagnosis, but does not vanish.
+
+## decision-id: scoped-runs-are-not-samples
+
+**date**: 2026-09-07
+**status**: accepted
+**related-files**: `scripts/run-record.js`, `scripts/flake-baseline.js`, `scripts/rta-run.js`, `docs/dev/rta-tests.md`
+
+The run ledger records `runnerArgs` — what a run forwarded to its test runner, verbatim — and `npm run flake-baseline` excludes any run that forwarded ANYTHING from a baseline population, with no override. `variant` names the npm script, not the scope, and `rta-run.js` passes its own passthrough straight to Vitest, so `test:rta:fast -- -t "moviesLibraryGenres"` runs ONE test and, before this, appended a line identical in every other filter key to a full suite. Hit live 2026-08-12: three targeted single-screen runs each wrote a line a baseline would have counted as a clean sample, and only a moved `HEAD` excluded them — by accident rather than by design. This does not reopen `outcomes-partition-into-samples`, which deliberately declined to store per-test counts; that partitions on the OUTCOME a run reached, this filters on the SCOPE it declared, and a baseline needs both.
+
+**The args are recorded verbatim rather than reduced to a `scoped: true` at write time.** Vitest 4.1.10 narrows scope eight ways — positional filters, `-t`, `--dir`, `--shard`, `--changed`, `--exclude`, `--project`, `--tagsFilter` — and that set MOVES between majors (`--tagsFilter` is new in v4; `--related` is gone). An allowlist in our code would be a list that silently stops matching on a dependency bump, which is precisely the silent miscount this key exists to close. Recording what was typed has one source of truth, no version coupling, and leaves the policy with the reader that has to defend a number. It is a caller-supplied parameter to `beginRun`, not derived from `process.argv` inside it, for the reason `cumulative` is: five entry points open runs and argv means a different thing in each — `run-roku-tests.js` takes none at all (its scope is a build choice, already separated by `variant`), while `measure`, `capture-screenshots` and the demo runner parse their own options, which narrow no test suite.
+
+**The reader therefore excludes on ANY argument, and there is deliberately no `--include-scoped`.** The conservative rule fails loudly — a purely non-narrowing flag costs a sample, with the args printed beside the count, and the fix is one re-run — where an allowlist fails silently by counting a one-test run as a clean suite. It also catches `--bail`, which truncates execution without narrowing intent. An override would invert that asymmetry: the recovery for a lost sample is a re-run, and the recovery for a wrong number nobody questioned is nothing. `flake-baseline.js`'s own header is a list of three selection recipes that each produced a plausible number rather than an error, and a fourth knob is a fourth chance at it.
+
+**Excluded, not warned — the opposite call from `crossedHourBoundary` in the same selector, because that precedent does not transfer.** An hour-crossing run IS a sample of the whole suite, merely contaminated, so how much it matters is a proportion only the operator can weigh. A `-t` run is not a weak sample of the suite; it is a sample of something else, and there is nothing to weigh. Two smaller consequences follow the same reasoning. `runnerArgs` is ALWAYS emitted, as `[]` for a full suite, rather than omitted-when-empty like `assertions` / `recoveries` / `fixture`: those are instruments reporting what they saw, this is a selection key, and a selection key that vanishes at its default is how a row silently lands on the wrong side of a filter. And an ABSENT `runnerArgs` counts as a full suite — the opposite reading from an absent `outcome`, which is a non-sample — because that was checked rather than assumed: all 26 ledger lines predating the key were full suites, so nothing historical is wrongly admitted, whereas reading them as unknown would invalidate every baseline taken to date.
+
+## decision-id: rta-reads-audited-not-gated
+
+**date**: 2026-09-07
+**status**: accepted
+**related-files**: `tests/rta/lib/resolution.js`, `tests/rta/lib/steps.js`, `scripts/run-record.js`, `tests/rta/CLAUDE.md`, `docs/dev/rta-tests.md`
+
+A scene-rooted `#id` read is now checked against a census of the live scene under `RTA_AUDIT_RESOLUTION=1`, and the audit **records rather than throws**. `getVal('#homeRows…')` is `scene.findNode`, a search of the WHOLE scene, so a read can resolve against something other than what the call site names and the gate still goes green — no retry, no dump, nothing to notice. Phase 9 was scoped to hunt the duplicate-id half of that. Re-reading the six known instances killed the scoping: the one that bit — `waitHome()` passing from a library grid — was a UNIQUE `#homeRows` inside a SUSPENDED Home, as is every site under `rta-home-active-list-hardcoded`. Counting ids would have called both clean. The first audited suite settled it by measurement: 538 reads, **zero** with `count > 1` anywhere, and five real findings, all of them the suspended-view kind.
+
+**The predicate is "no hidden ANCESTOR", not "inside `activeRoutedView`",** which is the obvious choice and is wrong — the device said so before the code was written. `#jrDialog`, the most-read id in the suite at 29 sites, is appended to the SCENE by `presentOverlayDialog`, and `#imageFader` sits at scene level too (`parentRef: 0`), so an active-view rule would false-fail both and teach its readers to skip the line. A node hidden in its OWN right is likewise not flagged, for the same reason found the same way: 14 of the first suite's 19 records were `#osd` reported against `waitFor('#osd.visible', v => v === false, { label: 'osd hidden' })` — a gate whose whole job is to wait until the OSD is hidden. Walking strictly upward removed all 14 and kept both real findings; a re-run of that spec audited 18 `#osd` reads and flagged none.
+
+**One `storeNodeReferences` census answers both questions, and `isShowingOnScreen` is deliberately unused** despite being the primitive that looks built for this. The census walks from `m.top.getScene()` — the same tree `findNode` searches — and returns `id`, `parentRef`, `keyPath`, `visible` and `opacity` per node, so uniqueness is a count and whether it is presented is a parent walk, both client-side, in one round trip at a median 30 ms (n=15 on `.177`, 25–64). `isShowingOnScreen` answers in 5–10 ms when it answers, and one probe run hung on it indefinitely with no mechanism found; depending on it would buy nothing over fields already in hand and import an unexplained hang into the wait path. `convertKeyPathToSceneKeyPath` (~6 ms) is unused on the same economy — where the id is unique the single match IS what `findNode` resolved, and where it is not, the ambiguity is already the finding.
+
+**Report-only is a posture with a scheduled end, not a permanent choice.** It runs inside the wait path of the only per-PR feedback nav changes get, and a check whose false-alarm rate has never been measured must not be able to red a healthy suite — the rule `probeFixture` was built under, one layer up: instrumentation must never move a verdict. The `#osd` episode is that rule earning itself, in the first run. Findings land in a fourth ledger stream (`resolutions.jsonl`, beside failures / assertions / recoveries, on those two entries' own split reasoning) and print on a PASSING run, the only time they can appear. Promote to a throw once a suite says the rate is zero. There is deliberately **no allowlist** yet: `getVals`' own doc comment says `#homeRows` is read scene-rooted on purpose during a drill-down, so seeding one from that guess would launder the assumption the audit exists to test.
+
+## decision-id: rta-home-list-ban-not-budget
+
+**date**: 2026-09-08
+**status**: accepted
+**related-files**: `tests/rta/lib/home-list.js`, `tests/rta/lib/steps.js`, `scripts/lint/eslint-rules/rta-home-list-resolved.js`, `tests/rta/CLAUDE.md`
+
+The 30 sites naming Home's row list by `#id` are converted to zero, and the gate that froze them is now a **ban with one capped exemption** rather than the per-file ratcheting budget it shipped as. Both the tech-debt entry and the rule's own header prescribed "delete the rule when every number reaches zero". That premise is false: resolving Home's active list means reading BOTH candidate ids and taking whichever is in the scene, so something must know them, and nothing in the app offers an id-free route — `getActiveRows()` is not in Home's `<interface>` and no node-typed field exposes `m.activeContent`. The reachable answer is not "no module names them" but "exactly one does", which is what the rule now enforces.
+
+**A budget was rejected on its message, not its cost.** Keeping the table with the resolver's file pinned at 2 was the cheaper edit, and it answers the wrong question: `overBudget` tells a developer to "lower the number", which is right if they converted a site and wrong if they added one, and the rule cannot tell those apart. A per-FILE budget also has to trust a whole file — the resolver's natural home was 1611-line `steps.js`, where an allowance of 2 permits any two sites anywhere in it. The import graph then forced the better shape anyway (`steps.js` imports `diagnostics.js`, so the ids had to move to a module both could import), and a ~40-line module is an exemption a reviewer can check at a glance. Deleting the rule outright was rejected on evidence: `nav.js` grew 21 → 26 sites unnoticed, each addition made by a session working on something else.
+
+**The cap is exact in BOTH directions, and the lower bound is the load-bearing one.** Over two means reads have crept into the exempt module. Under two means `HOME_ROW_LIST_IDS` lists one id, which makes the resolver probe one list and silently revert to the original bug — because the read it drops is the one that does not throw: a hardcoded `#homeRows.content.getChildCount()` resolved in 8 ms to `undefined`, callers turned that into `|| 0` rows, and the run blamed a tile on a healthy Home. The rule lost its `staleBudget` failure mode entirely (~179 → ~135 lines): an allowlist carries no state that can drift from the code, which is the whole reason that failure mode existed. Retires the `rta-home-active-list-hardcoded` tech-debt entry.
+
+## decision-id: rta-row-walk-instrumented-not-converted
+
+**date**: 2026-09-08
+**status**: accepted
+**partially-superseded-by**: `rta-row-walk-stepped` (the row half's read-then-press loop)
+**related-files**: `tests/rta/lib/nav.js`, `tests/rta/lib/nav.test.js`
+
+`walkHomeRowsTo` walks the COLUMN axis through `scrollFocus` and the ROW axis with a read-then-press loop, and that asymmetry stays — the row half is instrumented rather than converted. The symmetry argument is the obvious one and it is wrong, which is why this is recorded: `scrollFocus` computes one burst from a SINGLE index read, so a stale base sends several presses at once. On the column axis the row's own ends bound that. On the row axis they do not — past row 0 the burst walks into the overhang and leaves Home, while `rowItemFocused` keeps RETAINING its last value, so the recovery loop cannot see that focus left the list. The current loop presses at most one key before re-reading. Converting would trade a detectable failure for an undetectable one.
+
+**The library offers no third option**, checked rather than assumed: `focusNode` sets focus directly, skipping the key handler and is banned by `no-restricted-syntax`, `onFieldChangeOnce` is ruled out per-category (`rta-waits-poll-not-observe`), and `sendKeypressSequence` is an unverified fixed burst with the same stale-base property and no read-back.
+
+**What was actually defective was that the decision could not be revisited.** The function's own comment deferred converting "if a row over-press is ever captured" and nothing could capture one: the row half returned no metrics, and `navLibraryByType`'s recovery record is outcome-level and strictly narrower — it fires only when a wrong library actually OPENED and the caller passed an id. The fix compares the walk's target against a reading `pressProbe` already batches one read before the press, recording an `axis` of `row` / `column` / `both`. It costs no device call, and a full green suite recorded zero, so it does not fire on the success path. Re-open this note if the instrument ever records `axis: 'row'` — the candidate then is guarded stepping (`scrollFocus` with the burst disabled), whose cost is a slower walk on every Home nav.
+
+## decision-id: button-overflow-tail-cut
+
+**date**: 2026-09-05
+**status**: accepted
+**related-files**: `source/utils/buttonOverflow.bs`, `components/ItemDetails.bs`, `components/video/OSD.bs`
+
+When a button row exceeds its cap and the last slot becomes `More`, the buttons that move into the menu are simply the tail — the row keeps its natural order and the visible set is the first `cap - 1` buttons. Issue #788 left this open explicitly, offering the alternative of PINNING a specific button (it suggested Refresh) into the second-to-last slot so it stays reachable. That was rejected.
+
+Three reasons, in the order they mattered. **The cap is derived per surface, not fixed** — `maxVisibleButtons()` yields 8 on `ItemDetails` and 10 on the OSD from the same arithmetic over different geometry, so "the second-to-last slot" is not one identity across surfaces and a pin list would have to be written per surface. That reintroduces exactly the hard-coded constant the derived cap exists to remove, and it would need updating whenever the geometry moves. **Pinning inverts the row's own ordering intent** — `setupButtons()` appends deliberately, and Refresh is the LAST button it appends, with Delete immediately before it; the tail cut therefore removes buttons in the reverse of the order the row itself considers important, which is the right direction. Pinning Refresh would preserve the button the row places last at the cost of one placed earlier. **And a rule with one exception is harder to predict than none** — "everything past the second-to-last slot is inside `More`" is a rule a user can learn from one encounter, whereas one button that jumps somewhere else is a special case they have to discover separately.
+
+Cheap to revisit: the split lives in one pure function (`splitForOverflow`), so pinning would be a change there plus a per-surface pin list, not a redesign. Re-open if a specific action turns out to be needed often enough from an overflowing row that a menu hop is a real cost — that is a usage question, and no usage data exists today, which is itself part of why the simpler rule won.
+
+## decision-id: button-overflow-load-box
+
+**date**: 2026-09-06
+**status**: accepted
+**related-files**: `source/utils/buttonOverflow.bs`, `components/ui/button/IconButton.xml`, `tests/source/unit/components/ui/IconButtonWidth.spec.bs`
+
+The row cap budgets every button at one uniform width, and what guarantees that is `IconButton`'s icon **Poster load box** — `loadWidth`/`loadHeight` 64 with `loadDisplayMode="limitSize"` — NOT an assumption that every icon asset is `64px`. Two icons on the capped `ItemDetails` row ship a `96x96` FHD asset (`album`, `person`) and still render a `64px` bitmap in a `124px` plate, because `limitSize` scales them down as they load. Measured via RTA against a rendered `IconButton` on a Streaming Stick 4K (OS 15.3.4, 1080p UI): `person_fhd.png` reports `bitmapWidth` 64 and `buttonBackground.width` 124 — exactly `iconButtonBackgroundWidth(64)`.
+
+Recorded because the constant's original comment claimed 64 was "the FHD icon asset's edge length" — false for those two icons — and the natural fix on noticing that is to clamp `iconWidth` inside `IconButton.setIconSize()`. **That clamp was considered and rejected**: it is a no-op while the load box is 64, and in the one case where it could fire — someone widening the load box — it would hold the plate at `124px` while the glyph grew past it, turning a visible failure into a silent one. Belt-and-braces makes the failure worse here, so the load box is pinned instead by `IconButtonWidth.spec.bs`, which asserts the static XML fields directly and therefore needs no image load (a Rooibos test cannot complete one synchronously, which is why the measurement above had to go through RTA). Re-evaluate if a capped row ever needs a control that is not an `IconButton` — `ResumeButton` extends it and qualifies; `TextButton` extends `Group` and sizes differently.
+
+## decision-id: register-once-observer-gate
+
+**date**: 2026-09-10
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/register-once-observer.cjs`, `components/video/VideoPlayerView.bs`, `components/ui/button/ResumeButton.bs`, `components/CLAUDE.md`
+
+`VideoPlayerView.playbackTimer` lost its `fire` observer whenever `onState` passed through `stopped` — measured on a Roku Ultra, a reload-triggering audio-track switch left the 10 s progress timer running with no listener and Jellyfin received 0 of ~7 expected `update` reports across 73 s. The fix DELETES both `unobserveField("fire")` calls rather than adding a re-observe. A re-observe was **considered and is not unsafe** — the sanctioned idiom of unobserving immediately before observing is accumulation-proof by construction and is exactly what `bufferCheckTimer` does in the same file — so this is a choice between two legal shapes, not a correctness fix. Register-once wins because this timer's useful life IS the node's life, which makes `control` alone the whole lifecycle; `bufferCheckTimer` is a toggle because it is only meaningful while buffering. The safety of leaving the observer attached across a stop is measured rather than assumed: the `paused` branch already does exactly this and produced zero stray reports across three pause/resume cycles in the same session.
+
+The same change **supersedes the recorded finding that this class could not be gated**. `components/CLAUDE.md` had documented a lint attempt that flagged 143 sites (16 after narrowing, 3 of 3 spot-checked false positives) and concluded a useful gate needed control-flow-aware analysis nobody had built. That conclusion was wrong about the cause: the problem was the POPULATION, not the analysis. Asking "is there a preceding unobserve in the same function" puts every balanced toggle in scope, and toggles are what the false positives were. Identifying the register-once SHAPE first — a member bound from `m.top.findNode()` in `init()` and observed exactly once, there — excludes toggles by construction, because a toggle's observe is not a lone call in `init()`. Measured over 292 files: 53 pass, 20 toggles ignored, 2 flagged (the defect, and one genuine one-shot). A carve-out for self-detaching one-shots was **considered and rejected** — legitimate as a shape, but it occurs exactly once in this population, so a general clause would buy one known-good site while silently admitting every future one, including a handler that detaches on a path where notifications were still needed. `ResumeButton.buttonIcon` carries an explicit suppression instead, naming the two facts no linter can see. Only the register-once half is gated; the balanced-toggle half still needs real control-flow analysis and is tracked as [`observer-balanced-toggle-ungated`](architecture/tech-debt.md#observer-balanced-toggle-ungated).
+
+## decision-id: device-test-gate-without-coverage
+
+**date**: 2026-09-13
+**status**: accepted
+**related-files**: `bsconfig-tests.json`, `bsconfig-tests-complete.json`, `.github/workflows/device-unit-tests.yml`, `tests/source/BaseTestSuite.spec.bs`, `docs/architecture/testing.md`
+
+The gating device test build (`bsconfig-tests.json` — `npm run test:all`, and CI's default `device-unit-tests` run) does not record Rooibos code coverage. Coverage is recorded only by `bsconfig-tests-complete.json` (`npm run test:complete`, the workflow's `complete` dispatch type); recording it on `main` and posting an on-demand PR delta is #541. Measured on a Streaming Stick 4K, the CI device's model: `test:all` on `main` took 602 s with coverage and 68 s without, so instrumentation was ~89% of device test time. It multiplies the cost of every executed line — #913's ~10 ms of extra work per `@describe` group became ~430 ms per group — which is what pushed #913 past the 15-minute job timeout; it also runs the code under test with different timing than the shipped app. Nothing consumed the coverage output: the report only printed a total at the end of the log.
+
+Ruled out: **raising the job timeout** (hides a measured +57% regression and lengthens the single device's queue); **per-PR coverage in a separate job** (doubles device time with one CI device); **excluding the slow component from coverage** (hides the cost rather than removing it). **Re-evaluate if a second CI device is added** — per-PR coverage then stops competing with the gate for the same hardware.
+
+## decision-id: extras-rows-single-commit
+
+**date**: 2026-09-14
+**status**: accepted
+**related-files**: `components/extras/ExtrasRowList.bs`, `components/extras/LoadExtrasRowsTask.bs`, `source/extras/extrasRows.bs`, `tests/source/unit/extras/extrasRows.spec.bs`, `tests/source/unit/platform/TaskRelaunch.spec.bs`
+
+`ItemDetails`' extras rows load from one orchestrator Task (`LoadExtrasRowsTask`, over `apiPipeline`) and reach the `RowList` in ONE commit per run, which writes nothing to a row whose title, slot shape and source-content digest are unchanged. The digest is an `MD5` of the response body taken on the Task thread. The reason is a platform behavior measured on device: `RowList` redraws its "X of Y" row counter on any write to a row already on screen, even when the count it shows does not change, and that redraw is the flicker. **Committing rows as they resolve was the agreed design and is ruled out by measurement**: in display order, each row once it and every row above it had resolved, it blinked once per commit after the first (3 commits, 2 blinks), and hiding the counter until the last row still left one. A single commit that rewrote unchanged rows blinked once on Refresh. One commit plus skipping unchanged rows measured 0 blinks on first open and Refresh (user eyeball on `.178`, console-confirmed). That result is for the item types measured: a **Person**'s rows are requested with `SortBy: "Random"`, so their response body — and digest — differs on every request, and a Refresh there rewrites them and blinks once. Accepted: the content really did change (it is reshuffled). **Comparing every item field on the render thread** was the first way to decide "unchanged" and is ruled out on cost: 252-306 ms per Refresh on a Stick 4K, against 6-9 ms for the digest. A row whose server data did change is still rewritten (verified by toggling a favorite: `written=1`, badge correct).
+
+**Each run launches a NEW `LoadExtrasRowsTask` node** rather than relaunching the previous one. Measured on a Stick 4K (Roku OS 15.3.4): a Task stopped while its function is still running ignores a launch made in the same callback — nothing starts and nothing errors — so a Refresh pressed mid-run left extras that never committed and `contentReady` never set. A new node launched in that callback does start, and the stopped function makes no further progress, so threads do not stack. Pinned in `TaskRelaunch.spec.bs`; row in [threading.md](architecture/threading.md#measured-findings).
+
+**The cost accepted** is that Chapters and the Down key arrive with the whole run (~0.3-0.4 s after paint on `.177`) instead of immediately. Interleaved against `main` (n=10 per arm, `.177`): `settledMs` 1041 → 566.5 (−45.6%, p=0.0002), extras fill 751 → 295 (−60.7%, p=0.0002), paint 323.5 → 297 (not distinguishable, p=0.23). Sizes now come from the rows actually committed, which also fixes a Movie-path bug confirmed on device: the old `addRowSize` left a phantom entry that gave Special Features a PORTRAIT slot inside a WIDE-height row whenever the movie had no Additional Parts. **Re-evaluate** if Roku ships a way to update a `RowList` row without redrawing the counter, or if one endpoint proves much slower than the rest. Rows are fetched concurrently, so a uniformly slow server delays every row alike and the single commit still wins; only skewed latency makes the whole-run wait hold back rows that would otherwise be ready (the 295 ms extras fill above bounds that skew on `.177`). That case would favor committing the rows that are ready at a deadline, accepting one blink.
+
+## decision-id: home-screen-load-visible-span
+
+**date**: 2026-09-15
+**status**: accepted
+**related-files**: `components/home/HomeRows.bs`, `source/home/homeScreenLoad.bs`, `tests/source/unit/home/homeScreenLoad.spec.bs`, `docs/dev/measuring-performance.md`
+
+Home joins the `screen-load` family ([ADR 0027](adr/0027-screen-readiness-ledger.md)) with `paintMs` = the first moment every row in the **visible span** has landed, and `settledMs` = every row landed. Each row declares one fill, keyed by its `sectionId`, when its skeleton row is created. The fill resolves when the row's answer arrives: data, an empty result, or a failure (a failed latest row keeps its skeleton but its wait is over). Paint is not decided until the libraries answer, because before that the latest-media rows are not in the list. The visible span is the app's own `loadedRowRange` definition, `[focusedRow, focusedRow + numRows − 1]` with `numRows = 3`: the same signal texture loading uses and lazy row hydration would key on, not a pixel measurement (the third row is only partly on screen at 1080p). **Ruled out:** a third `visibleMs` milestone, which needs parser, report and compare changes for one screen when the two existing milestones fit; and declaring only the visible rows, which would make `settledMs` stop meaning "the screen stopped changing".
+
+**Consequence, read off a Stick 4K:** with the default section order (My Media, Continue Watching, Next Up, Active Recordings, On Now, Latest Media) the span is My Media, Continue Watching and Next Up, so **no latest-media row gates Home's `paintMs`**. Latest rows enter the span only with a reordered layout, or when rows above them come back empty and are removed. A Home `paintMs` is therefore only comparable across runs with the same section order. **Re-evaluate** if `numRows` or the default section order changes, or if paint should also wait for poster textures.
+
+## decision-id: per-version-resume-selection
+
+**date**: 2026-09-16
+**status**: accepted
+**partially-superseded-by**: version-resume-near-level (which version wins when several are in progress)
+**related-files**: `source/utils/versionResume.bs`, `components/ItemDetails.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `source/utils/quickplay.bs`, `components/video/VideoPlayerView.bs`, `components/data/jellyfin/JellyfinServer.xml`
+
+From Jellyfin 12.0 each alternate version of an item keeps its own playback position (jellyfin#17044), so a client has to choose which version a Resume targets. **Quality decides fresh starts; position decides resumes.** With nothing in progress, playback picks the file that suits the device (`findBestVideoSource`, unchanged). Once a position exists, it continues the file that HOLDS it, and when several versions are in progress the most recently played one wins — the same rule the server applies (`VersionPlaybackSelector.SelectMostRecentlyPlayed`), so the details screen and the Continue Watching row never disagree about where an item resumes.
+
+**Ruled out: resuming the device-best file at another version's position.** Two releases of one episode measured 47 s apart in runtime on the 12.0 test server, and neither the names (user-controlled) nor the runtime lengths tell a re-encode from a different cut — so the app cannot know that a timestamp means the same moment in another file. Picking by quality when two versions are both in progress is worse still: their positions differ, so it silently moves the viewer to a different, and usually older, place in the story.
+
+**Ruled out: the never-carry rule `jellyfin-web` uses, and always-carry.** When the user EXPLICITLY picks a version that has no position of its own, the in-progress position is carried onto it; web instead offers nothing and leaves the viewer to scrub back, which is the common "started on the phone, finishing on the 4K TV" case. The carry is bounded by the server's own played rule, mirrored branch for branch from `UserDataManager.UpdatePlayState` (`versionResume.wouldMarkPlayed`): past `MaxResumePct`, inside the last second, or onto a version shorter than `MinResumeDurationSeconds`. Its thresholds are read once per server into `JellyfinServer.resumePolicy`, both or neither, and the guard fails closed when they cannot be read. Every one of those branches sets `Played`, and finishing ANY version marks every version played and clears every position (`Video.PropagatePlayedState`, verified on 12.0) — so an unguarded carry onto a shorter cut would erase the place being resumed from. `MinResumePct` is deliberately not a branch: the server zeroes a position below it without setting `Played`, so it cannot erase anything. The in-player version switch does not apply this guard yet; that is a #933 follow-up in [progress.md](progress.md).
+
+**The cost accepted** is that an upgrade is never automatic: a viewer resuming a 1080p file on a 4K TV stays on it until they pick otherwise, so the version labels are what make the choice legible. Today those labels lead with the full `MediaSource.Name` and the stream info is cut off on screen, tracked as a #933 follow-up in [progress.md](progress.md). **Re-evaluate** if the server ever returns per-version positions in one item response — today a version other than the queried item costs its own `GET /UserItems/{id}/UserData` — or if it begins declaring which versions share a cut.
+
+## decision-id: row-focus-explicit-claim
+
+**date**: 2026-09-16
+**status**: accepted
+**related-files**: `source/utils/buttonOverflow.bs`, `components/ItemDetails.bs`, `tests/source/unit/components/ItemDetailsRowFocus.spec.bs`
+
+A button-row mutation that moves focus to a different button on purpose declares it with `claimRowFocus(stash, id)` between the two halves of the `unsplitButtons()` / `applyOverflow()` bracket. The bracket's focus capture (#918) puts focus back on the button that had it when the mutation began — right for changes that must not move focus, and it silently reverted every deliberate move: a new Resume never took focus from Play, on every item with progress, in v2.29.0 and v2.29.1.
+
+**Only a Resume-slot insert moves focus, and only off Play.** Resume taking over from Play swaps two actions that play the same item, so a mistimed OK costs nothing. Every other insert keeps focus on the button the user is on: a Person's Shuffle inserted ahead of Favorite shifts the index like the Playlist Watched insert instead of claiming, because Shuffle replaces no action and moving onto it would turn a pending OK into shuffled playback. This follows WCAG 2.2 SC 3.2.5 (Change on Request): focus moves only when the user asks it to.
+
+**Ruled out: setting focus after `applyOverflow()`.** It works today, but every future row change has to remember the ordering, and `button-row-bracket` proves only that both halves are present, not where the focus write sits — so nothing would catch the regression coming back. **Ruled out: skipping the restore when the focus index changed inside the bracket.** An index that shifts because a button was inserted or removed to its left is exactly what the capture exists to correct, so that rule reintroduces the bug #918 fixed. **The cost accepted** is one more per-call-site obligation that fails silently when missed — one claim in `ItemDetails` today, because every Resume-slot insert goes through one shared helper (`insertButtonAtFront`); `ItemDetailsRowFocus.spec.bs` pins it, and pins that Favorite keeps focus when Shuffle is inserted ahead of it. **Re-evaluate** with the [`button-row-model`](architecture/tech-debt.md#button-row-model) refactor, which removes the bracket and this obligation with it.
+
+## decision-id: pipeline-budget-charges-wait-only
+
+**date**: 2026-09-16
+**status**: accepted
+**partially-supersedes**: latest-rows-no-mid-run-restart (the stalled-run backstop now measures silence since the last delivered row, not time since the run started)
+**related-files**: `source/api/apiPipeline.bs`, `source/home/latestRows.bs`, `components/home/HomeRows.bs`, `source/constants/timeouts.bs`
+
+`apiPipeline` charges its run budget only for time spent inside `apiPipelineNext`, waiting on the server — not for the caller's per-result work between calls. Charged by wall clock, a caller's legitimate per-row work (~200 ms/row on the 512 MB tier) spent the budget that exists to bound a slow or dead server, and the rows past it were silently left as `Loading` skeletons at large library counts. Proven on a Stick 4K with a forced 1.5 s budget and 400 ms of per-row work: 2–3 of 6 rows left as skeletons before, 0 after, in each of three rounds; a default-budget control read 0.
+
+Ruled out: **scaling `budgetMs` with the entry count** — a tuned constant tied to per-tier costs, which api.md already warns against. **Only improving the failed-row placeholder** — a real UX gap, but a separate followup that leaves the rows undelivered. **Constraint:** a live run can now outlast `PIPELINE_RUN_MS` end to end, so anything that watches a run from outside must judge it by silence since its last delivery — `latestRows.runIsStalled` does.
+
+## decision-id: per-user-env-file
+
+**date**: 2026-09-16
+**status**: accepted
+**related-files**: `scripts/lib/env-config.cjs`, `scripts/lib/load-env.cjs`, `eslint.config.js`, `.env.example`
+
+Tooling reads device settings and secrets from a per-user `~/.config/jellyrock/env` beneath each checkout's `.env`, so several checkouts share one device list and one set of credentials. Precedence is: variables already set, then the checkout's `.env`, then the user file — a local file overrides the global one, as with git config. An empty value in a file counts as unset, because `.env.example` ships blank keys that would otherwise hide the user file; the two passwords where blank means "no password" are the exception. The user file is skipped under GitHub Actions, so a self-hosted runner's home directory cannot change a CI run.
+
+Ruled out: **exporting the values from a shell profile** — shell variables outrank every checkout's `.env`, which removes the per-checkout override, and it puts secrets in shell startup files. **Making each checkout's `.env` a symbolic link to one file** — still a manual step for every new checkout or worktree, and a checkout can no longer override a single value. **Constraint:** every script must load settings through `load-env.cjs`; a direct `dotenv` import would silently ignore the user file, so ESLint now rejects one.
+
+## decision-id: same-node-relaunch-gate
+
+**date**: 2026-09-17
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/no-same-node-relaunch.cjs`, `bsconfig.json`, `bsconfig-prod.json`, `docs/architecture/build-and-tooling.md`
+
+The `no-same-node-relaunch` plugin is an Error from day one, and the 16 sites that predate it are listed in the plugin's `PENDING_MIGRATIONS` (file, function, launched path) rather than suppressed inline. An inline marker can be copied onto a new site; the list cannot, and a listed site that no longer fires is itself an error naming the entry to delete, so the list only shrinks. **This closes off a Vitest ratchet**: the CI Vitest job's path filter skips PRs touching only `.bs` files, which is exactly where a copied marker would land. Suppression is line / next-line only, like `no-raw-run` and `no-task-fanout`, and the plugin hooks `afterValidateFile` directly rather than `lib/bsc-rule.cjs`, because every finding is single-file and `bsc-rule` honors `bsc-disable-file`.
+
+**The constraint worth re-evaluating is the analysis depth.** Source order stands in for control flow, per function, with each inline `sub(...)` callback a function of its own (it runs in a later callback). Same-file helpers are followed one hop by bare name, counting only `m.` paths the helper leaves stopped. Accepted gaps: a STOP and a launch in exclusive branches are flagged, a STOP through a local alias is missed, and a namespaced helper shares its bare name. The evidence for the rule is the same-node relaunch row in [threading.md](architecture/threading.md#measured-findings).
+
+## decision-id: version-label-forms
+
+**date**: 2026-09-16
+**status**: accepted
+**related-files**: `source/utils/versionLabels.bs`, `components/ItemDetails.bs`, `source/utils/trackPickerOptions.bs`, `components/video/VideoPlayerView.bs`, `components/video/OSD.bs`
+
+An alternate version is labeled in two forms. The **full** label (the video fields that differ between versions, first, then the name without the words every version shares, or the words at either end that repeat a label the stream info already shows, so `Movie - 1080p` reads `1080p`) is used where a viewer **chooses**: the `ItemDetails` Video menu and the in-player Select Video Source dialog. The **short** label (that stream info alone when it identifies the version, the full label otherwise) is used where the app only says **which is current**: the collapsed Video trigger and the player. The player shows it as its own segment on the line below the title, right after what identifies the item (the episode, or a movie's year), and never on the title line: an episode's title line is the series name (before this, the tag never showed for an episode at all), and a version appended to a movie's name reads as part of it (`AV-1 90mbps`). On 12.0+ the menu marks the version Resume continues (`versionResume.inProgressSourceIndex`) `· In progress`. The reason for two forms: a name is free text, sometimes the only thing that matters (an edition) and sometimes a whole release filename. Jellyfin returns the full filename when a version's file shares no naming pattern with the others (`silicon.valley.s04e06.720p.web.h264-tbs`, measured on 12.0), and `MediaSourceInfo` has no edition field to read instead (12.0 OpenAPI spec).
+
+**Ruled out:** name only, as `jellyfin-web`, `jellyfin-androidtv`, `Swiftfin` and `Kodi` show it (relies on names describing quality); always appending the full stream summary (`1080p AV1` six times on a bitrate ladder); the full label everywhere (release filenames in the player); the short label everywhere (an edition that also differs in quality loses its name even where it is chosen); reading quality or an edition out of a name (user-controlled, and `2160p` never matches `4K`). **The cost accepted** is that two editions that also differ in quality are named by quality alone once picked (`4K HEVC`, not `Director's Cut`), and that only one in-progress version is marked, the one Resume continues. **Re-evaluate** if the server adds an edition field, or returns every version's position in one response.
+
+## decision-id: version-gated-query-parameters
+
+**date**: 2026-09-17
+**status**: accepted
+**related-files**: `source/api/items.bs`, `docs/dev/jellyfin-endpoint-availability.yml`, `scripts/lint/endpoint-availability-check.cjs`, `scripts/jellyfin-matrix.js`
+
+A query parameter whose effect differs by Jellyfin version is sent only to the versions whose behavior was checked. The check has two parts: read the controller at each release tag, and send a live request whose results differ depending on whether the server acted on it (`npm run jellyfin:matrix`). A guard function that takes the server version decides whether to send it, and the parameter is registered under `parameters:` in the endpoint-availability ledger. The first case is Next Up's `DisableFirstEpisode`. It is honored on 10.7–10.10, where it also drops `NextUpDateCutoff` on 10.8–10.10. 10.11 ignores it, and 12.0 removes it. `buildHomeNextUpParams()` sends `true` only where that costs nothing: 10.7, and 10.8–10.10 with Max Days off. The first episodes still arrive on 10.8–10.10 with Max Days on, and from 10.11 for any series with an episode started but none finished; Home's row drops them on every version (`next-up-started-series-filter`).
+
+Ruled out: **sending it everywhere because newer servers ignore it**. An ignored parameter is still type-checked (a bad value returns HTTP 400 through 10.11), and nothing guarantees a later release will keep ignoring it. **Gating it through `api-usage-manifest.json`**: the manifest has no per-endpoint parameter binding and scans only `source/api/`, while request params are also built in `components/`. **Matching only quoted string literals in the lint**: BrightScript AA keys are case-insensitive and often unquoted (`{ Limit: 1 }`), so the lint matches the name case-insensitively in code with comments stripped. **Constraint:** the lint is per FILE. A file that calls the guard anywhere can still send the parameter unguarded elsewhere in that file.
+
+## decision-id: doc-citations-cite-symbols
+
+**date**: 2026-09-17
+**status**: accepted
+**related-files**: `.claude/rules/derive-dont-duplicate.md`, `scripts/lint/doc-citation-ratchet.js`, `.doc-citation-baseline.json`
+
+Tracked prose cites a **symbol**, never a line number, and does not store a quantity the repo can derive; a number that genuinely is the point is framed as a dated measurement instead. A line number rots on any edit above it rather than only on edits to the thing described, so it decays faster than review or the contextual freshness gates ([ADR 0033](adr/0033-contextual-doc-freshness.md)) can catch — a reader re-reading the prose cannot see that a number drifted underneath it. Of a 14-reference sample taken 2026-09-17, three were already wrong: two past end-of-file, and one citing the `quickPlayNode` self-observer at a line that reads `m.trailerCheckSeq = 0`, in a doc reviewed that same day. Citing the symbol is strictly better rather than merely more durable, because a human or an agent can search the codebase for a symbol and cannot search it for a line number.
+
+Enforced as a **per-file** ratchet ([`doc-citation-ratchet.js`](../scripts/lint/doc-citation-ratchet.js)) over the 55 grandfathered references, drained under issue #959. Ruled out: **one global total**, like `.promise-ratchet-baseline` — the population spans 13 files, so a single integer lets an unrelated cleanup fund a fresh citation elsewhere while the gate stays green, which is the slack-refill failure that ratchet's own advisory warns about. **A hard zero-tolerance gate**, which could not land without one mechanical PR rewriting 13 docs at once. **Convention with no gate**, which is what already failed — 55 accumulated under it. Deliberately NOT gated: whether a quantity is a live claim or a dated measurement, since telling them apart needs reading, so clauses 2 and 3 stay convention. Exempt by construction: fenced code blocks (a quoted transcript would be falsified by a rewrite), gitignored ephemeral prose, and append-only `AUDIT-LOG.md` records.
+
+## decision-id: version-resume-near-level
+
+**date**: 2026-09-17
+**status**: accepted
+**partially-supersedes**: per-version-resume-selection (which version wins when several are in progress)
+**partially-superseded-by**: version-resume-primary-order (how "most recently played" is read)
+**related-files**: `source/utils/versionResume.bs`, `source/utils/streamSelection.bs`, `components/ItemDetails.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `source/utils/quickplay.bs`, `source/utils/nodeHelpers.bs`
+
+With several versions of one item in progress, `per-version-resume-selection` gave it to the most recently played. That is now the rule only while the versions are CLEARLY apart: within `versionResume.NEAR_LEVEL_MARGIN_TICKS` (30 s) of the most recent one they count as being at the same place, and the best version for the device among them wins instead. A version is still only ever resumed at its OWN position. Using only which version played last made the app disagree with itself: with the local pair at 1080p 318 s and 720p 319 s on a 12.0 server, the details screen resumed 720p while quick play, a cast and the Continue Watching bar all used 1080p — a one-second difference deciding which file plays. **The margin IS the worst-case misplacement a viewer can feel**, because the chosen version resumes at its own position; 30 s absorbs the constant offset between two releases of one cut (4 s on that pair), the 10 s progress-report cadence when a session ends without a stop report, and the latency of a carry, while staying under what reads as a jump.
+
+The second half is that ONE function now answers the question for every entry point — `versionResume.chooseResumeSource()`, used by the details screen, quick play, casts and queued items — because the split between them is what got the rule pulled from #953. `quickplay.video` runs on the render thread and cannot read a position, so on a per-version server it stands down by CLEARING `mediaSourceId`: the transformer already sets it to `MediaSources[0].Id`, which would otherwise reach the loader looking like an explicit pick. `LoadVideoContentTask` then chooses with the positions in hand over `apiPipeline`, so N versions cost about one round trip, and nothing is read at all unless something is already in progress. **Most recently played is read from the server's source ORDER, never a timestamp:** 12.0 copies the newest version's `LastPlayedDate` onto the item's own user data (`VersionResumeData.ApplyTo`), so the local pair reports identical dates to the 100 ns digit and the item's real play time is unreadable.
+
+Ruled out: **a percentage margin** — 1% is 108 s on a three-hour film and 13 s on a 22-minute episode, and misplacement is felt in seconds, not proportion. **Pairwise near-level comparison** — each version is compared to the leader, which is the reference the most-recently-played rule would have picked; chaining would let a version 60 s away tie through an intermediate. **Scoring the whole source list for the tie** — `findBestVideoSourceAmongIds()` scores only the tied versions, or a 4K version nobody has started would win a tie between two the viewer is partway through. **Deciding the display side here** — posters and Continue Watching still bind the item's own `UserData`, so a bar can belong to a version other than the one Play would start; a per-tile read is one request per tile, so that half is a `docs/progress.md` followup with measurement owed. **Constraint:** 30 s is a judgment, not a measurement — re-evaluate if viewers report resuming noticeably off, or if the server ever declares which versions share a cut.
+
+## decision-id: version-switch-position-mapping
+
+**date**: 2026-09-17
+**status**: accepted
+**related-files**: `source/utils/versionResume.bs`, `components/video/VideoPlayerView.bs`
+
+Switching version DURING playback maps the position into the new version's own timeline (`versionResume.switchTicksFor()`): the exact time when the new version reaches it, otherwise the same percentage. Before this, `onVideoSourceChange` seeded the raw position unconditionally, so switching from a 1843 s version at 1803 s into a 1796 s one asked the player to start past the end of the stream. Time-first is the accurate mapping because two releases of one cut are offset by a CONSTANT rather than stretched: the local pair runs 47 s apart yet matches at 1080p = 720p + 4 s at start, middle and end (thumbnail cross-correlation, error ~1 vs ~22 for ±1 s), so the extra footage sits at the edges. Percentage would be 19 s out at 15:00 and 35 s at 25:00; it only wins once the exact time does not exist in the new file, where it lands near the end instead of past it. Verified on 12.0: 603 s → 605 s into the shorter file, and 1803 s → 1758 s where the time does not exist.
+
+Deliberately **not** guarded by `versionResume.wouldMarkPlayed()`, unlike the details-screen carry in `per-version-resume-selection`. Past the server's resume ceiling but still inside the new file, the viewer continues at the exact time and the item counts as watched — what finishing it would have done anyway. The asymmetry is that refusing costs nothing on the details screen, which can simply offer Play instead of Resume, while the player has no such out: its only alternative is dropping the viewer to the start of a file they were 97% through. Ruled out: **always-percentage**, **starting from 0**, **refusing the switch**, and **a [Start from beginning]/[Cancel] dialog** — all four interrupt a deliberate action to solve a 4 s discrepancy. Not done for want of evidence: scaling by the frame-rate ratio for sped-up 25 fps releases, the one case where percentage is exact and which `RealFrameRate` would make detectable. ⚠️ **Tick arithmetic here must stay integer** — `abs()` and `getEffectiveDuration()` return floats, and a 24-bit mantissa cannot hold a ~`1e10` tick count: a 300000001-tick delta rounded to the 30 s margin and tied a version past it, caught only by a boundary spec.
+
+## decision-id: version-resume-primary-order
+
+**date**: 2026-09-19
+**status**: accepted
+**partially-supersedes**: version-resume-near-level (how "most recently played" is read)
+**related-files**: `source/utils/versionResume.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `components/ItemDetails.bs`, `source/utils/nodeHelpers.bs`, `components/manager/QueueManager.bs`, `components/video/VideoPlayerView.bs`
+
+`version-resume-near-level` read the first in-progress version in an item's source order as the most recently played. That holds only for a PRIMARY: `MediaSourceManager.SetAlternateVersionResumeStates` (read at `v12.0`, unchanged at `v12.1`) moves the most recent in-progress version to the front of a primary's sources, and "a directly queried alternate version keeps its own source first" — and the DTO has no primary pointer (`PrimaryVersionId` is server-side only). It matters because on 12.0 Continue Watching lists the version played last, so an alternate's id is what gets queued; measured 2026-09-19 on 12.0.0 with the primary played last, the alternate still listed itself first, and quick play resumed the wrong file. So another version in front is trusted as before; the item's own source in front is ambiguous, and with two versions in progress `chooseResumeSource` asks (`needsMostRecent`), answered by `GET /UserItems/Resume?parentId=` — the server's own `VersionPlaybackSelector` — lean and parent-scoped (850 bytes for a season, measured 2026-09-19). A reply that cannot say falls back to the order and is not re-asked. Ruled out: **reading `LastPlayedDate`** (`VersionResumeData.ApplyTo` copies the newest onto the primary, so dates tie), **probing which source a library listing returns** (undocumented, a request per source), and **an unfiltered resume query** (all of Continue Watching). **Constraint:** if a future DTO exposes `PrimaryVersionId`, trust the order for primaries and drop the query for them.
+
+Two shell rules land with it, because the device run that found the order flaw found them too. **A start position declares its intent**: `startingPointIsExact`, written only through `nodeHelpers.setResumeStart` / `setExactStart` (or `setCurrentStartingPoint`'s `isExact`), and the loader replaces only a *resume* start with the chosen version's own position — a chapter, the details screen's Play/Resume and a position saved before a reload are exact. Ruled out: "no `startingPoint` means resume" (three more call sites would need `isPerVersionServer`), and an enum for a binary. **A reload names its version**: `VideoPlayerView.keepLoadedVersionOnReload` passes the loaded version as an input of each reload run, rather than leaving it on the reused task node ([ADR 0037](adr/0037-task-run-replacement.md)); without it a subtitle change re-chose from the server's lagging positions and moved the viewer to another file and place.
+
+## decision-id: version-display-progress
+
+**date**: 2026-09-19
+**status**: accepted
+**partially-superseded-by**: version-display-two-requests (where the sibling ids come from)
+**related-files**: `source/utils/versionResume.bs`, `components/ItemGrid/LoadItemsTask2.bs`, `components/extras/LoadExtrasRowsTask.bs`, `components/home/LoadItemsTask.bs`, `source/api/items.bs`
+
+A tile shows the progress of the version played LAST, read from `GET /UserItems/Resume` and matched back to the tile through the item's sibling version ids. (Those ids came from `Fields=MediaSources` on the resume row itself until `version-display-two-requests` moved them to a separate by-id lookup; everything else here still stands.) `version-resume-near-level` answered which version PLAYS and explicitly left the display side as a followup with measurement owed; this answers it. From 12.0 a list response carries the item's own file's position, not the one that would play, so measured on 12.0.0 against a 360 s two-version episode: with only the alternate in progress at 120 s the row reports 0% and the tile shows NO bar; with the item's own version at 60 s and the alternate at 240 s and played last, the row reports 16.7% while Play resumes at 67%. Servers before 12.0 store one position per item whichever file played — verified on 10.7.7, 10.9.11 and 10.11.11 — so none of this runs there.
+
+The matching goes through the resume row's own `MediaSources` because the DTO exposes no primary pointer (`version-resume-primary-order`); name-and-year is not an identity. `MediaSourceCount` gates the work so no extra request is made for a page with nothing grouped, and the server emits it only for items that have several versions (+85 bytes across a 100-item page, measured 2026-09-19). **Display and playback diverge in one bounded case, deliberately:** playback prefers the device-best version within `NEAR_LEVEL_MARGIN_TICKS` (30 s) while display always takes the one played last, so where they differ the versions are at most 30 s apart — under half a percent of a feature, about 8% of a six-minute episode. Agreeing exactly would need `MediaSources` on the grid page itself, measured at +87 ms and +326 KB per 100 items, which is the cost this shape exists to avoid. Ruled out: **a per-tile `/UserItems/{id}/UserData` read** (836–951 ms sequential for 100 tiles, and it still needs the alternate ids first); **preferring the item's own version when near-level**, which against the two real states (0 vs 120 s, 60 vs 240 s) fixes neither, both being far outside any defensible margin. **Constraint:** if a future DTO exposes `PrimaryVersionId`, the sibling-id matching can go.
+
+## decision-id: version-display-two-requests
+
+**date**: 2026-09-20
+**status**: accepted
+**partially-supersedes**: version-display-progress (where the sibling ids come from)
+**related-files**: `source/utils/versionDisplay.bs`, `source/utils/mediaSources.bs`, `source/utils/versionResume.bs`, `components/ItemGrid/LoadItemsTask2.bs`, `components/extras/LoadExtrasRowsTask.bs`, `components/home/LoadItemsTask.bs`
+
+The tile correction reads a PLAIN `GET /UserItems/Resume` and gets each grouped tile's sibling ids from a second, gated `GET /Items?Ids=<the page's grouped tiles>&Fields=MediaSources` — not from `Fields=MediaSources` on the resume list itself. `version-display-progress` chose the one-request shape on the reasoning that the resume list "holds only what the user is part-way through, not the page"; that is true, it bounds nothing, and the measurement ran the other way. Per resume row against a local 12.0 server (2026-09-20): 1.1 KB plain against 7.3 KB with `MediaSources`, widening to 62 KB against 567 KB at 61 in-progress items. End to end at 61 in-progress items and 4 grouped tiles: 567 KB / 68 ms for one request against 84 KB / 42 ms for two — 6.8x fewer bytes AND faster despite the extra round trip, because payload dominates. The one-request cost scales with the viewer's BACKLOG, which nothing bounds; by-ids scales with the grouped items on the page, which `multiVersionIds()` has already counted.
+
+The resume list is fetched FIRST so an empty one skips the second request: the ladder is 0 requests on a pre-12 server or a page with nothing grouped, 1 when grouped items exist but nothing is in progress, 2 otherwise. "Played last" is now an explicit `rank` over the list's `DatePlayed`-descending order — hard-coded in `ItemsController.GetResumeItems`, and the endpoint takes no `sortBy`, so a client cannot pin it. **Scoping is per-caller by design**, not by accident: the grid scopes the resume list to its container (verified 2026-09-20 that a resume query scoped to a `BoxSet` returns its members), while extras rows stay unscoped because More Like This and person-videos rows legitimately cross libraries. Ruled out: **capping the resume list with `Limit`**, which bounds the cost by silently dropping the correction in the tail — the exact defect this feature exists to fix.
+
+## decision-id: original-language-client-side-parity
+
+**date**: 2026-09-21
+**status**: accepted
+**related-files**: `source/utils/streamSelection.bs`, `source/api/items.bs`, `source/utils/quickplay.bs`
+
+For the Jellyfin 12.0 web client's "Original language" audio preference, JellyRock keeps choosing the track itself and follows the server's rules for that mode: an episode with no `OriginalLanguage` of its own takes its series' (`Episode.GetInheritedOriginalLanguage`), and with "Play default track" off a stream flagged `IsOriginal` wins; with it on, the flag is ignored, as on the server. Ruled out: **taking `MediaSource.DefaultAudioStreamIndex`**, which the per-user item fetch already carries and which would need no series request. The server computes it from ITS `PlayDefaultAudioTrack`, ignoring JellyRock's own override (`resolvePlayDefaultAudioTrack()`); it skips JellyRock's hardware ranking (channel count, direct-play codec) and commentary demotion (#500); and it applies `RememberAudioSelections`, which JellyRock parses but uses nowhere else — so this one preference would behave differently from every other.
+
+The cost accepted is one series `GET` per episode that lacks its own `OriginalLanguage`, made only for viewers who chose "Original language" (`needsSeriesOriginalLanguage()`): 53–90 ms per fetch, measured 2026-09-21 on a Stick 4K against the local 12.0 server (4 samples). It is needed because `DtoService` sends the item's own value, not the inherited one, at 12.0 and 12.1, and on the 12.0 test server 354 of 1767 episodes carried none. Re-evaluate if the server starts sending the inherited value in the DTO, which would remove the fetch.
+
+## decision-id: live-hls-upstream-direct-play
+
+**date**: 2026-09-21
+**status**: superseded
+**superseded-by**: `manifest-upstream-direct-play`
+**related-files**: `source/utils/liveTv.bs`, `source/enums/UpstreamHlsBlocker.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `source/constants/timeouts.bs`
+
+When Jellyfin 12.x declines direct play for a live `m3u` HLS channel (jellyfin/jellyfin#17768) but still returns the channel's absolute upstream `Path`, JellyRock plays that URL itself, as it did on 10.11 (`getUpstreamHlsBlocker()`). The server's replacement, remuxing on the server, drops audio carried as a separate HLS rendition and starts ~31 s slower, and the relay bug #17768 fixed never affected JellyRock, which already played the absolute URL. Ruled out: reporting upstream instead (not viable for this project); a player stall watchdog (a Roku handed an unreachable URL buffers indefinitely with no error, so a watchdog could only guess at a timeout); trusting the server's `IsRemote` as a reachability test (it says where the server sees the host, not whether the TV can reach it).
+
+The server's "no" does not say which rule declined, so the override keeps the server's stream wherever a rule older than 12.0 applies: the retry that forces a transcode, the tuner's "Auto-loop live streams" (`RequiresLooping`), the user's "Force transcoding of remote media sources" on a remote source (`IsRemote`), and the internet streaming bitrate limit (`ContainerBitrateExceedsLimit`). Other transcode reasons are ignored: for a manifest, 12.x skips its direct-play check, and its codec reasons say only whether its own transcode can copy the stream. Accepted, invisible to the client: the tuner's "Simultaneous stream limit". The server counts it when the live stream opens, and a retry of the same channel joins that stream instead of taking a second slot.
+
+The override is gated by a device preflight (`upstreamPlaylistAnswers()`): direct play only on HTTP 200 with an `#EXTM3U` body within `timeouts.LIVE_UPSTREAM_PREFLIGHT_MS`, `gzip` decoded because the player decodes it too. Anything else stays on the server's stream. Cost accepted: one playlist GET before each live start (57–129 ms measured on a Roku Ultra, 2026-09-21), up to 3 s added when the upstream is unreachable. Known limit, accepted: a playlist that answers while its segments do not. Re-evaluate if the server restores direct play for these channels or says why it declined.
+
+## decision-id: extras-rows-discovery-last
+
+**date**: 2026-09-21
+**status**: accepted
+**related-files**: source/extras/extrasRows.bs
+
+Item details put the rows about the item itself first and the rows that lead away from it last, in the same order on every type that has them: Collections, then More Like This (`extrasRows.appendDiscovery`). The Movie plan moved Special Features up to satisfy it: Chapters, Additional Parts, Cast & Crew, Special Features, Collections, More Like This. That is jellyfin-web 12.1's relative order for those four rows. Considered and ruled out (user pick, #926): inserting Collections above More Like This with nothing moved, which left Special Features below both discovery rows, and a larger reorder putting Cast & Crew first.
+
+The Collections row (Jellyfin 12.0+, `extrasRows.supportsItemCollections`) is planned on every item type except Person, and stays off screen when the answer is empty. The server accepts any item into a collection (`CollectionManager.AddToCollectionAsync` checks only that the collection and items exist; an Audio track added on a local 12.0.0, 2026-09-22, came back from `GET /Items/{id}/Collections`), and jellyfin-web asks for every item. Ruled out: gating on web's add menu (`supportsAddingToCollection`), which hid membership that exists. Person is excluded because `ExtrasRowList.finishRunIfResolved` reads any row on screen as `personHasMedia`, which shows Shuffle. The row is keyed on the item itself, even for an episode: the server lists only direct links, as web does. Cost, measured 2026-09-22 on a local 12.0.0 (median of 10, 5 movies): 7.7–9.1 ms against 25.9–40.1 ms for `/Similar`, and every plan with the row also has that slower row, so it never delays the commit. Re-evaluate if the server returns inherited membership, or if Person rows stop driving `personHasMedia`.
+
+## decision-id: tv-guide-windowed-programs
+
+**date**: 2026-09-21
+**status**: accepted
+**related-files**: `components/liveTv/schedule.bs`, `source/utils/guidePrograms.bs`, `components/liveTv/LoadSheduleTask.bs`
+
+The TV guide loads every channel row but programs only near the focus, on both axes: 25-channel blocks around the focused row (`guidePrograms.wantedBlocks`), each holding only a time window around the grid's left edge — 6 h before to 30 h after, fetched again once it covers less than 3 h before or 12 h after, trimmed 12 h outside it (`guidePrograms.timeWindow`, `guidePrograms.trims`). Blocks are fetched one at a time on a new `LoadScheduleTask` node, each landing re-deciding from the focus and the left edge as they are then; at most `guidePrograms.CAP` blocks hold programs and the farthest are dropped; a fetch whose block has left the window is abandoned. Ruled out: **every channel's programs up front** — measured 2026-09-21 on a Streaming Stick 4K, 393 channels × 24 h took channel memory from 37 to ~160 MB, so a 2,000-channel lineup would not fit a 512 MB device (300 MB channel limit); **explicit channel pages with previous / next buttons**, as `jellyfin-web` (500) and `jellyfin-androidtv` (75) do — bounded, but it needs page UI the `TimeGrid` does not have and is a worse remote experience; **the row-by-row model of `SGDEX`'s `TimeGridView` as it ships** — no eviction, no canceling of stale loads, and "Loading…" standing in for "no data"; and **blocks holding every program up to a horizon that only grows**, this design's first version — measured 2026-09-21 on a 512 MB Roku Stick against 500 channels with Jellyfin's default 7 days of guide: 55 MB at open, 153 MB with the left edge at day 6, then `EXIT_OUT_OF_MEMORY` (300 MB limit) as the fourth block loaded while scrolling down, 2 of 2 runs. A program node, a full `JellyfinBaseItem`, costs ~10 KB.
+
+Measured with the design, 2026-09-21: 2,000 channels on the 512 MB Stick at 72 MB cold and 124–152 MB at the cap (24 h of programs per block). With the time window, the scenario that ran out of memory peaks at 136–167 MB, and swapping blocks at day 6 stays in a 143–170 MB band, reclaimed in batches rather than climbing; the OS reported `generalMemoryLevel` low twice in that band. Applying a block costs 6–59 ms of render thread on a Stick 4K and 16–75 ms on the 512 MB Stick, except the block holding the rows on screen: 99–255 ms and 111–348 ms, nearly all of it `TimeGrid` taking the programs into visible rows (the details pane is 6–15 ms of it). Dropping a block costs 45–137 ms and 108–256 ms; a cut, 33–83 ms and 50–235 ms. Re-evaluate `CAP`, `BLOCK_SIZE`, the window and the single fetch in flight if any of these hurts; the channel list itself still grows with the lineup (~15 KB per row), and the ~10 KB program node is the next lever.
+
+## decision-id: tv-guide-load-retry
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `components/liveTv/schedule.bs`, `source/utils/guidePrograms.bs`, `source/utils/backoff.bs`, `components/liveTv/LoadChannelsTask.bs`
+
+A TV guide load that fails retries on its own after a backoff delay (`backoff.afterFailure`: 1 s, doubling to a 30 s cap), per program block and per channel page, and says so: rows without programs read "Schedule unavailable" while a block near the focus waits to retry — that wins over "Loading…", since the wait can be 30 s — and a failed first page puts the same text over the whole grid and stops the spinner, which holds the remote. Moving the focus does not cut a delay short (a held key would otherwise hammer a failing server), a block the focus leaves forgets its failures, and retries wait while the guide is off screen. Ruled out: **retrying only when the user moves the focus**, the previous behavior — hard to discover, and it paused every block, not just the one that failed; **a toast per failure** — noise for a state the rows already show; and **per-row placeholder cells** — `TimeGrid` has no per-row status text, and a placeholder node per row would need guarding in every program handler.
+
+Re-evaluate the 30 s cap if servers take longer than that to come back, and whether some failures (a `4xx`) should stop retrying rather than back off.
+
+## decision-id: latest-rows-new-node-per-run
+
+**date**: 2026-09-22
+**status**: accepted
+**supersedes**: latest-rows-no-mid-run-restart
+**partially-superseded-by**: home-section-loads-new-node-per-run (its out-of-scope clause: `HomeRows`' five section loads keeping one node each)
+**related-files**: `components/home/HomeRows.bs`, `source/home/latestRows.bs`, `source/utils/tasks.bs`
+
+Each Home latest-rows run gets a NEW `LoadLatestRowsTask` node (`startLatestMediaLoads` via `replaceTask()`), and `onLatestRowsReady` drops any wake that fails `isCurrentTaskEvent()` — [ADR 0037](adr/0037-task-run-replacement.md) applied here. What `HomeRows` reads off the node (the delivered result children and the drain cursor over them) belongs to one run, so it is released with the node; unlike `BaseGridView` and `schedule`, there is no cross-run query state to move onto the component. The refresh still SKIPS while a run is in flight, and `latestRows.runIsStalled` still reclaims a run silent past `PIPELINE_RUN_MS + API_WAIT_MS` since its last row (`pipeline-budget-charges-wait-only`). The skip's reason has changed: a new node always starts, so it no longer guards against a dropped relaunch. It stays because a restart would discard a run already fetching fresh data, delaying first paint and spending pool slots twice.
+
+This reverses the predecessor's "ruled out: a fresh Task node per run". Both of its reasons are gone: the persistent-node convention was replaced app-wide by ADR 0037 after a same-node STOP-then-relaunch was measured losing up to 10 of 10 runs, and "an allocation per refresh" is one node per return to Home, far rarer than the node per keystroke ADR 0037 accepts in `SearchResults` (the allocation itself is not measured). Its "a running task is never STOPped" never held: the stall reclaim STOPped a node that could still read `run` and relaunched that same node, the one path its guard did not cover. Forced wedge, Stick 4K, 2026-09-22 (run 1 sleeps 60 s after its first row, reclaim at ~45 s): `main` 6/6 relaunches honored, new node 6/6, wedged run never resumed — migrated without a reproduction, as `SearchResults` was. Its warning about non-cloneable objects in `LoadLatestRowsTask.init()` no longer applies: each node launches once. Out of scope: `HomeRows`' five other Task nodes keep one node each; they relaunch only after delivering, from a later callback, which [threading.md](architecture/threading.md#measured-findings) measured as reliable.
+
+## decision-id: accept-language-not-sent
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `source/utils/mediaDisplayTitle.bs`, `source/utils/remoteSubtitles.bs`
+
+JellyRock does not send `Accept-Language`, although Jellyfin 12.0 localizes per request (jellyfin/jellyfin#16488). Measured 2026-09-22 against a local 12.0.0 (`fr`, `de`, `ja` against no header, 22 endpoints JellyRock calls plus `PlaybackInfo`): the server honors it (`Content-Language` is echoed), but the only content that changes is the flag words inside audio and subtitle `DisplayTitle` and the `Localized*` stream fields (`Default` became `Par défaut`). Language names stay English; season and chapter names are written in the server's language at scan time; views, genres, Next Up, Resume, Latest, Search and Live TV come back byte-identical. The server source agrees: every other request-culture string is a scheduled-task name, an admin surface.
+
+JellyRock renders none of it. `mediaDisplayTitle.bs` builds every track label from its own translation keys, and the one `DisplayTitle` read (`remoteSubtitles.subtitleStreamKey()`) is an identity key the header would make language-dependent. Ruled out: sending it anyway as future-proofing, which means a header on every request plus a `ui-culture` query parameter on the `ws://` connection (the server captures its culture at upgrade), for no change on screen. Re-evaluate if a `/server-upgrade` triage finds a release that localizes a string JellyRock displays.
+
+## decision-id: details-text-fits-logo-size
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `components/ItemDetails.bs`, `source/utils/logoLayout.bs`, `source/utils/infoRowFit.bs`, `source/api/ApiClient.bs`
+
+`ItemDetails` fits each line of its text to the logo's real box, and learns that box before the image arrives by asking for the image's original size (`GetItemImageInfos`, on the 10.7.0 floor) — one extra request per details open. The title, info rows and description are held at opacity 0 until the box is known, capped at 0.5 s, then shown already fitted; past the cap they show fitted to the widest possible logo and are not refitted. Measured 2026-09-22 against a LAN Jellyfin 12.1: a first request for a resized logo took 0.26 s median and 3 s worst (12 logos), the size request 28–56 ms; the served size is the original scaled to fit and rounded to nearest (15 of 15 matched).
+
+Ruled out: waiting on the image itself (blank text for seconds on a first open); one widest-logo bound for every line (wastes the room a short or narrow logo leaves); refitting after the logo lands (a visible jump); a spinner for the hold (sub-second waits, so it would only flash). Re-evaluate if the size request proves costly, if servers commonly report a size of 0 (the text then waits on the image, up to the cap), or if the cap is hit often on remote servers.
+
+## decision-id: relaunch-gate-no-stop-shapes
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/no-same-node-relaunch.cjs`, `tests/scripts/unit/bsc-plugins/no-same-node-relaunch.test.js`, `tests/source/unit/GridView/MoviePresenter.spec.bs`, `docs/architecture/build-and-tooling.md`
+
+`no-same-node-relaunch` also flags two shapes with no STOP in them. The first is a `launchTask(m.x)` in a function that has not assigned `m.x` a new node first (directly, or through a same-file helper, one hop). Launching a still-running node is ignored every time: 40 of 40 trials on a Stick 4K and a 512 MB Stick ([threading.md](architecture/threading.md#measured-findings)). `MoviePresenter.loadLogo` hit this, and so did the TV guide's own-handler paging (#991). The second is a same-file handler of a `replaceTask()` node whose first statement, logging aside, is not the `isCurrentTaskEvent()` guard; until now only review enforced that part of [ADR 0037](adr/0037-task-run-replacement.md). **Ruled out: recognizing safe guard shapes structurally** (`state <> "stop"` checks, `HomeRows`' `isLoading*` flags). Detecting them would be heuristic, and one of those guards is cleared inside the node's own delivery handler, where it still reads `run`. So a site audited as safe carries a line suppression that states the reason (`TrickplayCarousel.startTileLoader`), and a site not yet audited goes in `PENDING_MIGRATIONS`, as [`same-node-relaunch-gate`](#decision-id-same-node-relaunch-gate) requires. That note's no-inline-marker rule covers sites awaiting migration, not ones audited safe. An entry covers every finding at the first launch it names, and a second launch of the same path is still flagged. **Also ruled out: a unit test per site** instead of the gate. A test protects one site; the gate covers every present and future one.
+
+**The constraint worth re-evaluating is reach.** Only `m.`-rooted paths are checked (a local alias of a long-lived node is missed), helpers are followed one hop by bare name, and a handler in another file is not followed. `MoviePresenter`'s logo handler is reached through `BaseGridView.onPresenterLogoLoaded`, so `MoviePresenter.spec.bs` pins that one instead.
+
+## decision-id: details-credits-follow-people
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `components/ItemDetails.bs`, `source/utils/people.bs`
+
+The `ItemDetails` credits row shows "Created by …", then "Directed by …" (the order `jellyfin-web` uses), for ANY item type whose own `People` carry those credits, via one `displayPeopleCredits()` call after the type dispatch. Chosen by the user over a Series-only rule for creators, then applied to directors too: a type the server starts crediting later needs no change, and a type it doesn't credit shows nothing. Measured 2026-09-22: Creator credits exist on 12.0 / 12.1 Series only; 22 Seasons carry Director credits on 10.11 AND 12.0, so seasons now show "Directed by" on every server version. The row is fitted to the logo for every type by `fitInfoRow()`.
+
+Ruled out: gating by type (the old "Directed by" on Movie, Episode and `MusicVideo` only), and showing a PARENT's credits — a Season or Episode listing its series' creators. **The cost argument holds for an Episode only**, and the first draft of this note got that wrong: an Episode screen does not fetch its series, so the fallback would cost a request per open, but a Season screen ALREADY has the series in memory (`m.loadSeasonSeriesTask` loads it as `metaDataDetails`, which requests `People`) and `populateInfoGroupSeason()` already falls back to it for the official rating, the ratings, the runtime and the studio. The Season case was declined on repetition rather than cost (user call 2026-09-22, after a review caught the wrong rationale): the creators belong to the show, the series screen already says who they are, and repeating the line on every season adds nothing. Re-evaluate if some type's `People` start carrying credits that read wrong on its details screen, or if the season fallback is ever wanted — it is a `populateInfoGroupSeason()` change with no new request.
+
+## decision-id: credit-row-kinds-in-people
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `source/utils/people.bs`, `components/ItemDetails.bs`
+
+WHICH credits the details screen's credits row shows, and in WHAT order, is a table in `people.bs` (`creditRowKinds()`) beside the other `PersonKind` tables; `creditRowSpecs()` builds every line from it in ONE pass over `People` and returns render-ready specs, leaving `ItemDetails.displayPeopleCredits()` owning only the nodes — the same split as `castCardSpecs()` / `transformPersonCard()`. The single pass is not cosmetic: `people` is a node ARRAY field, so each read copies the whole array and a scan per kind cost a copy per kind; with `populateInfoGroup()` running twice per open (load, then `rebuildDetailsText()` when the logo box lands) that was 4 copies and 4 walks per details open, now 2 and 2. The table's ORDER is also the overflow policy — `fitInfoRow()` keeps the earlier credit and drops the later one, so a series with a long creator list loses "Directed by", which is intended: creators are the headline credit on the one type carrying both. The dedupe is per kind, so someone credited as both Creator and Director appears on both lines, and a `Name` that is blank or only whitespace is not a credit, so the row never renders a bare "Created by".
+
+Ruled out: a per-kind `creditNames(people, kind)` helper called once per kind (deleted — a copy and a walk per kind, and a second home for `PersonKind` knowledge to drift from), and keeping the kind literals in `ItemDetails.bs`. Parity with `jellyfin-web` is explicitly NOT maintained or verified — show what the server gives us and pick the best-reading order ourselves. The constraint worth re-evaluating: `creditRowKinds()` names `PersonKind` values but sits OUTSIDE `npm run lint:language-coverage`, which parses `personKindTranslationKeys()` and `unlabeledPersonKinds()` by function name — so an upstream rename of `Creator` would silently empty the line, the failure that gate exists to prevent.
+
+## decision-id: filter-option-delimiter-split
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `source/utils/languageFilters.bs`, `source/GridView/gridQuery.bs`, `source/GridView/MoviePresenter.bs`
+
+A library filter category's saved query is its checked options' values joined by the category's delimiter, and that same string is what the registry stores and what the request carries. Decoding it on restore is a plain split, which is correct only while an option's value never contains that delimiter. Every category was built to satisfy that — Genres and `OfficialRatings` use `|` because their values are free text, Years uses `,` because a year is digits — but the rule was never written down, and the 12.0 language filters broke it: one option's value is several ISO codes joined by `,` (`fra,fre`, because the server matches the literal tag and will not fold 639-2/T and /B together) under a category the server forces to use `,` between values as well. The saved form and the sent form are therefore no longer the same string: `PANEL_DELIMITER` (`|`) separates options in the panel and the registry, `CODE_DELIMITER` (`,`) separates codes inside one value, and `languageFilters.toWire()` flattens one into the other in `gridQuery.build()` — the single place a saved `filterOptions` becomes a request, since `LoadItemsTask2` appends whatever keys it is handed.
+
+Ruled out: matching set-wise on restore (splitting the option's own value too and testing for intersection), which keeps one string for both roles but repeals the rule the other three categories still rely on and leaves the saved query readable only by consulting the current option list; and making option values atomic base codes expanded to their alias spellings at request time, which is the strongest invariant but needs an inverse of `mediaLanguageAliases()` and sends codes `/Items/Filters2` never advertised. Splitting the delimiters restores the rule the codebase already followed rather than replacing it with a subtler one, and the conversion stays at one seam. The constraint worth re-evaluating: the rule is now enforced by a round-trip unit test over the shapes we construct, not by anything that can see a value the server invents — a future category whose values can contain `|` would break the same way, silently, with the filter applying while no box is ticked.
+
+## decision-id: caption-fetch-render-split
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `components/video/LoadCaptionTask.bs`, `components/video/CaptionRenderer.bs`, `components/video/VideoPlayerView.bs`
+
+Custom subtitles were one `captionTask` holding both halves of the job: a Task `functionName` that fetched and parsed the VTT, and — on the render thread — a 100 ms timer, the font and style lookups, the parsed cue list and the label building, all sharing one unsynchronized `m`. That sharing is what produced the `&hf3` crash on `m.tags.replaceAll()`, and the raw `roUrlTransfer` + `WaitMessage` dialect ([ADR 0014](adr/0014-non-pool-http-stays-task-blocking.md) reason 2) exists to dodge it. It is now split: `LoadCaptionTask` fetches and nothing else, and `CaptionRenderer` — a `Group`, so it has no `functionName` and exactly one thread writing `m` — owns the timer, the `currentPos` / `playerState` playback bridge, and the fetch node itself. The race is now impossible by construction rather than avoided by picking the right HTTP client, which is the half of ADR 0014's reason 2 that no longer applies to captions; its conclusion is untouched and still rests on reasons 1 and 3.
+
+**The renderer owning the fetch node is the load-bearing choice.** `VideoPlayerView` writes a `url` and launches nothing, so its two `no-same-node-relaunch` `PENDING_MIGRATIONS` entries were DELETED rather than migrated — the gate holds because there is no launch site left to get wrong, not because a correct one was written. It also collapses the delivery to one hop, and makes `url = ""` a real clear verb, replacing a hand-written `captionData = { entries: [] }` poke and a comment saying the obvious spelling was a no-op. Two facts here were measured, not reasoned: `callFunc("onDestroy")` on the old `captionTask` never dispatched at all — 0 of 8 calls against 8 of 8 once `<function name="onDestroy" />` was declared — so the 100 ms timer and the data observer survived every player exit, and the six specs covering that teardown passed vacuously for a simpler reason than first recorded here: with no `<function>` declared at all, NEITHER `callFunc("onDestroy")` NOR `callFunc("updateCaption")` dispatched, so every assertion held against an untouched node whatever the lifecycle scoping. The shared `setup()` node is a real but SEPARATE hazard, reachable only once the declaration exists — which is why the rebuilt spec builds per test in `beforeEach`. Separately, `CreateObject("roFileSystem")` returns `Invalid` in a `Group`'s `init()` while the identical code was fine in the `Task` it came from ([threading.md](architecture/threading.md#measured-findings)), so the renderer cannot probe for the downloaded font itself: `LoadCaptionTask` answers instead, publishing `fontAvailable` before it publishes `captionData`, and `applyFont()` reads it on delivery. Reading the SETTINGS that trigger the download (`playbackSubsCustom` / `uiFontFallback`) was tried first and reverted — the setting being on is what STARTS the download, not proof it finished, and a server with `EnableFallbackFont = False` (whose `GET /FallbackFont/Fonts` returns `[]`) leaves the setting on with no file on disk, which is exactly when non-Latin subtitles need the fallback most.
+
+Ruled out: **`VideoPlayerView` owning the fetch node** (the conventional `SearchResults` migration — but the player is not the consumer here, and it would add a second hop plus task lifecycle to a file already carrying four other pending entries); **keeping `extends="Task"`** (zero rename churn, but the name teaches the wrong model and leaves the shared-`m` hazard reachable); **the renderer drawing its own labels** instead of publishing `currentCaption` for `captionGroup` (cleaner end state, but it moves layout and visibility on a playback-critical path for no measured gain). **Constraints worth re-evaluating:** the fetcher's URL regex accepts only `.vtt` although the device profile advertises `srt` / `ttml` / `sub` as External delivery, so a delivery URL that is not `.vtt` renders nothing — inherited verbatim, not introduced here; and writing the same `url` twice is now idempotent where the old code force-relaunched, which is correct only while `url` is non-empty exactly when custom subs are active for that track.
+
+## decision-id: home-section-loads-new-node-per-run
+
+**date**: 2026-09-23
+**status**: accepted
+**partially-supersedes**: latest-rows-new-node-per-run (its out-of-scope clause: `HomeRows`' five section loads keeping one node each)
+**related-files**: `components/home/HomeRows.bs`, `components/home/LoadItemsTask.bs`, `source/utils/tasks.bs`
+
+Home's five section loads (libraries, Continue Watching, Next Up, On Now, Active Recordings) each get a NEW `LoadItemsTask` per run through one `start*Load()` helper per section: `replaceTask`, handlers open with `isCurrentTaskEvent` and release the node on delivery, and the flag takes `launchTask()`'s result so a launch refused at the thread watermark leaves the section able to retry. The `isLoading*` skip-while-running stays, so a section never has two runs. The predecessor's "they relaunch only after delivering, from a later callback, measured as reliable" did not hold: the handler clears the flag while the node still reads `run`, a relaunch before the function returns is ignored, and the section then never refreshes again. Measured 2026-09-23 on a Stick 4K, with Continue Watching held 30 s after its write: `main` 6/6 stuck, this change 6/6 recovers.
+
+Ruled out: launching in a fixed order with no launch inside the `m.sectionPlan` loop, so that `no-task-fanout` could see every launch. The fix never needed an order change, and on a 512 MB Stick with a reversed layout it read +5.3 % paint (p = 0.28) against −3.2 % (p = 0.44) for keeping the user's order, both inside that device's ~200 ms block-to-block drift. Constraints worth re-evaluating: release-on-delivery stops the Task at its next statement, so it relies on `content` being `LoadItemsTask.loadItems()`'s last write (stated there and on `releaseTask`); and each helper's own `isLoading*` guard is the one-run bound — `no-task-fanout` follows the section loops' helper calls one hop and requires that bound to be stated on the helper's launch line, so it is declared rather than checked.
+
+## decision-id: task-fanout-follows-helpers
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/no-task-fanout.cjs`, `scripts/lib/bsc-rule.cjs`, `tests/scripts/unit/bsc-plugins/no-task-fanout.test.js`, `components/home/HomeRows.bs`, `components/extras/ExtrasRowList.bs`
+
+`no-task-fanout` follows a loop's bare calls to same-file functions one hop, judging the helper's body as though written in the loop, and reports on the call. A helper that keeps at most one run live however often it is called states that bound with a suppression on its **launch line**, which every caller inherits. Moving `HomeRows`' section launches into `start*Load()` helpers had taken them out of the gate's view, and the one-hop reach is the one `no-same-node-relaunch` already has. Measured 2026-09-23 on the branch tree: 7 new errors, exactly the call sites a parser scan predicted (`HomeRows` ×6, `ExtrasRowList.onProgramsExpired` → `startRun` ×1), and 0 once 5 launch lines stated their bound.
+
+Ruled out: **a suppression at each call site** (7 markers instead of 5, each pointing at a guard in another function, so deleting the guard would not mean walking past the claim); **recognizing guards structurally** (already ruled out as heuristic by `relaunch-gate-no-stop-shapes`). Constraints worth re-evaluating: reach is one hop, one file, bare name, so a second hop, another file or a class method called as `m.helper()` is missed; and a stated bound is a claim, not a proof.
+
+## decision-id: playback-report-fetch-per-run
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `components/video/PlayerHostView.bs`, `scripts/bsc-plugins/observe-without-on-destroy.cjs`, `tests/scripts/unit/bsc-plugins/observe-without-on-destroy.test.js`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
+
+`PlayerHostView`'s playback-report fetch gets a NEW `GetPlaybackInfoTask` per run (ADR 0037), and its two callers treat a run still in flight differently: the "i" press replaces it (a fresh answer), while the 5 s poll tick skips while the current node reads `state = "run"`. It checks state rather than whether a node exists, so a launch refused at the thread watermark does not block every later tick. Closing the report releases the node, which also fixes an older bug: a poll in flight at close delivered onto no dialog and opened the report again by itself. Measured 2026-09-23 on a Stick 4K, local Jellyfin 10.10.7 behind a latency toxic, polling forced in a probe build: close with a poll in flight at +3000 ms, `main` 8/8 reopened, this change 0/8; at +7000 ms with the report open 45 s, `main` 4 of 9 tick launches ignored and 4 deliveries, this change 4 ticks skipped, 0 ignored, 4 deliveries.
+
+Ruled out: `replaceTask` on every tick, the standard migration. On a server slower than the poll (`HTTP_MS` is 10 s), each tick would abandon the request before it answered and the report would never update. Alongside it, `observe-without-on-destroy` now counts `releaseTask(X, "f")` as an unobserve of `X`/`f`, but not `replaceTask`, which releases only the previous node: a file that only replaces still leaves the last run observed when the screen is destroyed.
+
+## decision-id: playback-report-newest-dialog-wins
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `components/video/PlayerHostView.bs`
+
+`PlayerHostView` treats the "i" press as a request to open a dialog that has to wait for the network, so it follows `presentOverlayDialog`'s newest-wins rule. The report has its own slot (`m.reportDialog`) apart from the pickers (`m.trackPickerDialog`). Opening a track picker releases a pending fetch, and an answer that finds another overlay open is dropped instead of replacing it. Measured 2026-09-23 on a Stick 4K with a probe build that delays the fetch 6 s, three runs per case: with another dialog open when the answer arrived, the report replaced it 3/3 before the fix and 0/3 after; with a picker opened and canceled first, the report opened by itself 3/3 before and 0/3 after.
+
+Ruled out: keeping the shared slot and relying on `showTrackPicker` releasing the fetch. That works, but it depends on a rule across two functions that nothing enforces. Also ruled out: letting the report open after the picker closes, which is the same "opened by itself" problem as `playback-report-fetch-per-run`. Not covered: the chapter list is a panel inside the player, not an overlay, so a late answer still opens over it.
+
+## decision-id: live-restart-progress-and-stall-rule
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `source/utils/liveTv.bs`, `components/video/PlayerHostView.bs`, `components/video/VideoPlayerView.bs`
+
+A Live TV mount counts as healthy (so an end resets the restart count, and a stall restarts the channel) after 30 s of **progress**, measured by the player from its 0.5 s `position` notifications: only forward steps of at most `LIVE_PROGRESS_MAX_STEP_MS` (2 s) past the furthest position count. Ruled out, both measured on a Stick 4K against 12.1 (2026-09-23): **time spent in `playing`**, because a playlist that stops growing is replayed before the player buffers, so a stale upstream looked healthy and restarted forever; and **the position at state changes**, because the first `playing` reports the live-edge seek sentinel (999999) in some runs and 0 in others, which made a healthy stall read `played=0` or counted the join offset as play. The 2 s cap is a tuned value with headroom for late notifications (steps measured 500-516 ms); each live mount logs its step sizes at teardown so it can be re-evaluated.
+
+A **stall** restarts only after healthy progress; it does not share the end's three-restart budget, because each stall is only detected at least 30 s into the buffering spinner (later if the percentage keeps rising), so three restarts would keep a viewer waiting for minutes (user call). The mount a stall restart started must play `LIVE_STALL_REPROVE_MS` (2 min) before its own stall restarts again, and that bar stays raised through restarts that end without playing until a mount plays 2 min: a restart into a playlist that stopped growing counts its leftover as progress, measured 2026-09-23 on a Stick 4K against 12.1 (encoder killed without `ENDLIST`) at 19.5 s with 4 s segments (32 s and 64 s windows alike) and 29.6 s with 10 s segments, so it grows with the segment length and would soon pass the 30 s bar and restart forever (2 min, about four times the 10 s case, user call). The give-up error says the channel "isn't sending any video" when no mount since the viewer chose it made progress, and that its stream "stopped" when one did. An **end** keeps the budget: past three ends in a row without healthy progress, the player shows the error. No delay between restarts: an upstream outage surfaced as a stall or, on the restart, a Video `error`, never as repeated quick ends (measured), so a delay would only slow the give-up on a stream that really ended.
+
+## decision-id: never-started-stream-failed-stop
+
+**date**: 2026-09-24
+**status**: accepted
+**partially-superseded-by**: live-stream-released-once (which request releases a never-started stream's Live TV live stream)
+**related-files**: `source/utils/playbackEnd.bs`, `source/enums/PlaybackEndReport.bs`, `components/video/VideoPlayerView.bs`
+
+A video stream that never reported `start` still reports its end, as a stop marked `Failed`, and every stream's end is reported exactly once (`VideoPlayerView.reportPlaybackEnd()` → `classifyPlaybackEnd()`). Ruled out: **skipping the stop** for a never-started stream, because the stop is also what makes Jellyfin kill the session's transcode jobs and close a Live TV live stream (the retry and stall paths rely on it); and **sending the queue's starting point as the position**, because a starting point can be exact (a chapter, play-from-start) and it would write user data for a playback that never happened. `Failed` makes Jellyfin's `OnPlaybackStopped` skip only the per-user `UpdatePlayState`/`SaveUserData`; `KillTranscodingJobs`, the live-stream close and the `PlaybackStopped` event still run (read in source at v10.7.7, v10.9.0, v10.10.0, v12.0, v12.1).
+
+The once-per-stream guard (`m.isEndReported`, reset when a stream loads and when `start` is sent) is required by the `Failed` rule, not optional: after a stop `isPlayReported` is false, so a following `finished` would otherwise read as never-started and send a second stop. Measured 2026-09-24 on a Stick 4K against 12.1: before this, a transcode whose ffmpeg failed stalled into the error dialog and its unmarked stop at 0 ms wiped a 300 s resume point to 0 (#969); a real direct-play error's transcode retry surfaced its stop as `finished`, reported the same way. After it, both keep the resume point, with one stop per stream.
+
+## decision-id: grid-load-failure-retry-policy
+
+**date**: 2026-09-25
+**status**: accepted
+**related-files**: `components/ItemGrid/BaseGridView.bs`, `components/ItemGrid/LoadItemsTask2.bs`, `source/GridView/gridPaging.bs`, `source/api/apiResponse.bs`
+
+A library grid whose first page (or Genres list) fails shows its own failure state with a Try again the USER presses; it never retries on its own. The query that failed may still be running on the server — #869's slow count is the case that prompted this — and an unprompted retry stacks a second copy on it. A failed later page keeps the items shown and the known total, raises one toast until a page loads, and is asked for again by the paging rule (`grid-paging-runway`) — the next time focus moves, or the user comes back to the grid from another screen, with the runway still short — both user-driven, one request at a time (`m.loading`). While another screen covers the grid it neither toasts nor moves focus; those rules are `gridPaging`'s, unit-tested. Focus landing back in the grid already asked on return as a side effect (the grid re-reports its focused item; measured 2026-09-25, Ultra, Roku OS 15.3.4), but only when focus returns there — the resume check makes it the rule. `LoadItemsTask2.status` is `ok`/`failed` per `latest-rows-failure-vs-empty`; the cause goes to the log (`apiResponse.jsonFailure`), not to the screen.
+
+Ruled out: auto-retry with backoff (the stacking above), and `latest-rows-failure-vs-empty`'s no-retry, which rests on Home refreshing on every return — a grid has no such trigger, so a failure would stick until the user left and re-entered. Also ruled out: a cause-specific failure message (would route the cause through a status field, against the note above).
+
+## decision-id: grid-paging-runway
+
+**date**: 2026-09-25
+**status**: accepted
+**related-files**: `source/GridView/gridPaging.bs`, `source/GridView/gridPage.bs`, `components/ItemGrid/BaseGridView.bs`, `components/ItemGrid/LoadItemsTask2.bs`, `components/ui/progress/ProgressPill.bs`
+
+A library grid loads the rows near the user, not every page upfront (reverses #444). The next page is asked for when the loaded rows left below the user's row would run out before a page could arrive (`gridPaging.shouldLoadMore`): speed is the rate over the last second of movement, read from `currFocusRow` because `itemFocused` fires only where a scroll stops (measured 2026-09-25: 15 reports over 66 rows); page time is a running average; one screen ahead at rest; one page in flight. The total is counted on the first page only — an uncounted reply's total is the page's size or 0 depending on server and endpoint, so later totals are ignored. "#" is two exact sort-name ranges (`< A`, `>= {`) paged as one list, with no version guard: A–Z plus both ranges partition a library exactly on 10.7.7–12.0.0, and 10.11.0–10.11.2 are wrong server-side whatever is sent. "Loading more…" (`ProgressPill`) shows after 0.3 s at the last loaded row. The constants are starting values; the `perfTiming` per-grid log line is what tunes them.
+
+Why: #444's reason — only visible rows hold textures — covered texture memory, not the item nodes (113 MB for 8,643 on the 512 MB Stick), and on a slow server it kept a pool slot busy for about an hour. Measured 2026-09-25 against the 8,643-movie fixture, Down every 150 ms for 20 s: Stick 4K 0 s at the last row, 35 MB after 700 items. The 512 MB Stick stalled 4.5–5.6 s at the last row under that probe, and paging was not the cause: `LoadItemsTask2` read from the render thread for every item. Once #1046 read those values once per page, it stalled 0–70 ms and built a page in 0.22–0.32 s while scrolling (3 runs per arm, fixture database optimized so the server answers fast). Ruled out: a user page-size setting (`jellyfin-web`'s is browser-only and means Next/Previous pages; the app can measure what a user would guess at), and a placeholder grid of the full count (the non-serial model of Roku's `SGDEX`) until stalls on fast servers show the runway is not enough. Re-evaluate: if the 512 MB Stick stalls again. The per-grid `perfTiming` lines split a page into build, handoff and render-side add; page size stays at 100 because handoff (56–123 ms) and the add (34–36 ms at worst) measured small.
+
+## decision-id: audio-metadata-release-on-track-change
+
+**date**: 2026-09-25
+**status**: accepted
+**related-files**: `components/music/AudioPlayerView.bs`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
+
+`AudioPlayerView`'s song-metadata fetch gets a NEW `LoadItemsTask` per run ([ADR 0037](adr/0037-task-run-replacement.md)), created at the launch in `onAudioStreamLoaded`, and every track change releases the run in flight in `pageContentChanged`, whether or not the next song launches one. The field starts `invalid` (`init()` no longer creates a node), and `releaseTask` releases any run on every track change and in `onDestroy()`. Measured 2026-09-25 on a Stick 4K against the public demo (12.1.0), with the metadata load forced and its fetch held 4 s after the id read: skipping mid-fetch showed the previous song's title 6/6 on `main` and 0/6 with this change, both when the next song needs metadata and when it does not.
+
+Ruled out: the standard migration alone (`replaceTask` at the launch plus the `isCurrentTaskEvent` guard). When the next song is fully tagged, nothing launches, so the old run is still the current node, the guard passes its delivery, and the old title wins (6/6 on `main` in that shape). Also ruled out: keeping the `init()` node and replacing in both places, which works but leaves a node nobody launches and needs a comment to explain the double replace.
+
+## decision-id: live-stream-released-once
+
+**date**: 2026-09-26
+**status**: accepted
+**partially-supersedes**: never-started-stream-failed-stop (which request releases a never-started stream's Live TV live stream)
+**related-files**: `source/utils/playbackEnd.bs`, `components/video/VideoPlayerView.bs`, `components/ItemGrid/LoadVideoContentTask.bs`
+
+Every Live TV live stream JellyRock opens gets exactly one release. A stream that reported `start` is released by its stop, which names it (`LiveStreamId`); one that never did is released by `POST /LiveStreams/Close`, and its `Failed` stop leaves `LiveStreamId` out (`endClosesLiveStream()`, `liveStreamReportFields()`); a load that fails before handing the stream to the player has it closed by the view (`openLiveStreamId()`, [ADR 0045](adr/0045-live-stream-open-handed-off-by-stage.md)). The stop cannot be the release for a never-started stream, because what the server does with it depends on its version and on who else is watching: 10.7–10.10 always release, 10.11 never ([jellyfin#13220](https://github.com/jellyfin/jellyfin/pull/13220)), 12.0–12.1 only while no other session is linked ([jellyfin#17178](https://github.com/jellyfin/jellyfin/pull/17178)). A second release ends another viewer's shared stream. `jellyfin-kodi` ends every live stream the same way (a stop without `LiveStreamId`, then `LiveStreams/Close`).
+
+Measured 2026-09-26 against local 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11, 12.0.0 and 12.1.0 with an `M3U` tuner sharing one stream between two sessions: a stop naming the stream plus a close ended the other session's stream on every version but 10.11; a stop without it plus a close released exactly one consumer on all seven. On a Stick 4K through a logging proxy (10.7.7, 10.10.7, 10.11.11, 12.1.0), every never-started mount sent a `Failed` stop without `LiveStreamId` plus one close, and the server closed each stream it opened. Ruled out: sending the close only to 10.11.x (12.x still leaks when another viewer is linked, measured), and a stop naming the stream plus a close (#1050 as first pushed).
+
+## decision-id: home-row-failure-tile
+
+**date**: 2026-09-26
+**status**: accepted
+**partially-supersedes**: latest-rows-failure-vs-empty (the five-row asymmetry; recovery by user retry)
+**related-files**: `source/home/homeRowFailure.bs`, `components/home/HomeRows.bs`, `components/home/LoadItemsTask.bs`, `components/ui/rowitem/JRRowItem.bs`, `source/utils/skeleton.bs`, `source/home/latestRows.bs`
+
+Every Home section now follows `latest-rows-failure-vs-empty`, not just the latest-media rows: `LoadItemsTask` publishes `status` for the libraries, Next Up, Continue Watching, On Now and Active Recordings loads, and `HomeRows.applySectionResult` fills or removes a row only on `"ok"`. A failed load keeps a row's items. A row still on its FIRST load stops spinning and shows a "Couldn't load. Press OK to try again." tile (`skeleton.createFailedPlaceholder`; the rules are `homeRowFailure`'s); OK re-runs Home's refresh, so every failed row retries at once and the `isLoading*` guards keep a running section from being asked twice. Failed latest-media rows are also retried directly, from the libraries Home already has (`HomeRows.retryFailedLatestRows`): through the refresh they would wait on the libraries request, which may fail again. A row pressed while a latest-rows run is still going shows the spinner and loads when that run ends, since a run cannot take more rows. A failed first libraries load leaves `m.initialLoadComplete` false, so the retry builds the latest-media rows as a first load instead of re-inserting each; with no My Media row in the layout, one "Recently Added" stand-in row carries the failure. An answered empty libraries list now removes My Media, which the missing status used to leave spinning forever.
+
+Ruled out: a spinner until the next Home visit (a failure that reads as loading, the `docs/progress.md` stall followup this closes), removing the row with a toast (the row pops back in and shifts everything below it on recovery), automatic retry (it stacks a second query on a server that may still be computing it), and, for the latest-media rows, waiting on the libraries answer before retrying (two round trips, and no retry at all when the libraries fail again). The cost of the direct retry: a failed row can be fetched twice, when the libraries answer triggers the normal refresh. Measured 2026-09-26 on `.177` (Stick 4K, Roku OS 15.3.4) against the demo server: `home-failure.spec.js` failed 5/5 on the old app code (Continue Watching deleted, My Media stuck loading with no Recently Added rows, a failed Recently Added row stuck loading) and passed 5/5 with the change. The two OK-retry cases added later failed 2/2 on the code without the direct retry and passed with it (`.178`, Ultra, Roku OS 15.3.4).
+
+## decision-id: favorites-row-failure-stand-in
+
+**date**: 2026-09-26
+**status**: accepted
+**related-files**: `components/home/FavoritesRows.bs`, `components/home/LoadItemsTask.bs`, `source/home/homeRowFailure.bs`
+
+The Favorites tab follows `home-row-failure-tile`: a failed load never removes a row, a row with items keeps them, and OK on a failed tile retries. Its two requests are two `LoadItemsTask` loads, `favorites` (/Items, every row but People) and `favoritePeople` (/Persons, People), each publishing its own `status`, so one failing says nothing about the other's rows; they now run in parallel, and People no longer waits behind a slow /Items. A failed FIRST /Items load does not put a failed tile on each of its up-to-fifteen spinning type rows: they give way to one "Favorites" stand-in row carrying the tile (`homeRowFailure.needsFavoritesStandIn`), as the Recently Added stand-in does on Home; People keeps its own row. OK on either tile runs the reload a return to Home runs (`FavoritesRows.loadFavorites`): each load not still running starts again, as `HomeRows`' `isLoading*` guards do.
+
+Ruled out: one combined status (a People-only failure would hide fifteen answered rows on a first load, which the old code showed), a Favorites-only `peopleStatus` field on the shared Task, a tile on every type row (up to fifteen identical messages), a full-screen failure view like the library grid (a second failure pattern on a Home tab), and restarting both loads on every OK (stopping a Task does not stop its default-limit request, so a load still running went to the server twice). Cost: two Task threads and two render-thread handoffs per Favorites load instead of one. Measured 2026-09-26 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: the new Favorites cases in `home-failure.spec.js` failed on the old app code (the tab went blank on a failed first load; the People row was removed on a People-only failure) and pass with the change; a separate probe showed the old code removing the Movies row on a failed refresh. OK on People while /Items was still running put a second /Items request on the server beside the first when both loads restarted (2 held requests), and one with the guard (3/3 runs, same device and date).
+
+## decision-id: audio-opus-transcoded-in-ogg
+
+**date**: 2026-09-27
+**status**: accepted
+**partially-supersedes**: `audio-direct-play-surround-containers` (opus in the ogg row)
+**related-files**: `source/utils/deviceCapabilities.bs`
+
+The standalone-audio `ogg` row probes `vorbis` and `flac` only: Opus in `ogg` (`.opus`, and `.ogg` / `.oga` holding Opus) is transcoded, although every device answers `CanDecodeAudio` true for it (#1061). Advertised since #870, it hung the player: plain Opus in `ogg` on a Roku Ultra `4850X`, Opus in `ogg` carrying 45 KB of embedded cover art on a Streaming Stick 4K `3820` — where leaving the hang restarted the device — while a Roku Stick `3600X` played both (Jellyfin 12.1, Roku OS 15.3.4 build 2402, measured 2026-09-26; the Stick 4K case also reproduced with a real album on a 12.1 server). All three report `GetAudioDecodeInfo` `OPUS: 6:0:0:0` and `CanDecodeAudio` true for opus in ogg, so no probe can say which device will hang. When the server transcodes them, the same tracks play. Roku's media spec documents `ogg` only "with `vorbis` audio" and Opus only inside `mkv` / `webm`, so Opus direct play now matches the documentation exactly; the `mkv` / `webm` rows are unchanged. This is the failure `audio-direct-play-containers-not-codecs` warned of when it first left `ogg` out.
+
+Ruled out: transcoding only Opus in `ogg` that carries art (the Ultra hangs without it); a per-model allowlist (it cannot be kept current, and on the Stick 4K the failure depends on the file); dropping the whole `ogg` row (`vorbis` in `ogg` is documented and played on all three). `flac` in `ogg` stays direct although Roku does not document it, because it played on all three models with and without the same art — the same trust that failed for Opus, accepted on that measurement. Revisit if Roku documents Opus in `ogg`, or a model is found where `vorbis` or `flac` in `ogg` fails.
+
+## decision-id: editor-lang-server-projects
+
+**date**: 2026-09-27
+**status**: accepted
+**related-files**: `.vscode/settings.json`
+
+The editor's BrighterScript language server loads only `bsconfig.json` (dev: every lint plugin) and `bsconfig-tests.json` (the only config covering `tests/`). `bsconfig-prod.json` stays listed with `"disabled": true`; the unit and integration test configs are no longer listed. The language server holds one full program per `brightscript.projects` entry and, on every save, re-validates each entry containing the file in parallel (`ProjectManager.flushDocumentChanges`). The configs we dropped add nothing to what the editor reports: unit and integration are file subsets of all-tests with the same plugins, and prod's plugins are a subset of those in `bsconfig.json`, with the CI `build.yml` prod job building it on every PR. Measured 2026-09-27 with `bsc --noEmit` (brighterscript 1.0.0-alpha.55): the five configs peaked at ~6.0 GB and 66 s of full validation combined; the two kept peak at 2.46 GB and 29 s. The dev machine (31 GB, no swap) had killed a VS Code process for lack of memory the day before, with two ~2.1 GB language-server-sized processes resident.
+
+Ruled out: one merged editor bsconfig (all-tests plus the plugins in `bsconfig.json`). It measured 1.52 GB and 19 s but raised 29 false diagnostics in spec files (`callfunc-interface` 25, `print-outside-allowlist` 3, `no-task-fanout` 1), and it would add a third plugin list to keep in step with the one in `bsconfig.json`. Also ruled out: `brightscript.languageServer.maxWorkerThreads: 1`, which keeps all five programs in memory and only serializes validation. Re-evaluate if a prod-only plugin or file set starts producing diagnostics dev does not; then flip prod's `disabled` off.
+
+## decision-id: audio-profile-documented-and-reported
+
+**date**: 2026-10-01
+**status**: accepted
+**related-files**: `source/utils/deviceCapabilities.bs`
+
+The device profile advertises an audio format only where Roku's media spec documents it AND the device reports it, and `dts` / `truehd` are never transcode targets. This carries `audio-direct-play-surround-containers` from the audio rows to the video rows: TrueHD, absent from the spec, is direct-played nowhere; DTS-HD and `DTS:X` (`dtshd`, `dtsx`), also absent, are direct-played nowhere either, and the DTS-HD MA tracks measured were reported by Jellyfin as `dts` and played as their DTS core; DTS, which the spec lists as passthrough and whose core carries at most 5.1, is direct-played up to 6 channels; and neither appears in a transcode profile's `AudioCodec`, because Jellyfin copies a source codec it finds there rather than converting it. The mid-play track switch (`isStreamDirectPlayable`) asks the same question, `getActualCodecSupport` plus the same refusals, the Decode Multichannel Audio cap and the AAC profile rule, so a switch goes native only where the server would have direct-played the track, and otherwise reloads. Measured on a Roku Ultra `4850X` whose soundbar advertises `MAT`, `DTS` and `DTSHD` at 8ch: TrueHD failed to start, direct or copied into `fmp4` HLS; a `DTS-HD MA + DTS:X` 7.1 track failed to start (error -3); DTS copied into `fmp4` HLS played silent (#821, #892) while the same soundbar plays direct DTS with sound. With this change each converts to `eac3` in ts and plays with sound. (Where the earlier note says the device "really can decode" DTS, that is passthrough: the spec lists DTS as passthrough only.) `getSupportedPassthruCodecs` still counts a `dtshd` sink: it only detects surround passthrough for choosing a transcode target, and never adds a direct-play row.
+
+Ruled out: trusting `CanDecodeAudio` and the EDID alone (both say yes to `mat` and to `dts` at 8ch); a per-soundbar override; dropping the `fmp4` transcode profile, which the Dolby Vision transcode uses; and a general "retry failed direct play as a transcode" as the fix, which would hide an inaccurate profile rather than correct it (logged as a separate safety-net follow-up). To re-evaluate: 7.1 DTS-HD on a setup that could bitstream it is converted to lossy `eac3`, and a direct-playable 7.1 DTS-HD track without `DTS:X` has not been measured.
+
+## decision-id: still-watching-prompt
+
+**date**: 2026-10-02
+**status**: accepted
+**related-files**: `source/utils/stillWatching.bs`, `components/video/PlayerHostView.bs`, `source/utils/dialogKeys.bs`
+
+"Are you still watching?" (#982) asks over the next video, not before it. When the queue moves on by itself, `PlayerHostView` asks once N videos in a row have played with no remote button pressed, or once at least two have and the time since the last press reaches a limit, so one long video such as a movie never prompts on its own. It covers every kind of queue (episodes, movies, mixed playlists), where jellyfin-web and Android TV count only episodes, because JellyRock plays mixed playlists. The presets are the ones jellyfin-web and Android TV use (2 videos/60 min, 3/90 default, 5/150, 8/240, off). Any voice or Jellyfin app command counts as activity too, since it presses no button. The player's next / previous starts the count over, like the Play press. A press within 1 s of a video's start is taken as the press that started it, because `TimeSinceLastKeypress` counts whole seconds. The next video plays under a centered `JRDialog` that takes focus; any key answers it, Back included, and the press does nothing else. With no answer in 30 s the video pauses with its normal paused OSD. The design serves the viewer who is there: one press, nothing lost. Checked against the server source (Jellyfin 12.1, `UserDataManager.UpdatePlayState`): at the default `MinResumePct` of 5, 30 s under the prompt leaves no resume point on a video of 10 minutes or more; a video under 5 minutes (`MinResumeDurationSeconds` 300) played past 5% is marked played, as any unattended playback already is.
+
+Ruled out: a "Use Web Client Setting" option, because jellyfin-web 12.x keeps `stillWatchingPrompt` in the browser's `localStorage` (`userSettings.set(..., false)`), so the server has nothing to read. Holding the next video paused on its first frame: the countdown would time nothing the viewer can see, and they would land on 0:00 of a video they never saw. Asking at the end of the current video, or in a corner card: one covers the end of the episode, the other is easy to miss. The counting rule jellyfin-web uses, whose count resets only when the prompt is answered, so it prompts viewers who are using the remote. Applying the time limit only to queues of episodes: a Play All of 2-hour movies would run 6 h unattended, and the setting's "or N minutes" would silently not apply to movies. Rewinding after the timeout, and a 60 s window. Re-evaluate if jellyfin-web starts saving the setting on the server, which would make a web-client default possible.
+
+## decision-id: home-slots-follow-web-client
+
+**date**: 2026-10-06
+**status**: accepted
+**related-files**: `source/constants/homeSlots.bs`, `components/data/jellyfin/JellyfinUserSettings.xml`, `tests/source/unit/utils/homeSlots.spec.bs`
+
+JellyRock reads as many Home-section slots as the Jellyfin web client shows (`homeSlots.SLOT_COUNT`, mirroring `jellyfin-web`'s `MAX_SECTIONS`, ten since server 10.10.0), not as many as the server stores. The server's `DisplayPreferencesController` keeps any `homesectionN` a client sends and has no cap, so reading every key would show sections the web client hides and break the parity "Use Web Client's Home Section Arrangement" promises. Each slot is its own `homeSection<N>` field on `JellyfinUserSettings`, because `user.settings.Save()` refuses an undeclared name; `homeSlots.spec.bs` fails when the constant and the fields disagree.
+
+Ruled out: one ordered-list field in place of the per-slot fields (a cleaner model, but a restructure beyond #937, and the RTA spec would rely on an ODC array write nothing had verified), and reading every `homesectionN` uncapped. Re-evaluate if jellyfin-web changes `MAX_SECTIONS`: the spec compares the constant with the fields, not with the web client.
+
+## decision-id: subtitle-track-label-shared
+
+**date**: 2026-10-06
+**status**: accepted
+**related-files**: `source/utils/mediaDisplayTitle.bs`, `source/utils/subtitles.bs`, `source/utils/remoteSubtitles.bs`, `source/utils/translate.bs`
+
+Every subtitle list labels a track through `formatSubtitleTrackLabel()`, never the server's `DisplayTitle` directly. The playback picker passed `DisplayTitle` through from `sortSubtitles()`, so a track with no language led with the server's "Undefined" placeholder and read differently from the same track on the details screen (#1004). The label follows the server's own rule minus that placeholder: the track's `Title` first, then each of language, codec and flags it does not already say, so "Spanish (Latin America)" and "Spanish (Spain)" stay apart. `DisplayTitle` stays as the fallback when a track has no Title, language or codec. A file kept outside the video is marked "External" and the panel's section is "External files": that is Jellyfin's word, already translated in 82 of 98 locales, and it covers a download (saved beside the video or in the server's metadata folder) and a file placed by hand alike, which "Downloaded" did not. On `LoadVideoContentTask` the labels read the translations table once per list, and the pass that only picks the default track builds none (measurements in the `perf(subtitles)` commit).
+
+Ruled out: formatting the label only in the playback picker, which keeps two label paths, the drift that caused #1004; calling `formatSubtitleDisplayTitle()` on the picker's records as the issue suggested, because the slim records `sortSubtitles()` builds carry no codec or language, so every row would read "N/A"; language, codec and flags alone, which drop the Title the picker used to show; and a per-key `translateCached()` memo for the labels, which still reads the table once per distinct language.
+
+## decision-id: next-up-started-series-filter
+
+**date**: 2026-10-06
+**status**: accepted
+**related-files**: `source/api/items.bs`, `components/home/LoadItemsTask.bs`, `source/enums/NextUpSeriesStart.bs`
+
+Home's Next Up row shows a series only once a regular (non-special) episode of it is played, on every server version: the rule 10.10 applied for `DisableFirstEpisode=true`. Jellyfin 10.11 dropped that filter (jellyfin/jellyfin#13687; the report of it, jellyfin/jellyfin#13743, was closed as stale), so from 10.11 any series with an episode started but none finished adds its first episode: measured 2026-09-20 on a local 12.0.0, Silicon Valley `S1E1` for a user 320 s into `S4E6` (#973). Where the request already asks the server to drop them (`DisableFirstEpisode=true` on 10.7, and on 10.8–10.10 with Max Days off) the client does nothing; everywhere else `LoadItemsTask.keepStartedSeries()` drops them (`nextUpNeedsStartedFilter()`), so a filter Jellyfin restores later only has to be recognized there. It sends a played-specials lookup alongside Next Up, then one round: the series' counts (`Fields=RecursiveItemCount`, `apiIds.PER_REQUEST` ids to a request) and, for a series with a played special, its own `hasWatchedRegularEpisode()` request, because series counts include specials. Measured 2026-10-06: applied to the unfiltered response, it returns exactly the server's `DisableFirstEpisode=true` set on 10.7.7, 10.8.13, 10.9.11 and 10.10.7. None of those servers had a played special, so that comparison covered the count path only. Live check 2026-10-08 on a Stick 4K against 12.0.0: with specials played, the row matched one exact query per series (drop and keep cases). Both counts skip folders and missing episodes (`Folder.FillUserDataDtoValues` and `Series.GetRecursiveChildCount`, read 2026-10-08 at v10.8.13, v10.10.7, v10.11.0 and master), so equal counts mean nothing is played. The whole filter gets one request's wait (`timeouts.API_WAIT_MS`). A lookup with no answer by then, or a specials lookup that could not be sent early, keeps the items it would have judged. The cost is that round on Home's first paint: +377 ms (p = 0.009) on a Stick 4K against 12.1, with Home's fully settled time no different.
+
+Ruled out: **Two rounds after Next Up** (lookups, then checks): +776 ms. **A second round when the specials lookup could not be sent early:** it ran only while the pool was starting, and it added a second wait to the filter. **Sending the lookups ahead of queued requests:** no gain (p = 0.68); nothing was queued when they went out. **Leaner lookup requests, without the fields the request builder adds:** −67 ms at n = 20, under the ~120 ms the method can detect. **Showing what the server returns**, as `jellyfin-web` and `jellyfin-androidtv` do. It offers an episode before the one the user is on, and the row then depends on the server version. **One `hasWatchedRegularEpisode()` request per series:** exact, but N requests on every Home load. **Series counts alone:** they include specials, so a series with only a special played would keep its first episode. **Dropping the `DisableFirstEpisode` gate now that the client filters:** on 10.8–10.10 with Max Days off it would download every series' first episode only to discard them (39 items, about 60 KB, on a local 10.8.13). Re-evaluate if a Jellyfin release restores the filter on the server.
+
+## decision-id: router-focus-left-notice
+
+**date**: 2026-10-08
+**status**: accepted
+**related-files**: `components/JRScreen.bs`, `components/home/Home.bs`, `components/ItemGrid/BaseGridView.bs`, `components/video/PlayerHostView.bs`
+
+`JRScreen.handleFocus` ignores the focus-left notice from sgRouter: the call `sgrouter_onFocusChildChanged` makes with `routerFocused: false` when focus leaves the outlet for the overhang, a dialog or `AppWaitHost`. It still takes focus when a show is pending (set by `onViewOpen` / `onViewResume`) or when focus is stranded on the bare scene. Screens override `restoreScreenFocus`, never `handleFocus`, so the rule lives in one place. Before this, Home's late `setFocus` occasionally pulled focus back from the tab bar. Measured 2026-10-08 on a Stick 4K (Roku OS 15.3.4), 371 router focus calls over 7 RTA specs: the post-show call carried `routerFocused: false` 81 times, and it is what focuses the player while `AppWaitHost` holds focus (8 of 8); the notice recovered stranded focus 26 of 33 times.
+
+Ruled out: skipping every `routerFocused: false` call, which leaves the player unfocused; ignoring the notice outright, which drops the stranded-focus recovery; patching sgRouter, which forks upstream logic and needs `postinstall` reordered, since `ropm copy` runs before `patch-package`; and fixing Home only, which leaves every other screen exposed. Revisit when an sgRouter upgrade changes who calls `handleFocus` or the `navigationInProgress` guard.
+
+## decision-id: rta-row-walk-stepped
+
+**date**: 2026-10-08
+**status**: accepted
+**partially-supersedes**: `rta-row-walk-instrumented-not-converted` (the row half's read-then-press loop)
+**related-files**: `tests/rta/lib/nav.js`, `tests/rta/lib/steps.js`, `tests/rta/lib/nav-row-walk.test.js`, `tests/rta/lib/nav-grid-walk.test.js`
+
+`walkHomeRowsTo`'s row half now goes through `scrollFocus` in a stepped mode: one key in flight, the next chosen only after the index has moved off the value it had before the press, and a re-press only after `STEPPED_DROP_WAIT_MS` with no movement. The old note kept a read-then-press loop because it "presses at most one key before re-reading", but the re-read was of a lagging field. On `.177` (Stick 4K, Roku OS 15.3.4) a Down or Up took 350-444 ms to show in `rowItemFocused` (measured 2026-10-08, two runs of 24 presses), and the loop re-read about 390-410 ms after each press, so a late key drew a second one. The RTA ledger run of 2026-10-08 (commit `295fadab`) caught it: "Favorites: People failing alone" aimed at row 1 and opened an Audio item on row 2. `focusHomeRow` bypasses the drift instrument, so this surfaced as a wrong outcome rather than a drift record.
+
+The old note's case against a burst still holds, and it is why the mode is stepped: a surplus Up from row 0 leaves Home while `rowItemFocused` keeps its last value. Two alternatives were rejected. Settling on the target and correcting still sends the surplus key, and a late Up at row 0 leaves Home. A longer tick only out-waits one measured device. The cost is a row step of about one device delay instead of a 350 ms tick. The drift instrument in `navHomeLibraryTile` stays.
+
+The walk also guards against a key it took as dropped that was only late. Once it has re-sent a key, reaching the target is followed by one quiet `STEPPED_DROP_WAIT_MS` window, and the walk goes back if the index moves: the late copy was sent one drop wait after the first, so it lands inside that window. Every stepped walk names `within`, the list it may not leave, and ends with `waitFocusInside` on it, because a surplus Up from Home's row 0, or a Left that reaches `BaseGridView.onKeyEvent` from the grid, moves focus out while the index keeps its last value. A device slower than the drop wait on every key cannot finish, and the timeout names `STEPPED_DROP_WAIT_MS`. Adapting the wait at runtime was rejected because it would hide the slow device that followup `stepped-walk-drop-wait-one-device` exists to find. Hardware-free tests on 2026-10-08, with a first key at 1100 ms, showed the walk without these guards returning success with focus one row too far, and with focus out of Home after a walk to row 0.
+
+## decision-id: dead-code-debug-console-keep
+
+**date**: 2026-10-09
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/dead-code.cjs`, `source/utils/tasks.bs`, `tests/scripts/unit/bsc-plugins/dead-code.test.js`
+
+The dead-code rule ([ADR 0047](adr/0047-dead-code-gate.md)) gains a sixth keep kind, `debug-console`, for code that only a developer calls, from the BrightScript console in a debug build. `printTaskThreads()` is the first use. It had no kind that fit, so every `debug=true` build failed from the day the rule landed. Nothing builds with `debug=true` automatically, so nobody noticed. A valid `debug-console` marker inside a `#if` block is also exempt from the "not directly above a declaration" check. A `debug=false` build leaves the block out, but the plugin reads markers from the raw text, so the marker has nothing under it there.
+
+Ruled out: asking `bsc` which blocks it excluded, which is exact but depends on internals of an alpha `bsc` that nobody has verified expose this; and moving `printTaskThreads()` out of `#if debug`, which ships it to release builds and contradicts `debug-tools.md`. The cost: a `debug-console` marker that drifts off its function inside a `#if` is caught only by a debug build. Revisit if the drift turns out to matter, or once something builds `debug=true` automatically.
+
+## decision-id: voice-gate-covers-code-comments
+
+**date**: 2026-10-09
+**status**: accepted
+**related-files**: `scripts/lint/doc-citation-ratchet.js`, `.doc-voice-baseline.json`, `docs/dev/writing-style.md`, `.github/workflows/_lint-docs.yml`
+
+Code comments follow the house voice, and the voice ratchet enforces the five mechanical categories in them per file, beside the docs in `.doc-voice-baseline.json`. Comments are read by a parser per language so a quote or `//` inside a string never counts; shell has no parser here, so only whole-line `#` comments are read. Ruled out: a guide change with no gate, because a marker with an em dash landed the day the gap was noticed; and counting developer-facing strings too, because a script cannot tell a string that must keep its dash (test data, a parser's accepted separator) from prose. Strings can follow once the comment gate has run for a while.
+
+## decision-id: api-pool-plain-state-observer
+
+**date**: 2026-10-09
+**status**: accepted
+**related-files**: `components/api/ApiQueueTask.bs`, `docs/architecture/api.md`
+
+The API pool's caller watch keeps the plain `observeField` / `unobserveField` pair on a Task's `state`, for a new reason. [ADR 0043](adr/0043-pool-stops-long-reads-of-gone-callers.md) ruled out the scoped pair because it needs Roku OS 12 while the app supported 11. That reason went when #1126 raised the store floor to Roku OS 15.1. The pair stays out because its isolation is unproven on device: `unobserveFieldScoped` has removed another component's observer (#898, `components/CLAUDE.md`). The plain pair is safe while nothing else observes a Task's `state`, rechecked 2026-10-09. Followup `api-pool-watch-scoped-observer` measures the exact case before any swap.
+
+## decision-id: still-watching-default-on
+
+**date**: 2026-10-11
+**status**: accepted
+**related-files**: `settings/settings.json`
+
+The still-watching prompt stays on by default (`playbackStillWatching` is `default`: 3 videos or 90 minutes), although jellyfin-web 12.2 changed its fallback to off (`userSettings.stillWatchingPrompt()` returns `StillWatchingOptions.Disabled` at `v12.2` and `StillWatchingOptions.Default` at `v12.0`). A TV app is where unattended auto-play runs on with nobody watching, so the prompt earns its place on by default; a browser tab is a different setting. It builds on `still-watching-prompt`, which set the presets. Ruled out: following jellyfin-web to off by default.
+
+## decision-id: manifest-upstream-direct-play
+
+**date**: 2026-10-11
+**status**: accepted
+**supersedes**: `live-hls-upstream-direct-play`
+**related-files**: `source/utils/upstreamManifest.bs`, `source/enums/UpstreamManifestBlocker.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `components/video/VideoPlayerView.bs`, `source/api/items.bs`, `source/constants/timeouts.bs`
+
+Jellyfin 12.x declines direct play for every manifest source (`StreamBuilder.ManifestContainers`: `hls`, `applehttp`, `dash`), not only live `m3u` HLS channels, so `.strm` items always went through a server transcode and live DASH channels never played on 12.1. JellyRock now plays any source whose `Path` is an absolute upstream HLS or DASH manifest from that URL (`getUpstreamManifestBlocker()`), keeping the server's stream only where a rule older than 12.0 applies (the retry that forces a transcode, auto-loop, remote-source policy, bitrate limit), and sets `StreamFormat` from the manifest's own format instead of giving every live item `hls`. Considered and ruled out: a separate `.strm` rule beside the live one (two copies of the same checks), and leaving `.strm` unset as on 10.11 (relies on the Roku guessing the format from the URL).
+
+The device check (`upstreamManifestAnswers()`) now runs on a server "yes" too, since a Roku handed an unreachable URL buffers until the live stall error (~62 s on 10.11) where the server's own stream plays (~36 s); a failed check after a "yes" hands off to the server's stream before the Video node sees the URL (`needsServerStream`, then `retryPlayback`). For that retry to work on non-live items, every retry that forces a transcode now sends `EnableDirectPlay=false`; before, only live retries did, so a `.strm` the server allowed got the same "yes" back. Cost accepted: up to `UPSTREAM_PREFLIGHT_MS` (3 s) added when an upstream URL is unreachable; no measurable cost on a reachable LAN URL (measured 2026-10-11, Stick 4K, 10.11.11 and 12.1.0).
+
+## decision-id: playback-report-unidentified-audio
+
+**date**: 2026-10-12
+**status**: accepted
+**partially-supersedes**: playback-report-target-evidence-tiers (the silence, when the source lists audio the report cannot tie to the playing track)
+**related-files**: `source/utils/playbackReport.bs`, `docs/architecture/playback.md`
+
+The playback-info report shows an Audio section whenever the source lists audio, even when the server does not say which track plays. One audio stream with no index (a Live TV channel's `m3u` tuner sends `-1` for every stream) is the track playing, and the section describes it. Several give "Playing track: Unknown" and the tracks by the server's own titles (`unidentifiedAudioSection()`). A source that lists no audio still gets no section, because none listed is not the same claim as none there.
+
+Silence was ruled out because a missing Audio section reads as "this has no audio", which is how the live gap was first reported. A bare "Unknown" row was ruled out because it hides tracks the server did list. Showing the first audio stream was ruled out because it names a track nobody may be hearing, which is the bug `findStreamByIndex()` exists to prevent.
+
+## decision-id: playback-report-stream-origin
+
+**date**: 2026-10-12
+**status**: accepted
+**related-files**: `source/utils/streamOrigin.bs`, `source/utils/playbackReport.bs`, `docs/architecture/playback.md`
+
+The playback-info report tells every viewer where the stream comes from ("Streaming from": this Jellyfin server, or the host of the URL the player was handed), and shows administrators the playback URL and the path with their secrets hidden. A server URL's `ApiKey` (or `api_key`) is masked, since it is the user's access token (measured in the `TranscodingUrl` of 10.11 and 12.1); a provider's URL has every query value masked, because its token names are unknown; and any `user:password@` is masked on every URL, the server's own included, because the host comparison ignores it. The report is the screen users photograph for a bug report.
+
+Chosen over an admin-only raw URL (answers nobody else, and puts the token on screen) and over the origin row alone (left provider tokens visible in the admin Path row). The cost: an administrator can no longer copy a provider URL's query values from the TV; the server's dashboard still has them.
+
+## decision-id: playback-report-reason-explanations
+
+**date**: 2026-10-12
+**status**: accepted
+**related-files**: `source/utils/playbackReport.bs`, `locale/custom/en_US.json`, `docs/architecture/playback.md`
+
+Each transcode reason in the playback-info report keeps the server's code as its label, untranslated so it can be searched, and explains it in plain words: one string for each of the 28 codes Jellyfin's `TranscodeReason` defines (10.7.7, 12.1, 12.2), written from where `StreamBuilder` sets each code rather than from its name (`DirectPlayError` means no direct-play profile fitted and no reason was found). The wording says what needs converting, not that the device cannot play it, because one of our settings can be the cause, and the row then names it. A code the app does not know shows no explanation.
+
+This reverses the earlier rule of showing codes with no gloss, which left a bare code beside an empty column on every transcode the app's settings did not cause. Ruled out: a "Reason" label with the code as the value (repeats the label for each reason), and exempting reason rows from the RTA check that no row is empty (kept the unexplained rows). The cost is 28 strings to translate, and a string to add when Jellyfin adds a code; until then the new code shows unexplained.
+
+## decision-id: playback-report-strm-by-path
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/streamOrigin.bs`, `source/utils/playbackReport.bs`, `components/video/VideoPlayerView.bs`, `docs/architecture/playback.md`
+
+The playback-info report recognizes a `.strm` item by the item's own path ending in `.strm` (`isShortcutPath()`), and then hides its size and total bitrate, which describe the text file. This is the server's own test: `BaseVideoResolver` sets `IsShortcut` from the extension, but sends it to no client. The item's `Path` does reach the app, for an admin and a non-admin (measured 2026-10-12 on 10.11.11 and 12.1.0). Without a path, the figures show as they did before.
+
+Ruled out: `Protocol = Http`, which shipped first in #1184 and was replaced, because a shortcut takes its URL's protocol (a `.strm` holding an `rtsp://` URL kept showing 101 B) and a channel plugin's `Http` source can carry real figures. Also ruled out: `IsRemote`, which misses a `.strm` that points at a local path and depends on what each channel plugin sets.
+
+## decision-id: playback-report-unlisted-audio-tracks
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/playbackReport.bs`, `components/video/PlayerHostView.bs`, `docs/architecture/playback.md`
+
+When the device plays a stream itself and Roku lists none of its audio tracks, and the source lists more than one, the report says "Playing track: Unknown" and lists the tracks (`unidentifiedAudioSection()`), rather than describing the app's pick. Roku lists no tracks for audio muxed into one HLS variant, so the app cannot select one (measured 2026-10-12 on a Stick 4K against 12.1). With `#EXT-X-MEDIA` renditions, or a direct-played MKV, Roku lists the tracks, the pick plays, and the section describes it. This extends `playback-report-unidentified-audio` to a second way the playing track is unknown.
+
+Ruled out: reloading through the server's stream so the pick plays. The track list is known only after playback starts, so it would restart the play and load the server, and it assumes which muxed track Roku plays by default, which is unmeasured. Also ruled out: leaving the pick in the report, which names a track nobody may be hearing. Making the pick selectable is followup `muxed-hls-audio-tracks-unselectable`.
+
+## decision-id: adr-0009-tracker-partly-superseded
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `docs/adr/0009-server-upgrade-proactive-ci.md`, `docs/adr/0011-server-upgrade-phase6.md`, `docs/architecture/server-upgrade-automation.md`
+
+ADR 0011 replaced part (b) of ADR 0009, but its header names only ADR 0008. Part (b) was the single rolling tracker issue and its close-on-caught-up lifecycle; 0011 replaced it with one digest issue per server release and removed close-on-caught-up. The rest of ADR 0009 stands. ADRs are never edited, so this note is the pointer. `server-upgrade-automation.md` already says 0011 replaces parts of 0008 and 0009.
+
+## decision-id: adr-0041-pending-list-stale
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `docs/adr/0041-task-launch-queue.md`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
+
+ADR 0041 lists the `PENDING_MIGRATIONS` entries of `no-same-node-relaunch` as `VideoPlayerView`'s `LoadMetaDataTask`, `AudioPlayerView`'s, two in `ItemDetails` and `Home`'s remote-control receiver. As of 2026-10-13 the list is empty: `VideoPlayerView`'s four `LoadMetaDataTask` entries were the last, moved to a new node per run by `startVideoLoad()`, and followup `pending-migrations-same-node-relaunch` is closed. The sites ADR 0041's gap still applies to are those tech-debt `queued-relaunch-stale-stop` lists: `TrickplayCarousel.m.tileLoader`, `VideoPlayerView.m.liveTvRefreshTask`, and `Home`'s remote-control receiver, suppressed for good.
+
+## decision-id: persons-exclude-music-artists
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/api/ApiClient.bs`
+
+`BuildGetPersonsRequest()` sends `ExcludePersonTypes=Artist,AlbumArtist` unless the caller passes its own. From 12.0 the server lists music artists as people (jellyfin#16721): search showed a musician twice, as a Person and as the `/Artists` hit, and an artist Person marked as a favorite reached the Favorites people row. The app lists artists from `/Artists`, so a person here never means an artist. The default sits in the builder, not at the two callers (search and the Favorites people row), so a future caller inherits it and removing it is one edit. Filtering search only was ruled out because it leaves the Favorites row wrong.
+
+It is not version-gated: 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11, 12.0.0 and 12.1.0 all accepted it with the same results before 12.0 (checked live 2026-10-13). jellyfin-web sends the same filter, marked to go once artists move to the persons endpoint; when upstream does that, drop the default and revisit how the app lists artists. The key is PascalCase so the API usage manifest records it, and a change upstream reaches server-upgrade triage.
+
+## decision-id: quick-play-nothing-toast
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/quickplayOutcome.bs`, `source/api/apiRead.bs`, `components/manager/QueueManager.bs`, `components/tasks/QuickPlayTask.bs`, `components/GetShuffleItemsTask.bs`
+
+A quick play, Shuffle, trailer or slideshow that finds nothing to play ends its start, shows the screen it was pressed on again, and says why in a one-line toast (`QueueManager.showNothingToPlay`). A read that did not answer is a failure to try again ("Couldn't load that. Try again.", error style); a result the server answered as empty is nothing there ("Nothing to play here.", info style). A launch nothing builds, an action or shuffle type no dispatch branch matches, can't be done ("Can't play this.", "Can't shuffle this.", info style); it is reachable because a Jellyfin sender's Shuffle arrives as a deep link for any item. The text names what the build was (`quickplayOutcome.kindOf` reads the Task's output action, so Play on a photo library is a slideshow). Each Task reads through an `apiRead.Reader`, one per build with the Task's logger, which records a read that did not answer, and publishes a `status` (`quickplayOutcome.statusOf`). A failed read never falls back to a guess: `doSeries` stops when its resume or Next Up read fails, and `doSeason` when its continue-watching read fails. Back, leaving the screen, a newer press and the start's time limit stop the Task before it answers, so none of them shows a toast. The queue is still cleared before the read: once a quick play fails no player reads it, since Back from the music player stops the music.
+
+Ruled out: a retry dialog (it blocks the remote, and no failure before a player exists uses one), failure text on the spinner screen (`AppWaitHost` holds the focus and Back for every start), one message for both (an empty result would ask for a retry that cannot work), and naming server-rule reasons such as the TV library's watched-only rule (the toast is one line capped at 800 pixels, and the reasons drift as the server changes). Measured 2026-10-13 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: the new `playback-start.spec.js` cases for a failed library Play and a failed series Shuffle failed on the old app code (no toast), and the Back case passed there, as it must. With the change, the full `playback-start` spec passes 10/10, and the Back assertion fails when Back is made to show the toast on purpose.
+
+## decision-id: search-failure-state
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/searchOutcome.bs`, `source/api/apiRead.bs`, `components/search/SearchTask.bs`, `components/search/SearchResults.bs`
+
+A search whose four reads all failed shows "Couldn't load search results." where the results go, with a Try again that runs the same query through the keystroke path; an answered empty search shows "No results." in the help text's place, which used to stay blank. A search where some reads failed shows what answered and raises one toast, "Some results couldn't load.", only while the screen is shown; a partial search that found nothing is a failure, never empty (`searchOutcome.view`). `SearchTask` reads through an `apiRead.Reader` and publishes `status` in its one `results` assignment. The failure does not take focus from the keyboard (the viewer may be typing); Right reaches Try again. Since the screen reader speaks only what has focus, a failed search and an empty one are announced when they land, queued rather than cutting off speech and only while the screen is shown, and the failure names Try again (`searchOutcome.view` returns the `announceKey`). The partial toast is not spoken: no toast in the app is. The Live TV program read is skipped for a user without Live TV access, since Jellyfin's `LiveTvAccess` policy refuses it and every search would count as partial.
+
+Ruled out: a toast alone for a full failure (failed would look like empty once it fades), hiding answered results when one read fails (the Favorites precedent, `favorites-row-failure-stand-in`), and counting only the library read (a missing People row would stay silent). Measured 2026-10-13 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: all four `search-failure.spec.js` cases failed on the old code and pass on the new.
+
+## decision-id: video-load-release-not-stop
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `components/video/VideoPlayerView.bs`, `source/utils/liveStreamHandoff.bs`
+
+`VideoPlayerView.startVideoLoad()` lets a replaced video load go through `releaseVideoLoad()`, then creates the new node with `replaceTask(invalid, …)`, rather than passing the old node to `replaceTask()`. `replaceTask()` releases with a bare STOP, and a load still opening a Live TV stream must instead be marked abandoned so it closes the stream itself once `PlaybackInfo` answers: a STOP loses the only answer that names the stream, and the server keeps it open. Passing `invalid` keeps the `no-same-node-relaunch` guard check on the handler.
+
+Ruled out: an optional release hook on the shared `replaceTask()`, which would touch every caller and the build rule's tests for one component's need.
+
+## decision-id: subtitle-search-failure-state
+
+**date**: 2026-10-13
+**status**: accepted
+**related-files**: `source/utils/remoteSubtitles.bs`, `components/subtitles/SubtitlePanel.bs`
+
+A subtitle search that got no usable reply (a timeout, an HTTP or network error, or a body that is not a list) shows "Couldn't search for subtitles. Press Search to try again." where the results go, in place of "No subtitles found…". The Search button above it is the retry, so the panel gets no new control. An answered empty list keeps "No subtitles found…" and its provider hint, because Jellyfin catches each provider's error and still answers `200 []` (`SubtitleManager.SearchSubtitles`, read in 10.11.0 and master): a provider that is down or has no credentials looks the same as no match. The panel keeps the failure in `m.searchFailed` beside `m.allResults`, and `showSearchOutcome` alone writes both, so a re-render from the Perfect match toggle keeps the failed text. `SubtitlePanel.setStatus` speaks every status it shows through `narrateStatus`, queued and only while the panel is open, since focus stays on the header and the screen reader speaks only what has focus (the rule `search-failure-state` set); that covers the cannot-search statuses as well as the failed and empty texts. `apiResponse.jsonFailure` decides what failed and `remoteSubtitles.searchStatusKey` picks the text; the search is a list request, so the pool already turns a body that is not a list into a failure (`apiResponse.enforceShape`).
+
+Ruled out: a Try again button in the results column (a second retry beside Search, and new focus paths in a modal panel), and a toast alone (a failure would look empty once it faded). Measured 2026-10-13 on `.178` (Ultra) against a local 10.11.11 server with Open Subtitles 24.0.0.0 and no credentials: the plugin's login fails, the server logs it and answers `200 []` in 14 to 29 ms; `subtitle-search-failure.spec.js` failed 3 of 4 cases on the old code and passes 4 of 4 on the new. The spec skips on the public demo, whose user cannot manage subtitles.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
@@ -1293,3 +2130,5 @@ convergence (audit-before-migrate). Old `decision-id` references resolve here:
 | `server-upgrade-anchor-vs-resolved-decoupling` | [ADR 0015](adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md) |
 | `global-signin-language` | [ADR 0016](adr/0016-global-signin-language.md) |
 | `rta-functional-tests-vitest` | [ADR 0017](adr/0017-rta-functional-tests-vitest.md) |
+| `episode-queue-starts-fresh` | [ADR 0038](adr/0038-queue-arrival-starts-fresh.md) |
+| `bare-array-bodies-accept-items-wrapper` | [ADR 0039](adr/0039-list-endpoint-shape-in-pool.md) |

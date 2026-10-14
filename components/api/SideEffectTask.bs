@@ -7,15 +7,15 @@ sub init()
   m.top.functionName = "runSideEffectLoop"
 end sub
 
-' Tier 2 fire-and-forget writer — FIFO children-as-vehicle queue (Architecture C,
-' continuous-server). Mirrors ApiQueueTask, minus the 3-slot pool and response routing:
+' Tier 2 fire-and-forget writer: a FIFO children-as-vehicle queue (Architecture C,
+' continuous-server). Mirrors ApiQueueTask, minus the slot pool and response routing:
 ' side effects have no response to deliver, so each request executes inline on this single
 ' thread in append order (serialised, must-complete: mark watched, playstate, favorite, …).
 '
 ' Why children instead of the old shared 'request' field:
 '   SceneGraph coalesces port events when a field is written rapidly from the render thread.
 '   Two back-to-back SubmitSideEffect() calls could merge into one event, and the second
-'   'request' write clobbered the first before this thread read it — silently dropping a POST
+'   'request' write clobbered the first before this thread read it, silently dropping a POST
 '   (issue #744: the capabilities POST lost behind the cold-launch /pair POST). Children are
 '   immune: even if wake-up events coalesce, we read ALL pending children from the node tree,
 '   so no request is ever lost regardless of timing.
@@ -27,7 +27,7 @@ sub runSideEffectLoop()
   m.top.observeField("enqueue", port)
 
   ' Process any children appended before the observer was registered (SubmitSideEffect
-  ' may have appended + pulsed 'enqueue' while this thread was still starting up — that
+  ' may have appended + pulsed 'enqueue' while this thread was still starting up; that
   ' wake-up was lost, but the child is in the tree). The node tree is the source of truth.
   processNewChildren()
 
@@ -47,14 +47,14 @@ sub processNewChildren()
     child = m.top.getChild(m.processedIndex)
     m.processedIndex++
     if isValid(child) and isValid(child.request)
-      ' Blocking HTTP on this task thread — serialises back-to-back side effects.
+      ' Blocking HTTP on this task thread, which serializes back-to-back side effects.
       ' Fire-and-forget: the result is intentionally discarded.
       '
       ' Per-request try/catch: this is a continuous-server loop, so an uncaught error
-      ' would kill the thread and silently drop EVERY later side effect for the session.
+      ' would kill the thread and silently drop every later side effect for the session.
       ' The pre-#744 task re-ran per call (control="RUN" each submit), so a crash
       ' self-healed on the next submit; the persistent loop has no such reset, which makes
-      ' per-request isolation load-bearing rather than defensive nicety.
+      ' per-request isolation essential rather than defensive nicety.
       try
         executeHttpRequest(child.request, "POST", "[SideEffectTask]")
       catch error

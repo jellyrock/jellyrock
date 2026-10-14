@@ -1,16 +1,16 @@
 /**
  * In-app navigation to each screen, driven from a seeded "home" state with
- * remote keypresses + odc node-waits (NOT fixed sleeps) so each step proceeds
- * the moment the UI is actually ready. The `waitFor` gates inside each nav ARE
- * the "screen loaded" assertions — if a screen fails to render, the nav throws.
+ * remote keypresses + odc node-waits (not fixed sleeps) so each step proceeds
+ * the moment the UI is actually ready. The `waitFor` gates inside each nav are
+ * the "screen loaded" assertions: if a screen fails to render, the nav throws.
  *
  * `ctx` carries { heroIndex, heroId } (from getHero) and `libraries` (from
- * getLibraries) — the latter is what lets a library nav resolve the SAME library
+ * getLibraries). The latter is what lets a library nav resolve the same library
  * the seeding side picked, rather than the first tile of a matching type. Pass
- * ctx through every chained nav — omitting it now THROWS on any server with
+ * ctx through every chained nav: omitting it now throws on any server with
  * several libraries of one type, rather than quietly picking the wrong one. The
  * osd backdrop injection
- * is intentionally NOT here — it's a screenshot-only concern handled by the
+ * is not here on purpose. It is a screenshot-only concern handled by the
  * store orchestrator after nav, so the functional test for osd stays free of
  * ffmpeg/backdrop logic.
  */
@@ -19,6 +19,7 @@ import { RTA_CONFIG } from '../config.js';
 import { libraryIdFor } from './jellyfin.js';
 import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
 import { recordRecovery } from '../../../scripts/run-record.js';
+import { focusIsInHomeContent } from './home-list.js';
 import {
   press,
   getVal,
@@ -28,12 +29,17 @@ import {
   waitFor,
   waitFocused,
   waitFocusInside,
+  walkFocusInto,
+  waitFocusInHomeContent,
+  homeListId,
   waitHome,
+  waitOsdUp,
+  walkFocusUntil,
   walkHomeToFirstRow,
   overhangWalkKey,
   hasChildren,
   resendIfSwallowed,
-  resendUntilFocusInside,
+  resendUntilFocused,
   scrollFocus,
   waitCellsQuiet,
   waitRowsSettled,
@@ -51,12 +57,12 @@ import {
  * leave Home at all (`walkHomeToFirstRow`). Only then does Up move focus into the overhang,
  * whose focus chain is TabBar -> Search -> Settings (left to right, see JROverhang.bs) with
  * a variable tab count, so we walk Right until the icon is focused. The action is guarded to
- * only press while NOT yet on the icon, so it can't overshoot onto the user dropdown.
+ * only press while not yet on the icon, so it can't overshoot onto the user dropdown.
  */
 async function focusOverhangIcon(iconId) {
   await waitHome();
-  // Up leaves Home ONLY from the first row — see `walkHomeToFirstRow`, which is where that
-  // rule and its tests live. Announced rather than silently routed around: resting anywhere
+  // Up leaves Home only from the first row (see `walkHomeToFirstRow`, which is where that
+  // rule and its tests live). Announced rather than silently routed around: resting anywhere
   // but row 0 straight after a relaunch is an app-side surprise, and a harness that quietly
   // recovers from one can mask the very regression a run exists to catch.
   const { walked, from } = await walkHomeToFirstRow();
@@ -83,14 +89,14 @@ async function focusOverhangIcon(iconId) {
       await press(key);
       // Counted only once the press RESOLVED. `waitFocused` swallows a throwing action into
       // its own `actionErrors` tally, so a re-press that never reached the device must not
-      // be reported below as one that did — the warning's whole value is that it is exact.
+      // be reported below as one that did. The warning's whole value is that it is exact.
       if (key === ecp.Key.Up) escapeRetries++;
     },
     label: `overhang ${iconId}`,
   });
   if (escapeRetries > 0) {
     // Announced, not swallowed. A retry that succeeds means the FIRST Up was lost while Home
-    // was still settling — the open half of #789. This line is the only thing that says so,
+    // was still settling (the open half of #789). This line is the only thing that says so,
     // and a run that prints it is the run worth capturing.
     console.warn(
       `[nav] overhang ${iconId}: the first Up did not leave Home — re-pressed ${escapeRetries} ` +
@@ -98,6 +104,87 @@ async function focusOverhangIcon(iconId) {
         'cannot help. Worth investigating why Up was lost (see #789).',
     );
   }
+}
+
+/**
+ * From Home, select the tab with id `tabId` (`'home'` or `'favorites'`) in the overhang's tab
+ * bar, and wait until that tab's row list is in the scene with focus inside it.
+ *
+ * Selecting a tab DESTROYS the outgoing list and builds the incoming one
+ * (`Home.onTabChanged`), so selecting Home from Favorites mounts a fresh `HomeRows` that runs
+ * Home's FIRST load again. That is what makes this the way to drive a first-load failure: the
+ * request-failure rules live in app memory, so they can only be set after the launch whose own
+ * first load has already run.
+ *
+ * Three steps, each gated on where focus actually is:
+ *
+ * 1. Into the tab bar. Up leaves Home only from row 0 (`walkHomeToFirstRow`), and it lands on
+ *    the overhang element used last, which can be an icon to the tab bar's right, so the key is
+ *    chosen from the focused node: Up while still in Home's rows, Left from anywhere else in the
+ *    overhang.
+ * 2. Onto the tab. The bar keeps its focused index internally (its `focusedTabIndex` field is
+ *    input-only), so the index is read off the tabs' own `isFocused`. The walk re-reads after
+ *    every press and presses at most once per tick; the bar updates `isFocused` inside its key
+ *    handler, with no animation between, so a read never lags a press it follows.
+ * 3. OK, then the incoming list in the scene and focus inside it (`onTabChanged` focuses it).
+ */
+export async function selectHomeTab(tabId) {
+  const wantSubtype = tabId === 'favorites' ? 'FavoritesRows' : 'HomeRows';
+  await waitHome();
+  await walkHomeToFirstRow();
+
+  const bar = await waitFocused((f) => f?.node?.subtype === 'JRTabBar', {
+    timeout: 10000,
+    interval: 400,
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      if (!f?.node || f.node.subtype === 'JRTabBar') return;
+      await press(focusIsInHomeContent(f) ? ecp.Key.Up : ecp.Key.Left);
+    },
+    label: 'overhang tab bar focused',
+  });
+
+  const tabs = await getVal(`${bar.keyPath}.tabs`);
+  const target = Array.isArray(tabs) ? tabs.findIndex((t) => t.id === tabId) : -1;
+  // eslint-disable-next-line no-restricted-syntax -- a fail-fast naming its cause, not a timeout
+  if (target < 0) throw new Error(`tab bar has no "${tabId}" tab (tabs=${JSON.stringify(tabs)})`);
+  const focusedTab = async () => {
+    const flags = await getVals(tabs.map((_, i) => `${bar.keyPath}.#tabContainer.${i}.isFocused`));
+    return flags.indexOf(true);
+  };
+  await waitFor('focusedTab()', (i) => i === target, {
+    read: focusedTab,
+    action: async () => {
+      const i = await focusedTab();
+      if (i < 0 || i === target) return;
+      await press(i < target ? ecp.Key.Right : ecp.Key.Left);
+    },
+    timeout: 8000,
+    interval: 400,
+    label: `tab "${tabId}" focused`,
+  });
+
+  await press(ecp.Key.Ok);
+  await waitFor('subtype()', (v) => v === wantSubtype, {
+    read: async () => {
+      const id = await homeListId({ timeout: 1000 }).catch(() => undefined);
+      return id ? getVal(`${id}.subtype()`) : undefined;
+    },
+    timeout: 10000,
+    interval: 300,
+    label: `${wantSubtype} in the scene after selecting the "${tabId}" tab`,
+  });
+  await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
+}
+
+/**
+ * Move focus in Home's active row list to row `row`, column 0 (the one tile a row still
+ * showing a placeholder has). Shares `walkHomeRowsTo`, so both halves go through `scrollFocus`,
+ * the row half in its stepped mode (one key in flight at a time).
+ */
+export async function focusHomeRow(row, label) {
+  const list = await homeListId();
+  await walkHomeRowsTo(list, { row, col: 0 }, label);
 }
 
 /** home -> overhang settings icon -> Settings screen (version label is the gate). */
@@ -112,17 +199,41 @@ export async function navSettings() {
 }
 
 /**
+ * home -> overhang search icon -> SearchScreen, stopping once the search keyboard holds
+ * focus and so will take typed text. `navSearch` carries on from here; a spec that has to act
+ * between opening search and typing (setting request rules, `slow-search.spec.js`) calls this
+ * directly.
+ */
+export async function openSearchKeyboard() {
+  await focusOverhangIcon('searchIcon');
+  await press(ecp.Key.Ok);
+  // `sendText` types into whatever holds focus, so the keyboard HOLDING it is the
+  // precondition, not a guess at how long the push takes. `SearchScreen.bs` says the
+  // screen is built before it is typable ("nothing has focus until the router shows the
+  // view and onScreenShown runs, which is a later turn of the event loop"). On first show
+  // `onScreenShown` expands the overlay, and `onExpansionChanged` calls
+  // `m.kbd.setFocus(true)`. That focus landing is the app's own statement that it will
+  // accept a keystroke.
+  //
+  // The screen's readiness ledger declares the same thing as `pending("focus")`, and is
+  // not usable here: it is `#if perfTiming`, which `harden-prod-manifest.js` forces off in
+  // `build:prod`, the build `screenshots:capture` runs through this very nav.
+  await waitFocusInside('#kbd', {
+    label: 'search keyboard typable (pre-sendText)',
+    timeout: 15000,
+  });
+}
+
+/**
  * home -> overhang search icon -> SearchScreen -> type RTA_CONFIG.searchQuery.
- * The screen opens with the keyboard (#searchKey) focused + active (main.bs), so an
+ * The screen opens with the keyboard (#kbd) focused + active, so an
  * ECP text input both fills the visible search box AND triggers the search (the
  * keyboard's text change fans out to SearchTask). The grouped result rows render
  * into #searchSelect; its child count is the load gate. The query is tuned in config
  * to surface the richest spread of result-type rows on the demo server.
  */
 export async function navSearch() {
-  await focusOverhangIcon('searchIcon');
-  await press(ecp.Key.Ok);
-  await sleep(1500); // let the route mount and the overlay hand focus to the keyboard
+  await openSearchKeyboard();
   await ecp.sendText(RTA_CONFIG.searchQuery); // types into the focused search box
   await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
     label: `search results for "${RTA_CONFIG.searchQuery}"`,
@@ -130,19 +241,20 @@ export async function navSearch() {
   });
   // Walk focus off the keyboard onto the result rows (#searchSelect). The escape is
   // DOWN, not Right: SearchScreen's keyboard is a key GRID inside a pull-down overlay,
-  // and Right wraps within the grid forever (measured on .178 — the old Right-walk
+  // and Right wraps within the grid forever (measured on .178: the old Right-walk
   // timed out with focus still on DynamicKeyGrid). Down walks to the bottom row and
   // then leaves, which SearchQwertyKeyboard reports as escape="down" and
   // SearchScreen.onKeyboardEscape turns into a submit: the overlay collapses and focus
   // lands on the results. The guard stops the instant focus reaches them, so it lands
   // on the first tile without over-scrolling the row.
-  await waitFocused((f) => f?.node?.id === 'searchSelect', {
+  // `walkFocusUntil`, not a hand-rolled press, because the hand-rolled version pressed
+  // wherever focus WAS. On 2026-09-09 that meant 12.4 s of Right delivered into Home's row
+  // list while the active view was the search screen (see that helper for the dump).
+  const arrivedAtResults = (f) => f?.node?.id === 'searchSelect';
+  await waitFocused(arrivedAtResults, {
     timeout: 12000,
     interval: 350,
-    action: async () => {
-      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      if (f?.node?.id !== 'searchSelect') await press(ecp.Key.Down);
-    },
+    action: walkFocusUntil(ecp.Key.Down, arrivedAtResults),
     label: 'search results (off keyboard)',
   });
   await sleep(1500); // let the focus settle + result posters paint before capture
@@ -155,7 +267,7 @@ const DETAIL_ROW_POLL_MS = 300;
 
 // How many times a library nav will back out and retry when the grid that opened is
 // not the library that was asked for. Bounded because a press that keeps landing wrong
-// is a broken assumption rather than a slow screen — and because the retry's ability to
+// is a broken assumption rather than a slow screen, and because the retry's ability to
 // recover is unproven, so an unbounded loop could spend a whole run learning nothing.
 const LIBRARY_OPEN_ATTEMPTS = 3;
 
@@ -167,77 +279,77 @@ const LIBRARY_OPEN_ATTEMPTS = 3;
  * a tile within it. Returns { row, col }.
  *
  * **Pass `libraryId` whenever you have one.** Matching on `collectionType` alone
- * is ambiguous the moment a server has more than one library of a type — and the
+ * is ambiguous the moment a server has more than one library of a type, and the
  * seeding side (`libraryIdFor`, which reads `/UserViews`) orders them differently
  * than Home does, so seed and nav silently disagree about WHICH library they mean.
  * That produced a valid-looking but wrong perf measurement (a 12-genre library
  * sampled where an 8-genre one was seeded). Verified on device: a Home tile's
- * `.id` IS the Jellyfin library GUID — 14/14 tiles matched `/UserViews` on a
+ * `.id` IS the Jellyfin library GUID. 14/14 tiles matched `/UserViews` on a
  * 14-library server, four of them `movies`.
  *
  * The collectionType path stays as a fallback for callers with no id to hand
- * (`demos/`) and is exactly correct on a one-library-per-type server — but it
- * now THROWS when several libraries match, rather than silently picking the
+ * (`demos/`) and is exactly correct on a one-library-per-type server, but it
+ * now throws when several libraries match, rather than silently picking the
  * first. That guard is self-limiting: it can only fire where the ambiguity is
  * real, so the demo server never trips it.
  *
  * **Polls rather than scanning once, because Home renders before its data arrives.**
- * `waitHome()` gates on `#homeRows.content.getChildCount() > 0`, and
- * `HomeRows.createSkeletonRows()` appends the `sectionId="library"` row — carrying a
- * single bare `ContentNode` placeholder — BEFORE the real tiles load. A placeholder
+ * `waitHome()` gates on the active row list's `content.getChildCount() > 0`, and
+ * `HomeRows.createSkeletonRows()` appends the `sectionId="library"` row, carrying a
+ * single bare `ContentNode` placeholder, before the real tiles load. A placeholder
  * has no `.id` and no `.collectionType`, so a single scan landing in that window
  * matches nothing and throws `tile id="..." not found` on a Home that is perfectly
  * healthy a second later. Observed on device (Stick `3600X`, cold launch polled from
  * t=0): the gate passed at +3795 ms with 4 skeleton rows, the library row held 1
- * placeholder and 0 ids until +5141 ms — a **~1.35 s** window, twice reproduced. The
+ * placeholder and 0 ids until +5141 ms, a **~1.35 s** window, twice reproduced. The
  * normal flow usually clears it because `hardRelaunch()` sleeps `bootMs` first, which
  * is why this surfaces as a rare flake rather than a constant failure: it only bites
  * when Home's data is slower than that fixed sleep.
  */
 /**
  * One pass over Home's library row. Returns `{ tile }` on an id hit, otherwise the
- * `collectionType` matches collected so far. Never throws — the caller decides when
+ * `collectionType` matches collected so far. Never throws: the caller decides when
  * an empty result is "not there yet" versus "not there".
  *
  * `rows` retains the shape this pass actually saw (section ids and tile counts).
- * It is read from values the scan already fetched, so it adds no device calls —
+ * It is read from values the scan already fetched, so it adds no device calls,
  * and it is what turns a `tile not found` into "Home held 4 rows, the library row
  * had 1 tile", which is the difference between a skeleton-window race and a Home
  * that never populated.
  */
-async function scanHomeLibraryTiles(collectionType, libraryId) {
-  const rowCount = (await getVal('#homeRows.content.getChildCount()')) || 0;
+async function scanHomeLibraryTiles(list, collectionType, libraryId) {
+  const rowCount = (await getVal(`${list}.content.getChildCount()`)) || 0;
   // Collected rather than returned on first hit, so the no-id path can tell
-  // "one match" from "several" — see the ambiguity guard below.
+  // "one match" from "several" (see the ambiguity guard below).
   const matches = [];
   const rows = [];
   for (let r = 0; r < rowCount; r++) {
-    const sectionId = await getVal(`#homeRows.content.${r}.sectionId`);
+    const sectionId = await getVal(`${list}.content.${r}.sectionId`);
     if (sectionId !== 'library') {
       rows.push(`${r}:${sectionId ?? '?'}`);
       continue;
     }
-    const tiles = (await getVal(`#homeRows.content.${r}.getChildCount()`)) || 0;
+    const tiles = (await getVal(`${list}.content.${r}.getChildCount()`)) || 0;
     rows.push(`${r}:library(${tiles})`);
     for (let c = 0; c < tiles; c++) {
       if (libraryId) {
-        if ((await getVal(`#homeRows.content.${r}.${c}.id`)) === libraryId)
+        if ((await getVal(`${list}.content.${r}.${c}.id`)) === libraryId)
           return { tile: { row: r, col: c }, matches, rows };
         continue;
       }
-      const ct = await getVal(`#homeRows.content.${r}.${c}.collectionType`);
+      const ct = await getVal(`${list}.content.${r}.${c}.collectionType`);
       if (ct === collectionType) matches.push({ row: r, col: c });
     }
   }
   return { tile: null, matches, rows };
 }
 
-async function findHomeLibraryTile(collectionType, libraryId = null) {
+async function findHomeLibraryTile(list, collectionType, libraryId = null) {
   const start = Date.now();
   let matches;
   let rows;
   for (;;) {
-    const scan = await scanHomeLibraryTiles(collectionType, libraryId);
+    const scan = await scanHomeLibraryTiles(list, collectionType, libraryId);
     if (scan.tile) return scan.tile;
     matches = scan.matches;
     rows = scan.rows;
@@ -271,7 +383,7 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
     );
   }
 
-  // AMBIGUOUS — refuse rather than silently pick the first tile. The seeding side
+  // AMBIGUOUS: refuse rather than silently pick the first tile. The seeding side
   // resolves via /UserViews order and this resolves via Home tile order, so "the
   // first one" means DIFFERENT libraries on each side. A caller that omits
   // libraryId has not chosen the first match, it has forgotten to pass one; a
@@ -280,8 +392,8 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
   // server, `demos/`) never trips it.
   const named = [];
   for (const m of matches) {
-    const id = await getVal(`#homeRows.content.${m.row}.${m.col}.id`);
-    const title = await getVal(`#homeRows.content.${m.row}.${m.col}.title`);
+    const id = await getVal(`${list}.content.${m.row}.${m.col}.id`);
+    const title = await getVal(`${list}.content.${m.row}.${m.col}.title`);
     named.push(`${title} (${id})`);
   }
   // Not a timeout: a fail-fast that already names its own cause and lists the
@@ -303,19 +415,19 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
  * overshoot), independent of how the demo account has arranged its Home screen.
  */
 export async function navLibraryByType(collectionType, libraryId = null) {
-  // VERIFY WHAT OPENED, not just that something opened.
+  // VERIFY WHAT OPENED, and not only that something opened.
   //
   // Everything before the press is a claim about where focus IS. The grid's own
-  // `parentItem.id` is the app's answer to "which library is this" — the one reading
+  // `parentItem.id` is the app's answer to "which library is this", the one reading
   // that cannot be argued with, because `HomeRows.itemSelected` resolves the pressed
   // item as `getItemAtIndices(m.top.rowItemSelected)` and hands that NODE to the route.
   //
   // Measured on `.178` 2026-08-23:
   //   asked=tvshows/a656b907… -> grid=Movies(f137a2dd…) tile0=Movie:The Boy in the Plastic Bubble
-  // Every downstream gate passed — a real grid, it loads, its tile 0 opens a real
-  // detail — and the run failed several navs later asking for a `Season` row on a Movie.
+  // Every downstream gate passed (a real grid, it loads, its tile 0 opens a real
+  // detail) and the run failed several navs later asking for a `Season` row on a Movie.
   //
-  // WHY the press landed wrong is NOT established; see `pressProbe` for the leading
+  // WHY the press landed wrong is not established; see `pressProbe` for the leading
   // hypothesis and the reading that would confirm it. This check does not depend on
   // knowing: it compares outcomes, so it holds whatever the cause turns out to be.
   //
@@ -327,13 +439,13 @@ export async function navLibraryByType(collectionType, libraryId = null) {
     await waitGridLoaded(`${collectionType} grid`);
 
     const openedId = await getActiveVal('parentItem.id');
-    // No id to check against (an id-less caller) — nothing to verify, keep the
+    // No id to check against (an id-less caller), so nothing to verify; keep the
     // previous behaviour rather than inventing a weaker check.
     if (!libraryId) break;
     if (openedId === libraryId) {
       // A recovered wrong turn must ANNOUNCE itself. `focusOverhangIcon` warns on its
       // re-press for the stated reason that a harness which quietly recovers can mask
-      // the very regression a run exists to catch — and the same applies here twice
+      // the very regression a run exists to catch, and the same applies here twice
       // over, because the retry's efficacy is itself unproven. A silent success is
       // indistinguishable in the record from the event never happening, so we would
       // never learn either how often this fires or whether backing out actually helps.
@@ -342,9 +454,9 @@ export async function navLibraryByType(collectionType, libraryId = null) {
           `${collectionType}: opened the wrong library on attempt ${attempt - 1} and ` +
           `recovered on attempt ${attempt} (asked for id="${libraryId}"). ` +
           `Pre-press readings per attempt: ${probes.map(formatPressProbe).join(' | ')}`;
-        // RECORDED, not just printed. The warn is for whoever is watching the run;
+        // RECORDED, and not only printed. The warn is for whoever is watching the run;
         // the record is what makes "does this ever fire, and how often" answerable
-        // across runs — it is folded into the never-reset ledger at close, and
+        // across runs. It is folded into the never-reset ledger at close, and
         // surfaces as its own end-of-run summary line. A `console.warn` alone dies
         // with the scrollback (`tests/rta/lib/registry.js` says so in as many
         // words), and this event leaves no other trace: the step SUCCEEDED.
@@ -364,7 +476,7 @@ export async function navLibraryByType(collectionType, libraryId = null) {
 
     // The field did not resolve at all. That is a harness/app-shape problem, not a wrong
     // library, and retrying it three times would report the app as having opened
-    // something it did not. Distinguish "genuinely wrong" from "not there yet" — the
+    // something it did not. Tell "wrong" from "not there yet", the
     // rule `tests/rta/CLAUDE.md` states for the scan, applied to the outcome check.
     if (openedId === undefined) {
       throw await diagnosedError(
@@ -402,7 +514,7 @@ export async function navLibraryByType(collectionType, libraryId = null) {
       );
     }
     // Back out to Home and try the whole scan/walk/press again. DETECTION is proven
-    // (forcing the walk onto another tile makes this fire); RECOVERY is not — the
+    // (forcing the walk onto another tile makes this fire); RECOVERY is not. The
     // forcing experiment pinned the wrong column on every attempt, so it could only
     // ever fall through to the throw, and no organic recurrence has been observed
     // either way. The warning above is what will settle it.
@@ -414,22 +526,46 @@ export async function navLibraryByType(collectionType, libraryId = null) {
 /**
  * Leave the current view for Home, and confirm we actually got there.
  *
- * A bare `press(Back)` is not enough and `waitHome()` cannot catch the shortfall.
- * `sgrouter_showView`'s `finally` restores focus BEFORE dispatching `NavigationEnd`, so
- * a key sent in that window is rejected by `_goBack` and swallowed — measured twice on
- * `.178` (see `resendIfSwallowed`, which exists for exactly this). And `waitHome()`
- * cannot tell: its first gate is `activeRoutedView.subtype()` being non-empty, which a
- * grid satisfies, and its second is scene-rooted `#homeRows.content.getChildCount()`,
- * which passes because Home stays in the scene tree under sgRouter's default
- * `suspendMode: "hide"`. So a lost Back sails through both and the caller's next step
- * times out blaming focus.
+ * A bare `press(Back)` is not enough. `sgrouter_showView`'s `finally` restores focus
+ * BEFORE dispatching `NavigationEnd`, so a key sent in that window is rejected by
+ * `_goBack` and swallowed, measured twice on `.178` (see `resendIfSwallowed`, which
+ * exists for exactly this).
  *
- * Gating on the ACTIVE view being Home is the reading that separates them, and
- * `resendUntilFocusInside` re-sends the key actually owed. It gates on the DESTINATION
- * rather than the origin because the origin is not knowable here — the whole reason we
- * are backing out is that an unexpected library opened, and it may be an `#itemGrid` or
- * the Genres `RowList`. Once focus is back inside Home's rows it stops pressing, which
- * is what keeps a re-press off the exit-confirm dialog.
+ * **What is different about this helper is the RECOVERY, not the detection.** `waitHome()`
+ * used to be unable to tell a lost Back from an arrival, and that was the original reason
+ * to reach for this; it no longer is. Its first gate now polls
+ * `activeRoutedView.subtype() === 'Home'`, so a swallowed Back fails there, by name, at
+ * the site that lost it. What `waitHome()` still will not do, because it is
+ * shared by 30-odd call sites, is send a key to fix it. This helper does, and that is the
+ * whole of what it adds.
+ *
+ * `resendUntilFocused` (given `focusIsInHomeContent`) re-sends the key actually owed. It
+ * gates on the DESTINATION rather than the origin because the origin is not knowable
+ * here: the whole reason we are backing out is that an unexpected library opened, and it
+ * may be an `#itemGrid` or the Genres `RowList`. Once focus is back inside Home's rows it
+ * stops pressing, which is what keeps a re-press off the exit-confirm dialog.
+ *
+ * ## ⚠️ Do not generalize this to other "leave for Home" sites: it is safe here only
+ *
+ * The resend presses Back every tick that focus is not yet inside Home's rows: at
+ * `interval: 350` inside a 12 s budget that is up to ~34 presses. That is safe at this
+ * call site and nowhere else by default, because this one only runs after a wrong
+ * library grid opened, so the app is demonstrably on a grid, where Back pops to Home.
+ *
+ * Sent from a screen that is not on the way to Home, those presses are destructive.
+ * `UserSelect.onKeyEvent` treats Back as *change server*, and the coordinator DELETES the
+ * saved server and routes to `/server`, so a single stray Back on the user picker signs
+ * the device out, and the next `waitHome()` times out against a `SetServerScreen` with an
+ * empty identity.
+ *
+ * Tried and reverted 2026-09-06: four navs (`navHomeReturn`, `navSearchReturn`, the two
+ * cell sweeps) were routed through here to fix `waitHome()`'s inability to tell a
+ * swallowed Back from an arrival. The run came back signed out on `SetServerScreen`,
+ * because those sites are not reached from a grid and the re-press landed on the user
+ * picker. **That need is now met the safe way:** `waitHome()` took the assertion half and
+ * left the action, so every one of those navs detects the shortfall without sending a key.
+ * This helper keeps its single call site: the library-retry path, which only runs after a
+ * wrong grid opened and is therefore the one place the re-press is provably safe.
  */
 async function backToHome(label) {
   await press(ecp.Key.Back);
@@ -437,7 +573,7 @@ async function backToHome(label) {
     read: getActiveVal,
     timeout: 12000,
     interval: 350,
-    action: resendUntilFocusInside(ecp.Key.Back, '#homeRows'),
+    action: resendUntilFocused(ecp.Key.Back, focusIsInHomeContent),
     label: `back to Home (${label})`,
   });
   await waitHome();
@@ -449,8 +585,8 @@ async function backToHome(label) {
  *
  * ## The hypothesis this exists to settle
  *
- * `HomeRows.populateRowFromData` updates a row's children IN PLACE — `appendChildren`
- * the new tiles, then `removeChildIndex` down over the old ones — and its own comment
+ * `HomeRows.populateRowFromData` updates a row's children IN PLACE (`appendChildren`
+ * the new tiles, then `removeChildIndex` down over the old ones), and its own comment
  * concedes the shape is a mitigation for RowList focus movement ("Append new items
  * BEFORE removing old ones to avoid a momentary empty-row state that would cause the
  * RowList to shift focus"). It runs for the library row via `populateLibraryRow`, on
@@ -459,94 +595,241 @@ async function backToHome(label) {
  * During that window the row briefly holds `oldCount + n` children and the focused index
  * still points into the OLD range, which the removal loop then deletes. That fits every
  * observation: intermittent, and invisible to a content-by-index check, because once the
- * swap completes index N holds the same library it held before — which is exactly why
+ * swap completes index N holds the same library it held before, which is exactly why
  * the tile-index guard this branch first shipped could pass and the press still land
- * wrong. It is NOT demonstrated. Two readings would settle it:
+ * wrong. It is not demonstrated. Two readings would settle it:
  *
  *   childCount  `2n` (or anything but the steady-state count) means the swap was mid-flight
  *   focused     a value that differs from the index the walk gated on means focus moved
  *
  * Both are read scene-rooted, in ONE batch, because they are the pair the swap changes
- * together — read sequentially they can straddle the very mutation being diagnosed.
+ * together. Read sequentially, they can straddle the very mutation being diagnosed.
  * Cost is one round trip per attempt (~5 ms), on the success path, which buys the only
  * chance of catching an intermittent event that no one can reproduce on demand.
  */
-async function pressProbe(row) {
-  // NEVER let the reading fail the nav it is observing. `getVals` throws when the
-  // batch itself fails — deliberately, because for an ASSERTION a half-answered
+async function pressProbe(list, { row, col }) {
+  // Never let the reading fail the nav it is observing. `getVals` throws when the
+  // batch itself fails, on purpose, because for an ASSERTION a half-answered
   // screen must not read as a screen of missing fields. This is not an assertion:
   // it is instrumentation on the SUCCESS path of every library nav, so the same
   // throw would turn a transient ODC hiccup into a failed nav that was otherwise
   // fine. Diagnostics may not break the thing they diagnose; an absent reading
   // costs a `?` in a message that only prints when something else already went
   // wrong.
+  //
+  // ONE batch, not five reads: ODC loops a `getValues` inside a single on-device
+  // message, so this is one observation of Home rather than five spread across
+  // ~27 ms of a screen that is by hypothesis MUTATING. Reading them sequentially
+  // would let the very row swap under investigation happen mid-reading and produce
+  // an incoherent record: an instrument that cannot be trusted about the thing it
+  // was built to catch.
   try {
-    const [focused, childCount] = await getVals([
-      '#homeRows.rowItemFocused',
-      `#homeRows.content.${row}.getChildCount()`,
+    const [focused, childCount, tileId, rowCount, sectionId] = await getVals([
+      `${list}.rowItemFocused`,
+      `${list}.content.${row}.getChildCount()`,
+      `${list}.content.${row}.${col}.id`,
+      `${list}.content.getChildCount()`,
+      `${list}.content.${row}.sectionId`,
     ]);
-    return { focused, childCount };
+    return { focused, childCount, tileId, rowCount, sectionId };
   } catch {
-    return { focused: undefined, childCount: undefined };
+    return {};
+  }
+}
+
+/**
+ * What Home actually SELECTED, read after the press.
+ *
+ * This is the half the earlier attempt was missing. A gate on the tile's content at the
+ * walked-to coordinates was tried here and PASSED while the press still opened Movies,
+ * so whatever moves, moves in a window a pre-press reading cannot see. Bracketing the
+ * press is what separates the two candidate mechanisms:
+ *
+ *  - `selected` DIFFERENT from the coordinates we walked to  -> focus/selection moved
+ *    between the probe and the press, and the tile we aimed at was never pressed.
+ *  - `selected` the SAME but `selectedId` not the library we asked for -> the row's
+ *    CONTENT changed under fixed coordinates, that is, the row swap
+ *    (`HomeRows.insertLatestMediaSkeletons` inserts latest-media rows MID-LIST).
+ *
+ * Home is suspended by the time this runs, which is exactly why the reads are
+ * scene-rooted: under sgRouter's default `suspendMode: "hide"` a suspended view stays in
+ * the scene tree, so `#homeRows` still resolves. `getActiveVal` would follow the grid
+ * that opened and answer about the wrong node.
+ *
+ * Two round trips rather than one, because the second batch's keyPaths are built from the
+ * first batch's answer. ~11 ms on `.177`, on roughly six library navs per suite.
+ */
+async function selectionProbe(list) {
+  try {
+    const [selected] = await getVals([`${list}.rowItemSelected`]);
+    if (!Array.isArray(selected)) return { selected };
+    const [selectedId, selectedType] = await getVals([
+      `${list}.content.${selected[0]}.${selected[1]}.id`,
+      `${list}.content.${selected[0]}.${selected[1]}.collectionType`,
+    ]);
+    return { selected, selectedId, selectedType };
+  } catch {
+    return {};
   }
 }
 
 const formatPressProbe = (p, i) =>
-  `#${i + 1} focused=${JSON.stringify(p.focused ?? null)} rowChildCount=${p.childCount ?? '?'}`;
+  `#${i + 1} focused=${JSON.stringify(p.focused ?? null)} rowChildCount=${p.childCount ?? '?'}` +
+  ` aimedAt=${JSON.stringify(p.aimedAt ?? null)} tileId=${p.tileId ?? '?'}` +
+  ` rows=${p.rowCount ?? '?'} section=${p.sectionId ?? '?'}` +
+  ` selected=${JSON.stringify(p.selected ?? null)} selectedId=${p.selectedId ?? '?'}` +
+  ` selectedType=${p.selectedType ?? '?'}`;
 
 /**
  * The press-into-the-library half of navLibraryByType, WITHOUT the loaded wait.
  * Exists for specs that must interact with a view's intermediate stages (the Genres
- * skeleton window) — everything else should use navLibraryByType, which settles.
+ * skeleton window). Everything else should use navLibraryByType, which settles.
+ *
+ * `key` is what is pressed on the tile: OK opens the library, Play quick-plays it.
  */
-export async function openLibraryByType(collectionType, libraryId = null) {
+export async function openLibraryByType(
+  collectionType,
+  libraryId = null,
+  { key = ecp.Key.Ok } = {},
+) {
   await waitHome();
   // Focus must be INSIDE the row list before walking it. `rowItemFocused` RETAINS its
   // last value when the RowList doesn't hold focus, so a walk started while focus is
   // still elsewhere reads a stale [0,0] forever, sends its presses to whatever does
-  // hold focus, and then times out blaming the tile — which is what
+  // hold focus, and then times out blaming the tile, which is what
   // `home library tile col N (...) (last=[0,0])` actually means. No action here on
   // purpose: focus lands in the rows on its own once Home is up, and pressing keys at
   // a component we have not located yet is how the OSD navs got this wrong.
-  await waitFocusInside('#homeRows');
+  await waitFocusInHomeContent();
+
+  // Resolved ONCE for the whole nav rather than per poll tick: every helper below reads the
+  // same list, and `waitHome()` above has already proved Home is the active view, so the
+  // answer cannot change underneath them (only a tab change moves it, and no spec changes
+  // tabs). One round trip for the nav instead of one per scan pass.
+  const list = await homeListId();
 
   // Scan for the tile, walk focus to it, read what we are standing on, then press.
   //
-  // The probe is the ONLY thing between the walk's last read and the press, and it is
-  // deliberately not a gate: an earlier revision of this branch DID gate here, on the
+  // The probe is the only thing between the walk's last read and the press, and it is
+  // not a gate on purpose: an earlier revision of this branch did gate here, on the
   // tile's content matching at the walked-to coordinates, and that guard passed while
-  // the press still opened Movies. Content-by-index cannot see this — after a row swap
+  // the press still opened Movies. Content-by-index cannot see this: after a row swap
   // completes, index N holds the same library it held before. So the reading is kept
   // and the judgement is made on the OUTCOME instead, by `navLibraryByType`.
-  const tile = await findHomeLibraryTile(collectionType, libraryId);
-  await walkHomeRowsTo(tile, collectionType);
-  const probe = await pressProbe(tile.row);
-  await press(ecp.Key.Ok);
-  return probe;
+  const tile = await findHomeLibraryTile(list, collectionType, libraryId);
+  const walk = await walkHomeRowsTo(list, tile, collectionType);
+  const probe = await pressProbe(list, tile);
+  // Where the walk AIMED against where focus actually sits one read before the press.
+  // They disagree when a key landed AFTER the wait that sent it had already returned:
+  // the over-press shape measured on the column axis on `.177` 2026-09-07. Both axes now
+  // walk through `scrollFocus` (the row axis in stepped mode, see `walkHomeRowsTo`), so
+  // this record is what would show either of them regressing.
+  //
+  // Costs nothing: `pressProbe` already batches this reading and `aimedAt` is already
+  // carried on the return. What was missing is that nothing COMPARED them on a green
+  // run. The recovery record in `navLibraryByType` is outcome-level and strictly
+  // narrower: it fires only when a wrong library actually OPENED and the caller
+  // supplied an id, so drift that still landed on the right library, and any drift at
+  // all on an id-less nav, left no trace anywhere.
+  //
+  // Recorded, not gated, for the same reason `pressProbe` is not a gate: this is the
+  // success path of every library nav, and an instrument may not fail the thing it
+  // observes. `axis` says which half drifted.
+  if (
+    Array.isArray(probe.focused) &&
+    (probe.focused[0] !== tile.row || probe.focused[1] !== tile.col)
+  ) {
+    const rowOff = probe.focused[0] !== tile.row;
+    const colOff = probe.focused[1] !== tile.col;
+    const detail =
+      `${collectionType}: the walk aimed at [${tile.row},${tile.col}] but focus was at ` +
+      `[${probe.focused}] one read before the press — a key landed after the wait that ` +
+      'sent it had already returned.';
+    recordRecovery({
+      at: new Date().toISOString(),
+      what: `home tile walk drift (${collectionType})`,
+      detail,
+      observed: {
+        collectionType,
+        aimedAt: [tile.row, tile.col],
+        landedOn: probe.focused,
+        axis: rowOff && colOff ? 'both' : rowOff ? 'row' : 'column',
+        colPressed: walk?.pressed,
+        colRecovered: walk?.recovered,
+      },
+    });
+    console.warn(`[nav] ${detail}`);
+  }
+  await press(key);
+  // Read what Home SELECTED, and not only what we aimed at. `aimedAt` is carried alongside so
+  // the record compares the two without a reader having to reconstruct the intent.
+  return {
+    ...probe,
+    aimedAt: [tile.row, tile.col],
+    colPressed: walk?.pressed,
+    colRecovered: walk?.recovered,
+    ...(await selectionProbe(list)),
+  };
 }
 
-/** Step focus to `tile`, vertically then horizontally. Guarded against overshoot. */
-async function walkHomeRowsTo({ row, col }, collectionType) {
-  await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[0] === row, {
+/**
+ * Walk focus to a Home tile at `{row, col}`: rows first, then columns, both through
+ * `scrollFocus`.
+ *
+ * ## Why the two halves are not configured the same
+ *
+ * The COLUMN half uses `scrollFocus`'s burst. The ROW half uses its stepped mode: one key
+ * in flight at a time, the next chosen only after the index has visibly left its pre-press
+ * value. The axes differ in what a surplus key costs. The column axis is bounded on both
+ * sides by the row itself, so a stray Right lands on a neighbor tile. The row axis is not
+ * bounded: `Home.onKeyEvent` releases focus to the OVERHANG on Up from row 0 (the whole
+ * reason `walkHomeToFirstRow` exists), so a surplus Up leaves Home entirely while
+ * `rowItemFocused` keeps RETAINING its last value, which nothing downstream can see. A
+ * burst computes its keys from one index read, so it is the wrong shape there. A
+ * read-then-press loop on a fixed tick double-presses whenever a key takes longer than the
+ * tick to show, which is why the row half waits for each key.
+ */
+async function walkHomeRowsTo(list, { row, col }, collectionType) {
+  await scrollFocus({
+    keyPath: `${list}.rowItemFocused`,
+    target: row,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    select: (v) => (Array.isArray(v) ? v[0] : undefined),
+    read: getVal,
+    stepped: true,
+    within: list,
+    interval: 150,
     timeout: 12000,
-    interval: 350,
-    action: async () => {
-      const v = await getVal('#homeRows.rowItemFocused');
-      if (!Array.isArray(v)) return;
-      if (v[0] < row) await press(ecp.Key.Down);
-      else if (v[0] > row) await press(ecp.Key.Up);
-    },
     label: `home library row ${row} (${collectionType})`,
   });
-  await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[1] === col, {
-    timeout: 12000,
-    interval: 350,
-    action: async () => {
-      const v = await getVal('#homeRows.rowItemFocused');
-      if (!Array.isArray(v)) return;
-      if (v[1] < col) await press(ecp.Key.Right);
-      else if (v[1] > col) await press(ecp.Key.Left);
-    },
+  // The COLUMN walk goes through `scrollFocus`, and that is the fix for a measured defect
+  // rather than a tidy-up. The loop this replaces decided whether to press from its OWN
+  // read of `rowItemFocused`, a field that LAGS the device, so it could press on top of a
+  // key already in flight: read [0,1] while the device was already at [0,2], press Right,
+  // and the predicate's own read then returns [0,2] and satisfies the wait, leaving an
+  // extra Right in flight that lands after the caller's probe and before its `Ok`.
+  //
+  // Captured on `.177` 2026-09-07 with the press bracketed (run 4 of 4): focus reported
+  // [0,2], the tile at [0,2] was the music library asked for, Home's row structure was
+  // unchanged, and `rowItemSelected` came back [0,3], opening playlists. That is also why
+  // an earlier content-at-coordinates gate passed while the press still opened the wrong
+  // library: the gate read the right cell, and the press landed on the next one.
+  //
+  // `scrollFocus` sends the exact distance as one burst and re-presses only for a key it
+  // can prove was dropped (the index unchanged across a whole tick), so it cannot stack a
+  // press on an in-flight one. `tests/rta/CLAUDE.md` records it retiring the identical
+  // over-press elsewhere: "The cause was removed rather than out-waited."
+  //
+  // `recovered` is returned so the fix stays measurable: it counts keys this walk had to
+  // re-send, which is the number that should now be the only source of drift here.
+  return scrollFocus({
+    keyPath: `${list}.rowItemFocused`,
+    target: col,
+    forwardKey: ecp.Key.Right,
+    backKey: ecp.Key.Left,
+    select: (v) => (Array.isArray(v) ? v[1] : undefined),
+    read: getVal,
     label: `home library tile col ${col} (${collectionType})`,
   });
 }
@@ -555,21 +838,23 @@ async function walkHomeRowsTo({ row, col }, collectionType) {
  * A library grid is "loaded" once BaseGridView says so: its `loadState` interface
  * field reaches "loaded" (usable content on screen) or "empty" (zero ITEMS). Accepting
  * the empty-state lets the same nav capture empty views instead of timing out on them.
+ * "failed" (the first page never arrived) ends the wait too, and throws
+ * `grid-load-failed`. It is final until someone presses Try again.
  *
  * "empty" is two different screens, because both branches measure it in items:
- *  - grid path — the "No Items" message, a real capture-worthy screen (e.g. the
+ *  - grid path: the "No Items" message, a real capture-worthy screen (for example the
  *    Networks view on a server whose shows have no network);
- *  - genre RowList path — titled rows are drawn but every one is childless (all the
+ *  - genre RowList path: titled rows are drawn but every one is childless (all the
  *    per-genre sample fetches failed), so `emptyText` stays hidden and the screen
  *    reads as broken. Tracked as an open followup in `docs/progress.md`.
  * `assertGenreRowsOwnTheirItems` (screens.js) is what catches the second case for
- * `moviesLibraryGenres`; this wait deliberately does not, so a genre capture without
+ * `moviesLibraryGenres`; this wait does not, so a genre capture without
  * that assertion will pass through it.
  *
- * ONE atomic read of the app's own state, deliberately NOT inferred from content
+ * One atomic read of the app's own state, not inferred from content
  * internals: the previous shape (child counts + sniffing row 0's first cell type)
  * raced its two reads, re-declared the skeleton sentinel across the JS/BS boundary,
- * and assumed "row 0 filled" implies "all rows filled" — which the decision record
+ * and assumed "row 0 filled" implies "all rows filled", which the decision record
  * `genre-skeletons-batched-not-per-row` explicitly reserves the right to break
  * (per-row fill tripwire). The Genres view's intermediate "skeleton" stage never
  * satisfies this wait, so the genre-row assertion and the store screenshots (which
@@ -577,24 +862,55 @@ async function walkHomeRowsTo({ row, col }, collectionType) {
  *
  * Scoped to the active routed view (getActiveVal): `loadState` recurs on every
  * BaseGridView, and a suspended view can still be in the scene tree (see getActiveVal).
+ *
+ * ## Why this is a `waitFor` and not its own loop
+ *
+ * It hand-rolled the poll until 2026-09-05, for no reason that survived being written
+ * down: one keyPath, one predicate, one reader, throws on timeout, the shape `waitFor`
+ * exists for. Keeping its own copy cost it the read-failure attribution every other wait
+ * gained (a raw `getActiveVal` swallows a transport failure to `undefined`, so a device
+ * that stopped answering and a grid that never loaded both reported
+ * `last loadState=undefined`, the #785 ambiguity, in the one wait not covered by the fix
+ * for it), and it sat outside `jellyrock-rta/wait-justified`, which is what checks that a
+ * polled field is not a one-shot pulse.
+ *
+ * The conversion waited on `waitFor` accepting a `kind`, and that was not a formality:
+ * without it this timeout would have been recorded as `wait-for-timeout` and merged into
+ * the bucket every other wait shares. `FAILURE_KINDS` keeps `grid-load-timeout` separate
+ * because a grid that never finishes loading has a different cause and a different fix
+ * from a wait that timed out on any other field, and the flake baseline groups by that
+ * slug.
+ *
+ * `timeout` and `interval` are stated rather than inherited. The old loop hardcoded a
+ * 500 ms tick, so leaving it to `waitFor`'s default would tie this wait's cadence to a
+ * number chosen for other call sites, the drift that cost `waitFocusInside` six sites
+ * their intervals in Phase 2.
  */
 async function waitGridLoaded(label, timeout = 20000) {
-  const start = Date.now();
-  let last;
-  while (Date.now() - start < timeout) {
-    last = await getActiveVal('loadState');
-    if (last === 'loaded' || last === 'empty') return;
-    await sleep(500);
-  }
-  throw await diagnosedError(
-    `nav timed out waiting for ${label} (last loadState=${JSON.stringify(last)})`,
+  let state;
+  await waitFor(
+    'loadState',
+    (v) => {
+      state = v;
+      return v === 'loaded' || v === 'empty' || v === 'failed';
+    },
     {
-      kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
       label,
-      waitedMs: Date.now() - start,
-      observed: { lastLoadState: last },
+      timeout,
+      interval: 500,
+      read: getActiveVal,
+      kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
     },
   );
+  // A failed load is final (the grid waits for Try again), so name it now rather than let the
+  // caller's next step time out blaming something else.
+  if (state === 'failed') {
+    throw await diagnosedError(`${label}: the grid showed its load-failure state`, {
+      kind: FAILURE_KINDS.GRID_LOAD_FAILED,
+      label,
+      observed: { loadState: state },
+    });
+  }
 }
 
 /** home -> Movies library grid (hardened against Home-layout changes). */
@@ -621,21 +937,36 @@ export async function navPlaylistsLibrary(ctx) {
  * Open the first tile of the currently-loaded grid and wait for its detail
  * screen. The grid focuses tile 0 on load, so a single OK opens a representative
  * item of that library's type (`#videoTitle` is the shared detail title node for
- * every item type). Used by the per-type detail screens that just need ONE example.
+ * every item type). Used by the per-type detail screens that need only ONE example.
  */
+/**
+ * What each library's first tile must open. `label` used to be an error string only;
+ * making it an EXPECTATION is what lets the nav check its own outcome.
+ *
+ * A label with no entry is a fail-fast rather than a skipped check: a new caller has to
+ * declare what it expects, or the gate would silently not apply to it.
+ */
+const FIRST_TILE_DETAIL_TYPES = Object.freeze({
+  series: ['Series'],
+  // The seeded landing view decides which: an Albums-view first tile opens a MusicAlbum,
+  // an Artists / AlbumArtists-view first tile a MusicArtist. Both are correct here.
+  music: ['MusicAlbum', 'MusicArtist'],
+  playlist: ['Playlist'],
+});
+
 async function openFirstGridTileDetail(label) {
   // GATE FOCUS BEFORE PRESSING, via the same helper the indexed callers use.
   //
   // This function pressed OK bare. `focusGridTile`'s own comment already spells out
-  // why that is wrong — "grid LOADED is not grid FOCUSED", so an OK sent before focus
-  // arrives goes to whatever does hold it — and records that the gate was once nested
+  // why that is wrong ("grid LOADED is not grid FOCUSED", so an OK sent before focus
+  // arrives goes to whatever does hold it) and records that the gate was once nested
   // under a `target <= 0` early return, "which left exactly the tile-0 callers
   // ungated". That was fixed inside `focusGridTile`; this function never called it, so
   // the three tile-0 navs went on pressing ungated. `focusGridTile(0)` is exactly the
   // gate with no walk, which is what these callers want.
   //
   // Observed cost, `.178` 2026-08-23: `seasonDetails` opened `The Boy in the Plastic
-  // Bubble` — a MOVIE, from the Movies library — while navigating the Shows library,
+  // Bubble` (a MOVIE, from the Movies library) while navigating the Shows library,
   // and failed three navs later as "Season row not found". The Home-tile guard in
   // `openLibraryByType` had already confirmed the correct library tile was pressed, so
   // the stray OK is downstream of it: the grid had loaded but focus had not landed.
@@ -645,6 +976,48 @@ async function openFirstGridTileDetail(label) {
     label: `${label} detail title`,
     timeout: 20000,
   });
+
+  // VERIFY WHAT OPENED. A title is not an identity: `navLibraryByType` confirms the GRID
+  // it landed on by `parentItem.id` and retries a wrong one, but nothing checked that the
+  // grid's CONTENT had caught up before this pressed a tile in it. So a recovered nav
+  // could still open a detail belonging to the previous library, and the run would not say
+  // so. It would fail later, somewhere else, describing something else.
+  //
+  // That is not hypothetical. `.178` 2026-09-06: a tvshows nav reported
+  // `recovered on attempt 2`, this opened `The Boy in the Plastic Bubble` (a MOVIE), and
+  // the failure surfaced ten seconds later as a confirm dialog that never appeared,
+  // because `ItemDetails.onWatchedButtonPressed` only confirms for a Series and toggles a
+  // Movie silently. The app was correct at every step; only the harness was lost.
+  //
+  // Polled rather than read once because `m.extrasGrid.type` is set when the extras chain
+  // STARTS, not when the title lands, so a bare read here would race the load and report
+  // `undefined` for a detail that is perfectly fine. Wrong content fails this on its
+  // budget instead, naming what it actually found.
+  const wanted = FIRST_TILE_DETAIL_TYPES[label];
+  if (!wanted) {
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+    throw new Error(
+      `openFirstGridTileDetail has no expected detail type for label "${label}". Add one ` +
+        'to FIRST_TILE_DETAIL_TYPES — an unlisted label would skip the outcome check ' +
+        'that stops a wrong-library nav opening the wrong detail unnoticed.',
+    );
+  }
+  await waitFor('#extrasGrid.type', (t) => wanted.includes(t), {
+    read: getActiveVal,
+    label: `${label} detail is ${wanted.join(' or ')}`,
+    timeout: 10000,
+    interval: 500,
+    kind: FAILURE_KINDS.DETAIL_TYPE_MISMATCH,
+    observed: async () => {
+      const [type, parentId, title] = await getActiveVals([
+        '#extrasGrid.type',
+        '#extrasGrid.parentId',
+        '#videoTitle.text',
+      ]);
+      return { wanted, sawType: type, detailId: parentId, detailTitle: title };
+    },
+  });
+
   await sleep(1500); // let backdrop + logo paint
 }
 
@@ -684,24 +1057,25 @@ export async function navLibraryOptions(ctx) {
   // whose own `#options` (an OptionsSlider, hidden) would win a recursive id lookup and
   // read visible=false. Focus is unambiguous (one focused node), so it's the robust
   // signal that the active grid's options dialog opened.
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#options'), {
+  await waitFocusInside('#options', {
     label: 'grid options dialog',
     timeout: 8000,
+    interval: 500,
   });
   await sleep(800); // let the dialog's menus paint
 }
 
 /**
  * From an ItemDetails screen, open the first tile of the detail row whose tiles are
- * of `tileType` (e.g. "Person" for Cast & Crew, "Season", "Episode", "Audio") ->
+ * of `tileType` (for example "Person" for Cast & Crew, "Season", "Episode", "Audio") ->
  * that child's ItemDetails.
  *
- * The detail rows (`#extrasGrid`) are NOT in a fixed order (Movie's first row is
- * often "Chapters") and can change, so — like the Home "My Media" row — we resolve
+ * The detail rows (`#extrasGrid`) are not in a fixed order (Movie's first row is
+ * often "Chapters") and can change, so, like the Home "My Media" row, we resolve
  * the target row by CONTENT (tile type), never by index. Moving between rows runs a
  * panel-slide animation; an OK pressed mid-animation is swallowed, so we settle
  * after each Down. Loaded gate: focus landing on the child detail's button row.
- * (`#videoTitle` is NOT used — with the parent ItemDetails still in the scene tree,
+ * (`#videoTitle` is not used: with the parent ItemDetails still in the scene tree,
  * the recursive lookup can resolve to the PARENT's title; selecting a child instead
  * moves focus from the parent's `#extrasGrid` into the child's `#buttons`, which is
  * unambiguous.) Assumes the rows panel is already focusable (call straight after a
@@ -719,32 +1093,32 @@ async function openChildDetailByRowType(tileType) {
     read: getActiveVal,
   });
   // Poll for the row rather than scanning once, for the same reason `findHomeLibraryTile`
-  // does: `ExtrasRowList.populateRow` APPENDS rows as its async load chain progresses, so
-  // the count gate above can pass on the first row while the requested type has not landed
-  // yet. A single pass then throws about a screen that is fine a moment later. (Seen once
-  // during this work: `detail row with tile type "Season" not found` on a run whose other
-  // 35 screens passed.) The old fixed `sleep(1200)` was papering over exactly this — a
-  // bounded poll replaces it, and returns as soon as the row exists rather than always
-  // paying the full delay.
+  // does. When this was written, `ExtrasRowList` APPENDED rows one task hop at a time, so the
+  // count gate above could pass on the first row while the requested type had not landed yet,
+  // and a single pass threw about a screen that was fine a moment later. (Seen once: `detail
+  // row with tile type "Season" not found` on a run whose other 35 screens passed.) It now
+  // commits every row of a load at once (`commitRows`), which removes that cause for a first
+  // load; the bounded poll stays because it costs nothing once the row exists, and it replaced
+  // a fixed `sleep(1200)` that always paid the full delay.
   //
-  // THAT IS ONE OF TWO CAUSES, AND THE COMMENT ABOVE USED TO CLAIM IT WAS THE ONLY ONE.
+  // That is one of two causes, and the comment above used to claim it was the only one.
   // The same message also comes out when the nav opened the WRONG ITEM, and then no
   // amount of waiting helps. Recurrence 2026-08-23, `seasonDetails`: rowTypes came back
-  // `[Chapter, Person]`, and `ExtrasRowList.loadParts` gives a Series the chain
-  // `Seasons -> People -> LikeThis` — a Series cannot emit a `Chapter` row at all, so the
+  // `[Chapter, Person]`, and `extrasRows.plan` gives a Series the rows
+  // `Seasons, Cast, More Like This`. A Series cannot emit a `Chapter` row at all, so the
   // screen under the assertion was a Movie or an Episode, not the series the nav asked
   // for. Reading `[Chapter, Person]` as "Season is still loading" costs an investigation
   // every time, because the fix it points at (wait longer) is for the other cause.
   //
   // So the throw below reads the three fields that separate them outright, rather than
   // leaving the next reader to know the row chains by heart:
-  //   type          what ItemDetails is actually showing — the whole question
-  //   contentReady  ExtrasRowList's own chain-complete marker (`markChainComplete`).
+  //   type          what ItemDetails is actually showing (the whole question)
+  //   contentReady  ExtrasRowList's own run-complete marker (set in `finishRunIfResolved`).
   //                 True with the row absent means ABSENT, not late; the poll can stop
   //                 being suspected.
   //   parentId      which item, so it can be looked up on the server afterwards
   // All three are one batched read on the failure path only, so the success path is
-  // unchanged — same principle as `diagnosedError` capturing device state at the throw.
+  // unchanged, same principle as `diagnosedError` capturing device state at the throw.
   const rowsStart = Date.now();
   let targetRow = -1;
   let rowCount;
@@ -774,7 +1148,7 @@ async function openChildDetailByRowType(tileType) {
       '#extrasGrid.contentReady',
       '#extrasGrid.parentId',
     ]);
-    // Named in the MESSAGE, not just the record: this one is read in a terminal
+    // Named in the MESSAGE, not only the record: this one is read in a terminal
     // before anyone opens failures.jsonl, and "wanted Season, showing Movie" is the
     // difference between a two-minute triage and an afternoon of them.
     throw await diagnosedError(
@@ -807,9 +1181,10 @@ async function openChildDetailByRowType(tileType) {
   }
   await press(ecp.Key.Ok); // Select the first tile -> child ItemDetails
   // Focus moves from the parent's #extrasGrid into the CHILD detail's #buttons.
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#buttons'), {
+  await waitFocusInside('#buttons', {
     label: `${tileType} detail buttons`,
     timeout: 20000,
+    interval: 500,
   });
   await sleep(1500); // let the child detail's backdrop + content paint
 }
@@ -841,7 +1216,7 @@ export async function navAudioDetails(ctx) {
 /**
  * Establish that focus is inside the loaded grid, then walk it rightward to tile
  * `target`. The walk is skipped for tile 0 (the grid focuses it on load); the focus
- * gate is NOT — every caller presses OK next, and "grid loaded" is not "grid focused",
+ * gate is not: every caller presses OK next, and "grid loaded" is not "grid focused",
  * so an OK sent before focus arrives goes to whatever does hold it. That gate used to
  * sit under the `target <= 0` return, which left exactly the tile-0 callers ungated.
  *
@@ -853,21 +1228,132 @@ export async function navAudioDetails(ctx) {
  */
 async function focusGridTile(target) {
   // Grid LOADED is not grid FOCUSED, and `itemFocused` retains its last value while
-  // the grid is unfocused — so without this the walk can read a stale 0 forever and
+  // the grid is unfocused, so without this the walk can read a stale 0 forever and
   // press Right at whatever actually holds focus. Same precondition as the Home walk.
   await waitFocusInside('#itemGrid');
   if (target <= 0) return;
-  // Press Right until the grid reports the target tile focused (robust to a
-  // dropped keypress — only presses while focus is still short of the target).
-  await waitFor('#itemGrid.itemFocused', (v) => v === target, {
+  // One Right at a time, each awaited until the index moves (`scrollFocus`'s stepped mode).
+  // A read-then-press loop on a fixed tick double-presses whenever a key shows later than
+  // the tick, and an extra Right opens the wrong tile. `getVal` stays the reader, as it was:
+  // it is scene-rooted like the `waitFocusInside` gate above, so the two resolve `#itemGrid`
+  // the same way.
+  await scrollFocus({
+    keyPath: '#itemGrid.itemFocused',
+    target,
+    forwardKey: ecp.Key.Right,
+    backKey: ecp.Key.Left,
+    read: getVal,
+    stepped: true,
+    within: '#itemGrid',
+    interval: 150,
     timeout: 15000,
-    interval: 500,
-    action: async () => {
-      const cur = await getVal('#itemGrid.itemFocused');
-      if (typeof cur === 'number' && cur < target) await press(ecp.Key.Right);
-    },
     label: `grid focus -> tile ${target}`,
   });
+}
+
+/**
+ * Put focus on a named button in `ItemDetails`' action-button group.
+ *
+ * SHARED rather than inlined, and the reason is the comment block below: this
+ * walk carries lessons from four recorded failures in 63 ledger runs, and a
+ * second copy of it is a second place for them to rot out. `dialogs.spec.js`
+ * exercises it on every suite run, which is also what keeps it honest for the
+ * callers whose own screens are fixture-gated and skip by default.
+ *
+ * ## Why the group is ENTERED and walked rather than focused directly
+ *
+ * `JRButtonGroup` tracks its own focused index and re-asserts it whenever the
+ * group gains focus, so teleporting focus onto a child gets reverted, and the
+ * suite does not teleport anyway (`odc.focusNode` is banned). Focus is walked into
+ * the GROUP with real presses (`walkFocusInto`), then right along it.
+ *
+ * ## Why the wait gates on IDENTITY, never on the index
+ *
+ * The index is resolved by scanning the group, but `ItemDetails` mutates that
+ * group ASYNCHRONOUSLY as data lands: `removeChild(loadingButton)` when the
+ * trailer check resolves, `removeChild(trailerButton)` when there is none,
+ * `removeChild(resumeButton)`. Every removal shifts the indices after it, so a
+ * gate on `buttonFocused === index` can be satisfied by a DIFFERENT button and
+ * the caller's OK then lands on it: nothing happens, and by the time the next
+ * wait gives up the group has settled and the failure dump looks innocent:
+ * focus on the right button, no effect. Recorded 4 times in 63 ledger runs,
+ * always as `wait-for-timeout` on whatever the caller checked next.
+ *
+ * Same defect as the library-nav wrong turn (`openLibraryByType`): commit to an
+ * index, act later, index means something else.
+ *
+ * @param {string} buttonId - the button's `id` (for example `watchedButton`)
+ * @param {{maxButtons?: number, timeout?: number}} [opts]
+ * @returns {Promise<{pressedOn: object|null, pressedIndex: number|undefined,
+ *   wantedIndex: number}>} what focus was ACTUALLY standing on at the moment the
+ *   caller may press, plus the index the scan resolved. Both are worth carrying
+ *   into a caller's failure record: a dump taken after a later timeout cannot
+ *   answer the first, and `pressedIndex !== wantedIndex` is the signature of the
+ *   group having mutated between the scan and the press.
+ */
+export async function focusDetailButton(buttonId, { maxButtons = 12, timeout = 8000 } = {}) {
+  const ids = [];
+  let targetIndex = -1;
+  // Read from the ACTIVE view: a covered ItemDetails stays in the tree (every route
+  // suspends with "show"), and several components declare a `buttons` node, so a
+  // scene-rooted `#buttons` can resolve to a screen the viewer is not on.
+  for (let i = 0; i < maxButtons; i++) {
+    const id = await getActiveVal(`#buttons.${i}.id`);
+    if (id === undefined) break;
+    ids.push(id);
+    if (id === buttonId) {
+      targetIndex = i;
+      break;
+    }
+  }
+  if (targetIndex < 0) {
+    throw await diagnosedError(`button "${buttonId}" not found in detail button group`, {
+      kind: FAILURE_KINDS.DETAIL_BUTTON_NOT_FOUND,
+      label: `detail button ${buttonId}`,
+      // The buttons that WERE there. Absent-because-ungranted and
+      // absent-because-still-loading look identical without this.
+      observed: { wanted: buttonId, present: ids },
+    });
+  }
+
+  // WALKED, not teleported: `odc.focusNode` is banned suite-wide because it skips
+  // the key handler a remote would exercise. On a fresh detail mount the group
+  // usually already holds focus, so the walk presses nothing and this is only the
+  // gate; Down is the recovery from the description or a track dropdown.
+  //
+  // Gate on FOCUS ARRIVING, not on `buttonFocused` being readable: `JRButtonGroup`
+  // sets it to 0 in `init()`, so a readability wait passes on its first tick and the
+  // read below would describe the group's PREVIOUS index. `onGroupFocusChanged`
+  // re-asserts the index when the group takes focus, so focus inside `#buttons` is
+  // the state that makes that read meaningful. Carried over verbatim in substance
+  // from #900, which replaced the settle this helper used to hold.
+  await waitFocusInside('#buttons', {
+    label: 'detail button group focused (pre-index read)',
+    timeout: 8000,
+    interval: 300,
+    action: walkFocusInto(ecp.Key.Down, '#buttons'),
+  });
+  const groupIndex = await getActiveVal('#buttons.buttonFocused');
+  if (typeof groupIndex !== 'number') {
+    throw await diagnosedError(`cannot read #buttons.buttonFocused (got ${groupIndex})`, {
+      kind: FAILURE_KINDS.DETAIL_BUTTON_NOT_FOUND,
+      label: `detail button group focus (${buttonId})`,
+      observed: { wanted: buttonId, present: ids, buttonFocused: groupIndex },
+    });
+  }
+  for (let i = groupIndex; i < targetIndex; i++) await press(ecp.Key.Right);
+
+  await waitFocused((f) => f.node?.id === buttonId, {
+    label: `${buttonId} focused in group`,
+    timeout,
+  });
+
+  // What we are standing on NOW. A dump taken at a later timeout cannot answer
+  // this: the group has settled by then and focus reads as the wanted button
+  // whether or not that is where a press would have landed.
+  const pressedOn = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+  const pressedIndex = await getActiveVal('#buttons.buttonFocused');
+  return { pressedOn, pressedIndex, wantedIndex: targetIndex };
 }
 
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
@@ -880,6 +1366,40 @@ export async function navMovieDetails(ctx) {
     timeout: 20000,
   });
   await sleep(1500); // let backdrop + logo paint
+}
+
+/**
+ * Home -> Movies grid -> movie details -> the subtitle management panel (#750).
+ *
+ * FIXTURE-GATED. The button only exists when the server would let this user
+ * search subtitles, which on 10.9+ means administrator OR
+ * EnableSubtitleManagement, and the public demo's `demo` user is neither
+ * (measured 2026-09-06). `screens.js` carries the `requires` probe that skips
+ * this screen there rather than letting the walk below fail obscurely, so this
+ * nav does not re-check: by the time it runs, its precondition is established.
+ *
+ * The panel is a child of ItemDetails rather than a routed screen, so there is
+ * no view to gate on: `#subtitlePanel` is present in the tree from mount and
+ * only becomes VISIBLE when it opens. Gate on visibility plus the results
+ * column having something in it, which is what "open and populated" means here.
+ */
+export async function navSubtitlePanel(ctx) {
+  await navMovieDetails(ctx);
+  await focusDetailButton('manageSubtitlesButton');
+  await press(ecp.Key.Ok);
+
+  // Visibility is the open signal. `ItemDetails.openSubtitlePanel` sets it inside the
+  // button's own handler, before any network, so this proves the press landed and the
+  // panel mounted. It does not wait for search results, which depend on
+  // the server's subtitle provider rather than on the app.
+  //
+  // No paint settle follows, on purpose: nothing photographs this screen yet (it has
+  // no `capture` key), and a nav that only ever skips on the default fixture would
+  // spend a budgeted sleep on a wait that never runs. Add one with `capture`.
+  await waitFor('#subtitlePanel.visible', (v) => v === true, {
+    label: 'subtitle panel open',
+    timeout: 10000,
+  });
 }
 
 /**
@@ -903,7 +1423,7 @@ export async function navMovieDetails(ctx) {
  * nothing else. A before/after pair of arms cannot make that split, because both
  * arms carry `refresh()`.
  *
- * Read the `home-latest-rows` sample at `indexInLaunch: 1` — index 0 is the cold
+ * Read the `home-latest-rows` sample at `indexInLaunch: 1`: index 0 is the cold
  * first paint on the way out, index 1 is this nav's return.
  *
  * ## Why the tiles are walked FORWARD and never reopened
@@ -912,10 +1432,10 @@ export async function navMovieDetails(ctx) {
  * instead of adding a second one. Reopening tile 0 `detailCount` times would leave
  * exactly one retained ItemDetails and the variable would not move at all.
  *
- * ## What this nav does NOT assert
+ * ## What this nav does not assert
  *
  * `waitHome()` gates on `#homeRows` having children, which is already true the
- * instant we come back — Home was suspended with its content intact, so that gate
+ * instant we come back: Home was suspended with its content intact, so that gate
  * cannot see the refresh, and it is a liveness check here rather than the "loaded"
  * assertion it is on a cold start. Nothing is added to make it one: `measure.js`
  * holds its watch window open until the console goes quiet after a complete sample,
@@ -932,7 +1452,7 @@ async function navHomeReturn(ctx, detailCount = 0) {
     if (typeof tiles !== 'number' || tiles < detailCount) {
       // Not a timeout: a fail-fast that already names its own cause. More waiting will
       // not add tiles to the library, and a clamp here would silently measure a smaller
-      // retained-view count than the name of the screen claims — which is the one
+      // retained-view count than the name of the screen claims, which is the one
       // failure this experiment cannot afford, since the count IS the variable.
       // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
       throw new Error(
@@ -948,7 +1468,7 @@ async function navHomeReturn(ctx, detailCount = 0) {
     // GUARDED press, not a bare one. `focusGridTile` ends on a focus gate, and focus is a
     // PROXY for "the router is idle": sgrouter_showView's finally restores focus BEFORE it
     // dispatches NavigationEnd, so an OK sent the instant the grid regains focus can land
-    // mid-navigation, be rejected, and simply vanish — after which this wait times out with
+    // mid-navigation, be rejected, and vanish, after which this wait times out with
     // `#videoTitle` never resolving (`last=undefined`). Observed on detail 1, 2026-08-15.
     //
     // Re-pressing only while the GRID still holds focus is what makes the retry safe: once
@@ -963,12 +1483,32 @@ async function navHomeReturn(ctx, detailCount = 0) {
     });
     await press(ecp.Key.Back);
     // Back on the grid. `loadState` is already "loaded" (the grid was suspended, not
-    // destroyed) so it cannot gate this — focus returning INTO the grid is the state
+    // destroyed) so it cannot gate this: focus returning INTO the grid is the state
     // that makes the next walk's `itemFocused` read meaningful.
     await waitFocusInside('#itemGrid');
   }
 
+  // GUARDED, like the OK press in the loop above and the Back in `navCellSweepExtras`,
+  // and it is the same window for the same reason: this press is sent the instant focus
+  // returns to the grid, and `sgrouter_showView`'s finally restores focus BEFORE it
+  // dispatches NavigationEnd, so a key arriving there is rejected by `_goBack` and
+  // vanishes. Unguarded, that cost the whole 45 s of `waitHome` with the app sitting
+  // motionless on the grid: focus still inside `#itemGrid`, view still `BaseGridView`
+  // (`.177`, 2026-09-08). It was the last unguarded press of the three in this file.
+  //
+  // ORIGIN-gated, which is precisely what makes it safe here where `backToHome` was not:
+  // `resendIfSwallowed` presses only while focus is STILL inside `#itemGrid`, so the moment
+  // the Back lands it stops and cannot press on into whatever opened. The DESTINATION-gated
+  // `resendUntilFocused` that `backToHome` uses keeps pressing until focus ARRIVES, and
+  // routing this very function through it on 2026-09-06 signed the device out. See that
+  // helper's JSDoc. Different guard, opposite failure mode.
   await press(ecp.Key.Back);
+  await waitFocusInHomeContent({
+    label: 'homeReturn back on Home',
+    timeout: 20000,
+    interval: 500,
+    action: resendIfSwallowed(ecp.Key.Back, '#itemGrid'),
+  });
   await waitHome();
 }
 
@@ -992,7 +1532,7 @@ export async function navHomeReturnAfterDetails(ctx) {
  *
  * Search is here because its teardown is the most consequential of the three routed screens
  * and, until ADR 0029, the least exercised: `/search` was `keepAlive`, so a popped
- * search view was suspended rather than closed and `onDestroy` never ran in production —
+ * search view was suspended rather than closed and `onDestroy` never ran in production,
  * including the part that releases the firmware's global voice route (only one node may hold
  * `voiceEnabled` at a time, so a leaked claim would deny it to the next screen that wants it).
  * `navSearch` already gates on rendered result rows, so the only thing added here is the exit.
@@ -1010,69 +1550,12 @@ export async function startPlayback(ctx) {
   // focus actually lands inside the details button group (Play or Resume,
   // depending on watch state) before pressing OK, else the press lands too
   // early and playback never starts.
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#buttons'), {
+  await waitFocusInside('#buttons', {
     label: 'details play/resume button',
+    timeout: 15000,
+    interval: 500,
   });
   await press(ecp.Key.Ok);
-}
-
-/**
- * Read a field on the player node. The player's `id` IS the item id (that is how
- * `navOsd` addresses its `seek`), so read it by id rather than via `focusedNode`:
- * focus is not guaranteed to be on the player at any given tick, and a focus-based
- * read silently returns another node's field (or `state="none"`) when it isn't.
- */
-const readPlayer = (itemId) => async (keyPath) =>
-  (
-    await odc
-      .getValue(
-        itemId
-          ? { base: 'scene', keyPath: `#${itemId}.${keyPath}` }
-          : { base: 'focusedNode', keyPath },
-      )
-      .catch(() => ({}))
-  ).value;
-
-/**
- * Wait for the OSD to come up after playback starts.
- *
- * Found when `osd` + `trickplay` failed on a Roku Stick `3600X` (720p UI) while the
- * same build passed on a Roku Ultra. The app was never at fault — its `onKeyEvent`
- * behaved correctly on both:
- *
- * 1. **Don't send input while the player is still loading.** The app deliberately
- *    swallows Up until the video is playable (`stateAllowsOSD` excludes
- *    `buffering`), so the old loop spent that whole window pressing a player that
- *    is designed not to answer. Measured, the window is ~5-7 s on BOTH devices
- *    (stick 5.6/5.8 s, Ultra 7.2 s) — it is bound by stream start against a remote
- *    server, NOT by device speed, so this was never a slow-device-only hazard; the
- *    stick is just where it surfaced.
- * 2. **Don't keep pressing into an OSD that is already up.** Up only OPENS the
- *    OSD (it is not a toggle), and once open the key goes to the OSD itself,
- *    where it moves focus between controls — so a stray press perturbs the state
- *    the following steps assert on. Read first, press only while it is down —
- *    the same guard the focus-walk navs above use.
- * (A dropped key press masquerading as "the screen never loaded" was the third
- * hazard here; that one is fixed for every nav in `waitFor`/`waitFocused`, which
- * now count failing actions and name them in the timeout message.)
- */
-async function waitOsdUp(label, ctx) {
-  await waitFor('state', (v) => v === 'playing' || v === 'paused', {
-    timeout: 90000,
-    interval: 1000,
-    label: 'player playable (pre-OSD)',
-    read: readPlayer(ctx?.heroId),
-  });
-  await sleep(1500); // let the just-started player settle before sending any input
-
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 30000,
-    interval: 2000,
-    action: async () => {
-      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
-    },
-    label,
-  });
 }
 
 /**
@@ -1086,7 +1569,7 @@ async function waitOsdUp(label, ctx) {
 export async function navOsd(ctx) {
   await startPlayback(ctx);
   // Confirm the player reached a playable state (OSD only shows when it has).
-  await waitOsdUp('osd visible', ctx);
+  await waitOsdUp('osd visible', { itemId: ctx?.heroId });
   // Hide the OSD (focus -> player), then Play to PAUSE + re-show the OSD.
   await press(ecp.Key.Back);
   await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
@@ -1108,16 +1591,16 @@ export async function navOsd(ctx) {
 
 /**
  * Playback -> trickplay seek strip on the target. The scrubber + position/remaining
- * times are Roku's built-in trickPlayBar (shown during a scrub), NOT the JellyRock
- * OSD — so we HIDE the OSD (Back) so the player, not the OSD, receives Right; seek
+ * times are Roku's built-in trickPlayBar (shown during a scrub), not the JellyRock
+ * OSD, so we HIDE the OSD (Back) so the player, not the OSD, receives Right; seek
  * one trickplay interval (10s) before the target; then Right scrubs forward one
  * thumbnail onto the target, revealing the carousel + trickPlayBar. No in-film
  * backdrop is injected for this shot (it would render OVER Roku's built-in bar),
- * so the video plane reads black — the bar + filmstrip are what the shot shows.
+ * so the video plane reads black: the bar + filmstrip are what the shot shows.
  */
 export async function navTrickplay(ctx) {
   await startPlayback(ctx);
-  await waitOsdUp('playback ready (osd)', ctx);
+  await waitOsdUp('playback ready (osd)', { itemId: ctx?.heroId });
   await press(ecp.Key.Back); // hide OSD so the player (not the OSD) receives Right
   await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
   await odc
@@ -1134,36 +1617,36 @@ export async function navTrickplay(ctx) {
 }
 
 // ---------------------------------------------------------------------------
-// Scripted CELL workloads — the `cell-load` measurement family's navs
+// Scripted CELL workloads: the `cell-load` measurement family's navs
 // ---------------------------------------------------------------------------
 
 /**
  * How far a scripted cell sweep travels, in list positions.
  *
- * ## These numbers are the measurement's denominator — treat them as frozen
+ * ## These numbers are the measurement's denominator: treat them as frozen
  *
  * `scripts/measure.js` records the `--nav` name in every ledger record but has no way to
  * know how far that nav traveled, so the constants here are what make two records with the
  * same nav name comparable. Changing one silently forks the series: every figure taken
  * before the change describes a different workload from every figure taken after, and
  * nothing in the record says so. If a different distance is wanted, add a nav rather than
- * retune these — a name is the only thing a reader can compare on.
+ * retune these: a name is the only thing a reader can compare on.
  *
  * Chosen to be a few viewports of travel on each axis, which is what forces the cell
  * recycling the ledger exists to count, while staying inside a per-launch budget that ~10
  * launches can pay: at `SCROLL_KEY_INTERVAL_MS` a 12-press sweep is under 2 s of keypresses.
- * They are CEILINGS, not requirements — a fixture with less content clamps (see
+ * They are CEILINGS, not requirements: a fixture with less content clamps (see
  * `sweepExtent`), because these navs also run as functional tests against the thin demo
  * server, where refusing would redden a suite whose reds mean "the screen did not load".
  *
- * `gridRows` is deliberately larger than `rows`, because equal press counts are very unequal
+ * `gridRows` is larger than `rows`, because equal press counts are very unequal
  * workloads: one Down in a `MarkupGrid` advances by `numColumns` items (6 on a Stick 4K),
  * while one Down in a RowList advances by a single shelf.
  *
- * There is deliberately no `gridCols`. A grid row is exactly `numColumns` wide, so its
- * horizontal axis is traversed WHOLE (`axisEnd`) rather than budgeted — see that function
+ * There is no `gridCols`. A grid row is exactly `numColumns` wide, so its
+ * horizontal axis is traversed WHOLE (`axisEnd`) rather than budgeted. See that function
  * for why budgeting a structurally-bounded axis made the clamp warning fire on every run.
- * `rowItems` is a RowList's shelf only, where a 31-item Cast & Crew row genuinely can
+ * `rowItems` is a RowList's shelf only, where a 31-item Cast & Crew row can
  * exceed the budget and the clamp is real news.
  */
 const CELL_SWEEP = Object.freeze({ rows: 6, gridRows: 12, rowItems: 12 });
@@ -1173,7 +1656,7 @@ const CELL_SWEEP = Object.freeze({ rows: 6, gridRows: 12, rowItems: 12 });
  *
  * The console is the only channel: `measure.js` records the nav's NAME, not its itinerary,
  * so this line is how a reader confirms two runs did the same work. `recovered` is the
- * interesting field — a run that needed corrective presses met a device dropping input,
+ * interesting field: a run that needed corrective presses met a device dropping input,
  * which is worth knowing before trusting a delta.
  *
  * ⚠️ **The emitted `items` field is a WEAKER second opinion than it reads as.** `cell-load`
@@ -1181,15 +1664,15 @@ const CELL_SWEEP = Object.freeze({ rows: 6, gridRows: 12, rowItems: 12 });
  * has arrived, so it certifies the structure the sweep ENDED on rather than the one it
  * travelled: nine `cellSweepHome` launches read `items: 129` across a 222–253 bind spread.
  * Where a settle was taken, `settle` carries the structure as the sweep saw it at its START,
- * and whether it was still moving then — see `waitRowsSettled`, including the A/B in which
- * that turned out NOT to be Home's problem. `atStart` is the counter reading at that same
+ * and whether it was still moving then. See `waitRowsSettled`, including the A/B in which
+ * that turned out not to be Home's problem. `atStart` is the counter reading at that same
  * gate, and the two travel together in one options object rather than as a positional tail:
  * three of the four sweeps pass neither today and are expected to grow an `atStart` without
  * a `settle`, which positionally would mean each of them writing a `null` to skip a slot.
  *
  * Exported for `nav.test.js`. Its suppression rule is a decision table whose branches are
- * exactly the ones a green device run cannot reach — a build with counters, a build without,
- * and a keyPath that resolves to nothing all print a plausible line — so the device is the
+ * exactly the ones a green device run cannot reach: a build with counters, a build without,
+ * and a keyPath that resolves to nothing all print a plausible line, so the device is the
  * wrong instrument for it, the same argument that file's header already makes.
  */
 export function reportSweep(name, legs, quiet, { settle = null, atStart = null } = {}) {
@@ -1198,17 +1681,17 @@ export function reportSweep(name, legs, quiet, { settle = null, atStart = null }
     .join(', ');
   const recovered = legs.reduce((n, l) => n + l.walk.recovered, 0);
   // `at sweep start` is not padding: the ledger publishes a field ALSO called `items`, counted
-  // at emit time, and on the 2026-08-22 campaign both read 128 — so the two are separable on
+  // at emit time, and on the 2026-08-22 campaign both read 128, so the two are separable on
   // the line only if the line says which one it is. A reader comparing a settle pair against a
   // ledger pair is comparing the screen the sweep STARTED on against the one it ENDED on.
-  // The PER-ROW widths, not just their total. `waitRowsSettled` already walks every row to
-  // decide it has stopped changing, so this costs nothing extra — and without it the line
+  // The PER-ROW widths, not only their total. `waitRowsSettled` already walks every row to
+  // decide it has stopped changing, so this costs nothing extra, and without it the line
   // cannot answer the question a per-row limit campaign asks: HOW MANY rows are long enough
   // for the horizontal texture window to be reachable (> TEXTURE_BUFFER_THRESHOLD items).
   // `rows` and `items` cannot: 128 items over 12 rows is the same total whether one row
   // holds 64 or every row holds 11, and those are completely different workloads for the
-  // layer under test. This is also the standing "nothing logs the populated-row count" gap
-  // — a row that received no items is a 0 here, where `rows` counts it the same as any
+  // layer under test. This is also the standing "nothing logs the populated-row count" gap:
+  // a row that received no items is a 0 here, where `rows` counts it the same as any
   // other and two arms differing only in empty rows read as comparable.
   const widths = settle?.widths?.length ? ` widths [${settle.widths.join(',')}]` : '';
   const over = settle
@@ -1226,7 +1709,7 @@ export function reportSweep(name, legs, quiet, { settle = null, atStart = null }
           : '; ⚠ the list did not resolve — nothing was settled') +
       // Printed as the BEFORE rather than as a computed delta, so the line carries a reading
       // and not a conclusion: the totals above are cumulative, so any split a reader wants is
-      // a subtraction they can check. Suppressed unless BOTH ends are instrumented — half a
+      // a subtraction they can check. Suppressed unless BOTH ends are instrumented: half a
       // subtraction is worse than none, because `binds=234` minus `undefined` still formats.
       (atStart?.instrumented && quiet.instrumented
         ? `, of which before the sweep (${formatCellCounts(atStart.counts)})`
@@ -1234,7 +1717,7 @@ export function reportSweep(name, legs, quiet, { settle = null, atStart = null }
   );
   // A caller that took no baseline is the other three sweeps, and silence is right for them.
   // A baseline that was ASKED for and came back empty against an instrumented end is not
-  // that, and not a production build either — dropping it silently would publish the exact
+  // that, and not a production build either. Dropping it silently would publish the exact
   // failure this split exists to remove: a line that looks complete and is not.
   if (atStart && !atStart.instrumented && quiet.instrumented) {
     console.warn(
@@ -1252,8 +1735,8 @@ export function reportSweep(name, legs, quiet, { settle = null, atStart = null }
 
 /**
  * Sweep a two-level RowList: down to the widest row in scope, right along it, then on down
- * to the row limit. Shared by every RowList-backed cell screen (Home, ItemDetails extras) —
- * they differ only in which list they drive and how they are reached.
+ * to the row limit. Shared by every RowList-backed cell screen (Home, ItemDetails extras).
+ * They differ only in which list they drive and how they are reached.
  *
  * ## Why both axes
  *
@@ -1265,13 +1748,13 @@ export function reportSweep(name, legs, quiet, { settle = null, atStart = null }
  * ## Why the horizontal leg hunts for the WIDEST row rather than using the one it lands on
  *
  * Measured, not guessed: the first version swept right on whichever row the vertical leg
- * ended on, and on `.177`'s ItemDetails that was a 1-item row — so the horizontal leg
+ * ended on, and on `.177`'s ItemDetails that was a 1-item row, so the horizontal leg
  * travelled ZERO and three launches agreed on a number that had never exercised the axis the
  * defect was reported on. A rate that reproduces perfectly can still be a rate for the wrong
  * workload. Picking the widest row in scope puts the travel where the content is, on any
  * fixture, and stays deterministic: same content, same choice.
  *
- * The row is picked from ONE batched read of the rows in scope rather than a read per row —
+ * The row is picked from ONE batched read of the rows in scope rather than a read per row:
  * a one-shot look at the screen, per `tests/rta/CLAUDE.md`.
  *
  * The caller establishes focus inside the list first; `scrollFocus` gates on the index being
@@ -1330,7 +1813,7 @@ async function sweepRowList(listId, { label } = {}) {
  * ## Why it leaves through Settings
  *
  * The counters are published by `hideTextureManager` / `destroyTextureManager`, so a sweep
- * that stays on the screen it measured records nothing at all. Home cannot simply be backed
+ * that stays on the screen it measured records nothing at all. Home cannot be backed
  * out of, and every other exit is itself cell-bearing: opening a library grid mounts a
  * `BaseGridView` that emits a second, unswept sample, and switching to the Favorites tab
  * destroys HomeRows only to build FavoritesRows. Settings is the one exit that mounts no
@@ -1344,21 +1827,22 @@ async function sweepRowList(listId, { label } = {}) {
  */
 export async function navCellSweepHome() {
   await waitHome();
-  await waitFocusInside('#homeRows');
+  await waitFocusInHomeContent();
+  const list = await homeListId();
   // The opening half of `waitCellsQuiet`, and the reason this sweep never reproduced:
   // `waitHome()` is satisfied by SKELETON rows, and Home keeps inserting and filling rows
   // mid-list for seconds afterwards. Reading the itinerary off that screen picks a row
   // count and a widest row that another launch need not agree with. See `waitRowsSettled`
   // for what the gate can and cannot prove, and why only Home carries it.
-  const settle = await waitRowsSettled('#homeRows', { read: getActiveVal });
+  const settle = await waitRowsSettled(list, { read: getActiveVal });
   // The subtrahend. Home's counters at the gate are everything the screen did loading ITSELF,
   // so the sweep's own work is the difference and not the total the ledger emits. Taken here
   // rather than inside `sweepRowList` because the settle above is what makes the instant
   // meaningful: read before the structure stops moving and the baseline is a moving target.
-  const atStart = await readCellCounts('#homeRows');
-  const legs = await sweepRowList('#homeRows', { label: 'cellSweepHome' });
+  const atStart = await readCellCounts(list);
+  const legs = await sweepRowList(list, { label: 'cellSweepHome' });
   const back = await scrollFocus({
-    keyPath: '#homeRows.rowItemFocused',
+    keyPath: `${list}.rowItemFocused`,
     select: (v) => (Array.isArray(v) ? v[0] : undefined),
     read: getActiveVal,
     target: 0,
@@ -1367,7 +1851,7 @@ export async function navCellSweepHome() {
     label: 'cellSweepHome back to row 0',
   });
   legs.push({ axis: 'rows -> 0', walk: back, available: legs[0].available });
-  const quiet = await waitCellsQuiet('#homeRows', { read: getActiveVal });
+  const quiet = await waitCellsQuiet(list, { read: getActiveVal });
   reportSweep('cellSweepHome', legs, quiet, { settle, atStart });
   await navSettings();
 }
@@ -1383,8 +1867,8 @@ export async function navCellSweepHome() {
  * ## Why a grid needs both axes, and why the vertical one is the workload
  *
  * A `MarkupGrid`'s `itemFocused` is a flat index over a 2-D layout, and the two directions
- * move it very differently — MEASURED on `.177`, 2026-08-20: Down moves it by `numColumns`
- * (6 there), Right by exactly one, and Right does NOT wrap at a row end, so from index 0 the
+ * move it very differently. MEASURED on `.177`, 2026-08-20: Down moves it by `numColumns`
+ * (6 there), Right by exactly one, and Right does not wrap at a row end, so from index 0 the
  * sixth Right and every one after it is inert. Down is therefore what actually scrolls a
  * grid, and it is also what a user does; Right only walks the row it lands on.
  *
@@ -1397,7 +1881,7 @@ export async function navCellSweepHome() {
  *
  * Because a one-way pass leaves `GridItem`'s reload path unexecuted, and that path is real
  * code with no other coverage. A tile releases its texture when it scrolls out of the render
- * window (`unloadGridTexture`) and restores it when it comes back (`reloadGridTexture`) —
+ * window (`unloadGridTexture`) and restores it when it comes back (`reloadGridTexture`):
  * two separate subs from the `JRRowItem` pair the RowList sweeps exercise. Measured before
  * this leg existed: three launches all read `unloads` 6 and `reloads` **1**, so tiles were
  * being released and essentially never restored, and any change to the restore guard would
@@ -1406,7 +1890,7 @@ export async function navCellSweepHome() {
  * MEASURED before and after on the same 28-tile library, n=3 each: `reloads` **1 -> 7** and
  * `loadsStarted` **28 -> 34**, the +6 matching the extra reloads exactly because
  * `reloadGridTexture` bumps both in one block. `binds` stayed at **28** and `bindsRedundant`
- * at **0**, so `loadsStarted - reloads` is 27 either way — the bind path is untouched and the
+ * at **0**, so `loadsStarted - reloads` is 27 either way: the bind path is untouched and the
  * leg adds reload coverage without changing the rest of the workload.
  *
  * That last part is worth keeping in mind before reading anything into a grid's rebind rate:
@@ -1414,7 +1898,7 @@ export async function navCellSweepHome() {
  * coverage fraction rather than a measure of waste and this leg does not move it.
  * `docs/dev/measuring-performance.md` carries the full reading of that ratio.
  *
- * Deliberately NOT applied to `sweepRowList`: `cellSweepExtras` is the arm the reload work is
+ * Not applied to `sweepRowList`: `cellSweepExtras` is the arm the reload work is
  * measured against, its itinerary is the denominator a recorded baseline was taken at, and it
  * already drives its reload path hard (`reloads` 123 against the grid's 1). Changing it would
  * retire that baseline to buy coverage it already has.
@@ -1438,7 +1922,7 @@ export async function navCellSweepGrid(ctx) {
         'row arithmetic has nothing to stand on',
     );
   }
-  // FULL rows only — see the docblock. A partial last row is not a stop the walk can name.
+  // FULL rows only; see the docblock. A partial last row is not a stop the walk can name.
   const fullRows = Math.floor((typeof tiles === 'number' ? tiles : 0) / columns);
   const rowTarget = sweepBudget('cellSweepGrid rows', CELL_SWEEP.gridRows, fullRows);
   const down = await scrollFocus({
@@ -1457,8 +1941,8 @@ export async function navCellSweepGrid(ctx) {
   // Bounded by the TILE COUNT as well as by the column count, for the one case where those
   // differ: a library thinner than one row (fewer than `numColumns` items) has no full row
   // at all, so row 0 holds `tiles` items and not `columns`. Walking to `columns - 1` there
-  // presses Right at positions the grid has nothing in, which does not fail fast — the walk
-  // simply never arrives and times out blaming `#itemGrid`, i.e. reports "the screen never
+  // presses Right at positions the grid has nothing in, which does not fail fast: the walk
+  // never arrives and times out blaming `#itemGrid`, that is, it reports "the screen never
   // loaded" about a fixture that loaded fine. Found by enumerating every (columns, tiles)
   // shape rather than on a device; the demo server is one thin library away from it.
   const rowWidth = Math.min(columns, typeof tiles === 'number' ? tiles : 0);
@@ -1473,7 +1957,7 @@ export async function navCellSweepGrid(ctx) {
   });
 
   // Back UP to row 0, staying in the same column. This is the leg that makes the grid's
-  // reload path reachable at all — see the docblock. The target is `colTarget` rather than
+  // reload path reachable at all; see the docblock. The target is `colTarget` rather than
   // 0 because the walk moves a whole row per press: from `rowTarget * columns + colTarget`
   // the distance home is exactly `rowTarget` strides, while index 0 would not be a whole
   // number of them and `scrollFocus` would (correctly) refuse it.
@@ -1510,8 +1994,8 @@ export async function navCellSweepGrid(ctx) {
  * whose files are gone. Session 16 measured that by hand; this is the same walk with a
  * denominator.
  *
- * The launch carries THREE cell-load samples — Home's (hidden when the grid opens), the
- * grid's (hidden when the detail opens) and this one — so a measurement of it must name
+ * The launch carries THREE cell-load samples: Home's (hidden when the grid opens), the
+ * grid's (hidden when the detail opens) and this one. So a measurement of it must name
  * `--component ExtrasRowList`. That is the shape rather than a defect: reaching the extras
  * rows means loading both screens above them, and both loads really happened.
  */
@@ -1524,10 +2008,10 @@ export async function navCellSweepExtras(ctx) {
   reportSweep('cellSweepExtras', legs, quiet);
   // Back is not intercepted in the extras panel (`ItemDetails.onKeyEvent` handles only Up
   // and Down there), so one press pops the whole screen and lands back on the grid. Guarded
-  // for the swallow `resendIfSwallowed` documents — the router restores focus before it
-  // dispatches NavigationEnd, and a Back that arrives in that gap simply vanishes.
+  // for the swallow `resendIfSwallowed` documents: the router restores focus before it
+  // dispatches NavigationEnd, and a Back that arrives in that gap vanishes.
   await press(ecp.Key.Back);
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#itemGrid'), {
+  await waitFocusInside('#itemGrid', {
     label: 'cellSweepExtras back on the grid',
     timeout: 20000,
     interval: 500,
@@ -1541,12 +2025,12 @@ export async function navCellSweepExtras(ctx) {
  *
  * `navSearch` already lands focus on `#searchSelect` (it walks off the keyboard onto the
  * first result), so the sweep starts from the state it leaves behind. The rows are grouped
- * by result type — Movies, Episodes, People, … — which makes this the one cell screen whose
- * rows hold genuinely different item shapes, and People is exactly the type carrying the
+ * by result type (Movies, Episodes, People, …), which makes this the one cell screen whose
+ * rows hold different item shapes, and People is exactly the type carrying the
  * stale image tags the extras row trips over.
  *
  * Two cell-load samples per launch, so a measurement of it must name `--component SearchRow`.
- * Reaching search through the overhang still HIDES Home, and a hidden screen publishes — so
+ * Reaching search through the overhang still HIDES Home, and a hidden screen publishes, so
  * "no grid was opened" does not mean "only one screen emitted". Verified on `.177`
  * 2026-08-20: the launch carried `HomeRows` and `SearchRow`, and the tool refused a median
  * until one was named. `cellSweepHome` is the only one of these navs that needs no
@@ -1558,6 +2042,64 @@ export async function navCellSweepSearch() {
   const legs = await sweepRowList('#searchSelect', { label: 'cellSweepSearch' });
   const quiet = await waitCellsQuiet('#searchSelect', { read: getActiveVal });
   reportSweep('cellSweepSearch', legs, quiet);
+  await press(ecp.Key.Back);
+  await waitHome();
+}
+
+/**
+ * The itinerary of `navGridScroll`, and the denominator its `item-grid paging` line is read
+ * against. These are PR D's (#1046) probe values, kept exactly so that a run of this nav
+ * compares with the figures recorded then (`docs/dev/home-first-paint-performance.md`,
+ * "Grid paging").
+ *
+ * - `restMs`: at rest on the loaded grid before the first press: the runway's "one screen
+ *   ahead at rest" gets to load.
+ * - `pressEveryMs`: the sleep AFTER each Down, not a schedule: the cadence is this plus one
+ *   ECP round trip, which is what the recorded runs pressed at.
+ * - `scrollMs`: how long Down is pressed.
+ * - `drainMs`: after the last press, so a page already in flight lands inside the session
+ *   rather than being cut off by Back.
+ */
+const GRID_SCROLL = Object.freeze({
+  restMs: 3000,
+  pressEveryMs: 150,
+  scrollMs: 20000,
+  drainMs: 3000,
+});
+
+/**
+ * home -> Movies grid -> press Down on a timer -> back, which destroys the grid and emits
+ * `BaseGridView`'s `item-grid paging` line (the `item-grid-paging` family).
+ *
+ * Timed presses, not a `scrollFocus` walk, and that is the point of it: a walk waits for focus
+ * to arrive before pressing again, so it can never out-run the loaded rows and would measure
+ * zero stalls on any build. A user holding Down does not wait, and neither does this. Presses
+ * at the last loaded row go nowhere, so `furthestRow` is an outcome of the run, not an input.
+ *
+ * The presses start only once focus is inside the grid: a press before that goes to whatever
+ * holds focus, and the scroll would be shorter than the itinerary says.
+ */
+export async function navGridScroll(ctx) {
+  await navLibraryGrid(ctx);
+  await waitFocusInside('#itemGrid');
+  await sleep(GRID_SCROLL.restMs);
+  let presses = 0;
+  const end = Date.now() + GRID_SCROLL.scrollMs;
+  while (Date.now() < end) {
+    await press(ecp.Key.Down);
+    presses++;
+    await sleep(GRID_SCROLL.pressEveryMs);
+  }
+  await sleep(GRID_SCROLL.drainMs);
+  // `itemFocused` reports only where a scroll stops, and it has stopped.
+  const [focused, columns] = await getActiveVals(['#itemGrid.itemFocused', '#itemGrid.numColumns']);
+  const row =
+    typeof focused === 'number' && typeof columns === 'number' && columns > 0
+      ? Math.floor(focused / columns)
+      : '?';
+  console.log(
+    `[nav] gridScroll: ${presses} Down presses over ${GRID_SCROLL.scrollMs / 1000} s; focus came to rest on row ${row}`,
+  );
   await press(ecp.Key.Back);
   await waitHome();
 }

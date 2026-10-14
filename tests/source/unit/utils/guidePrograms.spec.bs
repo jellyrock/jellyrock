@@ -1,0 +1,313 @@
+import "pkg:/source/utils/guidePrograms.bs"
+
+namespace tests
+
+  @suite("guidePrograms - which TV guide program blocks to hold, fetch and drop")
+  class GuideProgramsTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("blockOf() / blockRows()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts BLOCK_SIZE consecutive rows in each block")
+    function _()
+      m.assertEqual(guidePrograms.blockOf(0), 0)
+      m.assertEqual(guidePrograms.blockOf(24), 0)
+      m.assertEqual(guidePrograms.blockOf(25), 1)
+      m.assertEqual(guidePrograms.blockRows(1, 393), [25, 49])
+    end function
+
+    @it("ends the last block at the last row")
+    function _()
+      m.assertEqual(guidePrograms.blockRows(15, 393), [375, 392])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wantedBlocks()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists the focused block first, then alternately below and above it")
+    function _()
+      ' Rows 24..80 are near row 49 (6 visible + 25 either side): blocks 0..3.
+      m.assertEqual(guidePrograms.wantedBlocks(49, 6, 2000, true), [1, 2, 0, 3])
+    end function
+
+    @it("clamps at the top of the guide")
+    function _()
+      m.assertEqual(guidePrograms.wantedBlocks(0, 6, 2000, true), [0, 1])
+    end function
+
+    @it("leaves out a block whose rows have not all arrived while channels still page in")
+    function _()
+      ' 60 rows so far: block 2 (rows 50..74) is partial and more rows are coming.
+      m.assertEqual(guidePrograms.wantedBlocks(40, 6, 60, false), [1, 0])
+    end function
+
+    @it("includes the short last block once every row has arrived")
+    function _()
+      m.assertEqual(guidePrograms.wantedBlocks(40, 6, 60, true), [1, 2, 0])
+    end function
+
+    @it("wants nothing when the guide has no rows or the focus is outside it")
+    function _()
+      m.assertEqual(guidePrograms.wantedBlocks(0, 6, 0, true), [])
+      m.assertEqual(guidePrograms.wantedBlocks(100, 6, 50, true), [])
+    end function
+
+    @it("tells whether a block is among the wanted ones")
+    function _()
+      m.assertTrue(guidePrograms.isWanted(2, [1, 2, 0]))
+      m.assertFalse(guidePrograms.isWanted(5, [1, 2, 0]))
+      m.assertFalse(guidePrograms.isWanted(0, []))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("timeWindow()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("spans 6 h before to 30 h after the left edge, needing 3 h and 12 h, trimming 12 h out")
+    function _()
+      h = 3600
+      m.assertEqual(guidePrograms.timeWindow(100 * h, 0), { from: 94 * h, until: 130 * h, needFrom: 97 * h, needUntil: 112 * h, keepFrom: 82 * h, keepUntil: 142 * h })
+    end function
+
+    @it("never reaches before the guide's start, even from a left edge before it")
+    function _()
+      h = 3600
+      near = guidePrograms.timeWindow(10 * h, 8 * h)
+      m.assertEqual([near.from, near.needFrom, near.until, near.needUntil], [8 * h, 8 * h, 40 * h, 22 * h])
+      before = guidePrograms.timeWindow(5 * h, 8 * h)
+      m.assertEqual([before.from, before.until, before.needUntil], [8 * h, 38 * h, 20 * h])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextFetch()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("loads the whole window into the first wanted block that holds nothing")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      held = { "1": { from: 94 * h, until: 130 * h, stale: false } }
+      m.assertEqual(guidePrograms.nextFetch([1, 2, 0], held, w, {}, 0), { block: 2, kind: GuideFetchKind.REPLACE, from: 94 * h, until: 130 * h })
+    end function
+
+    @it("fetches only what starts after what a block holds once it runs short ahead")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      held = { "1": { from: 94 * h, until: 110 * h, stale: false } }
+      m.assertEqual(guidePrograms.nextFetch([1], held, w, {}, 0), { block: 1, kind: GuideFetchKind.LATER, from: 110 * h, until: 130 * h })
+    end function
+
+    @it("fetches only what airs before what a block holds once it runs short behind")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      held = { "1": { from: 98 * h, until: 130 * h, stale: false } }
+      m.assertEqual(guidePrograms.nextFetch([1], held, w, {}, 0), { block: 1, kind: GuideFetchKind.EARLIER, from: 94 * h, until: 98 * h })
+    end function
+
+    @it("fetches nothing while every wanted block covers what it needs around the left edge")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      held = { "1": { from: 97 * h, until: 112 * h, stale: false } }
+      m.assertInvalid(guidePrograms.nextFetch([1], held, w, {}, 0))
+      m.assertInvalid(guidePrograms.nextFetch([], {}, w, {}, 0))
+    end function
+
+    @it("replaces a stale block, and one whose programs no longer overlap the window")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      stale = { "1": { from: 94 * h, until: 130 * h, stale: true } }
+      m.assertEqual(guidePrograms.nextFetch([1], stale, w, {}, 0), { block: 1, kind: GuideFetchKind.REPLACE, from: 94 * h, until: 130 * h })
+      apart = { "1": { from: 10 * h, until: 40 * h, stale: false } }
+      m.assertEqual(guidePrograms.nextFetch([1], apart, w, {}, 0).kind, GuideFetchKind.REPLACE)
+    end function
+
+    @it("passes over a block waiting to retry, and fetches it once its retry time comes")
+    function _()
+      w = guidePrograms.timeWindow(360000, 0)
+      failures = { "1": { attempts: 1, retryAt: 2000 } }
+      m.assertEqual(guidePrograms.nextFetch([1, 2], {}, w, failures, 1999).block, 2)
+      m.assertInvalid(guidePrograms.nextFetch([1], {}, w, failures, 1999))
+      m.assertEqual(guidePrograms.nextFetch([1, 2], {}, w, failures, 2000).block, 1)
+    end function
+
+    @it("retries a failed extension as an extension")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      held = { "1": { from: 94 * h, until: 110 * h, stale: false } }
+      failures = { "1": { attempts: 2, retryAt: 2000 } }
+      m.assertEqual(guidePrograms.nextFetch([1], held, w, failures, 2500).kind, GuideFetchKind.LATER)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextRetryAt()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is the earliest retry time among wanted blocks still to load")
+    function _()
+      w = guidePrograms.timeWindow(360000, 0)
+      failures = { "1": { attempts: 3, retryAt: 9000 }, "2": { attempts: 1, retryAt: 4000 } }
+      m.assertEqual(guidePrograms.nextRetryAt([1, 2], {}, w, failures), 4000)
+    end function
+
+    @it("ignores a failed block that is not wanted, or has loaded since")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      failures = { "1": { attempts: 1, retryAt: 4000 }, "7": { attempts: 1, retryAt: 1000 } }
+      m.assertEqual(guidePrograms.nextRetryAt([1, 2], {}, w, failures), 4000)
+      loaded = { "1": { from: 94 * h, until: 130 * h, stale: false } }
+      m.assertInvalid(guidePrograms.nextRetryAt([1, 2], loaded, w, failures))
+    end function
+
+    @it("is invalid when nothing is waiting")
+    function _()
+      w = guidePrograms.timeWindow(360000, 0)
+      m.assertInvalid(guidePrograms.nextRetryAt([1, 2], {}, w, {}))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pruneFailures()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps only the wanted blocks' failures, leaving its argument untouched")
+    function _()
+      failures = { "1": { attempts: 4, retryAt: 9000 }, "7": { attempts: 2, retryAt: 3000 } }
+      m.assertEqual(guidePrograms.pruneFailures(failures, [1, 2]), { "1": { attempts: 4, retryAt: 9000 } })
+      m.assertEqual(failures.count(), 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("evictions()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("drops nothing while at most CAP blocks hold programs")
+    function _()
+      held = {}
+      for i = 0 to guidePrograms.CAP - 1
+        held[i.toStr()] = 5000
+      end for
+      m.assertEqual(guidePrograms.evictions(held, [0], 0, guidePrograms.CAP), [])
+    end function
+
+    @it("drops the blocks farthest from the focus")
+    function _()
+      ' Eight blocks held, focus in block 10; blocks 9 and 11 wanted.
+      held = { "2": 1, "5": 1, "8": 1, "9": 1, "10": 1, "11": 1, "14": 1, "30": 1 }
+      dropped = guidePrograms.evictions(held, [10, 11, 9], 250, 6)
+      m.assertEqual(dropped, [30, 2])
+    end function
+
+    @it("never drops a wanted block, even when that leaves more than the cap")
+    function _()
+      ' The farthest held block (12) is wanted; only the unwanted one may go.
+      held = { "7": 1, "10": 1, "11": 1, "12": 1 }
+      dropped = guidePrograms.evictions(held, [10, 11, 12], 250, 1)
+      m.assertEqual(dropped, [7])
+    end function
+
+    @it("counts a stale block toward the cap")
+    function _()
+      held = { "0": 0, "1": 1, "2": 1, "3": 1, "4": 1, "5": 1, "6": 1 }
+      m.assertEqual(guidePrograms.evictions(held, [6], 150, 6), [0])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("trims()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("trims nothing while every block is within 12 h of the window")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      held = { "0": { from: 90 * h, until: 130 * h, stale: false }, "5": { from: 82 * h, until: 142 * h, stale: false } }
+      m.assertEqual(guidePrograms.trims(held, [0], w, 0), [])
+    end function
+
+    @it("cuts a wanted block back to the window on each side that ran past the slack")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      behind = { "4": { from: 70 * h, until: 130 * h, stale: false } }
+      m.assertEqual(guidePrograms.trims(behind, [4], w, 100), [{ block: 4, drop: false, from: 94 * h, until: 130 * h }])
+      both = { "4": { from: 70 * h, until: 150 * h, stale: false } }
+      m.assertEqual(guidePrograms.trims(both, [4], w, 100), [{ block: 4, drop: false, from: 94 * h, until: 130 * h }])
+    end function
+
+    @it("drops an unwanted block past the slack, and a wanted one clear of the window")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      held = { "9": { from: 70 * h, until: 120 * h, stale: false }, "4": { from: 10 * h, until: 40 * h, stale: false } }
+      m.assertEqual(guidePrograms.trims(held, [4], w, 100), [{ block: 9, drop: true }, { block: 4, drop: true }])
+    end function
+
+    @it("puts the drops before the cuts, each farthest from the focus first")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      past = { from: 70 * h, until: 130 * h, stale: false }
+      held = { "2": past, "3": past, "7": past, "8": past }
+      cut = { drop: false, from: 94 * h, until: 130 * h }
+      m.assertEqual(guidePrograms.trims(held, [3, 2], w, 75), [
+        { block: 8, drop: true },
+        { block: 7, drop: true },
+        { block: 2, drop: false, from: cut.from, until: cut.until },
+        { block: 3, drop: false, from: cut.from, until: cut.until }
+      ])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("spanState()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is loaded only when every block of the span covers what it needs around the left edge")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      cover = { from: 94 * h, until: 130 * h, stale: false }
+      held = { "0": cover, "1": cover, "2": { from: 94 * h, until: 130 * h, stale: true }, "3": { from: 94 * h, until: 110 * h, stale: false } }
+      m.assertEqual(guidePrograms.spanState(10, 40, held, {}, w), GuideSpanState.LOADED)
+      m.assertEqual(guidePrograms.spanState(40, 60, held, {}, w), GuideSpanState.LOADING, "block 2 is stale")
+      m.assertEqual(guidePrograms.spanState(80, 90, held, {}, w), GuideSpanState.LOADING, "block 3 runs short ahead")
+      m.assertEqual(guidePrograms.spanState(100, 110, held, {}, w), GuideSpanState.LOADING, "block 4 holds nothing")
+    end function
+
+    @it("is failed when a block of the span failed, even beside one still loading")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      failures = { "3": { attempts: 1, retryAt: 9000 } }
+      m.assertEqual(guidePrograms.spanState(70, 80, {}, failures, w), GuideSpanState.FAILED)
+      held = { "1": { from: 94 * h, until: 130 * h, stale: false } }
+      m.assertEqual(guidePrograms.spanState(40, 80, held, failures, w), GuideSpanState.FAILED)
+    end function
+
+    @it("is loaded for a failed block that has loaded since")
+    function _()
+      h = 3600
+      w = guidePrograms.timeWindow(100 * h, 0)
+      held = { "0": { from: 94 * h, until: 130 * h, stale: false } }
+      m.assertEqual(guidePrograms.spanState(0, 10, held, { "0": { attempts: 1, retryAt: 9000 } }, w), GuideSpanState.LOADED)
+    end function
+
+    @it("is loaded for an empty span")
+    function _()
+      w = guidePrograms.timeWindow(360000, 0)
+      m.assertEqual(guidePrograms.spanState(-1, 5, {}, {}, w), GuideSpanState.LOADED)
+      m.assertEqual(guidePrograms.spanState(6, 5, {}, {}, w), GuideSpanState.LOADED)
+    end function
+
+  end class
+
+end namespace

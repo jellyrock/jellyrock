@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code SessionStart hook — advisory nudge when local journal / handoff
+# Claude Code SessionStart hook: advisory nudge when local journal / handoff
 # state suggests actionable work waits.
 #
 # Sibling to check-progress-cursor.sh (Stop hook). Both wrap a .cjs nudge
@@ -9,13 +9,13 @@
 # /focus for triage) should run at the start of any genuine new session. The
 # rule is documented but easy to forget. This hook surfaces a soft nudge at
 # the moment the session begins, only when state actually warrants
-# attention — silent on clean repos so it doesn't become noise.
+# attention. Silent on clean repos so it doesn't become noise.
 #
 # Local-only by design: no `gh` calls, no network. Network-dependent banners
 # (failed CI, PR review requested) surface in /focus itself when invoked.
 # Cheap + offline-tolerant; can't slow session start or hit rate limits.
 #
-# Failure mode: this hook MUST NOT block or fail session start. The
+# Failure mode: this hook must not block or fail session start. The
 # underlying script always exits 0; this wrapper does too.
 
 set +e
@@ -26,7 +26,7 @@ cat >/dev/null
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" || exit 0
 
-LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${HOME}/.claude/jellyrock-telemetry}"
+LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/jellyrock/telemetry}"
 LOG_FILE="$LOG_DIR/session-start-nudge-errors.log"
 mkdir -p "$LOG_DIR" 2>/dev/null
 

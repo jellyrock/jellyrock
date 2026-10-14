@@ -16,7 +16,7 @@ sub init()
   m.isOpen = false
   m.focusedItemIndex = 0
 
-  ' Trigger button: unfocused state (transparent, only text visible — JRTab pattern)
+  ' Trigger button: unfocused state (transparent, only text visible, the JRTab pattern)
   m.buttonBackground.visible = false
   m.buttonBorder.visible = false
 
@@ -24,6 +24,17 @@ sub init()
   m.top.enableRenderTracking = true
   m.top.observeField("renderTracking", "onRenderComplete")
   m.top.observeField("focusedChild", "onFocusChanged")
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField; see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("triggerText", "onTriggerTextChanged")
+  m.top.observeField("triggerIconUri", "onTriggerIconChanged")
+  m.top.observeField("triggerIconBlendColor", "onTriggerIconBlendColorChanged")
+  m.top.observeField("items", "onItemsChanged")
+  m.top.observeField("selectedItemId", "onSelectedItemChanged")
 end sub
 
 ' ============================================
@@ -81,7 +92,7 @@ sub sizeTriggerButton()
   ' Center the content within the button
   m.triggerContent.translation = [padding, padding]
 
-  ' Publish computed width so parent can reposition if needed (e.g., right-aligning)
+  ' Publish computed width so parent can reposition if needed (for example, right-aligning)
   m.top.triggerWidth = int(buttonWidth)
 
   ' Position menu below the trigger button
@@ -205,7 +216,7 @@ sub openMenu()
   m.focusedItemIndex = 0
   m.menuContainer.visible = true
 
-  ' Hide trigger border — the focused menu item's own border indicates focus
+  ' Hide trigger border: the focused menu item's own border indicates focus
   hideTriggerFocus()
   m.menuBackground.blendColor = m.global.constants.colorBackgroundSecondary
 
@@ -260,7 +271,7 @@ function handleMenuKeyEvent(key as string) as boolean
       m.focusedItemIndex++
       updateFocusedItemVisuals()
     else
-      ' Past last item — close and return focus to content
+      ' Past last item: close and return focus to content
       closeMenu()
       m.top.requestFocusReturn = true
     end if
@@ -272,7 +283,7 @@ function handleMenuKeyEvent(key as string) as boolean
       m.focusedItemIndex--
       updateFocusedItemVisuals()
     else
-      ' Past first item — close menu and return to trigger button
+      ' Past first item: close menu and return to trigger button
       closeMenu()
     end if
     return true
@@ -323,7 +334,7 @@ function handleClosedKeyEvent(key as string) as boolean
     return true
   end if
 
-  ' BACK: don't consume — let it bubble to JRScene for normal back navigation
+  ' BACK: don't consume; let it bubble to JRScene for normal back navigation
   return false
 end function
 
@@ -332,7 +343,15 @@ end function
 ' ============================================
 
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below, because these handlers dereference them.
+  m.top.unobserveField("triggerText")
+  m.top.unobserveField("triggerIconUri")
+  m.top.unobserveField("triggerIconBlendColor")
+  m.top.unobserveField("items")
+  m.top.unobserveField("selectedItemId")
   m.top.unobserveField("focusedChild")
+
   m.top.unobserveField("renderTracking")
 
   ' Clear menu items

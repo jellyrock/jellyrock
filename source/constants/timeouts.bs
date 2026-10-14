@@ -7,29 +7,85 @@ namespace timeouts
   ' Used by ApiTask and SideEffectTask for all API pool requests.
   const HTTP_MS = 10000
 
-  ' API pool caller wait (fetchRes).
+  ' API pool caller wait (fetchRes, fetchAsync) for a request with the default HTTP limit.
   ' 2s buffer above HTTP_MS so the HTTP layer times out first,
   ' preventing orphaned pool slots when the wait expires before the HTTP call.
+  ' A request with its own limit is waited for that limit plus the same buffer
+  ' (apiTimeout.waitMs).
   const API_WAIT_MS = 12000
 
+  ' HTTP limit for one page of a library grid (LoadItemsTask2), set as the request's own
+  ' `timeoutMs` (source/api/apiTimeout.bs). A large library on a server whose database has
+  ' not been optimized answers its first page slowly, and the answer, not the connection, is
+  ' what takes the time: measured 2026-09-24 against Jellyfin 10.11.11 with 8,643 movies,
+  ' 39.9-42 s for the first page, first byte at 34.6 s, where HTTP_MS gave up at 10 s and the
+  ' grid showed nothing. 60 s is nginx's default proxy_read_timeout, so a server behind a
+  ' default reverse proxy fails at the proxy no sooner than here. Safe only because a page
+  ' abandoned by Back gives its pool slot up at once (apiPool.bs, "Stopping a request
+  ' nobody is waiting for").
+  const GRID_PAGE_MS = 60000
+
+  ' HTTP limit for a quick play request that searches a whole library, or every library for one
+  ' person or artist (QuickPlayTask), set as the request's own `timeoutMs`. Same shape of wait
+  ' as a grid page, and the same 60 s for the same reverse-proxy reason (GRID_PAGE_MS):
+  ' measured 2026-09-29 against Jellyfin 10.11.11 with 8,643 movies and `sqlite_stat1` dropped,
+  ' the random 500-item library query took 17.2-17.4 s, and 34.2-35.0 s with user data, where
+  ' HTTP_MS gave up at 10 s and Play did nothing (#811). Safe only because Back stops the quick
+  ' play's Task, which gives its pool slot up at once.
+  const QUICKPLAY_LIBRARY_MS = 60000
+
   ' Whole-run budget for one apiPipeline run (source/api/apiPipeline.bs).
-  ' ONE deadline across every request in the run, not a fresh one per request:
+  ' ONE budget across every request in the run, not a fresh one per request:
   ' a per-request wait lets N slow requests stack into N * API_WAIT_MS, so a
-  ' dead server made a 10-library Home churn for ~48s. Must exceed API_WAIT_MS
+  ' dead server made a 10-library Home churn for ~48s (measured 2026-08-03). Must exceed API_WAIT_MS
   ' or a single slow-but-successful request gets cut short.
   '
+  ' Charged only while the run waits on the server. The caller's per-result work
+  ' between apiPipelineNext calls does not count against it.
+  '
   ' This is a budget, not a guarantee of coverage. A run services roughly
-  '   PIPELINE_RUN_MS / per-request-latency * apiPool.SLOT_COUNT
+  '   PIPELINE_RUN_MS / per-request-latency * pool width (apiPool.currentWidth())
   ' requests before it expires, and every entry past that is yielded undelivered.
-  ' At the 11-library Home's measured ~132ms/request that is far more headroom
+  ' At the 11-library Home's measured ~132ms/request (2026-08-03) that is far more headroom
   ' than needed; at ~5s/request on a slow link it is about 12. So on a large,
   ' distant server the tail of a run legitimately fails, and callers must treat
-  ' an undelivered entry as "no answer" rather than as data — see
+  ' an undelivered entry as "no answer" rather than as data. See
   ' components/home/LoadLatestRowsTask.bs and source/home/latestRows.bs.
   const PIPELINE_RUN_MS = 20000
 
+  ' Device check of a source's upstream HLS or DASH manifest URL, before playing it directly
+  ' instead of through the server (LoadVideoContentTask.upstreamManifestAnswers). It exists because
+  ' a Roku handed a URL it cannot reach does not fail: an unroutable host or an unresolvable name
+  ' leaves it buffering (a live channel until the live stall error, a .strm item past two minutes
+  ' with no error, measured 2026-10-11), so the fallback to the server does not run in time. The
+  ' budget is the worst-case extra wait before that fallback path. Measured 2026-09-21: the check
+  ' itself took 57-129 ms on a Roku Ultra against two live-TV CDNs, and a desktop on the same LAN saw
+  ' 0.16-0.82 s per playlist GET, so 3 s is ~3.7x the slowest seen anywhere.
+  const UPSTREAM_PREFLIGHT_MS = 3000
+
+  ' HTTP limit for the PlaybackInfo request that opens a Live TV channel's live stream
+  ' (LoadVideoContentTask). The server opens the stream whether or not the client is still
+  ' waiting, and only its answer names the stream, so a client that gives up first leaves the
+  ' stream, and on a tuner-limited server a tuner, open until the server restarts. So the app
+  ' waits as long as the server itself can take. Measured 2026-09-26 on 10.7.7, 10.11.11 and
+  ' 12.1.0: the server gives up on a source that never answers after its own 100 s
+  ' (HttpClient.Timeout), and answered a source that responded at 95 s after 98.5-99.5 s,
+  ' including the probe it runs on a channel's first open (>= 3 s by design). A source that
+  ' answers but sends no data keeps the server waiting with no limit at all, and never yields a
+  ' stream id; a longer limit would only hold a pool slot longer. Unlike GRID_PAGE_MS, Back does
+  ' not give the slot up: the pool never stops a POST, and the answer must be heard to close the
+  ' stream, so an abandoned open holds its slot for the whole wait (ADR 0045).
+  const LIVE_OPEN_MS = 120000
+
+  ' Time limit on a playback start's app wait (appWaits, AppWaitHost). A safety net,
+  ' not an expected duration: every start is ended by the code that owns it (the player on its
+  ' stream, a failure, Back), and this ends one that nobody did, logging it as an error. It
+  ' must outlast the longest start that is still going: a live open's PlaybackInfo (LIVE_OPEN_MS
+  ' plus apiTimeout's margin) together with the default-limit requests the load makes around it.
+  const PLAYBACK_START_LIMIT_MS = 180000
+
   ' Fallback-font scale measurement wait (main.bs calculateFontScaleFactor).
-  ' A safety net for a task that never reports, not an expected duration — it measures two
+  ' A safety net for a task that never reports, not an expected duration: it measures two
   ' labels. Blocks the main thread during bootstrap, so it is not larger.
   const FONT_SCALE_MS = 10000
 

@@ -1,4 +1,4 @@
-// Tests for scripts/generate/icons-add.js — covers the pure helpers
+// Tests for scripts/generate/icons-add.js. Covers the pure helpers
 // (parseArgs, injectWhiteFill, appendProvenanceRow). The fetch step requires
 // network + gh CLI, so it's not exercised here; the underlying contract
 // (Material's GitHub URL pattern) is locked by the const declarations in the
@@ -125,7 +125,10 @@ describe('icons-add', () => {
       const lines = result.split('\n');
       const pauseIdx = lines.findIndex((l) => l.includes('pause.svg'));
       const playIdx = lines.findIndex((l) => l.includes('play.svg'));
+      // `findIndex` answers -1 for a row that was never written, and -1 is less than
+      // every real index, so the ordering alone passes on an empty result.
       expect(pauseIdx).toBeGreaterThan(0);
+      expect(playIdx).toBeGreaterThan(-1);
       expect(playIdx).toBeGreaterThan(pauseIdx);
     });
 

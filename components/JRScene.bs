@@ -1,10 +1,13 @@
+import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/translate.bs"
-' JRScene is a Scene (not a sgrouter_View), so it does NOT inherit the router scripts from
+' JRScene is a Scene (not a sgrouter_View), so it does not inherit the router scripts from
 ' sgrouter_View.xml. Import them here so JRScene.bs can call the sgrouter.* / promises.*
 ' namespaces directly (mirrors sgrouter_View.xml's script set).
 import "pkg:/source/roku_modules/promises/promises.brs"
@@ -16,21 +19,22 @@ import "pkg:/source/roku_modules/tkss_rodash_v0/rodash.brs"
 import "pkg:/source/utils/tasks.bs"
 
 sub init()
-  ' Initialize the log manager HERE — this is the EARLIEST point in the app that can.
+  ' Initialize the log manager HERE: this is the EARLIEST point in the app that can.
   ' `log.Logger.new()` resolves `m.global.rLog` ONCE and caches it; when the manager does not
   ' exist yet, every level method (`info`/`warn`/`error`/…) hits an `if m.rLog = invalid then
-  ' return` and silently no-ops for the life of that instance — no output, no error, forever.
+  ' return` and silently no-ops for the life of that instance: no output, no error, forever.
   ' Until this moved out of JRScreen.init, JRScene itself plus RemoteControlTask / SceneManager
   ' / QueueManager / SideEffectTask logged NOTHING on any build, at any log level.
   '
-  ' It cannot move any earlier — this is a platform constraint, not a preference. Verified on
+  ' It cannot move any earlier. This is a platform constraint, not a preference. Verified on
   ' device (Streaming Stick 4K, OS 15.2.4): `initializeLogManager` creates a `log_Log` node
   ' whose own init() creates a `Timer` (roku_modules/log/Log.brs), and creating a Timer on the
-  ' MAIN thread before `m.screen.show()` fails — it returns invalid and the library then faults
+  ' MAIN thread before `m.screen.show()` fails: it returns invalid and the library then faults
   ' with &he4. So main.bs cannot stand the manager up before `setGlobals()`. JRScene.init runs
   ' on the render thread, where node creation is unrestricted, which is why it works here.
-  ' Consequence: nodes created in `setGlobals()` (main.bs:9) build their Logger before any
-  ' manager exists and stay silent — see docs/architecture/logging.md.
+  ' Consequence: nodes created in `setGlobals()` (source/utils/globals.bs, called from `Main()`)
+  ' build their Logger before any manager exists and stay silent (see
+  ' docs/architecture/logging.md).
   '
   ' Second param is the max level emitted: 0 error, 1 warn, 2 info, 3 verbose, 4 debug.
   #if debug
@@ -43,13 +47,23 @@ sub init()
   m.top.backgroundURI = ""
   m.loadingText = m.top.findNode("loadingText")
   m.spinner = m.top.findNode("spinner")
+  m.loadingStageText = m.top.findNode("loadingStageText")
+  m.loadingStageTimer = m.top.findNode("loadingStageTimer")
+  m.loadingStageTimer.observeField("fire", "showLoadingStage")
+  ' When the scene's own spinner started (loadingStages.nowMs), marked at every start.
+  m.sceneWaitStartedMs = loadingStages.nowMs()
+  ' The routed view whose loadingWaits the spinner is showing (bindLoadingWaits).
+  m.waitsView = invalid
+  ' Keeps the waits the whole app is in (appWaits); the spinner redraws as they open and end.
+  m.appWaitHost = m.top.findNode("appWaitHost")
+  m.appWaitHost.observeField("openWaits", "showLoadingStage")
   m.imageFader = m.top.findNode("imageFader")
   m.toast = m.top.findNode("toast")
   m.lastBackdropUri = "" ' Track last URI to skip redundant imageFader assignments
 
-  ' Overhang controller state (wired in startRouter, after login).
-  ' init() runs at CreateScene — BEFORE setGlobalNodes adds m.global.activeRoutedView —
-  ' so the observer is registered in startRouter(), not here. The overhang node itself
+  ' Overhang controller state (wired in initRouter, on the first navigation).
+  ' init() runs at CreateScene, BEFORE setGlobalNodes adds m.global.activeRoutedView,
+  ' so the observer is registered in initRouter(), not here. The overhang node itself
   ' already exists as a child, so cache it now.
   m.overhang = m.top.findNode("overhang")
   m.previousRoutedView = invalid
@@ -63,10 +77,10 @@ sub init()
   defaultFont.text = "Ag"
   fallbackFont.text = "Ag"
 
-  ' Test toast trigger — set from BrightScript console for quick visual verification
+  ' Test toast trigger: set from BrightScript console for quick visual verification
   m.top.observeField("testToast", "onTestToast")
 
-  ' Debug-only: cheat code state for toast testing — compiled out in production
+  ' Debug-only: cheat code state for toast testing, compiled out in production
   #if debug
     m.debugCodeSequence = ["up", "up", "down", "down"]
     m.debugCodeProgress = 0
@@ -75,7 +89,8 @@ sub init()
   #end if
 end sub
 
-' DEBUG: Triggered when testToast field is set from the BrightScript console.
+' Test hook, in every build (no `#if debug`): triggered when testToast field is set from the
+' BrightScript console.
 ' Format: "type|message" where type is "error", "success", "warning", or "info".
 ' Falls back to "error" type if no pipe delimiter is found.
 '
@@ -83,7 +98,7 @@ end sub
 '   m.top.getScene().testToast = "error|Something went wrong"
 '   m.top.getScene().testToast = "success|Item saved"
 '   m.top.getScene().testToast = "info|Loading filters..."
-'   m.top.getScene().testToast = "Just a message"
+'   m.top.getScene().testToast = "A message with no type"
 sub onTestToast()
   value = m.top.testToast
   if value = "" then return
@@ -101,7 +116,8 @@ sub onTestToast()
 end sub
 
 sub onLoadingTextChanged()
-  m.loadingText.text = m.top.loadingText
+  ' An app wait's label shows only while the scene's own spinner is down (showLoadingStage).
+  if m.top.isLoading then m.loadingText.text = m.top.loadingText
 end sub
 
 sub onBackgroundImageUriChanged()
@@ -172,7 +188,7 @@ sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdro
 end sub
 
 ' Re-evaluate and apply the backdrop visibility setting
-' Useful when settings change at runtime (e.g., from Settings screen)
+' Useful when settings change at runtime (for example, from Settings screen)
 sub refreshBackdropSetting()
   if not isValid(m.imageFader) then return
 
@@ -196,10 +212,56 @@ sub onIsLoadingChanged()
     group.visible = not m.top.isRemoteDisabled
   end if
 
-  ' toggle visibility of loading spinner
-  m.spinner.visible = m.top.isLoading
-  ' toggle visibility of loading text
-  m.loadingText.visible = m.top.isLoading
+  if m.top.isLoading
+    ' Every start is a new wait, so its stages count from here.
+    m.sceneWaitStartedMs = loadingStages.nowMs()
+  else
+    ' A direct `isLoading = false` (loginRouter's bootstrap) must not leave this kind behind for
+    ' a later direct `isLoading = true` that sets none.
+    m.top.loadingKind = LoadingKind.PLAIN
+  end if
+  showLoadingStage()
+end sub
+
+' Shows the spinner for whatever is waiting (the scene's own spinner, its app waits, or the
+' active view's loadingWaits; loadingStages.showing) with the text for how long it has
+' waited and the label above it, and arms
+' the timer for the next change. Also the handler for the timer and for the active view's
+' loadingWaits: an early fire finds the same text and re-arms for the remainder; a late one,
+' after the wait ended, finds nothing to show.
+sub showLoadingStage()
+  m.loadingStageTimer.control = "stop"
+  waits = invalid
+  if isValid(m.waitsView) then waits = m.waitsView.loadingWaits
+  sceneWait = { isLoading: m.top.isLoading, kind: m.top.loadingKind, startedMs: m.sceneWaitStartedMs }
+  shown = loadingStages.showing(sceneWait, m.appWaitHost.openWaits, waits, loadingStages.nowMs())
+  m.spinner.visible = shown.visible
+
+  ' The text above the spinner: the scene's own spinner's (loadingText), or else the label of
+  ' the newest app wait (a channel's name).
+  if m.top.isLoading
+    m.loadingText.text = m.top.loadingText
+    m.loadingText.visible = true
+  else
+    m.loadingText.text = shown.label
+    m.loadingText.visible = shown.label <> ""
+  end if
+
+  kind = shown.kind
+  elapsedMs = shown.elapsedMs
+  key = loadingStages.textKeyAt(kind, elapsedMs)
+  if key = ""
+    m.loadingStageText.text = ""
+  else
+    m.loadingStageText.text = translate(key)
+  end if
+  m.loadingStageText.visible = key <> ""
+
+  nextMs = loadingStages.msUntilNextChange(kind, elapsedMs)
+  if nextMs > 0
+    m.loadingStageTimer.duration = nextMs / 1000
+    m.loadingStageTimer.control = "start"
+  end if
 end sub
 
 ' showToast: Display a transient toast notification.
@@ -215,10 +277,10 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   ' Debug-only: up-up-down-down cheat code on key UP events to cycle test toasts.
   ' KNOWN LIMITATION (verified on-device 2026-07): key-up events from routed views no
-  ' longer reach JRScene — Roku built-ins (RowList) consume releases for keys they
+  ' longer reach JRScene: Roku built-ins (RowList) consume releases for keys they
   ' handle, and the sgRouter Outlet consumes every release that bubbles out of a routed
-  ' view. The sequence only registers while focus is OUTSIDE the outlet subtree (e.g.
-  ' the overhang), so treat this cheat as unreliable; prefer the testToast field
+  ' view. The sequence only registers while focus is OUTSIDE the outlet subtree (for
+  ' example the overhang), so treat this cheat as unreliable; prefer the testToast field
   ' (see docs/dev/debug-flags.md). Compiled out in production (bs_const=debug=false).
   #if debug
     if not press
@@ -261,28 +323,36 @@ function onKeyEvent(key as string, press as boolean) as boolean
     '
     ' We read routerState.type DIRECTLY here rather than mirroring it via an observer: the
     ' routerState SG field observer COALESCES rapid writes and reliably drops the terminal
-    ' NavigationEnd (proven on device — a mirrored "navInProgress" flag wedged true and ate
-    ' back→exit). A field READ never coalesces, so the field always holds the true latest state:
+    ' NavigationEnd (proven on device: a mirrored "navInProgress" flag wedged true and ate
+    ' back-to-exit). A field READ never coalesces, so the field always holds the true latest state:
     ' a terminal type means idle (confirm exit); any non-terminal type means a nav is in flight.
     '
     ' A deep-link/cast resolve in flight is a DISTINCT case the router doesn't know about yet: the
     ' metadata fetch runs BEFORE any navigation starts, so the router is still idle on the current
-    ' view (the spinner is up but the remote is intentionally live — see resolveDeepLink). A back
-    ' here means "abort that pending cast", not "exit the app" — cancel the resolve and swallow.
+    ' view (the spinner is up but the remote is intentionally live; see resolveDeepLink). A back
+    ' here means "abort that pending cast", not "exit the app": cancel the resolve and swallow.
     if isValid(m.deepLinkResolveTask)
       cancelDeepLinkResolve()
       return true
     end if
     if isRouterNavigating() then return true
+    ' A playback start hiding the screen it was pressed on holds the focus (AppWaitHost), so its
+    ' Back lands here: cancel the start and show that screen again, as Back from the player
+    ' would. Mid-navigation it was swallowed above: the settling navigation mounts the player.
+    if m.appWaitHost.callFunc("cancelOnBack") then return true
     showExitConfirmation()
     return true
   else if key = "options"
     group = getActiveView()
     if isValid(group) and isValid(group.isOptionsAvailable) and group.isOptionsAvailable
-      group.lastFocus = group.focusedChild
-      panel = group.findNode("options")
-      panel.visible = true
-      panel.findNode("panelList").setFocus(true)
+      ' A view can report isOptionsAvailable without owning a panel (PlayerHostView), and the
+      ' key still arrives from an overlay dialog over it, so there may be nothing to show.
+      panel = nodeHelpers.findOptionsPanel(group)
+      if isValid(panel)
+        group.lastFocus = group.focusedChild
+        panel.visible = true
+        panel.findNode("panelList").setFocus(true)
+      end if
     end if
     return true
   end if
@@ -301,11 +371,11 @@ end function
 
 ' Initialize the router (outlet + routes + observers) WITHOUT navigating. Idempotent:
 ' a no-op if a router already exists on the scene. Called lazily by routerNavigate
-' (main thread) so the very first navigation — pre-login OR Home — brings the router up.
-' Re-callable after resetRouter() (sign-out → re-login): sgRouter.initialize creates a
+' (main thread) so the very first navigation (pre-login OR Home) brings the router up.
+' Re-callable after resetRouter() (sign-out, then re-login): sgRouter.initialize creates a
 ' fresh router when none exists on the scene.
 '
-' The router hosts the FULL app — the pre-login flow (/server, /users, /login) as well as
+' The router hosts the FULL app: the pre-login flow (/server, /users, /login) as well as
 ' the post-login content/playback routes. The pre-login routes carry no canActivate guards
 ' (the redirect target /login is one of them); the post-login routes carry the AuthManager
 ' guard. Pre-login back transitions are coordinator-driven (loginRouter), not
@@ -338,74 +408,64 @@ sub initRouter()
   guard = [m.global.AuthManager]
 
   sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })
-  sgrouter.addRoutes([
+  routes = [
     { pattern: "/", name: "home", component: "Home", clearStackOnResolve: true, allowReuse: true, canActivate: guard }
-    ' Pre-login flow. No flags, NO guard — back is coordinator-driven and the cleanup of these
+    ' Pre-login flow. No flags, no guard: back is coordinator-driven and the cleanup of these
     ' views falls out of Home's clearStackOnResolve when login completes.
     { pattern: "/server", name: "server", component: "SetServerScreen" }
     { pattern: "/users", name: "users", component: "UserSelect" }
     { pattern: "/login", name: "login", component: "LoginScene" }
     { pattern: "/details/:type/:id/play", name: "play", component: "PlayerHostView", canActivate: guard }
-    ' The three routes below use `suspendMode: "detach"` and deliberately do NOT set
-    ' `keepAlive`. The two are independent knobs and it is worth being precise about which
-    ' does what, because the wrong one was set here and it leaked every screen the user
-    ' backed out of:
-    '
-    '   suspendMode governs how a view is held while it is COVERED (a new view pushed on
-    '     top). "detach" removes it from the tree into the router's detach store and
-    '     re-attaches it on goBack -- freeing its render/texture cost while it is not
-    '     visible. Every outgoing view is suspended this way regardless of keepAlive, and
-    '     _goBack resumes it via _onViewResume either way, so back navigation is unaffected.
-    '
-    '   keepAlive governs whether a view survives being POPPED. Upstream documents it as
-    '     "retained for later resumption" -- a session-lifetime, path-keyed view CACHE, so a
-    '     forward navigation to the same path resumes the old instance. That is a real
-    '     feature; it is just not one JellyRock wants. It is also unbounded: the only
-    '     eviction helper (sgrouter_collectDetachedViewsToDestroy) skips keepAlive views by
-    '     design, so nothing short of sgrouter.destroy() at sign-out ever releases them.
-    '
-    ' With keepAlive set, every DISTINCT path visited and backed out of stayed alive for the
-    ' session -- one BaseGridView per library, one ItemDetails per item. Those retained views
-    ' are not inert: onScreenHidden runs on suspend but onDestroy does not, and onDestroy is
-    ' where the real teardown lives (tasks stopped, ~40 observers dropped, textures freed,
-    ' promises abandoned). SearchScreen.onDestroy is also what releases the firmware's global
-    ' voice route, which is why /search must not be keepAlive either.
-    '
-    ' Dropping keepAlive restores the intended shape: covered => suspended, popped => closed.
+    ' No route sets `keepAlive`. It governs whether a view survives being POPPED: upstream
+    ' documents it as "retained for later resumption", a session-lifetime, path-keyed view
+    ' CACHE, so a forward navigation to the same path resumes the old instance. It is also
+    ' unbounded: the only eviction helper (sgrouter_collectDetachedViewsToDestroy) skips
+    ' keepAlive views by design, so nothing short of sgrouter.destroy() at sign-out releases
+    ' them. With it set, every distinct library and item visited stayed alive for the session,
+    ' and onDestroy (tasks stopped, observers dropped, textures freed, promises abandoned, and
+    ' SearchScreen releasing the firmware's voice route) never ran. Without it: covered =>
+    ' suspended, popped => closed.
     '
     ' NO allowReuse: JellyRock has always created a FRESH ItemDetails per navigation (the
     ' old SceneManager world pushScene'd a new one every time, including detail->detail).
     ' allowReuse would force in-place onRouteUpdate reuse the component was never built for.
-    ' Note this does NOT affect a same-path navigation (a repeat cast of the item already
+    ' This does not affect a same-path navigation (a repeat cast of the item already
     ' showing): the router reuses the ACTIVE view whenever isSamePath, independent of both
     ' flags, which is the path ItemDetails.onRouteUpdate serves.
     '
     ' detail -> /play still restores the launching detail on back: the detail is COVERED by
-    ' the player, not popped, so it suspends and resumes exactly as before.
-    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", suspendMode: "detach", canActivate: guard }
-    { pattern: "/library/:id", name: "library", component: "BaseGridView", suspendMode: "detach", canActivate: guard }
-    { pattern: "/search", name: "search", component: "SearchScreen", suspendMode: "detach", canActivate: guard }
+    ' the player, not popped, so it suspends and resumes.
+    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", canActivate: guard }
+    { pattern: "/library/:id", name: "library", component: "BaseGridView", canActivate: guard }
+    { pattern: "/search", name: "search", component: "SearchScreen", canActivate: guard }
     { pattern: "/settings", name: "settings", component: "Settings", canActivate: guard }
     ' Photo viewer / slideshow. A fresh PhotoDetails per launch (the launch data arrives as
-    ' route context), destroyed on goBack — the router equivalent of the old SceneManager
-    ' pushScene/popScene. No suspendMode, so it defaults to "hide": kept in the tree and
-    ' parked off-screen while covered, rather than detached. It sets isOverhangVisible=false,
-    ' so the overhang hides while it's the active routed view, and the library/detail beneath
-    ' it suspends (focus saved) and resumes (focus restored) on back, like the video player.
+    ' route context), destroyed on goBack: the router equivalent of the old SceneManager
+    ' pushScene/popScene. It sets isOverhangVisible=false, so the overhang hides while it's the
+    ' active routed view, and the library/detail beneath it suspends (focus saved) and resumes
+    ' (focus restored) on back, like the video player.
     { pattern: "/photo", name: "photo", component: "PhotoDetails", canActivate: guard }
     ' Music player. A fresh AudioPlayerView per launch (it self-loads from the queue),
-    ' destroyed on goBack, "hide" while covered for the same reason as /photo. It suspends
-    ' the detail beneath (focus saved / restored on back) instead of rendering over it — the
-    ' same behavior as the video player.
+    ' destroyed on goBack. It suspends the detail beneath (focus saved / restored on back)
+    ' instead of rendering over it, the same behavior as the video player.
     { pattern: "/audio", name: "audio", component: "AudioPlayerView", canActivate: guard }
-  ])
+  ]
+  ' Every route suspends with "show": the router leaves a covered view on screen, and
+  ' onActiveRoutedViewChanged hides it when the incoming view opens. Any other mode hides the
+  ' outgoing view several message-loop turns before the incoming one is shown, which leaves
+  ' the screen empty under the old overhang for that long. Set here so a new route cannot
+  ' miss it.
+  for each route in routes
+    route.suspendMode = "show"
+  end for
+  sgrouter.addRoutes(routes)
 end sub
 
 ' Back-arbiter helper: is the router mid-navigation right now? Reads the public routerState
 ' field DIRECTLY (no observer). The routerState observer coalesces rapid writes and reliably
 ' drops the terminal NavigationEnd (proven on device), so a mirrored flag wedges true; a field
 ' READ never coalesces, so the field always holds the true latest state. A navigation runs
-' through NavigationStart → … → NavigationEnd; any non-terminal type means a nav is in flight,
+' through NavigationStart to NavigationEnd; any non-terminal type means a nav is in flight,
 ' a terminal type (or no router/state yet) means idle.
 function isRouterNavigating() as boolean
   router = sgrouter.getRouter()
@@ -417,7 +477,7 @@ function isRouterNavigating() as boolean
   return true
 end function
 
-' Navigate + take focus on settle + surface a rejected nav — the shared tail centralizing the
+' Navigate + take focus on settle + surface a rejected nav: the shared tail centralizing the
 ' navigate/focus/catch trio that was hand-copied across routerNavigate, navigateChainStep, and the
 ' settle drain (folds in finding A4: a rejected nav must re-assert focus, never strand the remote).
 ' routePath is dynamic: a string path for most calls, or a named-route AA ({ name, ... }) from
@@ -425,8 +485,8 @@ end function
 ' clearSpinner: set by the login paths only. A blocking login spinner (started by the login
 ' coordinator on the OUTGOING pre-login view) is kept up across this async nav and cleared HERE,
 ' once the destination view has mounted (navigateTo resolves at NavigationEnd). Clearing it
-' synchronously before the nav settles re-shows the outgoing pre-login view for a frame — the
-' #677 login flash. Mirrors the ItemDetails -> player pattern (spinner stays up across the nav,
+' synchronously before the nav settles re-shows the outgoing pre-login view for a frame (the
+' #677 login flash). Mirrors the ItemDetails -> player pattern (spinner stays up across the nav,
 ' the destination clears it).
 sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner = false as boolean)
   options = {}
@@ -437,37 +497,40 @@ sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner
   end sub).catch(sub(err as object, ctx as object)
     ' navigateTo rejects when a nav is already in progress (transient) or the route isn't
     ' registered (a programming error). Re-assert focus so a rejected nav can't strand the remote,
-    ' and surface the reason instead of dropping it silently.
-    m.log.warn("navigateThenFocus failed; re-asserting focus", ctx.routePath, err.message)
+    ' and surface the reason instead of dropping it silently. Recover before logging, and log err
+    ' whole: reading `.message` crashes when a rejection is not an AA, which skips the recovery.
     ' Clear the spinner even on a rejected login nav so a failure can't strand it up.
     if ctx.clearSpinner then stopLoadingSpinner()
     sgrouter.setFocus({ focus: true })
+    m.log.warn("navigateThenFocus failed; re-asserting focus", ctx.routePath, err)
   end sub)
 end sub
 
 ' Navigate the router to a route, bringing the router up first if needed, then hand
 ' the mounted view remote focus. Called from main.bs / loginRouter (main thread) to drive
 ' BOTH the pre-login flow (/server, /users, /login) and the transition to Home ("/").
-' context is forwarded as route context (e.g. a prefilled username for /login).
+' context is forwarded as route context (for example a prefilled username for /login).
 sub routerNavigate(routePath as string, context = {} as object, clearSpinner = false as boolean)
   initRouter()
   navigateThenFocus(routePath, context, clearSpinner)
 end sub
 
-' Replay a (deferred) deep link after login by navigating a SEQUENCE of routes, each step
-' waiting for the previous to settle. Called from the main-thread replay helper
-' (source/replayRoute.bs) via callFunc; `routes` is an ordered array of path strings. Used
-' both for the no-deep-link case (["/"], a plain Home nav) and the deep-link case
-' (["/", "/details/:type/:id", "/details/:type/:id/play"]) so back lands Player -> Details
-' -> Home (decision #3). The queue for a /play step is populated by the stash producer
-' (replayRoute / the deep-link handlers) BEFORE this runs; PlayerHostView reads it on mount.
+' Replay the route the auth guard stashed on a signed-out redirect, after login, by navigating
+' a SEQUENCE of routes, each step waiting for the previous to settle. Called from
+' replayAfterLogin (source/replayRoute.bs) via callFunc when no deep link is stashed; `routes`
+' is buildReplayRoutes' ordered array of path strings: ["/"] (a plain Home nav) when nothing
+' was stashed, ["/", stashed] for most paths, and ["/", "/details/:type/:id",
+' "/details/:type/:id/play"] for a /play path, so back lands Player -> Details -> Home. The
+' queue for a /play step was built before the redirect (QueueManager.playQueue); PlayerHostView
+' reads it on mount. A stashed deep link goes through resolveDeepLink / onDeepLinkResolved
+' instead.
 sub replayRoutedDeepLink(routes as object)
   initRouter()
   if not isValidAndNotEmpty(routes) then routes = ["/"]
   ' Post-login replay: the blocking login spinner is still up on the outgoing pre-login view.
   ' Keep it up across the async nav and clear it when the FINAL route settles (clearLoginSpinnerOnEnd
   ' -> navigateThenFocus clearSpinner). Clearing it synchronously in createAndShowHomeGroup re-showed
-  ' the outgoing view for a frame before Home mounted — the #677 login flash.
+  ' the outgoing view for a frame before Home mounted (the #677 login flash).
   navigateChainStep(routes, 0, true)
 end sub
 
@@ -478,7 +541,7 @@ end sub
 ' clearLoginSpinnerOnEnd: threaded through to the FINAL step's navigateThenFocus so the login
 ' replay (replayRoutedDeepLink) keeps the blocking spinner up across the whole chain and clears it
 ' only once the last route mounts. The runtime-cast caller (replayDeepLinkReplacingPlayer) leaves
-' it false — no login spinner is up there.
+' it false: no login spinner is up there.
 sub navigateChainStep(routes as object, index as integer, clearLoginSpinnerOnEnd = false as boolean)
   if index >= routes.count() then return
   ' Final step: navigate + take focus + catch is exactly the shared settle tail.
@@ -492,10 +555,11 @@ sub navigateChainStep(routes as object, index as integer, clearLoginSpinnerOnEnd
   promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index, clearSpinner: clearLoginSpinnerOnEnd }).then(sub(_result as object, ctx as object)
     navigateChainStep(ctx.routes, ctx.index + 1, ctx.clearSpinner)
   end sub).catch(sub(err as object, ctx as object)
-    m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err.message)
     ' If this was the login replay, don't leave the blocking spinner stranded on a failed chain.
+    ' Recover before logging, and log err whole (`.message` crashes on a non-AA rejection).
     if ctx.clearSpinner then stopLoadingSpinner()
     sgrouter.setFocus({ focus: true })
+    m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err)
   end sub)
 end sub
 
@@ -503,15 +567,15 @@ end sub
 '   1) tear the player down synchronously (stop + report to the server) so nothing keeps decoding;
 '   2) navigate Home, then to the new content, via the reliable navigateTo PROMISE chain
 '      (navigateChainStep). Navigating "/" tears the player host down (Home is clearStackOnResolve,
-'      so the stack — player host included — is cleared and Home re-mounts) and resolves at its
+'      so the stack, player host included, is cleared and Home re-mounts) and resolves at its
 '      NavigationEnd; the chain then mounts the target, which auto-launches. Back lands
-'      Player → Details → Home, the intended deep-link shape, with no stale prior item left behind.
+'      Player, then Details, then Home, the intended deep-link shape, with no stale prior item left behind.
 '
-' We do NOT pop via goBack + a routerState-observer settle wait here (the old ADR-0020 primitive):
+' We don't pop via goBack + a routerState-observer settle wait here (the old ADR-0020 primitive):
 ' goBack returns a bare Boolean (no promise to chain), and the routerState observer coalesces and
 ' reliably drops the terminal NavigationEnd, so the settle drain never fired and the cast stranded
-' (proven on device). navigateChainStep rides navigateTo's promise — which resolves reliably via
-' the router's internal chain, NOT the coalescing field observer — exactly as post-login deep-link
+' (proven on device). navigateChainStep rides navigateTo's promise, which resolves reliably via
+' the router's internal chain, not the coalescing field observer, exactly as post-login deep-link
 ' replay already does.
 sub replayDeepLinkReplacingPlayer(targetRoute as string)
   initRouter()
@@ -521,19 +585,50 @@ sub replayDeepLinkReplacingPlayer(targetRoute as string)
 end sub
 
 ' VALIDATE a deep-link id (a metadata fetch) BEFORE navigating, so an invalid id never disturbs
-' the active session — it just toasts. `args` = { itemId, action, isPlayback,
+' the active session: it only toasts. `args` = { itemId, action, isPlayback,
 ' homeFirst, replacePlayer, detailsRoute } from source/replayRoute.bs.
 '   homeFirst (post-login/cold): land on Home first so an invalid id toasts on Home (good UX).
 '   On a valid id, onDeepLinkResolved navigates (replacing an active player for a playback cast).
 sub resolveDeepLink(args as object)
   if not isValid(args) or not isValidAndNotEmpty(args.itemId) then return
   initRouter()
-  if args.homeFirst then sgrouter.navigateTo("/")
+  ' Every call and every cancel bumps the sequence, so a deferred start (below) that arrives after
+  ' either one sees a stale number and does nothing.
+  m.deepLinkResolveSeq = (m.deepLinkResolveSeq ?? 0) + 1
+
+  ' `= true`, not a bare `if`: a missing or invalid flag is a Type Mismatch in a bare `if`, and here
+  ' takes the synchronous path instead.
+  if args.homeFirst = true
+    ' Wait for Home's nav to settle before starting the resolve. The resolve raises the content
+    ' spinner and re-enables the remote, which re-shows the outgoing sign-in view for a frame if
+    ' Home has not mounted yet (the #677 login flash; see createAndShowHomeGroup). Until then the
+    ' blocking sign-in spinner stays up. A rejected nav still starts the resolve, so the link is
+    ' never dropped.
+    promises.chain(sgrouter.navigateTo("/"), { args: args, seq: m.deepLinkResolveSeq }).then(sub(_result as object, ctx as object)
+      startDeepLinkResolve(ctx.args, ctx.seq)
+    end sub).catch(sub(err as object, ctx as object)
+      ' Start before logging, and log err whole: reading `.message` crashes when a rejection is not
+      ' an AA, which would leave the blocking sign-in spinner up for good.
+      startDeepLinkResolve(ctx.args, ctx.seq)
+      m.log.warn("deep-link Home nav failed; resolving anyway", err)
+    end sub)
+    return
+  end if
+
+  startDeepLinkResolve(args, m.deepLinkResolveSeq)
+end sub
+
+' Raise the spinner and launch the metadata fetch for a deep link. `seq` is the sequence number
+' resolveDeepLink took when it was called; a different current value means a cancel or a newer
+' call came first, so this start is stale and is dropped.
+sub startDeepLinkResolve(args as object, seq as integer)
+  if seq <> m.deepLinkResolveSeq then return
 
   m.deepLinkResolveArgs = args
   ' Spinner = feedback during the fetch; don't block the remote (a runtime cast shouldn't freeze
   ' what the user is doing). Cleared in onDeepLinkResolved.
   m.top.isRemoteDisabled = false
+  m.top.loadingKind = LoadingKind.CONTENT
   m.top.isLoading = true
 
   stopDeepLinkResolveTask()
@@ -549,6 +644,7 @@ end sub
 ' pending. Reused by the back arbiter (a back during the resolve aborts the cast) and resetRouter
 ' (sign-out tears the resolve down with the router).
 sub cancelDeepLinkResolve()
+  m.deepLinkResolveSeq = (m.deepLinkResolveSeq ?? 0) + 1
   stopDeepLinkResolveTask()
   m.deepLinkResolveArgs = invalid
   m.top.isLoading = false
@@ -557,7 +653,7 @@ end sub
 ' Release the in-flight deep-link/cast resolve task: drop its observer, stop it, clear the
 ' ref. Safe to call when none is pending. Centralizes the unobserve->stop->invalid sequence
 ' so every teardown path (resolveDeepLink replace, cancelDeepLinkResolve, onDeepLinkResolved)
-' stays consistent — a stop without a preceding unobserve can leave a stale observer firing.
+' stays consistent: a stop without a preceding unobserve can leave a stale observer firing.
 sub stopDeepLinkResolveTask()
   if isValid(m.deepLinkResolveTask)
     m.deepLinkResolveTask.unobserveField("content")
@@ -583,10 +679,10 @@ sub onDeepLinkResolved()
     return
   end if
 
-  ' A grid-container target (library / folder / genre / studio / channel) has no springboard —
+  ' A grid-container target (library / folder / genre / studio / channel) has no springboard:
   ' open its grid directly instead of mounting ItemDetails on a
   ' bare folder. routeForItem maps the resolved node to the same library route in-app navigation
-  ' uses, and we hand it the node we just fetched as route context so BaseGridView renders
+  ' uses, and we hand it the node we fetched as route context so BaseGridView renders
   ' without a second fetch (and Back lands on Home, not a stub springboard). Only the non-playback
   ' "open" path diverts: a playback action never targets a container, and replacePlayer is
   ' playback-only, so both fall through to the details route below.
@@ -601,11 +697,11 @@ sub onDeepLinkResolved()
   if args.replacePlayer
     ' Playback-only path (a cast replacing an active player): the springboard is transient on the
     ' way to the player, so it tears the active player down then navigates the route chain via
-    ' navigateChainStep — off navigateTo's promise, NOT the removed settle primitive (see ADR
-    ' 0020). No context — ItemDetails re-fetches by id from the route.
+    ' navigateChainStep, off navigateTo's promise, not the removed settle primitive (see ADR
+    ' 0020). No context: ItemDetails re-fetches by id from the route.
     replayDeepLinkReplacingPlayer(args.detailsRoute)
   else
-    ' We already fetched the FULL metaDataDetails node to validate the id — hand that exact node
+    ' We already fetched the FULL metaDataDetails node to validate the id: hand that exact node
     ' forward (itemIsComplete) so ItemDetails renders the springboard from
     ' it instead of re-fetching the same metadata. ItemDetails' loadDetailsTask uses the SAME
     ' "metaDataDetails" shape, so the node is a complete substitute. Only this explicitly-complete
@@ -615,7 +711,7 @@ sub onDeepLinkResolved()
 end sub
 
 ' QueueManager.playQueue signalled a video playback launch. The queue is already populated,
-' so navigate to the play route — PlayerHostView mounts
+' so navigate to the play route. PlayerHostView mounts
 ' the player for the current queue item. :type/:id give the route a deep-link identity;
 ' the queue is the source of truth for what actually plays.
 sub onPlaybackLaunchRequested()
@@ -631,15 +727,18 @@ sub onPlaybackLaunchRequested()
     playPath = "/details/" + itemType + "/" + req.id + "/play"
   end if
   ' No explicit setFocus: the mounted player self-focuses via its onScreenShown (the JRScreen
-  ' onViewOpen bridge). The .catch is the point — a rejected nav (router busy / unknown route)
+  ' onViewOpen bridge). The .catch is the point: a rejected nav (router busy / unknown route)
   ' would otherwise leave the populated queue with no player and nothing playing, silently.
   promises.chain(sgrouter.navigateTo(playPath), { playPath: playPath }).catch(sub(err as object, ctx as object)
-    m.log.warn("playback launch navigation failed", ctx.playPath, err.message)
+    ' No player will mount to take the start, so end it here rather than at its time limit.
+    ' Recover before logging, and log err whole (`.message` crashes on a non-AA rejection).
+    m.global.queueManager.callFunc("failPendingPlaybackStart", "navigation to the player failed")
+    m.log.warn("playback launch navigation failed", ctx.playPath, err)
   end sub)
 end sub
 
 ' A photo launcher (quickplay.photo / QueueManager slideshow output) signalled a photo-viewer
-' launch. Carry the launch AA through as route context — PhotoDetails
+' launch. Carry the launch AA through as route context: PhotoDetails
 ' reads itemsNode/itemsArray + slideshow flags + start index from it on mount.
 sub onPhotoLaunchRequested()
   req = m.global.photoLaunchRequest
@@ -647,13 +746,14 @@ sub onPhotoLaunchRequested()
   ' PhotoDetails self-focuses on mount (onScreenShown); the .catch surfaces a rejected nav so a
   ' failed photo launch isn't silent.
   promises.chain(sgrouter.navigateTo("/photo", { context: req })).catch(sub(err as object)
-    m.log.warn("photo launch navigation failed", err.message)
+    ' Log err whole: reading `.message` crashes when a rejection is not an AA.
+    m.log.warn("photo launch navigation failed", err)
   end sub)
 end sub
 
-' Render-thread sgRouter.goBack() wrapper for main.bs, which runs on the main thread
-' and can't call the sgrouter namespace directly (it resolves the router via m.top's
-' scene). Used after a delete confirmation to leave the now-deleted routed detail.
+' Render-thread sgRouter.goBack() wrapper for main-thread code, which can't call the
+' sgrouter namespace directly (it resolves the router via m.top's scene). Its caller is
+' the remote-control Back command (remoteDispatch.dispatchGoBack).
 sub routerGoBack()
   sgrouter.goBack()
 end sub
@@ -661,7 +761,7 @@ end sub
 ' Theme/locale change: force a fresh Home render through the router. Called from
 ' main.bs's reloadHomeRequested handler (replaces the old clearScenes +
 ' createAndShowHomeGroup). Navigating to "/" from Settings (the active routed view)
-' is a component change, so clearStackOnResolve rebuilds Home from scratch — it
+' is a component change, so clearStackOnResolve rebuilds Home from scratch: it
 ' picks up the new theme constants / reloaded translations.
 sub reloadRoutedHome()
   sgrouter.navigateTo("/")
@@ -675,6 +775,7 @@ sub resetRouter()
     unregisterOverhangData(m.previousRoutedView)
     m.previousRoutedView = invalid
   end if
+  bindLoadingWaits(invalid)
   m.global.unobserveField("activeRoutedView")
   m.global.unobserveField("playbackLaunchRequest")
   m.global.unobserveField("photoLaunchRequest")
@@ -682,7 +783,7 @@ sub resetRouter()
   cancelDeepLinkResolve()
   ' sgrouter.destroy() removes the active + suspended keepAlive view NODES but never runs their
   ' beforeViewClose lifecycle (verified: Router _destroy only removeNodeChildren). Drive teardown
-  ' ourselves FIRST so each view's onScreenHidden + onDestroy run — onDestroy abandons in-flight
+  ' ourselves FIRST so each view's onScreenHidden + onDestroy run: onDestroy abandons in-flight
   ' API promises and releases the view's observers/Tasks. Without this, a library/detail suspended
   ' beneath a player at sign-out leaks its Task and a late pool response could fire into a
   ' half-torn-down node.
@@ -692,42 +793,71 @@ sub resetRouter()
   if isValid(m.overhang) then m.overhang.visible = false
 end sub
 
-' Run beforeViewClose (→ onScreenHidden + onDestroy) on every mounted routed view — the active
-' one in viewTarget and every suspended keepAlive view in keepAliveViewTarget — before the router
-' is destroyed under them. The target Groups live inside the outlet and survive destroy(); only
-' their children (the views) are torn down here. beforeViewClose is the same permanent-close entry
-' sgRouter drives on a normal close, so re-running onScreenHidden on an already-suspended keepAlive
-' view matches the existing contract (suspend already fired it once; it must be idempotent).
+' Run beforeViewClose (which runs onScreenHidden + onDestroy) on every mounted routed view before the
+' router is destroyed under them. All of them are children of the outlet's viewTarget: the
+' active view and every covered one, since every route suspends with "show". A "detach" view
+' would sit in the router's detach store instead, out of this loop's reach. viewTarget lives
+' inside the outlet and survives destroy(); only its children (the views) are torn down here.
+' beforeViewClose is the same permanent-close entry sgRouter drives on a normal close, so
+' re-running onScreenHidden on a covered view (hideCovered already ran it once) matches the
+' existing contract: it must be idempotent.
 sub teardownRoutedViews()
   outlet = m.top.findNode("routerOutlet")
   if not isValid(outlet) then return
-  for each targetId in ["viewTarget", "keepAliveViewTarget"]
-    target = outlet.findNode(targetId)
-    if isValid(target)
-      for each view in target.getChildren(-1, 0)
-        if isValid(view) and view.isSubType("JRScreen")
-          view.callFunc("beforeViewClose", {})
-        end if
-      end for
+  target = outlet.findNode("viewTarget")
+  if not isValid(target) then return
+  for each view in target.getChildren(-1, 0)
+    if isValid(view) and view.isSubType("JRScreen")
+      view.callFunc("beforeViewClose", {})
     end if
   end for
 end sub
 
 ' The router mounted (or switched to) a different content view. Re-point the
 ' overhang controller: tear down the binding to the previous view, bind the new
-' one. (Lifted from SceneManager's register/unregister pair — same contract.)
+' one. (Lifted from SceneManager's register/unregister pair, same contract.)
 sub onActiveRoutedViewChanged()
   newView = m.global.activeRoutedView
 
-  if isValid(m.previousRoutedView) and not m.previousRoutedView.isSameNode(newView)
+  ' This observer fires many times per navigation while the field still holds the same node,
+  ' so act only when the node changes.
+  if isValid(newView) and isValid(m.previousRoutedView) and m.previousRoutedView.isSameNode(newView) then return
+
+  ' The screen swap. Routes suspend with "show", so the router leaves the outgoing view on
+  ' screen; hiding it here puts it in the same render pass as the incoming view appearing and
+  ' the overhang below switching.
+  if isValid(m.previousRoutedView)
+    if m.previousRoutedView.isSubType("JRScreen")
+      m.previousRoutedView.callFunc("hideCovered")
+    else
+      m.previousRoutedView.visible = false
+    end if
     unregisterOverhangData(m.previousRoutedView)
   end if
 
   if isValid(newView) and newView.isSubType("JRGroup")
     registerOverhangData(newView)
   end if
+  bindLoadingWaits(newView)
+  m.appWaitHost.callFunc("failLeftBehind", newView)
 
   m.previousRoutedView = newView
+end sub
+
+' Point the spinner at `view`'s loadingWaits (screenWaits): stop following the previous view's,
+' follow this one's, and show what it has open. A view's waits therefore show only while it
+' is the active view: gone when it closes, hidden under another view, back when it returns.
+' `view` = invalid follows none (resetRouter).
+sub bindLoadingWaits(view as dynamic)
+  if isValid(m.waitsView) and not m.waitsView.isSameNode(view)
+    m.waitsView.unobserveField("loadingWaits")
+    m.waitsView = invalid
+  end if
+  if isValid(view) and not isValid(m.waitsView) and view.isSubType("JRGroup")
+    view.observeField("loadingWaits", "showLoadingStage")
+    m.waitsView = view
+  end if
+  showLoadingStage()
 end sub
 
 ' Confirm app exit.
@@ -741,7 +871,7 @@ end sub
 ' nothing.
 sub showExitConfirmation()
   ' A second press while the prompt is up would stack a second overlay. It should
-  ' not be reachable — the dialog consumes every key once it has focus — but the
+  ' not be reachable (the dialog consumes every key once it has focus), but the
   ' guard is a line and the failure mode is two dialogs sharing one node id.
   if isValid(m.exitDialog) then return
 
@@ -760,8 +890,8 @@ end sub
 ' ---------------------------------------------------------------------------
 ' Overhang controller. Drives the shared overhang from the router-active view's overhang
 ' fields, preserving the
-' tabs-before-title ordering (prevents a title→tab render flash) and the
-' bidirectional selectedTabId write-back (overhang tab tap → view.selectedTabId).
+' tabs-before-title ordering (prevents a title-to-tab render flash) and the
+' bidirectional selectedTabId write-back (an overhang tab tap sets view.selectedTabId).
 ' ---------------------------------------------------------------------------
 sub registerOverhangData(group as object)
   if group.isSubType("JRGroup")
@@ -773,7 +903,7 @@ sub registerOverhangData(group as object)
     group.observeField("isOverhangVisible", "updateOverhangVisible")
 
     ' Set tabs BEFORE the title so onTabsChanged can hide the title before it
-    ' renders with text — prevents a visible title→tab transition flash.
+    ' renders with text. This prevents a visible title-to-tab transition flash.
     m.overhang.selectedTabId = group.selectedTabId
     m.overhang.tabs = group.overhangTabs
     group.observeField("overhangTabs", "updateOverhangTabs")
@@ -782,7 +912,7 @@ sub registerOverhangData(group as object)
     if isValid(group.overhangTitle) then m.overhang.title = group.overhangTitle
     group.observeField("overhangTitle", "updateOverhangTitle")
 
-    ' Logo / icons / user-dropdown — projected from the view's declared fields so they update in
+    ' Logo / icons / user-dropdown: projected from the view's declared fields so they update in
     ' the SAME frame as tabs/title (no transition flicker). Screens declare these; they never poke
     ' the overhang node directly. currentUser is derived from the global user so screens only say
     ' whether the dropdown shows.

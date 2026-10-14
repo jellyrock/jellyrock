@@ -1,0 +1,15 @@
+' How far a video load has got with the Live TV live stream it opens, recorded on
+' LoadVideoContentTask.liveStream so that the stream is released exactly once, however the view
+' that started the load goes away (source/utils/liveStreamHandoff.bs).
+enum LiveStreamStage
+  ' No live stream: nothing opened yet, not a live item, or the open produced none.
+  NONE = "none"
+  ' PlaybackInfo is on its way: the server may be opening the stream now.
+  OPENING = "opening"
+  ' The server answered with the stream, and the load holds it.
+  OPEN = "open"
+  ' The view took the stream; the player releases it when its playback ends.
+  HANDED_OVER = "handedOver"
+  ' The view closed it: the load failed after opening it.
+  RELEASED = "released"
+end enum

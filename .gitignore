@@ -27,6 +27,8 @@ node_modules/
 .claude/logs/
 .claude/handoffs/
 .claude/plans/
+# Claude Code's default worktree location; each one is its own checkout.
+.claude/worktrees/
 # server-upgrade-automation: raw spec + transient diff/findings caches.
 # Committed fingerprints (docs/architecture/spec-fingerprints/) and the
 # committed suppression config (.api-watch/suppressions.yml) are NOT ignored.
@@ -34,3 +36,6 @@ node_modules/
 # Project PLANs are local agent-continuity (like .claude/handoffs, .claude/plans);
 # public repo keeps them out of git. Lifecycle skills still run locally.
 docs/projects/
+
+# translations:seed — sparse checkouts of the pinned source projects (locale/seed/sources.yml).
+.cache/translation-seed/

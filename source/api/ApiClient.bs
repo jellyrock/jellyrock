@@ -1,3 +1,4 @@
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/sdk.bs"
 import "pkg:/source/api/sdkV1.bs"
 import "pkg:/source/api/sdkV2.bs"
@@ -39,7 +40,8 @@ class ApiClient
 
   ' ═══════════════════════════════════════════════════════════════════════════
   ' USER ENDPOINTS - Version-aware (V1/V2 routing)
-  ' When adding V3 support, add else-if branch in each method below
+  ' When adding V3 support, put an `if m.getApiVersion() >= 3` branch ahead of each method's
+  ' `>= 2` branch below, ending in a `return` (docs/dev/jellyfin-server-versioning.md)
   ' ═══════════════════════════════════════════════════════════════════════════
 
   ' Get a single item by ID with automatic image and version field injection
@@ -97,7 +99,7 @@ class ApiClient
   ' Mirrors GetResumeItems(): applies injectDefaults, version-aware endpoint.
   '
   ' The server hardcodes Recursive, OrderBy=DatePlayed and IsResumable on this endpoint, so
-  ' MediaTypes is the ONLY narrowing a client controls — don't bother sending recursive /
+  ' MediaTypes is the only narrowing a client controls. Don't bother sending recursive /
   ' SortBy / SortOrder / Filters, they are ignored. Since 12.0 a folder also matches
   ' IsResumable when a descendant is in progress, so an unfiltered query returns Seasons and
   ' Series (by design) mixed in with the episodes. Every JellyRock resume flow is video, so
@@ -111,7 +113,7 @@ class ApiClient
     mergedParams = m.injectDefaults(params)
     ' MediaTypes has to come out a non-empty STRING, not merely present: buildParams()
     ' silently skips roArray values (tech-debt `buildparams-no-array-support`), so an
-    ' array here would drop the only filter we control and send the query unnarrowed —
+    ' array here would drop the only filter we control and send the query unnarrowed:
     ' the exact #784 failure, reached through the documented way to widen it.
     callerMediaTypes = mergedParams.MediaTypes
     hasMediaTypes = (type(callerMediaTypes) = "String" or type(callerMediaTypes) = "roString")
@@ -138,9 +140,9 @@ class ApiClient
     if m.getApiVersion() >= 2
       queryParams = { userId: userId }
       queryParams.append(mergedParams)
-      return m.validatedReq("GET", buildURL("/Items/Latest", queryParams))
+      return m.listReq("GET", buildURL("/Items/Latest", queryParams))
     end if
-    return m.validatedReq("GET", buildURL(Substitute("/users/{0}/items/latest", userId), mergedParams))
+    return m.listReq("GET", buildURL(Substitute("/users/{0}/items/latest", userId), mergedParams))
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -183,14 +185,6 @@ class ApiClient
   ' ARTIST ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' Build a request AA for GetArtistByName, for use with fetchJson().
-  ' @param name - Artist name (will be URI-encoded)
-  ' @param params - Optional query parameters
-  ' @returns Request AA: { method, url } or invalid if server URL not set
-  function BuildGetArtistByNameRequest(name as string, params = {} as object) as dynamic
-    return m.validatedReq("GET", buildURL(Substitute("/artists/{0}", name.EncodeUriComponent()), params))
-  end function
-
   ' Build a request AA to fetch all artists, for use with fetchRes() or fetchJson().
   ' Mirrors GetArtists(): applies injectDefaults and injects UserId.
   ' @param params - Query parameters
@@ -204,13 +198,21 @@ class ApiClient
   end function
 
   ' Build a request AA for GetPersons, for use with fetchRes() or fetchJson().
-  ' Mirrors GetPersons(): applies injectDefaults and injects UserId.
-  ' @param params - Query parameters (e.g. IsFavorite, searchTerm)
+  ' Applies injectDefaults and injects UserId.
+  '
+  ' Leaves out the Artist and AlbumArtist kinds unless the caller passes its own
+  ' ExcludePersonTypes. From 12.0 the server lists music artists as people (jellyfin#16721),
+  ' and the app lists artists from /Artists, so search showed a musician twice. jellyfin-web
+  ' sends the same filter, marked to go once artists move to /Persons; drop it here then.
+  ' Every supported server accepts the parameter, so it is not version-gated.
+  ' @param params - Query parameters (for example IsFavorite, searchTerm)
   ' @returns Request AA: { method, url } or invalid if no userId
   function BuildGetPersonsRequest(params = {} as object) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    mergedParams = m.injectDefaults(params)
+    personParams = { "ExcludePersonTypes": "Artist,AlbumArtist" }
+    personParams.append(params)
+    mergedParams = m.injectDefaults(personParams)
     mergedParams.UserId = userId
     return m.validatedReq("GET", buildURL("/persons", mergedParams))
   end function
@@ -304,7 +306,7 @@ class ApiClient
   ' Build a request AA for GetMediaSegments, for use with fetchJson().
   ' Only available on Jellyfin 10.10.0+ servers.
   ' @param itemId - The item ID
-  ' @param includeSegmentTypes - Optional comma-separated segment types to filter (e.g., "Intro,Outro")
+  ' @param includeSegmentTypes - Optional comma-separated segment types to filter (for example "Intro,Outro")
   ' @returns Request AA: { method, url } or invalid if server URL not set
   function BuildGetMediaSegmentsRequest(itemId as string, includeSegmentTypes = "" as string) as dynamic
     params = {}
@@ -342,11 +344,19 @@ class ApiClient
   ' @returns Request AA: { method, url } or invalid if no userId (V1 only)
   function BuildGetLocalTrailersRequest(itemId as string) as dynamic
     if m.getApiVersion() >= 2
-      return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/LocalTrailers", itemId), {}))
+      return m.listReq("GET", buildURL(Substitute("/Items/{0}/LocalTrailers", itemId), {}))
     end if
     userId = m.getUserId()
     if userId = "" then return invalid
-    return m.validatedReq("GET", buildURL(Substitute("/users/{0}/items/{1}/localtrailers", userId, itemId), {}))
+    return m.listReq("GET", buildURL(Substitute("/users/{0}/items/{1}/localtrailers", userId, itemId), {}))
+  end function
+
+  ' Build a request AA for GetItemImageInfos: every image the item has, with each one's
+  ' original Width and Height. The same path on every supported server (10.7.0 onward).
+  ' @param itemId - The item ID
+  ' @returns Request AA: { method, url, expect } or invalid
+  function BuildGetItemImageInfosRequest(itemId as string) as dynamic
+    return m.listReq("GET", buildURL(Substitute("/Items/{0}/Images", itemId), {}))
   end function
 
   ' Build a request AA for GetSpecialFeatures, for use with fetchRes() or fetchJson().
@@ -355,11 +365,11 @@ class ApiClient
   ' @returns Request AA: { method, url } or invalid if no userId (V1 only)
   function BuildGetSpecialFeaturesRequest(itemId as string) as dynamic
     if m.getApiVersion() >= 2
-      return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/SpecialFeatures", itemId), {}))
+      return m.listReq("GET", buildURL(Substitute("/Items/{0}/SpecialFeatures", itemId), {}))
     end if
     userId = m.getUserId()
     if userId = "" then return invalid
-    return m.validatedReq("GET", buildURL(Substitute("/users/{0}/items/{1}/specialfeatures", userId, itemId), {}))
+    return m.listReq("GET", buildURL(Substitute("/users/{0}/items/{1}/specialfeatures", userId, itemId), {}))
   end function
 
   ' Build a request AA to mark an item as favorite, for use with SubmitSideEffect().
@@ -419,6 +429,27 @@ class ApiClient
       return m.validatedReq("DELETE", buildURL(Substitute("/UserPlayedItems/{0}", itemId), { userId: userId }))
     end if
     return m.validatedReq("DELETE", buildURL(Substitute("users/{0}/playeditems/{1}", userId, itemId)))
+  end function
+
+  ' Build a request AA for one item's UserData (position, played, favorite), for use with
+  ' fetchRes() or fetchAsync(). Returns a UserItemDataDto, about 150 bytes, where the full
+  ' item is kilobytes.
+  '
+  ' It reads the play state of an ALTERNATE VERSION, which no item query returns on
+  ' Jellyfin 12.0 (/Items?ids= filters versions out). Only per-version servers need that,
+  ' so callers gate on versionResume.isPerVersionServer(). The route is not in the 10.7.0
+  ' floor spec, so a V1 server gets no request rather than a guessed path.
+  '
+  ' @param itemId - The item (or alternate version) ID
+  ' @returns Request AA: { method, url } or invalid if no user or a V1 server
+  function BuildGetItemUserDataRequest(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    if m.getApiVersion() >= 2
+      return m.validatedReq("GET", buildURL(Substitute("/UserItems/{0}/UserData", itemId), { userId: userId }))
+    end if
+    return invalid
   end function
 
   ' Build a request AA to delete an item, for use with SubmitSideEffect().
@@ -484,22 +515,15 @@ class ApiClient
   end function
 
   ' Build a request AA to get active sessions, for use with fetchJson().
-  ' @param params - Query parameters (e.g. { deviceId: "..." })
+  ' @param params - Query parameters (for example { deviceId: "..." })
   ' @returns Request AA: { method, url } or invalid if server URL not set
   function BuildGetSessionsRequest(params = {} as object) as dynamic
-    return m.validatedReq("GET", buildURL("/sessions", params))
+    return m.listReq("GET", buildURL("/sessions", params))
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
   ' SYSTEM ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
-
-  ' Get configuration by name
-  ' @param name - Configuration name
-  ' @returns API response or invalid on error
-  function GetConfigurationByName(name as string) as dynamic
-    return sdk.system.GetConfigurationByName(name)
-  end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
   ' BRANDING ENDPOINTS
@@ -543,25 +567,26 @@ class ApiClient
   end function
 
   ' Get public users
-  ' @returns API response or invalid on error
+  ' Synchronous, so it bypasses the pool's shape check (listReq); the list is read here instead.
+  ' @returns an roArray of UserDto, or invalid on error or a body that holds no list
   function GetPublicUsers() as dynamic
-    return sdk.users.GetPublic()
+    return apiResponse.listFrom(sdk.users.GetPublic())
   end function
 
   ' Build a request AA to exchange an APPROVED Quick Connect secret for an auth
   ' token, for use with fetchAsync() / fetchRes().
   '
-  ' The body's field name changed at 10.8.0 — a FINER boundary than the V1/V2
+  ' The body's field name changed at 10.8.0, a FINER boundary than the V1/V2
   ' apiVersion split, so it reads the server version directly rather than
   ' m.getApiVersion():
   '   10.7.x:   { "Token": secret }   (QuickConnectDto.Token, required)
   '   10.8.0+:  { "Secret": secret }  (QuickConnectDto.Secret, required)
-  ' Confirmed against every published spec from 10.7.0 to 10.11.8 — the rename
+  ' Confirmed against every published spec from 10.7.0 to 10.11.8: the rename
   ' lands at exactly 10.8.0, with no version carrying both names.
   '
   ' DON'T BRANCH ON THE ERROR CODE HERE. The spec declares only 400 ("Missing
   ' token") plus 503 from 10.11.0, but a live 10.11.11 answered 404 for a secret
-  ' it had not seen approved — an undeclared code. So a non-ok response means
+  ' it had not seen approved, an undeclared code. So a non-ok response means
   ' "this secret cannot be exchanged" and nothing finer; quickConnectExchangeFailure
   ' (source/utils/quickConnect.bs) owns the one distinction worth making.
   ' @param secret - The Quick Connect secret from Initiate
@@ -594,7 +619,7 @@ class ApiClient
   '
   ' Sending the wrong method to a modern server yields 401 ("Quick connect is not
   ' active on this server"), which reads as a feature gate but is actually a route
-  ' mismatch — so the dispatch is load-bearing, not cosmetic. That collision is
+  ' mismatch, so the dispatch matters; it is not cosmetic. That collision is
   ' also why quickConnectInitiateFailure treats 401 as "disabled": it is the same
   ' code either way, and a route mismatch is our bug, not something to tell a user.
   ' @returns Request AA: { method, url } or invalid if server URL not set
@@ -611,10 +636,10 @@ class ApiClient
   ' once someone approved the code.
   '
   ' An UNKNOWN or EXPIRED secret answers 404 ("Unknown quick connect secret"),
-  ' declared by EVERY published spec from 10.7.0 to 10.11.8 and corroborated by a
+  ' declared by every published spec from 10.7.0 to 10.11.8 and corroborated by a
   ' live 10.11.11. That is the only signal separating "not approved yet" from
   ' "this code is dead", and it is invisible to a caller that only parses the
-  ' body — which is why this endpoint has to go through the pool (res.statusCode)
+  ' body, which is why this endpoint has to go through the pool (res.statusCode)
   ' rather than a sync JSON helper.
   ' @param secret - The Quick Connect secret from Initiate
   ' @returns Request AA: { method, url } or invalid if server URL not set
@@ -682,6 +707,166 @@ class ApiClient
     return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/Similar", itemId), params))
   end function
 
+  ' Build a request AA for the collections an item belongs to, for use with fetchRes().
+  ' Jellyfin 12.0+ only, so there is no V1 path: older servers answer 404. Decide with
+  ' extrasRows.supportsItemCollections() before building it.
+  ' @param itemId - The item ID
+  ' @param params - Optional query parameters (userId, Fields, limit, startIndex)
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetItemCollectionsRequest(itemId as string, params = {} as object) as dynamic
+    return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/Collections", itemId), params))
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' SUBTITLE ENDPOINTS
+  '
+  ' Server-side subtitle search / download / delete (issue #750). All three
+  ' routes exist unchanged at the 10.7.0 floor, so there is NO V1/V2 branching
+  ' here: verified against the spec fingerprints for both 10.7.0 and 10.11.8.
+  '
+  ' The PERMISSION model, however, IS version-dependent, and that gate lives in
+  ' remoteSubtitles.bs (canSearchSubtitles / canDeleteSubtitles) rather than
+  ' here, because it is pure and unit-testable. Summary of what the server
+  ' enforces (measured on a live 10.11.11 server, see remoteSubtitles.bs):
+  '   * search + download: DefaultAuthorization on 10.7-10.8 (any user);
+  '     Policies.SubtitleManagement on 10.9+ (admins bypass it).
+  '   * delete: Policies.RequiresElevation (admin) on every version.
+  '
+  ' Search is only meaningful for Movie and Episode. The server returns an
+  ' empty array for any other Video type, and 404 for a non-Video item (for example a
+  ' BoxSet), because the controller resolves the item as GetItemById<Video>.
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Build a request AA to search a server's configured subtitle providers, for
+  ' use with fetchRes() or fetchJson(). Returns an array of RemoteSubtitleInfo.
+  '
+  ' `language` is passed straight through to the server, which resolves it via
+  ' LocalizationManager.FindLanguageInfo(), which matches case-insensitively on
+  ' DisplayName, Name, TwoLetterISOLanguageName, OR either ISO 639-2 variant
+  ' (/T and /B both live in ThreeLetterISOLanguageNames). So "fra", "fre", "fr"
+  ' and "French" are all accepted. Prefer the TWO-letter form from
+  ' /Localization/Cultures: it is what reaches the provider, and it preserves
+  ' regional variants that the 3-letter form collapses (zh-tw / zh-cn / zh-hk
+  ' all share "zho"; es-419 shares "spa" with Castilian).
+  '
+  ' @param itemId - The Movie or Episode ID
+  ' @param language - Language code (see above; 2-letter or regional preferred)
+  ' @param isPerfectMatch - Restrict to file-hash matches only. Defaults false;
+  '                         a true value returns only results whose IsHashMatch
+  '                         is set, which is frequently an empty list.
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildSearchRemoteSubtitlesRequest(itemId as string, language as string, isPerfectMatch = false as boolean) as dynamic
+    params = {}
+    if isPerfectMatch then params.isPerfectMatch = "true"
+    return m.listReq("GET", buildURL(Substitute("/Items/{0}/RemoteSearch/Subtitles/{1}", itemId, language), params))
+  end function
+
+  ' Build a request AA to have the SERVER download a remote subtitle onto the
+  ' item, for use with fetchRes() (not SubmitSideEffect: see below).
+  '
+  ' The response carries NO success information: the controller wraps the
+  ' download in try/catch, logs any failure, and returns 204 either way, then
+  ' queues the metadata refresh ASYNCHRONOUSLY (QueueRefresh). A missing
+  ' provider, absent credentials, and an exhausted daily quota all yield the
+  ' same 204 as a success. The only honest completion signal is re-fetching the
+  ' item and diffing its subtitle MediaStreams: see newSubtitleStreams().
+  '
+  ' @param itemId - The Movie or Episode ID
+  ' @param subtitleId - RemoteSubtitleInfo.Id from a search result
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildDownloadRemoteSubtitleRequest(itemId as string, subtitleId as string) as dynamic
+    return m.validatedReq("POST", buildURL(Substitute("/Items/{0}/RemoteSearch/Subtitles/{1}", itemId, subtitleId)))
+  end function
+
+  ' Build a request AA to delete an EXTERNAL subtitle file from an item, for
+  ' use with fetchRes().
+  '
+  ' It takes the stream, not an index, and that is the point. The server deletes
+  ' MediaStream.Path unconditionally, and for an EMBEDDED stream that path is
+  ' the media container, so aiming this at the wrong stream destroys the
+  ' user's movie, not a subtitle. This used to accept a bare integer and warn
+  ' the caller in prose to check IsExternal first. Prose is not a guard: the
+  ' subtitle panel's list was ALSO external-only at the time, so the safety
+  ' rested on two separate places staying in agreement, and the moment that
+  ' list grew to include embedded streams (so it could describe the item
+  ' honestly) the only thing standing between a mis-wired row and a deleted
+  ' container was a comment. Requiring the stream means the check happens here,
+  ' once, and cannot be forgotten by a future caller.
+  '
+  ' A non-external stream returns INVALID rather than raising: callers already
+  ' treat an invalid request as "cannot do this" (validatedReq does the same
+  ' when no server URL is set), so refusing degrades into an inert button
+  ' instead of a crash.
+  '
+  ' The one hazard left with the caller: Index must come from a FRESH item
+  ' fetch. A download inserts a subtitle at index 0 and renumbers every other
+  ' stream, so a stale index deletes the wrong file, or errors (observed as
+  ' HTTP 400) if it now points past the end.
+  '
+  ' Unlike download, delete is SYNCHRONOUS end-to-end: the controller awaits
+  ' RefreshMetadata, so the next GET /Items/{id} already reflects the new
+  ' stream list (verified: correct at t+0s).
+  '
+  ' @param itemId - The video item ID
+  ' @param stream - The subtitle MediaStream AA to delete; must be IsExternal
+  ' @returns Request AA: { method, url }, or invalid if the stream is not an
+  '          external subtitle, has no index, or the server URL is not set
+  function BuildDeleteSubtitleRequest(itemId as string, stream as dynamic) as dynamic
+    if not isValid(stream) then return invalid
+    ' Explicitly true: an absent IsExternal must read as "not safe", never as
+    ' "probably fine".
+    if stream.IsExternal <> true then return invalid
+    if not isValid(stream.Index) then return invalid
+
+    return m.validatedReq("DELETE", buildURL(Substitute("/Videos/{0}/Subtitles/{1}", itemId, stream.Index.toStr())))
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' LOCALIZATION ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Build a request AA for the server's culture list, for use with fetchRes() or
+  ' fetchJson(). Returns an array of CultureDto.
+  '
+  ' Worth caching for the session: it is static per server (192 entries on
+  ' 10.11.11) and is only needed to populate a language picker.
+  '
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetCulturesRequest() as dynamic
+    return m.listReq("GET", buildURL("/Localization/Cultures"))
+  end function
+
+  ' Build a request AA for the server's library options, for use with fetchRes()
+  ' or fetchJson(). Returns a LibraryOptionsResultDto.
+  '
+  ' Used to learn which metadata PLUGINS the server has installed (SubtitleFetchers
+  ' lists every installed subtitle provider by name), so a feature that needs one
+  ' can be hidden rather than offered and then fail empty. Read by
+  ' source/utils/serverCapabilities.bs.
+  '
+  ' Unchanged from 10.7.0 through 12.0, and authorized for ANY signed-in user
+  ' (Policies.FirstTimeSetupOrDefault), so it needs no V1/V2 branch and no admin.
+  ' libraryContentType is omitted on purpose: the server then reports plugins for
+  ' Series, Season, Episode and Movie, exactly the types subtitle search supports.
+  '
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetLibraryOptionsInfoRequest() as dynamic
+    return m.validatedReq("GET", buildURL("/Libraries/AvailableOptions"))
+  end function
+
+  ' Build a request AA for the server configuration, for use with fetchRes() or
+  ' fetchAsync(). Returns a ServerConfiguration.
+  '
+  ' Read for MaxResumePct: the percentage past which the server records playback as
+  ' finished instead of storing a resume position (source/utils/versionResume.bs).
+  ' Authorized for ANY signed-in user, not only admins: a non-admin account got 200 on
+  ' 10.7.7, 10.10.7, 10.11.11 and 12.0.0.
+  '
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetServerConfigurationRequest() as dynamic
+    return m.validatedReq("GET", buildURL("/System/Configuration"))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' FILTERS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -693,14 +878,32 @@ class ApiClient
     return m.validatedReq("GET", buildURL("/items/filters", params))
   end function
 
+  ' Build a request AA for GetFilters2, for use with fetchRes() or fetchJson().
+  '
+  ' A SECOND filters endpoint, not a replacement: the two return disjoint sets.
+  ' `/items/filters` carries OfficialRatings and Years, which this one does not;
+  ' this one carries AudioLanguages and SubtitleLanguages (12.0+), which that one
+  ' does not. A caller wanting both has to ask twice, verified against the
+  ' 10.11.11 and 12.0.0 OpenAPI specs, where `QueryFiltersLegacy` and
+  ' `QueryFilters` are separate schemas.
+  '
+  ' On servers below 12.0 the response omits the language keys entirely, so their
+  ' absence is a usable capability probe rather than an empty-list ambiguity.
+  '
+  ' @param params - Query parameters (userid, parentid, includeitemtypes, etc.)
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetFilters2Request(params = {} as object) as dynamic
+    return m.validatedReq("GET", buildURL("/items/filters2", params))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' IMAGE ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
   ' Build a HEAD request AA to check if an item image exists, for use with fetchRes() or fetchJson().
-  ' Caller checks res.ok — no body is returned for HEAD requests.
+  ' Caller checks res.ok: no body is returned for HEAD requests.
   ' @param id - Item ID
-  ' @param imageType - Type of image (e.g. "logo", "Primary")
+  ' @param imageType - Type of image (for example "logo", "Primary")
   ' @param imageIndex - Image index (default 0)
   ' @returns Request AA: { method, url } or invalid if server URL not set
   function BuildHeadItemImageRequest(id as string, imageType as string, imageIndex = 0 as integer) as dynamic
@@ -805,11 +1008,14 @@ class ApiClient
   function BuildGetLiveTvScheduleRequest(params as object) as dynamic
     url = buildURL("/LiveTv/Programs")
     if not isValid(url) then return invalid
+    ' A POST that only reads, so the pool may skip it once its caller is gone
+    ' (apiPool.bs, "Skipping a request nobody is waiting for").
     return {
       method: "POST",
       url: url,
       body: FormatJson(params),
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
+      skippable: true
     }
   end function
 
@@ -866,6 +1072,16 @@ class ApiClient
     return m.validatedReq("DELETE", buildURL(Substitute("/LiveTv/SeriesTimers/{0}", timerId)))
   end function
 
+  ' Build a request AA to close a live stream the server opened for PlaybackInfo, for use with
+  ' SubmitSideEffect(). Each close releases one consumer; the server closes the stream when none
+  ' remain. The same endpoint and query on every supported server (10.7.0 through 12.x).
+  ' @param liveStreamId - The media source's LiveStreamId
+  ' @returns Request AA: { method, url } or invalid if the id is empty or no server URL is set
+  function BuildCloseLiveStreamRequest(liveStreamId as string) as dynamic
+    if liveStreamId = "" then return invalid
+    return m.validatedReq("POST", buildURL("/LiveStreams/Close", { liveStreamId: liveStreamId }))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' PRIVATE HELPERS
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -879,13 +1095,27 @@ class ApiClient
   end function
 
   ' Build a request AA with a validated URL from buildURL().
-  ' Returns invalid if URL construction failed (e.g. server URL not set).
+  ' Returns invalid if URL construction failed (for example server URL not set).
   ' @param method - HTTP method (GET, POST, DELETE, etc.)
-  ' @param url - Result of buildURL() — may be invalid
+  ' @param url - Result of buildURL(); may be invalid
   ' @returns Request AA: { method, url } or invalid
   private function validatedReq(method as string, url as dynamic) as dynamic
     if not isValid(url) then return invalid
     return { method: method, url: url }
+  end function
+
+  ' validatedReq for an endpoint whose spec response is a bare ARRAY. It marks the request so the
+  ' pool holds the body to that shape (apiResponse.enforceShape): an ok response then always
+  ' carries an roArray in `json`, and a body that holds no list arrives as not-ok. Every builder
+  ' for such an endpoint must use this: an object body that reaches a caller iterates as its
+  ' keys, and the first field read ends the app.
+  ' @param method - HTTP method
+  ' @param url - Result of buildURL(); may be invalid
+  ' @returns Request AA: { method, url, expect: "list" } or invalid
+  private function listReq(method as string, url as dynamic) as dynamic
+    req = m.validatedReq(method, url)
+    if isValid(req) then req.expect = apiResponse.EXPECT_LIST
+    return req
   end function
 
 end class

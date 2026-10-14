@@ -1,0 +1,36 @@
+import "pkg:/source/utils/remoteSubtitles.bs"
+
+' Unit tests for how the subtitle panel tells a failed search from an empty one.
+'
+' The server answers 200 [] for a search no provider could serve (it catches each provider's
+' error), so an empty list keeps the "no subtitles found" text with its provider hint. What
+' the app can see is a reply that never came, and that must not read as empty. Which replies
+' count as failed is apiResponse.jsonFailure's rule (apiResponseJsonFailure.spec.bs).
+
+namespace tests
+
+  @suite("remoteSubtitles - search outcome")
+  class RemoteSubtitlesSearchOutcomeTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("searchStatusKey()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("says the search failed, never that nothing was found, when it failed")
+    function _()
+      m.assertEqual(remoteSubtitles.searchStatusKey(true, 0), translationKeys.MessageSubtitleSearchFailed)
+    end function
+
+    @it("says nothing was found for an answered empty search")
+    function _()
+      m.assertEqual(remoteSubtitles.searchStatusKey(false, 0), translationKeys.MessageNoSubtitlesFound)
+    end function
+
+    @it("says nothing over results")
+    function _()
+      m.assertEqual(remoteSubtitles.searchStatusKey(false, 3), "")
+    end function
+
+  end class
+
+end namespace

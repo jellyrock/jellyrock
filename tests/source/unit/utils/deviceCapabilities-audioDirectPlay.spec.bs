@@ -38,7 +38,7 @@ namespace tests
 
     @it("advertises m4a/m4b under the JELLYFIN container names while probing Roku mp4")
     function _()
-      ' Roku does not recognise "m4a"/"m4b" as containers at all — only "mp4".
+      ' Roku does not recognize "m4a"/"m4b" as containers at all, only "mp4".
       di = m.fakeDi(["aac/mp4", "alac/mp4"])
       profiles = getAudioDirectPlayProfiles(di, ["aac", "alac"])
 
@@ -69,9 +69,9 @@ namespace tests
 
     @it("emits mp3, flac, wav and aiff with NO AudioCodec field")
     function _()
-      ' wav and aiff MUST stay codec-open: Jellyfin reports the fine-grained codec name
+      ' wav and aiff must stay codec-open: Jellyfin reports the fine-grained codec name
       ' ("pcm_s16le" for a .wav, "pcm_s16be" for an .aiff), which never equals the "pcm"
-      ' this profile can probe — an AudioCodec list would match nothing at all.
+      ' this profile can probe, so an AudioCodec list would match nothing at all.
       di = m.fakeDi(["mp3/mp3", "flac/flac", "pcm/wav", "lpcm/wav", "pcm/"])
       profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac", "pcm", "lpcm"])
 
@@ -84,7 +84,7 @@ namespace tests
 
     @it("probes with NO container for formats Roku has no container name for")
     function _()
-      ' Roku answers false for the container strings "aac" and "aiff" for EVERY codec, so
+      ' Roku answers false for the container strings "aac" and "aiff" for every codec, so
       ' probing under the Jellyfin name would read as unsupported. These probe bare.
       di = m.fakeDi(["aac/", "pcm/"])
       profiles = getAudioDirectPlayProfiles(di, ["aac", "pcm"])
@@ -98,12 +98,32 @@ namespace tests
     @it("advertises one ogg entry, which covers .ogg, .oga and .opus alike")
     function _()
       ' Measured on a live 10.11.11: all three report Container "ogg" from /PlaybackInfo.
+      di = m.fakeDi(["vorbis/ogg", "flac/ogg"])
+      profiles = getAudioDirectPlayProfiles(di, ["vorbis", "opus", "flac"])
+
+      entry = m.containerFor(profiles, "ogg")
+      m.assertNotInvalid(entry)
+      m.assertEqual(entry.AudioCodec, "vorbis,flac")
+    end function
+
+    @it("never advertises opus in ogg, even on a device that says it decodes it")
+    function _()
+      ' Opus in Ogg hangs the player on some models although CanDecodeAudio says yes
+      ' (issue #1061), so the device's answer must not bring it back.
       di = m.fakeDi(["vorbis/ogg", "opus/ogg", "flac/ogg"])
       profiles = getAudioDirectPlayProfiles(di, ["vorbis", "opus", "flac"])
 
       entry = m.containerFor(profiles, "ogg")
       m.assertNotInvalid(entry)
-      m.assertEqual(entry.AudioCodec, "vorbis,opus,flac")
+      m.assertEqual(entry.AudioCodec, "vorbis,flac", "opus must be transcoded in ogg")
+    end function
+
+    @it("advertises no ogg entry for a device that decodes only opus there")
+    function _()
+      di = m.fakeDi(["opus/ogg"])
+      profiles = getAudioDirectPlayProfiles(di, ["vorbis", "opus", "flac"])
+
+      m.assertInvalid(m.containerFor(profiles, "ogg"), "an ogg entry would carry no codec the device can safely play")
     end function
 
     @it("advertises mka under mkv, bounded to what the device decodes there")
@@ -120,7 +140,7 @@ namespace tests
     @it("never puts a codec name in the Container field")
     function _()
       ' The bug this replaced shipped Container:"mp3,mp2,pcm,lpcm,flac,alac,aac,vorbis,mpg123"
-      ' — a CODEC list in a field Jellyfin matches against MediaSource.Container.
+      ' That is a CODEC list in a field Jellyfin matches against MediaSource.Container.
       di = m.fakeDi(["aac/mp4", "alac/mp4", "mp3/mp3", "flac/flac", "vorbis/ogg", "pcm/wav", "aac/"])
       profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac", "aac", "alac", "vorbis", "pcm", "lpcm", "mpg123"])
 
@@ -151,7 +171,7 @@ namespace tests
     @it("omits ac3 and eac3 on a device that cannot output them")
     function _()
       ' A Stick 4K in Stereo out answers false for every surround codec, including
-      ' PassThru — it must advertise neither container.
+      ' PassThru, so it must advertise neither container.
       di = m.fakeDi(["mp3/mp3"])
       profiles = getAudioDirectPlayProfiles(di, ["ac3", "eac3", "mp3"])
 
@@ -206,6 +226,32 @@ namespace tests
       end if
     end function
 
+    @it("keeps truehd out of every video row, even where Roku answers yes to mat")
+    function _()
+      ' Regression guard on the REAL builder. The video mkv row used to add truehd off
+      ' a bare CanDecodeAudio({ Codec: "mat" }), which is true on a Roku Ultra `4850X`
+      ' with a TrueHD soundbar, and a movie direct-played that way buffers with
+      ' audioFormat=mat and then fails. Only a device whose bare mat probe is true can
+      ' fail this; elsewhere it passes trivially.
+      for each profile in GetDirectPlayProfiles()
+        if profile.Type = "Video" and isValid(profile.AudioCodec)
+          m.assertFalse(arrayHasValue(profile.AudioCodec.split(","), "truehd"), "truehd must not be direct-played in " + profile.Container + " — the server must convert its audio")
+        end if
+      end for
+    end function
+
+    @it("keeps dtshd out of every row, even where Roku answers yes to it")
+    function _()
+      ' Regression guard on the REAL builder. Every row used to add dtshd off a PassThru
+      ' yes, which a Roku Ultra `4850X` gives on a DTS-HD soundbar, though Roku's media
+      ' spec lists no DTS-HD. Only a device that says yes can fail this.
+      for each profile in GetDirectPlayProfiles()
+        if isValid(profile.AudioCodec)
+          m.assertFalse(arrayHasValue(profile.AudioCodec.split(","), "dtshd"), "dtshd must not be direct-played in " + profile.Container)
+        end if
+      end for
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("canDecodeAudioInContainer()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -213,7 +259,7 @@ namespace tests
     @it("omits the Container parameter entirely when the Roku container name is empty")
     function _()
       ' Passing an unknown Container makes the API answer false for every codec, which is
-      ' indistinguishable from a real no — so the bare question must send no Container.
+      ' indistinguishable from a real no, so the bare question must send no Container.
       seen = {}
       di = {
         seen: seen,
@@ -247,23 +293,23 @@ namespace tests
 
     @it("keeps mat out of every container row, and sends no probe to decide it")
     function _()
-      ' Two separate reasons, and the second is the load-bearing one.
+      ' Two separate reasons, and the second is the one that decides it.
       '
       ' The probe cannot answer: Roku returns { container: ["mat"], result: false,
       ' updated: "container" } for mat + ANY container, because it wants Container to
-      ' BE "mat" — so that false is a rejected question, not a real "no".
+      ' BE "mat", so that false is a rejected question, not a real "no".
       '
       ' And truehd must stay OUT of the container rows regardless. Falling back to the
-      ' bare probe here is the obvious-looking repair (the video mkv row does exactly
-      ' that, so the audio row looks like it under-claims truehd) and it ships a HANG:
-      ' measured on a Roku Ultra `4850X` with a TrueHD-capable soundbar, a 6ch TrueHD
-      ' stream in .mka reaches buffering with audioFormat=mat and never reaches
-      ' playing — 45 s, under streamFormat mkv / mka / unset alike — while a
+      ' bare probe here is the obvious-looking repair (the bare probe says yes on a
+      ' TrueHD soundbar, so the rows look like they under-claim it) and it ships a HANG:
+      ' measured 2026-08-30 on a Roku Ultra `4850X` with a TrueHD-capable soundbar, a
+      ' 6ch TrueHD stream in .mka reaches buffering with audioFormat=mat and never
+      ' reaches playing (45 s, under streamFormat mkv / mka / unset alike), while a
       ' control holding DTS in `mka` played at 0.5 s in the same run.
       called = { count: 0 }
       di = {
         called: called,
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           m.called.count = m.called.count + 1
           return { Result: true }
         end function

@@ -4,23 +4,33 @@
  *
  * These carry the whole correctness of "leave the device as you found it", and
  * the bug they replace was invisible precisely because it was only ever checked
- * by eye — the old 5-key restore reported `VERIFIED CLEAN` while leaving a demo
+ * by eye: the old 5-key restore reported `VERIFIED CLEAN` while leaving a demo
  * auth token and a whole registry section on the device. Every case below is a
  * shape that was actually observed on `.178` on 2026-08-10, not an invented one.
  *
- * `.test.js` (Vitest, `npm run test:scripts`, no device) — distinct from the
+ * `.test.js` (Vitest, `npm run test:scripts`, no device), distinct from the
  * `.spec.js` files under `specs/`, which drive real hardware.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, it, expect } from 'vitest';
-import { planRestore, compareRegistries, snapshotDir, buildAcceptedRecord } from './registry.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  planRestore,
+  compareRegistries,
+  snapshotDir,
+  buildAcceptedRecord,
+  writeSnapshotFile,
+  snapshotRegistry,
+} from './registry.js';
 import { runsLedgerPath } from '../../../scripts/run-record.js';
+import { _internals as lockInternals } from '../../../scripts/device-lock.js';
+import { setupRtaEnv } from './driver.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-/** A separate object graph with equal contents — these compare values, not identity. */
+/** A separate object graph with equal contents: these compare values, not identity. */
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 describe('planRestore', () => {
@@ -71,7 +81,7 @@ describe('planRestore', () => {
 
 // The bug that motivated this: `resolveUser()` validates the stored token over
 // REST on every cold boot and re-logins on rejection, and the restore's verify IS
-// a cold boot — so writing the snapshot's token back could never converge, and the
+// a cold boot, so writing the snapshot's token back could never converge, and the
 // kept snapshot then wedged every LATER run. Reproduced on `.177` before the fix.
 describe('session credentials the app re-mints for itself', () => {
   const SNAP = { user1: { authToken: 'token-A', username: 'demo', serverId: 'srv' } };
@@ -96,8 +106,8 @@ describe('session credentials the app re-mints for itself', () => {
   });
 
   it('still fails when a credential was LEFT BEHIND in a section that had none', () => {
-    // The leak direction — a token we added to a real user's section. Reported by
-    // the appeared-key pass, which presence-comparison deliberately does not soften.
+    // The leak direction: a token we added to a real user's section. Reported by
+    // the appeared-key pass, which presence-comparison does not soften.
     const saved = { user1: { username: 'demo' } };
     const live = { user1: { username: 'demo', authToken: 'leaked' } };
     expect(compareRegistries(saved, live).map((d) => d.key)).toEqual(['authToken']);
@@ -113,9 +123,9 @@ describe('session credentials the app re-mints for itself', () => {
 
   it('still WRITES the user s own credential back, rather than keeping the run s', () => {
     // The exemption is on the COMPARE, never on the restore. An earlier cut of
-    // this fix also skipped the write when the device already had a credential —
-    // "the live one is the app's own and it works" — and the hardware repro
-    // refuted it: with a deliberately-invalid token planted, the restore left that
+    // this fix also skipped the write when the device already had a credential
+    // ("the live one is the app's own and it works") and the hardware repro
+    // refuted it: with an invalid token planted on purpose, the restore left that
     // token in place and reported converged. "As we found it" means the USER's
     // value. If it has expired the app re-logins on next boot, as it would anyway.
     const live = { user1: { authToken: 'token-B', username: 'demo', serverId: 'srv' } };
@@ -129,7 +139,7 @@ describe('session credentials the app re-mints for itself', () => {
 
   it('exempts primaryImageTag on the same terms as the token', () => {
     // The second member of the set, and the one added on a code-path argument
-    // rather than an observed failure — it rides the same `if saveCredentials`
+    // rather than an observed failure: it rides the same `if saveCredentials`
     // block in `session.bs` (both branches), written from the same login response.
     // That reasoning is exactly what a test has to pin, because nothing else will
     // catch it if the set and the app's write block ever drift apart.
@@ -144,13 +154,13 @@ describe('session credentials the app re-mints for itself', () => {
   });
 });
 
-// `--accept` clears the snapshot, so this record is the ONLY durable trace that a
+// `--accept` clears the snapshot, so this record is the only durable trace that a
 // device was left not-as-found. What it must not become is a second copy of the
 // secret the snapshot already is.
 describe('the accepted-difference record', () => {
   const record = (diffs, previous = null) =>
     buildAcceptedRecord({
-      host: '192.168.1.177',
+      host: '192.0.2.10',
       acceptedAt: '2026-08-11T20:00:00Z',
       label: 'restoreRegistry',
       diffs,
@@ -187,17 +197,17 @@ describe('the accepted-difference record', () => {
       { section: 'u1', key: 'authToken', want: 'x', got: null },
       { section: 'u1', key: 'username', want: 'testuser', got: null },
     ]);
-    expect(r.host).toBe('192.168.1.177');
+    expect(r.host).toBe('192.0.2.10');
     const event = onlyEvent(r);
     expect(event.acceptedAt).toBe('2026-08-11T20:00:00Z');
     expect(event.differences).toHaveLength(2);
-    // An absent value has to read as absent, not as an empty string — "the key is
+    // An absent value has to read as absent, not as an empty string: "the key is
     // gone" and "the key is blank" are different damage.
     expect(event.differences[0].got).toBe('<absent>');
   });
 
   it('APPENDS to an existing record instead of overwriting it', () => {
-    // Nothing repairs an accepted difference — the original value is gone — so an
+    // Nothing repairs an accepted difference (the original value is gone), so an
     // earlier accept is still live damage when a later one lands. Overwriting would
     // drop it silently while leaving the device exactly as wrong, which is the same
     // shape of loss this record exists to prevent.
@@ -209,7 +219,7 @@ describe('the accepted-difference record', () => {
   });
 
   it('starts a fresh history rather than throwing on an unusable prior record', () => {
-    // A partial history beats no record at all — the write must not be what fails.
+    // A partial history beats no record at all, and the write must not be what fails.
     const diffs = [{ section: 'u1', key: 'k', want: 'x', got: 'y' }];
     expect(record(diffs, {}).events).toHaveLength(1);
     expect(record(diffs, null).events).toHaveLength(1);
@@ -260,7 +270,7 @@ describe('compareRegistries', () => {
   });
 
   it('does NOT ignore anything else the app writes', () => {
-    // available_users is app-written too, but it is user state — a demo entry
+    // available_users is app-written too, but it is user state: a demo entry
     // appended during a run is a leak, not bookkeeping, so it must be caught.
     const saved = { JellyRock: { available_users: '[{"username":"testuser"}]' } };
     const live = {
@@ -275,9 +285,9 @@ describe('the snapshot survives a build', () => {
   // need it. The snapshot lived in `out/rta/`, every `build*` script opens with
   // `npx rimraf build/ out/`, and `npm run test:rta` is `npm run build && node
   // scripts/rta-run.js`. So: abandon a run (device left dirty, snapshot
-  // deliberately KEPT) → re-run `npm run test:rta` → the build deleted the
-  // snapshot before `snapshotRegistry()` could restore from it → the run captured
-  // the demo-server state as the user's session and restored THAT forever after.
+  // kept on purpose), then re-run `npm run test:rta`. The build deleted the
+  // snapshot before `snapshotRegistry()` could restore from it, so the run captured
+  // the demo-server state as the user's session and restored that forever after.
   //
   // Asserted as a property rather than a path string, so moving the file again is
   // fine and moving it back under `out/` is not.
@@ -297,25 +307,148 @@ describe('the snapshot survives a build', () => {
   });
 
   it('pins the other half: the RTA entry point builds before it runs', () => {
-    // Both halves are needed for the bug — a wiping build is harmless unless a
+    // Both halves are needed for the bug: a wiping build is harmless unless a
     // device entry point runs one first. If `test:rta` ever stops building, this
     // fails and the gate above can be reconsidered rather than cargo-culted.
     expect(pkg().scripts['test:rta']).toMatch(/npm run build\b/);
   });
 
   it('agrees with the run ledger about where survive-a-build state lives', () => {
-    // The root is spelled out in THREE modules — `registry.js` (this snapshot),
+    // The root is spelled out in three modules: `registry.js` (this snapshot),
     // `run-record.js` (the ledger) and `device-lock.js` (`device:status`'s stranded
-    // report) — because the import graph forbids a shared constant: run-record
+    // report). The import graph forbids a shared constant: run-record
     // imports device-lock, so device-lock cannot import back, and importing this
     // module there would drag the whole roku-test-automation client into one that
     // only knows about locks.
     //
     // The drift that costs something is SILENT: `device:status` reads the directory
     // with a `readdirSync` whose catch returns early, so if the root moved and it
-    // was missed there, the stranded-snapshot warning would simply stop appearing —
+    // was missed there, the stranded-snapshot warning would stop appearing,
     // going quiet at exactly the moment it should speak. This pins the two that CAN
     // see each other, which is the cheaper half of closing that.
     expect(runsLedgerPath().startsWith(`${snapshotDir()}${path.sep}`)).toBe(true);
+  });
+});
+
+// The snapshot file is present for the whole of a healthy run (written before any
+// seeding, removed only by a verified restore), so on disk it is indistinguishable
+// from one a killed run stranded. `device:status` read it as stranded and told you
+// to run `rta:restore`, which during a live run would revert the registry underneath
+// it. `ownerPid` is the field that separates the two cases.
+//
+// Pinned END TO END rather than as "the writer writes a pid", because the failure
+// that costs something is the two modules disagreeing about the field: this writer
+// lives here and the reader below lives in `device-lock.js`, which cannot import this
+// module (it would drag the whole roku-test-automation client into a module that only
+// knows about locks). Nothing but a test spans that gap, and a disagreement would be
+// silent in the dangerous direction: a live run reported as stranded, with the
+// destructive command attached.
+//
+// It is not the only consequential reader, though it was described as one while it was
+// the only one gated: `snapshotRegistry()` reads the same field and ACTS on it, and is
+// covered separately at the bottom of this file.
+describe('a snapshot says which process owns it', () => {
+  const HOST = '192.0.2.11';
+  let dir;
+  let realEnv;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapshot-owner-'));
+    // The writer stamps the host from the live RTA config. Feed it a synthetic
+    // one rather than the developer's `.env`, so this asserts the same thing in
+    // CI (no ROKU_IP, no device) as it does on a machine with hardware. Pure
+    // config: `setupRtaEnv` builds an in-memory config and touches no network.
+    realEnv = { ip: process.env.ROKU_IP, password: process.env.ROKU_PASSWORD };
+    process.env.ROKU_IP = HOST;
+    process.env.ROKU_PASSWORD = 'not-a-real-password';
+    setupRtaEnv();
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    for (const [key, value] of [
+      ['ROKU_IP', realEnv.ip],
+      ['ROKU_PASSWORD', realEnv.password],
+    ]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  // The real writer, into a temp dir: `.device-runs/` belongs to real device runs
+  // and the suite fails if anything here writes there.
+  const writeInto = () => writeSnapshotFile({}, path.join(dir, `registry-${HOST}.json`));
+
+  it('records the writing process, so a reader can tell live from stranded', () => {
+    const parsed = JSON.parse(fs.readFileSync(writeInto(), 'utf8'));
+    expect(parsed.ownerPid).toBe(process.pid);
+    expect(parsed.host).toBe(HOST);
+  });
+
+  it('is read as a live run by device:status, which then withholds the restore', () => {
+    // This test process is the owner, so the snapshot it wrote is "live".
+    writeInto();
+    const [line] = lockInternals.strandedSnapshotLines(dir);
+    expect(line).toContain('IN PROGRESS');
+    expect(line).not.toContain('rta:restore');
+  });
+});
+
+// The destructive sibling of the reader above. `device:status` only REPORTS on a
+// live-owned snapshot; `snapshotRegistry()` runs at the start of every single run
+// and, before this gate, restored from one unconditionally, reverting the registry
+// underneath a live run and relaunching its channel. The device lock normally keeps
+// two runs apart, but it degrades to advisory on `RTA_SKIP_LOCK=1`, on a missing
+// GitHub token and on an unreachable GitHub, so "two runs at once" is an ordinary
+// local condition rather than an exotic one.
+//
+// Drives the REAL `snapshotRegistry()` rather than a re-implementation of its
+// branch, because what has to hold is that the guard sits ahead of the restore;
+// a test of the predicate alone would still pass if the call moved below it.
+describe('snapshotRegistry refuses a device another run still owns', () => {
+  const HOST = '192.0.2.11';
+  let dir;
+  let cwd;
+  let realEnv;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(fs.realpathSync(os.tmpdir()) + path.sep + 'snapshot-live-');
+    cwd = process.cwd();
+    realEnv = { ip: process.env.ROKU_IP, password: process.env.ROKU_PASSWORD };
+    process.env.ROKU_IP = HOST;
+    process.env.ROKU_PASSWORD = 'not-a-real-password';
+    setupRtaEnv();
+    // `SNAPSHOT_DIR` is relative, so the snapshot a run finds is the one under CWD.
+    // That is what lets this exercise the real function without writing into the
+    // repo's `.device-runs/`, which `no-durable-writes.js` fails the suite over.
+    process.chdir(dir);
+  });
+  afterEach(() => {
+    process.chdir(cwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+    for (const [key, value] of [
+      ['ROKU_IP', realEnv.ip],
+      ['ROKU_PASSWORD', realEnv.password],
+    ]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it('throws instead of restoring when the snapshot owner is alive', async () => {
+    // This test process is the owner, so what it writes is a live snapshot: the
+    // same lever the `device:status` test above pulls.
+    const file = writeSnapshotFile(
+      { JellyRock: { server: 'http://home:8098' } },
+      path.join(dir, snapshotDir(), `registry-${HOST}.json`),
+    );
+
+    await expect(snapshotRegistry()).rejects.toThrow(/STILL RUNNING/);
+
+    // It must refuse BEFORE the device is touched: reaching ODC would mean the
+    // guard is merely first in the message, not first in the sequence. No RTA
+    // build is resident under this temp CWD, so an ODC call could not succeed;
+    // a rejection naming the registry read rather than the owner would say so.
+    expect(fs.existsSync(file)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).ownerPid).toBe(process.pid);
   });
 });

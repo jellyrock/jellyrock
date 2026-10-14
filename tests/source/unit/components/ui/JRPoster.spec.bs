@@ -1,0 +1,92 @@
+namespace tests
+
+  ' JRPoster is recycled by every grid and row cell: GridItem and JRRowItem call
+  ' resetBadge() before binding the next item, then write that item's watch state.
+  ' So a reset has to clear the badge WITHOUT rendering the reset values (an unplayed
+  ' count of 0 is otherwise drawn as a checkmark), and the poster has to keep
+  ' reacting to the next item's writes afterwards.
+  @suite("JRPoster - watch badge across resetBadge")
+  class JRPosterTests extends tests.BaseTestSuite
+
+    private poster as object
+    private badge as object
+    private count as object
+    private checkmark as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      ' JRPoster.init() reads this to decide whether the badge exists at all.
+      settings = m.global.user.settings
+      settings.uiTvShowsDisableUnwatchedCount = false
+
+      m.poster = CreateObject("roSGNode", "JRPoster")
+      m.badge = m.poster.findNode("watchBadgeBackground")
+      m.count = m.poster.findNode("unplayedVideosCount")
+      m.checkmark = m.poster.findNode("checkmark")
+    end sub
+
+    protected override sub afterEach()
+      m.checkmark = invalid
+      m.count = invalid
+      m.badge = invalid
+      m.poster = invalid
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resetBadge")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("clears a watched badge without drawing a checkmark for the reset values")
+    function _()
+      m.poster.isWatched = true
+      m.assertTrue(m.badge.visible, "precondition: watched item shows the badge")
+      m.assertTrue(m.checkmark.visible, "precondition: watched item shows the checkmark")
+
+      m.poster.callFunc("resetBadge")
+
+      m.assertFalse(m.badge.visible, "badge hidden after reset")
+      m.assertFalse(m.checkmark.visible, "checkmark hidden after reset")
+      m.assertEqual(m.count.text, "", "count cleared after reset")
+      m.assertEqual(m.poster.unplayedCount, 0)
+      m.assertFalse(m.poster.isWatched)
+    end function
+
+    @it("still renders the next item's unplayed count after a reset")
+    function _()
+      m.poster.isWatched = true
+      m.poster.callFunc("resetBadge")
+
+      m.poster.unplayedCount = 3
+
+      m.assertTrue(m.badge.visible, "badge shown for the next item")
+      m.assertTrue(m.count.visible, "count shown for the next item")
+      m.assertEqual(m.count.text, "3")
+      m.assertFalse(m.checkmark.visible, "no checkmark for an unplayed item")
+    end function
+
+    @it("still renders the next item's watched state after a reset")
+    function _()
+      m.poster.unplayedCount = 5
+      m.poster.callFunc("resetBadge")
+
+      m.poster.isWatched = true
+
+      m.assertTrue(m.badge.visible, "badge shown for the next item")
+      m.assertTrue(m.checkmark.visible, "checkmark shown for a watched item")
+      m.assertFalse(m.count.visible, "no count for a watched item")
+    end function
+
+    @it("removes the progress bar on reset and adds it back for the next item")
+    function _()
+      m.poster.playedPercentage = 40
+      m.assertNotInvalid(m.poster.findNode("progressBar"), "precondition: progress bar shown")
+
+      m.poster.callFunc("resetBadge")
+      m.assertInvalid(m.poster.findNode("progressBar"), "progress bar removed after reset")
+
+      m.poster.playedPercentage = 25
+      m.assertNotInvalid(m.poster.findNode("progressBar"), "progress bar shown for the next item")
+    end function
+  end class
+end namespace

@@ -1,12 +1,39 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiIds.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/enums/NextUpSeriesStart.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/streamSelection.bs"
 
 function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
+  res = ItemPostPlaybackInfoResponse(id, mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding)
+  if isValid(res) and res.ok then return res.json
+  return invalid
+end function
+
+' ItemPostPlaybackInfo's pool response itself, so a caller can tell an answer that never came
+' (apiResponse.noAnswer) from a refusal.
+'
+' @param {integer} timeoutMs - the request's HTTP limit (apiTimeout); 0 keeps the default
+' @return the pool response AA, or invalid when the caller's wait ran out
+function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer) as dynamic
+  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding)
+  req = GetApi().BuildPostPlaybackInfoRequest(id, postData)
+  if isValid(req) and timeoutMs > 0 then req.timeoutMs = timeoutMs
+  return fetchRes(req, "playbackInfo")
+end function
+
+' buildPlaybackInfoPostData: The PlaybackInfo request body, tuned to the version being played.
+'
+' Split from ItemPostPlaybackInfo so the body can be tested without a server.
+'
+' @return {object} the POST body for BuildPostPlaybackInfoRequest
+function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean) as object
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -19,9 +46,16 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   ' Dynamically adjust transcoding segment length and bitrate based on the video's
   ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
   ' and playlist-too-large errors during HLS playback.
-  hasMediaSource = isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources)
-  if hasMediaSource
-    mediaSource = videoMetadata.mediaSourcesData.mediaSources[0]
+  '
+  ' Everything below that reads the source (its bitrate and runtime here, its streams and
+  ' container for the Dolby Vision, H264 and audio decisions) reads the version this request
+  ' is for, not the server's default (mediaSourceForId).
+  playedSource = invalid
+  if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData)
+    playedSource = mediaSourceForId(videoMetadata.mediaSourcesData.mediaSources, mediaSourceId)
+  end if
+  if isValid(playedSource)
+    mediaSource = playedSource
     sourceBitrate& = 0
     videoDurationSeconds = 0
 
@@ -47,7 +81,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
       end if
 
       ' Reduce max streaming bitrate only when segment length alone isn't enough.
-      ' Never set MaxStreamingBitrate below the reported source bitrate + 10% headroom —
+      ' Never set MaxStreamingBitrate below the reported source bitrate + 10% headroom:
       ' Jellyfin would reject a remux/direct-stream as exceeding the limit.
       if transcodingParams.maxBitrate > 0
         minAllowedBitrate& = sourceBitrate& * 11& \ 10&
@@ -69,67 +103,22 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   applyMediaSourceToPostData(postData, mediaSourceId, forceTranscoding)
 
   mediaStreams = invalid
-  if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources) and isValid(videoMetadata.mediaSourcesData.mediaSources[0].MediaStreams)
-    mediaStreams = videoMetadata.mediaSourcesData.mediaSources[0].MediaStreams
+  if isValid(playedSource) and isValid(playedSource.MediaStreams)
+    mediaStreams = playedSource.MediaStreams
   end if
 
-  ' DOVI not supported using MKV container, so force remux for DOVI content
-  ' Only run DOVI logic if the user setting exists and is enabled, and caller has not bypassed it
-  ' (bypassDoviPreservation is set when retrying after a buffer overflow to allow direct play)
-  if not bypassDoviPreservation and isValid(mediaStreams) and isValid(globalUser.settings.playbackPreserveDovi) and globalUser.settings.playbackPreserveDovi
-    ' Check if device supports DOVI before proceeding
-    deviceSupportsDovi = false
-    di = CreateObject("roDeviceInfo")
-    if canPlay4k()
-      dp = di.GetDisplayProperties()
-      if dp.DolbyVision
-        deviceSupportsDovi = true
-      end if
-    end if
-
-    ' Only proceed with DOVI logic if device supports DOVI
-    if deviceSupportsDovi
-      for each stream in mediaStreams
-        ' always use the first video stream for now
-        ' Note: don't force remux on AV1 codec - see #194
-        if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
-          ' Determine container string
-          containerString = invalid
-          if isValid(videoMetadata.container)
-            containerString = LCase(videoMetadata.container)
-          end if
-
-          ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
-          ' Only apply this for API v2+ servers (10.9+)
-          apiVersion = getApiVersionFromGlobal()
-
-          if apiVersion >= 2 and isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
-            ' is DOVI in the string?
-            if inStr(LCase(stream.VideoRangeType), "dovi") > 0
-              ' add a condition to the mkv container profile to force remux (container swap)
-              postData.DeviceProfile.ContainerProfiles.push({
-                "Type": "Video",
-                "Container": "mkv",
-                "Conditions": [
-                  {
-                    "Condition": "NotEquals",
-                    "Property": "VideoRangeType",
-                    "Value": stream.VideoRangeType,
-                    "IsRequired": true
-                  }
-                ]
-              })
-            end if
-          end if
-          exit for
-        end if
-      end for
-    end if
+  playedContainer = ""
+  if isValid(playedSource)
+    playedContainer = playedSource.Container
+  end if
+  doviProfile = doviRemuxContainerProfile(mediaStreams, playedContainer, globalUser.settings.playbackPreserveDovi, bypassDoviPreservation, getApiVersionFromGlobal())
+  if isValid(doviProfile)
+    postData.DeviceProfile.ContainerProfiles.push(doviProfile)
   end if
 
   ' Cap H264 codec profile when the source video is H264.
   ' Applied dynamically here rather than in the static device profile so it doesn't
-  ' interfere with non-H264 content (e.g. HEVC DoVi remux needs unrestricted resolution).
+  ' interfere with non-H264 content (for example, HEVC DoVi remux needs unrestricted resolution).
   ' 1080p (1920x1080) is the H264 hardware ceiling on all Roku devices, but a lower
   ' user resolution cap is respected if set.
   if isValid(mediaStreams)
@@ -231,10 +220,71 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     end if
   end if
 
-  return fetchJson(GetApi().BuildPostPlaybackInfoRequest(id, postData), "playbackInfo")
+  return postData
 end function
 
-' MetaData about an item — returns a JellyfinBaseItem node.
+' doviRemuxContainerProfile: The container profile that forces a remux of Dolby Vision video in an mkv file, or invalid.
+'
+' DOVI is not supported in the MKV container, so a remux (container swap) is forced for it.
+' The profile tells the server that mkv is only acceptable when VideoRangeType differs from the
+' stream's own value.
+'
+' Hardware is read only after the cheap checks pass: the setting must be on and the caller must
+' not have bypassed it. Only the first video stream with a codec other than AV1 is considered.
+'
+' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
+' @param {dynamic} container - the played source's container, or invalid
+' @param {dynamic} preserveDovi - the playbackPreserveDovi user setting, or invalid
+' @param {boolean} bypass - true when retrying after a buffer overflow, to allow direct play
+' @param {integer} apiVersion - the server's API tier (VideoRangeType needs tier 2)
+' @param {dynamic} mockCapabilities - capabilities AA with isMock = true, for tests
+' @return {dynamic} the container profile AA to add to ContainerProfiles, or invalid
+function doviRemuxContainerProfile(mediaStreams as dynamic, container as dynamic, preserveDovi as dynamic, bypass as boolean, apiVersion as integer, mockCapabilities = invalid as dynamic) as dynamic
+  ' Only run DOVI logic if the user setting exists and is enabled, and caller has not bypassed it
+  ' (bypass is set when retrying after a buffer overflow to allow direct play)
+  if not (not bypass and isValid(mediaStreams) and isValid(preserveDovi) and preserveDovi)
+    return invalid
+  end if
+
+  ' Only proceed with DOVI logic if device supports DOVI
+  if not getDeviceVideoCapabilities(mockCapabilities).supportsDolbyVision
+    return invalid
+  end if
+
+  for each stream in mediaStreams
+    ' always use the first video stream for now
+    ' Note: don't force remux on AV1 codec - see #194
+    if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
+      containerString = JDT_normalizeContainer(container ?? "")
+
+      ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
+      ' Only apply this for API v2+ servers (10.9+)
+      if apiVersion >= 2 and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
+        ' is DOVI in the string?
+        if inStr(LCase(stream.VideoRangeType), "dovi") > 0
+          ' add a condition to the mkv container profile to force remux (container swap)
+          return {
+            "Type": "Video",
+            "Container": "mkv",
+            "Conditions": [
+              {
+                "Condition": "NotEquals",
+                "Property": "VideoRangeType",
+                "Value": stream.VideoRangeType,
+                "IsRequired": true
+              }
+            ]
+          }
+        end if
+      end if
+      exit for
+    end if
+  end for
+
+  return invalid
+end function
+
+' MetaData about an item. Returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.
 function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string, forceRefresh = false as boolean)
   req = GetApi().BuildGetItemRequest(id, { "fields": fields })
@@ -244,142 +294,84 @@ function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string, for
   data = fetchJson(req, "itemMetaData")
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()
-  return transformer.transformBaseItem(data)
+  item = transformer.transformBaseItem(data)
+  inheritSeriesOriginalLanguage(item)
+  return item
 end function
 
-' MetaData for an item detail screen — includes People, Genres, and Studios in addition to
+' inheritSeriesOriginalLanguage: Give an episode its series' OriginalLanguage when track
+' selection needs it (needsSeriesOriginalLanguage()), as the server does for its own pick.
+' One extra request, made only for a viewer whose audio preference is "Original language".
+'
+' @param {dynamic} item - JellyfinBaseItem from ItemMetaData()
+sub inheritSeriesOriginalLanguage(item as dynamic)
+  localUser = m.global.user
+  if not needsSeriesOriginalLanguage(item, localUser.settings, localUser.config) then return
+  series = fetchJson(GetApi().BuildGetItemRequest(item.seriesId), "seriesOriginalLanguage")
+  if isValid(series) and isValidAndNotEmpty(series.OriginalLanguage)
+    item.originalLanguage = series.OriginalLanguage
+  end if
+end sub
+
+' MetaData for an item detail screen. Includes People, Genres, and Studios in addition to
 ' Chapters and Trickplay. Use this instead of ItemMetaData() when populating a detail view.
 function ItemDetailsMetaData(id as string, forceRefresh = false as boolean)
   return ItemMetaData(id, "Chapters,Trickplay,Genres,Studios,People", forceRefresh)
 end function
 
-' Music Artist Data
-function ArtistOverview(name as string)
-  data = fetchJson(GetApi().BuildGetArtistByNameRequest(name), "artistOverview")
-  if not isValid(data) then return invalid
-  return data.overview
-end function
+' ── Music extras requests ─────────────────────────────────────────────────
+' Request builders for ItemDetails' music extras rows, which LoadExtrasRowsTask pipelines.
+' They return a request AA rather than fetching, so the orchestrator owns the round trip,
+' but the params are built here, in the API layer, because that is the scope the API usage
+' manifest reads its request fields from (scripts/generate/api-usage-manifest.js). Built in
+' a component instead, these fields would silently drop out of server-upgrade triage.
 
-' Get list of albums where this artist is the album artist (strict: AlbumArtistIds only).
-' Sorted by year descending so the discography reads newest-first.
-' Does NOT include albums the artist merely contributes to — see AppearsOnList().
-function MusicAlbumList(id as string)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "AlbumArtistIds": id,
+' Albums where this artist is the album artist (strict: AlbumArtistIds only), newest first.
+' Does not include albums the artist only contributes to. See BuildArtistAppearsOnRequest.
+function BuildArtistAlbumsRequest(artistId as string) as dynamic
+  return GetApi().BuildGetItemsByQueryRequest({
+    "AlbumArtistIds": artistId,
     "includeitemtypes": "MusicAlbum",
     "sortBy": "PremiereDate,ProductionYear,SortName",
     "SortOrder": "Descending",
     "Recursive": true
-  }), "albumList")
-  if not isValid(data) then return invalid
-  if not isValid(data.Items) then return invalid
-  transformer = JellyfinDataTransformer()
-  results = []
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
+  })
 end function
 
-' Get list of albums an artist appears on as a contributing artist (not album artist).
-' Uses ContributingArtistIds which Jellyfin defines as artists who appear on the album
-' but are NOT tagged as the album artist — so this row is mutually exclusive with MusicAlbumList().
-' Sorted by year descending.
-function AppearsOnList(id as string)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "ContributingArtistIds": id,
+' Albums an artist appears on as a contributing artist but is not the album artist of:
+' Jellyfin's ContributingArtistIds, so mutually exclusive with BuildArtistAlbumsRequest.
+' Newest first.
+function BuildArtistAppearsOnRequest(artistId as string) as dynamic
+  return GetApi().BuildGetItemsByQueryRequest({
+    "ContributingArtistIds": artistId,
     "includeitemtypes": "MusicAlbum",
     "sortBy": "PremiereDate,ProductionYear,SortName",
     "SortOrder": "Descending",
     "Recursive": true
-  }), "appearsOn")
-  if not isValid(data) then return invalid
-  if not isValid(data.Items) then return invalid
-  transformer = JellyfinDataTransformer()
-  results = []
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
+  })
 end function
 
-' Get list of songs belonging to an artist
-function GetSongsByArtist(id as string, params = {} as object)
-  paramArray = {
-    "AlbumArtistIds": id,
-    "includeitemtypes": "Audio",
-    "sortBy": "SortName",
-    "Recursive": true
-  }
-  ' overwrite defaults with the params provided
-  for each param in params
-    paramArray.AddReplace(param, params[param])
-  end for
-
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest(paramArray), "songsByArtist")
-  results = []
-
-  if not isValid(data) then return invalid
-  if not isValid(data.Items) then return invalid
-  if data.Items.Count() = 0 then return invalid
-
-  transformer = JellyfinDataTransformer()
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
-end function
-
-' Get all Audio tracks by an artist in any capacity (album artist OR contributing artist).
-' Broader than GetSongsByArtist (which uses AlbumArtistIds). Used for the artist Songs row
-' so songs on compilation albums or items with mismatched album-level tags still surface.
-' @param {string} id - MusicArtist item ID
-function GetSongsByArtistBroad(id as string) as dynamic
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "ArtistIds": id,
+' All Audio tracks by an artist in any capacity (album artist OR contributing), so songs on
+' compilations or with mismatched album-level tags still surface. Grouped by album then
+' track; capped at 100 for prolific artists.
+function BuildArtistSongsRequest(artistId as string) as dynamic
+  return GetApi().BuildGetItemsByQueryRequest({
+    "ArtistIds": artistId,
     "includeitemtypes": "Audio",
     "sortBy": "Album,ParentIndexNumber,IndexNumber,SortName",
     "Recursive": true,
     "Limit": 100,
     "EnableTotalRecordCount": false
-  }), "songsByArtistBroad")
-
-  if not isValid(data) then return invalid
-  if not isValid(data.Items) then return invalid
-  if data.Items.Count() = 0 then return invalid
-
-  transformer = JellyfinDataTransformer()
-  results = []
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
+  })
 end function
 
-' Get Songs that are on an Album
-function MusicSongList(id as string)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "parentId": id,
+' The Audio tracks on an album.
+function BuildAlbumSongsRequest(albumId as string) as dynamic
+  return GetApi().BuildGetItemsByQueryRequest({
+    "parentId": albumId,
     "includeitemtypes": "Audio",
     "sortBy": "SortName"
-  }), "songList")
-
-  results = []
-
-  if not isValid(data) then return invalid
-  if not isValid(data.Items) then return invalid
-  if data.Items.Count() = 0 then return invalid
-
-  transformer = JellyfinDataTransformer()
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
+  })
 end function
 
 ' Get audio item metadata (raw, no transform)
@@ -469,26 +461,311 @@ function supportsLyrics() as boolean
   return versionChecker(m.global.server.version, "10.9.0")
 end function
 
+' hasWatchedRegularEpisode: Checks whether a series has a watched episode that is not a special.
+'
+' Mirrors Jellyfin's own "last watched" rule for Next Up (played, ParentIndexNumber <> 0 or
+' null), which is what decides whether a series counts as started. The client needs its own
+' copy because Next Up's disableFirstEpisode param, which used to apply that rule for us, is
+' ignored from Jellyfin 10.11 and removed in 12.0 (#925).
+'
+' The REST API has no "not equals" filter, so the caller fetches watchedRegularEpisodeQuery():
+' played episodes sorted ParentIndexNumber,IndexNumber descending with Limit 1. Specials
+' (season 0) sort below every regular season, so a special on top means no regular episode
+' was watched.
+'
+' @param {dynamic} playedEpisodes - Items query result: { Items: [BaseItemDto] } or invalid
+' @returns {boolean} - true if the top played episode is not a special
+function hasWatchedRegularEpisode(playedEpisodes as dynamic) as boolean
+  if not isValid(playedEpisodes) or not isValidAndNotEmpty(playedEpisodes.Items) then return false
+  seasonNumber = playedEpisodes.Items[0].ParentIndexNumber
+  if not isValid(seasonNumber) then return true
+  return seasonNumber <> 0
+end function
+
+' watchedRegularEpisodeQuery: Items query params whose result hasWatchedRegularEpisode() reads.
+'
+' @param {string} seriesId - The series to check
+' @returns {object} - Params for BuildGetItemsByQueryRequest
+function watchedRegularEpisodeQuery(seriesId as string) as object
+  return {
+    ParentId: seriesId,
+    Recursive: true,
+    IncludeItemTypes: "Episode",
+    IsPlayed: true,
+    SortBy: "ParentIndexNumber,IndexNumber",
+    SortOrder: "Descending",
+    Limit: 1,
+    EnableTotalRecordCount: false,
+    EnableImages: false
+  }
+end function
+
+' nextUpSeriesIds: The series behind a Next Up response's items, each once, in response order.
+'
+' @param {dynamic} items - Next Up items: [BaseItemDto] or invalid
+' @returns {object} - Array of SeriesId strings
+function nextUpSeriesIds(items as dynamic) as object
+  ids = []
+  if not isValidAndNotEmpty(items) then return ids
+  seen = {}
+  for each item in items
+    seriesId = item.SeriesId
+    if isValidAndNotEmpty(seriesId) and not seen.DoesExist(seriesId)
+      seen[seriesId] = true
+      ids.push(seriesId)
+    end if
+  end for
+  return ids
+end function
+
+' playedSpecialsQuery: Items query params for every played special (season 0) in the library.
+'
+' Next Up's started-series filter reads it (planNextUpSeriesLookups). It does not depend on the
+' Next Up response, so it can be sent alongside it.
+'
+' @returns {object} - Params for BuildGetItemsByQueryRequest
+function playedSpecialsQuery() as object
+  return {
+    Recursive: true,
+    IncludeItemTypes: "Episode",
+    IsPlayed: true,
+    ParentIndexNumber: 0,
+    EnableImages: false,
+    EnableUserData: false,
+    EnableTotalRecordCount: false
+  }
+end function
+
+' planNextUpSeriesLookups: Splits Next Up's series between the two ways of deciding them.
+'
+' A series with a played special goes to the exact per-series check (hasWatchedRegularEpisode),
+' because its counts include that special. Every other series is decided by the batched count
+' lookup (classifyNextUpSeries). With no answer for the specials, every series is counted.
+'
+' @param {object} seriesIds - nextUpSeriesIds() result
+' @param {dynamic} playedSpecials - playedSpecialsQuery() items: [BaseItemDto] or invalid
+' @returns {object} - { counted: [SeriesId], exact: [SeriesId] }
+function planNextUpSeriesLookups(seriesIds as object, playedSpecials as dynamic) as object
+  hasPlayedSpecial = {}
+  if isValid(playedSpecials)
+    for each special in playedSpecials
+      if isValidAndNotEmpty(special.SeriesId) then hasPlayedSpecial[special.SeriesId] = true
+    end for
+  end if
+
+  plan = { counted: [], exact: [] }
+  for each seriesId in seriesIds
+    if hasPlayedSpecial.DoesExist(seriesId)
+      plan.exact.push(seriesId)
+    else
+      plan.counted.push(seriesId)
+    end if
+  end for
+  return plan
+end function
+
+' classifyNextUpSeries: Whether each Next Up series has a watched regular episode.
+'
+' From 10.11 the server offers a series' first episode once ANY of its episodes was started,
+' even with none finished: jellyfin/jellyfin#13687 dropped the filter that 10.10 applied with
+' DisableFirstEpisode (#973). The rule that filter applied is hasWatchedRegularEpisode()'s,
+' and this decides it from batched lookups instead of one request per series.
+'
+' It reads the series' own counts (Fields=RecursiveItemCount): nothing played means
+' NOT_STARTED, anything played means STARTED. Both counts skip folders and missing episodes, so
+' they are equal exactly when nothing is played. The counts include specials, which is why
+' planNextUpSeriesLookups() sends a series with a played special to its own exact check
+' instead. When the specials lookup got no answer, a series whose only played episode is a
+' special counts as STARTED: an unanswered lookup never removes an episode from the row.
+'
+' A series missing from the lookup, or without its counts, is left out.
+'
+' @param {object} seriesItems - Series lookup items: [BaseItemDto]
+' @returns {object} - AA of SeriesId -> NextUpSeriesStart value
+function classifyNextUpSeries(seriesItems as object) as object
+  starts = {}
+  for each series in seriesItems
+    total = series.RecursiveItemCount
+    unplayed = invalid
+    if isValid(series.UserData) then unplayed = series.UserData.UnplayedItemCount
+    if isValidAndNotEmpty(series.Id) and isValid(total) and isValid(unplayed)
+      if unplayed >= total
+        starts[series.Id] = NextUpSeriesStart.NOT_STARTED
+      else
+        starts[series.Id] = NextUpSeriesStart.STARTED
+      end if
+    end if
+  end for
+  return starts
+end function
+
+' nextUpLookupQueries: The lookups that decide the series in a plan, as pipeline entries.
+'
+' The counted series go out apiIds.PER_REQUEST to a request, so a long Next Up row cannot push
+' a request line past what a server or proxy accepts. Each exact series gets its own
+' watchedRegularEpisodeQuery(). Each entry carries `query` for BuildGetItemsByQueryRequest,
+' and `lookup` (with `seriesId` for a check) for foldNextUpLookup().
+'
+' @param {object} plan - planNextUpSeriesLookups() result
+' @returns {object} - Array of { requestId, query, lookup, seriesId? }
+function nextUpLookupQueries(plan as object) as object
+  entries = []
+  chunkIndex = 0
+  for each chunk in apiIds.chunks(plan.counted)
+    entries.push({
+      requestId: "nextUpSeries-" + chunkIndex.toStr(),
+      query: { Ids: chunk.join(","), Fields: "RecursiveItemCount", EnableImages: false, EnableTotalRecordCount: false },
+      lookup: "series"
+    })
+    chunkIndex++
+  end for
+  for each seriesId in plan.exact
+    entries.push({
+      requestId: "nextUpSeriesPlayed-" + seriesId,
+      query: watchedRegularEpisodeQuery(seriesId),
+      lookup: "check",
+      seriesId: seriesId
+    })
+  end for
+  return entries
+end function
+
+' newNextUpLookups: An empty tally for foldNextUpLookup().
+'
+' @returns {object} - { seriesItems: [BaseItemDto], starts: AA of SeriesId -> NextUpSeriesStart, unanswered: integer }
+function newNextUpLookups() as object
+  return { seriesItems: [], starts: {}, unanswered: 0 }
+end function
+
+' foldNextUpLookup: Adds one nextUpLookupQueries() answer to the tally.
+'
+' Series counts collect in `seriesItems` for classifyNextUpSeries(). A check decides its series
+' in `starts` directly. A lookup with no answer, an error, or a body that is not a list only
+' adds to `unanswered`, so its series stay undecided and keep their items.
+'
+' @param {object} found - newNextUpLookups() tally, updated in place
+' @param {object} entry - The nextUpLookupQueries() entry the answer belongs to
+' @param {dynamic} res - The pool response AA, or invalid when it never answered
+sub foldNextUpLookup(found as object, entry as object, res as dynamic)
+  if not isValid(res) or not res.ok
+    found.unanswered++
+    return
+  end if
+
+  answered = apiResponse.listFrom(res.json)
+  if not isValid(answered)
+    found.unanswered++
+  else if entry.lookup = "series"
+    found.seriesItems.append(answered)
+  else if hasWatchedRegularEpisode(res.json)
+    found.starts[entry.seriesId] = NextUpSeriesStart.STARTED
+  else
+    found.starts[entry.seriesId] = NextUpSeriesStart.NOT_STARTED
+  end if
+end sub
+
+' keepStartedSeriesItems: Drops the Next Up items whose series is NOT_STARTED, keeping order.
+'
+' @param {object} items - Next Up items: [BaseItemDto]
+' @param {object} starts - AA of SeriesId -> NextUpSeriesStart
+' @returns {object} - The kept items
+function keepStartedSeriesItems(items as object, starts as object) as object
+  kept = []
+  for each item in items
+    if not (isValid(item.SeriesId) and starts[item.SeriesId] = NextUpSeriesStart.NOT_STARTED)
+      kept.push(item)
+    end if
+  end for
+  return kept
+end function
+
+' honorsDisableFirstEpisode: Whether a server acts on Next Up's DisableFirstEpisode parameter.
+'
+' Honored on 10.7–10.10. From 10.11 the server ignores it (#925), and 12.0 removes it. Send
+' the parameter only where this returns true: it is registered as a version-gated parameter
+' in docs/dev/jellyfin-endpoint-availability.yml, and lint:endpoint-availability fails a
+' file that sends it without calling this.
+'
+' @param {string} serverVersion - Server version string, for example "10.10.7"
+' @returns {boolean} - true below 10.11.0
+function honorsDisableFirstEpisode(serverVersion as string) as boolean
+  return not versionChecker(serverVersion, "10.11.0")
+end function
+
+' nextUpNeedsStartedFilter: Whether Home's Next Up row must drop unstarted series itself.
+'
+' True unless the request asks the server to drop them, so only servers that leave them in
+' pay for the client's lookups (LoadItemsTask.keepStartedSeries). A server-side filter Jellyfin
+' adds later is a version-gated parameter that buildHomeNextUpParams sends, and is recognized
+' here next to DisableFirstEpisode.
+'
+' @param {object} params - buildHomeNextUpParams() result
+' @returns {boolean} - true when the client has to filter
+function nextUpNeedsStartedFilter(params as object) as boolean
+  serverFilters = params.DisableFirstEpisode
+  return not (isValid(serverFilters) and serverFilters = true)
+end function
+
+' buildHomeNextUpParams: Query parameters for the Home Next Up row.
+'
+' On 10.7–10.10, a user with no watch history inside the cutoff gets the first episode of
+' every series (one per series, not a short list). DisableFirstEpisode=true drops those, but
+' on 10.8–10.10 it also makes the server ignore NextUpDateCutoff. So it is sent only where
+' it costs nothing: always on 10.7 (which has no cutoff), and on 10.8–10.10 only when Max
+' Days is off. With Max Days on, those servers keep the cutoff and still add first episodes.
+' From 10.11 the parameter does nothing, and the server adds the first episode of every series
+' with an episode started but none finished. Wherever the parameter is not sent, LoadItemsTask
+' drops those itself (nextUpNeedsStartedFilter), so every version shows the same row and a
+' user with no finished episode gets no Next Up row. That is intended, and differs from
+' jellyfin-web, which shows those first episodes.
+'
+' @param {string} serverVersion - Server version string, for example "10.10.7"
+' @param {boolean} enableRewatching - uiDetailsEnableRewatchingNextUp
+' @param {dynamic} maxDays - uiDetailsMaxDaysNextUp; 0 or invalid means off
+' @param {integer} nowSeconds - Current time as epoch seconds, for the cutoff
+' @returns {object} - Params for BuildGetNextUpRequest
+function buildHomeNextUpParams(serverVersion as string, enableRewatching as boolean, maxDays as dynamic, nowSeconds as integer) as object
+  params = {}
+  params["recursive"] = true
+  params["SortBy"] = "DatePlayed"
+  params["SortOrder"] = "Descending"
+  params["EnableRewatching"] = enableRewatching
+  ' No `limit`, on purpose. Next Up is a worklist: the user is trying to get through it,
+  ' so any cap hides episodes they are part-way into a series on, and no number is the right
+  ' one to hide at. It sent 69 for a long time, which was arbitrary rather than derived.
+  ' `uiHomeRowLimit` does not reach here, on purpose: that setting sizes the browse feeds
+  ' (Recently Added / On Now / Active Recordings), where a limit chooses how much of a
+  ' larger set to sample. Continue Watching, the other worklist, sends no limit either and
+  ' has shipped that way. The two now match on purpose rather than by omission.
+  params["EnableTotalRecordCount"] = false
+  params["EnableResumable"] = false
+  ' Drives the alternate-versions badge. The server only emits the field for an item that
+  ' HAS several versions, so the cost scales with those rather than with the row: measured
+  ' 2026-09-19 against a local 12.0 server at +21 bytes for one such item, and +85 bytes
+  ' across a 100-item library page holding four of them.
+  params["Fields"] = "MediaSourceCount"
+
+  maxDaysOn = isValid(maxDays) and maxDays > 0
+  if maxDaysOn
+    dateCutoff = CreateObject("roDateTime")
+    dateCutoff.FromSeconds(nowSeconds - (maxDays * 86400))
+    params["NextUpDateCutoff"] = dateCutoff.ToISOString()
+  end if
+
+  if honorsDisableFirstEpisode(serverVersion)
+    if not versionChecker(serverVersion, "10.8.0") or not maxDaysOn
+      params["DisableFirstEpisode"] = true
+    end if
+  end if
+
+  return params
+end function
+
 function BackdropImage(id as string)
   ' Use UI resolution for backdrop images
   localDevice = m.global.device
   imgParams = { "maxHeight": localDevice.uiResolution[1], "maxWidth": localDevice.uiResolution[0] }
   return ImageURL(id, "Backdrop", imgParams)
-end function
-
-' Seasons for a TV Show
-function TVSeasons(id as string) as dynamic
-  data = fetchJson(GetApi().BuildGetSeasonsRequest(id), "seasons")
-  ' validate data
-  if not isValid(data) or not isValid(data.Items) then return invalid
-
-  transformer = JellyfinDataTransformer()
-  results = []
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
 end function
 
 ' applyLiveTvMinSegments: For HLS transcodes that report no source duration (live channels),
@@ -504,22 +781,18 @@ sub applyLiveTvMinSegments(postData as object)
   end for
 end sub
 
-' applyMediaSourceToPostData: Applies the media source ID or live TV retry flags to a postData object.
-' Live TV is detected by an empty mediaSourceId. On the first attempt, direct play is not disabled
-' so the server can evaluate compatibility (matching web client behaviour). On retry,
-' forceTranscoding=true sets EnableDirectPlay=false so the server provides a transcode URL instead.
+' applyMediaSourceToPostData: Applies the media source ID and the transcode retry flag to a postData
+' object. Live TV sends no mediaSourceId. On the first attempt, direct play is not disabled so the
+' server can evaluate compatibility (matching web client behaviour). On the retry after a failed
+' direct play, forceTranscoding=true sets EnableDirectPlay=false, live or not: a server that allowed
+' direct play would otherwise answer the retry with the same "yes" and no transcode URL.
 '
 ' @param {object} postData - The request body assoc array to modify
 ' @param {string} mediaSourceId - Media source ID, or "" for live TV
 ' @param {boolean} forceTranscoding - True when retrying with forced transcoding
 sub applyMediaSourceToPostData(postData as object, mediaSourceId as string, forceTranscoding as boolean)
-  if mediaSourceId <> ""
-    postData.MediaSourceId = mediaSourceId
-  else
-    if forceTranscoding
-      postData.EnableDirectPlay = false
-    end if
-  end if
+  if mediaSourceId <> "" then postData.MediaSourceId = mediaSourceId
+  if forceTranscoding then postData.EnableDirectPlay = false
 end sub
 
 ' Tailors a video transcoding profile's AudioCodec list to the current source's channel count
@@ -529,7 +802,7 @@ end sub
 '   Strips ALL stereo-output codecs (aac, mp3, flac, alac, pcm, lpcm, wav, vorbis). Without this,
 '   Jellyfin's HLS muxer offers BOTH the surround codec AND a stereo fallback as separate variants
 '   in the master playlist, and Roku's HLS player has been observed (via in-house testing on
-'   physical hardware; no upstream tracking issue at time of writing) to pick the stereo variant —
+'   physical hardware; no upstream tracking issue at time of writing) to pick the stereo variant,
 '   defeating the entire point of having surround passthrough hardware. Caller must already have
 '   verified the device has surround passthrough before invoking with channelCount > 2.
 '
@@ -539,17 +812,17 @@ end sub
 '   If filtering empties a previously non-empty list, falls back to "mp3" (the intended target).
 '
 ' Multichannel surround target (issue #573):
-'   For a >2ch source, the stripped list MUST lead with a server-encodeable surround codec.
+'   For a >2ch source, the stripped list must lead with a server-encodeable surround codec.
 '   Two failure modes this prevents, both observed on Jellyfin 10.11 via PlaybackInfo probes:
 '     - Empty list: Jellyfin's StreamBuilder omits the audioCodec query param, the server's
 '       InferAudioCodec falls through to the container name ("m3u8"), ffmpeg gets
 '       `-codec:a:0 m3u8` and exits 8. Happens when passthrough is detected only via codecs
 '       not in surroundPriority (truehd/dtshd-only) so no surround codec is in the list.
-'     - On-device-decode leak: a list like "truehd,opus" (truehd un-encodeable for a non-truehd
-'       source; opus on-device-decode only) resolves server-side to opus, silently abandoning
-'       the user's surround/passthrough intent for a decoded stereo-ish path.
+'     - On-device-decode leak: a list with no surround codec but an on-device-decode one like
+'       opus resolves server-side to opus, silently abandoning the user's surround/passthrough
+'       intent for a decoded stereo-ish path.
 '   Fix: prepend the user's preferred multichannel codec (playbackPreferredMultichannelCodec),
-'   clamped to a reliably-encodeable HLS surround target — eac3 or ac3 (dts is excluded: the
+'   clamped to a reliably-encodeable HLS surround target, eac3 or ac3 (dts is excluded: the
 '   server emits no audio stream for a dts transcode target). This is a no-op for healthy
 '   profiles (their stripped list already leads with eac3/ac3) and only rescues the degenerate
 '   truehd/dtshd-only shape.
@@ -558,12 +831,12 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
   if not isValid(deviceProfile) then return
   if not isValid(deviceProfile.TranscodingProfiles) then return
 
-  ' Codecs that, as a server transcode target, can't carry surround channels — strip these for
+  ' Codecs that, as a server transcode target, can't carry surround channels. Strip these for
   ' multichannel sources so the server is forced to pick a surround codec from the remaining list.
   ' Note: this list is intentionally distinct from `stereoOutputCodecs` in deviceCapabilities.bs;
   ' that list represents Roku decode-path behavior (different concept), so the contents differ.
   stereoOnlyCodecs = ["aac", "mp3", "flac", "alac", "pcm", "lpcm", "wav", "vorbis"]
-  ' Surround passthrough codecs — pointless for stereo sources, strip them.
+  ' Surround passthrough codecs: pointless for stereo sources, strip them.
   surroundCodecs = ["eac3", "ac3", "dts"]
 
   for each rule in deviceProfile.TranscodingProfiles
@@ -590,9 +863,9 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
 
         if channelCount > 2 and rule.AudioCodec <> ""
           ' Multichannel with a real source list: guarantee a user-preferred, server-encodeable
-          ' surround codec leads the list so the server can never resolve to an empty list (→ m3u8)
+          ' surround codec leads the list so the server can never resolve to an empty list (which becomes m3u8)
           ' or an on-device-decode codec (opus/aac). See block comment above for the server-side
-          ' bugs this prevents. (An originally-empty AudioCodec is left untouched — optimize rescues
+          ' bugs this prevents. (An originally-empty AudioCodec is left untouched: optimize rescues
           ' lists it would otherwise empty, it doesn't invent a codec where the profile had none.)
           surroundTarget = resolveMultichannelSurroundTarget(preferredMultichannelCodec)
           finalList = [surroundTarget]
@@ -610,7 +883,7 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
           end if
           rule.AudioCodec = newCodecList.join(",")
         else
-          ' Multichannel but the profile had an originally-empty AudioCodec — leave it empty
+          ' Multichannel but the profile had an originally-empty AudioCodec: leave it empty
           ' (handled gracefully; optimize does not invent a codec where the profile had none).
           rule.AudioCodec = newCodecList.join(",")
         end if
@@ -621,7 +894,7 @@ end sub
 
 ' Resolve the surround transcode target for a multichannel source from the user's preferred
 ' multichannel codec setting (playbackPreferredMultichannelCodec). Clamped to the reliably-
-' encodeable HLS surround targets: eac3 (default) and ac3. dts is intentionally excluded — the
+' encodeable HLS surround targets: eac3 (default) and ac3. dts is intentionally excluded: the
 ' Jellyfin server emits no audio stream for a dts transcode target (verified on 10.11), so a dts
 ' fallback would itself re-trigger the issue #573 failure. Both eac3 and ac3 are valid HLS audio
 ' targets in every video transcoding container (ts and mp4), so no per-container clamp is needed.

@@ -3,17 +3,18 @@
  * the lines a human reads in the terminal.
  *
  * `kind` is the key the flake baseline aggregates by, and a bucket goes wrong in
- * two directions. Two names for one class SPLITS the count — guarded at runtime by
- * `kindUnknown`, which the run summary reports. One name for two classes MERGES it
- * — a copy-pasted entry, invisible in review and invisible at runtime, because
+ * two directions. Two names for one class SPLITS the count: `kindUnknown` guards it
+ * at runtime, and the run summary reports it. One name for two classes MERGES it:
+ * a copy-pasted entry, invisible in review and invisible at runtime, because
  * both sites look perfectly valid. That second one is what these assert.
  *
- * What needs a real Roku is the ODC ROUND TRIP — whether `activeRoutedView.loadState`
+ * What needs a real Roku is the ODC ROUND TRIP: whether `activeRoutedView.loadState`
  * resolves on a given screen, what `getFocusedNode` answers. Everything wrapped
  * around it is ordinary logic: which fields print, which are suppressed, what lands
  * in the JSONL. That was eyeballed on hardware and nowhere else, which left the
- * module's most-read output — the 2-4 lines under a failure — with no gate at all,
- * while the near-identical roll-up formatter next door had ten. These close that.
+ * module's most-read output (the 2-4 lines under a failure) with no gate at all,
+ * while the near-identical roll-up formatter next door (`formatRunSummary`) had its
+ * own tests. These close that.
  * The device side stays hardware-verified; see `docs/dev/rta-tests.md`.
  */
 import fs from 'node:fs';
@@ -24,8 +25,8 @@ import { FAILURE_KINDS, isUnknownKind } from './diagnostics.js';
 
 describe('the FAILURE_KINDS re-export', () => {
   // The registry itself moved to `scripts/run-record.js` (it has a second producer
-  // now — `lib/jellyfin.js`, which must not import the device client to reach it),
-  // and its invariants — uniqueness, kebab-case, frozen-ness — are gated there,
+  // now: `lib/jellyfin.js`, which must not import the device client to reach it),
+  // and its invariants (uniqueness, kebab-case, frozen-ness) are gated there,
   // beside the definition. What is still this module's contract is the RE-EXPORT:
   // every throw site and spec imports these names from here, so a move that broke
   // the alias would break them all. That is what these two assert, and nothing more.
@@ -46,6 +47,15 @@ describe('the FAILURE_KINDS re-export', () => {
 
 describe('diagnosedError — the message a human reads and the record a baseline reads', () => {
   let tmpDir;
+
+  /** ECP's `query/active-app` on a device running the channel and nothing else. */
+  const NO_SCREENSAVER = { app: { id: 'dev', type: 'appl', title: 'JellyRock' } };
+
+  /** The same, plus the element Roku adds while a screensaver is up. */
+  const WITH_SCREENSAVER = {
+    ...NO_SCREENSAVER,
+    screensaver: { id: '261525', type: 'ssvr', version: '3.1.27', title: 'Aquatic Life' },
+  };
 
   /** The shape ODC's batch read returns: every key path answers `found` or not. */
   const found = (values) =>
@@ -68,14 +78,14 @@ describe('diagnosedError — the message a human reads and the record a baseline
    * what it produced: the Error a wait would throw, and the JSON line it appended.
    *
    * `roku-test-automation` is mocked because the ODC round trip is the ONE part that
-   * genuinely needs a Roku — faking it is what lets the formatting and record shape
+   * needs a Roku. Faking it is what lets the formatting and record shape
    * around it be gated at all. `RTA_RECORD_DIR` points the record at a temp directory,
    * the same channel a spawned Vitest child uses in production.
    */
   const diagnose = async (
     message,
     opts = {},
-    { results = HEALTHY, focused, meta, mediaPlayer = null } = {},
+    { results = HEALTHY, focused, meta, mediaPlayer = null, activeApp = NO_SCREENSAVER } = {},
   ) => {
     vi.resetModules();
     vi.doMock('roku-test-automation', () => ({
@@ -86,7 +96,16 @@ describe('diagnosedError — the message a human reads and the record a baseline
       // The OS media player is read from ECP, not ODC. Defaulting to null keeps
       // every existing case describing a run with no playback, which is what they
       // were written against.
-      ecp: { getMediaPlayer: async () => mediaPlayer },
+      // `getActiveApp` is the screensaver detector and is read over ECP for the same
+      // reason `getMediaPlayer` is: it answers from the OS rather than from inside the
+      // channel. Defaulting to an app with no screensaver keeps every case written
+      // before it describing the run it was written against.
+      ecp: {
+        getMediaPlayer: async () => mediaPlayer,
+        // An Error rejects, matching how `results` above expresses a failed read.
+        getActiveApp: async () =>
+          activeApp instanceof Error ? Promise.reject(activeApp) : activeApp,
+      },
     }));
     process.env.RTA_RECORD_DIR = tmpDir;
     if (meta) fs.writeFileSync(path.join(tmpDir, 'run-meta.json'), JSON.stringify(meta));
@@ -120,7 +139,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
     // "osd visible (last=false)": the app's stateAllowsOSD() swallows the keypress
     // until its Video node reaches playing/paused/stopped, so the OSD never opens
     // and no other captured field says why. Three investigations read that as a
-    // dialog fault. `buffer` is the value worth spotting — PLAYING_STATES counts it
+    // dialog fault. `buffer` is the value worth spotting: PLAYING_STATES counts it
     // as playing, the app does not.
     const { error, record } = await diagnose(
       'nav timed out waiting for osd visible',
@@ -183,7 +202,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
 
   it('surfaces a swallowed-input failure, the highest-value field in the dump', async () => {
     // `JRScene.onKeyEvent` returns true for every key while `isRemoteDisabled` is
-    // set, so a timeout carrying this means the app ate our presses — the
+    // set, so a timeout carrying this means the app ate our presses. That is the
     // north-star failure mode, which could only be INFERRED before.
     const { error } = await diagnose('timed out', BASE, {
       results: found({ viewSubtype: 'ItemDetails', isRemoteDisabled: true }),
@@ -193,7 +212,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
 
   it('stays quiet about the shell when the app was neither blocked nor loading', async () => {
     // Both print only when they are the INTERESTING value, which is what keeps an
-    // ordinary failure as short as it was before they existed — and keeps
+    // ordinary failure as short as it was before they existed, and keeps
     // `input=BLOCKED` worth noticing when it does appear.
     const { error } = await diagnose('timed out', BASE);
     expect(error.message).not.toContain('input=BLOCKED');
@@ -209,7 +228,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
 
   it('renders the state the loop already read, without re-reading the device', async () => {
     // The `observed` hand-off is what turns "2 row(s) present" into the two types
-    // that actually landed — i.e. "Season is late" vs "Season is absent".
+    // that actually landed: "Season is late" vs "Season is absent".
     const { error } = await diagnose('detail row not found', {
       ...BASE,
       kind: FAILURE_KINDS.DETAIL_ROW_NOT_FOUND,
@@ -234,6 +253,55 @@ describe('diagnosedError — the message a human reads and the record a baseline
     expect(error.message).toContain('device did not answer ODC: ECONNREFUSED');
     expect(error.message).not.toContain('server=?');
     expect(record.state.unreachable).toBe('ECONNREFUSED');
+  });
+
+  it('names a running screensaver, which nothing else in the record can explain', async () => {
+    // The attribution case this exists for. A screensaver runs in its own BrightScript
+    // context, so every ODC read fails and the record otherwise says only "did not
+    // answer ODC", which is indistinguishable from a crashed app or a dead device, and the one
+    // reading that is none of the three.
+    const { error, record } = await diagnose('timed out', BASE, {
+      results: new Error('ECONNREFUSED'),
+      activeApp: WITH_SCREENSAVER,
+    });
+    expect(error.message).toContain('a SCREENSAVER is running ("Aquatic Life")');
+    expect(record.state.screensaver).toEqual({ title: 'Aquatic Life', id: '261525' });
+  });
+
+  it('puts the screensaver ABOVE the ODC line, because it explains it', async () => {
+    // Order is the whole value: read the other way round, the record sends you hunting
+    // through the app for a transport error the line below already accounts for.
+    const { error } = await diagnose('timed out', BASE, {
+      results: new Error('ECONNREFUSED'),
+      activeApp: WITH_SCREENSAVER,
+    });
+    const lines = error.message.split('\n');
+    const screensaverAt = lines.findIndex((l) => l.includes('SCREENSAVER'));
+    const odcAt = lines.findIndex((l) => l.includes('did not answer ODC'));
+    // Both asserted PRESENT first. `findIndex` returns -1 for a missing line, and -1 is
+    // less than every real index, so an ordering assertion alone passes when the
+    // screensaver line is absent entirely, which is the regression it exists to catch.
+    // Caught by mutation: deleting the line left this test green.
+    expect(screensaverAt).toBeGreaterThanOrEqual(0);
+    expect(odcAt).toBeGreaterThanOrEqual(0);
+    expect(screensaverAt).toBeLessThan(odcAt);
+  });
+
+  it('stays silent about the screensaver when none is running', async () => {
+    // The field's PRESENCE is the finding, so an ordinary failure must not carry it.
+    const { error, record } = await diagnose('timed out', BASE);
+    expect(error.message).not.toContain('SCREENSAVER');
+    expect(record.state.screensaver).toBeUndefined();
+  });
+
+  it('still reports the rest when the screensaver probe itself fails', async () => {
+    // ECP carries no timeout, so this read is the one most likely to fail on a sick
+    // device. It must cost a line of context and nothing else.
+    const { error } = await diagnose('timed out', BASE, {
+      activeApp: new Error('ECP unreachable'),
+    });
+    expect(error.message).not.toContain('SCREENSAVER');
+    expect(error.message).toContain('view=BaseGridView');
   });
 
   it('never throws, even when every device read fails', async () => {
@@ -290,13 +358,14 @@ describe('diagnosedError — the message a human reads and the record a baseline
   it('places the failure on the far side of the hourly reset when it is', async () => {
     // The demo server resets on the hour. A ~13-min suite starting after ~:46 has
     // that land mid-run, so a record needs to say which side of it the failure fell
-    // on — that claim is the whole reason the run origin is stamped.
+    // on. That claim is the whole reason the run origin is stamped.
     const { record, error } = await diagnose('timed out', BASE, {
       meta: { startedAt: '2026-08-10T14:52:00Z' },
     });
     expect(record.runStartedAt).toBe('2026-08-10T14:52:00Z');
     expect(record.afterHourBoundary).toBe(true);
     expect(error.message).toContain('crossed the top of the hour');
+    expect(error.message).toContain('re-run it inside one hour before debugging it');
   });
 
   it('does not claim a crossing for a run that started this hour', async () => {
@@ -309,13 +378,13 @@ describe('diagnosedError — the message a human reads and the record a baseline
 
   it('leaves the crossing UNKNOWN for a cumulative watch session', async () => {
     // In watch mode the record opens ONCE at session start, so the origin belongs
-    // to the session rather than to this iteration — any session running past an
+    // to the session rather than to this iteration: any session running past an
     // hour would stamp every failure from then on. That is the same always-fires
     // noise `formatRunSummary` already suppresses for `cumulative`, and the flag
     // had to stop at the run level only because the child could not see it.
     //
     // `undefined`, not `false`: the reset may well have happened, so `false` would
-    // be a claim. The ORIGIN is still recorded — a session's start is provenance
+    // be a claim. The ORIGIN is still recorded: a session's start is provenance
     // either way, and it is what places the failure in the session.
     const { record, error } = await diagnose('timed out', BASE, {
       meta: { startedAt: '2026-08-10T14:52:00Z', cumulative: true },

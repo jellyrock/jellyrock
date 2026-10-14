@@ -6,10 +6,18 @@ sub init()
 
   ' When the tab bar gains focus, highlight the focused tab
   m.top.observeField("focusedChild", "onFocusChanged")
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField; see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("tabs", "onTabsChanged")
+  m.top.observeField("focusedTabIndex", "onFocusedTabIndexChanged")
 end sub
 
 ' Rebuilds tab children when the tabs array changes.
-' Skips recreation when the tab configuration is unchanged (e.g. returning
+' Skips recreation when the tab configuration is unchanged (for example, returning
 ' to the same screen) so already-sized JRTab nodes appear instantly.
 sub onTabsChanged()
   tabs = m.top.tabs
@@ -20,14 +28,14 @@ sub onTabsChanged()
     return
   end if
 
-  ' Preserve existing tabs if the configuration matches — avoids the visible
+  ' Preserve existing tabs if the configuration matches. This avoids the visible
   ' TextButton render/sizing dance when returning to the same screen
   if tabsMatchExisting(tabs)
     syncSelectedTab()
     return
   end if
 
-  ' Configuration changed — full rebuild
+  ' Configuration changed: full rebuild
   m.top.isReady = false
   m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
 
@@ -76,7 +84,7 @@ sub onTabsChanged()
   updateFocusedTabVisuals()
 end sub
 
-' First tab has finished rendering/sizing — signal that the tab bar is ready
+' First tab has finished rendering/sizing: signal that the tab bar is ready
 sub onFirstTabReady()
   firstTab = m.tabContainer.getChild(0)
   if isValid(firstTab)
@@ -119,9 +127,9 @@ sub onFocusChanged()
 
   ' Internal m.focusedTabIndex is already kept in sync by:
   '   - onTabsChanged / syncSelectedTab (resets to selected tab on rebuild/return)
-  '   - onFocusedTabIndexChanged (external sets, e.g. dropdown return)
+  '   - onFocusedTabIndexChanged (external sets, such as a dropdown return)
   '   - onKeyEvent left/right (user navigation within the tab bar)
-  ' No sync needed here — reading the interface field would clobber the
+  ' No sync needed here: reading the interface field would clobber the
   ' remembered position with a stale value.
 
   updateFocusedTabVisuals()
@@ -165,7 +173,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   if key = "right"
     if m.focusedTabIndex = tabCount - 1
-      ' At last tab — signal focus transfer to user dropdown (wraps right)
+      ' At last tab: signal focus transfer to user dropdown (wraps right)
       m.top.requestFocusToUserMenu = "right"
     else
       ' Move focus right within tabs
@@ -175,7 +183,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   else if key = "left"
     if m.focusedTabIndex = 0
-      ' At first tab — signal focus transfer to user dropdown (wraps left)
+      ' At first tab: signal focus transfer to user dropdown (wraps left)
       m.top.requestFocusToUserMenu = "left"
     else
       ' Move focus left within tabs
@@ -192,11 +200,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   end if
 
-  ' UP: don't consume — let it bubble (nothing above the tab bar)
+  ' UP: don't consume; let it bubble (nothing above the tab bar)
   return false
 end function
 
-' Called when focusedTabIndex is set externally (e.g., returning from user dropdown).
+' Called when focusedTabIndex is set externally (for example, returning from user dropdown).
 ' Syncs internal state and updates visuals.
 sub onFocusedTabIndexChanged()
   newIndex = m.top.focusedTabIndex
@@ -215,7 +223,12 @@ sub onFocusedTabIndexChanged()
 end sub
 
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below: these handlers dereference them.
+  m.top.unobserveField("tabs")
+  m.top.unobserveField("focusedTabIndex")
   m.top.unobserveField("focusedChild")
+
   m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
   m.tabContainer = invalid
 end sub

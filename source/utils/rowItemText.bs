@@ -2,8 +2,8 @@ import "pkg:/source/utils/misc.bs"
 
 ' Returns the primary display title for a row item.
 '
-' - Season: returns the season label (item.name, e.g. "Season 1")
-' - Episode: returns the episode code and title (item.subtitle, e.g. "S1E2 - Pilot")
+' - Season: returns the season label (item.name, for example "Season 1")
+' - Episode: returns the episode code and title (item.subtitle, for example "S1E2 - Pilot")
 ' - Audio: "{trackNumber}. {name}" when indexNumber > 0 (item.name unchanged for ItemDetails title)
 ' - All others: returns item.name
 '
@@ -42,7 +42,7 @@ end function
 ' - Season: returns the series name (stored in item.subtitle by the transformer)
 ' - Episode: returns the series name (item.seriesName)
 ' - All others: returns the pre-computed subtitle field
-'   (e.g., "2024 • PG-13" for Movie, "2020 - Present" for Series)
+'   (for example, "2024 • PG-13" for Movie, "2020 - Present" for Series)
 '
 ' @param item - JellyfinBaseItem content node
 ' @returns Display subtitle string, or "" if item is invalid

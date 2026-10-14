@@ -115,7 +115,7 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile)
-      ' Source list: aac,eac3,ac3,dts,mp3,flac,alac,pcm — after optimization should be eac3,ac3,dts
+      ' Source list: aac,eac3,ac3,dts,mp3,flac,alac,pcm. After optimization it should be eac3,ac3,dts
       m.assertEqual(tsProfile.AudioCodec, "eac3,ac3,dts", "only surround codecs should remain for multichannel")
     end function
 
@@ -234,7 +234,7 @@ namespace tests
     @it("falls back to the preferred surround codec when AAC-only list would be emptied (issue #573)")
     function _()
       ' GIVEN: a profile with AAC-only AudioCodec on a multichannel-capable container
-      ' (e.g. MaxAudioChannels=6) — this shape arises when a device's passthrough detection
+      ' (for example MaxAudioChannels=6). This shape arises when a device's passthrough detection
       ' reports surround capability via codecs not in our surroundPriority (truehd-only,
       ' dtshd-only), so no surround codec ends up in the AudioCodec list during construction.
       '
@@ -244,7 +244,7 @@ namespace tests
       ' EXPECT: the multichannel branch prepends a server-encodeable surround codec (default
       ' eac3) rather than the stereo "aac". An empty AudioCodec makes the server's StreamBuilder
       ' omit the audioCodec query param, so InferAudioCodec returns the container name ("m3u8")
-      ' and ffmpeg receives -codec:a:0 m3u8 → exit 8. Falling back to aac (a stereo-output codec)
+      ' and ffmpeg receives -codec:a:0 m3u8 and exits 8. Falling back to aac (a stereo-output codec)
       ' would have re-introduced the exact stereo variant this function exists to strip.
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-aac-only")
       channelCount = 6
@@ -268,7 +268,7 @@ namespace tests
       ' GIVEN: a video transcoding profile whose AudioCodec list contains only stereo-output
       ' codecs (no eac3/ac3/dts), but MaxAudioChannels advertises multichannel capability. This
       ' shape can arise when getTranscodingProfiles' getSupportedPassthruCodecs returns only
-      ' codecs not in surroundPriority (e.g. truehd-only or dtshd-only passthrough).
+      ' codecs not in surroundPriority (for example truehd-only or dtshd-only passthrough).
       deviceProfile = {
         TranscodingProfiles: [
           {
@@ -282,13 +282,13 @@ namespace tests
       }
       channelCount = 6
 
-      ' WHEN: optimizeAudioCodecListForSource runs for a 6ch source, EVERY codec would normally
+      ' WHEN: optimizeAudioCodecListForSource runs for a 6ch source, every codec would normally
       ' be stripped as stereo-output.
       optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       ' EXPECT: the multichannel branch prepends the preferred surround codec (default eac3) so
       ' the server transcodes to a real surround target instead of producing an empty AudioCodec
-      ' (→ server bakes "m3u8" → ffmpeg fails, issue #573).
+      ' (the server then bakes in "m3u8" and ffmpeg fails, issue #573).
       m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, "eac3", "all-stereo list must fall back to the preferred surround codec when filtering would empty it")
     end function
 
@@ -310,7 +310,7 @@ namespace tests
 
     @it("clamps an unencodeable preferred codec (dts) to eac3")
     function _()
-      ' GIVEN: a user who picked dts — which the Jellyfin server emits no audio stream for as a
+      ' GIVEN: a user who picked dts, which the Jellyfin server emits no audio stream for as a
       ' transcode target, so it cannot be used as a fallback without re-triggering issue #573.
       deviceProfile = {
         TranscodingProfiles: [
@@ -488,7 +488,7 @@ namespace tests
       codecList = tsProfile.AudioCodec.Split(",")
 
       ' Source order: aac,eac3,ac3,dts,mp3,flac,alac,pcm
-      ' Multichannel optimization strips aac,mp3,flac,alac,pcm → eac3,ac3,dts (relative order preserved)
+      ' Multichannel optimization strips aac,mp3,flac,alac,pcm, leaving eac3,ac3,dts (relative order preserved)
       m.assertEqual(codecList.Count(), 3, "only 3 surround codecs should remain")
       m.assertEqual(codecList[0], "eac3", "eac3 should be first")
       m.assertEqual(codecList[1], "ac3", "ac3 should be second")

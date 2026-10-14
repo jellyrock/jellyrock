@@ -5,98 +5,94 @@ model: sonnet
 effort: low
 ---
 
-# /translation-add — guided workflow
+# /translation-add: a guided workflow
 
-Wraps [`locale/CLAUDE.md`](../../../locale/CLAUDE.md) and [`docs/dev/translations.md`](../../../docs/dev/translations.md). Translation data lives in `locale/custom/<locale>.json`; English (`en_US.json`) is the source of truth, the Weblate bot keeps non-English locales in sync.
+Wraps [`locale/CLAUDE.md`](../../../locale/CLAUDE.md) and [`docs/dev/translations.md`](../../../docs/dev/translations.md). Translations live in `locale/custom/<locale>.json`. English (`en_US.json`) is the source of truth: every push to `main` sends it to Weblate, and translations come back at release prep.
 
-## Step 1 — Pick the key prefix
+## Step 1: Pick the key prefix
 
-Per `locale/CLAUDE.md`, keys are PascalCase with a category prefix:
+Keys are PascalCase and start with a prefix that says what kind of text they hold. The prefixes and an example of each are in [`docs/dev/translations.md`](../../../docs/dev/translations.md#key-names). No lint checks the prefix, so pick it by what the string is on screen. If none fits, pick the closest; a new prefix needs a `/log decision` first.
 
-| Prefix | For |
-|---|---|
-| `Button*` | Button labels |
-| `Label*` | UI labels and headings |
-| `Message*` | Longer descriptive text |
-| `Error*` | Error messages |
-| `Setting*` | Setting titles and descriptions |
-| `Tab*` | Tab labels |
-| `Header*` | Section headers |
-| `Tooltip*` | Tooltip text |
-| `Language*` | Track language names (audio / subtitle labels) |
+## Step 2: Add the key to `en_US.json`, sorted
 
-If none fit cleanly, pick the closest match — don't invent a new prefix without a `decisions.md` entry. The convention is enforced by `npm run lint:translations`.
-
-## Step 2 — Add the key to `en_US.json` (alphabetically)
-
-Edit [`locale/custom/en_US.json`](../../../locale/custom/en_US.json). Keys must be alphabetically sorted (the lint enforces this). For a single non-plural key:
+Edit [`locale/custom/en_US.json`](../../../locale/custom/en_US.json) and put the key in sorted order; `npm run lint:translations` fails on an unsorted file. The lint sorts by character code, so capitals come before lowercase (`LabelTrackCount` before `LabelTracks`). A button label is Title Case, everything else sentence case (`locale/CLAUDE.md`). For a single key:
 
 ```json
-"ButtonSaveChanges": "Save changes",
+"ButtonSaveChanges": "Save Changes",
 ```
 
-Match the surrounding entries' indentation and quote style. Don't reformat the file — `npm run lint:translations -- --fix` handles sort drift if you misplace it.
+Match the surrounding entries' indentation and quoting, and don't reformat the file.
 
-## Step 3 — Handle plurals (if applicable)
+⚠️ **Use the key in code (Step 6) before running `npm run update-translations` or pushing.** Fix mode removes every `en_US.json` key the code doesn't use, and the pre-push hook runs it whenever a `.bs` or `locale/` file changed. A key added but not yet used is deleted.
 
-JellyRock uses a simple zero/one/many model — three keys per logical phrase:
+## Step 3: Plurals, if the string has a count
+
+JellyRock uses a zero/one/many model, three keys per phrase. These are the existing episode keys, whose Title Case values predate the casing rule; a new count phrase is sentence case:
 
 ```json
-"LabelEpisodeCountZero": "no episodes",
-"LabelEpisodeCountOne": "{0} episode",
-"LabelEpisodeCountMany": "{0} episodes",
+"LabelEpisodeCountZero": "No episodes",
+"LabelEpisodeCountOne": "1 Episode",
+"LabelEpisodeCountMany": "{0} Episodes",
 ```
 
-Languages with richer plural forms (Polish, Russian, Arabic) read this approximately — full Unicode CLDR plural support is a known limitation. Don't add `Few` / `Two` / etc. variants without a decisions.md entry that broadens the rule project-wide.
+Languages with more plural forms (Polish, Russian, Arabic) read this approximately; full Unicode CLDR plural support is a known limitation. Don't add `Few`, `Two` or other variants without a `/log decision` that changes the rule for the whole project.
 
-In BS, call `translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])`. Note: pass the BASE key (no suffix); `translatePlural` picks the right variant.
+In BrighterScript, call `translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])`. Pass the base key, with no suffix: `translatePlural` picks the variant. `npm run lint:translations` fails when one of the three keys is missing.
 
-## Step 4 — Handle placeholders (if applicable)
+## Step 4: Placeholders, if the string has values
 
-Use indexed placeholders: `{0}`, `{1}`, `{2}`. Every locale file MUST preserve the same placeholder set as `en_US.json` — placeholder parity is enforced by `npm run lint:translations`.
+Use indexed placeholders: `{0}`, `{1}`, `{2}`. Every locale file keeps the same placeholders as `en_US.json`, and `npm run lint:translations` fails on a missing or extra one.
 
 ```json
 "MessageCouldNotReachServer": "Couldn't reach '{0}'.",
 ```
 
-In BS: `translate(translationKeys.MessageCouldNotReachServer, [serverUrl])`.
+In BrighterScript: `translate(translationKeys.MessageCouldNotReachServer, [serverUrl])`.
 
-## Step 5 — Track-language keys (Language* prefix only)
+## Step 5: Track-language keys (`Language*` only)
 
-If your new key is in the `Language*` family (audio/subtitle track labels), you also need to add the corresponding 3-letter ISO 639-2 codes to [`source/utils/languages.bs`](../../../source/utils/languages.bs)'s alias map. Without this, ffmpeg-tagged tracks for that language fall through to the English label in every UI locale.
+A new `LanguageX` key also needs its 3-letter ISO 639-2 codes in the alias map in [`source/utils/languages.bs`](../../../source/utils/languages.bs). Without them, tracks that ffmpeg tags with the 3-letter code show the English name in every UI locale. `npm run lint:language-coverage` fails when an alias is missing.
 
-`npm run lint:language-coverage` enforces this — the build fails if alias coverage is missing. So skipping this step gets caught at build time, not at runtime.
+## Step 6: Use the key in BrighterScript
 
-## Step 6 — Use the key in BS
-
-The BSC translation-keys plugin ([`scripts/bsc-plugins/translation-keys.cjs`](../../../scripts/bsc-plugins/translation-keys.cjs)) watches `en_US.json` and regenerates the `translationKeys` virtual file live. After your edit, the new key is available immediately — no manual codegen step.
+The translation-keys BSC plugin ([`scripts/bsc-plugins/translation-keys.cjs`](../../../scripts/bsc-plugins/translation-keys.cjs)) watches `en_US.json` and regenerates the `translationKeys` constants live, so the new key is available as soon as you save.
 
 ```brightscript
 m.label.text = translate(translationKeys.ButtonSaveChanges)
 ```
 
-The `translate(...)` and `translatePlural(...)` helpers live in [`source/utils/translate.bs`](../../../source/utils/translate.bs).
+`translate()` and `translatePlural()` live in [`source/utils/translate.bs`](../../../source/utils/translate.bs).
 
-## Step 7 — Verify
+## Step 7: Look for an existing translation in another Jellyfin client
+
+Another Jellyfin client's community has often translated the same string already. Check before the key ships untranslated in every locale. `suggest` reads the key from `en_US.json`, so save Step 2 first, and run it once per key (each of a plural's three):
 
 ```bash
-npm run lint:translations         # sort + parity
-npm run lint:language-coverage    # only relevant for Language* keys
-npm run validate                  # confirms the BS reference resolves
+npm run translations:seed -- suggest --key <YourKey>
 ```
 
-If any fail with auto-fixable issues, run `npm run lint:translations -- --fix`. The pre-push hook also runs these so a missed run gets caught at push time.
+If a candidate means the same thing and has the same shape (a bare label against `Codec: %1$s`; a standalone label against a word from inside a sentence), add a reviewed entry to [`locale/seed/keymap.yml`](../../../locale/seed/keymap.yml), run `npm run translations:seed` (a dry run; only `--write` writes) and read the values it would write. Release prep seeds the key from then on. Full checklist: [`docs/dev/translations.md`](../../../docs/dev/translations.md#seeding-translations-from-other-jellyfin-clients). No candidate is a normal outcome: Weblate translators take it from there.
 
-## Step 8 — Don't touch non-English locale files
+## Step 8: Verify
 
-Don't manually edit `locale/custom/<other>.json`. The Weblate bot syncs them on push to main: orphaned keys removed, new keys propagated as untranslated. Translators handle the actual translation downstream. Manual edits create merge conflicts when Weblate runs.
+```bash
+npm run lint:translations         # sort order, unused keys, placeholders, plurals
+npm run lint:language-coverage    # only for Language* keys
+npm run validate                  # the BrighterScript reference resolves
+```
 
-## When NOT to use
+An unused-key error means Step 6 hasn't used the key yet. For a sort-order failure, run `npm run update-translations` (only after Step 6). The pre-push hook runs `update-translations` and `validate`, and `lint:language-coverage` when its inputs changed, so a missed run is caught at push.
 
-- The string is dev-only (debug log, error message that only an agent would see) — don't translate. Use a plain English string in the source.
-- The string is a path / identifier / API field name — those are not translatable; they're protocol-level constants.
-- You're translating an existing key — that's Weblate's job, not yours. Just edit `en_US.json` if the source-of-truth English needs revision.
+## Step 9: Don't touch non-English locale files
+
+Don't edit `locale/custom/<other>.json` by hand. Translators own the wording in Weblate; the only other writers are `translations:seed` (Step 7) and release prep's merge.
+
+## When not to use
+
+- The string is for developers only (a debug log, an error only an agent sees): don't translate it. Use a plain English string in the source.
+- The string is a path, an identifier or an API field name: these are protocol constants, not text.
+- You want to change an existing key's translation: that is the translators' job, in Weblate. Edit `en_US.json` only when the English needs revising.
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent: parent passes `Read .claude/skills/translation-add/SKILL.md and follow the steps for $ARGUMENTS=<key-name-or-string>; surface the diff against locale/custom/en_US.json but do NOT commit` in the Task prompt.
+To run it from a sub-agent, the parent passes `Read .claude/skills/translation-add/SKILL.md and follow the steps for the key or string <key-name-or-string>; surface the diff against locale/custom/en_US.json but do not commit` in the Agent prompt.

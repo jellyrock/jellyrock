@@ -1,51 +1,54 @@
-# Jellyfin endpoint-availability registry — the server-upgrade-automation
-# pipeline's validated DISPOSITION LEDGER for post-floor endpoints
+# Jellyfin endpoint-availability registry: the server-upgrade-automation
+# pipeline's validated disposition ledger for post-floor endpoints
 # (docs/architecture/server-upgrade-automation.md, Phase 6).
 #
-# WHAT THIS IS (and is NOT):
-#   The V1/V2 two-tier model (docs/dev/jellyfin-version-boundaries.yml) is too
-#   COARSE to express endpoints introduced *inside* a tier — MediaSegments landed
-#   at 10.10, Lyrics at 10.9, the QuickConnect probe at 10.8, all inside the V2
-#   (10.9+) tier. The AST manifest therefore tags each `[1, ∞)` (callable on every
-#   server) because there is no literal `getApiVersion() >= N` branch around it, so
-#   the floor-coverage / symmetry checks flag every one as "absent from the 10.7.0
-#   floor" on EVERY run, forever. They are not bugs — each degrades gracefully or
-#   is version-guarded one layer up where the AST can't see it.
+# What this is, and what it is not:
+#   The two-tier model (docs/dev/jellyfin-version-boundaries.yml) is too coarse
+#   to express endpoints introduced inside a tier. MediaSegments landed at 10.10
+#   and Lyrics at 10.9, both inside tier 2 (10.9 and later), and the Quick Connect
+#   probe at 10.8, inside tier 1. The AST manifest therefore tags each `[1, ∞)`
+#   (callable on every server), because there is no literal
+#   `getApiVersion() >= N` branch around it, so the floor-coverage and symmetry
+#   checks would flag every one as "absent from the 10.7.0 floor" on every run.
+#   They are not bugs: each degrades gracefully or is version-guarded one layer
+#   up, where the AST can't see it.
 #
-#   This file is the per-endpoint LEDGER that records, for each such endpoint, the
-#   minimum server version + HOW JellyRock copes on older servers. The floor check
-#   (scripts/generate/findings-candidates.js) consumes it: a coverage-gap /
+#   This file is the per-endpoint ledger that records, for each such endpoint, the
+#   minimum server version and how JellyRock copes on older servers. The floor
+#   check (scripts/generate/findings-candidates.js) consumes it: a coverage-gap or
 #   symmetry-advisory whose endpoint is registered here becomes `floor-known`
-#   (needsInvestigation: false) — it stays in the report as an audit trail but
+#   (needsInvestigation: false). It stays in the report as an audit trail but
 #   drops out of the actionable set.
 #
-#   It is NOT a hand-maintained catalog you must keep comprehensive — the
-#   spec-derived floor check is the comprehensive ENUMERATOR (a coverage-gap *is*
+#   It is not a hand-maintained catalog you must keep complete. The
+#   spec-derived floor check is the complete enumerator (a coverage-gap *is*
 #   "an endpoint we use that's absent from the floor spec"). Anything the floor
-#   check enumerates that is NOT registered here keeps flagging
+#   check enumerates that is not registered here keeps flagging
 #   needsInvestigation, so a new post-floor endpoint cannot hide. This ledger only
-#   says "yes, this absence is known and here's how we handle it."
+#   says "yes, this absence is known, and here is how we handle it."
 #
-#   `handling.type` ∈ { version-guard | dispatch-sibling | sdk-dispatch |
-#   graceful-degradation }. The first two make a CODE claim that
-#   scripts/lint/endpoint-availability-check.cjs VALIDATES against current source /
-#   the manifest — if the cited guard symbol or sibling path disappears, the lint
-#   FAILS and the finding resurfaces, so this is regression-safe and NOT a blunt
-#   suppression. `graceful-degradation` is the one honestly-unvalidatable class
-#   (it relies on a 404 → invalid → handled path the AST can't prove); it is the
-#   SAFE failure mode (feature absent, never a crash), documented via `note`.
+#   `handling.type` is one of `version-guard`, `dispatch-sibling`, `sdk-dispatch`
+#   or `graceful-degradation`. The first two make a code claim that
+#   scripts/lint/endpoint-availability-check.cjs validates against current source
+#   and the manifest. If the cited guard symbol or sibling path disappears, the
+#   lint fails and the finding resurfaces, so this is regression-safe and not a
+#   blunt suppression. `graceful-degradation` is the one class nothing can
+#   validate (it relies on a 404 to invalid to handled path the AST can't prove);
+#   it is the safe failure mode (feature absent, never a crash), documented in
+#   `note`.
 #
-#   `minServer` is DOCUMENTARY context (best-effort from the code audit / the spec
-#   archive); the floor check only needs "absent from the floor", which it already
-#   knows. The load-bearing fields are `path` + `method` + `handling`.
+#   `minServer` is context for readers (best-effort from the code audit and the
+#   spec archive); the floor check only needs "absent from the floor", which it
+#   already knows. The fields the check reads are `path`, `method` and `handling`.
 #
-# Cross-references (human-readable mirrors, NOT the source of truth here):
-#   docs/dev/jellyfin-server-versioning.md §4/§5, docs/user/jellyfin-server-feature-matrix.md
+# Cross-references (human-readable mirrors, not the source of truth here):
+#   docs/dev/jellyfin-server-versioning.md ("Endpoints newer than 10.7"),
+#   docs/user/jellyfin-server-feature-matrix.md
 #
-# Paths are the manifest's NORMALIZED form ({placeholder} → {}, lowercased) so they
-# join to api-usage-manifest.json `normalized` exactly. `method` is one or more
-# HTTP verbs (comma/space separated) or `*` for any; it must intersect the
-# endpoint's manifest methods.
+# Paths are the manifest's normalized form (`{placeholder}` becomes `{}`,
+# lowercased), so they join to api-usage-manifest.json `normalized` exactly.
+# `method` is one or more HTTP verbs (comma or space separated) or `*` for any;
+# it must intersect the endpoint's manifest methods.
 
 schemaVersion: 1
 
@@ -75,6 +78,20 @@ endpoints:
         the request is never built on older servers. Belt-and-suspenders: the
         caller (components/home/LoadItemsTask.bs) still checks
         `isValid(lyricsData) and isValid(lyricsData.Lyrics)` before indexing.
+
+  - path: /items/{}/collections
+    method: GET
+    minServer: "12.0.0"
+    handling:
+      type: version-guard
+      symbol: supportsItemCollections
+      note: >-
+        The item-details Collections row. extrasRows.plan() (source/extras/extrasRows.bs)
+        plans the row only when extrasRows.supportsItemCollections() (versionChecker
+        >=12.0.0) passes, so LoadExtrasRowsTask never builds the request on older
+        servers, which answer 404 (measured 2026-09-21 on a local 10.11.11). The guard
+        decides the PLAN rather than wrapping the ApiClient call, which is why the AST
+        tags the endpoint [1, ∞).
 
   - path: /quickconnect/enabled
     method: GET
@@ -117,3 +134,34 @@ endpoints:
         in ApiClient calls the /Users/{userId}/Items sibling instead. The floor
         server serves GET /Items directly, so symmetry flags it; the V1 sibling
         covers the floor. (The expected coverage-symmetry case from Phase 5.)
+
+# Version-gated parameters: query parameters whose server behavior changes by
+# version on an endpoint that exists everywhere. The spec diff reports a parameter
+# only when it is added or removed, not when a server starts ignoring it, so these
+# are recorded by hand after reading the controller at each release tag and
+# checking live servers (docs/dev/jellyfin-server-versioning.md, "Parameters
+# whose meaning changed").
+#
+# Fields: `path` + `method` (as above), `name` (the parameter), `honoredFrom` /
+# `honoredBelow` (the servers that act on it; at least one), optional `removedIn`
+# (the release that drops it from the spec), and `handling`, which must be
+# `version-guard`. The lint fails any .bs file under source/ or components/ that
+# names the parameter in code without calling the guard, and any entry that no
+# file sends any more.
+parameters:
+  - path: /shows/nextup
+    method: GET
+    name: DisableFirstEpisode
+    honoredBelow: "10.11.0"
+    removedIn: "12.0.0"
+    handling:
+      type: version-guard
+      symbol: honorsDisableFirstEpisode
+      note: >-
+        10.7–10.10 act on it: true drops the first-episode fallback (one pilot per
+        series for a user with no history in the cutoff), but on 10.8–10.10 it also
+        makes the server ignore NextUpDateCutoff. 10.11.x marks it
+        [ParameterObsolete] and ignores it; 12.0 removes it. Its default is false
+        on every version that honors it, so sending false does nothing.
+        buildHomeNextUpParams() (source/api/items.bs) sends true only where
+        honorsDisableFirstEpisode() is true and the cutoff is not lost.

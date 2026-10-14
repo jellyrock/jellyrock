@@ -1,3 +1,5 @@
+import "pkg:/source/api/apiResponse.bs"
+
 namespace tests
 
   @suite("ApiClient - V1/V2 routing and parameter injection")
@@ -288,18 +290,8 @@ namespace tests
     @describe("Edge Cases - Missing Server URL (no-userId methods)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' These methods have NO userId guard — validatedReq() is their
+    ' These methods have no userId guard: validatedReq() is their
     ' only protection against a missing server URL.
-
-    @it("returns invalid from BuildGetArtistByNameRequest when serverUrl is empty")
-    function _()
-      m.global.server.serverUrl = ""
-
-      result = m.apiClient.BuildGetArtistByNameRequest("test-artist")
-
-      m.setupMockServer()
-      m.assertInvalid(result)
-    end function
 
     @it("returns invalid from BuildGetArtistSimilarRequest when serverUrl is empty")
     function _()
@@ -376,6 +368,16 @@ namespace tests
       m.global.server.serverUrl = ""
 
       result = m.apiClient.BuildGetSimilarItemsRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetItemCollectionsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetItemCollectionsRequest(m.testItemId)
 
       m.setupMockServer()
       m.assertInvalid(result)
@@ -618,6 +620,18 @@ namespace tests
       m.assertInvalid(result)
     end function
 
+    ' The pool skips a queued read whose caller is gone (apiPool.bs). This POST only
+    ' reads, so it opts in; PlaybackInfo's POST does not, because it sends
+    ' AutoOpenLiveStream and can open a live stream on the server.
+    @it("marks the schedule POST skippable and leaves PlaybackInfo's POST unmarked")
+    function _()
+      schedule = m.apiClient.BuildGetLiveTvScheduleRequest({})
+      playbackInfo = m.apiClient.BuildPostPlaybackInfoRequest(m.testItemId, {})
+
+      m.assertTrue(apiRequestIsSkippable(schedule))
+      m.assertFalse(apiRequestIsSkippable(playbackInfo))
+    end function
+
     @it("returns invalid from BuildCreateTimerRequest when serverUrl is empty")
     function _()
       m.global.server.serverUrl = ""
@@ -662,6 +676,149 @@ namespace tests
       m.assertTrue(result.inStr("user-123") >= 0, "V2 should have userId value in query")
       m.assertTrue(result.inStr("backdrop") >= 0, "V2 should have type value in query")
       m.assertTrue(result.inStr("500") >= 0, "V2 should have maxWidth value")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildGetItemCollectionsRequest() - the collections an item is in (12.0+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("GETs /Items/{itemId}/Collections with the caller's params")
+    function _()
+      m.setApiVersion(2)
+
+      result = m.apiClient.BuildGetItemCollectionsRequest(m.testItemId, { "Fields": "ChildCount" })
+
+      m.assertEqual(result.method, "GET")
+      m.assertTrue(result.url.inStr("/Items/test-item-456/Collections") >= 0, "should use /Items/{itemId}/Collections")
+      m.assertTrue(result.url.inStr("ChildCount") >= 0, "should carry the Fields value")
+    end function
+
+    @it("has no V1 path — the endpoint exists only on 12.0+, where apiVersion is always 2")
+    function _()
+      m.setApiVersion(1)
+
+      result = m.apiClient.BuildGetItemCollectionsRequest(m.testItemId)
+
+      m.setApiVersion(2)
+      m.assertTrue(result.url.inStr("/Items/test-item-456/Collections") >= 0, "should not route to a /Users/{id}/ path")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildGetPersonsRequest() - people, never music artists")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("excludes the Artist and AlbumArtist kinds by default, on both API versions")
+    function _()
+      for each version in [1, 2]
+        m.setApiVersion(version)
+
+        result = m.apiClient.BuildGetPersonsRequest({ "searchTerm": "Quill" })
+
+        m.assertEqual(result.method, "GET", "v" + version.toStr())
+        m.assertTrue(result.url.inStr("/persons?") >= 0, "v" + version.toStr() + " should use /persons")
+        m.assertTrue(result.url.inStr("ExcludePersonTypes=Artist%2CAlbumArtist") >= 0, "v" + version.toStr() + " should exclude both music kinds")
+        m.assertTrue(result.url.inStr("searchTerm=Quill") >= 0, "v" + version.toStr() + " should keep the caller's params")
+      end for
+      m.setApiVersion(2)
+    end function
+
+    @it("lets a caller's own excludePersonTypes replace the default")
+    function _()
+      result = m.apiClient.BuildGetPersonsRequest({ "excludePersonTypes": "GuestStar" })
+
+      m.assertTrue(result.url.inStr("=GuestStar") >= 0, "should send the caller's value, whatever case its key")
+      m.assertEqual(result.url.inStr("AlbumArtist"), -1, "should not also send the default")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildCloseLiveStreamRequest() - releases one consumer of a live stream")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("POSTs /LiveStreams/Close with the id in the query, on both API versions")
+    function _()
+      for each version in [1, 2]
+        m.setApiVersion(version)
+
+        result = m.apiClient.BuildCloseLiveStreamRequest("live-stream-789")
+
+        m.assertEqual(result.method, "POST", "v" + version.toStr())
+        m.assertTrue(result.url.inStr("/LiveStreams/Close?") >= 0, "v" + version.toStr() + " should use /LiveStreams/Close")
+        m.assertTrue(result.url.inStr("live-stream-789") >= 0, "v" + version.toStr() + " should carry the id")
+      end for
+      m.setApiVersion(2)
+    end function
+
+    ' A close changes server state, so the pool must deliver it even though nobody waits
+    ' for the answer (apiRequestIsSkippable).
+    @it("is not skippable")
+    function _()
+      m.assertFalse(apiRequestIsSkippable(m.apiClient.BuildCloseLiveStreamRequest("live-stream-789")))
+    end function
+
+    @it("returns invalid for an empty id, rather than a close the server rejects")
+    function _()
+      m.assertInvalid(m.apiClient.BuildCloseLiveStreamRequest(""))
+    end function
+
+    @it("returns invalid when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildCloseLiveStreamRequest("live-stream-789")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Per-version resume requests")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("BuildGetItemUserDataRequest reads one item's UserData for the user on V2")
+    function _()
+      originalApiVersion = m.global.server.apiVersion
+      m.setApiVersion(2)
+
+      result = m.apiClient.BuildGetItemUserDataRequest("version-789")
+
+      m.setApiVersion(originalApiVersion)
+
+      m.assertEqual(result.method, "GET")
+      m.assertTrue(result.url.inStr("/UserItems/version-789/UserData") >= 0, "should target /UserItems/{id}/UserData")
+      m.assertTrue(result.url.inStr(m.testUserId) >= 0, "should carry the userId")
+    end function
+
+    @it("BuildGetItemUserDataRequest builds nothing for a V1 server")
+    function _()
+      originalApiVersion = m.global.server.apiVersion
+      m.setApiVersion(1)
+
+      result = m.apiClient.BuildGetItemUserDataRequest("version-789")
+
+      m.setApiVersion(originalApiVersion)
+
+      m.assertInvalid(result)
+    end function
+
+    @it("BuildGetItemUserDataRequest returns invalid when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.BuildGetItemUserDataRequest("version-789")
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("BuildGetServerConfigurationRequest reads /System/Configuration")
+    function _()
+      result = m.apiClient.BuildGetServerConfigurationRequest()
+
+      m.assertEqual(result.method, "GET")
+      m.assertTrue(result.url.inStr("/System/Configuration") >= 0, "should target /System/Configuration")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -724,7 +881,7 @@ namespace tests
       m.setApiVersion(2)
 
       ' buildParams() silently skips roArray values, so honoring mere key presence here
-      ' would send the query with NO mediaTypes at all — the #784 bug, silently.
+      ' would send the query with no mediaTypes at all: the #784 bug, silently.
       result = m.apiClient.BuildGetResumeItemsRequest({ MediaTypes: ["Video", "Audio"] })
 
       m.assertNotInvalid(result)
@@ -739,6 +896,91 @@ namespace tests
 
       m.assertNotInvalid(result)
       m.assertTrue(result.url.inStr("mediatypes=Video") >= 0, "an empty MediaTypes must fall back to the Video default")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildDeleteSubtitleRequest() - refuses to aim at a media container")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds a delete for an external subtitle stream")
+    function _()
+      stream = { Type: "Subtitle", Index: 3, IsExternal: true, Path: "/m/movie.en.srt" }
+      result = m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, stream)
+      m.assertNotInvalid(result)
+      m.assertEqual(result.method, "DELETE")
+      m.assertTrue(result.url.inStr("/Subtitles/3") >= 0, "must address the stream's own index: " + result.url)
+    end function
+
+    @it("refuses an EMBEDDED stream - the server would delete the media file")
+    function _()
+      ' The server unlinks MediaStream.Path unconditionally, and an embedded
+      ' subtitle's Path IS the container. This is the whole reason the builder
+      ' takes a stream instead of an integer.
+      stream = { Type: "Subtitle", Index: 3, IsExternal: false, Path: "/m/movie.mkv" }
+      m.assertInvalid(m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, stream))
+    end function
+
+    @it("refuses a stream whose IsExternal is absent rather than assuming")
+    function _()
+      m.assertInvalid(m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, { Type: "Subtitle", Index: 3 }))
+    end function
+
+    @it("refuses an external stream with no index to address")
+    function _()
+      m.assertInvalid(m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, { Type: "Subtitle", IsExternal: true }))
+    end function
+
+    @it("refuses an invalid stream")
+    function _()
+      m.assertInvalid(m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("List requests - bare-array endpoints declare their shape")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Each endpoint below answers with a bare array (Jellyfin OpenAPI, 10.8.13 and 10.11.11), so
+    ' its builder must use listReq: the pool then holds the body to that shape
+    ' (apiResponse.enforceShape). A builder that drops it hands callers an unchecked body, and an
+    ' object body iterates as its keys: the v2.30.0 latest-media crash.
+
+    private function listRequestsFor(apiVersion as integer) as object
+      originalApiVersion = m.global.server.apiVersion
+      m.setApiVersion(apiVersion)
+      reqs = {
+        latestMedia: m.apiClient.BuildGetLatestMediaRequest({}),
+        localTrailers: m.apiClient.BuildGetLocalTrailersRequest(m.testItemId),
+        itemImageInfos: m.apiClient.BuildGetItemImageInfosRequest(m.testItemId),
+        specialFeatures: m.apiClient.BuildGetSpecialFeaturesRequest(m.testItemId),
+        sessions: m.apiClient.BuildGetSessionsRequest({ deviceId: "d" }),
+        remoteSubtitles: m.apiClient.BuildSearchRemoteSubtitlesRequest(m.testItemId, "en"),
+        cultures: m.apiClient.BuildGetCulturesRequest()
+      }
+      m.setApiVersion(originalApiVersion)
+      return reqs
+    end function
+
+    @it("marks every bare-array builder as a list request on V2")
+    function _()
+      reqs = m.listRequestsFor(2)
+      for each name in reqs
+        m.assertTrue(apiResponse.expectsList(reqs[name]), name + " should be built with listReq")
+      end for
+    end function
+
+    @it("marks every bare-array builder as a list request on V1")
+    function _()
+      reqs = m.listRequestsFor(1)
+      for each name in reqs
+        m.assertTrue(apiResponse.expectsList(reqs[name]), name + " should be built with listReq")
+      end for
+    end function
+
+    @it("does not mark a query-result builder as a list request")
+    function _()
+      req = m.apiClient.BuildGetResumeItemsRequest({})
+      m.assertNotInvalid(req)
+      m.assertFalse(apiResponse.expectsList(req))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

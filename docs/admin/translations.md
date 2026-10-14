@@ -1,69 +1,70 @@
-# Translation System Maintenance
+# Translation maintenance
 
-This document covers the ongoing maintenance tasks for JellyRock's translation system.
+This page covers what a maintainer looks after in JellyRock's translation system. How the system works, including the full release-prep merge, is in [Translations (i18n)](../architecture/translations.md).
 
-## What's Automated
+## What runs on its own
 
-These tasks are handled by CI and require no manual intervention:
+CI handles these, with no one stepping in:
 
-- **Key sort order** — The bot keeps `en_US.json` keys sorted alphabetically on every push to main
-- **Language registry** — The bot auto-adds new locale files to `languages.json` so they appear in the language picker
-- **Weblate sync** — The bot pushes updated source strings to the `weblate` branch after every main push
-- **Release translation merge** — The release workflow auto-merges translations from the `weblate` branch into release prep PRs
-- **Build-time key safety** — The `BSC` plugin generates `translationKeys` constants from en_US.json, so missing keys are compile errors (caught before code reaches main)
-- **Validation** — CI rejects PRs with orphaned translations, placeholder mismatches, or hardcoded string literals
+- **Key order and language list.** On every push to `main`, the bot sorts `en_US.json` and adds new locale files to `languages.json`, so they appear in the language picker.
+- **New English text to Weblate.** On every push to `main`, the bot copies `en_US.json` and `languages.json` to the `weblate` branch.
+- **Translations back at release.** Release prep locks Weblate, merges its translations into the release key by key, fills gaps from other Jellyfin clients, and sends the result back to the `weblate` branch. See [Weblate sync](../architecture/translations.md#weblate-sync).
+- **Key safety at build time.** A BrighterScript plugin generates the `translationKeys` constants from `en_US.json`, so code that names a missing key fails to compile.
+- **Checks on every PR.** `npm run lint:translations` fails when `en_US.json` is unsorted, has keys no code uses, or lacks a key the code uses. It also fails on an incomplete plural set, a placeholder that differs from the English, a `translate("Key")` call with a literal key instead of a `translationKeys` constant, and a locale file missing from `languages.json`. Keys in a locale file that `en_US.json` no longer has are a warning only.
 
-## What Needs Manual Maintenance
+## What you look after
 
-### Weblate Branch
+### The `weblate` branch
 
-The `weblate` branch must exist on the remote for the bot to sync source strings and for the release workflow to merge translations. If it is deleted, the bot workflow will fail.
+The bot and release prep both need the `weblate` branch on the remote. If it is missing, both workflows fail.
 
-- **Created once** before the first merge of the translation system
-- **Should never be deleted** — it is the long-lived integration point between developers and translators
-- **One-way sync from main** — developers never commit directly to the `weblate` branch; only the bot and Weblate write to it
+- Never delete it. It is where developers' and translators' work meets.
+- Don't commit to it by hand. Only the bot, release prep and Weblate write to it.
+- Don't re-cut it from `main` to clear GitHub's "behind" count. The count is expected, and re-cutting deletes the marker the next release merge needs ([why](../architecture/translations.md#weblate-sync)).
 
-### Weblate Configuration
+### Weblate settings
 
-Weblate needs to be configured to:
+Weblate must:
 
-- Watch the `weblate` branch
-- Use `locale/custom/en_US.json` as the source language file
-- Use `locale/custom/*.json` as the translation file pattern
-- Push translated files back to the `weblate` branch
+- Watch the `weblate` branch.
+- Use `locale/custom/en_US.json` as the source language file.
+- Use `locale/custom/*.json` as the translation file pattern.
+- Push translated files back to the `weblate` branch.
 
-### Locale Files
+Release prep also needs the `WEBLATE_TOKEN` secret to lock Weblate. Setup and renewal are in [Weblate token setup](../architecture/translations.md#weblate-token-setup).
 
-- **Adding a new language** — Drop a `<code>.json` file in `locale/custom/`. The bot will auto-add it to `languages.json` on the next push to main. The language metadata map in `scripts/lint/update-translations.cjs` covers 100+ locale codes; unknown codes will use the code as the display name (a warning is printed).
-- **Removing a language** — Delete the `.json` file from `locale/custom/` and remove its entry from `languages.json`. Also remove it from the Weblate project.
-- **Regional locales** — Regional files (e.g. `fr_CA.json`) automatically layer over their base language (`fr.json`). No configuration needed — this is handled by the runtime. Chinese locales use script codes (`zh_Hans.json`, `zh_Hant.json`, `zh_Hant_HK.json`) with 3-layer loading for maximum coverage.
+### Locale files
 
-### Settings Translation Keys
+- **Add a language:** put a `<code>.json` file in `locale/custom/`. The bot adds it to `languages.json` on the next push to `main`. `scripts/lint/update-translations.cjs` knows the names of about a hundred locale codes. For any other code, it uses the code as the display name and prints a warning.
+- **Remove a language:** delete its `.json` file from `locale/custom/`, remove its entry from `languages.json`, and remove it from the Weblate project.
+- **Regional locales:** a regional file (for example `fr_CA.json`) layers over its base language (`fr.json`) at runtime, with nothing to configure. Chinese uses script codes (`zh_Hans.json`, `zh_Hant.json`, `zh_Hant_HK.json`) and loads in three layers.
 
-Every entry in `settings/settings.json` has `titleKey` and `descriptionKey` fields. When adding or modifying settings, ensure:
+### Settings text
 
-1. The key exists in `en_US.json`
-2. The `title` / `description` English text in settings.json matches the en_US.json value (settings.json is the human-readable source of truth; the keys are what the app actually renders)
+Every entry in `settings/settings.json` has `titleKey` and `descriptionKey` fields. When you add or change a setting:
 
-CI validates that all referenced keys exist.
+1. Make sure both keys exist in `en_US.json`.
+2. Make the English `title` and `description` in `settings.json` match the `en_US.json` values. The app shows the `en_US.json` text, and [App settings](../user/app-settings.md) is generated from `settings.json`.
 
-## Maintenance Scripts
+CI checks that every key exists. Nothing checks that the English text matches.
 
-| Command | Purpose |
+## Commands
+
+| Command | What it does |
 | --- | --- |
-| `npm run update-translations` | Auto-fix: sort en_US.json, remove orphans, sync languages.json, then validate |
-| `npm run lint:translations` | Validate all translation files, code references, placeholders, and coverage (exits 1 on error) |
+| `npm run update-translations` | Sorts `en_US.json`, removes keys no code uses, updates `languages.json`, then runs the checks |
+| `npm run lint:translations` | Runs the checks only, and fails on an error |
 
-Both run as part of `npm run lint` (lint mode only).
+`npm run lint` runs `lint:translations`.
 
-## Architecture at a Glance
+## Where the pieces are
 
 ```text
-locale/custom/en_US.json          ← Source of truth (455 keys)
-locale/custom/<locale>.json       ← Community-translated locale files
-locale/languages.json             ← Language registry (auto-managed)
-source/utils/translate.bs         ← Runtime: translate(), translatePlural(), loadTranslations()
-source/utils/translateLocale.bs   ← Locale resolution cascade
-scripts/bsc-plugins/translation-keys.cjs  ← BSC plugin: generates translationKeys namespace
-scripts/lint/update-translations.cjs   ← All-in-one: lint (default) + fix (--fix)
+locale/custom/en_US.json                  ← English source text
+locale/custom/<locale>.json               ← Translated locale files
+locale/languages.json                     ← Language list (kept by the bot)
+source/utils/translate.bs                 ← Runtime: translate(), translatePlural(), loadTranslations()
+source/utils/translateLocale.bs           ← Picks the locale to load
+scripts/bsc-plugins/translation-keys.cjs  ← BrighterScript plugin: generates the translationKeys constants
+scripts/lint/update-translations.cjs      ← Checks (default) and fixes (--fix)
 ```

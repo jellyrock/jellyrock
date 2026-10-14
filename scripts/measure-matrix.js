@@ -7,22 +7,22 @@
  * Same reason `measure-args.js`, `measure-selection.js` and `measure-loop.js` are
  * separate from `measure.js`: the entry point spawns processes and reads the network,
  * so nothing in it can be reached by a test. Everything here is a pure function over
- * plain data — a device list, a set of ECP probes, a set of child exit codes — so the
+ * plain data (a device list, a set of ECP probes, a set of child exit codes), so the
  * refusals can be driven without three Rokus on the LAN.
  *
- * ## What a matrix run is, and what it is NOT
+ * ## What a matrix run is, and what it is not
  *
  * It is the SAME measurement taken once per device, sequentially, each one writing its
- * own line to `measurements.jsonl`. It is deliberately NOT a report: the matrix report
+ * own line to `measurements.jsonl`. It is not a report: the matrix report
  * is a READER over that file ([`matrix-report-is-a-reader`](../docs/decisions.md)), because
  * a reader can rebuild the matrix from runs taken weeks apart on different devices while
- * an in-process report can only ever describe the run that just finished.
+ * an in-process report can only ever describe the run that produced it.
  *
  * So this module's whole job is to make sure the right lines get written, and to refuse
  * a set of devices whose lines could not afterwards be told apart.
  */
 
-/** Thrown for a matrix that cannot be run — the caller prints `.message` and exits. */
+/** Thrown for a matrix that cannot be run; the caller prints `.message` and exits. */
 export class MatrixError extends Error {
   constructor(message) {
     super(message);
@@ -41,7 +41,7 @@ const RESTORE_CMD = 'npm run rta:restore';
  *
  * Strict on the same principle as `measure-args.js`: a silently-dropped address is a
  * device missing from a matrix the operator believes is complete, and nothing later
- * in the run can notice — `measurements.jsonl` records what WAS measured, never what
+ * in the run can notice: `measurements.jsonl` records what WAS measured, never what
  * was meant to be.
  *
  * @throws {MatrixError} on an empty list or a repeated address.
@@ -61,7 +61,7 @@ export function parseDeviceList(raw) {
 
   // A repeat is a typo every time. The run would take twice as long and write two
   // records for one device, which is the mis-attribution this subsystem exists to
-  // refuse — see `sameModelRefusal` below for the harder version of the same problem.
+  // refuse. See `sameDeviceRefusal` below for the harder version of the same problem.
   const seen = new Set();
   const repeated = hosts.filter((h) => (seen.has(h) ? true : (seen.add(h), false)));
   if (repeated.length) {
@@ -79,7 +79,7 @@ export function parseDeviceList(raw) {
  *
  * `ROKU_DEVICES` declares which devices EXIST; `scripts/data/roku-hardware.json` declares
  * what tier a model IS. That split is what lets a contributor list only their own
- * addresses and get correct tier labels for free — the addresses are the one thing no
+ * addresses and get correct tier labels for free: the addresses are the one thing no
  * committed dataset can know.
  *
  * Absent means REFUSE rather than fall back to `ROKU_IP`. A one-device "matrix" is what
@@ -107,16 +107,17 @@ export function resolveDevices(env = {}) {
  * **This is the one rule the driver keeps that `measure` cannot**, and it is worth being
  * precise about why. Single-device, an undeclared server is merely unasserted: the tool
  * pins whatever identity it finds, re-checks it at the end, and says out loud that it did
- * not assert. Across devices it is something else entirely — the SERVER IS THE WORKLOAD,
+ * not assert. Across devices it is something else entirely: the SERVER IS THE WORKLOAD,
  * and a matrix whose rows differ in both hardware and library is not measuring hardware at
  * all. Only this layer knows there is more than one arm, so only this layer can refuse it.
  *
- * Not a hypothetical, and not one incident. The tech-debt entry records the first
- * hand-driven matrix measuring two devices against the DEMO server and one against the
- * real one, which read as "the 512 MB Stick is nearly twice as fast as the 1 GB Stick 4K"
- * until someone checked the `rows` column. The very first run of THIS tool then hit the
- * same split on the same three devices — `.176` on `demo.jellyfin.org`, `.177` on the
- * developer's own server — because nothing had changed on the devices in the meantime.
+ * Not a hypothetical, and not one incident. The tech-debt entry `measure-single-device-only`
+ * (since resolved) recorded the first hand-driven matrix measuring two devices against the
+ * DEMO server and one against the real one, which read as "the 512 MB Stick is nearly
+ * twice as fast as the 1 GB Stick 4K" until someone checked the `rows` column. The very
+ * first run of THIS tool then hit the same split on the same three devices (`.176` on
+ * `demo.jellyfin.org`, `.177` on the developer's own server), because nothing had changed
+ * on the devices in the meantime.
  * A confound that survives being written down twice needs a gate, not a third warning.
  *
  * `--server <url>` is the instrument that already exists: tier 1 turns it into a hard
@@ -160,8 +161,8 @@ const SIGN_IN_FLAGS = new Map([
  * ## Why the matrix needs this at all
  *
  * `serverDeclarationRefusal` above ASSERTS that every device is on one server; it cannot
- * PUT them there, because `measure` deliberately never writes the registry. So until this
- * existed, a cross-tier run meant signing three devices in by hand BEFORE every run — and
+ * PUT them there, because `measure` never writes the registry. So until this
+ * existed, a cross-tier run meant signing three devices in by hand BEFORE every run, and
  * because the sanctioned workflow restores each device afterwards, that ritual recurred
  * indefinitely rather than being one-time setup (measured 2026-08-16: ~2 minutes per run,
  * plus a restore to verify). A matrix that demands a manual ritual before every run is not
@@ -171,7 +172,7 @@ const SIGN_IN_FLAGS = new Map([
  *
  * `measure.js`'s header states the terms: *"If a future mode needs to seed, it must adopt
  * `lib/registry.js` at the same time; do not add a seed without one."* Its invariant of
- * never touching the registry is load-bearing — it is what lets a single-device run measure
+ * never touching the registry matters: it is what lets a single-device run measure
  * the app exactly as the device already has it. The driver is a different contract: it
  * already refuses a run whose devices might differ, so it is the layer that owes the
  * operator a way to make them agree.
@@ -181,13 +182,13 @@ const SIGN_IN_FLAGS = new Map([
  * The seed and the assert must name the same server or the mode would be self-defeating:
  * seeding device 3 into A while tier 1 asserts B is the confound this whole layer exists
  * to refuse. Rather than asking the operator to type the URL twice and hoping they match,
- * the URL is forwarded as `--server`, so tier 1 still hard-asserts on every device — the
+ * the URL is forwarded as `--server`, so tier 1 still hard-asserts on every device: the
  * seed is CHECKED against the running app rather than trusted. That also means `--sign-in`
  * satisfies the server declaration on its own, which falls out rather than being special-cased:
  * the refusal reads the forwarded list, and by then it carries `--server`.
  *
  * @param {string[]} forwarded the raw command line, sign-in flags included.
- * @param {object} env process env — `MEASURE_SIGNIN_PASSWORD` is the non-argv way to pass
+ * @param {object} env process env. `MEASURE_SIGNIN_PASSWORD` is the non-argv way to pass
  *   a password, so a real one need not land in shell history or in `ps` output.
  * @returns {{signIn: {url: string, username: string, password: string}|null, forward: string[]}}
  *   `forward` is what `measure` should receive: the sign-in flags removed, `--server` added.
@@ -214,7 +215,7 @@ export function parseSignIn(forwarded = [], env = {}) {
       // The `measure-args` lesson, one layer out: a trailing value flag that consumes
       // `undefined` configures the mode half-way and fails much later, somewhere that
       // cannot name the flag the operator actually typed. `--flag --other` is the same
-      // mistake wearing a value. (A password that genuinely starts with `--` is why
+      // mistake wearing a value. (A password that really starts with `--` is why
       // MEASURE_SIGNIN_PASSWORD exists.)
       if (value === undefined || value.startsWith('--')) {
         throw new MatrixError(
@@ -235,13 +236,13 @@ export function parseSignIn(forwarded = [], env = {}) {
     }
 
     // A REPEAT is refused on exactly the reasoning that refuses `--server` beside
-    // `--sign-in` sixty lines below: the last one silently wins, so a disagreement
+    // `--sign-in` further down: the last one silently wins, so a disagreement
     // between two spellings of the same intent gets SETTLED rather than surfaced,
     // and the run produces a well-formed record of the wrong thing. `--sign-in A
     // --sign-in B` would seed and assert B without a word. Same rule
     // `parseDeviceList` applies to a repeated address, for the same reason.
     //
-    // The values are deliberately NOT echoed: one of these flags is a password.
+    // The values are not echoed: one of these flags is a password.
     if (values[key] !== undefined) {
       throw new MatrixError(
         `${name} was given more than once, and the last one would silently win.\n` +
@@ -257,7 +258,7 @@ export function parseSignIn(forwarded = [], env = {}) {
   if (url === undefined) {
     // Refused rather than ignored: silently dropping them would run the matrix against
     // whatever the devices happen to be signed into, which is the exact state this mode
-    // exists to replace — and the operator would have no way to tell from the output.
+    // exists to replace, and the operator would have no way to tell from the output.
     const orphan = username !== undefined ? '--user' : password !== undefined ? '--password' : null;
     if (orphan) {
       throw new MatrixError(
@@ -278,7 +279,7 @@ export function parseSignIn(forwarded = [], env = {}) {
 
   // Both of these are contradictions rather than redundancies, and neither can be resolved
   // by picking a winner: `measure` would take the LAST `--server` on its line, so forwarding
-  // two would settle a disagreement silently — which is how this subsystem produces a
+  // two would settle a disagreement silently, which is how this subsystem produces a
   // well-formed record of the wrong thing.
   if (forward.some((a) => a === '--server' || a.startsWith('--server='))) {
     throw new MatrixError(
@@ -304,54 +305,12 @@ export function parseSignIn(forwarded = [], env = {}) {
 }
 
 /**
- * What an interrupt should do, given which child is running and whether one already landed.
- *
- * ## Why this is a function here rather than three `if`s in the handler
- *
- * The driver's interrupt handling has already been wrong once in a way no reader
- * caught, and the reason it survived review is that there was nowhere to pin it. The
- * first cut recorded the signal in a flag and branched on it — correct-looking, and
- * DEAD: the device loop was `spawnSync` throughout, so the event loop never yielded a
- * turn and the handler body never ran before `process.exit`. Verified 2026-08-16 by
- * standalone reproduction, after which the loop went async (see `runFor` in
- * `measure-devices.js`). The rules moved HERE at the same time, because this module's
- * whole charter is that the driver's rules can be driven without three Rokus on the
- * LAN — an interrupt policy is exactly that kind of rule, and it is the one that had
- * been verified by reasoning instead.
- *
- * ## The rules, and the one the sibling entry point did not need
- *
- * `rta-run.js` faced this first and settled the shape: the first signal stops the run
- * and lets the restore happen, a second abandons it, and the child is killed outright
- * so a bare `kill` means the same thing a terminal Ctrl-C does. That is inherited.
- *
- * What is new here is that the matrix has THREE kinds of child and `rta-run.js` has
- * one, so it never had to say which of them may be killed. The restore is the child
- * this whole mechanism exists to buy time for, so a FIRST signal must not kill it —
- * a literal port would abort the put-back while printing "stopping after this device
- * is put back", which is the opposite of what it says. It is protected once; the
- * second signal abandons it, and the snapshot on disk is what makes that safe.
- *
- * @param {string} signal the signal received, e.g. `SIGINT`.
- * @param {object} state
- * @param {string|null} state.kind which child is running — `sign-in` / `measure` /
- *   `restore`, or `null` between two spawns (the window that used to be unreachable).
- * @param {string|null} state.host the device that child is driving, so the abandon path
- *   names the repair for the device actually at risk rather than a `<host>` placeholder.
- * @param {boolean} state.interrupted whether a signal has already been recorded.
- * @returns {{lines: string[], kill: 'SIGTERM'|'SIGKILL'|null, exit: number|null}}
- *   `kill` is what to send the RUNNING child, and is `null` when there is none to send it
- *   to — the caller would no-op on that anyway, but a policy that returns a signal for a
- *   child that does not exist is a rule nobody can read back. `exit` is a process exit
- *   code, or `null` to carry on.
- */
-/**
  * The exit code a child uses when a signal ended it.
  *
  * 130 rather than the shell's `128+n`, because that is already what every script in this
- * repo that traps a signal exits with — `measure.js`, `measure-signin.js`, `rta-run.js`,
- * `capture-screenshots.js`, `run-roku-tests.js` — and `rta-run.js` goes further, mapping a
- * child KILLED by any signal onto 130 as well. The convention deliberately drops WHICH
+ * repo that traps a signal exits with (`measure.js`, `measure-signin.js`, `rta-run.js`,
+ * `capture-screenshots.js`, `run-roku-tests.js`), and `rta-run.js` goes further, mapping a
+ * child KILLED by any signal onto 130 as well. The convention drops WHICH
  * signal, and encoding it in two of the five would have bought that detail at the price of
  * a reader having to remember which scripts do and do not.
  *
@@ -365,12 +324,12 @@ export const INTERRUPTED_EXIT = 130;
  * Did this child stop because someone signalled it?
  *
  * `signal` is the OBSERVED answer. Node fills it in only when the OS actually killed the
- * process — so a child that TRAPS its signals and exits under its own power always reports
+ * process, so a child that TRAPS its signals and exits under its own power always reports
  * `null` there. Both measurement children have to trap: releasing the device lock is an
  * `await`, and a dying process never gets one. The result was that the driver saw nothing
  * but a non-zero status and filed an operator's deliberate stop as that device's failure.
  *
- * The exit code is the INFERRED answer, and it is weaker on purpose — it establishes THAT a
+ * The exit code is the INFERRED answer, and it is weaker on purpose: it establishes THAT a
  * signal ended the child, never which one. Callers must keep the two apart rather than
  * collapsing them into one field: `summariseMatrix` prints a signal name only where one was
  * observed, and says a bare "interrupted" where only the code says so.
@@ -383,6 +342,48 @@ export function wasInterrupted(status, signal = null) {
   return Boolean(signal) || status === INTERRUPTED_EXIT;
 }
 
+/**
+ * What an interrupt should do, given which child is running and whether one already landed.
+ *
+ * ## Why this is a function here rather than three `if`s in the handler
+ *
+ * The driver's interrupt handling has already been wrong once in a way no reader
+ * caught, and the reason it survived review is that there was nowhere to pin it. The
+ * first cut recorded the signal in a flag and branched on it: correct-looking, and
+ * DEAD: the device loop was `spawnSync` throughout, so the event loop never yielded a
+ * turn and the handler body never ran before `process.exit`. Verified 2026-08-16 by
+ * standalone reproduction, after which the loop went async (see `runFor` in
+ * `measure-devices.js`). The rules moved HERE at the same time, because this module's
+ * whole charter is that the driver's rules can be driven without three Rokus on the
+ * LAN. An interrupt policy is exactly that kind of rule, and it is the one that had
+ * been verified by reasoning instead.
+ *
+ * ## The rules, and the one the sibling entry point did not need
+ *
+ * `rta-run.js` faced this first and settled the shape: the first signal stops the run
+ * and lets the restore happen, a second abandons it, and the child is killed outright
+ * so a bare `kill` means the same thing a terminal Ctrl-C does. That is inherited.
+ *
+ * What is new here is that the matrix has THREE kinds of child and `rta-run.js` has
+ * one, so it never had to say which of them may be killed. The restore is the child
+ * this whole mechanism exists to buy time for, so a FIRST signal must not kill it.
+ * A literal port would abort the put-back while printing "stopping after this device
+ * is put back", which is the opposite of what it says. It is protected once; the
+ * second signal abandons it, and the snapshot on disk is what makes that safe.
+ *
+ * @param {string} signal the signal received, for example `SIGINT`.
+ * @param {object} state
+ * @param {string|null} state.kind which child is running: `sign-in` / `measure` /
+ *   `restore`, or `null` between two spawns (the window that used to be unreachable).
+ * @param {string|null} state.host the device that child is driving, so the abandon path
+ *   names the repair for the device actually at risk rather than a `<host>` placeholder.
+ * @param {boolean} state.interrupted whether a signal has already been recorded.
+ * @returns {{lines: string[], kill: 'SIGTERM'|'SIGKILL'|null, exit: number|null}}
+ *   `kill` is what to send the RUNNING child, and is `null` when there is none to send it
+ *   to. The caller would no-op on that anyway, but a policy that returns a signal for a
+ *   child that does not exist is a rule nobody can read back. `exit` is a process exit
+ *   code, or `null` to carry on.
+ */
 export function signalPolicy(signal, { kind = null, host = null, interrupted = false } = {}) {
   // "Ctrl-C" only when Ctrl-C is what it was: this mode is now reachable by a bare
   // `kill` and by a `timeout` wrapper, where telling the operator to press Ctrl-C
@@ -391,7 +392,7 @@ export function signalPolicy(signal, { kind = null, host = null, interrupted = f
 
   if (interrupted) {
     // Never trap someone in an un-killable process. The snapshot is on disk before any
-    // seeding, so abandoning is recoverable rather than destructive — the same trade
+    // seeding, so abandoning is recoverable rather than destructive: the same trade
     // `armRestoreOnInterrupt` makes in `tests/rta/lib/registry.js`, and the reason the
     // repair command travels with the message rather than being left to the summary
     // (there will not be one).
@@ -436,7 +437,7 @@ export function signalPolicy(signal, { kind = null, host = null, interrupted = f
  * @param {{host: string, info: object|null, error: string|null}[]} probes one per device,
  *   `info` being the flat ECP `device-info` document (see `fetchDeviceInfo`).
  * @param {(modelNumber: string) => boolean} cannotRunApps injected rather than imported so
- *   this module stays a pure function over data — and so a test can exercise the legacy
+ *   this module stays a pure function over data, and so a test can exercise the legacy
  *   refusal without depending on which models Roku currently lists as legacy.
  * @returns {string|null} the refusal, ready to print.
  */
@@ -480,7 +481,7 @@ function unreachableRefusal(probes) {
  * A device JellyRock cannot run on at all.
  *
  * Roku's own table says these models "cannot be used to run IDK apps", so this is not a
- * gap in the dataset — it is a fact about the hardware, and the run would fail at deploy
+ * gap in the dataset: it is a fact about the hardware, and the run would fail at deploy
  * with something far less clear.
  */
 function legacyRefusal(probes, cannotRunApps) {
@@ -498,8 +499,8 @@ function legacyRefusal(probes, cannotRunApps) {
 /**
  * Two entries that cannot be told apart in the record afterwards.
  *
- * Two cases, one consequence. **Two addresses, one device** — a DHCP lease moved and the
- * list now names the same Roku twice — would relaunch one device twice and write two
+ * Two cases, one consequence. **Two addresses, one device** (a DHCP lease moved and the
+ * list now names the same Roku twice) would relaunch one device twice and write two
  * records for it. **Two different devices of the same MODEL** is a legitimate thing to
  * want to measure (device-to-device variance), and it still cannot be recorded here:
  * `measurements.jsonl` identifies a device by `model` / `modelNumber` / `ramTier` and by
@@ -558,9 +559,9 @@ function groupBy(items, key) {
  *
  * Printed before the first launch because a matrix is long and unattended, and "which
  * three devices did this actually run on" is otherwise a question only the records can
- * answer — after the fact. An unknown RAM tier is SAID rather than blanked: the dataset
+ * answer, after the fact. An unknown RAM tier is SAID rather than blanked: the dataset
  * lags Roku's table by up to a week (see the sync workflow), and a device missing from it
- * is still perfectly measurable, just not labelled.
+ * is still perfectly measurable, only not labeled.
  *
  * @param {(modelNumber: string) => string} describeDevice injected, per `preflightRefusal`.
  */
@@ -580,7 +581,7 @@ export function formatPlanLines(probes, { describeDevice = (m) => String(m) } = 
  * A device left DIRTY is louder still, and is the one thing here that is not about the
  * measurement at all: under `--sign-in` the matrix seeds a real session onto someone's own
  * Roku, so a restore that did not verify has to be named on its own line with the command
- * that repairs it. It also fails the run — a summary reporting three measured devices while
+ * that repairs it. It also fails the run: a summary reporting three measured devices while
  * one of them is still signed into the matrix's server would be true and useless.
  *
  * @param {{host: string, label: string, status: number|null, signal: string|null,
@@ -590,13 +591,13 @@ export function formatPlanLines(probes, { describeDevice = (m) => String(m) } = 
  */
 export function summariseMatrix(results) {
   const lines = results.flatMap((r) => {
-    // The stage rides on BOTH outcomes, not just the failure. "Interrupted" alone
+    // The stage rides on BOTH outcomes, not only the failure. "Interrupted" alone
     // cannot say whether a device got as far as a series, and that is the difference
     // between a row with samples on disk and one with none.
     const stage = r.stage ? `${r.stage} ` : '';
     // Named only when a name was OBSERVED. A child that trapped its signal and exited
     // under its own power leaves the exit code as the only evidence, and that establishes
-    // THAT it was interrupted, never which signal did it — so the bare word is the honest
+    // THAT it was interrupted, never which signal did it, so the bare word is the honest
     // rendering. Inventing a plausible name here would put a deduction in the one line an
     // operator reads to decide whether their own Ctrl-C caused this.
     const verdict = r.skipped
@@ -625,7 +626,7 @@ export function summariseMatrix(results) {
     measured,
     // The exit code the entry point returns. Anything short of every declared device
     // measuring cleanly is a non-zero exit, because a matrix that lost a tier is not the
-    // thing that was asked for — even though the tiers that did run are on disk and real.
+    // thing that was asked for, even though the tiers that did run are on disk and real.
     ok:
       measured === results.length &&
       results.length > 0 &&

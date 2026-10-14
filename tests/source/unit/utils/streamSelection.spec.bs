@@ -287,11 +287,25 @@ namespace tests
     function _()
       streams = [
         { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
-        { Type: "audio", index: 2, Language: "eng", channels: 8, codec: "dts", IsDefault: false }
+        { Type: "audio", index: 2, Language: "eng", channels: 8, codec: "eac3", IsDefault: false }
       ]
       ' Both match language, 8-channel passthrough available, should pick 8-channel
       result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(8, true))
       m.assertEqual(result, 2)
+    end function
+
+    @it("passes over an 8-channel DTS or TrueHD track for a 6-channel one, though passthrough is supported")
+    function _()
+      ' DTS above 5.1 and TrueHD are never played natively (DTS_MAX_DIRECT_PLAY_CHANNELS,
+      ' canDecodeAudioInContainer), so the 6-channel track is the one that direct-plays.
+      for each codec in ["dts", "truehd"]
+        streams = [
+          { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+          { Type: "audio", index: 2, Language: "eng", channels: 8, codec: codec, IsDefault: false }
+        ]
+        result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(8, true))
+        m.assertEqual(result, 1, "8-channel " + codec + " must lose to the 6-channel track")
+      end for
     end function
 
     @it("falls back to 6-channel when 8-channel not supported")
@@ -341,7 +355,7 @@ namespace tests
       streams = [
         { Type: "audio", index: 1, Language: "eng", channels: 2, codec: "aac", IsDefault: false },
         { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
-        { Type: "audio", index: 3, Language: "eng", channels: 8, codec: "dts", IsDefault: false }
+        { Type: "audio", index: 3, Language: "eng", channels: 8, codec: "eac3", IsDefault: false }
       ]
       ' Should pick 8-channel (max supported by device)
       result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(8, true))
@@ -377,7 +391,7 @@ namespace tests
         { Type: "audio", index: 1, Language: "jpn", channels: 2, codec: "aac", IsDefault: false },
         { Type: "audio", index: 2, Language: "eng", channels: 2, codec: "aac", IsDefault: false }
       ]
-      ' Blank language preference, should use Roku locale (en_US → eng)
+      ' Blank language preference, should use Roku locale (en_US becomes eng)
       result = findBestAudioStreamIndex(streams, false, "", m.createMockCapabilities(2, false))
       m.assertEqual(result, 2)
     end function
@@ -391,7 +405,7 @@ namespace tests
         { Type: "audio", index: 1, Language: "eng", channels: 2, codec: "aac", IsDefault: false },
         { Type: "audio", index: 2, Language: "spa", channels: 2, codec: "aac", IsDefault: false }
       ]
-      ' Invalid language preference, should use Roku locale (es_MX → spa)
+      ' Invalid language preference, should use Roku locale (es_MX becomes spa)
       result = findBestAudioStreamIndex(streams, false, invalid, m.createMockCapabilities(2, false))
       m.assertEqual(result, 2)
     end function
@@ -516,6 +530,255 @@ namespace tests
         { index: 1, channels: 2, codec: "aac", language: "eng" }
       ]
       m.assertFalse(isSelectedAudioStreamDirectPlayable(99, audioStreams))
+    end function
+
+    @it("never switches natively to DTS above 5.1, DTS-HD or TrueHD, whatever the device answers")
+    function _()
+      ' Runs against the real device. On a Roku Ultra `4850X` with a DTS-HD and TrueHD
+      ' soundbar, CanDecodeAudio says yes to dts at 8ch and to dtshd with PassThru, and a
+      ' native switch would take the path that failed to start; answering no makes the
+      ' switch reload.
+      audioStreams = [
+        { index: 1, channels: 8, codec: "dts", language: "eng" },
+        { index: 2, channels: 6, codec: "truehd", language: "eng" },
+        { index: 3, channels: 8, codec: "truehd", language: "eng" },
+        { index: 4, channels: 8, codec: "dtshd", language: "eng" }
+      ]
+      for each stream in audioStreams
+        m.assertFalse(isSelectedAudioStreamDirectPlayable(stream.index, audioStreams), stream.codec + " " + stream.channels.toStr() + "ch must reload, not switch natively")
+      end for
+    end function
+
+    @it("never switches natively where the device profile would not direct-play the track")
+    function _()
+      ' Runs against the real device, whose answers differ by model and audio setup. The
+      ' switch and the profile used to ask Roku different questions, so a switch could go
+      ' native onto a path the server would never have chosen.
+      caps = getDeviceAudioCapabilities()
+      di = CreateObject("roDeviceInfo")
+      mismatches = []
+      for each codec in ["aac", "ac3", "eac3", "dts", "flac", "opus", "pcm", "lpcm", "mp3", "vorbis", "alac"]
+        for each channels in [2, 6, 8]
+          if isStreamDirectPlayable({ codec: codec, channels: channels }, caps) and not getActualCodecSupport(codec, channels, di)
+            mismatches.push(codec + "/" + channels.toStr() + "ch")
+          end if
+        end for
+      end for
+      m.assertEqual(mismatches.count(), 0, "switches native where the profile would not direct-play: " + mismatches.join(", "))
+    end function
+
+    @it("honors Decode Multichannel Audio being off, like the profile does")
+    function _()
+      settings = m.global.user.settings
+      saved = settings.playbackDecodeMultichannelAudio
+      stream = { codec: "aac", channels: 6 }
+
+      settings.playbackDecodeMultichannelAudio = false
+      offResult = isStreamDirectPlayable(stream, m.createMockCapabilities(6, false))
+      settings.playbackDecodeMultichannelAudio = true
+      onResult = isStreamDirectPlayable(stream, m.createMockCapabilities(6, false))
+      settings.playbackDecodeMultichannelAudio = saved
+
+      m.assertFalse(offResult, "with the setting off the server handles multichannel aac, so a switch must reload")
+      m.assertTrue(onResult, "with the setting on, 6ch aac on a 5.1 device switches natively")
+    end function
+
+    @it("refuses the AAC profiles the device profile refuses")
+    function _()
+      caps = m.createMockCapabilities(6, false)
+      for each profile in getUnsupportedAacProfiles()
+        m.assertFalse(isStreamDirectPlayable({ codec: "aac", channels: 2, profile: profile }, caps), "aac " + profile + " must reload, as the profile would not direct-play it")
+      end for
+      m.assertTrue(isStreamDirectPlayable({ codec: "aac", channels: 2, profile: "LC" }, caps), "aac LC switches natively")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("languagesMatch() — mixed ISO 639 forms")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches 639-1 against 639-2")
+    function _()
+      m.assertTrue(languagesMatch("ko", "kor"))
+      m.assertTrue(languagesMatch("kor", "ko"))
+    end function
+
+    @it("matches 639-2/B against 639-2/T, ignoring case")
+    function _()
+      m.assertTrue(languagesMatch("fre", "fra"))
+      m.assertTrue(languagesMatch("FRA", "fr"))
+    end function
+
+    @it("compares codes outside the alias map as-is")
+    function _()
+      m.assertTrue(languagesMatch("xyz", "XYZ"))
+      m.assertFalse(languagesMatch("xyz", "abc"))
+    end function
+
+    @it("never matches different languages, or a missing code")
+    function _()
+      m.assertFalse(languagesMatch("eng", "jpn"))
+      m.assertFalse(languagesMatch("", ""))
+      m.assertFalse(languagesMatch(invalid, "eng"))
+      m.assertFalse(languagesMatch("OriginalLanguage", "eng"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("'Original language' preference (Jellyfin 12.0+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("picks the original-language track over a better-channel dub")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "jpn", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      ' "ja" is the item's OriginalLanguage (ISO 639-1); the streams are 639-2
+      result = findBestAudioStreamIndex(streams, false, "ja", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("applies no language rule, not the Roku locale, when the item has no OriginalLanguage")
+    function _()
+      m.global.device.locale = "en_US"
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Language: "jpn", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      ' The Roku locale would pick the English dub; no rule leaves it to the hardware
+      result = findBestAudioStreamIndex(streams, false, "", m.createMockCapabilities(6, false), true)
+      m.assertEqual(result, 2)
+    end function
+
+    @it("still applies the Roku locale to an empty preference that is not 'Original language'")
+    function _()
+      m.global.device.locale = "en_US"
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Language: "jpn", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, false, "", m.createMockCapabilities(6, false), false)
+      m.assertEqual(result, 1)
+    end function
+
+    @it("picks the original over a default-flagged dub (Severance layout)")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "fra", IsDefault: true, IsOriginal: false, channels: 6, codec: "eac3" },
+        { Type: "audio", index: 2, Language: "eng", IsDefault: false, IsOriginal: true, channels: 6, codec: "eac3" }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "en", m.createMockCapabilities(6, false), true), 2)
+    end function
+
+    @it("lets 'Play default track' win over 'Original language', as the server does")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "fra", IsDefault: true, IsOriginal: false, channels: 6, codec: "eac3" },
+        { Type: "audio", index: 2, Language: "eng", IsDefault: false, IsOriginal: true, channels: 6, codec: "eac3" }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, true, "en", m.createMockCapabilities(6, false), true), 1)
+    end function
+
+    @it("picks the original language when it is not the first track (Squid Game '222' layout)")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", IsDefault: true, IsOriginal: false, channels: 6, codec: "eac3" },
+        { Type: "audio", index: 2, Language: "kor", IsDefault: false, IsOriginal: false, channels: 6, codec: "eac3" }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "ko", m.createMockCapabilities(6, false), true), 2)
+    end function
+
+    @it("prefers the track flagged IsOriginal among same-language tracks over a better channel count")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "kor", IsOriginal: false, channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "kor", IsOriginal: true, channels: 2, codec: "aac", IsDefault: false }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "ko", m.createMockCapabilities(6, false), true), 2)
+      ' Without "Original language" the flag is ignored and the hardware decides
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "kor", m.createMockCapabilities(6, false), false), 1)
+    end function
+
+    @it("takes a track flagged IsOriginal when the original language is unknown")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "fra", IsOriginal: false, channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "eng", IsOriginal: true, channels: 2, codec: "aac", IsDefault: false }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "", m.createMockCapabilities(6, false), true), 2)
+    end function
+
+    @it("matches a 639-2/B preference against a 639-2/T track")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "fra", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, false, "fre", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("keeps an exact regional code over its base language")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "por", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "pob", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "pob", m.createMockCapabilities(6, false)), 2)
+    end function
+
+    @it("falls back to the base language when no track has the exact regional code")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "por", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "pob", m.createMockCapabilities(6, false)), 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("languageBaseCode() / matchingLanguageCodes()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("normalizes languages outside the UI-locale alias map")
+    function _()
+      m.assertTrue(languagesMatch("sw", "swa"))
+      m.assertTrue(languagesMatch("bo", "tib"))
+      m.assertTrue(languagesMatch("bod", "tib"))
+      m.assertTrue(languagesMatch("tl", "tgl"))
+    end function
+
+    @it("matches Yiddish in every form, the deprecated 'ji' included")
+    function _()
+      m.assertTrue(languagesMatch("yi", "yid"))
+      m.assertTrue(languagesMatch("ji", "yi"))
+    end function
+
+    @it("drops a region or script suffix")
+    function _()
+      m.assertEqual(languageBaseCode("pt-BR"), "pt")
+      m.assertEqual(languageBaseCode("zh_Hant"), "zh")
+      m.assertEqual(languageBaseCode(""), "")
+      m.assertEqual(languageBaseCode(invalid), "")
+    end function
+
+    @it("returns only the exact code when a stream carries it")
+    function _()
+      matches = matchingLanguageCodes(["por", "pob", "eng"], "POB")
+      m.assertEqual(matches.Count(), 1)
+      m.assertTrue(matches.doesExist("pob"))
+    end function
+
+    @it("returns every same-language code when none is exact")
+    function _()
+      matches = matchingLanguageCodes(["fra", "fre", "eng", invalid], "fr")
+      m.assertEqual(matches.Count(), 2)
+      m.assertTrue(matches.doesExist("fra"))
+      m.assertTrue(matches.doesExist("fre"))
+    end function
+
+    @it("returns nothing for no preference")
+    function _()
+      m.assertEqual(matchingLanguageCodes(["eng"], "").Count(), 0)
     end function
 
   end class

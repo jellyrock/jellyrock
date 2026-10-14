@@ -1,8 +1,8 @@
-// Tests for scripts/journal-sync.js — the post-merge mechanical edit
+// Tests for scripts/journal-sync.js: the post-merge mechanical edit
 // engine for docs/progress.md.
 //
 // Two layers:
-//   - Pure-function tests (tokenize, shouldSkip, applyShipEdit) — no fs.
+//   - Pure-function tests (tokenize, shouldSkip, applyShipEdit), no fs.
 //   - CLI tests via spawnScript with a temp repo fixture to exercise
 //     argv parsing, file IO, idempotency, and dry-run.
 //
@@ -72,7 +72,7 @@ describe('tokenize', () => {
   });
 
   it('drops stopwords + short tokens + numerals', () => {
-    // All tokens are stopwords / 1-2 chars / pure numerals — nothing left.
+    // All tokens are stopwords / 1-2 chars / pure numerals, so nothing is left.
     const t = tokenize('the a is and 3 of feat fix');
     expect(t.size).toBe(0);
   });
@@ -149,6 +149,17 @@ describe('shouldSkip', () => {
     );
   });
 
+  it('skips on shared agent-tooling title', () => {
+    expect(shouldSkip({ prTitle: 'chore(agents): Update shared skills and rules' })).toMatch(
+      /auto-generated/,
+    );
+  });
+
+  it('proceeds for other agent-tooling titles', () => {
+    expect(shouldSkip({ prTitle: 'chore(skills): tighten /pr title rule' })).toBe(null);
+    expect(shouldSkip({ prTitle: 'feat(agents): add a skill' })).toBe(null);
+  });
+
   it('proceeds (returns null) for a normal feature title', () => {
     expect(shouldSkip({ prTitle: 'feat(catchup): auto-maintain signals' })).toBe(null);
   });
@@ -172,12 +183,16 @@ describe('applyShipEdit', () => {
     const r = applyShipEdit(before, { prTitle: 'feat: ship widget', today: '2026-05-10' });
     expect(r.changed).toBe(true);
     expect(r.idempotent).toBe(false);
-    expect(r.content).toContain('- 2026-05-10 — feat: ship widget');
+    expect(r.content).toContain('- 2026-05-10: feat: ship widget');
     expect(r.content).toContain('last-updated: 2026-05-10');
     // Older shipment still there, after the new entry
-    const newIdx = r.content.indexOf('- 2026-05-10 — feat: ship widget');
+    const newIdx = r.content.indexOf('- 2026-05-10: feat: ship widget');
     const oldIdx = r.content.indexOf('- 2026-05-01 — older shipment');
+    // "Still there" is the claim, so it is asserted rather than implied: `indexOf`
+    // answers -1 for a pruned bullet, and -1 is less than every real index, so the
+    // ordering alone passes when the older shipment was dropped entirely.
     expect(newIdx).toBeGreaterThan(0);
+    expect(oldIdx).toBeGreaterThan(-1);
     expect(oldIdx).toBeGreaterThan(newIdx);
   });
 
@@ -187,9 +202,9 @@ describe('applyShipEdit', () => {
       running: '',
       shipped: ['2026-05-20 — recent shipment', '2026-05-01 — ancient shipment'],
     });
-    // today 2026-05-21, 14-day window → cutoff 2026-05-07: recent kept, ancient pruned.
+    // today 2026-05-21, 14-day window, so cutoff 2026-05-07: recent kept, ancient pruned.
     const r = applyShipEdit(before, { prTitle: 'feat: new thing', today: '2026-05-21' });
-    expect(r.content).toContain('- 2026-05-21 — feat: new thing'); // just-prepended, always kept
+    expect(r.content).toContain('- 2026-05-21: feat: new thing'); // prepended now, always kept
     expect(r.content).toContain('- 2026-05-20 — recent shipment');
     expect(r.content).not.toContain('ancient shipment');
   });
@@ -209,7 +224,8 @@ describe('applyShipEdit', () => {
   // Regression: the clear used to append its own newline on top of the one the
   // lookahead already preserves, leaving TWO blank lines between the headings.
   // That trips markdownlint MD012, which fails `lint:markdown` in the pre-push
-  // hook — and journal-sync's own workflow pushes to main, so it broke itself.
+  // hook. The bot's sync-changelog push to main runs that hook, so
+  // journal-sync's own output blocked the next push.
   // Asserting the cursor is empty is not enough; the surrounding shape matters.
   it('leaves exactly one blank line between the headings after clearing', () => {
     const before = progressTemplate({
@@ -251,10 +267,29 @@ describe('applyShipEdit', () => {
     const r2 = applyShipEdit(r1.content, { prTitle: 'fix: beta crash', today: '2026-05-10' });
     expect(r2.changed).toBe(true);
     expect(r2.idempotent).toBe(false);
-    expect(r2.content).toContain('- 2026-05-10 — fix: beta crash');
-    expect(r2.content).toContain('- 2026-05-10 — feat: alpha widget');
+    expect(r2.content).toContain('- 2026-05-10: fix: beta crash');
+    expect(r2.content).toContain('- 2026-05-10: feat: alpha widget');
     // Newest (r2) appears before older (r1) in the file
     expect(r2.content.indexOf('beta crash')).toBeLessThan(r2.content.indexOf('alpha widget'));
+  });
+
+  it('recognizes a today bullet in the new colon form as already written', () => {
+    const before = progressTemplate({
+      running: '',
+      shipped: ['2026-05-10: feat: ship widget'],
+    });
+    const r = applyShipEdit(before, { prTitle: 'feat: ship widget', today: '2026-05-10' });
+    expect(r.idempotent).toBe(true);
+    expect(r.content).toBe(before);
+  });
+
+  it('recognizes a today bullet in the old em-dash form as already written', () => {
+    const before = progressTemplate({
+      running: '',
+      shipped: ['2026-05-10 \u2014 feat: ship widget'],
+    });
+    const r = applyShipEdit(before, { prTitle: 'feat: ship widget', today: '2026-05-10' });
+    expect(r.idempotent).toBe(true);
   });
 
   it('throws on empty content (refuses to write blind)', () => {
@@ -267,12 +302,30 @@ describe('pruneRecentlyShipped', () => {
     const before = progressTemplate({
       shipped: ['2026-05-20 — keep recent', '2026-05-07 — keep edge', '2026-05-06 — drop old'],
     });
-    // today 2026-05-21, window 14 → cutoff 2026-05-07 (kept via >=).
+    // today 2026-05-21, window 14, so cutoff 2026-05-07 (kept via >=).
     const out = pruneRecentlyShipped(before, '2026-05-21', 14);
     expect(out).toContain('- 2026-05-20 — keep recent');
     expect(out).toContain('- 2026-05-07 — keep edge');
     expect(out).not.toContain('drop old');
     expect(out).toContain('Newest first'); // intro line preserved
+  });
+
+  it('prunes by date for both the old em-dash form and the new colon form', () => {
+    const before = progressTemplate({
+      shipped: [
+        '2026-05-20 \u2014 keep old form',
+        '2026-05-20: keep new form',
+        '2026-05-07: keep new form edge',
+        '2026-05-06 \u2014 drop old form',
+        '2026-05-06: drop new form',
+      ],
+    });
+    const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+    expect(out).toContain('- 2026-05-20 \u2014 keep old form');
+    expect(out).toContain('- 2026-05-20: keep new form');
+    expect(out).toContain('- 2026-05-07: keep new form edge');
+    expect(out).not.toContain('drop old form');
+    expect(out).not.toContain('drop new form');
   });
 
   it('only prunes the Recently shipped section — dated bullets elsewhere survive', () => {
@@ -291,6 +344,70 @@ last-updated: 2026-05-01
     const out = pruneRecentlyShipped(before, '2026-05-21', 14);
     expect(out).not.toContain('old ship'); // pruned from Recently shipped
     expect(out).toContain('an old but still-open followup'); // untouched elsewhere
+  });
+
+  // The section is rebuilt on every prune, so its shape no longer depends on how the
+  // last hand edit or the last sync left it. Each case below is a shape that broke it.
+  describe('section shape', () => {
+    const INTRO = 'Newest first. Prepended by the post-merge journal-sync.';
+
+    // The Recently shipped body, from the heading to the next heading.
+    function shippedSection(content) {
+      return content.match(/## Recently shipped\n([\s\S]*?)(?=\n## )/)[1];
+    }
+
+    function progressWith(sectionBody) {
+      return `---\nlast-updated: 2026-05-01\n---\n\n## Recently shipped\n${sectionBody}\n## Open followups\n\n(none)\n`;
+    }
+
+    it('leaves one blank line where a blank sat between two runs of pruned bullets', () => {
+      // #1073: pruning both runs left the blank on each side of them, so two in a row.
+      const before = progressWith(
+        `\n${INTRO}\n\n- 2026-05-20 — keep\n- 2026-05-01 — old a\n\n- 2026-05-02 — old b\n`,
+      );
+      const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+      expect(out).not.toMatch(/\n{3,}/);
+      expect(shippedSection(out)).toBe(`\n${INTRO}\n\n- 2026-05-20 — keep\n`);
+    });
+
+    it('returns an intro stranded mid-list to the top', () => {
+      const before = progressWith(
+        `\n- 2026-05-20 — first\n- 2026-05-19 — second\n${INTRO}\n\n- 2026-05-18 — third\n`,
+      );
+      const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+      expect(shippedSection(out)).toBe(
+        `\n${INTRO}\n\n- 2026-05-20 — first\n- 2026-05-19 — second\n- 2026-05-18 — third\n`,
+      );
+    });
+
+    it('puts a new bullet under the intro when bullets were hand-inserted above it', () => {
+      // #918: bullets above the intro made every later sync prepend above the intro too.
+      const before = progressWith(
+        `\n- 2026-05-19 — hand added\n\n${INTRO}\n\n- 2026-05-18 — older\n`,
+      );
+      const r = applyShipEdit(before, { prTitle: 'feat: new thing', today: '2026-05-21' });
+      expect(shippedSection(r.content)).toBe(
+        `\n${INTRO}\n\n- 2026-05-21: feat: new thing\n- 2026-05-19 — hand added\n- 2026-05-18 — older\n`,
+      );
+    });
+
+    it('leaves the section holding nothing but the intro and bullets', () => {
+      const before = progressWith(`\n\n${INTRO}\n\n\n- 2026-05-20 — a\n\n\n- 2026-05-19 — b\n\n`);
+      const r = applyShipEdit(before, { prTitle: 'fix: c', today: '2026-05-21' });
+      const lines = shippedSection(r.content)
+        .split('\n')
+        .filter((l) => l.trim() !== '');
+      expect(lines.filter((l) => l !== INTRO && !l.startsWith('- '))).toEqual([]);
+      expect(lines[0]).toBe(INTRO);
+      expect(r.content).not.toMatch(/\n{3,}/);
+    });
+
+    it('keeps a line that is neither the intro nor a bullet, in order after the intro', () => {
+      // Only extra blank lines may be dropped, never content.
+      const before = progressWith(`\n(a note)\n${INTRO}\n\n- 2026-05-20 — a\n`);
+      const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+      expect(shippedSection(out)).toBe(`\n${INTRO}\n\n(a note)\n- 2026-05-20 — a\n`);
+    });
   });
 });
 
@@ -323,7 +440,7 @@ describe('CLI: ship', () => {
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^shipped:/);
     const after = readFileSync(join(fix.dir, 'docs/progress.md'), 'utf8');
-    expect(after).toContain(`- ${TODAY} — feat(catchup): auto-maintain signals`);
+    expect(after).toContain(`- ${TODAY}: feat(catchup): auto-maintain signals`);
     expect(after).toContain(`last-updated: ${TODAY}`);
   });
 
@@ -387,7 +504,7 @@ describe('CLI: ship', () => {
       { cwd: fix.dir },
     );
     expect(exitCode).toBe(0);
-    expect(stdout).toContain(`- ${TODAY} — feat: dry run check`);
+    expect(stdout).toContain(`- ${TODAY}: feat: dry run check`);
     // File on disk is untouched
     expect(readFileSync(join(fix.dir, 'docs/progress.md'), 'utf8')).toBe(before);
   });
@@ -444,13 +561,13 @@ describe('CLI: ship', () => {
     expect(exitCode).toBe(0);
     const after = readFileSync(join(fix.dir, 'docs/progress.md'), 'utf8');
     // Use the same exported helper so the test mirrors the script's parser
-    // exactly — earlier inline regex had a `\s*\n` greedy-swallow bug.
+    // exactly: an earlier inline regex had a `\s*\n` greedy-swallow bug.
     expect(extractCurrentlyRunning(after)).toBe('');
   });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
-// Dictionary precheck — guards docs/progress.md against un-dictionarized
+// Dictionary precheck: guards docs/progress.md against un-dictionarized
 // PR-title words landing via post-merge journal-sync.
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -468,7 +585,7 @@ describe('checkBulletAgainstDictionary', () => {
       runner,
     });
     expect(result.ok).toBe(true);
-    expect(captured).toBe('- 2026-05-22 — feat(catchup): auto-maintain signals\n');
+    expect(captured).toBe('- 2026-05-22: feat(catchup): auto-maintain signals\n');
   });
 
   it('surfaces runner failure verbatim (the caller writes the user message)', () => {
@@ -536,7 +653,7 @@ describe('check command (CLI)', () => {
     fix = createGitFixture();
     mkdirSync(join(fix.dir, 'docs'), { recursive: true });
     writeFileSync(join(fix.dir, 'docs/progress.md'), progressTemplate());
-    // No dictionary.txt — defaultSpellRunner detects the absence and skips
+    // No dictionary.txt: defaultSpellRunner detects the absence and skips
     // (test-fixture branch). The skip-rule case below never reaches the
     // spawn, so it works regardless.
   }

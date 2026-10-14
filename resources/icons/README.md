@@ -1,69 +1,39 @@
-# `resources/icons/` — SVG sources for in-app icons
+# `resources/icons/`: SVG sources for in-app icons
 
-SVGs in this directory are the committed source-of-truth for JellyRock's in-app
-icon assets. Per-resolution PNGs (`images/icons/<name>_fhd.png` +
-`<name>_hd.png`) are **generated** from these SVGs by
-[`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js); they
-are committed but are not hand-authored. Drift is enforced by the pre-push hook
-and CI (`npm run icons:check`).
+The SVGs in this directory are the source of truth for JellyRock's in-app icons. [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) generates two PNGs per icon from them, `images/icons/<name>_fhd.png` and `<name>_hd.png`. The PNGs are committed, but nobody edits them by hand. When the icon sources change, the pre-push hook runs `npm run icons:check`, and CI runs the same comparison through `icons-build.test.js` in the Vitest suite.
 
-The pipeline pairs with the manifest's [`uri_resolution_autosub`](../../manifest)
-declaration so a Poster URI like `pkg:/images/icons/play_$$RES$$.png` is
-rewritten by the Roku OS at load time to the correct per-device asset.
+The manifest's [`uri_resolution_autosub`](../../manifest) line pairs with the pipeline: the Roku OS rewrites a Poster URI such as `pkg:/images/icons/play_$$RES$$.png` at load time to the asset for the device.
 
-> **Current state — fully delivering.** `$$RES$$` substitution keys off the
-> *device's* UI resolution, not the manifest's `ui_resolutions=fhd` design
-> space: devices with a 720p UI load the `_hd` renders, decoded at the physical
-> output size, so HD devices get native-resolution bitmaps today
-> (hardware-verified via `r2d2_bitmaps` 2026-08-07 — see issue #419's
-> closing comment). The `_sd` slot remains reserved-but-empty (autosub falls
-> back to `hd`); shipping it needs NTSC pixel-aspect-ratio handling, tracked
-> as
-> [`sd-resolution-native-support`](../../docs/architecture/tech-debt.md#sd-resolution-native-support).
-> See
-> [`docs/architecture/build-and-tooling.md`](../../docs/architecture/build-and-tooling.md)
-> for the full pipeline shape.
+> **Current state: in use on FHD and HD devices.** `$$RES$$` follows the *device's* UI resolution, not the manifest's `ui_resolutions=fhd` design space. A device with a 720p UI loads the `_hd` renders, decoded at the physical output size, so HD devices get native-resolution bitmaps today (verified on hardware with `r2d2_bitmaps` on 2026-08-07; see the closing comment on issue #419). No `_sd` images exist. Roku's manifest reference describes no fallback for a missing one, and shipping them needs NTSC pixel-aspect-ratio handling, tracked as [`sd-resolution-native-support`](../../docs/architecture/tech-debt.md#sd-resolution-native-support). The full pipeline is in [`docs/architecture/build-and-tooling.md`](../../docs/architecture/build-and-tooling.md).
 
 ## House style (locked)
 
-JellyRock standardizes on the [Material Symbols](https://fonts.google.com/icons)
-family at these locked coordinates:
+JellyRock uses the [Material Symbols](https://fonts.google.com/icons) family at these fixed settings:
 
-- **Variant**: Rounded (best for 10-foot UI — antialiases cleanly under 720p
-  downsample, matches the soft Jellyfin/JellyRock brand language)
-- **Weight**: 500 (heavier than Material's 400 default — better legibility at
-  TV viewing distance)
-- **Fill**: 0 (outlined) by default — see [Fill convention](#fill-convention)
-  for the exception cases
-- **Optical size**: `24px`
+- **Variant:** Rounded, the best fit for a 10-foot UI. It antialiases cleanly when scaled down for 720p and matches the soft Jellyfin and JellyRock brand.
+- **Weight:** 500, heavier than Material's default of 400, for legibility at TV viewing distance.
+- **Fill:** 0 (outlined) by default. The exceptions are under [Fill convention](#fill-convention).
+- **Optical size:** `24px`.
 
-The `npm run icons:add` script enforces these — contributors don't pick a
-variant per icon, so the system never drifts. If a future icon genuinely needs
-a different style (e.g., a bespoke brand mark), commit a hand-authored SVG
-directly and document the reason in the [Density notes](#density-notes) section
-below.
+`npm run icons:add` enforces these, so a contributor never picks a variant per icon and the set cannot drift. If a future icon needs a different style (for example, a custom brand mark), commit a hand-made SVG and record the reason under [Density notes](#density-notes).
 
 ### Fill convention
 
-**Default: outlined (`fill=0`).** Outlined glyphs read more clearly at TV
-viewing distance because the silhouette is recognizable independent of color.
-Modern Material 3 / Apple HIG / IBM Carbon all default to outlined for
-medium-size action icons.
+**Default: outlined (`fill=0`).** An outlined glyph reads more clearly at TV viewing distance, because its silhouette is recognizable without color. Material 3, Apple's HIG and IBM Carbon all default to outlined for medium-size action icons.
 
-Pass `--filled` to `npm run icons:add` (or store an `_filled.svg` variant
-file) ONLY when one of these seven pinned-filled rules applies:
+Pass `--filled` to `npm run icons:add` (or store an `_filled.svg` variant) only when one of these seven rules applies:
 
 | # | Rule | Trigger | Examples |
 |---|---|---|---|
 | 1 | Pure-shape primitive | No meaningful outlined alternative | `play`, `pause`, `circle`, `record`, `spinner`, `check`, `arrow-*` |
-| 2 | Small-canvas size | Canvas width less than `32px` | `mic_icon` (24×24) — outlined strokes lose visibility at small sizes (Material 3 small-target guidance, Apple HIG ≤ `28pt`) |
-| 3 | Subject / identity content | Represents a person, user, or content-type subject (album, music note, etc.) | `person`, `person_36px` (avatars), `album`, `musicNote` (content-type representations) — filled glyphs read more clearly than outlined when the icon IS the subject (e.g., the album disc on the audio player's now-playing screen) rather than an action affordance |
-| 4 | Placeholder / representative content | Lives in `images/placeholders/` | All 10 placeholders (`movie`, `album`, `folder`, etc.) — Apple Finder / Google Drive / Material 3 file pickers all use filled placeholders |
-| 5 | Rating glyph | Inline rating display | `star` — industry-standard filled for ratings |
-| 6 | Playback action button | Composes filled `play` | `resume` (arc + play-triangle) — visual consistency with the `play` standalone |
-| 7 | Toggle on-state | Paired with outlined off-state | `heart` (on-state in `ItemDetails` Favorite button), `favorite_selected` (on-state in `ItemGridOptions` favorite menu — geometry outlined, signaled by hard-coded red color) |
+| 2 | Small canvas | Canvas narrower than `32px` | `mic_icon` (a 16×22 canvas): outlined strokes lose visibility at small sizes (Material 3 small-target guidance, Apple HIG at or under `28pt`) |
+| 3 | Subject or identity content | Shows a person, a user or a content type (an album, a music note) | `person`, `person_36px` (avatars), `album`, `musicNote`. A filled glyph reads more clearly than an outlined one when the icon is the subject, such as the album disc on the audio player's now-playing screen, not an action. |
+| 4 | Placeholder content | Lives in `images/placeholders/` | The placeholders (`movie`, `album`, `folder` and others), as in the file pickers of Apple Finder, Google Drive and Material 3. One exception: the `livetv` placeholder reuses the outlined `liveTV.svg`. |
+| 5 | Rating glyph | Inline rating display | `star`: filled is the industry standard for ratings |
+| 6 | Playback action button | Composes the filled `play` | `resume` (an arc plus the play triangle), to match the standalone `play` |
+| 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `favorite_selected` (the on-state in the `ItemGridOptions` favorite menu: outlined geometry, marked by a hard-coded red) |
 
-**Decision tree for adding a new icon:**
+**Choosing the fill for a new icon:**
 
 ```text
 Is it a `play` triangle / `pause` bars / `circle` / pure shape?    → --filled (Rule 1)
@@ -76,23 +46,9 @@ Is it the on-state of a toggle paired with an outlined off-state?  → --filled 
 Otherwise:                                                         → outlined (default)
 ```
 
-**Shared glyphs:** when the same Material symbol is needed in BOTH an
-outlined-icon context and a filled-placeholder context, commit two SVG
-files: `<name>.svg` (outlined for icon use) + `<name>_filled.svg` (filled
-for placeholder use). The placeholder config (`resources/placeholders/placeholders.json`)
-points at the `_filled.svg` source. Subject-identity glyphs (Rule 3 —
-`album`, `musicNote`, `person`) skip the two-file dance because they're
-filled in BOTH contexts; one SVG file suffices and `placeholders.json`
-references the same file the icon set uses. Single-context placeholder-only
-glyphs (Rule 4 — e.g., `movie`, `folder`, `playlist`, `artist`, `musicFolder`,
-`book`, `studio`) live as `<name>_filled.svg` only.
+**Shared glyphs.** When one Material symbol is needed both as an outlined icon and as a filled placeholder, commit two files: `<name>.svg` (outlined, for the icon) and `<name>_filled.svg` (filled, for the placeholder). The placeholder config, `resources/placeholders/placeholders.json`, points at the `_filled.svg` file. Subject glyphs (Rule 3: `album`, `musicNote`, `person`) are filled in both places, so one file serves both and `placeholders.json` names the same file the icon set uses. A glyph used only as a placeholder (Rule 4: for example `movie`, `folder`, `playlist`, `artist`, `musicFolder`, `book`, `studio`) exists only as `<name>_filled.svg`.
 
-The build script ([`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js))
-auto-skips files ending in `_filled.svg` from the icons-rendering loop —
-these variants exist purely as placeholder sources, so rendering them as
-`images/icons/<name>_filled_*.png` would produce unused orphan PNGs. They
-are still rendered through the placeholders loop when referenced from
-`placeholders.json`.
+The build script skips files ending in `_filled.svg` in its icon loop: they exist only as placeholder sources, and rendering them as `images/icons/<name>_filled_*.png` would produce unused PNGs. The placeholder loop still renders them when `placeholders.json` names them.
 
 **Examples:**
 
@@ -118,9 +74,7 @@ npm run icons:add -- movie --as movie_filled --filled
 
 ## Adding a new icon
 
-1. **Pick the Material symbol.** Browse [icons.google.com](https://fonts.google.com/icons)
-   to find a name (e.g., `play_arrow`, `menu_book`). You only need the *name* —
-   don't download anything manually.
+1. **Pick the Material symbol.** Browse [icons.google.com](https://fonts.google.com/icons) for a name, such as `play_arrow` or `menu_book`. You need only the *name*: don't download anything.
 2. **Run the add script.** Two forms:
 
    ```bash
@@ -131,22 +85,11 @@ npm run icons:add -- movie --as movie_filled --filled
    npm run icons:add -- play_arrow --as play
    ```
 
-   The script fetches the canonical SVG from `google/material-design-icons`,
-   injects `fill="#FFFFFF"` so the source is white (required for `blendColor`
-   tinting at render time — see [Why white fill](#why-white-fill)), saves to
-   `resources/icons/<name>.svg`, and appends a row to the [Provenance table](#provenance).
-3. **(Optional) Pin a glyph size in `icons.json`.** Skip this if the default
-   density (`54px` glyph in a `96px` canvas) looks right. Override only when
-   matching the size of an existing JellyRock icon during migration, or when
-   visual judgment says the default is wrong. See [Glyph density](#glyph-density).
-4. **Generate the PNGs.** Run `npm run icons:build`. Two new files appear:
-   `images/icons/<name>_fhd.png` (FHD, default canvas `96px`) and
-   `<name>_hd.png` (≈0.667× FHD).
-5. **Update the call site.** Change the Poster URI from
-   `pkg:/images/icons/<name>.png` to `pkg:/images/icons/<name>_$$RES$$.png`.
-   The Roku OS rewrites `$$RES$$` per device at load time.
-6. **Delete any superseded single-res PNG.** After grep-confirming zero
-   remaining bare-`.png` references:
+   The script fetches the SVG from `google/material-design-icons` and sets `fill="#FFFFFF"` on it, because `blendColor` tinting needs a white source (see [Why white fill](#why-white-fill)). It saves the file to `resources/icons/<name>.svg` and adds a row to the [Provenance table](#provenance).
+3. **(Optional) Pin a glyph size in `icons.json`.** Skip this if the default density (a `54px` glyph in a `96px` canvas) looks right. Override it only to match an existing JellyRock icon during a migration, or when the default looks wrong. See [Glyph density](#glyph-density).
+4. **Generate the PNGs.** Run `npm run icons:build`. Two files appear: `images/icons/<name>_fhd.png` (FHD, a `96px` canvas by default) and `<name>_hd.png` (two-thirds of the FHD size).
+5. **Update the call site.** Change the Poster URI from `pkg:/images/icons/<name>.png` to `pkg:/images/icons/<name>_$$RES$$.png`. The Roku OS rewrites `$$RES$$` for each device at load time.
+6. **Delete any old single-resolution PNG**, once this search finds no reference to it:
 
    ```bash
    grep -rn "pkg:/images/icons/<name>\.png" --include="*.bs" --include="*.brs" --include="*.xml"
@@ -154,114 +97,50 @@ npm run icons:add -- movie --as movie_filled --filled
 
 ## Glyph density
 
-Each icon's PNG has two distinct sizes:
+Each icon's PNG has two sizes:
 
-- **Canvas size** (`sizeFhd` in `icons.json`): the full PNG dimensions in
-  pixels. Matches the `width`/`height` declared on the Poster in the component
-  XML. Default ``96px``.
-- **Glyph size** (`glyphSize` in `icons.json`): how big the visible glyph is
-  *inside* that canvas. The remaining pixels are transparent padding centered
-  around the glyph. Default `54px` (matches the dense cluster of existing
-  JellyRock UI glyphs like `info`/`error`/`liveTV`/`tv`).
+- **Canvas size** (`sizeFhd` in `icons.json`): the full width and height of the PNG in pixels. It matches the `width` and `height` of the Poster in the component XML. The default is `96px`.
+- **Glyph size** (`glyphSize` in `icons.json`): how big the visible glyph is *inside* the canvas. The rest is transparent padding, centered around the glyph. The default is `54px`, which matches the dense cluster of existing JellyRock glyphs such as `info`, `error`, `liveTV` and `tv`.
 
-The build script picks each value in this order (override > measurement of
-existing PNG > default):
+The build script picks each value in this order (an override, then a measurement of an existing PNG, then the default):
 
 | Field | 1st | 2nd | 3rd | Default |
 |---|---|---|---|---|
 | `sizeFhd` | `icons.json` | width of existing `<name>_fhd.png` | width of legacy `<name>.png` | `96` |
 | `glyphSize` | `icons.json` | max-dim of trimmed bbox in `<name>_fhd.png` | max-dim of trimmed bbox in legacy `<name>.png` | `54` |
 
-The auto-detection is what makes a *migration* a pure refactor: when an
-existing single-res PNG is present at build time, the new render preserves its
-established glyph size to within ±1 pixel (Material's natural aspect ratios may
-differ slightly from the original, but the visible footprint matches). Once
-the per-resolution `_fhd.png` is committed, future rebuilds preserve it.
+Measuring the existing PNG is what makes a *migration* a pure refactor. When a single-resolution PNG exists at build time, the new render keeps its glyph size to within a pixel. Material's natural aspect ratios can differ slightly from the original, but the visible footprint matches. Once the `_fhd.png` is committed, later rebuilds keep its size.
 
-To intentionally change an icon's size, set `sizeFhd` and/or `glyphSize` in
-`icons.json` and re-run `npm run icons:build`.
+To change an icon's size on purpose, set `sizeFhd`, `glyphSize` or both in `icons.json` and run `npm run icons:build` again.
 
 ## Density notes
 
-Per-icon notes for non-default density choices. Add to this section whenever
-an icon needs a `glyphSize` or `sizeFhd` override that isn't self-explanatory.
+Notes for icons whose density differs from the default. Add one whenever an icon needs a `glyphSize` or `sizeFhd` override that isn't obvious.
 
-- **`spinner`** (`sizeFhd: 125`, `glyphSize: 125`): the global loading spinner
-  is 125×125 because [`components/JRScene.xml`](../../components/JRScene.xml)
-  positions it assuming that bitmap size. The `glyphSize: 125` makes the
-  Material `progress_activity` arc fill the entire canvas (no padding) to
-  match the original spinner's outer-circle visual. Don't shrink without
-  re-positioning the `JRScene` placement.
-- **`play`/`pause`/`itemPrevious`/`itemNext`/`chapters`** (`glyphSize` between
-  38 and 60): each pinned to the max bbox dimension of the original trimmed
-  hand-authored PNG, so the migration to Material is a pure visual swap with
-  the same screen footprint.
-- **`mic_icon`** (`sizeFhd: 16`, `glyphSize: 22`): voice-search inline indicator
-  in [`components/ItemGrid/Alpha.xml`](../../components/ItemGrid/Alpha.xml),
-  positioned next to a keyboard letter at non-square `width=15 height=22`
-  (`<Poster id="alphaMic" height="22" width="15" />`). A square canvas
-  forces the Poster to letterbox under aspect-preserving rendering — the
-  square source collapses to the Poster's smaller dimension (15×15),
-  wasting ~30% of the available vertical space. To match the Poster's
-  tall-narrow shape, the build produces a non-square 16×22 PNG by
-  exploiting the `extend()` step's `Math.max(0, canvas - dim)` clamp: when
-  the resized glyph (22 tall × 16 wide at the natural mic aspect) exceeds
-  `sizeFhd: 16` in height, no vertical padding is added and the glyph
-  overflows the canvas naturally. Same 16×22 footprint as the legacy
-  hand-authored asset that predated the pipeline.
-- **`favorite.svg` (`fill="#000000"`) and `favorite_selected.svg`
-  (`fill="#FF0000"`)**: toggle pair for the favorite state. Both use the
-  outlined Material `favorite` glyph; the visual distinction between off/on
-  comes from hand-modified fill colors (black / red), not fill geometry. This
-  predates the [Fill convention](#fill-convention) and the [Why white fill](#why-white-fill)
-  rule — it means `blendColor` cannot tint these (the hard-coded fill
-  dominates). If a future surface needs themed favorite icons, replace these
-  with the standard white-fill convention and apply `blendColor` at usage time.
+- **`spinner`** (`sizeFhd: 125`, `glyphSize: 125`): the global loading spinner is 125×125 because [`components/JRScene.xml`](../../components/JRScene.xml) positions it for a bitmap of that size. `glyphSize: 125` makes the Material `progress_activity` arc fill the whole canvas with no padding, to match the outer circle of the original spinner. Don't shrink it without moving its placement in `JRScene`.
+- **`play`, `pause`, `itemPrevious`, `itemNext`, `chapters`** (`glyphSize` between 38 and 60): each is pinned to the largest dimension of the trimmed, hand-made original PNG, so the move to Material changed the look and kept the same footprint on screen.
+- **`mic_icon`** (`sizeFhd: 16`, `glyphSize: 22`): the voice-search indicator in [`components/ItemGrid/Alpha.xml`](../../components/ItemGrid/Alpha.xml) sits next to a keyboard letter in a Poster that is not square, 15 wide and 22 tall (`<Poster id="alphaMic" height="22" width="15" />`). A square canvas would make the Poster letterbox it: the square source shrinks to the Poster's smaller dimension (15×15) and wastes about 30% of the height. So the build produces a 16×22 PNG instead, through the clamp in its `extend()` step (`Math.max(0, canvas - dim)`). The resized glyph is 22 tall and 16 wide at the mic's natural aspect, taller than `sizeFhd: 16`, so no vertical padding is added and the glyph extends past the square canvas. The result has the same 16×22 footprint as the hand-made asset that came before the pipeline.
+- **`favorite.svg` (`fill="#000000"`) and `favorite_selected.svg` (`fill="#FF0000"`)**: the toggle pair for the favorite state. Both use the outlined Material `favorite` glyph, and only the hand-set fill color (black or red) tells off from on. The pair predates the [Fill convention](#fill-convention) and the [Why white fill](#why-white-fill) rule, so `blendColor` cannot tint them: the hard-coded fill wins. If a screen ever needs themed favorite icons, replace them with white-fill sources and apply `blendColor` where they are used.
 
 ## Why white fill
 
-Material Symbols ship with no `fill` attribute on their `<path>`, which
-defaults to **black** when rendered. JellyRock's `IconButton` and `Spinner`
-components apply `blendColor` at render time to tint the icon. `blendColor`
-performs per-channel multiplication: a black source (RGB `0,0,0`) stays black
-regardless of the tint color. For `blendColor` to actually colorize the icon,
-the source must be **white** (RGB `255,255,255`).
+Material Symbols ship with no `fill` attribute on their `<path>`, so they render **black**. JellyRock's `IconButton` and `Spinner` components tint icons at render time with `blendColor`, which multiplies each color channel: a black source (RGB `0,0,0`) stays black whatever the tint. The tint shows only on a **white** source (RGB `255,255,255`).
 
-The `npm run icons:add` script handles this automatically by injecting
-`fill="#FFFFFF"` into every `<path>` in the fetched SVG. If you author a
-custom (non-Material) SVG by hand, set `fill="#FFFFFF"` on every path
-yourself.
+`npm run icons:add` handles this by setting `fill="#FFFFFF"` on every `<path>` in the SVG it fetches. If you draw a custom (non-Material) SVG by hand, set `fill="#FFFFFF"` on every path yourself.
 
-If an icon is intentionally never tinted (e.g., a multi-color brand mark),
-set the explicit fill colors in the SVG and the script will leave them alone.
+If an icon is never tinted on purpose (for example, a multi-color brand mark), set its fill colors in the SVG.
 
-## Non-Material SVGs (custom + sourced)
+## Non-Material SVGs (custom and sourced)
 
-A small number of icons aren't Material Symbols and live in `resources/icons/`
-alongside the Material ones. The build pipeline treats them identically — only
-the source differs:
+A few icons in `resources/icons/` aren't Material Symbols. The build treats them the same way; only the source differs.
 
-- **`tomato-fresh.svg` + `tomato-rotten.svg`** — sourced from Wikimedia Commons
-  ([fresh](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes.svg),
-  [rotten](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes_rotten.svg)).
-  Both are PD-textlogo (public domain — "consists only of simple geometric
-  shapes or text"). Used by `components/ui/label/metadata/CriticRating.bs` to
-  render Rotten Tomatoes scores. The trademark belongs to Fandango Media — we
-  use these icons nominatively to attribute the scores they represent (standard
-  practice for media clients), not as JellyRock branding.
+- **`tomato-fresh.svg` and `tomato-rotten.svg`**, from Wikimedia Commons ([fresh](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes.svg), [rotten](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes_rotten.svg)). Both are PD-textlogo, which is public domain: "consists only of simple geometric shapes or text". `components/ui/label/metadata/CriticRating.bs` uses them to show Rotten Tomatoes scores. The trademark belongs to Fandango Media. JellyRock uses the icons only to attribute the scores they stand for, as media clients commonly do, never as its own branding.
 
-When adding a new non-Material SVG: drop it directly into `resources/icons/`,
-add a row to the [Provenance](#provenance) table, set explicit fill colors in
-the SVG (the `npm run icons:add` white-fill injection only applies to fetched
-Material Symbols), and `npm run icons:build` will render the per-resolution
-PNGs through the same pipeline.
+To add a non-Material SVG, put it in `resources/icons/`, add a row to the [Provenance](#provenance) table and set its fill colors in the SVG (the white fill from `npm run icons:add` applies only to fetched Material Symbols). `npm run icons:build` then renders its PNGs through the same pipeline.
 
 ## License & attribution
 
-Material Symbols are licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
-JellyRock ships under `GPL-2.0`; the Apache 2.0 license is compatible under the
-"combined work" interpretation. Attribution is preserved here per Apache 2.0
-§4(c).
+Material Symbols are licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). JellyRock ships under `GPL-2.0`; the Apache 2.0 license is compatible under the "combined work" interpretation. Attribution is kept here as Apache 2.0 §4(c) requires.
 
 > Material Symbols by Google. Used under the Apache License, Version 2.0.
 > Source: <https://github.com/google/material-design-icons>
@@ -319,8 +198,8 @@ this table automatically.
 | `musicFolder_filled.svg` | `library_music` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
 | `playlist_filled.svg` | `playlist_play` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `circle.svg` | `circle` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `tomato-fresh.svg` | non-Material — [Wikimedia](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes.svg) (PD-textlogo) | n/a | n/a | (red) | 139×141 | 2026-05-09 |
-| `tomato-rotten.svg` | non-Material — [Wikimedia](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes_rotten.svg) (PD-textlogo) | n/a | n/a | (green) | 145×140 | 2026-05-09 |
+| `tomato-fresh.svg` | non-Material, from [Wikimedia](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes.svg) (PD-textlogo) | n/a | n/a | (red) | 139×141 | 2026-05-09 |
+| `tomato-rotten.svg` | non-Material, from [Wikimedia](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes_rotten.svg) (PD-textlogo) | n/a | n/a | (green) | 145×140 | 2026-05-09 |
 | `movie_filled.svg` | `movie` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `playCircle_filled.svg` | `play_circle` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `photo_filled.svg` | `photo` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
@@ -328,3 +207,5 @@ this table automatically.
 | `folder_filled.svg` | `folder` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `book_filled.svg` | `menu_book` | Rounded | 500 | 1 | `24px` | 2026-05-15 |
 | `studio_filled.svg` | `domain` | Rounded | 500 | 1 | `24px` | 2026-05-15 |
+| `more_horiz.svg` | `more_horiz` | Rounded | 500 | 1 | `24px` | 2026-09-04 |
+| `versions.svg` | `content_copy` | Rounded | 500 | 0 | `24px` | 2026-09-20 |

@@ -1,7 +1,7 @@
 ' Key models for the dialog family, as pure decisions.
 '
-' WHY THIS IS NOT JUST `onKeyEvent`. JRListDialog's first version reached its
-' Cancel button by catching a `down` that BUBBLED OUT of the list — which works
+' WHY THIS LIVES OUTSIDE `onKeyEvent`. JRListDialog's first version reached its
+' Cancel button by catching a `down` that BUBBLED OUT of the list, which works
 ' only while the list declines to handle it. Above 8 rows the list switched to
 ' `fixedFocusWrap`, wrapped forever, and never let a `down` past; Cancel became
 ' unreachable and `up` died with it. Both halves were correct in isolation and
@@ -23,8 +23,8 @@ import "pkg:/source/utils/misc.bs"
 '   anything else           consumed (a modal lets nothing reach the screen behind it)
 '
 ' Symmetric on purpose. Wrapping is only worth having because it makes a long
-' list cheap to navigate with a remote — one UP to reach the end of thirty
-' tracks — and an asymmetric wrap does not deliver that; it only cycles forward.
+' list cheap to navigate with a remote (one UP to reach the end of thirty
+' tracks), and an asymmetric wrap does not deliver that; it only cycles forward.
 '
 ' ItemDetails' TrackDropdown, which this otherwise mirrors, dismisses on UP-at-top
 ' instead. That is right for a dropdown: UP returns you to the trigger you opened
@@ -53,13 +53,13 @@ function listDialogKeyAction(key as string, focusedIndex as integer, itemCount a
   return "consume"
 end function
 
-' What a key press means to a BUTTON-ROW dialog — JRDialog, and
+' What a key press means to a BUTTON-ROW dialog: JRDialog, and
 ' QuickConnectDialog, whose row happens to hold exactly one button.
 '
 ' Here for the same reason listDialogKeyAction is: the decision was in a
 ' component's onKeyEvent, where nothing can call it, and it was wrong there.
 ' `applyButtonLayout` stacks the row vertically when the labels are too wide to
-' fit across the panel, and onKeyEvent moved focus only on left/right — so a row
+' fit across the panel, and onKeyEvent moved focus only on left/right. So a row
 ' the user could SEE was stacked ignored up/down entirely and was navigated along
 ' an axis that was not on screen. Nothing caught it: the only evidence was a
 ' `Down` press in an RTA take that had been a silent no-op since it was written.
@@ -69,22 +69,29 @@ end function
 '   BACK                    cancels
 '   OK                      resolves with the focused button
 '   LEFT / RIGHT            step the row, in BOTH orientations
-'   UP / DOWN               step the row ONLY when it is stacked
+'   UP / DOWN               step the row only when it is stacked
 '   anything else           consumed (a modal lets nothing reach the screen behind it)
 '
-' left/right work in both orientations deliberately, so no caller has to know
-' which layout its translations produced. up/down are GATED on `stacked` just as
-' deliberately: moving focus along an axis the user cannot see is its own bug, so
+' left/right work in both orientations on purpose, so no caller has to know
+' which layout its translations produced. up/down are GATED on `stacked` on
+' purpose too: moving focus along an axis the user cannot see is its own bug, so
 ' a horizontal row consumes them under modal containment rather than acting.
 '
-' Stepping WRAPS at the ends rather than clamping — matching JRButtonGroup, the
+' Stepping WRAPS at the ends rather than clamping, matching JRButtonGroup, the
 ' app's other horizontal row. A dialog that dead-ends feels broken. The caller
 ' owns the wrap arithmetic; this function only says which direction to step.
 '
+' `anyKeyResolves` replaces all of that with one rule: every key, Back included,
+' resolves with the focused button. It is for a dialog whose only question is
+' "is anyone there?" (the still-watching prompt), where any press is the answer
+' and making the viewer find a particular button would defeat it.
+'
 ' @param {string} key - the key name from onKeyEvent
 ' @param {boolean} stacked - true when the row is laid out vertically
+' @param {boolean} anyKeyResolves - true when any key answers the dialog
 ' @returns {string} - "cancel" | "resolve" | "stepBack" | "stepForward" | "consume"
-function buttonDialogKeyAction(key as string, stacked as boolean) as string
+function buttonDialogKeyAction(key as string, stacked as boolean, anyKeyResolves = false as boolean) as string
+  if anyKeyResolves then return "resolve"
   if key = "back" then return "cancel"
   if key = "OK" then return "resolve"
   if key = "left" then return "stepBack"
@@ -93,6 +100,52 @@ function buttonDialogKeyAction(key as string, stacked as boolean) as string
   if stacked
     if key = "up" then return "stepBack"
     if key = "down" then return "stepForward"
+  end if
+
+  return "consume"
+end function
+
+' What a key press means to the overview dialog: a scrolling body above one OK
+' button. The dialog is appended to the scene, so a key it does not consume
+' bubbles into JRScene and acts on the screen behind it. The model therefore
+' names every outcome, and "consume" is the answer to everything it does not act on.
+'
+'   BACK                         closes
+'   OK on the button             closes
+'   OK on the text               moves focus to the button
+'   DOWN on the button           consumed
+'   DOWN with text left below    scrolls down
+'   DOWN at the end of the text  moves focus to the button
+'   UP on the button             moves focus to the text, when there is text to scroll
+'   UP with text left above      scrolls up
+'   anything else                consumed
+'
+' @param {string} key - the key name from onKeyEvent
+' @param {boolean} okFocused - true when the OK button holds focus
+' @param {integer} scrollPosition - how far the text is scrolled
+' @param {integer} maxScroll - the furthest the text can scroll; 0 when it fits
+' @returns {string} - "close" | "focusOk" | "focusText" | "scrollDown" | "scrollUp" | "consume"
+function overviewDialogKeyAction(key as string, okFocused as boolean, scrollPosition as integer, maxScroll as integer) as string
+  if key = "back" then return "close"
+
+  if key = "OK"
+    if okFocused then return "close"
+    return "focusOk"
+  end if
+
+  if key = "down"
+    if okFocused then return "consume"
+    if maxScroll > 0 and scrollPosition < maxScroll then return "scrollDown"
+    return "focusOk"
+  end if
+
+  if key = "up"
+    if okFocused
+      if maxScroll > 0 then return "focusText"
+      return "consume"
+    end if
+    if scrollPosition > 0 then return "scrollUp"
+    return "consume"
   end if
 
   return "consume"

@@ -6,7 +6,7 @@ const SCREEN_LOAD = measurementById('screen-load');
 
 /**
  * One complete `screen-load` sample, in the shape `source/utils/screenReadiness.bs`
- * actually emits it — copied from the fixture in `measurements.test.js` rather than
+ * actually emits it, copied from the fixture in `measurements.test.js` rather than
  * invented, so this file cannot drift from what the parser really accepts.
  */
 const triple = (component, variant, paintMs, settledMs) => [
@@ -31,7 +31,7 @@ const FULL_WATCH_NO_NAV = EXIT_MS + WINDOW_MS + BOOT_MS; // 59_000
 
 /**
  * The same, for a launch that also drove a nav taking `navMs`. The nav runs INSIDE the
- * window, so its cost is added to the deadline — as is `bootMs` a second time, since the
+ * window, so its cost is added to the deadline, as is `bootMs` a second time, since the
  * span already spent (`relaunch` + nav, less the excluded `exitMs`) contains one boot
  * already. That double-count is deliberate and documented in the loop: it can only make a
  * MISBEHAVING device wait longer, because the quiet-break ends a healthy launch early.
@@ -40,11 +40,11 @@ const fullWatchWithNav = (navMs) => EXIT_MS + (BOOT_MS + navMs) + WINDOW_MS + BO
 
 /**
  * A fake clock + console. `now` only advances when the loop sleeps or when a harness step
- * says so, which is what makes the window arithmetic assertable at all — on a real device
+ * says so, which is what makes the window arithmetic assertable at all: on a real device
  * these spans are milliseconds of wall clock nobody can pin.
  *
  * `resetsQuietClock: false` models a reader that publishes the window and keeps NO per-window
- * quiet state — it stamps once when a matching line first arrives and never again, and
+ * quiet state: it stamps once when a matching line first arrives and never again, and
  * `openWindow` zeroes nothing. That is a legal implementation of the dependency (the loop
  * demands no reset) and it is the exact caller the loop's docblock used to require, so it is
  * what proves the requirement is now carried by the loop instead of by a rule.
@@ -61,6 +61,7 @@ function harness({
   let windowFrom = Infinity;
   let matchAt = 0;
   let stamped = false;
+  let seenLines = 0;
   let navCalls = 0;
   const logs = [];
   const relaunches = [];
@@ -92,21 +93,25 @@ function harness({
       if (resetsQuietClock) {
         matchAt = 0;
         stamped = false;
+        seenLines = 0;
       }
     },
-    // The socket stamps `lastMatchAt` when a MATCHING LINE ARRIVES, then stops — the
+    // The socket stamps `lastMatchAt` when a MATCHING LINE ARRIVES, then stops: the
     // lines stay in the buffer and keep being returned, but the quiet clock does not
     // keep advancing. Modelling that is the whole point: a clock that re-stamped on
-    // every poll would never go quiet and the break could never fire.
+    // every poll would never go quiet and the break could never fire. A line arriving
+    // LATER stamps again, as `measure.js` does for every matching line, which only an
+    // emitter whose output grows over the launch (a second mount) can observe.
     linesSince: (from) => {
       // One poll of the watch loop. Counted per launch because "did this launch break early"
-      // is not answerable from the sample list — a launch cut short still records whatever
+      // is not answerable from the sample list: a launch cut short still records whatever
       // it had already assembled, so the only evidence of a truncated watch is the count.
       polls[opened.length - 1] = (polls[opened.length - 1] || 0) + 1;
       const lines = emit(from, clock, opened.length - 1);
-      if (lines.length && !stamped && clock >= windowFrom) {
+      if (lines.length && (!stamped || lines.length > seenLines) && clock >= windowFrom) {
         matchAt = clock;
         stamped = true;
+        seenLines = lines.length;
       }
       return lines;
     },
@@ -139,7 +144,7 @@ describe('runSeries', () => {
   it('opens each window in the FUTURE, offset by exitMs from the relaunch', async () => {
     // The replay defense: `relaunch` spends exitMs BEFORE it launches, so a window opened
     // at `now()` would cover a span the PREVIOUS launch can still be emitting into, and
-    // `assembleSamples` merges by line — fabricating one run out of halves of two.
+    // `assembleSamples` merges by line, fabricating one run out of halves of two.
     const h = harness({ sampleCount: 3 });
     const startedAt = h.clockNow();
     await runSeries(h.config, h.deps);
@@ -161,7 +166,7 @@ describe('runSeries', () => {
     const spent = h.clockNow() - before;
 
     expect(samples.length).toBeGreaterThan(0);
-    // Ended on the quiet-break, NOT the 45 s cap — otherwise a healthy launch would cost
+    // Ended on the quiet-break, not the 45 s cap. Otherwise a healthy launch would cost
     // the full window every time and a 30-sample series would take half an hour longer.
     expect(spent).toBeLessThan(4000 + 10000 + 45000);
   });
@@ -172,7 +177,7 @@ describe('runSeries', () => {
     const { samples } = await runSeries(h.config, h.deps);
 
     expect(samples).toEqual([]);
-    // A silent app must be given its whole budget — breaking early would report "no
+    // A silent app must be given its whole budget: breaking early would report "no
     // sample" for a device that was merely slow. Asserted EXACTLY rather than as a floor:
     // the harness burns exitMs + bootMs inside the window before the watch even starts, so
     // a `>= windowMs` floor is satisfied by a watch that ended 14 s short of its deadline.
@@ -184,10 +189,10 @@ describe('runSeries', () => {
     // a half-sample as the launch's result.
     //
     // "Incomplete" for `screen-load` means the REQUIRED line is missing, and `paint` is
-    // the ONLY required one — `settled` and `split` are `required: false` in
+    // the one required line: `settled` and `split` are `required: false` in
     // `measurements.js`, because a screen with no async fills legitimately settles at
     // paint (`serverSelect` is exactly that shape). So the incomplete case is a settled
-    // line with no paint before it, NOT a paint with nothing after it.
+    // line with no paint before it, not a paint with nothing after it.
     const h = harness({
       sampleCount: 1,
       emit: () => triple('settings', 'none', 57, 297).slice(1),
@@ -199,7 +204,7 @@ describe('runSeries', () => {
 
   it('treats a paint-only emission as complete, since paint is the only required line', async () => {
     // Pins the property the test above depends on. A screen whose readiness has one
-    // moment emits paint and nothing else, and that is a whole sample — not a truncated
+    // moment emits paint and nothing else, and that is a whole sample, not a truncated
     // one to keep waiting on.
     const h = harness({
       sampleCount: 1,
@@ -238,7 +243,7 @@ describe('runSeries', () => {
     await runSeries(h.config, h.deps);
 
     expect(h.clockNow() - before).toBe(fullWatchWithNav(NAV_MS));
-    // And a slow nav lengthens only its OWN launch — the term is measured per launch rather
+    // And a slow nav lengthens only its OWN launch: the term is measured per launch rather
     // than assumed once for the series.
     expect(h.clockNow() - before).toBeGreaterThan(FULL_WATCH_NO_NAV);
   });
@@ -246,7 +251,7 @@ describe('runSeries', () => {
   it('never ends a launch on a quiet clock that predates its own window', async () => {
     // `openWindow`'s only obligation is to publish the window. Given a reader that keeps no
     // per-window quiet state, launch 2 sees lines it can assemble while the clock still
-    // holds launch 1's stamp — and that stamp is already `quietMs` stale, so a loop trusting
+    // holds launch 1's stamp, and that stamp is already `quietMs` stale, so a loop trusting
     // it would break on the FIRST poll and cut the launch's watch to a single second. The
     // gate on the window instant is what makes that unreachable no matter what the caller
     // does; without it this test ends the series ~44 s early on the second launch.
@@ -257,21 +262,53 @@ describe('runSeries', () => {
     });
     const { samples } = await runSeries(stubborn.config, stubborn.deps);
 
-    // Launch 1 breaks legitimately: it stamped the clock itself, then went quiet — 3 polls
+    // Launch 1 breaks legitimately: it stamped the clock itself, then went quiet. 3 polls
     // (emit, +1 s, +2 s > quietMs).
     expect(stubborn.polls[0]).toBe(3);
     // Launch 2 gets its whole watch. Trusting the stale clock would end it on the FIRST
-    // poll — `polls[1] === 1` is exactly the regression this guards, and it is invisible in
+    // poll. `polls[1] === 1` is exactly the regression this guards, and it is invisible in
     // the sample list, because a launch cut short still records what it had already
     // assembled. 45 = the window budget, one poll per second.
     expect(stubborn.polls[1]).toBe(45);
     expect(samples.map((s) => s.launch)).toEqual([0, 1]);
   });
 
+  describe('when an earlier mount completes before the named one', () => {
+    // Home is reached through `preLogin`, which completes its own sample within a second of
+    // boot. On a launch where Home's rows took longer than `quietMs` to begin, a break keyed
+    // on ANY complete sample ended the watch in that gap and Home's sample was never seen:
+    // "no complete sample in the window", on a launch that was merely slow (1 of 65 launches
+    // on a Stick 4K, 2026-09-15).
+    const HOME_DELAY_MS = 8000; // > quietMs, < the watch budget
+    const loginThenHome = (from, clock) => [
+      ...triple('preLogin', 'start', 550, 552),
+      ...(clock >= from + BOOT_MS + HOME_DELAY_MS ? triple('homeRows', 'none', 1200, 1900) : []),
+    ];
+
+    it('keeps watching until the NAMED mount is complete', async () => {
+      const h = harness({ sampleCount: 1, emit: loginThenHome });
+      h.config.selector = { component: 'homeRows' };
+      const { samples } = await runSeries(h.config, h.deps);
+
+      expect(samples.map((s) => s.dimensions.component)).toEqual(['preLogin', 'homeRows']);
+      // And still on the quiet-break once it has arrived, not the 45 s cap.
+      expect(h.polls[0]).toBeLessThan(45);
+    });
+
+    it('breaks on the first mount when no mount is named, as the published sample is the first', async () => {
+      // Unnamed, the series publishes `indexInLaunch === 0`, so that is the sample whose
+      // completion may end the watch, and the behavior for every single-mount family is unchanged.
+      const h = harness({ sampleCount: 1, emit: loginThenHome });
+      const { samples } = await runSeries(h.config, h.deps);
+
+      expect(samples.map((s) => s.dimensions.component)).toEqual(['preLogin']);
+    });
+  });
+
   it('aborts the whole series on a nav failure instead of retrying, naming the launch', async () => {
     const h = harness({ navFails: true, sampleCount: 5 });
     await expect(runSeries(h.config, h.deps)).rejects.toBeInstanceOf(NavFailedError);
-    // Died on launch 1 and did NOT go on to relaunch four more times.
+    // Died on launch 1 and did not go on to relaunch four more times.
     expect(h.relaunches).toHaveLength(1);
   });
 
@@ -285,10 +322,10 @@ describe('runSeries', () => {
   });
 
   it('carries the refusal an operator reads, so the entry point asserts nothing itself', () => {
-    // `measure.js` cannot be unit tested — it claims the device on import — so a message
+    // `measure.js` cannot be unit tested (it claims the device on import), so a message
     // assembled THERE out of this error's fields has no gate: rename a field and the
     // operator reads `failed on launch undefined` with nothing red anywhere. Pinned here
-    // verbatim because this string IS the product for the person whose run just died.
+    // verbatim because this string IS the product for the person whose run has died.
     const err = new NavFailedError(3, new Error('tile not found'), [], 'osd');
     expect(err.message).toBe(
       '--nav osd failed on launch 3: tile not found\n' +
@@ -316,7 +353,7 @@ describe('runSeries', () => {
   });
 
   it('stamps launch, launchAt and indexInLaunch so a warm refresh never merges into the cold sample', async () => {
-    // A chained nav mounts two screens in one launch — both loads really happened, and
+    // A chained nav mounts two screens in one launch. Both loads really happened, and
     // they are told apart by the variant the app stamps.
     const h = harness({
       sampleCount: 1,
@@ -330,7 +367,7 @@ describe('runSeries', () => {
     expect(samples).toHaveLength(2);
     expect(samples.map((s) => s.indexInLaunch)).toEqual([0, 1]);
     expect(samples.every((s) => s.launch === 0)).toBe(true);
-    // The window instant, not the line's — tier 3's interleave check orders arms by it.
+    // The window instant, not the line's: tier 3's interleave check orders arms by it.
     expect(samples[0].launchAt).toBe(new Date(h.opened[0]).toISOString());
   });
 
@@ -371,7 +408,7 @@ describe('formatLaunchLine', () => {
       measurement: SCREEN_LOAD,
     });
     // The defect this guards: hardcoding the first mount printed the screen the nav walked
-    // THROUGH while the summary printed the one named — two numbers 8x apart, one output.
+    // THROUGH while the summary printed the one named: two numbers 8x apart, one output.
     expect(line).toContain('paintMs=2049');
     expect(line).toContain('1/5');
     expect(line).toContain('other run');

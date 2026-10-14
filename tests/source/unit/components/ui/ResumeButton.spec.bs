@@ -1,0 +1,43 @@
+namespace tests
+
+  ' ResumeButton draws its progress bar only once its icon has loaded, so the two appear
+  ' together. The wait is asked of the icon's loadStatus: IconButton sizes the backdrop
+  ' from init(), so a zero-width backdrop no longer marks "not loaded yet".
+  '
+  ' Only the waiting half is covered: test builds package no images/, so no icon can load
+  ' here, and drawing once it has (onIconLoaded) is left to the device.
+  @suite("ResumeButton - progress bar")
+  class ResumeButtonTests extends tests.BaseTestSuite
+
+    private button as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.button = CreateObject("roSGNode", "ResumeButton")
+    end function
+
+    protected override function afterEach()
+      m.button = invalid
+      super.afterEach()
+    end function
+
+    private sub setProgress()
+      m.button.runtimeTicks = 18000000000&
+      m.button.playbackPositionTicks = 6000000000&
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("before its icon loads")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("holds the progress bar back while the icon has not loaded")
+    ' No icon is set, so none can load.
+    function _()
+      m.setProgress()
+
+      m.assertInvalid(m.button.findNode("resumeProgressBar"))
+    end function
+
+  end class
+
+end namespace

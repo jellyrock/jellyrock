@@ -1,4 +1,4 @@
-// Tests for scripts/server-upgrade-tracker.js — the proactive-CI surface,
+// Tests for scripts/server-upgrade-tracker.js: the proactive-CI surface,
 // Phase 4 generalized by Phase 6 into the PER-VERSION release-triage DIGEST model.
 //
 // The pure parts (signal parse, version-state + digest-action decisions) are
@@ -83,6 +83,11 @@ describe('decideVersionState', () => {
     );
   });
 
+  it('treats a patchless acknowledged release (12.0) as a real version, not a placeholder', () => {
+    expect(decideVersionState({ latestStable: '12.0', acknowledged: '12.0' })).toBe('caught-up');
+    expect(decideVersionState({ latestStable: '12.0.1', acknowledged: '12.0' })).toBe('ahead');
+  });
+
   it('is ahead when acknowledged is a non-semver placeholder (nudge rather than go quiet)', () => {
     expect(decideVersionState({ latestStable: '10.11.10', acknowledged: '(none)' })).toBe('ahead');
   });
@@ -120,8 +125,8 @@ function fp(specVersion, operations = {}) {
   return { schemaVersion: 1, specVersion, operations, schemas: {} };
 }
 
-// `to` spec that DROPS /Items/{itemId} GET vs the `from` fingerprint → a breaking
-// candidate on a used active-tier endpoint (needsInvestigation ≥ 1 → triage).
+// `to` spec that drops /Items/{itemId} GET vs the `from` fingerprint: a breaking
+// candidate on a used active-tier endpoint (needsInvestigation ≥ 1 means triage).
 const TO_SPEC_TRIAGE = {
   info: { version: '10.11.10' },
   paths: {
@@ -130,8 +135,8 @@ const TO_SPEC_TRIAGE = {
   components: { schemas: {} },
 };
 
-// `to` spec that KEEPS /Items/{itemId} GET → no forward break; with no floor gaps
-// the report is mechanically clean (needsInvestigation 0 → clean).
+// `to` spec that keeps /Items/{itemId} GET: no forward break; with no floor gaps
+// the report is mechanically clean (needsInvestigation 0 means clean).
 const TO_SPEC_CLEAN = {
   info: { version: '10.11.10' },
   paths: {
@@ -281,7 +286,7 @@ describe('computeReport + CLI (offline, injected toSpec)', () => {
 
   it("CLI degrades to 'triage' (announce-only) when a baseline fingerprint is missing (offline)", () => {
     scaffoldRepo();
-    // Acknowledged 10.10.0 has no committed fingerprint → readFingerprint(from)
+    // Acknowledged 10.10.0 has no committed fingerprint, so readFingerprint(from)
     // throws inside computeReport. With --to-file there is NO network, so the
     // degradation is the fingerprint miss, exercised fully offline.
     writeFileSync(join(dir, 'docs/signals-backlog.md'), signalsDoc({ acknowledged: '10.10.0' }));

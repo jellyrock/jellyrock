@@ -1,0 +1,115 @@
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
+
+sub init()
+  m.top.task = CreateObject("roSGNode", "TaskRelaunchProbeTask")
+end sub
+
+sub launch()
+  ' bsc-disable-next-line no-same-node-relaunch this probe relaunches the same node on purpose, to measure what Roku does
+  launchTask(m.top.task)
+end sub
+
+sub stopTask()
+  m.top.task.control = "STOP"
+end sub
+
+' The app's sequence: STOP, then launchTask, with nothing in between.
+sub stopAndRelaunch()
+  task = m.top.task
+  task.control = "STOP"
+  ' bsc-disable-next-line no-same-node-relaunch this probe relaunches the same node on purpose, to measure the race
+  launchTask(task)
+end sub
+
+' Stops the running task and launches a NEW node in its place, in one callback. `m.top.task`
+' then holds the new node; the stopped one is returned so the spec can still read it.
+function stopAndLaunchFresh() as object
+  previous = m.top.task
+  previous.control = "STOP"
+  m.top.task = CreateObject("roSGNode", "TaskRelaunchProbeTask")
+  launchTask(m.top.task)
+  return previous
+end function
+
+' Configures the probe task before it is launched: how it blocks, for how long, and the
+' input value its function reads.
+sub configure(args as object)
+  m.top.task.setFields({ blockMode: args.blockMode, blockMs: args.blockMs, seq: args.seq })
+end sub
+
+' The app's full sequence before #961 moved these sites to replaceTask, which was not only
+' STOP-then-launch: every site wrote its INPUT field between the two (`m.searchTask.query =
+' query`, `m.loadDetailsTask.itemId = itemId`). That write is why an ignored relaunch can still
+' look right: the old run, if it survives, reads the new value.
+sub stopWriteRelaunch(newSeq as integer)
+  task = m.top.task
+  task.control = "STOP"
+  task.seq = newSeq
+  ' bsc-disable-next-line no-same-node-relaunch this probe relaunches the same node on purpose, to measure the race
+  launchTask(task)
+end sub
+
+' What a site with a persistent Task node does on every run after the first: write the input
+' field and launch, with no STOP, whether or not the previous run has finished
+' (`MoviePresenter.loadLogo` did this with `itemId` before it moved to replaceTask).
+sub writeAndLaunch(newSeq as integer)
+  task = m.top.task
+  task.seq = newSeq
+  launchTask(task)
+end sub
+
+' What a view's teardown does to a load whose answer has only now arrived: the answer is written,
+' then the Task is STOPped, in one render-thread callback, before the Task thread can run.
+sub deliverThenStop()
+  task = m.top.task
+  task.delivery = task.delivery + 1
+  task.control = "STOP"
+end sub
+
+' deliverThenStop without the STOP: the control that shows a delivered answer does run the Task on.
+sub deliver()
+  task = m.top.task
+  task.delivery = task.delivery + 1
+end sub
+
+' Lets every invocation of the function return.
+sub release()
+  m.top.task.release = true
+end sub
+
+' ── Many nodes at once, for TaskThreadSlots.spec.bs ──────────────────────────
+'
+' That spec counts threads against Roku's 100-thread cap, so these launch with a raw
+' `control = "RUN"` rather than launchTask(): the ledger's watermark would start no thread past
+' 50, and the spec could never reach the cap it is measuring. Every node is held here until
+' dropHeld(), so a stopped node stays VALID: the case Roku's rule is about.
+
+' Creates, configures and launches one more held node. Returns { ok, node } on success, or
+' { ok: false, code, message } when the launch threw (the cap's `&h29` is documented as
+' catchable).
+function launchHeld(args as object) as object
+  if not isValid(m.held) then m.held = []
+  node = CreateObject("roSGNode", "TaskRelaunchProbeTask")
+  node.setFields({ blockMode: args.blockMode, blockMs: args.blockMs, seq: m.held.count() + 1 })
+  m.held.push(node)
+  try
+    ' bsc-disable-next-line no-raw-run the spec measures Roku's thread cap, which launchTask's watermark would hide
+    node.control = "RUN"
+  catch error
+    return { ok: false, code: error.number, message: error.message }
+  end try
+  return { ok: true, node: node }
+end function
+
+' STOPs the most recently launched held node, from the render thread as the app does.
+sub stopHeldLast()
+  if not isValidAndNotEmpty(m.held) then return
+  m.held.peek().control = "STOP"
+end sub
+
+' Drops every held node. A thread still running keeps running; this only releases the
+' references.
+sub dropHeld()
+  m.held = []
+end sub

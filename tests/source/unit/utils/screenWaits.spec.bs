@@ -1,0 +1,89 @@
+import "pkg:/source/utils/screenWaits.bs"
+
+namespace tests
+
+  @suite("screenWaits - the named waits a screen has open")
+  class ScreenWaitsTests extends tests.BaseTestSuite
+
+    private screen as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.screen = CreateObject("roSGNode", "JRGroup")
+    end sub
+
+    protected override sub afterEach()
+      m.screen = invalid
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("begin()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("opens a content wait with the time it began")
+    function _()
+      before = loadingStages.nowMs()
+      screenWaits.begin(m.screen, "results")
+      opened = m.screen.loadingWaits.results
+      m.assertEqual(opened.kind, LoadingKind.CONTENT)
+      m.assertTrue(opened.startedMs >= before)
+    end function
+
+    @it("opens a wait of the kind it is given")
+    function _()
+      screenWaits.begin(m.screen, "other", LoadingKind.PLAIN)
+      m.assertEqual(m.screen.loadingWaits.other.kind, LoadingKind.PLAIN)
+    end function
+
+    @it("restarts a wait that is already open, so a new query counts from now")
+    function _()
+      m.screen.loadingWaits = { results: { kind: LoadingKind.CONTENT, startedMs: 0 } }
+      screenWaits.begin(m.screen, "results")
+      m.assertTrue(m.screen.loadingWaits.results.startedMs > 0)
+      m.assertEqual(m.screen.loadingWaits.count(), 1)
+    end function
+
+    @it("keeps other open waits when it opens one")
+    function _()
+      screenWaits.begin(m.screen, "results")
+      screenWaits.begin(m.screen, "refresh")
+      m.assertEqual(m.screen.loadingWaits.count(), 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("finish()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("ends only the wait it names")
+    function _()
+      screenWaits.begin(m.screen, "results")
+      screenWaits.begin(m.screen, "refresh")
+      screenWaits.finish(m.screen, "results")
+      m.assertFalse(m.screen.loadingWaits.doesExist("results"))
+      m.assertTrue(m.screen.loadingWaits.doesExist("refresh"))
+    end function
+
+    @it("does nothing for a wait that is not open")
+    function _()
+      screenWaits.begin(m.screen, "refresh")
+      screenWaits.finish(m.screen, "results")
+      m.assertEqual(m.screen.loadingWaits.count(), 1)
+    end function
+
+    @it("does nothing on a screen that never opened a wait")
+    function _()
+      screenWaits.finish(m.screen, "results")
+      m.assertTrue(not isValid(m.screen.loadingWaits) or m.screen.loadingWaits.count() = 0)
+    end function
+
+    @it("leaves nothing open once every wait is ended")
+    function _()
+      screenWaits.begin(m.screen, "results")
+      screenWaits.finish(m.screen, "results")
+      m.assertEqual(m.screen.loadingWaits.count(), 0)
+    end function
+
+  end class
+
+end namespace

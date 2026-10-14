@@ -1,5 +1,5 @@
 /**
- * IS THERE A DEVICE? — answer it in one command, before claiming there isn't.
+ * IS THERE A DEVICE? Answer it in one command, before claiming there isn't.
  *
  *   npm run device:check                    every device this checkout knows about
  *   npm run device:check -- 192.0.2.10      one host, ignoring .env
@@ -13,13 +13,13 @@
  * with a Roku answering on the LAN the whole time. That reads to whoever asked like a
  * considered result rather than a guess, which is what makes it expensive.
  *
- * So the fix is not another reminder — it is making the check cheaper than the excuse.
+ * So the fix is not another reminder: it is making the check cheaper than the excuse.
  *
  * ## It reuses the probes; it does not add any
  *
  * `fetchDeviceInfo` (ECP `/query/device-info`, the lock's own identity read) and
  * `odcIsResident` (a TCP connect to the ODC port) already existed and are already tested.
- * A second fetcher would be a second timeout policy and a second error vocabulary — the
+ * A second fetcher would be a second timeout policy and a second error vocabulary: the
  * exact argument `device-lock.js` makes for exporting the first one. This file is a CLI
  * over them and owns no probe of its own.
  *
@@ -27,19 +27,22 @@
  *
  * ECP is unauthenticated and needs neither dev mode nor "control by mobile apps", so it
  * answers on ANY powered Roku on the LAN. That makes it the right question for "is there
- * a device at all" and the wrong one for "can I deploy to it" — a device answering ECP can
+ * a device at all" and the wrong one for "can I deploy to it". A device answering ECP can
  * still refuse a sideload if dev mode is off or `ROKU_PASSWORD` is another device's. The
  * output says which question it answered, because reporting "reachable" and then failing to
  * deploy is its own kind of misleading.
  *
  * ⚠️ The ODC line is even narrower, and the obvious reading of it is wrong. The component
- * lives INSIDE the running channel, so port 9000 goes quiet the moment the app closes — a
+ * lives INSIDE the running channel, so port 9000 goes quiet the moment the app closes. A
  * device that ran `measure --deploy` an hour ago reports "not answering" with the RTA build
  * still sideloaded on it. Absence therefore means "no RTA build **or** the channel is
  * closed", and it is never on its own a reason to redeploy.
  */
+import os from 'node:os';
 import path from 'node:path';
 
+import './lib/load-env.cjs';
+import envConfig from './lib/env-config.cjs';
 import { fetchDeviceInfo } from './device-lock.js';
 import { odcIsResident } from './measurement-guard.js';
 import { parseDeviceList } from './measure-matrix.js';
@@ -65,7 +68,31 @@ export function hostsToCheck(argv = [], env = process.env) {
 }
 
 /**
- * Probe one host. Never throws — an unreachable device is an ANSWER, not an error, and a
+ * Where `hostsToCheck` got its list, for the first line of output. The device list can come
+ * from the checkout's `.env`, the per-user env file, or the shell, and a device that was
+ * parked in one of them is only obvious if the output says which one was read.
+ *
+ * @param {(key: string) => string|undefined} sourceOf - `envSource` from `lib/env-config.cjs`
+ */
+export function hostOrigin(
+  argv = [],
+  env = process.env,
+  sourceOf = () => undefined,
+  home = os.homedir(),
+) {
+  if (argv.some((a) => !a.startsWith('-'))) return 'the command line';
+  // Same branch as `hostsToCheck`: a set ROKU_DEVICES is the list, otherwise ROKU_IP.
+  const key = env.ROKU_DEVICES ? 'ROKU_DEVICES' : 'ROKU_IP';
+  const source = sourceOf(key);
+  // No file named it, so if it has a value at all, that value came from the environment.
+  if (!source) return env[key] ? `${key}, set in the environment` : key;
+  if (source === envConfig.PRESET) return `${key}, set in the environment`;
+  const shown = source.startsWith(home + path.sep) ? `~${source.slice(home.length)}` : source;
+  return `${key} in ${shown}`;
+}
+
+/**
+ * Probe one host. Never throws: an unreachable device is an ANSWER, not an error, and a
  * caller checking three devices should not lose the other two to the first failure.
  */
 export async function checkHost(host) {
@@ -114,13 +141,13 @@ export function report(results) {
 /**
  * The sentence the caller has to be able to write honestly afterwards.
  *
- * Deliberately not a bare "OK"/"FAIL": the thing being prevented is a REPORT, so the tool
+ * Not a bare "OK"/"FAIL" on purpose: the thing being prevented is a REPORT, so the tool
  * hands over the wording rather than leaving it to be improvised.
  */
 export function verdict(results) {
   const up = results.filter((r) => r.reachable);
   if (!results.length) {
-    return 'No device configured — set ROKU_IP (or ROKU_DEVICES) in .env. Hardware tests cannot run, and that is now a checked fact rather than an assumption.';
+    return 'No device configured — set ROKU_IP (or ROKU_DEVICES) in .env or ${XDG_CONFIG_HOME:-~/.config}/jellyrock/env. Hardware tests cannot run, and that is now a checked fact rather than an assumption.';
   }
   if (!up.length) {
     return `No device answered (${results.length} tried). Hardware tests cannot run — say so, and say the probe failed rather than that you lack access.`;
@@ -139,7 +166,8 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
     console.log(`  ${verdict([])}`);
     process.exit(1);
   }
-  console.log(`[device:check] probing ${hosts.length} host(s) over ECP…\n`);
+  const origin = hostOrigin(process.argv.slice(2), process.env, envConfig.envSource);
+  console.log(`[device:check] probing ${hosts.length} host(s) over ECP (list: ${origin})…\n`);
   const results = await Promise.all(hosts.map(checkHost));
   for (const line of report(results)) console.log(line);
   console.log(`\n  ${verdict(results)}`);

@@ -18,8 +18,25 @@
     <field id="genreIds" type="string" value="" />
     <field id="view" type="string" value="" />
     <field id="additionalFields" type="string" value="" />
+    <!--
+      True for the music library's Genres view, whose genre samples are music items. Music
+      samples leave out MediaSourceCount (see gridPage.genreSampleFields).
+    -->
+    <field id="isMusic" type="boolean" value="false" />
     <!-- Total records available from server-->
     <field id="totalRecordCount" type="int" value="-1" />
+    <!--
+      The "#" filter's first name range, counted on its first page (-1 until then, and for any
+      other filter). Out on the first page, in on every later one: the view keeps it in its query,
+      and a later page needs it to find where it starts in the two ranges (gridPage.hashRanges).
+    -->
+    <field id="hashFirstRangeTotal" type="int" value="-1" />
+    <!--
+      "ok" when the server answered, "failed" when it did not: a failed query delivers an
+      empty `content` that says nothing about what the library holds. Written right before
+      `content`, so a `content` observer can read it. Why it failed goes to the log, not here.
+    -->
+    <field id="status" type="string" value="" />
     <field id="content" type="array" />
     <!--
       Early structure for the Genres view: `[{ id, title }, ...]` in server order, written

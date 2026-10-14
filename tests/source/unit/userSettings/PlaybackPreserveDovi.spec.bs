@@ -36,7 +36,7 @@ namespace tests
       ' When: Setting check from ItemPostPlaybackInfo
       shouldRunDoviLogic = isValid(mediaStreams) and isValid(userSettings.playbackPreserveDovi) and userSettings.playbackPreserveDovi
 
-      ' Then: Should NOT allow DOVI logic
+      ' Then: Should not allow DOVI logic
       m.assertFalse(shouldRunDoviLogic, "Should NOT allow DOVI logic when setting is false")
     end function
 
@@ -49,7 +49,7 @@ namespace tests
       ' When: Setting check from ItemPostPlaybackInfo
       shouldRunDoviLogic = isValid(mediaStreams) and isValid(userSettings.playbackPreserveDovi) and userSettings.playbackPreserveDovi
 
-      ' Then: Should NOT allow DOVI logic with invalid value
+      ' Then: Should not allow DOVI logic with invalid value
       m.assertFalse(shouldRunDoviLogic, "Should NOT allow DOVI logic when setting is invalid")
     end function
 
@@ -62,7 +62,7 @@ namespace tests
       ' When: Setting check from ItemPostPlaybackInfo
       shouldRunDoviLogic = isValid(mediaStreams) and isValid(userSettings.playbackPreserveDovi) and userSettings.playbackPreserveDovi
 
-      ' Then: Should NOT allow DOVI logic when missing
+      ' Then: Should not allow DOVI logic when missing
       ' Note: Implementation does not apply settings.json default - setting must exist AND be true
       m.assertFalse(shouldRunDoviLogic, "Should NOT allow DOVI logic when setting is missing")
     end function

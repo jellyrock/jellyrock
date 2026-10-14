@@ -3,78 +3,116 @@
 # pre-commit time. File-scoped lint + format runs in pre-commit (lint-staged,
 # see .lintstagedrc.cjs).
 #
+# The steps, in the order they run. "When X changed" means X is in the push
+# range; a step with no condition always runs.
+#
 # Auto-fix steps (mutate files; combined into one auto-fix commit at the end):
-#   1. npm run update-translations  if BS source / locale / settings/settings.json changed
-#                                    (regens translation key constants from en_US.json)
-#   2. npm run docs:dev-index       if docs/dev/*.md changed
-#                                    (regens dev-guides index in docs/architecture/README.md)
+#   - npm run update-translations: when a .bs under source/ or components/,
+#     locale/ or settings/settings.json changed. Removes orphan keys from
+#     en_US.json, sorts it, and adds missing locales to languages.json.
+#   - npm run docs:dev-index: when docs/dev/*.md changed. Regenerates the
+#     dev-guides index in docs/architecture/README.md.
+#   - npm run icons:build: when the icon SVGs, icons.json, placeholders.json
+#     or their build scripts changed. Renders the icon PNGs again.
+#   - npm run gradients:build: when images/gradients/ or its scripts changed.
+#     Renders the gradient ramp PNGs again.
+#   - npm run docs:api-manifest: when a .bs under source/ or the generator
+#     changed. Regenerates the API usage manifest.
+#   - npm run dictionary:sentence-final: when dictionary.txt, its companion
+#     or their scripts changed. Regenerates dictionary-sentence-final.txt.
 #
 # Check steps (read-only; non-zero exit aborts the push):
-#   3. npm run validate           — *.bs / *.brs / *.xml / bsconfig*.json
-#                                    (full BSC project compile — can't be file-scoped)
-#   4. npm run lint:bs            — *.bs / *.brs (bslint; needs full project context)
-#   5. npm run lint:language-coverage — when language-coverage triggers changed
-#   5b. npm run lint:issue-templates — when .github/ISSUE_TEMPLATE/* changed
-#                                    (validates against GitHub issue-forms schema;
-#                                    GitHub silently hides invalid templates)
-#   6. npm run lint:js            — *.js / *.cjs / *.mjs (eslint, project-wide)
-#   7. npm run check-formatting:js — *.js / *.cjs / *.mjs / *.json
-#                                     (Prettier check; auto-fix already ran in pre-commit)
-#   8. npm run test:scripts       — *.js / *.cjs / *.mjs (vitest unit tests)
-#   9. npm run lint:docs          — ALWAYS. Validates related-files: paths and
-#                                    markdown links across every doc + CLAUDE.md.
-#                                    Cross-doc check; not file-scopable.
-#  9a. npm run lint:markdown      — when any *.md changed. markdownlint style
-#                                    (MD022 blanks-around-headings, etc.). Backstop
-#                                    for the pre-commit auto-fix, which git skips on
-#                                    rebase / cherry-pick / merge commits.
-#  9a'. npm run lint:spelling     — when any *.md changed. spellchecker against
-#                                    dictionary.txt. Same rebase-bypass backstop.
-#  9a''. npm run dictionary:sentence-final:check — ALWAYS, and BEFORE 9a' so a
-#                                    stale companion dictionary reports as drift
-#                                    rather than as a wall of spelling failures.
-#                                    dictionary-sentence-final.txt is generated
-#                                    from dictionary.txt; when it goes stale the
-#                                    spell lint silently weakens everywhere, so
-#                                    this is not scoped to dictionary.txt edits.
-#  9b. npm run lint:ci-workflow-sync — ALWAYS. Verifies every _lint-*.yml /
-#                                    _test-*.yml / _smoke-test-*.yml reusable
-#                                    workflow is listed in _validate-dependencies.yml.
-#  9c. npm run lint:ci-parity     — ALWAYS. Verifies every check in the
-#                                    `npm run lint` aggregate is actually run by
-#                                    some workflow. CI does NOT run the aggregate
-#                                    (it runs the per-domain reusables), so without
-#                                    this a check added locally gates nothing.
-#  10. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
-#                                     dev-guides table.
-#  11. node scripts/lint/decision-shape-nudge.cjs — ALWAYS. Advisory only
-#                                    (always exit 0). Pattern-matches commit
-#                                    messages for decision-shape language and
-#                                    nudges toward /log decision when the
-#                                    range doesn't touch docs/decisions.md.
-#  12. node scripts/lint/progress-cursor-nudge.cjs — ALWAYS. Advisory only
-#                                    (always exit 0). Flags stale progress.md
-#                                    and Currently-running cursors that look
-#                                    shipped (token overlap with recent commit
-#                                    subjects). Mid-session safety net for the
-#                                    post-merge journal-sync workflow.
+#   - npm run validate: when *.bs / *.brs / *.xml / bsconfig*.json /
+#     .dead-code-baseline.json changed (full BSC project compile; can't be
+#     file-scoped)
+#   - npm run lint:bs: when *.bs / *.brs changed (bslint; needs full project
+#     context)
+#   - npm run lint:language-coverage: when its inputs changed
+#   - npm run lint:issue-templates: when .github/ISSUE_TEMPLATE/, its checker
+#     or its schema changed (validates against GitHub issue-forms schema;
+#     GitHub silently hides invalid templates)
+#   - npm run lint:js: when *.js / *.cjs / *.mjs changed (eslint, project-wide)
+#   - npm run check-formatting:js: when *.js / *.cjs / *.mjs / *.json changed
+#     (Prettier check; auto-fix already ran in pre-commit)
+#   - npm run test:scripts: when *.js / *.cjs / *.mjs changed (vitest unit
+#     tests)
+#   - npm run lint:docs: validates related-files: paths and markdown links
+#     across every doc + CLAUDE.md. Cross-doc check; not file-scopable.
+#   - npm run lint:doc-citations (seconds, not minutes): per-file ratchets on
+#     line-number citations and the house voice in docs and code comments
+#     (docs/dev/writing-style.md).
+#   - npm run dictionary:sentence-final:check: runs before lint:spelling so
+#     a stale companion dictionary reports as drift rather than as a wall of
+#     spelling failures. dictionary-sentence-final.txt is generated from
+#     dictionary.txt; when it goes stale the spell lint silently weakens
+#     everywhere, so this is not scoped to dictionary.txt edits.
+#   - npm run lint:markdown: when any *.md changed. markdownlint style
+#     (MD022 blanks-around-headings, etc.). Backstop for the pre-commit
+#     auto-fix, which git skips on rebase / cherry-pick / merge commits.
+#   - npm run lint:spelling: when any *.md changed. spellchecker against
+#     dictionary.txt. Same rebase-bypass backstop.
+#   - npm run lint:ci-workflow-sync: verifies every _lint-*.yml /
+#     _test-*.yml / _smoke-test-*.yml reusable workflow is listed in
+#     _validate-dependencies.yml.
+#   - npm run lint:ci-parity: verifies every check in the `npm run lint`
+#     aggregate is actually run by some workflow. CI doesn't run the
+#     aggregate (it runs the per-domain reusables), so without this a check
+#     added locally gates nothing.
+#   - npm run docs:dev-index:check: drift check on the generated dev-guides
+#     table.
+#   - npm run docs:api-manifest:check: drift check on the API usage manifest.
+#   - npm run roku-hardware:check: integrity check on the Roku device
+#     dictionary (scripts/data/roku-hardware.json).
+#   - npm run icons:check: when the icon sources changed. Icon-asset drift.
+#   - npm run gradients:check: when the gradient sources changed.
+#     Gradient-asset drift.
+#   - npm run lint:dictionary: when the dictionary sources changed. Flags
+#     identifier-shaped entries in dictionary.txt.
+#
+# Advisory steps (the hook ignores their exit code; they never block):
+#   - npm run lint:promise-ratchet: when *.bs / *.brs changed. Blocking in
+#     CI.
+#   - node scripts/lint/decision-shape-nudge.cjs: pattern-matches commit
+#     messages for decision-shape language and nudges toward /log decision
+#     when the range touches neither docs/decisions.md nor docs/adr/.
+#   - node scripts/lint/progress-cursor-nudge.cjs: flags stale progress.md
+#     and Currently-running cursors that look shipped (token overlap with
+#     recent commit subjects). Mid-session safety net for the post-merge
+#     journal-sync workflow.
 #
 # Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
-# can't be swept into the auto-fix commit. Check steps still run.
+# can't be swept into the auto-fix commit. Dirty means a changed tracked file
+# or a new file that .gitignore doesn't cover. Check steps still run.
 #
-# What's NOT here (handled in pre-commit / lint-staged):
-#   - bsfmt --write / --check on .bs/.brs (file-scoped)
-#   - markdownlint --fix on .md (file-scoped auto-fix; the read-only CHECK
-#     runs here too — see step 9a — to catch commits that bypass pre-commit)
-#   - spellchecker on .md (file-scoped; the CHECK also runs here — step 9a')
+# What's not here (handled in pre-commit / lint-staged):
+#   - bsfmt --write on .bs/.brs (file-scoped)
+#   - markdownlint --fix on .md (file-scoped auto-fix; the read-only check
+#     runs here too, as lint:markdown, to catch commits that bypass
+#     pre-commit)
+#   - spellchecker on .md (file-scoped; the check also runs here, as
+#     lint:spelling)
 #   - jshint on .json (file-scoped)
 #   - eslint --fix on *.js / *.cjs / *.mjs (file-scoped, auto-fix)
 #   - prettier --write on *.js / *.cjs / *.mjs / *.json (file-scoped, auto-fix)
 #
-# Bypass with `git push --no-verify` if you absolutely need to skip — CI
-# still runs everything.
+# Bypass with `git push --no-verify` if you absolutely need to skip. CI
+# still runs every check that blocks here.
 
 set -e
+
+# Git exports GIT_DIR (and friends) to a hook run in a linked WORKTREE, and git
+# reads those BEFORE it looks at a command's cwd. Any step below that spawns git
+# elsewhere (the script tests build temp repos) would then operate on THIS
+# repository. Measured 2026-09-17 from a worktree: the fixtures moved the branch
+# being pushed onto a test commit, wrote `user.name=Test` and `core.bare=true`
+# into the shared config (leaving the main checkout unusable) and added junk
+# tags; the damage was silent, and only the 38 failing tests gave it away.
+# Unsetting them costs nothing here: every git call in this hook runs in the
+# worktree root, which git discovers from cwd. The test helpers scrub their own
+# env too (tests/scripts/unit/_helpers/git-env.js); this is the outer layer, for
+# whatever gets added to this hook next.
+unset GIT_DIR GIT_COMMON_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
 
 # Determine the push range. Fall back to origin/main when there's no upstream
 # (first push of a new branch).
@@ -87,7 +125,7 @@ fi
 
 CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || true)
 
-# Nothing to push or empty diff — let git handle it.
+# Nothing to push or empty diff: let git handle it.
 if [ -z "$CHANGED" ]; then
   exit 0
 fi
@@ -95,17 +133,17 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # File-type detection
 # ──────────────────────────────────────────────────────────────────────────
-HAS_VALIDATE_TRIGGERS=$(echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\.json$' && echo 1 || true)
+HAS_VALIDATE_TRIGGERS=$(echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\.json$|^\.dead-code-baseline\.json$' && echo 1 || true)
 HAS_BS=$(echo "$CHANGED" | grep -qE '\.(bs|brs)$' && echo 1 || true)
 HAS_DEV_DOCS=$(echo "$CHANGED" | grep -qE '^docs/dev/.*\.md$' && echo 1 || true)
 TRANSLATION_TRIGGERS=$(echo "$CHANGED" | grep -E '^(source|components)/.*\.bs$|^locale/|^settings/settings\.json$' || true)
-HAS_LANGUAGE_TRIGGERS=$(echo "$CHANGED" | grep -qE '^source/utils/(languages|mediaDisplayTitle)\.bs$|^locale/custom/en_US\.json$|^scripts/lint/language-coverage\.cjs$' && echo 1 || true)
+HAS_LANGUAGE_TRIGGERS=$(echo "$CHANGED" | grep -qE '^(source/utils/(languages|people|mediaDisplayTitle)\.bs|locale/custom/en_US\.json|docs/architecture/spec-fingerprints/.+|scripts/lint/language-coverage(-inputs)?\.cjs)$' && echo 1 || true)
 HAS_ISSUE_TEMPLATES=$(echo "$CHANGED" | grep -qE '^\.github/ISSUE_TEMPLATE/|^scripts/lint/issue-templates-check\.cjs$|^scripts/lint/issue-forms\.schema\.json$' && echo 1 || true)
 HAS_JS=$(echo "$CHANGED" | grep -qE '\.(js|cjs|mjs)$' && echo 1 || true)
 HAS_JSON_OR_JS=$(echo "$CHANGED" | grep -qE '\.(js|cjs|mjs|json)$' && echo 1 || true)
-HAS_ICON_SOURCES=$(echo "$CHANGED" | grep -qE '^resources/icons/.*\.svg$|^resources/(icons/icons|placeholders/placeholders)\.json$|^scripts/generate/icons-build\.js$' && echo 1 || true)
-HAS_GRADIENT_SOURCES=$(echo "$CHANGED" | grep -qE '^images/gradients/|^scripts/generate/gradient-assets\.js$' && echo 1 || true)
-HAS_API_MANIFEST_SOURCES=$(echo "$CHANGED" | grep -qE '^source/api/.*\.bs$|^source/data/.*Transformer\.bs$|^source/utils/(session|streamSelection|subtitles)\.bs$|^scripts/generate/api-usage-manifest\.js$' && echo 1 || true)
+HAS_ICON_SOURCES=$(echo "$CHANGED" | grep -qE '^resources/icons/.*\.svg$|^resources/(icons/icons|placeholders/placeholders)\.json$|^scripts/generate/icons-build\.js$|^scripts/lib/png-compare\.js$' && echo 1 || true)
+HAS_GRADIENT_SOURCES=$(echo "$CHANGED" | grep -qE '^images/gradients/|^scripts/generate/gradient-assets\.js$|^scripts/lib/png-compare\.js$' && echo 1 || true)
+HAS_API_MANIFEST_SOURCES=$(echo "$CHANGED" | grep -qE '^source/.*\.bs$|^scripts/generate/api-usage-manifest\.js$' && echo 1 || true)
 HAS_DICTIONARY=$(echo "$CHANGED" | grep -qE '^dictionary(-sentence-final)?\.txt$|^scripts/lint/dictionary-audit\.cjs$|^scripts/generate/sentence-final-dictionary\.js$' && echo 1 || true)
 HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
 
@@ -113,8 +151,8 @@ HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
 # Auto-fix steps (project-wide regens; combined into one commit at the end)
 # ──────────────────────────────────────────────────────────────────────────
 if [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ] || [ -n "$HAS_ICON_SOURCES" ] || [ -n "$HAS_GRADIENT_SOURCES" ] || [ -n "$HAS_API_MANIFEST_SOURCES" ] || [ -n "$HAS_DICTIONARY" ]; then
-  if ! git diff-index --quiet HEAD --; then
-    echo "⚠️  Working tree has uncommitted changes; skipping auto-fix steps."
+  if ! git diff-index --quiet HEAD -- || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    echo "⚠️  Working tree has uncommitted or untracked changes; skipping auto-fix steps."
     echo "   Commit or stash them, then re-push to enable auto-fix."
   else
     if [ -n "$TRANSLATION_TRIGGERS" ]; then
@@ -197,6 +235,9 @@ fi
 echo "📚 Validating doc references..."
 npm run lint:docs
 
+echo "✍️  Checking doc citations and house voice..."
+npm run lint:doc-citations
+
 # Ahead of lint:spelling on purpose: a stale companion dictionary presents as
 # unrelated spelling failures on words that are already in dictionary.txt.
 echo "📖 Checking sentence-final dictionary drift..."
@@ -240,14 +281,14 @@ if [ -n "$HAS_DICTIONARY" ]; then
   npm run lint:dictionary
 fi
 
-# Promise-ratchet — advisory at pre-push; BLOCKING in CI via the `lint-brightscript`
+# Promise-ratchet: advisory at pre-push; BLOCKING in CI via the `lint-brightscript`
 # workflow. Flags net-new observer-spaghetti (a raw `observeField("isDone", ...)` on
 # a submitApiRequest result) introduced against the committed baseline, as part of
 # the #551 promises adoption. Advisory here so a local push isn't blocked. Scoped to
-# .bs changes.
+# .bs and .brs changes.
 #
 # NOTE: this comment used to claim CI enforced it "because it's in `npm run lint`".
-# That was false — CI never runs the aggregate, it runs the per-domain reusable
+# That was false: CI never runs the aggregate, it runs the per-domain reusable
 # workflows, so the ratchet blocked nowhere for as long as it existed. The step is
 # now wired into _lint-brightscript.yml, and `lint:ci-parity` (above) fails if any
 # aggregate member ever loses its CI home again.
@@ -255,15 +296,16 @@ if [ -n "$HAS_BS" ]; then
   npm run lint:promise-ratchet || true
 fi
 
-# Decision-shape commit nudge — advisory only, never blocks the push.
+# Decision-shape commit nudge: advisory only, never blocks the push.
 # Detects commits whose messages look like decisions (decided/switched-from/
-# instead-of/etc.) but didn't touch docs/decisions.md; reminds the user to
-# invoke /log decision in the same change set if the commit warrants it.
+# instead-of/etc.) but touched neither docs/decisions.md nor docs/adr/;
+# reminds the user to invoke /log decision in the same change set if the
+# commit warrants it.
 node scripts/lint/decision-shape-nudge.cjs || true
 
-# Progress-cursor nudge — advisory only, never blocks the push.
+# Progress-cursor nudge: advisory only, never blocks the push.
 # Surfaces when docs/progress.md is stale OR the Currently-running cursor
-# overlaps with recent commit subjects (i.e. the work it tracks shipped but
+# overlaps with recent commit subjects (that is, the work it tracks shipped but
 # /done running was never invoked). Mechanical close-loop on PR merge ships
 # via .github/workflows/journal-sync.yml; this nudge catches the gap when
 # the user pushes from a feature branch before the merge fires.

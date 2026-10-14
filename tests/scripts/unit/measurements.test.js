@@ -1,5 +1,5 @@
 /**
- * The measurement registry — see `scripts/measurements.js`.
+ * The measurement registry: see `scripts/measurements.js`.
  *
  * Every pattern here is asserted against a line captured VERBATIM off `.177`
  * (2026-08-12), not against the idealized form in
@@ -32,23 +32,23 @@ import {
 } from '../../../scripts/measurements.js';
 
 /**
- * Captured off `.177` on 2026-08-12 — two complete Home runs seen in one console
+ * Captured off `.177` on 2026-08-12: two complete Home runs seen in one console
  * window. Trailing whitespace is REAL and preserved: `m.log.*` joins its nine
  * possible arguments with spaces whether or not they were supplied.
  *
  * ⚠️ ONE substitution, and it is the only edit made to the captured text: the
  * checkout path in each `file:///…` URI was replaced with a generic one, because
- * the capture machine's real path carried a username. Nothing reads that prefix —
- * `matchLine` anchors on the measurement name and its numeric fields — so the
+ * the capture machine's real path carried a username. Nothing reads that prefix
+ * (`matchLine` anchors on the measurement name and its numeric fields), so the
  * substitution cannot affect what these fixtures prove. Everything to the right of
  * the path, including the trailing whitespace, is untouched device output.
  *
- * ⚠️ These two runs were NOT both live. A later timestamped probe showed the
+ * ⚠️ These two runs were not both live. A later timestamped probe showed the
  * first was REPLAYED out of the device's console buffer 10 ms after connect, and
  * that one launch produces exactly one run. The fixture is kept because the lines
  * themselves are verbatim device output and the multi-run assembly they exercise
- * is still needed (a `refresh()` on returning to Home is a genuine second run) —
- * but nothing here may be read as evidence about how many runs a launch emits.
+ * is still needed (a `refresh()` on returning to Home is a real second run), but
+ * nothing here may be read as evidence about how many runs a launch emits.
  */
 const CAPTURED = [
   'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:459 latest-rows run complete 10 rows 1500 ms    ',
@@ -61,7 +61,7 @@ const CAPTURED = [
   'INFO file:///Users/dev/jellyrock/components/home/LoadLatestRowsTask.bs:145 latest-rows emit split - [debug=false perfTiming=true] xform 186 append 31 notify 456  ',
 ];
 
-/** Console traffic that is NOT a measurement, also captured off the device. */
+/** Console traffic that is not a measurement, also captured off the device. */
 const NOISE = [
   '[http] Response Code             200',
   '[http] ------ END HTTP REQUEST ------',
@@ -106,7 +106,7 @@ describe('the Home pattern against captured device lines', () => {
 
   it('reads the orchestrator split, where the value FOLLOWS its label', () => {
     // The two shapes in one family are why this cannot be a generic key/value
-    // extractor — the reason the registry declares a pattern per line.
+    // extractor, and the reason the registry declares a pattern per line.
     expect(matchLine(home, CAPTURED[2]).fields).toEqual({
       taskMs: 1375,
       waitMs: 776,
@@ -128,9 +128,9 @@ describe('the Home pattern against captured device lines', () => {
   });
 
   it('reads the size-recompute line, which only a batching build emits', () => {
-    // ⚠️ NOT a verbatim device capture like CAPTURED above. Written from the emitting
-    // call site in `HomeRows.bs` — authoritative for the MESSAGE, since it is the format
-    // string — and cross-checked against the regex that read this line off `.177`
+    // ⚠️ Not a verbatim device capture like CAPTURED above. Written from the emitting
+    // call site in `HomeRows.bs` (authoritative for the MESSAGE, since it is the format
+    // string) and cross-checked against the regex that read this line off `.177`
     // throughout the #728 campaign. Replace with a real capture once one is in hand; the
     // fixtures above carry that provenance and this one must not be read as if it did.
     const line =
@@ -146,7 +146,7 @@ describe('the Home pattern against captured device lines', () => {
     // Same provenance caveat as the line above: written from the call site, not captured.
     //
     // `sizeAt` is captured rather than left on the console, and that is the assertion
-    // worth keeping: `measure.js` writes its console dump ONLY when nothing matched, so a
+    // worth keeping: `measure.js` writes its console dump only when nothing matched, so a
     // healthy run discards the device lines and no redirect can recover them. A field
     // documented as "read it off the console" would be a field nobody can read.
     const line =
@@ -160,7 +160,7 @@ describe('the Home pattern against captured device lines', () => {
 
   it('files the recompute tail under dimensions, out of the numeric halves', () => {
     // `remove` and `insert` are quantities a comparison subtracts; "which row was dropped"
-    // is not, and `splitWorkload` has to keep them apart — the same split that keeps
+    // is not, and `splitWorkload` has to keep them apart: the same split that keeps
     // `screen-load`'s `slowestContent` out of `timings`. A dimension that leaked into
     // `timings` would hand `measure:compare` a string operand for a Mann-Whitney.
     const line =
@@ -174,7 +174,7 @@ describe('the Home pattern against captured device lines', () => {
     // `matchLine` returns the FIRST pattern that matches, and the two messages share the
     // prefix `latest-rows size recompute`. If the older pattern's `\s+calls` were ever
     // loosened, the attribution line would be read as a `sizeCalls` sample carrying none
-    // of its numbers — a silently half-parsed sample rather than an error.
+    // of its numbers: a silently half-parsed sample rather than an error.
     const counts =
       'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:471 latest-rows size recompute calls 2 drains 10 ms 127  ';
     const by =
@@ -188,12 +188,12 @@ describe('the Home pattern against captured device lines', () => {
     // `calls - remove - insert` and can only be 0 or 1. Any other value means a recompute
     // reached `setRowItemSize()` by a path neither counter tags.
     //
-    // ⚠️ WHAT THIS CASE DOES AND DOES NOT COVER. It proves the two lines ASSEMBLE into one
-    // sample whose three counters can be subtracted — the plumbing. It does NOT gate the
+    // ⚠️ What this case does and does not cover. It proves the two lines ASSEMBLE into one
+    // sample whose three counters can be subtracted: the plumbing. It does not gate the
     // invariant on device data, because the line below is hand-written: nothing in the
     // pipeline evaluates the subtraction against a real ledger, so on a real run the check
     // is still an analyst remembering to do it. Do not read a green suite here as "the
-    // attribution was verified on the arm you just took".
+    // attribution was verified on the arm you took".
     // Tracked: tech-debt.md#measurement-invariants-ungated.
     const sample = assembleSamples(home, [
       ...CAPTURED.slice(0, 4),
@@ -218,7 +218,7 @@ describe('the Home pattern against captured device lines', () => {
     //
     // The composition is the part worth pinning. Four numbers ride in two `a/b` pairs
     // because the app stays a pair clear of roku-log's nine-argument ceiling, so a reader
-    // of the console sees `cells 0/41` — and every one of the four still has to arrive as
+    // of the console sees `cells 0/41`, and every one of the four still has to arrive as
     // its OWN numeric field, or `unitFor` places one half and defaults the other.
     const line =
       'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:641 latest-rows row removed at activeRecordings#1 cells 0/41 run 0/0  ';
@@ -235,17 +235,17 @@ describe('the Home pattern against captured device lines', () => {
 
   it("keeps the app's `-1` no-counters reading instead of dropping the line", () => {
     // `cells -1/-1` is what the app prints when the content root carries no `cellLoad*`
-    // fields. ⚠️ It cannot happen in `HomeRows` today — `init` creates `m.top.content` and
+    // fields. ⚠️ It cannot happen in `HomeRows` today: `init` creates `m.top.content` and
     // hands that same node to `initTextureManager` before returning, under the same
-    // `perfTiming` gate as the probe — so this is a guard on the PARSER against a future
+    // `perfTiming` gate as the probe. So this is a guard on the PARSER against a future
     // call site, not a case the Home family exercises. Do not read a clean arm's "no -1"
     // as evidence of anything; the code already predicts it.
     //
     // Pinned anyway, and cheaply, because the failure mode is asymmetric: a `\d+` matcher
     // drops the WHOLE line rather than one field, and a dropped line reads as "no removal
-    // happened" — which is the one wrong answer this instrument can give. Keeping the
+    // happened", which is the one wrong answer this instrument can give. Keeping the
     // reading distinct also keeps it separable from `loadsStarted 0`, which is what a
-    // genuinely early removal prints.
+    // truly early removal prints.
     const line = 'latest-rows row removed at activeRecordings#1 cells -1/-1 run 0/0';
     expect(matchLine(home, line).fields.rowRemoveLoads).toBe(-1);
     expect(matchLine(home, line).fields.rowRemoveBinds).toBe(-1);
@@ -269,7 +269,7 @@ describe('the Home pattern against captured device lines', () => {
     // on `size recompute`: the removals that matter are the ones OUTSIDE the run window,
     // and `sizeRemove` is zeroed at run start and read at run end. A sample opens on the
     // first matching line whichever end it arrives at, and `assembleSamples` flushes what
-    // is still open at end of window — so the late case, which no other Home field can
+    // is still open at end of window, so the late case, which no other Home field can
     // see, lands in the same sample as the run it followed.
     const early = assembleSamples(home, [
       'latest-rows row removed at activeRecordings#1 cells 0/41 run 0/0',
@@ -290,7 +290,7 @@ describe('the Home pattern against captured device lines', () => {
 
   it('makes a SECOND removal in one launch visible as an ordinal, not a short read', () => {
     // The known limit, gated so nobody rediscovers it mid-analysis. A repeated line closes
-    // the sample, so a launch that drops two rows is filed as two samples — the first
+    // the sample, so a launch that drops two rows is filed as two samples: the first
     // complete and carrying only removal #1, the second holding nothing but the probe.
     // The ordinal is the whole defence: without it the analyst sees 20 complete samples
     // for 20 launches and no sign that any launch had a second removal at all.
@@ -311,7 +311,7 @@ describe('the Home pattern against captured device lines', () => {
     // All three messages start `latest-rows`, and `matchLine` returns the first pattern
     // that matches. The live risk is the FIRST assertion: `size recompute by` is declared
     // ahead of this line and also carries an `at` group, so dropping its `remove N insert N`
-    // middle makes it swallow every removal line — verified, not supposed (that mutation
+    // middle makes it swallow every removal line. Verified, not supposed (that mutation
     // takes this case and ten others red). The second assertion is weaker and says so:
     // nothing this pattern can do reaches the `by` line, so it guards a REORDERING of the
     // family rather than a loosening of this pattern.
@@ -345,7 +345,7 @@ describe('build flags', () => {
   });
 
   it('does not invent ENABLE_RTA, which the app never stamps', () => {
-    // The third flag that can move a measurement is NOT in the bracket, so a line
+    // The third flag that can move a measurement is not in the bracket, so a line
     // lifted out of a scrollback cannot self-report it. If this ever starts
     // passing, `measure.js` should stop recording it from the deploy side.
     const flags = parseBuildFlags(parseLogLine(CAPTURED[2]).message);
@@ -357,8 +357,8 @@ describe('assembleSamples', () => {
   it('splits a console window into the separate runs it contained', () => {
     // Why the splitting matters: one of these two was replayed out of the device's
     // buffer (see the fixture note). Collapsing a window to "the" number is how a
-    // stale 7241 ms line gets averaged into a cold-paint series — measured on
-    // `.177`, against a live range of 1439–2654 ms.
+    // stale 7241 ms line gets averaged into a cold-paint series (measured on
+    // `.177` on 2026-08-12, against a live range of 1439–2654 ms).
     const samples = assembleSamples(home, CAPTURED);
     expect(samples).toHaveLength(2);
     expect(samples.map((s) => s.fields.totalMs)).toEqual([1500, 2654]);
@@ -419,12 +419,12 @@ describe('assembleSamples', () => {
  * One `screen-load` sample as `source/utils/screenReadiness.bs` builds it, with
  * roku-log's real prefix and trailing padding.
  *
- * ⚠️ Written from the emitting source, NOT captured off a device. A test written from
+ * ⚠️ Written from the emitting source, not captured off a device. A test written from
  * the emitter proves the pattern matches what THIS repo emits; only a device can prove
  * the device emits it. That is exactly the distinction the header above draws, and the
  * reason the Home fixture is verbatim capture instead.
  *
- * The family's `grounded` flag used to say the same thing and no longer does — it was
+ * The family's `grounded` flag used to say the same thing and no longer does: it was
  * flipped to `true` on 2026-08-16 once the ledger held 32 series with complete samples.
  * So this fixture is now the WEAKER of the two claims about the same pattern, and it is
  * still the right shape for a unit test: it fails when the emitter and the parser drift
@@ -441,7 +441,7 @@ const SCREEN_LOAD_LINES = [
  * are two SEPARATE ItemDetails mounts (the details route sets no allowReuse), so two
  * ledgers emit onto one console and interleave. The nav's gate waits
  * on paint, so it presses into the Season while the Series' extras chain is still
- * running — which puts the Series' settle AFTER the Season's paint.
+ * running, which puts the Series' settle AFTER the Season's paint.
  *
  * Written from the emitter, not captured: the ordering is inferred from the nav gate and
  * the measured fill durations. The point of the fixture is that the assembler must be
@@ -481,7 +481,8 @@ describe('the screen-load family', () => {
   it('still parses a split line from a build that predates instrumentUs', () => {
     // The field is OPTIONAL in the pattern, and this is the gate under that. A
     // required group would have stopped every previously-recorded `screen-load` line
-    // matching at all — 35 series across six components, silently unparseable. The
+    // matching at all: 35 series across six components on 2026-08-16, silently
+    // unparseable. The
     // absent field must read as absent, never as a failed match.
     const [sample] = assembleSamples(load, SCREEN_LOAD_LINES);
     expect(sample.lines).toContain('split');
@@ -491,7 +492,7 @@ describe('the screen-load family', () => {
 
   it('keeps a screen that painted but never settled, marked complete', () => {
     // The whole reason `paint` is the only required line. A fill that never resolved
-    // must produce a sample carrying a paint time and NO settle time — not a dropped
+    // must produce a sample carrying a paint time and no settle time. Not a dropped
     // sample, which would make a broken screen look like a device that ran fewer
     // times, and not an incomplete one, which would fall out of the median entirely.
     const [sample] = assembleSamples(load, [SCREEN_LOAD_LINES[0]]);
@@ -511,7 +512,7 @@ describe('the screen-load family', () => {
 
   it("does NOT file one mount's settle against another mount's paint", () => {
     // The finding this identity exists for. Under a single-open assembler the Series'
-    // settle arrives while the Season is the open sample, and is merged into it —
+    // settle arrives while the Season is the open sample, and is merged into it,
     // producing one well-formed sample whose paint is the Season and whose settled
     // describes the Series. Nothing in the fields would reveal it.
     const samples = assembleSamples(load, INTERLEAVED_LINES);
@@ -568,7 +569,7 @@ describe('the cell-load family', () => {
   // Built from the emit in `source/utils/cellLoad.bs` rather than pasted off a console,
   // because nothing captures raw cell-load lines to a file. The end-to-end evidence that
   // the pattern matches real device output is the 2026-08-21 three-arm campaign, where
-  // `loadsSucceeded` published a median on all 30 launches — a regex that missed would
+  // `loadsSucceeded` published a median on all 30 launches. A regex that missed would
   // have produced no field at all.
   const WORK =
     'INFO file:///Users/dev/jellyrock/source/utils/cellLoad.bs:216 cell-load work - component ExtrasRowList loadsStarted 140 loadsFailed 117 loadsSucceeded 1 reloads 123 unloads 8 wipesBind 33 wipesReload 103 instrumentUs 13256  ';
@@ -599,8 +600,8 @@ describe('the cell-load family', () => {
   });
 
   // The same line once the unload REASON split is emitted. Kept as a second fixture rather
-  // than folded into `WORK`, because `WORK` is now also the legacy shape — a build without
-  // the split, and every record already in the ledger — and both have to keep parsing.
+  // than folded into `WORK`, because `WORK` is now also the legacy shape (a build without
+  // the split, and every record already in the ledger), and both have to keep parsing.
   const WORK_SPLIT =
     'INFO file:///Users/dev/jellyrock/source/utils/cellLoad.bs:216 cell-load work - component HomeRows loadsStarted 164 loadsFailed 0 loadsSucceeded 140 reloads 61 unloads 57 unloadsRange 45 unloadsWindow 12 wipesBind 20 wipesReload 0 instrumentUs 7640  ';
 
@@ -622,9 +623,10 @@ describe('the cell-load family', () => {
 
   it('keeps the two unload reasons a PARTITION of unloads', () => {
     // Emitted rather than derived so this can be checked instead of assumed, exactly as
-    // the pop-in buckets are. `JRRowItem`'s two eviction branches are the only call sites,
-    // so the halves sum to the total by construction — and a third branch added later
-    // without a reason would break this test rather than score silently as `range`.
+    // the pop-in buckets are. `cellLoad.unload` bumps the total and exactly one half on
+    // every call (any reason other than `window` counts as `range`), so the halves sum to
+    // the total by construction. This fixture is hand-built, so the case pins the parser's
+    // reading of that partition; it cannot catch a new call site whose reason is wrong.
     const { fields } = matchLine(cells, WORK_SPLIT);
     expect(fields.unloadsRange + fields.unloadsWindow).toBe(fields.unloads);
   });
@@ -690,6 +692,66 @@ describe('the cell-load family', () => {
   });
 });
 
+describe('the item-grid-paging family', () => {
+  const paging = measurementById('item-grid-paging');
+
+  /**
+   * Captured off `.176` (512 MB Stick) on 2026-09-25 by PR D's scroll probe, which
+   * `navGridScroll` now replaces. Same one substitution as `CAPTURED` above (the checkout
+   * path) and nothing else: the trailing padding and carriage return are device output.
+   * The second line is from a build before #1046, which did not emit `appendMs`.
+   */
+  const CURRENT =
+    'INFO file:///Users/dev/jellyrock/components/ItemGrid/BaseGridView.bs:1081 item-grid paging - stalls 1 stallMs 70 furthestRow 107 appendMs 262 appendMaxMs 34 pages 8 items 800 pageMs 1360  \r';
+  const BEFORE_1046 =
+    'INFO file:///Users/dev/jellyrock/components/ItemGrid/BaseGridView.bs:1024 item-grid paging - stalls 5 stallMs 4532 furthestRow 84 pages 7 items 700 pageMs 3316  \r';
+
+  it('reads every field off a device line', () => {
+    expect(matchLine(paging, CURRENT).fields).toEqual({
+      stalls: 1,
+      stallMs: 70,
+      furthestRow: 107,
+      appendMs: 262,
+      appendMaxMs: 34,
+      pages: 8,
+      items: 800,
+      pageMs: 1360,
+    });
+  });
+
+  it('still parses a line from a build before appendMs existed', () => {
+    const { fields } = matchLine(paging, BEFORE_1046);
+    expect(fields).toEqual({
+      stalls: 5,
+      stallMs: 4532,
+      furthestRow: 84,
+      pages: 7,
+      items: 700,
+      pageMs: 3316,
+    });
+  });
+
+  it('makes one complete sample per grid session', () => {
+    const samples = assembleSamples(paging, [BEFORE_1046, ...NOISE, CURRENT]);
+    expect(samples).toHaveLength(2);
+    expect(samples.every((s) => s.complete)).toBe(true);
+  });
+
+  it('is not matched by the per-page item-grid line, nor matches it', () => {
+    const load =
+      'item-grid load done - items 100 genreFetches 0 firstPaint -1 handoff 140 [debug=false perfTiming=true] task 900 wait 300 emit 600';
+    expect(matchLine(paging, load)).toBeNull();
+    expect(matchLine(measurementById('item-grid'), CURRENT)).toBeNull();
+  });
+
+  it('files the outcomes as counts, so none is headlined in ms', () => {
+    for (const field of ['stalls', 'furthestRow', 'pages', 'items']) {
+      expect(unitFor(field, paging), field).toBe('');
+    }
+    expect(unitFor('stallMs', paging)).toBe('ms');
+  });
+});
+
 describe('splitWorkload', () => {
   it('separates what the run had to DO from how long it took', () => {
     const [first] = assembleSamples(home, CAPTURED);
@@ -702,7 +764,7 @@ describe('splitWorkload', () => {
   });
 
   it('leaves a sample that carries only numbers with no dimensions', () => {
-    // `CAPTURED` predates the attribution line, so it carries no `sizeAt` — which is also
+    // `CAPTURED` predates the attribution line, so it carries no `sizeAt`, which is also
     // the baseline-build case the optional line exists for.
     const [first] = assembleSamples(home, CAPTURED);
     expect(splitWorkload(home, first.fields).dimensions).toEqual({});
@@ -725,7 +787,7 @@ describe('splitWorkload', () => {
     expect(timings).not.toHaveProperty('component');
     expect(workload).not.toHaveProperty('variant');
 
-    // Counts are workload, durations are timings — the family still has to say which,
+    // Counts are workload, durations are timings: the family still has to say which,
     // because both are numbers.
     expect(workload).toEqual({ fills: 3, contentFills: 2, textureFills: 1 });
     expect(timings).toEqual({
@@ -743,13 +805,13 @@ const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../
 
 describe('the registry itself', () => {
   it("every family's doc: path resolves to a file that exists", () => {
-    // `doc:` is printed to operators and pasted into write-ups, and NOTHING reads it —
+    // `doc:` is for operators and gets pasted into write-ups, and no code reads it:
     // there is no consumer to fail, so a dead path survives indefinitely. `screen-load`
     // shipped pointing at `docs/dev/measuring-performance.md`, a Charter deliverable
     // that has not been written; the only file by that name lived under a gitignored
     // archive. This converts the eyeball into a gate.
     for (const m of MEASUREMENTS) {
-      // Strip a `#anchor` — the file is what must exist; anchor resolution is
+      // Strip a `#anchor`: the file is what must exist; anchor resolution is
       // `lint:docs`' job and it already owns it.
       const file = m.doc.split('#')[0];
       expect(fs.existsSync(path.join(repoRoot, file)), `${m.id} doc: ${file}`).toBe(true);
@@ -776,6 +838,24 @@ describe('the registry itself', () => {
     });
   });
 
+  it('parses the handoff part of emit, and still parses a line from before it existed', () => {
+    const grid = measurementById('item-grid');
+    const line =
+      'item-grid load done - items 100 genreFetches 0 firstPaint -1 handoff 140 [debug=false perfTiming=true] task 900 wait 300 emit 600';
+    expect(matchLine(grid, line).fields).toEqual({
+      items: 100,
+      genreFetches: 0,
+      firstPaintMs: -1,
+      handoffMs: 140,
+      taskMs: 900,
+      waitMs: 300,
+      emitMs: 600,
+    });
+    const older =
+      'item-grid load done - items 42 genreFetches 3 firstPaint 812 [debug=false perfTiming=true] task 1200 wait 900 emit 300';
+    expect(matchLine(grid, older).fields).not.toHaveProperty('handoffMs');
+  });
+
   it('handles the -1 firstPaint the grid emits when it never painted', () => {
     const grid = measurementById('item-grid');
     const line =
@@ -787,14 +867,15 @@ describe('the registry itself', () => {
     // `grounded` is honest provenance about the PATTERN: written from the format
     // string, which is authoritative for the message and says nothing about what the
     // wire looks like. It is flipped only after a real line has matched, because the
-    // flag decides what `measure.js` tells an operator to suspect on a zero-sample run
-    // — left stale it sends them to audit a parser that has matched hundreds of lines.
+    // flag decides what `measure.js` tells an operator to suspect on a zero-sample run.
+    // Left stale, it sends them to audit a parser that has matched hundreds of lines.
     //
     // `screen-load` flipped 2026-08-16 (35 series in the ledger, 32 with a COMPLETE
     // sample, six components). `item-grid` flipped 2026-08-19, and was last because
     // reaching any library grid needs `--library <id>` on a server with more than one
-    // library of a type — two runs were blocked by that ambiguity before one landed
-    // 5/5 cold samples.
+    // library of a type: two runs were blocked by that ambiguity before one landed
+    // 5/5 cold samples. `item-grid-paging` flipped 2026-09-26 on `--nav gridScroll` series
+    // from `.176` and `.177`, every sample complete.
     for (const m of MEASUREMENTS) {
       expect(m.grounded, `${m.id} should be grounded`).toBe(true);
     }
@@ -840,7 +921,7 @@ describe('unitFor', () => {
     // The reporting layers used to append a bare `ms` to whatever a family emitted,
     // which held only while every field WAS milliseconds. `instrumentUs` is the first
     // that is not, and it is read to decide whether the instrument's footprint is
-    // negligible — so printing it as `3200 ms` would overstate that footprint by
+    // negligible, so printing it as `3200 ms` would overstate that footprint by
     // 1000x in the one report written to answer the question.
     expect(unitFor('instrumentUs')).toBe('µs');
     expect(unitFor('paintMs')).toBe('ms');
@@ -865,7 +946,7 @@ describe('unitFor', () => {
     //
     // DIMENSIONS are excluded for a stronger reason than exclusion: asserting one is
     // `ms` is asserting something FALSE. Walked over `declaredFields`, this case used to
-    // sweep up `slowestContent` and `sizeAt` and pass — `unitFor` answers `'ms'` for any
+    // sweep up `slowestContent` and `sizeAt` and pass: `unitFor` answers `'ms'` for any
     // name it cannot place, so the case whose whole job is "no field defaults to
     // milliseconds" was certifying two strings as durations.
     const fields = MEASUREMENTS.flatMap((m) =>
@@ -878,7 +959,7 @@ describe('unitFor', () => {
   });
 
   it('gives a workload field no unit at all, when the family is passed', () => {
-    // A count is not a duration, and no naming convention can tell them apart — `rows`
+    // A count is not a duration, and no naming convention can tell them apart: `rows`
     // and `items` are counts, `totalMs` and `taskMs` are durations, and only the family
     // knows which is which. Before this, `measure:report --field items` headlined an
     // item count as `median 28 ms`.
@@ -910,21 +991,21 @@ describe('unitFor', () => {
     // fixed by `counts`. That one verifies every name in `counts` is emitted; this one
     // verifies every emitted NUMBER is classified. Without it, adding a counter to the emit
     // line and forgetting to declare it silently reintroduces `--field newCounter -> "42 ms"`
-    // — a count headlined as a duration, which is exactly what `counts` exists to stop and
+    // (a count headlined as a duration), which is exactly what `counts` exists to stop and
     // exactly what nothing would have caught.
     //
     // Decidable statically because the patterns say which is which: a numeric group is
-    // captured with `\d+` and a dimension with `\S+`. So this needs no per-family
-    // allowlist and cannot drift out of step with the registry. That rule now lives in
-    // `fieldsByKind` rather than in a regex here, because `measure:report --field` has to
-    // apply the SAME split and two copies would drift — and the copy that used to live
-    // here required a bare `\d+`, so it silently skipped `item-grid`'s signed
-    // `(?<firstPaintMs>-?\d+)`.
+    // captured with `\d+` (optionally signed), and any other shape is a dimension. So this
+    // needs no per-family allowlist and cannot drift out of step with the registry. That
+    // rule now lives in `fieldsByKind` rather than in a regex here, because
+    // `measure:report --field` has to apply the SAME split and two copies would drift.
+    // And the copy that used to live here required a bare `\d+`, so it silently skipped
+    // `item-grid`'s signed `(?<firstPaintMs>-?\d+)`.
     //
     // `counts` is consulted BEFORE the name heuristic, and the heuristic matches `Ms`/`Us`
-    // followed by a capital or end-of-name — not anchored at the end. Both details are
-    // load-bearing and were found by this test failing on its first run: `loadMsMax` IS a
-    // duration and an end-anchor rejected it, while `loadMsCount` is a COUNT whose name
+    // followed by a capital or end-of-name, not anchored at the end. Both details matter
+    // and were found by this test failing on its first run: `loadMsMax` IS a duration
+    // and an end-anchor rejected it, while `loadMsCount` is a COUNT whose name
     // contains `Ms`, so only the counts-first order classifies it correctly. A name alone
     // cannot separate those two, which is the same reason `counts` has to be declared.
     for (const m of MEASUREMENTS) {
@@ -965,7 +1046,7 @@ describe('unitFor', () => {
   it('keeps counts out of workload, because only workload defines same-work', () => {
     // `workloadKey` builds a sample's same-work identity from its workload fields, and
     // `measure:compare` warns when two samples disagree. An OUTCOME in that list would
-    // make every A/B report "the samples did not all do the same work" — the arms are
+    // make every A/B report "the samples did not all do the same work". The arms are
     // supposed to differ on `popIns`, that is the experiment.
     for (const m of MEASUREMENTS) {
       for (const field of m.counts ?? []) {
@@ -1005,13 +1086,13 @@ describe('fieldsByKind', () => {
   it('partitions every declared field, so a third capture shape cannot be guessed at', () => {
     // The property that lets `--field` and the unit rules trust this: numeric ∪ dimensions
     // is exactly `declaredFields`, with nothing in both. Anything not captured as `\d+`
-    // (optionally signed) lands in `dimensions` — the SAFE side, since a dimension is
+    // (optionally signed) lands in `dimensions`: the SAFE side, since a dimension is
     // rejected as a headline rather than published as `ms`.
     //
     // That is no longer hypothetical: `home-latest-rows` ships `(?<rowRemoveAt>[^#\s]+)`,
     // a third shape neither `\d+` nor `\S+`, because the field is followed by a `#` the
     // pattern has to stop at. It is asserted by name in the case below. This case is what
-    // makes the fallback a decision someone took rather than a default nobody noticed —
+    // makes the fallback a decision someone took rather than a default nobody noticed:
     // a future `(?<ratio>[\d.]+)` gets the same treatment.
     for (const m of MEASUREMENTS) {
       const { numeric, dimensions } = fieldsByKind(m);
@@ -1025,8 +1106,8 @@ describe('fieldsByKind', () => {
 
   it('files the `\\S+` groups as dimensions and the signed `\\d+` ones as numeric', () => {
     // Named explicitly rather than left to the partition above, because these are the
-    // fields the split exists for. `firstPaintMs` is the signed one — `item-grid`
-    // initialises it to -1 — and a bare `\d+` rule silently dropped it.
+    // fields the split exists for. `firstPaintMs` is the signed one (`item-grid`
+    // initializes it to -1), and a bare `\d+` rule silently dropped it.
     const home = fieldsByKind(measurementById('home-latest-rows'));
     expect(home.dimensions).toEqual(['sizeAt', 'rowRemoveAt']);
     expect(home.numeric).toEqual(expect.arrayContaining(['sizeCalls', 'sizeRemove', 'sizeMs']));
@@ -1044,8 +1125,8 @@ describe('fieldsByKind', () => {
     // The defect this whole split closes, stated as its own case so it cannot regress
     // quietly: `unitFor` cannot place a dimension and falls back to `'ms'`, so nothing
     // downstream may treat one as headlineable. Asserting the FALLBACK here rather than
-    // fixing `unitFor` is deliberate — the fallback is documented and load-bearing for
-    // callers that omit the family; what has to hold is that no dimension reaches it.
+    // fixing `unitFor` is on purpose: the fallback is documented, and callers that omit
+    // the family depend on it; what has to hold is that no dimension reaches it.
     for (const m of MEASUREMENTS) {
       for (const field of fieldsByKind(m).dimensions) {
         expect(unitFor(field, m), `${m.id}.${field} must never be headlined`).toBe('ms');
@@ -1074,7 +1155,7 @@ describe('instrumentShare', () => {
   it('returns null rather than 0 when there is no wall clock to divide by', () => {
     // A screen that painted and never settled is the most broken case there is.
     // Reporting it as `0.00%` would present it as the cleanest instrument reading in
-    // the record — absence reading as fine, which is the failure this project has now
+    // the record: absence reading as fine, which is the failure this project has now
     // removed from several places.
     expect(instrumentShare(1573, undefined)).toBeNull();
     expect(instrumentShare(undefined, 301)).toBeNull();

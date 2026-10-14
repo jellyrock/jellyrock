@@ -9,7 +9,7 @@
 //
 // When source files get renamed, moved, or removed, these references go
 // stale silently. Code review caught two such errors in the v2.15.0 doc
-// refresh — Constants.xml at a wrong path, and OSD timeout misattributed
+// refresh: Constants.xml at a wrong path, and OSD timeout misattributed
 // to OSD.xml when the literal lives in VideoPlayerView.xml. This script
 // would have caught both.
 //
@@ -17,14 +17,20 @@
 //   - Every `related-files:` path in docs/architecture/*.md frontmatter
 //     resolves to an existing file (or directory) in the repo.
 //   - Every relative markdown link in docs/architecture/*.md, docs/dev/*.md,
-//     docs/adr/*.md, and docs/decisions.md resolves (skipping http(s):,
-//     mailto:, anchor-only).
+//     docs/adr/*.md, and docs/decisions.md resolves (skipping http(s): and
+//     mailto:). A link with a `#fragment`, to another .md file or to the
+//     same file (`#x`), must also name a heading or an explicit anchor
+//     (`<a id>`, `<a name>`, `<hN id>`) that exists in the target, using
+//     GitHub's slug rule (see headingToAnchor). Line anchors such as `#L12`
+//     and `#L12-L20` are not checked. The same-file check covers the
+//     CLAUDE.md files this script scans, which markdownlint MD051 does not
+//     lint. Files under .claude/ are not scanned.
 //   - Every tech-debt anchor reference (anywhere in scanned files) of
 //     the form `tech-debt.md#<anchor>` resolves to a real heading
 //     anchor in docs/architecture/tech-debt.md. This is the canonical
 //     form for citing a slug or section from outside; narrative-form
 //     mentions (a backtick-wrapped kebab string in prose) are
-//     intentionally NOT checked, because there's no syntactic signal to
+//     intentionally not checked, because there's no syntactic signal to
 //     distinguish them from any other backtick-wrapped kebab string in
 //     the codebase (plugin names, npm scripts, etc.) without a fragile
 //     proximity heuristic or a registry of false positives. The
@@ -39,7 +45,7 @@
 //     symmetric, `superseded` records its successor, `withdrawn` is
 //     terminal, and nothing points at itself. The supersede ritual is
 //     a three-part hand edit, so a half-applied one used to leave the
-//     chain silently lying — and `/log`'s SKILL.md claimed this was
+//     chain silently lying, and `/log`'s SKILL.md claimed this was
 //     already validated when no such logic existed.
 //
 // What it doesn't check (yet):
@@ -54,14 +60,14 @@
 //   --verbose  per-file counts on stdout
 //   --json     emit a single JSON object on stdout: {filesChecked, errorsCount,
 //              errors: [{category, file, message, target}]} where category is
-//              one of "broken-related-file", "broken-link", "stale-anchor",
-//              "progress-frontmatter", "signals-schema-invalid", or
+//              one of "broken-related-file", "broken-link", "broken-anchor",
+//              "stale-anchor", "progress-frontmatter", "signals-schema-invalid", or
 //              "decisions-supersede-chain".
 //              Mutually exclusive with --verbose (verbose is a no-op under
 //              --json). Exit code semantics unchanged.
 //
 // npm scripts:
-//   lint:docs  → run this check
+//   lint:docs  runs this check
 
 'use strict';
 
@@ -82,15 +88,15 @@ const JSON_MODE = process.argv.includes('--json');
 const VERBOSE = process.argv.includes('--verbose') && !JSON_MODE;
 
 // NOTE: progress.md `last-updated` *temporal staleness* (too many days old) is
-// deliberately NOT checked here. That's a property of the shared journal on
+// not checked here, by design. That's a property of the shared journal on
 // main, not of any one PR, so blocking a PR on it punished the wrong
 // contributor. The staleness signal now lives non-blocking in
 // scripts/lint/progress-cursor-nudge.cjs (Stop hook + pre-push) and
 // .github/workflows/docs-stale-tracker.yml (weekly main-branch tracking issue).
 // What DOES stay here is the *structural* frontmatter check below
-// (checkProgressFrontmatter): a well-formed `last-updated` is a per-PR property
-// — a PR that malforms it is at fault, and that field is load-bearing for the
-// tracker, /catchup, and journal-sync.
+// (checkProgressFrontmatter): a well-formed `last-updated` is a per-PR property.
+// A PR that malforms it is at fault, and the tracker, /catchup, and
+// journal-sync all read that field.
 
 // Signals-backlog row schema. Required bullets, valid status values,
 // optional `staleness_days` override (must be a positive integer when
@@ -111,9 +117,11 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DECISION_VALID_STATUSES = ['accepted', 'superseded', 'withdrawn'];
 
 // ────────────────────────────────────────────────────────────────────
-// Markdown link extraction — relative path links only.
-// Skips: http(s)://, mailto:, #anchor-only.
-// Handles trailing #anchor on relative links (strips before checking).
+// Markdown link extraction: relative path links only.
+// Skips: http(s)://, mailto:, and a bare `#`.
+// Returns {target, fragment} where target is the path part (empty for a
+// same-file `#x` link) and fragment is the text after the first `#` (empty
+// when there is none).
 // ────────────────────────────────────────────────────────────────────
 
 function findMarkdownLinks(content) {
@@ -121,28 +129,28 @@ function findMarkdownLinks(content) {
   const re = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
   let m;
   while ((m = re.exec(content)) !== null) {
-    let target = m[1];
-    if (target.startsWith('http://') || target.startsWith('https://')) continue;
-    if (target.startsWith('mailto:')) continue;
-    if (target.startsWith('#')) continue;
-    target = target.split('#')[0];
-    if (!target) continue;
-    links.push(target);
+    const raw = m[1];
+    if (raw.startsWith('http://') || raw.startsWith('https://')) continue;
+    if (raw.startsWith('mailto:')) continue;
+    const hash = raw.indexOf('#');
+    const target = hash === -1 ? raw : raw.slice(0, hash);
+    if (!target && !raw.slice(hash + 1)) continue;
+    links.push({ target, fragment: hash === -1 ? '' : raw.slice(hash + 1) });
   }
   return links;
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Tech-debt anchor references — bulletproof check against a single
+// Tech-debt anchor references: bulletproof check against a single
 // canonical form: `tech-debt.md#<anchor>`. Validates that the anchor
 // resolves to an actual heading in tech-debt.md.
 //
-// We deliberately don't try to detect narrative-style slug citations
-// (e.g. "see `slug-name`") because there's no syntactic signal that
+// We don't try to detect narrative-style slug citations
+// (for example "see `slug-name`") because there's no syntactic signal that
 // disambiguates them from any other backtick-wrapped kebab-case
 // identifier in the codebase (plugin names, npm scripts, module IDs).
-// Any heuristic for that — proximity windows, registries of "known
-// non-slug strings", etc. — is fragile and accumulates maintenance
+// Any heuristic for that (proximity windows, registries of "known
+// non-slug strings", etc.) is fragile and accumulates maintenance
 // debt. The chosen design: declare anchor form canonical, document it
 // in tech-debt.md, and validate it strictly.
 // ────────────────────────────────────────────────────────────────────
@@ -150,37 +158,94 @@ function findMarkdownLinks(content) {
 // Reference form: any URL or path ending in `tech-debt.md#<anchor>`.
 // The anchor capture is permissive (anything after the # up to a word
 // boundary or markdown delimiter) so we catch both slug-style anchors
-// (kebab-case) and section-heading anchors (which may have multiple
-// consecutive hyphens from punctuation in the heading text).
-const ANCHOR_REF_RE = /\btech-debt\.md#([a-z0-9][a-z0-9-]*)(?=[)\s.,;'"`]|$)/gim;
+// (kebab-case) and section-heading anchors, which keep a double hyphen
+// where the heading has punctuation between two spaces, and keep
+// underscores.
+const ANCHOR_REF_RE = /\btech-debt\.md#([a-z0-9][a-z0-9_-]*)(?=[)\s.,;'"`]|$)/gim;
+
+// GitHub's line anchors (`#L12`, `#L12-L20`, `#L12C3-L14C5`) address lines in
+// a file view, not headings, so they are never looked up among the anchors.
+const LINE_ANCHOR_RE = /^L\d+(?:C\d+)?(?:-L\d+(?:C\d+)?)?$/;
+
+// Explicit anchors: `<a id="x">`, `<a name="x">` and `<hN id="x">`.
+const EXPLICIT_ANCHOR_RE = /<(?:a|h[1-6])\b[^>]*?\b(?:id|name)\s*=\s*["']([^"']+)["']/gi;
 
 /**
- * Extract the set of valid anchors from tech-debt.md by hashing each
- * heading text via an approximation of GitHub's heading-to-anchor rule:
- * lowercase, strip backticks/emphasis/most punctuation, replace spaces
- * with hyphens. Conservative — handles the heading shapes used in
- * tech-debt.md today (plain prose + backtick-wrapped slugs).
+ * Turn heading text into the anchor GitHub gives it (github-slugger's rule):
+ * lowercase, drop every character that is not a letter, mark, number,
+ * connector punctuation (which includes `_`), space or hyphen, then turn
+ * each space into a hyphen. Spaces are not collapsed, so "a & b" becomes
+ * "a--b". Inline markup is removed first because GitHub slugs the rendered
+ * text: link syntax keeps its label, HTML tags go, and backticks and `*`
+ * disappear while an underscore is kept. Repeated headings are numbered by
+ * the caller (see extractAnchors).
  */
-function extractTechDebtAnchors(techDebtPath) {
-  if (!fs.existsSync(techDebtPath)) return null;
-  const content = fs.readFileSync(techDebtPath, 'utf8');
+function headingToAnchor(text) {
+  return text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // [label](url) -> label
+    .replace(/<[^>]*>/g, '') // inline HTML tags
+    .replace(/[`*]/g, '') // code span and emphasis markers
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, '')
+    .replace(/ /g, '-');
+}
+
+/**
+ * Collect every anchor a markdown file offers: one per heading (numbered
+ * `-1`, `-2`, ... for repeats, as GitHub does) plus explicit ids and names.
+ * Frontmatter and fenced code blocks are skipped, so a heading-shaped line in
+ * an example is not a target.
+ */
+function extractAnchors(content) {
   const anchors = new Set();
-  const headingRe = /^#+\s+(.+?)\s*$/gm;
-  let m;
-  while ((m = headingRe.exec(content)) !== null) {
-    const anchor = headingToAnchor(m[1]);
-    if (anchor) anchors.add(anchor);
+  const seen = new Map();
+  const prose = [];
+  let fence = null;
+  // GitHub renders YAML frontmatter as a table, so its `#` comments are not headings.
+  const body = content.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
+  for (const line of body.split('\n')) {
+    const f = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fence) {
+      if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
+      continue;
+    }
+    if (f) {
+      fence = f[1];
+      continue;
+    }
+    prose.push(line);
+    const h = line.match(/^ {0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/);
+    if (!h) continue;
+    const base = headingToAnchor(h[1].trim());
+    let slug = base;
+    while (seen.has(slug)) {
+      seen.set(base, seen.get(base) + 1);
+      slug = `${base}-${seen.get(base)}`;
+    }
+    seen.set(slug, 0);
+    anchors.add(slug);
   }
+  let m;
+  const visible = prose.join('\n');
+  EXPLICIT_ANCHOR_RE.lastIndex = 0;
+  while ((m = EXPLICIT_ANCHOR_RE.exec(visible)) !== null) anchors.add(m[1]);
   return anchors;
 }
 
-function headingToAnchor(text) {
-  return text
-    .toLowerCase()
-    .replace(/[`*_~]/g, '') // strip backticks + emphasis chars
-    .replace(/[^a-z0-9\s-]/g, '') // keep only alnum, whitespace, hyphens
-    .trim()
-    .replace(/\s+/g, '-'); // whitespace runs → single hyphen
+const anchorCache = new Map();
+
+/** Anchors of a markdown file, read once per run. */
+function anchorsOf(filePath) {
+  const key = path.resolve(filePath);
+  if (!anchorCache.has(key)) {
+    anchorCache.set(key, extractAnchors(fs.readFileSync(key, 'utf8')));
+  }
+  return anchorCache.get(key);
+}
+
+function extractTechDebtAnchors(techDebtPath) {
+  if (!fs.existsSync(techDebtPath)) return null;
+  return anchorsOf(techDebtPath);
 }
 
 function checkAnchorRefs(filePath, content) {
@@ -240,28 +305,58 @@ function checkRelatedFiles(docPath, content) {
 
 function checkBodyLinks(docPath, content) {
   const links = findMarkdownLinks(content);
-  for (const link of links) {
-    const target = path.resolve(path.dirname(docPath), link);
-    if (!fs.existsSync(target)) {
+  for (const { target: link, fragment } of links) {
+    // A same-file link has no path part; its target is the doc itself.
+    const target = link ? path.resolve(path.dirname(docPath), link) : path.resolve(docPath);
+    if (link && !fs.existsSync(target)) {
       pushError({
         category: 'broken-link',
         file: docPath,
         message: `markdown link target does not exist: ${link}`,
         target: link,
       });
+      continue;
     }
+    checkLinkFragment(docPath, link, fragment, target);
   }
   return links.length;
 }
 
+// A link to a .md file, or to the same file, must land on an anchor that file
+// has. Links to tech-debt.md from elsewhere are left to checkAnchorRefs so one
+// stale slug is not reported twice; a same-file link inside tech-debt.md is
+// checked here, since checkAnchorRefs only sees `tech-debt.md#` references.
+function checkLinkFragment(docPath, link, fragment, target) {
+  if (!fragment || (link && !link.endsWith('.md'))) return;
+  if (LINE_ANCHOR_RE.test(fragment)) return;
+  if (link && path.resolve(TECH_DEBT_PATH) === target) return;
+  if (!fs.statSync(target).isFile()) return;
+  let decoded = fragment;
+  try {
+    decoded = decodeURIComponent(fragment);
+  } catch {
+    // malformed percent-encoding: compare the fragment as written
+  }
+  const anchors = anchorsOf(target);
+  if (anchors.has(decoded) || anchors.has(decoded.toLowerCase())) return;
+  pushError({
+    category: 'broken-anchor',
+    file: docPath,
+    message:
+      `markdown link anchor does not exist: ${link}#${fragment} — ` +
+      `no heading or explicit anchor "${decoded}" in ${path.relative(ROOT_DIR, target)}.`,
+    target: `${link}#${fragment}`,
+  });
+}
+
 // ────────────────────────────────────────────────────────────────────
-// Journal-system checks — operate on specific files (progress.md,
+// Journal-system checks: operate on specific files (progress.md,
 // signals-backlog.md) rather than directory iteration. These are post-loop
 // because they're whole-file validations, not link / anchor checks.
 // ────────────────────────────────────────────────────────────────────
 
 // Structural (not temporal) validation of progress.md frontmatter. A
-// well-formed `last-updated: YYYY-MM-DD` is a per-PR property — it's the field
+// well-formed `last-updated: YYYY-MM-DD` is a per-PR property: it's the field
 // the tracker, /catchup, and journal-sync all parse, so a malformed one
 // silently breaks them. Temporal staleness (how OLD the date is) is handled
 // non-blocking elsewhere (see the note near the top).
@@ -285,7 +380,7 @@ function checkProgressFrontmatter() {
 // The supersede ritual is a THREE-part edit, applied by hand (or by /log
 // decision): the new note gets `**supersedes**: <old>`, and the old note's
 // `**status**` flips to `superseded` and gains `**superseded-by**: <new>`.
-// Miss any part and the chain lies — a note still reading `accepted` while a
+// Miss any part and the chain lies: a note still reading `accepted` while a
 // successor exists is worse than no record, because /catchup and every future
 // reader treat these journals as authoritative.
 //
@@ -296,9 +391,9 @@ function checkProgressFrontmatter() {
 // Two shapes are validated, mirroring what docs/adr/README.md and the ADR
 // records already do:
 //
-//   FULL     — the predecessor flips to `**status**: superseded` and gains
+//   FULL:      the predecessor flips to `**status**: superseded` and gains
 //              `**superseded-by**`; the successor declares `**supersedes**`.
-//   PARTIAL  — only some of the predecessor was replaced, so BOTH notes stay
+//   PARTIAL:   only some of the predecessor was replaced, so both notes stay
 //              `accepted` (both are still live) and the relationship is carried
 //              by `**partially-supersedes**` / `**partially-superseded-by**`,
 //              each annotated with the scope that moved. This mirrors ADR
@@ -310,14 +405,14 @@ function checkProgressFrontmatter() {
 // it can neither be superseded nor supersede anything.
 //
 // Pointers resolve within this file only. Cross-tier (note <-> ADR) references
-// are deliberately NOT fields — the house convention is a prose markdown link,
+// are not fields, by design: the house convention is a prose markdown link,
 // which checkBodyLinks already validates.
 function checkDecisionsSupersedeChain() {
   if (!fs.existsSync(DECISIONS_PATH)) return;
   const lines = fs.readFileSync(DECISIONS_PATH, 'utf8').split(/\r?\n/);
 
   // Matches ANY `**field**:` line. Used only to find where a note's header
-  // block ends, so it is deliberately wider than the set of fields we read.
+  // block ends, so it is intentionally wider than the set of fields we read.
   const FIELD_LINE_RE = /^\*\*[a-z-]+\*\*:/;
   const CHAIN_FIELD_RE =
     /^\*\*(status|supersedes|superseded-by|partially-supersedes|partially-superseded-by)\*\*:\s*(.+)$/;
@@ -325,7 +420,7 @@ function checkDecisionsSupersedeChain() {
   const unwrap = (s) => s.trim().replace(/^`|`$/g, '').trim();
 
   // `<slug> (<what was replaced>)`, slug optionally backticked. The scope
-  // annotation is required — a partial supersede that doesn't say WHICH part
+  // annotation is required: a partial supersede that doesn't say which part
   // moved isn't a usable record, and both ADR precedents carry one.
   const parsePartial = (raw) => {
     const m = /^`?([^`\s]+)`?\s+\((.+)\)$/.exec(raw.trim());
@@ -358,7 +453,7 @@ function checkDecisionsSupersedeChain() {
 
     // A note's fields are the contiguous run of `**field**:` lines following
     // its heading (blank lines allowed). The first line that is neither blank
-    // nor a field line closes the block — so body prose that happens to begin
+    // nor a field line closes the block, so body prose that happens to begin
     // with `**status**:` can never be read as a field.
     if (line.trim() === '') continue;
     if (!FIELD_LINE_RE.test(line)) {
@@ -381,7 +476,7 @@ function checkDecisionsSupersedeChain() {
       target: note.slug,
     });
 
-  // Duplicate slugs are reported, then the shadowed copy is skipped — carrying
+  // Duplicate slugs are reported, then the shadowed copy is skipped: carrying
   // both would misattribute every downstream pointer error to the wrong record.
   const bySlug = new Map();
   for (const note of notes) {
@@ -425,7 +520,7 @@ function checkDecisionsSupersedeChain() {
 
     // A `superseded` status with no successor recorded is the half-applied
     // ritual in its other direction: the note says it was replaced, but not by
-    // what — leaving a reader no way to find the record that supplanted it.
+    // what, leaving a reader no way to find the record that supplanted it.
     if (status?.value === 'superseded' && !supersededBy) {
       err(
         note,
@@ -513,7 +608,7 @@ function checkDecisionsSupersedeChain() {
     }
 
     // Partial supersede. Both notes stay `accepted` because both are still
-    // live, so this pair is deliberately exempt from the status-flip rule.
+    // live, so this pair is exempt from the status-flip rule.
     for (const [name, mirrorName] of [
       ['partially-supersedes', 'partially-superseded-by'],
       ['partially-superseded-by', 'partially-supersedes'],
@@ -694,7 +789,7 @@ checkDirOfMds(DEV_DIR);
 // YAML frontmatter, so related-files validation is a no-op for them)
 checkDirOfMds(ADR_DIR);
 
-// Decisions log (no frontmatter; just check body links + slug refs)
+// Decisions log (no frontmatter; check only body links + slug refs)
 if (fs.existsSync(DECISIONS_PATH)) {
   const content = fs.readFileSync(DECISIONS_PATH, 'utf8');
   const linkCount = checkBodyLinks(DECISIONS_PATH, content);
@@ -707,7 +802,7 @@ if (fs.existsSync(DECISIONS_PATH)) {
   }
 }
 
-// Progress journal — body links + tech-debt anchor refs only. `last-updated`
+// Progress journal: body links + tech-debt anchor refs only. `last-updated`
 // staleness is intentionally not gated here (see the note near the top).
 if (fs.existsSync(PROGRESS_PATH)) {
   const content = fs.readFileSync(PROGRESS_PATH, 'utf8');
@@ -721,7 +816,7 @@ if (fs.existsSync(PROGRESS_PATH)) {
   }
 }
 
-// Signals backlog — same. Schema gate runs post-loop in checkSignalsSchema().
+// Signals backlog: same. Schema gate runs post-loop in checkSignalsSchema().
 if (fs.existsSync(SIGNALS_PATH)) {
   const content = fs.readFileSync(SIGNALS_PATH, 'utf8');
   const linkCount = checkBodyLinks(SIGNALS_PATH, content);
@@ -734,21 +829,13 @@ if (fs.existsSync(SIGNALS_PATH)) {
   }
 }
 
-// CLAUDE.md files — root + every subdir-scoped one. These are the agent-context
+// CLAUDE.md files: root + every subdir-scoped one. These are the agent-context
 // rules; their cross-references to docs/architecture/ go stale the same way
 // and are equally important to validate.
 function findClaudeMds(rootDir) {
   const found = [];
   // Skip directories that don't host project source / docs
-  const skipDirs = new Set([
-    'node_modules',
-    'build',
-    'build-analysis',
-    'out',
-    'tasks',
-    '.git',
-    '.husky',
-  ]);
+  const skipDirs = new Set(['node_modules', 'build', 'build-analysis', 'out', '.git', '.husky']);
   function walk(dir) {
     let entries;
     try {
@@ -759,7 +846,10 @@ function findClaudeMds(rootDir) {
     for (const e of entries) {
       if (e.isDirectory()) {
         if (skipDirs.has(e.name) || e.name.startsWith('.')) continue;
-        walk(path.join(dir, e.name));
+        const full = path.join(dir, e.name);
+        // The repo-root `tasks/` is gitignored; a nested `components/tasks/` is tracked.
+        if (path.relative(rootDir, full) === 'tasks') continue;
+        walk(full);
       } else if (e.name === 'CLAUDE.md') {
         found.push(path.join(dir, e.name));
       }
@@ -779,7 +869,7 @@ for (const file of findClaudeMds(ROOT_DIR)) {
   }
 }
 
-// BSC convention plugin sources — their JSDoc headers + diagnostic strings
+// BSC convention plugin sources: their JSDoc headers + diagnostic strings
 // frequently cite tech-debt slugs (the plugins enforce conventions documented
 // there). These are .cjs, not .md, but the slug-ref regex doesn't care.
 function findPluginScripts() {

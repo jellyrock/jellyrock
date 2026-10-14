@@ -1,0 +1,93 @@
+import "pkg:/source/utils/logoLayout.bs"
+
+namespace tests
+
+  @suite("logoLayout.bs")
+  class LogoLayoutTests extends tests.BaseTestSuite
+
+    ' ItemDetails' logo limits, repeated here because the source constants live in
+    ' component scope, which a source-scope spec cannot see.
+    private limits = { minHeight: 212, maxWidth: 500, maxHeight: 336 }
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("serverFitSize()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("scales a wide image down to the width bound, rounding to the nearest pixel")
+    function _()
+      ' Measured 2026-09-22 on Jellyfin 12.1: an 800x310 logo requested at 500x212 is
+      ' served at 500x194 (310 * 0.625 = 193.75). Truncating would say 193.
+      size = serverFitSize(800, 310, 500, 212)
+      m.assertEqual(size.width, 500)
+      m.assertEqual(size.height, 194)
+    end function
+
+    @it("scales a tall image down to the height bound")
+    function _()
+      ' Measured: 835x783 is served at 226x212.
+      size = serverFitSize(835, 783, 500, 212)
+      m.assertEqual(size.width, 226)
+      m.assertEqual(size.height, 212)
+    end function
+
+    @it("never scales an image up")
+    function _()
+      size = serverFitSize(300, 100, 500, 212)
+      m.assertEqual(size.width, 300)
+      m.assertEqual(size.height, 100)
+    end function
+
+    @it("has no answer for an image whose size the server does not know")
+    function _()
+      m.assertInvalid(serverFitSize(0, 0, 500, 212))
+      m.assertInvalid(serverFitSize(800, 0, 500, 212))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("logoDisplaySize()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("draws a bitmap that already meets both limits at its own size")
+    function _()
+      size = logoDisplaySize(300, 250, m.limits, true)
+      m.assertEqual(size.width, 300)
+      m.assertEqual(size.height, 250)
+    end function
+
+    @it("scales a short bitmap up to the minimum height")
+    function _()
+      ' 106 divides 212 exactly; 212/100 = 2.12 lands a float hair under 424 and truncates.
+      size = logoDisplaySize(200, 106, m.limits, true)
+      m.assertEqual(size.width, 400)
+      m.assertEqual(size.height, 212)
+    end function
+
+    @it("lets the width bound win over the minimum height for a flat logo")
+    function _()
+      size = logoDisplaySize(500, 124, m.limits, true)
+      m.assertEqual(size.width, 500)
+      m.assertEqual(size.height, 124)
+    end function
+
+    @it("caps a tall bitmap at the maximum height")
+    function _()
+      size = logoDisplaySize(356, 534, m.limits, true)
+      m.assertEqual(size.width, 224)
+      m.assertEqual(size.height, 336)
+    end function
+
+    @it("leaves a tall bitmap uncapped when the cap does not apply")
+    function _()
+      size = logoDisplaySize(356, 534, m.limits, false)
+      m.assertEqual(size.width, 356)
+      m.assertEqual(size.height, 534)
+    end function
+
+    @it("has no answer for an empty bitmap")
+    function _()
+      m.assertInvalid(logoDisplaySize(0, 0, m.limits, true))
+    end function
+
+  end class
+
+end namespace

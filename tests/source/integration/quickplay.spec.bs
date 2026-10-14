@@ -21,7 +21,7 @@ namespace tests
         ' Queue manager exists and is valid, verify it's functional
         testCount = m.global.queueManager.callFunc("getCount")
         if isValid(testCount)
-          ' QueueManager is functional, just clear it
+          ' QueueManager is functional, so only clear it
           m.global.queueManager.callFunc("clear")
           needsNewQueueManager = false
         end if
@@ -66,7 +66,7 @@ namespace tests
 
     @it("does nothing when itemNode.id is empty (unloaded node sentinel)")
     function doNothingWhenIdEmpty()
-      ' A fresh JellyfinBaseItem has id="" — the unloaded sentinel
+      ' A fresh JellyfinBaseItem has id="", the unloaded sentinel
       itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
       quickplay.video(itemNode)
       m.assertEqual(m.global.queueManager.callFunc("getCount"), 0)
@@ -74,13 +74,13 @@ namespace tests
 
     @it("creates queue item with audio index 0 when item has no audioStreams")
     function createsQueueItemNoAudioStreams()
-      ' Only id is required — function guards on id, not on json or audioStreams
+      ' Only id is required: the function guards on id, not on json or audioStreams
       itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
       itemNode.id = "test-no-streams"
       itemNode.type = "Movie"
       itemNode.name = "Test Movie"
       itemNode.title = "Test Movie"
-      ' No audioStreams set — defaults to empty array
+      ' No audioStreams set, so it defaults to an empty array
 
       quickplay.video(itemNode)
 
@@ -210,8 +210,8 @@ namespace tests
       m.assertNotInvalid(multiSourceQueueItem.mediaSourceId)
       m.assertNotEmpty(multiSourceQueueItem.mediaSourceId)
 
-      ' Explicitly pop the item to ensure clean state
-      m.global.queueManager.callFunc("pop")
+      ' Explicitly clear the queue to ensure clean state
+      m.global.queueManager.callFunc("clear")
       m.assertEqual(m.global.queueManager.callFunc("getCount"), 0)
     end function
 

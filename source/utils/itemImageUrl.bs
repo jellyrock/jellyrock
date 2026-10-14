@@ -6,7 +6,7 @@ import "pkg:/source/utils/misc.bs"
 ' This is the base function used by the typed convenience functions below.
 ' @param item - JellyfinBaseItem content node
 ' @param imageType - Jellyfin image type string: "Primary", "Thumb", "Logo", "Backdrop"
-' @param size - Size constant from imageSize namespace, e.g. imageSize.POSTER_LG
+' @param size - Size constant from imageSize namespace, for example imageSize.POSTER_LG
 ' @returns Full image URL string, or "" if no tag is available for that type
 function getItemImageUrl(item as object, imageType = "Primary" as string, size = imageSize.DEFAULT as object) as string
   if not isValid(item) then return ""
@@ -40,7 +40,7 @@ function getItemImageUrl(item as object, imageType = "Primary" as string, size =
 end function
 
 ' Generate a poster (portrait) URL with fallback chain.
-' Fallback order: item primary → parent primary → series primary
+' Fallback order: item primary, then parent primary, then series primary, then album primary
 ' @param item - JellyfinBaseItem content node
 ' @param size - Size constant from imageSize namespace (default: imageSize.POSTER_LG)
 ' @returns Full image URL string, or "" if no image is available
@@ -78,7 +78,7 @@ function getItemPosterUrl(item as object, size = imageSize.POSTER_LG as object) 
 end function
 
 ' Generate a wide/landscape URL with fallback chain.
-' Fallback order: item thumb → item backdrop → parent thumb → parent backdrop
+' Fallback order: item thumb, then item backdrop, then parent thumb, then parent backdrop
 ' @param item - JellyfinBaseItem content node
 ' @param size - Size constant from imageSize namespace (default: imageSize.WIDE_MD)
 ' @returns Full image URL string, or "" if no image is available
@@ -100,7 +100,7 @@ function getItemWidePosterUrl(item as object, size = imageSize.WIDE_MD as object
     return ImageURL(item.id, "Backdrop", imgParams)
   end if
 
-  ' 3. Parent thumb (e.g. series thumb for episodes)
+  ' 3. Parent thumb (for example the series thumb for episodes)
   if isValidAndNotEmpty(item.parentThumbImageTag) and isValidAndNotEmpty(item.parentThumbItemId)
     imgParams.tag = item.parentThumbImageTag
     return ImageURL(item.parentThumbItemId, "Thumb", imgParams)
@@ -125,7 +125,7 @@ function getItemThumbnailUrl(item as object, size = imageSize.WIDE_SM as object)
 end function
 
 ' Generate a full backdrop URL with fallback chain.
-' Fallback order: item backdrop → parent backdrop
+' Fallback order: item backdrop, then parent backdrop
 ' @param item - JellyfinBaseItem content node
 ' @param size - { width, height } object; use device UI resolution (m.global.device.uiResolution)
 ' @returns Full image URL string, or "" if no image is available
@@ -149,7 +149,7 @@ end function
 ' Generate a wide art URL preferring the parent (series/show) wide images over the item's own.
 ' Skips item-level Thumb and Backdrop entirely; resolves directly from parent fields.
 ' Use this for episodes when the user prefers show art over episode screenshots.
-' Fallback order: parent thumb → parent backdrop
+' Fallback order: parent thumb, then parent backdrop
 ' @param item - JellyfinBaseItem content node (typically an Episode or Recording)
 ' @param size - { width, height } object; use slot dimensions
 ' @returns Full image URL string, or "" if no parent wide image is available
@@ -169,31 +169,6 @@ function getItemParentWidePosterUrl(item as object, size = imageSize.WIDE_MD as 
   if isValid(item.parentBackdropImageTags) and item.parentBackdropImageTags.Count() > 0 and isValidAndNotEmpty(item.parentBackdropItemId)
     imgParams.tag = item.parentBackdropImageTags[0]
     return ImageURL(item.parentBackdropItemId, "Backdrop", imgParams)
-  end if
-
-  return ""
-end function
-
-' Generate a backdrop URL that prefers the parent (series/show) backdrop over the item's own.
-' Use this for sub-item views (season episode lists, etc.) to maintain visual continuity
-' with the parent detail screen. Both screens will resolve to the same series backdrop URL,
-' which lets BackdropFader deduplicate the transition and avoid flickering.
-' Fallback order: parent backdrop → item's own backdrop
-' @param item - JellyfinBaseItem content node (typically a Season)
-' @param size - { width, height } object; use device UI resolution (m.global.device.uiResolution)
-' @returns Full image URL string, or "" if no image is available
-function getItemParentBackdropUrl(item as object, size as object) as string
-  if not isValid(item) then return ""
-  if not isValidAndNotEmpty(item.id) then return ""
-
-  ' 1. Parent (series) backdrop first - matches what the parent detail screen shows
-  if isValid(item.parentBackdropImageTags) and item.parentBackdropImageTags.Count() > 0 and isValidAndNotEmpty(item.parentBackdropItemId)
-    return ImageURL(item.parentBackdropItemId, "Backdrop", { tag: item.parentBackdropImageTags[0], maxHeight: size.height, maxWidth: size.width })
-  end if
-
-  ' 2. Fall back to item's own backdrop if no parent backdrop exists
-  if isValid(item.backdropImageTags) and item.backdropImageTags.Count() > 0
-    return ImageURL(item.id, "Backdrop", { tag: item.backdropImageTags[0], maxHeight: size.height, maxWidth: size.width })
   end if
 
   return ""

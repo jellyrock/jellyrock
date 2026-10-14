@@ -29,5 +29,6 @@
     <function name="getUserDropdown" />
     <function name="getSearchIcon" />
     <function name="getSettingsIcon" />
+    <function name="resetTime" />
   </interface>
 </component>

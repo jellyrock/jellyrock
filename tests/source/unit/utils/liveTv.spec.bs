@@ -1,5 +1,7 @@
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 namespace tests
 
@@ -100,7 +102,7 @@ namespace tests
 
     @it("returns 0 at live edge (position keeps pace with wall-clock)")
     function _()
-      ' epochAtPosition0=1700000000, position=100, now=1700000100 → behind = 0
+      ' epochAtPosition0=1700000000, position=100, now=1700000100, so behind = 0
       m.assertEqual(computeLiveTvBehindLive(1700000000, true, 100, 1700000100, 0, 0), 0)
     end function
 
@@ -113,7 +115,7 @@ namespace tests
 
     @it("increases when user scrubs backward during play")
     function _()
-      ' At live edge baseline, scrub backward 60s → position=40 → behind=60.
+      ' At live edge baseline, scrub backward 60s: position=40, so behind=60.
       m.assertEqual(computeLiveTvBehindLive(1700000000, true, 40, 1700000100, 0, 0), 60)
     end function
 
@@ -135,7 +137,7 @@ namespace tests
 
     @it("returns elapsed pause when paused with no prior accumulation")
     function _()
-      ' Just paused at 1700000100; 30s later behind=30.
+      ' Paused at 1700000100; 30s later behind=30.
       m.assertEqual(computeLiveTvBehindLive(0, true, 100, 1700000130, 1700000100, 0), 30)
     end function
 
@@ -148,7 +150,7 @@ namespace tests
     @it("ignores position entirely during pause (Roku live-HLS auto-advance is invisible)")
     function _()
       ' Roku may keep advancing m.top.position during pause for live HLS DVR. The pause-math
-      ' branch must not let position influence the result — only accumulated + wall-clock.
+      ' branch must not let position influence the result: only accumulated + wall-clock.
       withFrozenPosition = computeLiveTvBehindLive(1700000000, true, 100, 1700000130, 1700000100, 0)
       withAdvancedPosition = computeLiveTvBehindLive(1700000000, true, 130, 1700000130, 1700000100, 0)
       m.assertEqual(withFrozenPosition, 30)
@@ -162,7 +164,7 @@ namespace tests
 
     @it("returns accumulated unchanged when now equals pausedAtEpoch")
     function _()
-      ' Pause just started this exact second.
+      ' Pause started this exact second.
       m.assertEqual(computeLiveTvBehindLive(0, true, 100, 1700000100, 1700000100, 60), 60)
     end function
 
@@ -172,13 +174,13 @@ namespace tests
 
     @it("subtracts a forward-scrub delta from accumulated")
     function _()
-      ' 60s behind, scrub forward 20s → 40s behind.
+      ' 60s behind, scrub forward 20s, now 40s behind.
       m.assertEqual(applyScrubToAccumulatedBehind(60, 20), 40)
     end function
 
     @it("adds the magnitude of a backward-scrub delta to accumulated")
     function _()
-      ' 30s behind, scrub backward 15s (delta = -15) → 45s behind.
+      ' 30s behind, scrub backward 15s (delta = -15), now 45s behind.
       m.assertEqual(applyScrubToAccumulatedBehind(30, -15), 45)
     end function
 
@@ -203,7 +205,7 @@ namespace tests
 
     @it("folds elapsed pause duration into accumulated before applying forward scrub")
     function _()
-      ' GIVEN: paused 30s ago at live edge (accumulated=0, pauseDurationSoFar=30 → total behind=30)
+      ' GIVEN: paused 30s ago at live edge (accumulated=0, pauseDurationSoFar=30, so total behind=30)
       ' WHEN:  user scrubs forward 30s
       ' THEN:  new accumulated = 0 (snapped to live edge); caller resets pausedAtEpoch
       m.assertEqual(repartitionPauseStateOnScrub(0, 30, 30), 0)
@@ -238,7 +240,7 @@ namespace tests
 
     @it("clamps to 0 when forward scrub exceeds combined accumulated + pauseDuration")
     function _()
-      ' total=15+5=20, scrub forward 30 → would be -10 → clamped to 0
+      ' total=15+5=20, scrub forward 30 would make it -10, clamped to 0
       m.assertEqual(repartitionPauseStateOnScrub(15, 5, 30), 0)
     end function
 
@@ -341,7 +343,7 @@ namespace tests
     @it("returns true for a recording WITH a seriesId")
     function _()
       ' Covers the user's case: news bulletin recording tagged as a series
-      ' but with no S/E numbering — still treated as an episode.
+      ' but with no S/E numbering, still treated as an episode.
       m.assertTrue(shouldTreatAsEpisode("recording", { seriesId: "show-123" }))
     end function
 
@@ -368,6 +370,350 @@ namespace tests
     @it("returns false for unknown type")
     function _()
       m.assertFalse(shouldTreatAsEpisode("video", { seriesId: "anything" }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("recordResultToast()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("confirms a scheduled recording")
+    function _()
+      m.assertEqual(recordResultToast({ ok: true, action: "record" }), { text: translate(translationKeys.LabelRecordingScheduled), type: "success" })
+    end function
+
+    @it("confirms a cancelled recording")
+    function _()
+      m.assertEqual(recordResultToast({ ok: true, action: "cancel" }), { text: translate(translationKeys.LabelRecordingCancelled), type: "success" })
+    end function
+
+    @it("reports a recording that could not be scheduled")
+    function _()
+      m.assertEqual(recordResultToast({ ok: false, action: "record" }), { text: translate(translationKeys.ErrorFailedToScheduleRecording), type: "error" })
+    end function
+
+    @it("reports a failed cancel, and any other failure the same way")
+    function _()
+      failedCancel = { text: translate(translationKeys.ErrorFailedToCancelRecording), type: "error" }
+      m.assertEqual(recordResultToast({ ok: false, action: "cancel" }), failedCancel)
+      m.assertEqual(recordResultToast({ ok: false, action: "unknown" }), failedCancel)
+      m.assertEqual(recordResultToast(invalid), failedCancel)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextLiveRestartCount() / canRestartLiveChannel()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds one for an end that never played")
+    function _()
+      m.assertEqual(nextLiveRestartCount(0, 0), 1)
+      m.assertEqual(nextLiveRestartCount(2, 0), 3)
+    end function
+
+    @it("adds one for an end just short of healthy playback")
+    function _()
+      m.assertEqual(nextLiveRestartCount(1, LIVE_RESTART_HEALTHY_MS - 1), 2)
+    end function
+
+    @it("resets for an end after healthy playback, whatever the count")
+    function _()
+      m.assertEqual(nextLiveRestartCount(0, LIVE_RESTART_HEALTHY_MS), 0)
+      m.assertEqual(nextLiveRestartCount(LIVE_RESTART_MAX + 5, LIVE_RESTART_HEALTHY_MS * 10), 0)
+    end function
+
+    @it("allows a restart up to the maximum and refuses past it")
+    function _()
+      m.assertTrue(canRestartLiveChannel(0))
+      m.assertTrue(canRestartLiveChannel(LIVE_RESTART_MAX))
+      m.assertFalse(canRestartLiveChannel(LIVE_RESTART_MAX + 1))
+    end function
+
+    @it("restarts a stream that never plays exactly LIVE_RESTART_MAX times, then gives up")
+    function _()
+      count = 0
+      restarts = 0
+      for attempt = 1 to LIVE_RESTART_MAX + 5
+        count = nextLiveRestartCount(count, 0)
+        if not canRestartLiveChannel(count) then exit for
+        restarts++
+      end for
+      m.assertEqual(restarts, LIVE_RESTART_MAX)
+    end function
+
+    @it("keeps restarting a feed that drops after healthy playback")
+    function _()
+      count = 0
+      for drop = 1 to LIVE_RESTART_MAX * 4
+        ' One failed reconnect before each healthy stretch: the run never reaches the limit.
+        count = nextLiveRestartCount(count, 0)
+        m.assertTrue(canRestartLiveChannel(count), "failed reconnect " + drop.toStr())
+        count = nextLiveRestartCount(count, LIVE_RESTART_HEALTHY_MS)
+        m.assertTrue(canRestartLiveChannel(count), "healthy drop " + drop.toStr())
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("liveRestartOnMount() / liveRestartOnEnd() / liveRestartOnStall()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Drives one mount that ends at once without playing; returns whether the host restarts.
+    private function endWithoutPlaying(budget as object, isLiveRestart as boolean) as boolean
+      liveRestartOnMount(budget, isLiveRestart)
+      return liveRestartOnEnd(budget, 0)
+    end function
+
+    @it("restarts a channel that never plays LIVE_RESTART_MAX times, then gives up")
+    function _()
+      budget = newLiveRestartBudget()
+      m.assertTrue(m.endWithoutPlaying(budget, false))
+      for restart = 1 to LIVE_RESTART_MAX - 1
+        m.assertTrue(m.endWithoutPlaying(budget, true), "restart " + restart.toStr())
+      end for
+      m.assertFalse(m.endWithoutPlaying(budget, true))
+    end function
+
+    @it("starts a fresh budget on any mount that is not a restart (channel switch)")
+    function _()
+      budget = newLiveRestartBudget()
+      m.endWithoutPlaying(budget, false)
+      for restart = 1 to LIVE_RESTART_MAX - 1
+        m.endWithoutPlaying(budget, true)
+      end for
+      ' Switched away and back: the next end is the first of a new budget, not past the cap.
+      m.assertTrue(m.endWithoutPlaying(budget, false))
+      m.assertEqual(budget.count, 1)
+    end function
+
+    @it("resets the count at an end after LIVE_RESTART_HEALTHY_MS of progress")
+    function _()
+      budget = newLiveRestartBudget()
+      m.endWithoutPlaying(budget, false)
+      m.endWithoutPlaying(budget, true)
+      liveRestartOnMount(budget, true)
+      m.assertTrue(liveRestartOnEnd(budget, LIVE_RESTART_HEALTHY_MS))
+      m.assertEqual(budget.count, 0)
+    end function
+
+    @it("restarts a channel that stalls after healthy progress")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      m.assertTrue(liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS))
+      m.assertEqual(budget.count, 0)
+    end function
+
+    @it("gives up at the first stall of a mount that never played healthily")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      m.assertFalse(liveRestartOnStall(budget, 0), "never played")
+      liveRestartOnMount(budget, false)
+      m.assertFalse(liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS - 1), "just short of healthy")
+    end function
+
+    @it("gives the restart after a healthy stall the full end budget")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS)
+      for attempt = 1 to LIVE_RESTART_MAX
+        m.assertTrue(m.endWithoutPlaying(budget, true), "restart " + attempt.toStr())
+      end for
+      m.assertFalse(m.endWithoutPlaying(budget, true))
+    end function
+
+    @it("resets a count left by earlier ends when a stall follows healthy progress")
+    function _()
+      budget = newLiveRestartBudget()
+      m.endWithoutPlaying(budget, false)
+      m.endWithoutPlaying(budget, true)
+      liveRestartOnMount(budget, true)
+      m.assertTrue(liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS))
+      m.assertEqual(budget.count, 0)
+    end function
+
+    @it("requires LIVE_STALL_REPROVE_MS before a second stall restart in a row")
+    function _()
+      ' Measured on a Stick 4K (2026-09-24): a restart into a playlist that stopped growing counted 29.6 s of
+      ' its leftover with 10 s segments, slightly under LIVE_RESTART_HEALTHY_MS.
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      m.assertTrue(liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS), "first stall")
+      liveRestartOnMount(budget, true)
+      m.assertFalse(liveRestartOnStall(budget, LIVE_STALL_REPROVE_MS - 1), "a stale leftover")
+      liveRestartOnMount(budget, true)
+      m.assertTrue(liveRestartOnStall(budget, LIVE_STALL_REPROVE_MS), "re-proved")
+    end function
+
+    @it("keeps the stall bar raised through restarts that end without playing")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS)
+      m.assertTrue(m.endWithoutPlaying(budget, true))
+      liveRestartOnMount(budget, true)
+      m.assertFalse(liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS))
+    end function
+
+    @it("lowers the stall bar once a mount plays LIVE_STALL_REPROVE_MS")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS)
+      liveRestartOnMount(budget, true)
+      m.assertTrue(liveRestartOnEnd(budget, LIVE_STALL_REPROVE_MS), "a long play that ended")
+      liveRestartOnMount(budget, true)
+      m.assertTrue(liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS))
+    end function
+
+    @it("starts a fresh stall bar on a mount that is not a restart")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS)
+      liveRestartOnMount(budget, false)
+      m.assertTrue(liveRestartOnStall(budget, LIVE_RESTART_HEALTHY_MS))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("liveGiveUpCauseKey()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("says the channel is not sending video when no mount made progress")
+    function _()
+      budget = newLiveRestartBudget()
+      m.endWithoutPlaying(budget, false)
+      m.endWithoutPlaying(budget, true)
+      m.assertEqual(liveGiveUpCauseKey(budget), translationKeys.ErrorPlaybackCauseLiveStreamNoVideo)
+    end function
+
+    @it("says the stream stopped once any mount since the channel was chosen made progress")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      liveRestartOnStall(budget, 500)
+      m.assertEqual(liveGiveUpCauseKey(budget), translationKeys.ErrorPlaybackCauseLiveStreamStopped)
+      m.endWithoutPlaying(budget, true)
+      m.assertEqual(liveGiveUpCauseKey(budget), translationKeys.ErrorPlaybackCauseLiveStreamStopped, "kept across restarts")
+      liveRestartOnMount(budget, false)
+      m.assertEqual(liveGiveUpCauseKey(budget), translationKeys.ErrorPlaybackCauseLiveStreamNoVideo, "a new channel")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("newLiveProgress() / liveProgressOnPosition()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Position notifications every 0.5 s (the Video node's default interval), from fromSeconds to
+    ' toSeconds inclusive, as a stream that is playing delivers them.
+    private sub playFrom(progress as object, fromSeconds as float, toSeconds as float)
+      position = fromSeconds
+      while position <= toSeconds
+        liveProgressOnPosition(progress, position)
+        position += 0.5
+      end while
+    end sub
+
+    @it("counts the steps of a stream that is playing")
+    function _()
+      progress = newLiveProgress()
+      m.playFrom(progress, 0, 30)
+      m.assertEqual(progress.progressMs, 30000)
+      m.assertEqual(progress.steps, 60)
+      m.assertEqual(progress.largestStepMs, 500)
+      m.assertEqual(progress.jumps, 0)
+    end function
+
+    @it("ignores the live-edge seek sentinel the first `playing` can report")
+    function _()
+      ' Measured on a Stick 4K against 12.1: position read 999999 at `playing`, then the stream
+      ' played from about 31 s.
+      progress = newLiveProgress()
+      liveProgressOnPosition(progress, LIVE_EDGE_SEEK)
+      m.playFrom(progress, 31.5, 71.5)
+      m.assertEqual(progress.progressMs, 40000)
+      m.assertEqual(progress.jumps, 0)
+    end function
+
+    @it("does not count the jump from 0 to the live edge")
+    function _()
+      ' Measured on the same device: position read 0 at `playing` in other runs, then jumped to
+      ' where the live edge was.
+      progress = newLiveProgress()
+      liveProgressOnPosition(progress, 0)
+      m.playFrom(progress, 12, 42)
+      m.assertEqual(progress.progressMs, 30000)
+      m.assertEqual(progress.jumps, 1)
+      m.assertEqual(progress.smallestJumpMs, 12000)
+    end function
+
+    @it("does not count a replay of the live window (a stale playlist)")
+    function _()
+      ' Measured on a Stick 4K: at the end of a playlist that stopped growing, the player played its
+      ' 20 s window, went back to the start and played it again before buffering.
+      progress = newLiveProgress()
+      m.playFrom(progress, 0, 19.5)
+      m.playFrom(progress, 0.5, 20)
+      m.assertEqual(progress.progressMs, 20000)
+    end function
+
+    @it("counts nothing while paused or buffering")
+    function _()
+      progress = newLiveProgress()
+      m.playFrom(progress, 0, 10)
+      for tick = 1 to 80
+        liveProgressOnPosition(progress, 10)
+      end for
+      m.assertEqual(progress.progressMs, 10000)
+    end function
+
+    @it("keeps the furthest position when the player seeks back")
+    function _()
+      progress = newLiveProgress()
+      m.playFrom(progress, 0, 40)
+      m.playFrom(progress, 10, 42)
+      m.assertEqual(progress.progressMs, 42000)
+      m.assertEqual(progress.markMs, 42000)
+    end function
+
+    @it("counts a step of exactly LIVE_PROGRESS_MAX_STEP_MS and treats a larger one as a jump")
+    function _()
+      progress = newLiveProgress()
+      liveProgressOnPosition(progress, 10)
+      m.assertEqual(liveProgressOnPosition(progress, 12), 0, "a step of the maximum")
+      m.assertEqual(liveProgressOnPosition(progress, 14.5), 2500, "a jump, returned for the log")
+      m.assertEqual(progress.progressMs, LIVE_PROGRESS_MAX_STEP_MS)
+      m.assertEqual(progress.largestStepMs, LIVE_PROGRESS_MAX_STEP_MS)
+      m.assertEqual(progress.jumps, 1)
+      m.assertEqual(progress.markMs, 14500)
+    end function
+
+    @it("keeps the smallest jump it saw, for tuning the maximum step")
+    function _()
+      progress = newLiveProgress()
+      liveProgressOnPosition(progress, 0)
+      liveProgressOnPosition(progress, 20)
+      liveProgressOnPosition(progress, 23)
+      liveProgressOnPosition(progress, 30)
+      m.assertEqual(progress.jumps, 3)
+      m.assertEqual(progress.smallestJumpMs, 3000)
+      m.assertEqual(progress.progressMs, 0)
+    end function
+
+    @it("counts a reloaded stream from its own first position, keeping earlier progress")
+    function _()
+      ' A reload rejoins the live edge, so its positions can restart below the old mark.
+      progress = newLiveProgress()
+      m.playFrom(progress, 0, 40)
+      liveProgressOnNewStream(progress)
+      m.playFrom(progress, 12, 22)
+      m.assertEqual(progress.progressMs, 50000)
+      m.assertEqual(progress.markMs, 22000)
+    end function
+
+    @it("ignores a negative position")
+    function _()
+      progress = newLiveProgress()
+      liveProgressOnPosition(progress, -1)
+      m.assertEqual(progress.markMs, -1)
     end function
 
   end class

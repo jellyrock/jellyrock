@@ -1,41 +1,43 @@
-// Generates docs/architecture/api-usage-manifest.json — a deterministic record
+// Generates docs/architecture/api-usage-manifest.json, a deterministic record
 // of the Jellyfin REST API surface JellyRock actually depends on (endpoints,
 // request-body fields, response fields).
 //
 // Why this exists: JellyRock's API client is hand-written (no codegen from the
 // Jellyfin OpenAPI spec), so nothing mechanically knows which endpoints/fields
-// the app uses. This manifest is the "demand" side — the foundation a later
-// spec-diff tool joins against to flag upstream changes that affect us while
-// ignoring the churn that doesn't. It's also independently useful: a
-// PR-diffable, always-current map of the app's real API footprint.
+// the app uses. This manifest is the "demand" side: the foundation
+// findings-candidates.js joins the spec diff against to flag upstream changes
+// that affect us while ignoring the churn that doesn't. It's also independently
+// useful: a PR-diffable, always-current map of the app's real API footprint.
 //
 // How it works: parses the relevant BrighterScript sources with the
-// brighterscript AST (the same parser the BSC plugins use — robust to
+// brighterscript AST (the same parser the BSC plugins use, robust to
 // formatting, unlike grep) and extracts three surfaces:
-//   - endpoints       — first arg of buildURL()/APIRequest() calls (string
+//   - endpoints:      first arg of buildURL()/APIRequest() calls (string
 //                       literal or Substitute("/path/{0}", …) template), with
 //                       the HTTP method inferred from the enclosing function.
-//   - requestFields   — PascalCase keys of request-body AAs + `postData.X =`
-//                       assignments in the API layer.
-//   - responseFields  — PascalCase field reads off Jellyfin DTOs in the data
-//                       transformers (the canonical DTO→ContentNode boundary).
+//   - requestFields:  PascalCase keys of AA literals (mostly request bodies) +
+//                       dotted assignments like `postData.X =` in the API layer.
+//   - responseFields: PascalCase field reads off Jellyfin DTOs in
+//                       RESPONSE_FIELD_FILES (the data transformers, the
+//                       canonical DTO-to-ContentNode boundary, plus people.bs
+//                       and session.bs).
 //
-// Coverage is deliberately scoped (see SCOPE below) and the bits we don't yet
+// Coverage is scoped on purpose (see SCOPE below) and the bits we don't yet
 // cover are recorded in `coverage` rather than silently dropped. Over-capture
 // is self-correcting downstream: a name that isn't a real Jellyfin schema
-// field simply won't match anything when the spec-diff tool joins against it.
+// field won't match anything when findings-candidates.js joins against it.
 // Under-capture (a missed dependency) is the dangerous direction, so the
 // heuristics lean inclusive.
 //
 // Run modes (mirrors scripts/generate/dev-index.cjs):
-//   node scripts/generate/api-usage-manifest.js            → write (default)
-//   node scripts/generate/api-usage-manifest.js --check    → fail on drift (CI)
-//   node scripts/generate/api-usage-manifest.js --verbose  → print line-level
-//                                                            provenance to stderr
+//   node scripts/generate/api-usage-manifest.js            writes (default)
+//   node scripts/generate/api-usage-manifest.js --check    fails on drift (CI)
+//   node scripts/generate/api-usage-manifest.js --verbose  prints line-level
+//                                                          provenance to stderr
 //
 // npm scripts:
-//   docs:api-manifest        → regenerate (write mode)
-//   docs:api-manifest:check  → drift check (pre-push + CI)
+//   docs:api-manifest        regenerates (write mode)
+//   docs:api-manifest:check  runs the drift check (pre-push + CI)
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -48,27 +50,55 @@ import * as bs from 'brighterscript';
 
 // Endpoint sinks are unambiguous (the first string arg IS a path), so we scan
 // broadly. baseRequest.bs DEFINES buildURL/APIRequest (its internal buildURL
-// call just forwards a path param), and image.bs is a Layer-2 passthrough that
-// receives an already-built URL — neither contributes a real endpoint literal.
+// call only forwards a path param), so it contributes no endpoint literal.
 const ENDPOINT_GLOBS = ['source/**/*.bs'];
-const ENDPOINT_EXCLUDE = new Set(['source/api/baseRequest.bs', 'source/api/image.bs']);
+const ENDPOINT_EXCLUDE = new Set(['source/api/baseRequest.bs']);
 
-// Response-field reads: the data transformers are purpose-built DTO→node
+// Response-field reads: the data transformers are purpose-built DTO-to-node
 // mappers, so PascalCase reads there are reliably Jellyfin fields (elsewhere a
 // PascalCase read could be a Roku object like `deviceInfo.DolbyVision`).
 const RESPONSE_FIELD_FILES = [
   'source/data/JellyfinDataTransformer.bs',
   'source/data/SessionDataTransformer.bs',
+  // Same kind of file by the test above, only not under source/data: it maps
+  // BaseItemPerson entries onto Cast & Crew card specs, so every PascalCase read in
+  // it is a Jellyfin field. Added when the person reads moved here out of
+  // JellyfinDataTransformer. Without it the manifest silently lost
+  // BaseItemPerson.PrimaryImageTag, which is exactly the blindness /server-upgrade
+  // reads this file to avoid.
+  'source/utils/people.bs',
+  // Where production reads the session DTOs: user.Login() (UserDto Configuration and
+  // Policy, AuthenticationResult User and AccessToken) and server.Discover()
+  // (PublicSystemInfo). Its app-made names are listed in APP_MADE_RESPONSE_FIELDS.
+  'source/utils/session.bs',
 ];
 
-// Request-body fields are built in the API layer.
+// PascalCase names a scanned file reads that the app writes itself, not the server.
+const APP_MADE_RESPONSE_FIELDS = new Map([
+  [
+    'source/utils/session.bs',
+    new Set([
+      'Error', // server.Discover() builds its own { Error, ErrorMessage } result
+      'ErrorMessage',
+      'LastRunVersion', // written to the registry by main.bs after migrations
+    ]),
+  ],
+]);
+
+// Request-body fields are built in the API layer. apiFaults.bs builds no request: its AA
+// literals are the fake answers an RTA spec asks for (an empty query result), so its
+// PascalCase keys are a test fixture's, not fields the app sends.
 const REQUEST_FIELD_GLOBS = ['source/api/**/*.bs'];
-const REQUEST_FIELD_EXCLUDE = new Set(['source/api/baseRequest.bs']);
+const REQUEST_FIELD_EXCLUDE = new Set(['source/api/baseRequest.bs', 'source/api/apiFaults.bs']);
 
 const ENDPOINT_SINK_NAMES = new Set(['buildurl', 'apirequest']);
 const PATH_TEMPLATE_NAMES = new Set(['substitute']);
 const METHOD_CALL_GET = new Set(['getjson']);
 const METHOD_CALL_POST = new Set(['postjson']);
+// ApiClient request builders whose FIRST argument is the HTTP method literal. listReq is
+// validatedReq for a bare-array endpoint (it marks the request so the pool checks the body's
+// shape), so it carries the method the same way.
+const METHOD_ARG_BUILDERS = new Set(['validatedreq', 'listreq']);
 
 const OUTPUT_REL = 'docs/architecture/api-usage-manifest.json';
 
@@ -94,11 +124,18 @@ function literalStringValue(node) {
   return unquote(text);
 }
 
-// Name of a call's callee (`buildURL` or `m.validatedReq` → "validatedReq").
+// Name of a call's callee (`buildURL`, or "validatedReq" for `m.validatedReq`).
 function calleeName(call) {
   const callee = call?.callee;
   if (!callee) return null;
   return callee.tokens?.name?.text ?? null;
+}
+
+// True for a call to one of the path-template functions (`Substitute(...)`).
+function isPathTemplateCall(node) {
+  return (
+    bs.isCallExpression(node) && PATH_TEMPLATE_NAMES.has((calleeName(node) ?? '').toLowerCase())
+  );
 }
 
 // Walk an object chain (a.b.c, a[0].b) down to the base variable name.
@@ -123,7 +160,7 @@ function isPascalField(name) {
 }
 
 // Roots whose PascalCase members are never Jellyfin DTO fields: `m` (class
-// instance), `item` (the OUTPUT ContentNode — its PascalCase reads are Roku
+// instance), `item` (the OUTPUT ContentNode: its PascalCase reads are Roku
 // built-ins like PlayStart), and `translationKeys` (internal i18n constants).
 const EXCLUDED_RESPONSE_ROOTS = new Set(['m', 'item', 'translationKeys']);
 
@@ -181,11 +218,11 @@ function blockEndsInReturn(block) {
   return Array.isArray(stmts) && stmts.length > 0 && bs.isReturnStatement(stmts[stmts.length - 1]);
 }
 
-// Derive the apiVersion range [min, max] (max=null → unbounded) an endpoint
+// Derive the apiVersion range [min, max] (max=null means unbounded) an endpoint
 // call serves, from the `getApiVersion() >= N` dispatch guards in its function.
-// Handles three real shapes — then/else branches AND the early-return
-// fall-through (`if >=N { return … } end if; return …`) where the trailing
-// statement is the implicit "< N" case — and nests for a future v3.
+// Handles three real shapes (then/else branches AND the early-return
+// fall-through `if >=N { return … } end if; return …`, where the trailing
+// statement is the implicit "< N" case) and nests for a future v3.
 function computeApiVersionRange(node, funcNode) {
   let min = 1;
   let max = null;
@@ -209,9 +246,9 @@ function computeApiVersionRange(node, funcNode) {
 
   for (const g of guards) {
     if (nodeWithin(node, g.ifs.thenBranch)) {
-      min = Math.max(min, g.n); // inside `>= N` then-branch → serves ≥ N
+      min = Math.max(min, g.n); // inside `>= N` then-branch: serves ≥ N
     } else if (nodeWithin(node, g.ifs.elseBranch)) {
-      tightenMax(g.n - 1); // inside the else → serves < N
+      tightenMax(g.n - 1); // inside the else: serves < N
     } else {
       // Fall-through: a statement after an `if >=N { return } end if` is the
       // implicit "< N" case.
@@ -272,9 +309,12 @@ function extractEndpoints(ast) {
 
   ast.walk(
     (node) => {
-      // var = "literal"  → enables resolving buildURL(varName)
+      // var = "literal" and var = Substitute("literal", …) let a later
+      // buildURL(varName) resolve to the path.
       if (bs.isAssignmentStatement(node)) {
-        const lit = literalStringValue(node.value);
+        const lit = isPathTemplateCall(node.value)
+          ? literalStringValue(node.value.args?.[0])
+          : literalStringValue(node.value);
         if (lit !== null) {
           const name = node.tokens?.name?.text;
           if (name) {
@@ -304,7 +344,7 @@ function extractEndpoints(ast) {
       if (METHOD_CALL_GET.has(name)) bucket(node).methods.add('GET');
       if (METHOD_CALL_POST.has(name)) bucket(node).methods.add('POST');
 
-      if (name === 'validatedreq') {
+      if (METHOD_ARG_BUILDERS.has(name)) {
         const m = literalStringValue(node.args?.[0]);
         if (m) bucket(node).methods.add(m.toUpperCase());
         return;
@@ -352,7 +392,7 @@ function extractEndpoints(ast) {
       } else if (entry.varRef && b.assignments.has(entry.varRef)) {
         literals = [...b.assignments.get(entry.varRef)];
       }
-      // Drop empty-string literals — e.g. a `path = ""` initializer before
+      // Drop empty-string literals: for example a `path = ""` initializer before
       // conditional assignment is not itself an endpoint.
       literals = literals.filter((l) => l !== '');
       if (literals.length === 0) {
@@ -516,7 +556,9 @@ export function buildManifest(rootDir, { verboseSink } = {}) {
 
   for (const rel of responseFiles) {
     const ast = parse(readFileSync(path.join(rootDir, rel), 'utf8'));
+    const appMade = APP_MADE_RESPONSE_FIELDS.get(rel);
     for (const f of extractResponseFields(ast)) {
+      if (appMade?.has(f.name)) continue;
       let rec = responseMap.get(f.name);
       if (!rec) {
         rec = { readVia: new Set(), sourceFiles: new Set() };

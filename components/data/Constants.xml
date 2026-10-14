@@ -49,6 +49,10 @@
     <field id="alpha60" type="string" value="99" />
     <field id="alpha70" type="string" value="B3" />
     <field id="alpha80" type="string" value="CC" />
+    <!-- Off-ladder on purpose: the poster badges need a backdrop dark enough that a THEME-
+         coloured glyph stays legible over arbitrary artwork. At 85% the composite sits at
+         #262626 even over a white poster, which holds the default accent at 4.1:1. -->
+    <field id="alpha85" type="string" value="D9" />
     <field id="alpha90" type="string" value="E6" />
     <field id="alpha100" type="string" value="FF" />
 
@@ -66,7 +70,6 @@
     <field id="iconArrowUpWhite" type="string" value="pkg:/images/icons/arrow-up-white_$$RES$$.png" />
     <field id="iconArrowDownBlack" type="string" value="pkg:/images/icons/arrow-down-black_$$RES$$.png" />
     <field id="iconArrowDownWhite" type="string" value="pkg:/images/icons/arrow-down-white_$$RES$$.png" />
-    <field id="iconCheckBlack" type="string" value="pkg:/images/icons/check-black_$$RES$$.png" />
     <field id="iconCheckWhite" type="string" value="pkg:/images/icons/check-white_$$RES$$.png" />
     <field id="iconTomatoFresh" type="string" value="pkg:/images/icons/tomato-fresh_$$RES$$.png" />
     <field id="iconTomatoRotten" type="string" value="pkg:/images/icons/tomato-rotten_$$RES$$.png" />

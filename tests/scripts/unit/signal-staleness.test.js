@@ -1,4 +1,4 @@
-// Unit tests for scripts/lib/signal-staleness.cjs — the pure "does this signal
+// Unit tests for scripts/lib/signal-staleness.cjs: the pure "does this signal
 // row need attention?" decision used by the /catchup aggregator. The IO that
 // feeds `ctx` (the live open-digest query) lives in catchup-state.js and is not
 // exercised here; this covers the decision in isolation.

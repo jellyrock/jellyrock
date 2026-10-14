@@ -9,6 +9,8 @@
     "AliceBeckett.brightscriptcomment", // helper functions to create function comments
     "davidanson.vscode-markdownlint", // markdown linter and formatter
     "redhat.vscode-yaml", // yaml linter and formatter
+    "esbenp.prettier-vscode", // js + json formatter (matches the pre-commit hook)
+    "dbaeumer.vscode-eslint", // js linter
   ],
   // List of extensions recommended by VS Code that should not be recommended for users of this workspace.
   "unwantedRecommendations": [],

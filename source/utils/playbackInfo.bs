@@ -10,9 +10,11 @@
 ' pre-rendered markup ("<b>• Codec:</b> h264"), which put font-weight decisions on
 ' a Task thread and made the report untestable. Both are gone: the task fetches,
 ' playbackReport.bs models, and the dialog renders.
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
-' The source → target separator.
+' The separator between a source value and its target.
 '
 ' ONE constant because the glyph is a bet on the system font: U+2192 is in the
 ' Arrows block, which is further out than the U+2022 bullet the app already ships
@@ -31,7 +33,7 @@ const PLAYBACK_INFO_ARROW = " → "
 ' capture rather than by any gate, hence the test beside it.
 '
 ' @param {dynamic} bitrate - bits per second, from the session or the media stream
-' @returns {string} - e.g. "25.4 Mbps", "850 Kbps", "" when there is no figure
+' @returns {string} - for example "25.4 Mbps", "850 Kbps", "" when there is no figure
 function getDisplayBitrate(bitrate as dynamic) as string
   if not isValid(bitrate) then return ""
 
@@ -39,13 +41,13 @@ function getDisplayBitrate(bitrate as dynamic) as string
   if bits <= 0 then return ""
 
   if bits > 1000000
-    return formatOneDecimal(bits / 1000000.0) + " Mbps"
+    return translate(translationKeys.LabelBitrateMbps, [formatOneDecimal(bits / 1000000.0)])
   end if
 
-  return Str(Fix(bits / 1000)).trim() + " Kbps"
+  return translate(translationKeys.LabelBitrateKbps, [Str(Fix(bits / 1000)).trim()])
 end function
 
-' A byte count as a human-readable size — binary units with one decimal
+' A byte count as a human-readable size: binary units with one decimal
 ' ("24.3 GiB"), matching Jellyfin's own web client so a file reads identically in
 ' both. Binary rather than decimal units is that client's choice, not ours; the
 ' value is the one a user can cross-check against their server.
@@ -55,7 +57,7 @@ end function
 ' reporting. The arithmetic stays in floating point for the same reason.
 '
 ' @param {dynamic} bytes - MediaSourceInfo.Size, as the server sent it
-' @returns {string} - e.g. "24.2 GiB", "812.0 MiB", "" when there is no figure
+' @returns {string} - for example "24.2 GiB", "812.0 MiB", "" when there is no figure
 function getReadableSize(bytes as dynamic) as string
   size! = decimalOrZero(bytes)
   if size! <= 0 then return ""
@@ -71,15 +73,15 @@ function getReadableSize(bytes as dynamic) as string
   return formatOneDecimal(size!) + " " + units[unitIndex]
 end function
 
-' Compose one value cell as "source → target", or just the source when nothing
+' Compose one value cell as `source → target`, or only the source when nothing
 ' changed.
 '
-' The ABSENCE of an arrow is load-bearing: it is how the report says "this aspect
+' The absence of an arrow carries meaning: it is how the report says "this aspect
 ' passed through untouched", which is the question a viewer opening the report is
 ' usually asking. So a target that is empty, or identical to the source, must
 ' produce a bare source rather than an arrow pointing at a repeat of itself.
-' Comparison is case-insensitive because the two sides come from different places
-' — a source codec is "hevc" off the media stream and a target codec is "HEVC"
+' Comparison is case-insensitive because the two sides come from different places:
+' a source codec is "hevc" off the media stream and a target codec is "HEVC"
 ' off the session.
 '
 ' @param {string} source - the value as the file holds it, already display-formatted
@@ -100,11 +102,11 @@ end function
 ' One decimal place, rounded, without Str()'s leading space.
 '
 ' BrightScript has no toFixed, and Str() on a float renders a platform-chosen
-' number of digits — enough to turn "24.3" into "24.2999992". Doing the rounding
+' number of digits, enough to turn "24.3" into "24.2999992". Doing the rounding
 ' in integer arithmetic is what keeps the output stable across devices.
 '
 ' @param {float} value - a non-negative number
-' @returns {string} - e.g. "24.3", "8.0"
+' @returns {string} - for example "24.3", "8.0"
 function formatOneDecimal(value as float) as string
   tenths = Int(value * 10.0 + 0.5)
   whole = Int(tenths / 10)

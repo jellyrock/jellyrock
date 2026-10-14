@@ -16,18 +16,6 @@
       ]
     },
     {
-      "path": "/artists/{0}",
-      "normalized": "/artists/{}",
-      "methods": [
-        "GET"
-      ],
-      "minApiVersion": 1,
-      "maxApiVersion": null,
-      "sourceFiles": [
-        "source/api/ApiClient.bs"
-      ]
-    },
-    {
       "path": "/Artists/{0}/Similar",
       "normalized": "/artists/{}/similar",
       "methods": [
@@ -148,6 +136,42 @@
       ]
     },
     {
+      "path": "/Items/{0}/Collections",
+      "normalized": "/items/{}/collections",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Items/{0}/Images",
+      "normalized": "/items/{}/images",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Items/{0}/Images/{1}",
+      "normalized": "/items/{}/images/{}",
+      "methods": [
+        "UNKNOWN"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/image.bs"
+      ]
+    },
+    {
       "path": "/items/{0}/images/{1}/{2}",
       "normalized": "/items/{}/images/{}/{}",
       "methods": [
@@ -210,6 +234,19 @@
       ]
     },
     {
+      "path": "/Items/{0}/RemoteSearch/Subtitles/{1}",
+      "normalized": "/items/{}/remotesearch/subtitles/{}",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/Items/{0}/Similar",
       "normalized": "/items/{}/similar",
       "methods": [
@@ -246,12 +283,48 @@
       ]
     },
     {
+      "path": "/items/filters2",
+      "normalized": "/items/filters2",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/Items/Latest",
       "normalized": "/items/latest",
       "methods": [
         "GET"
       ],
       "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Libraries/AvailableOptions",
+      "normalized": "/libraries/availableoptions",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveStreams/Close",
+      "normalized": "/livestreams/close",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
       "maxApiVersion": null,
       "sourceFiles": [
         "source/api/ApiClient.bs"
@@ -380,6 +453,18 @@
     {
       "path": "/LiveTv/Timers/Defaults",
       "normalized": "/livetv/timers/defaults",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Localization/Cultures",
+      "normalized": "/localization/cultures",
       "methods": [
         "GET"
       ],
@@ -583,15 +668,15 @@
       ]
     },
     {
-      "path": "/system/configuration/{0}",
-      "normalized": "/system/configuration/{}",
+      "path": "/System/Configuration",
+      "normalized": "/system/configuration",
       "methods": [
         "GET"
       ],
       "minApiVersion": 1,
       "maxApiVersion": null,
       "sourceFiles": [
-        "source/api/sdk.bs"
+        "source/api/ApiClient.bs"
       ]
     },
     {
@@ -629,6 +714,18 @@
       "maxApiVersion": null,
       "sourceFiles": [
         "source/api/sdkV2.bs"
+      ]
+    },
+    {
+      "path": "/UserItems/{0}/UserData",
+      "normalized": "/useritems/{}/userdata",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
       ]
     },
     {
@@ -861,6 +958,18 @@
       "sourceFiles": [
         "source/api/ApiClient.bs"
       ]
+    },
+    {
+      "path": "/Videos/{0}/Subtitles/{1}",
+      "normalized": "/videos/{}/subtitles/{}",
+      "methods": [
+        "DELETE"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
     }
   ],
   "requestFields": [
@@ -949,6 +1058,12 @@
       ]
     },
     {
+      "name": "EnableImages",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
       "name": "EnableImageTypes",
       "sourceFiles": [
         "source/api/ApiClient.bs"
@@ -961,9 +1076,39 @@
       ]
     },
     {
+      "name": "EnableUserData",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "ExcludePersonTypes",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "Fields",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Ids",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
       "name": "ImageTypeLimit",
       "sourceFiles": [
         "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "IncludeItemTypes",
+      "sourceFiles": [
+        "source/api/items.bs"
       ]
     },
     {
@@ -973,13 +1118,13 @@
       ]
     },
     {
-      "name": "IsRequired",
+      "name": "IsPlayed",
       "sourceFiles": [
         "source/api/items.bs"
       ]
     },
     {
-      "name": "Items",
+      "name": "IsRequired",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -1010,6 +1155,18 @@
     },
     {
       "name": "MinSegments",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "ParentId",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "ParentIndexNumber",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -1052,6 +1209,12 @@
     },
     {
       "name": "SegmentLength",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "SortBy",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -1120,6 +1283,15 @@
       ],
       "sourceFiles": [
         "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AccessToken",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
       ]
     },
     {
@@ -1470,7 +1642,7 @@
         "userData"
       ],
       "sourceFiles": [
-        "source/data/SessionDataTransformer.bs"
+        "source/utils/session.bs"
       ]
     },
     {
@@ -1507,6 +1679,15 @@
       ],
       "sourceFiles": [
         "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CustomPrefs",
+      "readVia": [
+        "jsonResponse"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
       ]
     },
     {
@@ -1937,10 +2118,14 @@
       "readVia": [
         "apiData",
         "firstSource",
-        "person"
+        "myServerInfo",
+        "person",
+        "userData"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/data/JellyfinDataTransformer.bs",
+        "source/utils/people.bs",
+        "source/utils/session.bs"
       ]
     },
     {
@@ -2188,6 +2373,15 @@
       ]
     },
     {
+      "name": "LocalAddress",
+      "readVia": [
+        "myServerInfo"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
+      ]
+    },
+    {
       "name": "LocalTrailerCount",
       "readVia": [
         "apiData"
@@ -2312,7 +2506,8 @@
         "person"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/data/JellyfinDataTransformer.bs",
+        "source/utils/people.bs"
       ]
     },
     {
@@ -2349,6 +2544,15 @@
       ],
       "sourceFiles": [
         "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "OriginalLanguage",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
       ]
     },
     {
@@ -2582,7 +2786,7 @@
         "userData"
       ],
       "sourceFiles": [
-        "source/data/SessionDataTransformer.bs"
+        "source/utils/session.bs"
       ]
     },
     {
@@ -2615,10 +2819,12 @@
     {
       "name": "PrimaryImageTag",
       "readVia": [
-        "person"
+        "person",
+        "userData"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/utils/people.bs",
+        "source/utils/session.bs"
       ]
     },
     {
@@ -2735,7 +2941,7 @@
         "person"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/utils/people.bs"
       ]
     },
     {
@@ -2847,6 +3053,24 @@
       ]
     },
     {
+      "name": "ServerName",
+      "readVia": [
+        "myServerInfo"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
+      ]
+    },
+    {
+      "name": "ShowBackdrop",
+      "readVia": [
+        "jsonResponse"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
+      ]
+    },
+    {
       "name": "SongCount",
       "readVia": [
         "apiData"
@@ -2889,6 +3113,15 @@
       ],
       "sourceFiles": [
         "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "StartupWizardCompleted",
+      "readVia": [
+        "myServerInfo"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
       ]
     },
     {
@@ -3008,7 +3241,8 @@
         "stream"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/data/JellyfinDataTransformer.bs",
+        "source/utils/people.bs"
       ]
     },
     {
@@ -3021,12 +3255,30 @@
       ]
     },
     {
+      "name": "User",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
+      ]
+    },
+    {
       "name": "UserData",
       "readVia": [
         "apiData"
       ],
       "sourceFiles": [
         "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Version",
+      "readVia": [
+        "myServerInfo"
+      ],
+      "sourceFiles": [
+        "source/utils/session.bs"
       ]
     },
     {
@@ -3055,8 +3307,7 @@
           "source/**/*.bs"
         ],
         "exclude": [
-          "source/api/baseRequest.bs",
-          "source/api/image.bs"
+          "source/api/baseRequest.bs"
         ]
       },
       "requestFields": {
@@ -3064,30 +3315,33 @@
           "source/api/**/*.bs"
         ],
         "exclude": [
+          "source/api/apiFaults.bs",
           "source/api/baseRequest.bs"
         ]
       },
       "responseFields": {
         "files": [
           "source/data/JellyfinDataTransformer.bs",
-          "source/data/SessionDataTransformer.bs"
+          "source/data/SessionDataTransformer.bs",
+          "source/utils/people.bs",
+          "source/utils/session.bs"
         ]
       }
     },
     "counts": {
-      "endpoints": 71,
-      "requestFields": 41,
-      "responseFields": 214,
+      "endpoints": 80,
+      "requestFields": 50,
+      "responseFields": 223,
       "unresolvedEndpointSinks": 2
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 423
+        "line": 415
       },
       {
         "sourceFile": "source/utils/subtitles.bs",
-        "line": 160
+        "line": 167
       }
     ],
     "knownGaps": [

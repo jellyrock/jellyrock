@@ -11,18 +11,18 @@ end function
 ' Turn a Jellyfin AuthenticationResult into the UserData node user.Login() expects,
 ' registering the user in `available_users` on the way.
 '
-' Shared by the two flows that mint a token — password sign-in (getToken above) and
+' Shared by the two flows that mint a token: password sign-in (getToken above) and
 ' Quick Connect (loginRouter.onQuickConnectAuthenticated). Quick Connect used to build its
 ' own node AND then re-fetch the user via AboutMe(); the re-fetch was redundant,
 ' because AuthenticationResult.User and GET /Users/{id} return the identical UserDto
-' (diffed against Jellyfin 10.11.11 — same 12 keys, differing only in LastLoginDate /
+' (diffed against Jellyfin 10.11.11: same 12 keys, differing only in LastLoginDate /
 ' LastActivityDate, neither of which this app reads).
 '
 ' The Quick Connect flow guards the SAME payload one layer up, on the render thread
 ' (quickConnectHasSession in source/utils/quickConnect.bs), because this side has
 ' nowhere left to report a failure to. The two are deliberate duplicates rather
-' than one shared helper — they sit on opposite threads and answer different
-' questions ("can I build a node?" vs "can I tell the user?") — so if what counts
+' than one shared helper: they sit on opposite threads and answer different
+' questions ("can I build a node?" vs "can I tell the user?"). So if what counts
 ' as a usable session ever changes, change both.
 '
 ' @param json - AuthenticationResult from AuthenticateByName / AuthenticateWithQuickConnect
@@ -52,16 +52,16 @@ function AboutMe(id = "" as string)
   return GetApi().GetUser(id)
 end function
 
-' #666/#728: stop the ws:// remote-control receiver AND the socket child it published — ends the
+' #666/#728: stop the ws:// remote-control receiver and the socket child it published. This ends the
 ' listener thread and releases the socket's Task thread. Split out of SignOut so it can be unit
 ' tested: SignOut's remaining body writes real (non-`test-`) registry sections and reaches for the
 ' router and the session, none of which a Rooibos suite can stand up, but this block is pure node
 ' manipulation. See tests/source/unit/api/stopRemoteControlReceiver.spec.bs.
 '
 ' Parent first (so a receiver still winding down can't spawn a replacement socket), then the
-' published child — STOP kills the receiver mid-loop, so its own closeSocket() teardown never runs.
+' published child. STOP kills the receiver mid-loop, so its own closeSocket() teardown never runs.
 ' STOP is not a join: the receiver can still be mid-connectAndPump here, so a child created but not
-' yet published to socketNode is missed. That window is bounded, not permanent — the vendored socket
+' yet published to socketNode is missed. That window is bounded, not permanent: the vendored socket
 ' loop self-exits once its connection reaches CLOSED.
 sub StopRemoteControlReceiver()
   remoteControlTask = m.global.remoteControlTask
@@ -69,7 +69,7 @@ sub StopRemoteControlReceiver()
 
   remoteControlTask.control = "STOP"
   ' Snapshot before dotting into it. Re-reading the field for the test and again for the write
-  ' would race the receiver's own closeSocket(), which clears it — a dot on invalid crashes the
+  ' would race the receiver's own closeSocket(), which clears it, and a dot on invalid crashes the
   ' caller. (Each dot on a render-thread-owned node is a separate rendezvous, too.)
   socketNode = remoteControlTask.socketNode
   if isValid(socketNode) then socketNode.control = "STOP"
@@ -89,15 +89,10 @@ sub SignOut(deleteSavedEntry = true as boolean)
   user.Logout()
   m.global.sceneManager.currentUser = ""
   ' getActiveView() resolves the routed view; guard isValid because sign-out via the Home menu
-  ' tears the router down first (resetRouter → no active view).
+  ' tears the router down first (resetRouter leaves no active view).
   group = getActiveView()
   if isValid(group) then group.isOptionsAvailable = false
 end sub
-
-function AvailableUsers()
-  users = parseJson(getSetting("available_users", "[]"))
-  return users
-end function
 
 function ServerInfo()
   return server.Discover()

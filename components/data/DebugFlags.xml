@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- DEBUG ONLY: Error injection flags for testing error paths and toast notifications.
-     This node is ONLY created when bs_const=debug=true (sideloaded dev builds).
+<!-- Debug only: Error injection flags for testing error paths and toast notifications.
+     This node is only created when bs_const=debug=true (sideloaded dev builds).
      It does not exist in production builds. See docs/dev/debug-flags.md for usage. -->
 <component name="DebugFlags" extends="ContentNode">
   <interface>
@@ -8,5 +8,12 @@
     <field id="shouldForceFiltersFail" type="boolean" value="false" />
     <field id="shouldForceFavoriteFail" type="boolean" value="false" />
     <field id="shouldForceWatchedFail" type="boolean" value="false" />
+
+    <!-- Button-row overflow (#788). A COUNT, not a toggle: the interesting cases
+         are the boundary (a row exactly at its cap, no More button) and past it
+         (More plus a menu), and the cap differs per surface - 8 on ItemDetails,
+         10 on the OSD. Neither row can reach either state from real item data
+         yet, so this is the only way to see the feature on a device. -->
+    <field id="extraButtonCount" type="integer" value="0" />
   </interface>
 </component>

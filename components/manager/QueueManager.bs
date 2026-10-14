@@ -3,13 +3,17 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/api/items.bs"
+import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/quickplay.bs"
+import "pkg:/source/utils/quickplayOutcome.bs"
 import "pkg:/source/utils/tasks.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = new log.Logger("QueueManager")
@@ -25,6 +29,59 @@ sub init()
   ' launchQuickPlayAction so onQuickPlayTaskOutput's photo branch
   ' knows to randomize. Defaults false (a plain photoalbum item-tap is sequential).
   m.photoAlbumShuffleMode = false
+  ' The video the viewer explicitly picked for this queue (versionPick.preferenceFor), carried
+  ' to the items the queue arrives at. Belongs to the queue, so a new queue starts without one.
+  m.versionPreference = invalid
+  ' The playback start no player has taken yet (beginPlaybackStart / takePlaybackStart).
+  m.playbackStart = invalid
+end sub
+
+' Opens the wait for a playback start (appWaits, LoadingKind.PLAYBACK_START) and holds it until
+' the player that mounts for it takes it (takePlaybackStart). Every start passes through here
+' (the launchers below, the details screen, a channel switch), so the spinner, its stages and
+' its label are the same for all of them. A start pressed while another is pending replaces it.
+'
+' @param {string} label - the text above the spinner, such as a channel's name; "" for none
+' @return {object} the start's Promise (invalid without a scene)
+function beginPlaybackStart(label as string) as dynamic
+  previous = m.playbackStart
+  start = appWaits.begin(LoadingKind.PLAYBACK_START, label)
+  m.playbackStart = start
+  if isValid(start)
+    promises.onFinally(start, sub(ctx as object)
+      onPlaybackStartEnded(ctx.start)
+    end sub, { start: start })
+  end if
+  ' After the swap, so the replaced start's end does not take itself for the pending one.
+  appWaits.fail(previous, "replaced by a newer start")
+  return start
+end function
+
+' Hands the pending start to the player mounting for it, which ends it from then on (on its
+' stream, a failure, or teardown). invalid when none is pending: a queue advance or a Live TV
+' restart remounts the player without one.
+function takePlaybackStart() as dynamic
+  start = m.playbackStart
+  m.playbackStart = invalid
+  return start
+end function
+
+' Ends the pending start, which will not reach a player (`reason`, for the log).
+sub failPendingPlaybackStart(reason as string)
+  appWaits.fail(m.playbackStart, reason)
+end sub
+
+' A start ended. One that failed before any player took it (the viewer left the screen it was
+' pressed on, or its time limit ran out) stops the queue build still working for it, so
+' playback does not begin on whatever screen the viewer went to. Both builds only read, so
+' stopping them loses nothing.
+sub onPlaybackStartEnded(start as object)
+  if not isValid(m.playbackStart) or not m.playbackStart.isSameNode(start) then return
+  m.playbackStart = invalid
+  if start.promiseState = "rejected"
+    cancelActiveQuickPlayTask()
+    cancelActiveShuffleTask()
+  end if
 end sub
 
 ' Clear all content from play queue
@@ -32,14 +89,9 @@ sub clear()
   m.isPlaying = false
   m.queue = []
   m.queueTypes = []
+  m.versionPreference = invalid
   m.isPrerollActive = m.global.user.settings.playbackCinemaMode
   setPosition(0)
-end sub
-
-' Delete item from play queue at passed index
-sub deleteAtIndex(index)
-  m.queue.Delete(index)
-  m.queueTypes.Delete(index)
 end sub
 
 ' Return the number of items in the play queue
@@ -77,6 +129,45 @@ sub moveForward()
   m.position++
 end sub
 
+' advanceTo: Move a VIDEO queue to another item because playback moved there: the next one
+' when an item ends, or the player's next / previous. The queue ARRIVES at that item, so it
+' starts from the beginning on the viewer's explicit version pick (nodeHelpers.startFresh): a
+' position saved on it belongs to an earlier session, and the viewer is watching in order.
+' Resume is the Resume button's job; jellyfin-web's nextTrack also plays with no start
+' position. Without this only a multi-version item resumed (its version chooser reads
+' positions) while every other item started at 0.
+'
+' Not an arrival: the item behind a Cinema Mode intro (followsIntro), which is the one the
+' viewer launched, and Live TV, which has no position to start from.
+'
+' Audio moves with moveForward / moveBack / setPosition and is untouched.
+'
+' @param {integer} index - the queue position to move to
+sub advanceTo(index as integer)
+  setPosition(index)
+  item = getCurrentItem()
+  if not isValid(item) then return
+  if item.followsIntro = true
+    item.delete("followsIntro")
+    return
+  end if
+  startFresh(item)
+end sub
+
+' startCurrentFresh: Start the current item from the beginning: the first item of a queue the
+' viewer did not launch to resume, such as Play All or shuffle.
+sub startCurrentFresh()
+  startFresh(getCurrentItem())
+end sub
+
+' startFresh: nodeHelpers.startFresh for anything with a position to start from, not Live TV.
+sub startFresh(item as dynamic)
+  if not isValid(item) then return
+  itemType = getItemType(item)
+  if itemType = "tvchannel" or itemType = "program" then return
+  nodeHelpers.startFresh(item)
+end sub
+
 ' Return the current play queue
 function getQueue()
   return m.queue
@@ -100,26 +191,27 @@ function getQueueUniqueTypes()
   return itemTypes
 end function
 
-' Return item at end of play queue without removing
-function peek()
-  return m.queue.peek()
-end function
-
 ' Play items in queue.
 '
-' QueueManager has no router chain, so it can't navigateTo — it sets
+' QueueManager has no router chain, so it can't navigateTo. It sets
 ' m.global.playbackLaunchRequest and JRScene.onPlaybackLaunchRequested turns that into
 ' the route: audio -> /audio (AudioPlayerView), every video-family type -> the play route
 ' (/details/:type/:id/play, PlayerHostView). The view reads this same queue on mount.
-' In-view queue advancement (next-item / Live TV restart / channel switch) does NOT come
-' back through here — the video host remounts its child; the audio view reloads in place.
+' In-view queue advancement (next-item / Live TV restart / channel switch) does not come
+' back through here: the video host remounts its child; the audio view reloads in place.
 sub playQueue()
   m.isPlaying = true
   nextItem = getCurrentItem()
-  if not isValid(nextItem) then return
+  if not isValid(nextItem)
+    failPendingPlaybackStart("nothing in the queue to play")
+    return
+  end if
 
   nextItemMediaType = getItemType(nextItem)
-  if nextItemMediaType = "" then return
+  if nextItemMediaType = ""
+    failPendingPlaybackStart("queue item has no type")
+    return
+  end if
 
   if nextItemMediaType = "audio" or nextItemMediaType = "audiobook"
     m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id, media: "audio" }
@@ -139,6 +231,8 @@ sub playQueue()
   }
   if videoTypes.DoesExist(nextItemMediaType)
     m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id }
+  else
+    failPendingPlaybackStart("queue item is not playable")
   end if
 end sub
 
@@ -152,28 +246,33 @@ sub launchItem(itemNode as object)
   if isValidAndNotEmpty(itemNode.type) then itemType = LCase(itemNode.type)
   if itemType = "" then return
 
-  startLoadingSpinner()
+  if itemType = "photo" or itemType = "photoalbum"
+    ' A photo opens a viewer, not a play session: the plain spinner, which PhotoDetails stops.
+    ' It replaces a start still pending, as a newer start would (beginPlaybackStart).
+    failPendingPlaybackStart("replaced by a photo launch")
+    startLoadingSpinner()
+  else
+    beginPlaybackStart("")
+  end if
   clear()
   resetShuffle()
 
-  ' Synchronous types (no API calls) — build the queue inline.
+  ' Synchronous types (no API calls): build the queue inline.
   if itemType = "chapter"
     ' Chapter: start playback of the parent video at the chapter position.
     queueItem = nodeHelpers.createQueueItem(itemNode)
     if isValid(queueItem)
       queueItem.type = itemNode.parentType
-      queueItem.startingPoint = itemNode.playbackPositionTicks
+      ' The chapter's start, not a resume point: the viewer picked this place.
+      nodeHelpers.setExactStart(queueItem, itemNode.playbackPositionTicks)
       push(queueItem)
       playQueue()
     end if
-  else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
+  else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video" or itemType = "musicvideo"
     quickplay.video(itemNode)
     playQueue()
   else if itemType = "audio"
     quickplay.audio(itemNode)
-    playQueue()
-  else if itemType = "musicvideo"
-    quickplay.musicVideo(itemNode)
     playQueue()
   else if itemType = "photo"
     quickplay.photo(itemNode)
@@ -184,8 +283,8 @@ sub launchItem(itemNode as object)
     quickplay.program(itemNode)
     playQueue()
   else
-    ' All other types need API calls — delegate to QuickPlayTask.
-    launchQuickPlayAction({
+    ' All other types need API calls, so delegate to QuickPlayTask. Its start is open already.
+    runQuickPlayAction({
       action: itemType,
       id: itemNode.id,
       seriesId: itemNode.seriesId,
@@ -198,16 +297,23 @@ sub launchItem(itemNode as object)
   end if
 end sub
 
-' Run a QuickPlayTask for an async playback action and route its output to the queue. Used by
-' launchItem's async branch (item taps that expand into a queue) and by the ItemDetails
-' playAll / trailer / instant-mix / slideshow buttons. Owns the task on this node's render
-' thread. Clears the queue up front so the QuickPlayTask output (which appends via
-' pushToQueue / set) starts from empty.
+' Start playback of an async action (the details screen's Play all / trailer / instant mix, and
+' their deep links): opens its playback start, then runs the QuickPlayTask.
 sub launchQuickPlayAction(input as object)
-  ' A previous QuickPlayTask may still be in flight if the user re-pressed a play button before
-  ' it resolved (the spinner is up, but nothing blocks a second launch). Tear it down before
-  ' starting a new one so we never run two concurrent queue builds against the shared queue —
-  ' which would orphan the first task and double-seed the queue. Last press wins.
+  beginPlaybackStart("")
+  runQuickPlayAction(input)
+end sub
+
+' Run a QuickPlayTask for an async action and route its output to the queue. Used by
+' launchQuickPlayAction, launchItem's async branch (item taps that expand into a queue) and the
+' photo-album slideshow. Owns the task on this node's render thread. Clears the queue up front
+' so the QuickPlayTask output (which appends via pushToQueue / set) starts from empty.
+sub runQuickPlayAction(input as object)
+  ' A previous QuickPlayTask may still be in flight when a second launch arrives before it
+  ' resolved (a remote-control play; a press on the screen a start hides is held by
+  ' AppWaitHost). Tear it down before starting a new one so we never run two concurrent queue
+  ' builds against the shared queue, which would orphan the first task and double-seed the
+  ' queue. Last launch wins.
   cancelActiveQuickPlayTask()
   clear()
   resetShuffle()
@@ -227,14 +333,14 @@ sub cancelActiveQuickPlayTask()
   end if
 end sub
 
-' QuickPlayTask finished — build the queue from its output and play (ported from main.bs's
-' handleQuickPlayOutput). Photo output still pushes a PhotoDetails scene; that moves to the
-' /photo route in a later step.
+' QuickPlayTask finished: build the queue from its output and play (ported from main.bs's
+' handleQuickPlayOutput). Photo output routes the slideshow to the /photo view through
+' m.global.photoLaunchRequest.
 sub onQuickPlayTaskOutput(msg as object)
   ' Identity guard, not paranoia: a task can write its output and have the change event queued
-  ' to this thread just before a re-press runs cancelActiveQuickPlayTask() and swaps in a
+  ' to this thread right before a re-press runs cancelActiveQuickPlayTask() and swaps in a
   ' replacement. Roku documents unobserveField only as "removes the previously established
-  ' connections" — it says nothing about events already in flight. Without this we would read
+  ' connections"; it says nothing about events already in flight. Without this we would read
   ' the NEW task's still-empty output, take the empty branch, and tear the new task down.
   if not isValid(m.activeQuickPlayTask) then return
   if not m.activeQuickPlayTask.isSameNode(msg.getRoSGNode()) then return
@@ -244,7 +350,11 @@ sub onQuickPlayTaskOutput(msg as object)
   cancelActiveQuickPlayTask()
 
   if not isValid(output) or not isValidAndNotEmpty(output.items)
-    stopLoadingSpinner()
+    if isValid(output)
+      endQuickPlayWithNothing(output.kind, output.status)
+    else
+      endQuickPlayWithNothing(quickplayOutcome.KIND_PLAY, quickplayOutcome.STATUS_FAILED)
+    end if
     return
   end if
 
@@ -256,6 +366,8 @@ sub onQuickPlayTaskOutput(msg as object)
     if output.shuffle and getCount() > 1
       toggleShuffle()
     end if
+    ' After the shuffle, which decides what the first item is.
+    if output.startsFresh = true then startCurrentFresh()
     playQueue()
   else if output.action = "photo"
     ' Route the slideshow to the /photo view. QueueManager has no router chain, so signal via
@@ -269,6 +381,8 @@ sub onQuickPlayTaskOutput(msg as object)
       isRandom: m.photoAlbumShuffleMode = true
     }
     m.photoAlbumShuffleMode = false
+    ' A photo opens a viewer, not a play session: whatever wait was up ends here.
+    appWaits.done(m.playbackStart)
     stopLoadingSpinner()
   else if output.action = "trailer"
     if isValid(output.items[0]) and isValidAndNotEmpty(output.items[0].id)
@@ -276,18 +390,51 @@ sub onQuickPlayTaskOutput(msg as object)
       set(output.items)
       playQueue()
     else
-      stopLoadingSpinner()
+      ' Items came back, but not one the player can open.
+      endQuickPlayWithNothing(quickplayOutcome.KIND_TRAILER, quickplayOutcome.STATUS_FAILED)
     end if
   end if
 end sub
 
+' A QuickPlayTask found nothing to play. A playback start fails; a photo-album run, which has
+' no start and uses the plain spinner (launchPhotoAlbum), stops that spinner. Then the viewer
+' is told why (showNothingToPlay).
+'
+' @param {dynamic} kind - quickplayOutcome.KIND_*, from the Task's output
+' @param {dynamic} status - quickplayOutcome.STATUS_*, from the Task's output
+sub endQuickPlayWithNothing(kind as dynamic, status as dynamic)
+  if appWaits.isOpen(m.playbackStart)
+    failPendingPlaybackStart("nothing to play")
+  else
+    stopLoadingSpinner()
+  end if
+  showNothingToPlay(kind, status)
+end sub
+
+' Tells the viewer that a launch found nothing to play: try again when a read failed, nothing
+' there when every read answered, can't when nothing here builds it (quickplayOutcome). Only a
+' build whose output arrived gets here, and that means the viewer still waits on it. Back,
+' leaving the screen and a start's time limit end the start, which stops the Task
+' (onPlaybackStartEnded); a newer press of the same launcher stops its own Task first
+' (runQuickPlayAction, launchShuffle); and a slideshow's plain spinner holds the remote until
+' it ends. So none of those ever shows a message.
+'
+' @param {dynamic} kind - quickplayOutcome.KIND_*
+' @param {dynamic} status - quickplayOutcome.STATUS_*
+sub showNothingToPlay(kind as dynamic, status as dynamic)
+  key = quickplayOutcome.messageKey(kind, status)
+  if key = "" then return
+  displayToast(translate(key), quickplayOutcome.toastType(status))
+end sub
+
 ' Shuffle-play a Series / Season / Person via GetShuffleItemsTask (the API resolves the
 ' randomized item set off the render thread). Owns the task on this node. PhotoAlbum shuffle
-' does NOT come here — it launches a random slideshow through launchPhotoAlbum instead.
+' does not come here: it launches a random slideshow through launchPhotoAlbum instead.
 sub launchShuffle(input as object)
   ' A re-press before the first resolves would otherwise leave two tasks racing over the shared
   ' queue. Last press wins, as in launchQuickPlayAction.
   cancelActiveShuffleTask()
+  beginPlaybackStart("")
   m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
   m.shuffleTask.shuffleInput = input
   m.shuffleTask.observeField("shuffleItems", "onShuffleItemsLoaded")
@@ -303,17 +450,18 @@ sub cancelActiveShuffleTask()
   end if
 end sub
 
-' GetShuffleItemsTask finished — set the resolved items as the queue and play. The task
+' GetShuffleItemsTask finished: set the resolved items as the queue and play. The task
 ' already randomizes server-side; toggleShuffle applies the Fisher-Yates client shuffle on
 ' top when there's more than one item.
 sub onShuffleItemsLoaded(msg as object)
-  ' Same in-flight-event guard as onQuickPlayTaskOutput — see the rationale there. This is the
+  ' Same in-flight-event guard as onQuickPlayTaskOutput (see the rationale there). This is the
   ' residual half of the shuffle double-press bug: cancelActiveShuffleTask() in launchShuffle
   ' closes the common case, this closes the already-queued-event case.
   if not isValid(m.shuffleTask) then return
   if not m.shuffleTask.isSameNode(msg.getRoSGNode()) then return
 
   shuffleItems = m.shuffleTask.shuffleItems
+  status = m.shuffleTask.status
   cancelActiveShuffleTask()
 
   if isValid(shuffleItems) and shuffleItems.count() > 0
@@ -323,9 +471,12 @@ sub onShuffleItemsLoaded(msg as object)
     if shuffleItems.count() > 1
       toggleShuffle()
     end if
+    ' Nobody chose the first item to resume it.
+    startCurrentFresh()
     playQueue()
   else
-    stopLoadingSpinner()
+    failPendingPlaybackStart("nothing to shuffle")
+    showNothingToPlay(quickplayOutcome.KIND_SHUFFLE, status)
   end if
 end sub
 
@@ -334,13 +485,11 @@ end sub
 ' mode the onQuickPlayTaskOutput photo branch reads, then runs the loadPhotoAlbum task.
 sub launchPhotoAlbum(isRandom as boolean, id as string)
   m.photoAlbumShuffleMode = isRandom
-  launchQuickPlayAction({ action: "loadPhotoAlbum", id: id })
-end sub
-
-' Remove item at end of play queue
-sub pop()
-  m.queue.pop()
-  m.queueTypes.pop()
+  ' No playback start: a slideshow is not a play session, so it keeps the caller's plain spinner.
+  ' It replaces a start still pending, whose queue build runQuickPlayAction is about to stop.
+  ' Left open, that start would make endQuickPlayWithNothing take this run for a playback one.
+  failPendingPlaybackStart("replaced by a photo launch")
+  runQuickPlayAction({ action: "loadPhotoAlbum", id: id })
 end sub
 
 ' Return isPrerollActive status
@@ -357,6 +506,36 @@ end sub
 sub push(newItem)
   m.queue.push(newItem)
   m.queueTypes.push(getItemType(newItem))
+end sub
+
+' insertAfterCurrent: Put an item directly after the one playing, so the queue reaches it next.
+'
+' The Cinema Mode intro queues the item it plays in front of. Appending that copy to the END
+' plays the rest of the queue first: measured 2026-09-19 on 10.11, a Play All queue became
+' [e1, e2, e3, e4, e1] and the intro was followed by e2, with e1 played last. With one item
+' queued (every other intro path), the end IS the next slot, which is why it went unnoticed.
+'
+' @param newItem - the queue item to play next
+sub insertAfterCurrent(newItem)
+  index = m.position + 1
+  if index >= m.queue.count()
+    push(newItem)
+    return
+  end if
+
+  ' roArray has no insert-at-index, so rebuild both arrays in step.
+  queue = []
+  types = []
+  for i = 0 to m.queue.count() - 1
+    if i = index
+      queue.push(newItem)
+      types.push(getItemType(newItem))
+    end if
+    queue.push(m.queue[i])
+    types.push(m.queueTypes[i])
+  end for
+  m.queue = queue
+  m.queueTypes = types
 end sub
 
 ' Set the queue position
@@ -416,14 +595,15 @@ sub shuffleQueueItems()
   set(itemIDArray)
 end sub
 
-' Return the fitst item in the play queue
-function top()
-  return getItemByIndex(0)
-end function
-
 ' Replace play queue with passed array
 sub set(items)
+  ' set() replaces the contents (a shuffle toggle reorders through it), so the viewer's
+  ' version pick and the playing state stay; a new queue starts with clear(), which forgets them.
+  versionPreference = m.versionPreference
+  isPlaying = m.isPlaying
   clear()
+  m.versionPreference = versionPreference
+  m.isPlaying = isPlaying
   m.queue = items
   for each item in items
     m.queueTypes.push(getItemType(item))
@@ -431,12 +611,37 @@ sub set(items)
 end sub
 
 ' Set starting point for the current item in the queue
-sub setCurrentStartingPoint(positionTicks)
+'
+' @param positionTicks - where the current item starts
+' @param {boolean} isExact - true for a place the caller named (a position the player saved
+'                            before a reload), false for a saved resume position (see
+'                            nodeHelpers.setExactStart / setResumeStart)
+sub setCurrentStartingPoint(positionTicks, isExact = false as boolean)
   if getCount() = 0 then return
   if m.position < 0 or m.position >= getCount() then return
-  m.log.debug("setCurrentStartingPoint", "queuePosition", m.position, "ticks", positionTicks, "queueCount", getCount())
-  m.queue[m.position].startingPoint = positionTicks
+  ' Ticks as text: roku-log renders a LongInteger as an empty string.
+  ticksText = "invalid"
+  if isValid(positionTicks) then ticksText = positionTicks.toStr()
+  m.log.debug("setCurrentStartingPoint", "queuePosition", m.position, "ticks", ticksText, "isExact", isExact, "queueCount", getCount())
+  if isExact
+    nodeHelpers.setExactStart(m.queue[m.position], positionTicks)
+  else
+    nodeHelpers.setResumeStart(m.queue[m.position], positionTicks)
+  end if
 end sub
+
+' setVersionPreference: Record an explicit version pick for the rest of this queue: the details
+' screen's Video menu at launch, or a switch in the player. invalid forgets it.
+'
+' @param {dynamic} preference - from versionPick.preferenceFor()
+sub setVersionPreference(preference as dynamic)
+  m.versionPreference = preference
+end sub
+
+' getVersionPreference: The explicit version pick for this queue, or invalid when there is none.
+function getVersionPreference() as dynamic
+  return m.versionPreference
+end function
 
 ' getItemType: Returns the media type of the passed item
 '

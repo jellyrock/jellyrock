@@ -104,7 +104,7 @@ namespace tests
     function _()
       ' Produces description bottom at y=701 so the trackCluster sibling has 12px
       ' of breathing pad above and 18px below between description and buttons.
-      ' itemDetails.translation stays at [96, 775] — the animation reads
+      ' itemDetails.translation stays at [96, 775]: the animation reads
       ' itemInfoRows.boundingRect() at runtime, which adapts to the taller spacer.
       m.assertTrue(isValid(m.itemDetails.findNode("itemTracks")))
     end function

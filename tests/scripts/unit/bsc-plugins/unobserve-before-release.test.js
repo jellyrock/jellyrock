@@ -58,7 +58,7 @@ describe('unobserve-before-release — the hazard', () => {
     `,
     );
     expect(found).toHaveLength(1);
-    expect(found[0].severity).toBe(2); // Warning — the binding is inferred.
+    expect(found[0].severity).toBe(2); // Warning: the binding is inferred.
     expect(found[0].message).toContain('onDone()');
     expect(found[0].message).toContain('m.taskA');
   });
@@ -143,7 +143,7 @@ describe('unobserve-before-release — precision', () => {
   });
 
   it('ignores a released reference that is only READ or WRITTEN, never dotted into', () => {
-    // `x = m.gone` yields invalid and `m.gone = 1` replaces it. Neither throws —
+    // `x = m.gone` yields invalid and `m.gone = 1` replaces it. Neither throws:
     // only dotting INTO an invalid reference does.
     expect(
       run(
@@ -189,7 +189,7 @@ describe('unobserve-before-release — precision', () => {
   it("does not flag a handler that early-returns on the project's own teardown flag", () => {
     // VideoPlayerView.onPositionChanged's shape. `m.isDestroyed = true` runs
     // before anything is released, so the handler bails before it can
-    // dereference — flagging it would fire on already-correct code, and a
+    // dereference. Flagging it would fire on already-correct code, and a
     // warning that cries wolf is one somebody turns off.
     expect(
       run(
@@ -269,8 +269,8 @@ describe('unobserve-before-release — precision', () => {
   });
 
   it('keeps scoped and unscoped observers on separate lists', () => {
-    // Roku tracks them separately, so an unobserveField does not release an
-    // observeFieldScoped — pairing them here would report the wrong site.
+    // An unobserveField is not trusted to release an observeFieldScoped: pairing them
+    // here would report the wrong site.
     expect(
       run(
         'Scoped',
@@ -352,7 +352,7 @@ describe('unobserve-before-release — scope and escape hatches', () => {
 
   it('respects the bsc-disable-line escape hatch', () => {
     // build-and-tooling.md's suppression table claims all three markers for this
-    // rule, and that table exists because reaching for one a plugin does NOT
+    // rule, and that table exists because reaching for one a plugin does not
     // implement fails silently. So each claimed marker gets a test.
     expect(
       run(

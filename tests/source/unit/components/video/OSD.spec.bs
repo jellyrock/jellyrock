@@ -221,7 +221,8 @@ namespace tests
 
     @it("falls back to heuristic isMovie when TvChannel has no currentProgram")
     function _()
-      ' No currentProgram, no series metadata → fallback heuristic defaults to isMovie
+      ' No currentProgram and no series metadata, so the fallback heuristic defaults
+      ' to isMovie
       item = m.createItem({ id: "ch-3", type: "TvChannel" })
       m.osd.itemData = item
 

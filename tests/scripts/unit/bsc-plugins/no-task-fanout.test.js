@@ -8,12 +8,11 @@
 // epic #728 (`&h29` "too many task threads") actually took, in HomeRows'
 // per-library latest-media fan-out removed by PR #762.
 //
-// The interesting edge is that NOT every in-loop launch is a fan-out. The live
-// `HomeRows.startParallelLoads()` loops over `m.sectionPlan` and launches four
-// fixed `m.<field>` slots — the same node however many times the loop turns —
-// so the discriminator is the ARGUMENT, not the loop itself. Get that wrong in
-// either direction and the rule is useless: too loose and it misses #728, too
-// tight and it fails the codebase on day one.
+// The interesting edge is that not every in-loop launch is a fan-out. A loop
+// that launches a fixed `m.<field>` slot launches the same node however many
+// times it turns, so the discriminator is the ARGUMENT, not the loop itself. Get
+// that wrong in either direction and the rule is useless: too loose and it
+// misses #728, too tight and it flags bounded code nobody can fix.
 //
 // An `m.` path is only that same node while the loop leaves it alone, so the
 // exemption has a second half: a slot the body REBINDS is a fresh node per turn
@@ -26,7 +25,7 @@ import noTaskFanoutPlugin from '../../../../scripts/bsc-plugins/no-task-fanout.c
 
 const CODE = 'no-task-fanout';
 
-/** Runs the plugin over one component file and returns just its diagnostics. */
+/** Runs the plugin over one component file and returns only its diagnostics. */
 function check(source, path = 'components/Foo.bs') {
   return diagnosticsByCode(runPluginOnSource(noTaskFanoutPlugin, { [path]: source }), CODE);
 }
@@ -127,7 +126,7 @@ describe('no-task-fanout', () => {
     it('flags a fresh node parked in a stable m. slot each turn', () => {
       // The one-token escape from every other assertion in this block: hoist the
       // flagged local into an `m.` field and the stable-slot exemption applies,
-      // while the fan-out is untouched — nothing STOPs the previous node and the
+      // while the fan-out is untouched: nothing STOPs the previous node and the
       // loop never waits. The shape is idiomatic here (QueueManager and JRScene
       // both build Task nodes straight into an `m.` slot at a call site), which
       // is why the exemption has to ask whether the loop rebinds the slot.
@@ -144,8 +143,8 @@ describe('no-task-fanout', () => {
     });
 
     it('flags a rebind of a PARENT of the launched path', () => {
-      // `m.view = <fresh>` makes `m.view.task` a different node every turn just
-      // as surely as rebinding the leaf does, so the check walks prefixes.
+      // `m.view = <fresh>` makes `m.view.task` a different node every turn as
+      // surely as rebinding the leaf does, so the check walks prefixes.
       expect(
         check(`
           sub go()
@@ -159,7 +158,7 @@ describe('no-task-fanout', () => {
     });
 
     it('flags a rebind that happens AFTER the launch in the body', () => {
-      // Source order does not matter — the second turn launches a node the first
+      // Source order does not matter: the second turn launches a node the first
       // turn's tail rebound.
       expect(
         check(`
@@ -174,7 +173,7 @@ describe('no-task-fanout', () => {
     });
 
     it('flags a rebind nested inside an if', () => {
-      // The rebind is collected from the whole loop subtree, not just the body's
+      // The rebind is collected from the whole loop subtree, not only the body's
       // top-level statements.
       expect(
         check(`
@@ -226,9 +225,9 @@ describe('no-task-fanout', () => {
     });
 
     it('allows a sibling field write that is not the launched slot', () => {
-      // startParallelLoads() writes m.isLoadingResume in the same body it
-      // launches m.LoadContinueWatchingTask from. Matching too loosely here —
-      // "any m. write in the loop" — would fail the live codebase.
+      // A loading flag written beside the launch it guards, as HomeRows'
+      // section loads once did in this loop. Matching too loosely here ("any
+      // m. write in the loop") would flag every guarded launch.
       expect(
         check(`
           sub startParallelLoads()
@@ -258,7 +257,7 @@ describe('no-task-fanout', () => {
     });
 
     it('allows a rebind that sits OUTSIDE the loop', () => {
-      // Built once, launched many times against the same node — the shape the
+      // Built once, launched many times against the same node: the shape the
       // exemption exists for.
       expect(
         check(`
@@ -276,7 +275,7 @@ describe('no-task-fanout', () => {
   describe('rebind spelling 2 — a literal-key index', () => {
     // `m["loader"]` and `m.loader` are one field in BrightScript, so the check has
     // to read both spellings or mixing them across the write and the launch slips
-    // it. A COMPUTED key names nothing knowable and is deliberately not collected.
+    // it. A COMPUTED key names nothing knowable and is not collected, on purpose.
     it('flags a rebind spelled as a literal-key index, read back dotted', () => {
       // The two spellings name the same field, so a write in one and a launch
       // in the other is the same fan-out. Collected by `slotsAssignedIn`.
@@ -353,11 +352,11 @@ describe('no-task-fanout', () => {
 
   describe('rebind spelling 3 — a literal-AA setFields / addFields', () => {
     // The spelling with real precedent: `globals.bs` parks Task nodes with
-    // `m.global.addFields({ ... })`. The negative cases here are the load-bearing
-    // ones — each guards the FALSE-POSITIVE direction, which is the costlier one
+    // `m.global.addFields({ ... })`. The negative cases here are the ones that
+    // matter: each guards the FALSE-POSITIVE direction, which is the costlier one
     // for an Error-severity rule.
     it('flags a rebind through a literal-AA setFields', () => {
-      // The third write spelling, and the one with real precedent —
+      // The third write spelling, and the one with real precedent:
       // `globals.bs` parks Task nodes via addFields exactly this way.
       expect(
         check(`
@@ -430,7 +429,7 @@ describe('no-task-fanout', () => {
     it('does not treat an ordinary method taking an AA as a field write', () => {
       // Guards the setFields/addFields name filter. Without it ANY dotted call
       // with a literal AA would mark its keys rebound, turning correct code
-      // into a false positive — the costlier direction for a build error.
+      // into a false positive: the costlier direction for a build error.
       expect(
         check(`
           sub go()
@@ -488,9 +487,9 @@ describe('no-task-fanout', () => {
     it('yields one diagnostic for a site inside nested loops', () => {
       // The walk enters the body of every loop, so an inner call is reached
       // twice at an identical position (measured). This asserts the observable
-      // contract — one diagnostic per site — which is what a reader needs.
+      // contract (one diagnostic per site), which is what a reader needs.
       //
-      // It deliberately does NOT claim to cover the plugin's own dedup guard:
+      // It does not claim to cover the plugin's own dedup guard:
       // `diagnostics.register` collapses identical diagnostics too, so this
       // test passes with that guard removed. Verified by mutation rather than
       // assumed. The guard earns its place by not depending on undocumented
@@ -512,8 +511,8 @@ describe('no-task-fanout', () => {
   describe('what counts as a launch call', () => {
     it('flags a DOTTED launch call, so namespacing tasks.bs cannot silently disable the rule', () => {
       // `launchTask` is a free function today, so every call site is bare. If
-      // `source/utils/tasks.bs` is ever namespaced — an active convention here,
-      // 10 of 44 utils files — all 101 call sites become dotted in one commit.
+      // `source/utils/tasks.bs` is ever namespaced (an active convention among the
+      // utils files), all its call sites become dotted in one commit.
       // A bare-only match would then flag NOTHING, with the plugin still loading
       // and CI still green. `no-raw-run` keys on the `control` write, so it would
       // keep passing and only this bound would vanish.
@@ -529,10 +528,347 @@ describe('no-task-fanout', () => {
     });
   });
 
+  describe('through a same-file helper the loop calls — one hop', () => {
+    // A loop that calls a helper which launches is the same fan-out one call
+    // away. The helper's body is judged exactly as a loop body would be, and the
+    // diagnostic lands on the CALL in the loop, where the repetition is.
+
+    /** The 0-based line of the first line of `source` containing `needle`. */
+    const lineOf = (source, needle) => source.split('\n').findIndex((l) => l.includes(needle));
+
+    it('flags a loop call to a helper that parks a new node and launches it — the HomeRows shape', () => {
+      const source = `
+        sub startParallelLoads()
+          for each section in m.sectionPlan
+            if section.type = "resume" then startResumeLoad()
+          end for
+        end sub
+
+        sub startResumeLoad()
+          if m.isLoadingResume then return
+          m.resumeTask = replaceTask(m.resumeTask, "LoadItemsTask", "content", { itemsToLoad: "continue" })
+          m.isLoadingResume = launchTask(m.resumeTask)
+        end sub
+      `;
+      const diagnostics = check(source);
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].location.range.start.line).toBe(
+        lineOf(source, 'then startResumeLoad()'),
+      );
+      expect(diagnostics[0].message).toContain('startResumeLoad()');
+    });
+
+    it('flags a helper that launches a local it builds', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              loadOne()
+            end for
+          end sub
+
+          sub loadOne()
+            task = createObject("roSGNode", "LoadItemsTask")
+            launchTask(task)
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a helper launching a slot the LOOP rebinds', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.loader = createObject("roSGNode", "LoadItemsTask")
+              launchLoader()
+            end for
+          end sub
+
+          sub launchLoader()
+            launchTask(m.loader)
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('allows a helper launching a stable slot nothing rebinds', () => {
+      expect(
+        check(`
+          sub go()
+            for each section in m.sectionPlan
+              launchNextUp()
+            end for
+          end sub
+
+          sub launchNextUp()
+            launchTask(m.LoadNextUpTask)
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('flags a helper whose launch sits in a callback it registers — still one per call', () => {
+      // Deferred is not bounded: N calls register N callbacks, and each one
+      // launches. The direct rule walks into inline functions in a loop for the
+      // same reason.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              loadLater(lib)
+            end for
+          end sub
+
+          sub loadLater(lib)
+            promises.onThen(fetchSomething(lib), sub(result)
+              launchTask(createObject("roSGNode", "LoadItemsTask"))
+            end sub)
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('matches the helper name case-insensitively, as BrightScript does', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              LoadOne()
+            end for
+          end sub
+
+          sub loadOne()
+            launchTask(createObject("roSGNode", "LoadItemsTask"))
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('errs toward reporting when two functions share the bare name', () => {
+      // A namespaced function and a global one both answer to `loadOne` here;
+      // the rule does not resolve which a call reaches, so either fanning out
+      // flags the call, whichever order they are declared in.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              loadOne()
+            end for
+          end sub
+
+          namespace loaders
+            sub loadOne()
+              launchTask(createObject("roSGNode", "LoadItemsTask"))
+            end sub
+          end namespace
+
+          sub loadOne()
+            launchTask(m.LoadNextUpTask)
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('reports each call site once — two calls, two diagnostics; nested loops, still one each', () => {
+      expect(
+        check(`
+          sub go()
+            for each a in m.outer
+              for each b in a.inner
+                loadOne()
+              end for
+              loadOne()
+            end for
+          end sub
+
+          sub loadOne()
+            launchTask(createObject("roSGNode", "LoadItemsTask"))
+          end sub
+        `),
+      ).toHaveLength(2);
+    });
+
+    it('leaves a helper whose own launch sits in a loop to the direct report', () => {
+      // The helper's in-loop launch is already flagged where it is; flagging
+      // every caller too would report one fan-out twice.
+      const source = `
+        sub go()
+          for each lib in m.libs
+            loadAll()
+          end for
+        end sub
+
+        sub loadAll()
+          for each t in m.tasks
+            launchTask(t)
+          end for
+        end sub
+      `;
+      const diagnostics = check(source);
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].location.range.start.line).toBe(lineOf(source, 'launchTask(t)'));
+    });
+
+    it('leaves a helper that is not called from a loop alone', () => {
+      expect(
+        check(`
+          sub go()
+            loadOne()
+          end sub
+
+          sub loadOne()
+            launchTask(createObject("roSGNode", "LoadItemsTask"))
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    describe('stating the bound', () => {
+      it("honours the suppression on the HELPER's launch — the helper bounds itself", () => {
+        // The preferred place: the claim sits beside the guard it depends on,
+        // so deleting that guard means walking past it.
+        expect(
+          check(`
+            sub go()
+              for each section in m.sectionPlan
+                startResumeLoad()
+              end for
+            end sub
+
+            sub startResumeLoad()
+              if m.isLoadingResume then return
+              m.resumeTask = replaceTask(m.resumeTask, "LoadItemsTask", "content", {})
+              ' bsc-disable-next-line no-task-fanout one run at a time: the isLoadingResume guard above
+              m.isLoadingResume = launchTask(m.resumeTask)
+            end sub
+          `),
+        ).toHaveLength(0);
+      });
+
+      it("honours bsc-disable-line on the helper's launch too", () => {
+        expect(
+          check(`
+            sub go()
+              for each section in m.sectionPlan
+                startResumeLoad()
+              end for
+            end sub
+
+            sub startResumeLoad()
+              m.resumeTask = replaceTask(m.resumeTask, "LoadItemsTask", "content", {})
+              launchTask(m.resumeTask) ' bsc-disable-line no-task-fanout cancel-then-replace
+            end sub
+          `),
+        ).toHaveLength(0);
+      });
+
+      it('honours a suppression on the call site, the line it reports', () => {
+        expect(
+          check(`
+            sub go()
+              for each section in m.sectionPlan
+                ' bsc-disable-next-line no-task-fanout returns after the first match
+                startResumeLoad()
+              end for
+            end sub
+
+            sub startResumeLoad()
+              m.resumeTask = replaceTask(m.resumeTask, "LoadItemsTask", "content", {})
+              launchTask(m.resumeTask)
+            end sub
+          `),
+        ).toHaveLength(0);
+      });
+
+      it('still flags a helper when only ONE of its launches is suppressed', () => {
+        expect(
+          check(`
+            sub go()
+              for each section in m.sectionPlan
+                startBoth()
+              end for
+            end sub
+
+            sub startBoth()
+              m.a = replaceTask(m.a, "LoadItemsTask", "content", {})
+              ' bsc-disable-next-line no-task-fanout guarded
+              launchTask(m.a)
+              m.b = replaceTask(m.b, "LoadItemsTask", "content", {})
+              launchTask(m.b)
+            end sub
+          `),
+        ).toHaveLength(1);
+      });
+    });
+
+    describe('reach — gaps stated in the plugin, pinned so a change to them is deliberate', () => {
+      it('does not follow a second hop', () => {
+        expect(
+          check(`
+            sub go()
+              for each lib in m.libs
+                outer()
+              end for
+            end sub
+
+            sub outer()
+              inner()
+            end sub
+
+            sub inner()
+              launchTask(createObject("roSGNode", "LoadItemsTask"))
+            end sub
+          `),
+        ).toHaveLength(0);
+      });
+
+      it('does not follow a class method reached as m.helper()', () => {
+        expect(
+          check(`
+            class Loader
+              sub go()
+                for each lib in m.libs
+                  m.loadOne()
+                end for
+              end sub
+
+              sub loadOne()
+                launchTask(createObject("roSGNode", "LoadItemsTask"))
+              end sub
+            end class
+          `),
+        ).toHaveLength(0);
+      });
+
+      it('does not follow a helper declared in another file', () => {
+        const diagnostics = diagnosticsByCode(
+          runPluginOnSource(noTaskFanoutPlugin, {
+            'components/Foo.bs': `
+              sub go()
+                for each lib in m.libs
+                  loadOne()
+                end for
+              end sub
+            `,
+            'components/FooHelpers.bs': `
+              sub loadOne()
+                launchTask(createObject("roSGNode", "LoadItemsTask"))
+              end sub
+            `,
+          }),
+          CODE,
+        );
+        expect(diagnostics).toHaveLength(0);
+      });
+    });
+  });
+
   describe('what must NOT be flagged', () => {
-    it('allows a fixed m.<field> slot in a loop — the live HomeRows shape', () => {
-      // startParallelLoads() loops over m.sectionPlan and launches four
-      // singleton slots. Flagging this would fail the codebase on day one.
+    it('allows a fixed m.<field> slot in a loop', () => {
+      // One node per slot however many times the loop turns, so the count is
+      // bounded by the source, not the data. HomeRows' section loads had this
+      // shape until each moved into a helper that builds a new node per run.
       expect(
         check(`
           sub startParallelLoads()

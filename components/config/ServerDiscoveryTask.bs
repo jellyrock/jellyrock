@@ -46,7 +46,7 @@ end sub
 
 ' Fetch server IDs and names from /system/info/public for all discovered servers.
 ' All requests are fired in parallel on a shared port and collected within a 5s budget.
-' Also strips the URL scheme to produce originalUrl (e.g. "192.168.1.100:8096") so:
+' Also strips the URL scheme to produce originalUrl (for example, "192.168.1.100:8096") so:
 '   - users see clean URLs in the server picker (no "http://" prefix)
 '   - inferServerUrl() can re-probe the correct protocol on each connection,
 '     automatically picking up HTTPS if the server has been upgraded since last save
@@ -55,7 +55,7 @@ sub FetchServerIds()
 
   port = CreateObject("roMessagePort")
   identityToIndex = {}
-  transfers = [] ' hold refs — roUrlTransfer is GC'd if not kept in scope
+  transfers = [] ' hold refs: roUrlTransfer is GC'd if not kept in scope
 
   for i = 0 to m.servers.Count() - 1
     serverUrl = m.servers[i].baseUrl

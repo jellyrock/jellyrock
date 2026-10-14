@@ -7,7 +7,7 @@
          fixed offsets, and uses raw Roku RadiobuttonList / CheckList / Button
          rather than the app's own components. Suppressed rather than migrated
          because a three-mode options/sort/filter panel is its own piece of work,
-         not a dialog reskin — see tech-debt `itemgridoptions-hand-rolled-dialog`.
+         not a dialog reskin. See tech-debt `itemgridoptions-hand-rolled-dialog`.
          bsc-disable-next-line no-hand-rolled-dialog -->
     <Rectangle width="1920" height="1080" color="#000000" opacity="0.75" />
     <Group translation="[100,100]">

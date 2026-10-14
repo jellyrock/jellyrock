@@ -21,8 +21,8 @@
   <interface>
     <field id="itemsNode" type="node" />
     <field id="itemsArray" type="roArray" />
-    <field id="isSlideshow" type="bool" onChange="onIsSlideshowChanged" />
-    <field id="isRandom" type="bool" onChange="onIsRandomChanged" />
-    <field id="itemIndex" type="integer" value="-1" onChange="onItemContentChanged" />
+    <field id="isSlideshow" type="bool" />
+    <field id="isRandom" type="bool" />
+    <field id="itemIndex" type="integer" value="-1" />
   </interface>
 </component>

@@ -15,7 +15,7 @@ help:
 	@echo "  build-tests             build all tests (unit + integration)"
 	@echo "  build-tests-unit        build unit tests only"
 	@echo "  build-tests-integration build integration tests only"
-	@echo "  build-tdd               build in watch mode for TDD"
+	@echo "  build-tdd               build the TDD config (bsconfig-tdd.json)"
 	@echo "  format                  format brighscripts"
 	@echo "  lint                    lint code and documentation"
 	@echo "  make_images             generate branding images from SVGs"
@@ -33,7 +33,7 @@ help:
 
 ## development
 
-BUILT_PKG := out/$(notdir $(CURDIR)).zip
+BUILT_PKG := out/jellyrock.zip
 
 node_modules/: package-lock.json; npm ci
 
@@ -46,8 +46,8 @@ build-tests-unit: node_modules/; npm run build:tests-unit
 build-tests-integration: node_modules/; npm run build:tests-integration
 build-tdd: node_modules/; npm run build:tdd
 
-# default to build-dev if file doesn't exist
-$(BUILT_PKG):; $(MAKE) build-dev
+# default to build-dev + package if file doesn't exist
+$(BUILT_PKG):; $(MAKE) build-dev && npm run package
 
 .PHONY: format
 format: node_modules/; npm run format

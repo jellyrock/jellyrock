@@ -1,19 +1,19 @@
 name: test-scripts
 
 # Runs Vitest unit tests for the build/lint/codegen scripts under
-# scripts/. Tests cover BSC plugins (4 diagnostic-emitting + 2 smoke),
-# helper libs, doc validators, output generators, telemetry aggregator,
-# and a handful of external-system wrappers.
+# scripts/. Tests cover BSC plugins, helper libs, doc validators, output
+# generators, telemetry aggregator, and a handful of external-system
+# wrappers.
 #
 # Mirrors the pre-push hook's test step. CI is the safety net for
 # `--no-verify` and the per-PR mandatory gate for fork PRs (where
 # pre-push hooks don't fire).
 #
-# Tier 2 plugins (roku-log, translation-keys) get smoke coverage here;
-# their full transpile-output / virtual-file harnesses are deferred to
-# a follow-up — see tasks/todo/bsc-plugin-tier2-harness.md.
+# Tier 2 plugins (roku-log, translation-keys) have their own harnesses
+# under tests/scripts/unit/_helpers/: transpile-with-plugin.js for the
+# transpile output, run-plugin-with-temp-locale.js for the virtual file.
 # The two heaviest scripts (update-translations.cjs, changelog-syncer.js)
-# are also deferred — see tasks/todo/heavy-script-tests.md.
+# are tested here too.
 
 on:
   workflow_call:
@@ -27,6 +27,7 @@ on:
 jobs:
   vitest:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: detect
@@ -34,7 +35,7 @@ jobs:
         with:
           # Triggers when any JS source under scripts/ changes, when the
           # tests themselves change, or when the test config changes.
-          # We deliberately don't trigger on every JS/JSON change — the
+          # We don't trigger on every JS/JSON change, on purpose: the
           # tests focus on scripts/ and tests/scripts/, so unrelated JS edits
           # don't need re-running.
           # images/gradients/ is here because gradient-assets.test.js asserts
@@ -44,15 +45,38 @@ jobs:
           # reason: spellchecker-config.test.js asserts no invocation site
           # re-specifies a setting the shared config owns, and .lintstagedrc.cjs
           # is one of those sites. Without them a PR re-adding `-i` there alone
-          # skips the one gate that exists to catch it — which is precisely the
+          # skips the one gate that exists to catch it, which is precisely the
           # drift that gate was written for. See ci-path-filters-unverified.
           # dictionary.txt and dictionary-sentence-final.txt are here because
           # sentence-final-dictionary.test.js asserts the generated file is in
           # step with its source; a PR editing only dictionary.txt would
           # otherwise skip the test that exists to catch exactly that.
-          pattern: '^scripts/|^tests/scripts/|^images/gradients/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$|^dictionary(-sentence-final)?\.txt$'
+          # The icon + placeholder source and output trees are here because
+          # icons-build.test.js asserts the COMMITTED PNGs still match the
+          # generator, exactly as gradient-assets.test.js does for the ramps.
+          # This is icons:check's only CI home: `vitest / vitest` is a required
+          # context, so wiring the gate here makes it block a merge on the day
+          # it lands, with no branch-protection change. package-lock.json (above)
+          # is what makes it fire on a Renovate bump of sharp, the case that
+          # broke the check for three months.
+          # tests/rta/ is here for the same shape, and the whole tree rather than
+          # one file. Two gates in this job read it: lint:rta-capabilities reads
+          # the ODC capability inventory in tests/rta/CLAUDE.md, and
+          # lint:rta-waits counts the suite's waits across tests/rta/**. A PR
+          # adding a wait in a spec, or deleting an inventory row, would
+          # otherwise skip the only checks that notice. It also closes a
+          # pre-existing hole unrelated to either: tests/rta/lib/*.test.js are
+          # part of `npm run test:scripts`, so editing one used to skip the job
+          # that runs it. (This job is both gates' CI home because it is the
+          # nearest one that runs `npm ci`: lint:rta-capabilities reads the
+          # installed roku-test-automation client and skips when it is absent,
+          # and lint:rta-waits drives ESLint with the repo's own config.)
+          # .github/workflows/ is here because workflow-timeouts.test.js asserts
+          # every machine job sets timeout-minutes; a PR adding a workflow would
+          # otherwise skip the one test that checks it.
+          pattern: '^scripts/|^tests/scripts/|^\.github/workflows/|^tests/rta/|^images/gradients/|^resources/icons/|^images/icons/|^resources/placeholders/|^images/placeholders/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$|^dictionary(-sentence-final)?\.txt$|^eslint\.config\.js$'
           force: ${{ inputs.force }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.detect.outputs.relevant == 'true'
         with:
           node-version: 'lts/*'
@@ -61,3 +85,9 @@ jobs:
         run: npm ci
       - if: steps.detect.outputs.relevant == 'true'
         run: npm run test:scripts
+      - name: Validate the ODC capability inventory covers the installed client
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:rta-capabilities
+      - name: Validate the RTA wait inventory matches the suite
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:rta-waits

@@ -38,6 +38,13 @@ describe('endpoint extraction', () => {
     expect(ep.normalized).toBe('/items'); // trailing slash stripped for spec matching
   });
 
+  it('captures the method from listReq, the bare-array builder', () => {
+    const r = extractFromSource(fn('  return m.listReq("GET", buildURL("/Items/Latest", q))'));
+    const ep = findEndpoint(r, '/Items/Latest');
+    expect(ep).toBeTruthy();
+    expect(ep.methods).toEqual(['GET']);
+  });
+
   it('captures a Substitute() template and normalizes placeholders', () => {
     const r = extractFromSource(
       fn('  return m.validatedReq("GET", buildURL(Substitute("/Items/{0}", id), p))'),
@@ -51,6 +58,19 @@ describe('endpoint extraction', () => {
   it('adds a leading slash to paths written without one', () => {
     const r = extractFromSource(fn('  return buildURL(Substitute("Audio/{0}/Lyrics", id))'));
     expect(endpointPaths(r)).toContain('/Audio/{0}/Lyrics');
+  });
+
+  it('resolves a path variable assigned from a Substitute() template', () => {
+    const body = [
+      '  url = Substitute("Items/{0}/Images/{1}", id, version)',
+      '  fullURL = buildURL(url, params, serverURL)',
+      '  return fullURL',
+    ].join('\n');
+    const r = extractFromSource(fn(body));
+    const ep = findEndpoint(r, '/Items/{0}/Images/{1}');
+    expect(ep).toBeTruthy();
+    expect(ep.normalized).toBe('/items/{}/images/{}');
+    expect(r.unresolved).toHaveLength(0);
   });
 
   it('infers the method from an inline { method: "POST" } request AA', () => {
@@ -209,6 +229,24 @@ describe('request-field extraction', () => {
   });
 });
 
+describe('response-field files', () => {
+  // user.Login() is where production reads the UserDto's Configuration and Policy;
+  // without session.bs in the scan the manifest loses them (#1072).
+  it('reads the DTO fields user.Login() and server.Discover() read in session.bs', () => {
+    const fields = new Map(buildManifest('.').responseFields.map((r) => [r.name, r]));
+    for (const name of ['Configuration', 'Policy', 'AccessToken', 'ServerName']) {
+      expect(fields.get(name)?.sourceFiles, name).toContain('source/utils/session.bs');
+    }
+  });
+
+  it('skips the fields session.bs writes itself', () => {
+    const fields = new Set(buildManifest('.').responseFields.map((r) => r.name));
+    for (const name of ['Error', 'ErrorMessage', 'LastRunVersion']) {
+      expect(fields.has(name), name).toBe(false);
+    }
+  });
+});
+
 describe('buildManifest determinism', () => {
   it('produces sorted, stable output on the real repo (idempotent)', () => {
     const a = serializeManifest(buildManifest('.'));
@@ -217,7 +255,7 @@ describe('buildManifest determinism', () => {
     const m = JSON.parse(a);
     expect(m.endpoints.length).toBeGreaterThan(40);
     expect(m.responseFields.length).toBeGreaterThan(100);
-    // endpoints sorted by (normalized, path) via localeCompare — same comparator
+    // endpoints sorted by (normalized, path) via localeCompare: the same comparator
     // the generator uses.
     const cmp = (a, b) => a.normalized.localeCompare(b.normalized) || a.path.localeCompare(b.path);
     expect(m.endpoints).toEqual([...m.endpoints].sort(cmp));
@@ -235,6 +273,7 @@ describe('CLI --check drift gate', () => {
     dir = mkdtempSync(join(tmpdir(), 'jellyrock-api-manifest-'));
     mkdirSync(join(dir, 'source', 'api'), { recursive: true });
     mkdirSync(join(dir, 'source', 'data'), { recursive: true });
+    mkdirSync(join(dir, 'source', 'utils'), { recursive: true });
     mkdirSync(join(dir, 'docs', 'architecture'), { recursive: true });
     writeFileSync(
       join(dir, 'source', 'api', 'ApiClient.bs'),
@@ -249,6 +288,10 @@ describe('CLI --check drift gate', () => {
       join(dir, 'source', 'data', 'SessionDataTransformer.bs'),
       fn('  x = apiData.Name'),
     );
+    // Same: every RESPONSE_FIELD_FILES entry must exist, because the generator fails
+    // loudly on a missing one rather than quietly scanning less.
+    writeFileSync(join(dir, 'source', 'utils', 'people.bs'), fn('  x = person.Id'));
+    writeFileSync(join(dir, 'source', 'utils', 'session.bs'), fn('  x = userData.Policy'));
 
     const check1 = spawnScript(SCRIPT, ['--check', dir]);
     expect(check1.exitCode).toBe(1);

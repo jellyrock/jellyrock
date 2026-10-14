@@ -2,41 +2,236 @@
  * Low-level RTA step primitives shared by navigation, functional tests, and the
  * screenshot orchestrator. These drive the device through remote keypresses
  * (ecp) and read Scene Graph state (odc). `waitFor` / `waitFocused` poll real
- * node state and THROW on timeout — so they double as assertions: in a Vitest
+ * node state and THROW on timeout, so they double as assertions: in a Vitest
  * `it()` a thrown timeout fails the test with a descriptive message; don't wrap
  * them in `expect`.
  *
  * Node lookups use RTA's `#id` keyPath (a recursive findNode from the scene root).
  */
 import { ecp, odc } from 'roku-test-automation';
+import { recordRecovery } from '../../../scripts/run-record.js';
 import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
+import { auditSceneResolution, auditSceneResolutions } from './resolution.js';
+import {
+  HOME_ROW_LIST_IDS,
+  HOME_ROW_LIST_SUBTYPES,
+  focusIsInHomeContent,
+  homeListKeyPaths,
+} from './home-list.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const press = (key) => ecp.sendKeypress(key);
 export const hasChildren = (n) => typeof n === 'number' && n > 0;
 
+/**
+ * How long the next poll tick may sleep: one `interval`, or whatever is left of the budget,
+ * or 0 when the budget is spent and the caller should stop.
+ *
+ * ## Why this exists
+ *
+ * `waitFor` and `waitFocused` slept a FULL interval after deciding the tick had failed, and
+ * only then re-checked the loop condition, so a wait overshot its own stated `timeout` by up
+ * to one interval. `waitOsdUp`'s OSD gate is `timeout: 30000, interval: 2000`, so "30 s"
+ * could be 32 s, and a caller budgeting a chain of waits was budgeting against a number that
+ * was not the truth. It is also pure waste: the loop has already read, already failed the
+ * predicate, and the remaining budget cannot fit another read, so the sleep buys nothing and
+ * only delays the diagnosis.
+ *
+ * Found from the other end: `steps.test.js` cases passing `timeout: 1` still cost 500 ms
+ * each, the default interval, which made that file the slowest in `test:scripts`.
+ *
+ * ## Why this returns a DURATION rather than doing the sleeping
+ *
+ * The obvious shape was a `sleepWithinBudget()` that awaited internally, and
+ * `jellyrock-rta/sleep-budgeted` rejected it, correctly by its own rule, which counts a
+ * `sleep()` as a poll tick only when it is lexically inside a loop. Moving the tick into a
+ * helper hid it from that test and it read as a bare arbitrary wait. Returning the duration
+ * keeps the `await sleep(...)` in the loop where the rule can see it, and keeps the part
+ * that is actually subtle (the arithmetic) in one place. The alternative was an
+ * `eslint-disable`, which would have been routing around a gate this suite added on purpose.
+ *
+ * The two SETTLE loops (`waitRowsSettled`, `waitCellsQuiet`) do not use this, by design:
+ * their sleep sits at the TOP of the loop and IS the quiet window being measured, so
+ * truncating it would change what they detect rather than only when they give up.
+ */
+function nextTickMs(interval, deadline) {
+  return Math.max(0, Math.min(interval, deadline - Date.now()));
+}
+
+/**
+ * One single read, reporting WHY there is no value: `{ value, failed }`.
+ *
+ * `failed` is true only when the request itself did not complete: a transport error, or
+ * an ODC timeout (the client's default is 10 s, and nothing here overrides it). A keyPath
+ * the device answered about and did not find comes back `{ value: undefined, failed:
+ * false }`, because `processGetValueRequest` returns `found: false` for an unresolved
+ * keyPath and only errors on an unresolvable `base`. Those two are different on
+ * the wire, which is what makes this distinction reportable rather than guessed.
+ *
+ * Internal on purpose: the public readers below keep swallowing to `undefined`, which is
+ * the right contract for a poll. What this exists for is ATTRIBUTION at the timeout.
+ * See `waitFor`.
+ */
+async function readOnce(request) {
+  try {
+    const res = await odc.getValue(request);
+    return { value: res.found ? res.value : undefined, failed: false };
+  } catch {
+    return { value: undefined, failed: true };
+  }
+}
+
+const readScene = (keyPath) => readOnce({ base: 'scene', keyPath });
+const readActive = (keyPath) =>
+  readOnce({ base: 'global', keyPath: `activeRoutedView.${keyPath}` });
+
 /** Read a scene-rooted keyPath; returns the value or undefined if not present. */
 export async function getVal(keyPath) {
-  const res = await odc.getValue({ base: 'scene', keyPath }).catch(() => ({ found: false }));
-  return res.found ? res.value : undefined;
+  const { value } = await readScene(keyPath);
+  // A one-shot read is audited too, not only a wait's resolution: half the scene-rooted
+  // sites in the suite are `expect(await getVal(...))`, and an assertion reading the
+  // wrong node is the same defect as a gate doing it. `waitFor` does not come
+  // through here on its ticks (it holds `readScene` directly), so this cannot make a
+  // poll census once per tick.
+  await auditSceneResolution(keyPath);
+  return value;
 }
 
 /**
  * Like getVal, but scoped to the ACTIVE routed view (`m.global.activeRoutedView`)
- * rather than a recursive scene-root find. A view suspended under sgRouter's default
- * `suspendMode: "hide"` (Home, /settings, /photo, /audio) stays in the scene tree, so a
- * recursive `#id` lookup (getVal) can resolve to ITS node when ids aren't unique — e.g.
- * every ItemDetails has `#extrasGrid`, and several components declare `#options`.
+ * rather than a recursive scene-root find. A covered view stays in the scene tree,
+ * hidden (every route suspends with `"show"`; see JRScene.initRouter), so a
+ * recursive `#id` lookup (getVal) can resolve to ITS node when ids aren't unique: for
+ * example every ItemDetails has `#extrasGrid`, and several components declare `#options`.
  * Anchoring to activeRoutedView (the app's own "view the user is on", set on open/resume
  * by the JRScreen lifecycle) reads the node on the active screen. Use this for value
- * reads of ids that recur across views — it holds whichever suspendMode a route carries.
+ * reads of ids that recur across views. It holds whichever suspendMode a route carries.
  */
 export async function getActiveVal(keyPath) {
-  const res = await odc
-    .getValue({ base: 'global', keyPath: `activeRoutedView.${keyPath}` })
-    .catch(() => ({ found: false }));
-  return res.found ? res.value : undefined;
+  return (await readActive(keyPath)).value;
 }
+
+/**
+ * Like getVal, but rooted at `m.global`, for the app-wide fields a spec reads that belong to
+ * no screen, such as the RTA-only `rtaHeldRequests` (source/utils/globals.bs).
+ */
+export async function getGlobalVal(keyPath) {
+  return (await readOnce({ base: 'global', keyPath })).value;
+}
+
+/**
+ * The routed views a census shows: children of the router's `viewTarget` whose `visible`
+ * is not false. `null` when the census has no `viewTarget`. Pure, so it has tests that
+ * need no device.
+ *
+ * `visible`, not `opacity`: the screen swap hides a covered view by `visible`
+ * (`JRScreen.hideCovered`), and `opacity` belongs to `AppWaitHost`, which hides a screen
+ * that is still the active one while a playback start runs.
+ */
+export function showingRoutedViews(flatTree) {
+  const nodes = flatTree ?? [];
+  const target = nodes.find((n) => n.id === 'viewTarget');
+  if (!target) return null;
+  return nodes.filter((n) => n.parentRef === target.ref && n.visible !== false);
+}
+
+/**
+ * Throws unless exactly one routed view is showing. Call it once a screen has loaded.
+ *
+ * Every route suspends with `"show"`, so sgRouter leaves a covered view on screen and only
+ * `JRScene.onActiveRoutedViewChanged()` hides it, when the incoming view publishes itself as
+ * `activeRoutedView`. A view that never publishes (one that overrides `onViewOpen`, or does
+ * not extend `JRScreen`) would leave the screen it covers showing beneath it, and every gate
+ * that reads the active view would still pass. One census answers it, from the same call
+ * the resolution audit uses (`lib/resolution.js`).
+ */
+export async function assertOneScreenShowing(label) {
+  const census = await odc.storeNodeReferences({ nodeRefKey: 'screenSwap' });
+  const showing = showingRoutedViews(census?.flatTree);
+  if (showing?.length === 1) return;
+  const subtypes = showing ? showing.map((n) => n.subtype) : null;
+  throw await diagnosedError(
+    showing
+      ? `${label}: ${showing.length} routed views showing, expected 1 (${subtypes.join(', ')})`
+      : `${label}: no viewTarget in the scene`,
+    { kind: FAILURE_KINDS.SCREENS_STACKED, label, observed: { showing: subtypes } },
+  );
+}
+
+/**
+ * `readOnce`'s twin for Home's active row list: batch-read `suffix` off BOTH candidate ids
+ * and answer with whichever list is actually in the scene.
+ *
+ * Private, and non-auditing, for exactly the reason `readScene` is: `waitFor` holds this
+ * directly on every tick, and running a `storeNodeReferences` census per tick would turn a
+ * poll into a whole-tree walk. The public `readHomeList` below audits, like `getVal` does.
+ *
+ * `find` rather than an index because absence is the normal answer for one of the two: under
+ * the Home tab `#favoritesRows` resolves to nothing at all, and vice versa. If both ever
+ * answered, the first wins, but they cannot, because `onTabChanged` removes the outgoing
+ * list before building the incoming one.
+ */
+async function readHomeListOnce(suffix) {
+  try {
+    const values = await batchRead(homeListKeyPaths(suffix), (keyPath) => ({
+      base: 'scene',
+      keyPath,
+    }));
+    return { value: values.find((v) => v !== undefined), failed: false };
+  } catch {
+    return { value: undefined, failed: true };
+  }
+}
+
+/**
+ * Read `suffix` off Home's ACTIVE row list, whichever tab is selected. This is the reader to
+ * pass as `waitFor`'s `read` for anything below Home's rows.
+ *
+ * One device round trip, not two: both candidate keyPaths go in a single `getValues`, so this
+ * costs the same as the hardcoded single read it replaces (~5.4 ms on `.177`) and cannot be
+ * wrong about which list is live.
+ *
+ * Returns `undefined` while NEITHER list is in the tree (the window `waitHome`'s own docblock
+ * describes between launch and Home), which is the right answer for a poll: keep waiting. A
+ * caller that needs absence to be an ERROR should use `homeListId`, which names it.
+ */
+async function readHomeList(suffix) {
+  const { value } = await readHomeListOnce(suffix);
+  await auditSceneResolutions(homeListKeyPaths(suffix));
+  return value;
+}
+
+/**
+ * The readers a SCENE census actually describes.
+ *
+ * `waitFor` audits the keyPath it settled on, but that census walks from the scene ROOT,
+ * so it describes what the wait read only if the read was scene-rooted too. `getActiveVal`
+ * resolves under `m.global.activeRoutedView` SPECIFICALLY to dodge the cross-view id
+ * collisions this audit hunts for: every ItemDetails declares `#extrasGrid`, and every route
+ * suspends with `"show"` (`components/JRScene.bs`), so prior views stay in the tree during a
+ * drill-down. Censusing its keyPath would report an ambiguity that read was never exposed to.
+ *
+ * That is not cosmetic noise. A false AMBIGUOUS lands in the very false-alarm count
+ * `resolution.js` names as the bar for promoting this audit from report-only to a throw, so
+ * an audit that cries wolf about scoped reads would be measured as signal at exactly the
+ * moment that call is made.
+ *
+ * A reader not in this set gets no audit, which is the safe default: a census cannot
+ * be trusted to describe a read whose base it does not know. `readHomeList` is absent on
+ * purpose: it audits its OWN scene-rooted keyPaths (it is handed a suffix, not a keyPath).
+ */
+const SCENE_ROOTED_READS = new Set([getVal]);
+
+/**
+ * The attributing twin of each public reader, keyed BY the reader a caller passes as
+ * `read`. A custom reader is not in the map and gets no attribution: the wait
+ * behaves exactly as it did before.
+ */
+const ATTRIBUTING_READS = new Map([
+  [getVal, readScene],
+  [getActiveVal, readActive],
+  [readHomeList, readHomeListOnce],
+]);
 
 /**
  * `getActiveVal` for MANY keyPaths in one device round trip. Returns an array
@@ -45,16 +240,16 @@ export async function getActiveVal(keyPath) {
  *
  * ## Why batch at all
  *
- * ODC's `getValues` is a real batch — the on-device component loops the requests
+ * ODC's `getValues` is a real batch: the on-device component loops the requests
  * inside a SINGLE message (`processGetValuesRequest`), so N keyPaths cost one round
  * trip rather than N. `diagnostics.js` has used it since Phase 2; this is the same
  * mechanism made available to assertions.
  *
  * **Not for speed.** Measured on `.177`, 5 alternating rounds of 57 keyPaths: 57
  * sequential `getValue` calls take a median 303 ms and one batched `getValues` takes
- * 58 ms — so a round trip is ~5.4 ms and the whole saving is ~245 ms inside a ~20 s
+ * 58 ms, so a round trip is ~5.4 ms and the whole saving is ~245 ms inside a ~20 s
  * test. End-to-end that is invisible, and the before/after suite runs confirmed it
- * (19.87 s vs 20.24 s mean, n=3 each — no change, the batched arm nominally slower).
+ * (19.87 s vs 20.24 s mean, n=3 each: no change, the batched arm nominally slower).
  * Anyone reaching for this to make a suite faster is reading the wrong number.
  *
  * **For the observation WINDOW.** Those same figures say the thing that matters: a
@@ -62,25 +257,25 @@ export async function getActiveVal(keyPath) {
  * device, it is N observations spread over 303 ms, and a screen that is still
  * settling can differ between the first and the last. The field read at position 50
  * need not describe the same frame as the field read at position 1. Batching collapses
- * that window to 58 ms — the same class of fix as the north-star rule, applied to
+ * that window to 58 ms, the same class of fix as the north-star rule, applied to
  * reads instead of to input. `assertGenreRowsOwnTheirItems` went from 57 reads to 3
  * on exactly this reasoning (1 + 14 row titles + 14 child counts + 28 item titles,
  * against the demo server's 14 genres / 28 filed items). It scales with the fixture,
  * so a richer library widens the sequential window and leaves the batched one alone.
  *
- * ## Failure semantics — a dead batch is not a screen full of missing fields
+ * ## Failure semantics: a dead batch is not a screen full of missing fields
  *
  * The single-read form swallows to `undefined`, which is right for a POLL: callers
  * retry, and a persistent miss ends in a diagnosed timeout. It is wrong for a batch
  * feeding a one-shot assertion, because an ODC failure would make every keyPath read
- * `undefined` at once and the assertion would report "the screen has no rows" —
+ * `undefined` at once and the assertion would report "the screen has no rows",
  * a confident false statement about the app, which is the same defect
  * `lib/jellyfin.js` exists to not repeat one layer up.
  *
  * So this THROWS when the batch itself fails, and reports `undefined` only for a
- * keyPath the device answered about and did not find. Those are genuinely different
+ * keyPath the device answered about and did not find. Those are different
  * on the wire: `processGetValueRequest` returns `found: false` for an unresolved
- * keyPath and only errors on an unresolvable `base` — and every request in a single
+ * keyPath and only errors on an unresolvable `base`, and every request in a single
  * call shares one `base`, so a per-key miss cannot masquerade as a batch failure or
  * vice versa. That holds for the scene-rooted `getVals` below on the same reasoning.
  */
@@ -92,18 +287,20 @@ export async function getActiveVals(keyPaths) {
 }
 
 /**
- * `getVal` for MANY keyPaths in one device round trip — the SCENE-ROOTED twin of
+ * `getVal` for MANY keyPaths in one device round trip: the SCENE-ROOTED twin of
  * `getActiveVals`, with identical failure semantics.
  *
  * Exists because the observation-window argument above is not about which base a read
- * uses. `#homeRows` is deliberately scene-rooted (Home is not the active view once a
- * drill-down opens), and the fields worth reading off it — a row's child count and the
- * list's focused index — are exactly the pair that a mid-flight `populateRowFromData`
+ * uses. `#homeRows` is scene-rooted on purpose (Home is not the active view once a
+ * drill-down opens), and the fields worth reading off it (a row's child count and the
+ * list's focused index) are exactly the pair that a mid-flight `populateRowFromData`
  * changes together. Read sequentially, the two can straddle that mutation and describe
  * different frames, which is the failure the reader would be trying to diagnose.
  */
 export async function getVals(keyPaths) {
-  return batchRead(keyPaths, (keyPath) => ({ base: 'scene', keyPath }));
+  const values = await batchRead(keyPaths, (keyPath) => ({ base: 'scene', keyPath }));
+  await auditSceneResolutions(keyPaths);
+  return values;
 }
 
 async function batchRead(keyPaths, toRequest) {
@@ -124,7 +321,7 @@ async function batchRead(keyPaths, toRequest) {
 
 /**
  * Poll `keyPath` until `predicate(value)` is true, optionally re-issuing
- * `action` (e.g. a key press) each tick. Throws on timeout so a broken nav/test
+ * `action` (for example a key press) each tick. Throws on timeout so a broken nav/test
  * fails loudly instead of silently proceeding. `read` selects the reader (default
  * scene-rooted getVal); pass getActiveVal to scope the poll to the active routed view.
  *
@@ -134,42 +331,100 @@ async function batchRead(keyPaths, toRequest) {
  * produce the same "timed out waiting for X" otherwise, and telling those apart
  * after the fact costs hours.
  *
+ * **A failing READ is counted the same way, and for the same reason.** `getVal` /
+ * `getActiveVal` swallow a transport failure to `undefined` (correct for a poll, since
+ * the loop retries) but that leaves a device that stopped answering indistinguishable
+ * from a field the app never set: both report `last=undefined`. That ambiguity is not
+ * hypothetical; it is what
+ * [#785](https://github.com/jellyrock/jellyrock/issues/785) recorded as
+ * *"`last=undefined` ODC reads in different specs each run"* and could not attribute.
+ * The per-tick swallow is unchanged, so nothing about the success path moves.
+ *
  * On timeout the throw carries a dump of what the device actually looked like
- * (see [`diagnostics.js`](diagnostics.js)) — the poll loop itself is untouched,
+ * (see [`diagnostics.js`](diagnostics.js)). The poll loop itself is untouched,
  * so this costs nothing on the success path.
+ *
+ * **`kind` names the flake-baseline bucket the timeout aggregates under**, and defaults
+ * to `WAIT_FOR_TIMEOUT`. It exists so a wait that already HAS its own failure class can
+ * route through this loop without dissolving into that default. `FAILURE_KINDS`' own
+ * docblock names the hazard: one name for two classes MERGES the count, and it reads a
+ * copy-pasted entry as the way that happens, but converting a hand-rolled poll loop to
+ * `waitFor` does it as effectively, and with nothing in the diff to show for it.
+ * `waitGridLoaded` ([`nav.js`](nav.js)) is the case this was added for: a grid that never
+ * finishes loading and a wait that timed out on any other field are different failures
+ * with different fixes, and the baseline can only tell them apart if the slug survives
+ * the conversion.
+ *
+ * Pass a `FAILURE_KINDS` member, never a literal. An unregistered slug is not corrected
+ * here: `diagnosedError` records it as `kindUnknown` and the run summary reports it,
+ * which is the guard against the opposite error (two names for one class, SPLITTING the
+ * count).
  */
 export async function waitFor(
   keyPath,
   predicate,
-  { timeout = 30000, interval = 500, action, label, read = getVal, observed } = {},
+  {
+    timeout = 30000,
+    interval = 500,
+    action,
+    label,
+    read = getVal,
+    observed,
+    kind = FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+  } = {},
 ) {
   const start = Date.now();
   let last;
   let actionErrors = 0;
+  let readErrors = 0;
+  const attributingRead = ATTRIBUTING_READS.get(read);
   while (Date.now() - start < timeout) {
     if (action) await action().catch(() => actionErrors++);
-    last = await read(keyPath);
-    if (predicate(last)) return last;
-    await sleep(interval);
+    if (attributingRead) {
+      const r = await attributingRead(keyPath);
+      if (r.failed) readErrors++;
+      last = r.value;
+    } else {
+      last = await read(keyPath);
+    }
+    if (predicate(last)) {
+      // The wait PASSED, which is the only moment a vacuous pass can be caught, and the
+      // reason this is here rather than beside the throw below. Report-only and awaited:
+      // it cannot fail the wait (see `resolution.js`), and letting it run after the
+      // return would race the next step's presses against the census it is reading.
+      //
+      // Gated on the READER, because a scene census only describes a scene-rooted read.
+      // See `SCENE_ROOTED_READS`.
+      if (SCENE_ROOTED_READS.has(read)) await auditSceneResolution(keyPath, { label });
+      return last;
+    }
+    const tick = nextTickMs(interval, start + timeout);
+    if (!tick) break;
+    await sleep(tick);
   }
   throw await diagnosedError(
     `nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})` +
-      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+      (actionErrors
+        ? ` — ${actionErrors} action(s) threw; input may not have been delivered`
+        : '') +
+      (readErrors
+        ? ` — ${readErrors} read(s) did not complete; the device may have stopped answering`
+        : ''),
     {
-      kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+      kind,
       label: label || keyPath,
       waitedMs: Date.now() - start,
       // The caller's own context, merged over the loop's. `tests/rta/CLAUDE.md` already
-      // prefers "passing state the loop ALREADY read as `observed`" — this is the same
+      // prefers "passing state the loop ALREADY read as `observed`". This is the same
       // idea for state only the CALLER has: what it was standing on when it acted, or a
       // reading that only makes sense to take once the wait has given up.
       //
       // A function is awaited HERE, on the failure path, so a caller can attach a device
-      // read without paying for it on every successful wait — the same rule
+      // read without paying for it on every successful wait. It is the same rule
       // `diagnosedError` follows for its own dump. It must not be able to replace the
       // failure with its own: a throwing or slow reader loses its contribution and the
       // timeout still reports.
-      observed: { keyPath, last, actionErrors, ...(await resolveObserved(observed)) },
+      observed: { keyPath, last, actionErrors, readErrors, ...(await resolveObserved(observed)) },
     },
   );
 }
@@ -187,7 +442,7 @@ async function resolveObserved(observed) {
 
 /**
  * Poll the focused node until `predicate({node, keyPath})` is true, optionally
- * re-issuing `action` (e.g. a keypress) each tick to walk focus toward a target.
+ * re-issuing `action` (for example a keypress) each tick to walk focus toward a target.
  * Mirrors `waitFor`'s action hook; throws on timeout. Guard the action against
  * overshoot (only press while not yet on target) since focus has no index to clamp.
  */
@@ -198,42 +453,107 @@ export async function waitFocused(
   const start = Date.now();
   let last;
   let actionErrors = 0;
+  let readErrors = 0;
   while (Date.now() - start < timeout) {
     if (action) await action().catch(() => actionErrors++);
-    const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+    // Counted for the same reason `waitFor` counts its reads: a device that stopped
+    // answering and a focus that never arrived both leave `last=undefined@undefined`.
+    let f = null;
+    try {
+      f = await odc.getFocusedNode({ includeNode: true });
+    } catch {
+      readErrors++;
+    }
     last = `${f?.node?.subtype}@${f?.keyPath}`;
     if (f && predicate(f)) return f;
-    await sleep(interval);
+    const tick = nextTickMs(interval, start + timeout);
+    if (!tick) break;
+    await sleep(tick);
   }
   throw await diagnosedError(
     `nav timed out waiting for focus (${label || 'predicate'}); last=${last}` +
-      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+      (actionErrors
+        ? ` — ${actionErrors} action(s) threw; input may not have been delivered`
+        : '') +
+      (readErrors
+        ? ` — ${readErrors} read(s) did not complete; the device may have stopped answering`
+        : ''),
     {
       kind: FAILURE_KINDS.WAIT_FOCUSED_TIMEOUT,
       label: label || 'predicate',
       waitedMs: Date.now() - start,
-      observed: { last, actionErrors },
+      observed: { last, actionErrors, readErrors },
     },
   );
 }
 
 /**
- * Wait until focus is INSIDE the container with id `containerId` (e.g. `#itemGrid`).
+ * Is the node with id `containerId` in the focused node's ancestry (or the focused node
+ * itself)? The ONE place that answers "is focus inside X", so every gate agrees.
+ *
+ * ## Why a whole SEGMENT and not a substring
+ *
+ * RTA builds the keyPath one segment per ancestor (`"#" + node.id` while the id is
+ * non-empty, the child INDEX otherwise) and joins them with `.`
+ * (`processGetFocusedNodeRequest` in `RTA_OnDeviceComponent.brs`). So an id always
+ * occupies a whole segment, which makes a segment test EXACTLY "this node is in the
+ * focus chain" and a substring test strictly weaker: `#options` is a substring of
+ * `#optionsPanelOverlay` (the reparenting host in `components/JRScene.xml`), so the
+ * grid-options gate could report the dialog focused for focus anywhere in that overlay.
+ *
+ * That is the north-star failure mode, succeeding EARLY, and it has no failure of its
+ * own to notice: the gate passes, the next step acts against a screen that is not there
+ * yet, and whatever times out afterwards gets the blame. A prefix collision is also
+ * invisible to review, because it is introduced by NAMING a node, not by touching a test.
+ *
+ * ## The `#` is normalised, not required
+ *
+ * `dialogs.spec.js` asks for `jrDialog` without one. Rejecting that would trade a silent
+ * over-match for a silent under-match: the same class of bug, failing the other way.
+ *
+ * Ids containing a `.` would break the split; the app has none, and one would break RTA's
+ * own keyPath addressing long before it reached here.
+ *
+ * @param {unknown} keyPath the focused node's `keyPath`, however it was read
+ * @param {string} containerId the container's id, with or without a leading `#`
+ */
+export function focusIsInside(keyPath, containerId) {
+  const want = containerId.startsWith('#') ? containerId : `#${containerId}`;
+  return typeof keyPath === 'string' && keyPath.split('.').includes(want);
+}
+
+/**
+ * Wait until focus is INSIDE the container with id `containerId` (for example `#itemGrid`).
  *
  * The precondition for walking any focus-driven list: `rowItemFocused` / `itemFocused`
  * RETAIN their last value while the list does not hold focus, so a walk started too
- * early reads a stale index forever and sends its presses to whatever does hold focus —
+ * early reads a stale index forever and sends its presses to whatever does hold focus,
  * then times out blaming the list. "Loaded" is not "focused". Named rather than
  * hand-rolled at each call site so its ABSENCE is visible in review.
  *
- * No key presses on purpose: focus arrives on its own once the view settles, and
- * pressing at a component we have not located yet is the mistake this guards against.
+ * No key presses of its OWN on purpose: focus arrives once the view settles, and pressing
+ * at a component we have not located yet is the mistake this guards against. `action` is
+ * for the separate case where a press already sent may have been SWALLOWED. Pass
+ * `resendIfSwallowed` / `resendUntilFocusInside`, which sit out the first tick and stop
+ * once focus lands.
+ *
+ * `label` overrides the default so a call site can name the thing it is waiting for
+ * ("grid options dialog") rather than the container it happens to live in; the timeout
+ * message is the first thing read when this fails.
+ *
+ * ⚠️ **The defaults here are not `waitFocused`'s** (15000/500). They are
+ * tighter. A site moved over from a bare `waitFocused` must therefore state the cadence it
+ * already had, or it silently starts polling the device more often than anyone chose.
  */
-export async function waitFocusInside(containerId, { timeout = 12000, interval = 300 } = {}) {
-  return waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes(containerId), {
+export async function waitFocusInside(
+  containerId,
+  { timeout = 12000, interval = 300, label, action } = {},
+) {
+  return waitFocused((f) => focusIsInside(f.keyPath, containerId), {
     timeout,
     interval,
-    label: `focus inside ${containerId}`,
+    action,
+    label: label || `focus inside ${containerId}`,
   });
 }
 
@@ -245,8 +565,8 @@ export async function waitFocusInside(containerId, { timeout = 12000, interval =
  *
  * `sgrouter_showView`'s `finally` restores focus BEFORE it dispatches `NavigationEnd`, so
  * a key sent the instant focus lands can arrive while the router still reports itself
- * navigating — `_goBack` rejects it and `JRScene`'s back arbiter swallows it. The key is
- * then simply gone: no error, no retry, and whatever wait follows times out blaming the
+ * navigating: `_goBack` rejects it and `JRScene`'s back arbiter swallows it. The key is
+ * then gone: no error, no retry, and whatever wait follows times out blaming the
  * component it was watching rather than the input that never arrived. Measured twice on
  * `.178` (2026-08-15): `focus.spec`'s second Back, and `navHomeReturn`'s OK on detail 1,
  * the latter at roughly 1 run in 6.
@@ -256,18 +576,18 @@ export async function waitFocusInside(containerId, { timeout = 12000, interval =
  * Focus still being INSIDE `containerId` means nothing navigated away, so the press did
  * not take. That same test is what makes the retry safe against overshoot: once the press
  * lands, focus has left the container and this stops pressing, so it cannot double-press
- * into whatever just opened — the hazard `tests/rta/CLAUDE.md` warns about.
+ * into whatever opened a moment ago, the hazard `tests/rta/CLAUDE.md` warns about.
  *
  * ## Why it sits out the first tick
  *
  * `waitFor` / `waitFocused` invoke `action` BEFORE their first read, and any caller of
- * this has just pressed. Re-sending there would fire within milliseconds of the original,
- * before the app could possibly have answered — a double-press at exactly the moment a
+ * this has already pressed. Re-sending there would fire within milliseconds of the original,
+ * before the app could possibly have answered: a double-press at exactly the moment a
  * screen is mounting. Sitting out one tick spends the poll interval as the "did it land?"
  * window instead.
  *
  * This is also why the skip lives HERE rather than in `waitFor`: an eager first action is
- * *correct* for the focus WALKS (`focusGridTile`, `findHomeLibraryTile`, `focusOverhangIcon`),
+ * *correct* for the focus WALKS (`findHomeLibraryTile`, `focusOverhangIcon`),
  * which want to start moving immediately. Only a resend needs to wait and see.
  *
  * @param {string} key - an `ecp.Key` value to re-send
@@ -276,13 +596,29 @@ export async function waitFocusInside(containerId, { timeout = 12000, interval =
  */
 export function resendIfSwallowed(key, containerId) {
   let ticked = false;
+  let resends = 0;
   return async () => {
     if (!ticked) {
       ticked = true;
       return;
     }
     const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-    if (typeof focused?.keyPath === 'string' && focused.keyPath.includes(containerId)) {
+    if (focusIsInside(focused?.keyPath, containerId)) {
+      resends += 1;
+      // RECORDED, not merely re-sent: the argument `navLibraryByType` already makes where
+      // it calls `recordRecovery`, applied to the guard that recovers most often. A harness
+      // that quietly recovers masks the regression a run exists to catch, and a silent
+      // success is indistinguishable in the record from the event never happening. Until
+      // this was recorded, nothing could answer the two questions this guard raises: how
+      // often is a press actually swallowed, and does re-sending it help?
+      recordRecovery({
+        at: new Date().toISOString(),
+        what: `swallowed ${key} at ${containerId}`,
+        detail:
+          `focus was still inside ${containerId} a full tick after ${key} was sent, so the ` +
+          `press was swallowed and has been re-sent (resend ${resends} within this wait).`,
+        observed: { key, containerId, resends, keyPath: focused?.keyPath ?? null },
+      });
       await press(key);
     }
   };
@@ -291,7 +627,7 @@ export function resendIfSwallowed(key, containerId) {
 /**
  * `resendIfSwallowed` inverted: re-send `key` until focus ARRIVES inside `containerId`.
  *
- * Same failure, same first-tick skip, same overshoot guard — the difference is only which
+ * Same failure, same first-tick skip, same overshoot guard. The difference is only which
  * end of the move is nameable. `resendIfSwallowed` needs to know the container being left,
  * which a caller returning to a KNOWN screen from an unknown one cannot supply: a wrong
  * library grid may be an `#itemGrid` or the Genres `RowList`, and naming the wrong one
@@ -300,7 +636,7 @@ export function resendIfSwallowed(key, containerId) {
  *
  * The overshoot guard still holds and matters more here, because over-pressing Back on
  * Home raises the exit-confirm dialog: once focus is inside `containerId` this stops
- * pressing, and an ABSENT keyPath sends nothing rather than guessing — the same rule
+ * pressing, and an ABSENT keyPath sends nothing rather than guessing: the same rule
  * `walkHomeToFirstRow` follows, for the same reason.
  *
  * @param {string} key - an `ecp.Key` value to re-send
@@ -308,6 +644,23 @@ export function resendIfSwallowed(key, containerId) {
  * @returns {() => Promise<void>} a fresh, single-use action (it carries per-wait state)
  */
 export function resendUntilFocusInside(key, containerId) {
+  return resendUntilFocused(key, (f) => focusIsInside(f.keyPath, containerId));
+}
+
+/**
+ * `resendUntilFocusInside` with the destination given as a PREDICATE rather than an id.
+ *
+ * Exists because not every destination is nameable by id: Home's content is whichever of
+ * `HomeRows` / `FavoritesRows` the selected tab put in the scene, so the arrival test is
+ * `focusIsInHomeContent`, not a container id. Everything else is unchanged and shared rather
+ * than copied: the first-tick skip, and the rule that an unreadable focus sends nothing
+ * rather than guessing, which is what keeps an over-press off Home's exit-confirm dialog.
+ *
+ * @param {string} key - an `ecp.Key` value to re-send
+ * @param {(focused: object) => boolean} arrived - true once focus is where it belongs
+ * @returns {() => Promise<void>} a fresh, single-use action (it carries per-wait state)
+ */
+export function resendUntilFocused(key, arrived) {
   let ticked = false;
   return async () => {
     if (!ticked) {
@@ -316,12 +669,337 @@ export function resendUntilFocusInside(key, containerId) {
     }
     const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
     if (typeof focused?.keyPath !== 'string') return;
-    if (!focused.keyPath.includes(containerId)) await press(key);
+    if (!arrived(focused)) await press(key);
   };
 }
 
 /**
- * Home is ready once HomeRows has rendered its content — but only once the app is PAST
+ * An `action` for `waitFocused` / `waitFocusInside` that WALKS focus to `containerId`
+ * by pressing `key` until it arrives: the app's own navigation, rather than
+ * `odc.focusNode`.
+ *
+ * ## Why this exists instead of a teleport
+ *
+ * `focusNode` sets focus directly on the device, which skips the key handler that would
+ * have moved it, so a spec can arrange a state the remote cannot actually reach and
+ * still pass. Walking presses the same keys a viewer does, which means the ladder itself
+ * is covered rather than bypassed. See the "Focus is walked, never teleported" section of
+ * `tests/rta/CLAUDE.md`; `jellyrock-rta`'s `no-restricted-syntax` ban is what keeps it that way.
+ *
+ * ## Eager, unlike the two `resend*` actions beside it
+ *
+ * Those sit out the first tick because their caller has ALREADY pressed and needs a
+ * window to see whether it landed. This one has pressed nothing, so waiting a tick
+ * would only add an interval of latency to every walk. Same distinction
+ * `resendIfSwallowed` documents for `focusOverhangIcon`.
+ *
+ * ## The guard is the overshoot protection
+ *
+ * It presses only while focus is not yet inside, so arriving stops the walk and it
+ * cannot press on into whatever the target opens. An unreadable keyPath sends nothing
+ * rather than guessing: the rule `walkHomeToFirstRow` and `resendUntilFocusInside`
+ * already follow, for the same reason.
+ *
+ * The containment test goes through `focusIsInside` rather than a hand-rolled
+ * `keyPath.includes(...)`, which is the whole point of having one predicate: substring
+ * matching reports `#options` as inside `#optionsPanelOverlay`, and consolidating those
+ * sites was its own phase of work. A third copy here would walk it straight back.
+ *
+ * **Presses cost real time.** A walk needs one tick per rung of the ladder, so a call
+ * site converted from a teleport must budget for the presses rather than inherit the
+ * timeout an instant `focusNode` was happy with.
+ *
+ * @param {string} key - an `ecp.Key` value to press until focus arrives
+ * @param {string} containerId - `#id` of the container focus should end up INSIDE
+ * @returns {() => Promise<void>} an action for the wait's `action` option
+ */
+export function walkFocusInto(key, containerId) {
+  return walkFocusUntil(key, (f) => focusIsInside(f.keyPath, containerId));
+}
+
+/**
+ * `walkFocusInto` with the destination as a PREDICATE, and (the part that matters) with
+ * an ORIGIN gate: it presses only while focus is still inside the view the router says is
+ * active.
+ *
+ * ## Why the destination test alone is not enough
+ *
+ * A walk written as *"press until focus is X"* presses wherever focus actually is. That is
+ * fine while focus is on the screen the walk belongs to, and it is a bug the moment focus
+ * is anywhere else: the walk cannot reach X by pressing at a different screen, so it spends
+ * its whole budget driving a screen nobody asked it to touch, and then blames X.
+ *
+ * **Measured, not reasoned.** `.177`, 2026-09-09 13:15 UTC: `navSearch`'s off-keyboard walk
+ * timed out after 12.4 s with `view=SearchResults` (`#269f4e88…`) but focus on **Home's**
+ * row list, inside the suspended Home (`#routerOutlet.#viewTarget.#c0d84208….#homeRows`).
+ * `actionErrors: 0`, `readErrors: 0`, so ~34 Right presses were DELIVERED, every one of
+ * them to whatever held focus on a screen the walk was not on.
+ *
+ * ## The gate is the ACTIVE ROUTED VIEW, not a container id
+ *
+ * `m.global.activeRoutedView` is the app's own statement of which screen the user is on,
+ * and comparing focus against its `id` is what separates the two cases: focus at
+ * `#c0d84208…` while the active view is `#269f4e88…` is not "focus has not arrived yet",
+ * it is "focus is on another screen". A container id cannot express that: `#searchSelect`
+ * is equally absent from Home whether the walk is one press away or on the wrong screen
+ * entirely.
+ *
+ * An UNREADABLE view id sends nothing, the same rule `walkHomeToFirstRow` and
+ * `resendUntilFocused` follow for an unreadable focus: a walk that cannot establish where
+ * it is must not press. The cost of that is one extra ODC read per tick (~5 ms against a
+ * 350 ms interval); the cost of not doing it is measured above.
+ *
+ * ## ⚠️ What this is not
+ *
+ * **It does not explain why focus left the search view, and it is not known to fix that
+ * run.** Two mechanisms were proposed for the 2026-09-09 failure and BOTH were disproved
+ * rather than left hanging: a stale suspended `SearchResults` satisfying the results gate
+ * was impossible, because `/search` was then routed `suspendMode: "detach"`
+ * (`components/JRScene.bs`) so a covered SearchResults left the tree entirely (since
+ * 2026-10-07 every route suspends with "show", so a covered view stays in the tree, hidden;
+ * see docs/architecture/navigation.md "The screen swap"); and the
+ * dump's `rowItemFocused: [0,1]` is not evidence the walk moved Home's index, because
+ * `rowItemFocused` retains its last value while a list is unfocused, the very property
+ * `scrollFocus` is written around.
+ *
+ * What is left is narrow and solid: presses were delivered to a screen the walk was not on.
+ * This stops that, and `recordRecovery` below is what turns the NEXT occurrence into an
+ * answer: the record names the active view, where focus actually was, and when it left,
+ * which is the evidence this failure did not leave behind. Same argument
+ * `resendIfSwallowed` makes for recording rather than silently recovering.
+ *
+ * @param {string} key - an `ecp.Key` value to press until focus arrives
+ * @param {(focused: object) => boolean} arrived - true once focus is where it belongs
+ * @returns {() => Promise<void>} an action for the wait's `action` option
+ */
+export function walkFocusUntil(key, arrived) {
+  let reported = false;
+  return async () => {
+    const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+    // Unreadable focus sends nothing rather than guessing.
+    if (typeof focused?.keyPath !== 'string') return;
+    // Already there: never press on into whatever the destination opens.
+    if (arrived(focused)) return;
+    // ORIGIN gate. Read after the arrival test so an arrived walk pays nothing for it.
+    const viewId = await getActiveVal('id');
+    if (typeof viewId !== 'string' || !viewId) return;
+    if (!focusIsInside(focused.keyPath, viewId)) {
+      // ONCE per wait, not per tick: the departure is one event, and a record per tick
+      // would bury it under 30-odd copies of itself. Recorded rather than merely declined
+      // because a harness that quietly does nothing is indistinguishable in the ledger
+      // from one that had nothing to do, and the open question here is exactly WHEN and
+      // WHERE focus left, which the 2026-09-09 dump could not say.
+      if (!reported) {
+        reported = true;
+        recordRecovery({
+          at: new Date().toISOString(),
+          what: `focus left the active view during a ${key} walk`,
+          detail:
+            `the walk declined to press ${key}: focus is at ${focused.keyPath}, which is ` +
+            `outside the active routed view #${viewId}. Pressing here would drive a screen ` +
+            'the walk is not on. See `walkFocusUntil`.',
+          observed: { key, activeViewId: viewId, focusKeyPath: focused.keyPath },
+        });
+      }
+      return;
+    }
+    await press(key);
+  };
+}
+
+/**
+ * Wait until the shared dialog overlay has left the scene.
+ *
+ * Shared rather than copied per caller, the same reason `waitMediaPlaying` is: the
+ * dialog-dismiss sites across `dialogs.spec.js`, `quick-connect.spec.js` and a demo take
+ * each carried a byte-identical `waitFor('#jrDialog.id', (v) => v === undefined, …)`,
+ * differing only in what they called it. Every dialog in the app closes by removing itself
+ * from the scene, so "the overlay's id no longer resolves" is the one honest signal that a
+ * dismiss landed, and spelling that out per site invited each one to drift.
+ *
+ * **Why this polls rather than observing the field.** This is the "waits for absence"
+ * category (`tests/rta/CLAUDE.md`, *Why every wait polls*, and
+ * `rta-waits-poll-not-observe` in `docs/decisions.md`): `roku-test-automation`'s
+ * `onFieldChangeOnce` observes a field ON A NODE, and the whole point of this wait is
+ * that the node is gone. There is nothing left to attach an observer to, so the library's
+ * primitive cannot express it at all. That argument lives here, at the helper the
+ * dialog-dismiss sites now route through, because folding them in took their `waitFor`
+ * calls (and with them their individually-provable absence check) out of
+ * `jellyrock-rta/wait-justified`'s view. The gate still classifies the single `waitFor`
+ * below as ABS from its own syntax.
+ *
+ * `label` names the dismiss being verified ('confirm dialog dismissed'), not the node.
+ * It is the first thing read when this times out, and `#jrDialog` alone says nothing
+ * about which dialog failed to close.
+ *
+ * The default matches the cadence every existing spec site already used. Pass `timeout`
+ * explicitly anyway: a helper's default is not the default a converted call site had, and
+ * adopting one silently is exactly what cost `waitFocusInside` a site's 3 s of budget.
+ *
+ * @param {string} label what to call this dismiss in the timeout message and the record
+ * @param {object} [opts]
+ * @param {number} [opts.timeout] budget for the overlay to leave the scene
+ */
+export async function waitDialogClosed(label, { timeout = 10000 } = {}) {
+  return waitFor('#jrDialog.id', (v) => v === undefined, { label, timeout });
+}
+
+/**
+ * Which of Home's two row lists is in the scene right now: `#homeRows` or `#favoritesRows`.
+ *
+ * The answer to *"where do I read Home's content?"*, asked instead of assumed. Home's active
+ * list is `m.activeContent`, and `onTabChanged` `removeChild`s the outgoing list before
+ * building the incoming one, so exactly one of the two ids resolves at any moment and which
+ * one is a property of the SELECTED TAB rather than of Home.
+ *
+ * ## Why it waits rather than reading once
+ *
+ * `steps.js` documents a window between launch and Home where NEITHER list is in the tree.
+ * A single read taken inside it answers "neither", which is true and useless. A bounded wait
+ * spends the same one round trip in the overwhelmingly common case (the list is already
+ * there, so the first tick returns) and turns the rare case into a wait instead of a throw.
+ *
+ * ## Why absence is an ERROR here and `undefined` elsewhere
+ *
+ * Every caller runs after `waitHome()` has proved Home is the active routed view, so "Home is
+ * up and neither of its row lists exists" is a genuine failure with no recovery. Reporting it
+ * under its own `HOME_LIST_ABSENT` kind is the whole point of the conversion: the shape this
+ * replaces did not fail at all: a hardcoded `#homeRows.content.getChildCount()` resolved to
+ * `undefined` in 8 ms, callers turned that into `|| 0` rows, and the run blamed a tile.
+ *
+ * Reads `subtype()` rather than `id` as the presence probe on purpose. It costs the same
+ * round trip and proves more: that the node found by that id really IS a row list, not some
+ * other node carrying the id, the "right id, wrong node" class Phase 9a's audit was built
+ * for. The returned id comes from `HOME_ROW_LIST_SUBTYPES`' positional alignment with
+ * `HOME_ROW_LIST_IDS`, which `home-list.js` states and its unit tests pin.
+ *
+ * @returns {Promise<string>} the `#id` of the list that is in the scene
+ */
+export async function homeListId({ timeout = 5000, interval = 300 } = {}) {
+  const subtype = await waitFor('subtype()', (v) => HOME_ROW_LIST_SUBTYPES.includes(v), {
+    read: readHomeList,
+    timeout,
+    interval,
+    kind: FAILURE_KINDS.HOME_LIST_ABSENT,
+    label: "Home's active row list to be in the scene (neither #id resolved)",
+  });
+  return HOME_ROW_LIST_IDS[HOME_ROW_LIST_SUBTYPES.indexOf(subtype)];
+}
+
+/**
+ * Home's rows as the active list shows them, plus the RTA-only record of each section's last
+ * load result, as one snapshot a spec can assert on or wait for.
+ *
+ * `rows` is one `{ sectionId, items, firstType, loadFailed }` per row, top to bottom: `items`
+ * is the row's child count, and `firstType` / `loadFailed` describe its first child, which is
+ * how a row still showing a placeholder reads: `firstType: 'Loading'`, with `loadFailed: true`
+ * once its load has failed (`skeleton.createFailedPlaceholder`). `results` is the list's
+ * `rtaSectionResults` (`homeRowFailure.noteResult`), `{ <sectionId>: { status, count } }`,
+ * compiled in only under `ENABLE_RTA` and `{}` until the first load finishes: a failed
+ * REFRESH intentionally changes nothing on screen, so without it a spec has no way to know
+ * the load it failed has finished.
+ *
+ * Two round trips: the row count first, then every row's fields in ONE batch, so the rows all
+ * describe the same frame (see `getActiveVals` for why that matters). The batch reads the
+ * count again, and a snapshot whose count moved between the two trips is discarded: the list
+ * was rebuilt in between (Favorites trims its skeleton, one row per type, to the types that
+ * loaded, in one callback), so the first count indexes rows that no longer exist.
+ *
+ * @returns {Promise<{rows: object[], results: object}|undefined>} undefined while the active
+ *   list has no content to count, or when it changed mid-read (a poll reads again)
+ */
+export async function readHomeRows() {
+  const list = await homeListId();
+  const count = await getVal(`${list}.content.getChildCount()`);
+  if (typeof count !== 'number') return undefined;
+  const paths = [`${list}.rtaSectionResults`];
+  for (let i = 0; i < count; i++) {
+    const row = `${list}.content.${i}`;
+    paths.push(
+      `${row}.sectionId`,
+      `${row}.getChildCount()`,
+      `${row}.0.type`,
+      `${row}.0.loadFailed`,
+    );
+  }
+  paths.push(`${list}.content.getChildCount()`);
+  const [results, ...fields] = await getVals(paths);
+  if (fields.pop() !== count) return undefined;
+  const rows = [];
+  for (let i = 0; i < count; i++) {
+    const [sectionId, items, firstType, loadFailed] = fields.slice(i * 4, i * 4 + 4);
+    rows.push({ sectionId, items, firstType, loadFailed: loadFailed === true });
+  }
+  return { rows, results: results ?? {} };
+}
+
+/**
+ * Wait until `predicate(snapshot)` holds for Home's rows (`readHomeRows`).
+ *
+ * FN: the snapshot is a batch of `getChildCount()` CALLS plus fields, so there is no one
+ * field an observer could watch, and the keyPath passed on is the reader's name. `waitFor` puts the
+ * last snapshot in the failure record, which is what tells "the row is there but still
+ * loading" from "the row was removed" after the fact.
+ *
+ * @param {(snapshot: {rows: object[], results: object}) => boolean} predicate
+ * @param {{label: string, timeout?: number, interval?: number}} opts
+ * @returns {Promise<{rows: object[], results: object}>} the snapshot that satisfied it
+ */
+export async function waitHomeRows(predicate, { label, timeout = 20000, interval = 400 }) {
+  return waitFor('readHomeRows()', (snap) => snap !== undefined && predicate(snap), {
+    read: () => readHomeRows().catch(() => undefined),
+    timeout,
+    interval,
+    label,
+  });
+}
+
+/** The row with `sectionId` in a `readHomeRows` snapshot, or undefined. */
+export function homeRow(snapshot, sectionId) {
+  return snapshot?.rows.find((r) => r.sectionId === sectionId);
+}
+
+/**
+ * Wait until focus is inside Home's content, whichever tab is selected.
+ *
+ * The `waitFocusInside` of Home's rows, with the id question removed: it asks the focused
+ * node its `subtype` (see `focusIsInHomeContent`) rather than testing a keyPath for an id
+ * that is absent under the other tab. Defaults match `waitFocusInside`'s intentionally tighter
+ * 12000/300 rather than `waitFocused`'s, so a site moved across does not silently change how
+ * often it polls the device.
+ */
+export async function waitFocusInHomeContent({
+  timeout = 12000,
+  interval = 300,
+  label,
+  action,
+} = {}) {
+  return waitFocused(focusIsInHomeContent, {
+    timeout,
+    interval,
+    action,
+    label: label || "focus inside Home's content",
+  });
+}
+
+/**
+ * Wait until the scene toast says `message`.
+ *
+ * `#toast.message` keeps the last text after the toast hides (`JRScene.showToast` sets it and
+ * nothing clears it), so this proves a toast said `message` since the last relaunch, not that
+ * it is on screen now. Start from a relaunch, or from a different message, or an earlier toast
+ * with the same text satisfies it.
+ */
+export async function waitToast(message, { timeout = 15000, interval = 250, label } = {}) {
+  return waitFor('#toast.message', (v) => v === message, {
+    timeout,
+    interval,
+    label: label || `the toast "${message}"`,
+  });
+}
+
+/**
+ * Home is ready once HomeRows has rendered its content, but only once the app is PAST
  * its login flow, which is a separate question and has to be asked first.
  *
  * ## Why the two phases
@@ -329,65 +1007,114 @@ export function resendUntilFocusInside(key, containerId) {
  * `JRScene.isRemoteDisabled` defaults to `true` in the XML, and the app mounts no routed
  * view until the login flow resolves the saved session. So between launch and Home there is
  * a window with no `#homeRows` anywhere in the tree, and reading for one during it reports
- * "home rows never appeared" — a statement about Home, produced by a login that simply had
- * not finished.
+ * "home rows never appeared", a statement about Home produced by a login that had not
+ * finished.
  *
  * That is not hypothetical either. `.177`, 2026-08-18, ~30 s after a `hardRelaunch`: no
  * routed view at all (`activeRoutedView.subtype()` unresolved), `isRemoteDisabled: true`
- * with `isLoading: false` — a pair NEITHER `startLoadingSpinner` nor `stopLoadingSpinner`
- * can produce, so JRScene was still sitting on its untouched defaults — while
+ * with `isLoading: false`, a pair neither `startLoadingSpinner` nor `stopLoadingSpinner`
+ * can produce, so JRScene was still sitting on its untouched defaults, while
  * `m.global.server` and `m.global.user` were already populated. The app was mid-login
  * against a demo server that had returned an outright auth failure earlier the same day.
  *
  * Gating on a view existing first means a slow login is WAITED for and, if it never
  * arrives, is reported as itself instead of as a missing Home. The login phase carries the
  * larger budget because it is the one bound by a remote server rather than by rendering.
+ *
+ * ## Why the first gate asks for Home BY NAME, and not merely for a mounted view
+ *
+ * It used to ask only that `activeRoutedView.subtype()` be non-EMPTY, and that made this a
+ * FALSE GATE: a library grid answers `BaseGridView`, which is non-empty, and the second
+ * gate is scene-rooted, so it finds Home's rows sitting suspended in the tree under
+ * sgRouter's default `suspendMode: "hide"`. Both gates therefore passed from a grid, and
+ * this reported "we are on Home" for an app that was not.
+ *
+ * That bit: a Back swallowed by the router (`sgrouter_showView`'s `finally` restores focus
+ * BEFORE dispatching `NavigationEnd`, so a key sent in that window is rejected by
+ * `_goBack`; see `resendIfSwallowed`) leaves the app on the grid, sailed through both
+ * gates, and the caller's NEXT step timed out blaming focus one nav later. Observed on
+ * `.178` 2026-09-06: `navCellSweepExtras` reported `focus inside #homeRows` timing out
+ * while the failure dump showed the active view was still a `BaseGridView`.
+ *
+ * Naming Home closes it, and `subtype()` is the read that can, because `JRScreen`
+ * publishes `m.global.activeRoutedView = m.top` in both `onViewOpen` and `onViewResume`,
+ * so a resumed Home re-announces itself. Dialogs do not disturb it (`JRDialog` extends
+ * `JRGroup`, not `JRScreen`), so a gate placed after dismissing one still reads Home.
+ *
+ * ## ⚠️ It DETECTS a lost Back; it does not RECOVER from one, on purpose
+ *
+ * This helper sends no keys. Detection is all the call sites can safely share, because
+ * the recovery (re-pressing the owed Back) is destructive off the path to Home:
+ * `UserSelect.onKeyEvent` treats Back as *change server* and the coordinator DELETES the
+ * saved server. Routing four navs through the re-pressing `backToHome` was tried on
+ * 2026-09-06 and came back signed out on `SetServerScreen`; see that helper's JSDoc in
+ * [`lib/nav.js`](nav.js), which is the one site where the re-press is provably safe.
+ *
+ * So a swallowed Back now fails HERE, by name, instead of one nav later. That is the
+ * charter's attribution bar, not a recovery.
+ *
+ * @param {number} [opts.viewTimeout] budget for Home to become the active view. Bounded by
+ *   a remote login rather than by rendering, which is why it is the larger of the two.
+ * @param {number} [opts.rowsTimeout] budget for HomeRows to have content.
+ *
+ * Both are exposed so the hardware-free gate in `steps.test.js` can drive the false-gate
+ * case in milliseconds instead of 45 s. The poll INTERVAL is not exposed, on purpose:
+ * tuning intervals is out of scope for this suite (`tests/rta/CLAUDE.md`).
  */
-export async function waitHome() {
-  await waitFor('subtype()', (v) => typeof v === 'string' && v !== '', {
+export async function waitHome({ viewTimeout = 45000, rowsTimeout = 20000 } = {}) {
+  await waitFor('subtype()', (v) => v === 'Home', {
     read: getActiveVal,
-    label: 'app past the login flow (a routed view mounted)',
-    timeout: 45000,
+    label: 'Home to be the active routed view (past the login flow, and actually arrived)',
+    timeout: viewTimeout,
     interval: 500,
   });
-  await waitFor('#homeRows.content.getChildCount()', hasChildren, {
+  // Resolved rather than named. The read below is otherwise unchanged (same keyPath shape,
+  // same reader, same attribution and same resolution audit), so this gate keeps every
+  // property it had, minus the assumption that the Home tab is the selected one.
+  const list = await homeListId();
+  // FN: `content.getChildCount()` is a CALL, and ODC observes a field, so no observer can
+  // apply here whatever `list` resolves to. The rule cannot see that through the
+  // interpolation; the interpolation is there so the audit and the failure dump get the real
+  // `#id`, which a static-suffix reader would cost this gate on every nav of a run.
+  // eslint-disable-next-line jellyrock-rta/wait-justified -- FN: see this helper's docblock
+  await waitFor(`${list}.content.getChildCount()`, hasChildren, {
     label: 'home rows',
-    timeout: 20000,
+    timeout: rowsTimeout,
   });
 }
 
 /**
- * Bring Home's active row list to row 0 — the precondition for leaving Home upward.
+ * Bring Home's active row list to row 0, the precondition for leaving Home upward.
  *
  * ## Why anything has to do this
  *
  * `Home.onKeyEvent` escapes to the overhang only when the active list reports
  * `rowItemFocused[0] = 0`; at any other index it returns false, so the key bubbles away,
  * focus never moves, and whatever the caller does next spends its whole timeout pressing at
- * a list that is not listening. That presents as "the screen never loaded" — the north-star
+ * a list that is not listening. That presents as "the screen never loaded", the north-star
  * failure this suite's rules open with.
  *
- * `waitHome()` is NOT this precondition: it gates on rows EXISTING, and `HomeRows` inserts
+ * `waitHome()` is not this precondition: it gates on rows EXISTING, and `HomeRows` inserts
  * the latest-media rows MID-LIST (`insertLatestMediaSkeletons`) rather than appending them,
  * so the focused row index can still move after that gate passes.
  *
  * ## Why it walks rather than waits
  *
- * The index does not return to 0 on its own, so a passive wait would simply time out. The
+ * The index does not return to 0 on its own, so a passive wait would time out. The
  * walk reads off the FOCUSED node rather than `#homeRows`, for two reasons: Home's active
  * list is `m.activeContent`, which is the favorites list while that tab is selected; and
  * `rowItemFocused` RETAINS its last value while a list does not hold focus, so reading it
  * off a named container can report a stale index forever.
  *
- * It presses ONLY at a row index it can currently see above 0. An ABSENT field means focus
- * is not on a row list at all, where Up is not the right key — send nothing and let the wait
- * time out under its own name rather than pressing at an unidentified component. That guard
- * is also what stops a stale read pressing Up while already at row 0, which would escape
- * into the overhang early and leave the caller somewhere it did not ask to be.
+ * It presses only at a row index it can currently see above 0. An ABSENT field means focus
+ * is not on a row list at all, where Up is not the right key, so it sends nothing and lets
+ * the wait time out under its own name rather than pressing at an unidentified component.
+ * That guard is also what stops a stale read pressing Up while already at row 0, which
+ * would escape into the overhang early and leave the caller somewhere it did not ask to be.
  *
  * Returns the observation instead of reporting it: resting anywhere but row 0 after a
  * relaunch is an app-side surprise, and a harness that silently routes around one can mask
- * the very regression a run exists to catch — but WHICH caller should shout about it, and
+ * the very regression a run exists to catch. But WHICH caller should shout about it, and
  * how loudly, is the caller's call, not this helper's.
  *
  * @returns {Promise<{walked:number, from:number|null}>} how many Ups were sent, and the row
@@ -414,25 +1141,19 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
 }
 
 /**
- * Subtypes Home uses for `m.activeContent`, its active row list (`components/home/Home.bs`).
- * Focus resting on one of these means the app is still inside Home's content.
- */
-const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
-
-/**
  * Which key advances the overhang walk, given where focus ACTUALLY is right now.
  *
  * ## The defect this exists to fix
  *
  * `focusOverhangIcon` pressed Up exactly ONCE and then spent its whole timeout pressing
- * Right. Right is the correct key only AFTER the escape succeeded — it walks the overhang's
+ * Right. Right is the correct key only AFTER the escape succeeded: it walks the overhang's
  * TabBar -> Search -> Settings chain. While focus is still inside Home's rows, Right walks
  * the ROW instead, and no number of Rights can ever leave Home. So a single lost Up was
  * unrecoverable by construction, and it presented as "the screen never loaded".
  *
  * That is not hypothetical. Two failure records, `.176` 2026-08-16 and `.177` 2026-08-18
  * (this suite, current `main`), carry the same signature: focus still on `#homeRows`,
- * `rowItemFocused` at row 0 with the ITEM index moved off 0 — moved there by the Rights
+ * `rowItemFocused` at row 0 with the ITEM index moved off 0, moved there by the Rights
  * themselves, wrapping around a short row via `wrapRowFocus`. The 2026-08-18 record also
  * shows `#homeRows.content.getChildCount()` at 2 where a settled Home on that fixture holds
  * 6, so the escape was attempted while Home was still inserting rows. `waitHome()` gates on
@@ -449,19 +1170,23 @@ const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
  *
  * ## Why it reads `subtype`, and not the id or the keyPath
  *
- * `Home.xml` declares `<HomeRows id="homeRows" />`, so on a fresh launch the focused node
- * does carry that id. But `Home.onTabChanged` RE-CREATES both lists with `CreateObject` and
- * never assigns an id — and RTA builds a keyPath segment from `node.id` only while it is
- * non-empty, falling back to the child INDEX otherwise. So after one favorites round trip
- * an id/keyPath match silently stops matching and falls straight through to Right, which is
- * the exact defect above, reinstated and invisible. `subtype` is set by the component rather
- * than by the call site, so it holds across that path.
+ * RTA builds a keyPath segment from `node.id` only while it is non-empty, falling back to
+ * the child INDEX otherwise, so an id/keyPath match stops matching the moment a node is
+ * created without one and falls straight through to Right, which is the exact defect above
+ * reinstated and invisible. `subtype` is set by the component rather than by the call site,
+ * so it cannot be lost that way.
+ *
+ * The app does create such nodes: `JROverhang` appends its `JRTabBar` with `CreateObject`
+ * and assigns no id (`components/JROverhang.bs`), which is on this very walk's path. Home's
+ * row lists are the other example and a sharper one, for a different reason: #864
+ * (2026-08-26) made `onTabChanged` assign both ids, so a tab ROUND TRIP no longer loses
+ * them, but only one list is in the scene at a time, so under the other tab the id is not
+ * stale, it is absent. Both cases defeat an id-keyed predicate; only `subtype` survives both.
  *
  * The favorites half is future-proofing, not coverage: nothing in `specs/` selects a tab, so
- * `FavoritesRows` is unreachable from here today (see the `rta-home-active-list-hardcoded`
- * entry in `docs/architecture/tech-debt.md`, whose sibling call sites still match by name).
- * It is here because the predicate should agree with the app — `getActiveRows()` returns
- * `m.activeContent` — not because a test exercises it.
+ * `FavoritesRows` is unreachable from here today. It is here because the predicate should
+ * agree with the app (`getActiveRows()` returns `m.activeContent`), not because a test
+ * exercises it.
  *
  * Kept pure, and here rather than in `nav.js`, so it can be unit-tested directly: `nav.js`
  * IS importable under a mocked device, but its walk is wrapped in the unexported
@@ -474,15 +1199,16 @@ const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
  */
 export function overhangWalkKey(focused, iconId) {
   if (focused?.node?.id === iconId) return null;
-  // Home's active list is `m.activeContent` — `HomeRows` or `FavoritesRows` depending on the
-  // selected tab — so either subtype means "the escape has not happened yet".
-  if (HOME_ROW_LIST_SUBTYPES.includes(focused?.node?.subtype)) return ecp.Key.Up;
+  // Home's active list is `m.activeContent` (`HomeRows` or `FavoritesRows` depending on the
+  // selected tab), so either subtype means "the escape has not happened yet". Shared with
+  // every Home focus gate via `home-list.js`, so there is one definition of the question.
+  if (focusIsInHomeContent(focused)) return ecp.Key.Up;
   // Unknown focus (a failed read) keeps the pre-existing behaviour rather than inventing a
   // new one: Right is inert on most of the overhang chain, Up from it is inert by design.
   return ecp.Key.Right;
 }
 
-/** Roku media-player states that mean playback is live. Frozen — it is a shared registry now. */
+/** Roku media-player states that mean playback is live. Frozen: it is a shared registry now. */
 export const PLAYING_STATES = Object.freeze(['startup', 'buffer', 'play', 'pause']);
 
 /**
@@ -490,12 +1216,12 @@ export const PLAYING_STATES = Object.freeze(['startup', 'buffer', 'play', 'pause
  *
  * Shared rather than copied per caller. The deep-link spec and the demo runner
  * drive the same player through the same states and each carried a byte-identical
- * copy of this — but only the spec's reported what it SAW on timeout, so a demo
+ * copy of this, but only the spec's reported what it SAW on timeout, so a demo
  * take that failed at playback left no record at all. That is the failure worth
  * recording: it silently ruins footage that looks fine until playback.
  *
- * `label` prefixes the message and the record, because the two callers are labelled
- * differently by the harness — Vitest names the spec's test, and nothing names a
+ * `label` prefixes the message and the record, because the two callers are labeled
+ * differently by the harness: Vitest names the spec's test, and nothing names a
  * demo take (see `setFailureContext` in `diagnostics.js`).
  */
 export async function waitMediaPlaying(label, timeout = 30000) {
@@ -507,7 +1233,7 @@ export async function waitMediaPlaying(label, timeout = 30000) {
     if (mp && !mp.error && PLAYING_STATES.includes(mp.state)) return;
     await sleep(1000);
   }
-  // A timeout, so it reports what it SAW — same rule as the waits above. "Never
+  // A timeout, so it reports what it SAW, the same rule as the waits above. "Never
   // started" alone cannot distinguish a stream that failed to open from a cast the
   // app never routed, and the shell fields answer that: `input=BLOCKED` or a live
   // spinner means the app was busy, not that playback died.
@@ -520,12 +1246,103 @@ export async function waitMediaPlaying(label, timeout = 30000) {
 }
 
 /**
- * Stop playback so it cannot leak into whatever runs next. Back on the player stops
- * it (AudioPlayerView/PlayerHostView onKeyEvent "back" → control "stop") — necessary
- * because AUDIO keeps playing while you navigate away (correct music-app UX), so a
- * relaunch-to-Home alone won't silence it. Verify via media-player; retry Back.
+ * Read a field on the player node. The player's `id` IS the item id (`m.top.id =
+ * m.currentItem.id` in
+ * [`VideoPlayerView.bs`](../../../components/video/VideoPlayerView.bs), which is also how
+ * `navOsd` addresses its `seek`), so read it by id rather than via `focusedNode`: focus is
+ * not guaranteed to be on the player at any given tick, and a focus-based read silently
+ * returns another node's field (or `state="none"`) when it isn't.
  *
- * Deliberately does NOT throw when it gives up: this is cleanup, and both callers
+ * Outside `ATTRIBUTING_READS` on purpose: it is a custom reader, so a wait using it gets
+ * no read-failure attribution. Recorded as still owed rather than silently accepted.
+ */
+export const readPlayer = (itemId) => async (keyPath) =>
+  (
+    await odc
+      .getValue(
+        itemId
+          ? { base: 'scene', keyPath: `#${itemId}.${keyPath}` }
+          : { base: 'focusedNode', keyPath },
+      )
+      .catch(() => ({}))
+  ).value;
+
+/**
+ * Wait for the OSD to come up after playback starts.
+ *
+ * Found when `osd` + `trickplay` failed on a Roku Stick `3600X` (720p UI) while the
+ * same build passed on a Roku Ultra. The app was never at fault: its `onKeyEvent`
+ * behaved correctly on both:
+ *
+ * 1. **Don't send input while the player is still loading.** The app intentionally
+ *    swallows Up until the video is playable (`stateAllowsOSD` excludes
+ *    `buffering`), so the old loop spent that whole window pressing a player that
+ *    is designed not to answer. Measured, the window is ~5-7 s on both devices
+ *    (stick 5.6/5.8 s, Ultra 7.2 s). It is bound by stream start against a remote
+ *    server, not by device speed, so this was never a slow-device-only hazard; the
+ *    stick is where it surfaced.
+ * 2. **Don't keep pressing into an OSD that is already up.** Up only OPENS the
+ *    OSD (it is not a toggle), and once open the key goes to the OSD itself,
+ *    where it moves focus between controls, so a stray press perturbs the state
+ *    the following steps assert on. Read first and press only while it is down,
+ *    the same guard the focus-walk navs use.
+ * (A dropped key press masquerading as "the screen never loaded" was the third
+ * hazard here; that one is fixed for every nav in `waitFor`/`waitFocused`, which
+ * now count failing actions and name them in the timeout message.)
+ *
+ * ## Why the first wait is the app's OWN state field, and why there is no settle after it
+ *
+ * Three call sites carried this sequence, and all three followed it with
+ * `await sleep(1500) // let the just-started player settle before sending any input`,
+ * a fixed wait for a state that turns out to be readable. The app's gate is
+ * `stateAllowsOSD()`, which is `m.top.state` in `playing | paused | stopped` and not
+ * parked; `onKeyEvent` consults exactly that before opening the OSD for Up, Down, OK or
+ * Play. So the honest precondition for sending Up is the app's own `state`, and this
+ * wait reads it, so no dwell is needed once it answers.
+ *
+ * That mattered unequally across the three. `nav.js` already waited on this field, so its
+ * settle was buying nothing. The two `dialogs.spec.js` helpers gated on
+ * `waitMediaPlaying` instead, which reads the **OS** media player over ECP, a different
+ * observation of a different thing, true well before the app's own field flips. Their
+ * 1500 ms was covering exactly that gap, and covering it by guess.
+ *
+ * `m.playerParked` is the one clause of `stateAllowsOSD()` that cannot be read: it is a
+ * private `m.` variable, not an interface field. It is only set by
+ * `parkPlayerAfterSupersede` on a superseded error, which is not a state a healthy
+ * playback start reaches, and the OSD wait below re-presses until its timeout, so a parked
+ * player fails as a timeout naming the OSD rather than as a silent wrong answer.
+ *
+ * @param {string} label what to call the OSD wait in the timeout message and the record
+ * @param {object} [opts]
+ * @param {string} [opts.itemId] the item being played, so the player is read by id
+ * @param {number} [opts.playableTimeout] budget for the app to report a playable state
+ * @param {number} [opts.timeout] budget for the OSD to come up once input is accepted
+ */
+export async function waitOsdUp(label, { itemId, playableTimeout = 90000, timeout = 30000 } = {}) {
+  await waitFor('state', (v) => v === 'playing' || v === 'paused', {
+    timeout: playableTimeout,
+    interval: 1000,
+    label: 'player playable (pre-OSD)',
+    read: readPlayer(itemId),
+  });
+
+  await waitFor('#osd.visible', (v) => v === true, {
+    timeout,
+    interval: 2000,
+    action: async () => {
+      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
+    },
+    label,
+  });
+}
+
+/**
+ * Stop playback so it cannot leak into whatever runs next. Back on the player stops
+ * it (AudioPlayerView/VideoPlayerView onKeyEvent "back" then control "stop"), which is
+ * necessary because audio keeps playing while you navigate away (correct music-app UX),
+ * so a relaunch-to-Home alone won't silence it. Verify via media-player; retry Back.
+ *
+ * It does not throw when it gives up, on purpose: this is cleanup, and both callers
  * run it on their way out of a step that already succeeded or already failed. A
  * throw here would replace a real failure with a teardown one.
  */
@@ -542,7 +1359,7 @@ export async function stopPlayback() {
 /**
  * How long to leave between the keypresses of a scripted scroll.
  *
- * Not a settle — a CADENCE. The behaviour the cell-load ledger exists to measure is what
+ * Not a settle but a CADENCE. The behavior the cell-load ledger exists to measure is what
  * happens while a list is scrolling fast: cells recycle, bind onto new items and re-issue
  * image requests, and the failure mode being hunted (a glyph wiped on a cell sitting still)
  * only shows up under pressure. Stepping one key per poll interval, the way the focus WALKS
@@ -553,6 +1370,24 @@ export async function stopPlayback() {
 export const SCROLL_KEY_INTERVAL_MS = 150;
 
 /**
+ * How long a stepped walk waits for the index to leave its pre-press value before it
+ * concludes the key was dropped and sends it again.
+ *
+ * A Limit: it has to clear the device's slowest honest answer, or a slow key reads as a
+ * dropped one and the re-press is the overshoot the stepped mode exists to prevent. On a
+ * Stick 4K (`.177`, Roku OS 15.3.4) a Down or Up took 350-444 ms to show in Home's
+ * `rowItemFocused`, measured 2026-10-08 with a scratch ODC script over two runs of 24
+ * presses (medians 397 and 409 ms). A Right or Left took 372-405 ms to show in a Movies
+ * grid's `itemFocused`, measured the same day. 1000 ms is more than twice the worst case.
+ *
+ * A dropped key costs this long once. A late key that it misreads as dropped is
+ * caught by the walk's settle and focus check (see `steppedWalk`), and a device slower than
+ * this on every key fails the walk with a message naming this constant. That device is a
+ * fact to re-measure, not a number to raise quietly.
+ */
+export const STEPPED_DROP_WAIT_MS = 1000;
+
+/**
  * Drive a focus INDEX to `target` by bursting keypresses at remote cadence, then gating on
  * the index actually arriving.
  *
@@ -561,50 +1396,69 @@ export const SCROLL_KEY_INTERVAL_MS = 150;
  * The two properties a measured workload needs pull in opposite directions. It must be
  * FAST, because a slow walk measures a screen that is never under load (see
  * `SCROLL_KEY_INTERVAL_MS`); and it must be EXACT, because the whole point of scripting the
- * workload is that two runs travel the same distance — a rate whose denominator moved
+ * workload is that two runs travel the same distance (a rate whose denominator moved
  * between runs cannot be compared, which is what retired the hand-driven method this
- * replaces. A burst alone is fast and inexact (a dropped key silently shortens the trip); a
+ * replaces). A burst alone is fast and inexact (a dropped key silently shortens the trip); a
  * per-poll walk is exact and slow. Bursting and then reconciling gets both: the common case
  * costs `steps * interval` ms and lands exactly, and only the dropped keys pay a poll.
  *
  * ## Why the reconciliation waits for the index to STOP moving
  *
  * The device is still working through the burst when the gate opens, so an index short of
- * `target` does NOT mean a key was lost — it usually means the queue has not drained. A
+ * `target` does not mean a key was lost; it usually means the queue has not drained. A
  * corrective press there is sent on top of one already in flight and overshoots, after which
  * the correction reverses and oscillates. So a press is only sent once the index has been
  * observed UNCHANGED across a tick: still-moving means wait, stuck-and-short means a key
  * really was dropped. Same shape as `resendIfSwallowed`, whose comment carries the recorded
  * cases of a swallowed key, and the same reason it sits out its first tick.
  *
- * **That rule has to be re-armed after every corrective press, not just the first.** A
+ * **That rule has to be re-armed after every corrective press, not only the first.** A
  * correction is itself a key in flight, so the tick after one fires sees the index still
- * unchanged — and treating that as "stuck and short" presses again on top of it, which is
- * the overshoot this whole gate exists to avoid, just one step later. Clearing `lastSeen`
+ * unchanged, and treating that as "stuck and short" presses again on top of it, which is
+ * the overshoot this whole gate exists to avoid, one step later. Clearing `lastSeen`
  * makes the next tick re-establish an unchanged observation before it may press again, so
  * each correction gets a full poll interval to land. Modelled in the unit tests by a device
  * that applies presses with LATENCY: without the reset, one dropped key out of three drew
  * two corrections and left the list one index past the target, with `scrollFocus` reporting
- * the target it had asked for — a denominator that moved after the walk said it had not.
+ * the target it had asked for: a denominator that moved after the walk said it had not.
  *
  * Returns what it actually did, because the caller has to be able to say so: a workload is
- * only "fixed" if the run can report the distance it travelled. `to` is the index READ at
- * the moment the gate opened, not the one that was requested — they are equal by the gate's
+ * only "fixed" if the run can report the distance it traveled. `to` is the index READ at
+ * the moment the gate opened, not the one that was requested. They are equal by the gate's
  * own predicate, and reporting the observed one keeps that an assertion rather than a claim.
  *
- * ## `stride` — one press is not always one index
+ * ## `stepped`: when a stray extra key is not survivable
+ *
+ * A burst is fast and its reconciliation is exact, but it still has several keys in flight
+ * at once. Use `stepped: true` where a surplus key does damage a retry cannot undo, which is
+ * Home's ROW axis: Up from row 0 releases focus to the overhang, and the field this walk
+ * reads keeps RETAINING its last value after that, so a wrong press can leave the screen
+ * without anything reading as wrong. A stepped walk presses ONE key, then waits for the
+ * index to leave its pre-press value before it decides anything, so a press is never sent
+ * while an earlier one is still unseen. It re-presses only when the index has stayed put for
+ * `dropWaitMs`, well beyond the device's measured delay (see `STEPPED_DROP_WAIT_MS`), and
+ * counts that in `recovered`. The cost is one round trip of waiting per index unit instead
+ * of `keyIntervalMs`, which is why it is opt-in: a scripted scroll that must run fast stays
+ * on the burst.
+ *
+ * A stepped walk must name `within`, the list it may not leave, and it ends by checking that
+ * focus is still there: an index that keeps its last value cannot show that a key left. A
+ * walk that re-sent a key also settles for one quiet `dropWaitMs` before it returns, in case
+ * the key was late rather than dropped and its copy is still on the way.
+ *
+ * ## `stride`: one press is not always one index
  *
  * MEASURED on `.177`, 2026-08-20, because the first version of this assumed otherwise and
  * stalled: a library grid is a 2-D `MarkupGrid` (6 columns x 3 rows on that device), and its
  * flat `itemFocused` moves by **one** on Right and by **`numColumns`** on Down. Right does
- * NOT wrap at the end of a row — 8 Rights from index 0 land on 5 and every further Right is
+ * not wrap at the end of a row: 8 Rights from index 0 land on 5 and every further Right is
  * inert, at every cadence tried (150 / 400 / 800 ms), so a sweep that treats the index as
  * one-per-press cannot cross the first row. `stride` is how far one press moves the index;
  * the target must be a whole number of strides from the start, which is also what keeps the
  * caller from asking for a position the list cannot stop on.
  *
  * @param {object} opts
- * @param {string} opts.keyPath      the index field, e.g. `#itemGrid.itemFocused`
+ * @param {string} opts.keyPath      the index field, for example `#itemGrid.itemFocused`
  * @param {number} opts.target       the index to land on
  * @param {string} opts.forwardKey   `ecp.Key` value that increases the index
  * @param {string} [opts.backKey]    `ecp.Key` value that decreases it; required to walk back
@@ -613,9 +1467,15 @@ export const SCROLL_KEY_INTERVAL_MS = 150;
  *                                     `[row, item]` pair, `itemFocused` is the index itself)
  * @param {(k:string)=>Promise<any>} [opts.read] `getVal` (default) or `getActiveVal`
  * @param {string} [opts.label]      what to call this walk in waits, warnings and the report
+ * @param {boolean} [opts.stepped]   press ONE key at a time instead of a burst; see below
+ * @param {string} [opts.within]     stepped only, and required there: the id of the list
+ *                                   focus must still be inside when the walk ends
+ * @param {number} [opts.dropWaitMs] stepped only: how long an unmoved index is taken as a
+ *                                   dropped key; defaults to `STEPPED_DROP_WAIT_MS`
  * @param {number} [opts.keyIntervalMs] burst cadence; defaults to `SCROLL_KEY_INTERVAL_MS`
- * @param {number} [opts.timeout]    budget for the reconciliation, once the burst is sent
- * @param {number} [opts.interval]   poll interval of the reconciliation
+ * @param {number} [opts.timeout]    burst: budget for the reconciliation, once the burst is
+ *                                   sent. Stepped: budget for the whole walk.
+ * @param {number} [opts.interval]   poll interval of the reconciliation, or of each step
  * @returns {Promise<{from:number, to:number, pressed:number, recovered:number}>}
  */
 export async function scrollFocus({
@@ -630,12 +1490,26 @@ export async function scrollFocus({
   keyIntervalMs = SCROLL_KEY_INTERVAL_MS,
   timeout = 25000,
   interval = 400,
+  stepped = false,
+  within,
+  dropWaitMs = STEPPED_DROP_WAIT_MS,
 }) {
   const name = label || `${keyPath} -> ${target}`;
+  if (stepped && !within) {
+    // Fail-fast, cause named: stepped mode exists because a stray key can leave the list,
+    // so it has to know which list that is.
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+    throw new Error(`${name}: a stepped walk needs \`within\`, the list it must not leave`);
+  }
   // The precondition, gated rather than assumed: `itemFocused` / `rowItemFocused` read as
   // their retained value (or as undefined) until the list holds focus, and a burst sent at
   // that moment goes to whatever does. This is `waitFocusInside`'s rule applied to the field
-  // the walk actually reads — a caller that established focus pays one read for it.
+  // the walk actually reads: a caller that established focus pays one read for it.
+  // The keyPath is a runtime value, so `wait-justified` cannot classify it here. Every
+  // caller passes `itemFocused` or `rowItemFocused`, which RETAIN their last value rather
+  // than pulsing. That is the property the comment above depends on, and the one
+  // `waitFocusInside` exists to guard.
+  // eslint-disable-next-line jellyrock-rta/wait-justified -- justified in the comment above
   const from = await waitFor(keyPath, (v) => typeof select(v) === 'number', {
     read,
     timeout: 12000,
@@ -646,7 +1520,7 @@ export async function scrollFocus({
   const delta = target - from;
   const key = delta >= 0 ? forwardKey : backKey;
   if (delta !== 0 && !key) {
-    // A fail-fast that already names its cause — the caller asked to walk backwards without
+    // A fail-fast that already names its cause: the caller asked to walk backwards without
     // supplying the key for it. Waiting cannot fix it.
     // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
     throw new Error(`${name}: needs to move ${delta} but no key was given for that direction`);
@@ -659,6 +1533,22 @@ export async function scrollFocus({
       `${name}: ${from} -> ${target} is ${delta}, which is not a whole number of ` +
         `${stride}-unit presses — the list cannot stop there`,
     );
+  }
+  if (stepped) {
+    return steppedWalk({
+      name,
+      keyPath,
+      from,
+      target,
+      forwardKey,
+      backKey,
+      select,
+      read,
+      within,
+      timeout,
+      interval,
+      dropWaitMs,
+    });
   }
   for (let i = 0; i < Math.abs(delta) / stride; i++) {
     await press(key);
@@ -675,20 +1565,116 @@ export async function scrollFocus({
     action: async () => {
       const cur = select(await read(keyPath));
       if (typeof cur !== 'number' || cur === target) return;
-      // Still draining the burst — do not press on top of a key already in flight.
+      // Still draining the burst: do not press on top of a key already in flight.
       if (cur !== lastSeen) {
         lastSeen = cur;
         return;
       }
       recovered++;
       await press(cur < target ? forwardKey : backKey);
-      // Re-arm the "unchanged across a tick" rule: the press just sent is now itself in
-      // flight, and the next tick will still read the pre-press index. Without this the
-      // guard decays into "press every tick until it moves" — see the docblock.
+      // Re-arm the "unchanged across a tick" rule: the press sent a moment ago is now itself
+      // in flight, and the next tick will still read the pre-press index. Without this the
+      // guard decays into "press every tick until it moves" (see the docblock).
       lastSeen = null;
     },
   });
   return { from, to: select(landed), pressed: Math.abs(delta) / stride, recovered };
+}
+
+/**
+ * `scrollFocus`'s `stepped` mode: one key in flight at a time. The reasoning is in
+ * `scrollFocus`'s docblock; this is the loop.
+ *
+ * Each press is followed by reads until the index differs from the value it had BEFORE the
+ * press. Only then is the next key chosen, from the index last observed. If the index has not
+ * moved after `dropWaitMs`, the key is taken as dropped and sent again (counted as
+ * `recovered`).
+ *
+ * A re-sent key may have been late rather than dropped, and then both copies land. So once
+ * the walk has re-sent anything, arriving on the target is not the end: it watches for one
+ * quiet `dropWaitMs` and walks back if the index moves. The late copy was sent `dropWaitMs`
+ * after the first, so it lands within `dropWaitMs` of the first one showing. Last, focus must
+ * still be inside `within`, because a surplus key can leave the list while the index keeps
+ * its last value.
+ *
+ * Throws when `timeout` is spent, naming what the walk last saw and how many keys it re-sent.
+ */
+async function steppedWalk({
+  name,
+  keyPath,
+  from,
+  target,
+  forwardKey,
+  backKey,
+  select,
+  read,
+  within,
+  timeout,
+  interval,
+  dropWaitMs,
+}) {
+  const start = Date.now();
+  let cur = from;
+  let pressed = 0;
+  let recovered = 0;
+
+  // Poll until the index leaves `at`. Given a `key`, re-send it each time the index stays put
+  // for `dropWaitMs`; without one, return `undefined` after one quiet `dropWaitMs`.
+  const nextIndex = async (at, key) => {
+    let quietSince = Date.now();
+    for (;;) {
+      await sleep(interval);
+      const seen = select(await read(keyPath));
+      if (typeof seen === 'number' && seen !== at) return seen;
+      if (Date.now() - start >= timeout) {
+        throw await diagnosedError(
+          `nav timed out waiting for ${name} (stepped; at ${at}, last=${JSON.stringify(seen)})` +
+            (recovered
+              ? ` — re-sent ${recovered} key(s); the device may answer slower than ` +
+                `STEPPED_DROP_WAIT_MS (${dropWaitMs} ms)`
+              : ''),
+          {
+            kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+            label: name,
+            waitedMs: Date.now() - start,
+            observed: { keyPath, target, pressed, recovered },
+          },
+        );
+      }
+      if (Date.now() - quietSince >= dropWaitMs) {
+        if (!key) return undefined;
+        recovered++;
+        await press(key);
+        quietSince = Date.now();
+      }
+    }
+  };
+
+  for (;;) {
+    if (cur === target) {
+      if (!recovered) break;
+      const moved = await nextIndex(cur);
+      if (moved === undefined) break;
+      cur = moved;
+      continue;
+    }
+    const key = cur < target ? forwardKey : backKey;
+    if (!key) {
+      // Fail-fast, cause named: the index moved past the target and no key was given back.
+      // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+      throw new Error(`${name}: at ${cur}, target ${target}, but no key was given for that way`);
+    }
+    await press(key);
+    pressed++;
+    cur = await nextIndex(cur, key);
+  }
+
+  await waitFocusInside(within, {
+    timeout: dropWaitMs,
+    interval,
+    label: `${name}: focus still inside ${within} after the walk`,
+  });
+  return { from, to: cur, pressed, recovered };
 }
 
 /**
@@ -698,7 +1684,7 @@ export async function scrollFocus({
  * ## Why this is not `sweepBudget` with a big number
  *
  * The two look alike and mean opposite things, and conflating them is what made the clamp
- * warning worthless. A `MarkupGrid` row is `numColumns` wide — 6 on a Stick 4K — because
+ * warning worthless. A `MarkupGrid` row is `numColumns` wide (6 on a Stick 4K) because
  * that is the LAYOUT, not because the fixture ran short. Asking `sweepBudget` for 12 columns
  * there warned on every single run, in the one channel that exists to say "this run did not
  * travel as far as the last one", which trains an operator to skip the line that matters.
@@ -718,13 +1704,13 @@ export function axisEnd(label, available) {
  * A BUDGETED axis: travel `wanted` steps, or as far as the fixture allows, announcing any
  * shortfall.
  *
- * A clamp is not a failure — it is the fixture being smaller than the itinerary, and it is
+ * A clamp is not a failure. It is the fixture being smaller than the itinerary, and it is
  * still deterministic wherever the content itself is settled, so the run stays comparable to
  * other runs on the same fixture. What it must not be is SILENT: a run that swept 3 rows and
  * a run that swept 12 differ in every count the ledger publishes, and the operator comparing
  * them has only this line to tell them apart.
  *
- * Use this only where `wanted` is a genuine time budget the axis could exceed — the row
+ * Use this only where `wanted` is a real time budget the axis could exceed, such as the row
  * count of a RowList, the items in a shelf. For an axis whose length is a structural bound
  * the sweep always means to traverse, use `axisEnd`.
  *
@@ -749,7 +1735,7 @@ export function sweepBudget(label, wanted, available) {
 /**
  * The cell-load counters a settle has to watch, as the `cellLoad<Name>` field suffix.
  *
- * Minimal and complete — the reasoning, and the emit sites it was checked against, are in
+ * Minimal and complete. The reasoning, and the emit sites it was checked against, are in
  * `waitCellsQuiet`'s docblock. Adding a counter to `source/utils/cellLoad.bs` only belongs
  * here if it can increment while `Binds` and `LoadsStarted` both sit still; everything that
  * shares a straight-line block with one of those is already covered.
@@ -760,7 +1746,7 @@ export const CELL_QUIET_COUNTERS = Object.freeze([
   'LoadsFailed',
   'LoadsSucceeded',
   'Unloads',
-  // Qualifies under the rule above rather than by being new — a returning cell moves this
+  // Qualifies under the rule above rather than by being new: a returning cell moves this
   // and nothing else. Reasoning and the emit sites it was checked against: `waitCellsQuiet`.
   'Appearances',
 ]);
@@ -768,20 +1754,20 @@ export const CELL_QUIET_COUNTERS = Object.freeze([
 /**
  * Counters the report LINE carries, which is a superset of the ones a settle watches.
  *
- * `PopIns` is here and NOT in `CELL_QUIET_COUNTERS`, by the same rule: it only ever
+ * `PopIns` is here and not in `CELL_QUIET_COUNTERS`, by the same rule: it only ever
  * increments inside `loadSucceeded`, so it cannot move while `LoadsSucceeded` sits still
  * and adding it to the settle would buy nothing. It is on the line because it is the
- * number a reader most needs to SEE — the run that shipped the blind spot this counter
+ * number a reader most needs to SEE. The run that shipped the blind spot this counter
  * exists to close had `appearances` equal to `binds`, and nobody looked, because neither
  * value was printed anywhere.
  */
 export const CELL_REPORT_COUNTERS = Object.freeze([
   ...CELL_QUIET_COUNTERS,
   'PopIns',
-  // The two halves of `Unloads`, on the LINE but deliberately not in the settle above:
+  // The two halves of `Unloads`, on the LINE but not in the settle above:
   // both are bumped in the same straight-line block as `Unloads` itself, so neither can
   // move while it sits still and watching them would buy nothing. They are here because
-  // the total answers the wrong question — `Range` (a row left the vertical buffer) is
+  // the total answers the wrong question. `Range` (a row left the vertical buffer) is
   // driven by how far the sweep scrolled DOWN and dominates every reading, while `Window`
   // is the only evidence that horizontal windowing engaged at all. A campaign varying the
   // per-row item limit reads `Window` at the gate and after the sweep; the total is blind
@@ -798,15 +1784,15 @@ export const formatCellCounts = (counts) =>
  * One-shot read of the reported cell-load counters, for a caller that needs a BEFORE.
  *
  * `waitCellsQuiet` publishes what a sweep ENDS on, and the app's own emit is a single
- * end-of-session total — so both describe one number covering two different workloads: what
+ * end-of-session total, so both describe one number covering two different workloads: what
  * the screen did loading ITSELF, and what the sweep provoked. Nothing has ever separated
  * them, which is why a bind count that differs between launches cannot be attributed to
  * either half. Read at the gate, this is the subtrahend that can.
  *
- * Batched, where the settle loop deliberately reads sequentially, and the difference is the
+ * Batched, where the settle loop reads sequentially on purpose, and the difference is the
  * rule rather than a preference: `tests/rta/CLAUDE.md` carves poll loops OUT of the batch
  * rule because a monotonic counter sampled across an increment can only delay quiescence,
- * never declare it early. A one-shot baseline is the case that rule actually governs — every
+ * never declare it early. A one-shot baseline is the case that rule actually governs: every
  * counter here has to describe the same instant, or the delta taken against it credits the
  * sweep with work that finished before the first keypress.
  *
@@ -816,15 +1802,15 @@ export const formatCellCounts = (counts) =>
  * is a fact about the BUILD and the correct state for a release, while the second means this
  * reading describes no list at all and every delta taken against it is fiction. Here the
  * content root rides along IN THE SAME BATCH, so telling them apart costs no extra round
- * trip — where the settle loop pays a second sequential read for the same answer.
+ * trip, where the settle loop pays a second sequential read for the same answer.
  *
- * @param {string} listId - `#id` of the texture-managed list, e.g. `#homeRows`
+ * @param {string} listId - `#id` of the texture-managed list, for example `#homeRows`
  * @param {object} [opts]
  * @param {(keyPaths: string[]) => Promise<any[]>} [opts.readMany] batch reader, defaulting
- *   to `getActiveVals`. Named `readMany` and NOT `read` because the neighbouring waits take
+ *   to `getActiveVals`. Named `readMany` and not `read` because the neighboring waits take
  *   a SINGLE-keyPath `read` and their call sites sit two lines from this one: `getActiveVal`
  *   passed here returns a scalar, and the indexing below throws `Cannot read properties of
- *   undefined` — eleven minutes into a device run, naming nothing that points back at the
+ *   undefined`, eleven minutes into a device run, naming nothing that points back at the
  *   swap. The name is the guard; an error message would only describe the crash better.
  * @returns {Promise<{counts: object, instrumented: boolean, resolved: boolean}>}
  *   `instrumented` is false on a production build, where `perfTiming` is off and the
@@ -833,7 +1819,7 @@ export const formatCellCounts = (counts) =>
  */
 export async function readCellCounts(listId, { readMany = getActiveVals } = {}) {
   // The content root rides along as the LAST keyPath, so `resolved` describes the same
-  // instant as the counters and not just the same call.
+  // instant as the counters and not only the same call.
   const values = await readMany([
     ...CELL_REPORT_COUNTERS.map((c) => `${listId}.content.cellLoad${c}`),
     `${listId}.content.getChildCount()`,
@@ -855,15 +1841,15 @@ export async function readCellCounts(listId, { readMany = getActiveVals } = {}) 
  * flight at that instant is counted asymmetrically: an image request that has STARTED but
  * not yet failed contributes to `loadsStarted` and not to `loadsFailed`. Leaving the screen
  * a fixed wall-clock time after the last keypress would put that boundary in a different
- * place on every run — a slower device, a slower server or a colder cache each move it —
- * so the run-to-run variance of `loadsFailed` would be an artefact of when we pressed Back.
+ * place on every run (a slower device, a slower server or a colder cache each move it), so
+ * the run-to-run variance of `loadsFailed` would be an artifact of when we pressed Back.
  * Ending on quiescence instead makes the boundary a property of the app.
  *
  * ## Why it reads the app's own counters rather than a proxy
  *
  * There is no "all textures resolved" signal to gate on, and a fixed `sleep` is the thing
  * this suite's rules forbid. But the counters themselves are ordinary node fields on the
- * content root, so they are readable over ODC — which `source/utils/cellLoad.bs` names as
+ * content root, so they are readable over ODC, which `source/utils/cellLoad.bs` names as
  * one of the three reasons they live there. Gating the measurement's end on the measured
  * quantity is the closest thing available to an exact boundary.
  *
@@ -874,21 +1860,21 @@ export async function readCellCounts(listId, { readMany = getActiveVals } = {}) 
  * watching only if it can move while `binds` and `loadsStarted` both sit still. Exactly
  * four can:
  *
- *   - **`cellLoadLoadsFailed`** — `JRRowItem.onPosterLoadStatusChanged` / `GridItem`'s
+ *   - **`cellLoadLoadsFailed`**: `JRRowItem.onPosterLoadStatusChanged` / `GridItem`'s
  *     equivalent, an ASYNCHRONOUS completion callback. It is the whole reason this function
  *     exists: a request that has started and not yet failed is counted by `loadsStarted` and
  *     not by `loadsFailed`, so a boundary drawn while one is outstanding splits a pair.
- *   - **`cellLoadLoadsSucceeded`** — the `ready` half of that same callback, and watched
+ *   - **`cellLoadLoadsSucceeded`**: the `ready` half of that same callback, and watched
  *     for the identical reason. It was added after a review asked how a "successful loads"
  *     figure was known, and the answer was that it was not: successes were inferred as
  *     `loadsStarted - loadsFailed`, which counts a request that never came back as a
  *     success. With it watched, the same quiescence that pairs a start with its failure
  *     pairs a start with its success, and `loadsStarted - (loadsFailed + loadsSucceeded)`
  *     becomes a residual the caller can assert is zero rather than a gap it cannot see.
- *   - **`cellLoadUnloads`** — `unloadTexture` bumps nothing else, so an off-screen cell
+ *   - **`cellLoadUnloads`**: `unloadTexture` bumps nothing else, so an off-screen cell
  *     releasing its texture is invisible to the others.
- *   - **`cellLoadAppearances`** — a cell that scrolls back into view with its texture still
- *     loaded bumps this and NOTHING else: it was never rebound, the buffer held the image
+ *   - **`cellLoadAppearances`**: a cell that scrolls back into view with its texture still
+ *     loaded bumps this and nothing else: it was never rebound, the buffer held the image
  *     so no load ran, and nothing unloaded. On `cellSweepGrid` that is 12 of the 18
  *     re-entries, so a settle blind to it could declare quiet while cells were still
  *     re-appearing and publish an `appearances` short by most of what the pop-in line
@@ -901,38 +1887,38 @@ export async function readCellCounts(listId, { readMany = getActiveVals } = {}) 
  * same straight-line block as its `loadStarted`. None of them can move alone, so watching
  * them would cost reads and buy nothing.
  *
- * **What this does NOT fix, measured rather than hoped.** Across six `cellSweepExtras`
+ * **What this does not fix, measured rather than hoped.** Across six `cellSweepExtras`
  * launches on `.177` the wobbling fields (`loadsFailed` 116–118, `reloads` 121–123,
  * `unloads` 7–8, `wipesBind` 32–34) all moved TOGETHER and in the same direction, while
  * `loadsStarted` held at exactly 140. Two things follow, and the second is easy to state
- * backwards. It is NOT a count truncated at the boundary — that would show the same
+ * backwards. It is not a count truncated at the boundary: that would show the same
  * `reloads` with fewer `loadsFailed`, and instead the whole chain shifts. But it is not the
  * workload getting BIGGER or smaller either: 140 attempts every launch, with bind-path
  * loads (`loadsStarted - reloads`) falling 19 -> 17 exactly as `reloads` rises 121 -> 123.
- * The total work is fixed and its SPLIT drifts — the same cell taking the reload path
- * instead of the bind path — which is a timing-dependent choice in the app, not slack in
+ * The total work is fixed and its SPLIT drifts (the same cell taking the reload path
+ * instead of the bind path), which is a timing-dependent choice in the app, not slack in
  * the harness. Only the +/-1 seen at CONSTANT `reloads` (one launch of nine) is a boundary
- * artefact this can remove. Widening the gate is still right, because the invariant it
- * buys — every field the sample publishes has stopped moving — is one the caller can rely
- * on; it is not a variance fix, and must not be sold as one.
+ * artifact this can remove. Widening the gate is still right, because the invariant it
+ * buys (every field the sample publishes has stopped moving) is one the caller can rely
+ * on. It is not a variance fix, and must not be sold as one.
  *
  * ## Why it warns instead of throwing
  *
- * A list that never goes quiet is a FINDING, not a harness failure — it is precisely the
- * runaway-rebind shape the ledger was built to catch — and every caller is a nav that also
+ * A list that never goes quiet is a FINDING, not a harness failure (it is the
+ * runaway-rebind shape the ledger was built to catch), and every caller is a nav that also
  * runs as a functional test. Throwing would turn the discovery into a red screen-loads
  * test, in a suite whose reds are supposed to mean the screen did not load. It reports
  * instead, and the emitted line carries the evidence.
  *
  * A build with `perfTiming` off carries no counters at all; that reads as "nothing to wait
  * for" and returns immediately rather than warning, since it is the correct state for a
- * production build. **An unreadable keyPath looks identical from one read** — both come back
- * `undefined` — so the content root is read too, and the two are reported differently: an
+ * production build. **An unreadable keyPath looks identical from one read**, since both come
+ * back `undefined`, so the content root is read too, and the two are reported differently: an
  * uninstrumented build is a fact about the build, while a list that does not resolve at all
  * means this call is watching nothing and the caller's numbers have no settle behind them.
- * Collapsing them would print "perfTiming off" at an operator whose keyPath was simply wrong.
+ * Collapsing them would print "perfTiming off" at an operator whose keyPath was wrong.
  *
- * @param {string} listId the list's `#id` — the counters hang off `<listId>.content`
+ * @param {string} listId the list's `#id`; the counters hang off `<listId>.content`
  * @param {object} [opts]
  * @param {(k:string)=>Promise<any>} [opts.read] defaults to `getActiveVal`, which is what
  *   every cell-bearing list needs: `#itemGrid`, `#extrasGrid` and `#homeRows` all recur
@@ -968,9 +1954,9 @@ export async function waitCellsQuiet(
           'them. Check the keyPath and whether the list is still mounted.',
       );
     }
-    // `quiet: false` when the list never resolved — this call observed no quiet point, and
+    // `quiet: false` when the list never resolved: this call observed no quiet point, and
     // saying otherwise would let a caller that reads only `.quiet` treat a watch of nothing
-    // as a settle. `instrumented: false` with `resolved: true` is the genuinely quiet case:
+    // as a settle. `instrumented: false` with `resolved: true` is the truly quiet case:
     // a production build carries no counters, so there is nothing to wait for.
     return { quiet: resolved, instrumented: false, resolved, counts, waitedMs: 0 };
   }
@@ -1005,29 +1991,30 @@ export async function waitCellsQuiet(
 }
 
 /**
- * Wait until a list's ROW STRUCTURE stops changing — the precondition a scripted sweep of
- * an asynchronously-built screen needs before it reads its own bounds or presses a key.
+ * Wait until a list's ROW STRUCTURE stops changing. This is the precondition a scripted
+ * sweep of an asynchronously-built screen needs before it reads its own bounds or presses a
+ * key.
  *
  * ## Why this exists, and why only Home needs it
  *
  * `waitCellsQuiet` closes the measured session at a quiet point; this is its missing
- * opening half. Home is the one cell screen whose sweep has never reproduced — three
+ * opening half. Home is the one cell screen whose sweep has never reproduced: three
  * campaigns on `.177` read `binds` 231/235/235, then 231/238/253, then 222/231/234, while
  * `cellSweepGrid`, `cellSweepExtras` and `cellSweepSearch` were exact on every field.
  *
- * ⚠️ **The hypothesis that built this — stated here because it was WRONG and the next
+ * ⚠️ **The hypothesis that built this, stated here because it was wrong and the next
  * reader will have it too.** Home's rows arrive from `LoadLatestRowsTask` over the seconds
  * after `waitHome()` passes (that gate is satisfied by skeleton rows), and
- * `insertLatestMediaSkeletons` inserts them MID-LIST — so a sweep started too early would
+ * `insertLatestMediaSkeletons` inserts them MID-LIST, so a sweep started too early would
  * read its row count and its widest row off a screen still being built, and travel over a
  * structure changing underneath it. Plausible, mechanically sound, and refuted on device:
  * see the measurement below. The rows are already there when the sweep starts.
  *
- * 🚨 **This gate does NOT reduce Home's variance, and it was built believing it would.**
+ * 🚨 **This gate does not reduce Home's variance, and it was built believing it would.**
  * Measured rather than assumed, by the protocol this project already requires for Home
  * (n=20 per arm, alternated in four blocks, `.177`, real server, same build `ad944494`):
  * `binds` 235–255 in BOTH arms, medians 242 and 242, IQR 13 against 11, and a
- * Brown-Forsythe-shaped rank test on |x − median| gives |z| < 1.7 on every field — the
+ * Brown-Forsythe-shaped rank test on |x − median| gives |z| < 1.7 on every field, and the
  * largest, `appearances` at z = −1.62, pointing at the UNGATED arm being tighter. An n=5
  * pilot had looked like it pinned four fields (`appearances` 105×5, `popIns` 42×5); n=20
  * says that was noise, which is exactly what an n=5 range statistic is worth on a discrete,
@@ -1035,11 +2022,11 @@ export async function waitCellsQuiet(
  *
  * ⚠️ **What it IS kept for: it turns a precondition nobody had checked into a fact printed
  * on every run.** On all 20 gated launches it reported the structure already stable at
- * gate-open (`settled in 1983–2048 ms`, i.e. the `quietMs` floor plus one poll), so Home's
- * rows are NOT still arriving when the sweep starts, and arrival timing is not the
+ * gate-open (`settled in 1983–2048 ms`, that is the `quietMs` floor plus one poll), so Home's
+ * rows are not still arriving when the sweep starts, and arrival timing is not the
  * mechanism behind the spread. Together with the itinerary line (identical on all 40
  * launches, zero corrective presses), `items` 128 on all 40, `unloads` 59 on all 40 and
- * `popInsCold` 29 on all 40, that pins the harness side of `cellSweepHome` completely — and
+ * `popInsCold` 29 on all 40, that pins the harness side of `cellSweepHome` completely, and
  * `binds` still spans 235–255. **The remaining variance is the app binding a different
  * number of cells over an identical ITINERARY**, which is an app question and the one Phase B
  * should be spending itself on. A gate beats an eyeball: this is the durable form of that
@@ -1052,29 +2039,29 @@ export async function waitCellsQuiet(
  * starts on a screen that is structurally still but not finished, and the divergence this
  * function was built to hunt has already happened by the time it opens.
  *
- * ⚠️ **More dwell is not the answer either** — inserting `waitCellsQuiet` BEFORE the sweep
+ * ⚠️ **More dwell is not the answer either.** Inserting `waitCellsQuiet` BEFORE the sweep
  * as well (roughly doubling the wait) made things worse at n=5, not better: `binds` range 17
  * against the gated arm's 7 and `appearances` 105–126. Recorded so the obvious next knob is
  * known to have been tried.
  *
  * ⚠️ **The ledger's `items` is a weaker certificate than it looks, but it is not blind.**
  * `cell-load` publishes it from `countItems(contentRoot)` at EMIT time, when the screen is
- * hidden and everything has arrived — so it certifies the FINAL structure, not the one the
+ * hidden and everything has arrived, so it certifies the FINAL structure, not the one the
  * sweep travelled. It did catch the demo fixture drifting 24 -> 25 items mid-campaign, so do
  * not read it as useless; read it as unable to distinguish a sweep over a half-built screen
  * from one over a whole screen that ends the same way. That distinction is what this gate
  * adds, and on Home the answer turned out to be "the screen was whole all along".
  *
- * Extras and search are deliberately NOT gated on this, for the reason `navCellSweepGrid`'s
+ * Extras and search are not gated on this, for the reason `navCellSweepGrid`'s
  * return leg was not folded into `sweepRowList`: their bounds are identical run to run, so a
  * settle can only be a no-op there, and their recorded baselines are the denominator real
  * comparisons were taken at. Cost with no benefit.
  *
  * ## What it watches
  *
- * The row count and every row's child count — the two things `sweepRowList` reads to choose
+ * The row count and every row's child count: the two things `sweepRowList` reads to choose
  * an itinerary, so the gate covers exactly what a moving structure would move. It sees ALL
- * of Home's asynchronous sections, not just latest media, because a skeleton row carries one
+ * of Home's asynchronous sections, not only latest media, because a skeleton row carries one
  * placeholder child and a populated one carries its items: a section filling in is a change
  * in this sample whichever task filled it.
  *
@@ -1083,7 +2070,7 @@ export async function waitCellsQuiet(
  * straddles an arriving row reports a DIFFERENCE, which delays quiescence and cannot
  * declare it early.
  *
- * ## What it does NOT prove — state, do not discover later
+ * ## What it does not prove: state it, do not discover it later
  *
  * Quiescence is a heuristic, not the app's own "run complete" signal (`isLoadingLatestRows`
  * is an `m` local and reaches no interface). A gap between two rows arriving that exceeds
@@ -1092,42 +2079,42 @@ export async function waitCellsQuiet(
  * announces a different `rows`/`items` pair. The confound becomes visible instead of being
  * eliminated, which is what the ledger's `items` field failed to do.
  *
- * **The itinerary is deliberately NOT read from this gate's return value.** `sweepRowList`
+ * **The itinerary is not read from this gate's return value, on purpose.** `sweepRowList`
  * takes its own look at the same two quantities, so the settle's pair and the swept pair are
- * two INDEPENDENT observations — and that is the only thing that can catch the failure named
+ * two INDEPENDENT observations, and that is the only thing that can catch the failure named
  * directly above, because a gate cannot self-detect firing early. Thread the settled sample
  * into the sweep and it becomes authoritative and unfalsifiable: the itinerary would agree
  * with the settle BY CONSTRUCTION, on a mid-build lull exactly as readily as on a finished
  * screen. That is the same weakness that makes the ledger's `items` a poor certificate,
- * reintroduced one layer up. The second opinion is close to free — `sweepRowList` re-reads
+ * reintroduced one layer up. The second opinion is close to free: `sweepRowList` re-reads
  * the pair in TWO round trips, since `getActiveVals` batches the per-row widths, against the
  * ~2000 ms this gate already spends.
  *
  * Warns rather than throwing, exactly as `waitCellsQuiet` does: every caller is a nav that
  * also runs as a functional test, where a red means "the screen did not load".
  *
- * **Why the timeout is 20000 and not `waitCellsQuiet`'s 15000 — reasoning added at review,
- * and NOT the basis on which the number was originally picked.** `waitHome`'s rows gate
+ * **Why the timeout is 20000 and not `waitCellsQuiet`'s 15000: reasoning added at review,
+ * not the basis on which the number was originally picked.** `waitHome`'s rows gate
  * already allows 20000 for `#homeRows.content.getChildCount()` to become non-empty: the HEAD
  * of the latest-rows arrival process. This gate waits for the TAIL of that same process, so
  * the two belong on one budget and should move together when Home's arrival budget moves.
- * `waitCellsQuiet`'s 15000 covers a different situation — it runs AFTER the sweep, when the
+ * `waitCellsQuiet`'s 15000 covers a different situation: it runs AFTER the sweep, when the
  * screen is already settled and quiescence is imminent. No measurement prefers 20000 over
  * 15000: observed settles were ~2000 ms, so either is 7–10x headroom, and the timeout bites
- * only when the structure genuinely never stops moving, which warns and proceeds.
+ * only when the structure never stops moving, which warns and proceeds.
  *
  * **The two ways this gives up are different findings and warn differently**, on the same
  * split `waitCellsQuiet` draws between an uninstrumented build and an unreadable keyPath: a
  * structure that never held still means the screen was still being BUILT, while one that
- * stopped answering means the list went AWAY — replaced, unmounted, or swapped by a view
- * change — and telling an operator the second was the first sends them after the wrong bug.
+ * stopped answering means the list went AWAY (replaced, unmounted, or swapped by a view
+ * change), and telling an operator the second was the first sends them after the wrong bug.
  *
- * @param {string} listId the list's `#id` — rows hang off `<listId>.content`
+ * @param {string} listId the list's `#id`; rows hang off `<listId>.content`
  * @param {object} [opts]
  * @param {(k:string)=>Promise<any>} [opts.read] defaults to `getActiveVal`
  * @returns {Promise<{settled:boolean, resolved:boolean, rows:number|undefined,
  *                    items:number|undefined, widths:number[], waitedMs:number}>}
- *   `resolved` is answered at GATE-OPEN — false only when the list never answered at all.
+ *   `resolved` is answered at GATE-OPEN: false only when the list never answered at all.
  *   A list that answers once and then vanishes still reports `resolved: true`, because the
  *   structure it hands back is the real one it read before vanishing; the warning is what
  *   carries that it went away. `rows`/`items`/`widths` therefore always describe a structure
@@ -1151,7 +2138,7 @@ export async function waitRowsSettled(
   const total = (s) => s.widths.reduce((n, w) => n + w, 0);
   // Row COUNT is not compared: `widths` has one entry per row by construction, so a row
   // arriving or being removed already differs in length. What the `rows` check IS
-  // load-bearing for is the unresolved sample — two consecutive failed reads both produce
+  // needed for is the unresolved sample: two consecutive failed reads both produce
   // `{ rows: undefined, widths: [] }`, which compares EQUAL and would otherwise declare a
   // list that stopped answering to be a settled one.
   const same = (a, b) =>
@@ -1178,8 +2165,8 @@ export async function waitRowsSettled(
 
   // The last sample whose reads SUCCEEDED, tracked separately from `shape` because the two
   // diverge in exactly the case worth reporting well: a list that goes away mid-poll answers
-  // `{ rows: undefined, widths: [] }` for the rest of the timeout, so `shape` — which must
-  // follow the live reading to keep the settle honest — stops describing anything. Reporting
+  // `{ rows: undefined, widths: [] }` for the rest of the timeout, so `shape` (which must
+  // follow the live reading to keep the settle honest) stops describing anything. Reporting
   // it prints `last undefined row(s)` and blames a screen still being BUILT for a screen that
   // is no longer THERE. Those are two different findings with two different fixes, so the
   // structure this call reports is always one it actually observed.

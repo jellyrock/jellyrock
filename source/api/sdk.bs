@@ -1,8 +1,8 @@
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/utils/misc.bs"
 
-' Jellyfin SDK — thin wrappers around API endpoints.
-' Only used by ApiClient (via GetApi()). Do NOT call these functions directly.
+' Jellyfin SDK: thin wrappers around API endpoints.
+' Only used by ApiClient (via GetApi()). Do not call these functions directly.
 '
 ' Most endpoints have been migrated to Build*Request() methods on ApiClient,
 ' which return request AAs routed through the API pool (fetchRes/fetchJson/SubmitSideEffect).
@@ -19,17 +19,9 @@ namespace sdk
   end namespace
 
   namespace items
-    ' Gets the item's image URL (no HTTP call — just builds URL string).
+    ' Gets the item's image URL (no HTTP call: it only builds the URL string).
     function GetImageURL(id as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
       return buildURL(Substitute("/items/{0}/images/{1}/{2}", id, imagetype, imageindex.toStr()), params)
-    end function
-  end namespace
-
-  namespace system
-    ' Gets a named configuration.
-    function GetConfigurationByName(name as string)
-      req = APIRequest(Substitute("/system/configuration/{0}", name))
-      return getJson(req)
     end function
   end namespace
 

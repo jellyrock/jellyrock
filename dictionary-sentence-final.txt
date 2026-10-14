@@ -53,6 +53,7 @@
 (?:APIs)\.
 (?:arg)\.
 (?:args)\.
+(?:argv)\.
 (?:assignees)\.
 (?:AST)\.
 (?:async)\.
@@ -108,6 +109,7 @@
 (?:BSC-plugin-generated)\.
 (?:bsc-plugins)\.
 (?:bsconfig)\.
+(?:bsconfigs)\.
 (?:bsfmt)\.
 (?:bslint)\.
 (?:cacheable)\.
@@ -153,6 +155,7 @@
 (?:codecs)\.
 (?:codegen)\.
 (?:CommonJS)\.
+(?:comparator)\.
 (?:config)\.
 (?:Config)\.
 (?:configs)\.
@@ -248,6 +251,7 @@
 (?:ECP-disabled)\.
 (?:EDID)\.
 (?:editorconfig)\.
+(?:enablement)\.
 (?:enrichment)\.
 (?:Enrichment)\.
 (?:enrichments)\.
@@ -272,6 +276,7 @@
 (?:FHD)\.
 (?:filesystem)\.
 (?:flac)\.
+(?:FLAC)\.
 (?:fns)\.
 (?:focusable)\.
 (?:followup)\.
@@ -310,9 +315,11 @@
 (?:Hardcoding)\.
 (?:HD)\.
 (?:HDR)\.
+(?:HEVC)\.
 (?:HIG)\.
 (?:HK-specific)\.
 (?:HLS)\.
+(?:Holm)\.
 (?:hostname)\.
 (?:hotfix)\.
 (?:how-tos)\.
@@ -358,6 +365,7 @@
 (?:last-checked)\.
 (?:last-updated)\.
 (?:lexically)\.
+(?:libvips)\.
 (?:lifecycle)\.
 (?:Lifecycle)\.
 (?:linter)\.
@@ -385,6 +393,7 @@
 (?:marshalling)\.
 (?:Marshalling)\.
 (?:Mbps)\.
+(?:MiB)\.
 (?:mixin)\.
 (?:Mixin)\.
 (?:mka)\.
@@ -403,6 +412,7 @@
 (?:Namespaces)\.
 (?:natively)\.
 (?:nav)\.
+(?:navs)\.
 (?:Niklas)\.
 (?:no-ODC)\.
 (?:nodearray)\.
@@ -470,9 +480,11 @@
 (?:PNG)\.
 (?:PNGs)\.
 (?:portal-UI)\.
+(?:positionally)\.
 (?:post-auth)\.
 (?:postcondition)\.
 (?:postconditions)\.
+(?:pre-12)\.
 (?:pre-auth)\.
 (?:pre-commit)\.
 (?:Pre-commit)\.
@@ -499,6 +511,7 @@
 (?:pre-ship)\.
 (?:pre-show)\.
 (?:pre-test)\.
+(?:prebuilt)\.
 (?:Prefetch)\.
 (?:preflight)\.
 (?:preloading)\.
@@ -541,6 +554,8 @@
 (?:regenerable)\.
 (?:rekey)\.
 (?:rekeying)\.
+(?:remux)\.
+(?:remuxes)\.
 (?:remuxing)\.
 (?:renderer)\.
 (?:renderers)\.
@@ -638,6 +653,7 @@
 (?:superset)\.
 (?:SVG)\.
 (?:SVGs)\.
+(?:Tasker)\.
 (?:TCP)\.
 (?:teardown)\.
 (?:templated)\.
@@ -646,6 +662,7 @@
 (?:theming)\.
 (?:Tiago)\.
 (?:TLS)\.
+(?:TMDB)\.
 (?:tmpdir)\.
 (?:tokenizer)\.
 (?:tomatometer)\.
@@ -704,6 +721,7 @@
 (?:unquantified)\.
 (?:unresolvable)\.
 (?:unreviewed)\.
+(?:unscoped)\.
 (?:unshuffled)\.
 (?:unsynchronized)\.
 (?:untracked)\.
@@ -723,10 +741,12 @@
 (?:UX)\.
 (?:v1)\.
 (?:V1)\.
+(?:v12)\.
 (?:v2)\.
 (?:V2)\.
 (?:v2\.0)\.
 (?:v3)\.
+(?:v4)\.
 (?:validator)\.
 (?:validators)\.
 (?:vendored)\.
@@ -746,6 +766,7 @@
 (?:wakeup-signal)\.
 (?:walkthrough)\.
 (?:wav)\.
+(?:WCAG)\.
 (?:Weblate)\.
 (?:WebP)\.
 (?:webp)\.

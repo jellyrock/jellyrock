@@ -1,0 +1,140 @@
+import "pkg:/source/GridView/MoviePresenter.bs"
+
+namespace tests
+
+  ' MoviePresenter's logo lookup gets a NEW LoadItemsTask2 per focus change (a launch of a
+  ' still-running node is ignored: docs/architecture/threading.md), so its handler must
+  ' drop an event from a node it has since replaced. `no-same-node-relaunch` checks that
+  ' guard for a handler in the same file as its observer; this one is reached through
+  ' BaseGridView.onPresenterLogoLoaded, which the plugin does not follow, so it is pinned
+  ' here instead.
+  @suite("MoviePresenter - logo lookup")
+  class MoviePresenterTests extends tests.BaseTestSuite
+
+    private presenter as object
+    private view as object
+    private current as object
+    private info as object
+    private logo as object
+    private title as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.info = CreateObject("roSGNode", "Group")
+      m.info.id = "presentationInfo"
+      m.logo = m.info.createChild("Poster")
+      m.logo.id = "movieLogo"
+      m.logo.visible = false
+      m.title = m.info.createChild("Label")
+      m.title.id = "selectedMovieName"
+      m.title.visible = false
+      top = CreateObject("roSGNode", "Group")
+      top.appendChild(m.info)
+
+      m.view = { top: top }
+      m.presenter = new MoviePresenter()
+      m.presenter.onInit(m.view)
+      m.current = CreateObject("roSGNode", "LoadItemsTask2")
+      m.view.loadLogoTask = m.current
+    end function
+
+    protected override function afterEach()
+      m.presenter = invalid
+      m.view = invalid
+      m.current = invalid
+      m.info = invalid
+      m.logo = invalid
+      m.title = invalid
+      super.afterEach()
+    end function
+
+    ' A stand-in roSGNodeEvent carrying `data` from `node`.
+    protected function eventFrom(node as object, data as object) as object
+      return {
+        source: node,
+        data: data,
+        getRoSGNode: function() as object
+          return m.source
+        end function,
+        getData: function() as object
+          return m.data
+        end function
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("onLogoLoaded()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the logo delivered by the current lookup")
+    function _()
+      m.presenter.onLogoLoaded(m.eventFrom(m.current, ["http://server/logo-b"]))
+
+      m.assertEqual(m.logo.uri, "http://server/logo-b")
+      m.assertTrue(m.logo.visible)
+      m.assertTrue(m.title.visible)
+    end function
+
+    @it("ignores a lookup that focus has since moved past")
+    function _()
+      replaced = CreateObject("roSGNode", "LoadItemsTask2")
+
+      m.presenter.onLogoLoaded(m.eventFrom(replaced, ["http://server/logo-a"]))
+
+      m.assertEqual(m.logo.uri, "", "a replaced lookup's logo must not be shown")
+      m.assertFalse(m.logo.visible)
+      m.assertFalse(m.title.visible, "a replaced lookup must not touch the panel at all")
+    end function
+
+    @it("ignores a lookup that finishes after teardown")
+    function _()
+      m.presenter.onDestroy()
+      m.assertInvalid(m.view.loadLogoTask, "onDestroy releases the node")
+
+      m.presenter.onLogoLoaded(m.eventFrom(m.current, ["http://server/logo-a"]))
+
+      m.assertEqual(m.logo.uri, "")
+      m.assertFalse(m.logo.visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("onItemFocused() - the hidden-panel guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' `presentationInfo` is on screen only in the Movies presentation view:
+    ' BaseGridView.configureBackdrop() sets its visibility to exactly
+    ' shouldShowPresentationInfo(). In the grid views the panel is hidden, so populating it
+    ' wrote labels nobody could read and, worse, started a logo lookup per focus change:
+    ' moving a cursor across a library asked the server for a logo it would never draw.
+    '
+    ' Only the guarded direction is driven here. The unguarded one ends in launchTask(),
+    ' and a unit suite has no business starting a Task thread. The predicate it turns on
+    ' is pinned directly below instead, and the populated panel is what the onLogoLoaded
+    ' group above already asserts on.
+
+    @it("does not start a logo lookup for a view whose panel is hidden")
+    @params("MoviesGrid")
+    @params("Studios")
+    @params("Collections")
+    function _(viewMode)
+      m.current.id = "still-the-original-node"
+
+      m.presenter.onItemFocused({ id: "movie-1", name: "A Movie" }, viewMode)
+
+      m.assertEqual(m.view.loadLogoTask.id, "still-the-original-node", "no lookup may be started for a hidden panel")
+      m.assertEqual(m.title.text, "", "nor may anything be written into the panel")
+    end function
+
+    @it("turns on exactly the predicate that decides whether the panel is on screen")
+    @params("Movies", true)
+    @params("movies", true)
+    @params("MoviesGrid", false)
+    @params("Studios", false)
+    @params("Collections", false)
+    function _(viewMode, expected)
+      m.assertEqual(m.presenter.shouldShowPresentationInfo(viewMode), expected)
+    end function
+
+  end class
+
+end namespace

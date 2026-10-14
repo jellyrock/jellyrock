@@ -3,8 +3,8 @@
  *
  * RTA seeds the REAL `JellyRock` registry (see seed.js for why), so every run
  * mutates state a person is actually using. This module is the safety net:
- * snapshot the WHOLE registry before anything is seeded, and put it back —
- * exactly — afterwards.
+ * snapshot the WHOLE registry before anything is seeded, and put it back
+ * exactly afterwards.
  *
  * ## Why the whole registry, and not a list of keys
  *
@@ -21,7 +21,7 @@
  *
  * Neither was ever a candidate for restore: `available_users` is written by the
  * app, and the user section was never in the snapshot at all. Both read back as
- * `VERIFIED CLEAN`. Snapshotting everything removes the judgement call — there
+ * `VERIFIED CLEAN`. Snapshotting everything removes the judgment call: there
  * is no list to keep in sync with the seeds, and none to keep in sync with the
  * app either.
  *
@@ -29,31 +29,81 @@
  *
  * A snapshot that lives only in the test process dies with it. That is how this
  * repo has stranded devices: an interrupted run leaves the device on the demo
- * server with nothing left to restore from, and — worse — the NEXT run then
+ * server with nothing left to restore from, and worse, the NEXT run then
  * snapshots that dirty state as if it were the user's, making the damage
  * permanent and self-certifying. Persisting the snapshot before any seeding
  * turns both cases into recoveries: `snapshotRegistry()` finds the leftover
  * file, restores from it FIRST, and only then takes its own snapshot.
  *
  * The file is `.device-runs/registry-<host>.json` (gitignored) and it holds auth
- * tokens, so nothing here ever prints its contents — only its path. It lives
- * outside `out/` for a load-bearing reason — see `SNAPSHOT_DIR` below.
+ * tokens, so nothing here ever prints its contents, only its path. It lives
+ * outside `out/` for a reason given at `SNAPSHOT_DIR` below.
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { odc, device, hardRelaunch } from './driver.js';
+import { odc, device, hardRelaunch, ensureOdcReachable, withTimeout } from './driver.js';
+import { isProcessAlive } from '../../../scripts/lib/process-liveness.cjs';
 
 /**
- * Where the snapshot lives — deliberately NOT under `out/`, and gitignored.
+ * Wall clock on a registry read, covering the one failure the reachability gate cannot see.
  *
- * Every `build*` script opens with `npx rimraf build/ out/` and `npm run test:rta`
- * builds first, so a snapshot under `out/` was deleted before the recovery in
+ * The gate answers "is the port open"; this answers "did the component ANSWER". They are
+ * different questions and the gap between them is a real hang: RTA's `setupClientSocket`
+ * resolves its cached promise only after a post-connect `setSettings` handshake succeeds,
+ * and the rejection arm of that `.then()` only calls `debugLog`, so a failed handshake
+ * leaves every later ODC call awaiting a promise that never settles, and no RTA timeout can
+ * fire (the per-request one wraps the request, not the socket setup). Measured 2026-09-06:
+ * still pending at 45 s against a socket that accepts and never replies. Observed for real
+ * once, on `.178` after a SIGINT, at 8+ minutes. See `rta-odc-connect-hang` in
+ * `docs/signals-backlog.md`.
+ *
+ * 60 s is ~10,000x a healthy ODC round trip (~5.4 ms on the slower of the two devices), so
+ * it bounds the hang without being reachable by a slow-but-working read. It is a diagnosis,
+ * not a performance gate, the same posture as `DEPLOY_TIMEOUT_MS`.
+ *
+ * Only the reads are wrapped. The writes in between run on a socket the read
+ * already established, so they are covered by RTA's own per-request timeout; a read is the call
+ * that may have to CONNECT, which is the unbounded part.
+ */
+const REGISTRY_READ_TIMEOUT_MS = 60 * 1000;
+
+/** Why a registry read gave up, said in terms of what to do about it. */
+const readTimedOut = (what, timeoutMs) =>
+  `the ODC port is open but the component never answered ${what} within ` +
+  `${timeoutMs / 1000}s. This is roku-test-automation's setupClientSocket ` +
+  'defect (docs/signals-backlog.md -> rta-odc-connect-hang): a failed post-connect ' +
+  'handshake leaves the cached socket promise unsettled, so every later ODC call awaits a ' +
+  'dead promise and no RTA timeout can fire. Recovery is a kill plus a re-deploy — ' +
+  '`npm run test:rta` does it for you, since snapshotRegistry restores from the stranded ' +
+  'snapshot first.';
+
+/**
+ * A registry read that cannot hang, and cannot be reached without a live component.
+ *
+ * The ORDER carries the whole point and is not interchangeable: the gate runs FIRST because
+ * the failure it prevents is not a slow read, it is RTA crashing the process out from under
+ * us on a connect it cannot complete (`scripts/lib/odc-probe.js`). Reading first and
+ * bounding afterwards would leave that crash exactly where it was.
+ */
+const readRegistryBounded = async (what, { timeoutMs = REGISTRY_READ_TIMEOUT_MS } = {}) => {
+  await ensureOdcReachable();
+  return withTimeout(odc.readRegistry(), timeoutMs, readTimedOut(what, timeoutMs));
+};
+
+/** Test seams. The bound above is the point of this module's ODC handling, so it has a gate. */
+export const _internals = { readRegistryBounded, REGISTRY_READ_TIMEOUT_MS };
+
+/**
+ * Where the snapshot lives: not under `out/`, and gitignored.
+ *
+ * The `build*` scripts (all but `build:analysis`) open with `npx rimraf build/ out/`
+ * and `npm run test:rta` builds first, so a snapshot under `out/` was deleted before the recovery in
  * `snapshotRegistry` could use it. A file whose contract is "survives across runs"
- * cannot live in the build output directory — same fix as the run ledger in
- * `scripts/run-record.js`.
+ * cannot live in the build output directory (the same fix as the run ledger in
+ * `scripts/run-record.js`).
  *
  * Kept SHARED across entry points, unlike the per-run-kind record directory, and
- * that difference is load-bearing: the record is per-run evidence, so a shared path
+ * that difference matters: the record is per-run evidence, so a shared path
  * clobbers it; the snapshot is cross-run recovery state, so a device stranded by
  * `npm run demo` must be repairable by the next `npm run test:rta` and
  * `rta:restore` has to find it with no arguments.
@@ -67,7 +117,7 @@ const SNAPSHOT_DIR = '.device-runs';
 /**
  * Where snapshots lived before the move above. Read-only, and only as a
  * fallback: without it, upgrading across this change orphans a snapshot for a
- * device that is stranded RIGHT NOW — the one moment the file matters most.
+ * device that is stranded right now, the one moment the file matters most.
  * Harmless to keep, harmless to delete once no such snapshot can exist.
  */
 const LEGACY_SNAPSHOT_DIR = path.join('out', 'rta');
@@ -80,7 +130,7 @@ const LEGACY_SNAPSHOT_DIR = path.join('out', 'rta');
  * the running build's version differs from the stored one, in the global
  * section and in the active user's section, and `migrations.bs` back-fills it
  * into any user section that lacks it. Deploying an RTA build therefore changes
- * it legitimately — it is app bookkeeping about the app, not user state.
+ * it legitimately. It is app bookkeeping about the app, not user state.
  *
  * This is a DENY-list of app-owned keys, not an allow-list of test-owned ones:
  * anything new the seeds or the app leave behind fails the verify loudly rather
@@ -90,17 +140,17 @@ const APP_OWNED_KEYS = new Set(['lastrunversion']);
 
 /**
  * Credentials the app RE-MINTS for the same user on the same server, so their
- * VALUE cannot be held to the snapshot — only their presence.
+ * VALUE cannot be held to the snapshot, only their presence.
  *
  * Without this the restore could not converge, and the failure was not rare:
  * `resolveUser()` validates the stored token over REST on every cold boot, and on
  * rejection falls back to `getToken(username, "")`, whose response `user.Login`
  * persists (`source/loginRouter.bs` -> `source/utils/session.bs`). The restore's
  * verify IS a cold boot. So it wrote the snapshot's token, the app replaced it,
- * and the compare failed — every attempt, forever. Worse, the snapshot is
- * deliberately KEPT on failure and `snapshotRegistry()` restores from it first, so
+ * and the compare failed, every attempt, forever. Worse, the snapshot is
+ * KEPT on failure and `snapshotRegistry()` restores from it first, so
  * one occurrence wedged every LATER run, and `npm run rta:restore` re-ran the same
- * loop. Reproduced deliberately on `.177` (plant a bad token, cold boot, read
+ * loop. Reproduced on purpose on `.177` (plant a bad token, cold boot, read
  * back); the app's own console says `Auth token is no longer valid - attempting
  * no-password login` / `login success!`.
  *
@@ -113,7 +163,7 @@ const APP_OWNED_KEYS = new Set(['lastrunversion']);
  *   - both present, values differ            -> fine. The app re-minted its own.
  *
  * `primaryImageTag` rides the same `if saveCredentials` block in `session.bs`,
- * written from the same login response — so it is the same class by construction.
+ * written from the same login response, so it is the same class by construction.
  * Included on that shared code path rather than on an observed failure, because
  * the failure it would produce is the wedging one above, and finding out the
  * expensive way costs more than exempting an avatar tag.
@@ -123,7 +173,7 @@ const APP_OWNED_KEYS = new Set(['lastrunversion']);
  * with STABLE values, so they compare equal and losing that assertion would buy
  * nothing.
  *
- * This is the same split the measurement guard settled on independently — assert
+ * This is the same split the measurement guard settled on independently: assert
  * IDENTITY, record everything else. `serverId` / `userId` / every setting stay
  * exact; only what the app mints for itself is exempt.
  */
@@ -131,7 +181,7 @@ const SESSION_CREDENTIAL_KEYS = new Set(['authtoken', 'primaryimagetag']);
 
 const isPresent = (v) => v !== null && v !== undefined && v !== '';
 
-/** Values are secrets when the key says so — used to redact diff output. */
+/** Values are secrets when the key says so. Used to redact diff output. */
 const SECRET_KEY = /token|password|secret/i;
 
 function deviceHost() {
@@ -142,18 +192,18 @@ function snapshotPath() {
   return path.join(SNAPSHOT_DIR, `registry-${deviceHost()}.json`);
 }
 
-/** The pre-move location — read as a fallback, never written. See `LEGACY_SNAPSHOT_DIR`. */
+/** The pre-move location, read as a fallback and never written. See `LEGACY_SNAPSHOT_DIR`. */
 function legacySnapshotPath() {
   return path.join(LEGACY_SNAPSHOT_DIR, `registry-${deviceHost()}.json`);
 }
 
 /**
- * Where `--accept` records what it could NOT restore. See `writeAcceptedRecord`.
+ * Where `--accept` records what it could not restore. See `writeAcceptedRecord`.
  *
  * A distinct PREFIX rather than a `registry-<host>.accepted.json` suffix, and that
  * is not cosmetic: the stranded-snapshot glob in `scripts/device-lock.js` matches
  * `registry-(.+)\.json` greedily, so a suffixed name would be reported as a stranded
- * snapshot for a device called `<host>.accepted` — and offer a recovery command with
+ * snapshot for a device called `<host>.accepted`, and offer a recovery command with
  * that as its `ROKU_IP`. Two different prefixes cannot collide however either glob
  * is later edited.
  */
@@ -178,11 +228,11 @@ function redact(key, value) {
  * Every difference between a snapshot and a live read, as `{section, key, want, got}`.
  *
  * Three tiers, narrowest exemption first:
- *   - `APP_OWNED_KEYS` — ignored outright; the app rewrites them about itself.
- *   - `SESSION_CREDENTIAL_KEYS` — compared on PRESENCE, because the app re-mints
+ *   - `APP_OWNED_KEYS`: ignored outright; the app rewrites them about itself.
+ *   - `SESSION_CREDENTIAL_KEYS`: compared on PRESENCE, because the app re-mints
  *     the value for the same user. See that constant for why, and for the two
  *     directions that still fail.
- *   - everything else — byte-equal, in both directions: a key that changed, a key
+ *   - everything else: byte-equal, in both directions: a key that changed, a key
  *     that vanished, and a key or whole section that appeared.
  */
 export function compareRegistries(saved, live) {
@@ -202,7 +252,7 @@ export function compareRegistries(saved, live) {
   for (const [section, keys] of Object.entries(live)) {
     for (const key of Object.keys(keys)) {
       if (APP_OWNED_KEYS.has(key.toLowerCase())) continue;
-      // A key the snapshot never had is a leak whatever its name — a session
+      // A key the snapshot never had is a leak whatever its name. A session
       // credential appearing in a section that had none is precisely the "left
       // signed into the demo server" damage, so presence-comparison does not
       // soften this direction.
@@ -216,8 +266,8 @@ export function compareRegistries(saved, live) {
 
 /** The writes + section deletions that turn `live` back into `saved`. */
 export function planRestore(saved, live) {
-  // A section that exists now and was not in the snapshot is entirely ours —
-  // the demo user's section is exactly this shape. Delete it outright rather
+  // A section that exists now and was not in the snapshot is entirely ours.
+  // The demo user's section is exactly this shape. Delete it outright rather
   // than nulling its keys, so no empty husk is left behind.
   const sectionsToDelete = Object.keys(live).filter((section) => !(section in saved));
 
@@ -226,19 +276,19 @@ export function planRestore(saved, live) {
     const current = live[section] || {};
     const patch = {};
     for (const [key, value] of Object.entries(keys)) {
-      // Session credentials are written back like everything else, deliberately.
+      // Session credentials are written back like everything else, on purpose.
       // An earlier cut of the presence fix skipped the write whenever the device
-      // already had one, reasoning that the live token is the app's own and works
-      // — but that is not "as we found it", it is "whatever the run left", and the
-      // hardware repro proved the difference: it left the device holding a
-      // deliberately-invalid planted token and called that converged. The value
+      // already had one, reasoning that the live token is the app's own and works.
+      // But that is not "as we found it", it is "whatever the run left", and the
+      // hardware repro proved the difference: it left the device holding an
+      // invalid planted token and called that converged. The value
       // restored here is the USER's. If it has since expired the app re-logins on
       // the next boot, which is what it would do anyway; the COMPARE is what stops
       // that re-mint from failing the verify (see `SESSION_CREDENTIAL_KEYS`).
       if (current[key] !== value) patch[key] = value;
     }
-    // `null` deletes the key (see RTA_OnDeviceComponentTask.brs) — this is what
-    // removes keys the run added to a section the user already had, e.g. a
+    // `null` deletes the key (see RTA_OnDeviceComponentTask.brs). This is what
+    // removes keys the run added to a section the user already had, for example a
     // `display.<libraryId>.landing` seeded onto a real user.
     for (const key of Object.keys(current)) {
       if (!(key in keys)) patch[key] = null;
@@ -255,7 +305,7 @@ export function planRestore(saved, live) {
  * REDACTED on purpose, and this is the one place the two files differ in kind: the
  * snapshot has to hold real values because it exists to write them back, which is
  * why it is treated as a secret at rest. This record only has to say WHAT was left
- * wrong, so it stores the same `<n chars>` elision the console shows — making it
+ * wrong, so it stores the same `<n chars>` elision the console shows, which makes it
  * safe to read, paste into an issue, or delete. It is evidence, never a backup.
  */
 export function buildAcceptedRecord({ host, acceptedAt, label, diffs, previous = null }) {
@@ -270,7 +320,7 @@ export function buildAcceptedRecord({ host, acceptedAt, label, diffs, previous =
     })),
   };
   // APPENDS, because a second accept must not erase the first. Nothing repairs an
-  // accepted difference — the original value is gone — so an earlier event is still
+  // accepted difference (the original value is gone), so an earlier event is still
   // live damage when a later one lands, and overwriting would quietly drop it while
   // leaving the device exactly as wrong. The file grows only when a human accepts
   // something and never clears it, which is the point.
@@ -282,7 +332,7 @@ export function buildAcceptedRecord({ host, acceptedAt, label, diffs, previous =
  * Persist that record, and return the path so the caller can name it.
  *
  * Why it has to outlive the terminal: `--accept` CLEARS the snapshot, which is the
- * whole point — an unconvergeable residual otherwise wedges every later run. But
+ * whole point: an unconvergeable residual otherwise wedges every later run. But
  * clearing it also removes the only durable signal that anything is wrong, and the
  * next `snapshotRegistry()` then captures the accepted-dirty state as if it were the
  * user's own. That is precisely the compounding damage described at the top of this
@@ -290,8 +340,8 @@ export function buildAcceptedRecord({ host, acceptedAt, label, diffs, previous =
  * other direction. A `console.warn` dies with the scrollback; this file is what
  * `npm run device:status` reads, so "I accepted something on this device" survives.
  *
- * Nothing here clears it on a later successful restore, deliberately. A verified
- * restore proves the device matches the LAST snapshot — and after an accept, that
+ * Nothing here clears it on a later successful restore, by design. A verified
+ * restore proves the device matches the LAST snapshot, and after an accept, that
  * snapshot is the accepted state. It cannot prove the original value came back,
  * because that value is gone. Only a human can close this, by deleting the file.
  */
@@ -304,7 +354,7 @@ function writeAcceptedRecord(diffs, label) {
   try {
     previous = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
-    /* no prior record, or a corrupt one — start the history here */
+    /* no prior record, or a corrupt one: start the history here */
   }
   fs.writeFileSync(
     file,
@@ -323,12 +373,39 @@ function writeAcceptedRecord(diffs, label) {
   return file;
 }
 
-function writeSnapshotFile(values) {
-  const file = snapshotPath();
+/**
+ * `ownerPid` is what makes this file's PRESENCE readable.
+ *
+ * The file is written before any seeding and removed only by a verified restore,
+ * so it sits on disk for the whole of a run, which means "a snapshot exists" and
+ * "a run is in progress" look identical from outside. They are opposite
+ * instructions: one wants `npm run rta:restore`, the other would be destroyed by
+ * it. Nothing else on disk separates them (`.device-runs/` is not per-run, and a
+ * device lock is absent in degraded mode and can outlive its run as a stale
+ * lease), so the writer records itself and readers ask whether it is still alive.
+ *
+ * Readers must treat a MISSING `ownerPid` as stranded, not as live. That is both
+ * the safe default and the truth for any snapshot written before this field.
+ *
+ * Three readers act on it, and they escalate: `device-lock.js` only REPORTS
+ * (withholds the restore command), `rta-restore.js` REFUSES a manual restore
+ * behind `--force`, and `snapshotRegistry` in this module THROWS. It is the one
+ * that runs unattended at the start of every run, so it is the one a wrong answer
+ * costs the most. Adding a fourth means deciding which of those three it is.
+ *
+ * `file` is a test seam. The reader in `device-lock.js` lives in another module, so
+ * what has to be pinned is that the two agree on the field, and a test can only do
+ * that by producing a real snapshot somewhere other than the real `.device-runs/`.
+ */
+export function writeSnapshotFile(values, file = snapshotPath()) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(
     file,
-    JSON.stringify({ host: deviceHost(), takenAt: new Date().toISOString(), values }, null, 2),
+    JSON.stringify(
+      { host: deviceHost(), takenAt: new Date().toISOString(), ownerPid: process.pid, values },
+      null,
+      2,
+    ),
   );
   return file;
 }
@@ -336,7 +413,7 @@ function writeSnapshotFile(values) {
 /**
  * Clears BOTH locations. A restore driven from the legacy fallback has to remove
  * the file it actually read, or every later run would re-detect it as stranded
- * and restore from it again — turning a one-off recovery into a permanent one.
+ * and restore from it again, turning a one-off recovery into a permanent one.
  */
 function clearSnapshotFile() {
   for (const file of snapshotCandidates()) fs.rmSync(file, { force: true });
@@ -344,7 +421,7 @@ function clearSnapshotFile() {
 
 /**
  * Read a snapshot file written by a previous process, or `null` if there is none.
- * Refuses a file belonging to another device — restoring device A's registry onto
+ * Refuses a file belonging to another device: restoring device A's registry onto
  * device B would be worse than doing nothing.
  *
  * Checks the current location then the legacy one, so a device stranded before
@@ -368,17 +445,43 @@ export function readSnapshotFile(file) {
 }
 
 /**
+ * Why a run refuses a device another run is already using.
+ *
+ * Says BOTH halves of the damage on purpose: a reader who knows only one of them
+ * "fixes" this by deleting the file, which re-enables the other. Restoring would
+ * revert the registry underneath the live run; snapshotting would capture that
+ * run's SEEDED state as the user's session and then preserve it forever (the
+ * second half is the hazard `scripts/measure-devices.js` names).
+ */
+const ownerStillRunning = (stranded) =>
+  `${stranded.file} belongs to pid ${stranded.ownerPid}, which is STILL RUNNING — ` +
+  'another RTA run owns this device. Refusing to restore from that snapshot (it would ' +
+  'revert the registry underneath the live run) and refusing to snapshot over it (this ' +
+  "run would adopt the other run's seeded state as the user's session and keep it " +
+  'forever). Wait for that run to finish. If that pid is NOT an RTA run — pids get ' +
+  'recycled — `npm run rta:restore -- --force` repairs the device and clears the file.';
+
+/**
  * Snapshot the device's ENTIRE registry, persisting it before returning.
  *
- * If a snapshot file is already sitting there, the previous run never completed
- * its restore (killed, crashed, or a restore that threw). Restore from it FIRST,
- * so this run's snapshot captures the user's state rather than the last run's
- * seeded leftovers. Without this the damage compounds silently: run N leaks, run
- * N+1 adopts the leak as the baseline and faithfully restores it forever.
+ * A snapshot file is present for the WHOLE of a healthy run, so its EXISTENCE does
+ * not mean the previous run died. `ownerPid` is the field that separates the two,
+ * and this is the reader that acts destructively on the difference. A dead owner
+ * means the run was killed, crashed, or threw mid-restore: restore from it FIRST, so
+ * this run's snapshot captures the user's state rather than the last run's seeded
+ * leftovers. Without that the damage compounds silently: run N leaks, run N+1 adopts
+ * the leak as the baseline and faithfully restores it forever.
+ *
+ * A LIVE owner is the opposite case and neither branch above is safe for it, so this
+ * refuses instead (see `ownerStillRunning`). The device lock normally keeps two runs
+ * apart, but it degrades to advisory whenever `RTA_SKIP_LOCK=1` is set, no GitHub
+ * token is available, or GitHub is unreachable (`scripts/device-lock.js`), and those
+ * are ordinary local conditions rather than edge cases.
  */
 export async function snapshotRegistry() {
   const stranded = readSnapshotFile();
   if (stranded) {
+    if (isProcessAlive(stranded.ownerPid)) throw new Error(ownerStillRunning(stranded));
     console.warn(
       `\n[registry] ${stranded.file} exists — the previous run never restored this device.` +
         `\n[registry] Restoring from it first so this run does not snapshot its leftovers.`,
@@ -387,7 +490,7 @@ export async function snapshotRegistry() {
     clearSnapshotFile();
   }
 
-  const { values } = await odc.readRegistry();
+  const { values } = await readRegistryBounded('the registry snapshot read');
   const file = writeSnapshotFile(values);
   console.log(
     `[registry] snapshot: ${Object.keys(values).length} sections -> ${file} (restore: npm run rta:restore)`,
@@ -398,14 +501,14 @@ export async function snapshotRegistry() {
 /**
  * Put the registry back to `saved`, and PROVE it took.
  *
- * Write → cold restart → read back → compare EVERYTHING → retry → throw. The
+ * Write, cold restart, read back, compare EVERYTHING, retry, throw. The
  * cold restart is not optional and `relaunch()` will not do: an ECP
  * `/launch/dev` against a running channel only foregrounds it, so the app keeps
  * the seeded session in memory and re-persists it over the restore. Verifying
  * after the restart is what makes the check mean "this survives", rather than
  * "the write landed for now".
  *
- * On success the snapshot file is removed. On failure it is deliberately kept —
+ * On success the snapshot file is removed. On failure it is kept on purpose:
  * that file is the recovery path, for the next run and for `npm run rta:restore`.
  */
 export async function restoreRegistry(saved, { attempts = 3, accept = false } = {}) {
@@ -416,17 +519,25 @@ export async function restoreRegistry(saved, { attempts = 3, accept = false } = 
 
 async function applyRestore(saved, { attempts, label, accept = false }) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const { values: live } = await odc.readRegistry();
+    const { values: live } = await readRegistryBounded(`the ${label} read`);
     const { sectionsToDelete, writes } = planRestore(saved, live);
 
     if (sectionsToDelete.length) await odc.deleteRegistrySections({ sections: sectionsToDelete });
     if (Object.keys(writes).length) await odc.writeRegistry({ values: writes });
 
     // Cold start, so the verify below reads what SURVIVES rather than what we
-    // just wrote over a still-running app.
+    // wrote over a still-running app.
     await hardRelaunch();
 
-    const { values: after } = await odc.readRegistry().catch(() => ({ values: {} }));
+    // Bounded like the read above, but its failure is still swallowed into "nothing came
+    // back" so the retry semantics do not move: this loop exists to converge a restore that
+    // did not take, and a device that vanished mid-restore should be reported by the NEXT
+    // attempt's gate (which throws the real diagnosis) rather than by this line guessing
+    // at one. Costs one extra iteration (~30 s) before that diagnosis lands, against an
+    // unbounded wait before this change.
+    const { values: after } = await readRegistryBounded(`the ${label} verify read`).catch(() => ({
+      values: {},
+    }));
     const diffs = compareRegistries(saved, after);
     if (diffs.length === 0) return;
 
@@ -437,11 +548,11 @@ async function applyRestore(saved, { attempts, label, accept = false }) {
             `    ${d.section}.${d.key}: want ${redact(d.key, d.want)} / got ${redact(d.key, d.got)}`,
         )
         .join('\n');
-      // The operator override. Deliberately loud and deliberately not a retry: it
-      // does NOT claim the device is clean, it says these differences were seen
+      // The operator override. Loud on purpose, and not a retry: it
+      // does not claim the device is clean, it says these differences were seen
       // and accepted so the snapshot can be cleared. Without it, a residual this
-      // loop cannot converge wedges every LATER run — `snapshotRegistry()`
-      // restores from the kept file first and hits the same wall — and the
+      // loop cannot converge wedges every LATER run (`snapshotRegistry()`
+      // restores from the kept file first and hits the same wall), and the
       // documented recovery re-runs the same loop, so the only way out was `rm`
       // on a file that is also the device's only backup. That is a worse failure
       // than an accepted diff, which is why this exists.
@@ -481,7 +592,7 @@ async function applyRestore(saved, { attempts, label, accept = false }) {
 //
 // This is now BEST-EFFORT convenience rather than the safety net it used to
 // have to be: the snapshot is on disk before any seeding, so even a SIGKILL is
-// recoverable — the next run repairs the device automatically, and
+// recoverable: the next run repairs the device automatically, and
 // `npm run rta:restore` does it on demand.
 let armed = null;
 let restoring = false;
@@ -492,7 +603,7 @@ let handlersInstalled = false;
  * `snapshotRegistry()`; a successful `restoreRegistry()` disarms it.
  *
  * A second interrupt abandons the restore and exits immediately, so a wedged
- * device can never trap someone in an un-killable process — the snapshot file
+ * device can never trap someone in an un-killable process. The snapshot file
  * makes that safe to do.
  */
 export function armRestoreOnInterrupt(saved) {
@@ -523,9 +634,4 @@ export function armRestoreOnInterrupt(saved) {
         .finally(() => process.exit(130));
     });
   }
-}
-
-/** Drop the interrupt-restore arming (e.g. after restoring by another path). */
-export function disarmRestoreOnInterrupt() {
-  armed = null;
 }

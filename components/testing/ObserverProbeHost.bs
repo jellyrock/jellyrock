@@ -1,0 +1,32 @@
+sub init()
+  subject = CreateObject("roSGNode", "ObserverProbeSubject")
+  m.top.appendChild(subject)
+  m.top.subject = subject
+end sub
+
+' Observe the child's `value` field from THIS (the host's) scope.
+' form: "plain" (observeField) or "scoped" (observeFieldScoped)
+sub hostObserve(form as string)
+  if form = "scoped"
+    subject = m.top.subject
+    subject.observeFieldScoped("value", "onSubjectValueChanged")
+  else
+    subject = m.top.subject
+    subject.observeField("value", "onSubjectValueChanged")
+  end if
+end sub
+
+' Remove observers on the child's `value` field, from THIS (the host's) scope.
+sub hostUnobserve(form as string)
+  if form = "scoped"
+    subject = m.top.subject
+    subject.unobserveFieldScoped("value")
+  else
+    subject = m.top.subject
+    subject.unobserveField("value")
+  end if
+end sub
+
+sub onSubjectValueChanged()
+  m.top.hostCount = m.top.hostCount + 1
+end sub

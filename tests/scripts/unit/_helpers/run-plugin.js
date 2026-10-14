@@ -20,17 +20,55 @@ import { Program } from 'brighterscript';
  *
  * @param {() => object} pluginFactory  Factory function exported by the plugin
  *                                       (the `module.exports = () => new X()` form).
- * @param {Record<string, string>} files Map of repo-relative path → BS/XML source.
+ * @param {Record<string, string>} files Map of repo-relative path to BS/XML source.
+ * @param {object} [options] Extra bsconfig options, for a plugin configured
+ *                           through them (for example `{ deadCode: {…} }`).
  * @returns {Array} Flat list of BsDiagnostic objects emitted during validate.
  */
-export function runPluginOnSource(pluginFactory, files) {
-  const program = new Program({ rootDir: '/tmp/jellyrock-plugin-test' });
+export function runPluginOnSource(pluginFactory, files, options = {}) {
+  const program = new Program({ rootDir: '/tmp/jellyrock-plugin-test', ...options });
   program.plugins.add(pluginFactory());
   for (const [path, content] of Object.entries(files)) {
     program.setFile(path, content);
   }
   program.validate();
   return program.getDiagnostics();
+}
+
+/**
+ * Run a plugin across a SEQUENCE of edits on ONE program, returning the
+ * diagnostics after each step.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * `runPluginOnSource` builds a program, validates ONCE, and reads the result. It
+ * therefore cannot observe anything about a plugin's behaviour ACROSS
+ * validations, and the whole stale-diagnostic bug class lives there: a plugin
+ * that reads two files but anchors its finding in one will happily report the
+ * right thing on a cold run and then fail to clear it when the OTHER file is
+ * edited. `field-observer-wiring` shipped with 18 green tests and exactly that
+ * defect, because no harness could express "edit this, then check again".
+ *
+ * Each step is a partial file map applied on top of the previous state, so a step
+ * lists only what it changes. Editing a file means calling `setFile` with the new
+ * contents, which is what the language server does on a keystroke. The point is
+ * to exercise BSC's INCREMENTAL path, not to rebuild the program.
+ *
+ * @param {() => object} pluginFactory Factory exported by the plugin.
+ * @param {Array<Record<string, string>>} steps One partial {path: source} map per step.
+ * @param {object} [options] Extra bsconfig options, as for `runPluginOnSource`.
+ * @returns {Array<Array>} Diagnostics after each step, in step order.
+ */
+export function runPluginOnEdits(pluginFactory, steps, options = {}) {
+  const program = new Program({ rootDir: '/tmp/jellyrock-plugin-test', ...options });
+  program.plugins.add(pluginFactory());
+  return steps.map((files) => {
+    for (const [path, content] of Object.entries(files)) {
+      program.setFile(path, content);
+    }
+    program.validate();
+    return program.getDiagnostics();
+  });
 }
 
 /**

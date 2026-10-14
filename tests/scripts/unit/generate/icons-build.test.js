@@ -9,7 +9,7 @@ import { spawnScript } from '../_helpers/spawn-script.js';
 
 const SCRIPT = 'scripts/generate/icons-build.js';
 
-// 24×24 viewBox SVG — a filled black square. Tiny and deterministic.
+// 24×24 viewBox SVG: a filled black square. Tiny and deterministic.
 const SQUARE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" fill="#000000"/></svg>`;
 
 // 24×24 viewBox SVG with an 8×8 black glyph centered (8 units of transparent
@@ -122,7 +122,7 @@ describe('icons-build', () => {
   it('trims Material design padding so the rendered glyph matches glyphSize', async () => {
     // PADDED_SVG has an 8×8 glyph in a 24×24 viewBox (66% padding around the
     // glyph). With glyphSize=40 in a canvas=64, the rendered glyph should
-    // occupy ~40×40 of the 64×64 canvas, NOT scale linearly with the viewBox.
+    // occupy ~40×40 of the 64×64 canvas, not scale linearly with the viewBox.
     dir = setupTree({
       svgs: { 'square.svg': PADDED_SVG },
       iconsJson: { square: { sizeFhd: 64, glyphSize: 40 } },
@@ -179,7 +179,7 @@ describe('icons-build', () => {
   });
 
   it('falls back to glyphSize default when no override and no existing PNG', async () => {
-    // PADDED_SVG with no overrides → default glyphSize of 54 inside default
+    // PADDED_SVG with no overrides: default glyphSize of 54 inside default
     // canvas of 96. Glyph should occupy 54×54 (square, since PADDED_SVG glyph
     // is square).
     dir = setupTree({ svgs: { 'fresh.svg': PADDED_SVG } });
@@ -207,7 +207,7 @@ describe('icons-build', () => {
     const trimmed = await sharp(join(dir, 'images', 'icons', 'tall_fhd.png'))
       .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 1 })
       .toBuffer({ resolveWithObject: true });
-    // Source aspect 4:16 = 1:4. Bounded by 40 in the larger dim → height ~40,
+    // Source aspect 4:16 = 1:4. Bounded by 40 in the larger dim: height ~40,
     // width ~10 (preserving 1:4 aspect, ±1 antialiasing tolerance).
     expect(trimmed.info.height).toBeGreaterThanOrEqual(39);
     expect(trimmed.info.height).toBeLessThanOrEqual(41);
@@ -230,7 +230,7 @@ describe('icons-build', () => {
     expect(stderr).toMatch(/missing/);
   });
 
-  it('--check exits 1 when an output PNG is byte-different', () => {
+  it('--check exits 1 when an output PNG is unreadable', () => {
     dir = setupTree({ svgs: { 'play.svg': SQUARE_SVG } });
     spawnScript(SCRIPT, [dir]); // write a clean baseline
     // Corrupt one of the outputs
@@ -238,6 +238,131 @@ describe('icons-build', () => {
     const { exitCode, stderr } = spawnScript(SCRIPT, [dir, '--check']);
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(/content drift/);
+  });
+
+  // Drift is measured in PIXELS, not bytes.
+  //
+  // sharp bundles its own libvips (and zlib) in a platform-specific prebuilt
+  // binary, so the PNG encoder's output changes when sharp changes even though
+  // the image does not. Comparing bytes made that a failure: the 2026-06-12
+  // bump from sharp 0.34.5 to 0.35.1 left `icons:check` reporting 55 drifted
+  // files whose pixels were byte-identical, and it stayed that way for three
+  // months because nothing in CI ran the check and the pre-push hook only runs
+  // it when an icon source is in the push range, which a dep bump never is.
+  describe('encoder independence', () => {
+    // Re-encode a PNG at a different compression level: same pixels out, a
+    // different IDAT stream in. This is exactly the shape of a sharp upgrade.
+    async function reencode(pngPath) {
+      const before = readFileSync(pngPath);
+      const after = await sharp(before).png({ compressionLevel: 0 }).toBuffer();
+      writeFileSync(pngPath, after);
+      return { before, after };
+    }
+
+    it('--check passes when a PNG is byte-different but pixel-identical', async () => {
+      dir = setupTree({ svgs: { 'play.svg': SQUARE_SVG } });
+      spawnScript(SCRIPT, [dir]);
+
+      const pngPath = join(dir, 'images', 'icons', 'play_fhd.png');
+      const { before, after } = await reencode(pngPath);
+      // Guard against a vacuous test: the bytes must actually differ.
+      expect(after.equals(before)).toBe(false);
+
+      const { exitCode } = spawnScript(SCRIPT, [dir, '--check']);
+      expect(exitCode).toBe(0);
+    });
+
+    it('build does not rewrite a byte-different but pixel-identical PNG', async () => {
+      dir = setupTree({ svgs: { 'play.svg': SQUARE_SVG } });
+      spawnScript(SCRIPT, [dir]);
+
+      const pngPath = join(dir, 'images', 'icons', 'play_fhd.png');
+      const { after } = await reencode(pngPath);
+
+      const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/already in sync/);
+      // Left exactly as it was found. This is what stops a rebuild on one
+      // machine churning every committed PNG for the next contributor.
+      expect(readFileSync(pngPath).equals(after)).toBe(true);
+    });
+
+    it('--check still fails when the PIXELS differ', async () => {
+      dir = setupTree({ svgs: { 'play.svg': SQUARE_SVG } });
+      spawnScript(SCRIPT, [dir]);
+
+      const pngPath = join(dir, 'images', 'icons', 'play_fhd.png');
+      const { width, height } = await sharp(readFileSync(pngPath)).metadata();
+      const solid = await sharp({
+        create: { width, height, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } },
+      })
+        .png()
+        .toBuffer();
+      writeFileSync(pngPath, solid);
+
+      const { exitCode, stderr } = spawnScript(SCRIPT, [dir, '--check']);
+      expect(exitCode).toBe(1);
+      expect(stderr).toMatch(/content drift/);
+    });
+
+    it('--check still fails when the DIMENSIONS differ', async () => {
+      dir = setupTree({ svgs: { 'play.svg': SQUARE_SVG } });
+      spawnScript(SCRIPT, [dir]);
+
+      const pngPath = join(dir, 'images', 'icons', 'play_fhd.png');
+      const resized = await sharp(readFileSync(pngPath)).resize(12, 12).png().toBuffer();
+      writeFileSync(pngPath, resized);
+
+      const { exitCode, stderr } = spawnScript(SCRIPT, [dir, '--check']);
+      expect(exitCode).toBe(1);
+      expect(stderr).toMatch(/content drift/);
+    });
+  });
+
+  // icons:check's CI home. `_test-scripts.yml` runs this suite and its path
+  // filter matches package-lock.json, so a Renovate bump of sharp re-renders the
+  // committed PNGs here: the exact case that went unnoticed for three months.
+  // Mirrors gradient-assets.test.js's gate for the ramps.
+  it('committed assets match the generator (repo drift gate)', () => {
+    const { exitCode, stderr } = spawnScript(SCRIPT, ['--check']);
+    expect(stderr).toBe('');
+    expect(exitCode).toBe(0);
+  });
+
+  describe('--force', () => {
+    it('re-encodes a pixel-identical PNG that write mode would have skipped', async () => {
+      dir = setupTree({ svgs: { 'play.svg': SQUARE_SVG } });
+      spawnScript(SCRIPT, [dir]);
+
+      const pngPath = join(dir, 'images', 'icons', 'play_fhd.png');
+      const canonical = readFileSync(pngPath);
+      // Same pixels, different bytes: write mode leaves this alone (asserted
+      // above). --force is the only way back to the canonical encoding.
+      const reencoded = await sharp(canonical).png({ compressionLevel: 0 }).toBuffer();
+      writeFileSync(pngPath, reencoded);
+      expect(reencoded.equals(canonical)).toBe(false);
+
+      const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--force']);
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/file\(s\) written/);
+      expect(readFileSync(pngPath).equals(canonical)).toBe(true);
+    });
+
+    // --check must stay read-only whatever else is on the command line. A
+    // --force that wrote during a drift check would have the gate silently
+    // repair the drift it exists to report.
+    it('is ignored by --check, which never writes', async () => {
+      dir = setupTree({ svgs: { 'play.svg': SQUARE_SVG } });
+      spawnScript(SCRIPT, [dir]);
+
+      const pngPath = join(dir, 'images', 'icons', 'play_fhd.png');
+      const reencoded = await sharp(readFileSync(pngPath)).png({ compressionLevel: 0 }).toBuffer();
+      writeFileSync(pngPath, reencoded);
+
+      const { exitCode } = spawnScript(SCRIPT, [dir, '--check', '--force']);
+      expect(exitCode).toBe(0);
+      expect(readFileSync(pngPath).equals(reencoded)).toBe(true);
+    });
   });
 
   it('is idempotent — second run produces no writes', () => {

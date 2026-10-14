@@ -10,15 +10,25 @@ import "pkg:/source/utils/misc.bs"
 ' CHECK_ICON_SIZE stays HERE and stays off the 6px scale on purpose: it is the
 ' source bitmap's size, not a spacing choice. The $$RES$$ pipeline substitutes a
 ' 23x23 _hd asset decoded at physical output size, so 35 design units is 1:1 on
-' both tiers — rounding it to 36 would break that and soften the glyph.
+' both tiers; rounding it to 36 would break that and soften the glyph.
 const CHECK_ICON_SIZE = 35
 
 sub init()
   m.selectedBackground = m.top.findNode("selectedBackground")
   m.checkIcon = m.top.findNode("checkIcon")
+  m.rowIcon = m.top.findNode("rowIcon")
   m.rowLabel = m.top.findNode("rowLabel")
 
   constants = m.global.constants
+
+  ' The leading icon fills the gutter's slot. colorTextPrimary, not the check's
+  ' colorSecondary: it labels the row, it does not mark a state.
+  m.rowIcon.width = LIST_ROW_ICON_SIZE
+  m.rowIcon.height = LIST_ROW_ICON_SIZE
+  m.rowIcon.loadWidth = LIST_ROW_ICON_SIZE
+  m.rowIcon.loadHeight = LIST_ROW_ICON_SIZE
+  m.rowIcon.loadDisplayMode = "limitSize"
+  m.rowIcon.blendColor = constants.colorTextPrimary
   m.selectedBackground.blendColor = constants.colorBackgroundSecondary
   ' Sized 1:1 with the source bitmap so it renders crisp at native resolution,
   ' the same way the app's other inline icons are declared.
@@ -26,9 +36,9 @@ sub init()
   m.checkIcon.width = CHECK_ICON_SIZE
   m.checkIcon.height = CHECK_ICON_SIZE
 
-  ' colorSecondary, NOT colorPrimary. The theme table reserves colorPrimary for
-  ' things the user can focus or act on — it is the focus ring around this very
-  ' row — and defines colorSecondary as non-focusable emphasis, which is exactly
+  ' colorSecondary, not colorPrimary. The theme table reserves colorPrimary for
+  ' things the user can focus or act on (it is the focus ring around this very
+  ' row) and defines colorSecondary as non-focusable emphasis, which is exactly
   ' what "this is your current pick" is. JRDropdownItem marks its selected item
   ' the same way.
   m.checkIcon.blendColor = constants.colorSecondary
@@ -50,13 +60,22 @@ sub onItemContentChanged()
   m.checkIcon.visible = isSelected
   m.selectedBackground.visible = isSelected
 
+  ' One gutter, two possible occupants, and the check always wins. They cannot
+  ' co-occur in practice (a picker marks a current option and carries no icons,
+  ' an action list carries icons and marks nothing, selectedIndex = -1), but
+  ' "cannot happen" is not a layout rule, so this states which one draws rather
+  ' than letting two posters stack in the same 36px slot.
+  iconUri = isValid(content.icon) ? content.icon : ""
+  m.rowIcon.uri = iconUri
+  m.rowIcon.visible = iconUri <> "" and not isSelected
+
   ' The LABEL stays colorTextPrimary either way. Recolouring it to match the
   ' check was tried and read as too much contrast on device once the surface
   ' landed: three simultaneous treatments on one row is louder than the state
   ' warrants, and the row's job is to be readable first.
   '
   ' The accessibility argument that motivated the hue is carried by the CHECK,
-  ' which is a SHAPE — it survives colour-blindness and a dim or badly
+  ' which is a SHAPE: it survives color-blindness and a dim or badly
   ' calibrated panel, which is more than a hue swap ever did. The surface adds
   ' weight for everyone else.
 
@@ -76,6 +95,7 @@ sub layoutRow()
   m.selectedBackground.height = rowHeight
 
   m.checkIcon.translation = [LIST_ROW_PADDING, int((rowHeight - CHECK_ICON_SIZE) / 2)]
+  m.rowIcon.translation = [LIST_ROW_PADDING, int((rowHeight - LIST_ROW_ICON_SIZE) / 2)]
 
   m.rowLabel.translation = [LIST_ROW_CHECK_GUTTER, 0]
   m.rowLabel.width = rowWidth - LIST_ROW_CHECK_GUTTER - LIST_ROW_PADDING

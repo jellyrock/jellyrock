@@ -5,6 +5,7 @@
 // than require()'ing avoids "first call wins" issues with module state.
 
 import { spawnSync } from 'node:child_process';
+import { gitSafeEnv } from './git-env.js';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,17 +15,21 @@ const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..'
 /**
  * Run a Node script and return { exitCode, stdout, stderr }.
  *
- * @param {string} scriptPath  repo-relative path, e.g. 'scripts/generate/dev-index.cjs'
+ * @param {string} scriptPath  repo-relative path, for example 'scripts/generate/dev-index.cjs'
  * @param {string[]} [args]    CLI args to pass after the script
  * @param {object} [options]
  * @param {string} [options.cwd]  working dir for the spawned process
  * @param {object} [options.env]  env overrides (merged onto process.env)
+ * @param {string} [options.input]  written to the script's stdin
  */
 export function spawnScript(scriptPath, args = [], options = {}) {
   const fullPath = resolve(REPO_ROOT, scriptPath);
   const result = spawnSync('node', [fullPath, ...args], {
     cwd: options.cwd ?? process.cwd(),
-    env: { ...process.env, ...(options.env ?? {}) },
+    input: options.input,
+    // gitSafeEnv: a script under test may shell out to git, and an inherited
+    // GIT_DIR would point it at the real repo instead of its cwd (see git-env.js).
+    env: { ...gitSafeEnv(), ...(options.env ?? {}) },
     encoding: 'utf8',
   });
   return {

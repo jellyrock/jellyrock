@@ -1,133 +1,107 @@
 ---
 name: new-migration
-description: Guided workflow for writing a registry migration in JellyRock when a setting key is renamed, removed, or its data shape changes. Walks docs/dev/registry-migrations.md (pick next version, write migration in source/migrations.bs for the right scope, register the runner, write a real-registry integration test, run on hardware to verify). Use when an existing setting changes shape; brand-new settings don't need migrations and should use /new-setting instead.
+description: Guided workflow for writing a registry migration in JellyRock when a setting key is renamed, removed, or its data shape changes. Walks docs/dev/registry-migrations.md (add a version constant, add a guarded block to the runner for the right scope in source/migrations.bs, update the code that used the old name, write a real-registry integration test, run it on hardware). Use when an existing setting changes shape; brand-new settings don't need migrations and should use /new-setting instead.
 model: sonnet
 effort: low
 ---
 
-# /new-migration — guided workflow
+# /new-migration: a guided workflow
 
-Wraps [`docs/dev/registry-migrations.md`](../../../docs/dev/registry-migrations.md) as a step-by-step. Migrations run in [`source/main.bs`](../../../source/main.bs) BEFORE any data transformer or session loading; once a migration runs, the registry has only NEW names and downstream code can assume the new shape.
+Wraps [`docs/dev/registry-migrations.md`](../../../docs/dev/registry-migrations.md) as a step-by-step. The guide is the source of truth and has the full examples; read its section for each step before doing it. `Main()` in [`source/main.bs`](../../../source/main.bs) runs the migrations before it creates the scene, so once a migration has run, the rest of the app sees only the new names.
 
-## Step 0 — Confirm a migration is needed
+## Step 0: Confirm a migration is needed
 
-You need a migration ONLY when:
+You need one only when you change something users have already stored ([the guide's list](../../../docs/dev/registry-migrations.md#when-you-need-one)):
 
-- An existing setting key is being **renamed** (registry name changes).
-- An existing setting key is being **removed** (cleanup).
-- A setting's **data shape is changing** (e.g., string → JSON-encoded object, or one field split into two).
+- **Rename** a setting.
+- **Change its values** (`"auto"` and `"aac"` became `"eac3"`).
+- **Remove** a setting, or data that now comes from the server.
+- **Store it differently**, such as one key split in two.
 
-You DO NOT need a migration when:
+You don't need one to add a setting (use [`/new-setting`](../new-setting/SKILL.md)), to change a default, or to change a label or description. If none of the triggers apply, stop.
 
-- Adding a brand-new setting (defaults flow from `settings.json` automatically; existing users get the default the first time they touch the new field). Use [`/new-setting`](../new-setting/SKILL.md) instead.
-- Changing a setting's default value (existing users keep their saved value; new users get the new default).
-- Changing UI labels / descriptions (no registry-shape impact).
+## Step 1: Pick the scope
 
-If none of the migration triggers apply, STOP — don't add a migration.
+`Main()` calls two runners in [`source/migrations.bs`](../../../source/migrations.bs), in this order:
 
-## Step 1 — Pick the migration scope
+- **`runGlobalMigrations()`** for the global `JellyRock` section: settings whose name starts with `global`.
+- **`runRegistryUserMigrations()`** for every user's section: every other setting. Inside it, `reg` is the user's section and `section` its name.
 
-JellyRock runs two migration loops in sequence:
+## Step 2: Add a version constant
 
-- **Global migrations** ([`runGlobalMigrations()`](../../../source/migrations.bs)) — operate on the `JellyRock` registry section (device-level). Run for global settings, dev flags, and cross-user state.
-- **User migrations** ([`runRegistryUserMigrations()`](../../../source/migrations.bs)) — operate on each user's registry section. Run per-user at session-load time.
+Each migration is a block guarded by a version constant, not a numbered function ([the guide's step 1](../../../docs/dev/registry-migrations.md#1-add-a-version-constant)). At the top of `source/migrations.bs`, after the last constant, add one with a comment saying what changed:
 
-Pick the matching scope based on which section your setting lives in. If you're not sure, the User Settings screen is per-user (use user migrations); the Global Settings screen is per-device (use global migrations).
-
-## Step 2 — Determine the next version number
-
-Read [`source/migrations.bs`](../../../source/migrations.bs) and find the highest existing migration version in your scope. The next migration is `prevMax + 1`.
-
-Migration versions are stored in the registry under a known key (see the doc) so the runner knows which migrations to skip on subsequent runs.
-
-## Step 3 — Write the migration function
-
-The migration function takes the registry section (a `roRegistrySection`) and applies the change. Common shapes:
-
-**Rename:**
-```brightscript
-sub migrateRenameAutoplay(section as object)
-  oldVal = section.Read("autoplay")
-  if oldVal <> "" then
-    section.Write("playbackAutoplayEnabled", oldVal)
-    section.Delete("autoplay")
-  end if
-end sub
+```brighterscript
+' client version when homeSection settings were removed from registry (now server-authoritative via DisplayPreferences)
+const HOMESECTION_CLEANUP_VERSION = "2.13.0"
 ```
 
-**Remove:**
-```brightscript
-sub migrateDropDeprecatedFlag(section as object)
-  section.Delete("deprecatedFlag")
-end sub
+- Name it for what it does, in `UPPER_SNAKE_CASE` ending in `_VERSION` (the existing ones end in `_MIGRATION_VERSION`, `_CLEANUP_VERSION` or `_REMOVAL_VERSION`).
+- Its value is the release the change ships in, which must be above the version in `manifest`. If you're unsure which release that is, ask the user. A section already on the constant's version skips the block, so a value at or below the manifest's would never migrate users who installed that release.
+
+## Step 3: Add the block
+
+Put it at the end of the runner for your scope, so the blocks stay in version order. It runs when the section was last used by an older version:
+
+```brighterscript
+if isValid(lastRunVersion) and not versionChecker(lastRunVersion, MY_CHANGE_VERSION)
 ```
 
-**Reshape:**
-```brightscript
-sub migrateSplitVolumeSettings(section as object)
-  oldVal = section.Read("audioVolume")
-  if oldVal <> "" then
-    parsed = ParseJson(oldVal)
-    section.Write("audioVolumeMain", str(parsed.main))
-    section.Write("audioVolumeSurround", str(parsed.surround))
-    section.Delete("audioVolume")
-  end if
-end sub
-```
+Copy the shape of [the guide's example](../../../docs/dev/registry-migrations.md#2-add-the-block) (`AUDIO_CODEC_MIGRATION_VERSION`), and follow its rules:
 
-Always guard against the missing-key case (`<empty string>` from `Read`) — partial migrations from interrupted runs are real.
+- Set `m.wasMigrated = true`, so `Main()` prints the registry afterward.
+- Write only what the user had. When the old key is missing, write nothing: the default comes from `settings/settings.json`.
+- Delete the old key once its value is written under the new one.
+- Call `reg.flush()` when you wrote or deleted something, and only then.
+- Print one line for what you did and one for when nothing was needed.
+- Decide what happens when a section has both the old and the new key. The guide's example doesn't cover it, so ask the user; the test table needs the answer.
+- Make it safe to run twice: a section with no `LastRunVersion` runs every block, and a sideloaded build runs the user migrations at every launch.
 
-## Step 4 — Register the migration
+## Step 4: Update the code that used the old name
 
-Add the function to the migration runner array in `source/migrations.bs` at the right index (matches the version number you picked). The runner walks the array in order; missing indices are gaps the runner skips.
+After a rename, nothing may read the old name ([the guide's step 3](../../../docs/dev/registry-migrations.md#3-update-the-code-that-uses-the-old-name)):
 
-## Step 5 — Update downstream code
+1. `settings/settings.json`: change the `settingName`.
+2. `components/data/jellyfin/JellyfinUserSettings.xml`: change the field's `id`, since a registry key with no field of the same name is never loaded.
+3. Everything else outside `source/migrations.bs`, docs and agent files included:
 
-Once the migration runs, the OLD key is gone from registry. Update every reader and writer of the old key to use the new key:
+   ```bash
+   git grep -n "<old-name>" -- source components settings tests docs .claude ':!source/migrations.bs'
+   ```
 
-```bash
-grep -rn "<old-key>" components/ source/ | grep -v migrations.bs
-```
+   Leave alone what is meant to keep the old name: earlier migrations' mappings in `source/migrations.bs`, legacy inputs in the migration specs and mocks, and `docs/user/app-settings.md`, which is generated.
+4. Existing tests that start a user at an old `LastRunVersion` now run your block too. A spec that uses the setting for something unrelated (`GlobalSettingsCleanup.spec.bs`, `SplashSettingRemoval.spec.bs`) needs its assertions moved to the new name.
 
-The migration file itself keeps the old key name (that's where the rename lives) — every other reference should use the new name.
+## Step 5: Write the integration test
 
-## Step 6 — Write a registry-isolated integration test
+Follow [the guide's Test it](../../../docs/dev/registry-migrations.md#test-it). The test goes in `tests/source/integration/migration/`, in a spec named for the migration. In short:
 
-Per [`tests/CLAUDE.md`](../../../tests/CLAUDE.md): integration tests for migrations live in `tests/source/integration/migration/`. Use a `test-` prefixed registry section (the BaseTestSuite clears `test-*` between tests automatically when `m.needsRegistrySetup = true`).
+- Tag the suite `@tags("migration")` and set `m.needsRegistrySetup = true` before `super.setup()`.
+- Name each section `test-<something>`, unique to its test, and write `serverId` into it: the runner skips a section without one.
+- Call the runner on your section only: `runRegistryUserMigrations([testUserId])`.
+- Use a real `roRegistrySection`; don't mock the registry.
+- Cover the cases in the guide's table (the old key there or missing, each value changed or kept, both keys present, the version boundary, running twice, two users).
+- In `SettingsMigration.spec.bs`, make the "migrates all user settings from old to new names" test cover your change: add the old key, or, if an earlier migration already writes it, change that test's final assertion to the new name.
 
-The test should:
-1. Pre-write the OLD key to a `test-*` section.
-2. Invoke the migration function directly.
-3. Assert the OLD key is gone.
-4. Assert the NEW key has the migrated value.
+## Step 6: Run it on hardware
 
-Don't mock the registry — use a real `roRegistrySection`. The integration is the point.
+Run `npm run device:check` first. The `migration` and `registry` tags keep those suites out of `test:all` and `test:integration`, and that includes every existing spec Step 4 changed ([the guide's Run the tests](../../../docs/dev/registry-migrations.md#run-the-tests)), so run them one of two ways:
 
-## Step 7 — Run on hardware to verify
+- your spec alone: list it in your TDD config (copy `bsconfig-tdd-sample.json` to `bsconfig-tdd.json` first if you have none: [`unit-tests-tdd.md`](../../../docs/dev/unit-tests-tdd.md#1-create-your-tdd-config)) and run `npm run test:tdd`;
+- every suite, migrations included: `npm run test:complete` (it records coverage, so it is slow).
 
-```bash
-npm run test:integration
-```
+Then try it with real data: sideload the last release, store the old key, sideload your build over it, and watch the console. If the probe fails, say the probe failed: a migration that builds can still fail at runtime.
 
-The integration suite runs on the Roku and exercises real registry I/O. If hardware isn't reachable, say so explicitly — migrations that pass build but fail at runtime are a real risk.
+## Step 7: Record a non-obvious rename (optional)
 
-## Step 8 — Capture the rename in a decisions.md entry (optional)
+If the reason for the new name isn't obvious, invoke `/log decision` with a slug like `rename-<old>-to-<new>`.
 
-If the rename is non-obvious (e.g., the new name is shorter or follows a new convention), invoke `/log decision` with a slug like `rename-<old>-to-<new>` so future-you knows why.
+## When not to use
 
-## Common pitfalls (from the doc)
-
-- **Forgetting to update downstream readers** — the migration moves the data but readers still try to read the old key, getting empty strings. Test on hardware to catch.
-- **Not handling the missing-key case** — a partially-completed prior migration can leave the registry in an unexpected state.
-- **Mocking the registry in tests** — defeats the integration. Use real `test-*` sections.
-- **Skipping `m.needsRegistrySetup = true`** — cross-test leakage masks real failures.
-
-## When NOT to use
-
-- Brand-new setting → `/new-setting`, not `/new-migration`.
-- Changing a default value → no migration needed, just update `settings/settings.json`.
-- UI label / description change → no migration needed.
+- A new setting: use `/new-setting`.
+- A changed default: update `settings/settings.json`; existing users keep their saved value.
+- A changed label or description: nothing in the registry changes.
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent: parent passes `Read .claude/skills/new-migration/SKILL.md and follow the steps for $ARGUMENTS=<rename-or-removal-description>; surface each step's diff but do NOT commit` in the Task prompt.
+To run it from a sub-agent, the parent passes `Read .claude/skills/new-migration/SKILL.md and follow the steps for the change <rename-or-removal-description>; surface each step's diff but do not commit` in the Agent prompt.

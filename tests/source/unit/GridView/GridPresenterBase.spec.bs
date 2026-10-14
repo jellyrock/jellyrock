@@ -26,7 +26,7 @@ namespace tests
     @it("handles onDestroy when view is already invalid")
     function _()
       presenter = new GridPresenterBase()
-      ' No onInit called — view is invalid. Should not crash.
+      ' No onInit called, so view is invalid. Should not crash.
       presenter.onDestroy()
       m.assertTrue(true)
     end function
@@ -53,16 +53,153 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showsTVGuide()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows no TV guide for any view by default")
+    ' BaseGridView asks every presenter, so a library that is not Live TV must answer no
+    ' even for a view named like the guide.
+    function _()
+      presenter = new GridPresenterBase()
+      m.assertFalse(presenter.showsTVGuide("tvGuide"))
+      m.assertFalse(presenter.showsTVGuide(""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("showToast()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("does not crash when view is invalid")
     function _()
       presenter = new GridPresenterBase()
-      ' view is invalid — should return early without crashing
+      ' view is invalid: should return early without crashing
       presenter.showToast("test message")
       m.assertTrue(true)
     end function
+
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("filter cache")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The lists are needed only when the options panel opens, but loadFilters() is reached
+    ' from configureLoadTask(), which runs on every query build. The cache is what stops a
+    ' sort toggle refetching both filter endpoints; revalidate-on-open is what keeps it
+    ' fresh. These assert the two rules that make that safe to do.
+
+    @it("caches a successful load against the library it was fetched for")
+    function _()
+      presenter = new tests.FilterCacheProbe()
+      presenter.beginLoadFor("lib-1")
+      presenter.onFiltersLoaded({ Genres: ["Action"] }, "")
+
+      m.assertEqual(presenter.loadedFor(), "lib-1")
+      m.assertEqual(presenter.cachedFilters().Genres, ["Action"])
+    end function
+
+    @it("keeps the last good lists when a REVALIDATION fails")
+    ' Every panel open refreshes over a populated cache, so a server going flaky mid-session
+    ' would otherwise replace working categories with an empty set, and the cache would
+    ' still read as loaded, so nothing but another open would retry.
+    function _()
+      presenter = new tests.FilterCacheProbe()
+      presenter.beginLoadFor("lib-1")
+      presenter.onFiltersLoaded({ Genres: ["Action"] }, "")
+
+      presenter.beginLoadFor("lib-1")
+      presenter.onFiltersLoaded({}, "Unable to load filter options")
+
+      m.assertEqual(presenter.cachedFilters().Genres, ["Action"])
+      m.assertEqual(presenter.loadedFor(), "lib-1")
+    end function
+
+    @it("does not toast when a revalidation fails over good lists")
+    ' Someone looking at a working filter panel has no problem to be told about, and the
+    ' toast would otherwise repeat on every open.
+    function _()
+      presenter = new tests.FilterCacheProbe()
+      presenter.beginLoadFor("lib-1")
+      presenter.onFiltersLoaded({ Genres: ["Action"] }, "")
+
+      presenter.beginLoadFor("lib-1")
+      presenter.onFiltersLoaded({}, "Unable to load filter options")
+
+      m.assertEqual(presenter.toastCount(), 0)
+    end function
+
+    @it("surfaces a FIRST load failure, because that panel really is missing categories")
+    function _()
+      presenter = new tests.FilterCacheProbe()
+      presenter.beginLoadFor("lib-1")
+      presenter.onFiltersLoaded({}, "Unable to load filter options")
+
+      m.assertEqual(presenter.loadedFor(), "")
+      m.assertEqual(presenter.toastCount(), 1)
+    end function
+
+    @it("leaves a failed load uncached, so the next attempt retries it")
+    function _()
+      presenter = new tests.FilterCacheProbe()
+      presenter.beginLoadFor("lib-1")
+      presenter.onFiltersLoaded({}, "Unable to load filter options")
+      presenter.beginLoadFor("lib-1")
+      presenter.onFiltersLoaded({ Genres: ["Action"] }, "")
+
+      m.assertEqual(presenter.loadedFor(), "lib-1")
+      m.assertEqual(presenter.cachedFilters().Genres, ["Action"])
+    end function
+
+    @it("refreshes nothing on a presenter that never loaded dynamic filters")
+    ' TVShowPresenter has none today, so the panel's refresh call must be a no-op there.
+    function _()
+      presenter = new tests.FilterCacheProbe()
+      presenter.refreshFilters()
+
+      m.assertEqual(presenter.loadedFor(), "")
+    end function
+
+    @it("drops the cache on destroy, so a rebuilt view loads fresh lists")
+    function _()
+      presenter = new tests.FilterCacheProbe()
+      presenter.beginLoadFor("lib-1")
+      presenter.onFiltersLoaded({ Genres: ["Action"] }, "")
+      presenter.onDestroy()
+
+      m.assertEqual(presenter.loadedFor(), "")
+      m.assertInvalid(presenter.cachedFilters())
+    end function
+
+  end class
+
+  ' Exposes GridPresenterBase's protected filter-cache state so the cache rules can be
+  ' asserted from a test. A subclass rather than a reach-in, because `protected` is exactly
+  ' the right visibility for this state: nothing outside the presenter should read it.
+  ' showToast is stubbed to a counter: the real one needs a live view and a scene.
+  class FilterCacheProbe extends GridPresenterBase
+
+    private toasts = 0
+
+    ' Stands in for the part of loadFilters() that runs before the request is dispatched,
+    ' which is what onFiltersLoaded() reads back to know which library answered.
+    sub beginLoadFor(parentId as string)
+      m.filtersInFlightFor = parentId
+    end sub
+
+    function cachedFilters() as dynamic
+      return m.apiFilters
+    end function
+
+    function loadedFor() as string
+      return m.filtersLoadedFor
+    end function
+
+    function toastCount() as integer
+      return m.toasts
+    end function
+
+    override sub showToast(_message as string, _toastType = "error" as string)
+      m.toasts = m.toasts + 1
+    end sub
 
   end class
 

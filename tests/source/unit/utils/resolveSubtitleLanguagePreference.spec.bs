@@ -223,6 +223,31 @@ namespace tests
       m.assertEqual(result, "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("'audio' option with web client 'Original language' (Jellyfin 12.0+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("follows the item's OriginalLanguage")
+    function _()
+      settings = m.createMockUserSettings("audio", "", "webclient")
+      config = m.createMockUserConfig("eng", "OriginalLanguage")
+      m.assertEqual(resolveSubtitleLanguagePreference(settings, config, "ko"), "ko")
+    end function
+
+    @it("applies no language rule when the item has no OriginalLanguage")
+    function _()
+      settings = m.createMockUserSettings("audio", "", "webclient")
+      config = m.createMockUserConfig("eng", "OriginalLanguage")
+      m.assertEqual(resolveSubtitleLanguagePreference(settings, config, ""), "")
+    end function
+
+    @it("leaves a web client subtitle preference untouched")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("eng", "OriginalLanguage")
+      m.assertEqual(resolveSubtitleLanguagePreference(settings, config, "ko"), "eng")
+    end function
+
   end class
 
 end namespace

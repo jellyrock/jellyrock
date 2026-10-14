@@ -1,0 +1,11 @@
+' @fileoverview Geometry of FocusableOverview's focus border, shared with the screens
+' that lay one out.
+
+namespace focusableOverview
+
+  ' How far the focus border is drawn OUTSIDE the text on each side, when the overview
+  ' has no background (and so no padding of its own to draw it in). A screen that bounds
+  ' the overview's text subtracts this to keep the focused border inside the same bound.
+  const FOCUS_OUTSET = 12
+
+end namespace

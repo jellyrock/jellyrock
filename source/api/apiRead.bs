@@ -1,0 +1,58 @@
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace apiRead
+
+  ' The reads of one Task run that has to tell a failed load from an empty one (QuickPlayTask,
+  ' GetShuffleItemsTask, SearchTask). It counts the reads that did not answer, so an empty
+  ' result is not told as "nothing here", and logs why each one failed at warn: the viewer's
+  ' message says only that it failed, so the log is where the cause lives (timeout, HTTP
+  ' status, unreadable reply). A Task builds one per run, with its own logger.
+  class Reader
+
+    ' A read did not answer, or could not be sent.
+    anyFailed = false
+
+    ' How many reads were asked for, and how many of them did not answer.
+    sentCount = 0
+    failedCount = 0
+
+    ' The Task's logger. Named `log` so its calls are `m.log.*`, which the roku-log plugin
+    ' strips from a production build like every other log line.
+    private log
+
+    ' What the reads are for, named in the warning ("quick play", "search").
+    private label
+
+    ' @param logger - the Task's log.Logger
+    ' @param label - what the reads are for, named in the warning
+    sub new(logger as object, label as string)
+      m.log = logger
+      m.label = label
+    end sub
+
+    ' The parsed body of `req`, or invalid when the read did not answer. Only a failed read
+    ' returns invalid: an answered empty result is a body, so a caller can tell the two apart
+    ' and stop rather than fall back to a guess.
+    '
+    ' @param req - the request AA, or invalid when it could not be built
+    ' @param requestId - the pool request id, also the log's label
+    ' @return the parsed body, or invalid
+    function json(req as dynamic, requestId as string) as dynamic
+      m.sentCount++
+      cause = "not sent"
+      if isValid(req)
+        res = fetchRes(req, requestId)
+        cause = apiResponse.jsonFailure(res)
+        if cause = "" then return res.json
+      end if
+      m.anyFailed = true
+      m.failedCount++
+      m.log.warn("read failed", m.label, requestId, "cause", cause)
+      return invalid
+    end function
+
+  end class
+
+end namespace

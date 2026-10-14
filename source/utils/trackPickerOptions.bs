@@ -8,15 +8,15 @@
 '
 '   { labels: [string], values: [...], defaultIndex: integer, selectedIndex: integer }
 '
-' `defaultIndex` and `selectedIndex` are NOT the same question and must not be
+' `defaultIndex` and `selectedIndex` are not the same question and must not be
 ' collapsed back together. defaultIndex is which row to FOCUS on open and falls
-' back to 0; selectedIndex is which option is genuinely ACTIVE and is -1 when
-' none of them is. They coincide in the normal case, which is what made one
-' field look sufficient — until the row started drawing a check and announcing
-' "currently selected" from it, at which point a track that simply was not in
-' the list marked row 0 as playing.
+' back to 0; selectedIndex is which option is ACTIVE and is -1 when none of
+' them is. They coincide in the normal case, which is what made one field look
+' sufficient, until the row started drawing a check and announcing "currently
+' selected" from it. At that point a track that was not in the list marked
+' row 0 as playing.
 '
-' Keeping these as pure functions is what makes them testable — the old picker
+' Keeping these as pure functions is what makes them testable. The old picker
 ' path built its option set inline against `m.view`, so the mapping from
 ' "Jellyfin stream list + current selection" to "what the user sees, and what
 ' they picked" could only be exercised on a device with media playing.
@@ -30,13 +30,14 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/versionLabels.bs"
 
 ' Audio tracks. `values` are Jellyfin stream indexes, which is what
 ' VideoPlayerView.audioIndex takes.
 '
 ' @param {object} audioStreams - VideoPlayerView.fullAudioData (array of audio MediaStreams)
 ' @param {integer} currentAudioIndex - the stream index playing now (VideoPlayerView.audioIndex)
-' @returns {object} - { labels, values, defaultIndex }
+' @returns {object} - { labels, values, defaultIndex, selectedIndex }
 function buildAudioTrackOptions(audioStreams as object, currentAudioIndex as integer) as object
   options = { labels: [], values: [], defaultIndex: 0, selectedIndex: -1 }
   if not isValid(audioStreams) then return options
@@ -60,24 +61,21 @@ end function
 '
 ' @param {object} videoSources - VideoPlayerView.fullVideoSourceData (array of MediaSources)
 ' @param {string} currentMediaSourceId - the source playing now
-' @returns {object} - { labels, values, defaultIndex }
+' @returns {object} - { labels, values, defaultIndex, selectedIndex }
 function buildVideoSourceOptions(videoSources as object, currentMediaSourceId as string) as object
   options = { labels: [], values: [], defaultIndex: 0, selectedIndex: -1 }
   if not isValid(videoSources) then return options
 
-  ' The source Name is only meaningful as a disambiguator, so it is prepended
-  ' only when there is something to disambiguate (see formatVideoSourceTitle).
-  hasMultipleSources = videoSources.count() > 1
-
-  for each source in videoSources
-    if isValid(source) and isValid(source.Id)
-      if source.Id = currentMediaSourceId
-        options.defaultIndex = options.values.count()
-        options.selectedIndex = options.defaultIndex
-      end if
-      options.labels.push(formatVideoSourceTitle(source, hasMultipleSources))
-      options.values.push(source.Id)
+  ' Labels are judged across all the versions (see versionLabels). No in-progress marker:
+  ' during playback the version being watched is the one in progress, and the checked row
+  ' already says which that is.
+  for each label in versionLabels.labelsFor(videoSources, invalid)
+    if label.id = currentMediaSourceId
+      options.defaultIndex = options.values.count()
+      options.selectedIndex = options.defaultIndex
     end if
+    options.labels.push(label.title)
+    options.values.push(label.id)
   end for
 
   return options
@@ -99,13 +97,13 @@ end function
 ' @param {integer} selectedSubtitleIndex - VideoPlayerView.selectedSubtitle
 ' @param {string} currentTrackName - VideoPlayerView.subtitleTrack (Roku's name for the active track)
 ' @param {object} availableSubtitleTracks - VideoPlayerView.availableSubtitleTracks
-' @returns {object} - { labels, values, defaultIndex }
+' @returns {object} - { labels, values, defaultIndex, selectedIndex }
 function buildSubtitleTrackOptions(subtitleStreams as object, selectedSubtitleIndex as integer, currentTrackName as string, availableSubtitleTracks as object) as object
   options = {
     labels: [translate(translationKeys.LabelNone)],
     values: [{ index: SubtitleSelection.NONE, isEncoded: false, trackName: "" }],
     defaultIndex: 0,
-    ' "None" is a genuine current state, not a fallback — a stream showing no
+    ' "None" is a real current state, not a fallback: a stream showing no
     ' subtitles really is on the None row, so it starts marked and only moves
     ' if a track turns out to be active.
     selectedIndex: 0
@@ -147,7 +145,7 @@ function isSubtitleStreamActive(stream as object, selectedSubtitleIndex as integ
 end function
 
 ' Roku translates the tracks we supply into availableSubtitleTracks, dropping any
-' it does not understand — so its indexing does not match Jellyfin's. This maps a
+' it does not understand, so its indexing does not match Jellyfin's. This maps a
 ' Jellyfin track name onto Roku's list.
 '
 ' Substring rather than equality: Roku mangles the name it was given (our value

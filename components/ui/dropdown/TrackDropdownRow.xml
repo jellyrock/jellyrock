@@ -19,6 +19,8 @@
   <interface>
     <field id="text" type="string" onChange="onTextChanged" />
     <field id="itemId" type="string" />
+    <!-- Short form for the collapsed trigger; the row itself draws only text. -->
+    <field id="triggerText" type="string" />
     <field id="isFocused" type="boolean" value="false" onChange="onFocusStateChanged" />
     <field id="isSelected" type="boolean" value="false" onChange="onFocusStateChanged" />
     <field id="itemWidth" type="integer" value="278" onChange="onSizeChanged" />

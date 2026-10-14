@@ -59,7 +59,7 @@ function resolveUrl(baseUrl as string, reference as string) as string
       query: refQuery
     }
   else if refPath = ""
-    ' Query-only reference (e.g., "?y") - preserve base path
+    ' Query-only reference (for example, "?y") - preserve base path
     resultParts = {
       scheme: baseParts.scheme,
       authority: baseParts.authority,
@@ -188,7 +188,7 @@ function parseUrlComponents(url as string) as object
           else if LCase(scheme) = "https"
             port = "443"
           end if
-          ' Authority is just the host (without port) when no explicit port
+          ' Authority is only the host (without port) when no explicit port
           authority = host
         end if
       else
@@ -312,7 +312,7 @@ function reconstructUrl(parts as object) as string
     url = url + parts.fullAuthority
   end if
 
-  ' Only add path if it's not just the root "/"
+  ' Add the path unless it is the bare root "/"
   ' (to avoid trailing slash on URLs without paths)
   if isValid(parts.path) and parts.path <> "" and parts.path <> "/"
     url = url + parts.path
@@ -325,23 +325,6 @@ function reconstructUrl(parts as object) as string
   return url
 end function
 
-' Extract base URL (scheme + authority) from a full URL
-' @param url - The full URL
-' @returns Base URL (e.g., "https://example.com:8096"), or empty string if invalid
-function getBaseUrl(url as string) as string
-  if url = "" then return ""
-
-  parts = parseUrlComponents(url)
-  if not isValid(parts) then return ""
-
-  base = LCase(parts.scheme) + ":"
-  if isValid(parts.authority) and parts.authority <> ""
-    base = base + "//" + parts.authority
-  end if
-
-  return base
-end function
-
 ' Check if two URLs are equivalent after normalization
 ' @param url1 - First URL
 ' @param url2 - Second URL
@@ -351,10 +334,10 @@ function urlsEqual(url1 as string, url2 as string) as boolean
 end function
 
 ' Extract server base URL by removing a known endpoint path suffix
-' This preserves any base path (e.g., /jellyfin) unlike getBaseUrl() which strips all paths
-' @param url - The full URL (e.g., "https://host/jellyfin/system/info/public")
-' @param endpointPath - The endpoint path to remove (e.g., "/system/info/public")
-' @returns Base URL with preserved path (e.g., "https://host/jellyfin"), or empty string if invalid
+' This preserves any base path (for example, /jellyfin) instead of reducing the URL to scheme + authority
+' @param url - The full URL (for example, "https://host/jellyfin/system/info/public")
+' @param endpointPath - The endpoint path to remove (for example, "/system/info/public")
+' @returns Base URL with preserved path (for example, "https://host/jellyfin"), or empty string if invalid
 function getServerBaseUrl(url as string, endpointPath as string) as string
   if url = "" or endpointPath = "" then return ""
 

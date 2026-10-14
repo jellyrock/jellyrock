@@ -1,0 +1,115 @@
+import "pkg:/source/utils/streamOrigin.bs"
+
+namespace tests
+
+  ' Where a stream comes from, and its URL with the secrets hidden. The URLs are shaped like
+  ' the ones measured 2026-10-12 on Jellyfin 10.11.11 and 12.1.0.
+  @suite("streamOrigin")
+  class StreamOriginTests extends tests.BaseTestSuite
+
+    private SERVER = "https://jellyfin.example.com"
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isServerUrl() and upstreamHost()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("places a URL on the server's host and port as the server's")
+    function _()
+      url = "https://jellyfin.example.com/videos/abc/master.m3u8?ApiKey=secret"
+      m.assertTrue(isServerUrl(url, m.SERVER))
+      m.assertEqual(upstreamHost(url, m.SERVER), "")
+    end function
+
+    @it("places a relative URL as the server's")
+    function _()
+      m.assertTrue(isServerUrl("/videos/abc/master.m3u8?ApiKey=secret", m.SERVER))
+    end function
+
+    @it("places another host as upstream and names it")
+    function _()
+      url = "https://cdn.example.com/live/master.m3u8?token=abc"
+      m.assertFalse(isServerUrl(url, m.SERVER))
+      m.assertEqual(upstreamHost(url, m.SERVER), "cdn.example.com")
+    end function
+
+    @it("places the server's host on another port as upstream")
+    function _()
+      m.assertEqual(upstreamHost("https://jellyfin.example.com:8190/vod/hls/master.m3u8", m.SERVER), "jellyfin.example.com")
+    end function
+
+    @it("names no host when there is no URL")
+    function _()
+      m.assertEqual(upstreamHost("", m.SERVER), "")
+      m.assertFalse(isServerUrl("", m.SERVER))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isShortcutPath()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for an item path that ends in .strm, whatever its case")
+    function _()
+      ' Measured 2026-10-12 on 10.11.11 and 12.1.0: the item read returns this to a non-admin too.
+      m.assertTrue(isShortcutPath("/fixtures/strm-fresh/JR Fresh Tears 01.strm"))
+      m.assertTrue(isShortcutPath("/media/Film.STRM"))
+    end function
+
+    @it("is false for a media file, a URL or no path")
+    function _()
+      m.assertFalse(isShortcutPath("/media/movies/Dune (2021)/Dune.2021.2160p.mkv"))
+      m.assertFalse(isShortcutPath("https://cdn.example.com/live/master.m3u8"))
+      m.assertFalse(isShortcutPath(""))
+      m.assertFalse(isShortcutPath(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("maskUrlSecrets()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hides the server's ApiKey and keeps every other parameter")
+    function _()
+      url = "/videos/abc/master.m3u8?MediaSourceId=abc&AudioStreamIndex=0&ApiKey=c842secret&TranscodeReasons=AudioCodecNotSupported"
+      m.assertEqual(maskUrlSecrets(url, m.SERVER), "/videos/abc/master.m3u8?MediaSourceId=abc&AudioStreamIndex=0&ApiKey=***&TranscodeReasons=AudioCodecNotSupported")
+    end function
+
+    @it("hides an older server's api_key, whatever its case")
+    function _()
+      url = "https://jellyfin.example.com/videos/abc/stream?Static=true&API_KEY=secret"
+      m.assertEqual(maskUrlSecrets(url, m.SERVER), "https://jellyfin.example.com/videos/abc/stream?Static=true&API_KEY=***")
+    end function
+
+    @it("hides every query value of an upstream URL and keeps the names")
+    function _()
+      url = "https://cdn.example.com/live/master.m3u8?token=abc&exp=123"
+      m.assertEqual(maskUrlSecrets(url, m.SERVER), "https://cdn.example.com/live/master.m3u8?token=***&exp=***")
+    end function
+
+    @it("hides the user information before an upstream host")
+    function _()
+      url = "http://user:pass@iptv.example.com:8080/play/1.m3u8"
+      m.assertEqual(maskUrlSecrets(url, m.SERVER), "http://***@iptv.example.com:8080/play/1.m3u8")
+    end function
+
+    @it("hides the user information on the server's own host too")
+    function _()
+      ' The host comparison drops user information, so this URL counts as the server's.
+      url = "https://user:pass@jellyfin.example.com/media/clip.m3u8?ApiKey=secret"
+      m.assertTrue(isServerUrl(url, m.SERVER))
+      m.assertEqual(maskUrlSecrets(url, m.SERVER), "https://***@jellyfin.example.com/media/clip.m3u8?ApiKey=***")
+    end function
+
+    @it("leaves a URL with no query and no user information as it is")
+    function _()
+      url = "https://jellyfin.example.com:8190/vod/hls/master.m3u8"
+      m.assertEqual(maskUrlSecrets(url, m.SERVER), url)
+    end function
+
+    @it("leaves a file path as it is")
+    function _()
+      path = "/media/movies/Dune (2021)/Dune.2021.2160p.mkv"
+      m.assertEqual(maskUrlSecrets(path, m.SERVER), path)
+    end function
+
+  end class
+
+end namespace

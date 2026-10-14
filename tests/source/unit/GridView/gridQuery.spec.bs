@@ -1,0 +1,324 @@
+import "pkg:/source/GridView/GenericPresenter.bs"
+import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/GridView/MusicPresenter.bs"
+import "pkg:/source/GridView/TVShowPresenter.bs"
+import "pkg:/source/utils/paging.bs"
+
+namespace tests
+
+  @suite("gridQuery - the library grid's LoadItemsTask2 query")
+  class GridQueryTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    ' Component state as BaseGridView passes it. A fresh AA per call, so no test can pass
+    ' on a neighbour's edits.
+    private function state() as object
+      return {
+        nameStartsWith: "B",
+        searchTerm: "",
+        sortField: "DateCreated",
+        sortAscending: false,
+        filter: "Favorites",
+        filterOptions: { Genres: "Drama" }
+      }
+    end function
+
+    private function musicLibrary() as object
+      return { Id: "music-lib", type: "CollectionFolder", folderType: "CollectionFolder", collectionType: "music" }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("build()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sends the component's state and the defaults when there is no presenter")
+    function _()
+      query = gridQuery.build(m.state(), { Id: "lib-1" }, "Movies", invalid)
+
+      m.assertEqual(query.nameStartsWith, "B")
+      m.assertEqual(query.searchTerm, "")
+      m.assertEqual(query.sortField, "DateCreated")
+      m.assertEqual(query.sortAscending, false)
+      m.assertEqual(query.filter, "Favorites")
+      m.assertEqual(query.filterOptions, { Genres: "Drama" })
+      m.assertEqual(query.itemId, "lib-1")
+      m.assertEqual(query.isRecursive, true)
+      m.assertEqual(query.itemType, "")
+      m.assertEqual(query.view, "")
+      m.assertEqual(query.studioIds, "")
+      m.assertEqual(query.genreIds, "")
+      m.assertFalse(query.DoesExist("startIndex"), "startIndex belongs to a page, not the query")
+    end function
+
+    @it("applies what the presenter sets for the view")
+    function _()
+      query = gridQuery.build(m.state(), m.musicLibrary(), "albums", new MusicPresenter())
+
+      m.assertEqual(query.itemType, "MusicAlbum")
+      m.assertEqual(query.itemId, "music-lib")
+      m.assertEqual(query.view, "Artists")
+      m.assertEqual(query.additionalFields, "Genres")
+    end function
+
+    @it("lets the presenter override a default")
+    function _()
+      query = gridQuery.build(m.state(), { Id: "folder-1" }, "", new GenericPresenter())
+
+      m.assertEqual(query.isRecursive, false)
+    end function
+
+    @it("does not carry a field the presenter set for one view into the next")
+    function _()
+      presenter = new MusicPresenter()
+      albums = gridQuery.build(m.state(), m.musicLibrary(), "albums", presenter)
+      artists = gridQuery.build(m.state(), m.musicLibrary(), "artists", presenter)
+
+      m.assertEqual(albums.additionalFields, "Genres")
+      m.assertFalse(artists.DoesExist("additionalFields"), "the albums view's additionalFields leaked into the artists query")
+      m.assertEqual(artists.itemType, "MusicArtist")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("on a LoadItemsTask2 node")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The grid hands this AA to replaceTask, which sets it with one setFields call, where it
+    ' used to assign each field on the node directly. A value setFields coerced differently
+    ' (a boolean, an AA, the " " alpha sentinel) would change the request. CreateObject does
+    ' not start the task's thread, so nothing is fetched.
+    @it("sets every field with its value")
+    function _()
+      s = m.state()
+      s.nameStartsWith = " "
+      tvLibrary = { Id: "tv-lib", type: "CollectionFolder" }
+      fields = paging.forPage(gridQuery.build(s, tvLibrary, "shows", new TVShowPresenter()), 100)
+      task = CreateObject("roSGNode", "LoadItemsTask2")
+
+      task.setFields(fields)
+
+      for each key in fields
+        m.assertEqual(task.getField(key), fields[key], "LoadItemsTask2." + key + " differs from the query")
+      end for
+      m.assertEqual(task.nameStartsWith, " ")
+      m.assertEqual(task.sortAscending, false)
+      m.assertEqual(task.additionalFields, "Genres")
+    end function
+
+    ' isMusic is what makes the music Genres view's samples leave out MediaSourceCount
+    ' (gridPage.genreSampleFields), so it has to survive the trip from the presenter to the node.
+    @it("marks the music Genres view as music on the node, and no other music view")
+    function _()
+      presenter = new MusicPresenter()
+      genres = paging.forPage(gridQuery.build(m.state(), m.musicLibrary(), "genres", presenter), 0)
+      albums = paging.forPage(gridQuery.build(m.state(), m.musicLibrary(), "albums", presenter), 0)
+      genresTask = CreateObject("roSGNode", "LoadItemsTask2")
+      albumsTask = CreateObject("roSGNode", "LoadItemsTask2")
+
+      genresTask.setFields(genres)
+      albumsTask.setFields(albums)
+
+      m.assertTrue(genresTask.isMusic, "the music Genres view's samples would ask for MediaSourceCount")
+      m.assertFalse(albumsTask.isMusic, "a music view other than Genres was marked as music")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("optionTitle() / optionValue()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("treats a plain string option as its own query value")
+    ' Genres and Years: what the panel shows IS what the request carries.
+    @params("Drama")
+    @params("1999")
+    function _(option)
+      m.assertEqual(gridQuery.optionTitle(option), option)
+      m.assertEqual(gridQuery.optionValue(option), option)
+    end function
+
+    @it("splits label from query value for an AA option")
+    ' The 12.0 language filters: the label is a localized language name, the value is
+    ' the server's own case-sensitive codes. Sending the label matches nothing.
+    function _()
+      option = { title: "French", value: "fra,fre" }
+
+      m.assertEqual(gridQuery.optionTitle(option), "French")
+      m.assertEqual(gridQuery.optionValue(option), "fra,fre")
+    end function
+
+    @it("answers a missing option with an empty string rather than crashing the panel")
+    function _()
+      m.assertEqual(gridQuery.optionTitle(invalid), "")
+      m.assertEqual(gridQuery.optionValue(invalid), "")
+    end function
+
+    @it("coerces a numeric option without Str()'s leading space")
+    ' Str(1999) is " 1999". An untrimmed value would never match the saved query that
+    ' BaseGridView's restore pass compares it against, so the filter would apply and
+    ' show no ticks.
+    function _()
+      m.assertEqual(gridQuery.optionTitle(1999), "1999")
+      m.assertEqual(gridQuery.optionValue(1999), "1999")
+    end function
+
+    @it("trims whitespace off an option so both sides of the restore match")
+    function _()
+      m.assertEqual(gridQuery.optionTitle("  Drama  "), "Drama")
+      m.assertEqual(gridQuery.optionValue({ title: " French ", value: " fra,fre " }), "fra,fre")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("checkListValues()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The round trip through the panel the app builds is pinned in ItemGridOptions.spec.bs;
+    ' these cover the reader on its own.
+
+    ' A filter category as ItemGridOptions builds it: one FilterOptionNode per option.
+    private function categoryOf(options as object) as object
+      category = CreateObject("roSGNode", "ContentNode")
+      for each option in options
+        node = category.CreateChild("FilterOptionNode")
+        node.title = option.title
+        node.value = option.value
+      end for
+      return category
+    end function
+
+    @it("reads every option's value, in panel order")
+    function _()
+      category = m.categoryOf([{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }])
+      m.assertEqual(gridQuery.checkListValues(category), ["fra,fre", "jpn"])
+    end function
+
+    @it("falls back to the title for an option whose value was never set")
+    function _()
+      category = m.categoryOf([{ title: "Drama", value: "" }, { title: "French", value: "fra,fre" }])
+      m.assertEqual(gridQuery.checkListValues(category), ["Drama", "fra,fre"])
+    end function
+
+    @it("answers a missing or empty category with no values")
+    function _()
+      m.assertEqual(gridQuery.checkListValues(invalid), [])
+      m.assertEqual(gridQuery.checkListValues(CreateObject("roSGNode", "ContentNode")), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queryValueFor() / checkedStateFor() - edges")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("joins only the checked options, in panel order")
+    function _()
+      values = ["Action", "Drama", "Horror"]
+      m.assertEqual(gridQuery.queryValueFor(values, [true, false, true], "|"), "Action|Horror")
+    end function
+
+    @it("stops at the end of a checkedState shorter than the option list")
+    ' A drifted panel must not index off the end of the array.
+    function _()
+      m.assertEqual(gridQuery.queryValueFor(["Action", "Drama"], [true], "|"), "Action")
+    end function
+
+    @it("answers a missing option list or checked state with no filter")
+    function _()
+      m.assertEqual(gridQuery.queryValueFor(invalid, [true], "|"), "")
+      m.assertEqual(gridQuery.queryValueFor(["Action"], invalid, "|"), "")
+      m.assertEqual(gridQuery.checkedStateFor(invalid, "Action", "|"), [])
+    end function
+
+    @it("ticks nothing for an empty saved query")
+    function _()
+      m.assertEqual(gridQuery.checkedStateFor(["Action", "Drama"], "", "|"), [false, false])
+    end function
+
+    @it("treats a missing delimiter as one whole value, not one per character")
+    ' Split("") returns one entry PER CHARACTER, which would match single-letter options.
+    function _()
+      m.assertEqual(gridQuery.checkedStateFor(["Action"], "Action", ""), [true])
+    end function
+
+    @it("never ticks an option that has no value")
+    function _()
+      m.assertEqual(gridQuery.checkedStateFor([invalid, "Drama"], "Drama", "|"), [false, true])
+    end function
+
+    @it("matches the saved query case-insensitively, as the restore pass always has")
+    function _()
+      m.assertEqual(gridQuery.checkedStateFor(["Drama"], "drama", "|"), [true])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("offersView()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds a view the presenter is listing, whatever the casing")
+    ' BaseGridView.SetUpOptions already compares a saved view to a presenter's Name under
+    ' LCase(). If this matched differently, a view could restore here and then fail to
+    ' tick in the panel.
+    @params("MoviesGrid", true)
+    @params("moviesgrid", true)
+    @params("MOVIESGRID", true)
+    @params("Collections", false)
+    function _(viewName, expected)
+      views = [{ Title: "Movies", Name: "Movies" }, { Title: "Grid", Name: "MoviesGrid" }]
+      m.assertEqual(gridQuery.offersView(views, viewName), expected)
+    end function
+
+    @it("answers false for anything that is not a list of views")
+    @params(invalid)
+    @params("MoviesGrid")
+    @params({})
+    function _(views)
+      m.assertFalse(gridQuery.offersView(views, "MoviesGrid"))
+    end function
+
+    @it("answers false for an empty name, and skips an entry with no Name")
+    function _()
+      m.assertFalse(gridQuery.offersView([{ Name: "Movies" }], ""))
+      m.assertFalse(gridQuery.offersView([invalid, { Title: "no name" }], "Movies"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveView()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps a saved view the presenter still offers")
+    function _()
+      views = [{ Name: "Movies" }, { Name: "MoviesGrid" }, { Name: "Collections" }]
+      m.assertEqual(gridQuery.resolveView("Collections", views, "MoviesGrid"), "Collections")
+    end function
+
+    @it("falls back when the saved view is no longer offered")
+    ' The case this exists for: Collections is saved against a 12.0 server, and the same
+    ' library is later opened against an older one that does not offer it.
+    function _()
+      views = [{ Name: "Movies" }, { Name: "MoviesGrid" }]
+      m.assertEqual(gridQuery.resolveView("Collections", views, "MoviesGrid"), "MoviesGrid")
+    end function
+
+    @it("uses the default when nothing was ever saved")
+    @params(invalid)
+    @params("")
+    @params("   ")
+    function _(savedView)
+      m.assertEqual(gridQuery.resolveView(savedView, [{ Name: "Movies" }], "MoviesGrid"), "MoviesGrid")
+    end function
+
+    @it("returns an empty default untouched for the presenters that run without a named view")
+    ' Live TV, Photos and Generic get "" from getDefaultView(), and "" is in no presenter's
+    ' views list, so a rule of "reset anything not offered" would reset them on every
+    ' load. Only a non-empty SAVED name is checked.
+    function _()
+      m.assertEqual(gridQuery.resolveView(invalid, [{ Name: "livetv" }, { Name: "tvGuide" }], ""), "")
+    end function
+
+    @it("keeps a saved view for those presenters too")
+    function _()
+      views = [{ Name: "livetv" }, { Name: "tvGuide" }]
+      m.assertEqual(gridQuery.resolveView("tvGuide", views, ""), "tvGuide")
+    end function
+
+  end class
+
+end namespace

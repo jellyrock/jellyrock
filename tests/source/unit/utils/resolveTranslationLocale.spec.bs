@@ -114,9 +114,9 @@ namespace tests
 
     @it("post-login: global sign-in language is IGNORED; device locale used (home never inherits the sign-in default)")
     function _()
-      ' Regression guard: the device-wide sign-in language must NOT leak into a
+      ' Regression guard: the device-wide sign-in language must not leak into a
       ' signed-in user's session. With no per-user/server pref, post-login falls
-      ' through to the device locale, NOT globalTranslationLocale.
+      ' through to the device locale, not globalTranslationLocale.
       m.global.device.locale = "es_MX"
       setSetting("globalTranslationLocale", "fr")
       result = resolveTranslationLocale(true, "")
@@ -139,6 +139,48 @@ namespace tests
       registryWrite("translationLocale", "de", m.global.user.id)
       result = resolveTranslationLocale(true, "")
       m.assertEqual(result, "de")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolvePostLoginLocale()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the user's own setting when the DisplayPreferences request failed (invalid response)")
+    function _()
+      m.global.device.locale = "en_US"
+      registryWrite("translationLocale", "de", m.global.user.id)
+      m.assertEqual(resolvePostLoginLocale(invalid), "de")
+    end function
+
+    @it("uses the user's own setting when the response has no CustomPrefs")
+    function _()
+      m.global.device.locale = "en_US"
+      registryWrite("translationLocale", "de", m.global.user.id)
+      m.assertEqual(resolvePostLoginLocale({ ShowBackdrop: true }), "de")
+    end function
+
+    @it("falls back to the device locale for an invalid response with no user setting")
+    function _()
+      m.global.device.locale = "es_MX"
+      m.assertEqual(resolvePostLoginLocale(invalid), "es_MX")
+    end function
+
+    @it("falls back to en_US for an invalid response with no user setting and no device locale")
+    function _()
+      m.global.device.locale = ""
+      m.assertEqual(resolvePostLoginLocale(invalid), "en_US")
+    end function
+
+    @it("passes CustomPrefs.language to the cascade when the user has no setting")
+    function _()
+      m.global.device.locale = "en_US"
+      m.assertEqual(resolvePostLoginLocale({ CustomPrefs: { language: "pt-BR" } }), "pt_BR")
+    end function
+
+    @it("keeps the user's own setting over CustomPrefs.language")
+    function _()
+      registryWrite("translationLocale", "de", m.global.user.id)
+      m.assertEqual(resolvePostLoginLocale({ CustomPrefs: { language: "fr" } }), "de")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

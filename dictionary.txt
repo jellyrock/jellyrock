@@ -62,6 +62,7 @@ api-patterns
 APIs
 arg
 args
+argv
 assignees
 AST
 async
@@ -117,6 +118,7 @@ BSC's
 BSC-plugin-generated
 bsc-plugins
 bsconfig
+bsconfigs
 bsfmt
 bslint
 cacheable
@@ -162,6 +164,7 @@ codec-capability
 codecs
 codegen
 CommonJS
+comparator
 config
 Config
 configs
@@ -257,6 +260,7 @@ ECP
 ECP-disabled
 EDID
 editorconfig
+enablement
 enrichment
 Enrichment
 enrichments
@@ -281,6 +285,7 @@ ffmpeg-tagged
 FHD
 filesystem
 flac
+FLAC
 fns
 focusable
 followup
@@ -319,9 +324,11 @@ hardcodes
 Hardcoding
 HD
 HDR
+HEVC
 HIG
 HK-specific
 HLS
+Holm
 hostname
 hotfix
 how-tos
@@ -367,6 +374,7 @@ keepalive
 last-checked
 last-updated
 lexically
+libvips
 lifecycle
 Lifecycle
 linter
@@ -394,6 +402,7 @@ markdownlint
 marshalling
 Marshalling
 Mbps
+MiB
 mixin
 Mixin
 mka
@@ -412,6 +421,7 @@ namespaces
 Namespaces
 natively
 nav
+navs
 Niklas
 no-ODC
 nodearray
@@ -479,9 +489,11 @@ Plex
 PNG
 PNGs
 portal-UI
+positionally
 post-auth
 postcondition
 postconditions
+pre-12
 pre-auth
 pre-commit
 Pre-commit
@@ -508,6 +520,7 @@ pre-roll
 pre-ship
 pre-show
 pre-test
+prebuilt
 Prefetch
 preflight
 preloading
@@ -550,6 +563,8 @@ regen
 regenerable
 rekey
 rekeying
+remux
+remuxes
 remuxing
 renderer
 renderers
@@ -647,6 +662,7 @@ supersampling
 superset
 SVG
 SVGs
+Tasker
 TCP
 teardown
 templated
@@ -655,6 +671,7 @@ themed-init
 theming
 Tiago
 TLS
+TMDB
 tmpdir
 tokenizer
 tomatometer
@@ -713,6 +730,7 @@ unprefixed
 unquantified
 unresolvable
 unreviewed
+unscoped
 unshuffled
 unsynchronized
 untracked
@@ -732,10 +750,12 @@ utils
 UX
 v1
 V1
+v12
 v2
 V2
 v2\.0
 v3
+v4
 validator
 validators
 vendored
@@ -755,6 +775,7 @@ wakeup
 wakeup-signal
 walkthrough
 wav
+WCAG
 Weblate
 WebP
 webp

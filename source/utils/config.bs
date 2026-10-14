@@ -125,7 +125,7 @@ sub setUserSetting(key as string, value as dynamic)
     user.settings.Save(key, value)
   else
     ' Unknown field - registry-only (backward compatibility, or keys like "serverId")
-    ' Don't set on any node, just persist to registry
+    ' Don't set on any node, only persist to registry
   end if
 
   ' Always persist to registry for all keys
@@ -190,15 +190,15 @@ end function
 ' measured on a Stick 4K rather than reasoned about, and neither is exotic:
 '
 '   - ONE bound declared. Relaxing this to "honor whichever bound is present" makes the
-'     other one `Int(invalid)`. (The weaker reason — the dialog text names both ends, so one
-'     bound alone would read "the supported range of 1 to invalid" — is true, and is not the
+'     other one `Int(invalid)`. (The weaker reason is true too: the dialog text names both
+'     ends, so one bound alone would read "the supported range of 1 to invalid". It is not the
 '     one that matters.)
 '   - A bound written as a STRING. `Int("1")` faults the same way, and it is the likelier
 '     typo of the two: `default` in the SAME entry is conventionally a string ("16"), so
 '     `"min": "1"` reads as consistent while being the one spelling that crashes.
 '
-' A malformed entry therefore degrades to "declares no range" — the setting still saves, it
-' is just unbounded — rather than taking the screen down. It does not pass silently either:
+' A malformed entry therefore degrades to "declares no range" (the setting still saves, it
+' is only unbounded) rather than taking the screen down. It does not pass silently either:
 ' tests/scripts/unit/settings-schema.test.js fails the PR on every shape rejected here, so
 ' this guard is the runtime floor and the schema test is the enforcement.
 '
@@ -212,16 +212,19 @@ end function
 
 ' Is this value safe to hand to `Int()`?
 '
-' `Int()` faults with a Type Mismatch on anything that is not a number — measured on a Stick
-' 4K — and BrighterScript cannot catch it, because every caller here holds the value as
+' `Int()` faults with a Type Mismatch on anything that is not a number (measured on a Stick
+' 4K), and BrighterScript cannot catch it, because every caller here holds the value as
 ' `dynamic`. So the check is by TYPE rather than by coercion: accepting "1" would legitimize
 ' two spellings of one field and let the JSON drift between them, and the schema test forces
 ' the right one at PR time. An absent value reports its type as invalid and lands here too,
 ' which is why callers need no separate isValid() check.
 '
-' Named for the question rather than for either caller: it guards `settingRangeBounds`
-' (authored JSON) and `resolveHomeRowLimit` (a node field), which share nothing except that
-' both would fault on the same input.
+' Named for the question rather than for any one caller. It started out guarding
+' `settingRangeBounds` (authored JSON) and `resolveHomeRowLimit` (a node field), and now also
+' guards values read straight off an API reply (`versionResume` helpers such as
+' `multiVersionIds`, `resumeRanking` and `resumePolicyFrom`). A field the server omits reports
+' its type as invalid and lands here, which is why none of them needs a separate isValid() check. What the callers share is only that
+' each would fault on the same input; do not read the list as a limit on where it belongs.
 function isIntSafe(value as dynamic) as boolean
   valueType = type(value)
   return valueType = "roInt" or valueType = "roInteger" or valueType = "Integer" or valueType = "roFloat" or valueType = "Float" or valueType = "roDouble" or valueType = "Double" or valueType = "roLongInteger" or valueType = "LongInteger"
@@ -234,17 +237,17 @@ const HOME_ROW_LIMIT_DEFAULT = 32
 
 ' How many items a Home browse FEED asks the server for.
 '
-' ONE number for all three feeds — Recently Added, On Now, Active Recordings — because they
+' One number for all three feeds (Recently Added, On Now, Active Recordings) because they
 ' had no reason to differ. All three sent 16, and they were tied to each other only by comment
 ' ("16 to be consistent with Latest In", "parity with onNow"). Sharing the setting makes that
 ' parity a fact instead of a claim three files have to keep agreeing on by hand.
 '
-' The line this setting does NOT cross is feed vs worklist:
+' The line this setting does not cross is feed vs worklist:
 '
 '   FEED     - a sample of a larger set (these three). A limit chooses how much of the sample
 '              to show, so it is a real user preference and nothing is hidden by raising it.
 '   WORKLIST - a set the user is trying to get THROUGH. Continue Watching and Next Up send no
-'              limit at all, deliberately: any cap hides something already started, and no
+'              limit at all, on purpose: any cap hides something already started, and no
 '              number is the right one to hide at. Next Up sent an arbitrary 69 until this
 '              change removed it; Continue Watching has always sent none.
 '
@@ -252,16 +255,16 @@ const HOME_ROW_LIMIT_DEFAULT = 32
 ' at all, so it is out of scope on identity rather than on this rule.
 '
 ' The number is the `uiHomeRowLimit` user setting; this is the guard for the setting not
-' being there. NOT a second copy of the range enforced when the value is SAVED —
-' components/settings/settings.bs reads `min`/`max` straight off the settings.json entry, so
-' the range has one source of truth and it is not this function.
+' being there. It is not a second copy of the range enforced when the value is saved:
+' components/settings/settings.bs reads `min`/`max` off the settings.json entry (through
+' `settingRangeBounds`), so the range has one source of truth and it is not this function.
 '
 ' Zero is the case worth naming. It is what an integer node field reads before SaveDefaults()
 ' has populated it, and it is a legal value to send: Jellyfin would answer a `Limit=0` with an
 ' empty list, so every affected row would silently come back EMPTY rather than fail. A
 ' fallback that only checked `isValid` would let that through.
 '
-' Pure — the caller passes the field rather than this reading `m.global` — so it is unit
+' Pure (the caller passes the field rather than this reading `m.global`), so it is unit
 ' testable without a global, and so a Task thread pays one rendezvous at its own call site
 ' instead of one hidden in here.
 '
@@ -270,11 +273,11 @@ const HOME_ROW_LIMIT_DEFAULT = 32
 function resolveHomeRowLimit(settingValue as dynamic) as integer
   ' `isIntSafe` rather than `isValid`, for the reason its own docblock gives: `Int()` faults
   ' on a non-number, and this parameter is `dynamic`. Every caller today reads a field
-  ' declared `integer` in JellyfinUserSettings.xml, so no live path can reach that fault —
-  ' this is the same guard `settingRangeBounds` carries, held to the same standard, so the
-  ' two cannot drift into disagreeing about what is safe to hand to `Int()`. A Task thread is
-  ' where all three call sites run, and a fault there is the failure class this project
-  ' exists to remove.
+  ' declared `integer` in JellyfinUserSettings.xml, so no live path can reach that fault.
+  ' This is the same guard `settingRangeBounds` carries, held to the same standard, so the
+  ' two cannot drift into disagreeing about what is safe to hand to `Int()`. Every call site
+  ' runs on a Task thread, and a fault there is the failure class this project exists to
+  ' remove.
   if not isIntSafe(settingValue) then return HOME_ROW_LIMIT_DEFAULT
   limit = Int(settingValue)
   if limit < 1 then return HOME_ROW_LIMIT_DEFAULT
@@ -285,7 +288,7 @@ end function
 '
 ' Returns the value unchanged when it already fits, so a caller can compare against its input
 ' to decide whether the user needs telling. Kept separate from `settingRangeBounds` for that
-' reason — the SCREEN needs to know that a change happened, not just what to store.
+' reason: the screen needs to know that a change happened, not only what to store.
 function clampToSettingRange(value as integer, bounds as object) as integer
   if not isValid(bounds) then return value
   if value < bounds.min then return bounds.min
@@ -336,15 +339,16 @@ function getSavedUsers() as object
   return savedServerUsers
 end function
 
-' Saved-server list persistence. Pure registry operations on the saved_servers key —
-' config.bs's domain, alongside getSavedUsers — called from both SetServerScreen (render
+' Saved-server list persistence. Pure registry operations on the saved_servers key
+' (config.bs's domain, alongside getSavedUsers), called from both SetServerScreen (render
 ' thread, delete) and the loginRouter coordinator (main thread, save).
 sub SaveServerList()
   ' Save this server to the list of previously-used servers shown in the server picker.
-  ' baseUrl: canonical URL (lowercase) — used for deduplication against SSDP-discovered servers.
-  ' originalUrl: user-entered URL from registry — shown in the picker and pre-filled on re-selection,
+  ' baseUrl: canonical URL (lowercase), used for deduplication against SSDP-discovered servers.
+  ' originalUrl: user-entered URL from registry, shown in the picker and pre-filled on re-selection,
   '              so inferServerUrl() can re-discover the correct protocol on each connection.
-  ' id: Jellyfin server ID — primary deduplication key, robust to URL changes (e.g. HTTP→HTTPS).
+  ' id: Jellyfin server ID, the primary deduplication key, robust to URL changes (for example
+  '     HTTP to HTTPS).
   globalServer = m.global.server
   serverUrl = globalServer.serverUrl
   serverId = globalServer.id
@@ -382,14 +386,14 @@ sub SaveServerList()
       ' iconUrl/iconWidth/iconHeight are static app branding defaults and are not changed.
       savedServers.serverList[i].name = serverName
       savedServers.serverList[i].id = serverId
-      savedServers.serverList[i].baseUrl = serverUrl ' keep canonical URL current (e.g. HTTP→HTTPS)
+      savedServers.serverList[i].baseUrl = serverUrl ' keep canonical URL current (for example HTTP to HTTPS)
       savedServers.serverList[i].originalUrl = originalUrl
       setSetting("saved_servers", FormatJson(savedServers))
       return
     end if
   end for
 
-  ' No existing entry found — append a new one
+  ' No existing entry found: append a new one
   savedServers.serverList.Push({
     name: serverName,
     id: serverId,
@@ -406,8 +410,8 @@ sub DeleteFromServerList(idOrUrl as string)
   ' idOrUrl should be the server's id when available (passed from itemToDelete.id).
   ' Falls back to a canonical baseUrl for legacy entries that predate the id field.
   ' ID match is tried first so deletion is correct even when the saved entry's baseUrl
-  ' differs from the picker item's baseUrl (e.g. a saved HTTPS entry matched via SSDP
-  ' on HTTP — the picker item carries the SSDP baseUrl, not the saved one).
+  ' differs from the picker item's baseUrl (for example a saved HTTPS entry matched via SSDP
+  ' on HTTP: the picker item carries the SSDP baseUrl, not the saved one).
   saved = getSetting("saved_servers")
   if not isValid(saved) then return
 
@@ -417,9 +421,9 @@ sub DeleteFromServerList(idOrUrl as string)
   for each item in savedServers.serverList
     keepEntry = true
     if serverIdsMatch(item.id, idOrUrl)
-      keepEntry = false ' ID match — remove this entry
+      keepEntry = false ' ID match: remove this entry
     else if item.baseUrl = normalizedInput
-      keepEntry = false ' URL fallback — remove this entry
+      keepEntry = false ' URL fallback: remove this entry
     end if
     if keepEntry
       newServers.serverList.Push(item)
@@ -429,9 +433,9 @@ sub DeleteFromServerList(idOrUrl as string)
 end sub
 
 ' True when two Jellyfin server ids refer to the same server. Jellyfin GUIDs are canonical
-' lower-case hex, but fold both sides so a mis-cased id (e.g. from an external deep-link/cast
+' lower-case hex, but fold both sides so a mis-cased id (for example from an external deep-link/cast
 ' sender) still matches. The single source of truth for "same server?" across the saved-server
-' list and the saved-user filter — keeps every id comparison consistent.
+' list and the saved-user filter, which keeps every id comparison consistent.
 function serverIdsMatch(a as dynamic, b as dynamic) as boolean
   return isValidAndNotEmpty(a) and isValidAndNotEmpty(b) and LCase(a) = LCase(b)
 end function

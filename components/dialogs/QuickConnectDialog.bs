@@ -11,25 +11,18 @@ import "pkg:/source/utils/translate.bs"
 
 ' Layout is DERIVED and computed exactly ONCE, from the two blocks this dialog
 ' owns: the instruction and the code below it. Both are laid out through the
-' shared flow in source/utils/dialogLayout.bs — the instruction goes in the
+' shared flow in source/utils/dialogLayout.bs. The instruction goes in the
 ' SUBHEADING slot, because that slot's whole definition is "a lead line that sits
 ' inside the body's space, so the pair reads as one block", which is precisely
 ' the relationship between "enter this code" and the code. Using it means this
 ' component does no layout arithmetic of its own.
 '
-' Width matches JRDialog's 762 deliberately: this dialog carries about as much
+' Width matches JRDialog's 762 on purpose: this dialog carries about as much
 ' text as an alert and should be indistinguishable from one at a glance. That is
-' asserted rather than trusted — see the panel-width spec, which compares this
+' asserted rather than trusted: see the panel-width spec, which compares this
 ' component's rendered panel against a rendered JRDialog rather than against the
 ' literal below, so the two cannot drift apart silently.
 const PANEL_WIDTH = 762
-
-' Mirrors JRDialog's OPENING_ANNOUNCEMENT_DELAY. Duplicated rather than shared
-' because BrighterScript consts are file-scoped and JRDialog's is not visible
-' here; the value is one number with one reason, documented in full at its
-' original (the platform's own focus announcement FLUSHES ours, and SceneGraph
-' exposes no event for "the platform has finished speaking").
-const OPENING_ANNOUNCEMENT_DELAY = 0.15
 
 sub init()
   m.log = new log.Logger("QuickConnectDialog")
@@ -41,7 +34,7 @@ sub init()
 
   m.instructionText = m.top.findNode("instructionText")
   m.codeLabel = m.top.findNode("quickConnectCode")
-  ' Layout depends on the rendered text heights — recompute when each settles.
+  ' Layout depends on the rendered text heights: recompute when each settles.
   m.instructionText.enableRenderTracking = true
   m.instructionText.observeField("renderTracking", "onInstructionRendered")
   m.codeLabel.enableRenderTracking = true
@@ -53,13 +46,13 @@ sub init()
   m.cancelButton.minWidth = DIALOG_BUTTON_MIN_WIDTH
   ' Re-layout once the button knows its own size: the row's position and the
   ' panel's height are both derived from it. (TextButton's `isReady`, not
-  ' renderTracking — see JRDialog.init for why those are not interchangeable.)
+  ' renderTracking: see JRDialog.init for why those are not interchangeable.)
   m.cancelButton.observeField("isReady", "onButtonReady")
   m.buttonRow.appendChild(m.cancelButton)
 
   m.buttonRow.observeField("focusedChild", "onButtonFocusChanged")
   m.narrationTimer = m.top.findNode("narrationTimer")
-  m.narrationTimer.duration = OPENING_ANNOUNCEMENT_DELAY
+  m.narrationTimer.duration = narration.OPENING_DELAY
   m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
   m.hasNarrated = false
 
@@ -69,7 +62,7 @@ sub init()
   applyLayout()
 end sub
 
-' SET THE TEXT FIELDS BEFORE PRESENTING, never after — see the field comments in
+' SET THE TEXT FIELDS BEFORE PRESENTING, never after: see the field comments in
 ' the XML. Each change handler only writes the label; `renderTracking` brings us
 ' back to applyLayout() once the new text has actually laid out.
 sub onTitleChanged()
@@ -159,7 +152,7 @@ function buttonRowHeight() as integer
   return dialogButtonFallbackHeight(m.global.constants.fontSizeMedium)
 end function
 
-' Centre the row on the PANEL, not the screen.
+' Center the row on the PANEL, not the screen.
 sub centerButtonRow()
   if not isValid(m.buttonRowY) then return
   rect = m.buttonRow.localBoundingRect()
@@ -169,7 +162,7 @@ sub centerButtonRow()
 end sub
 
 ' Announce the whole dialog once the platform's own focus announcement is out of
-' the way — the timing is JRDialog's, measured on device.
+' the way. The timing is JRDialog's, measured on device.
 '
 ' The code is spoken DIGIT BY DIGIT (see spokenQuickConnectCode): it is a string
 ' the listener has to transcribe onto another device, and a spaced digit string
@@ -187,7 +180,7 @@ end sub
 ' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
 '
 ' The dialog is hidden until this returns, so there is no renderTracking to wait
-' on — and none is needed, because localBoundingRect() answers while hidden. See
+' on, and none is needed, because localBoundingRect() answers while hidden. See
 ' dialogReveal.bs.
 sub settleLayout()
   applyLayout()
@@ -196,7 +189,7 @@ end sub
 sub onOpeningAnnouncementDue()
   ' FAILSAFE for the layout cover, riding a timer that already exists and already
   ' means "this dialog has been open for 0.15s". A dialog that never completes a
-  ' layout would otherwise stay covered — i.e. invisible while still holding the
+  ' layout would otherwise stay covered, that is, invisible while still holding the
   ' remote. Uncovering it here means the worst case is the pre-existing broken
   ' paint, not a black screen. See dialogReveal.bs.
   revealDialog(m.top)
@@ -214,8 +207,8 @@ sub onOpeningAnnouncementDue()
   narrateDialogOpening(m.top.title, body.join(". "), focusedText)
 end sub
 
-' Resolve exactly once, then close. This dialog has only one outcome of its own —
-' the user backing out — so there is no index to pass: approval arrives at the
+' Resolve exactly once, then close. This dialog has only one outcome of its own
+' (the user backing out), so there is no index to pass: approval arrives at the
 ' OWNER from the server, which closes this dialog with abandonDialog() rather
 ' than through here.
 sub resolveDialog(externallyCancelled = false as boolean)
@@ -229,9 +222,9 @@ sub resolveDialog(externallyCancelled = false as boolean)
   closeDialog()
 end sub
 
-' Cancel from OUTSIDE — cancelOpenDialog() and presentOverlayDialog's supersede.
+' Cancel from OUTSIDE: cancelOpenDialog() and presentOverlayDialog's supersede.
 ' Routed through resolveDialog so the once-only guard and the standard cancelled
-' result both apply. The result records that it came from code — see
+' result both apply. The result records that it came from code: see
 ' JRDialog.cancelDialog.
 sub cancelDialog()
   resolveDialog(true)
@@ -250,7 +243,7 @@ end sub
 ' model JRDialog uses. Everything here is the doing.
 '
 ' This dialog has ONE button, so the model collapses: "cancel" and "resolve" are
-' the same outcome (resolveDialog takes no index — backing out is the only thing
+' the same outcome (resolveDialog takes no index: backing out is the only thing
 ' the user can do from here), and stepping a one-button row lands back on the
 ' button it started from, so the step actions are no-ops rather than a focus
 ' call. `stacked` is false because a single short label never stacks.

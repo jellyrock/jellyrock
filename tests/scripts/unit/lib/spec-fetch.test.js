@@ -124,7 +124,7 @@ describe('cache reads', () => {
   it('fetchSpec reads a cached spec without touching the network', async () => {
     dir = mkdtempSync(join(tmpdir(), 'jellyrock-spec-fetch-'));
     seedCache('10.11.8', { openapi: '3.0.1', marker: 'cached' });
-    // No network is reachable assumptions needed — a hit short-circuits before
+    // No assumption that the network is reachable: a hit short-circuits before
     // httpGet. If it tried to fetch, this would hang/throw rather than return.
     const spec = await fetchSpec('10.11.8', { rootDir: dir });
     expect(spec.marker).toBe('cached');
@@ -140,7 +140,7 @@ describe('cache reads', () => {
 
   it('rejects a malformed version before any fetch', async () => {
     dir = mkdtempSync(join(tmpdir(), 'jellyrock-spec-fetch-'));
-    await expect(fetchSpec('latest', { rootDir: dir })).rejects.toThrow(/MAJOR\.MINOR\.PATCH/);
+    await expect(fetchSpec('latest', { rootDir: dir })).rejects.toThrow(/MAJOR\.MINOR\[\.PATCH\]/);
     expect(existsSync(join(dir, '.api-watch'))).toBe(false);
   });
 });

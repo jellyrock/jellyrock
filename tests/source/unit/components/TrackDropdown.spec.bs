@@ -124,8 +124,8 @@ namespace tests
 
     @it("trigger label maxWidth reserves space for chevron + padding when interactive")
     function _()
-      ' Default state: isInteractive=true, isOpen=false → chevron is visible, so the
-      ' label leaves room for it on the right. Formula: slotWidth - 2*hPadding(12)
+      ' Default state: isInteractive=true, isOpen=false, so the chevron is visible and
+      ' the label leaves room for it on the right. Formula: slotWidth - 2*hPadding(12)
       ' - chevronSize(24) - chevronGutter(8) = slotWidth - 56.
       triggerLabel = m.dropdown.findNode("triggerLabel")
       m.assertEqual(int(triggerLabel.maxWidth), m.dropdown.slotWidth - 56)
@@ -160,6 +160,18 @@ namespace tests
       m.assertEqual(menuItems.getChild(0).itemId, "1")
     end function
 
+    @it("rows keep the full title as text and carry the short triggerTitle as triggerText")
+    function _()
+      m.dropdown.items = [
+        { id: "1", title: "SAMI  ·  External", triggerTitle: "SAMI" },
+        { id: "2", title: "English AAC 2.0" }
+      ]
+      menuItems = m.dropdown.findNode("menuItems")
+      m.assertEqual(menuItems.getChild(0).text, "SAMI  ·  External")
+      m.assertEqual(menuItems.getChild(0).triggerText, "SAMI")
+      m.assertEqual(menuItems.getChild(1).triggerText, "English AAC 2.0")
+    end function
+
     @it("clipping viewport caps visible rows for long lists so >5 items scroll")
     function _()
       bigList = []
@@ -181,9 +193,9 @@ namespace tests
       ' computeMenuWidth measures each title via the hidden LabelPrimarySmaller and
       ' clamps the result to [slotWidth, slotWidth*2 + interSlotGutter]. "Off" / "On"
       ' both measure well below slotWidth, so the lower clamp wins and the menu
-      ' renders at slotWidth — locking the menu to its trigger column when nothing
+      ' renders at slotWidth, locking the menu to its trigger column when nothing
       ' is long enough to warrant expansion.
-      ' NOTE: the upper-clamp / auto-expand-for-long-titles behavior is NOT covered
+      ' NOTE: the upper-clamp / auto-expand-for-long-titles behavior is not covered
       ' here because boundingRect() on a Label returns 0 outside a real scene tree;
       ' the unit-test dropdown isn't attached to a scene. Verified via manual /
       ' integration testing on device.

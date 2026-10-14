@@ -1,0 +1,16 @@
+import "pkg:/source/enums/BufferCheckAction.bs"
+
+' What one buffer-check tick should do. The player's `bufferingStatus.percentage` is compared with
+' the highest value this buffering episode has reached; no gain since the previous tick is a stall.
+' A Live TV stall goes to the host's restart rule rather than straight to the error, because a
+' live feed that drops is reloaded (see liveRestartOnStall in liveTv.bs).
+'
+' @param {integer} percentage - bufferingStatus.percentage now
+' @param {integer} previousPercentage - the highest percentage this buffering episode reached
+' @param {boolean} isLive - the item is a Live TV channel
+' @returns {string} a BufferCheckAction
+function classifyBufferCheck(percentage as integer, previousPercentage as integer, isLive as boolean) as string
+  if percentage > previousPercentage then return BufferCheckAction.PROGRESS
+  if isLive then return BufferCheckAction.LIVE_STALLED
+  return BufferCheckAction.STALLED
+end function

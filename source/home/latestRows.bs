@@ -1,7 +1,7 @@
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
 
-' Decision layer for Home's latest-media rows — which of the orchestrator's delivered
+' Decision layer for Home's latest-media rows: which of the orchestrator's delivered
 ' results the UI may act on, and where the drain cursor lands.
 '
 ' It lives in source/ rather than in HomeRows.bs because a component codebehind's functions
@@ -10,60 +10,99 @@ import "pkg:/source/utils/misc.bs"
 ' the component and the rules under test. Same move as source/remotecontrol/remoteCommand.bs.
 namespace latestRows
 
+  ' The raw items one latest-media response lets the row show, or invalid when the row must be
+  ' treated as "failed".
+  '
+  ' Only an ok response is authoritative. No answer and a not-ok response return invalid: neither
+  ' says what the library holds, and an "ok" with an empty list removes the row
+  ' (HomeRows' populateRowFromData). Not-ok includes a 200 whose body holds no list: the request
+  ' is a list request (ApiClient.listReq), so the pool reports that body as not-ok and an ok
+  ' one always carries an roArray (apiResponse.enforceShape). Books are dropped: the app can't
+  ' present them (issue #525).
+  '
+  ' @param res - a pool response AA { ok, json, ... }, or invalid when the request never answered
+  ' @return an roArray of BaseItemDto AAs (possibly empty), or invalid
+  function itemsFromResponse(res as dynamic) as dynamic
+    if not isValid(res) or not res.ok then return invalid
+
+    kept = []
+    for each item in res.json
+      if item.Type <> "Book" then kept.push(item)
+    end for
+    return kept
+  end function
+
   ' Walks LoadLatestRowsTask's result children from `startIndex` and returns the ones the UI
-  ' should populate, plus the new cursor. One wake can cover several results — wake events
-  ' coalesce, appended children don't — so the caller always drains to the end.
+  ' should populate, plus the new cursor. One wake can cover several results (wake events
+  ' coalesce, appended children don't), so the caller always drains to the end.
   '
-  ' A "failed" child is SKIPPED, not returned. A timeout, a transport failure or an HTTP error
-  ' says nothing about what the library holds, and populateRowFromData removes a row when handed
-  ' an empty list — so acting on a failure would delete good content on a flaky refresh. The
-  ' cursor still advances past it; the row self-heals on the next Home.refresh(), which fires on
-  ' every onScreenShown.
+  ' A "failed" child is never returned in `ready`. A timeout, a transport failure or an HTTP
+  ' error says nothing about what the library holds, and populateRowFromData removes a row when
+  ' handed an empty list, so acting on a failure would delete good content on a flaky refresh.
+  ' The cursor still advances past it; the row is loaded again on the next Home.refresh(), which
+  ' fires on every onScreenShown, or when the viewer presses OK on its failed tile.
   '
-  ' DELIBERATELY does not hand failures back for the caller to clear the row. A latest row that
-  ' has not been populated yet is not empty — insertLatestMediaSkeletons gives it one
-  ' `type: "Loading"` placeholder child so the RowList renders it at the right slot size — so a
-  ' failed row keeps that skeleton, and the next successful refresh fills it via
-  ' populateRowFromData's "update children in place" branch: items appended, placeholder dropped,
-  ' no insert. Removing the row instead would send that refresh down the else-branch, which
-  ' CreateObject+insertChild's a fresh row — the row visibly pops in and shifts every row below
-  ' it. Measured on device (8 libraries, HTTP 500 forced on five): the skipped rows sat at their
-  ' single placeholder child and nothing shifted. Keep it that way.
+  ' Its libId comes back in `failed` instead, and the caller hands it to homeRowFailure, which
+  ' changes a row only while it still shows its loading placeholder: that placeholder becomes
+  ' the "couldn't load" tile IN PLACE, and a row that already shows items keeps them. The row is
+  ' never removed. A latest row that has not been populated yet is not empty: it carries one
+  ' placeholder child so the RowList renders it at the right slot size, and the next successful
+  ' load fills it via populateRowFromData's "update children in place" branch: items appended,
+  ' placeholder dropped, no insert. Removing it instead would send that load down the
+  ' else-branch, which CreateObject+insertChild's a fresh row: the row visibly pops in and
+  ' shifts every row below it. Measured on device on 2026-08-03 (8 libraries, HTTP 500 forced on five): the
+  ' failed rows sat at their single placeholder child and nothing shifted. Keep it that way.
+  '
+  ' Also resets `silenceClock` whenever the drain moves past at least one child, a failed
+  ' child included, since it is still the run reporting in. runIsStalled reads that clock, and
+  ' the reset lives here rather than at the call site because this is the one call every
+  ' delivered row goes through: a reset that could be dropped from the observer on its own
+  ' would silently turn the backstop back into "time since the run started", and reclaim a
+  ' long run that is still delivering.
   '
   ' @param task - the LoadLatestRowsTask node holding { libId, items, status } children
   ' @param startIndex - first unprocessed child index
-  ' @return an AA { ready, nextIndex } - the children to populate, and the new cursor
-  function drainReady(task as object, startIndex as integer) as object
+  ' @param silenceClock - anything with a mark() method; HomeRows passes an roTimespan
+  ' @return an AA { ready, failed, nextIndex } - the children to populate, the libIds of the
+  '   ones that failed, and the new cursor
+  function drainReady(task as object, startIndex as integer, silenceClock as object) as object
     ready = []
+    failed = []
     index = startIndex
     childCount = task.getChildCount()
 
     while index < childCount
       child = task.getChild(index)
       index++
-      if isValid(child) and child.status = "ok" then ready.push(child)
+      if not isValid(child) then continue while
+      if child.status = "ok"
+        ready.push(child)
+      else
+        failed.push(child.libId)
+      end if
     end while
 
-    return { ready: ready, nextIndex: index }
+    if index > startIndex then silenceClock.mark()
+    return { ready: ready, failed: failed, nextIndex: index }
   end function
 
   ' May a row's removal be held back until the current latest-rows run ends?
   '
   ' Only for the rows THAT run delivers. A run coalesces one row-size recompute per structural
   ' change into one for the whole run, which is only safe while the row list and the three
-  ' geometry arrays stay in step — so the removals have to wait alongside the recompute.
+  ' geometry arrays stay in step, so the removals have to wait alongside the recompute.
   '
   ' Every other Home section (Continue Watching, Next Up, On Now, Active Recordings) removes
-  ' and recomputes immediately, mid-run or not. Two reasons, and the second is load-bearing:
+  ' and recomputes immediately, mid-run or not. Two reasons, and the second is the one that matters:
   '
   '   - Those sections are fired by startParallelLoads, which RACES the orchestrator. Whether
   '     one lands inside a run depends on which HTTP response wins, so batching them would make
-  '     a user-visible row collapse race-dependent — same server, two loads, two behaviours.
+  '     a user-visible row collapse race-dependent: same server, two loads, two behaviors.
   '   - The queue is keyed by sectionId and holds its entry until the run ends. The orchestrator
   '     yields each library exactly once per run (see drainReady), so a queued latest_ row cannot
-  '     be repopulated before the flush. A parallel section CAN be — onProgramsExpired and
-  '     Home.refresh() both re-fire those tasks mid-run — and the flush would then delete a row
-  '     that had just been filled.
+  '     be repopulated before the flush. A parallel section can be (onProgramsExpired and
+  '     Home.refresh() both re-fire those tasks mid-run), and the flush would then delete a row
+  '     that had been filled moments before.
   '
   ' @param sectionId - the row's sectionId
   ' @param batching - whether a latest-rows run is currently holding the recompute
@@ -80,16 +119,49 @@ namespace latestRows
   ' life of that Home instance. This is the backstop, and epic #728 is precisely a history of
   ' Task threads dying.
   '
-  ' The threshold is derived, not tuned: apiPipeline bounds a whole run at PIPELINE_RUN_MS,
-  ' and API_WAIT_MS is one request's own deadline — the largest overshoot a live run can post
-  ' between its last wait returning and the loop exiting. Anything past the two combined is
-  ' not a slow run, it is a dead one.
+  ' Measured from the last row the run DELIVERED, not from its start. apiPipeline charges its
+  ' budget only while waiting on the server, so a live run with many rows can legitimately
+  ' outlast PIPELINE_RUN_MS end to end: every row it hands over is its own proof of life. What
+  ' a live run cannot do is stay silent much longer than its whole budget, PIPELINE_RUN_MS: a
+  ' wait never outlasts what is left of it. API_WAIT_MS on top is slack for the silent time that
+  ' is not charged: the task thread starting, building its entries before the first row, and
+  ' one row's transform and hand-off to this thread. Past the two combined it is not a slow run,
+  ' it is a dead one.
   '
-  ' @param elapsedMs - milliseconds since the run was started
-  ' @return true when the run has outlived any legitimate duration
-  function runIsStalled(elapsedMs as integer) as boolean
-    return elapsedMs > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
+  ' @param msSinceLastRow - milliseconds since the run started or last delivered a row (the
+  '   clock drainReady resets)
+  ' @return true when the run has been silent longer than any live run can be
+  function runIsStalled(msSinceLastRow as integer) as boolean
+    return msSinceLastRow > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
   end function
 
+  ' The libraries a latest-media run loads, in row order: every library that gets a latest row
+  ' (collections, Live TV and programs do not), or, for a retry, only those among them whose
+  ' ids are in `onlyLibIds`. A retry loads only the rows that failed, so it costs one request
+  ' per failed row rather than a reload of every row.
+  '
+  ' @param filteredLatest - the libraries left after latestItemsExcludes, each with `id` and
+  '   `collectionType`, or invalid
+  ' @param onlyLibIds - an roArray of library ids to keep, or invalid for every library
+  ' @return an roArray of { id } in row order (possibly empty)
+  function runLibraries(filteredLatest as dynamic, onlyLibIds as dynamic) as object
+    libs = []
+    if not isValid(filteredLatest) then return libs
+
+    only = invalid
+    if isValid(onlyLibIds)
+      only = {}
+      for each libId in onlyLibIds
+        only[libId] = true
+      end for
+    end if
+
+    for each lib in filteredLatest
+      if lib.collectionType <> "boxsets" and lib.collectionType <> "livetv" and lib.collectionType <> "Program"
+        if not isValid(only) or only.doesExist(lib.id) then libs.push({ id: lib.id })
+      end if
+    end for
+    return libs
+  end function
 
 end namespace

@@ -1,39 +1,51 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/GridView/gridPage.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/versionDisplay.bs"
 
 sub init()
   m.log = new log.Logger("LoadItemsTask2")
   m.top.functionName = "loadItems"
   m.transformer = JellyfinDataTransformer()
 
-  m.top.limit = 100
-  usersettingLimit = m.global.user.settings.itemGridLimit
+  ' The page size is the `limit` field's default (LoadItemsTask2.xml).
 
-  if isValid(usersettingLimit)
-    m.top.limit = usersettingLimit
-  end if
+  ' RTA-only: a smaller page, so specs can page a grid on the demo server's small libraries.
+  ' Compiled out of dev and prod builds (see setGlobalNodes).
+  #if ENABLE_RTA
+    if isValid(m.global.rtaGridPageSize) and m.global.rtaGridPageSize > 0
+      m.top.limit = m.global.rtaGridPageSize
+    end if
+  #end if
 end sub
 
 sub loadItems()
   globalUser = m.global.user
   results = []
 
+  ' Read once: m.global is render-owned, so each read from this thread is a rendezvous. Both
+  ' version-display call sites need the server version, and the cache is per RUN: a new node
+  ' services every page (replaceTask), so it cannot leak a stale resume list into the next one.
+  m.serverVersion = m.global.server.version
+  m.versionDisplayCache = {}
+
   ' Split the run into time spent WAITING on the pool versus time spent EMITTING
   ' (transform + ContentNode + appendChild) on this thread. Same decomposition
-  ' LoadLatestRowsTask records — see there and docs/dev/home-first-paint-performance.md
+  ' LoadLatestRowsTask records; see there and docs/dev/home-first-paint-performance.md
   ' for WHY it is permanent, and why it rides `perfTiming` rather than `debug`. The
   ' shared rationale lives in those two places on purpose; a third copy here drifted
   ' once already.
   '
   ' What IS specific to this task: two very different shapes behind one function. A
   ' plain grid load is ONE query plus a transform loop. A Genres load is one query plus
-  ' a fetch per genre — and the split is what chose that path's mechanism. Measured at
+  ' a fetch per genre, and the split is what chose that path's mechanism. Measured 2026-08-06 at
   ' 78% wait / 22% emit (the INVERSE of Home's latest rows), so the genre fetches were
   ' pipelined rather than handed to the orchestration job pool; see the two-pass loop
   ' below. `genreFetches` is logged alongside the split because a line without it
@@ -44,13 +56,18 @@ sub loadItems()
   ' the hottest loop the grid has, running up to `m.top.limit` times (default 100).
   '
   ' Timing vars are declared unconditionally so bslint's flow analysis (LINT1003) sees
-  ' every path assign them — it does not correlate assignments across `#if` blocks.
+  ' every path assign them: it does not correlate assignments across `#if` blocks.
   runClock = invalid
   stepClock = invalid
+  handoffClock = invalid
   waitMs = 0
   emitMs = 0
+  ' The part of `emit` spent writing `status` + `content`, the one crossing that carries the
+  ' page's nodes to the view. Split out because `emit` alone cannot say whether a page's cost is
+  ' building the nodes or handing them over, and those have different fixes.
+  handoffMs = 0
   genreFetches = 0
-  ' When the Genres view got its rows on screen. That is NOT `task`: the skeletons ship
+  ' When the Genres view got its rows on screen. That is not `task`: the skeletons ship
   ' as soon as the genre LIST query returns, while `task` runs on until the last sample
   ' lands. -1 means the run published no skeletons (a plain grid, or music genres), where
   ' first paint and `task` are the same moment.
@@ -69,7 +86,7 @@ sub loadItems()
   end if
 
   if m.top.ItemType = "LogoImage"
-    ' HEAD request to check if logo image exists — res.ok = true means 200
+    ' HEAD request to check if logo image exists; res.ok = true means 200
     req = GetApi().BuildHeadItemImageRequest(m.top.itemId, "logo", 0)
     res = fetchRes(req, "logoHead")
     if isValid(res) and res.ok
@@ -80,11 +97,12 @@ sub loadItems()
     return
   end if
 
-  ' Build Fields string dynamically - start with Overview, add optional fields
-  fields = "Overview"
-  if m.top.additionalFields <> ""
-    fields = fields + "," + m.top.additionalFields
-  end if
+  ' Build Fields string dynamically - start with Overview, add optional fields.
+  ' MediaSourceCount is what tells a tile it has alternate versions. It is the only free
+  ' signal for that: measured 2026-09-19 on a local 12.0 server, adding it to a 100-item page
+  ' cost +85 bytes and no measurable time, where asking for MediaSources cost +87 ms and
+  ' +326 KB. `gridPage.itemFields` says which types carry it.
+  fields = gridPage.itemFields(m.top.ItemType, m.top.additionalFields)
 
   params = {
     limit: m.top.limit,
@@ -97,20 +115,22 @@ sub loadItems()
     genreIds: m.top.genreIds
   }
 
-  ' Only include parentid when non-empty — sending parentid="" causes the Jellyfin API
-  ' to return root UserViews instead of filtering by other params (e.g. genreIds)
+  ' Only include parentid when non-empty: sending parentid="" causes the Jellyfin API
+  ' to return root UserViews instead of filtering by other params (genreIds, for example)
   if m.top.itemId <> ""
     params.parentid = m.top.itemId
   end if
 
   ' Handle special case when getting names starting with numeral
+  ' "#" outside Live TV is two ranges of names, asked for by executeHashPage.
+  isHash = false
   if m.top.NameStartsWith <> ""
     if m.top.NameStartsWith = "#"
       if m.top.ItemType = "LiveTV" or m.top.ItemType = "TvChannel"
         params.searchterm = "A"
         params.append({ parentid: " " })
       else
-        params.NameLessThan = "A"
+        isHash = true
       end if
     else
       if m.top.ItemType = "LiveTV" or m.top.ItemType = "TvChannel"
@@ -153,8 +173,8 @@ sub loadItems()
     params.append({ IncludeItemTypes: m.top.ItemType })
   end if
 
-  ' queryType drives which Build*Request() is called — used for both the main request
-  ' and the optional 2nd lookup for the # (special characters) filter below.
+  ' queryType drives which Build*Request() is called, for the page's request, or both of a
+  ' "#" page's (executeHashPage).
   queryType = "usersItems"
 
   if m.top.ItemType = "LiveTV"
@@ -194,47 +214,21 @@ sub loadItems()
   end if
   ' MusicAlbum and the generic else both use queryType = "usersItems" (default)
 
+  ' The total is counted on the first page only (the view keeps it): on a slow server the
+  ' count is most of a page's cost. Live TV's channel list takes no such parameter.
+  if m.top.startIndex > 0 and queryType <> "liveTV" then params.EnableTotalRecordCount = false
+
   #if perfTiming
     stepClock.mark()
   #end if
-  data = executeItemQuery(queryType, params)
+  if isHash
+    data = executeHashPage(queryType, params)
+  else
+    data = executeItemQuery(queryType, params)
+  end if
   #if perfTiming
     waitMs += stepClock.totalMilliseconds()
   #end if
-
-  ' If user has filtered by #, include special characters sorted after Z as well
-  if isValid(params.NameLessThan)
-    if LCase(params.NameLessThan) = "a"
-      ' Use same params except for name filter param
-      params.NameLessThan = ""
-      params.NameStartsWithOrGreater = "z"
-
-      ' Perform 2nd API lookup for items starting with Z or greater
-      #if perfTiming
-        stepClock.mark()
-      #end if
-      startsWithZAndGreaterData = executeItemQuery(queryType, params)
-      #if perfTiming
-        waitMs += stepClock.totalMilliseconds()
-      #end if
-
-      if isValidAndNotEmpty(startsWithZAndGreaterData)
-        specialCharacterItems = []
-
-        ' Filter out items starting with Z
-        for each item in startsWithZAndGreaterData.Items
-          itemName = LCase(item.name)
-          if not itemName.StartsWith("z")
-            specialCharacterItems.Push(item)
-          end if
-        end for
-
-        ' Append data to results from before A
-        data.Items.Append(specialCharacterItems)
-        data.TotalRecordCount += specialCharacterItems.Count()
-      end if
-    end if
-  end if
 
   ' `slots` holds one entry per source item, INCLUDING the ones that transform to
   ' invalid, so a genre's sampled items can be written back into its original
@@ -248,8 +242,26 @@ sub loadItems()
 
     if isValid(data.TotalRecordCount) then m.top.totalRecordCount = data.TotalRecordCount
 
-    ' Pass 1 — emit everything that needs no further I/O, and collect the genre
+    ' From 12.0 a tile's own UserData can belong to a version other than the one Play would
+    ' start. Correct it here, on the raw reply, so the transformer / item node / JRPoster chain
+    ' needs no knowledge of versions at all. Inside the isValid(data) guard because a failed
+    ' query leaves `data` invalid, and a dot off invalid faults this task thread (&hec).
+    ' A Genres query returns genres, which are never grouped, so this is a no-op for one:
+    ' its sampled items are corrected in one pass after pass 2 instead.
+    correctVersionDisplay(data.Items)
+
+    ' Pass 1: emit everything that needs no further I/O, and collect the genre
     ' requests instead of issuing them one at a time.
+    '
+    ' Nothing in the per-item transform may read m.top or m.global: both are render-owned, so
+    ' from this thread each read is a rendezvous, and while the user scrolls every one waits on
+    ' the busy render thread. Read once here; the transformer gets the server version for the
+    ' same reason (without it, it reads m.global.server.version itself, two crossings per item).
+    ' The genre branch still crosses per genre inside BuildGetItemsByQueryRequest (user id, API
+    ' version, server URL); genre views do not page, so that cost is never paid mid-scroll.
+    libraryId = m.top.itemId
+    requestedType = m.top.itemType
+    genreFields = gridPage.genreSampleFields(m.top.isMusic)
     for each item in data.Items
       tmp = invalid
       #if perfTiming
@@ -264,15 +276,15 @@ sub loadItems()
         genreReq = GetApi().BuildGetItemsByQueryRequest({
           SortBy: "Random",
           SortOrder: "Ascending",
-          IncludeItemTypes: m.top.itemType,
+          IncludeItemTypes: requestedType,
           Recursive: true,
-          Fields: "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,BackdropImageTags",
+          Fields: genreFields,
           ImageTypeLimit: 1,
           EnableImageTypes: "Primary,Backdrop",
           Limit: 6,
           GenreIds: item.id,
           EnableTotalRecordCount: false,
-          ParentId: m.top.itemId
+          ParentId: libraryId
         })
         if isValid(genreReq)
           genreEntries.push({
@@ -284,20 +296,20 @@ sub loadItems()
         end if
       else
         ' All other item types: transform to JellyfinBaseItem
-        tmp = m.transformer.transformBaseItem(item)
+        tmp = m.transformer.transformBaseItem(item, m.serverVersion)
 
         ' Set library context for navigation on virtual items (Genre/Studio/MusicGenre)
         ' that have no meaningful parentId in the API response
         if not isValidAndNotEmpty(tmp.parentId)
-          tmp.parentId = m.top.itemId
+          tmp.parentId = libraryId
         end if
 
         ' Studio items (IsFolder=false, type="Studio") don't carry a CollectionType from the API.
         ' Infer it from the item type being fetched so DeterminePresenterType can route correctly.
         if LCase(tmp.type) = "studio" and not isValidAndNotEmpty(tmp.collectionType)
-          if LCase(m.top.itemType) = "movie"
+          if LCase(requestedType) = "movie"
             tmp.collectionType = "movies"
-          else if LCase(m.top.itemType) = "series"
+          else if LCase(requestedType) = "series"
             tmp.collectionType = "tvshows"
           end if
         end if
@@ -311,21 +323,21 @@ sub loadItems()
   end if
 
   ' Ship the row TITLES now, so the view can draw the list before a single sample has
-  ' landed. The whole genre list is already known at this point — only the per-genre
-  ' artwork is still outstanding — so making the user stare at a spinner until the
+  ' landed. The whole genre list is already known at this point (only the per-genre
+  ' artwork is still outstanding), so making the user stare at a spinner until the
   ' slowest of N fetches returns is wasted structure we already have.
   '
-  ' What crosses is deliberately tiny: an array of `{ id, title }` AAs, no nodes. Every
+  ' What crosses is tiny: an array of `{ id, title }` AAs, no nodes. Every
   ' write from this thread to a render-thread-owned node is a RENDEZVOUS, priced by how
   ' much data it carries, so the view builds its own skeleton row nodes from these
-  ' strings — exactly as HomeRows.createSkeletonRows() does for Home. An earlier revision
-  ' shipped the built ContentNodes instead and paid ~136 ms for that one crossing.
+  ' strings, exactly as HomeRows.createSkeletonRows() does for Home. An earlier revision
+  ' shipped the built ContentNodes instead and paid ~136 ms for that one crossing (measured 2026-08-08).
   '
-  ' Only when EVERY item is a genre: this is a pure hint, and a mixed list would draw
+  ' Only when every item is a genre: this is a pure hint, and a mixed list would draw
   ' skeletons for rows the batch below never fills. A Genres query returns nothing but
-  ' genres, so the equality just makes that a checked precondition. startIndex = 0
-  ' encodes the other precondition the receiving handler assumes — "this publish is the
-  ' COMPLETE list" — in the gate itself, rather than leaving it to observer lifecycle in
+  ' genres, so the equality only makes that a checked precondition. startIndex = 0
+  ' encodes the other precondition the receiving handler assumes ("this publish is the
+  ' COMPLETE list") in the gate itself, rather than leaving it to observer lifecycle in
   ' another file (genre views never paginate today, so this is a tripwire, not a path).
   if genreEntries.count() > 0 and genreEntries.count() = slots.count() and m.top.startIndex = 0
     skeletons = []
@@ -346,9 +358,9 @@ sub loadItems()
     #end if
   end if
 
-  ' Pass 2 — the genre sample fetches, pipelined onto THIS thread rather than run
-  ' back to back. Measured 78% wait / 22% emit, so the win is overlapping the round
-  ' trips: apiPipeline keeps up to apiPool.SLOT_COUNT of them in flight without
+  ' Pass 2: the genre sample fetches, pipelined onto THIS thread rather than run
+  ' back to back. Measured 2026-08-06: 78% wait / 22% emit, so the win is overlapping the round
+  ' trips: apiPipeline keeps one per pool slot in flight without
   ' adding a thread, which a task-per-genre fan-out would (epic #728).
   '
   ' Safe to use submitApiRequest's non-blocking path here for the reason
@@ -359,6 +371,7 @@ sub loadItems()
       genreFetches = genreEntries.count()
     #end if
     pipe = apiPipelineBegin(genreEntries)
+    pending = []
 
     #if perfTiming
       stepClock.mark()
@@ -372,7 +385,13 @@ sub loadItems()
       #if perfTiming
         stepClock.mark()
       #end if
-      populateGenreRow(slots[result.entry.slotIndex], result.entry.item, result.res)
+      ' Held, not transformed yet: the version correction below rewrites the RAW items, and
+      ' doing it per row would either block this drain loop on a fetch (starving the pipeline
+      ' of the top-ups apiPipelineNext performs) or need a second correction shape. One pass
+      ' after the loop costs the same round trip once and leaves the pipeline alone. Nothing is
+      ' visible in the meantime: genreSkeletons already painted, and the rows themselves do not
+      ' cross until `m.top.content` below.
+      pending.push({ slotIndex: result.entry.slotIndex, item: result.entry.item, res: result.res })
       #if perfTiming
         emitMs += stepClock.totalMilliseconds()
         stepClock.mark()
@@ -382,13 +401,37 @@ sub loadItems()
         waitMs += stepClock.totalMilliseconds()
       #end if
     end while
+
+    ' Every sampled item across every genre row, corrected in one pass, so a grid of 8 genres
+    ' costs the same lookup as a grid of 1. Counted as wait, not emit: it is a round trip.
+    #if perfTiming
+      stepClock.mark()
+    #end if
+    sampled = []
+    for each entry in pending
+      if isValid(entry.res) and entry.res.ok and isValid(entry.res.json) and type(entry.res.json.Items) = "roArray"
+        sampled.append(entry.res.json.Items)
+      end if
+    end for
+    correctVersionDisplay(sampled)
+    #if perfTiming
+      waitMs += stepClock.totalMilliseconds()
+      stepClock.mark()
+    #end if
+
+    for each entry in pending
+      populateGenreRow(slots[entry.slotIndex], entry.item, entry.res)
+    end for
+    #if perfTiming
+      emitMs += stepClock.totalMilliseconds()
+    #end if
   end if
 
-  ' The handoff is emit work too — a grid can carry hundreds of nodes across it.
+  ' The handoff is emit work too: a grid can carry hundreds of nodes across it.
   #if perfTiming
     stepClock.mark()
   #end if
-  ' Pass 3 — flatten back to source order. `slots` held a place for every source item,
+  ' Pass 3: flatten back to source order. `slots` held a place for every source item,
   ' which is what kept the genre write-back indices valid; this drops the placeholders
   ' again. The isValid guard is defensive only: both branches of pass 1 assign `tmp`
   ' and immediately dereference it, so a slot that reached here invalid would already
@@ -397,16 +440,28 @@ sub loadItems()
   for each slot in slots
     if isValid(slot) then results.push(slot)
   end for
+  #if perfTiming
+    handoffClock = CreateObject("roTimespan")
+  #end if
+  ' `status` before `content`: the view reads it in its `content` handler.
+  if isValid(data)
+    m.top.status = "ok"
+  else
+    m.top.status = "failed"
+  end if
   m.top.content = results
+  #if perfTiming
+    handoffMs = handoffClock.totalMilliseconds()
+  #end if
 
   ' NOTE: roku-log's Logger.info takes at most 10 params (message + value..value9),
-  ' and the roku-log BSC plugin spends the first on the injected pkg path — so at
+  ' and the roku-log BSC plugin spends the first on the injected pkg path, so at
   ' most NINE args may be passed here. Exceeding it is not a compile error: it
   ' faults at runtime with "Wrong number of function parameters" (&hf1), which
   ' drops the app into the BrightScript debugger and hangs it mid-load.
   '
   ' The line carries its own build flags so a sample can never be silently compared
-  ' against one taken in a distorting build — a `debug=true` build attaches
+  ' against one taken in a distorting build: a `debug=true` build attaches
   ' `rawApiData` to every item and inflates `emit`. Provenance belongs in the sample,
   ' not in someone's memory of which manifest was checked out at the time.
   #if perfTiming
@@ -416,15 +471,16 @@ sub loadItems()
     #else
       buildFlags = " [debug=false perfTiming=true]"
     #end if
-    ' firstPaint rides in the MESSAGE rather than as a fourth value pair: message + three
+    ' firstPaint and handoff ride in the MESSAGE rather than as value pairs: message + three
     ' pairs is seven args, and two more would sit exactly on the nine-arg ceiling above.
-    m.log.info("item-grid load done - items " + results.count().toStr() + " genreFetches " + genreFetches.toStr() + " firstPaint " + firstPaintMs.toStr() + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
+    ' handoff is a PART of emit, not added to it.
+    m.log.info("item-grid load done - items " + results.count().toStr() + " genreFetches " + genreFetches.toStr() + " firstPaint " + firstPaintMs.toStr() + " handoff " + handoffMs.toStr() + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
   #end if
 end sub
 
 ' Fills one genre row with the sampled items its request returned.
 '
-' `res` is the pool response AA, or invalid when the request never got an answer —
+' `res` is the pool response AA, or invalid when the request never got an answer:
 ' the pool was down, or the whole-run budget expired. An HTTP error arrives as a
 ' valid `res` with `ok = false`. Both leave the row in place with its title and no
 ' children, which is exactly what the blocking `fetchJson` this replaced did when it
@@ -438,8 +494,8 @@ sub populateGenreRow(row as dynamic, item as object, res as dynamic)
   if not isValid(genreData) then return
 
   if genreData.Items.Count() > 5
-    ' Add View All item to the start of the row — transform the genre item itself
-    viewAllNode = m.transformer.transformBaseItem(item)
+    ' Add View All item to the start of the row: transform the genre item itself
+    viewAllNode = m.transformer.transformBaseItem(item, m.serverVersion)
     viewAllNode.title = translate(translationKeys.LabelViewAll) + " " + item.name
     ' Set library context for genre navigation (genre items have no parentId from API)
     if not isValidAndNotEmpty(viewAllNode.parentId)
@@ -459,25 +515,87 @@ sub populateGenreRow(row as dynamic, item as object, res as dynamic)
   end if
 
   for each genreItem in genreData.Items
-    row.appendChild(m.transformer.transformBaseItem(genreItem))
+    row.appendChild(m.transformer.transformBaseItem(genreItem, m.serverVersion))
   end for
 end sub
 
+' Rewrite this page's items so each tile's progress bar shows the version that would actually
+' play. The rules and the measurements are versionResume's DISPLAY section; the requests are
+' versionDisplay.correctDisplayProgress().
+'
+' The cache spans the whole run, so the genre pass below reuses whatever the main query already
+' looked up rather than asking again. The resume list is scoped to this grid's container: a
+' library, or (for a genre or studio view) the library the presenter set as `itemId`. That
+' resolves through a collection too (verified 2026-09-20 against a 12.0 server: a resume query
+' scoped to a BoxSet returns its members).
+sub correctVersionDisplay(items as dynamic)
+  if not isValid(m.versionDisplayCache) then m.versionDisplayCache = {}
+  changed = versionDisplay.correctDisplayProgress(items, m.serverVersion, m.top.itemId, "versionDisplayProgress", m.versionDisplayCache)
+  if changed > 0 then m.log.debug("Corrected version progress on tiles", "count", changed)
+end sub
+
+' One page of the "#" letter filter: one or two requests across its two name ranges
+' (gridPage.hashRanges), the second only when the page reaches past the first range's end, and
+' always on the first page, whose total counts both. The first page reports the first range's
+' count in `hashFirstRangeTotal`, and the view hands it back to every later page, which is how a
+' page finds its place in the two ranges.
+'
+' Invalid when either request fails: a "#" page missing one range would silently leave its items
+' out of the grid.
+function executeHashPage(queryType as string, params as object) as dynamic
+  limit = m.top.limit
+  first = gridPage.hashFirstRequest(m.top.startIndex, limit, m.top.hashFirstRangeTotal)
+  data = executeItemQuery(queryType, gridPage.hashRequestParams(params, first))
+  if not isValid(data) then return invalid
+
+  ' Before `content`, like `totalRecordCount`: the view reads both in its `content` handler.
+  if first.counts and isValid(data.TotalRecordCount) then m.top.hashFirstRangeTotal = data.TotalRecordCount
+
+  delivered = 0
+  if type(data.Items) = "roArray" then delivered = data.Items.count()
+  second = gridPage.hashSecondRequest(first, delivered, limit)
+  if not isValid(second) then return data
+
+  secondData = executeItemQuery(queryType, gridPage.hashRequestParams(params, second))
+  if not isValid(secondData) then return invalid
+  gridPage.appendSecondRange(data, secondData, second.counts)
+  return data
+end function
+
 ' Routes an item query through Build*Request() + pool based on queryType.
-' Used for both the main request and the optional 2nd lookup for the # filter.
+' Used for a page's request, and for each of a "#" page's (executeHashPage).
 ' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
+'
+' Returns the parsed reply, or invalid when the server did not answer usably, after logging
+' why, since the view is told only that the load failed.
 function executeItemQuery(queryType as string, params as object) as dynamic
   if queryType = "liveTV"
-    return fetchJson(GetApi().BuildGetLiveTVChannelsRequest(params), "itemQuery_liveTV")
+    req = GetApi().BuildGetLiveTVChannelsRequest(params)
   else if queryType = "studios"
-    return fetchJson(GetApi().BuildGetStudiosRequest(params), "itemQuery_studios")
+    req = GetApi().BuildGetStudiosRequest(params)
   else if queryType = "genres"
-    return fetchJson(GetApi().BuildGetGenresRequest(params), "itemQuery_genres")
+    req = GetApi().BuildGetGenresRequest(params)
   else if queryType = "artists"
-    return fetchJson(GetApi().BuildGetArtistsRequest(params), "itemQuery_artists")
+    req = GetApi().BuildGetArtistsRequest(params)
   else if queryType = "albumArtists"
-    return fetchJson(GetApi().BuildGetAlbumArtistsRequest(params), "itemQuery_albumArtists")
+    req = GetApi().BuildGetAlbumArtistsRequest(params)
+  else
+    queryType = "usersItems"
+    req = GetApi().BuildGetItemsByQueryRequest(params)
   end if
-  ' default: "usersItems"
-  return fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "itemQuery_usersItems")
+  requestId = "itemQuery_" + queryType
+
+  if not isValid(req)
+    m.log.warn("library query failed", requestId, "cause", "not sent")
+    return invalid
+  end if
+  ' A page can take the server far longer than an ordinary request (timeouts.GRID_PAGE_MS).
+  req.timeoutMs = timeouts.GRID_PAGE_MS
+  res = fetchRes(req, requestId)
+  cause = apiResponse.jsonFailure(res)
+  if cause <> ""
+    m.log.warn("library query failed", requestId, "cause", cause)
+    return invalid
+  end if
+  return res.json
 end function

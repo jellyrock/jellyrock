@@ -1,0 +1,90 @@
+import "pkg:/source/utils/loadingStages.bs"
+
+namespace tests
+
+  @suite("loadingStages - what a long wait tells the viewer")
+  class LoadingStagesTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("textKeyAt() — a content load")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("says nothing before 8 s")
+    @params(0)
+    @params(7999)
+    function _(elapsedMs)
+      m.assertEqual(loadingStages.textKeyAt(LoadingKind.CONTENT, elapsedMs), "")
+    end function
+
+    @it("says it is still loading from 8 s")
+    @params(8000)
+    @params(29999)
+    function _(elapsedMs)
+      m.assertEqual(loadingStages.textKeyAt(LoadingKind.CONTENT, elapsedMs), translationKeys.LabelStillLoading)
+    end function
+
+    @it("says the wait is the server's from 30 s")
+    @params(30000)
+    @params(600000)
+    function _(elapsedMs)
+      m.assertEqual(loadingStages.textKeyAt(LoadingKind.CONTENT, elapsedMs), translationKeys.MessageServerTakingAWhileToAnswer)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("textKeyAt() — a kind without stages")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("never says anything for a plain spinner, however long it waits")
+    @params(0)
+    @params(8000)
+    @params(30000)
+    function _(elapsedMs)
+      m.assertEqual(loadingStages.textKeyAt(LoadingKind.PLAIN, elapsedMs), "")
+    end function
+
+    @it("never says anything for a kind it does not know")
+    function _()
+      m.assertEqual(loadingStages.textKeyAt("", 30000), "")
+      m.assertEqual(loadingStages.textKeyAt("unknown", 30000), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("msUntilNextChange()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("counts down to the next stage of a content load")
+    @params(0, 8000)
+    @params(7999, 1)
+    @params(8000, 22000)
+    @params(29999, 1)
+    function _(elapsedMs, expectedMs)
+      m.assertEqual(loadingStages.msUntilNextChange(LoadingKind.CONTENT, elapsedMs), expectedMs)
+    end function
+
+    @it("has nothing left to change once the last stage shows")
+    function _()
+      m.assertEqual(loadingStages.msUntilNextChange(LoadingKind.CONTENT, 30000), -1)
+    end function
+
+    @it("never arms a timer for a kind without stages")
+    function _()
+      m.assertEqual(loadingStages.msUntilNextChange(LoadingKind.PLAIN, 0), -1)
+    end function
+
+    @it("changes text exactly where it arms the timer, so a fire on time shows the next stage")
+    @params(0)
+    @params(8000)
+    function _(elapsedMs)
+      before = loadingStages.textKeyAt(LoadingKind.CONTENT, elapsedMs)
+      due = elapsedMs + loadingStages.msUntilNextChange(LoadingKind.CONTENT, elapsedMs)
+      m.assertNotEqual(loadingStages.textKeyAt(LoadingKind.CONTENT, due), before)
+      m.assertEqual(loadingStages.textKeyAt(LoadingKind.CONTENT, due - 1), before)
+    end function
+
+  end class
+
+end namespace

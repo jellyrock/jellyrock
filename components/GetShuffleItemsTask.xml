@@ -10,6 +10,8 @@
     -->
     <field id="shuffleInput" type="assocarray" />
     <!-- Resolved items array, ready to pass directly to queueManager "set" -->
+    <!-- quickplayOutcome.STATUS_*, written before shuffleItems: why an empty result is empty -->
+    <field id="status" type="string" value="" />
     <field id="shuffleItems" type="array" />
   </interface>
 </component>

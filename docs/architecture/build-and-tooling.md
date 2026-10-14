@@ -1,6 +1,7 @@
 ---
 topic: build-and-tooling
 related-files:
+  - bsconfig-base.json
   - bsconfig.json
   - bsconfig-prod.json
   - package.json
@@ -12,16 +13,25 @@ related-files:
   - manifest
   - scripts/bsc-plugins/roku-log.cjs
   - scripts/bsc-plugins/translation-keys.cjs
+  - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/bsc-plugins/jrscreen-on-destroy.cjs
   - scripts/bsc-plugins/print-locations.cjs
   - scripts/bsc-plugins/observe-without-on-destroy.cjs
   - scripts/bsc-plugins/no-direct-sdk.cjs
   - scripts/bsc-plugins/no-raw-run.cjs
   - scripts/bsc-plugins/no-task-fanout.cjs
+  - scripts/bsc-plugins/no-same-node-relaunch.cjs
   - scripts/bsc-plugins/no-hand-rolled-dialog.cjs
   - scripts/bsc-plugins/callfunc-interface.cjs
+  - scripts/bsc-plugins/button-row-bracket.cjs
+  - scripts/bsc-plugins/field-observer-wiring.cjs
+  - scripts/bsc-plugins/register-once-observer.cjs
+  - scripts/lib/bsc-rule.cjs
   - scripts/bsc-plugins/auto-destroyed-guard.cjs
   - scripts/bsc-plugins/unobserve-before-release.cjs
+  - scripts/bsc-plugins/dead-code.cjs
+  - .dead-code-baseline.json
+  - scripts/dead-code-accuracy.js
   - scripts/lint/dictionary-audit.cjs
   - scripts/lint/docs-check.cjs
   - scripts/lint/docs-stale.cjs
@@ -37,6 +47,10 @@ related-files:
   - scripts/lint/progress-cursor-nudge.cjs
   - scripts/lint/issue-templates-check.cjs
   - scripts/lint/validate-deps-workflow-sync.cjs
+  - scripts/lint/ci-parity-check.js
+  - scripts/lint/rta-capability-coverage.cjs
+  - scripts/lint/rta-wait-inventory.js
+  - scripts/lint/eslint-rules/rta-wait-justified.js
   - scripts/journal-sync.js
   - scripts/lint/issue-forms.schema.json
   - scripts/generate/dev-index.cjs
@@ -50,7 +64,7 @@ related-files:
   - resources/icons/
   - resources/placeholders/
   - resources/placeholders/placeholders.json
-  - manifest
+  - scripts/lib/png-compare.js
   - scripts/lib/frontmatter.cjs
   - scripts/lib/changed-files.cjs
   - scripts/lib/lint-excludes.cjs
@@ -84,119 +98,88 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-09-03
+last-reviewed: 2026-10-12
 ---
 
-# Build & Tooling
+# Build and tooling
 
-The BrighterScript compiler configuration, custom plugins, npm scripts, Makefile, ropm modules, and IDE integration expectations.
+How JellyRock is compiled, checked and packaged: the BrighterScript configs and compile-time flags, our compiler plugins, the npm scripts and Makefile, the generated image assets, and the layers of checks from the editor to the Roku.
 
 ## The BrighterScript pipeline
 
-JellyRock is written in **BrighterScript** (`.bs`), a typed superset of BrightScript that compiles to plain `.brs` for the Roku runtime. The compiler is `bsc` (the `brighterscript` npm package). Output goes to `build/` (and `out/` for packaged ZIPs).
+JellyRock is written in BrighterScript (`.bs`), a typed superset of BrightScript that compiles to plain `.brs` for the Roku. The compiler is `bsc`, from the `brighterscript` npm package. It writes to `build/`; packaged ZIPs go to `out/`.
 
 ```text
 .bs source files  ─┐
-.xml components   ─┤  →  bsc (with plugins) →  .brs/.xml output  →  ZIP  →  Roku device
-images, locales   ─┘     in build/                                    in out/
+.xml components   ─┤  bsc (with plugins)  ─▶  .brs/.xml in build/  ─▶  ZIP in out/  ─▶  Roku
+images, locales   ─┘
 ```
 
 ## bsconfig variants
 
-Several `bsconfig*.json` files exist, one per build target:
+Each build target has its own `bsconfig*.json`, and every one inherits from `bsconfig-base.json`:
 
 | File | Purpose |
 |---|---|
-| `bsconfig.json` | Standard dev build — log strip OFF, source maps ON, all plugins active |
-| `bsconfig-prod.json` | Production build — log strip ON (`rokuLog.strip = true`), source maps OFF, comments removed |
-| `bsconfig-tests.json` | All test suites |
-| `bsconfig-tests-unit.json` | Unit tests only (faster for iteration) |
-| `bsconfig-tests-integration.json` | Integration tests only |
-| `bsconfig-tests-complete.json` | Complete coverage variant |
-| `bsconfig-tdd-sample.json` | Sample TDD config — devs copy to `bsconfig-tdd.json` and customize what suites/tests to run |
+| `bsconfig-base.json` | Not a build target. The settings every config shares: `compilerOptions` (`autoImportComponentScript`, `sourceMap: true`), every `diagnosticFilters` entry, and `outDir` |
+| `bsconfig.json` | Dev build, and the project `npm run validate`, the editor and CI check. Every plugin, logs kept, source maps on |
+| `bsconfig-prod.json` | Production build. Logs and comments stripped, no file paths in log lines, no source maps, release branding copied to `images/branding`. Runs fewer plugins than the dev build (below) |
+| `bsconfig-analysis.json` | `bsconfig-prod.json` plus source maps, built to `build-analysis/` (`npm run build:analysis`). `/crash-report` derives the same config from each tag's own prod config |
+| `bsconfig-tests.json` | Every suite except the `migration`, `registry` and `measurement` tags, without code coverage. The gating build (`test:all`, CI) |
+| `bsconfig-tests-unit.json` | Unit tests only, except the `measurement` tag |
+| `bsconfig-tests-integration.json` | Integration tests only, except the `migration` and `registry` tags |
+| `bsconfig-tests-complete.json` | Every tag, with code coverage recorded (`test:complete`, the CI `complete` dispatch) |
+| `bsconfig-tdd-sample.json` | Extends `bsconfig-tests.json`. Copy it to the gitignored `bsconfig-tdd.json` and pick the suites to run |
 
-The `bsconfig.json` (dev) entry shape:
+`bsconfig.json` is the place to read the plugin list. The prod config leaves out `brighterscript-xml-plugin`, `callfunc-interface`, `button-row-bracket`, `field-observer-wiring`, `register-once-observer` and `dead-code`. No reason is recorded; those rules still gate every PR through `validate`, which builds `bsconfig.json`.
 
-```json
-{
-  "files": [
-    "manifest",
-    "source/**/*.*",
-    "components/**/*.*",
-    "images/**/*.*",
-    "locale/**/*.*",
-    "settings/*.*"
-  ],
-  "plugins": [
-    "@rokucommunity/bslint",
-    "brighterscript-xml-plugin",
-    "./scripts/bsc-plugins/roku-log.cjs",
-    "./scripts/bsc-plugins/translation-keys.cjs"
-  ],
-  "lintConfig": "bslint.json",
-  "rokuLog": {
-    "strip": false,
-    "insertPkgPath": true,
-    "removeComments": false
-  },
-  "sourceMap": true,
-  "autoImportComponentScript": true,
-  "outDir": "build"
-}
-```
+### How the configs compose
+
+Each config names its parent with `extends`. `bsconfig-analysis.json` extends the prod config, `bsconfig-tdd-sample.json` extends `bsconfig-tests.json`, and the rest extend the base.
+
+BrighterScript merges `extends` shallowly. Only `compilerOptions` merges key by key, so the prod config can set `compilerOptions.sourceMap: false` and keep the other options. Any other key a child sets replaces the parent's value. A child `diagnosticFilters` array would drop every filter in the base, so all filters live in the base, test-only ones included.
+
+[`bsconfig-inheritance.test.js`](../../tests/scripts/unit/lint/bsconfig-inheritance.test.js) enforces the shape:
+
+- every config reaches the base;
+- no child redefines `diagnosticFilters`;
+- no config uses a deprecated top-level compiler option;
+- every file a device-test config inherits from triggers the device unit tests;
+- every `files` array ends with `"!**/*.map"`.
+
+**Every `files` array ends with `"!**/*.map"`.** A ropm package can ship prebuilt `.map` files next to its `.brs`. Copied by `files`, one lands on the same path as the map BSC writes for that `.brs`, and the two writes race. BSC already reads a prebuilt map from disk to chain it, so nothing needs copying. The negation must stay the last entry, because a later glob would copy the maps back in. The TDD sample restates the line, since `files` is never inherited. The full story is in commit `cfd5a32b`; adopting roku-log as owned code would remove the prebuilt maps ([#986](https://github.com/jellyrock/jellyrock/issues/986)).
+
+Compiler options go under `compilerOptions`. The top-level spelling still works but warns. When both are set, `compilerOptions` wins, so a top-level override in a child is ignored once the base sets that option.
+
+The base filters `function-name-too-long` for `tests/**/*.spec.bs` only. Rooibos renames every test method to `rooiboos_test_case_<md5>_<n>` inside the suite class, which pushes a long suite class name past Roku's 89-character limit. The limit matters only when a function reference goes through `toStr()`, and Rooibos calls test methods by name (`m.testSuite[m.funcName]()`). App code, test helpers and mocks keep the rule.
+
+The BrighterScript language server reloads a project only when that project's own bsconfig changes. After editing `bsconfig-base.json`, run **BrightScript: Restart Language Server** or reload the window.
 
 ## Compile-time flags (`bs_const`)
 
-The `manifest`'s `bs_const` line carries three compile-time constants. **Roku's on-device
-compiler evaluates `#if`, not `bsc`** — the directives are passed straight through and appear
-verbatim in the emitted `.brs`, then get compiled out at load time against the shipped
-manifest. Two consequences that are easy to get wrong:
+The `manifest`'s `bs_const` line carries three compile-time constants. Roku's on-device compiler evaluates `#if`, not `bsc`: the directives pass through into the emitted `.brs` and are compiled out at load time against the shipped manifest. Two consequences:
 
-- **Grepping `build/**/*.brs` to check whether a flag is off proves nothing.** The `#if`
-  block is always present there. Read `build/manifest` instead.
-- **`bsconfig.json`'s `manifest.bs_const` cannot enforce anything.** BrighterScript applies
-  it to its own in-memory manifest only; the `manifest` file is copied to `build/` verbatim,
-  so the override never reaches the device.
+- Grepping `build/**/*.brs` to see whether a flag is off proves nothing, because the `#if` block is always there. Read `build/manifest` instead.
+- A `manifest.bs_const` override in a bsconfig enforces nothing. BrighterScript applies it to its own in-memory manifest; the `manifest` file is copied to `build/` as it is.
 
 | Constant | Default | What it gates |
 |---|---|---|
-| `debug` | `false` | Failure injection (`DebugFlags`), the toast cheat code, the Task-thread ledger, `rawApiData`/`raw*` payload attachment, and log level 4 vs 2. See [debug-flags.md](../dev/debug-flags.md) |
-| `perfTiming` | **`true`** | Orchestrator wait/emit instrumentation in `LoadLatestRowsTask` + `LoadItemsTask2`, the `xform`/`append`/`notify` split inside `LoadLatestRowsTask`, and the render-thread `attach`/`detach`/`other` split in `HomeRows`. See [home-first-paint-performance.md](../dev/home-first-paint-performance.md) |
-| `ENABLE_RTA` | `false` | The RTA on-device component. Flipped to `true` in the build directory by the RTA deploy itself |
+| `debug` | `false` | Failure injection (`DebugFlags`), the toast cheat code, the Task-thread ledger, `rawApiData` and the other `raw*` payloads, and log level 4 instead of 2. See [debug-flags.md](../dev/debug-flags.md) |
+| `perfTiming` | `true` | Timing instrumentation: the Home, grid and extras load pipelines, the API queue, the Task launch queue and screen readiness. `git grep -l '#if perfTiming'` lists the files. See [home-first-paint-performance.md](../dev/home-first-paint-performance.md) |
+| `ENABLE_RTA` | `false` | The RTA on-device component and the test hooks RTA drives in app code (request faults, load-stage holds, grid page size). The RTA deploy sets it to `true` in the build directory. See [rta-tests.md](../dev/rta-tests.md#test-hooks-in-rta-builds) |
 
-`perfTiming` defaults **on** so dev builds print the numbers without ceremony — instrumentation
-behind a flag-flip-and-rebuild stops being looked at, and stops functioning as a baseline. It is
-deliberately separate from `debug` rather than folded into it: a `debug` build attaches
-`rawApiData` to every transformed item, which lands inside the `emit` measurement, so sharing the
-flag would mean the only build that can read the numbers is one that distorts them.
+`perfTiming` defaults on so dev builds print their timings without a rebuild; instrumentation behind a flag flip stops being read. It is separate from `debug` because a `debug` build attaches `rawApiData` to every transformed item, inside the timed work. Sharing the flag would mean the only build that prints the numbers is one that distorts them.
 
 ### Production hardening
 
-[`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) is the
-final step of `npm run build:prod`. It rewrites `build/manifest` to force `debug`, `perfTiming`,
-and `ENABLE_RTA` to `false`, prints what it flipped, and fails loudly if the manifest is missing
-or has no `bs_const` line. Every route to a release artifact composes `build:prod`, so
-`npm run package:signed` is covered too.
+[`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) is the last step of `npm run build:prod`, and every route to a release artifact runs `build:prod`. It rewrites `build/manifest` with `debug`, `perfTiming` and `ENABLE_RTA` forced to `false` and prints what it changed. It fails when the manifest or its `bs_const` line is missing.
 
-This exists because `roku-log`'s `strip` removes log *calls* from production but not the code
-feeding them — the timing clocks would otherwise run in production and have their results
-discarded. It also means a `debug=true` flip left in the working tree cannot reach a release —
-and that flip is routine, because the log level is welded to the same const, so raising
-verbosity means flipping `debug`. It has landed on `main` as `true` **twice** (`27d99141`,
-`dc05db8d`), each reverted the same day.
+It exists for two reasons:
 
-The script also **denies by default**: after forcing the known dev `bs_const` values off, any const still
-`true` fails the build by name. `FORCED_OFF` is a deny-list and only knows what someone
-remembered to add, while the const set turns over every few months (`printReg` → `debug` →
-`ENABLE_RTA` → `perfTiming`) — and `perfTiming` is the first one to default `true`, which is
-the pattern the next dev flag will copy. A const that legitimately must ship enabled opts into
-`ALLOWED_TRUE` explicitly.
+- The roku-log plugin's `strip` removes log calls but not the code feeding them, so the timing clocks would run in production with their results thrown away.
+- A `debug=true` left in the working tree cannot reach a release. That flip is routine, because raising the log level means flipping `debug`, and it has reached `main` before (the script names the commits).
 
-A manifest that *drops* a const never reaches the script: `bsc` raises
-`hash-const-does-not-exist` (error, exit 1) for every `#if` referencing an undeclared const,
-and `build:prod` chains the two with `&&`.
-
-Verify with:
+The script denies by default. After forcing the known flags off, any const still `true` fails the build by name. A const that must ship enabled opts in through `ALLOWED_TRUE`. A manifest that drops a const never reaches the script: `bsc` raises `hash-const-does-not-exist`, an error, for every `#if` naming it.
 
 ```bash
 npm run build:prod && grep bs_const build/manifest
@@ -205,32 +188,28 @@ npm run build:prod && grep bs_const build/manifest
 
 ## Custom BSC plugins
 
-Custom plugins live in `scripts/bsc-plugins/`:
+Our plugins live in `scripts/bsc-plugins/`. Each file opens with a comment that explains its rule in full: what it flags, why, the cases it skips and its known gaps. This section is the map; the file is the reference.
 
-### `scripts/bsc-plugins/roku-log.cjs`
+### Transform plugins
 
-Optimizes `roku-log` usage at compile time. **Ours, not a vendored plugin** — it replaces the unmaintained `roku-log-bsc-plugin`, unlike the roku-log RUNTIME library, which is stock upstream vendored by ropm into the gitignored `source/roku_modules/log/`. The split, and why it matters when logging misbehaves, is in [`logging.md`](logging.md).
+These change the emitted code.
 
-- **`strip`** (true in prod, false in dev) — removes all `m.log.*()` calls from compiled output. Production builds have **zero** logging overhead from removed levels.
-- **`insertPkgPath`** — automatically prepends the source file path to log lines so telnet output shows where each log came from.
-- **`guard`** — wraps `m.log.*()` calls in an `if m.__le = true then` check and caches the flag after `m.log = new log.Logger(…)`. Hardcoded to `m.log` on both halves, so it applies to that name only — see [`logging.md`](logging.md#the-guard-transform-only-knows-mlog) for the crash that rule prevents.
-- **`removeComments`** (false by default) — removes BS comments to shrink output.
+| Plugin | What it does |
+|---|---|
+| `roku-log.cjs` | Ours, replacing the unmaintained `roku-log-bsc-plugin`; the roku-log runtime library is stock upstream ([logging.md](logging.md#roku-log-is-two-artifacts-and-only-one-of-them-is-ours)). `strip` removes every `m.log.*()` call (prod), `insertPkgPath` prepends the source path to log lines (dev), `removeComments` strips comments (on by default, off in dev). `guard` wraps calls in a check, but no config turns it on ([logging.md](logging.md#the-guard-transform-only-knows-mlog)) |
+| `translation-keys.cjs` | Generates a virtual `pkg:/source/translationKeys.bs` with one constant per key in `locale/custom/en_US.json`. It watches that file, so the editor sees new keys without a rebuild. See [translations.md](translations.md) |
+| `auto-abandon-promises.cjs` | Puts `abandonApiPromises()` first in the `onDestroy()` of every component that calls `fetchAsync`, so a late response never calls into a destroyed node. A component that calls `fetchAsync` with no `onDestroy()` is a build error. See [promises.md](../dev/promises.md) |
+| `auto-destroyed-guard.cjs` | Adds a teardown guard to `onKeyEvent` (next section) |
 
-This is the reason `m.log.debug("intermediate value", x, y, z)` is fine to leave in code — in production, the entire call site disappears.
-
-### `scripts/bsc-plugins/translation-keys.cjs`
-
-Generates a virtual `pkg:/source/translationKeys.bs` file containing a `translationKeys` namespace with one constant per key in `locale/custom/en_US.json`. Documented in detail in `translations.md`.
-
-The plugin uses `fs.watch` to detect en_US.json changes in language-server mode (so the IDE always sees up-to-date constants without re-running the build).
+Because `strip` removes the whole call, `m.log.debug("value", x, y)` is free to leave in code: production never runs it.
 
 ### `scripts/bsc-plugins/auto-destroyed-guard.cjs`
 
-Injects a teardown guard so a key event delivered *after* a component's `onDestroy` cannot dot into the references that `onDestroy` just set to `invalid`.
+Injects a guard so a key event delivered after a component's `onDestroy` cannot dot into the references `onDestroy` has set to `invalid`.
 
-The window is real and structural. `sgrouter_closeView` runs the view's `_beforeViewClose` hook — which reaches `JRScreen.beforeViewClose` -> `onScreenHidden()` + `onDestroy()` — and removes the node only once the returned promise resolves. Resolution goes through the promise's observed `promiseState` field, so the removal lands on a **later message-loop turn**, and the router deliberately leaves the view visible in the meantime. For that turn the screen is still mounted and still in the focus chain while every node reference it owns is already `invalid`, so the next key press throws `&hec` ('Dot' Operator attempted with invalid BrightScript Component or interface reference).
+The window is structural. The router runs the view's close hook, which reaches `JRScreen.beforeViewClose()` and then `onDestroy()`, and removes the node only when the returned promise resolves. That lands on a later message-loop turn, and the view stays visible and focused in between. The next key press there throws `&hec`.
 
-A base-class fix is not available: SceneGraph `onDestroy` and `onKeyEvent` do **not** chain to a base component (no `super`), the same constraint that made `auto-abandon-promises.cjs` an injecting plugin rather than a line in `JRScreen`. So the guard is injected into every component codebehind that declares both hooks:
+SceneGraph `onDestroy` and `onKeyEvent` do not chain to a base component, so no base-class fix exists. The plugin injects into every codebehind that declares both hooks:
 
 | Site | Injected |
 |---|---|
@@ -238,493 +217,471 @@ A base-class fix is not available: SceneGraph `onDestroy` and `onKeyEvent` do **
 | `onDestroy()` | `m.isDestroyed = true` |
 | `onKeyEvent()` | `if m.isDestroyed = true then return false` |
 
-Each site is **independently idempotent** — one a file already writes by hand is left alone. `VideoPlayerView` is the live example: it manages the flag itself (issue #733 guarded `onPositionChanged` with it) and receives only the `onKeyEvent` guard it was missing.
+A site is skipped when its function already opens with that statement. A hand-written flag anywhere else still gets the injection. `VideoPlayerView` opens `init()` and `onDestroy()` with the flag on purpose, so it receives only the `onKeyEvent` guard.
 
-**`= true`, not a bare truthiness test.** Roku treats `invalid` as neither true nor false — "An `invalid` value is not considered false" (BrightScript reference) — so `if m.isDestroyed then` *throws* on an uninitialized flag, turning a rare teardown race into a crash on every key press. The `init()` injection makes that unreachable and the comparison form is the second layer. The same reasoning drives the plugin's one **error** (severity 1): a component with `onDestroy` + `onKeyEvent` but no `init()` has nowhere to initialize the flag.
-
-Returning `false` from a destroyed screen's `onKeyEvent` is unambiguously correct — the key belongs to whatever the router focuses next, not to a view that has released its nodes.
+The test is `= true` because Roku treats `invalid` as neither true nor false: `if m.isDestroyed then` throws on an unset flag. A component with `onDestroy` and `onKeyEvent` but no `init()` has nowhere to set the flag, which is the plugin's one error. Returning `false` hands the key to whatever the router focuses next. The decision is [ADR 0032](../adr/0032-teardown-key-guard-injected.md).
 
 ### Convention plugins
 
-Nine plugins encode unwritten conventions documented in `components/CLAUDE.md` / `source/CLAUDE.md` so violations surface as IDE diagnostics + CI failures instead of bugs at runtime, and never crash the build on edge cases. The first five emit warnings (severity 2); `callfunc-interface`, `no-raw-run`, `no-task-fanout` and `no-hand-rolled-dialog` emit an **error** (severity 1) — an undeclared `callFunc` target is a guaranteed silent no-op, both Task-launch rules guard the `&h29` crash class from epic #728, and a hand-rolled dialog is invisible to the overlay machinery that supersedes and cancels dialogs, so none is a style nit.
+These turn conventions from `components/CLAUDE.md` and `source/CLAUDE.md` into editor diagnostics and CI failures. None may crash the build. An error blocks it; a warning shows in the editor and CI output.
 
-**The two Task rules are complementary, and neither subsumes the other.** `no-raw-run` bounds *where* a thread may start (only through `launchTask()`, so the count stays derivable); `no-task-fanout` bounds *how many* may start (not one per loop iteration, so the count cannot scale with server data). #728 needed both: the fan-out it came from went through a perfectly ordinary launch site, and — worth stating because it is the intuitive fix that would not have worked — it already tore its tasks down correctly. The crash was concurrent launches inside one screen load, not threads leaked across navigation.
+| Plugin | Severity | Flags | Rule explained in |
+|---|---|---|---|
+| `jrscreen-on-destroy` | warning | A component that extends `JRScreen`, at any depth, whose codebehind declares no top-level `onDestroy` (case-sensitive) | The plugin file |
+| `print-locations` | warning | A raw `print` outside `source/main.bs` and the `#if debug` blocks in `source/utils/globals.bs`. Non-class functions under `source/` are skipped, since they have no `m.log` | [logging.md](logging.md#where-print-is-allowed) |
+| `observe-without-on-destroy` | warning | In a `JRScreen` codebehind, an `observeField` with no matching `unobserveField` in the file. Matching follows aliases; `releaseTask(x, "field")` counts as an unobserve | The plugin file |
+| `unobserve-before-release` | warning | An `unobserveField` in `onDestroy` that runs after a release (`m.x = invalid`) of a reference the observer's handler dereferences. The fix is to move the unobserve first, not to add a guard | [ADR 0032](../adr/0032-teardown-key-guard-injected.md), the plugin file |
+| `no-direct-sdk` | warning | A `sdk.<ns>.<fn>()` call outside `source/api/ApiClient.bs` and `source/api/sdk.bs` | [api.md](api.md) |
+| `no-raw-run` | error | A Task started without `launchTask()`: `control` written with `"RUN"`, or with a value that cannot be resolved, outside `source/utils/tasks.bs` | [ADR 0031](../adr/0031-task-thread-ceiling.md) |
+| `no-task-fanout` | error | A `launchTask()` inside a loop body, directly or one same-file helper call away, unless its argument is a stable `m.` path the loop does not rebind | [ADR 0031](../adr/0031-task-thread-ceiling.md), decisions [`task-fanout-keys-on-argument`](../decisions.md#decision-id-task-fanout-keys-on-argument) and [`task-fanout-follows-helpers`](../decisions.md#decision-id-task-fanout-follows-helpers) |
+| `no-same-node-relaunch` | error | Relaunching a Task node the same function stopped; launching `m.x` with no new node assigned first; a `replaceTask()` handler that does not open with `isCurrentTaskEvent()` | [ADR 0037](../adr/0037-task-run-replacement.md), decisions [`same-node-relaunch-gate`](../decisions.md#decision-id-same-node-relaunch-gate) and [`relaunch-gate-no-stop-shapes`](../decisions.md#decision-id-relaunch-gate-no-stop-shapes) |
+| `no-hand-rolled-dialog` | error | A dialog built outside the `JRDialog` family: a full-screen translucent `Rectangle`, or an `appendChild` or `insertChild` onto the scene | [dialogs.md](dialogs.md), decision [`one-overlay-dialog-supersedes`](../decisions.md#decision-id-one-overlay-dialog-supersedes) |
+| `callfunc-interface` | error | A `callFunc("x")` where `x` is defined in one of our codebehinds but declared in no component `<interface>`, a call that does nothing. `m.top.callFunc` is checked against its own component | The plugin file |
+| `button-row-bracket` | error | A function that mutates an overflow-managed button row without calling both `unsplitButtons()` and `applyOverflow()` | Tech debt [`button-row-model`](tech-debt.md#button-row-model), which deletes it |
+| `field-observer-wiring` | error | Five ways an interface field's wiring goes wrong: wired by both XML `onChange` and `m.top.observeField()`; an unobserve that detaches nothing; an `onChange` in a component that has `onDestroy`; an `m.top` unobserve outside `onDestroy()`; an `m.top` observe outside `init()` | [ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md) |
+| `register-once-observer` | error | A member observed once, in `init()`, then unobserved anywhere but `onDestroy()`. Nothing re-registers it, so its handler never runs again | [ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md), decision [`register-once-observer-gate`](../decisions.md#decision-id-register-once-observer-gate) |
+| `dead-code` | error | A declaration nothing in the app consumes | [Dead code](#dead-code), [ADR 0047](../adr/0047-dead-code-gate.md) |
 
-| Plugin | Flags | Smart filtering |
-|---|---|---|
-| `bsc-plugin-jrscreen-on-destroy.cjs` | XML components that transitively extend `JRScreen` whose codebehind doesn't declare a top-level `onDestroy` function (case-sensitive — `destroy` / `OnDestroy` won't satisfy this) | Skips `JRScreen.xml` itself; walks `parentComponent` chain up to depth 32 |
-| `bsc-plugin-print-locations.cjs` | Raw `print` calls outside the allowed sites | Allows `source/main.bs` (whole file) and `#if debug` blocks in `source/utils/globals.bs`; auto-skips top-level functions in any `source/*.bs` file (no `m` context, so no `m.log` available) |
-| `bsc-plugin-observe-without-on-destroy.cjs` | `observeField` calls with no matching `unobserveField` (same field name, alias-aware target) anywhere in the file | Only runs on `JRScreen` subclass codebehinds; alias resolution via union-find over assignment statements (so `m.foo = bar` makes `m.foo` and `bar` interchangeable for matching) |
-| `bsc-plugin-unobserve-before-release.cjs` | An `unobserveField` inside `onDestroy` that runs AFTER a `m.X = invalid` whose reference the observer's own handler **dereferences**. An external writer — a Task thread, the native playback engine — can deliver the field one last time while `onDestroy` is still running, and the handler then dots into `invalid` (`&hec`). This is what #733 was. The fix a hit asks for is **reordering** (move the unobserve above the first release), not a guard: reordering suppresses nothing, whereas an early return in an observer callback can skip a callback that legitimately runs during teardown — the same reason `auto-destroyed-guard` stops at `onKeyEvent` | Three refinements carry it, and the naive version is worthless without them — "any unobserve after any release" reports **62 hits, effectively all noise**, because the paired `m.foo.unobserveField(…)` / `m.foo = invalid` idiom trips it. (1) Handlers bind by **(target, field)**, not field name alone — six tasks in this tree all observe `"content"`, and field-only binding cross-matches every one to every other one's handler. (2) Only **receiver-position** uses count (`m.X.foo`, `m.X.foo()`, `m.X[i]`): reading a released `m.X` yields `invalid` and writing it replaces it, so only dotting INTO it throws. (3) A handler that `isValid(m.X)`-checks the reference has handled it itself. Measured: **3 hits on the tree at `5d50a592`, before those three sites were reordered — exactly the three known-real sites — and 0 afterwards**, using only same-file analysis. Alias-aware via the same union-find as `observe-without-on-destroy`, so observing through a local and unobserving through `m` matches. The `ExtrasRowList` class that dominated the original audit's false positives never arises: the rule only inspects unobserves that ARE in `onDestroy`, and never asks whether one is missing. Known gaps all fall toward **false negatives** — detachment reached through a helper, a non-literal handler name, an `isValid` on any path — the safe direction for a warning that must not cry wolf |
-| `bsc-plugin-no-direct-sdk.cjs` | `sdk.<ns>.<fn>(...)` calls outside `source/api/ApiClient.bs` and `source/api/sdk.bs` | None — the only allowed callers are explicitly listed |
-| `bsc-plugin-no-raw-run.cjs` **(error)** | A `control` field written with `"RUN"` — `node.control = ...`, `node["control"] = ...`, `node.setField("control", ...)`, or a literal `node.setFields({ control: ... })` — or written with a value that cannot be resolved statically, outside `source/utils/tasks.bs`. I.e. a Task thread started without going through `launchTask()`, so it cannot be counted | Only `"RUN"` is a thread start: `control` is also Animation's `"start"/"pause"/"resume"` and Video's `"play"/"rewind"/"none"`, and ~95 such writes are left alone. `components/vendor/**` is excluded (the vendored `WebSocketClientTask` self-starts). `setField` is keyed on a **literal** `"control"` first argument, so a generic `setField(name, value)` helper never trips it; `setFields` is inspected when its argument is a literal AA. Known gap: `setFields(someVariable)` can't be inspected statically, and flagging every non-literal one to chase soundness would false-positive across the codebase |
-| `bsc-plugin-no-task-fanout.cjs` **(error)** | A `launchTask(...)` call lexically inside a `for` / `for each` / `while` body — one Task thread per iteration, so the concurrent count scales with server data. This is the shape epic #728 actually took (`HomeRows`' per-library latest-media fan-out, removed in PR #762) | The argument decides it, not the loop: a stable dotted path rooted at `m` (`m.LoadNextUpTask`, `m.view.loadLogoTask`) names ONE node however many times the loop turns and is allowed — that is the live shape in `HomeRows.startParallelLoads()`. A loop variable, a call result, or an indexed step (`m.tasks[i]`) is flagged; so is a stable path the loop body **rebinds** (`m.loader = createObject(…)` then `launchTask(m.loader)`), which is a fresh node per turn wearing a stable name — and the first thing someone reaches for to clear the diagnostic. All three write spellings count: `m.loader = …`, the literal-key `m["loader"] = …`, and a literal-AA `setFields` / `addFields` (the spelling `globals.bs` actually uses to park Task nodes). Rebinding a *parent* of the path counts; writing a *child* of it (configuring the node) does not. A dotted `callee` is matched on its final name (`tasks.launchTask(…)`) as well as the bare form written today — otherwise moving `tasks.bs` into a namespace would turn all 101 call sites dotted in one commit and this rule would flag nothing, silently, with CI still green. `source/utils/tasks.bs` and `components/vendor/**` are excluded. Known gaps, both interprocedural: a loop calling a helper that launches internally, and a local aliased to a stable slot before the loop (flagged though safe). Deliberate over-reporting: a literal key (`m["loader"]`) and a lazily-initialized singleton are flagged though stable — one suppression each, and neither occurs today |
-| `bsc-plugin-no-hand-rolled-dialog.cjs` **(error)** | A dialog built outside the `JRDialog` family: an XML `Rectangle` that is BOTH full-screen (1920x1080) and translucent (carries an `opacity`) — i.e. a hand-rolled dimmed backdrop — or an `appendChild` / `insertChild` onto a scene reference (`appScene()`, `getScene()`, `m.scene`, **or a local bound to one** — `scene = appScene()` then `scene.appendChild(x)`), which is how an overlay used to be mounted before `source/utils/dialogs.bs` owned it. A hand-rolled overlay never gets the shared id, so `isOverlayDialogOpen` / `isDialogOpen` / `cancelOpenDialog` cannot see it and `presentOverlayDialog`'s one-overlay supersede does not cover it | BOTH conditions are required on the Rectangle: full-screen alone is a background, translucent alone is ordinary decoration. **The 9-patch panel assets are deliberately NOT a signal** — the first version also flagged any `Poster` drawing `filled-rounded.9.png` / `border-3px.9.png` as a dialog panel and produced 16 false positives to 1 true positive, because those are the app's generic rounded surface and edge worn by `TextButton`, `Toast`, `JRDropdown`, `IconButton` and `TrackDropdown`. An asset does not identify a dialog; that rule was deleted rather than allow-listed, since the allow-list would grow with every new button. Attribute values match in EITHER quote style — the vendored components are written in single quotes, and a rule that only saw `width="1920"` would be one keystroke from unenforceable. The scene-local binding is tracked PER FUNCTION, so a local named `scene` elsewhere cannot inherit it; it is tracked at all because `presentOverlayDialog` is itself written that way, making it the shape a copy of the reference produces. The family itself, `source/utils/dialogs.bs`, `components/vendor/**`, **both** `roku_modules` trees and test sources are excluded. Known gaps: it catches STRUCTURE, not a dialog that uses the family and designs a poor interaction — [`dialogs.md`](./dialogs.md) carries that judgment — and a backdrop whose size is set in BrightScript rather than declared in the XML, a shape nothing in the tree uses |
-| `bsc-plugin-callfunc-interface.cjs` **(error)** | `callFunc("X")` where `X` is a method DEFINED in one of our component codebehinds but declared in NO component `<interface><function>` anywhere — the silent-no-op bug | Program-wide, case-insensitive membership: if ANY component exposes `X`, no site is flagged (errs toward false-negatives, away from false-positives). Skips `roku_modules`; ignores non-literal `callFunc` args |
+The three Task rules work together. `no-raw-run` bounds where a thread may start, `no-task-fanout` bounds how many start at once, and `no-same-node-relaunch` catches a launch the platform can ignore ([threading.md](threading.md#measured-findings)). Epic #728 needed the first two: its crash came from concurrent launches in one screen load, through an ordinary launch site.
 
-**Suppressing a false positive.** Each plugin honors these comment markers (case-insensitive, regex match against the source text):
+`no-same-node-relaunch` lists the app sites that predate it, or predate a change that lets it see a new shape, in its own `PENDING_MIGRATIONS`, not as inline markers, so there is no marker to copy onto a new site. The list can only shrink, and it has been empty since 2026-10-13. Every state an entry can be in raises an error except the one where it matches its site, whether the fault is in the code or in the list.
+
+#### Cross-file rules clear before they re-derive
+
+BSC clears a file's diagnostics when that file re-validates. A finding that depends on two files is not cleared by an edit to the file it is not anchored on, so it outlives the fix. An XML `onChange` with its codebehind, or a `callFunc` with the target's `<interface>`, are the usual pairs.
+
+Write a new convention plugin through one of the two factories in [`scripts/lib/bsc-rule.cjs`](../../scripts/lib/bsc-rule.cjs). It is BSC's own pattern: clear by tag, then re-register.
+
+- `createScopeRule` reasons over one component, its XML and its codebehind. This is the common case.
+- `createProgramRule` needs the whole program before it can judge one site.
+
+Both handle the clear, the suppression markers and the never-crash guard, so the rule body holds only the rule. The module also exports shared AST helpers (`functionsIn`, `isLaunchTaskCall`, `bareCallName`).
+
+A rule whose every finding comes from and lands in one file can hook `afterValidateFile` directly, since BSC already clears it. `no-raw-run`, `no-task-fanout`, `no-same-node-relaunch` and `no-hand-rolled-dialog` do. They also need to, because the factories honor `bsc-disable-file`, which an error-level Task or dialog gate must not. Once a rule reads a second file, it needs a factory, or the cross-file part must run in `afterValidateProgram` under a tag it clears first. A file hook must never anchor a diagnostic in another file, because BSC never clears it.
+
+The bug shows only across validations, so its tests use `runPluginOnEdits`; `runPluginOnSource` validates once ([scripts-development.md](../dev/scripts-development.md#the-three-harnesses)).
+
+#### Suppressing a false positive
+
+A marker names a diagnostic code. It matches case-insensitively and needs a `'` comment opener:
 
 ```brightscript
-' bsc-disable-line <plugin-id>           ← on the same line as the call
-' bsc-disable-next-line <plugin-id>      ← on the line above
-' bsc-disable-file <plugin-id>           ← anywhere in the file (whole-file opt-out)
+' bsc-disable-line <code>           ← on the same line
+' bsc-disable-next-line <code>      ← on the line above
+' bsc-disable-file <code>           ← anywhere in the file
 ```
 
-Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should reference a tech-debt slug in a trailing comment so future readers know why.
+Use the narrowest one. A whole-file marker should name a tech-debt slug in a trailing comment.
 
-**Not every plugin honors all three markers.** Reaching for one a plugin doesn't implement fails silently — the comment sits there looking like a suppression while the diagnostic keeps firing:
+Not every plugin honors every marker, and an unsupported one fails silently: the comment looks like a suppression while the diagnostic keeps firing.
 
-| `<plugin-id>` | line | next-line | file | |
+| Code | line | next-line | file | Notes |
 |---|---|---|---|---|
 | `print-locations` | ✅ | ✅ | ✅ | |
 | `observe-without-on-destroy` | ✅ | ✅ | ✅ | |
-| `callfunc-interface` | ✅ | ✅ | ✅ | Suppressing should be extremely rare — an undeclared target is normally a real bug |
+| `unobserve-before-release` | ✅ | ✅ | ✅ | Put it on the `unobserveField` line, where the diagnostic lands |
+| `callfunc-interface` | ✅ | ✅ | ✅ | Should be rare: an undeclared target is normally a real bug |
+| `register-once-observer` | ✅ | ✅ | ✅ | `ResumeButton` carries the live suppression |
+| `duplicate-field-observer`, `ineffective-unobserve`, `undetachable-observer`, `top-unobserve-outside-ondestroy`, `top-observer-outside-init` | ✅ | ✅ | ✅ | `field-observer-wiring` reports under these five codes, so a marker naming the plugin does nothing |
 | `no-direct-sdk` | ✅ | ✅ | ❌ | |
-| `no-raw-run` | ✅ | ✅ | ❌ | **Deliberate.** A whole-file opt-out on an error-severity thread-budget guard would silently remove the bound from a whole file; suppress the one line and say why |
-| `no-task-fanout` | ✅ | ✅ | ❌ | **Deliberate**, same reasoning as `no-raw-run` — a file-wide opt-out would remove the fan-out bound from a whole file |
-| `no-hand-rolled-dialog` | ✅ | ✅ | ❌ | **Deliberate**, same reasoning as the Task rules. The marker is matched WITHOUT requiring a comment opener on its own line, so a multi-line XML comment can carry it — `ItemGridOptions` is the one live suppression |
-| `unobserve-before-release` | ✅ | ✅ | ✅ | Suppress on the `unobserveField` line, which is where the diagnostic lands |
-| `jrscreen-on-destroy` | ❌ | ❌ | ✅ | The diagnostic lands on the XML component declaration, not a source line |
+| `no-raw-run` | ✅ | ✅ | ❌ | A whole-file opt-out would lift the thread bound from a whole file. Suppress the line and say why |
+| `no-task-fanout` | ✅ | ✅ | ❌ | Same reason as `no-raw-run` |
+| `no-same-node-relaunch` | ✅ | ✅ | ❌ | Same reason. Only for an intended relaunch; a site awaiting migration goes in `PENDING_MIGRATIONS` |
+| `no-hand-rolled-dialog` | ✅ | ✅ | ❌ | Same reason. Also matches inside a multi-line XML comment (`ItemGridOptions` is the live case) |
+| `jrscreen-on-destroy` | ❌ | ❌ | ✅ | The diagnostic lands on the XML component declaration |
 | `auto-abandon-promises` | ❌ | ❌ | ✅ | |
-| `auto-destroyed-guard` | ❌ | ❌ | ✅ | Suppresses BOTH the injection and the diagnostic |
+| `button-row-bracket` | ❌ | ❌ | ✅ | The rule is about a whole function, so a line has nowhere to sit |
+| `auto-destroyed-guard` | ❌ | ❌ | ✅ | Suppresses the injection as well as the diagnostic |
+| `dead-code` | ✅ | ✅ | ❌ | Each marker must read `keep: <kind>: <reason>`; see [Dead code](#dead-code) |
+
+### Dead code
+
+`scripts/bsc-plugins/dead-code.cjs` fails the build on a declaration nothing in the app consumes (epic #1072, [ADR 0047](../adr/0047-dead-code-gate.md)). It runs on `bsconfig.json`, not the test builds, so code only a test uses is dead: a test of code the app never runs protects nothing.
+
+**What counts as a consumer.** SceneGraph reaches code by name more often than by call. So a reference can be any of these:
+
+- an identifier: a call, a value, a member access, an AA key or a qualified chain;
+- a string literal naming it (`observeField`, `functionName`, `CreateObject`, a route);
+- a `callFunc("x")` or `node@.x()` call;
+- an XML tag, attribute name or attribute value;
+- a string value in packaged JSON (`settings.json`'s `settingName`);
+- a concatenated string prefix: `"segmentAction" + type` reaches every `segmentAction*` field.
+
+Resolution follows scope:
+
+- A namespace member matches only by its qualified name, or by a relative reference inside its namespace. A same-named member of another namespace does not keep it alive.
+- A codebehind function matches by name only inside the component scopes that include its file, so two components can each define `onHeightChanged`.
+- A `callFunc` reaches a function only through an `<interface>` `<function>` declared by a component that includes its file, because that is how SceneGraph dispatches it. A function called this way with no declaration is reported with the call named, since that is a wiring bug rather than dead code.
+- An interface function is reached only by a call, never by a string that spells its name.
+- `m.top.x` counts only for the file's own component's field.
+- A component is named by an exact value (a tag, `extends=`, `*ComponentName=`, a whole string), never a word inside a longer string. A `findNode()` argument is a node id, not a component.
+- Code reachable only from dead code is dead, and the message names what reached it. That covers a dead field's XML element and its `onChange` handler, and a script whose including components are all dead.
+
+**Never reported:** Roku entry points and lifecycle callbacks; fields the firmware writes into item and row components; `keySelected` on a `DynamicCustomKeyboard` subclass; an alias field with a `value`; calls another plugin injects at transpile time; `roku_modules`, `components/vendor` and the generated `translationKeys` namespace.
+
+**Tests.** A test's `callFunc` keeps an interface function's declaration alive, because the test needs that exposure to drive a live component. That covers Rooibos `callFunc("x")` and `@.x`, and an RTA quoted `funcName: 'x'` (`deadCode.exposureConsumers`). It works only while the app still runs the function behind it, and keeps nothing else alive.
+
+**Keeping code on purpose.** Unused code stays only as one of six recorded kinds:
+
+| Kind | For |
+|---|---|
+| `design-system` | A deliberate set |
+| `api` | Built ahead of its first caller |
+| `planned` | Waiting on an issue, which it must cite |
+| `platform` | Called by Roku OS by a name the rule does not know |
+| `test-infra` | Probe components the suites create by name |
+| `debug-console` | Called from the BrightScript console in a debug build |
+
+```brightscript
+' bsc-disable-next-line dead-code keep: api: the early-exit half of the pipeline lifecycle
+```
+
+A whole set goes in `bsconfig.json`'s `deadCode.keep` with its files, optional name patterns and reason. These are each a `dead-code-keep` error, because a keep that outlived its reason is a silent carve-out:
+
+- a marker without a kind and reason;
+- a `planned` keep without an issue;
+- a file-level marker;
+- a marker on code that is used;
+- an allowlist entry that matches nothing.
+
+Code you intend to fix is not a keep: it waits in the baseline.
+
+**Baseline.** `.dead-code-baseline.json` lists findings awaiting removal, keyed by kind, file and qualified name. Listed findings are not reported, and an entry that stops matching is (`dead-code-baseline`), so the file never holds a stale entry. An addition is a review decision visible in the diff. `DEAD_CODE_WRITE_BASELINE=1 npx bsc --noEmit` rewrites the baseline; use it only to record a deliberate deferral, never to silence a new finding.
+
+**Known limits.** Two make it report less:
+
+- A member access on anything other than `m.top` is matched by name, because the rule does not know the node's type. A field or method whose name another component or a Roku built-in node also uses stays alive.
+- Reads and writes are not told apart, so a field that is only ever written counts as used. `npm run dead-code:write-only` lists those for review. Each needs judgment: a `getFields()` loop, or code that serializes a node, reads fields by no name.
+
+One makes it report more. A name built at runtime from a variable (`setField(name, …)`, `m[name]`, `callFunc(name)`) is invisible, so a declaration reached only that way is reported. Keep it with a marker whose reason names the site.
+
+**Component names match case-insensitively.** Roku documents them as case-sensitive, yet `ItemDetails.xml` declares `<extrasSlider>` and the firmware builds an `ExtrasSlider`. Checked 2026-09-29 on a Roku Ultra (Roku OS 15.3.4) and pinned by [`ItemDetailsExtrasSlider.spec.bs`](../../tests/source/unit/components/ItemDetailsExtrasSlider.spec.bs).
+
+**Accuracy.** [`scripts/dead-code-accuracy.js`](../../scripts/dead-code-accuracy.js) measures it. Each command first checks that its in-memory loader sees what the real `bsc` build sees. Rerun both after changing the plugin. ADR 0047 records the first replay, and #1073's commit (`0deef5b2`) the first mutation run.
+
+- `npm run dead-code:replay` rebuilds the parent of every commit whose message mentions dead or unused code, and checks the rule flagged what each commit deleted.
+- `npm run dead-code:mutate` erases every reference to a sample of live declarations and requires each to be flagged, which proves the plugin's account of why something is live is complete.
 
 ### Other plugins
 
-- **`@rokucommunity/bslint`** — lint rules (`lintConfig: bslint.json`)
-- **`brighterscript-xml-plugin`** — XML linting and parsing for component definitions
+- `@rokucommunity/bslint`: lint rules, configured in `bslint.json`.
+- `brighterscript-xml-plugin`: XML parsing and checks for component files.
+- `rooibos-roku`: the test framework, a plugin in every test config.
 
-## npm scripts — `package.json`
+## npm scripts
 
-Build:
+`package.json` is the full list. These are the entry points, grouped, with the doc that covers each area.
 
-| Script | What it does |
+| Group | Scripts | More in |
+|---|---|---|
+| Build | `build` (dev), `build:prod` (then [manifest hardening](#production-hardening)), `build:analysis`, `build:tests`, `build:tests-unit`, `build:tests-integration`, `build:tests-complete`, `build:tdd`, `validate` (`bsc --noEmit`) | [bsconfig variants](#bsconfig-variants) |
+| Package | `package` (sideload ZIP), `package:signed` (signed `.pkg`) | [Roku signing pipeline](#roku-signing-pipeline) |
+| Device tests | `test:unit`, `test:integration`, `test:all`, `test:complete`, `test:tdd`, `device:check` | [unit-tests-tdd.md](../dev/unit-tests-tdd.md) |
+| RTA | `test:rta`, `test:rta:tdd`, `test:rta:fast`, `test:rta:capture`, `demo`, `rta:restore`, `screenshots:*`, `device:status`, `device:release` | [rta-tests.md](../dev/rta-tests.md) |
+| Measurement | `measure`, `measure:*`, `flake-baseline` | [measuring-performance.md](../dev/measuring-performance.md) |
+| Script tests | `test:scripts`, `test:scripts:tdd` (watch) | [scripts-development.md](../dev/scripts-development.md) |
+| Format | `format`, `check-formatting`, each with `:bs` (`bsfmt`) and `:js` (Prettier) | [Surfaces for JS and JSON](#surfaces-for-js-and-json) |
+| Translations | `update-translations`, `translations:seed`, `translations:merge` | [translations.md](translations.md) |
+| Server upgrades | `docs:api-manifest`, `docs:spec-fingerprints`, `api-watch:*`, `jellyfin:matrix`, each with `:check` where one exists | [server-upgrade-automation.md](server-upgrade-automation.md) |
+| Generated assets | `icons:build`, `icons:add`, `gradients:build`, `roku-hardware:fetch`, each with `:check` | [Icon resolution pipeline](#icon-resolution-pipeline) |
+| Docs | `docs:settings`, `docs:dev-index`, `docs:stale`, `docs:stale:blocking`, `docs:fact-report`, `dictionary:sentence-final` | [Doc-maintenance enforcement](#doc-maintenance-enforcement) |
+| Agent state | `catchup:state` (the JSON `/catchup` and `/ramp` read), `agent-telemetry` | [Agent telemetry](#agent-telemetry) |
+| Dead code | `dead-code:replay`, `dead-code:mutate`, `dead-code:write-only` | [Dead code](#dead-code) |
+| Changelog | `changelog:*`, run by CI only | [changelog.md](../admin/changelog.md) |
+| Install | `postinstall` (`ropm`, then `patches:apply`), `prepare` (husky) | [ropm modules](#ropm-modules) |
+
+### The `lint` aggregate
+
+`npm run lint` runs a fixed chain of checks, listed in its own `package.json` entry. [`lint:ci-parity`](../../scripts/lint/ci-parity-check.js) proves each member has a CI home. Checks with no other home in the docs:
+
+| Script | Checks |
 |---|---|
-| `npm run build` | Dev build (`bsc --project bsconfig.json`) |
-| `npm run build:prod` | Production build with log stripping, then [manifest hardening](#compile-time-flags-bs_const) — forces every dev `bs_const` off |
-| `npm run build:tests` | All test suites |
-| `npm run build:tests-unit` | Unit tests only |
-| `npm run build:tests-integration` | Integration tests only |
-| `npm run build:tests-complete` | Complete suite |
-| `npm run build:tdd` | TDD watch mode (uses `bsconfig-tdd.json`) |
-| `npm run package` | Create installable .zip via `scripts/create-package.cjs` |
-| `npm run package:signed` | Compose `build:prod` then sign via `scripts/create-signed-package.cjs` — produces `out/jellyrock-vX.Y.Z.pkg` (version from `manifest`) for Roku channel-store upload. Local-only (no CI variant); requires a physical Roku in dev mode plus `ROKU_IP` / `ROKU_PASSWORD` / `ROKU_SIGNING_PASSWORD` in `.env`. Optional `ROKU_DEV_ID` enables dev-ID verification. Refuses to sign if `build/` contains source maps (dev/test build guard). See [`docs/admin/releases.md` → Signed `.pkg`](../admin/releases.md#signed-pkg-for-roku-channel-store) |
-| `npm run validate` | Type-check only (`bsc --noEmit`) |
+| `lint:docs` | `related-files:` paths, relative links and `tech-debt.md#` anchors across the docs, every `CLAUDE.md` outside dot-directories, and the BSC plugins. Plus the schema of `progress.md`'s frontmatter, `signals-backlog.md` rows and the `decisions.md` supersede chain. Run it through `/docs-lint` |
+| `lint:doc-citations` | Line-number citations and the house voice, as per-file ratchets ([writing-style.md](../dev/writing-style.md#what-the-gate-checks)) |
+| `lint:dictionary` | Identifier-shaped entries in `dictionary.txt`; code names belong in backticks ([code-style.md](../dev/code-style.md#when-to-add-to-dictionarytxt-instead)) |
+| `lint:issue-templates` | `.github/ISSUE_TEMPLATE/*.yml` against GitHub's issue-forms schema. GitHub drops an invalid form from the new-issue page without an error |
+| `lint:json` | jshint over JSON, which catches duplicate keys. Prettier handles the whitespace |
+| `lint:rta-capabilities`, `lint:rta-waits` | The ODC capability inventory and the per-category wait counts in [`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md) against the installed client and the suite |
+| `lint:ci-workflow-sync` | Every `_lint-*`, `_test-*` and `_smoke-test-*` workflow has a job in `_validate-dependencies.yml` |
+| `lint:ci-parity` | Every `lint` member is run by some workflow. Deliberate exceptions sit in `LOCAL_ONLY` with a reason. It does not prove the workflow's path filter matches what the check reads ([tech-debt](tech-debt.md#ci-path-filters-unverified)) |
+| `lint:promise-ratchet` | The count of raw `observeField("isDone", …)` pool consumers in app code can only fall; new code uses `fetchAsync` ([promises.md](../dev/promises.md)) |
 
-Run tests:
-
-| Script | What it does |
-|---|---|
-| `npm run test:unit` | Build + run unit tests on configured device |
-| `npm run test:integration` | Build + run integration tests |
-| `npm run test:all` | Build + run all tests |
-| `npm run test:complete` | Build + run complete suite |
-| `npm run test:tdd` | Build + run TDD config (uses `bsconfig-tdd.json`; copy from `bsconfig-tdd-sample.json` and edit) |
-
-Lint and format:
-
-| Script | What it does |
-|---|---|
-| `npm run lint` | Runs everything below in sequence |
-| `npm run lint:bs` | bslint on BrighterScript code |
-| `npm run lint:js` | ESLint over `.js`/`.cjs`/`.mjs` repo-wide (flat config, `eslint.config.js`) |
-| `npm run lint:json` | jshint on JSON files (excluding node_modules, scripts, tasks, build, out, locale, eslint.config.js, vitest.config.js). Catches duplicate keys; complementary to Prettier (which handles whitespace) |
-| `npm run lint:markdown` | markdownlint on all `.md` (with exclusions for AI agent docs) |
-| `npm run lint:spelling` | spellchecker on Markdown files |
-| `npm run lint:dictionary` | Audits `dictionary.txt` for identifier-shaped entries (PascalCase / camelCase / file extensions / paths). Code identifiers belong in backticks in source markdown, not in the dictionary — see [code-style.md](../dev/code-style.md#when-to-add-to-dictionarytxt-instead). Acronym plurals (`URIs`, `PNGs`) and product names (`BrighterScript`, `ESLint`) are bypassed via pattern + allowlist |
-| `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
-| `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
-| `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/adr/*.md`, `docs/decisions.md`, `docs/progress.md`, `docs/signals-backlog.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugins/*.cjs`). Also runs three journal-system gates: (4) `progress-frontmatter` — fails if `docs/progress.md` is missing a well-formed `last-updated:` field (a *structural* per-PR check; **temporal** staleness of that field is deliberately NOT gated here — it moved to the non-blocking weekly `docs-stale-tracker.yml` + the local `progress-cursor-nudge.cjs` nudges, because staleness is a property of `main`, not of any one PR); (5) `signals-schema-invalid` — fails if a `docs/signals-backlog.md` row is missing required bullets, has an invalid `status` enum, or a malformed ISO date; (6) `decisions-supersede-chain` — fails if a `docs/decisions.md` note has a duplicate slug, a field declared twice, an invalid `status` enum, a pointer that doesn't resolve to a slug **in that file**, asymmetric pointers, a superseded target still reading `accepted`, a `superseded` note naming no successor, a `withdrawn` note used as either end of a supersede, or anything pointing at itself. Fields are read only from the contiguous block under a note's heading, so body prose can't be mistaken for one. Two shapes are modeled: the **full** ritual (predecessor flips to `superseded` + `superseded-by`; successor declares `supersedes`) and the **partial** one (`partially-supersedes` / `partially-superseded-by`, each carrying a required `(scope)` annotation, with **both notes staying `accepted`** because both are still live — mirroring ADR 0003/0004 and 0008/0011). The supersede ritual is a three-part hand edit, so a half-applied one used to leave the chain quietly lying; ADRs express the same relationship as prose (`**Status:** Superseded by …`) rather than as fields, so the ADR side remains unchecked, as does any note↔ADR relationship (those are prose links, validated by check (2)). The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |
-| `npm run lint:issue-templates` | Validates `.github/ISSUE_TEMPLATE/*.yml` against GitHub's vendored issue-forms JSON Schema (`scripts/lint/issue-forms.schema.json`). GitHub silently drops invalid templates from `/issues/new/choose` with no error surfaced anywhere — schema breakage (empty `title`, missing required field, unknown body type) is otherwise invisible until someone tries to file an issue |
-| `npm run lint:socket-auth-binding` | Guards the `ws://` session-identity binding (#743): the remote-control receiver must set `m.ws.headers` BEFORE `m.ws.open`, and the vendored `WebSocketClientTask.brs` must keep its header-seeding modifications (no restored upstream `m.top.headers = m.ws.get_headers()` clobber, seed between observer registration and `open()`, no `m.task_port`). None of those fail loudly when broken — the app builds, connects, and passes every test while silently delivering cast commands to the wrong Jellyfin session. An end-to-end test can't reach the path (RTA drives an `https://` server; the `ws://` receiver only runs on `http://`), so this gates the source shape instead. Wired into the `lint-brightscript` workflow |
-| `npm run lint:socket-thread-release` | Guards release of the `ws://` socket Task thread (epic #728). A Task thread is not released by dropping the node reference, so the vendored loop must `exit while`, `closeSocket()` must `STOP` the child, and `SignOut` must stop the published `socketNode` — through a local snapshot, never by dotting the field twice (`STOP` doesn't join the receiver, so re-reading races `closeSocket()` clearing it). The subtle rule is *ordering*: the exit test must sit BEFORE `m.ws.run()`, because `run()` both performs the CLOSED transition and posts the final `on_close`, so a drained-port check after it releases the thread with the terminal event still queued — the receiver then blocks forever instead of reconnecting. Same unreachable path as the binding check above, so the paired Vitest suite executes a model of the loop whose ordering is read back out of the real file. Wired into the `lint-brightscript` workflow |
-| `npm run lint:ci-parity` | The CI/local parity meta-gate. Expands the `npm run lint` aggregate to its leaves and fails when any leaf is not invoked by some workflow under `.github/workflows/`, matching `npm run <name>` or a direct `node scripts/...` call. Comment lines are stripped first, so a *mention* of a check never counts as a *run* of it. Deliberate exceptions live in a `LOCAL_ONLY` allowlist requiring a written reason, and a stale entry (now covered by CI, or gone from the aggregate) is itself a failure. Uses only the Node standard library, so it runs without `npm ci`. Wired into the `lint-docs` workflow beside `lint:ci-workflow-sync` — the two are siblings, guarding the same drift class one layer apart. Does **not** prove the hosting workflow's `paths` filter matches what the check reads, nor that its status-check context is required on `main` — see [tech-debt.md](tech-debt.md#ci-path-filters-unverified) |
-| `npm run catchup:state` | Runs the session-state aggregator (`scripts/catchup-state.js`) and emits a JSON document with git state, open PRs, issues, CI runs, handoffs, and the four project journals. Primary consumer is `/catchup` (global session brief) and `/ramp <area>` (area-scoped brief); not a lint or build step — useful for debugging what those skills receive |
-| `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
-| `npm run docs:stale:blocking` | The conditional hard gate. Fails (exit 1) if a stale (>120 days) **architecture** doc's `related-files` was modified by the PR without the doc itself being updated alongside. Architecture-only by design — dev guides under `docs/dev/` are informational, gating both would force `last-reviewed` bumps for unrelated workflow docs. Wired into the `lint-docs` workflow as a required check |
-| `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the `PostToolUse` hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
-| `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes; `:check` runs unconditionally as a check step (catches manual README edits that didn't go through the regen) |
-| `npm run icons:build` / `:check` | Regenerates / checks the per-resolution PNG triples (`<name>_fhd.png` + `<name>_hd.png`) under `images/icons/` (icon set) and `images/placeholders/` (placeholder set) from SVG sources in `resources/icons/`. Driven by `resources/icons/icons.json` (icon overrides) and `resources/placeholders/placeholders.json` (placeholder set). Powers the `uri_resolution_autosub` pipeline (see [Icon resolution pipeline](#icon-resolution-pipeline) below). Pre-push runs the regen as an auto-fix when `resources/icons/*.svg`, `resources/icons/icons.json`, `resources/placeholders/placeholders.json`, or [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) changes; `:check` runs as a check step in the same conditional |
-| `npm run gradients:build` / `:check` | Regenerates / checks the alpha-ramp PNGs under `images/gradients/` from [`scripts/generate/gradient-assets.js`](../../scripts/generate/gradient-assets.js) — four tiny white→transparent ramps (`4×270` vertical, `270×4` horizontal, each with a reversed `*180` variant) that the [`Gradient`](../../components/ui/Gradient.bs) component stretches and tints via `blendColor`. Same contract as `icons:build` — committed but generated, with locked sharp config — so `:check`'s byte comparison is a real drift gate. Pre-push runs the regen as an auto-fix when `images/gradients/*` or the generator changes; `:check` runs as a check step in the same conditional. Rationale + hardware measurements: [ADR 0025](../adr/0025-gradient-rendering-ramp-posters.md) |
-| `npm run roku-hardware:fetch` / `:check` | Regenerates / validates [`scripts/data/roku-hardware.json`](../../scripts/data/roku-hardware.json) — Roku's published device table (`rokudev/dev-doc` `docs/SPECIFICATIONS/hardware.md`), normalized into 79 model numbers across 70 families with RAM, support tier, resolution and HDR as enums. **A different contract from the generators above:** their inputs are committed *in this repo*, so `:check` re-derives and byte-compares. This one's input is an external document, so `:check` is offline and validates the dataset's own invariants plus a `_checksum` over its data (a tamper gate); drift against upstream is caught by [`roku-hardware-sync.yml`](../../.github/workflows/roku-hardware-sync.yml) on a weekly schedule. `--fetch` **refuses** any cell it does not recognize rather than emitting a null, so an upstream change of spelling fails the sync instead of silently degrading a device to unknown-tier. Read by [`scripts/roku-devices.js`](../../scripts/roku-devices.js) |
-| `npm run icons:add -- <material_name> [--as <jellyrock_name>] [--filled]` | Adds a new icon by fetching the canonical Material Symbols SVG from `google/material-design-icons` (Rounded variant, weight 500, **outlined by default — `fill=0`**, `24px` — locked house style), injecting white fill for `blendColor` tinting, saving to `resources/icons/`, and appending a row to the [provenance table](../../resources/icons/README.md#provenance). The `--filled` flag fetches the filled variant for the documented exception cases (toggle on-states, pure shapes, avatars, placeholders — see [Fill convention](../../resources/icons/README.md#fill-convention)). Removes the manual `icons.google.com` browse step. After running, follow up with `npm run icons:build` and update the call-site URI |
-| `npm run check-formatting` | `bs` + `js` (project-wide). Aggregates `check-formatting:bs` (`bsfmt --check`) and `check-formatting:js` (`prettier --check .`) |
-| `npm run check-formatting:bs` / `:js` | Type-scoped formatting checks. CI per-type workflows call the scoped variant (`lint-brightscript` runs `:bs` only, `lint-js` runs `:js` only) |
-| `npm run format` | `bs` + `js` (project-wide). Aggregates `format:bs` (`bsfmt --write`) and `format:js` (`prettier --write .`) |
-| `npm run format:bs` / `:js` | Type-scoped formatting writes |
-| `npm run validate` | `bsc --noEmit` (type-check) |
-| `npm run update-translations` | Auto-fix translation issues |
-| `npm run test:scripts` | Vitest unit tests for `scripts/` (BSC plugins + tooling). Uses `vitest.config.js` |
-| `npm run test:scripts:tdd` | Vitest watch mode (parity with `test:tdd` for BS) |
-
-Documentation:
-
-| Script | What it does |
-|---|---|
-| `npm run docs:settings` | Generate `docs/user/app-settings.md` from `settings/settings.json` via `scripts/generate/settings-docs.cjs` |
-
-CHANGELOG management (CI-controlled, agents do NOT touch):
-
-| Script | What it does |
-|---|---|
-| `npm run changelog:sync-unreleased` | Sync unreleased entries |
-| `npm run changelog:sync-release` | Sync on release |
-| `npm run changelog:validate` | Validate changelog format |
-| `npm run changelog:status` | Show changelog status |
-
-ropm + patches (post-install):
-
-| Script | What it does |
-|---|---|
-| `npm run postinstall` | Runs `npm run ropm && npm run patches:apply` automatically after `npm install` |
-| `npm run ropm` | `ropm copy && node scripts/ropm-hook.cjs` — copies vendored Roku modules into `components/roku_modules/` and `source/roku_modules/` |
-| `npm run patches:apply` | `patch-package` — applies every diff in `patches/` to `node_modules/`. Lets us hold local fixes against upstream packages until the upstream change lands |
+The socket checks are in [remote-control.md](remote-control.md), the API floor checks in [server-upgrade-automation.md](server-upgrade-automation.md), `lint:log-manager-init` in [logging.md](logging.md), and the translation checks in [translations.md](translations.md).
 
 ## Icon resolution pipeline
 
-JellyRock declares `ui_resolutions=fhd` in [`manifest`](../../manifest) — the app is designed at 1920×1080 design coordinates and the Roku OS automatically downsamples the framebuffer to 720p / 480p on HD / SD devices. The manifest also declares:
+The `manifest` declares `ui_resolutions=fhd`: the app is laid out in 1920×1080 coordinates and the OS scales the frame to the device. It also declares:
 
 ```text
 uri_resolution_autosub=$$RES$$,sd,hd,fhd
 ```
 
-This is a Roku-blessed primitive: at image-load time, the OS rewrites the magic token `$$RES$$` in any image URI to `sd`, `hd`, or `fhd`. A Poster URI like `pkg:/images/icons/play_$$RES$$.png` then resolves to `play_fhd.png`, `play_hd.png`, or `play_sd.png`.
+At image-load time the OS replaces `$$RES$$` in an image URI with the string for the device's UI resolution. `pkg:/images/icons/play_$$RES$$.png` loads `play_fhd.png` on a 1080p UI and `play_hd.png` on a 720p UI.
 
-> **How this behaves under `ui_resolutions=fhd` (hardware-verified 2026-08-07 — see #419's closing comment).** `$$RES$$` substitution keys off the **device's** UI resolution, not the manifest's declared design space: a device with a 720p UI loads the `_hd` triples even with `ui_resolutions=fhd` set (verified via the debug console's `r2d2_bitmaps`, which showed `settings_hd.png` / `search_hd.png` as the loaded bitmaps, decoded at the physical output size). The OS decodes the asset to the final output dimensions, places it at FHD design coordinates, and the framebuffer downsample nets out to ~1:1 native-resolution rendering. So the per-resolution assets deliver their quality win **today** — no layout refactor required. An earlier revision of this callout claimed the opposite (assets "downsampled like everything else" pending a `hd-native-layout-refactor` slug); that premise was disproven by the verification above and the slug was retired — see the "Recently removed" list in [tech-debt.md](tech-debt.md#recently-removed-dont-go-searching-for-these) and the `retire-hd-native-layout-refactor` note in [`docs/decisions.md`](../decisions.md).
+The substitution follows the device's UI resolution, not `ui_resolutions`. A 720p device loads the `_hd` assets and the OS decodes them at the output size, so the smaller assets render close to native today. This was checked on hardware on 2026-08-07 (#419's closing comment) through the debug console's `r2d2_bitmaps`.
 
-### Source-of-truth layout
+No `_sd` assets exist. Roku's manifest reference describes the third value as the SD replacement string and describes no fallback, so what an SD UI loads is unverified. See [`sd-resolution-native-support`](tech-debt.md#sd-resolution-native-support). The manifest's splash and channel-poster images use separate per-resolution keys and are not affected.
 
-- **SVG sources** live in [`resources/icons/`](../../resources/icons/) and are committed. JellyRock standardizes on the [Material Symbols](https://fonts.google.com/icons) family (Rounded variant, weight 500, **outlined by default**, `24px`) — locked in the `npm run icons:add` script so contributors can't drift. The Fill convention has 7 documented exception cases (pure shapes, small-canvas sizes, avatars, placeholders, ratings, playback action buttons, toggle on-states); see [`resources/icons/README.md`](../../resources/icons/README.md#fill-convention) for the rules + decision tree.
-- **Generated PNGs** at `images/icons/<name>_fhd.png` and `<name>_hd.png` are produced by [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) via [sharp](https://sharp.pixelplumbing.com/). These are committed too (matches the pattern of committed-but-generated artifacts elsewhere in the repo, e.g. `source/utils/translationKeys.bs`).
-- **Per-icon overrides** in `resources/icons/icons.json` carry two distinct sizes: `sizeFhd` (canvas dimensions in pixels — the Poster's `width`/`height`) and `glyphSize` (how big the visible glyph is *inside* the canvas; the rest is transparent padding). Both auto-detect from existing PNGs when migrating; explicit overrides are only needed when the auto-detection would produce the wrong result. See the [glyph-density section in the README](../../resources/icons/README.md#glyph-density) for the resolution order.
-- **Placeholder set** in `resources/placeholders/placeholders.json` defines a second render pass through the same pipeline — placeholder glyphs render at 256×256 FHD into `images/placeholders/<name>_fhd.png` (and `_hd.png`). Each entry maps a placeholder name to a source SVG (typically a filled variant from `resources/icons/`) plus its canvas / glyph sizing. The `JRPlaceholder` SceneGraph component (see `components/ui/placeholder/`) loads the resulting URI through `getPlaceholderImagePath()` (`source/utils/placeholderImage.bs`) and overlays it on a themed `RectangleBackgroundSecondary` backdrop tinted via `blendColor=colorBackgroundPrimary` — backgrounds are runtime-themed SceneGraph composition, not baked-in PNG layers.
-- **Shared glyphs** (Material symbols needed in both an outlined-icon context and a filled-placeholder context — e.g. `album`) commit two SVG files: `<name>.svg` (outlined for icon use) + `<name>_filled.svg` (filled for placeholder use, referenced from `placeholders.json`). The build script auto-skips files ending in `_filled.svg` from the icons-rendering loop so we don't generate orphan icon PNGs for placeholder sources.
+### Source layout
+
+- SVG sources are committed in [`resources/icons/`](../../resources/icons/). They are Material Symbols, Rounded, weight 500, outlined by default, 24px, and `npm run icons:add` locks that style. [`resources/icons/README.md`](../../resources/icons/README.md#fill-convention) lists when to use a filled variant.
+- [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) renders `images/icons/<name>_fhd.png` and `<name>_hd.png` with [sharp](https://sharp.pixelplumbing.com/). The PNGs are committed.
+- `resources/icons/icons.json` overrides an icon's `sizeFhd` (the canvas, which is the Poster's width and height) and `glyphSize` (the visible glyph inside it). Both default to what the existing PNG measures ([README](../../resources/icons/README.md#glyph-density)).
+- `resources/placeholders/placeholders.json` drives a second pass: 256×256 placeholder glyphs in `images/placeholders/`. `JRPlaceholder` loads them through `getPlaceholderImagePath()` over a themed backdrop, so backgrounds are themed at runtime rather than baked into the PNG.
+- A glyph used both outlined and filled commits `<name>.svg` and `<name>_filled.svg`. The icon pass skips `_filled.svg` files, which only placeholders use.
 
 ### Pipeline contract
 
-`npm run icons:build` reads each `resources/icons/*.svg`, determines the canvas size and glyph size per icon (override > measurement of the existing PNG > defaults `96`/`54`), then for each render: rasterizes the SVG large, trims Material's design-grid padding, resizes the bare glyph to the target glyph size (preserving aspect ratio), and center-pads with transparent border to canvas size. The trim step is the load-bearing piece — it kills Material's ~25% built-in padding so per-icon density is honored. Sharp config is locked (compression level, `lanczos3` kernel, exact-pinned sharp version) so byte-identical output is reproducible across runs.
+`npm run icons:build` works out each icon's canvas and glyph size: the override, else the existing PNG, else `96`/`54`. It rasterizes the SVG large and trims Material's built-in padding, so each icon's glyph size is honored. Then it resizes the glyph and pads it to the canvas. The sharp config and version are pinned, so the same SVG renders the same image every run.
 
-`npm run icons:check` does the same render in-memory and compares against on-disk PNGs, exiting nonzero on drift — the CI / pre-push enforcement.
+`npm run icons:check` renders in memory and fails on drift. It runs in pre-push and, in CI, through the repo drift gate in [`icons-build.test.js`](../../tests/scripts/unit/generate/icons-build.test.js). That gate also catches a dependency bump that changes the renderer.
 
-### Pre-push integration
+**Drift is measured in decoded pixels, not bytes** ([`scripts/lib/png-compare.js`](../../scripts/lib/png-compare.js), shared with the gradient generator). sharp bundles its own `libvips` and `zlib`, so the PNG bytes change when sharp changes and differ between machines. Pixel comparison still fails on a stale, missing or resized asset, and on a renderer change that moves pixels. It ignores file size. Commits `94c6fd8d7` and `c04186f6d` have the history.
 
-When a push includes changes to `resources/icons/*.svg`, `resources/icons/icons.json`, or `scripts/generate/icons-build.js`, the pre-push hook runs `npm run icons:build` in the auto-fix bucket (alongside translation regen and the `docs:dev-index` regen) and folds the regenerated PNGs into the auto-fix commit. `npm run icons:check` then runs as a check step. Drift never lands.
+Write mode leaves a pixel-identical file alone, so a rebuild on one machine does not rewrite every asset for the next contributor. `icons:build -- --force` rewrites them all, which is how you adopt a newer encoder on purpose. `gradients:build` has the same flag for the same reason.
 
-### Migration / opt-in
+The pre-push hook regenerates icons as an auto-fix when an icon or placeholder source, `icons-build.js` or `png-compare.js` changes, then runs the check.
 
-Existing single-resolution PNGs in `images/icons/` continue to work unchanged. The `uri_resolution_autosub` rewrite only fires when the magic `$$RES$$` token is present in the URI — call sites that load `pkg:/images/icons/<name>.png` (no token) get the asset as-is and are auto-scaled by the OS as today. Migrating an icon to the per-resolution pipeline is per-asset and reversible: drop the SVG, run `icons:build`, swap the call-site URI, delete the legacy single-res PNG.
+### Gradients and hardware data
 
-### Coexistence with `splash_screen_*` / `mm_icon_focus_*`
+`gradients:build` renders the alpha ramps in `images/gradients/` that the [`Gradient`](../../components/ui/Gradient.bs) component stretches and tints. It follows the same contract as the icons ([ADR 0025](../adr/0025-gradient-rendering-ramp-posters.md)).
 
-The manifest's existing splash + channel-poster triples (lines 8-21) use a different OS mechanism (explicit per-resolution manifest keys) and are unaffected by `uri_resolution_autosub`. Both mechanisms coexist cleanly.
+`roku-hardware:fetch` builds [`scripts/data/roku-hardware.json`](../../scripts/data/roku-hardware.json) from Roku's published device table, read by [`scripts/roku-devices.js`](../../scripts/roku-devices.js). Its input is an external document, so `:check` cannot re-derive it. It validates the dataset's own rules and a checksum instead, and [`roku-hardware-sync.yml`](../../.github/workflows/roku-hardware-sync.yml) checks upstream weekly. The fetch refuses a cell it does not recognize, so an upstream spelling change fails the sync instead of marking a device unknown.
 
-### Phase-2 deferral — native SD
+## Roku signing pipeline
 
-The `sd` slot in `uri_resolution_autosub` is reserved but not yet populated. Native SD support requires NTSC pixel-aspect-ratio handling in the build script (SD framebuffer pixels are non-square: 720×480 with 8:9 or 32:27 SAR). A naive square-pixel render would produce horizontally-squished SD assets that may look worse than the alternative — letting the OS auto-scale from HD. Until that's empirically verified on hardware, SD devices fall back to the `hd` substring (one downsample step). Tracked as [`sd-resolution-native-support`](tech-debt.md#sd-resolution-native-support).
+A Roku Channel Store submission needs a signed `.pkg`, not the sideload ZIP. `npm run package:signed` runs `build:prod`, then [`scripts/create-signed-package.cjs`](../../scripts/create-signed-package.cjs). Uploading the `.pkg` is manual, because Roku has no submission API.
 
-## Roku signing pipeline (`.pkg` for channel store)
+- **Signing runs on a Roku.** `roku-deploy` uploads the ZIP, calls the device's signing endpoint and downloads the `.pkg`. There is no offline path, so the script needs a device in developer mode and `ROKU_IP`, `ROKU_PASSWORD` and `ROKU_SIGNING_PASSWORD`.
+- **It runs locally, not in CI.** A CI-built artifact would need downloading and storing, which costs more than the local run it saves.
+- **It refuses a build with source maps.** The prod config sets `sourceMap: false`, so any `.map` in `build/` means a dev or test build is sitting there. The npm script always builds prod first; the guard catches a direct run against a stale build.
+- **It can check the developer ID.** With `ROKU_DEV_ID` set, the script reads the device's ID through `rokuDeploy.getDevId()` and stops before signing if it differs. `roku-deploy` ignores a `devId` option during signing. Store updates must be signed with the same ID as before.
 
-Roku channel-store submission requires a signed `.pkg`, not the sideload `.zip`. Roku has no submission API — uploading the `.pkg` to the dev portal is always manual. The production of the `.pkg` is automated locally via [`scripts/create-signed-package.cjs`](../../scripts/create-signed-package.cjs) and `npm run package:signed`.
+The runbook is in [releases.md](../admin/releases.md#signed-pkg-for-roku-channel-store).
 
-**Why local, not CI.** Solo-maintainer ritual; the time CI signing would save (a sideload + a portal-UI sign) is washed out by the friction of a CI-produced artifact (download + auth + storage). Local stays simpler and matches the same `.env`-based credential pattern already used for `ROKU_IP` / `ROKU_PASSWORD` in `scripts/run-roku-tests.js`.
+## ropm modules
 
-**Why hardware is required.** `roku-deploy.deployAndSignPackage()` is a thin wrapper over `deploy()` + `signExistingPackage()`. The signing runs on the Roku itself: `roku-deploy` uploads the zip, hits the dev-portal sign endpoint with the signing password, and downloads the resulting `.pkg`. There is no offline signing path.
+ropm copies Roku libraries into the project at install time; nothing resolves at runtime. The Roku runtime packages are in `package.json`'s `dependencies`, most under short npm aliases so the vendored paths stay short:
 
-**Prod-build guard.** The script refuses to sign a `build/` directory that contains source maps. `bsconfig-prod.json` has `sourceMap: false`; `bsconfig.json` and `bsconfig-tests*.json` both have `sourceMap: true`. Any `.map` file under `build/` means an unsafe build is sitting there. The composed npm script (`npm run build:prod && node scripts/create-signed-package.cjs`) makes the default invocation always safe; the in-script guard catches direct `.cjs` invocations against a stale build.
-
-**Dev-ID verification (optional).** When `ROKU_DEV_ID` is set, it's passed to `deployAndSignPackage()` and the call aborts if the device's cert produces a `.pkg` with a different ID. Roku channel-store updates must be signed with the same dev ID as prior versions, so this catches a wrong-cert `.pkg` before manual upload.
-
-Full operator runbook (env setup, when to run, manual upload): [`docs/admin/releases.md` → Signed `.pkg` for Roku channel store](../admin/releases.md#signed-pkg-for-roku-channel-store).
-
-## ropm modules — Roku Package Manager
-
-`ropm` is the Roku-specific package manager that vendors libraries into your project (no runtime resolution — everything is copied into the build). Three packages are installed (see `package.json` for current versions):
-
-- **`log`** — the `roku-log` library. Vendored into `source/roku_modules/log/` and `components/roku_modules/log/`.
-- **`rr`** — `roku-requests`. HTTP client used by `ApiTask` (vendored into `source/roku_modules/rr/`).
-- **`rokucommunity_bslib`** — `@rokucommunity/bslib`. Standard library extensions (commonly-needed BrightScript utilities).
-
-Module names (`log`, `rr`) are configured in `package.json`'s `dependencies` block as npm package aliases. The aliasing keeps imports short — `import "pkg:/source/roku_modules/log/LogMixin.brs"` rather than the full upstream package path.
-
-## Dev dependencies (key ones)
-
-| Package | Purpose |
-|---|---|
-| `brighterscript` | Compiler |
-| `@rokucommunity/bslint` | Linter |
-| `brighterscript-formatter` | Formatter (`bsfmt`) |
-| `brighterscript-xml-plugin` | XML linting/parsing |
-| `roku-deploy` | Device deployment helpers |
-| `rooibos-roku` | Test framework |
-| `ropm` | Roku package manager |
-| `markdownlint-cli2` | Markdown lint |
-| `spellchecker-cli` | Spell check |
-| `jshint` | JSON validation (incl. duplicate-key detection) — complementary to Prettier |
-| `eslint` + `eslint-plugin-n` + `@eslint/js` | JS / CJS / ESM linting (flat config) |
-| `eslint-config-prettier` | Disables ESLint formatting rules that would fight Prettier |
-| `prettier` | JS / curated JSON formatting |
-| `vitest` | Unit tests for `scripts/` (BSC plugins + tooling) |
-| `dotenv` | `.env` file loading for device target/password |
-| `fast-glob` | File matching in scripts |
-| `husky` | Manages git hooks; installs `.husky/pre-push` on `npm install` (via `prepare` script) |
-| `patch-package` | Applies diffs under `patches/` to `node_modules/` post-install. Used to hold targeted upstream fixes until the corresponding PR lands (e.g. `patches/rooibos-roku+6.0.0-alpha.50.patch` → upstream [rokucommunity/rooibos#364](https://github.com/rokucommunity/rooibos/issues/364)) |
-
-Versions are pinned in `package.json` (currently on alpha versions of brighterscript ecosystem packages).
-
-## JS hygiene (ESLint + Prettier + Vitest)
-
-JellyRock's `scripts/` directory holds Node-side tooling — BSC plugins, doc-validation scripts, generators, the `changelog-syncer.js` script, etc. — that runs outside the BSC project. This section covers how that JS is linted, formatted, and tested.
-
-### Module system
-
-`package.json` has `"type": "module"`, so `.js` = ESM and `.cjs` = CJS. **BSC plugins MUST be `.cjs`** — BrighterScript's `loadPlugins` (in `brighterscript/dist/util.js`, the vendored package) uses `require()`. Anything `require()`'d by a `.cjs` file is also locked to `.cjs` (CJS can't `require()` ESM, though ESM can `import` CJS). That extends the constraint to `scripts/lib/*` and any other shared helper.
-
-Rule for new scripts: net-new top-level CLI scripts go ESM `.js`; plugins and shared helpers stay `.cjs`. The 13 existing top-level `.cjs` scripts predate this rule and remain CJS — migrating them needs a require-graph audit first (tracked as `mixed-esm-cjs-scripts` in [tech-debt.md](tech-debt.md)).
-
-### Tooling
-
-- **[`eslint.config.js`](../../eslint.config.js)** — flat config, `@eslint/js` recommended + `eslint-plugin-n` `mixed-esm-and-cjs` preset. Disables `n/no-unpublished-*` (false positive — JellyRock isn't an npm package). Enforces `n/hashbang` for CLI shebangs, `n/prefer-node-protocol` for ESM imports of built-ins, plus standard `no-unused-vars` / `no-var` / `prefer-const`. `eslint-config-prettier` runs LAST to disable formatting rules that would fight Prettier.
-  - It also carries **path-scoped project invariants**, not just generic hygiene — a `files:` block plus `no-restricted-syntax` turns a convention that was previously prose-only into a gate. Current member: RTA waits and content assertions (`tests/rta/lib/nav.js`, `tests/rta/lib/steps.js`, `tests/rta/screens.js`, `tests/rta/demos/**`) must throw through `diagnosedError` rather than a bare `new Error`, so a failure reports the device state it saw ([rta-tests.md](../dev/rta-tests.md#when-a-wait-times-out-it-reports-what-it-saw)). `screens.js` joined after a red baseline run folded with `failures: []` — the gate's value is precisely that it catches the file nobody thought to add. This is the cheap shape for a single-file-scope invariant: no new script, no `package.json` entry, and no CI wiring — it rides `lint:js`, which already has a CI home whose path filter matches, so [`ci-parity-check`](../../scripts/lint/ci-parity-check.js) stays satisfied. Prefer it over a bespoke `scripts/lint/*` checker unless the rule needs to reason across files. A legitimate exception disables the rule on its line **with a reason**.
-- **[`.prettierrc.json`](../../.prettierrc.json)** — anchored to bsfmt style: 2-space indent, single quotes, semis, trailing commas (all), 100-col print width. JSONC parser for `.vscode/*.json` (they have comments).
-- **[`.prettierignore`](../../.prettierignore)** — excludes `package-lock.json` (npm-owned), `locale/` (translation tooling owns), `tasks/jellyfin-server-openapi/` (vendor), `CHANGELOG.md` (CI-controlled), and the formats other tools own (`.bs`/`.brs`/`.xml`/`.md`).
-- **[`vitest.config.js`](../../vitest.config.js)** — picks up `tests/scripts/**/*.test.js` plus `tests/rta/**/*.test.js` (the RTA harness's hardware-free parts, e.g. the registry restore planner). The `.test.js` / `.spec.js` split is load-bearing: `tests/rta/specs/**/*.spec.js` drives a real device and belongs to `vitest.rta.config.js`, so it must never be picked up here. Test files are ESM regardless of source module system (Vitest handles cross-module-system imports).
-  - It also carries a **`globalSetup` guard**, [`tests/scripts/setup/no-durable-writes.js`](../../tests/scripts/setup/no-durable-writes.js): the suite is hardware-free, so it must leave `.device-runs/` — the durable ledger of real device runs — untouched, and the run fails with a diff if it didn't. The invariant binds every file this config picks up, `tests/rta/**/*.test.js` included. It exists because `run-record.js` reaches the ledger through a **relative** root, so a test that opens a run without `chdir`'ing into a tmpdir writes into the real checkout. Authoring rules and the wrong fix to avoid are in [scripts-development.md](../dev/scripts-development.md#a-test-must-not-write-into-device-runs).
-
-### Surface ownership for JS/JSON
-
-| Surface | What runs | Auto-fix? |
+| Alias | Package | Used for |
 |---|---|---|
-| **Pre-commit (lint-staged)** | `eslint --fix` + `prettier --write` on staged JS; `jshint` (check) + `prettier --write` on staged JSON | Yes |
-| **Pre-push (`.husky/pre-push`)** | `lint:js` + `check-formatting:js` + `test:scripts` (gated on JS/JSON changes) | No |
-| **CI (`lint-js.yml`)** | `lint:js` + `check-formatting:js` (catches `--no-verify` and fork PRs) | No |
-| **CI (`test-scripts.yml`)** | `test:scripts` — Vitest unit tests for `scripts/` (path-filtered to scripts/ and tests/scripts/) | No |
+| `log` | `roku-log` | Logging ([logging.md](logging.md)) |
+| `rr` | `roku-requests` | HTTP, under the API Task |
+| `promises` | `@rokucommunity/promises` | Render-thread promises ([promises.md](../dev/promises.md)) |
+| `sgRouter` | `@rokucommunity/sgrouter` | Screen routing ([navigation.md](navigation.md)) |
+| (none) | `@rokucommunity/bslib` | BrighterScript's standard library |
 
-Notes:
+They land in the gitignored `source/roku_modules/` and `components/roku_modules/`. `npm run ropm` runs `ropm copy`, then `scripts/ropm-hook.cjs`.
 
-- **`lint:json` (jshint) and Prettier are complementary, not redundant.** jshint catches semantic issues Prettier doesn't (notably duplicate keys in JSON). Prettier catches formatting drift jshint doesn't.
-- **Pre-push runs the project-wide checks**; pre-commit handles file-scoped auto-fix. **CI does not mirror pre-push** — and it never runs the `npm run lint` aggregate. CI is assembled from the per-domain reusable workflows (`_lint-*.yml`), each with its own path filter, so the two surfaces are wired independently and a check must be added to both. That independence is deliberate (path-filtered parallel jobs keep a docs-only PR from paying a full BrighterScript compile), but it silently cost three checks their CI gate — including the #551 promise ratchet, which blocked nowhere while its own comments claimed otherwise. [`npm run lint:ci-parity`](../../scripts/lint/ci-parity-check.js) now fails when any aggregate member has no CI home, with an explicit `LOCAL_ONLY` allowlist for the deliberate exceptions.
-- **The Prettier ignore list is canonical** — pre-commit and pre-push both invoke `prettier --write` / `--check` and trust `.prettierignore` to filter.
+## Dev dependencies worth knowing
 
-### Test surface
+`package.json` lists them all, and the BrighterScript packages are on alpha versions. These have a reason to name:
 
-`tests/scripts/unit/<name>.test.js` mirrors `tests/source/unit/`. Vitest is jest-compatible API (`describe`, `it`, `expect`) but ESM-native. BSC plugin tests use inline scenarios today — short synthetic `.bs`/`.xml` strings passed to one of the harnesses in `tests/scripts/unit/_helpers/` (`run-plugin.js` for diagnostic-emitting plugins, `transpile-with-plugin.js` for transpile-mutating plugins like `roku-log`, `run-plugin-with-temp-locale.js` for virtual-file injectors like `translation-keys`). Fixture-file layouts (`tests/scripts/fixtures/<plugin>/...`) are a *future* option if scenarios grow large enough to warrant the indirection; not standardized yet. Coverage targets live in [`docs/dev/scripts-development.md`](../dev/scripts-development.md).
+- `jshint` checks JSON for duplicate keys, which Prettier does not.
+- `eslint-config-prettier` turns off the ESLint rules that would fight Prettier.
+- `dotenv` reads the checkout's `.env` and the per-user `~/.config/jellyrock/env`, through [`scripts/lib/env-config.cjs`](../../scripts/lib/env-config.cjs).
+- `husky` installs the git hooks from `prepare` on every `npm ci`.
+- `patch-package` applies the diffs in `patches/` after install. The Rooibos patch holds two fixes: coverage aggregated on write, so coverage runs stay under the render-thread watchdog ([rooibos#364](https://github.com/rokucommunity/rooibos/issues/364)), and the console reporter's `Ignored` count ([rooibos#435](https://github.com/rokucommunity/rooibos/pull/435)). After a Rooibos bump, regenerate it with `npx patch-package rooibos-roku` so its name matches the installed version.
+
+## JS hygiene
+
+`scripts/` holds the Node tooling: BSC plugins, linters, generators and the changelog sync script. How to write and test it is in [scripts-development.md](../dev/scripts-development.md), including which files must be `.cjs` ([Module system](../dev/scripts-development.md#module-system-cjs-or-js)). Older top-level `.cjs` scripts that could move to ESM are tracked as [`mixed-esm-cjs-scripts`](tech-debt.md#mixed-esm-cjs-scripts).
+
+### ESLint
+
+[`eslint.config.js`](../../eslint.config.js) is a flat config: `@eslint/js` recommended, the `eslint-plugin-n` mixed ESM and CJS preset, and `eslint-config-prettier` last. Beyond generic hygiene, path-scoped blocks turn project conventions into gates. There are two shapes:
+
+- **A `no-restricted-syntax` selector**, for "this syntax is banned here". RTA waits and assertions must throw through `diagnosedError`, so a failure reports the device state it saw ([rta-tests.md](../dev/rta-tests.md#when-a-wait-times-out-it-reports-what-it-saw)). A repo-wide `n/no-restricted-import` and `n/no-restricted-require` pair keeps `dotenv` inside `env-config.cjs`.
+- **A local rule module** in [`scripts/lint/eslint-rules/`](../../scripts/lint/eslint-rules/), for logic a selector cannot hold or a check that needs data. Reach for one when the selector stops being something a reviewer could safely edit. A rule module gets unit tests through ESLint's `RuleTester`, in [`tests/scripts/unit/lint/`](../../tests/scripts/unit/lint/).
+
+The rule modules sit in two namespaces, chosen by scope:
+
+- `jellyrock-rta/*` covers `tests/rta/**` and `scripts/capture-screenshots.js`. `wait-justified` and `sleep-budgeted` are inventories: a per-file count that ratchets, because some instances must be argued for. `home-list-resolved` lets the Home row list ids appear only in `tests/rta/lib/home-list.js`.
+- `jellyrock-tests/*` covers test files repo-wide. `ordering-asserts-presence` requires an ordering assertion over `indexOf` or `findIndex` to assert its operands were found, since `-1` sorts before every real index. It has no budget and no escape hatch, because compliance always costs one line.
+
+A rule with no escape hatch is reasonable only when compliance is free; otherwise it needs the inventory shape. All the RTA rules share one `files:` block, because a flat config replaces a rule's options rather than merging them.
+
+Both shapes ride `lint:js`, which already has a CI home, so they need no new script or workflow. Prefer them over a new `scripts/lint/` checker unless the rule reasons across files. A legitimate exception disables the rule on its line, with a reason.
+
+### Prettier and Vitest
+
+- [`.prettierrc.json`](../../.prettierrc.json) matches the `bsfmt` style: 2-space indent, single quotes, semicolons, trailing commas, 100 columns. `.vscode/*.json` uses the JSONC parser.
+- [`.prettierignore`](../../.prettierignore) leaves out `package-lock.json`, `locale/`, the vendored OpenAPI specs, `CHANGELOG.md` and the formats other tools own (`.bs`, `.brs`, `.xml`, `.md`). Every Prettier run trusts it.
+- [`vitest.config.js`](../../vitest.config.js) picks up `tests/scripts/**/*.test.js` and `tests/rta/**/*.test.js`, the RTA harness's hardware-free parts. The suffix matters: `tests/rta/specs/**/*.spec.js` drives a real device and belongs to `vitest.rta.config.js`.
+- Its `globalSetup`, [`no-durable-writes.js`](../../tests/scripts/setup/no-durable-writes.js), fails the run if a test wrote into `.device-runs/`, the ledger of real device runs, or into `out/`, where a device run's package lives ([scripts-development.md](../dev/scripts-development.md#a-test-must-not-write-into-device-runs)).
+
+### Surfaces for JS and JSON
+
+| Surface | What runs | Fixes? |
+|---|---|---|
+| Pre-commit (lint-staged) | `eslint --fix` and `prettier --write` on staged JS; `jshint` and `prettier --write` on staged JSON | Yes |
+| Pre-push | `lint:js` and `test:scripts` when JS is in the push range; `check-formatting:js` when JS or JSON is | No |
+| CI, `lint-js.yml` | `lint:js` and `check-formatting:js` | No |
+| CI, `test-scripts.yml` | `test:scripts`, behind a path filter covering the scripts, their tests and the files they check | No |
+
+jshint and Prettier do not overlap: jshint catches duplicate keys, Prettier catches formatting.
 
 ## Makefile
 
-The Makefile wraps npm scripts and adds device-deployment targets that need `ROKU_DEV_TARGET` (device IP) and `ROKU_DEV_PASSWORD` (device password) env vars.
-
-Build targets (proxy to npm):
+The Makefile wraps the npm scripts and adds device targets. `ROKU_DEV_TARGET` (the device address) is needed by every device target, and `ROKU_DEV_PASSWORD` by all but `home` and `launch`.
 
 | Target | What it does |
 |---|---|
-| `make build-dev` | `npm run build` |
-| `make build-prod` | `npm run build:prod` |
-| `make build-tests` / `build-tests-unit` / `build-tests-integration` | Test builds |
-| `make build-tdd` | TDD watch |
-| `make format` | `npm run format` |
-| `make lint` | `npm run lint` |
-| `make make_images` | Generate branding PNGs from SVGs (needs ImageMagick `convert`) |
-
-Device targets (need env vars):
-
-| Target | What it does |
-|---|---|
-| `make home` | Press Home button on device |
-| `make launch` | Launch installed channel |
-| `make install` | Install built ZIP on device |
-| `make remove` | Remove installed channel |
-| `make screenshot` | Capture screenshot |
-| `make deploy` | `lint → remove → install` |
-
-Typical dev loop on a real device:
+| `make build-dev`, `build-prod`, `build-tests`, `build-tests-unit`, `build-tests-integration`, `build-tdd` | The matching `npm run build*`. `build-tdd` is a one-shot build |
+| `make format`, `make lint` | `npm run format`, `npm run lint` |
+| `make make_images` | Branding PNGs from SVGs (needs ImageMagick `convert`) |
+| `make home`, `make launch` | Press Home; launch the installed app |
+| `make install` | Press Home, install the built ZIP, then launch it |
+| `make remove` | Remove the installed app |
+| `make screenshot` | Save a screenshot to `screenshot.jpg` in the repo root |
+| `make deploy` | Lint, remove, then install |
 
 ```bash
-export ROKU_DEV_TARGET=192.168.1.50
-export ROKU_DEV_PASSWORD=mydevpassword
-make deploy        # lints, removes old, installs new
-make launch        # launches the channel
+export ROKU_DEV_TARGET=<device address>
+export ROKU_DEV_PASSWORD=<developer password>
+make deploy   # lints, removes the old build, installs and launches the new one
 ```
 
-## Verification surfaces (defense in depth)
+## Verification surfaces
 
-JellyRock layers nine verification + automation surfaces, each owning checks or sync work the others can't do well. The principle: **every check runs at the cheapest surface that can do it correctly.** No surface duplicates another's responsibility.
+Nine surfaces check or sync the work, and each check runs at the cheapest surface that can do it correctly.
 
-Surfaces 1–7 are a pure cost ladder — the same check pushed to the cheapest place it still works. Surfaces **8 and 9 are different in kind**: their cost floor is a *physical resource*, not compute. They need the one Roku, so no amount of optimization moves them earlier, and surface 9 can't run per-PR at all. Read the table as ending at 9, not at 7 — treating CI as the last line of defense is the mistake this row set exists to prevent.
+Surfaces 1 to 7 form a cost ladder: the same kind of check, pushed as early as it still works. Surfaces 8 and 9 differ in kind. They need a Roku, a physical resource, so they cannot move earlier, and surface 9 cannot run on every PR. CI is not the last line of defense.
 
-| # | Surface | Trigger | What it owns | Latency |
+| # | Surface | Trigger | What it owns | Takes |
 |---|---|---|---|---|
-| 1 | **IDE** (BrighterScript ext) | Live, per keystroke | `.bs` validation + bslint diagnostics, `bsfmt` on save | <100 ms |
-| 2 | **`PostToolUse` hook** ([`bsfmt-on-write.sh`](../../.claude/hooks/bsfmt-on-write.sh)) | Agent's `Edit` / `Write` / `MultiEdit` | `bsfmt --write` on the file just edited | ~500 ms |
-| 3 | **End-of-turn hook** ([`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) + [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) + [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh)) | Agent finishes turn (`Stop` / `sessionEnd`) | Architecture-doc reminder + lint on **uncommitted-only** files + stale-progress / cursor-shipped nudges | 2–5 s |
-| 4 | **Pre-commit hook** ([`.lintstagedrc.cjs`](../../.lintstagedrc.cjs) via `lint-staged`) | `git commit` | File-scoped lint + auto-format on staged files | 1–5 s |
-| 5 | **Pre-push hook** ([`.husky/pre-push`](../../.husky/pre-push)) | `git push` | Project-wide checks that aren't file-scoped + decision/cursor advisory nudges | 10–30 s |
-| 6 | **Post-merge journal-sync** ([`journal-sync.yml`](../../.github/workflows/journal-sync.yml)) | PR merges to main | Mechanical close-loop on `progress.md` (running → shipped, last-updated bump) via [`scripts/journal-sync.js`](../../scripts/journal-sync.js) | seconds |
-| 7 | **CI** (`.github/workflows/lint-*.yml`) | PR open / sync | Same as pre-push, can't bypass | minutes (parallel) |
-| 8 | **Device unit tests** ([`device-unit-tests.yml`](../../.github/workflows/device-unit-tests.yml)) | PR open / sync; push to `main` | Rooibos unit + integration suites on the physical Roku — the only surface that runs BrightScript *inside* the app. Same-repo branches run unattended; **fork PRs wait on maintainer approval** via the `fork-gate` job | ~8–15 min |
-| 9 | **RTA functional tests** ([`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml)) | push to `release-*.*.*`; manual dispatch | Screen-level navigation + rendered-content assertions, driving the device from *outside*. Release-only, not per-PR | ~10–15 min |
+| 1 | Editor (BrighterScript extension) | Each edit | `.bs` validation and bslint diagnostics | Instant |
+| 2 | `PostToolUse` hook ([`bsfmt-on-write.sh`](../../.claude/hooks/bsfmt-on-write.sh)) | An agent's file edit | `bsfmt --write` on that file | Under a second |
+| 3 | End-of-turn hook | Claude Code `Stop`; Copilot Coding Agent `sessionEnd` | Doc reminders and lint on uncommitted files. Claude Code also runs the progress-cursor nudges | Seconds |
+| 4 | Pre-commit ([`.lintstagedrc.cjs`](../../.lintstagedrc.cjs)) | `git commit` | File-scoped lint and formatting on staged files | Seconds |
+| 5 | Pre-push ([`.husky/pre-push`](../../.husky/pre-push)) | `git push` | Project-wide checks scoped to the push range, regenerated outputs, advisory nudges | Tens of seconds |
+| 6 | Post-merge journal sync ([`journal-sync.yml`](../../.github/workflows/journal-sync.yml)) | A PR merged to `main` | The mechanical close-loop on `progress.md` | Seconds |
+| 7 | CI (`.github/workflows/lint-*.yml` and others) | A PR opened or updated | The project-wide checks, with no way to bypass them | Minutes |
+| 8 | Device unit tests ([`device-unit-tests.yml`](../../.github/workflows/device-unit-tests.yml)) | A PR opened or updated; a push to `main` | The Rooibos suites on a Roku, the only surface that runs BrightScript inside the app | Minutes |
+| 9 | RTA functional tests ([`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml)) | A push to `release-*.*.*`; manual dispatch | Screen-level navigation and rendered content, driving the app from outside | Minutes |
 
 ### Why each surface exists
 
-- **IDE** — fastest possible feedback loop for human devs, but assumes a configured/working BrighterScript extension. Doesn't fire for agents.
-- **`PostToolUse`** — the agent's "format on save." Auto-formats `.bs` / `.brs` immediately after the agent writes them so the next read shows canonical form. Silent on success — no context noise. Limited to `bsfmt` because anything project-wide (validate, bslint) would be too slow per-edit.
-- **End-of-turn** — covers the gap when the agent has work that *isn't yet committed*. The lint variant scans only working-tree files (committed work is pre-commit's job — running it again here would be wasted cycles). The doc-maintenance variant reminds the agent about architecture-doc related-files territory it touched. The progress-cursor variant flags stale `docs/progress.md` and Currently-running cursors that overlap with shipped commits. All three informational, never block the turn.
-- **Pre-commit** (`lint-staged`) — the universal gate for both humans and agents. File-scoped: `bsfmt --write`, `markdownlint --fix`, `spellchecker`, `jshint`. Auto-fix steps re-stage their output so the formatted version lands in the same commit (no "auto-fix commit" ceremony). The `lint-staged` runner handles the staged-files plumbing.
-- **Pre-push** — what couldn't run per-commit: full BSC project compile (`bsc --noEmit`), `bslint` (needs full project context, can't be file-scoped), cross-doc reference check (`lint:docs`), drift check on the auto-generated dev-guides index, language-coverage. Plus project-wide regen tasks (`update-translations`, `docs:dev-index`) that mutate one output from many inputs. Also runs two advisory nudges (always exit 0): [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (pattern-matches commit messages for decision-shaped language and nudges toward `/log decision` when the range doesn't touch `docs/adr/` or `docs/decisions.md`) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (same checks as the end-of-turn hook, doubled here so the prompt fires before push regardless of whether the IDE / agent is running). Both are human-facing complements to the agent-facing Capture-discipline rule in `CLAUDE.md`.
-- **Post-merge journal-sync** — fires on PR merge to main. Reads PR title / labels / author from the event payload, then runs [`scripts/journal-sync.js`](../../scripts/journal-sync.js) to perform the *mechanical* close-loop on [`docs/progress.md`](../progress.md): prepend "- YYYY-MM-DD — \<pr-title\>" to `## Recently shipped`, conditionally clear `## Currently running` (token-overlap heuristic), bump `last-updated:`. Skips on `dependencies` / `documentation` / `ci` / `automated` labels and Renovate / Dependabot / bot authors. Concurrency-grouped with the existing `jellyrock-bot-main` group so it queues against the changelog-sync workflow rather than racing it. This surface is what keeps the four-pillar journal flow from depending on the user remembering `/done running` after every merge.
-- **CI** — can't be bypassed. Mirrors pre-push so the local hook isn't a load-bearing source of truth. Note it is *not* the final backstop: it is the last surface that runs on commodity runners, which is a different claim.
-- **Device unit tests** — the only surface that executes BrightScript in the app on real hardware, so it owns everything no static check or Node-side test can reach (Roku OS behavior, registry I/O, Task threading). `check-skip` short-circuits it when nothing test-relevant changed, so docs and tooling PRs don't spin the device. It runs on `pull_request_target`, which hands secrets to a workflow that then checks out fork-authored code — so a `fork-gate` job sits behind the `roku-device` environment's required-reviewer rule and blocks fork PRs until a maintainer has read the diff. Same-repo branches skip that gate and run unattended. GitHub's repo-level "require approval for outside collaborators" setting does **not** cover `pull_request_target` and must not be relied on here.
-- **RTA functional tests** — drives the app from outside via ECP + ODC, so it owns the class Rooibos structurally cannot see: whether a *screen* renders the right thing. Deliberately release-only. CI has one Roku, shared with surface 8, and `vitest.rta.config.js` pins single-fork, so a pass is ~10–15 min of exclusive device time — too expensive per-PR. The accepted cost is that an RTA regression surfaces at release, after N merged PRs; the mitigation is running `npm run test:rta` locally when a change touches navigation or screens. See [rta-tests.md](../dev/rta-tests.md#when-ci-runs-it).
+- **Editor:** the fastest loop for people, if the extension is set up. It does nothing for agents.
+- **`PostToolUse`:** an agent's format-on-save, so its next read shows formatted code. Only `bsfmt`, because anything project-wide is too slow per edit. Silent on success.
+- **End-of-turn:** covers work not yet committed. The lint step checks only working-tree files, since committed files are pre-commit's job. The doc step names architecture docs and dev guides whose `related-files` the session touched. None blocks the turn.
+- **Pre-commit:** the gate for people and agents alike. `bsfmt`, markdownlint and the spellchecker on staged files, plus the JS and JSON checks above. Fixes are re-staged into the same commit.
+- **Pre-push:** what cannot run per file: the full compile (`validate`), bslint, `lint:docs`, the voice ratchet, the generated-output checks, and the steps that rebuild one output from many inputs. It also prints two nudges that never block: [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs).
+- **Post-merge journal sync:** runs [`scripts/journal-sync.js`](../../scripts/journal-sync.js) on the merged PR. It adds the PR to `## Recently shipped`, clears `## Currently running` when it matches, and bumps `last-updated:`. It skips the `dependencies`, `documentation`, `ci` and `automated` labels and bot authors. Each PR gets its own concurrency group, and the push retries on a moved base.
+- **CI:** cannot be bypassed. It runs the same checks as pre-push but is wired separately, so a check must be added to both (below).
+- **Device unit tests:** own what no static or Node test reaches: Roku OS behavior, registry I/O, Task threading. `check-skip` short-circuits a PR with nothing test-relevant. The workflow runs on `pull_request_target`, which hands secrets to fork code, so a `fork-gate` job waits for a maintainer behind the `roku-device` environment's required reviewer. GitHub's "require approval for outside collaborators" setting does not cover `pull_request_target`.
+- **RTA:** owns whether a screen renders the right thing, which Rooibos cannot see. It is release-only because CI has one Roku, shared with surface 8, and a run holds it for a long time. A regression can therefore surface only at release; run `npm run test:rta` locally when a change touches navigation or screens ([rta-tests.md](../dev/rta-tests.md#when-ci-runs-it)).
 
-**CI and local development do not share a Roku — and the device lock exists for local-vs-local, not for CI.** An ECP sweep of the LAN on 2026-08-10 found three: `.177` (local dev), `.178` (a personal device, occasional dev overflow), and `.200` — CI only, named by the org-level `ROKU_DEVICE_IP` secret that both device workflows and RTA read, and unmodified since 2026-03-18. Surfaces 8 and 9 queue against each other for free (one runner carries the `roku-device` label and takes one job at a time), and neither can collide with a developer's machine, because it is a different box. What *is* unguarded is local work against itself: `test:rta`, `test:unit`, `demo` and `screenshots:capture` can each grab `.177` from a different terminal, and the Rooibos path has no registry snapshot to fall back on. [`scripts/device-lock.js`](../../scripts/device-lock.js) closes that with a compare-and-swap on a git ref (`POST /git/refs` → 422 on conflict, verified against this repo). It is keyed on the device's own identity rather than on a role, so it equally covers a local run pointed at `.200` — the only way local and CI can contend at all. CI never writes a ref, which keeps `permissions: contents: read` intact on the workflow that executes fork code; it performs a single anonymous read. Protocol and failure modes in [rta-tests.md](../dev/rta-tests.md#the-device-lock).
+CI and local work never share a Roku: CI uses its own device, named by an org-level secret. Local runs can collide with each other, so [`scripts/device-lock.js`](../../scripts/device-lock.js) takes a lock keyed on the device's identity. CI only reads it, which keeps the fork-running workflow on read-only permissions. See [rta-tests.md](../dev/rta-tests.md#the-device-lock) and decision [`device-lock-scoped-to-local`](../decisions.md#decision-id-device-lock-scoped-to-local).
 
-### Surface ownership of each lint command
+### Which hook runs each lint command
 
-| Command | Pre-commit (file-scoped) | Pre-push (project-wide) | Why |
+| Command | Pre-commit | Pre-push | Why |
 |---|---|---|---|
-| `bsfmt --write` | ✓ | — | File-scoped; auto-fix re-stages |
-| `bslint` (`lint:bs`) | — | ✓ | Needs full project context (cross-file scope resolution) |
-| `bsc --noEmit` (`validate`) | — | ✓ | Project-wide compile, ~10–30 s |
-| `markdownlint-cli2 --fix` (`lint:markdown`) | ✓ | ✓ | Pre-commit auto-fixes + re-stages; pre-push re-runs the read-only check (gated on `.md` changes) because rebase / cherry-pick / merge commits skip the pre-commit hook entirely |
-| `spellchecker` (`lint:spelling`) | ✓ | ✓ | Pre-commit checks (no auto-fix — correctness); pre-push re-runs it (gated on `.md` changes) as the same backstop for commits that bypass pre-commit. Dictionaries and plugins come from [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml), NOT from per-invocation flags — see below |
-| `jshint` (`lint:json`) | ✓ | — | File-scoped; no auto-fix |
-| `docs-check.cjs` (`lint:docs`) | — | ✓ | Cross-doc reference check; needs all docs loaded |
-| `generate-dev-index.cjs --check` | — | ✓ | Drift check on auto-generated table |
-| `update-translations` (regen) | — | ✓ | Project-wide regen from `en_US.json` |
-| `lint:language-coverage` | — | ✓ | Conditional on specific files; unusual pattern |
-| `lint:issue-templates` | — | ✓ | Conditional on `.github/ISSUE_TEMPLATE/` changes; validates against vendored GitHub schema (invalid forms otherwise hide silently) |
+| `bsfmt --write` | ✓ | | File-scoped; the fix is re-staged |
+| `lint:bs` (bslint) | | ✓ | Needs the whole project |
+| `validate` (`bsc --noEmit`) | | ✓ | A full compile |
+| `lint:markdown` | ✓ | ✓ | Pre-commit fixes; pre-push re-checks changed `.md`, because rebase, cherry-pick and merge commits skip pre-commit |
+| `lint:spelling` | ✓ | ✓ | Same backstop. No auto-fix |
+| `lint:json` (jshint) | ✓ | | File-scoped |
+| `lint:docs` | | ✓ | Needs every doc loaded |
+| `lint:doc-citations` | | ✓ | Runs on every push, so a baseline-only change is checked too |
+| `docs:dev-index:check` | | ✓ | Drift in a generated table |
+| `update-translations` | | ✓ | Regenerates from `en_US.json` |
+| `lint:language-coverage` | | ✓ | Only when its inputs change |
+| `lint:issue-templates` | | ✓ | Only when the templates change |
 
-Excludes mirror `package.json`'s `lint:*` scripts via shared helpers in [`scripts/lib/lint-excludes.cjs`](../../scripts/lib/lint-excludes.cjs) — the lint-staged config, the end-of-turn hook script, and the package.json scripts all consult the same source so excludes don't drift.
+[`scripts/lib/lint-excludes.cjs`](../../scripts/lib/lint-excludes.cjs) holds the exclude lists that lint-staged and the end-of-turn hook use. The `package.json` `lint:*` scripts carry hand-copied lists of their own, and the module asks you to change both together.
 
-**The spellchecker's other settings follow the same pattern, and that is load-bearing.** Four surfaces spawn `spellchecker-cli`: `lint:spelling` (CI + pre-push), [`.lintstagedrc.cjs`](../../.lintstagedrc.cjs) (pre-commit), [`check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs) (end-of-turn hook) and [`journal-sync.js`](../../scripts/journal-sync.js) (post-merge bullet check). They each used to carry their own copy of the dictionary path and plugin list, held together by a comment — and it drifted, leaving the hook reporting a word the others had stopped flagging. [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml) is auto-discovered at the package root and CLI args override it, so every surface inherits the same rules. Three things to know before editing an invocation site:
+### Spellchecker config
 
-- **Don't re-specify `-d` / `-p` / `-i`.** `tests/scripts/unit/lint/spellchecker-config.test.js` fails the build if a call site does — there are no exceptions. That test scans the whole **call expression**, not the matching line: a line-scoped version shipped first and missed a flag re-added on a continuation line, which is exactly the shape the migration removed.
-- **Spawn from the repo root.** Both the dictionary paths and `.spellcheckerrc.yaml` **itself** are resolved against the `cwd` — the tool discovers its config by walking up from `process.cwd()`, not from the file being checked. Three surfaces run from the root naturally; `journal-sync.js` takes a `--repo-root` that can differ from its `cwd`, so it passes `cwd: repoRoot` to `spawnSync`. Without it the config is silently not found and the tool reverts to its defaults, dropping the `frontmatter` plugin and both dictionaries.
-- **The file globs deliberately stay OUT of the config**, for the reason above — `lint-excludes.cjs` already owns them, and a third copy in YAML would deepen the duplication rather than resolve it.
+Four surfaces run `spellchecker-cli`: `lint:spelling` (CI and pre-push), [`.lintstagedrc.cjs`](../../.lintstagedrc.cjs), [`check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs) and [`journal-sync.js`](../../scripts/journal-sync.js). All read their dictionaries and plugins from [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml), so they cannot drift apart. Before editing a call site:
 
-#### The second dictionary is generated, and the `ignore` shape it replaced was worse
+- Don't pass `-d`, `-p` or `-i`. `spellchecker-config.test.js` fails if any call does, scanning the whole call expression.
+- Spawn from the repo root. The tool finds its config from the working directory, not the checked file, and quietly falls back to its defaults without it. `journal-sync.js` passes `cwd: repoRoot` for this reason.
+- File globs stay out of the config, since `lint-excludes.cjs` holds them.
 
-[`dictionary-sentence-final.txt`](../../dictionary-sentence-final.txt) holds each `dictionary.txt` entry in its sentence-final form (`(?:handoff)\.`), generated by [`sentence-final-dictionary.js`](../../scripts/generate/sentence-final-dictionary.js) (`npm run dictionary:sentence-final`). It exists because `retext` stops treating a paragraph's final period as sentence-final when the next block is a **lowercase heading, a list, or a blockquote**, and then looks the word up with the period attached. Base-dictionary words survive that; `dictionary.txt` entries are matched as anchored regular expressions and do not — so a paragraph ending on one of our own words fails the lint. The `## decision-id: <slug>` schema every [`decisions.md`](../decisions.md) note uses is exactly that shape, which put the trap inside the sanctioned `/log decision` path. Two ad-hoc versions of the workaround had already been added by hand across separate commits (`codebase.`, `globals.`, `lifecycle.`, `lookups.` sat in `dictionary.txt`), each of which also accepted `codebaseX` because the `.` was not escaped, leaving it a wildcard.
+[`dictionary-sentence-final.txt`](../../dictionary-sentence-final.txt) is generated from `dictionary.txt` (`npm run dictionary:sentence-final`). It holds each entry with a trailing period, because the spellchecker attaches a paragraph's final period to the word before a list, blockquote or lowercase heading. Do not replace it with an `ignore:` regex: that hides real typos in the same position, and `spellchecker-config.test.js` fails if an `ignore` key returns. Its drift check runs in `lint`, in `_lint-spelling.yml` before the spell lint, and on every push. The reasoning is decision [`spellchecker-sentence-final-dictionary`](../decisions.md#decision-id-spellchecker-sentence-final-dictionary).
 
-⚠️ **Do not replace it with an `ignore:` regex.** That shape shipped first here and was reverted: an `ignore` entry matching any token ending in a period stops reporting genuine typos in the same position — measured at 47 paragraph-above-a-list sites across 24 of 88 linted files. The generated dictionary closes the same trap with no coverage loss, because a typo is in neither dictionary. The behavioral suite in `spellchecker-config.test.js` spawns the real binary over a fixture and asserts both halves; it fails if an `ignore` key returns.
+### Bypassing a hook
 
-Drift between the two files is gated by `npm run dictionary:sentence-final:check` — in the `lint` aggregate, in `_lint-spelling.yml` **ahead of** the spell lint, and in pre-push, which also regenerates on a `dictionary.txt` edit as an auto-fix step. It is not scoped to `dictionary.txt` changes: a stale companion silently weakens the lint everywhere, so the check runs on every push.
+`git commit --no-verify` and `git push --no-verify` skip the hooks, and CI still catches the failure on the PR. When a hook complains, fix the cause rather than bypass it.
 
-### Bypass discipline
-
-- `git commit --no-verify` skips the pre-commit hook; `git push --no-verify` skips the pre-push hook. Either is acceptable in genuine emergencies, but CI catches everything regardless — a `--no-verify` commit gets rejected at PR time.
-- `--no-verify` should never be the agent's first move when a hook complains. Fix the underlying issue.
-
-### Why agents shouldn't run `npm run lint:*` manually
-
-The hooks already do it at the right granularity (per-edit, per-commit, per-push). Manual runs duplicate work and waste tokens on output the agent didn't need. **Exception:** debugging a specific failure that the hook surfaced.
+A new git worktree has no hooks until `npm ci` runs inside it, so it skips surfaces 4 and 5 without warning. [`AGENTS.md`](../../AGENTS.md) has the rule, where to put a worktree, and why linking `node_modules` fails.
 
 ## CI lint workflows
 
-Each lint scope has a workflow pair under [`.github/workflows/`](../../.github/workflows/):
+Each lint scope has a pair of workflows under [`.github/workflows/`](../../.github/workflows/): `lint-X.yml`, triggered by the PR, calls the reusable `_lint-X.yml`, which does the work.
 
-- `lint-X.yml` — the public, PR-triggered caller. Just calls `_lint-X.yml`.
-- `_lint-X.yml` — the reusable workflow that does the actual work.
+**Every job that runs on a machine sets `timeout-minutes`:** 15 for a GitHub-hosted job, unless a comment at the job says why it differs. Without it a job inherits GitHub's 6-hour default, and a stuck step holds the PR's checks for hours (#791). A caller job cannot take the key, so the limit goes on the job inside `_lint-X.yml`. [`workflow-timeouts.test.js`](../../tests/scripts/unit/lint/workflow-timeouts.test.js) enforces it.
 
-The pair pattern exists so the same lint logic can be invoked from other workflows in the future without duplication.
+**Path relevance is decided inside the job.** Each `_lint-X.yml` starts with [`changed-paths`](../../.github/actions/changed-paths/action.yml), which uses `gh pr diff --name-only` to test the PR's files against the workflow's regex. Later steps run only when it matches. An event-time `paths:` filter would skip the workflow entirely and report no status, so a required check would leave the PR waiting forever. Running every time and skipping inside always reports a status.
 
-**Path relevance is computed *inside* the job, not at event time.** Each `_lint-X.yml` starts with [`./.github/actions/changed-paths`](../../.github/actions/changed-paths/action.yml) — a composite action that uses `gh pr diff --name-only` to check whether the PR modified any file matching the workflow's regex. All subsequent steps are gated on the action's `relevant` output.
+To add a lint workflow, copy an existing `_lint-X.yml` and change the regex passed to `changed-paths`. Expose a `force: boolean` input and forward it to the action, so a dependency update can bypass the path check.
 
-This avoids the standard GitHub gotcha with event-time `paths:` filters: a workflow filtered by `paths:` simply doesn't run when paths don't match, which means *no status is reported*. If such a workflow is wired as a required check in branch protection, PRs that don't touch matching paths get stuck with `Expected — Waiting for status to be reported` and can't merge. Always-queue + internal-skip dodges this — the workflow always reports a status (success when the gate skipped, success or failure when it actually ran), so it's safe to wire as a required check.
+### Dependency updates
 
-When adding a new lint workflow, copy an existing `_lint-X.yml` and update the `pattern:` regex passed to `changed-paths`. The regex must mirror what would have gone into the old `paths:` block. Always also expose a `force: boolean` `workflow_call` input and forward it to the action — orchestrator workflows like [`_validate-dependencies.yml`](../../.github/workflows/_validate-dependencies.yml) need to bypass the path check (a dep bump can regress a linter even when no matching source file changed in the PR).
+[`_validate-dependencies.yml`](../../.github/workflows/_validate-dependencies.yml) re-runs every lint and test workflow with `force: true` on a PR labeled `dependencies`, which Renovate applies. That full run is what lets the org Renovate preset (`github>jellyrock/.github//renovate/default`) merge updates on its own safely.
 
-### Dependency update orchestration (`_validate-dependencies.yml` + `_smoke-test-deps.yml`)
+When you add a `_lint-*`, `_test-*` or `_smoke-test-*` workflow:
 
-[`_validate-dependencies.yml`](../../.github/workflows/_validate-dependencies.yml) is the dependency-update orchestrator: it re-runs every lint and test reusable with `force: true` on any PR labeled `dependencies`. Renovate and Dependabot auto-apply that label, so their PRs automatically trigger full CI. This is what makes [`renovate.json`](../../renovate.json)'s `automerge: true` for patch updates safe — a Renovate patch PR can only auto-merge once every downstream job passes.
-
-**When you add a new `_lint-*.yml`, `_test-*.yml`, or `_smoke-test-*.yml` reusable, add a matching `force: true` job to `_validate-dependencies.yml` immediately.** Skipping this means dependency bumps that break your new workflow silently pass CI. `npm run lint:ci-workflow-sync` ([`scripts/lint/validate-deps-workflow-sync.cjs`](../../scripts/lint/validate-deps-workflow-sync.cjs)) enforces this mechanically — it runs in `_lint-docs.yml` and in the pre-push hook and exits non-zero when any `_lint-*` / `_test-*` / `_smoke-test-*` reusable is not listed in `_validate-dependencies.yml`.
-
-**And add the new workflow's status-check context to the required checks on `main`.** A reusable called from a wrapper reports its status as `"<wrapper job> / <reusable job>"` — e.g. `lint-docs.yml`'s `docs:` job calling `_lint-docs.yml`'s `docs:` job reports `docs / docs`. A context that is not in branch protection's required list still *runs* and still reports red, but **does not block a merge**. That is the same silent-no-gate outcome as having no CI home at all, one layer further out, and neither `lint:ci-workflow-sync` nor `lint:ci-parity` can catch it: branch protection is repo configuration, not a file in the tree, and reading it needs admin scope that CI's `github.token` does not carry. Check the current list with:
+1. Add a `force: true` job for it to `_validate-dependencies.yml`. `npm run lint:ci-workflow-sync` fails until you do.
+2. Add its status-check context to the required checks on `main`. A reusable called from a wrapper reports as `"<wrapper job> / <reusable job>"`, such as `docs / docs`. A context that is not required still runs and turns red but does not block a merge, and no check in the tree can see branch protection.
 
 ```bash
 gh api repos/jellyrock/jellyrock/branches/main/protection --jq '.required_status_checks.contexts[]'
 ```
 
-[`_smoke-test-deps.yml`](../../.github/workflows/_smoke-test-deps.yml) is a smoke-test companion (not a lint workflow). It covers the two dev dependencies nothing else in CI exercises: `roku-deploy` (never invoked in CI — only by manual deploy scripts) and `lint-staged` (only invoked by the husky pre-commit hook locally). Smoke tests are cheap CLI invocations (`--version`, `--print-config`) that catch catastrophic breakage (package missing, CLI broken) without full integration tests. Husky itself is already covered for free: `"prepare": "husky"` in `package.json` runs the husky CLI on every `npm ci`.
+Before adding a pair at all, check whether an already-required suite can host the check. A new workflow costs a runner, an `npm ci`, a `_validate-dependencies.yml` job and a branch-protection edit, and blocks nothing until that edit lands. A drift-gate test in `_test-scripts.yml` inherits the required `vitest / vitest` and gates the day it merges. `icons:check` and `gradients:check` are wired this way, registered in `COVERED_BY_TEST` in [`ci-parity-check.js`](../../scripts/lint/ci-parity-check.js). Use a pair when the check needs its own runtime, its own tooling or its own name in the checks list.
+
+[`_smoke-test-deps.yml`](../../.github/workflows/_smoke-test-deps.yml) loads `roku-deploy` and `lint-staged` and checks their exported functions, without running either CLI. Husky needs no smoke test, since `prepare` runs it on every `npm ci`.
 
 ## Doc-maintenance enforcement
 
-The agent-context system (architecture docs, scoped CLAUDE.md, BSC convention plugins, `lint:docs`) only delivers value if the docs are kept in sync with the code. Three layers enforce that:
+Two layers keep the architecture docs in step with the code. Both fire when you touch a doc's `related-files`, when re-reading it is cheap. The agent rule is in [`AGENTS.md`](../../AGENTS.md#doc-maintenance-discipline).
 
-### 1. End-of-turn reminder hook (soft, per-session)
+### 1. End-of-turn reminder (soft)
 
-Fires when an agent finishes its turn. Prints which architecture doc(s) claim files the session touched, prompting the agent to re-read and update the doc if the change altered shape/why.
+When an agent finishes a turn, [`check-touched-related-files.cjs`](../../scripts/lint/check-touched-related-files.cjs) prints which docs claim the files it touched: `docs/architecture/`, and `docs/dev/` marked as informational. Claude Code runs it from a `Stop` hook ([`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh)), and the GitHub-hosted Copilot Coding Agent from `sessionEnd` in [`.github/hooks/hooks.json`](../../.github/hooks/hooks.json).
 
-- Logic: [`scripts/lint/check-touched-related-files.cjs`](../../scripts/lint/check-touched-related-files.cjs)
-- Claude Code wrapper: `Stop` hook in `.claude/settings.json` → [`.claude/hooks/check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh)
-- Copilot Coding Agent wrapper: `sessionEnd` in [`.github/hooks/hooks.json`](../../.github/hooks/hooks.json). **Only fires for the GitHub-hosted Coding Agent variant** — in-IDE Copilot Chat doesn't consume that file.
-- opencode wrapper: not yet implemented (the `@opencode-ai/plugin` API surface needs verification before plugging in).
+It never blocks. A block would tempt an agent to bump `last-reviewed` only to clear it, which would empty the freshness signal. Dev guides get only this reminder: a how-to with a moved path breaks its reader, but changes no subsystem's shape, so it must never block a PR.
 
-Informational only — never blocks the agent. The point is to prompt the right action *during* work, not force it. Forced blocking would tempt the agent to bump `last-reviewed` mechanically to clear the block, which would erode the freshness signal.
+### 2. CI gate (hard)
 
-### 2. CI gate (hard, per-PR)
+[`docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs) fails a PR that changes a stale architecture doc's `related-files` without updating the doc. A doc is stale after 120 days. It runs in `_lint-docs.yml`, behind that workflow's path filter, so a PR that touches only files outside the filter skips it ([`ci-path-filters-unverified`](tech-debt.md#ci-path-filters-unverified)). PRs in unrelated areas pass freely.
 
-The conditional hard gate. `lint-docs.yml` runs `npm run docs:stale:blocking` on every PR; the script exits non-zero only when the PR modifies a stale architecture doc's `related-files` without updating the doc itself. Surgical pressure: PRs that touch unrelated areas pass freely.
+### No calendar backlog
 
-Designed to avoid the blanket-gate trap (every PR blocked once any doc is stale) — see the docstring on [`scripts/lint/docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs) for the design rationale.
+`last-reviewed` records the last review done in context, not a countdown. A weekly list of docs past 90 days was retired: it asked for cold re-reads that never happened, and it could never be cleared. `npm run docs:stale` reports the cadence on demand, and [`docs-stale-tracker.yml`](../../.github/workflows/docs-stale-tracker.yml) now tracks only the `docs/progress.md` cursor.
 
-### 3. Weekly stale tracker (visibility)
+Keep content data out of `related-files`. A file that changes in routine work without changing a shape, such as `locale/custom/en_US.json`, makes a doc look drifted and eventually blocks an unrelated PR. The machinery files carry that signal instead.
 
-[`.github/workflows/docs-stale-tracker.yml`](../../.github/workflows/docs-stale-tracker.yml) runs every Monday morning UTC, finds the stale list, and maintains a single canonical issue labeled `docs:stale`:
+## End-of-turn lint feedback
 
-- Opens the issue when stale docs exist and no issue is open
-- Edits the body in place when the list changes (one issue, not per-doc — keeps noise low)
-- Auto-closes when no docs are stale
-- Splits the body into "Architecture (PR-gated at 120 days)" and "Dev guides (informational)" so contributors understand which entries block PRs
+The editor catches `.bs` issues and pre-push catches the rest, but an agent would otherwise learn about a doc typo only at push time, after reporting done. [`check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs) runs on the same end-of-turn hooks:
 
-The combination: agent sees a soft prompt during work (#1), CI blocks at PR time if the stale-doc territory was touched (#2), weekly tracker keeps any unresolved staleness visible (#3).
+- It takes the working-tree changes (staged or not, and untracked files) through [`scripts/lib/changed-files.cjs`](../../scripts/lib/changed-files.cjs).
+- It runs the spellchecker and markdownlint on changed `.md` files, and jshint on changed `.json` files.
+- It prints failures so they land in the agent's next turn.
 
-## End-of-turn lint feedback for agents
-
-The IDE catches `.bs` issues live. The pre-push hook is the catch-all backstop. **Between** them, an agent working autonomously had no live feedback on lint categories the IDE doesn't cover (markdown, spelling, JSON, etc.) — so a typo in a doc edit would surface only at `git push` time, after the agent had already reported "done." The user, not the agent, ends up debugging.
-
-[`scripts/lint/check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs) closes this gap. It runs on the same `Stop` / `sessionEnd` hook as the architecture-doc reminder (sibling wrappers in [`.claude/hooks/check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) and [`.github/hooks/hooks.json`](../../.github/hooks/hooks.json)) and:
-
-- Computes the set of files the agent touched this session (committed + uncommitted + untracked, via the shared [`scripts/lib/changed-files.cjs`](../../scripts/lib/changed-files.cjs) helper)
-- Runs `spellchecker-cli` and `markdownlint-cli2` on changed `.md` files, and `jshint --extra-ext .json` on changed `.json` files
-- Surfaces failures to `stdout` so they land in the agent's next-turn context
-
-What it does *not* run: `lint:bs` / `validate` / `check-formatting` (IDE), `lint:docs` (the related-files reminder + CI gate already cover this), `lint:translations` / `lint:language-coverage` (niche; the pre-push hook still catches them).
-
-Non-blocking by design — same rationale as the doc-maintenance reminder. If the failure is a false positive (e.g., legitimate new technical vocabulary that needs to be added to `dictionary.txt`), the agent can fix it without being blocked from declaring done. The pre-push hook still rejects the push if the agent ignores the surfaced output.
+It skips what the editor covers (`lint:bs`, `validate`, formatting), `lint:docs` (the layers above cover it) and the translation checks (pre-push runs them). It never blocks.
 
 ## Agent telemetry
 
-`.claude/settings.json` registers a `PostToolUse` hook that fires after every Read / Grep / Glob / Edit / Write / `MultiEdit`. The hook script (`.claude/hooks/log-tool-use.sh`) appends a JSONL line to `~/.claude/jellyrock-telemetry/tool-use.jsonl` (per-USER, not per-worktree — so contributors with multiple jellyrock copies see a single combined picture without manual log consolidation). Override the location with `$JELLYROCK_TELEMETRY_DIR` if needed.
+`.claude/settings.json` registers a `PostToolUse` hook for Read, Grep, Glob, Edit, Write and `MultiEdit`. [`log-tool-use.sh`](../../.claude/hooks/log-tool-use.sh) appends a JSON line to `${XDG_STATE_HOME:-~/.local/state}/jellyrock/telemetry/tool-use.jsonl`, or `$JELLYROCK_TELEMETRY_DIR`. The report also reads the older `~/.claude/jellyrock-telemetry` log while it exists, for checkouts that still write there. The log is per user, so several checkouts feed one picture, and it is never committed. The hook never delays the tool, and without `jq` it does nothing.
 
-The hook is non-blocking: it runs after the tool, never delays the agent, and silences every error path so a missing `jq` (the only dep) just no-ops rather than failing the tool call.
+`npm run agent-telemetry` reports the most-read and most-edited files and the most common search patterns. Use it to decide where a scoped `CLAUDE.md` would pay off.
 
-`npm run agent-telemetry` reads the log and prints a report — top files read, top files edited, top grep / glob patterns, and a few "what to act on" hints. The intent is to drive evidence-based decisions about where to expand subdir CLAUDE.md coverage rather than guessing.
+## Editor setup
 
-The log file is per-developer (lives in `$HOME`; never committed). Aggregating across developers would require explicit opt-in plumbing; not currently in scope.
+The workspace targets VS Code. [`.vscode/extensions.json`](../../.vscode/extensions.json) recommends the extensions, and [`.vscode/settings.json`](../../.vscode/settings.json) configures them:
 
-## IDE integration
+- **BrighterScript:** `brightscript.projects` names the bsconfigs the language server checks live, `bsconfig.json` and `bsconfig-tests.json`. It shows diagnostics and never builds. It also completes `translationKeys.*` from the plugin's virtual file.
+- **Format on save:** `editor.formatOnSave` is on. Markdown formats with markdownlint, JS and JSON with Prettier (the tool and config pre-commit uses), XML with the Red Hat XML extension.
+- **Linting:** the ESLint and markdownlint extensions are recommended. Nothing in the editor checks spelling, translations or `lint:docs`; the hooks and CI do.
 
-JellyRock expects developers to use VS Code with the BrighterScript extension. With the extension installed:
-
-- **Real-time `.bs` validation** runs continuously — `npm run validate` and `npm run lint:bs` are redundant
-- **Diagnostics in the Problems panel** match what `bsc --noEmit` would report
-- **Auto-completion** works for `m.global.user.settings.<field>` (typed by the `JellyfinUserSettings` ContentNode) and for `translationKeys.<key>` (generated by the BSC plugin)
-- **Format on save** can be configured to run `bsfmt`
-- **The translation key plugin's fs.watch** ensures key constants are regenerated when `en_US.json` is edited, even though `BSC`'s normal `Program.setFile` doesn't trigger on JSON
-
-What the IDE does NOT cover universally:
-
-- **Markdown / spelling lint** — depends on the dev having the `markdownlint-cli2` and `spellchecker-cli` extensions installed. Many devs don't; we don't standardize.
-- **JSON lint, translation lint, language-coverage, docs:check** — no extension coverage at all; these run only via `npm run lint:*` or the pre-push hook.
-
-So the rule is: **don't run `npm run validate` or `npm run lint:bs` manually** (IDE has them covered). For everything else, the pre-push hook is the backstop; run `npm run lint:<name>` manually only when debugging a specific failure. CI runs the full lint + validate suite on every push.
-
-## Agent rules (from `CLAUDE.md`)
-
-- **Agents run tests** via `npm run test:tdd` / `test:unit` / `test:integration` / `test:all`. Credentials in `.env` (`ROKU_IP`, `ROKU_PASSWORD`); fall back to `VSCode`'s `brightscript.debug.*` settings. Honest reporting is required when hardware isn't available — a green build is not a green test run.
-- **Cannot modify `CHANGELOG.md`** — CI-controlled only.
-- **`.bs` validation is live in the IDE** (BSC + bslint via the BrighterScript extension); `npm run validate` and `npm run lint:bs` shouldn't be run manually. **Other lint scripts have no universal IDE coverage** (markdown / spelling rely on per-dev extensions; JSON / translations / language-coverage / docs have none) — the pre-push hook is the backstop. Don't run `npm run build:*` manually either; the IDE handles dev builds.
+When to run the npm checks by hand is in [`AGENTS.md`](../../AGENTS.md).
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for build / tooling entries.
+Tracked in [`tech-debt.md`](tech-debt.md). Search by `area` for build and tooling entries.

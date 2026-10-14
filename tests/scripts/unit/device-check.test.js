@@ -1,15 +1,17 @@
 /**
  * `npm run device:check`. See `scripts/device-check.js`.
  *
- * The behaviour under test is mostly about what the tool SAYS, which is unusual for a
- * probe — but the failure it exists to prevent is a false REPORT ("no device access") on a
+ * The behavior under test is mostly about what the tool SAYS, which is unusual for a
+ * probe. But the failure it exists to prevent is a false REPORT ("no device access") on a
  * machine with three Rokus answering, so the wording is the product and the probe is the
  * plumbing. The probes themselves are `fetchDeviceInfo` / `odcIsResident` and are tested
  * where they live; nothing is re-probed here.
  */
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
-import { hostsToCheck, report, verdict } from '../../../scripts/device-check.js';
+import { hostOrigin, hostsToCheck, report, verdict } from '../../../scripts/device-check.js';
 
 const up = (over = {}) => ({
   host: '192.0.2.10',
@@ -50,10 +52,46 @@ describe('which hosts get probed', () => {
   });
 
   it('treats an UNSET ROKU_DEVICES as absent, not as an empty declaration', () => {
-    // `parseDeviceList` refuses `''` on purpose — "set but names no device" is an operator
+    // `parseDeviceList` refuses `''` on purpose: "set but names no device" is an operator
     // error. Unset is a different state and has to fall through to ROKU_IP, not throw.
     expect(() => hostsToCheck([], { ROKU_IP: '192.0.2.10' })).not.toThrow();
     expect(hostsToCheck([], { ROKU_IP: '192.0.2.10' })).toEqual(['192.0.2.10']);
+  });
+});
+
+describe('where the host list came from', () => {
+  // Built with path.join so the expectations hold on any platform's separator.
+  const home = path.join(path.sep, 'home', 'dev');
+  const userFile = path.join(home, '.config', 'jellyrock', 'env');
+  const sources = { ROKU_DEVICES: userFile, ROKU_IP: 'environment' };
+  const sourceOf = (key) => sources[key];
+
+  it('names the command line when hosts were passed explicitly', () => {
+    expect(hostOrigin(['192.0.2.99'], { ROKU_DEVICES: '192.0.2.10' }, sourceOf, home)).toBe(
+      'the command line',
+    );
+  });
+
+  it('names the file ROKU_DEVICES came from, shortening the home directory', () => {
+    expect(hostOrigin([], { ROKU_DEVICES: '192.0.2.10' }, sourceOf, home)).toBe(
+      `ROKU_DEVICES in ~${userFile.slice(home.length)}`,
+    );
+  });
+
+  it('says so when ROKU_IP was already set in the environment', () => {
+    expect(hostOrigin([], { ROKU_IP: '192.0.2.10' }, sourceOf, home)).toBe(
+      'ROKU_IP, set in the environment',
+    );
+  });
+
+  it('says the environment when a value is set but no file mentions it', () => {
+    expect(hostOrigin([], { ROKU_IP: '192.0.2.10' }, () => undefined, home)).toBe(
+      'ROKU_IP, set in the environment',
+    );
+  });
+
+  it('falls back to the bare variable name when nothing sets it', () => {
+    expect(hostOrigin([], {}, () => undefined, home)).toBe('ROKU_IP');
   });
 });
 
@@ -79,7 +117,7 @@ describe('the verdict — the sentence the caller has to write afterwards', () =
 
   it('never lets ECP reachability imply a sideload will succeed', () => {
     // Dev mode off, or ROKU_PASSWORD belonging to a different device, still fails at
-    // deploy — reporting "reachable" and then failing to deploy is its own bad report.
+    // deploy. Reporting "reachable" and then failing to deploy is its own bad report.
     expect(verdict([up()])).toMatch(/does not prove a sideload will succeed/);
   });
 });
@@ -100,7 +138,7 @@ describe('the report', () => {
 
   it('does NOT read an absent ODC as a missing RTA build', () => {
     // The component lives inside the running channel, so port 9000 goes quiet when the app
-    // closes — a device still holding an RTA build reports absent. Telling the reader to
+    // closes: a device still holding an RTA build reports absent. Telling the reader to
     // redeploy would be wrong advice on a correctly-deployed device.
     const out = report([up({ odc: false })]).join('\n');
     expect(out).toMatch(/either no RTA build is resident, or the channel is simply closed/);

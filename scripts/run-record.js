@@ -1,21 +1,21 @@
 /**
- * The run record — what a device run leaves behind about itself.
+ * The run record: what a device run leaves behind about itself.
  *
  * Every entry point that claims the device (`rta-run`, `capture-screenshots`,
- * `demo`, `run-roku-tests`) opens with `beginRun` and closes with the `close()` on
- * the handle it returns. In between it may append failure records; the close folds
- * them in, appends the run to a ledger, and prints a summary.
+ * `demo`, `run-roku-tests`, `measure`) opens with `beginRun` and closes with the
+ * `close()` on the handle it returns. In between it may append failure records; the
+ * close folds them in, appends the run to a ledger, and prints a summary.
  *
  * `close()` carries the lock, run kind, origin and watch-mode flag from the open,
  * so no caller restates them. `beginRun` also arms a `process.on('exit')` net that
- * closes a run whose entry point never got to — three of the four hand their exit
- * to a signal handler ending in `process.exit()`, so the interrupt path cannot
+ * closes a run whose entry point never got to. Some entry points hand their exit
+ * to a signal handler ending in `process.exit()`, and that interrupt path cannot
  * fold itself. See `armCloseOnExit`.
  *
  * ## Why this is not in `tests/rta/lib/diagnostics.js`
  *
  * It started there, with the RTA failure capture. It does not belong there: the
- * Rooibos runner (`run-roku-tests.js`) wants the run window too — #800 went red on
+ * Rooibos runner (`run-roku-tests.js`) wants the run window too. #800 went red on
  * `SessionManagement.spec.bs` -> "connects to Jellyfin stable demo server", a
  * ROOIBOS test hitting the same fixture, and re-deriving that is the stated
  * prerequisite for the flake baseline. Importing an RTA test lib from it would
@@ -33,17 +33,17 @@
  * flake baseline reads them back.
  *
  * It also closes the standing "`run-roku-tests.js` is the Rooibos runner and
- * writes to a path named `rta/`" residual: it now writes `out/device/`.
+ * writes to a path named `rta/`" residual: it now writes under `device/`.
  *
  * ## The ledger
  *
  * `run-meta.json` is THIS run; `runs.jsonl` accumulates every run and is never
  * reset. The baseline aggregates N back-to-back suites, and without the ledger
  * that means "copy a file aside after each run, and lose the run if you forget
- * once" — deterministic bookkeeping done by a human N times over.
+ * once": deterministic bookkeeping done by a human N times over.
  *
- * It lives under `.device-runs/`, NOT `out/`, because every `build*` script starts
- * with `rimraf out/` — see `LEDGER_ROOT`.
+ * It lives under `.device-runs/`, not `out/`, because every `build*` script a
+ * device run uses starts with `rimraf build/ out/`. See `LEDGER_ROOT`.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -81,15 +81,14 @@ let activeRunDir;
  * Resolve this process's record directory.
  *
  * Three sources, in order. `beginRun` sets it for an entry point that owns its own
- * run. A spawned child gets it through `RTA_RUN_DIR` — a separate process cannot
+ * run. A spawned child gets it through `RTA_RUN_DIR`, since a separate process cannot
  * inherit module state from the parent. The `out/rta` default keeps a bare READ
  * honest for anything driving the harness without a run lifecycle at all.
  *
- * That default is deliberately asymmetric with `writeRunMeta`, which refuses one:
- * the only consumer that can reach here without a lifecycle is `diagnostics.js`,
- * which is RTA-only, so `out/rta` is that consumer's own directory rather than an
- * alias onto someone else's. `writeRunMeta` has four callers and no such guarantee,
- * and it OVERWRITES — a wrong guess there destroys a record instead of misfiling a
+ * That default is asymmetric with `writeRunMeta`, which refuses one: without a
+ * lifecycle, only a read reaches it (`runsLedgerPath` from a test, say), so a wrong
+ * guess here misfiles a read at worst. `writeRunMeta` writes for every entry point,
+ * and it overwrites: a wrong guess there destroys a record instead of misfiling a
  * read. Precedence is pinned by tests; do not add a default to the write side.
  */
 export function getRunDir() {
@@ -99,7 +98,7 @@ export function getRunDir() {
 let activeDeviceKey;
 
 /**
- * WHERE this run's own records live — outside `out/`, and scoped to the DEVICE.
+ * WHERE this run's own records live: outside `out/`, and scoped to the DEVICE.
  *
  * ## Why not `out/<kind>/`, which is where these used to be
  *
@@ -107,24 +106,24 @@ let activeDeviceKey;
  * preceding wipe costs nothing". That is true of ONE run at a time and false the
  * moment two overlap, which the locking model explicitly permits: the device lock
  * is keyed per DEVICE, so two runs from one checkout against two Rokus both acquire
- * cleanly — and then each one's `npm run build` opens with `rimraf out/` and deletes
+ * cleanly. Then each one's `npm run build` opens with `rimraf out/` and deletes
  * the OTHER's in-flight `failures.jsonl`, while both append to the same file in
  * between.
  *
- * Observed 2026-08-23, both arms in the ledger: a `.177` run (21:04→21:24) and a
- * `.178` run (21:18→21:37) overlapped; the `.178` run hit a real failure at 21:19,
+ * Observed 2026-08-23, both arms in the ledger: a `.177` run (21:04 to 21:24) and a
+ * `.178` run (21:18 to 21:37) overlapped; the `.178` run hit a real failure at 21:19,
  * the `.177` run closed first and folded that failure into ITS summary, and the run
  * that actually failed closed with `failures: []`. Net result was a `passed` ledger
- * row carrying someone else's failure and a failed run with no device dump at all —
+ * row carrying someone else's failure and a failed run with no device dump at all,
  * the exact artifact every `diagnosedError` call site exists to guarantee.
  *
  * So the per-run files move next to the ledger, which is already outside `out/` for
  * a version of this same reason, and gain a device segment. The LEDGER itself stays
- * one file per run kind (`ledgerPath` below is deliberately not device-scoped): an
+ * one file per run kind (`ledgerPath` below is not device-scoped, on purpose): an
  * N-run baseline reads across devices, and fragmenting it per device would make the
  * accumulator unreadable to answer the question it exists for.
  *
- * `RTA_DEVICE_KEY` is already carried to child processes — `beginRun` puts it there
+ * `RTA_DEVICE_KEY` is already carried to child processes: `beginRun` puts it there
  * so `sessionDeviceId` can keep two devices from authenticating as one client. That
  * is the same concurrency this fixes, one layer down, so the channel is reused
  * rather than duplicated. `shared` is the honest label when there is no key (the
@@ -138,10 +137,10 @@ function deviceScope() {
 let activeRecordDir;
 
 /**
- * The durable location for a run that OWNS its records — `beginRun` resolves this
+ * The durable location for a run that OWNS its records. `beginRun` resolves this
  * once and hands it to the handle and the child.
  *
- * Split out from `recordDir` deliberately. `recordDir` answers "where do MY records
+ * Split out from `recordDir` on purpose. `recordDir` answers "where do MY records
  * go", and for a process with no run that answer is "nowhere durable"; this answers
  * "where would a run's records go", which is a different question and the only one
  * `beginRun` is asking. Folding them cost a real bug in review: `beginRun` derived
@@ -167,7 +166,7 @@ function derivedRecordDir() {
 export function recordDir() {
   if (activeRecordDir) return activeRecordDir;
   if (process.env.RTA_RECORD_DIR) return process.env.RTA_RECORD_DIR;
-  // NO RUN CONTEXT — so there is nothing to record against, and the write goes
+  // NO RUN CONTEXT, so there is nothing to record against, and the write goes
   // somewhere throwaway rather than into the durable tree.
   //
   // Records belong to a RUN. `beginRun` sets the first branch and hands the second to
@@ -175,8 +174,8 @@ export function recordDir() {
   // Before the records moved out of `out/`, such a write was swept by the next
   // `npm run build` and nobody noticed. Moving them here removed that sweep without
   // replacing it, and it bit immediately: two intermediate states during the same
-  // session left 124 stray directories under `.device-runs/` — named after test
-  // tmpdirs, because the derivation reads `basename(getRunDir())` — which had to be
+  // session (2026-08-24) left 124 stray directories under `.device-runs/` (named after test
+  // tmpdirs, because the derivation reads `basename(getRunDir())`), which had to be
   // hand-cleaned. That is the whole justification; it is not a hypothetical.
   //
   // A throwaway path rather than a refusal, so read/write stay symmetric: a caller
@@ -184,20 +183,21 @@ export function recordDir() {
   return path.join(os.tmpdir(), 'jellyrock-records-no-run', String(process.pid));
 }
 
-/** This run's failure records — one JSON line each, appended by the process that hit them. */
+/** This run's failure records: one JSON line each, appended by the process that hit them. */
 export const failuresPath = () => path.join(recordDir(), 'failures.jsonl');
 const runMetaPath = () => path.join(recordDir(), 'run-meta.json');
 
 /**
- * Root for the ACCUMULATING record — deliberately NOT under `out/`.
+ * Root for the ACCUMULATING record, which is not under `out/`, on purpose.
  *
- * `out/` is the build output directory, and every one of the eight `build*` npm
- * scripts opens with `npx rimraf build/ out/`. Since `npm run test:rta` (and
+ * `out/` is the build output directory, and every `build*` npm script a device run
+ * uses opens with `npx rimraf build/ out/`. Since `npm run test:rta` (and
  * `screenshots:capture`, and `test:unit`) build first, a ledger under `out/` was
- * deleted immediately before each run that was supposed to append to it — so the
+ * deleted immediately before each run that was supposed to append to it, so the
  * documented N-run baseline would have ended with exactly ONE line. The per-run
- * files can live there safely: they are truncated at open anyway, so a preceding
- * wipe costs nothing. A file whose contract is "never reset" cannot.
+ * files were once kept there on the reasoning that they are truncated at open anyway;
+ * overlapping runs broke that, and they moved here too (see `deviceScope`). A file
+ * whose contract is "never reset" could never live there.
  */
 const LEDGER_ROOT = '.device-runs';
 
@@ -223,14 +223,14 @@ export const ledgerPath = (filename) =>
   path.join(LEDGER_ROOT, path.basename(getRunDir()), filename);
 
 /**
- * WHERE the measurement accumulator lives — pinned to the `measure` run kind rather than
+ * WHERE the measurement accumulator lives: pinned to the `measure` run kind rather than
  * to whichever kind the calling process happens to be.
  *
  * `ledgerPath` above reads `getRunDir()`, which is a property of the RUNNING PROCESS. That
  * is right for a run's own ledger and wrong for a shared accumulator, and the difference is
  * silent: `measure.js` calls `beginRun({run: 'measure'})` and lands in
- * `.device-runs/measure/`, while `measure-calibration.js` — which publishes the same kind
- * of record on a child's behalf and has no run of its own — landed in `.device-runs/rta/`.
+ * `.device-runs/measure/`, while `measure-calibration.js` (which publishes the same kind
+ * of record on a child's behalf and has no run of its own) landed in `.device-runs/rta/`.
  * Two published series went somewhere `measure:compare` does not read, under a summary
  * line naming the comparison to run next. Found by dogfooding the calibration 2026-08-17,
  * not by review.
@@ -244,7 +244,7 @@ export const measurementsLedgerPath = () =>
   path.join(LEDGER_ROOT, path.basename(runDir('measure')), 'measurements.jsonl');
 
 /**
- * Append one JSON line. Never throws — bookkeeping must not mask the thing it is
+ * Append one JSON line. Never throws: bookkeeping must not mask the thing it is
  * bookkeeping about.
  */
 export function appendJsonLine(file, entry) {
@@ -259,8 +259,8 @@ export function appendJsonLine(file, entry) {
 /**
  * Read JSON lines back. A truncated final line (a killed process) is skipped, not fatal.
  *
- * Exported for the accumulators that are NOT the run ledger — `measurements.jsonl` is
- * read by `measure-compare.js` — so a second reader does not grow a second parser with
+ * Exported for the accumulators that are not the run ledger (`measurements.jsonl` is
+ * read by `measure-compare.js`), so a second reader does not grow a second parser with
  * its own idea of what a half-written line means.
  */
 export function readJsonLines(file) {
@@ -308,7 +308,7 @@ export function readFailures(file = failuresPath()) {
 }
 
 /**
- * This run's ASSERTION records — how much each content assertion actually checked.
+ * This run's ASSERTION records: how much each content assertion actually checked.
  *
  * A separate stream from `failures.jsonl` because these are written by assertions
  * that PASSED, and folding them into a file named for failures would make both
@@ -318,14 +318,14 @@ export function readFailures(file = failuresPath()) {
  *
  * A content assertion's strength is invisible from its result. `assertGenreRowsOwnTheirItems`
  * verifies a subset relation over whatever the fixture happens to hold, so it can
- * check forty item-to-genre pairings or four and go green either way — and the day it
+ * check forty item-to-genre pairings or four and go green either way, and the day it
  * can check zero it goes red, having silently weakened for months first. That decay is
  * a shape this repo already expects: `tests/rta/CLAUDE.md` warns that "the demo library
  * is small and shrinks" and that an assertion keyed on content it never has "passes
- * vacuously forever and reads as coverage."
+ * forever while reading as coverage."
  *
  * Recording the count makes the weakening visible while it is still cheap to fix. It
- * is deliberately NOT an assertion or a threshold — a floor here would fail runs over
+ * is not an assertion or a threshold, on purpose: a floor here would fail runs over
  * fixture churn, which is the false-red this whole phase exists to remove. It is
  * provenance, in the same spirit as the measurement guard's tier 2: assert identity,
  * record everything else.
@@ -347,7 +347,7 @@ export function resetAssertions(file = assertionsPath()) {
 }
 
 /**
- * This run's RECOVERY records — a step the harness silently worked around.
+ * This run's RECOVERY records: a step the harness silently worked around.
  *
  * A third stream, and the split is the same one `assertionsPath` argues for: these
  * come from a step that SUCCEEDED, so folding them into a file named for failures
@@ -359,13 +359,13 @@ export function resetAssertions(file = assertionsPath()) {
  * `navLibraryByType` backs out and retries when the wrong library opens. That retry
  * makes the suite reliable and, by the same act, makes the underlying event
  * invisible: a green run is then indistinguishable from one where nothing went
- * wrong, so "does this ever fire, and how often" cannot be answered — which is the
+ * wrong, so "does this ever fire, and how often" cannot be answered. That is the
  * only question that decides whether the retry is a fix or a plaster over an app
  * bug. `tests/rta/CLAUDE.md` already states the principle for `focusOverhangIcon`
- * ("a silently recovered escape tells you nothing the next time").
+ * ("a silent recovery tells you nothing next time").
  *
  * A `console.warn` is not enough for that question and this repo has already said
- * so: `tests/rta/lib/registry.js` — "A `console.warn` dies with the scrollback".
+ * so in `tests/rta/lib/registry.js`: "A `console.warn` dies with the scrollback".
  * Answering "how often" needs accumulation ACROSS runs, which is what folding these
  * into the never-reset ledger buys; the summary line is what makes the operator
  * notice one at the time.
@@ -391,6 +391,106 @@ export function readRecoveries(file = recoveriesPath()) {
   return readJsonLines(file);
 }
 
+/**
+ * This run's RESOLUTION records: what a scene-rooted `#id` read actually resolved to.
+ *
+ * A fourth stream, on the split `assertionsPath` and `recoveriesPath` already argue for:
+ * these are written by reads that SUCCEEDED, so a file named for failures would make
+ * both harder to read, and they measure neither assertion strength nor a worked-around
+ * step.
+ *
+ * ## What this is for
+ *
+ * `getVal('#homeRows…')` is `scene.findNode("homeRows")`: a recursive search of the
+ * WHOLE scene, not of the screen the test is on. Two things can therefore go wrong
+ * without anything going red, and they are different defects:
+ *
+ *   (a) Duplicate: several nodes carry the id, so which one answers is a property of
+ *       tree order rather than of the test. `#buttons` is declared by several components.
+ *   (b) Not presented: exactly one node carries it and it is in a view that is hidden
+ *       behind the current one. Every route suspends with `suspendMode: "show"` and
+ *       `JRScene` hides the covered view, but it stays IN the tree, so the read succeeds
+ *       and describes a screen nobody is looking at.
+ *
+ * (b) is the one that has actually bitten: `waitHome()` passed from a library grid
+ * because a scene-rooted `#homeRows` read found a SUSPENDED Home, and the same mechanism
+ * ran across 30 more sites that named Home's row list by id (converted 2026-09-08; see
+ * `tests/rta/lib/home-list.js`). A uniqueness check alone would have passed both: there
+ * was only ever one `#homeRows`.
+ *
+ * Neither shows up in a result. A gate that reads the wrong node still goes green, which
+ * is the whole defect class: succeeding for a reason nobody chose.
+ *
+ * ## Why RECORDED rather than asserted, for now
+ *
+ * Provenance and not a threshold, on `assertionsPath`'s reasoning: this runs
+ * inside the wait path of the only per-PR feedback nav changes get, and a gate whose
+ * precision has never been measured must not be able to red a healthy suite. Record
+ * first, read what a full suite says, promote to a throw once the false-alarm rate is
+ * known to be zero. `instrumentation must never move a verdict`: the same rule
+ * `probeFixture` was built under.
+ */
+export const resolutionsPath = () => path.join(recordDir(), 'resolutions.jsonl');
+
+/** Append one resolution record. Same never-throws contract as `recordFailure`. */
+export function recordResolution(entry, file = resolutionsPath()) {
+  appendJsonLine(file, entry);
+}
+
+/** Drop the previous run's resolution records. */
+export function resetResolutions(file = resolutionsPath()) {
+  try {
+    fs.rmSync(file, { force: true });
+  } catch {
+    // Nothing to clear, or the directory does not exist yet.
+  }
+}
+
+/** Read back this run's resolution records. */
+export function readResolutions(file = resolutionsPath()) {
+  return readJsonLines(file);
+}
+
+/**
+ * Collapse resolution records into a summary the ledger can carry.
+ *
+ * `audited` is the COVERAGE number and is the first thing to read: an anomaly count of
+ * zero means nothing if the audit only ever ran twice. The two anomaly lists are keyed
+ * by call site (`label`) rather than summed, because "which read is wrong" is the
+ * actionable question and a count alone sends you looking for it by hand.
+ */
+export function foldResolutions(records) {
+  const ambiguous = new Map();
+  const notPresented = new Map();
+  let audited = 0;
+  // At least one worker hit `CENSUS_BUDGET` and stopped auditing, so `audited` is a FLOOR
+  // rather than the population. Carried onto the ledger line because the raw records it
+  // is derived from are reset by the next run (a fold may only ever see this run's), so
+  // a marker that lived only in the stream would answer the question for about as long as
+  // it took someone to run the suite again.
+  let truncated = false;
+  for (const r of records || []) {
+    if (!r) continue;
+    if (r.truncated) {
+      truncated = true;
+      continue;
+    }
+    if (typeof r.id !== 'string') continue;
+    audited++;
+    const at = `${r.label ?? r.keyPath} (#${r.id})`;
+    if (r.count > 1) ambiguous.set(at, { at, count: r.count, subtypes: r.subtypes });
+    if (r.presented === false) notPresented.set(at, { at, hiddenAt: r.hiddenAt });
+  }
+  return {
+    audited,
+    // Omitted when false, on the same grounds as the optional keys in `summarizeRun`: an
+    // ordinary line stays the shape it was, and older entries stay comparable.
+    ...(truncated ? { truncated: true } : {}),
+    ambiguous: [...ambiguous.values()],
+    notPresented: [...notPresented.values()],
+  };
+}
+
 /** Read back this run's assertion records. */
 export function readAssertions(file = assertionsPath()) {
   return readJsonLines(file);
@@ -411,7 +511,7 @@ export function foldAssertions(records) {
   return out;
 }
 
-/** Read back the run ledger — one entry per completed run. */
+/** Read back the run ledger: one entry per completed run. */
 export function readRuns(file = runsLedgerPath()) {
   return readJsonLines(file);
 }
@@ -446,14 +546,14 @@ export function runStartedAt() {
 }
 
 /**
- * True when the origin above belongs to a MANY-run window rather than one run —
+ * True when the origin above belongs to a MANY-run window rather than one run:
  * watch mode, where the record opens once at session start.
  *
- * Stamped by `beginRun` into the OPEN's record, deliberately, rather than passed
+ * Stamped by `beginRun` into the OPEN's record, on purpose, rather than passed
  * to a child through its own environment variable: the child already reads this
  * file for the origin, so this costs no second channel and no second parse. It
  * also means a watch session ABANDONED before its fold still has a record saying
- * what it was — the closed summary's `cumulative` only exists once `endRun` runs.
+ * what it was: the closed summary's `cumulative` only exists once `endRun` runs.
  */
 export function runIsCumulative() {
   return runMeta().cumulative === true;
@@ -463,7 +563,7 @@ export function runIsCumulative() {
  * The OPEN's selection keys, for a record that is not the run ledger.
  *
  * `runs.jsonl` gets these stamped into every line by `endRun`, but an accumulator
- * written by an entry point itself — a measurement series, say — would otherwise
+ * written by an entry point itself (a measurement series, say) would otherwise
  * have to be joined against the ledger on a timestamp to learn what code it ran.
  * A join is a second thing to get right, and the ledger's own history is a
  * catalogue of what happens when a selection key is missing: `variant` and
@@ -487,12 +587,22 @@ export function runProvenance() {
 }
 
 /**
+ * What the hourly reset does, worded once for every message that warns about it: the run
+ * summary below and each failure's message (tests/rta/lib/diagnostics.js). The advice is the
+ * point: a failure past the reset is the known fixture problem, so nobody should debug it.
+ */
+export const HOURLY_RESET_NOTE =
+  'the demo server resets then, wiping its user settings and watch history (favorites ' +
+  'included) and any state this run created through the app. A failure past the reset is ' +
+  'the known fixture problem, not the app: re-run it inside one hour before debugging it';
+
+/**
  * True when the top of an hour falls between two instants.
  *
  * The demo server resets at the top of every hour, changing its own content
  * (playlists have come and gone) and any state a run created through the app (a
- * watched toggle, a resume point). A ~13-minute suite (measured at 13.6 min)
- * starting after roughly `:46` therefore has that change land MID-RUN — which
+ * watched toggle, a resume point). A ~13-minute suite (measured at 13.6 min on 2026-08-11)
+ * starting after roughly 46 minutes past the hour therefore has that change land MID-RUN, which
  * surfaces as an unrelated-looking nav timeout, never as an obvious fixture error.
  *
  * Epoch-hour flooring is UTC, which is correct for a top-of-hour reset regardless
@@ -515,13 +625,13 @@ export function crossesHourBoundary(fromIso, toIso) {
  * for two classes MERGES it (a copy-pasted entry). The frozen object plus a
  * uniqueness assertion in the tests cover the second; `kindUnknown` covers the first.
  *
- * Add a member here BEFORE using it at a throw site — never an inline literal.
+ * Add a member here BEFORE using it at a throw site, never an inline literal.
  *
  * Lives in the ledger module rather than beside the RTA capture that first needed
  * it, because it has two producers with nothing else in common:
  * `tests/rta/lib/diagnostics.js` (device state at a wait's throw site) and
  * `tests/rta/lib/jellyfin.js` (a fixture request that failed). The latter is a pure
- * REST helper — reaching a registry inside `diagnostics.js` would import the whole
+ * REST helper: reaching a registry inside `diagnostics.js` would import the whole
  * device client into it. `diagnostics.js` re-exports these, so its own callers are
  * unaffected.
  */
@@ -530,41 +640,94 @@ export const FAILURE_KINDS = Object.freeze({
   WAIT_FOCUSED_TIMEOUT: 'wait-focused-timeout',
   HOME_LIBRARY_TILE_NOT_FOUND: 'home-library-tile-not-found',
   /**
+   * Home was the active routed view, and NEITHER of its candidate row lists
+   * (`HomeRows` / `FavoritesRows`) was in the scene to read.
+   *
+   * Its own slug rather than `wait-for-timeout` because the fix is different in kind: a
+   * wait timeout says a field never reached a value, whereas this says the node that
+   * field lives on is not there at all, so no amount of waiting on Home's content is
+   * the answer. It is also the failure that used to be INVISIBLE: a hardcoded
+   * `#homeRows.content.getChildCount()` resolved to `undefined` rather than throwing
+   * (measured 8 ms on `.177`, 2026-09-07), a caller's `|| 0` read that as an empty Home,
+   * and the run reported `home-library-tile-not-found`, blaming the tile.
+   */
+  HOME_LIST_ABSENT: 'home-list-absent',
+  /**
    * A library tile WAS found and pressed, and a different library's grid opened.
-   * Deliberately not folded into `home-library-tile-not-found`: the tile was located
+   * Not folded into `home-library-tile-not-found`, on purpose: the tile was located
    * fine, so the two have different causes and different fixes, and a shared slug
    * would merge them in the flake baseline this registry keys.
    */
   LIBRARY_OPENED_MISMATCH: 'library-opened-mismatch',
   GRID_LOAD_TIMEOUT: 'grid-load-timeout',
+  /**
+   * The grid finished loading and showed its failure state (`loadState = "failed"`): the app
+   * got no usable answer for the first page. Not a timeout: the app answered, promptly, that
+   * it could not load, so it keeps its own slug.
+   *
+   * Not in `BLOCKING_KINDS`, on purpose, although a flaky fixture server is one cause: an
+   * app that builds a query the server rejects (a 400 on every run) lands here too, and a
+   * blocking kind would file that regression as a dependency outage. The app's warning log
+   * line names the cause.
+   */
+  GRID_LOAD_FAILED: 'grid-load-failed',
+  /**
+   * The right library grid opened, and the tile pressed inside it produced a detail of
+   * the WRONG kind: a Movie while navigating the Shows library, say.
+   *
+   * Not folded into `library-opened-mismatch`, on that entry's own
+   * reasoning one level down: there the tile was located fine and the wrong GRID
+   * opened; here the grid's identity checked out and its CONTENT had not caught up, so
+   * the causes and the fixes differ and a shared slug would merge them in the flake
+   * baseline this registry keys. Observed on `.178` 2026-09-06, where a recovered
+   * tvshows nav opened a Movie detail and the failure surfaced ten seconds later as a
+   * confirm dialog that never appeared (a Movie's watched button toggles without one).
+   */
+  DETAIL_TYPE_MISMATCH: 'detail-type-mismatch',
   DETAIL_ROW_NOT_FOUND: 'detail-row-not-found',
+  /**
+   * A named button was never reachable in `ItemDetails`' action-button group.
+   * Its own slug rather than `wait-focused-timeout` because the two have
+   * different causes and different fixes: this one means the group did not
+   * CONTAIN the button (an absent feature, a permission, or a still-pending
+   * async mutation of the group), while a focus timeout means it was there and
+   * focus never landed on it. `button-row-model` in
+   * tech-debt.md is the standing reason the group's membership is not stable.
+   */
+  DETAIL_BUTTON_NOT_FOUND: 'detail-button-not-found',
   MEDIA_PLAYER_NOT_STARTED: 'media-player-not-started',
   /**
-   * A request to the fixture server did not answer usefully — a non-2xx, or a
-   * transport error. NOT an app failure, and the one kind that changes the run's
+   * A request to the fixture server did not answer usefully: a non-2xx, or a
+   * transport error. Not an app failure, and the one kind that changes the run's
    * OUTCOME rather than only describing it: see `RUN_OUTCOMES.BLOCKED`.
    */
   SERVER_REQUEST_FAILED: 'server-request-failed',
-  /** A batched device read did not come back as a batch — see `getActiveVals`. */
+  /** A batched device read did not come back as a batch. See `getActiveVals`. */
   BATCH_READ_FAILED: 'batch-read-failed',
   /** The Genres view never presented the rows an assertion needs to read. */
   GENRE_ROWS_NOT_READY: 'genre-rows-not-ready',
   /**
    * The Genres view presented rows, but not one item could be checked against the
-   * server. Distinct from `not-ready` because the structure DID arrive — and, since
+   * server. Distinct from `not-ready` because the structure DID arrive, and, since
    * `/Genres` only lists genres that exist in the library, a populated view whose
    * rows verify nothing is a real signal rather than a thin fixture.
    */
   GENRE_ROWS_UNVERIFIED: 'genre-rows-unverified',
+  /**
+   * A screen loaded and the router's `viewTarget` did not show exactly one view. Every
+   * route suspends with `"show"`, so only `JRScene`'s screen swap hides a covered view;
+   * a second view showing means the swap did not run for it. See `assertOneScreenShowing`.
+   */
+  SCREENS_STACKED: 'screens-stacked',
 });
 
 const KNOWN_KINDS = new Set(Object.values(FAILURE_KINDS));
 
-/** True for a slug that is not a registered member — see `FAILURE_KINDS`. */
+/** True for a slug that is not a registered member. See `FAILURE_KINDS`. */
 export const isUnknownKind = (kind) => !KNOWN_KINDS.has(kind);
 
 /**
- * The kinds that mean the run was never a fair test of the app — see
+ * The kinds that mean the run was never a fair test of the app. See
  * `RUN_OUTCOMES.BLOCKED`. Read by the entry point when it picks an outcome.
  */
 export const BLOCKING_KINDS = new Set([FAILURE_KINDS.SERVER_REQUEST_FAILED]);
@@ -575,18 +738,18 @@ export const wasBlocked = (failures) => (failures || []).some((f) => BLOCKING_KI
 /**
  * What became of a run, as distinct from what it DIAGNOSED.
  *
- * `failures` is the diagnostic record — the five RTA throw sites that capture
- * device state. It is not an outcome, and reading it as one conflates three
+ * `failures` is the diagnostic record: the RTA throw sites that capture device
+ * state. It is not an outcome, and reading it as one conflates three
  * different runs into the identical line `failures: []`:
  *
  *   1. the suite ran and passed;
  *   2. the suite ran and went red somewhere the diagnostics do not cover (a plain
- *      `expect()` — there are 11 in `tests/rta/specs/` — or a Vitest-level error);
+ *      `expect()` in `tests/rta/specs/`, or a Vitest-level error);
  *   3. the suite never ran at all.
  *
- * (3) is not hypothetical: `ROKU_IP=192.168.1.200 npm run test:rta` on 2026-08-12
+ * (3) is not hypothetical: `npm run test:rta` against the CI device on 2026-08-12
  * threw out of `deployRtaBuild()` on a 401 (that device's dev password is a CI
- * secret, not the one in `.env`) and appended `durationMs: 621, failures: []` —
+ * secret, not the one in `.env`) and appended `durationMs: 621, failures: []`,
  * a line indistinguishable from a clean pass, on a clean commit, and the FIRST
  * one ever to satisfy the documented baseline selection recipe.
  *
@@ -598,22 +761,22 @@ export const RUN_OUTCOMES = Object.freeze({
   PASSED: 'passed',
   FAILED: 'failed',
   INTERRUPTED: 'interrupted',
-  /** Nobody closed the run — the entry point died before it got there. */
+  /** Nobody closed the run: the entry point died before it got there. */
   CRASHED: 'crashed',
   /**
-   * The suite ran and went red, but a DEPENDENCY failed it — a request to the
+   * The suite ran and went red, but a DEPENDENCY failed it: a request to the
    * fixture server that never answered, or answered 401. The app was never on
    * trial, so the red says nothing about it.
    *
    * Distinct from `failed` because it is the difference between evidence and
    * noise, and the two are indistinguishable from the exit code alone: a 401
    * inside a helper surfaces as an ordinary assertion failure several frames
-   * away from its cause. On 2026-08-12 an evicted session produced exactly that
-   * — a red run whose visible failure was a content assertion, whose real cause
+   * away from its cause. On 2026-08-12 an evicted session produced exactly that:
+   * a red run whose visible failure was a content assertion, whose real cause
    * was a dead token, and which would have entered a flake baseline as an app
    * failure.
    *
-   * It OUTRANKS `failed` when a run has both, deliberately: a broken dependency
+   * It OUTRANKS `failed` when a run has both, on purpose: a broken dependency
    * is a plausible cause of whatever else went red in the same run, so the run
    * cannot be used as evidence either way. Both observed failures that day were
    * downstream of the same eviction.
@@ -622,18 +785,18 @@ export const RUN_OUTCOMES = Object.freeze({
 });
 
 /**
- * The outcomes are NOT peers — they partition into two kinds, and a rate computed
+ * The outcomes are not peers: they partition into two kinds, and a rate computed
  * without that split is wrong in both directions.
  *
  * A `passed` or `failed` run reached its verdict, so it is a SAMPLE: it belongs in
  * the population and in the numerator respectively. A `crashed`, `interrupted` or
- * `blocked` run never reached one — a deploy that 401'd, an operator's Ctrl-C, a
- * fixture server that stopped answering — so it is not evidence about the app either
+ * `blocked` run never reached one (a deploy that 401'd, an operator's Ctrl-C, a
+ * fixture server that stopped answering), so it is not evidence about the app either
  * way. Counting it red inflates the rate; counting it green hides a real failure; the
  * only correct move is to drop it from the population entirely.
  *
  * `blocked` is the subtlest member and the reason this set is worth its own export.
- * The other two non-samples are obvious from outside — no suite ran, or a human
+ * The other two non-samples are obvious from outside: no suite ran, or a human
  * stopped it. A blocked run looks EXACTLY like a red one: the suite ran, tests
  * failed, the exit code is non-zero. Only the recorded cause separates them, which
  * is why the dependency failure has to be written down at the moment it happens
@@ -642,10 +805,10 @@ export const RUN_OUTCOMES = Object.freeze({
  * Exported because the aggregation lives with the reader, not here, and the doc's
  * filter recipe and this module's own operator advice have to agree on it. They did
  * not on first cut: the recipe counted `outcome !== 'passed'` as a failure while the
- * summary told the operator to exclude a crashed run — the same shape of quiet
+ * summary told the operator to exclude a crashed run: the same shape of quiet
  * miscount as the `variant === 'test:rta'` trap the ledger keys exist to prevent.
  *
- * Deliberately NOT `Object.freeze`d, unlike `RUN_OUTCOMES` above: freezing a Set
+ * Not `Object.freeze`d, on purpose, unlike `RUN_OUTCOMES` above: freezing a Set
  * seals its own properties and does nothing to its CONTENTS (`Object.freeze(new
  * Set(['a'])).add('b')` succeeds), so the call would read as a guarantee it does not
  * make. The test that pins the membership is the actual guard.
@@ -654,13 +817,13 @@ export const SAMPLE_OUTCOMES = new Set([RUN_OUTCOMES.PASSED, RUN_OUTCOMES.FAILED
 
 /**
  * Every value `outcome` is allowed to take. An unrecognized one is RECORDED as it
- * was given and flagged — never coerced, never thrown on.
+ * was given and flagged: never coerced, never thrown on.
  *
  * Not thrown on because of WHERE the check runs: the close is what reports that a
  * run died, so a throw there would destroy the record it exists to write, on exactly
  * the runs whose record matters most. Not coerced because a guess is how a bad value
  * becomes invisible. Flagging follows `unknownKinds`, the same problem one field
- * over — an unregistered value that would quietly split a baseline's buckets.
+ * over: an unregistered value that would quietly split a baseline's buckets.
  *
  * It also degrades safely without any of that: an unknown value is not in
  * `SAMPLE_OUTCOMES`, so a typo drops the run from the population rather than
@@ -669,10 +832,31 @@ export const SAMPLE_OUTCOMES = new Set([RUN_OUTCOMES.PASSED, RUN_OUTCOMES.FAILED
 const KNOWN_OUTCOMES = new Set(Object.values(RUN_OUTCOMES));
 
 /**
+ * Fixture-health readings for the open run, kept in memory rather than in a `.jsonl`
+ * beside the other streams.
+ *
+ * Those exist because the vitest CHILD writes them and the parent folds them at close.
+ * These are taken by the parent itself, on either side of the child, so a file would be
+ * a second copy of state one process already holds. The cost is that the exit net cannot
+ * fold readings a crashed parent never handed over. That is acceptable for an
+ * instrument, and stated here so the asymmetry does not read as an oversight.
+ */
+let fixtureReadings = [];
+
+/** Record one fixture-health reading (see `scripts/lib/fixture-probe.js`). */
+export function recordFixtureReading(reading) {
+  if (reading) fixtureReadings.push(reading);
+}
+
+function resetFixtureReadings() {
+  fixtureReadings = [];
+}
+
+/**
  * The whole-run view: the wall-clock window, whether it straddled a reset, the
  * outcome, and the failures.
  *
- * `cumulative` marks a window spanning MANY logical runs rather than one — watch
+ * `cumulative` marks a window spanning MANY logical runs rather than one: watch
  * mode, where the reset happens once at session start and the fold once at exit.
  * The hour flag is meaningless there (any session over an hour trips it), and a
  * flag that always fires is one nobody reads, so the formatter drops it.
@@ -683,56 +867,94 @@ export function summarizeRun({
   failures = [],
   assertions = {},
   recoveries = [],
+  resolutions = { audited: 0, ambiguous: [], notPresented: [] },
+  fixture = [],
   run,
   what,
   variant,
+  runnerArgs = [],
   commit,
   dirty,
   deviceKey,
+  lockState = {},
   outcome,
   cumulative = false,
 }) {
   return {
     run,
     // What the lock holder called itself, when it says more than the run kind
-    // does. `demo` is the run kind for every take, so without this the LEDGER —
-    // the only record that survives the next run — cannot say which take a line
-    // came from. Omitted when it would just repeat `run`.
+    // does. `demo` is the run kind for every take, so without this the LEDGER
+    // (the only record that survives the next run) cannot say which take a line
+    // came from. Omitted when it would only repeat `run`.
     what: what && what !== run ? what : undefined,
     // The npm script that produced this run, the code it ran against, and the
     // DEVICE it drove. These four are what let a Phase-3 baseline SELECT its runs
-    // instead of being told to `rm` the ledger first — see `codeState` and the
+    // instead of being told to `rm` the ledger first. See `codeState` and the
     // docs' ledger section.
     //
-    // ALWAYS emitted, unlike `what` above, and that asymmetry is deliberate:
+    // Always emitted, unlike `what` above, and that asymmetry is deliberate:
     // `what` is prose for a human reading a line, but these are FILTER KEYS. A key
     // that is absent when it equals some default silently drops rows from
-    // `runs.filter(r => r.variant === 'test:rta')` — which is the same shape of
+    // `runs.filter(r => r.variant === 'test:rta')`, which is the same shape of
     // quiet miscount the ledger exists to prevent. `null` says "unknown"; missing
     // would say "you have to know the convention".
     variant: variant ?? null,
+    // WHAT THE RUN ACTUALLY RAN, which `variant` cannot say. `rta-run.js` forwards
+    // its own passthrough to Vitest, so `test:rta:fast -- -t "moviesLibraryGenres"`
+    // runs ONE test and, before this key, wrote a line identical in every other
+    // filter key to a full suite. Hit live on 2026-08-12: three targeted single-screen
+    // runs each appended a line `flake-baseline` would have counted as a clean sample,
+    // and only a moved `HEAD` excluded them, by accident rather than by design.
+    //
+    // The ARGS, verbatim, rather than a `scoped: true` we derive here. Vitest 4.1.10's
+    // scope-narrowing surface is eight things (positional filters, `-t`, `--dir`,
+    // `--shard`, `--changed`, `--exclude`, `--project`, `--tagsFilter`), and it MOVES
+    // between majors (`--tagsFilter` is new in v4; `--related` is gone). An allowlist
+    // here would be a list that silently stops matching, which is the exact failure
+    // this key exists to close. Recording what was typed has no version coupling, and
+    // leaves the policy with the reader that has to defend a number. See
+    // `flake-baseline.js`, which excludes on ANY arg for that reason.
+    //
+    // Always emitted as an array, on the same grounds as the four keys around it and
+    // not the "omitted when empty" rule `assertions` / `recoveries` /
+    // `fixture` follow: those are instruments reporting what they saw, this is a
+    // SELECTION key, and a selection key that vanishes at its default is how a row
+    // gets silently mis-selected. `[]` is a positive statement ("this run declared no
+    // filter"); ABSENT means a line written before this key existed.
+    //
+    // Operator-typed text landing in a never-reset file: `runs.jsonl` is gitignored
+    // and must stay that way, the same contract `tests/rta/lib/diagnostics.js` states
+    // for the identity fields it records.
+    runnerArgs,
     commit: commit ?? null,
     dirty: dirty ?? null,
     // WHICH Roku. There are three on this LAN and they are not interchangeable:
     // the flake baseline is specified on `.200` because it is quiet and gates a
     // release. Without this key a `.177` run joins a `.200` series and NOTHING in
-    // the line says so — `variant` and `commit` cannot separate them, because the
+    // the line says so: `variant` and `commit` cannot separate them, because the
     // whole point of a baseline is that they are identical across its runs. That
     // is the ledger's own failure mode, applied to the measurement it exists for.
     //
     // The lock's key, not an address: `sha256(device-id)` truncated, so it is
     // stable across a DHCP lease change (an address is not) and it is already what
     // both parties agree on. Null on the degraded lock path, which never resolves
-    // one — honest, and the run really is of unknown provenance there.
+    // one. That is honest: the run really is of unknown provenance there.
     deviceKey: deviceKey ?? null,
-    // The fifth filter key, and the only one that is about the run rather than the
-    // invocation. `null` when the entry point did not say — honest, and the same
+    // The lock state the run held, off `acquireDeviceLock`'s `meta`. `run-meta.json`
+    // is overwritten each run and no workflow uploads it, so this line is the only
+    // place a degraded (unlocked) green stays identifiable. `null` when the run had
+    // no lock meta: unknown, never a claim that a lock was held.
+    locked: lockState.locked ?? null,
+    mode: lockState.mode ?? null,
+    degraded: lockState.degraded ?? null,
+    // The sixth filter key, and the only one that is about the run rather than the
+    // invocation. `null` when the entry point did not say: honest, and the same
     // "missing would mean you have to know the convention" argument as the four
     // above. A baseline reads `outcome` over `SAMPLE_OUTCOMES`, never
-    // `!failures.length` — see that set for why the four values are not four peers.
+    // `!failures.length`. See that set for why the values are not peers.
     outcome: outcome ?? null,
-    // Recorded rather than corrected — see `KNOWN_OUTCOMES`. Omitted when false, so
-    // an ordinary line is unchanged, matching `cumulative` above.
+    // Recorded rather than corrected (see `KNOWN_OUTCOMES`). Omitted when false, so
+    // an ordinary line is unchanged, matching `cumulative` below.
     outcomeUnknown: (outcome != null && !KNOWN_OUTCOMES.has(outcome)) || undefined,
     startedAt,
     endedAt,
@@ -740,15 +962,26 @@ export function summarizeRun({
     durationMs: Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)) || 0,
     crossedHourBoundary: crossesHourBoundary(startedAt, endedAt),
     unknownKinds: [...new Set(failures.filter((f) => f?.kindUnknown).map((f) => f.kind))],
-    // How much each content assertion actually CHECKED — see `assertionsPath`.
+    // How much each content assertion actually CHECKED. See `assertionsPath`.
     // Omitted entirely when nothing recorded one, so an ordinary line is unchanged
     // and older ledger entries stay comparable.
     assertions: Object.keys(assertions).length ? assertions : undefined,
+    // How the FIXTURE SERVER was doing on either side of the run. Present so a red run
+    // against a sick server is readable as such instead of re-argued from memory: the
+    // third leg of "app vs. harness vs. fixture", which was the one with no instrument.
+    // Omitted when empty, on the same grounds as `assertions` above.
+    fixture: fixture.length ? fixture : undefined,
     // Steps the harness worked around. Omitted when empty, on the same grounds as
     // `assertions` above: an ordinary line stays unchanged and older ledger entries
     // stay comparable. Present, it is what makes "how often does the retry fire"
     // a read over the ledger rather than a question nobody can answer.
     recoveries: recoveries.length ? recoveries : undefined,
+    // What the suite's scene-rooted `#id` reads actually resolved to. See
+    // `resolutionsPath`. Omitted when the audit did not run (it is env-gated), on the
+    // same grounds as the three above: an ordinary line stays unchanged and older ledger
+    // entries stay comparable. `audited` is present whenever it DID run, including at
+    // zero anomalies, because a clean result is only readable next to its coverage.
+    resolutions: resolutions?.audited ? resolutions : undefined,
     failures,
   };
 }
@@ -760,39 +993,49 @@ const clock = (iso) => (Number.isFinite(Date.parse(iso)) ? iso.slice(11, 16) : '
  *
  * The `[…]` tag names the RUN KIND, not the RTA harness. This module is shared
  * with the Rooibos runner, so a hardcoded `[rta]` would print over `npm run
- * test:unit` — the same "writes under a path named for the other harness"
- * dishonesty the per-kind directory split removed, just in the output instead of
- * on disk. Derived from the record directory's own name so there is no second
+ * test:unit`: the same "writes under a path named for the other harness"
+ * dishonesty the per-kind directory split removed, only in the output instead of
+ * on disk. Derived from the run directory's own name so there is no second
  * mapping to keep in sync, exactly as `runsLedgerPath` does.
  */
 export function formatRunSummary(summary, file = failuresPath()) {
   const { failures = [], startedAt, endedAt, crossedHourBoundary, cumulative, outcome } = summary;
   const unknownKinds = summary.unknownKinds || [];
   const recoveries = summary.recoveries || [];
-  // Suppressed for a cumulative window — see `summarizeRun`.
+  const resolutions = summary.resolutions;
+  const resolutionAnomalies =
+    (resolutions?.ambiguous?.length ?? 0) + (resolutions?.notPresented?.length ?? 0);
+  // Suppressed for a cumulative window. See `summarizeRun`.
   const flagHour = crossedHourBoundary && !cumulative;
   // A run that died before it could run anything has no failures to report, which
   // is exactly why it printed NOTHING and slipped into the ledger unnoticed. Silence
   // is the right output for a clean run only.
   const flagOutcome = outcome && outcome !== RUN_OUTCOMES.PASSED;
   const flagUnknownOutcome = Boolean(summary.outcomeUnknown);
-  if (!failures.length && !flagHour && !unknownKinds.length && !flagOutcome && !recoveries.length)
+  if (
+    !failures.length &&
+    !flagHour &&
+    !unknownKinds.length &&
+    !flagOutcome &&
+    !recoveries.length &&
+    !resolutionAnomalies
+  )
     return [];
   const tag = `[${path.basename(runDir(summary.run))}]`;
   const window = `${clock(startedAt)}→${clock(endedAt)} UTC`;
   const lines = [];
   if (flagOutcome) {
-    // What the operator is told has to match the aggregation the docs prescribe —
-    // see SAMPLE_OUTCOMES. A `failed` run IS evidence and counts; a `crashed` or
+    // What the operator is told has to match the aggregation the docs prescribe.
+    // See SAMPLE_OUTCOMES. A `failed` run IS evidence and counts; a `crashed` or
     // `interrupted` one is not a sample at all and leaves the population.
     //
     // Each non-sample says HOW it failed to reach a verdict, and only what the
     // record can actually support. Two earlier cuts of this line overclaimed: "it
     // ran no suite" was true of the deploy 401 that motivated the field and false in
-    // general (`capture-screenshots` can die on locale 5 of 5, and `demos` runs no
-    // suite at all), and "its entry point never closed it" is true of `crashed` —
-    // which is DEFINED by the exit net firing — but false of `interrupted`, which
-    // only ever comes from an entry point closing deliberately on the abandon path.
+    // general (`capture-screenshots` can die on locale 5 of 5, and `demo` runs no
+    // suite at all), and "its entry point never closed it" is true of `crashed`
+    // (which is DEFINED by the exit net firing) but false of `interrupted`, which
+    // only ever comes from an entry point closing explicitly on the abandon path.
     // What both share, and all the shared clause may claim, is the missing verdict.
     //
     // `blocked` needs its own clause for the same reason and is the least obvious of
@@ -800,8 +1043,8 @@ export function formatRunSummary(summary, file = failuresPath()) {
     // both existing clauses are false of it. What it lacks is not an ending but a
     // fair trial, because a precondition underneath it did not hold.
     //
-    // The clause is deliberately stated at THAT level rather than as "a fixture
-    // request failed", which is how it was first written — true of the RTA suite,
+    // The clause is stated at THAT level, on purpose, rather than as "a fixture
+    // request failed", which is how it was first written: true of the RTA suite,
     // which was its only producer, and false the moment a second one arrived.
     // `measure.js` blocks a run when the app is not on the server the measurement
     // declared: nothing failed, and the old wording asserted a cause that had not
@@ -833,17 +1076,13 @@ export function formatRunSummary(summary, file = failuresPath()) {
     );
   }
   if (flagHour) {
-    lines.push(
-      `${tag} this run crossed the top of the hour (${window}) — the demo server resets then, ` +
-        'changing its own content and any state this run created through the app, so a ' +
-        'mid-run failure here may be the fixture, not the app.',
-    );
+    lines.push(`${tag} this run crossed the top of the hour (${window}): ${HOURLY_RESET_NOTE}.`);
   }
   if (recoveries.length) {
-    // Printed even on a PASSING run — that is the whole point. A recovery leaves no
+    // Printed even on a PASSING run, which is the whole point. A recovery leaves no
     // other trace at the time it happens: the step succeeded, the suite is green, and
     // without this line the operator's only signal is a ledger file nobody is prompted
-    // to open. It deliberately does not change the outcome; a run that recovered did
+    // to open. It does not change the outcome, on purpose; a run that recovered did
     // reach a verdict about the app, and reddening it would trade one wrong reading
     // for another.
     lines.push(
@@ -853,6 +1092,35 @@ export function formatRunSummary(summary, file = failuresPath()) {
     );
     for (const r of recoveries) {
       lines.push(`${tag}   ${clock(r.at)} ${r.what ?? r.kind ?? 'recovery'} — ${r.detail ?? ''}`);
+    }
+  }
+  if (resolutionAnomalies) {
+    // Printed on a PASSING run for the same reason a recovery is, and it is a sharper
+    // case: a read that resolved to the wrong node leaves no trace at all. The gate
+    // went green, so there is no failure, no retry, and nothing for the operator to
+    // notice. Report-only by design (see `resolutionsPath`), so it states what it saw
+    // and changes no verdict.
+    lines.push(
+      `${tag} ${resolutionAnomalies} scene-rooted read(s) did not resolve to what the ` +
+        `call site names, out of ${resolutions.audited}${resolutions.truncated ? '+' : ''} ` +
+        'audited. The suite is green either way — that is the defect, not the reassurance.',
+    );
+    if (resolutions.truncated) {
+      // Said out loud rather than left to the `+`: the number above is where the audit
+      // STOPPED, not the population, and a zero-anomaly result under a cap means nothing.
+      lines.push(
+        `${tag}   COVERAGE   at least one spec file hit RTA_AUDIT_BUDGET and stopped ` +
+          'auditing — the count above is a floor, not a total. Raise RTA_AUDIT_BUDGET to ' +
+          'audit the whole population.',
+      );
+    }
+    for (const a of resolutions.ambiguous ?? []) {
+      lines.push(
+        `${tag}   AMBIGUOUS  ${a.at} — ${a.count} nodes carry the id [${(a.subtypes ?? []).join(', ')}]`,
+      );
+    }
+    for (const n of resolutions.notPresented ?? []) {
+      lines.push(`${tag}   OFF-SCREEN ${n.at} — hidden at ${n.hiddenAt}`);
     }
   }
   if (failures.length) {
@@ -900,23 +1168,23 @@ export function formatRunSummary(summary, file = failuresPath()) {
  * than not, and a bare SHA on a modified tree asserts a reproducibility the run does
  * not have. So `dirty` rides with it, and a baseline that mixes the two can say so.
  *
- * `--porcelain` with its DEFAULT untracked handling, deliberately: an untracked
+ * `--porcelain` with its DEFAULT untracked handling, on purpose: an untracked
  * `.bs` under `source/` is compiled into the build like any other file, so ignoring
  * untracked files would report `dirty: false` for a run whose code HEAD does not
  * describe. Ignored paths are excluded by definition, so `out/` and `.device-runs/`
  * never trip it.
  *
- * Called from `beginRun`, never from `endRun` — the close runs inside a
+ * Called from `beginRun`, never from `endRun`: the close runs inside a
  * `process.on('exit')` handler, and spawning a subprocess from there is a far worse
- * idea than paying ~10 ms once at the top of a multi-minute device run.
+ * idea than paying for one git subprocess at the top of a multi-minute device run.
  *
  * Returns nulls rather than throwing: a checkout without git, or a tarball export,
  * is a fine place to run the device tests and a bad place to fail them over
  * bookkeeping.
  *
  * The timeout carries that same contract past the case try/catch cannot reach. git
- * can BLOCK rather than fail — a stale `index.lock`, a slow or networked working
- * tree — and a hang here stalls a device run at its open, before any output has
+ * can BLOCK rather than fail (a stale `index.lock`, a slow or networked working
+ * tree), and a hang here stalls a device run at its open, before any output has
  * explained what it is doing. `execFileSync` raises ETIMEDOUT, which the catch
  * below already degrades to nulls: the run continues without provenance instead of
  * waiting on bookkeeping.
@@ -950,11 +1218,19 @@ function codeState() {
  *
  * Returns `{ startedAt, dir, env, close }`. Pass `env` into a spawned child so it
  * writes its records where this run's fold will look for them, and call `close()`
- * to fold — it carries the lock, kind, origin, `cumulative` and the invocation
+ * to fold. It carries the lock, kind, origin, `cumulative` and the invocation
  * provenance this call already resolved, so no caller has to restate them and none
  * can restate them wrongly.
+ *
+ * `runnerArgs` is a PARAMETER rather than something this module derives, for the
+ * same reason `cumulative` is: only the caller knows. Every entry point that opens a
+ * run here gives `process.argv` a different meaning: `run-roku-tests.js`
+ * takes none at all (its scope is a BUILD choice, already separated by `variant`:
+ * `test:tdd` / `test:unit` / `test:all`), while `measure`, `capture-screenshots`
+ * and the demo runner parse their OWN options, which narrow nothing about a test
+ * suite. Reading argv here would record all three as though they had.
  */
-export function beginRun({ lock, run, cumulative = false }) {
+export function beginRun({ lock, run, cumulative = false, runnerArgs = [] }) {
   activeRunDir = runDir(run);
   // Resolved here rather than read from the environment inside `recordDir`, for the
   // same reason `activeRunDir` is: this process OWNS the run, and the lock already
@@ -968,10 +1244,10 @@ export function beginRun({ lock, run, cumulative = false }) {
   closedSummary = undefined; // ...and a close that has not happened yet
   // Written BEFORE the work so it survives a run that never reaches `endRun`.
   const startedAt = new Date().toISOString();
-  // Which npm script this was. Every device entry point is invoked as `node
-  // scripts/<x>.js` DIRECTLY from its npm script (none delegates through another
-  // `npm run`), so this arrives as the name the operator actually typed —
-  // `test:rta:fast` rather than `test:rta`, `test:integration` rather than the run
+  // Which npm script this was. Every device entry point is invoked by `node`
+  // DIRECTLY from its npm script (none delegates through another `npm run`), so
+  // this arrives as the name the operator actually typed: `test:rta:fast` rather
+  // than `test:rta`, `test:integration` rather than the run
   // kind they share. That distinction is invisible in the run kind and matters to a
   // baseline: `:fast` skips the deploy, `:capture` adds per-screen PNG work, and
   // `test:all` is a different suite from `test:unit`. Falls back to the run kind
@@ -979,7 +1255,7 @@ export function beginRun({ lock, run, cumulative = false }) {
   const variant = process.env.npm_lifecycle_event || run;
   const { commit, dirty } = codeState();
   // `cumulative` is stamped at the OPEN, not only into the closed summary, because
-  // a spawned child needs it WHILE the run is in flight — it is what tells the
+  // a spawned child needs it WHILE the run is in flight: it is what tells the
   // child its origin is a session's rather than an iteration's. Omitted when false,
   // matching `summarizeRun`, so an ordinary run's record is unchanged.
   writeRunMeta(
@@ -991,7 +1267,7 @@ export function beginRun({ lock, run, cumulative = false }) {
   // the run.
   //
   // `run-meta.json` USED TO live under `out/`, and `measure --deploy` spawns `npm run
-  // build` AFTER this point — which opens with `rimraf build/ out/` and took the file
+  // build` AFTER this point, which opens with `rimraf build/ out/` and took the file
   // with it. It now lives beside the ledger (see `recordDir`), so that particular
   // delete can no longer reach it; the cache is kept anyway, because it is also what
   // makes every later read free and because `out/` is not the only way a directory
@@ -1001,7 +1277,7 @@ export function beginRun({ lock, run, cumulative = false }) {
   // deviceKey and no startedAt: exactly the attribution the ledger exists to carry. It
   // also silently disabled `crossedHourBoundary`, which is derived from that startedAt.
   //
-  // Measured rather than reasoned: on an independent 163-record ledger, 33 of 34 series
+  // Measured on 2026-08-19 rather than reasoned: on an independent 163-record ledger, 33 of 34 series
   // with `deployedFromCheckout: true` carried a null commit, against 1 of 127 for the
   // rest.
   //
@@ -1009,21 +1285,24 @@ export function beginRun({ lock, run, cumulative = false }) {
   // no second definition of the record to drift from `writeRunMeta`'s merge of
   // `lock.meta`. The file stays the source of truth for every OTHER process.
   //
-  // Note the header's rule already covers this hazard for the LEDGER ("it lives under
-  // `.device-runs/`, NOT `out/`, because every `build*` script starts with `rimraf out/`").
-  // `run-meta.json` is the one file that stayed behind; caching is what makes it safe.
+  // The header's rule already covers this hazard for the LEDGER ("It lives under
+  // `.device-runs/`, not `out/`, because every `build*` script a device run uses starts
+  // with `rimraf build/ out/`"). `run-meta.json` stayed behind under `out/` until the
+  // per-run files moved too (see `deviceScope`); caching is what made it safe until then.
   runMeta();
   resetFailures();
   // Same contract as the failure records: a fold may only ever see THIS run's.
   resetAssertions();
   resetRecoveries();
+  resetResolutions();
+  resetFixtureReadings();
   // Closed over rather than re-read at close time, so a handle always folds the run
   // it was handed. Note the LIMIT of that: `activeRunDir` and the `closedSummary`
-  // guard below are module state, so this makes a handle carry the right VALUES —
+  // guard below are module state, so this makes a handle carry the right VALUES, but
   // it does not make two concurrently-open runs safe in one process. Nothing does
-  // that today, and no entry point opens more than one; if a fifth ever needs to,
+  // that today, and no entry point opens more than one; if one ever needs to,
   // this state moves onto the handle.
-  const args = { lock, run, startedAt, cumulative, variant, commit, dirty };
+  const args = { lock, run, startedAt, cumulative, variant, runnerArgs, commit, dirty };
   closeArgs = args;
   armCloseOnExit();
   return {
@@ -1031,14 +1310,14 @@ export function beginRun({ lock, run, cumulative = false }) {
     dir: activeRunDir,
     // WHERE this run's records went. Exposed rather than left to be re-derived: the
     // handle already carries `dir`, and a caller that reached for it to find
-    // `run-meta.json` would now be quietly wrong — see `recordDir`.
+    // `run-meta.json` would now be quietly wrong. See `recordDir`.
     recordDir: activeRecordDir,
     // `RTA_DEVICE_KEY` rides along because the CHILD needs the device's identity and
     // cannot cheaply resolve it: the key comes from an ECP lookup the lock already
     // paid for, in this process. `tests/rta/lib/jellyfin.js` folds it into the
     // DeviceId every session is minted under, so two devices driven at once cannot
     // authenticate as the same client and log each other out. Omitted rather than
-    // `null` on the degraded path — `sessionDeviceId` then falls back to a hash of
+    // `null` on the degraded path: `sessionDeviceId` then falls back to a hash of
     // `ROKU_IP`, and an absent var picks that up where the string "null" would not.
     env: {
       RTA_RUN_DIR: activeRunDir,
@@ -1061,18 +1340,18 @@ let netArmed = false;
 /**
  * The safety net that closes a run nobody closed.
  *
- * Three of the four entry points hand their exit to a signal handler ending in
- * `process.exit()` — `armRestoreOnInterrupt`'s among them — so an explicit
- * `endRun` on the happy path alone skips the fold on exactly the interrupt a
- * ~15-minute matrix run is most likely to end with. Registering here rather than
- * in each entry point is what keeps that true for a FIFTH entry point added later.
+ * The entry points hand their exit to signal handlers ending in `process.exit()`
+ * (`armRestoreOnInterrupt`'s among them), so an explicit `endRun` on the happy path
+ * alone skips the fold on exactly the interrupt a long matrix run is most
+ * likely to end with. Registering here rather than in each entry point is what
+ * keeps that true for an entry point added later.
  *
  * Legal because `endRun` is all-synchronous (`readFileSync` / `writeFileSync` /
  * `appendFileSync` / `console.log`); an `exit` handler cannot await. `process.exit()`
  * always emits `exit`, and every entry point installs signal listeners, so the
  * default terminate-without-exit path never applies.
  *
- * The explicit `endRun` calls stay where OUTPUT ORDER matters — `rta-run` folds
+ * The explicit `endRun` calls stay where OUTPUT ORDER matters: `rta-run` folds
  * before the registry restore so the summary survives a restore that throws. This
  * net only fires when one did not run.
  */
@@ -1092,7 +1371,7 @@ function armCloseOnExit() {
  * Close a run: fold the failure records in, append the run to the ledger, print.
  *
  * IDEMPOTENT. The exit net above may call this after an entry point already has,
- * and a second fold would append a second ledger line for one run — which is
+ * and a second fold would append a second ledger line for one run, which is
  * precisely the miscount an N-run baseline cannot absorb.
  */
 export function endRun({
@@ -1101,6 +1380,7 @@ export function endRun({
   startedAt,
   cumulative = false,
   variant,
+  runnerArgs = [],
   commit,
   dirty,
   outcome,
@@ -1111,14 +1391,24 @@ export function endRun({
     outcome,
     what: lock?.meta?.holder?.what,
     // Read off the lock here rather than carried from the open, like `what` above
-    // and unlike the three below: it is already resolved on `lock.meta` by the time
+    // and unlike the values below: it is already resolved on `lock.meta` by the time
     // the lock exists, so carrying it would duplicate state for no gain and add a
     // way for the two copies to disagree.
     deviceKey: lock?.meta?.deviceKey,
+    lockState: {
+      locked: lock?.meta?.locked,
+      mode: lock?.meta?.mode,
+      degraded: lock?.meta?.degraded,
+    },
     // Resolved at the OPEN and carried here, so the exit net folds the same
-    // provenance an explicit close would — and so no git subprocess runs on the
+    // provenance an explicit close would, and so no git subprocess runs on the
     // exit path. See `codeState`.
     variant,
+    // Carried from the OPEN alongside `variant` / `commit` / `dirty`, not re-read from
+    // `process.argv`:
+    // the exit net folds from inside a `process.on('exit')` handler, and an entry
+    // point's argv is not the same question as what it forwarded to a test runner.
+    runnerArgs,
     commit,
     dirty,
     startedAt,
@@ -1126,6 +1416,8 @@ export function endRun({
     failures: readFailures(),
     assertions: foldAssertions(readAssertions()),
     recoveries: readRecoveries(),
+    resolutions: foldResolutions(readResolutions()),
+    fixture: fixtureReadings,
     cumulative,
   });
   closedSummary = summary;

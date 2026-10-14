@@ -11,6 +11,7 @@ When you change a tool (a skill definition, a script, a rule, a settings/config 
 - **Revised a skill:** the next action it would handle gets the skill invocation, not a manual equivalent. Revised the skill that opens a PR? The next PR goes through the skill, not a hand-assembled one.
 - **Added or revised a script:** the next time you'd run something it handles, run the script — even if it's slower than typing the manual sequence.
 - **Revised a hook** (e.g. session-start, pre-commit): trigger its event to exercise the new shape. If you can't trigger it naturally, force a synthetic invocation (start a new session, make a trivial commit) to verify it fires and behaves.
+- **Dogfood on the class the change was built for.** A run on inputs the change never touches proves nothing about it.
 - **Exception — destructive/irreversible operations:** if the dogfood would commit to an irreversible action (delete data, push to production, send external messages), keep the safety gates AND dogfood in a non-production scope first (a throwaway copy, a staging service, a dry-run flag). Redirect it to a safe target; don't skip it.
 - **Exception — unavailable dependencies:** if the tool needs something the environment can't satisfy (a service that's down, hardware elsewhere), defer with an explicit tracked followup — never silently skip and claim the change works.
 

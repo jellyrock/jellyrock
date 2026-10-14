@@ -1,0 +1,37 @@
+import "pkg:/source/enums/BufferCheckAction.bs"
+import "pkg:/source/utils/bufferStall.bs"
+
+namespace tests
+
+  @suite("bufferStall.bs")
+  class BufferStallTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("classifyBufferCheck()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps waiting while buffering gains, live or not")
+    function _()
+      m.assertEqual(classifyBufferCheck(33, 26, false), BufferCheckAction.PROGRESS)
+      m.assertEqual(classifyBufferCheck(1, 0, true), BufferCheckAction.PROGRESS)
+    end function
+
+    @it("hands a stalled Live TV channel to the host's restart rule")
+    function _()
+      m.assertEqual(classifyBufferCheck(33, 33, true), BufferCheckAction.LIVE_STALLED)
+    end function
+
+    @it("treats buffering that never started as a stall")
+    function _()
+      m.assertEqual(classifyBufferCheck(0, 0, true), BufferCheckAction.LIVE_STALLED)
+      m.assertEqual(classifyBufferCheck(0, 0, false), BufferCheckAction.STALLED)
+    end function
+
+    @it("shows the error for a stall that is not Live TV")
+    function _()
+      m.assertEqual(classifyBufferCheck(33, 33, false), BufferCheckAction.STALLED)
+    end function
+
+  end class
+
+end namespace

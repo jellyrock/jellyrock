@@ -1,4 +1,4 @@
-// scripts/lint/ci-parity-check.js — reconciles the `npm run lint` aggregate
+// scripts/lint/ci-parity-check.js: reconciles the `npm run lint` aggregate
 // against what CI actually runs.
 //
 // WHY THIS EXISTS
@@ -27,45 +27,73 @@
 //
 // This is the same failure `validate-deps-workflow-sync.cjs` guards one level
 // down ("if a new reusable is added without a matching entry here, dep bumps
-// that break it will silently land green") — applied to the layer above it.
+// that break it will silently land green"), applied to the layer above it.
 //
 // WHAT IT CHECKS
 // --------------
 // Expands `npm run lint` recursively to its leaf scripts, then asserts each
-// leaf is invoked by some workflow under .github/workflows/ — either as
+// leaf is invoked by some workflow under .github/workflows/, either as
 // `npm run <name>` or, for node-based scripts, as a direct `node scripts/...`
 // call (several workflows invoke the script path rather than the npm alias).
 // Comment lines are stripped first, so a mention of a check never counts as a
-// run of it — see executableText() below.
+// run of it (see executableText() below).
 //
-// SCOPE — what this does NOT prove
+// A second, indirect CI home is recognised: a Vitest repo-drift-gate test that
+// shells the real check against the real repo, run in CI by `npm run
+// test:scripts`. That is how the two asset generators gate (see
+// COVERED_BY_TEST below). It is verified, not trusted.
+//
+// SCOPE: what this does not prove
 // --------------------------------
-//   - That the hosting workflow's `paths` filter matches the files the check
-//     reads. A too-narrow filter passes here and never fires on the PR that
-//     needed it. Tracked as `ci-path-filters-unverified` in tech-debt.md.
+//   - That the hosting workflow's path filter (its `changed-paths` regex) matches
+//     the files the check reads. A too-narrow filter passes here and never
+//     fires on the PR that needed it. Tracked as `ci-path-filters-unverified` in tech-debt.md.
+//   - For a COVERED_BY_TEST entry: that the cited test asserts against the REAL
+//     repo rather than a temp fixture. It proves the test invokes the script in
+//     --check mode and that CI runs the suite; the assertion's target is the
+//     same unverifiable step as a workflow's path filter, above.
 //   - That the hosting workflow's status-check context is a REQUIRED check on
 //     main. A check in a non-required context runs but does not block a merge.
 //     Branch protection lives outside the repo and needs admin scope to read,
-//     so it can't be gated here — the invariant is documented in
-//     build-and-tooling.md's "adding a new reusable workflow" note instead.
+//     so it can't be gated here. The invariant is documented in the "Dependency
+//     updates" section of build-and-tooling.md instead.
 //
 // Deliberate local-only entries live in LOCAL_ONLY below, each with a REASON.
 // An allowlist entry is a decision on the record, not a silent exemption.
 //
-// Only Node stdlib — no npm ci needed.
+// Only Node stdlib, so no npm ci needed.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// Aggregate members deliberately NOT run in CI. Key = npm script name,
-// value = why. Anything not listed here MUST have a CI home.
+// Aggregate members kept out of CI on purpose. Key = npm script name,
+// value = why. Anything not listed here needs a CI home.
 export const LOCAL_ONLY = {
   'lint:bs':
     'bslint is declared as a BSC plugin in bsconfig.json, and CI runs `npm run validate` ' +
     "(`bsc --noEmit`) with that config — so bslint's diagnostics DO gate in CI, via validate. " +
     'The standalone `bslint` CLI in the aggregate is redundancy, not a gap.',
 };
+
+// Aggregate members whose CI home is a Vitest repo-drift-gate test rather than a
+// workflow `run:` line. Key = npm script name, value = the test file that gates
+// it. These DO block a merge (`_test-scripts.yml`'s job id is `vitest`, and
+// `vitest / vitest` is a required context on main), so they are not exemptions
+// and must not be listed in LOCAL_ONLY.
+//
+// The indirection is verified on every run: the cited test must exist, must
+// invoke the leaf's script path in --check mode, and `test:scripts` must itself
+// have a workflow home. Rename the test, delete its drift gate, or unwire
+// test:scripts, and the leaf goes back to being reported MISSING.
+export const COVERED_BY_TEST = {
+  'icons:check': 'tests/scripts/unit/generate/icons-build.test.js',
+  'gradients:check': 'tests/scripts/unit/generate/gradient-assets.test.js',
+};
+
+// The npm script that runs the COVERED_BY_TEST suites in CI. If this loses its
+// own workflow home, every entry above loses its coverage with it.
+const TEST_RUNNER = 'test:scripts';
 
 const WORKFLOW_DIR = '.github/workflows';
 const AGGREGATE = 'lint';
@@ -104,32 +132,57 @@ function scriptPathOf(cmd) {
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// Workflow text with comment lines removed — a MENTION of a check must never
+// Workflow text with comment lines removed: a MENTION of a check must never
 // count as a RUN of it. That distinction is the whole point: the bug this
 // script was written to catch was `npm run lint` appearing in .github/workflows/
 // exactly once, inside a comment. Dropping `#` lines is correct in both
-// contexts a match can occur — at step level it is a YAML comment, and inside a
+// contexts a match can occur: at step level it is a YAML comment, and inside a
 // `run: |` block it is a shell comment. Neither executes.
 //
-// Deliberately line-based rather than YAML-parsed: _lint-docs.yml runs this
-// script with no `npm ci` step, so it must stay Node-stdlib-only (no js-yaml).
+// Line-based rather than YAML-parsed on purpose, so the script stays
+// Node-stdlib-only (no js-yaml) and runs without `npm ci`.
 // Line-based also survives multi-line `run: |` blocks, which this repo uses
-// heavily — a stricter "only lines carrying a run: key" filter would silently
+// heavily; a stricter "only lines carrying a run: key" filter would silently
 // report a false MISSING for any check invoked inside a block scalar.
-function executableText(workflows) {
-  return workflows
+function executableText(files, commentRe = /^\s*#/) {
+  return files
     .flatMap((w) => w.text.split('\n'))
-    .filter((line) => !/^\s*#/.test(line))
+    .filter((line) => !commentRe.test(line))
     .join('\n');
 }
+
+// Same rule one language over: a JS line comment naming a script must not count
+// as running it. Every test file in this repo opens with a `// Tests for
+// scripts/<path>` header, so without this each one would vacuously "cover" its
+// own subject even after its drift gate was deleted. Line-based for the same
+// reason as the workflow pass; block comments are not used for this in tests/.
+const executableTestText = (tests) => executableText(tests, /^\s*\/\//);
 
 /**
  * @param {{scripts: object, workflows: {name: string, text: string}[]}} input
  * @returns {{missing: object[], staleAllowlist: string[]}}
  */
-export function check({ scripts, workflows }) {
+export function check({ scripts, workflows, tests = [] }) {
   const leaves = expandAggregate(scripts);
   const blob = executableText(workflows);
+  const testBlobs = new Map(tests.map((t) => [t.name, executableTestText([t])]));
+
+  // The whole indirection hangs off the test runner having a workflow home of
+  // its own. Resolved once, here, rather than per entry.
+  const runnerInCi = new RegExp(`npm run ${TEST_RUNNER}(?![\\w:-])`).test(blob);
+
+  // A leaf gated by a Vitest drift-gate test instead of a workflow step.
+  const coveredByTest = (leaf) => {
+    const testFile = COVERED_BY_TEST[leaf.name];
+    if (!testFile || !runnerInCi) return false;
+    const text = testBlobs.get(testFile);
+    if (text === undefined) return false; // cited test renamed or deleted
+    const p = scriptPathOf(leaf.cmd);
+    // Must invoke the script AND do it in --check mode: a test that only spawns
+    // the generator against a temp fixture gates nothing about the committed
+    // assets, which is the property this entry claims.
+    return p ? new RegExp(escapeRe(p)).test(text) && /--check/.test(text) : false;
+  };
 
   const covers = (leaf) => {
     // Trailing guard so `lint:docs` isn't satisfied by a `lint:docs-extra` step.
@@ -140,7 +193,8 @@ export function check({ scripts, workflows }) {
     // name script paths inside their hand-authored `paths` filters; one written
     // with an unescaped dot (`docs-check.cjs` rather than `docs-check\.cjs`)
     // would otherwise satisfy its own coverage requirement.
-    return p ? new RegExp(`node\\s+${escapeRe(p)}`).test(blob) : false;
+    if (p && new RegExp(`node\\s+${escapeRe(p)}`).test(blob)) return true;
+    return coveredByTest(leaf);
   };
 
   const missing = leaves
@@ -148,13 +202,17 @@ export function check({ scripts, workflows }) {
     .map((leaf) => ({ name: leaf.name, cmd: leaf.cmd }));
 
   // An allowlist entry for a script that IS now in CI (or no longer in the
-  // aggregate) is stale — drop it so the list stays a real decision record.
+  // aggregate) is stale: drop it so the list stays a real decision record.
   const leafNames = new Set(leaves.map((l) => l.name));
   const staleAllowlist = Object.keys(LOCAL_ONLY).filter(
     (n) => !leafNames.has(n) || covers(leaves.find((l) => l.name === n)),
   );
 
-  return { missing, staleAllowlist };
+  // Same rot, one map over: an entry claiming a test gates a check that is no
+  // longer in the aggregate is a stale claim, not a harmless leftover.
+  const staleTestCoverage = Object.keys(COVERED_BY_TEST).filter((n) => !leafNames.has(n));
+
+  return { missing, staleAllowlist, staleTestCoverage };
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────────
@@ -164,19 +222,36 @@ function main() {
   const rootIdx = argv.indexOf('--root');
   const rootDir = rootIdx >= 0 ? argv[rootIdx + 1] : '.';
 
-  let scripts, workflows;
+  let scripts, workflows, tests;
   try {
     scripts = JSON.parse(readFileSync(path.join(rootDir, 'package.json'), 'utf8')).scripts ?? {};
     const dir = path.join(rootDir, WORKFLOW_DIR);
     workflows = readdirSync(dir)
       .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
       .map((f) => ({ name: f, text: readFileSync(path.join(dir, f), 'utf8') }));
+    // Only the files COVERED_BY_TEST actually names: reading the whole suite
+    // would cost more and prove nothing extra.
+    tests = [...new Set(Object.values(COVERED_BY_TEST))].flatMap((rel) => {
+      try {
+        return [{ name: rel, text: readFileSync(path.join(rootDir, rel), 'utf8') }];
+      } catch {
+        return []; // absent, so check() reports the leaf MISSING like any other
+      }
+    });
   } catch (err) {
     console.error(`ci-parity: ${err.message}`);
     process.exit(2);
   }
 
-  const { missing, staleAllowlist } = check({ scripts, workflows });
+  const { missing, staleAllowlist, staleTestCoverage } = check({ scripts, workflows, tests });
+
+  if (staleTestCoverage.length > 0) {
+    console.error(
+      'ci-parity: COVERED_BY_TEST has stale entries (no longer in the `npm run lint` aggregate):',
+    );
+    for (const n of staleTestCoverage) console.error(`  - ${n}`);
+    process.exit(1);
+  }
 
   if (staleAllowlist.length > 0) {
     console.error(
@@ -197,7 +272,9 @@ function main() {
         `reusable workflows under ${WORKFLOW_DIR}/. A check that is only in the aggregate gates\n` +
         'nothing on a PR.\n\n' +
         'Fix: add a step to the workflow whose path filter already matches what the check reads\n' +
-        '(a new workflow pair is rarely needed), or — if it is deliberately local-only — add it to\n' +
+        '(a new workflow pair is rarely needed); or gate it from a Vitest drift-gate test that\n' +
+        `shells the check against the real repo and register that in COVERED_BY_TEST (\`${TEST_RUNNER}\`\n` +
+        'already runs in a required context); or — if it is deliberately local-only — add it to\n' +
         'LOCAL_ONLY in this file WITH a reason.',
     );
     process.exit(1);
@@ -205,9 +282,10 @@ function main() {
 
   const n = expandAggregate(scripts).length;
   const allow = Object.keys(LOCAL_ONLY).length;
+  const viaTest = Object.keys(COVERED_BY_TEST).length;
   console.log(
     `ci-parity: all ${n - allow} of ${n} \`npm run lint\` checks have a CI home ` +
-      `(${allow} deliberately local-only) ✓`,
+      `(${viaTest} via a drift-gate test, ${allow} deliberately local-only) ✓`,
   );
 }
 

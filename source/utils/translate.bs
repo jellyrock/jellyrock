@@ -1,4 +1,5 @@
-' Custom translation system — replaces Roku's built-in tr() to support 118+ languages.
+' Custom translation system: replaces Roku's built-in tr() with the JSON locale files
+' shipped under locale/custom/.
 ' Translation data is loaded into m.global as flat roAssociativeArray objects
 ' for O(1) key lookups. Two AAs are kept in memory: the active locale and
 ' en_US as fallback (~150KB total including AA overhead).
@@ -6,16 +7,17 @@
 ' Regional locale layering: when a regional locale like "fr_CA" is requested,
 ' the base language ("fr") is loaded first, then regional translations are
 ' overlaid on top. This ensures users get the maximum number of translated
-' strings — regional-specific where available, base language otherwise.
+' strings: regional-specific where available, base language otherwise.
 '
 ' Chinese script code layering: Chinese locales use script codes (zh_Hans,
-' zh_Hant, zh_Hant_HK) instead of region codes. For zh_Hant_HK, three layers
-' are loaded: zh -> zh_Hant -> zh_Hant_HK, maximizing translation coverage.
+' zh_Hant, zh_Hant_HK) instead of region codes. The loader reads a base zh.json
+' first, but none ships, so that layer is empty. The layers in effect are zh_Hans;
+' zh_Hant; and for zh_Hant_HK, zh_Hant then zh_Hant_HK.
 
 ' Translate a key, optionally substituting indexed placeholders {0}, {1}, etc.
 ' Falls back to en_US if key is missing from active locale, or returns the key
 ' itself if missing from both (makes untranslated strings visible during dev).
-' @param {string} key - Translation key (e.g. "ButtonPlay", "MessageVideoStartsIn")
+' @param {string} key - Translation key (for example "ButtonPlay", "MessageCastCanceled")
 ' @param {object} params - Optional array of string replacements for {0}, {1}, etc.
 ' @return {string} Translated string, or the key itself if not found
 function translate(key as string, params = invalid as object) as string
@@ -42,9 +44,33 @@ function translate(key as string, params = invalid as object) as string
   return value
 end function
 
+' translateCached: translate(), memoized for one batch.
+'
+' Memoized on the KEY rather than on the item: a batch labels many items with a
+' few distinct keys, and keying on the item would miss on every one (see
+' personCreditLabel in people.bs). `cache` may be invalid, which only means no reuse.
+'
+' A caller may instead seed `cache` with the table itself (`m.global.translations`,
+' read once), so every key it holds is already a hit and a missing one still falls
+' back through translate(). Which seed is cheaper depends on how many distinct keys
+' the batch needs. The cast needs a few, and copying the ~150 KB table on
+' every row cost MORE than the memo (measured 2026-09-20 on a Stick 4K, 31-person
+' cast: castMs +13.5 ms, n=8 per arm interleaved; a build making ZERO m.global reads
+' was no faster again, so the rendezvous is not what that loop costs). A subtitle
+' list needs a language name per track, often dozens, so sortSubtitles() copies the
+' table once per list instead.
+function translateCached(key as string, cache as dynamic) as string
+  if cache = invalid then return translate(key)
+  if cache[key] <> invalid then return cache[key]
+
+  value = translate(key)
+  cache[key] = value
+  return value
+end function
+
 ' Translate a plural key using zero/one/many suffix convention.
 ' Selects the appropriate variant based on count, then delegates to translate().
-' @param {string} baseKey - Base key without suffix (e.g. "LabelEpisodeCount")
+' @param {string} baseKey - Base key without suffix (for example "LabelEpisodeCount")
 ' @param {integer} count - The count to determine plural form
 ' @param {object} params - Optional placeholder params
 ' @return {string} Translated plural string
@@ -61,10 +87,10 @@ function translatePlural(baseKey as string, count as integer, params = invalid a
 end function
 
 ' Load translation files for a given locale into m.global.
-' Always loads en_US as fallback. When the active locale IS en_US,
-' both m.global.translations and m.global.translationsFallback reference
-' the same AA (no double memory).
-' @param {string} locale - Locale code in standard format (e.g. "fr_CA", "pt_BR", "zh_Hans")
+' Always loads en_US as fallback. When the active locale is en_US,
+' both m.global.translations and m.global.translationsFallback are set
+' from the same AA.
+' @param {string} locale - Locale code in standard format (for example "fr_CA", "pt_BR", "zh_Hans")
 sub loadTranslations(locale as string)
   if locale = "" then locale = "en_US"
 
@@ -75,12 +101,12 @@ sub loadTranslations(locale as string)
 
   ' Load requested locale
   if locale = "en_US"
-    ' Same reference — no double memory
+    ' Both fields are set from the same AA
     activeAA = fallbackAA
   else
     activeAA = loadLocaleFile(locale)
     if activeAA = invalid
-      ' No file found for this locale — fall back to en_US
+      ' No file found for this locale: fall back to en_US
       activeAA = fallbackAA
       locale = "en_US"
     end if
@@ -94,12 +120,12 @@ sub loadTranslations(locale as string)
 end sub
 
 ' Load a locale's translations, layering regional over base when applicable.
-' For regional locales (e.g. "fr_CA"), loads the base language ("fr") first,
+' For regional locales (for example "fr_CA"), loads the base language ("fr") first,
 ' then overlays regional translations on top. Regional values win on conflicts.
-' For Chinese script codes (e.g. "zh_Hant_HK"), uses 3-layer loading:
-' zh -> zh_Hant -> zh_Hant_HK for maximum translation coverage.
-' For base locales (e.g. "fr"), loads directly.
-' @param {string} locale - Locale code (e.g. "fr_CA", "de", "zh_Hans", "zh_Hant_HK")
+' For Chinese script codes (for example "zh_Hant_HK"), hands off to
+' loadChineseLocaleFile(), which layers zh_Hant under zh_Hant_HK.
+' For base locales (for example "fr"), loads directly.
+' @param {string} locale - Locale code (for example "fr_CA", "de", "zh_Hans", "zh_Hant_HK")
 ' @return {object} Parsed roAssociativeArray, or invalid if no file found
 function loadLocaleFile(locale as string) as object
   ' Chinese script code locales: zh_Hans, zh_Hant, zh_Hant_HK
@@ -112,7 +138,7 @@ function loadLocaleFile(locale as string) as object
   underscorePos = inStr(1, locale, "_")
 
   if underscorePos > 0
-    ' Regional locale — layer base under regional
+    ' Regional locale: layer base under regional
     baseLang = Left(locale, underscorePos - 1)
     baseJson = ReadAsciiFile("pkg:/locale/custom/" + baseLang + ".json")
     baseAA = ParseJson(baseJson)
@@ -130,7 +156,7 @@ function loadLocaleFile(locale as string) as object
       return baseAA
     end if
   else
-    ' Base locale — load directly
+    ' Base locale: load directly
     json = ReadAsciiFile("pkg:/locale/custom/" + locale + ".json")
     aa = ParseJson(json)
     if aa <> invalid then return aa
@@ -141,14 +167,16 @@ end function
 
 ' Load Chinese locale translations with script code layering.
 ' Chinese locales use script codes (Hans=Simplified, Hant=Traditional)
-' instead of region codes. Supports 3-layer loading for maximum coverage:
-'   zh_Hans:    zh.json -> zh_Hans.json (2 layers)
-'   zh_Hant:    zh.json -> zh_Hant.json (2 layers)
-'   zh_Hant_HK: zh.json -> zh_Hant.json -> zh_Hant_HK.json (3 layers)
-' @param {string} locale - Chinese locale code (e.g. "zh_Hans", "zh_Hant", "zh_Hant_HK")
+' instead of region codes. The loader reads a base zh.json first, but none
+' ships under locale/custom/, so that layer is empty. The layers in effect:
+'   zh_Hans:    zh_Hans.json
+'   zh_Hant:    zh_Hant.json
+'   zh_Hant_HK: zh_Hant.json -> zh_Hant_HK.json
+' @param {string} locale - Chinese locale code (for example "zh_Hans", "zh_Hant", "zh_Hant_HK")
 ' @return {object} Parsed roAssociativeArray, or invalid if no file found
 function loadChineseLocaleFile(locale as string) as object
-  ' Layer 1: Base Chinese (zh.json)
+  ' Layer 1: base Chinese (zh.json). None ships, so this read gives "" and
+  ' ParseJson gives invalid: the layer is empty.
   baseJson = ReadAsciiFile("pkg:/locale/custom/zh.json")
   result = ParseJson(baseJson)
 

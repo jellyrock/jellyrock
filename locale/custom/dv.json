@@ -15,5 +15,15 @@
   "LabelCustom": "ކަސްޓަމް",
   "LabelDefault": "ޑީފޯލްޓް",
   "LabelDirectPlaying": "ޑައިރެކްޓް ޕްލޭއިންގ",
-  "MessageTheSourceFileIsEntirelyCompatible": "ސޯސް ފައިލް އެއްކޮށް މި ކްލައިންޓާ ގުޅޭ ސެޝަނަށް ފައިލް ލިބެމުންދަނީ ބަދަލެއް ނުގެނެސް."
+  "LabelPersonKindActor": "އެކްޓަރު",
+  "LabelPersonKindAlbumArtist": "އަލްބަމް އާރޓިސްޓް",
+  "LabelPersonKindArranger": "އެރޭންޖަރ",
+  "LabelPersonKindArtist": "ފަންނާނު",
+  "LabelPersonKindAuthor": "ލިޔުންތެރިޔާ",
+  "LabelPersonKindColorist": "ކަލަރރިސްޓް",
+  "LabelPersonKindComposer": "ކޮމްޕޯސަރ",
+  "LabelPersonKindConductor": "ކޮންޑަކްޓަރ",
+  "LabelPersonKindCoverArtist": "ކަވަރ އާޓިސްޓް",
+  "LabelPersonKindCreator": "ހެދިމީހާ",
+  "LabelPersonKindDirector": "ޑިރެކްޓަރު"
 }

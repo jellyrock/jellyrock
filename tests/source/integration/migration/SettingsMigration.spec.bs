@@ -24,7 +24,7 @@ namespace tests
       reg.write("LastRunVersion", "1.0.0") ' Old version - all migrations will run
 
       ' Write OLD setting names for all categories (auth settings excluded - token/primaryimagetag not tested)
-      ' NOTE: global.rememberme is NOT tested here - it's stored in the global "JellyRock" section, not user sections
+      ' NOTE: global.rememberme is not tested here - it's stored in the global "JellyRock" section, not user sections
 
       ' Playback settings
       reg.write("playback.bitrate.maxlimited", "false")
@@ -110,8 +110,8 @@ namespace tests
       m.assertTrue(reg.exists("playbackPlayNextEpisode"))
       m.assertEqual(reg.read("playbackPlayNextEpisode"), "enabled")
       ' Audio codec setting migrates through BOTH v1.1.0 and v1.1.5 migrations
-      ' v1.1.0: playback.preferredAudioCodec → playbackPreferredAudioCodec
-      ' v1.1.5: playbackPreferredAudioCodec → playbackPreferredMultichannelCodec
+      ' v1.1.0: playback.preferredAudioCodec becomes playbackPreferredAudioCodec
+      ' v1.1.5: playbackPreferredAudioCodec becomes playbackPreferredMultichannelCodec
       m.assertTrue(reg.exists("playbackPreferredMultichannelCodec"))
       m.assertEqual(reg.read("playbackPreferredMultichannelCodec"), "ac3")
       m.assertFalse(reg.exists("playbackPreferredAudioCodec"), "Intermediate setting should be deleted")
@@ -168,7 +168,7 @@ namespace tests
       m.assertEqual(reg.read("itemGridMovieDefaultView"), "moviesgrid")
 
       ' Verify home section settings are deleted (server-authoritative since v2.13.0)
-      ' v1.1.0 renames homesection0-6 → homeSection0-6, then v2.13.0 deletes them
+      ' v1.1.0 renames homesection0-6 to homeSection0-6, then v2.13.0 deletes them
       m.assertFalse(reg.exists("homeSection0"), "homeSection0 should be deleted in v2.13.0")
       m.assertFalse(reg.exists("homeSection1"), "homeSection1 should be deleted in v2.13.0")
       m.assertFalse(reg.exists("homeSection2"), "homeSection2 should be deleted in v2.13.0")
@@ -338,7 +338,7 @@ namespace tests
       reg.write("serverId", m.global.server.id)
       reg.write("LastRunVersion", "1.0.0")
 
-      ' Write both old and new names (migration should prefer old→new and delete old)
+      ' Write both old and new names (migration should copy old to new and delete old)
       reg.write("ui.design.hideclock", "true") ' Old name
       reg.write("uiDesignHideClock", "false") ' New name (already exists!)
       reg.write("ui.row.layout", "landscape") ' Old name only
@@ -373,7 +373,7 @@ namespace tests
       reg.write("serverId", m.global.server.id)
       reg.write("LastRunVersion", "1.1.5") ' All migrations already complete
 
-      ' Write OLD setting names (should NOT be migrated)
+      ' Write old setting names (should not be migrated)
       reg.write("global.rememberme", "true")
       reg.write("ui.row.layout", "landscape")
 
@@ -428,7 +428,7 @@ namespace tests
       ' WHEN: Migration runs (isolated to test-global section to verify skip logic)
       runRegistryUserMigrations(["test-global"])
 
-      ' THEN: test-global section is NOT migrated
+      ' THEN: test-global section is not migrated
       testGlobalReg = CreateObject("roRegistrySection", "test-global")
 
       m.assertTrue(testGlobalReg.exists("global.rememberme"), "test-global old setting should still exist")
@@ -446,9 +446,9 @@ namespace tests
 
     @it("does NOT migrate nested display settings (handled by transformer)")
     function _()
-      ' Display settings with library IDs (display.libraryId.key) are NOT migrated
-      ' by runRegistryUserMigrations() - they are handled by SessionDataTransformer
-      ' This test verifies migration ONLY handles the top-level displayLiveTvLanding setting
+      ' Display settings with library IDs (display.libraryId.key) are not renamed by
+      ' runRegistryUserMigrations(): user.settings.TransformDisplaySettings() reads them as is
+      ' This test verifies the v1.1.0 rename handles only the top-level displayLiveTvLanding setting
 
       testUserId = "test-migration-display-001"
 
@@ -459,7 +459,7 @@ namespace tests
       ' Top-level display setting (SHOULD be migrated)
       reg.write("display.livetv.landing", "guide")
 
-      ' Nested display settings (should NOT be migrated by this function)
+      ' Nested display settings (should not be migrated by this function)
       reg.write("display.library123.sortField", "Name")
       reg.write("display.library123.sortAscending", "true")
 
@@ -530,7 +530,7 @@ namespace tests
       testUserId = "test-post-migration-load-001"
 
       ' GIVEN: Registry with OLD user setting names (pre-migration state)
-      ' NOTE: global.rememberme is NOT a user setting - it belongs in the global section
+      ' NOTE: global.rememberme is not a user setting - it belongs in the global section
       reg = CreateObject("roRegistrySection", testUserId)
       reg.write("serverId", m.global.server.id)
       reg.write("LastRunVersion", "1.0.0")
@@ -578,7 +578,7 @@ namespace tests
       globalReg = CreateObject("roRegistrySection", "test-global")
 
       ' THEN: User registry has user settings
-      m.assertFalse(userReg.exists("globalRememberMe")) ' Should NOT be in user section
+      m.assertFalse(userReg.exists("globalRememberMe")) ' Should not be in user section
       m.assertTrue(userReg.exists("uiRowLayout"))
       m.assertTrue(userReg.exists("uiDesignHideClock"))
 

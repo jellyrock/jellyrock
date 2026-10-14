@@ -5,7 +5,7 @@ namespace nodeHelpers
   ' BrighterScript interfaces ARE build-enforced wherever a value is TYPED as the interface
   ' (verified on this toolchain: a QueueItem-typed value raises `cannot-find-name` on an
   ' undeclared member and `return-type-mismatch` on a missing required member). createQueueItem
-  ' itself returns `as object`, not `as QueueItem` — its result is used as a real
+  ' itself returns `as object`, not `as QueueItem`: its result is used as a real
   ' roAssociativeArray (callers/tests call DoesExist/Count) and an interface return type strips
   ' those AA methods (see the return-type note on the function below). So the ENFORCED gate on the
   ' returned shape is the createQueueItem spec at tests/source/unit/utils/nodeHelpers.spec.bs; this
@@ -14,7 +14,7 @@ namespace nodeHelpers
   ' `optional`: createQueueItem only copies them when the source carries them, so a bare/lean
   ' source yields a minimal item.
   interface QueueItem
-    ' Always present — callers may .Count() the backdrop arrays without an isValid() guard.
+    ' Always present: callers may .Count() the backdrop arrays without an isValid() guard.
     backdropImageTags as object
     parentBackdropImageTags as object
     parentBackdropItemId as string
@@ -24,7 +24,7 @@ namespace nodeHelpers
     optional title as string
     optional mediaSourceId as string
     optional runTimeTicks as longinteger
-    ' Now-playing display contract — audio plays IN PLACE, so AudioPlayerView reads these straight
+    ' Now-playing display contract: audio plays IN PLACE, so AudioPlayerView reads these straight
     ' off the queue item (video re-fetches on mount and doesn't need them).
     optional name as string
     optional artists as object
@@ -39,25 +39,46 @@ namespace nodeHelpers
     optional playbackPositionTicks as longinteger
     ' Live TV
     optional channelNumber as string
-    ' Set by callers after creation (quickplay / ItemDetails) — playback selection + resume point
+    ' Set by callers after creation (quickplay / ItemDetails): playback selection + resume point.
+    ' Write the pair through setResumeStart() / setExactStart(), never startingPoint alone.
     optional startingPoint as longinteger
+    ' True when startingPoint is a place the caller NAMED (a chapter, Play from the start, the
+    ' position a reload saved) rather than a saved resume position. Only a resume position may be
+    ' replaced by the one the loader reads for the version it chooses on a per-version server.
+    optional startingPointIsExact as boolean
     optional selectedAudioStreamIndex as integer
     optional selectedSubtitleStreamIndex as integer
+    ' True when SOME version of this item holds a playback position, which startingPoint alone
+    ' cannot say: on a per-version server the item's own version can sit at 0 while an alternate
+    ' is partway through. Read from the server's source ORDER, so it costs no request. It exists
+    ' because "are we resuming?" is asked before the version is chosen. LoadVideoContentTask
+    ' gates the Cinema Mode preroll on it, since a preroll in front of a resume is wrong.
+    optional hasVersionInProgress as boolean
+    ' True for an item that starts from the beginning because the viewer did not choose to
+    ' resume it: one the queue ARRIVES at (QueueManager.advanceTo), or the first item of a queue
+    ' that does not resume, like Play All or shuffle (QueueManager.startCurrentFresh). Written
+    ' only through startFresh(). The loader plays the viewer's explicit version pick when the
+    ' item has it, else the best for the device, never the version holding a position.
+    optional startsFresh as boolean
+    ' True on the copy of an item the Cinema Mode intro queues behind itself: moving on from
+    ' the intro reaches the item the viewer launched, not a new one, so it keeps its start.
+    ' QueueManager.advanceTo consumes it.
+    optional followsIntro as boolean
   end interface
 
   ' createQueueItem: Create a queue item AA from a source item.
   '
-  ' The queue item is a thin AA — it carries only what the queue infrastructure and the players
-  ' need, NOT a full deep copy (that was the original perf win). Video items stay minimal:
+  ' The queue item is a thin AA. It carries only what the queue infrastructure and the players
+  ' need, not a full deep copy (that was the original perf win). Video items stay minimal:
   ' LoadVideoContentTask re-fetches all metadata server-side via ItemMetaData() on mount. AUDIO
-  ' is different — the audio player advances IN PLACE and AudioPlayerView renders the now-playing
+  ' is different: the audio player advances IN PLACE and AudioPlayerView renders the now-playing
   ' text/poster directly off the queue item, so the display fields (name/artists/albumArtist/
-  ' albumName/albumId/image tags) MUST be carried; without them every track change paid a
+  ' albumName/albumId/image tags) must be carried; without them every track change paid a
   ' redundant per-track metadata fetch whose latency popped the artist/album in late.
   '
   ' Accepts either a JellyfinBaseItem node (typed camelCase fields) or a raw Jellyfin API
   ' response AA (PascalCase fields). BrightScript AA lookup is case-insensitive, so field
-  ' access works identically for both — e.g. sourceNode.backdropImageTags finds
+  ' access works identically for both. For example, sourceNode.backdropImageTags finds
   ' BackdropImageTags on a raw API AA and backdropImageTags on a typed node.
   '
   ' @param sourceNode - JellyfinBaseItem node or raw Jellyfin API response AA
@@ -75,12 +96,13 @@ namespace nodeHelpers
   '   - mediaSourceId: Media source hint
   '   - runTimeTicks: Runtime duration
   '   - name / artists / albumArtist / albumName / albumId / albumPrimaryImageTag /
-  '     primaryImageTag: now-playing display fields (audio plays in place — see header)
+  '     primaryImageTag: now-playing display fields (audio plays in place; see header)
   '   - seriesId: Series ID for episode navigation in resume dialog
   '   - seasonId: Season ID for episode navigation in resume dialog
   '   - playbackPositionTicks: Saved resume position
   '
-  ' Callers set startingPoint and selectedAudioStreamIndex on the returned AA after creation.
+  ' Callers set selectedAudioStreamIndex on the returned AA after creation, and the start
+  ' position through setResumeStart() or setExactStart().
   '
   ' Returns `object`, not `QueueItem`: the queue item is used as a real roAssociativeArray
   ' (callers/tests use DoesExist/Count), and typing it as the interface would strip those AA
@@ -92,7 +114,7 @@ namespace nodeHelpers
       return invalid
     end if
 
-    ' Thin AA — only fields the queue infrastructure actually reads
+    ' Thin AA: only fields the queue infrastructure actually reads
     queueItem = {}
 
     if isValidAndNotEmpty(sourceNode.id) then queueItem.id = sourceNode.id
@@ -103,7 +125,7 @@ namespace nodeHelpers
       queueItem.runTimeTicks = sourceNode.runTimeTicks
     end if
 
-    ' Now-playing display contract (audio) — carried only when present. Queue sources are
+    ' Now-playing display contract (audio): carried only when present. Queue sources are
     ' mixed-shape: album/playlist/instant-mix queues hold RAW Jellyfin items (PascalCase: Album,
     ' ImageTags.Primary) while single-song taps hold TRANSFORMED items (camelCase: albumName,
     ' primaryImageTag). The rest share a case-insensitive key across both shapes; the two that
@@ -124,7 +146,7 @@ namespace nodeHelpers
     if isValidAndNotEmpty(sourceNode.seriesId) then queueItem.seriesId = sourceNode.seriesId
     if isValidAndNotEmpty(sourceNode.seasonId) then queueItem.seasonId = sourceNode.seasonId
 
-    ' Resume position — stored so the resume dialog can read it without the original node.
+    ' Resume position: stored so the resume dialog can read it without the original node.
     ' Typed nodes: transformer populates playbackPositionTicks from UserData.
     ' Raw API AAs: fall back to UserData.PlaybackPositionTicks (nested).
     positionTicks = 0
@@ -135,13 +157,61 @@ namespace nodeHelpers
     end if
     if positionTicks > 0 then queueItem.playbackPositionTicks = positionTicks
 
-    ' Backdrop fields — always set to guarantee callers can check .Count() without isValid().
+    ' Backdrop fields: always set to guarantee callers can check .Count() without isValid().
     ' Empty array/string = no backdrop available for this item.
     queueItem.backdropImageTags = isValid(sourceNode.backdropImageTags) ? sourceNode.backdropImageTags : []
     queueItem.parentBackdropImageTags = isValid(sourceNode.parentBackdropImageTags) ? sourceNode.parentBackdropImageTags : []
     queueItem.parentBackdropItemId = isValidAndNotEmpty(sourceNode.parentBackdropItemId) ? sourceNode.parentBackdropItemId : ""
 
     return queueItem
+  end function
+
+  ' setResumeStart: Start a queue item from its saved resume position.
+  '
+  ' The loader may replace it: on a per-version server it chooses which version resumes and
+  ' starts that version at ITS OWN position, which the caller could not read.
+  '
+  ' @param {object} queueItem - from createQueueItem()
+  ' @param {dynamic} ticks - the saved position (0 = from the beginning)
+  sub setResumeStart(queueItem as object, ticks as dynamic)
+    if not isValid(queueItem) then return
+    queueItem.startingPoint = ticks
+    queueItem.startingPointIsExact = false
+  end sub
+
+  ' setExactStart: Start a queue item at a place the caller named: a chapter, Play from the
+  ' start, the position a reload saved. The loader never replaces it.
+  '
+  ' @param {object} queueItem - from createQueueItem()
+  ' @param {dynamic} ticks - where playback starts (0 = from the beginning)
+  sub setExactStart(queueItem as object, ticks as dynamic)
+    if not isValid(queueItem) then return
+    queueItem.startingPoint = ticks
+    queueItem.startingPointIsExact = true
+  end sub
+
+  ' startFresh: Start a queue item from the beginning because the viewer did not choose to
+  ' resume it (QueueManager.advanceTo / startCurrentFresh). An exact start at 0, so the loader
+  ' never swaps in a version's saved position; startsFresh, so it picks the version by the
+  ' viewer's explicit pick instead; and no version counts as in progress, since none resumes.
+  '
+  ' @param {object} queueItem - a queue item, from createQueueItem() or a raw item in the queue
+  sub startFresh(queueItem as object)
+    if not isValid(queueItem) then return
+    setExactStart(queueItem, 0&)
+    queueItem.startsFresh = true
+    queueItem.hasVersionInProgress = false
+  end sub
+
+  ' findOptionsPanel: The options panel of a view, or invalid when the view has none.
+  ' A view can report isOptionsAvailable (JRGroup defaults it to true) without owning an
+  ' "options" node, so JRScene asks here before it shows the panel.
+  '
+  ' @param {dynamic} group - the active view, or invalid
+  ' @returns {dynamic} - the options panel node, or invalid
+  function findOptionsPanel(group as dynamic) as dynamic
+    if not isValid(group) then return invalid
+    return group.findNode("options")
   end function
 
 end namespace

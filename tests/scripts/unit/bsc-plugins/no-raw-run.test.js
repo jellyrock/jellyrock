@@ -7,9 +7,9 @@
 // launchTask() in source/utils/tasks.bs, so the live thread count stays
 // derivable. A bare `control = "RUN"` anywhere else is a build error.
 //
-// The interesting edge is that `control` is NOT a Task-only field — Animation
+// The interesting edge is that `control` is not a Task-only field: Animation
 // takes "start"/"pause"/"resume" and Video takes "play"/"rewind"/"none", and
-// the app has ~95 such writes. Only "RUN" starts a thread, so only "RUN" (and
+// the app has many such writes. Only "RUN" starts a thread, so only "RUN" (and
 // an RHS that cannot be resolved statically) is flagged.
 
 import { describe, it, expect } from 'vitest';
@@ -18,7 +18,7 @@ import noRawRunPlugin from '../../../../scripts/bsc-plugins/no-raw-run.cjs';
 
 const CODE = 'no-raw-run';
 
-/** Runs the plugin over one component file and returns just its diagnostics. */
+/** Runs the plugin over one component file and returns only its diagnostics. */
 function check(source, path = 'components/Foo.bs') {
   return diagnosticsByCode(runPluginOnSource(noRawRunPlugin, { [path]: source }), CODE);
 }
@@ -90,7 +90,7 @@ describe('no-raw-run', () => {
 
   it('does not flag setField with a computed field name', () => {
     // Keyed on a literal "control" first arg, so a dynamic field name is never
-    // flagged — otherwise every generic setField(name, value) helper trips it.
+    // flagged. Otherwise every generic setField(name, value) helper trips it.
     expect(
       check(`
         sub go(fieldName as string)

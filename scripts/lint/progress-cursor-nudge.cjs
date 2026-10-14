@@ -1,25 +1,27 @@
-// scripts/lint/progress-cursor-nudge.cjs — Advisory signal for stale
-// docs/progress.md state. Two checks, both informational:
+// scripts/lint/progress-cursor-nudge.cjs: advisory signal for stale
+// docs/progress.md state. Three checks, all informational:
 //
-//   1. last-updated staleness — >7 days AND non-maintenance commits since.
-//   2. Currently-running cursor likely-shipped — when the cursor's
+//   1. last-updated staleness: >7 days AND non-maintenance commits since.
+//   2. Currently-running cursor likely-shipped: when the cursor's
 //      content tokens appear in 2+ recent commit subjects on the current
 //      branch, the work it tracks probably already merged.
+//   3. Branch reference: the cursor names a branch other than the current
+//      one, so it doesn't describe this work session.
 //
-// Always exits 0 — progress.md freshness is NEVER a PR-blocking gate.
+// Always exits 0: progress.md freshness is never a PR-blocking gate.
 // `last-updated` staleness is a property of the shared journal on main,
 // not of any one contributor's PR, so blocking a PR on it punished the
 // wrong person (see docs/adr/0002 + the relocation note in
 // docs/architecture/system-shape.md). This script is the single source of
 // the staleness computation, consumed by three non-blocking surfaces:
-//   - Stop hook + pre-push  — prose nudge for the active developer.
-//   - .github/workflows/docs-stale-tracker.yml — weekly main-branch
+//   - Stop hook + pre-push: prose nudge for the active developer.
+//   - .github/workflows/docs-stale-tracker.yml: weekly main-branch
 //     backstop that renders the `--json` output into a tracking issue.
 //
 // Why a separate script and not in docs-check.cjs:
-//   - docs-check.cjs is a per-PR validator (broken refs, signals schema —
+//   - docs-check.cjs is a per-PR validator (broken refs, signals schema:
 //     all properties of the PR under review). Journal *freshness* is not a
-//     per-PR property, so it deliberately does NOT live there.
+//     per-PR property, so it does not live there, by design.
 //   - The cursor-shipped heuristic is fuzzy (token overlap); advisory-only.
 //
 // Usage:
@@ -162,12 +164,12 @@ function readProgress() {
   const lastUpdatedMatch = fmMatch && fmMatch[1].match(/^last-updated:\s*(\d{4}-\d{2}-\d{2})/m);
   const lastUpdated = lastUpdatedMatch ? lastUpdatedMatch[1] : null;
 
-  // `[^\S\n]*\n` — trailing spaces then EXACTLY ONE newline, deliberately not
+  // `[^\S\n]*\n`: trailing spaces then exactly one newline, on purpose, not
   // `\s*\n`. `\s` matches newlines, so on an EMPTY cursor (`## Currently running`
   // immediately followed by a blank line and the next `##`) the greedy form ate
   // the blank line, leaving the lookahead with no `\n` to anchor on. The lazy
   // group then ran past `## Recently shipped` to the section after it, and the
-  // whole recently-shipped list was returned as "the cursor" — so
+  // whole recently-shipped list was returned as "the cursor", so
   // checkCursorShipped compared recent commits against recently-shipped bullets
   // and reported a token overlap on an empty cursor, every time.
   const runningMatch = content.match(/##\s+Currently running[^\S\n]*\n([\s\S]*?)(?=\n##\s|$)/);
@@ -183,7 +185,8 @@ function checkStale(lastUpdated) {
 
   // Only NON-maintenance commits reset the staleness clock. Dependency bumps,
   // docs/ci/chore/build commits, releases, merges, and bot commits don't mean
-  // the state cursor went stale — this is the same set journal-sync.yml skips.
+  // the state cursor went stale. These are the kinds of change journal-sync.yml
+  // skips, matched here on commit subject and author, plus test/style/refactor/perf.
   // Without this filter the signal false-fires every dependency/docs week.
   // Skips silently on git failure (test fixtures without a repo, tempdirs).
   const out = safeExec(
@@ -234,8 +237,8 @@ function checkCursorShipped(cursor) {
 function checkBranchReference(cursor) {
   if (!cursor) return null;
   // Cursor often quotes the working branch like "branch: `feat/foo-bar`".
-  // When the cursor names a branch that's NOT the branch we're currently
-  // on, the cursor is out-of-date for this work session — regardless of
+  // When the cursor names a branch that's not the branch we're currently
+  // on, the cursor is out-of-date for this work session, regardless of
   // whether the named branch still exists. Reasons it would still exist:
   // it merged but wasn't pruned; it's parked for a later session; it was
   // abandoned without deletion. In all three cases the cursor doesn't
@@ -286,7 +289,7 @@ function main() {
   }
 
   if (quiet) {
-    // Quiet mode still prints if there's a finding — quiet means "nothing
+    // Quiet mode still prints if there's a finding: quiet means "nothing
     // when clean", not "always silent". The Stop hook and pre-push want
     // SOME output to surface the issue.
   }

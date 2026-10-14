@@ -3,12 +3,13 @@
 // The script invokes spell / markdown / json linters as child processes
 // against the working tree (committed + uncommitted + untracked files).
 // Full coverage requires those linters' fixtures, which is heavy. Here we
-// verify the script's basic shape: clean tree → 0 output, --quiet works,
-// it can run from a non-repo directory without crashing.
+// verify the script's basic shape: under --quiet it exits 0 on a clean tree,
+// and it can run from a non-repo directory without crashing.
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { gitSafeEnv } from '../_helpers/git-env.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnScript } from '../_helpers/spawn-script.js';
@@ -16,7 +17,7 @@ import { spawnScript } from '../_helpers/spawn-script.js';
 const SCRIPT = 'scripts/lint/check-touched-lint.cjs';
 
 function git(repoDir, ...args) {
-  return execFileSync('git', args, { cwd: repoDir, encoding: 'utf8' });
+  return execFileSync('git', args, { cwd: repoDir, encoding: 'utf8', env: gitSafeEnv() });
 }
 
 describe('check-touched-lint (smoke)', () => {

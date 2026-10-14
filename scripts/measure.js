@@ -20,15 +20,15 @@
  *                                            through another screen to reach the one asked for
  *   npm run measure -- --no-server --component setServer
  *                                            measure `serverSelect`, declaring that the device
- *                                            has no server on it (see below — it is a workflow,
- *                                            not just a flag)
+ *                                            has no server on it (see below: it is a workflow,
+ *                                            not only a flag)
  *
  * ## Reaching a screen that is not Home
  *
  * `--nav <screen>` runs the navigation declared for that screen in
  * [`tests/rta/screens.js`](../tests/rta/screens.js) after each relaunch, which makes
  * measurement the THIRD consumer of that registry after the functional suite and the
- * store screenshots. Nothing is seeded — this tool still never writes the registry —
+ * store screenshots. Nothing is seeded (this tool still never writes the registry),
  * so it reaches every screen navigable from a signed-in Home and refuses the ones
  * that are not.
  *
@@ -39,10 +39,10 @@
  * carried its value. There are two ways to be walked through, and they need different
  * halves of a mount's identity to name:
  *
- *   - a CHAINED nav mounts one component several times — reaching a Season loads its
- *     Series first — told apart by `--variant`;
- *   - a PLAYBACK nav mounts different components — reaching the player means walking
- *     through `ItemDetails`, and for a movie BOTH stamp variant `Movie` — told apart
+ *   - a CHAINED nav mounts one component several times (reaching a Season loads its
+ *     Series first), told apart by `--variant`;
+ *   - a PLAYBACK nav mounts different components (reaching the player means walking
+ *     through `ItemDetails`, and for a movie both stamp variant `Movie`), told apart
  *     only by `--component`.
  *
  * `--library <id>` binds to the target screen's own collection type, never to every
@@ -52,20 +52,20 @@
  *
  * `--nav` refuses both, and that refusal is correct rather than a limitation: nothing is
  * seeded here, so the tool cannot put the app in a pre-login state. It does not need to.
- * `beginLogin()` re-reads `server` / `active_user` on EVERY launch, so once the app is in
- * one of those states by hand, the relaunch loop lands on the screen sample after sample
- * — no nav, and therefore none of the navigation caps a driven screen inherits.
+ * `beginLogin()` re-reads `server` / `active_user` on every launch, so once the app is in
+ * one of those states by hand, the relaunch loop lands on the screen sample after sample,
+ * with no nav, and therefore none of the navigation caps a driven screen inherits.
  *
  * They are two DIFFERENT registry states and they want different flags. Conflating them
  * is a documented mistake, not a hypothetical one:
  *
- *   `userSelect`   — app menu → **Change user** (or Sign out). Clears `active_user`; the
+ *   `userSelect`     app menu, then **Change user** (or Sign out). Clears `active_user`; the
  *                    server STAYS. Identity reads normally, so this needs no declaration
  *                    at all, and `--server <url>` still asserts tier 1 as usual. Its wait
  *                    is measured by the `preLogin` coordinator, not by a ledger in the
  *                    screen. Passing `--no-server` here REFUSES the run.
- *   `serverSelect` — app menu → **Change server**. Deletes the server, which makes tier
- *                    1's `serverUrl` absent — ordinarily fatal. `--no-server` declares
+ *   `serverSelect`   app menu, then **Change server**. Deletes the server, which makes tier
+ *                    1's `serverUrl` absent, ordinarily a fatal state. `--no-server` declares
  *                    that absence, and asserts the other direction too: a device that
  *                    still HAS a server fails the run instead of quietly measuring Home
  *                    under the name you asked for.
@@ -73,20 +73,20 @@
  * The `serverSelect` run is a workflow with a restore step, and leaving the device signed
  * out is the cost of forgetting it:
  *
- *   1. `snapshotRegistry()` — take the device's registry before touching anything.
+ *   1. `snapshotRegistry()`: take the device's registry before touching anything.
  *   2. Delete `server` + `active_user` from the `JellyRock` section over ODC, then
- *      `hardRelaunch()`. ⚠️ Do NOT use `seedServerSelect` from `tests/rta/lib/seed.js`:
+ *      `hardRelaunch()`. ⚠️ Do not use `seedServerSelect` from `tests/rta/lib/seed.js`:
  *      it overwrites `saved_servers` with the DEMO server, which changes the workload
- *      this screen is measured on — the picker fills from `saved_servers`.
- *   3. `npm run measure -- --deploy --no-server --measurement screen-load --component setServer`
- *      — `--component` is required, because EITHER pre-login launch mounts the `preLogin`
+ *      this screen is measured on (the picker fills from `saved_servers`).
+ *   3. `npm run measure -- --deploy --no-server --measurement screen-load --component setServer`.
+ *      `--component` is required, because EITHER pre-login launch mounts the `preLogin`
  *      coordinator as well as the screen itself.
  *   4. `npm run rta:restore`, and confirm it reports VERIFIED CLEAN.
  *
  * ## The arm with no ODC (`--enclosed-server`), which this tool does not drive itself
  *
  * `npm run measure:calibrate` answers "does the resident ODC component move the number?",
- * and one of its two arms has no ODC — so it cannot read the identity every other run
+ * and one of its two arms has no ODC, so it cannot read the identity every other run
  * reads, and tier 1 would refuse it. `--enclosed-server <url>` is how that arm declares
  * what the driver observed either side of it ([ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md)).
  *
@@ -96,7 +96,7 @@
  *     refuses, because a calibration whose two arms are the same build reports a delta of
  *     zero for the best-looking reason;
  *   - it records `identitySource: 'enclosed'`, never `'observed'`, and leaves
- *     `provenance.server` NULL — ADR 0030 rejects writing an enclosed identity into the
+ *     `provenance.server` NULL: ADR 0030 rejects writing an enclosed identity into the
  *     field a reader takes as an observation. The identity the brackets agreed on is
  *     recorded beside it, under `enclosure`;
  *   - it refuses `--server`, `--no-server`, `--nav` and `--deploy`, each of which
@@ -106,23 +106,24 @@
  *
  * ## Taking the two arms of a comparison
  *
- * Alternate the arms — `--arm before`, `--arm after`, `--arm before`, … — rather than
+ * Alternate the arms (`--arm before`, `--arm after`, `--arm before`, …) rather than
  * taking all of one and then all of the other, so content drift and device warm-up
  * cancel instead of aliasing onto one arm. `npm run measure:compare` reads the arms
  * back, prints the workload delta beside the timing delta, and CHECKS the alternation
  * from the recorded sample times rather than trusting that it happened.
  *
- * ## What it needs on the device — the precondition, stated
+ * ## What it needs on the device: the precondition, stated
  *
  * **The build on the device must be an RTA deploy** (`injectTestingFiles`, which
- * flips `ENABLE_RTA` on in the staged manifest). Identity is read over ODC and
+ * stages the ODC component, with `ENABLE_RTA` on in the shipped manifest). Identity is read over ODC and
  * nothing else, so ODC is a hard precondition, not a nicety: without it the tool
  * refuses before taking a sample rather than recording a series it cannot attribute.
  *
- * `--deploy` guarantees that state — it builds this checkout and sideloads the result,
- * because every bsconfig writes to the same `build/` directory and deploying without
- * building ships whatever npm script ran last (including a Rooibos TEST build, which has
- * no ODC at all). The default does NOT — it measures whatever is resident, which in
+ * `--deploy` guarantees that state: it builds this checkout and sideloads the result,
+ * because every bsconfig but `bsconfig-analysis.json` writes to the same `build/`
+ * directory, and deploying without building ships whatever npm script ran last
+ * (including a Rooibos TEST build, which has no ODC at all). The default does not: it
+ * measures whatever is resident, which in
  * practice means "whatever the last `npm run test:rta` or `npm run measure -- --deploy`
  * left there". That was an unstated assumption in the
  * first revision and it is worth being blunt about, because it cuts both ways: the
@@ -148,7 +149,7 @@
  * ([`home-first-paint-performance.md`](../docs/dev/home-first-paint-performance.md))
  * is: sideload a dev build, hold a console socket open, relaunch n≥5 times, read
  * the numbers off the terminal, and type the medians into a document. Every
- * safeguard in it is a thing whoever runs it has to remember — and the project's own
+ * safeguard in it is a thing whoever runs it has to remember, and the project's own
  * audit found that recent samples were clear of a leaked demo session only
  * *because each happened to record a count* a reader could check afterwards.
  *
@@ -166,7 +167,7 @@
  *    reports it as a new sample. The docs name this trap; here is what it
  *    actually does, probed on `.177` 2026-08-12: a socket that connects and then
  *    sits completely idle receives a `latest-rows run complete` line **10 ms
- *    later**, reading `10 rows 7241 ms` — a number nowhere near the live
+ *    later**, reading `10 rows 7241 ms`: a number nowhere near the live
  *    distribution that same session produced (1439–2654 ms). A per-sample
  *    reconnect would have folded that 7241 into the series.
  *
@@ -184,23 +185,23 @@
  *    same shape of error this project has hit repeatedly: a plausible mechanism
  *    fitted to an artifact of the instrument.
  * 3. **More than one run in a window is still possible, and is never averaged.**
- *    Home's `refresh()` genuinely re-runs the load on a return to Home, so a
+ *    Home's `refresh()` re-runs the load on a return to Home, so a
  *    window CAN legitimately contain a second run. Samples are therefore stamped
  *    with `indexInLaunch`; 0 is what the summary reports, and any later run in the
  *    same window is recorded beside it rather than folded into the median.
  *
- * ## What it deliberately does NOT do
+ * ## What it does not do, by design
  *
  * **No registry lifecycle.** Every other device entry point snapshots and
  * restores the registry, because it SEEDS. This one measures the app as the
- * device already has it — signed into whatever server the developer uses, which
- * is the whole point of a perf measurement — so it never writes the registry and
+ * device already has it (signed into whatever server the developer uses, which
+ * is the whole point of a perf measurement), so it never writes the registry and
  * has nothing to put back. If a future mode needs to seed, it must adopt
- * `lib/registry.js` at the same time; do not add a seed without one.
+ * `tests/rta/lib/registry.js` at the same time; do not add a seed without one.
  *
  * **No threshold, no gate, no CI.** The numbers depend on server hardware,
  * library size, network and device model, none of which CI controls, so a
- * threshold cannot separate a regression from a busy server — and a flaky perf
+ * threshold cannot separate a regression from a busy server, and a flaky perf
  * gate teaches people to ignore it. This tool records; it never judges.
  */
 import { spawnSync } from 'node:child_process';
@@ -249,6 +250,7 @@ import { parseMeasureArgs, MeasureArgError } from './measure-args.js';
 import {
   analyseMounts,
   launchAudit,
+  recordMountIdentity,
   selectColdSamples,
   selectionRefusalFor,
 } from './measure-selection.js';
@@ -284,7 +286,7 @@ const selector = { component: args.component, variant: args.variant };
 
 // How long to watch the console after each launch, capped so a device that never
 // paints cannot hang the series. Cut short once a complete sample has been seen
-// and the console has gone quiet for `QUIET_MS` — a device that has finished
+// and the console has gone quiet for `QUIET_MS`: a device that has finished
 // emitting has finished, and at n=30 the saving is real.
 //
 // `QUIET_MS` is what decides whether a legitimate SECOND run in the window is
@@ -297,30 +299,30 @@ const QUIET_MS = 6000;
 
 // ─── Navigation, when a screen is not reachable by relaunching ───────────────
 // The screen registry is `tests/rta/screens.js` and this makes measurement its THIRD
-// consumer, after the functional suite and the store screenshots. Deliberately not a
-// registry of its own: those two already drive every nav against a real device on
+// consumer, after the functional suite and the store screenshots. Not a registry of
+// its own: those two already drive every nav against a real device on
 // every run, so reusing them means a nav that breaks is caught by a red test rather
 // than by a measurement that quietly stopped reaching the screen it names.
 const navEntry = args.nav ? SCREENS.find((s) => s.name === args.nav) : null;
 
-// The nav context, built WITHOUT a Jellyfin session — which is the whole reason this
+// The nav context, built WITHOUT a Jellyfin session, which is the whole reason this
 // works inside a tool that does no seeding and points at the developer's own server.
 // The navs read it defensively (`libraryIdFor(ctx?.libraries, …)`, `ctx?.heroIndex || 0`)
 // and `navLibraryByType` falls back to scanning Home tiles by collection type, so the
 // detail screens navigate with nothing supplied.
 //
-// Two consequences worth stating rather than discovering:
+// Three consequences worth stating rather than discovering:
 //  - Without `--library`, a server with MORE THAN ONE library of a type makes that scan
 //    ambiguous, and `nav.js` refuses rather than guessing. `--library` is the way out.
 //  - Screens whose landing VIEW is seeded by the functional suite (the music album vs
 //    artist detail pair) are not distinguishable here; whichever view the device has
 //    stickily persisted is the one measured. Warned about below, not silently allowed.
 //  - `osd` / `trickplay` need a live session (`ctx.heroId`) and will fail their first
-//    nav. That failure aborts the series rather than repeating n times — see the loop.
+//    nav. That failure aborts the series rather than repeating n times (see the loop).
 //
 // `--library` is bound to the collection type the TARGET SCREEN declares, not mapped
 // onto every type in the registry. The blanket form handed a movies id to a TV nav
-// without a word — `--nav tvLibraryShows --library <a-movie-id>` would have opened the
+// without a word: `--nav tvLibraryShows --library <a-movie-id>` would have opened the
 // wrong library and recorded it as the right one, which is the exact class of silent
 // mis-attribution this tool exists to refuse. A screen with no declared `view`
 // (`movieDetails`, `personDetails`, `libraryOptions`) navigates to a movies library by
@@ -331,7 +333,7 @@ const navContext = args.library
   ? { libraries: [{ collectionType: navCollectionType, id: args.library }] }
   : undefined;
 
-setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — fail before touching anything
+setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing: fail before touching anything
 
 const host = process.env.ROKU_IP;
 const lock = await acquireDeviceLock({ what: 'measure' });
@@ -339,7 +341,7 @@ const lock = await acquireDeviceLock({ what: 'measure' });
 // Same net as `rta-run.js`: a throw below this line would otherwise leave the
 // device claimed by a dead process for the full lease. Nothing can await inside a
 // `process.on('exit')` handler, so the release needs its own hook. A rejection out
-// of top-level await surfaces as `uncaughtException`, not `unhandledRejection` —
+// of top-level await surfaces as `uncaughtException`, not `unhandledRejection`, so
 // hook both rather than depend on which.
 let socket = null;
 for (const event of ['uncaughtException', 'unhandledRejection']) {
@@ -363,7 +365,7 @@ const run = beginRun({ lock, run: 'measure' });
 //
 // Pre-existing, and promoted from theoretical to routine by `measure:devices --sign-in`:
 // that driver KILLS this child on a first interrupt (so a bare `kill` means what Ctrl-C
-// means), so interrupting a matrix stranded a lock every time. Observed 2026-08-16 — the
+// means), so interrupting a matrix stranded a lock every time. Observed 2026-08-16: the
 // next matrix run lost a whole RAM tier to a lock held by a dead process id.
 //
 // Releasing on the abandon path is deliberate, and `rta-run.js` states the reasoning this
@@ -372,14 +374,14 @@ const run = beginRun({ lock, run: 'measure' });
 let interrupting = false;
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, async () => {
-    // Never trap someone in an un-killable process — nothing here is destructive to leave
-    // (this tool does not write the registry), so a second signal just goes.
+    // Never trap someone in an un-killable process. Nothing here is destructive to leave
+    // (this tool does not write the registry), so a second signal exits at once.
     if (interrupting) process.exit(INTERRUPTED_EXIT);
     interrupting = true;
     console.log(`\n[measure] ${signal} — abandoning the series and releasing the device.`);
     socket?.destroy();
     // Folded as INTERRUPTED rather than left to the exit net, which would label an
-    // operator's deliberate stop `crashed` — the same correction `rta-run.js` makes.
+    // operator's deliberate stop `crashed`. This is the same correction `rta-run.js` makes.
     run.close(RUN_OUTCOMES.INTERRUPTED);
     await lock.release().catch(() => {});
     // The value is unchanged; it is now IMPORTED rather than retyped, because the driver
@@ -391,19 +393,19 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 
 if (args.deploy) {
   // BUILD, then deploy. `deployRtaBuild()` sideloads the `build/` DIRECTORY and does not
-  // produce it, and every bsconfig in the repo writes to that same directory — so
-  // `build/` holds whatever npm script ran last, which may be a Rooibos TEST build or a
-  // build from before the change being measured. Every sibling consumer pairs the deploy
-  // with a build in its npm script (`test:rta` = `npm run build && …`,
+  // produce it, and every bsconfig in the repo but `bsconfig-analysis.json` writes to that
+  // same directory. So `build/` holds whatever npm script ran last, which may be a Rooibos
+  // TEST build or a build from before the change being measured. Every sibling consumer
+  // pairs the deploy with a build in its npm script (`test:rta` = `npm run build && …`,
   // `screenshots:capture` = `npm run build:prod && …`); `measure` was the one entry point
   // that offered `--deploy` without one, and the flag's own help says "sideload first",
   // which nobody reads as "sideload whatever happens to be lying around".
   //
   // This is not hypothetical and it is not cheap: it cost four device runs and a build
   // inspection across two sessions. Once it shipped a build predating the instrumentation
-  // being grounded (zero samples, blamed on the pattern), and once — straight after a
-  // `npm run test:unit` — it shipped the TEST build, whose refusal message then advised
-  // re-running with the `--deploy` that had just caused it.
+  // being grounded (zero samples, blamed on the pattern), and once, straight after a
+  // `npm run test:unit`, it shipped the TEST build, whose refusal message then advised
+  // re-running with the `--deploy` that had caused it moments before.
   console.log('[measure] building this checkout ...');
   const built = spawnSync('npm', ['run', 'build'], { stdio: 'inherit', shell: false });
   if (built.status !== 0) {
@@ -416,17 +418,17 @@ if (args.deploy) {
   await deployRtaBuild();
 } else if (args.deployedBy) {
   // The advice below is wrong for this caller: it did not deploy because something else
-  // just did, and `--deploy` here would sideload an arm the caller did not choose (and is
-  // refused outright alongside `--enclosed-server`).
+  // deployed immediately before it, and `--deploy` here would sideload an arm the caller
+  // did not choose (and is refused outright alongside `--enclosed-server`).
   console.log(`[measure] using the build ${args.deployedBy} just deployed`);
 } else {
   console.log('[measure] using the build already on the device (pass --deploy to sideload)');
 }
 
-// ONE socket, held for the whole session — see trap 2 in the header.
+// ONE socket, held for the whole session (see trap 2 in the header).
 const lines = [];
 // Set by the socket callback below and reset per launch. Declared without an
-// initializer because the only reads happen after a launch has reset it — an
+// initializer because the only reads happen after a launch has reset it. An
 // initial value here would be dead, and ESLint says so.
 let lastMatchAt;
 // The instant the current sample's window opens. Read by the socket callback, which
@@ -449,7 +451,7 @@ socket.on('data', (chunk) => {
     // signal that the MEASUREMENT is still emitting.
     //
     // Gated on the same window the samples are, so a line the window excludes
-    // cannot move the quiet clock either — otherwise a straggler from the previous
+    // cannot move the quiet clock either. Otherwise a straggler from the previous
     // launch would age the clock and cut this launch's watch short.
     if (Date.now() >= windowFrom && matchLine(measurement, raw)) lastMatchAt = Date.now();
   }
@@ -463,8 +465,8 @@ const since = (from) => lines.filter((l) => l.at >= from).map((l) => l.raw);
 
 // ─── Tier 1 + tier 2, at the session boundary ────────────────────────────────
 // Read BEFORE any sample, and again after the last one. Never between a relaunch
-// and the line being measured — see the guard's header for why ODC traffic stays
-// out of the measured window.
+// and the line being measured (see the guard's header for why ODC traffic stays
+// out of the measured window).
 await hardRelaunch();
 
 /** Fold the run as a NON-sample, release everything, and exit. */
@@ -477,23 +479,23 @@ async function refuse(message) {
 }
 
 // Whether identity was OBSERVED here or asserted by the caller's enclosure. Recorded as
-// a field on every run — see ADR 0030 and `enclosedServerIdentity`.
+// a field on every run (see ADR 0030 and `enclosedServerIdentity`).
 const identitySource = args.enclosedServer ? 'enclosed' : 'observed';
 
 // The ODC precondition, checked as a precondition rather than surfacing as a stack
 // trace 5 s into an unexplained timeout. This is the documented failure of the
-// default mode — nothing guarantees the resident build was RTA-deployed — so it
+// default mode (nothing guarantees the resident build was RTA-deployed), so it
 // gets the sentence that says what to do about it.
 let identityAtStart;
 if (args.enclosedServer) {
   // The enclosed arm asserts the OPPOSITE precondition, and asserts it in both
   // directions exactly as `--no-server` does. An ODC that answers here means the device
-  // is holding an RTA build, so this arm is not the arm it says it is — and the
+  // is holding an RTA build, so this arm is not the arm it says it is, and the
   // calibration's whole delta is the presence of that component, so a mislabeled arm
   // does not produce a wrong-ish number, it produces two copies of the same arm and a
   // delta of zero. That is the confidently-wrong result this tool refuses.
   //
-  // A raw TCP probe, NOT an ODC call — see `odcIsResident`. Trying an ODC call and
+  // A raw TCP probe, not an ODC call (see `odcIsResident`). Trying an ODC call and
   // catching its failure is the obvious shape and it does not work: RTA retries the
   // refusal internally and rejects a cached promise later, with nobody attached, which
   // killed both plain-arm blocks of the first calibration run AFTER they had passed this
@@ -512,7 +514,7 @@ if (args.enclosedServer) {
   );
   // Every field absent, which is the truth for this arm: nothing was read. `undefined`
   // rather than the declared value, so nothing downstream can mistake the declaration
-  // for an observation — `provenance.server.url` below records null for the same reason.
+  // for an observation. `provenance.server.url` below records null for the same reason.
   identityAtStart = {};
 } else {
   try {
@@ -547,7 +549,7 @@ if (fatal.length) {
 }
 if (missing.length) {
   // Under `--no-server` this is the DECLARED state rather than a surprise, so it is
-  // not flagged with a warning glyph — the whole identity set is absent by definition
+  // not flagged with a warning glyph: the whole identity set is absent by definition
   // and saying "⚠ absent" about it would train the reader to ignore the real case.
   const note = args.noServer
     ? 'no server on the node — identity absent by declaration'
@@ -567,25 +569,25 @@ const provenance = {
   // DERIVED, not assumed. `readIdentity()` above is pure ODC and it answered; the
   // on-device component exists only in a build deployed with `injectTestingFiles`,
   // whose staged manifest has `ENABLE_RTA=true`. So reaching this line is proof,
-  // and it holds whether or not THIS invocation performed the deploy — which is
+  // and it holds whether or not THIS invocation performed the deploy, which is
   // strictly more than the old `args.deploy ? true : null` could say, and it
   // replaces a `manifestFlags.ENABLE_RTA` that read `false` on every run.
   //
   // The enclosed arm derives the NEGATIVE the same way, off a probe that had to fail
   // for the run to get here: no component answered, so nothing was injected. Note
-  // what that does and does not establish — it proves the ODC component is absent,
+  // what that does and does not establish: it proves the ODC component is absent,
   // which is not by itself the manifest flag, because `injectTestingFiles: false`
   // leaves `ENABLE_RTA=true` staged (see `deployBuild`). The literal `bs_const` the
   // device was given is recorded by whoever performed the deploy, under
   // `provenance.deploy`; this field stays what it has always been, the running app's
   // answer about its own ODC.
   enableRta: !args.enclosedServer,
-  // WHERE the identity above came from — observed here, or asserted by the reads the
+  // WHERE the identity above came from: observed here, or asserted by the reads the
   // caller took either side of this run (ADR 0030). A field rather than an inference
   // from `enableRta`, because a reader filtering for trustworthy provenance should not
   // have to know how the two relate.
   identitySource,
-  // What this WORKING TREE would build. Not the device — unless `--deploy` put it
+  // What this WORKING TREE would build. Not the device, unless `--deploy` put it
   // there, which is what `deployedFromCheckout` records instead of leaving a reader
   // to assume. `agreesWithDevice` is filled in after the series, once the app's own
   // `[debug=… perfTiming=…]` bracket has been seen.
@@ -601,7 +603,7 @@ const provenance = {
   },
   server: {
     // `?? null` rather than left undefined: `JSON.stringify` DROPS an undefined value,
-    // so a no-server record would silently have no `url` key at all — which reads as
+    // so a no-server record would silently have no `url` key at all, which reads as
     // "this record predates the field", a different claim from "there was no server".
     // The siblings below already learned this; `url` was the one that had never been
     // absent, because until `--no-server` a run with no server could not complete.
@@ -619,7 +621,7 @@ console.log(
     (args.arm ? ` · arm "${args.arm}"` : ''),
 );
 // Three states, not two. The enclosed arm read NOTHING, so `provenance.server` is null by
-// design — and printing `server null (Jellyfin null)` for it is the log misnaming its own
+// design, and printing `server null (Jellyfin null)` for it is the log misnaming its own
 // arm two lines after correctly announcing the enclosure. These logs are the evidence
 // trail for a measurement; one that describes the wrong arm is worse than one that says
 // nothing.
@@ -656,8 +658,8 @@ if (navEntry) {
     // deterministic. Nothing is seeded here, so the library opens on whatever view the
     // device last persisted. For most screens that changes the WORKLOAD (which is
     // recorded, and visible in a comparison). For the two music-detail screens it
-    // changes WHICH SCREEN — both run the same nav and are told apart only by the
-    // seeded landing — so there the variant the app stamps is the only thing that says
+    // changes WHICH SCREEN (both run the same nav and are told apart only by the
+    // seeded landing), so there the variant the app stamps is the only thing that says
     // what was actually measured. Worth reading before quoting a music number.
     const musical = navEntry.view.collectionType === 'music';
     console.log(
@@ -693,24 +695,24 @@ if (tier1.asserted && !tier1.ok) await refuse(tier1.reason);
 
 // ─── The series ──────────────────────────────────────────────────────────────
 const windowMs = Number.isFinite(args.windowMs) ? args.windowMs : MAX_WINDOW_MS;
-// The loop itself now lives in `measure-loop.js` — everything impure injected, and unit
-// tested there. It used to be inline here, where nothing could reach it: this file claims
+// The loop itself now lives in `measure-loop.js`, with everything impure injected, and is
+// unit tested there. It used to be inline here, where nothing could reach it: this file claims
 // the device on import, so the one layer every defect in this subsystem has been found in
 // was the one layer with no tests. Same reason `measure-args.js` and `measure-selection.js`
-// exist — the extraction bought TESTABILITY, and that is the whole of what it bought.
+// exist: the extraction bought TESTABILITY, and that is the whole of what it bought.
 //
 // It predicted two more callers (the multi-device driver, the ODC calibration harness) and
 // got neither: both went out-of-process, spawning THIS file per unit of work, because a
 // series needs far more than the loop. `measure-loop.js` has one caller and its own header
-// records the correction — repeated here because the same wrong prediction was written in
+// records the correction. It is repeated here because the same wrong prediction was written in
 // two places, and only one of them was fixed when it was found.
 let samples;
 // The operator-facing refusal a failed nav built, or null on a clean series. Kept
-// rather than exited on, so the launches taken BEFORE the failure survive — see the
-// catch below.
+// rather than exited on, so the launches taken BEFORE the failure survive (see the
+// catch below).
 let navFailure = null;
 // How many launches the series ACTUALLY took. Equal to what was asked for on every
-// healthy run, and smaller on a truncated one — which is a distinction the reporting
+// healthy run, and smaller on a truncated one, which is a distinction the reporting
 // below cannot do without: every "n of m" line in this file was written when those two
 // numbers could not differ, so a truncated series reported the launches that never
 // happened as launches that emitted nothing.
@@ -735,7 +737,7 @@ try {
       // Publish this launch's window to the console reader: the socket callback gates its
       // own `lastMatchAt` write on `windowFrom`, so a window it has not been told about
       // would let setup traffic move the quiet clock. Zeroing the clock alongside it is
-      // this reader's own hygiene and NOT something the loop needs — the loop ignores any
+      // this reader's own hygiene, not something the loop needs: the loop ignores any
       // stamp older than the window it was handed.
       openWindow: (from) => {
         windowFrom = from;
@@ -757,7 +759,7 @@ try {
   if (!e.samples.length) await refuse(e.message);
   // Launches the device HAD taken before the failure. They are real samples of a real
   // device and the only thing that made the series stop was a LATER failure, so they are
-  // carried through to the record rather than discarded with the run — the whole point of
+  // carried through to the record rather than discarded with the run. The whole point of
   // the loop throwing rather than exiting is that a matrix survives losing one device, and
   // surviving it while dropping that device's good launches is half a job.
   //
@@ -769,29 +771,29 @@ try {
   navFailure = e.message;
   // `launchNumber` is 1-BASED and names the launch that FAILED, so the launches actually
   // taken are the ones before it. (`sample.launch` in the same module is 0-based; the
-  // two are deliberately named differently for exactly this reason.)
+  // two are named differently for exactly this reason.)
   launchesTaken = e.launchNumber - 1;
   console.error(`\n[measure] ${e.message}`);
 }
 
 // ─── Close the boundary ──────────────────────────────────────────────────────
-// The closing read must NOT be able to destroy the series. It is a 5 s-bounded ODC
+// The closing read must not be able to destroy the series. It is a 5 s-bounded ODC
 // call arriving after every sample has been taken, and an unguarded throw here went
 // to the `uncaughtException` handler, which releases the device and exits WITHOUT
-// writing `measurements.jsonl` — up to an hour of exclusive device time discarded
+// writing `measurements.jsonl`, discarding up to an hour of exclusive device time
 // because a bookkeeping read timed out. That is the same defect that moved the run
 // ledger out of `out/`, one layer up: a record that costs real time to produce must
 // survive the failure of the thing that annotates it.
 //
 // A failed read is recorded as an unverifiable boundary, which is a NON-sample and
-// not a pass, because the series genuinely cannot be shown to be one population.
+// not a pass, because the series cannot be shown to be one population.
 let consistency;
 if (args.enclosedServer) {
   // There is nothing to close the boundary WITH in this arm, and that is the whole
   // reason the enclosure exists. Recorded as an explicit `checked: false` rather than a
   // bare `ok: true`: a series that was never tested for drift and one that passed the
   // test must not read alike, and the value that establishes it lives on the caller's
-  // `enclosure` field — which is also what decides whether this record is published at
+  // `enclosure` field, which is also what decides whether this record is published at
   // all, so a line that reaches the ledger has had the question answered somewhere.
   consistency = {
     ok: true,
@@ -826,7 +828,7 @@ if (!consistency.ok && consistency.drifted.length) {
 }
 
 // ─── Which samples the report is about ───────────────────────────────────────
-// All of this lives in `measure-selection.js` — pure, shared with `measure:compare`, and
+// All of this lives in `measure-selection.js`: pure, shared with `measure:compare`, and
 // unit-tested. It used to live here, where nothing could reach it: `measure.js` claims
 // the device on import, so the one layer every defect in this subsystem has been found in
 // was the one layer with no tests. Same reason `measure-args.js` exists.
@@ -836,7 +838,7 @@ const selectionRefusal = selectionRefusalFor(samples, selector, analysis);
 
 const cold = selectionRefusal ? [] : selectColdSamples(samples, selector);
 
-// Split by WHY a launch came back empty — nothing emitted at all, versus the named mount
+// Split by WHY a launch came back empty: nothing emitted at all, versus the named mount
 // missing from a launch that otherwise recorded fine. See `launchAudit`.
 //
 // Over the launches the series actually TOOK, not the ones asked for. Those were the
@@ -861,12 +863,12 @@ const median = medianOf(
   cold.map((s) => s.timings[measurement.primary] ?? s.workload[measurement.primary]),
 );
 
-// A median for EVERY timing the family emitted, each with the number of samples that
-// actually carried it — not just the primary.
+// A median for every timing the family emitted, each with the number of samples that
+// actually carried it, not only the primary.
 //
 // This is what makes a multi-milestone family honest. A screen emits a paint time and a
 // settle time; reporting only the primary would leave the second milestone with no
-// number at all, and — worse — an optional line that stopped appearing would look
+// number at all, and (worse) an optional line that stopped appearing would look
 // exactly like one that was never declared. `n` beside each median is the difference
 // between "settled at 3104 ms" and "settled at 3104 ms in three of five runs", and only
 // the second of those can be acted on.
@@ -885,14 +887,14 @@ const medians = Object.fromEntries(
 // `complete` already summarises; this exists for the optional ones, where a milestone
 // can go missing without anything else in the record changing shape. Declared-line
 // keyed rather than observed-line keyed, so a line that appeared in ZERO samples is
-// reported as 0 rather than being absent from the report — which is the whole
+// reported as 0 rather than being absent from the report, which is the whole
 // distinction between "unmeasurable" and "not asked for".
 const lineCoverage = Object.fromEntries(
   measurement.lines.map((l) => [l.key, cold.filter((s) => s.lines.includes(l.key)).length]),
 );
 
 // Did the build that produced these samples agree with the checkout? The app's own
-// bracket is authoritative — it came out of the running build — so a disagreement
+// bracket is authoritative (it came out of the running build), so a disagreement
 // says the device is running something this checkout would not produce, which is
 // the case where `checkout.appVersion` and `commit` describe the wrong artifact.
 provenance.checkout.agreesWithDevice = buildFlagsAgree(
@@ -915,8 +917,8 @@ if (provenance.checkout.agreesWithDevice === false) {
 // usable. Same partition, same vocabulary as the run ledger.
 // A run whose samples cannot be attributed to ONE screen is not a measurement of that
 // screen, so it folds as a NON-sample exactly like a drifted identity. The samples are
-// still written — they are real loads, and `--component` / `--variant` can select one on
-// a re-read — but nothing is published from them.
+// still written (they are real loads, and `--component` / `--variant` can select one on
+// a re-read), but nothing is published from them.
 // A series the nav cut short is a NON-sample for the same reason a drifted identity is:
 // the samples are real, and the SERIES is not the one that was asked for. `n` of the
 // launches requested never happened, so a median over what survived is a median over a
@@ -927,28 +929,28 @@ const outcome = usable ? RUN_OUTCOMES.PASSED : RUN_OUTCOMES.BLOCKED;
 // A series that matched NOTHING has to say what the console did carry, or the two
 // causes are indistinguishable from the outside: a pattern that is wrong, and an app
 // that is silent. Reporting only "0 samples" leaves whoever reads it to re-run the
-// whole series by hand with a socket open — which is the manual procedure this tool
+// whole series by hand with a socket open, which is the manual procedure this tool
 // exists to retire, reintroduced at exactly the moment the tool is least useful.
 //
 // Written to the run dir rather than the accumulator: it is a diagnostic for ONE failed
-// run, not a series anyone will join later, and `run.dir` is truncated at open anyway.
+// run, not a series anyone will join later, and each failed run overwrites it anyway.
 // Only on the zero-sample path, so a healthy series never pays for it.
 //
 // Keyed on whether the pattern MATCHED, not on whether a sample was SELECTED. Those come
-// apart on a selection refusal — the samples are all there and all complete, and no cold
-// sample was chosen because the operator has not yet said which mount they meant — and
-// keying on `cold` sent that case down every zero-sample diagnostic in this file: "none
+// apart on a selection refusal: the samples are all there and all complete, and no cold
+// sample was chosen because the operator has not yet said which mount they meant.
+// Keying on `cold` sent that case down every zero-sample diagnostic in this file: "none
 // matched the pattern", "n launches produced no complete sample", and a hint to re-run
 // with `--deploy` because the resident build probably predates the instrumentation.
 // Four complete samples were sitting in the record while it said all three.
 if (!completeSamples.length && lines.length) {
   const dumpPath = path.join(run.dir, 'console-window.log');
   // The run dir has to be created here, exactly as the accumulator's write does below.
-  // `--deploy` runs `npm run build`, which is `rimraf build/ out/` — so the deploy
+  // `--deploy` runs `npm run build`, which is `rimraf build/ out/`, so the deploy
   // DELETES the directory this dump writes into, and the write then throws ENOENT into
   // the `uncaughtException` handler: the tool dies, and the run records as `crashed`.
-  // That lands on the one combination the dump exists to serve — a `--deploy` of new
-  // instrumentation that emitted nothing — where it destroys the console capture that
+  // That lands on the one combination the dump exists to serve (a `--deploy` of new
+  // instrumentation that emitted nothing), where it destroys the console capture that
   // is the only evidence of why. Found by dogfooding the dump to answer an unrelated
   // question, not by review.
   fs.mkdirSync(path.dirname(dumpPath), { recursive: true });
@@ -972,14 +974,14 @@ const record = {
   // tier 3 and neither can be recovered afterwards.
   //
   // Precedence: the FAMILY's declared screen, then `--nav`, then `--screen`. `--nav` is
-  // EVIDENCE rather than an assertion — the tool drove there and the nav's own waitFor
-  // gate gave up if the screen never rendered — which is why it outranks the flag a
+  // EVIDENCE rather than an assertion (the tool drove there, and the nav's own waitFor
+  // gate gave up if the screen never rendered), which is why it outranks the flag a
   // human types and nothing checks.
   //
-  // Deliberately NOT the app's own name: the app knows its COMPONENT (`itemDetails`),
-  // which backs all nine `*Details` entries in the screen registry, and it cannot know
+  // Not the app's own name, by design: the app knows its COMPONENT (`itemDetails`),
+  // which backs every `*Details` entry in the screen registry, and it cannot know
   // which of them was navigated to. Recording that as `screen` cost real discriminating
-  // power — a `movieDetails` arm and a `seriesDetails` arm both read `itemDetails` and
+  // power: a `movieDetails` arm and a `seriesDetails` arm both read `itemDetails` and
   // passed `measure:compare`'s mixed-population gate cleanly, which is strictly worse
   // than the operator-typed `--screen` it replaced. The component is recorded below,
   // under its own name.
@@ -991,27 +993,23 @@ const record = {
   //
   // Both of these are NULL on a refusal, including when the operator NAMED one. That
   // ordering is the point: a flag is advertised as checkable evidence, so on the one path
-  // where the check FAILED — `--component X matched no sample` — recording X anyway would
-  // turn it back into the bare assertion that `--screen` is criticised for two hundred
-  // lines above. `selectionRefusal` and the `observed*` lists below say what really ran.
+  // where the check FAILED (`--component X matched no sample`), recording X anyway would
+  // turn it back into the bare assertion that `--screen` is criticized for in the
+  // precedence note above. `selectionRefusal` and the `observed*` lists below say what
+  // really ran.
   //
   // Naming the first sample instead would be the same wrong answer the median refuses to
   // publish, written into the field a comparison selects on: a launch that mounted
   // `itemDetails` and then `videoPlayer` would record `component: "itemDetails"`.
-  component: selectionRefusal
-    ? null
-    : (args.component ??
-      samples.find((s) => s.dimensions?.component)?.dimensions.component ??
-      null),
-  // `screenVariant`, NOT `variant`: `runProvenance()` already spreads a `variant` of its
-  // own — `process.env.npm_lifecycle_event`, i.e. WHICH NPM SCRIPT launched the run — and
+  component: selectionRefusal ? null : recordMountIdentity(samples, selector).component,
+  // `screenVariant`, not `variant`: `runProvenance()` already spreads a `variant` of its
+  // own (`process.env.npm_lifecycle_event`, that is, WHICH NPM SCRIPT launched the run), and
   // it is spread BELOW this, so a field named `variant` here is silently overwritten by
   // the string "measure". Caught on hardware: the record read `variant: "measure"` while
   // the samples plainly carried `Series` and `Season`. Two unrelated senses of one word,
-  // one of them load-bearing for the run ledger, so the new one takes the distinct name.
-  screenVariant: selectionRefusal
-    ? null
-    : (args.variant ?? samples.find((s) => s.dimensions?.variant)?.dimensions.variant ?? null),
+  // one of them relied on by the run ledger, so the new one takes the distinct name.
+  // Derived from the NAMED component's samples (see `recordMountIdentity`).
+  screenVariant: selectionRefusal ? null : recordMountIdentity(samples, selector).screenVariant,
   // How the screen was reached, and against which library. Neither is recoverable after
   // the fact, and on the server that motivated `--library` (four movie libraries) a
   // comparison cannot otherwise show that both arms opened the same one.
@@ -1023,21 +1021,21 @@ const record = {
   // on a timestamp.
   ...runProvenance(),
   // Whether tier 3 may use this line at all, without a join it is designed not to
-  // need. Note the two files have different cardinality BY DESIGN — a run refused
-  // by tier 1 writes a `runs.jsonl` line and no measurement record at all — so this
+  // need. Note the two files have different cardinality BY DESIGN (a run refused
+  // by tier 1 writes a `runs.jsonl` line and no measurement record at all), so this
   // is not a duplicate of the ledger's outcome; it is this file's own verdict on
   // its own line.
   outcome,
   // The RUN's window, and whether it straddled the top of an hour. `runProvenance`
   // carries `startedAt` but nothing closed the window, so a reader could not tell a
-  // 40-second run from a 40-minute one — and a comparison whose arms are hours apart
+  // 40-second run from a 40-minute one, and a comparison whose arms are hours apart
   // is exactly the aliasing the interleave rule exists to prevent. Same flag, same
   // reason and the same helper as the run ledger's.
   //
   // The RUN's, not the SERIES': `startedAt` is stamped by `beginRun` above, so this
   // window also covers the deploy and the tier-1 / tier-2 reads that precede the
-  // first launch. Per-SAMPLE instants are what tier 3 orders arms by — see
-  // `launchAt` — and they are the ones that describe the sampling itself.
+  // first launch. Per-SAMPLE instants are what tier 3 orders arms by (see
+  // `launchAt`), and they are the ones that describe the sampling itself.
   endedAt,
   crossedHourBoundary: crossesHourBoundary(runProvenance().startedAt, endedAt),
   tier1: { ...tier1, pinned: expectedServer ?? null },
@@ -1058,7 +1056,7 @@ const record = {
   // launches it did take are all there will ever be. Null on every healthy run.
   navFailure,
   // BOTH halves of what the app stamped, because both halves of `component` /
-  // `screenVariant` can be nulled by a refusal — and a record whose selection field is
+  // `screenVariant` can be nulled by a refusal, and a record whose selection field is
   // null with no list beside it cannot say what it saw without re-deriving from
   // `samples`. `observedVariants` shipped first and `observedComponents` did not, which
   // left the component half of a two-component record silent in exactly the case that
@@ -1072,19 +1070,19 @@ const record = {
   samples,
 };
 
-// Under `.device-runs/measure/`, NOT `run.dir`. `beginRun` hands back a directory
-// under `out/`, and every `build*` script opens with `rimraf out/` — a series that
-// took an hour of exclusive device time would be destroyed by the next build,
-// which is exactly the defect that moved the run ledger out of `out/` in the first
-// place. The per-run files can live there because they are truncated at open
-// anyway; an accumulator cannot.
+// Under `.device-runs/measure/`, not `run.dir`. `beginRun` hands back a directory
+// under `out/`, and every `build*` script but `build:analysis` opens with `rimraf out/`,
+// so a series that took an hour of exclusive device time would be destroyed by the
+// next build, which is exactly the defect that moved the run ledger out of `out/` in
+// the first place. The console dump above can live there because each failed run
+// overwrites it anyway; an accumulator cannot.
 //
 // One JSON line per SERIES (not per sample): the series is the unit a comparison
 // pairs, and tier 3 reads this the way `flake-baseline.js` reads `runs.jsonl`.
 //
 // …unless the caller asked for it somewhere else. `--record-to` hands the assembled
 // record over instead of publishing it, for a caller that cannot yet know whether the
-// series may be published — the ODC calibration learns that from a bracket read which
+// series may be published: the ODC calibration learns that from a bracket read which
 // necessarily happens after this process exits. It is a HAND-OFF, not a second copy: the
 // ledger gets nothing here, so there is no window in which an unverified line is
 // readable, and the caller is the one that appends.
@@ -1122,7 +1120,7 @@ for (const key of timingKeys) {
   );
 }
 // How much of this number the INSTRUMENT is. Printed whenever the family can emit it,
-// including when it did not — a `screen-load` series with no `instrumentUs` is an app
+// including when it did not: a `screen-load` series with no `instrumentUs` is an app
 // older than the field or a build that emitted nothing, and reporting that as silence
 // would let the one case worth investigating look identical to a clean run.
 //
@@ -1168,7 +1166,7 @@ if (navFailure) {
 // Two warnings, because they are two different failures with two different next steps,
 // and one count cannot carry both. A launch that emitted NOTHING points at the build or
 // the pattern; a launch that emitted fine but lacked the mount you NAMED points at that
-// screen — a playback that never reached its first frame while the details screen it
+// screen: a playback that never reached its first frame while the details screen it
 // walked through recorded perfectly. Collapsing the second into the first hides it behind
 // a healthy-looking sample count, which is the opposite of this file's posture.
 if (withoutAnySample > 0) {
@@ -1194,7 +1192,7 @@ if (!completeSamples.length) {
   // The FIRST thing to suspect on a zero-sample run, said first, because the guard
   // that would normally answer it cannot: `agreesWithDevice` is derived from the
   // `[debug=… perfTiming=…]` bracket carried BY A SAMPLE, so a run with no samples
-  // records it as `null` — the check meant to catch "the device is not running this
+  // records it as `null`. The check meant to catch "the device is not running this
   // checkout" is blind in exactly the case that most needs it, and no amount of
   // reading the record afterwards recovers the answer.
   //
@@ -1202,10 +1200,10 @@ if (!completeSamples.length) {
   // diagnose. Newly-added instrumentation is precisely the case where the resident
   // build and the checkout differ, and `--deploy` is the one-word fix.
   //
-  // Note what would NOT have helped, which is why the hint is worth its lines: the
+  // Note what would not have helped, which is why the hint is worth its lines: the
   // flags AGREED. `agreesWithDevice` compares `bs_const` only, so a device running an
-  // older build of the same flavour reads as agreeing — it cannot see stale code, only
-  // a stale flavour.
+  // older build of the same flavor reads as agreeing. It cannot see stale code, only
+  // a stale flavor.
   if (!args.deploy) {
     console.error(
       '[measure] ⚠ this run did NOT deploy, so it measured whatever build was already resident.\n' +
@@ -1218,7 +1216,7 @@ if (!completeSamples.length) {
 }
 
 // A series whose identity drifted, or which produced no sample at all, is not a
-// sample of anything, so it folds as a NON-sample rather than a failure — the same
+// sample of anything, so it folds as a NON-sample rather than a failure: the same
 // partition `run-record.js` applies to a run blocked by a broken dependency.
 run.close(outcome);
 socket.destroy();

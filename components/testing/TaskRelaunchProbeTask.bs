@@ -1,0 +1,80 @@
+sub init()
+  m.top.functionName = "holdUntilReleased"
+end sub
+
+' Counts the start, blocks the way `blockMode` says, counts the return.
+'
+' `beats` advances every pass of the poll loop, so a spec can tell whether the function is
+' still executing. The timeout only stops a failed spec from leaving a thread running for the
+' rest of the suite.
+'
+' `blockMode` exists because the app's Tasks do not all block alike, and the question a
+' relaunch raises is what the OLD run does, not only whether a new one starts:
+'   pollLoop  - wait() on a port in a loop, re-reading a field each pass (the original probe)
+'   waitOnce  - ONE long wait() on a port, which is what `fetchJson` does inside the pool
+'   sleepOnce - sleep(), which parks the thread without a port at all
+'   waitForever - wait(0) on a port nothing ever writes to: blocks with NO timeout, so only a
+'               STOP can end it (TaskThreadSlots.spec.bs asks whether a STOP does)
+'   wakeOnDelivery - parks in ONE wait() for `delivery`, as `fetchRes` parks for the pool's
+'               answer, then makes five field writes (TaskStopProgress.spec.bs)
+'   busyWrites - field writes in a loop with no wait(), so a STOP lands mid-way through
+'               ordinary code (TaskStopProgress.spec.bs)
+'   busyLocalThenWrite - local work with no node access for `blockMs`, then ONE field write
+'               (TaskStopProgress.spec.bs)
+'
+' `seq` is read TWICE: once at entry and once after the block. A caller that stops the task,
+' writes a new `seq` and relaunches is doing what every app site did with its input field
+' before #961 (`m.searchTask.query = query` then launch). If the relaunch is ignored but the old
+' run survives its block, `endSeq` shows the run finishing against the NEW input, which looks
+' correct on screen and hides the ignored launch.
+sub holdUntilReleased()
+  m.top.starts = m.top.starts + 1
+  m.top.startSeq = m.top.seq
+
+  blockMs = m.top.blockMs
+  if blockMs <= 0 then blockMs = 5000
+
+  if m.top.blockMode = "sleepOnce"
+    sleep(blockMs)
+  else if m.top.blockMode = "waitOnce"
+    port = CreateObject("roMessagePort")
+    wait(blockMs, port)
+  else if m.top.blockMode = "waitForever"
+    port = CreateObject("roMessagePort")
+    wait(0, port)
+  else if m.top.blockMode = "wakeOnDelivery"
+    port = CreateObject("roMessagePort")
+    m.top.observeField("delivery", port)
+    m.top.parked = true
+    msg = wait(blockMs, port)
+    if type(msg) = "roSGNodeEvent"
+      for i = 1 to 5
+        m.top.steps = i
+      end for
+    end if
+  else if m.top.blockMode = "busyWrites"
+    clock = CreateObject("roTimespan")
+    i = 0
+    while clock.totalMilliseconds() < blockMs
+      i = i + 1
+      m.top.steps = i
+    end while
+  else if m.top.blockMode = "busyLocalThenWrite"
+    clock = CreateObject("roTimespan")
+    x = 0
+    while clock.totalMilliseconds() < blockMs
+      x = x + 1
+    end while
+    m.top.steps = 1
+  else
+    port = CreateObject("roMessagePort")
+    clock = CreateObject("roTimespan")
+    while not m.top.release and clock.totalMilliseconds() < blockMs
+      m.top.beats = m.top.beats + 1
+      wait(20, port)
+    end while
+  end if
+
+  m.top.endSeq = m.top.seq
+  m.top.ends = m.top.ends + 1
+end sub

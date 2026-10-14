@@ -15,7 +15,7 @@
          ({ itemId, mediaType, serverGuid }) and read + cleared
          by replayAfterLogin. Distinct from stashedRoute (the guard's plain-path redirect):
          a deep link routes through ItemDetails (validate + auto-launch), so it needs the
-         structured intent, not just a path. invalid when there is no pending deep link. -->
+         structured intent, not only a path. invalid when there is no pending deep link. -->
     <field id="stashedDeepLink" type="assocarray" />
     <function name="canActivate" />
   </interface>

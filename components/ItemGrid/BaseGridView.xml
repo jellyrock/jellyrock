@@ -5,7 +5,8 @@
   Uses presenter pattern for media-type-specific behavior.
   Combines common functionality from ItemGrid, MovieLibraryView, and MusicLibraryView.
 
-  Presenter is set via setPresenter() function to determine:
+  onPresenterTypeChanged builds the presenter (with no arguments) when the presenterType
+  field is set, then hands it the component through onInit(m). The presenter determines:
   - Backdrop mode (fullscreen, presentation, none)
   - Grid configuration (translation, rows, columns)
   - Options (view, sort, filter)
@@ -51,30 +52,30 @@
 
     <!-- Genre list (alternative display for genres view)
 
-      Vertical spacing — these three fields only make sense together, so change them
+      Vertical spacing: these three fields only make sense together, so change them
       together. Measured on device (Ultra, 1080p UI), a row composes as:
 
         rowHeights  =  row label  +  rowLabelOffset.y  +  the GridItem cell
         cell        =  POSTER_TOP_OFFSET (22) + rowItemSize.y (320) + TITLE_GAP (18) + title
-        row pitch   =  rowHeights + itemSpacing.y  =  455 (measured)
+        row pitch   =  rowHeights + itemSpacing.y  =  455 (measured 2026-08-09)
 
       The label and title heights are the RENDERED heights of MediumSystemFont at
-      fontSizeMedium (32) and of the smaller title font — estimated, not measured, so
+      fontSizeMedium (32) and of the smaller title font, estimated, not measured, so
       treat this composition as ±a few px. The field values below are the measured ones;
       don't recompute them from this sketch.
 
-      So rowHeights INCLUDES the label and its offset — verified by predicting where
+      So rowHeights INCLUDES the label and its offset, verified by predicting where
       rows 2 and 3 land. `rowLabelOffset.y` is a GAP, not a position (Roku: "the vertical
       spacing between the label and the list items"), and it STACKS with the cell's own
       POSTER_TOP_OFFSET, so the visible label-to-poster gap is the sum of the two.
 
       itemSize.y mirrors the single rowHeights entry: Roku repeats that entry across all
       rows, but its docs say unspecified rows fall back to itemSize.y. Equal is correct
-      either way — docs/architecture/list-grid-item-layout.md.
+      either way (docs/architecture/list-grid-item-layout.md).
 
       The offset is NEGATIVE on purpose, and the gaps above/below a heading are
-      deliberately NOT equal: a heading spaced evenly between two rows reads as belonging
-      to neither. -8 puts a heading 14px above its own posters — far closer to them than
+      not equal: a heading spaced evenly between two rows reads as belonging
+      to neither. -8 puts a heading 14px above its own posters, far closer to them than
       to the previous row's titles above it. It is the only way under 22px, since the
       cell's own POSTER_TOP_OFFSET floors the gap and that constant is shared with the
       main library grid.
@@ -97,6 +98,26 @@
     <!-- Empty state message -->
     <LabelPrimaryLarge id="emptyText" isBold="true" width="1910" horizAlign="center" vertAlign="center" height="64" translation="[0, 540]" visible="false" />
 
+    <!-- Load-failure state: the server did not answer, which says nothing about what the
+         library holds, so it is not the empty state. The button's x is set once it has
+         measured itself (onRetryButtonReady), so a longer translation stays centered. -->
+    <Group id="loadFailed" visible="false">
+      <LabelPrimaryLarge id="loadFailedText" isBold="true" width="1910" horizAlign="center" vertAlign="center" height="64" translation="[0, 480]" />
+      <TextButton id="retryButton" translation="[0, 582]" />
+    </Group>
+    <!-- Delays only the failure state's announcement; see narration.OPENING_DELAY in
+         source/utils/dialogNarration.bs for why it cannot be event-driven. -->
+    <Timer id="failureNarrationTimer" repeat="false" />
+
+    <!-- "Loading more": the user reached the last loaded row while the next page is on its way
+         (gridPaging.isWaitingAtEnd). The delay keeps a fast page from flashing it; 0.3 s is a
+         starting value, to tune on device. -->
+    <ProgressPill id="loadingMore" />
+    <Timer id="loadingMoreDelay" repeat="false" duration="0.3" />
+
+    <!-- A slow first page: moves the spinner's text on while the user waits (onSlowLoadDue). -->
+    <Timer id="slowLoadTimer" repeat="false" />
+
     <!-- Options dialog -->
     <ItemGridOptions id="options" visible="false" />
 
@@ -105,22 +126,24 @@
   </children>
 
   <interface>
-    <field id="presenterType" type="string" value="" onChange="onPresenterTypeChanged" />
+    <field id="presenterType" type="string" value="" />
     <field id="HomeLibraryItem" type="string" />
-    <field id="parentItem" type="node" onChange="loadInitialItems" />
+    <field id="parentItem" type="node" />
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <field id="loadLogoTask" type="node" />
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
-    <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" onChange="onAlphaSelectedChanged" />
-    <field id="isAlphaActive" type="boolean" value="false" onChange="onAlphaActiveChanged" />
+    <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" />
+    <field id="isAlphaActive" type="boolean" value="false" />
     <field id="showItemTitles" type="string" value="showonhover" />
     <field id="jumpToItem" type="integer" value="" />
     <field id="gridTitles" type="string" />
     <field id="currentView" type="string" value="" />
     <!--
       Load lifecycle of this view's content, for tests/tooling to observe atomically:
-      "" (not started) -> "loading" -> ["skeleton" ->] "loaded" | "empty".
+      "" (not started) -> "loading" -> ["skeleton" ->] "loaded" | "empty" | "failed".
+      "failed" means the first page (or the genre list) never arrived: the failure state
+      and its Try again button are showing. A later page failing does not change it.
       "skeleton" only occurs on the Genres view (structure drawn, samples pending).
       Pagination after the first page never regresses the state - "loaded" means
       "usable content is on screen", not "every chunk has arrived".

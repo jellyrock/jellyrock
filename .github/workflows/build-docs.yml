@@ -11,6 +11,7 @@ on:
 jobs:
   notify-docs-repo:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Generate GitHub App Token
         id: app-token

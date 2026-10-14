@@ -2,9 +2,13 @@
 
 <component name="LoadScheduleTask" extends="Task">
   <interface>
-    <field id="startTime" type="string" />
-    <field id="endTime" type="string" />
-    <field id="channelIds" type="string" />
-    <field id="schedule" type="array" />
+    <!-- Inputs: one block of channels, as the /LiveTv/Programs parameters they become -->
+    <field id="channelIds" type="array" />
+    <field id="minEndDate" type="string" />
+    <field id="minStartDate" type="string" />
+    <field id="maxStartDate" type="string" />
+    <!-- Outputs: ok is set before programs, so a reader of programs can trust it -->
+    <field id="ok" type="boolean" value="false" />
+    <field id="programs" type="assocarray" />
   </interface>
 </component>

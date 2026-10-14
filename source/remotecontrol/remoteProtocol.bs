@@ -1,9 +1,9 @@
 ' Transport-agnostic protocol constants + pure helpers for the remote-control receiver: the
 ' http-gate, the session-socket URL builder, reconnect backoff, and the client KeepAlive frame.
-' No socket, no node, no m.global — fully unit-testable.
+' No socket, no node, no m.global, so it is fully unit-testable.
 namespace remoteProtocol
 
-  ' The http-gate. JellyRock can only open a ws:// socket to an http:// server — Roku can't do wss://
+  ' The http-gate. JellyRock can only open a ws:// socket to an http:// server: Roku can't do wss://
   ' (no socket TLS), so an https:// session stays uncontrolled (the future plugin long-poll path). Both
   ' the advertised capability (deviceCapabilities) and the receiver gate on this, so they never disagree.
   function isHttpServer(serverUrl as dynamic) as boolean
@@ -14,24 +14,35 @@ namespace remoteProtocol
   ' Build the Jellyfin session-socket URL from the server URL + session credentials.
   ' Returns "" when the server isn't http:// (never downgrades an https:// token onto ws://)
   ' or when a credential is missing.
-  '   http://host:port  ->  ws://host:port/socket?api_key=<token>&deviceId=<id>
+  '   http://host:port  ->  ws://host:port/socket?ApiKey=<token>&deviceId=<id>   (server >= 10.8.0)
+  '   http://host:port  ->  ws://host:port/socket?api_key=<token>&deviceId=<id>  (10.7.x / unknown)
   '
-  ' The `deviceId` query param does NOT bind the session — Jellyfin parses DeviceId from the
-  ' Authorization header ONLY and ignores the query string entirely (verified in AuthorizationContext
-  ' across 10.7 -> 10.11). It is kept because the endpoint accepts it and it is harmless, but the
-  ' binding is done by the Authorization header RemoteControlTask sets on the upgrade handshake.
-  ' Assuming otherwise is what split the session in #743. `api_key` IS load-bearing: it authenticates
-  ' the upgrade, and keeping it means a proxy that strips Authorization degrades rather than fails.
-  function buildSocketUrl(serverUrl as dynamic, authToken as dynamic, deviceId as dynamic) as string
+  ' How the server binds the socket depends on the version:
+  '   - 10.7.x binds the session from the query string alone, reading exactly `api_key` + `deviceId`,
+  '     so both matter there.
+  '   - 10.8 to 10.10 authenticate the upgrade with the Authorization header, but a `deviceId` query
+  '     param, when present, overrides the header's DeviceId. The URL carries the same id, so they agree.
+  '   - 10.11 and later take DeviceId from the Authorization header only and ignore the `deviceId` query
+  '     param, so the binding is done by the header RemoteControlTask sets on the handshake (assuming
+  '     otherwise split the session in #743).
+  '   From 10.8.0 the token in the URL is only the fallback for a proxy that strips Authorization, and it
+  '   must be `ApiKey`: `api_key` is legacy authorization, which 12.0 disables by default.
+  ' See docs/architecture/remote-control.md (How the DeviceId is bound).
+  ' An unknown version keeps `api_key`, matching the conservative legacy fallback of resolveApiVersion.
+  '
+  ' @param serverVersion - connected Jellyfin server version string (for example "12.0.0")
+  function buildSocketUrl(serverUrl as dynamic, authToken as dynamic, deviceId as dynamic, serverVersion as dynamic) as string
     if not isHttpServer(serverUrl) then return ""
     if not isValidAndNotEmpty(authToken) or not isValidAndNotEmpty(deviceId) then return ""
+    tokenParam = "api_key"
+    if isValidAndNotEmpty(serverVersion) and versionChecker(serverVersion, "10.8.0") then tokenParam = "ApiKey"
     hostPort = Mid(serverUrl, 8) ' strip the leading "http://"
-    return "ws://" + hostPort + "/socket?api_key=" + authToken + "&deviceId=" + deviceId
+    return "ws://" + hostPort + "/socket?" + tokenParam + "=" + authToken + "&deviceId=" + deviceId
   end function
 
   ' --- HTTPS long-poll transport (#667) ---
   ' The plugin route prefix. JellyRock consumes the long-poll over TLS (roUrlTransfer) because Roku
-  ' can't wss://. Unlike buildSocketUrl, these carry NO token in the URL — the caller attaches the
+  ' can't wss://. Unlike buildSocketUrl, these carry no token in the URL: the caller attaches the
   ' standard Authorization header (baseRequest.buildAuthHeader), which already binds the session by
   ' DeviceId. See docs/architecture/remote-control-longpoll-contract.md.
   const PLUGIN_ROUTE = "/JellyRock/RemoteControl"
@@ -47,7 +58,7 @@ namespace remoteProtocol
   '
   ' ack=1 is the at-least-once opt-in flag (contract v1, additive): it tells the plugin this client will
   ' acknowledge receipt, so the plugin retains delivered commands and redelivers any we didn't confirm.
-  ' It is present on EVERY poll (including the first) — a plugin that doesn't understand it just ignores
+  ' It is present on every poll (including the first). A plugin that doesn't understand it ignores
   ' it and stays at-most-once. ackId is our cumulative ack: the last MessageId we durably received (""
   ' until we've received one, and omitted then). GUIDs are URL-safe, so no encoding is needed.
   '   https://host  ->  https://host/JellyRock/RemoteControl/poll?waitMs=<n>&ack=1[&ackId=<guid>]
@@ -78,8 +89,8 @@ namespace remoteProtocol
   end function
 
   ' Extract the contractVersion from a /info probe body. Returns 0 for a blank/unparseable body, a
-  ' non-object body, a missing key, or a non-numeric value — callers treat anything <> CONTRACT_VERSION
-  ' as "no usable plugin". NEVER throws on a hostile/garbled body (it's network-controlled input): a
+  ' non-object body, a missing key, or a non-numeric value. Callers treat anything <> CONTRACT_VERSION
+  ' as "no usable plugin". Never throws on a hostile/garbled body (it's network-controlled input): a
   ' string/object/bool contractVersion is rejected before any coercion that could raise at runtime.
   function parseContractVersion(body as dynamic) as integer
     if not isValidAndNotEmpty(body) then return 0
@@ -94,15 +105,15 @@ namespace remoteProtocol
   ' --- Cold-launch cast pairing (#668 P1) ---
   ' JellyRock reports its wake identity to the companion plugin so a CLOSED app can be cold-woken via
   ' ECP /launch. Sent to the SAME companion plugin as the long-poll channel, but works on http OR https
-  ' (the wake is ECP, independent of the command-channel transport — an http server can wake a Roku just
+  ' (the wake is ECP, independent of the command-channel transport: an http server can wake a Roku
   ' as well as an https one). The report carries NO DeviceId/UserId: the caller attaches the standard
   ' Authorization header and the plugin binds identity from the auth claim (body-untrusted, exactly like
   ' the /poll endpoint), so a hostile body can't spoof another device's pairing.
   '
-  ' Contract note — /pair is intentionally version-FREE (unlike /info+/poll, which carry CONTRACT_VERSION).
+  ' Contract: /pair is intentionally version-free (unlike the /info probe, which carries CONTRACT_VERSION).
   ' It's a registration, not a command, so its skew-safety is the plugin's HTTP status contract, not a
   ' version field: an old plugin without the route 404s (-> producer-absent); a future BREAKING change
-  ' MUST 400 old clients (or move the route so they 404) — never silently reinterpret a field. The body is
+  ' must 400 old clients (or move the route so they 404), never silently reinterpret a field. The body is
   ' additive-only (the plugin ignores unknown fields), and identity is auth-claim-bound. The client is
   ' fire-and-forget (SubmitSideEffect from Home.isFirstRun) and never reads the response, so it cannot be
   ' version-confused by construction. See docs/architecture/remote-control.md (Cold-launch pairing report).
@@ -132,7 +143,7 @@ namespace remoteProtocol
   end function
 
   ' Sanitize a raw IP list into the addresses worth reporting: trim, drop blanks, drop loopback
-  ' (127.x) and the unspecified address (0.0.0.0 — GetIPAddrs can surface a not-yet-configured
+  ' (127.x) and the unspecified address (0.0.0.0: GetIPAddrs can surface a not-yet-configured
   ' interface as that), and dedupe (a Roku with both wired + wifi up can report the same address on
   ' more than one interface). Order-preserving. Always returns an array (never invalid), possibly empty.
   function sanitizeIps(rokuIps as dynamic) as object
@@ -152,10 +163,10 @@ namespace remoteProtocol
   end function
 
   ' Compose the pairing report as a fire-and-forget SideEffect request AA (for SubmitSideEffect). Returns
-  ' invalid when there's nothing worth reporting — no server url, or no usable wake address / appId (see
-  ' buildPairPayload) — so the caller can skip a pointless POST. NO auth in the AA: the SideEffectTask
+  ' invalid when there's nothing worth reporting (no server url, or no usable wake address / appId, see
+  ' buildPairPayload), so the caller can skip a pointless POST. No auth in the AA: the SideEffectTask
   ' attaches the Authorization header (which binds device/user identity) and Content-Type. rokuIps comes
-  ' from the caller's roDeviceInfo.GetIPAddrs() (a device call — kept out of this pure module).
+  ' from the caller's roDeviceInfo.GetIPAddrs() (a device call, kept out of this pure module).
   function buildPairRequest(serverUrl as dynamic, rokuIps as dynamic, appId as dynamic, isDev as dynamic) as dynamic
     url = buildPairUrl(serverUrl)
     if url = "" then return invalid
@@ -164,20 +175,24 @@ namespace remoteProtocol
     return { method: "POST", url: url, body: body }
   end function
 
-  ' Exponential reconnect backoff, 0-based attempt: 1s, 2s, 4s, 8s, 16s, then capped at 30s.
-  function nextBackoffMs(attempt as integer) as integer
-    ms = 1000
-    for i = 1 to attempt
-      ms = ms * 2
-      if ms >= 30000 then return 30000
-    end for
-    return ms
-  end function
-
   ' The client->server KeepAlive frame. Jellyfin's ForceKeepAlive asks the client to send
   ' these on the requested interval so the session isn't reaped by the inactivity timeout.
+  ' The KeepAlive the receiver answers a ForceKeepAlive with, and sends every half-interval.
+  '
+  ' The key must stay quoted. BrightScript lowercases a bare identifier key, so
+  ' `FormatJson({ MessageType: ... })` puts `{"messagetype":"KeepAlive"}` on the wire.
+  '
+  ' That is fatal HERE and nowhere else in the app, which is what makes it worth a comment: Jellyfin's
+  ' REST endpoints bind case-INsensitively (so the app's other lowercased bodies are forgiven), but the
+  ' socket path deserializes directly with `JsonDefaults.Options`, which does not set
+  ' `PropertyNameCaseInsensitive`. An unbound `MessageType` takes its default enum value, so the
+  ' server logs nothing, never calls `SendKeepAliveResponse`, never advances `LastKeepAliveDate`, and
+  ' `SessionWebSocketListener` reaps the socket ~60s after it connects (#934).
+  '
+  ' The spec asserts the raw STRING. It cannot use ParseJson: a parsed AA is case-insensitive too, so
+  ' it resolves `messagetype` happily and the assertion passes against the broken frame.
   function keepAliveFrame() as string
-    return FormatJson({ MessageType: "KeepAlive" })
+    return FormatJson({ "MessageType": "KeepAlive" })
   end function
 
 end namespace

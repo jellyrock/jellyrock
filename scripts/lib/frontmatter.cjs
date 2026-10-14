@@ -1,12 +1,12 @@
 // Shared frontmatter / path-matching helpers used by docs tooling.
 //
-// Callers: docs-stale-blocking.cjs, check-touched-related-files.cjs.
-// (docs-check.cjs and docs-stale.cjs predate this lib and continue to use
-// their own inlined parsers; if either gets a bug fix here that they need,
-// migrate them at that point rather than touching them speculatively.)
+// Callers: docs-check.cjs, docs-stale-blocking.cjs, check-touched-related-files.cjs,
+// session-start-nudge.cjs. (docs-stale.cjs predates this lib and continues to use
+// its own inlined parser; if it gets a bug fix here that it needs, migrate it at
+// that point rather than touching it speculatively.)
 //
-// Keep this module dependency-free (Node stdlib only) — the docs tooling
-// runs in CI without `npm ci`.
+// Keep this module dependency-free (Node stdlib only): its callers use only the
+// stdlib, so they run without `npm ci`.
 
 'use strict';
 
@@ -36,7 +36,7 @@ function getLastReviewed(frontmatter) {
  * Reads the `last-updated:` ISO date (YYYY-MM-DD) from a frontmatter
  * string, or null if absent / malformed. Used by the journal files
  * (`docs/progress.md`, `docs/signals-backlog.md`) where "updated"
- * semantics differ from architecture-doc "reviewed" — updated bumps
+ * semantics differ from architecture-doc "reviewed": updated bumps
  * any time content moves; reviewed bumps only on substantive shape/why
  * re-reads.
  */
@@ -54,7 +54,7 @@ function getLastUpdated(frontmatter) {
  *       - path/one.bs
  *       - path/two.bs
  *
- * Returns an array of entries (file or directory paths) — never null.
+ * Returns an array of entries (file or directory paths), never null.
  */
 function parseRelatedFiles(frontmatter) {
   if (!frontmatter) return [];
@@ -83,8 +83,8 @@ function parseRelatedFiles(frontmatter) {
  * disk and is a directory).
  *
  * If `related` doesn't exist on disk, only an exact match counts. That
- * lets stale entries (e.g., a related-file that was renamed) silently
- * stop matching here — drift detection is `lint:docs`'s job, not ours.
+ * lets stale entries (for example, a related-file that was renamed) silently
+ * stop matching here: drift detection is `lint:docs`'s job, not ours.
  */
 function pathMatches(touched, related) {
   if (touched === related) return true;
@@ -95,7 +95,7 @@ function pathMatches(touched, related) {
       return touched.startsWith(prefix);
     }
   } catch {
-    // entry not on disk — exact-only behavior above
+    // entry not on disk: exact-only behavior above
   }
   return false;
 }

@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="QueueManager" extends="ContentNode">
   <interface>
+    <function name="advanceTo" />
+    <function name="beginPlaybackStart" />
     <function name="clear" />
-    <function name="deleteAtIndex" />
+    <function name="failPendingPlaybackStart" />
     <function name="getCount" />
     <function name="getCurrentItem" />
     <function name="getIsShuffled" />
@@ -13,6 +15,8 @@
     <function name="getQueueTypes" />
     <function name="getQueueUniqueTypes" />
     <function name="getUnshuffledQueue" />
+    <function name="getVersionPreference" />
+    <function name="insertAfterCurrent" />
     <function name="isPrerollActive" />
     <function name="launchItem" />
     <function name="launchPhotoAlbum" />
@@ -20,16 +24,15 @@
     <function name="launchShuffle" />
     <function name="moveBack" />
     <function name="moveForward" />
-    <function name="peek" />
     <function name="playQueue" />
-    <function name="pop" />
     <function name="push" />
-    <function name="resetShuffle" />
     <function name="set" />
     <function name="setCurrentStartingPoint" />
     <function name="setPosition" />
     <function name="setPrerollStatus" />
+    <function name="setVersionPreference" />
+    <function name="startCurrentFresh" />
     <function name="toggleShuffle" />
-    <function name="top" />
+    <function name="takePlaybackStart" />
   </interface>
 </component>

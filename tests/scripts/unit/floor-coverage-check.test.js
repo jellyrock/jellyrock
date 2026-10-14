@@ -25,9 +25,9 @@ function fp(specVersion, operations = {}) {
 }
 
 // A floor fingerprint that serves /Users/{}/Items (a V1 sibling present on the floor)
-// but NOT /MediaSegments/{} or /Items. So:
-//   - a minApiVersion:1 manifest endpoint at /mediasegments/{} → coverage-gap (absent).
-//   - a minApiVersion:2 manifest endpoint at /items whose op IS on the floor → symmetry.
+// and /Items, but not /MediaSegments/{}. So:
+//   - a minApiVersion:1 manifest endpoint at /mediasegments/{} is a coverage-gap (absent).
+//   - a minApiVersion:2 manifest endpoint at /items whose op is on the floor is symmetry.
 const FLOOR_OPS = {
   'GET /Users/{userId}/Items': { parameters: [] },
   'GET /Items': { parameters: [] },
@@ -50,7 +50,7 @@ const EP = {
     maxApiVersion: null,
     sourceFiles: ['source/api/ApiClient.bs'],
   },
-  // A floor-included endpoint the floor spec DOES serve → never a gap (clean baseline).
+  // A floor-included endpoint the floor spec does serve: never a gap (clean baseline).
   usersItems: {
     path: '/Users/{0}/Items',
     normalized: '/users/{}/items',
@@ -122,8 +122,8 @@ describe('floor-coverage-check.js (lint, offline)', () => {
   });
 
   it('passes (exit 0) but WARNS on an unregistered symmetry advisory — not a failure', () => {
-    // EP.items is modern-only (minApiVersion 2) but its GET /items IS on the floor spec
-    // → symmetry-advisory. usersItems keeps the floor baseline clean of gaps.
+    // EP.items is modern-only (minApiVersion 2) but its GET /items is on the floor spec,
+    // which makes it a symmetry-advisory. usersItems keeps the floor baseline clean of gaps.
     scaffold({ endpoints: [EP.usersItems, EP.items] });
     const res = spawnScript(LINT, ['--root', dir]);
     expect(res.exitCode).toBe(0);

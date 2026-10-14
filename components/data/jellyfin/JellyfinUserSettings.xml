@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  LOADING STATE PATTERN: ALWAYS LOADED
+  LOADING STATE PATTERN: always loaded
 
-  Settings are ALWAYS loaded (synchronously from registry or defaults).
+  Settings are always loaded (synchronously from registry or defaults).
   Empty values represent "use app default" (valid state).
   No loading states needed - settings node always exists and is valid.
 
   DEFAULT VALUES:
-  Default values are NOT hardcoded in this XML file. They are loaded at runtime
+  Default values are not hardcoded in this XML file. They are loaded at runtime
   from settings/settings.json via user.settings.SaveDefaults() during app startup.
   This ensures a single source of truth and prevents drift between XML and JSON.
 
-  Field definitions below have NO value attributes - all defaults come from settings.json.
+  Setting fields below have NO value attributes - all defaults come from settings.json
+  (only the loading-state fields, isLoaded and loadedAt, declare one).
 -->
 <component name="JellyfinUserSettings" extends="ContentNode">
   <interface>
@@ -32,6 +33,7 @@
     <field id="playbackNextUpButtonSeconds" type="integer" alwaysNotify="true" />
     <field id="playbackPlayNextEpisode" type="string" alwaysNotify="true" />
     <field id="playbackPreferredMultichannelCodec" type="string" alwaysNotify="true" />
+    <field id="playbackStillWatching" type="string" alwaysNotify="true" />
     <field id="playbackSubsOnlyText" type="boolean" alwaysNotify="true" />
     <field id="playbackForceTranscodeAnamorphic" type="boolean" alwaysNotify="true" />
     <field id="playbackMpeg2" type="boolean" alwaysNotify="true" />
@@ -98,6 +100,9 @@
     <field id="homeSection4" type="string" alwaysNotify="true" />
     <field id="homeSection5" type="string" alwaysNotify="true" />
     <field id="homeSection6" type="string" alwaysNotify="true" />
+    <field id="homeSection7" type="string" alwaysNotify="true" />
+    <field id="homeSection8" type="string" alwaysNotify="true" />
+    <field id="homeSection9" type="string" alwaysNotify="true" />
 
     <!-- Display Settings -->
     <field id="displayLiveTvLanding" type="string" alwaysNotify="true" />
@@ -108,9 +113,6 @@
     <!-- Loading State -->
     <field id="isLoaded" type="boolean" value="false" />
     <field id="loadedAt" type="longinteger" value="0" />
-
-    <!-- DEBUG ONLY: Raw settings for debugging - only populated when bs_const=debug=true -->
-    <field id="rawSettings" type="assocarray" />
 
     <!-- Exported functions callable via callFunc() -->
     <function name="enableAutoSync" />

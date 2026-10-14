@@ -1,0 +1,78 @@
+namespace tests
+
+  ' Which version's streams ItemDetails reads for its audio and subtitle dropdowns
+  ' (findSelectedSource). The selected id is matched ignoring case, as playback start
+  ' matches it, and only a version carrying MediaStreams qualifies.
+  @suite("ItemDetails - selected version streams")
+  class ItemDetailsSelectedSourceTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+
+    ' Two versions whose only audio tracks sit at different indexes, so the default audio
+    ' pick shows which version's streams were read.
+    private function makeMovie(alternateStreams as dynamic) as object
+      alternate = { Id: "alternate" }
+      if isValid(alternateStreams) then alternate.MediaStreams = alternateStreams
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "primary"
+      item.type = "Movie"
+      item.name = "Two Versions"
+      item.mediaSourcesData = {
+        mediaSources: [
+          { Id: "primary", MediaStreams: [{ Index: 0, Type: "Video" }, { Index: 1, Type: "Audio", Language: "eng", IsDefault: true }] },
+          alternate
+        ]
+      }
+      return item
+    end function
+
+    private function alternateStreams() as object
+      return [{ Index: 0, Type: "Video" }, { Index: 3, Type: "Audio", Language: "eng", IsDefault: true }]
+    end function
+
+    ' beforeEach, not setup: each test loads content into the node (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+    end function
+
+    protected override function afterEach()
+      m.itemDetails = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a selected version")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the selected version's streams")
+    function _()
+      m.itemDetails.selectedVideoStreamId = "alternate"
+      m.itemDetails.itemContent = m.makeMovie(m.alternateStreams())
+
+      m.assertEqual(m.itemDetails.selectedAudioStreamIndex, 3)
+    end function
+
+    @it("matches the selected id ignoring case, as the server does")
+    function _()
+      m.itemDetails.selectedVideoStreamId = "ALTERNATE"
+      m.itemDetails.itemContent = m.makeMovie(m.alternateStreams())
+
+      m.assertEqual(m.itemDetails.selectedAudioStreamIndex, 3)
+    end function
+
+    @it("falls back to the first version when the selected one has no streams")
+    function _()
+      m.itemDetails.selectedVideoStreamId = "alternate"
+      m.itemDetails.itemContent = m.makeMovie(invalid)
+
+      m.assertEqual(m.itemDetails.selectedAudioStreamIndex, 1)
+    end function
+
+  end class
+
+end namespace

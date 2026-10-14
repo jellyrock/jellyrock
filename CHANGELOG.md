@@ -7,6 +7,275 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (subtitles) Show and announce a failed or empty subtitle search ([#1203](https://github.com/jellyrock/jellyrock/pull/1203))
+- (search) Show and announce when a search failed or found nothing ([#1199](https://github.com/jellyrock/jellyrock/pull/1199))
+- Say why a quick play found nothing, and never guess an episode ([#1197](https://github.com/jellyrock/jellyrock/pull/1197))
+
+### Fixed
+
+- (subtitles) Stop Perfect match showing old results mid-search ([#1204](https://github.com/jellyrock/jellyrock/pull/1204))
+- (playback) Play the last track or version picked, and every retry ([#1198](https://github.com/jellyrock/jellyrock/pull/1198))
+- Keep music artists out of search and Favorites people on 12.0+ ([#1195](https://github.com/jellyrock/jellyrock/pull/1195))
+- (playback) Pick `.strm` tracks on first play; fill Playback Info ([#1184](https://github.com/jellyrock/jellyrock/pull/1184))
+- (grid) Stop asking for `MediaSourceCount` on the music grids ([#1181](https://github.com/jellyrock/jellyrock/pull/1181))
+
+### Dependencies
+
+- Update vitest from v5.0.3 to v5.0.4 ([#1178](https://github.com/jellyrock/jellyrock/pull/1178))
+- Update actions/setup-node action to v7.1.0 ([#1177](https://github.com/jellyrock/jellyrock/pull/1177))
+- Update prettier from v3.9.9 to v3.9.10 ([#1153](https://github.com/jellyrock/jellyrock/pull/1153))
+- Update actions/upload-artifact action to v7.0.2 ([#1176](https://github.com/jellyrock/jellyrock/pull/1176))
+
+## [3.0.0](https://github.com/jellyrock/jellyrock/compare/v2.35.0...v3.0.0) - 2026-10-12
+
+### Changed
+
+- (manifest) Require Roku OS 15.1 and SceneGraph 1.3 ([#1126](https://github.com/jellyrock/jellyrock/pull/1126))
+
+### Fixed
+
+- (playback) Direct-play `.strm` and DASH; fall back if unreachable ([#1170](https://github.com/jellyrock/jellyrock/pull/1170))
+- (music) Keep the playing track when shuffle is switched on again ([#1159](https://github.com/jellyrock/jellyrock/pull/1159))
+- (navigation) Recover from a failed navigation before logging it ([#1157](https://github.com/jellyrock/jellyrock/pull/1157))
+- Stop the sign-in screen flashing back after a deep-link sign-in ([#1156](https://github.com/jellyrock/jellyrock/pull/1156))
+- (locale) Apply the user's language when preferences fail ([#1155](https://github.com/jellyrock/jellyrock/pull/1155))
+- Stop a crash on options in a stopped video's playback info ([#1154](https://github.com/jellyrock/jellyrock/pull/1154))
+- (overhang) Reset the clock when the screensaver ends ([#1152](https://github.com/jellyrock/jellyrock/pull/1152))
+- (home) Hide pilots of not-yet-started series from Next Up ([#1124](https://github.com/jellyrock/jellyrock/pull/1124))
+- Change screens and the overhang in one frame ([#1137](https://github.com/jellyrock/jellyrock/pull/1137))
+- (focus) Stop screens taking focus back when it leaves the router ([#1138](https://github.com/jellyrock/jellyrock/pull/1138))
+- Clearer subtitle track names; dropdowns keep short text on pick ([#1121](https://github.com/jellyrock/jellyrock/pull/1121))
+- (home) Show Home sections placed in web client slots 8-10 ([#1119](https://github.com/jellyrock/jellyrock/pull/1119))
+
+### Dependencies
+
+- Update brighterscript-formatter from v1.8.3 to v1.8.4 ([#1151](https://github.com/jellyrock/jellyrock/pull/1151))
+- Update dotenv from v18.0.5 to v18.0.7 ([#1125](https://github.com/jellyrock/jellyrock/pull/1125), [#1145](https://github.com/jellyrock/jellyrock/pull/1145))
+- Update eslint from v10.11.0 to v10.12.0 ([#1083](https://github.com/jellyrock/jellyrock/pull/1083))
+- Update js-yaml from v5.4.2 to v5.4.3 ([#1116](https://github.com/jellyrock/jellyrock/pull/1116))
+- Update eslint-plugin-n from v18.4.0 to v18.4.1 ([#1087](https://github.com/jellyrock/jellyrock/pull/1087))
+
+## [2.35.0](https://github.com/jellyrock/jellyrock/compare/v2.34.1...v2.35.0) - 2026-10-04
+
+### Added
+
+- (video) Ask "Are you still watching?" before endless auto-play ([#1086](https://github.com/jellyrock/jellyrock/pull/1086))
+
+### Changed
+
+- (translations) Seed translations from other Jellyfin clients ([#1102](https://github.com/jellyrock/jellyrock/pull/1102))
+- Consolidate duplicate helpers from the dead-code baseline ([#1104](https://github.com/jellyrock/jellyrock/pull/1104))
+- Remove unused session transformers, test the live login ([#1103](https://github.com/jellyrock/jellyrock/pull/1103))
+- Remove unused component functions, fields and interface exposures ([#1098](https://github.com/jellyrock/jellyrock/pull/1098))
+- Remove unused API calls, image helpers and utilities ([#1096](https://github.com/jellyrock/jellyrock/pull/1096))
+- Remove unused components, dev dependencies and JS exports ([#1078](https://github.com/jellyrock/jellyrock/pull/1078))
+
+### Fixed
+
+- (video) Keep Next Episode and Skip pop-ups off open dialogs ([#1084](https://github.com/jellyrock/jellyrock/pull/1084))
+
+### Dependencies
+
+- Update dotenv from v17.4.2 to v18 ([#962](https://github.com/jellyrock/jellyrock/pull/962))
+- Update vitest from v5.0.2 to v5.0.3 ([#1077](https://github.com/jellyrock/jellyrock/pull/1077))
+
+## [2.34.1](https://github.com/jellyrock/jellyrock/compare/v2.34.0...v2.34.1) - 2026-10-02
+
+### Fixed
+
+- Silent DTS, failing TrueHD over passthrough, and track switching ([#1079](https://github.com/jellyrock/jellyrock/pull/1079))
+- Quick play slow, TV and mixed libraries, and resume music videos ([#1076](https://github.com/jellyrock/jellyrock/pull/1076))
+
+### Dependencies
+
+- Update lint-staged from v17.5.1 to v17.6.0 ([#1053](https://github.com/jellyrock/jellyrock/pull/1053))
+- Update eslint-plugin-n from v18.3.0 to v18.4.0 ([#1052](https://github.com/jellyrock/jellyrock/pull/1052))
+- Update rooibos-roku to v6.0.0 ([#1067](https://github.com/jellyrock/jellyrock/pull/1067))
+- Update brighterscript to v1.0.0 ([#1065](https://github.com/jellyrock/jellyrock/pull/1065))
+- Update sharp from v0.35.4 to v0.35.5 ([#1066](https://github.com/jellyrock/jellyrock/pull/1066))
+
+## [2.34.0](https://github.com/jellyrock/jellyrock/compare/v2.33.0...v2.34.0) - 2026-09-27
+
+### Added
+
+- Say when search or cast is slow; keep search's spinner on search ([#1044](https://github.com/jellyrock/jellyrock/pull/1044))
+
+### Changed
+
+- (details) Give a Season's series fetch its own Task per run ([#1047](https://github.com/jellyrock/jellyrock/pull/1047))
+- (grid) Keep large libraries loading as fast as you scroll ([#1046](https://github.com/jellyrock/jellyrock/pull/1046))
+
+### Fixed
+
+- (playback) Back cancels a start, keys wait; slow starts say still loading ([#1064](https://github.com/jellyrock/jellyrock/pull/1064))
+- (audio) Transcode Opus in `ogg` music instead of hanging ([#1062](https://github.com/jellyrock/jellyrock/pull/1062))
+- Release live streams left mid-open, and wait for slow channels ([#1058](https://github.com/jellyrock/jellyrock/pull/1058))
+- (home) Tell a failed Favorites load from an empty one; OK retries ([#1057](https://github.com/jellyrock/jellyrock/pull/1057))
+- (home) Tell failed Home rows from empty ones; OK retries ([#1051](https://github.com/jellyrock/jellyrock/pull/1051))
+- Close a Live TV stream that never started playing ([#1050](https://github.com/jellyrock/jellyrock/pull/1050))
+- (audio) Show the right song's title and artwork after a skip ([#1045](https://github.com/jellyrock/jellyrock/pull/1045))
+- (grid) Wait for slow libraries, say so, and let Back stop the load ([#1043](https://github.com/jellyrock/jellyrock/pull/1043))
+- Load libraries as you scroll, say "Loading more", page "#" fully ([#1040](https://github.com/jellyrock/jellyrock/pull/1040))
+- Show a library that failed to load as failed, and recover from it ([#1033](https://github.com/jellyrock/jellyrock/pull/1033))
+
+### Dependencies
+
+- Update vitest from v5.0.1 to v5.0.2 ([#1036](https://github.com/jellyrock/jellyrock/pull/1036))
+
+## [2.33.0](https://github.com/jellyrock/jellyrock/compare/v2.32.0...v2.33.0) - 2026-09-25
+
+### Added
+
+- Browse a movie or TV library's collections on Jellyfin 12 ([#1014](https://github.com/jellyrock/jellyrock/pull/1014))
+
+### Fixed
+
+- Stop a song crashing when its details fail to load ([#1029](https://github.com/jellyrock/jellyrock/pull/1029))
+- Stop Play crashing on a song's details screen ([#1027](https://github.com/jellyrock/jellyrock/pull/1027))
+- (video) Keep the resume point when a video fails before it plays ([#1025](https://github.com/jellyrock/jellyrock/pull/1025))
+- Stop subtitles crashing on short or comma timestamps, and hide cue ids and notes ([#1024](https://github.com/jellyrock/jellyrock/pull/1024))
+- Recover stalled Live TV and close a failed channel's live stream ([#1018](https://github.com/jellyrock/jellyrock/pull/1018))
+- Stop restarting a Live TV channel that keeps ending without playing ([#1016](https://github.com/jellyrock/jellyrock/pull/1016))
+- Keep screens loading when the app hits its Task-thread limit ([#1022](https://github.com/jellyrock/jellyrock/pull/1022))
+- Stop a late playback report replacing a dialog you opened meanwhile ([#1020](https://github.com/jellyrock/jellyrock/pull/1020))
+- Stop the playback info report reopening itself after you close it ([#1019](https://github.com/jellyrock/jellyrock/pull/1019))
+- Keep Home rows refreshing when you return to Home as a load finishes ([#1017](https://github.com/jellyrock/jellyrock/pull/1017))
+
+### Dependencies
+
+- Update prettier from v3.9.8 to v3.9.9 ([#1015](https://github.com/jellyrock/jellyrock/pull/1015))
+- Update eslint from v10.10.0 to v10.11.0 ([#966](https://github.com/jellyrock/jellyrock/pull/966))
+
+## [2.32.0](https://github.com/jellyrock/jellyrock/compare/v2.31.0...v2.32.0) - 2026-09-23
+
+### Added
+
+- Filter a movie library by audio and subtitle language on Jellyfin 12 ([#1002](https://github.com/jellyrock/jellyrock/pull/1002))
+- Show Created by and Directed by credits on every item type that has them ([#1000](https://github.com/jellyrock/jellyrock/pull/1000))
+- Show which collections an item is in on its details page ([#992](https://github.com/jellyrock/jellyrock/pull/992))
+- Share bsconfig settings through one base config and clear the new BrighterScript warnings ([#984](https://github.com/jellyrock/jellyrock/pull/984))
+
+### Changed
+
+- Give each `HomeRows` latest-rows run its own task node ([#995](https://github.com/jellyrock/jellyrock/pull/995))
+- Show every TV guide channel, loading programs near the focus ([#991](https://github.com/jellyrock/jellyrock/pull/991))
+
+### Fixed
+
+- Always apply a subtitle track change, and stop the caption timer ([#1010](https://github.com/jellyrock/jellyrock/pull/1010))
+- Don't let abandoned requests delay the ones you're waiting for ([#999](https://github.com/jellyrock/jellyrock/pull/999))
+- Show the focused movie's logo, not the previous one's, in the `Movies` view ([#997](https://github.com/jellyrock/jellyrock/pull/997))
+- (skills) Make `/pr` titles name every user-visible change ([#998](https://github.com/jellyrock/jellyrock/pull/998))
+- Fit `ItemDetails` text to the logo's real size ([#996](https://github.com/jellyrock/jellyrock/pull/996))
+- Stop crashing when a server answers a list endpoint with an object ([#993](https://github.com/jellyrock/jellyrock/pull/993))
+- Fetch a focused TV guide program's details once, not twice ([#994](https://github.com/jellyrock/jellyrock/pull/994))
+- Play Live TV HLS channels from their own URL again on Jellyfin 12 ([#990](https://github.com/jellyrock/jellyrock/pull/990))
+- Stop copying prebuilt source maps into builds ([#987](https://github.com/jellyrock/jellyrock/pull/987))
+
+### Dependencies
+
+- Update java-jdk to v25 ([#979](https://github.com/jellyrock/jellyrock/pull/979))
+- Update pin dependency java-jdk to v21.0.12 ([#978](https://github.com/jellyrock/jellyrock/pull/978))
+- Update markdownlint-cli2 from v0.23.2 to v0.23.3 ([#972](https://github.com/jellyrock/jellyrock/pull/972))
+
+## [2.31.0](https://github.com/jellyrock/jellyrock/compare/v2.30.0...v2.31.0) - 2026-09-21
+
+### Added
+
+- Merge a person's credits into one Cast & Crew card, translated ([#975](https://github.com/jellyrock/jellyrock/pull/975))
+
+### Changed
+
+- Show the version that would actually play on posters and episode rows ([#971](https://github.com/jellyrock/jellyrock/pull/971))
+- Label alternate versions by what differs, and offer every version ([#953](https://github.com/jellyrock/jellyrock/pull/953))
+- Read device settings from a per-user env file as well as `.env` ([#949](https://github.com/jellyrock/jellyrock/pull/949))
+
+### Fixed
+
+- Honor v12 web client's "Original language" audio preference ([#977](https://github.com/jellyrock/jellyrock/pull/977))
+- Stop the session socket being reaped a minute after it connects ([#974](https://github.com/jellyrock/jellyrock/pull/974))
+- Start every item a queue arrives at from the beginning ([#970](https://github.com/jellyrock/jellyrock/pull/970))
+- Resume the same version everywhere, and map an in-player switch ([#958](https://github.com/jellyrock/jellyrock/pull/958))
+- Keep the `ItemGridOptions` dialog usable while a library grid loads ([#968](https://github.com/jellyrock/jellyrock/pull/968))
+- Give each `BaseGridView` load and page its own Task node ([#967](https://github.com/jellyrock/jellyrock/pull/967))
+- Give each run its own Task node where a restart can lose the work ([#961](https://github.com/jellyrock/jellyrock/pull/961))
+- Stop Next Up listing every series' pilot on Jellyfin 10.7–10.10 ([#955](https://github.com/jellyrock/jellyrock/pull/955))
+
+### Dependencies
+
+- Update rooibos-roku to v6.0.0 ([#965](https://github.com/jellyrock/jellyrock/pull/965))
+- Update brighterscript to v1.0.0 ([#964](https://github.com/jellyrock/jellyrock/pull/964))
+- Update vitest from v4.1.11 to v5 ([#882](https://github.com/jellyrock/jellyrock/pull/882))
+- Update prettier from v3.9.6 to v3.9.8 ([#941](https://github.com/jellyrock/jellyrock/pull/941))
+
+## [2.30.0](https://github.com/jellyrock/jellyrock/compare/v2.29.1...v2.30.0) - 2026-09-17
+
+### Changed
+
+- Widen the API request pool for faster loading (up to 30% on Home) ([#944](https://github.com/jellyrock/jellyrock/pull/944))
+
+### Fixed
+
+- Match the selected version ignoring case in `ItemDetails`, and drop the dead `MaxVideoDecodeResolution` ([#947](https://github.com/jellyrock/jellyrock/pull/947))
+- Read the version being played when starting playback ([#943](https://github.com/jellyrock/jellyrock/pull/943))
+- Stabilize `ItemDetails` row focus and prevent buttons from popping in ([#942](https://github.com/jellyrock/jellyrock/pull/942))
+- Save and resume progress per version on Jellyfin 12.0 ([#940](https://github.com/jellyrock/jellyrock/pull/940))
+
+## [2.29.1](https://github.com/jellyrock/jellyrock/compare/v2.29.0...v2.29.1) - 2026-09-16
+
+### Fixed
+
+- Stop the extras row counter flickering on `ItemDetails` ([#922](https://github.com/jellyrock/jellyrock/pull/922))
+- Hide the series Resume button until an episode has been watched ([#927](https://github.com/jellyrock/jellyrock/pull/927))
+
+### Dependencies
+
+- Update lint-staged from v17.4.1 to v17.5.1 ([#888](https://github.com/jellyrock/jellyrock/pull/888))
+- Brighterscript (patch) ([#902](https://github.com/jellyrock/jellyrock/pull/902))
+
+## [2.29.0](https://github.com/jellyrock/jellyrock/compare/v2.28.0...v2.29.0) - 2026-09-15
+
+### Added
+
+- Add subtitle search, download and delete to item details ([#918](https://github.com/jellyrock/jellyrock/pull/918))
+- Cap `ItemDetails` and `OSD` button rows with a `More` overflow menu ([#890](https://github.com/jellyrock/jellyrock/pull/890))
+
+### Changed
+
+- Version-gate the `ws://` socket token param for Jellyfin 12.0 ([#920](https://github.com/jellyrock/jellyrock/pull/920))
+- Refresh the `rooibos-roku` patch for the installed version ([#894](https://github.com/jellyrock/jellyrock/pull/894))
+
+### Fixed
+
+- Register `m.top` observers once so the player cannot silence its host ([#913](https://github.com/jellyrock/jellyrock/pull/913))
+- Report a force-finished playback as stopped once, not twice ([#914](https://github.com/jellyrock/jellyrock/pull/914))
+- Finish playback when a segment skip lands at the end of the media ([#912](https://github.com/jellyrock/jellyrock/pull/912))
+- Keep `playbackTimer`'s observer across a stopped → playing cycle ([#907](https://github.com/jellyrock/jellyrock/pull/907))
+- Close all three routes to a false buffer stall ([#899](https://github.com/jellyrock/jellyrock/pull/899))
+- Register the `state` observer exactly once ([#898](https://github.com/jellyrock/jellyrock/pull/898))
+- Register the `position` observer exactly once ([#896](https://github.com/jellyrock/jellyrock/pull/896))
+- Gate interface-field observer wiring; fix stale cross-file findings ([#895](https://github.com/jellyrock/jellyrock/pull/895))
+- Observe each interface field exactly once in `OSD` and `IconButton` ([#891](https://github.com/jellyrock/jellyrock/pull/891))
+
+### Removed
+
+- Unused `Section` and `SectionScroller` components ([#911](https://github.com/jellyrock/jellyrock/pull/911))
+
+### Dependencies
+
+- Update js-yaml from v5.4.1 to v5.4.2 ([#909](https://github.com/jellyrock/jellyrock/pull/909))
+- Update actions/setup-java action to v6.0.1 ([#917](https://github.com/jellyrock/jellyrock/pull/917))
+- Update rooibos-roku to v6.0.0 ([#905](https://github.com/jellyrock/jellyrock/pull/905))
+- Update adm-zip from v0.6.0 to v0.6.1 ([#908](https://github.com/jellyrock/jellyrock/pull/908))
+- Update promises from v0.7.1 to v0.7.4 ([#878](https://github.com/jellyrock/jellyrock/pull/878), [#904](https://github.com/jellyrock/jellyrock/pull/904))
+- Update ropm from v0.11.9 to v0.11.11 ([#880](https://github.com/jellyrock/jellyrock/pull/880), [#903](https://github.com/jellyrock/jellyrock/pull/903))
+- Update eslint from v10.9.1 to v10.10.0 ([#886](https://github.com/jellyrock/jellyrock/pull/886))
+- Update spellchecker-cli from v7.0.3 to v7.0.4 ([#893](https://github.com/jellyrock/jellyrock/pull/893))
+- Update brighterscript-formatter from v1.8.1 to v1.8.2 ([#877](https://github.com/jellyrock/jellyrock/pull/877))
+- Update roku-deploy from v3.18.3 to v3.18.4 ([#879](https://github.com/jellyrock/jellyrock/pull/879))
+
 ## [2.28.0](https://github.com/jellyrock/jellyrock/compare/v2.27.0...v2.28.0) - 2026-09-04
 
 ### Changed

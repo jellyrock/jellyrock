@@ -13,8 +13,8 @@
  * ## The split, and why it is not "assert everything"
  *
  * A naive "the library must have N rows" gate false-fails on every legitimate
- * content change — Continue Watching popping in, an episode watched, a library
- * added — and a gate that cries wolf is one people delete. So:
+ * content change (Continue Watching popping in, an episode watched, a library
+ * added), and a gate that cries wolf is one people delete. So:
  *
  * - **Tier 1 ASSERTS identity.** Hard fail. Identity is the one thing that does
  *   not drift with content: only an actual server switch moves it, and a server
@@ -23,17 +23,17 @@
  *   model, Roku OS version, app version, build flavor, server version. Drift is
  *   made VISIBLE (tier 3 prints it beside the timing delta) rather than refused.
  *
- * ## Tier 1 asserts `serverUrl` — NOT the `serverId`/`userId` pair
+ * ## Tier 1 asserts `serverUrl`, not the `serverId`/`userId` pair
  *
  * This is a correction to the guard's original design, and it is the whole reason
  * the tier exists in its current form. Measured 2026-08-12: `demo.jellyfin.org/stable`
- * and `demo.jellyfin.org/unstable` are genuinely different backends (Jellyfin
+ * and `demo.jellyfin.org/unstable` are different backends (Jellyfin
  * 10.11.11 vs 12.0.0, different `ServerName`) **cloned from one seed database, so
  * they report an IDENTICAL `serverId` AND an identical `userId`.**
  *
  * The original design called that pair "immune to content drift, because only an
  * actual server/user switch moves it, which IS the leak". True for a switch to a
- * *different* server — and false for the mistake most likely to happen here,
+ * *different* server, and false for the mistake most likely to happen here,
  * which is stable↔unstable: `RTA_CONFIG` points at `/stable` while the API-version
  * work targets `/unstable`, and the pair cannot see the difference. `serverUrl`
  * can. `serverId` / `userId` are kept, as recorded provenance, where being equal
@@ -42,12 +42,12 @@
  * ## Reads happen at SESSION boundaries, never inside a sample
  *
  * Every read here is an ODC call, and ODC is only present because the build was
- * deployed with `injectTestingFiles` — which makes the on-device component
+ * deployed with `injectTestingFiles`, which makes the on-device component
  * resident. Whether a resident ODC moves a first-paint number is not established,
  * so this module is designed never to have to care: identity is read once per
  * session, before and after the series, and never between the relaunch and the
  * line being measured. That is also the constraint the guard's design settled on
- * independently, for a different reason — `m.log.*` faults at runtime past nine
+ * independently, for a different reason: `m.log.*` faults at runtime past nine
  * arguments, so per-sample identity logging was never available on the app side
  * either.
  *
@@ -55,22 +55,21 @@
  * The on-device component is present only because a build was deployed with
  * `injectTestingFiles`, and RTA's deploy flips `ENABLE_RTA=false` -> `true` in the
  * staged manifest to compile in the hook that starts it. So an identity read that
- * ANSWERS is itself proof that the running build has `ENABLE_RTA=true` — which is
+ * ANSWERS is itself proof that the running build has `ENABLE_RTA=true`, which is
  * strictly more than a tool can learn by reading a manifest, and it holds whether
  * or not this invocation performed the deploy. See `measure.js` for the derivation
  * at the call site.
  *
- * The app's own `[debug=… perfTiming=…]` bracket does NOT carry `ENABLE_RTA`, so a
+ * The app's own `[debug=… perfTiming=…]` bracket does not carry `ENABLE_RTA`, so a
  * line lifted out of a scrollback cannot self-report it.
  *
  * ## What it never reads
  *
- * Identity is read by NAMED FIELD — `server.serverUrl`, `server.id`, `user.id` —
+ * Identity is read by NAMED FIELD (`server.serverUrl`, `server.id`, `user.id`),
  * never by dumping the node. `JellyfinUser` carries `authToken`, and these records
  * are written to disk. Same rule, and the same reason, as `tests/rta/lib/diagnostics.js`.
  */
 import fs from 'node:fs';
-import net from 'node:net';
 import { odc } from 'roku-test-automation';
 import { fetchDeviceInfo } from './device-lock.js';
 import { ramTierFor } from './roku-devices.js';
@@ -79,8 +78,9 @@ import { ramTierFor } from './roku-devices.js';
  * The identity + server-provenance read, as one batched ODC request.
  *
  * One batch rather than five reads, for the reason `getActiveVals` documents: N
- * sequential reads are N observations spread over ~5.4 ms each, and this set is
- * supposed to describe ONE moment — the moment the sample was taken against.
+ * sequential reads are N observations spread over ~5.4 ms each (measured
+ * 2026-08-12 on `.177`), and this set is
+ * supposed to describe ONE moment: the moment the sample was taken against.
  * Named fields only; see the header.
  */
 const IDENTITY_REQUESTS = {
@@ -91,18 +91,18 @@ const IDENTITY_REQUESTS = {
   userId: { base: 'global', keyPath: 'user.id' },
 };
 
-/** Bound on the read, matching `diagnostics.js` — well under RTA's 10 s default. */
+/** Bound on the read, matching `diagnostics.js`, well under RTA's 10 s default. */
 const READ_TIMEOUT_MS = 5000;
 
 /**
  * Read the app's current identity.
  *
  * THROWS when the batch itself fails, rather than reporting a screen full of
- * absent fields. The distinction is the one `lib/jellyfin.js` exists to enforce
- * one layer up: an unanswered request must never be laundered into a fact. A
+ * absent fields. The distinction is the one `tests/rta/lib/jellyfin.js` exists to
+ * enforce one layer up: an unanswered request must never be laundered into a fact. A
  * swallowed failure here would report `serverUrl: undefined`, and an `undefined`
  * that compares unequal to the expectation would fail the guard for the wrong
- * reason — or worse, an `undefined` expectation would make it pass.
+ * reason. Worse, an `undefined` expectation would make it pass.
  */
 export async function readIdentity() {
   const batch = await odc.getValues({ requests: IDENTITY_REQUESTS }, { timeout: READ_TIMEOUT_MS });
@@ -124,8 +124,8 @@ export async function readIdentity() {
  * The fields the batch ANSWERED but could not find.
  *
  * `readIdentity` throws when the whole batch fails, which is the loud case. This is
- * the quiet one: ODC answers, and reports `found: false` for a field — the node
- * exists but the app has no server on it, or a field was renamed under us. Left
+ * the quiet one: ODC answers, and reports `found: false` for a field (the node
+ * exists but the app has no server on it, or a field was renamed under us). Left
  * alone that becomes `serverUrl: undefined` in a written record, which is the exact
  * laundering the throw above exists to prevent, one layer down. The caller decides
  * what is fatal; `serverUrl` is, because tier 1 rests on it and a sample nobody can
@@ -144,21 +144,21 @@ export function missingIdentityFields(identity) {
  *
  * Absent `serverUrl` has two completely different causes and they must not be
  * conflated. Ordinarily it means the read went wrong or the app is in a state
- * nobody meant to measure, and the series is worthless — that is the refusal
+ * nobody meant to measure, and the series is worthless. That is the refusal
  * `IDENTITY_FATAL_FIELDS` encodes. But `serverSelect` can only be measured with no
  * server on the node, because reaching that screen requires deleting it:
  * `SetServerScreen` is where the user PICKS a server, so a run that has one is by
  * definition not on it.
  *
- * ⚠️ `serverSelect` and NOT `userSelect`, which is the correction this option's name
+ * ⚠️ `serverSelect` and not `userSelect`, which is the correction this option's name
  * carries. `userSelect` is the app's other pre-login screen and it is reached by
- * clearing the ACTIVE USER, not the server — `SignOut()` (app menu → Sign out) and
- * `SignOut(false)` (→ Change user) both leave `server` in place. So `userSelect` reads
+ * clearing the ACTIVE USER, not the server: `SignOut()` (the app menu's Sign out) and
+ * `SignOut(false)` (Change user) both leave `server` in place. So `userSelect` reads
  * a perfectly good `serverUrl`, is not fatal, needs no declaration, and REFUSES this
- * one. `userId` is deliberately not in `IDENTITY_FATAL_FIELDS`, which is what already
+ * one. `userId` is not in `IDENTITY_FATAL_FIELDS`, which is what already
  * makes that screen measurable with no flag at all.
  *
- * So "no server" becomes an ASSERTABLE state rather than a failed read — but only when
+ * So "no server" becomes an ASSERTABLE state rather than a failed read, but only when
  * the operator SAYS SO. Deriving it (treating any absent `serverUrl` as intentional) is
  * how the tier goes blind: the ordinary case and the broken case look identical on the
  * wire, and the ordinary case is the one this whole module exists to catch.
@@ -175,8 +175,8 @@ export function fatalIdentityFields(identity, { expectNoServer = false } = {}) {
 /**
  * Compare two server URLs for the purposes of the tier-1 assert.
  *
- * Normalisation is deliberately SHALLOW — trailing slashes and the case of the
- * scheme and host only. It must not touch the path: `/stable` and `/unstable`
+ * Normalization is SHALLOW: surrounding whitespace, trailing slashes and the case
+ * of the scheme and host only. It must not touch the path: `/stable` and `/unstable`
  * differ in the path alone, and they are the exact pair this assert was corrected
  * to catch. An over-eager normaliser is how a guard goes quietly blind, so
  * anything beyond the two provably-equivalent spellings below is left as a
@@ -209,11 +209,11 @@ export function sameServer(a, b) {
 export function checkServerIdentity(identity, expectedServerUrl, { expectNoServer = false } = {}) {
   // The no-server arm ASSERTS, in both directions, and the second direction is the half
   // that earns it. "No server, as declared" is a pass. "A server, when you declared
-  // none" is a HARD FAIL — because `serverSelect` is reached by LAUNCHING, not by
+  // none" is a HARD FAIL, because `serverSelect` is reached by LAUNCHING, not by
   // navigating: `beginLogin()` re-reads `server` every launch, so a device that still
   // has one lands on Home and every sample in the series is a Home measurement filed
   // under `serverSelect`. That is the confidently-wrong-number failure this tier exists
-  // to prevent, and it is silent — the run completes, the samples are well-formed, and
+  // to prevent, and it is silent: the run completes, the samples are well-formed, and
   // only the screen is wrong.
   if (expectNoServer) {
     const observed = identity?.serverUrl;
@@ -249,7 +249,7 @@ export function checkServerIdentity(identity, expectedServerUrl, { expectNoServe
       // Stated rather than left absent, on the same reasoning as `provenance.server.url`
       // one file over: `JSON.stringify` DROPS an undefined value, so a key that appears
       // only when true reads as "this record predates the field" on every record where
-      // it is false — a different claim from "the operator did not declare it".
+      // it is false. That is a different claim from "the operator did not declare it".
       noServer: false,
       observed: identity?.serverUrl,
       reason: 'no expected server declared — tier 1 did NOT assert',
@@ -271,75 +271,28 @@ export function checkServerIdentity(identity, expectedServerUrl, { expectNoServe
   };
 }
 
-/** The port RTA's on-device component listens on. Its default; nothing here overrides it. */
-export const ODC_PORT = 9000;
+// `ODC_PORT` / `odcIsResident` moved to `lib/odc-probe.js` when the RTA lib needed the
+// same probe before a run's first ODC call; see that file for why neither caller owns
+// it. Re-exported here so every existing importer, and its tests, keep one name for it.
+export { ODC_PORT, odcIsResident } from './lib/odc-probe.js';
 
 /**
- * Is the on-device component RESIDENT — i.e. is anything listening on its port?
- *
- * ## Why this is a raw socket and not `readIdentity()`
- *
- * The enclosed arm has to assert the ABSENCE of ODC, and the obvious way to test that is
- * to try an ODC call and expect it to fail. That does not work, and the way it fails is
- * worth stating because it has now bitten this subsystem twice.
- *
- * RTA's `setupClientSocket` RETRIES `ECONNREFUSED` once a second and only rejects its
- * CACHED `clientSocketPromise` when its own connect timeout expires
- * (`OnDeviceComponent.js:989-1000`). A caller that bounds the call more tightly — which
- * one must, since RTA's timeout does not cover a connect that neither connects nor errors
- * — gets its rejection, handles it, and moves on. The underlying promise is still alive,
- * and when it finally rejects there is nobody attached: the rejection surfaces as an
- * `unhandledRejection`, from a socket `error` EVENT outside any await chain.
- *
- * Measured 2026-08-17, dogfooding the calibration: both plain-arm blocks passed the probe,
- * printed "identity asserted by ENCLOSURE", asserted tier 1 — and then died mid-series
- * with `Failed to connect to Roku ... on port 9000`, recorded as `crashed`, no record
- * written. `measure-signin.js` documents the same shape from a different angle ("RTA
- * surfaces a refused connect as a socket error event, outside the await chain, where no
- * `catch` can see it"), which is the second sighting.
- *
- * So the absence is tested WITHOUT RTA's client. A TCP connect to the port answers the
- * only question that matters — is the component there — costs one round trip instead of a
- * timeout, and leaves no promise behind.
- *
- * ⚠️ It says "something is listening", not "the ODC is healthy". That is the right
- * direction for this caller: the failure it guards against is a mislabeled arm still
- * holding an RTA build, and a listening port is enough to catch it. Callers who need the
- * component to actually ANSWER should use `readIdentity`.
- */
-export function odcIsResident(host, { port = ODC_PORT, timeoutMs = 2000 } = {}) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ host, port });
-    const settle = (resident) => {
-      socket.destroy();
-      resolve(resident);
-    };
-    // A connect that hangs is neither a refusal nor an answer. Resolved as NOT resident
-    // deliberately: this probe's job is to let the no-ODC arm proceed, and a port that
-    // will not complete a handshake cannot be an on-device component serving requests.
-    socket.setTimeout(timeoutMs, () => settle(false));
-    socket.on('connect', () => settle(true));
-    socket.on('error', () => settle(false));
-  });
-}
-
-/**
- * Tier 1 for an arm that has no ODC to read — [ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md).
+ * Tier 1 for an arm that has no ODC to read: [ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md).
  *
  * The ODC calibration needs one arm with no resident on-device component, and identity
  * is read over ODC and nothing else, so that arm is the one arm that cannot observe what
  * server it measured against. It does not get to skip the assert: the failure tier 1
- * exists to catch — a device sitting on a server nobody meant to measure — has the same
+ * exists to catch (a device sitting on a server nobody meant to measure) has the same
  * shape and the same silence in a build with no ODC as in one with it.
  *
  * So the identity is asserted by ENCLOSURE, by the caller, and this records that it was.
  * `identitySource: 'enclosed'` is a FIELD rather than a note, so a reader wanting only
  * observed identities filters on one value and a reader who does not know the distinction
  * exists is told by what it reads. Never `'observed'`, and never written into
- * `provenance.server.url` as though it had been seen — that is the laundering
+ * `provenance.server.url` as though it had been seen. That is the laundering
  * `readIdentity`'s throw exists to prevent, one layer up.
  *
- * What it does NOT claim is that the identity held at each sample; the enclosure is a
+ * What it does not claim is that the identity held at each sample; the enclosure is a
  * property of the BLOCK. `enclosureVerdict` below is what establishes it, and the caller
  * is responsible for not publishing a block whose enclosure did not close.
  */
@@ -349,7 +302,7 @@ export function enclosedServerIdentity(declaredServerUrl) {
     ok: true,
     noServer: false,
     // Nothing was observed IN THIS ARM, and the field says so rather than echoing the
-    // declaration back — an `observed` equal to `expected` is exactly what a reader
+    // declaration back: an `observed` equal to `expected` is exactly what a reader
     // takes as a passing read.
     observed: null,
     expected: declaredServerUrl,
@@ -361,11 +314,11 @@ export function enclosedServerIdentity(declaredServerUrl) {
 }
 
 /**
- * Did an enclosure CLOSE — i.e. may the block it brackets be published?
+ * Did an enclosure CLOSE? That is, may the block it brackets be published?
  *
  * Both brackets must agree with each other AND with what the operator declared. A
  * disagreement fails the whole enclosed block rather than one sample, because an
- * enclosure cannot say at which point inside it the identity moved — that is the honest
+ * enclosure cannot say at which point inside it the identity moved. That is the honest
  * consequence of measuring at the boundary instead of at the sample, and it is why the
  * verdict is computed here rather than left as a warning for a reader to weigh.
  *
@@ -424,7 +377,7 @@ export function enclosureVerdict({ before, after, declaredServer } = {}) {
       apiVersion: before.apiVersion ?? null,
       userId: before.userId ?? null,
     },
-    // BOTH reads are carried, not just the agreed value: the claim being recorded is
+    // BOTH reads are carried, not only the agreed value: the claim being recorded is
     // "two observations, taken either side, agreed", and a reader cannot check that
     // against a single collapsed field.
     brackets: { before, after },
@@ -437,7 +390,7 @@ export function enclosureVerdict({ before, after, declaredServer } = {}) {
  * Distinct from the check above, and neither subsumes the other. A declared
  * expectation catches "you measured the wrong server"; this catches "the server
  * changed halfway through", which is the shape a leaked session or a mid-series
- * re-seed actually takes — and which a declared expectation would miss entirely
+ * re-seed actually takes. A declared expectation would miss it entirely
  * if the drift happened to land on the expected server.
  */
 export function checkSeriesConsistency(first, current) {
@@ -451,29 +404,10 @@ export function checkSeriesConsistency(first, current) {
 }
 
 /**
- * The RAM tier for a `model-number`, re-exported from the device dictionary.
- *
- * This used to be a 38-entry table typed by hand into this file off Roku's spec. It
- * was accurate and it was still incomplete in the way hand-typed tables always are:
- * it keyed on `/^(\\d{4})/`, so every Roku TV and the Projector — sixteen families
- * from 512 MB to 2 GB — resolved to `null` forever. It also could not notice that
- * upstream had added a new supported device.
- *
- * It is now derived from `scripts/data/roku-hardware.json`, generated from Roku's
- * published table and kept current by a weekly sync. See `scripts/roku-devices.js`
- * for the lookup contract and `scripts/generate/roku-hardware.js` for the pipeline.
- *
- * Re-exported here rather than repointing every caller, because this is the name the
- * guard's own API already promised and `readDeviceProvenance` below is its main user.
- */
-export { deviceFor, describeDevice } from './roku-devices.js';
-export { ramTierFor };
-
-/**
  * Tier 2, device half. Model and Roku OS version, read from ECP.
  *
- * RECORDED, never asserted — and that is a decision with a history. The CI/local
- * Roku OS split was briefly treated as a load-bearing premise and had to be
+ * RECORDED, never asserted, and that is a decision with a history. The CI/local
+ * Roku OS split was briefly relied on as a premise and had to be
  * retired one day later, because **Roku OS cannot be pinned**: any "these two
  * devices differ" claim has an expiry date nobody controls. Recording the version
  * each run actually saw is the durable replacement for assuming one.
@@ -497,7 +431,7 @@ export async function readDeviceProvenance(host) {
  * Tier 2, app half. The version THIS CHECKOUT would build.
  *
  * Read from the manifest rather than `package.json` because the manifest is what a
- * deploy hands the device — the two can disagree mid-release, and the question a
+ * deploy hands the device. The two can disagree mid-release, and the question a
  * sample answers is about the artifact that ran.
  *
  * ⚠️ It describes the device only when this invocation performed the deploy.
@@ -521,7 +455,7 @@ export function readAppVersion(manifestPath) {
 
 /**
  * `ENABLE_RTA` is excluded from the checkout read below, because the checkout is
- * the one place its value is knowably WRONG about the device — see the note there.
+ * the one place its value is knowably WRONG about the device (see the note there).
  */
 const NOT_FROM_THE_CHECKOUT = new Set(['ENABLE_RTA']);
 
@@ -530,7 +464,7 @@ const NOT_FROM_THE_CHECKOUT = new Set(['ENABLE_RTA']);
  *
  * ## What this is for, and what it is not
  *
- * It is NOT the running build's flavor. The app stamps `[debug=… perfTiming=…]`
+ * It is not the running build's flavor. The app stamps `[debug=… perfTiming=…]`
  * into its own timing lines and that bracket is authoritative, because it came out
  * of the build that produced the number; `measurements.js` captures it as each
  * sample's `buildFlags`. This read exists to be COMPARED against that bracket: a
@@ -538,19 +472,19 @@ const NOT_FROM_THE_CHECKOUT = new Set(['ENABLE_RTA']);
  * other than what this checkout would build, which is exactly the case where the
  * record's `appVersion` and `commit` describe the wrong artifact.
  *
- * ## Why `ENABLE_RTA` is deliberately dropped
+ * ## Why `ENABLE_RTA` is dropped
  *
- * It used to be the stated reason this function existed — "the ONE flag the app
+ * It used to be the stated reason this function existed: "the ONE flag the app
  * does not stamp". That was backwards. RTA's deploy rewrites `ENABLE_RTA=false` ->
  * `true` in the STAGED build dir, never in the repo (see `harden-prod-manifest.js`
  * and `driver.js`), and the committed value is `false`. So this read reported
- * `ENABLE_RTA: false` on every run — including runs that had just deployed with it
+ * `ENABLE_RTA: false` on every run, including runs that had deployed with it
  * on, where the record then carried `enableRta: true` two fields away. One record,
  * two contradictory answers about the same flag, and the contradiction was
  * manufactured by reading a file that cannot know.
  *
- * The flag is now derived where it is actually observable — a responding ODC proves
- * it — so this function returns only the flags the checkout can honestly speak to.
+ * The flag is now derived where it is actually observable (a responding ODC proves
+ * it), so this function returns only the flags the checkout can honestly speak to.
  */
 export function readCheckoutBuildFlags(manifestPath) {
   let text;
@@ -575,8 +509,8 @@ export function readCheckoutBuildFlags(manifestPath) {
 /**
  * Does the build that produced a sample agree with the checkout's manifest?
  *
- * `null` when there is nothing to compare — no complete sample carried a bracket,
- * or the manifest could not be read. Deliberately NOT `true`: "the flags match" and
+ * `null` when there is nothing to compare: no complete sample carried a bracket,
+ * or the manifest could not be read. Not `true`: "the flags match" and
  * "there were no flags to match" must not look alike, for the same reason
  * `checkServerIdentity` refuses to let `asserted: false` look like a pass.
  *

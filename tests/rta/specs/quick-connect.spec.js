@@ -1,5 +1,5 @@
 /**
- * Quick Connect, end to end on a real device — the first functional coverage this
+ * Quick Connect, end to end on a real device: the first functional coverage this
  * sign-in path has ever had.
  *
  * ## Why it was untestable, and what changed
@@ -7,7 +7,7 @@
  * Quick Connect needs a SECOND device: the TV shows a code, a human approves it
  * somewhere else, and only then does the TV get a token. There is no second
  * device in this harness, which is why the flow shipped for years verified only
- * by hand. `POST /QuickConnect/Authorize?code=` is that human — and the suite
+ * by hand. `POST /QuickConnect/Authorize?code=` is that human, and the suite
  * already authenticates against the fixture server, so it can be them. The whole
  * round trip (initiate -> authorize -> connect reports Authenticated -> exchange
  * returns an AccessToken) was probed against Jellyfin 10.11.11 before this file
@@ -22,7 +22,7 @@
  * loop within its cadence, that the token exchange runs, and that the app ends up
  * on Home. That sequence is exactly what the migration rewrote.
  *
- * ## Credentials are deliberately NOT saved
+ * ## Credentials are not saved, on purpose
  *
  * The post-auth prompt is answered "No" (the safe side showConfirmDialog focuses
  * by default), so the run signs in without writing an authToken into the device
@@ -33,8 +33,17 @@ import { beforeAll, expect, it } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, authorizeQuickConnect, quickConnectEnabled } from '../lib/jellyfin.js';
 import { seedUserSelect, assertSeedTookEffect } from '../lib/seed.js';
-import { hardRelaunch, ecp, odc } from '../lib/driver.js';
-import { waitFor, waitHome, hasChildren, getVal, press, sleep } from '../lib/steps.js';
+import { hardRelaunch, ecp } from '../lib/driver.js';
+import {
+  waitFor,
+  waitDialogClosed,
+  waitFocusInside,
+  walkFocusInto,
+  waitHome,
+  hasChildren,
+  getVal,
+  press,
+} from '../lib/steps.js';
 import { captureRawUI } from '../capture.js';
 
 const CAPTURE = process.env.RTA_CAPTURE === '1';
@@ -48,7 +57,7 @@ beforeAll(async () => {
   // A capability of the FIXTURE, not of the app. A server with Quick Connect
   // switched off (or older than 10.8, where the endpoint does not exist) cannot
   // support these tests, and that is a reason to skip visibly rather than to go
-  // red — the same shape screens.spec.js uses for a missing library. Matters more
+  // red, the same shape screens.spec.js uses for a missing library. It matters more
   // than usual here because the server can be aimed elsewhere via RTA_SERVER_URL.
   qcAvailable = await quickConnectEnabled(session);
 });
@@ -74,7 +83,7 @@ async function focusQuickConnectButton() {
   });
 
   // The button is REMOVED when the server reports Quick Connect disabled, so a
-  // missing one here is a fixture statement — check it before blaming focus.
+  // missing one here is a fixture statement, so check it before blaming focus.
   const buttonId = await getVal('#quickConnect.id');
   if (buttonId !== 'quickConnect') {
     throw new Error(
@@ -82,10 +91,23 @@ async function focusQuickConnectButton() {
     );
   }
 
-  await odc.focusNode({ base: 'scene', keyPath: '#buttons' });
-  await waitFor('#buttons.buttonFocused', (n) => typeof n === 'number', {
+  // WALKED, not teleported. `UserRow.init()` takes focus, and UserSelect's
+  // ladder is one unconditional Down (the `"down"` branch of `UserSelect.onKeyEvent()`),
+  // so pressing it exercises the handler a viewer uses, where `odc.focusNode` would have skipped it. Guarded, so a
+  // group that already holds focus is never pressed at.
+  //
+  // This gate used to poll `#buttons.buttonFocused` until it read as a NUMBER, which
+  // could not fail: `JRButtonGroup.bs` sets the field to 0 in `init()`, so it already
+  // answered before focus moved and the wait returned on its first tick regardless of
+  // where focus was. It looked like a proper wait and was a no-op, the shape the north
+  // star calls succeeding too early. Focus arriving in the group is the real state, and
+  // it is the one `onGroupFocusChanged` acts on to re-assert the index the walk below
+  // then drives.
+  await waitFocusInside('#buttons', {
     label: 'user-select button group focused',
     timeout: 8000,
+    interval: 300,
+    action: walkFocusInto(ecp.Key.Down, '#buttons'),
   });
   // Quick Connect is index 0; walk left until we are on it. Guarded (press only
   // while not yet there) so a group that already answered is never perturbed.
@@ -116,7 +138,7 @@ it('shows a server-issued code, notices approval, and signs in', async (testCtx)
   const code = await openQuickConnectDialog();
 
   // The dialog is a scene overlay now, on the same shared id as the rest of the
-  // family — it used to live on Roku's modal channel, invisible to every
+  // family. It used to live on Roku's modal channel, invisible to every
   // isDialogOpen / cancelOpenDialog caller in the app.
   expect(await getVal('#jrDialog.id')).toBe('jrDialog');
   // One button, and it is Cancel: the only outcome this dialog can produce on
@@ -136,8 +158,8 @@ it('shows a server-issued code, notices approval, and signs in', async (testCtx)
     timeout: 30000,
   });
 
-  // This next OK press is what makes the file header's "credentials are
-  // deliberately NOT saved" true, so it is PINNED rather than described. Asserting
+  // This next OK press is what makes the file header's "credentials are not
+  // saved, on purpose" true, so it is PINNED rather than described. Asserting
   // only that a label came back is what this did first, and it would have stayed
   // green while silently writing an authToken into the device registry if the
   // dialog's safe-side default ever moved.
@@ -161,13 +183,16 @@ it('cancel leaves the code dialog and returns to the user picker', async (testCt
   await openQuickConnectDialog();
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'quick connect dialog dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('quick connect dialog dismissed', { timeout: 10000 });
 
-  // Still signed out, still on the picker — a cancel must not half-start a
-  // session. Settle first: the dialog restores focus to its opener on close.
-  await sleep(500);
+  // Still signed out, still on the picker: a cancel must not half-start a session.
+  // The settle this replaces was named for focus restoration, so gate on that: the
+  // dialog hands focus back to its opener, the `#buttons` group holding Quick Connect.
+  // Waiting for focus to ARRIVE there can only pass by the restoration happening, where
+  // a fixed dwell passed whatever the app did with focus.
+  await waitFocusInside('#buttons', {
+    label: 'focus restored to the user picker after cancel',
+    timeout: 8000,
+  });
   expect(await getVal('#userRow.content.getChildCount()')).toBeGreaterThan(0);
 }, 120000);

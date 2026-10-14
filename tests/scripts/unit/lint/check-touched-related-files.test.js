@@ -3,6 +3,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { gitSafeEnv } from '../_helpers/git-env.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnScript } from '../_helpers/spawn-script.js';
@@ -10,7 +11,7 @@ import { spawnScript } from '../_helpers/spawn-script.js';
 const SCRIPT = 'scripts/lint/check-touched-related-files.cjs';
 
 function git(repoDir, ...args) {
-  return execFileSync('git', args, { cwd: repoDir, encoding: 'utf8' });
+  return execFileSync('git', args, { cwd: repoDir, encoding: 'utf8', env: gitSafeEnv() });
 }
 
 function fmDoc(date, relatedFiles = []) {
@@ -27,6 +28,7 @@ function setupRepo() {
   git(dir, 'config', 'user.email', 'test@example.com');
   git(dir, 'config', 'user.name', 'Test');
   mkdirSync(join(dir, 'docs', 'architecture'), { recursive: true });
+  mkdirSync(join(dir, 'docs', 'dev'), { recursive: true });
   writeFileSync(join(dir, 'README.md'), 'init\n');
   git(dir, 'add', '.');
   git(dir, 'commit', '--quiet', '-m', 'init');
@@ -58,7 +60,7 @@ describe('check-touched-related-files', () => {
 
     const { exitCode, stdout } = spawnScript(SCRIPT, ['--base', 'base'], { cwd: dir });
     expect(exitCode).toBe(0); // always informational
-    expect(stdout).toMatch(/Architecture-doc reminder/);
+    expect(stdout).toMatch(/Doc reminder/);
     expect(stdout).toMatch(/foo\.md/);
     expect(stdout).toMatch(/source\/foo\.bs/);
   });
@@ -75,7 +77,7 @@ describe('check-touched-related-files', () => {
 
     const { exitCode, stdout } = spawnScript(SCRIPT, ['--base', 'base'], { cwd: dir });
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/no architecture docs need attention/);
+    expect(stdout).toMatch(/no docs need attention/);
   });
 
   it('does not emit a reminder when the doc itself was also touched', () => {
@@ -86,7 +88,7 @@ describe('check-touched-related-files', () => {
     git(dir, 'add', '.');
     git(dir, 'commit', '--quiet', '-m', 'add');
     git(dir, 'branch', '-f', 'base', 'HEAD');
-    // Touch BOTH the source AND the doc — give each file a real diff.
+    // Touch BOTH the source AND the doc: give each file a real diff.
     writeFileSync(join(dir, 'source/foo.bs'), 'sub init()\n  m.x = 1\nend sub\n');
     writeFileSync(
       join(dir, 'docs/architecture/foo.md'),
@@ -96,7 +98,7 @@ describe('check-touched-related-files', () => {
     git(dir, 'commit', '--quiet', '-m', 'change both');
 
     const { stdout } = spawnScript(SCRIPT, ['--base', 'base'], { cwd: dir });
-    expect(stdout).not.toMatch(/Architecture-doc reminder/);
+    expect(stdout).not.toMatch(/Doc reminder/);
   });
 
   it('--quiet suppresses the no-match message', () => {
@@ -121,6 +123,61 @@ describe('check-touched-related-files', () => {
     git(dir, 'commit', '--quiet', '-m', 'change');
 
     const { stdout } = spawnScript(SCRIPT, ['--base', 'base'], { cwd: dir });
-    expect(stdout).not.toMatch(/Architecture-doc reminder/);
+    expect(stdout).not.toMatch(/Doc reminder/);
+  });
+
+  // docs/dev/ is covered by this reminder but, on purpose, not by the
+  // 120-day CI gate, so the label is what tells the two apart.
+  it('reminds on a dev guide and marks it informational', () => {
+    dir = setupRepo();
+    mkdirSync(join(dir, 'source'), { recursive: true });
+    writeFileSync(join(dir, 'source/foo.bs'), 'sub init()\nend sub\n');
+    writeFileSync(join(dir, 'docs/dev/foo.md'), fmDoc(recent, ['source/foo.bs']));
+    git(dir, 'add', '.');
+    git(dir, 'commit', '--quiet', '-m', 'add');
+    git(dir, 'branch', '-f', 'base', 'HEAD');
+    writeFileSync(join(dir, 'source/foo.bs'), 'change\n');
+    git(dir, 'add', '.');
+    git(dir, 'commit', '--quiet', '-m', 'change');
+
+    const { exitCode, stdout } = spawnScript(SCRIPT, ['--base', 'base'], { cwd: dir });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/docs\/dev\/foo\.md {2}\(dev guide — informational\)/);
+  });
+
+  it('does not mark architecture docs as informational', () => {
+    dir = setupRepo();
+    mkdirSync(join(dir, 'source'), { recursive: true });
+    writeFileSync(join(dir, 'source/foo.bs'), 'sub init()\nend sub\n');
+    writeFileSync(join(dir, 'docs/architecture/foo.md'), fmDoc(recent, ['source/foo.bs']));
+    git(dir, 'add', '.');
+    git(dir, 'commit', '--quiet', '-m', 'add');
+    git(dir, 'branch', '-f', 'base', 'HEAD');
+    writeFileSync(join(dir, 'source/foo.bs'), 'change\n');
+    git(dir, 'add', '.');
+    git(dir, 'commit', '--quiet', '-m', 'change');
+
+    const { stdout } = spawnScript(SCRIPT, ['--base', 'base'], { cwd: dir });
+    expect(stdout).toMatch(/docs\/architecture\/foo\.md/);
+    expect(stdout).not.toMatch(/informational/);
+  });
+
+  it('prompts both docs when they share a related-file', () => {
+    dir = setupRepo();
+    mkdirSync(join(dir, 'source'), { recursive: true });
+    writeFileSync(join(dir, 'source/foo.bs'), 'sub init()\nend sub\n');
+    writeFileSync(join(dir, 'docs/architecture/foo.md'), fmDoc(recent, ['source/foo.bs']));
+    writeFileSync(join(dir, 'docs/dev/foo-howto.md'), fmDoc(recent, ['source/foo.bs']));
+    git(dir, 'add', '.');
+    git(dir, 'commit', '--quiet', '-m', 'add');
+    git(dir, 'branch', '-f', 'base', 'HEAD');
+    writeFileSync(join(dir, 'source/foo.bs'), 'change\n');
+    git(dir, 'add', '.');
+    git(dir, 'commit', '--quiet', '-m', 'change');
+
+    const { stdout } = spawnScript(SCRIPT, ['--base', 'base'], { cwd: dir });
+    expect(stdout).toMatch(/2 doc\(s\)/);
+    expect(stdout).toMatch(/docs\/architecture\/foo\.md/);
+    expect(stdout).toMatch(/docs\/dev\/foo-howto\.md/);
   });
 });
