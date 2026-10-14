@@ -767,6 +767,9 @@ end sub
 sub togglePerfectMatch()
   m.perfectMatchOnly = not m.perfectMatchOnly
   m.perfectMatchButton.isButtonSelected = m.perfectMatchOnly
+  ' A search in flight means m.allResults is still the previous answer; the reply's
+  ' render applies the new filter, so drawing now would show stale rows.
+  if not remoteSubtitles.shouldRerenderOnPerfectMatchToggle(m.searchInFlightLanguage) then return
   renderResults(applyPerfectMatchFilter(m.allResults))
 end sub
 
