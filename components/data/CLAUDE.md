@@ -3,7 +3,7 @@
 Two related but distinct concerns share this folder:
 
 - **`components/data/jellyfin/*`**: typed `ContentNode` schemas for Jellyfin server data (user, server, items, settings). The XML *is* the schema.
-- **`components/data/*` (parent)**: a wider mix. Typed data nodes (`PublicUserData`, `OptionsButton`, `Constants` for `m.global.constants`), nodes with behavior (`SceneManager`, `UserData`), the debug node (`DebugFlags`), and the keyboard layout `CustomAddressKDF.json` that `SearchBox` and `LanguagePicker` load.
+- **`components/data/*` (parent)**: a wider mix. Typed data nodes (`PublicUserData`, `OptionsButton`, `Constants` for `m.global.constants`), nodes with behavior (`SceneManager`, `UserData`), the debug node (`DebugFlags`), and the keyboard layout `CustomAddressKDF.json` that `LanguagePicker` loads.
 
 See [docs/architecture/global-state.md](../../docs/architecture/global-state.md) for which nodes hang off `m.global` and when they're created.
 
