@@ -17,45 +17,32 @@ sub init()
   m.top.keyGrid.keyDefinitionUri = "pkg:/components/keyboards/SearchQwertyKDF.json"
   m.top.keyGrid.mode = "alphanumeric"
 
-  ' Match the SearchSuggestionList's focus styling so the two panels feel
-  ' like one UI. Default DynamicCustomKeyboard focus is white-on-black; we
-  ' want purple (theme primary) with white text, same as the focus bitmap
-  ' on the LabelList. These fields live on the inner keyGrid (DynamicKeyGrid),
-  ' not on DynamicCustomKeyboard itself — setting them on m.top was a no-op.
+  ' Theme the keys from the app palette. DynamicKeyGrid takes its colors only from an
+  ' RSGPalette on its `palette` field (Roku's DynamicKeyGrid reference); without one it
+  ' falls back to Roku's default gray/white. Same approach as JRKeyboardDialog. Keys use
+  ' colorBackgroundSecondary, like the Clear History button beside them; the focused key is
+  ' Roku's filled highlight (the grid offers no border form) in colorPrimary.
   constants = m.global.constants
-  if isValid(m.top.keyGrid)
-    m.top.keyGrid.focusedKeyColor = constants.colorPrimary
-    m.top.keyGrid.focusedTextColor = constants.colorTextPrimary
-  end if
+  keyPalette = CreateObject("roSGNode", "RSGPalette")
+  keyPalette.colors = {
+    KeyboardColor: constants.colorBackgroundSecondary,
+    PrimaryTextColor: constants.colorTextPrimary,
+    SecondaryItemColor: constants.colorTextDisabled,
+    FocusColor: constants.colorPrimary,
+    FocusItemColor: constants.colorTextPrimary
+  }
+  m.top.keyGrid.palette = keyPalette
 
-  ' Hide + disable the built-in textEditBox. DynamicCustomKeyboard always
-  ' renders it above the grid as a hint/voice-prompt bar; we have a dedicated
-  ' peek chip that mirrors the query text, so the built-in one just looks
-  ' like a weird white line above the keyboard if left visible.
-  ' voiceEnabled must also be false so Roku's single global voice slot stays
-  ' claimed by the screen-level VoiceTextEditBox (see SearchScreen.bs).
-  ' visible=false is the important bit — opacity=0 alone leaves the box
-  ' occupying its ~110px of vertical layout space, which pushes the keyGrid
-  ' down and caused the bottom row to render below the overlay's clip region.
+  ' The peek chip shows the query, so the built-in text box is not drawn: hideTextBox
+  ' renders the key grid at the top of this node, which the overlay's layout depends on
+  ' (searchLayout.OVERLAY_HEIGHT).
+  m.top.hideTextBox = true
+
+  ' Voice: keep Roku's single voice slot for the screen-level VoiceTextEditBox
+  ' (SearchScreen.initVoiceBox), so the hidden built-in box never claims it.
   if isValid(m.top.textEditBox)
     m.top.textEditBox.voiceEnabled = false
     m.top.textEditBox.active = false
-    m.top.textEditBox.visible = false
-    m.top.textEditBox.opacity = 0
-    ' Collapse the textEditBox's layout reservation so the keyGrid sits at
-    ' the top of the component. Even with visible=false, DynamicCustomKeyboard
-    ' reserves ~110px above the grid for the (now-hidden) hint/voice bar —
-    ' that empty band was the dominant source of the "too much vertical space
-    ' above the keyboard" feedback.
-    m.top.textEditBox.height = 0
-  end if
-
-  ' Force the keyGrid to sit at the top of the keyboard component regardless
-  ' of any internal layout the DynamicCustomKeyboard tries to apply for the
-  ' hidden textEditBox. Combined with textEditBox.height=0 above, this keeps
-  ' the full keyboard at exactly its keyGrid height (360px FHD).
-  if isValid(m.top.keyGrid)
-    m.top.keyGrid.translation = [0, 0]
   end if
 end sub
 

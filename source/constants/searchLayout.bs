@@ -39,10 +39,10 @@ namespace searchLayout
   '         overlay starts). Peek chip stays visible above the overlay.
   ' CLOSED_Y: placed fully above the viewport.
   ' Height budget:
-  '   Keyboard at y=0 inside slideGroup, internal keyGrid height 360 (the
-  '     hidden textEditBox reservation is removed by setting textEditBox
-  '     height=0 and keyGrid translation=[0,0] in SearchQwertyKeyboard.bs
-  '     init — see comments there for rationale).
+  '   Keyboard at y=56 inside slideGroup, so its top row lines up with the first
+  '     suggestion row, and 344 tall (SearchQwertyKDF.json keyboardHeightFHD, four
+  '     86px rows; hideTextBox puts the key grid at the top of the node), so it
+  '     ends at y=400 with the Clear History button.
   '   Suggestion list at y=0 inside slideGroup, internal height = 380:
   '     section label 36 (translation y=0) + list 5×56=280 (translation y=56,
   '     ends at y=336) + 8px gap + pinned Clear button 56 (translation y=344,

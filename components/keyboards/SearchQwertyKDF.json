@@ -1,8 +1,8 @@
 {
   "keyboardWidthFHD": 1000,
-  "keyboardHeightFHD": 360,
+  "keyboardHeightFHD": 344,
   "keyboardWidthHD": 655,
-  "keyboardHeightHD": 236,
+  "keyboardHeightHD": 228,
   "sections": [
     {
       "grids": [
@@ -65,13 +65,13 @@
                 { "label": "8" },
                 { "label": "9" },
                 {
-                  "icon": "pkg:/images/icons/space-white.png",
-                  "focusIcon": "pkg:/images/icons/space-black.png",
+                  "icon": "theme:DKB_SpaceKeyBitmap",
+                  "focusIcon": "theme:DKB_SpaceKeyFocusBitmap",
                   "strOut": " "
                 },
                 {
-                  "icon": "pkg:/images/icons/delete.png",
-                  "focusIcon": "pkg:/images/icons/delete-black.png",
+                  "icon": "theme:DKB_ClearKeyBitmap",
+                  "focusIcon": "theme:DKB_ClearKeyFocusBitmap",
                   "strOut": "clear"
                 }
               ]

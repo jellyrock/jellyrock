@@ -495,16 +495,15 @@ sub onExpansionChanged()
 
   ' Empty-state help label:
   '   Expanded — vertically centered between the keyboard bottom and the 5%
-  '   bottom safe-area edge. Keyboard bottom = OVERLAY_OPEN_Y + 360
-  '   (textEditBox reservation collapsed in SearchQwertyKeyboard.bs init,
-  '   so keyGrid sits at the top of the keyboard). 130 + 360 = 490.
-  '   5% bottom safe edge = 1080 × 0.95 = 1026. Midpoint = 758.
+  '   bottom safe-area edge. Keyboard bottom = overlay bottom =
+  '   OVERLAY_OPEN_Y + OVERLAY_HEIGHT = 130 + 400 = 530.
+  '   5% bottom safe edge = 1080 × 0.95 = 1026. Midpoint = 778.
   '   Collapsed — mid-screen (y=540), out of the way of the peek chip and
   '   the eventual results row at RESULTS_Y=140.
   '   Hidden when results are present, or while the failure state takes its place.
   '   The failure state moves with it: its group offset is the help label's travel.
   if expanded
-    m.searchFailed.translation = [0, 758 - 540]
+    m.searchFailed.translation = [0, 778 - 540]
   else
     m.searchFailed.translation = [0, 0]
   end if
@@ -512,7 +511,7 @@ sub onExpansionChanged()
   if haveResults or m.searchFailed.visible
     m.searchHelpText.visible = false
   else if expanded
-    m.searchHelpText.translation = [263, 758]
+    m.searchHelpText.translation = [263, 778]
     m.searchHelpText.visible = true
   else
     m.searchHelpText.translation = [263, 540]

@@ -20,9 +20,11 @@
            bar + keyboard form a single visual column on the right.
            Default focus lands on Q (top-left of the keyboard); pressing
            LEFT from any left-edge key (Q, A, Z, 3) escapes into the
-           suggestion list in a single press. -->
+           suggestion list in a single press. The keyboard starts at y=56 so its
+           top row lines up with the first suggestion row, and ends with the
+           Clear History button at y=400 (see searchLayout.OVERLAY_HEIGHT). -->
       <SearchSuggestionList id="suggestions" translation="[96, 0]" />
-      <SearchQwertyKeyboard id="kbd" translation="[824, 0]" />
+      <SearchQwertyKeyboard id="kbd" translation="[824, 56]" />
     </Group>
 
     <!-- Slide-in/out animation. keyValue overridden in bs from searchLayout
