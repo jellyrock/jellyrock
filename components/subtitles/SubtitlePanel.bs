@@ -10,10 +10,12 @@
 ' tests/source/unit/utils/remoteSubtitles*.spec.bs.
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/subtitleLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/listTheme.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
@@ -173,6 +175,10 @@ sub init()
   m.selectedLanguageCode = ""
   m.results = []
   m.allResults = []
+  ' Whether m.allResults stands for a search that got no usable reply. Written
+  ' with it, by showSearchOutcome() alone, so every re-render (the Perfect match
+  ' toggle included) shows the failure rather than "no subtitles found".
+  m.searchFailed = false
   m.perfectMatchOnly = false
   m.pollAttempt = 0
   ' The language a search is running for, "" when idle: a string, not a
@@ -667,19 +673,16 @@ sub runSearch()
     if ctx.itemId <> m.top.itemId or ctx.language <> m.selectedLanguageCode then return
     m.searchInFlightLanguage = ""
     m.searchButton.isLoading = false
-    if not res.ok
-      ' A non-Video item 404s here rather than returning an empty list; the
-      ' entry point is type-gated, so this is a genuine failure.
-      m.log.warn("subtitle search failed", res.statusCode)
-      setStatus(translate(translationKeys.MessageNoSubtitlesFound))
-      m.allResults = []
-      renderResults([])
+    ' A non-Video item 404s here rather than returning an empty list; the entry
+    ' point is type-gated, so a failure here is a genuine one. The request is a
+    ' list request, so an ok reply always carries a list (apiResponse.enforceShape).
+    cause = apiResponse.jsonFailure(res)
+    if cause <> ""
+      m.log.warn("subtitle search failed", cause)
+      showSearchOutcome([], true)
       return
     end if
-    results = res.json
-    if not isValid(results) then results = []
-    m.allResults = results
-    renderResults(applyPerfectMatchFilter(results))
+    showSearchOutcome(res.json, false)
   end sub).catch(sub(err as object, ctx as object)
     ' Guarded on the language as well as the item, exactly as the success path
     ' is. A superseded search that fails in TRANSPORT must not clear the flag the
@@ -688,10 +691,20 @@ sub runSearch()
     m.searchInFlightLanguage = ""
     m.searchButton.isLoading = false
     m.log.warn("subtitle search error", err.reason)
-    setStatus(translate(translationKeys.MessageNoSubtitlesFound))
-    m.allResults = []
-    renderResults([])
+    showSearchOutcome([], true)
   end sub)
+end sub
+
+' showSearchOutcome: Show what a search ended with.
+'
+' A failure keeps its own status line rather than the empty one: no answer says
+' nothing about which subtitles exist, and the empty text sends an admin to set
+' up a provider that may be working. The Search button is the retry, so the text
+' names it instead of adding a second control.
+sub showSearchOutcome(results as object, failed as boolean)
+  m.allResults = results
+  m.searchFailed = failed
+  renderResults(applyPerfectMatchFilter(results))
 end sub
 
 ' renderResults: Build the results list.
@@ -734,13 +747,14 @@ sub renderResults(results as object)
   m.resultsList.content = content
   m.resultsList.visible = results.count() > 0
 
-  if results.count() = 0
-    ' Names the provider-configuration possibility on purpose: an unconfigured
-    ' provider, absent credentials and a genuine no-match all return 200 [], so
-    ' a bare "no results" would send people looking in the wrong place.
-    setStatus(translate(translationKeys.MessageNoSubtitlesFound))
-  else
+  ' The empty text names the provider-configuration possibility on purpose: an
+  ' unconfigured provider, absent credentials and a genuine no-match all return
+  ' 200 [], so a bare "no results" would send people looking in the wrong place.
+  statusKey = remoteSubtitles.searchStatusKey(m.searchFailed, results.count())
+  if statusKey = ""
     setStatus("")
+  else
+    setStatus(translate(statusKey))
   end if
 
   m.perfectMatchButton.visible = shouldOfferPerfectMatchFilter()
@@ -797,9 +811,15 @@ function applyPerfectMatchFilter(results as object) as object
   return filtered
 end function
 
+' setStatus: Show the status line, and say it aloud while the panel is open.
+'
+' Spoken because focus stays in the header while a status lands, and the screen
+' reader speaks only what has focus. Queued, as SearchResults does, since nothing
+' moved. Results need no announcement: the user moves into them.
 sub setStatus(text as string)
   m.statusLabel.text = text
   m.statusLabel.visible = text <> ""
+  if text <> "" and m.top.isOpen then narrateStatus(text)
 end sub
 
 ' clearResults: Empty the results column so the status line is the only thing in it.

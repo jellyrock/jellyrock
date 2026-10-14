@@ -685,6 +685,7 @@
   "MessageSubtitleDownloadFailed": "Couldn't add that subtitle. Your server may be missing subtitle provider credentials, or it reached its daily download limit.",
   "MessageSubtitleDownloading": "Downloading subtitle",
   "MessageSubtitleLanguagesUnavailable": "Couldn't load the list of languages. Check your connection and try again.",
+  "MessageSubtitleSearchFailed": "Couldn't search for subtitles. Press Search to try again.",
   "MessageSubtitleStillProcessing": "Your server is still processing this subtitle. Refresh in a moment to see it.",
   "MessageSupportDirectPlayOfMpeg4Content": "Support Direct Play of MPEG-4 content. This may need to be disabled for playback of DIVX encoded video files.",
   "MessageSwitchServerToPlay": "A play request came in for content on '{0}'. Switch servers to open it? You'll be signed out of the current server.",

@@ -180,6 +180,23 @@ namespace remoteSubtitles
     return inFlightLanguage <> requestedLanguage
   end function
 
+  ' searchStatusKey: The status line under the search controls after a search.
+  '
+  ' Only an answered list says what subtitles exist. A timeout, an HTTP error or a
+  ' network error says nothing about them, so it must never read as "no subtitles
+  ' found". The reverse does not hold: the server catches each provider's error and
+  ' answers 200 [] (SubtitleManager.SearchSubtitles, 10.11 and master), so a
+  ' provider that is down or has no credentials still arrives as an empty list.
+  '
+  ' @param {boolean} failed - the search got no usable reply (apiResponse.jsonFailure)
+  ' @param {integer} resultCount - the results being shown
+  ' @return {string} a translation key, or "" when the results speak for themselves
+  function searchStatusKey(failed as boolean, resultCount as integer) as string
+    if failed then return translationKeys.MessageSubtitleSearchFailed
+    if resultCount = 0 then return translationKeys.MessageNoSubtitlesFound
+    return ""
+  end function
+
   ' externalSubtitleStreams: The subtitle streams that are safe to offer for
   ' deletion, in server-index order.
   '
