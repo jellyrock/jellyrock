@@ -10,6 +10,7 @@
 ' tests/source/unit/utils/remoteSubtitles*.spec.bs.
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/subtitleLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -673,8 +674,9 @@ sub runSearch()
     m.searchInFlightLanguage = ""
     m.searchButton.isLoading = false
     ' A non-Video item 404s here rather than returning an empty list; the entry
-    ' point is type-gated, so a failure here is a genuine one.
-    cause = remoteSubtitles.searchFailure(res)
+    ' point is type-gated, so a failure here is a genuine one. The request is a
+    ' list request, so an ok reply always carries a list (apiResponse.enforceShape).
+    cause = apiResponse.jsonFailure(res)
     if cause <> ""
       m.log.warn("subtitle search failed", cause)
       showSearchOutcome([], true)
