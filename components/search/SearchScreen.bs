@@ -242,6 +242,10 @@ sub OnScreenShown()
   screenLoad.resolve("focus")
   m.isShown = true
 
+  ' Re-activate voice capture, matching Home's and BaseGridView's onScreenShown. Only toggle
+  ' active; voiceEnabled was set once in initVoiceBox and is released only in onDestroy.
+  if isValid(m.voiceBox) then m.voiceBox.active = true
+
   ' Voice search arrives as route.context.query — populate, search and take focus,
   ' skipping normal focus restoration.
   if applyRouteQuery() then return
@@ -273,6 +277,11 @@ end sub
 sub OnScreenHidden()
   m.log.info("OnScreenHidden")
   m.isShown = false
+
+  ' Deactivate voice while covered, as Home does. A covered view stays in the outlet, hidden
+  ' (every route suspends with "show", ADR 0050), so without this a voice query spoken on
+  ' the details screen above could reach this box and run a search nobody can see.
+  if isValid(m.voiceBox) then m.voiceBox.active = false
 
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     hideTextureManager(m.searchSelect.content)
@@ -372,8 +381,8 @@ end sub
 ' ============================================================================
 
 ' initVoiceBox — screen-level voice capture. Matches Home.bs initVoiceBox().
-' voiceEnabled stays true across the screen's lifetime; active is toggled
-' implicitly by screen show/hide via JRScreen's lifecycle.
+' voiceEnabled stays true across the screen's lifetime; active is toggled by
+' OnScreenShown / OnScreenHidden, as Home toggles its own.
 sub initVoiceBox()
   if not isValid(m.voiceBox) then return
 
