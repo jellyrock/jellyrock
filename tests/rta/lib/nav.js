@@ -239,17 +239,27 @@ export async function navSearch() {
     label: `search results for "${RTA_CONFIG.searchQuery}"`,
     timeout: 20000,
   });
-  // Walk focus off the keyboard onto the result rows (#searchSelect). The escape is
-  // DOWN, not Right: SearchScreen's keyboard is a key GRID inside a pull-down overlay,
-  // and Right wraps within the grid forever (measured on .178: the old Right-walk
-  // timed out with focus still on DynamicKeyGrid). Down walks to the bottom row and
-  // then leaves, which SearchQwertyKeyboard reports as escape="down" and
-  // SearchScreen.onKeyboardEscape turns into a submit: the overlay collapses and focus
-  // lands on the results. The guard stops the instant focus reaches them, so it lands
-  // on the first tile without over-scrolling the row.
-  // `walkFocusUntil`, not a hand-rolled press, because the hand-rolled version pressed
-  // wherever focus WAS. On 2026-09-09 that meant 12.4 s of Right delivered into Home's row
-  // list while the active view was the search screen (see that helper for the dump).
+  await submitSearchFromKeyboard();
+  await sleep(1500); // let the focus settle + result posters paint before capture
+}
+
+/**
+ * From the search keyboard, submit what is typed and land focus on the result rows
+ * (#searchSelect). Submitting is what opens the search screen's spinner (its `results`
+ * wait), unless the rows already answer the typed query.
+ *
+ * The escape is DOWN, not Right: SearchScreen's keyboard is a key GRID inside a pull-down
+ * overlay, and Right wraps within the grid forever (measured on .178: the old Right-walk
+ * timed out with focus still on DynamicKeyGrid). Down walks to the bottom row and then
+ * leaves, which SearchQwertyKeyboard reports as escape="down" and
+ * SearchScreen.onKeyboardEscape turns into a submit: the overlay collapses and focus lands
+ * on the results, even while they still show an earlier query's rows. The guard stops the
+ * instant focus reaches them, so it lands on the first tile without over-scrolling the row.
+ * `walkFocusUntil`, not a hand-rolled press, because the hand-rolled version pressed
+ * wherever focus WAS. On 2026-09-09 that meant 12.4 s of Right delivered into Home's row
+ * list while the active view was the search screen (see that helper for the dump).
+ */
+export async function submitSearchFromKeyboard() {
   const arrivedAtResults = (f) => f?.node?.id === 'searchSelect';
   await waitFocused(arrivedAtResults, {
     timeout: 12000,
@@ -257,7 +267,6 @@ export async function navSearch() {
     action: walkFocusUntil(ecp.Key.Down, arrivedAtResults),
     label: 'search results (off keyboard)',
   });
-  await sleep(1500); // let the focus settle + result posters paint before capture
 }
 
 const HOME_TILE_WAIT_MS = 15000;

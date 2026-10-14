@@ -12,6 +12,12 @@
  *    the search began rather than from the return.
  *
  * The last three were each measured wrong on a Stick 4K (2026-09-25) before screen waits.
+ *
+ * Only a SUBMIT opens the wait: typing runs a live search under the open keyboard first
+ * (`SearchScreen.onFullSearchDebounceFire`, 0.15 s after the last key) with no spinner, and
+ * the submit replaces it. So each search here is two `searchItems` requests, the live one and
+ * the submitted one, and each `slow` rule covers both (`times: 2`). The queries are one
+ * character, so typing starts exactly one live search.
  */
 import { beforeAll, it, expect } from 'vitest';
 import { ecp } from 'roku-test-automation';
@@ -19,7 +25,7 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { navSearch, openSearchKeyboard } from '../lib/nav.js';
+import { navSearch, openSearchKeyboard, submitSearchFromKeyboard } from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
   getActiveVal,
@@ -28,11 +34,9 @@ import {
   hasChildren,
   press,
   sleep,
-  waitFocused,
   waitFocusInside,
   waitFor,
   waitHome,
-  walkFocusUntil,
 } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
@@ -73,27 +77,34 @@ function waitActive(subtype, label) {
 }
 
 /**
- * Search, then start a NEWER query whose answer is held, then open one of the previous
+ * Type `text` into the focused search keyboard, wait for its live search to reach a pool slot,
+ * then submit: the submitted search is the one whose wait the spinner shows. `heldBefore` is
+ * how many requests were already held, so the counts stay exact.
+ */
+async function typeThenSubmit(text, heldBefore = 0) {
+  await ecp.sendText(text);
+  await waitHeld(heldBefore + 1, 'the live search is on a pool slot');
+  await submitSearchFromKeyboard();
+  await waitHeld(heldBefore + 2, 'the submitted search is on a pool slot');
+}
+
+/**
+ * Search, then submit a NEWER query whose answer is held, then open one of the previous
  * query's results, still on screen and reachable because a search keeps the remote live.
- * Leaves the details screen active with the newer search still waiting behind it.
+ * Leaves the details screen active with the newer search still waiting behind it. Returns
+ * the time the submit landed, the latest the search's wait can have begun.
  */
 async function openOldResultWhileNewerSearchLoads(rules) {
   await freshApp();
   await navSearch();
-  await press(ecp.Key.Left);
-  await waitFocusInside('#searchKey', { label: 'back on the search keyboard', timeout: 10000 });
+  // Up from the first result row reopens the keyboard (SearchScreen.onKeyEvent).
+  await press(ecp.Key.Up);
+  await waitFocusInside('#kbd', { label: 'back on the search keyboard', timeout: 10000 });
   await failRequests(rules);
+  await typeThenSubmit('e');
   const startedAt = Date.now();
-  await ecp.sendText('e');
-  await waitHeld(1, 'the newer search is on a pool slot');
 
-  const atResults = (f) => f?.node?.id === 'searchSelect';
-  await waitFocused(atResults, {
-    timeout: 12000,
-    interval: 350,
-    action: walkFocusUntil(ecp.Key.Right, atResults),
-    label: "the previous query's results",
-  });
+  // The submit lands focus on the result rows, which still show the previous query's results.
   await press(ecp.Key.Ok);
   await waitActive('ItemDetails', 'details opened from a previous result');
   return startedAt;
@@ -102,8 +113,8 @@ async function openOldResultWhileNewerSearchLoads(rules) {
 it('a slow search says it is still loading, and the text goes with its results', async () => {
   await freshApp();
   await openSearchKeyboard();
-  await failRequests([{ prefix: 'searchItems', kind: 'slow', ms: 11000, times: 1 }]);
-  await ecp.sendText(RTA_CONFIG.searchQuery);
+  await failRequests([{ prefix: 'searchItems', kind: 'slow', ms: 11000, times: 2 }]);
+  await typeThenSubmit(RTA_CONFIG.searchQuery);
 
   await waitFor('#loadingStageText.text', (v) => v === STILL_LOADING, {
     timeout: 15000,
@@ -126,9 +137,8 @@ it('Back mid-search takes the spinner with the screen', async () => {
   await freshApp();
   await openSearchKeyboard();
   // Far longer than the spec waits, so only leaving the screen can take the spinner down.
-  await failRequests([{ prefix: 'searchItems', kind: 'slow', ms: 90000, times: 1 }]);
-  await ecp.sendText(RTA_CONFIG.searchQuery);
-  await waitHeld(1, 'the search is on a pool slot');
+  await failRequests([{ prefix: 'searchItems', kind: 'slow', ms: 90000, times: 2 }]);
+  await typeThenSubmit(RTA_CONFIG.searchQuery);
   expect(await getVal('#spinner.visible'), 'spinner up while the search waits').toBe(true);
 
   await press(ecp.Key.Back);
@@ -143,11 +153,11 @@ it('Back mid-search takes the spinner with the screen', async () => {
 
 it("a late search answer does not stop the details screen's spinner", async () => {
   await openOldResultWhileNewerSearchLoads([
-    { prefix: 'searchItems', kind: 'slow', ms: 8000, times: 1 },
+    { prefix: 'searchItems', kind: 'slow', ms: 8000, times: 2 },
     { prefix: 'itemMetaData', kind: 'slow', ms: 25000, times: 1 },
   ]);
-  await waitHeld(2, "the details screen's metadata is on a slot too");
-  await waitHeld(1, 'the search answered while details still waits', 15000);
+  await waitHeld(3, "the details screen's metadata is on a slot too");
+  await waitHeld(1, 'both searches answered while details still waits', 15000);
 
   // Timer window, proving a non-event: the search's results reach its (hidden) screen a few
   // round trips after this answer, and must not end the details spinner when they do. No
@@ -159,16 +169,16 @@ it("a late search answer does not stop the details screen's spinner", async () =
 
 it('returning to a search that is still loading shows its spinner, counted from the search', async () => {
   const startedAt = await openOldResultWhileNewerSearchLoads([
-    { prefix: 'searchItems', kind: 'slow', ms: 25000, times: 1 },
+    { prefix: 'searchItems', kind: 'slow', ms: 25000, times: 2 },
     // Holds the viewer on details long enough that a clock restarted on return could not
     // reach the first stage by STILL_LOADING_LATEST_MS.
     { prefix: 'itemMetaData', kind: 'slow', ms: 4000, times: 1 },
   ]);
-  await waitHeld(2, "the details screen's metadata is on a slot too");
-  await waitHeld(1, 'details answered; the search still waits');
+  await waitHeld(3, "the details screen's metadata is on a slot too");
+  await waitHeld(2, 'details answered; the searches still wait');
 
   await press(ecp.Key.Back);
-  await waitActive('SearchResults', 'back on the search that is still loading');
+  await waitActive('SearchScreen', 'back on the search that is still loading');
   const returnedMs = Date.now() - startedAt;
   // The journey this test depends on: without it, restart and continue look alike.
   expect(returnedMs, 'return late enough to tell the two clocks apart').toBeGreaterThan(
@@ -185,6 +195,8 @@ it('returning to a search that is still loading shows its spinner, counted from 
     interval: 250,
     label: '"Still loading" for the search',
   });
+  // startedAt is when the submit landed, at or after the wait began, so this bound is the
+  // strict one: a clock that kept counting meets it, one restarted on return cannot.
   expect(Date.now() - startedAt, 'stage counted from the search, not the return').toBeLessThan(
     STILL_LOADING_LATEST_MS,
   );

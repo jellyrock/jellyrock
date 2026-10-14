@@ -14,6 +14,7 @@ import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/screenReadiness.bs"
+import "pkg:/source/utils/screenWaits.bs"
 import "pkg:/source/utils/searchHints.bs"
 import "pkg:/source/utils/searchHistory.bs"
 import "pkg:/source/utils/searchRoute.bs"
@@ -540,6 +541,8 @@ sub onQueryChanged()
     ' because the query no longer matches, and the re-fire it would otherwise do
     ' is refused by startHintsFetch's empty-query guard.
     m.searchTask = releaseTask(m.searchTask, "results")
+    ' An emptied search box waits on nothing.
+    screenWaits.finish(m.top, "results")
     if isValid(m.searchSelect)
       m.searchSelect.itemdata = invalid
       m.searchSelect.query = ""
@@ -788,7 +791,13 @@ sub submitSearch(query as string)
     return
   end if
 
-  startLoadingSpinner(false)
+  ' The wait is this screen's, by name (screenWaits, ADR 0044), so the spinner follows the
+  ' screen: it goes with the screen on Back, a late answer cannot stop another screen's
+  ' spinner, and it comes back, still counting, when the viewer returns. Only a submit opens
+  ' it: the live-while-typing search runs under the open overlay, where the scene's spinner
+  ' would sit on the keyboard's bottom edge. A wait already open restarts, since the viewer
+  ' is now waiting on this query.
+  screenWaits.begin(m.top, "results")
   runFullSearch(query)
   m.top.isExpanded = false
 end sub
@@ -832,7 +841,7 @@ sub onFullSearchResults(event as object)
   screenLoad.resolve("results")
 
   m.searchTask.unobserveField("results")
-  stopLoadingSpinner()
+  screenWaits.finish(m.top, "results")
 
   if not isValid(results)
     m.log.warn("full search returned invalid results")

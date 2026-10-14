@@ -2106,6 +2106,16 @@ A subtitle search that got no usable reply (a timeout, an HTTP or network error,
 
 Ruled out: a Try again button in the results column (a second retry beside Search, and new focus paths in a modal panel), and a toast alone (a failure would look empty once it faded). Measured 2026-10-13 on `.178` (Ultra) against a local 10.11.11 server with Open Subtitles 24.0.0.0 and no credentials: the plugin's login fails, the server logs it and answers `200 []` in 14 to 29 ms; `subtitle-search-failure.spec.js` failed 3 of 4 cases on the old code and passes 4 of 4 on the new. The spec skips on the public demo, whose user cannot manage subtitles.
 
+## decision-id: search-spinner-on-submit-only
+
+**date**: 2026-10-14
+**status**: accepted
+**related-files**: `components/search/SearchScreen.bs`, `tests/rta/specs/slow-search.spec.js`
+
+`SearchScreen` opens its `results` screen wait (ADR 0044) only on a submit, not for the live search that runs while typing. A wait on every full search, as `SearchResults` had, was ruled out because the scene spinner at [897, 477] draws over the expanded overlay's bottom edge (the overlay spans y 130–530: the keyboard's bottom row and the suggestion list's Clear History button). Hiding a screen's waits while its overlay is expanded was ruled out for now, because it needs a new rule in the shared `screenWaits` / `JRScene` code.
+
+Cost accepted: a slow search while typing shows no "Still loading" text, and the updating suggestion list is the only feedback. If that turns out to matter, revisit by hiding the waits while the overlay is expanded. `slow-search.spec.js` submits before it asserts.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

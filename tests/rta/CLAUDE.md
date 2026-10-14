@@ -62,7 +62,7 @@ Each category below carries its reason. `FN`, `ABS` and `ACT` are properties of 
 | `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is resolved at run time. Syntax can't classify them, so each carries a rule disable naming the reason, and the argument lives in its docblock. |
 | `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 41 | ODC has no "observe global focus" primitive. Its requests offer `getFocusedNode`, `hasFocus` and `isInFocusChain`, all reads, and one observer, `onFieldChange`, which needs a node keyPath and a field name and so can't express "wherever focus now is". |
 | `FOCUS_SUBTYPE` Focus containment by subtype (`waitFocusInHomeContent`) | 7 | No primitive, as above. A separate row because the question differs: Home's content is whichever of `HomeRows` and `FavoritesRows` the selected tab put in the scene, so it can't be asked by container id at all. |
-| `FOCUS_IDENTITY` Focus identity (`waitFocused`) | 20 | No primitive, as above, and focus stays where it landed until the next key. There is no pulse to miss. |
+| `FOCUS_IDENTITY` Focus identity (`waitFocused`) | 19 | No primitive, as above, and focus stays where it landed until the next key. There is no pulse to miss. |
 
 <!-- rta-wait-inventory:end -->
 
