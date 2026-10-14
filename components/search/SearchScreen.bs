@@ -194,6 +194,14 @@ sub init()
   ' PAINT — the search UI exists and the help text is on screen. What it is NOT yet is
   ' usable, which is exactly what `focus` above measures.
   screenLoad.paint("open")
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField: see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("query", "onQueryChanged")
+  m.top.observeField("isExpanded", "onExpansionChanged")
 end sub
 
 ' ============================================================================
@@ -250,6 +258,11 @@ end sub
 ' closes this view (ADR 0029 — popped routes are destroyed, never cached), so
 ' this runs on every back-out and must fully release.
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below: these handlers dereference them.
+  m.top.unobserveField("query")
+  m.top.unobserveField("isExpanded")
+
   m.log.verbose("onDestroy — releasing voice slot")
 
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)

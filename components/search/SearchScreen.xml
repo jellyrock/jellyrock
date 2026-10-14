@@ -49,15 +49,16 @@
   </children>
   <interface>
     <!-- Canonical current query. Writing triggers the state machine (hints /
-         recent / full-search collapse) via onChange. -->
-    <field id="query" type="string" alwaysNotify="true" onChange="onQueryChanged" />
+         recent / full-search collapse) through onQueryChanged, observed in init. -->
+    <field id="query" type="string" alwaysNotify="true" />
 
-    <!-- Expansion state. Writing flips overlay animation, focus, and backdrop.
+    <!-- Expansion state. Writing flips overlay animation, focus, and backdrop
+         (onExpansionChanged, observed in init).
          alwaysNotify so repeated writes (e.g. a prior handler already set
          false, then another submit path re-sets false) still fire — without
          it the Scenegraph silently elides same-value writes and the overlay
          can end up stranded in the wrong visual state. -->
-    <field id="isExpanded" type="boolean" onChange="onExpansionChanged" alwaysNotify="true" />
+    <field id="isExpanded" type="boolean" alwaysNotify="true" />
 
     <!-- Quick-play flow. Set by onSearchItemSelected for results with no route of their
          own, and by Play on a focused result; observed by this screen (see init) and
