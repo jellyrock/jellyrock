@@ -232,5 +232,6 @@
   "MessageDisc1": "디스크 {0}",
   "MessageEndsAt1": "{0}에 종료",
   "MessageMoreFrom1": "{0} 에서 더 자세히",
+  "MessageSearchNoResults": "결과가 없습니다.",
   "MessageSetTheMaximumAmountOfDays": "에피소드를 시청하지 않고 '다음' 목록에 머무르는 최대 일 수를 설정합니다."
 }

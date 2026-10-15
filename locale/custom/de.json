@@ -323,6 +323,7 @@
   "MessageMoreFrom1": "Mehr von {0}",
   "MessageRememberMe": "Erinnere dich an mich",
   "MessageSaveCredentials": "Anmeldedaten speichern?",
+  "MessageSearchNoResults": "Keine Ergebnisse.",
   "MessageServerNotFoundIsItOnline": "Server nicht gefunden, ist er online?",
   "MessageSetHowManySecondsBeforeThe": "Lege fest, wie viele Sekunden vor dem Ende einer Episode die Schaltfläche \"Nächste Episode\" erscheinen soll. Zum Deaktivieren auf 0 setzen.",
   "MessageSetTheMaximumAmountOfDays": "Legt fest, wie viele Tage eine Sendung maximal in der Liste 'Als Nächstes' bleiben soll, ohne dass sie angesehen wird.",

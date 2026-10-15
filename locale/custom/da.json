@@ -234,5 +234,6 @@
   "MessageDisc1": "Disk {0}",
   "MessageEndsAt1": "Slutter {0}",
   "MessageMoreFrom1": "Mere fra {0}",
+  "MessageSearchNoResults": "Ingen resultater.",
   "MessageSetTheMaximumAmountOfDays": "Indstil maks. dage, et program forbliver i køen uden at blive set."
 }

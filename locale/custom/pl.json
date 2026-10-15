@@ -238,5 +238,6 @@
   "MessageDisc1": "Dysk {0}",
   "MessageEndsAt1": "Koniec o {0}",
   "MessageMoreFrom1": "Więcej od {0}",
+  "MessageSearchNoResults": "Brak wyników.",
   "MessageSetTheMaximumAmountOfDays": "Ustaw maksymalną liczbę dni, przez które program powinien pozostać na liście 'Następny w kolejności' bez oglądania go."
 }

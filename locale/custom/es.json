@@ -341,6 +341,7 @@
   "MessageMoreFrom1": "Más de {0}",
   "MessageRememberMe": "¿Recordarme?",
   "MessageSaveCredentials": "¿Guardar credenciales?",
+  "MessageSearchNoResults": "Sin resultados.",
   "MessageServerNotFoundIsItOnline": "No se encontró el servidor, ¿está en línea?",
   "MessageSetHowManySecondsBeforeThe": "Establecer cuantos segundos antes de finalizar un episodio el botón de Siguiente Episodio debe aparecer. El valor 0 deshabilita está opción.",
   "MessageSetTheMaximumAmountOfDays": "Establece el máximo número de días en el que una serie estará en \"A continuación\" sin haberla visto.",

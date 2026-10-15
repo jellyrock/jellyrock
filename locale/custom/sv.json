@@ -235,5 +235,6 @@
   "MessageDisc1": "Skiva {0}",
   "MessageEndsAt1": "Slutar vid: {0}",
   "MessageMoreFrom1": "Mer från {0}",
+  "MessageSearchNoResults": "Inga resultat.",
   "MessageSetTheMaximumAmountOfDays": "Bestäm antal dagar en serie ska vara i \"Nästa på tur\"-listan utan att någon har tittat på den."
 }

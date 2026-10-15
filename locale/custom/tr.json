@@ -236,5 +236,6 @@
   "MessageDisc1": "Disk {0}",
   "MessageEndsAt1": "Bitiş saati: {0}",
   "MessageMoreFrom1": "{0} bölümleri",
+  "MessageSearchNoResults": "Sonuç yok.",
   "MessageSetTheMaximumAmountOfDays": "Bir dizinin izlenmeden 'Sıradaki Bölümler' listesinde kalması gereken maksimum gün sayısını ayarlayın."
 }

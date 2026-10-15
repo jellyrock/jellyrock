@@ -237,5 +237,6 @@
   "MessageDisc1": "Đĩa {0}",
   "MessageEndsAt1": "Kết thúc lúc {0}",
   "MessageMoreFrom1": "Thêm từ {0}",
+  "MessageSearchNoResults": "Không có kết quả.",
   "MessageSetTheMaximumAmountOfDays": "Đặt số ngày tối đa mà một chương trình sẽ ở trong danh sách 'Tiếp Theo' mà không cần xem nó."
 }
