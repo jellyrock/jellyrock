@@ -233,5 +233,6 @@
   "MessageDisc1": "ディスク {0}",
   "MessageEndsAt1": "{0}に終了",
   "MessageMoreFrom1": "もっと詳しく {0}",
+  "MessageSearchNoResults": "結果がありません。",
   "MessageSetTheMaximumAmountOfDays": "視聴されないまま「まずは…」に表示を続ける最大日数を設定します。"
 }

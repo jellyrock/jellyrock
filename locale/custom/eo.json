@@ -214,5 +214,6 @@
   "MessageDisc1": "Diskedo {0}",
   "MessageEndsAt1": "Finiĝas je {0}",
   "MessageMoreFrom1": "Pli de {0}",
+  "MessageSearchNoResults": "Neniuj rezultoj.",
   "MessageSetTheMaximumAmountOfDays": "Starigi la maksimuman kvanton da tagoj, kiam serio devas resti en la listo de \"Sekva Plue\" sen spekti ĝin."
 }

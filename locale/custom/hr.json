@@ -228,5 +228,6 @@
   "MessageDisc1": "Disk {0}",
   "MessageEndsAt1": "Završava u {0}",
   "MessageMoreFrom1": "Više od {0}",
+  "MessageSearchNoResults": "Nema rezultata.",
   "MessageSetTheMaximumAmountOfDays": "Postavite najveći broj dana koliko serija treba ostati na popisu 'Sljedeće' bez gledanja."
 }

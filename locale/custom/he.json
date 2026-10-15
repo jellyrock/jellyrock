@@ -237,5 +237,6 @@
   "MessageDisc1": "דיסק {0}",
   "MessageEndsAt1": "מסתיים ב {0}",
   "MessageMoreFrom1": "עוד מ{0}",
+  "MessageSearchNoResults": "אין תוצאות.",
   "MessageSetTheMaximumAmountOfDays": "הגדר את מספר הימים המקסימלי שתכנית צריכה להישאר ברשימת 'הבא בתור' מבלי לצפות בה."
 }

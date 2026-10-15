@@ -235,5 +235,6 @@
   "MessageDisc1": "Plate {0}",
   "MessageEndsAt1": "Slutter klokken {0}",
   "MessageMoreFrom1": "Mer informasjon fra {0}",
+  "MessageSearchNoResults": "Ingen resultater.",
   "MessageSetTheMaximumAmountOfDays": "Velg det maksimale antallet dager en serie skal forbli i \"Neste\"-listen uten å se den."
 }

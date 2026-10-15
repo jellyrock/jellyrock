@@ -235,5 +235,6 @@
   "MessageDisc1": "Disco {0}",
   "MessageEndsAt1": "Termina às {0}",
   "MessageMoreFrom1": "Mais de {0}",
+  "MessageSearchNoResults": "Sem resultados.",
   "MessageSetTheMaximumAmountOfDays": "Defina a quantidade máxima de dias que um programa deve permanecer na lista 'Próximo' sem o assistir."
 }

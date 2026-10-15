@@ -322,6 +322,7 @@
   "MessageIfEnabledTheNumberOfUnwatched": "Ha engedélyezve van, a sorozat/évszak nézetlen epizódjainak száma eltávolításra kerül.",
   "MessageMoreFrom1": "Még több {0}",
   "MessageSaveCredentials": "Bejelentkezési adatok mentése?",
+  "MessageSearchNoResults": "Nincs találat.",
   "MessageServerNotFoundIsItOnline": "A szerver nem található. Biztosan működik?",
   "MessageSetHowManySecondsBeforeThe": "Beállíthatja, hogy hány másodperccel az epizód vége előtt jelenjen meg a Következő epizód gomb. A letiltáshoz állítsa 0-ra.",
   "MessageSetTheMaximumAmountOfDays": "Beállítja, hogy a műsor hány napig maradjon a „Következő” listában anélkül, hogy megnézné.",
