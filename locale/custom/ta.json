@@ -232,5 +232,6 @@
   "MessageDisc1": "வட்டு {0}",
   "MessageEndsAt1": "{0} இல் முடிகிறது",
   "MessageMoreFrom1": "{0} இலிருந்து மேலும்",
+  "MessageSearchNoResults": "முடிவுகள் இல்லை.",
   "MessageSetTheMaximumAmountOfDays": "ஒரு நிகழ்ச்சியைப் பார்க்காமலேயே 'அடுத்து வரும்' பட்டியலில் இருக்க வேண்டிய அதிகபட்ச நாட்களை அமைக்கவும்."
 }

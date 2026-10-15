@@ -205,5 +205,6 @@
   "MessageDisc1": "Disk {0}",
   "MessageEndsAt1": "Berakhir pada {0}",
   "MessageMoreFrom1": "Lebih Dari {0}",
+  "MessageSearchNoResults": "Tidak ada Hasil.",
   "MessageSetTheMaximumAmountOfDays": "Tetapkan jumlah hari maksimum acara harus tetap berada di daftar 'Berikutnya' tanpa menontonnya."
 }

@@ -300,6 +300,7 @@
   "MessageEndsAt1": "Se termină la {0}",
   "MessageMoreFrom1": "Mai multe din {0}",
   "MessageSaveCredentials": "Salvați datele de conectare?",
+  "MessageSearchNoResults": "Niciun rezultat.",
   "MessageServerNotFoundIsItOnline": "Serverul nu a fost găsit, este disponibil?",
   "MessageSetTheMaximumAmountOfDays": "Setați numărul maxim de zile pentru care un program trebuie să rămână in lista 'Urmează' fără a fi vizionat.",
   "MessageSettingsRelatingToPlaybackAndSupported": "Setări referitoare la redare și tipuri de codecuri suportate si acceptate.",

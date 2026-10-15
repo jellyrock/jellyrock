@@ -241,5 +241,6 @@
   "MessageDisc1": "القرص {0}",
   "MessageEndsAt1": "ينتهى عند {0}",
   "MessageMoreFrom1": "المزيد من {0}",
+  "MessageSearchNoResults": "لايوجد نتائج.",
   "MessageSetTheMaximumAmountOfDays": "يضبط الحد الأقصى لعدد الأيام التي يجب أن يبقى فيها العرض في قائمة 'التالي' دون مشاهدته."
 }

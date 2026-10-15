@@ -240,5 +240,6 @@
   "MessageDisc1": "Диск {0}",
   "MessageEndsAt1": "Конец в {0}",
   "MessageMoreFrom1": "Ещё в {0}",
+  "MessageSearchNoResults": "Нет результатов.",
   "MessageSetTheMaximumAmountOfDays": "Задать максимальное количество дней, в течение которых сериал должен оставаться в списке «Следующих серий» без его просмотра ."
 }

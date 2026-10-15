@@ -241,5 +241,6 @@
   "MessageDisc1": "盘 {0}",
   "MessageEndsAt1": "结束于 {0}",
   "MessageMoreFrom1": "更多来自 {0}",
+  "MessageSearchNoResults": "没有结果。",
   "MessageSetTheMaximumAmountOfDays": "设置节目在不观看的情况下应保留在“接下来”列表中的最大天数。"
 }
