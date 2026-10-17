@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-14
+last-updated: 2026-10-17
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-17: fix: Treat the 512 MB Roku Express `3900X`, `3910X` and `3930X` as low memory
 - 2026-10-14: fix(subtitles): Stop Perfect match showing old results mid-search
 - 2026-10-14: feat(subtitles): Show and announce a failed or empty subtitle search
 - 2026-10-13: ci: Re-check open PRs for merge conflicts when main moves
@@ -100,8 +101,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-03 — chore(journal): Give every open followup a permanent id
 - 2026-10-03 — fix(video): Keep Next Episode and Skip pop-ups off open dialogs
 - 2026-10-03 — refactor: Remove unused components, dev dependencies and JS exports
-- 2026-10-01 — fix: Silent DTS, failing TrueHD over passthrough, and track switching
-- 2026-09-30 — fix: Quick play slow, TV and mixed libraries, and resume music videos
 
 ## Open followups
 
