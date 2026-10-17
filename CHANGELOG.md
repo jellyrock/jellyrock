@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Treat the 512 MB Roku Express `3900X`, `3910X` and `3930X` as low memory ([#1215](https://github.com/jellyrock/jellyrock/pull/1215))
+
 ### Dependencies
 
 - Update vitest from v5.0.4 to v5.0.5 ([#1210](https://github.com/jellyrock/jellyrock/pull/1210))
