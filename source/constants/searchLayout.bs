@@ -5,7 +5,7 @@
 
 namespace searchLayout
 
-  ' Peek chip — pinned search bar. Sits directly above the keyboard at the
+  ' Peek chip: pinned search bar. Sits directly above the keyboard at the
   ' same width so the search bar and keyboard form a single visual column.
   ' Top edge at y=54 = 5% top-safe-area edge. x position aligns with keyboard
   ' (x=824, the keyboard's left edge) so the bar visually couples to the keys below.
@@ -14,7 +14,7 @@ namespace searchLayout
   const PEEK_CHIP_WIDTH = 1000
 
   ' Two-column layout inside the overlay slideGroup:
-  '   Suggestions on the LEFT (left edge x=96 = 5% left safe edge — matches
+  '   Suggestions on the LEFT (left edge x=96 = 5% left safe edge: matches
   '     result row items so the single LEFT-press escape from any left-edge
   '     keyboard key (Q/A/Z/3) reaches it).
   '   Keyboard on the RIGHT (right edge x=1824 = 5% right safe edge).
@@ -26,15 +26,15 @@ namespace searchLayout
   const RESULTS_Y = 140
 
   ' Results row list translation when the overlay is expanded. Positioned
-  ' just below the overlay's bottom edge (OVERLAY_OPEN_Y + OVERLAY_HEIGHT + 20px
+  ' below the overlay's bottom edge (OVERLAY_OPEN_Y + OVERLAY_HEIGHT + 20px
   ' margin) so row 0 remains partially visible as live-typing results populate.
   ' Also prevents the texture-reload flash that happens when content is fully
-  ' occluded by an opaque rectangle and then revealed — keeping at least
+  ' occluded by an opaque rectangle and then revealed: keeping at least
   ' part of row 0 on-screen means its textures never unload.
   const RESULTS_Y_EXPANDED = 550
 
-  ' Overlay (keyboard + suggestion panel) — slides down from above the viewport.
-  ' OPEN_Y: resting position when expanded. y=130 — directly below the peek
+  ' Overlay (keyboard + suggestion panel): slides down from above the viewport.
+  ' OPEN_Y: resting position when expanded. y=130: directly below the peek
   '         chip (peek chip occupies y=54–114 with a 16px gap before the
   '         overlay starts). Peek chip stays visible above the overlay.
   ' CLOSED_Y: placed fully above the viewport.
@@ -46,48 +46,48 @@ namespace searchLayout
   '   Suggestion list at y=0 inside slideGroup: section label 36 (y=0), list of
   '     57px rows 12px apart (y=56: five end at 389, four at 320 above Clear
   '     History), pinned Clear button 56 (y=344, ends at y=400).
-  '   Both columns end at exactly 400 — overlay height matches.
+  '   Both columns end at exactly 400: overlay height matches.
   const OVERLAY_OPEN_Y = 130
   const OVERLAY_CLOSED_Y = -400
   const OVERLAY_HEIGHT = 400
   const OVERLAY_WIDTH = 1920
 
-  ' Typeahead debounce — a BURST FILTER, and only that. Its one job is to avoid
+  ' Typeahead debounce: a burst filter, and only that. Its one job is to avoid
   ' firing between keystrokes while fingers are still moving; 120ms is below the
   ' threshold where a suggestion list feels laggy and above a fast typist's
   ' inter-key gap.
   '
-  ' It is deliberately NOT the mechanism that protects a slow server. That is
+  ' It is not the mechanism that protects a slow server. That is
   ' SearchScreen.startHintsFetch's single-flight rule, which caps outstanding
   ' hints requests at one and self-limits the rate to one per round trip. Because
-  ' the hard bound lives there, this value is not load-bearing — getting it a
+  ' the hard bound lives there, this value is not critical: getting it a
   ' little wrong costs a little latency, never a pile-up.
   const DEBOUNCE_S = 0.12
 
-  ' Full-search debounce — 150ms. Coalesces rapid keystrokes so the heavy
+  ' Full-search debounce: 150ms. Coalesces rapid keystrokes so the heavy
   ' multi-endpoint search (Items + Persons + Artists + LiveTv/Programs) doesn't
   ' fire on every keypress. Stale-response guard in onFullSearchResults handles
   ' out-of-order completions.
   '
   ' For context before anyone tunes this: the screen this replaced ran the same
-  ' four-endpoint search on EVERY keystroke with no debounce at all
-  ' (SearchResults.searchMedias — "if search task is running and user selects
+  ' four-endpoint search on each keystroke with no debounce at all
+  ' (SearchResults.searchMedias: "if search task is running and user selects
   ' another letter stop the search and load the next letter"), and that shipped.
   ' So this value is already strictly more conservative than production. It was
-  ' NOT chosen by measurement, and no adaptive back-off was added on top,
-  ' deliberately: the two instrumented orchestrators in this codebase answer
+  ' not chosen by measurement, and no adaptive back-off was added on top
+  ' on purpose: the two instrumented orchestrators in this codebase answer
   ' oppositely on work-bound vs network-bound (docs/dev/home-first-paint-
   ' performance.md), so there is no general result to reason from, and ADR 0026
   ' is the precedent for rejecting exactly that kind of unmeasured mechanism.
   ' If live search is ever reported as too heavy on a slow self-hosted server,
   ' instrument this screen the way Home and the grid are instrumented and decide
-  ' from the numbers — do not guess a threshold here.
+  ' from the numbers: do not guess a threshold here.
   const FULL_SEARCH_DEBOUNCE_S = 0.15
 
-  ' /Search/Hints limit — keeps suggestion list short enough to scan in one glance.
+  ' /Search/Hints limit: keeps suggestion list short enough to scan in one glance.
   const HINTS_LIMIT = 8
 
-  ' Recent-searches cap — MRU window. More than this and the list feels unwieldy.
+  ' Recent-searches cap: MRU window. More than this and the list feels unwieldy.
   const RECENT_MAX = 10
 
 end namespace

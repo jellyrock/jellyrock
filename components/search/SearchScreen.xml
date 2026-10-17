@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="SearchScreen" extends="JRScreen">
   <children>
-    <!-- Hidden VoiceTextEditBox — screen-level voice capture. Same pattern as
+    <!-- Hidden VoiceTextEditBox: screen-level voice capture. Same pattern as
          Home (components/home/Home.xml:4). voiceEnabled + active are set once
          in init() and released in destroy() to yield the firmware's single
          voice slot on teardown. The keyboard's internal voice box is disabled
          so we're the only claimant. -->
     <VoiceTextEditBox id="searchVoiceBox" visible="true" width="40" translation="[0, 0]" />
 
-    <!-- Results list — full-width RowList. Repositioned from the old side-by-side
+    <!-- Results list: full-width RowList. Repositioned from the old side-by-side
          layout now that the keyboard is a pull-down. -->
     <SearchRow id="searchSelect" focusable="true" />
 
     <!-- Empty-state help label (shown when no query has been submitted yet).
          Secondary color (dim) so it reads as helper copy, not primary content.
-         Translation is updated in bs — repositioned below the overlay when
+         Translation is updated in bs: repositioned below the overlay when
          expanded, and back to the mid-screen position when collapsed. -->
     <LabelSecondaryLarge id="SearchHelpText" width="1394" horizAlign="center" text="" translation="[263, 540]" />
 
@@ -38,14 +38,14 @@
     <SearchOverlay id="overlay" />
 
     <!-- Pinned search-bar pill. Single search-bar surface for both collapsed
-         and expanded states — sits directly above the keyboard at the same
+         and expanded states: sits directly above the keyboard at the same
          width and x position. y=54 = 5% top safe-area edge, x=824 aligns
          with the keyboard's left edge below (keyboard right edge at x=1824
          = 5% right safe edge). Coexists with the clock at the far-right of
          the overhang area. -->
     <SearchPeekChip id="peekChip" translation="[824, 54]" />
 
-    <!-- Results slide animation — runs in sync with the overlay. When
+    <!-- Results slide animation: runs in sync with the overlay. When
          expanded, SearchRow slides down to RESULTS_Y_EXPANDED so row 0
          remains visible below the overlay's bottom edge. When collapsed,
          slides back up to RESULTS_Y (below the peek chip).
@@ -57,7 +57,7 @@
         fieldToInterp="searchSelect.translation" />
     </Animation>
 
-    <!-- Existing options side panel — unchanged behaviour. -->
+    <!-- Existing options side panel: unchanged behaviour. -->
     <OptionsSlider id="options" />
   </children>
   <interface>
@@ -67,8 +67,8 @@
 
     <!-- Expansion state. Writing flips overlay animation, focus, and backdrop
          (onExpansionChanged, observed in init).
-         alwaysNotify so repeated writes (e.g. a prior handler already set
-         false, then another submit path re-sets false) still fire — without
+         alwaysNotify so repeated writes (for example a prior handler already set
+         false, then another submit path re-sets false) still fire: without
          it the Scenegraph silently elides same-value writes and the overlay
          can end up stranded in the wrong visual state. -->
     <field id="isExpanded" type="boolean" alwaysNotify="true" />
@@ -78,8 +78,8 @@
          forwarded to QueueManager.launchItem. -->
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
 
-    <!-- Image display mode hint — kept for backward compat with any subtype-
-         based callers (e.g. backdrop refresh logic). -->
+    <!-- Image display mode hint: kept for backward compat with any subtype-
+         based callers (for example backdrop refresh logic). -->
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
   </interface>
 </component>

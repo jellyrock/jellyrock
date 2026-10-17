@@ -16,7 +16,7 @@ import "pkg:/source/utils/translate.bs"
 sub init()
   m.top.itemComponentName = "BrowseRowItem"
 
-  ' Override ONLY the vertical animation style — horizontal (rowFocusAnimationStyle)
+  ' Override only the vertical animation style; horizontal (rowFocusAnimationStyle)
   ' stays as JRRowList's "fixedFocusWrap" default so LEFT/RIGHT wrap within a row.
   ' Vertical wrap must be disabled: UP at row 0 needs to bubble past the RowList's
   ' native handler to SearchScreen.onKeyEvent, which expands the keyboard overlay.

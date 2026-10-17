@@ -219,7 +219,7 @@ class ApiClient
 
   ' Build a request AA for GetSearchHints, for use with fetchJson().
   ' Returns lightweight SearchHint[] (Id/Name/Type/ProductionYear/PrimaryImageTag) for typeahead.
-  ' Static endpoint — not user-scoped — identical across all supported server versions (10.7.0+).
+  ' Static endpoint (not user-scoped) identical across all supported server versions (10.7.0+).
   ' userId is an optional query param in every version; passed when available to scope to the user's libraries.
   ' @param params - Query parameters: searchTerm (required), limit, includeItemTypes,
   '                includePeople, includeMedia, includeGenres, includeStudios, includeArtists

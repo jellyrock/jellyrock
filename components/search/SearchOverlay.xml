@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="SearchOverlay" extends="Group">
   <children>
-    <!-- Wrapper group — this is the node that slides. Animating a CHILD's
+    <!-- Wrapper group: this is the node that slides. Animating a CHILD's
          translation (rather than m.top's) is the pattern used by
          ExtrasSlider and OptionsSlider.
          clippingRect confines rendering to the overlay's rectangle in the
-         group's own coord space — a tight seal so nothing leaks into the
+         group's own coord space: a tight seal so nothing leaks into the
          viewport when the group is parked off-screen. -->
     <Group id="slideGroup" clippingRect="[0, 0, 1920, 400]">
-      <!-- Solid backdrop — dimensions + color set in bs from searchLayout constants. -->
+      <!-- Solid backdrop: dimensions + color set in bs from searchLayout constants. -->
       <Rectangle id="overlayBg" />
 
       <!-- Two-column body:
@@ -16,7 +16,7 @@
            matching result row items), KEYBOARD on the RIGHT (right edge
            at x=1824 = 5% right safe edge). 44px gap between columns.
            The peek chip (outside this overlay, at SearchScreen level) is
-           pinned directly above the keyboard at the same width — search
+           pinned directly above the keyboard at the same width: search
            bar + keyboard form a single visual column on the right.
            Default focus lands on Q (top-left of the keyboard); pressing
            LEFT from any left-edge key (Q, A, Z, 3) escapes into the
@@ -41,7 +41,7 @@
     <field id="isExpanded" type="boolean" onChange="onExpansionChanged" />
 
     <!-- Suggestion list contents (proxied to child). alwaysNotify ensures
-         same-length array writes (e.g. swapping one hint set for another of
+         same-length array writes (for example swapping one hint set for another of
          the same length) still trigger re-render. -->
     <field id="suggestionItems" type="array" alias="suggestions.items" alwaysNotify="true" />
     <field id="suggestionMode" type="string" alias="suggestions.mode" alwaysNotify="true" />

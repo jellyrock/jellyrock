@@ -24,14 +24,14 @@ import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
-' SearchScreen — redesigned top-level search scene.
+' SearchScreen: redesigned top-level search scene.
 '
 ' Flow:
 '   - Collapsed state: peek chip + full-width SearchRow results. UP from row 0
 '     expands the overlay.
 '   - Expanded state: SearchOverlay slides down from above the viewport; custom
-'     QWERTY keyboard gains focus. Typing routes through keyGrid.text →
-'     m.top.query → hints debounce pipeline.
+'     QWERTY keyboard gains focus. Typing routes through keyGrid.text,
+'     then m.top.query, then the hints debounce pipeline.
 '   - Submit (Go key / suggestion tap / voice): full SearchTask runs against
 '     /Items + /Persons + /Artists + /LiveTv/Programs; overlay slides up; results
 '     populate; focus lands on SearchRow row 0.
@@ -41,7 +41,7 @@ import "pkg:/source/utils/translate.bs"
 ' matches the pattern used by Home.
 
 sub init()
-  ' This screen has TWO loads, measured as two ledger runs rather than one — the same
+  ' This screen has TWO loads, measured as two ledger runs rather than one: the same
   ' split, for the same reason, as the screen it replaces. Opening search and running a
   ' search are separated by the user typing, which is an unbounded wait belonging to the
   ' person rather than the app; one run spanning both would publish a `settled` dominated
@@ -51,11 +51,11 @@ sub init()
   ' opens a fresh one ending when its results are on screen (variant `query`).
   '
   ' The component is named `searchScreen`, not `searchResults`. ADR 0027's rule is that the
-  ' app names its COMPONENT, and this is a different one — a pull-down keyboard over a
+  ' app names its COMPONENT, and this is a different one: a pull-down keyboard over a
   ' full-width row list, against a side-by-side keyboard and a narrow list. Reusing the old
   ' name would silently mix two populations in one series, which is the exact failure
   ' `component`/`variant` exist to prevent. Historical `searchResults` samples stay valid
-  ' records of the old screen; they are simply not comparable to these.
+  ' records of the old screen; they are not comparable to these.
   screenLoad.begin("searchScreen")
 
   m.log = new log.Logger("SearchScreen")
@@ -68,18 +68,18 @@ sub init()
   ' column, with the search pill above the keyboard.
   m.top.overhangTitle = translate(translationKeys.ButtonSearch)
 
-  ' Show the app-wide overhang — but configure it to clock-only in
+  ' Show the app-wide overhang, but configure it to clock-only in
   ' OnScreenShown. This respects the user's uiDesignHideClock setting and
   ' keeps a single overhang chrome path across screens instead of a
   ' SearchScreen-only bypass.
   m.top.isOverhangVisible = true
 
   ' Chrome intent is DECLARED on this node; JRScene's overhang controller projects it
-  ' (JRScene.registerOverhangData — "screens declare these; they never poke the overhang
+  ' (JRScene.registerOverhangData: "screens declare these; they never poke the overhang
   ' node directly"). Only the clock needs saying: JRGroup already defaults isLogoVisible,
   ' shouldShowIcons and shouldShowUserDropdown to false, which is exactly what this screen
   ' wants. The clock defaults true and has to be opted out of, because its top-right
-  ' position at [1824, 39] sits behind the peek chip's right edge — a no-overlap layout
+  ' position at [1824, 39] sits behind the peek chip's right edge: a no-overlap layout
   ' would force either a narrower search bar (mismatched with the keyboard below it) or a
   ' per-screen clock relocation.
   m.top.isClockVisible = false
@@ -135,13 +135,13 @@ sub init()
 
   ' Typeahead single-flight state. /Search/Hints rides the API pool via
   ' fetchAsync (no Task node, so no Task thread), and at most ONE request is
-  ' outstanding at a time — see startHintsFetch().
+  ' outstanding at a time: see startHintsFetch().
   m.hintsInFlight = false
   m.hintsSeq = 0
 
   ' Two debounce timers, with different jobs:
-  '  - debounceTimer (searchLayout.DEBOUNCE_S): a burst filter for typeahead —
-  '    it only stops us firing between fast keystrokes. It is NOT what keeps
+  '  - debounceTimer (searchLayout.DEBOUNCE_S): a burst filter for typeahead.
+  '    It only stops us firing between fast keystrokes. It does not keep
   '    the request rate sane on a slow server; single-flight does that.
   '  - fullSearchTimer (searchLayout.FULL_SEARCH_DEBOUNCE_S): the heavier
   '    multi-endpoint search that populates results under the overlay LIVE as
@@ -160,7 +160,7 @@ sub init()
   m.fullSearchTimer.observeField("fire", "onFullSearchDebounceFire")
 
   ' Resolve overlay children we need to observe / control. The inline header
-  ' was removed — the peek chip (screen-level) is now the single search-bar
+  ' was removed: the peek chip (screen-level) is now the single search-bar
   ' surface in both collapsed and expanded states.
   m.kbd = m.overlay.findNode("kbd")
   m.suggestions = m.overlay.findNode("suggestions")
@@ -173,7 +173,7 @@ sub init()
   ' -1 when the column was entered another way (onSuggestionEscape).
   m.kbdRow = -1
 
-  ' Keyboard → query pipeline. DynamicCustomKeyboard emits typed characters
+  ' Keyboard to query pipeline. DynamicCustomKeyboard emits typed characters
   ' into its own text field; mirror every change into m.top.query so the rest
   ' of the state machine keys off a single source of truth.
   ' No Submit key: DOWN from keyboard bottom row (onKeyboardEscape) and
@@ -188,15 +188,15 @@ sub init()
   m.suggestions.observeField("removeRequested", "onSuggestionRemoveRequested")
   m.suggestions.observeField("escape", "onSuggestionEscape")
 
-  ' Row list focus observer — drives backdrop updates as user scrolls results.
+  ' Row list focus observer: drives backdrop updates as user scrolls results.
   m.searchSelect.observeField("rowItemFocused", "onSearchItemFocused")
 
   ' Close the `rows` fill in the readiness ledger. SearchRow builds the rows in its OWN `m`,
-  ' so it cannot resolve this screen's ledger directly — it marks a field and this screen
+  ' so it cannot resolve this screen's ledger directly: it marks a field and this screen
   ' resolves on it, the same signal ExtrasRowList gives ItemDetails.
   m.searchSelect.observeField("contentReady", "onResultRowsReady")
 
-  ' This screen owns its own navigation — a selected result navigates to its route.
+  ' This screen owns its own navigation: a selected result navigates to its route.
   m.searchSelect.observeField("itemSelected", "onSearchItemSelected")
 
   ' A non-navigable result (plays directly) sets m.top.quickPlayNode; this self-observer
@@ -204,10 +204,10 @@ sub init()
   ' ItemDetails use. Without it, Play on a result sets a field nobody reads.
   m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
 
-  ' Voice — screen owns the voiceEnabled slot. initialise once, release in destroy.
+  ' Voice: screen owns the voiceEnabled slot. initialise once, release in destroy.
   initVoiceBox()
 
-  ' Peek chip starts collapsed and empty (no placeholder text — icon alone).
+  ' Peek chip starts collapsed and empty (no placeholder text: icon alone).
   m.peekChip.isExpanded = false
   m.peekChip.queryText = ""
 
@@ -215,14 +215,14 @@ sub init()
   ' feels instantaneous (nothing to fetch).
   renderRecentSuggestions()
 
-  ' Default lastFocus — results list when populated, peek chip otherwise.
+  ' Default lastFocus: results list when populated, peek chip otherwise.
   m.top.lastFocus = m.searchSelect
 
   ' First show opens the overlay so the user can type immediately; later shows (a resume,
-  ' e.g. back from a result's detail page) restore the prior focus and expansion state.
+  ' for example back from a result's detail page) restore the prior focus and expansion state.
   m.isFirstShow = true
 
-  ' Last voice query applied via applyRouteQuery — guards against re-applying (and
+  ' Last voice query applied via applyRouteQuery: guards against re-applying (and
   ' re-grabbing focus) on a back-resume that replays the same route context.
   m.lastAppliedQuery = ""
 
@@ -231,7 +231,7 @@ sub init()
   ' outstanding at paint and has to be declared here rather than discovered afterwards.
   screenLoad.pending("focus")
 
-  ' PAINT — the search UI exists and the help text is on screen. What it is NOT yet is
+  ' PAINT: the search UI exists and the help text is on screen. What it is not yet is
   ' usable, which is exactly what `focus` above measures.
   screenLoad.paint("open")
 
@@ -251,7 +251,7 @@ end sub
 sub OnScreenShown()
   m.log.verbose("OnScreenShown")
 
-  ' The screen is showing and about to take focus — it has become typable. Resolved at the
+  ' The screen is showing and about to take focus: it has become typable. Resolved at the
   ' TOP because paths below return early, and a `pending` that any path can skip leaves the
   ' screen permanently unsettled. Silent on later calls: `resolve` ignores a run that is
   ' already over (screenReadiness.bs), which is what a back-resume produces.
@@ -262,7 +262,7 @@ sub OnScreenShown()
   ' active; voiceEnabled was set once in initVoiceBox and is released only in onDestroy.
   if isValid(m.voiceBox) then m.voiceBox.active = true
 
-  ' Voice search arrives as route.context.query — populate, search and take focus,
+  ' Voice search arrives as route.context.query: populate, search and take focus,
   ' skipping normal focus restoration.
   if applyRouteQuery() then return
 
@@ -272,7 +272,7 @@ sub OnScreenShown()
   end if
 
   ' First open with nothing typed: expand so the keyboard is immediately usable. Landing
-  ' collapsed would show an empty results list with no visible way forward — the user would
+  ' collapsed would show an empty results list with no visible way forward: the user would
   ' have to guess that UP opens the keyboard. onExpansionChanged hands focus to the
   ' keyboard, which is what closes the `focus` fill above in practice.
   if m.isFirstShow
@@ -306,7 +306,7 @@ end sub
 
 ' onDestroy: Full teardown releasing all resources before component removal.
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently
-' closes this view (ADR 0029 — popped routes are destroyed, never cached), so
+' closes this view (ADR 0029: popped routes are destroyed, never cached), so
 ' this runs on every back-out and must fully release.
 sub onDestroy()
   ' Detach the interface observers registered in init(). Must precede every
@@ -358,11 +358,11 @@ sub onDestroy()
     ' SearchRow's cells are BrowseRowItem (a JRRowItem), which
     ' caches m.contentRoot and registers scoped observers on it, so the content root holds
     ' each cell's scope. JRRowItem has no onDestroy and SearchRow has none either, so the
-    ' release has to come from the container — tech-debt.md's
+    ' release has to come from the container: tech-debt.md's
     ' `observe-without-on-destroy-jrscreen-only` entry names JRRowItem explicitly and warns
     ' that nothing enforces the next container remembering to do this.
     '
-    ' BELOW the unobserves for the same reason it is there in BaseGridView — emptying the
+    ' BELOW the unobserves for the same reason it is there in BaseGridView: emptying the
     ' RowList can move rowItemFocused, and onSearchItemFocused dereferences `.content`.
     m.searchSelect.content = invalid
   end if
@@ -397,7 +397,7 @@ end sub
 ' VOICE
 ' ============================================================================
 
-' initVoiceBox — screen-level voice capture. Matches Home.bs initVoiceBox().
+' initVoiceBox: screen-level voice capture. Matches Home.bs initVoiceBox().
 ' voiceEnabled stays true across the screen's lifetime; active is toggled by
 ' OnScreenShown / OnScreenHidden, as Home toggles its own.
 sub initVoiceBox()
@@ -410,7 +410,7 @@ sub initVoiceBox()
   m.voiceBox.observeField("text", "onVoiceText")
 end sub
 
-' onVoiceText — voice input captured. Populate query and immediately submit.
+' onVoiceText: voice input captured. Populate query and immediately submit.
 sub onVoiceText()
   voiceText = m.voiceBox.text
   if voiceText = "" then return
@@ -425,12 +425,12 @@ end sub
 '
 ' Home's voice handler navigates `/search` with `{ context: { query: ... } }` rather than
 ' setting a field on this node, because under sgRouter there is no scene stack to reach into
-' — the route IS the channel.
+' (the route is the channel).
 '
 ' onScreenShown fires on first open AND on resume, and the router replays the ORIGINAL route
 ' (with its query context) on a back-resume, so applying unconditionally would re-run the
 ' search every time the user backs out of a result. Guard on the last-applied value: a
-' back-resume carries the same query we already applied (skip), while a genuinely new voice
+' back-resume carries the same query we already applied (skip), while a truly new voice
 ' search carries a different one (apply).
 function applyRouteQuery() as boolean
   query = searchRoute.queryToApply(m.top.route, m.lastAppliedQuery)
@@ -442,7 +442,7 @@ function applyRouteQuery() as boolean
   return true
 end function
 
-' A search result was selected — navigate to its route, passing the rich node as context so
+' A search result was selected: navigate to its route, passing the rich node as context so
 ' the destination does not re-fetch what we already hold. Non-navigable results (a chapter,
 ' a live channel) have no route and fall through to the playback launcher.
 sub onSearchItemSelected(msg as object)
@@ -463,11 +463,11 @@ sub onQuickPlayLaunch(msg as object)
   if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
 end sub
 
-' The result rows are built and on screen — closes the `rows` fill.
+' The result rows are built and on screen: closes the `rows` fill.
 '
 ' Reads the VALUE rather than treating the notification as the signal: SearchRow clears the
 ' field at the start of every build, so half the callbacks here are the clear rather than the
-' completion. Deliberately unguarded against arriving late — `resolve` warns and returns
+' completion. Intentionally unguarded against arriving late: `resolve` warns and returns
 ' without counting if the run already closed, and that warning is the only signal that would
 ' ever show the keystroke race is real.
 sub onResultRowsReady()
@@ -476,7 +476,7 @@ sub onResultRowsReady()
   screenLoad.resolve("rows")
 end sub
 
-' Shared helper — write the query, sync the keyboard's text field so the
+' Shared helper: write the query, sync the keyboard's text field so the
 ' header stays in sync, run full search + collapse.
 sub applyQueryAndSubmit(queryText as string)
   m.kbd.text = queryText
@@ -506,16 +506,16 @@ sub onExpansionChanged()
     m.resultsSlideAnim.control = "start"
   end if
 
-  ' Peek chip is the single search-bar surface — stays visible in both
+  ' Peek chip is the single search-bar surface: stays visible in both
   ' states. The overlay's solid background already hides anything behind it
   ' so there's no double-bar bleed-through to worry about.
 
   ' Empty-state help label:
-  '   Expanded — vertically centered between the keyboard bottom and the 5%
+  '   Expanded: vertically centered between the keyboard bottom and the 5%
   '   bottom safe-area edge. Keyboard bottom = overlay bottom =
   '   OVERLAY_OPEN_Y + OVERLAY_HEIGHT = 130 + 400 = 530.
   '   5% bottom safe edge = 1080 × 0.95 = 1026. Midpoint = 778.
-  '   Collapsed — mid-screen (y=540), out of the way of the peek chip and
+  '   Collapsed: mid-screen (y=540), out of the way of the peek chip and
   '   the eventual results row at RESULTS_Y=140.
   '   Hidden when results are present, while a search is in flight (the spinner sits
   '   over this spot), or while the failure state takes its place.
@@ -537,16 +537,16 @@ sub onExpansionChanged()
   end if
 
   if expanded
-    ' Overlay covers the top of the screen — clear any item backdrop so it
+    ' Overlay covers the top of the screen: clear any item backdrop so it
     ' doesn't bleed through the alpha layer.
     m.global.sceneManager.callFunc("setBackgroundImage", "")
     ' Back to the column focus left the overlay from: the suggestions (on the row or
     ' Clear History it left from, or the first row when a pick rebuilt the list without
     ' it) or the keyboard,
     ' whose grid keeps its last key. An empty suggestion list falls back to the keyboard.
-    ' lastFocus must move WITH the focus, not just on collapse. sgRouter calls
+    ' lastFocus must move with the focus, not only on collapse. sgRouter calls
     ' handleFocus() after onViewOpen has already run onScreenShown, and
-    ' JRScreen.handleFocus restores m.top.lastFocus — so a focus taken here
+    ' JRScreen.handleFocus restores m.top.lastFocus, so a focus taken here
     ' and not recorded is silently overwritten by whatever lastFocus still points at.
     ' Measured on device (.178): the overlay opened with isExpanded=true while focus
     ' sat on SearchRow, so every keypress went to an empty results list and the
@@ -568,7 +568,7 @@ sub onExpansionChanged()
     else if m.kbd.isInFocusChain()
       m.overlayFocusColumn = "keyboard"
     end if
-    ' Collapse: always focus the results list — even when empty — so the
+    ' Collapse: always focus the results list (even when empty) so the
     ' screen has a single, consistent focus target. onKeyEvent treats "in
     ' focus chain with no row currently focused" as the empty-state signal
     ' for UP-to-reopen; focusing m.top instead (the previous approach)
@@ -594,14 +594,14 @@ end function
 ' QUERY / TYPEAHEAD PIPELINE
 ' ============================================================================
 
-' Keyboard's native text field changed — mirror into the canonical query.
+' Keyboard's native text field changed: mirror into the canonical query.
 sub onKeyboardTextChanged()
   text = m.kbd.text
   if not isValid(text) then text = ""
   m.top.query = text
 end sub
 
-' m.top.query changed — drive the suggestion panel + debounce both the
+' m.top.query changed: drive the suggestion panel + debounce both the
 ' hints typeahead and the full-results search.
 sub onQueryChanged()
   query = m.top.query
@@ -616,10 +616,10 @@ sub onQueryChanged()
 
   trimmed = query.Trim()
   if trimmed = ""
-    ' No input — stop any in-flight full search, wipe the existing results from
+    ' No input: stop any in-flight full search, wipe the existing results from
     ' the SearchRow, and show the recent-searches list. Without the results-wipe,
     ' the trashcan key (or repeated backspace) leaves stale results visible below
-    ' the overlay even though there's no query — they can't be re-focused (the
+    ' the overlay even though there's no query: they can't be re-focused (the
     ' overlay is open) and the user has no way to clear them short of leaving.
     '
     ' An in-flight hints request needs no cancelling: its handler drops the result
@@ -649,7 +649,7 @@ sub onQueryChanged()
   m.fullSearchTimer.control = "start"
 end sub
 
-' Debounce timer fired — ask for hints for whatever is currently typed.
+' Debounce timer fired: ask for hints for whatever is currently typed.
 sub onDebounceFire()
   startHintsFetch()
 end sub
@@ -667,7 +667,7 @@ end sub
 '
 ' fetchAsync submits to the persistent 3-worker pool from the render thread, so
 ' this launches NO Task thread and can never be refused by launchTask()'s
-' watermark — unlike the previous shape, which created a SearchHintsTask node
+' watermark: unlike the previous shape, which created a SearchHintsTask node
 ' per keystroke and blocked one of RokuOS's 100 threads for each in-flight fetch.
 ' Cancellation on teardown is automatic: the auto-abandon-promises plugin injects
 ' abandonApiPromises() into onDestroy, so a late response resolves nothing.
@@ -702,7 +702,7 @@ sub startHintsFetch()
     if ctx.query <> m.top.query then startHintsFetch()
   end sub).catch(sub(err as object, ctx as object)
     ' Transport failure or pool timeout. Leave the current suggestions standing
-    ' rather than blanking the panel — a dropped request should not look like
+    ' rather than blanking the panel: a dropped request should not look like
     ' "no matches", which is a different and wrong answer.
     m.hintsInFlight = false
     m.log.warn("hints fetch failed", err.reason)
@@ -761,7 +761,7 @@ end sub
 
 sub onClearRequested()
   if not m.kbd.clearRequested then return
-  m.kbd.text = "" ' cascades into onKeyboardTextChanged → query = ""
+  m.kbd.text = "" ' cascades into onKeyboardTextChanged, which sets query = ""
 end sub
 
 sub onSuggestionSelected()
@@ -789,19 +789,19 @@ sub onClearHistoryRequested()
   renderRecentSuggestions()
 end sub
 
-' Per-entry delete — SearchSuggestionList emits this when the user presses
+' Per-entry delete: SearchSuggestionList emits this when the user presses
 ' OPTIONS on a focused row. Show a confirm dialog; on confirm remove the
 ' term from registry and re-render. The dialog makes the destructive action
 ' discoverable and recoverable (the old silent-remove was jarring).
 '
-' The SuggestionList emits for any focused row (not just recent-mode rows);
+' The SuggestionList emits for any focused row (not only recent-mode rows);
 ' we gate here by looking up the term in the saved history. If it's not a
 ' saved recent, the OPTIONS press is a no-op.
 sub onSuggestionRemoveRequested()
   term = m.suggestions.removeRequested
   if not isValid(term) or term = "" then return
 
-  ' Only prompt if the term is actually in the user's recent-search list —
+  ' Only prompt if the term is actually in the user's recent-search list.
   ' OPTIONS on a pure hint row that the user never searched should not open
   ' a "remove?" dialog for a phantom entry.
   recent = searchHistory.load()
@@ -830,7 +830,7 @@ sub onSuggestionRemoveRequested()
 end sub
 
 ' Result handler for the per-entry remove confirm dialog. `confirmed` is true only
-' when the Remove button was selected — Cancel and Back both arrive as not-confirmed,
+' when the Remove button was selected: Cancel and Back both arrive as not-confirmed,
 ' so a single positive gate covers every dismissal path (including this dialog being
 ' superseded by another overlay, which resolves it as cancelled).
 sub onRemoveDialogResponse()
@@ -847,7 +847,7 @@ sub onRemoveDialogResponse()
   renderRecentSuggestions()
 end sub
 
-' RIGHT from the suggestion list — return focus to the keyboard (which sits
+' RIGHT from the suggestion list: return focus to the keyboard (which sits
 ' to the right of the suggestion list) so the user can resume typing.
 sub onSuggestionEscape()
   direction = m.suggestions.escape
@@ -892,8 +892,8 @@ sub runFullSearch(query as string, isSubmitted = false as boolean)
   m.isSubmittedRun = isSubmitted
   m.isAwaitingResults = true
 
-  ' A new query is a NEW run, not a continuation — `begin` restarts the ledger so the clock
-  ' starts at the keystroke rather than at the screen opening. A superseded run simply never
+  ' A new query is a NEW run, not a continuation: `begin` restarts the ledger so the clock
+  ' starts at the keystroke rather than at the screen opening. A superseded run never
   ' paints, so it emits nothing rather than a truncated number.
   screenLoad.begin("searchScreen")
   ' Declared before launchTask below, so the resolve can never outrun its own pending.
@@ -909,7 +909,7 @@ sub runFullSearch(query as string, isSubmitted = false as boolean)
   launchTask(m.searchTask)
 end sub
 
-' User-initiated submit — Go key, suggestion tap, voice, or DOWN from the
+' User-initiated submit: Go key, suggestion tap, voice, or DOWN from the
 ' keyboard bottom row. Pushes the term to recent history, kicks off the task
 ' (only if we don't already have results for this exact query), and collapses
 ' the overlay so the user can browse results.
@@ -926,7 +926,7 @@ sub submitSearch(query as string)
   ' If the results currently in the SearchRow already match this query,
   ' skip the re-run. Setting searchTask.query + control=RUN on an identical
   ' query still causes onFullSearchResults to reassign m.searchSelect.itemdata,
-  ' which triggers a full ContentNode rebuild in SearchRow.getData() — and
+  ' which triggers a full ContentNode rebuild in SearchRow.getData(), and
   ' that rebuild is what the user perceives as a "reload flash" (new Poster
   ' nodes have to re-associate with their textures even when URLs match).
   ' Common case: live-typing debounce already fetched these exact results,
@@ -953,7 +953,7 @@ sub submitSearch(query as string)
   m.top.isExpanded = false
 end sub
 
-' Full-search debounce fired — kick off the task WITHOUT collapsing the
+' Full-search debounce fired: kick off the task WITHOUT collapsing the
 ' overlay. Results stream in under the open keyboard so the user sees
 ' matches live as they type.
 sub onFullSearchDebounceFire()
@@ -1007,7 +1007,7 @@ sub onFullSearchResults(event as object)
   m.searchSelect.itemdata = results
   m.searchSelect.query = m.top.query
 
-  ' PAINT — results handed over, rows built, spinner down.
+  ' PAINT: results handed over, rows built, spinner down.
   screenLoad.paint("query")
 
   total = (results.TotalRecordCount ?? 0)
@@ -1026,7 +1026,7 @@ sub onFullSearchResults(event as object)
 
   m.searchHelpText.visible = false
   ' Only steal focus when the overlay is collapsed (user submitted). During
-  ' live-while-typing the user is still on the keyboard — snapping focus to
+  ' live-while-typing the user is still on the keyboard: snapping focus to
   ' the results list would yank them out of the middle of a word.
   if not m.top.isExpanded
     m.searchSelect.setFocus(true)
@@ -1035,11 +1035,11 @@ sub onFullSearchResults(event as object)
 end sub
 
 ' ============================================================================
-' SEARCH OUTCOME — failed / empty / partial
+' SEARCH OUTCOME: failed / empty / partial
 ' ============================================================================
 
 ' Shows what a submitted search ended with. Failed: the message and Try again where the
-' results go; with the overlay collapsed (the submit just closed it) Try again takes focus,
+' results go; with the overlay collapsed (the submit closed it a moment ago) Try again takes focus,
 ' since there is nothing else to act on, and the message is announced once focus lands.
 ' With the overlay open the viewer is typing again, so focus stays and the failure is
 ' announced instead. Empty: the no-results label, only while collapsed: "no results for STA"
@@ -1120,7 +1120,7 @@ sub onKeyboardEscape()
 
   if direction = "down"
     ' DOWN from bottom row: submit the current query (implicit submit). If
-    ' the query is empty there's nothing to submit — stay on the keyboard
+    ' the query is empty there's nothing to submit: stay on the keyboard
     ' rather than collapsing into an empty results view; the user hasn't
     ' asked to leave and there's nothing to focus downstream.
     query = m.top.query
@@ -1143,12 +1143,12 @@ sub onKeyboardEscape()
     end if
   else if direction = "up"
     ' No content above the keyboard within the overlay (peek chip is screen-
-    ' level, not focusable) — stay put rather than looping focus.
+    ' level, not focusable): stay put rather than looping focus.
   end if
 end sub
 
 ' ============================================================================
-' RESULT FOCUS → BACKDROP
+' RESULT FOCUS AND BACKDROP
 ' ============================================================================
 
 sub onSearchItemFocused()
@@ -1172,13 +1172,13 @@ sub onSearchItemFocused()
 end sub
 
 ' ============================================================================
-' KEY EVENT — expansion + back handling
+' KEY EVENT: expansion + back handling
 ' ============================================================================
 
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  ' BACK always pops the scene — no intermediate "first back collapses overlay,
+  ' BACK always pops the scene: no intermediate "first back collapses overlay,
   ' second back pops" step. The overlay is not a piece of state the user
   ' consciously opened; collapsing it first surprised users by revealing an
   ' unseen results state that they hadn't viewed yet.
@@ -1196,10 +1196,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   ' UP (or OK in the empty state) expands the overlay. Gated on the
-  ' searchSelect being in focus chain — onExpansionChanged always focuses
+  ' searchSelect being in focus chain: onExpansionChanged always focuses
   ' searchSelect after a collapse, so this branch is the canonical path for
   ' both the post-search state and the empty state.
-  ' Empty list: rowItemFocused is invalid or [-1, -1] — we treat that the
+  ' Empty list: rowItemFocused is invalid or [-1, -1]: we treat that the
   ' same as "at row 0" for expansion. Past row 0 (focused[0] > 0), UP is
   ' intra-list navigation and we leave it alone.
   if not m.top.isExpanded and isValid(m.searchSelect) and m.searchSelect.isInFocusChain()

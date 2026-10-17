@@ -1,10 +1,10 @@
 import "pkg:/source/utils/misc.bs"
 
-' SearchQwertyKeyboard — custom DynamicCustomKeyboard subclass used inside the
+' SearchQwertyKeyboard: custom DynamicCustomKeyboard subclass used inside the
 ' SearchOverlay pull-down. Extends the stock keyboard with:
 '
 ' 1. Special-key handling: Clear strOut token bubbles up as a boolean field
-'    (clearRequested) the parent observes. Submit/Enter key was removed —
+'    (clearRequested) the parent observes. Submit/Enter key was removed:
 '    submission happens via DOWN from the bottom row or suggestion tap.
 ' 2. Edge-escape signalling: arrow presses at grid edges set m.top.escape so
 '    the parent can hand focus to adjacent UI (the suggestion column on either
@@ -77,7 +77,7 @@ function keyRows() as object
   ]
 end function
 
-' onKeyEvent — at a grid edge, set m.top.escape (and, for left / right, m.top.escapeRow)
+' onKeyEvent: at a grid edge, set m.top.escape (and, for left / right, m.top.escapeRow)
 ' so the screen moves focus off the keyboard: up and down off the top and bottom rows,
 ' and left and right off either side edge. Left and right are the two ends of the
 ' overlay's horizontal loop (suggestions, keyboard, suggestions): the screen sends both

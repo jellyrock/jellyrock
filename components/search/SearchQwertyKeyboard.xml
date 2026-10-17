@@ -2,7 +2,7 @@
 <component name="SearchQwertyKeyboard" extends="DynamicCustomKeyboard">
   <interface>
     <!-- Caller invokes this from its own onKeyEvent to handle special keys that
-         emit strOut tokens (submit, clear) — DynamicCustomKeyboard calls it for
+         emit strOut tokens (submit, clear): DynamicCustomKeyboard calls it for
          every key press, and the keyboard returns true to consume tokens it
          handled internally. -->
     <function name="keySelected" />

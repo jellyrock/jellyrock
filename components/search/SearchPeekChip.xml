@@ -2,11 +2,11 @@
 <component name="SearchPeekChip" extends="Group">
   <children>
     <!-- Pill background. Width is fixed at PEEK_CHIP_WIDTH (1000) in bs so it
-         matches the keyboard's width — search bar + keyboard form a single
+         matches the keyboard's width: search bar + keyboard form a single
          visual column. -->
     <Rectangle id="chipBg" height="60" />
 
-    <!-- Magnifying-glass icon — always visible on the left of the pill. -->
+    <!-- Magnifying-glass icon: always visible on the left of the pill. -->
     <Poster id="searchIcon"
       translation="[24, 12]"
       width="36"

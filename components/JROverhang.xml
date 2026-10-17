@@ -20,7 +20,7 @@
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <field id="shouldShowIcons" type="boolean" value="false" onChange="onShouldShowIconsChanged" />
     <field id="iconAction" type="string" alwaysNotify="true" />
-    <!-- Clock visibility — default true. Projected here from the active routed view's
+    <!-- Clock visibility: default true. Projected here from the active routed view's
          own isClockVisible field by JRScene's overhang controller; screens declare, they
          do not write this node. Replaces the old imperative hideClock() function so all
          overhang element visibility follows one field-assignment pattern. -->

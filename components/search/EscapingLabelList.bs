@@ -1,6 +1,6 @@
 import "pkg:/source/utils/misc.bs"
 
-' EscapingLabelList — LabelList subclass that emits an escape signal when the
+' EscapingLabelList: LabelList subclass that emits an escape signal when the
 ' user presses DOWN on the last content row. See XML for rationale.
 '
 ' Returning false from onKeyEvent lets the base LabelList keep its normal

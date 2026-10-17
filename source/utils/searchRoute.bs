@@ -1,7 +1,7 @@
 ' @fileoverview Route-context decision for the search screen.
 '
 ' Extracted from SearchScreen so the rule can be unit-tested with plain AAs, with no
-' router, no node graph and no device — the same reason quickConnect.bs holds the poll
+' router, no node graph and no device: the same reason quickConnect.bs holds the poll
 ' classification rather than UserSelect (docs/dev/promises.md, worked example 3d).
 '
 ' The rule looks trivial and is not: sgRouter replays a view's ORIGINAL route when a
@@ -25,9 +25,9 @@ namespace searchRoute
     query = route.context.query
     if not isValidAndNotEmpty(query) then return ""
 
-    ' Same query we already applied — this is a back-resume replaying the original route,
+    ' Same query we already applied: this is a back-resume replaying the original route,
     ' not a new voice search. Re-applying would re-run the search and yank focus away from
-    ' whatever result the user just came back to.
+    ' whatever result the user came back to.
     if query = lastApplied then return ""
 
     return query

@@ -1,21 +1,21 @@
 import "pkg:/source/constants/searchLayout.bs"
 import "pkg:/source/utils/misc.bs"
 
-' SearchOverlay — sliding pull-down panel hosting the query display, keyboard,
+' SearchOverlay: sliding pull-down panel hosting the query display, keyboard,
 ' and suggestion list. Animated via Vector2DFieldInterpolator on a child
 ' Group's translation (slideGroup), following the same pattern as
 ' ExtrasSlider (components/extras/ExtrasSlider.xml) and OptionsSlider
 ' (components/options/OptionsSlider.bs).
 '
 ' IMPORTANT: Vector2DFieldInterpolator's fieldToInterp must reference a real
-' child node id (e.g. "slideGroup.translation"), not the runtime "m.top"
-' expression. A prior revision of this file used fieldToInterp="m.top.translation"
-' — that syntax is invalid and silently failed to animate, leaving the overlay
+' child node id (for example "slideGroup.translation"), not the runtime "m.top"
+' expression. A prior revision of this file used fieldToInterp="m.top.translation".
+' That syntax is invalid and silently failed to animate, leaving the overlay
 ' parked off-screen so the keyboard was focused but invisible.
 '
 ' Parent drives visibility via the isExpanded field. The overlay owns the
 ' animation purely; it has no business knowing about query state, debouncing,
-' or task lifecycles — those live in SearchScreen.bs.
+' or task lifecycles: those live in SearchScreen.bs.
 
 sub init()
   m.slideGroup = m.top.findNode("slideGroup")
@@ -45,8 +45,8 @@ sub init()
 end sub
 
 ' Called on isExpanded changes from the parent. Starts the slide animation in
-' the appropriate direction. The parent is responsible for focus hand-off —
-' this component only animates.
+' the appropriate direction. The parent is responsible for focus hand-off.
+' This component only animates.
 ' control="stop" before "start" is required: if the animation is already
 ' running (rapid open/close cycles) the second "start" on a running animation
 ' is a no-op on some Roku firmwares, leaving the overlay stuck mid-travel.

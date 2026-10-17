@@ -8,7 +8,7 @@ namespace tests
     protected override sub setup()
       super.setup()
 
-      ' Ensure sceneManager stub exists — SearchScreen calls through it to clear
+      ' Ensure sceneManager stub exists: SearchScreen calls through it to clear
       ' the backdrop during init and expansion transitions.
       if not m.global.doesExist("sceneManager")
         m.global.addField("sceneManager", "node", false)
@@ -26,7 +26,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("VoiceTextEditBox setup")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    ' `voiceEnabled` on the SCREEN-level box is deliberately not asserted. Roku grants the
+    ' `voiceEnabled` on the SCREEN-level box is intentionally not asserted. Roku grants the
     ' voice route to one node at a time and the firmware manages the field itself (see
     ' Home.bs initVoiceBox), so a standalone component instantiated in a suite where another
     ' voice node already exists reads back false through no fault of this screen. The

@@ -113,7 +113,7 @@ it("keeps peak live Task threads far below Roku's cap across a real journey", as
   //
   // `search-round-trip` runs LAST, and that placement is the point rather than an
   // afterthought. Returning from /search restores focus to the overhang icon it was
-  // launched from — correct app behaviour, and the wrong start state for any phase that
+  // launched from: correct app behaviour, and the wrong start state for any phase that
   // walks Home's rows. Run in the middle it broke `extras-sweep`; handing focus back with
   // presses then raced whatever the previous phase had left settling. Last, its end state
   // is nobody's precondition. It only needs Home to start from, and one Back off the grid
@@ -123,7 +123,7 @@ it("keeps peak live Task threads far below Roku's cap across a real journey", as
   // the worst-shaped one: typing fired a full SearchTask per debounce AND created a
   // SearchHintsTask node per keystroke, each blocking a thread inside fetchJson for up to
   // API_WAIT_MS. The hints path is now a render-thread fetchAsync that launches no thread
-  // at all and the full search goes through launchTask — but nothing except this gate would
+  // at all and the full search goes through launchTask, but nothing except this gate would
   // notice a regression back toward per-keystroke fan-out, because it costs no correctness
   // and fails no functional test until a device runs out of threads.
   const phases = [
@@ -205,7 +205,7 @@ it("keeps peak live Task threads far below Roku's cap across a real journey", as
   expect(
     Object.entries(phaseErrors).map(([k, v]) => `${k}: ${v}`),
     'a journey phase did not complete, so the peak below was measured over an app that ' +
-      'was not being driven. The measurement is void, not passing — see phaseErrors in ' +
+      'was not being driven. The measurement is void, not passing: see phaseErrors in ' +
       '.device-runs/task-thread-peak-*.json.',
   ).toEqual([]);
 

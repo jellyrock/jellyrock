@@ -9,7 +9,7 @@
          behavior) so parent onKeyEvent never sees it, meaning a sibling node
          below the list can't be reached via DOWN. This subclass intercepts
          the DOWN press at the edge and emits the escape signal so the parent
-         can reroute focus (e.g. to a pinned Clear History button). -->
+         can reroute focus (for example to a pinned Clear History button). -->
     <field id="escape" type="string" alwaysNotify="true" />
   </interface>
 </component>

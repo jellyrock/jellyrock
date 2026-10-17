@@ -4,8 +4,8 @@
 '
 ' Runs on the RENDER thread: SearchScreen consumes /Search/Hints through
 ' fetchAsync() rather than a Task node, so this transform executes in the
-' promise callback. That is deliberate and bounded — see the cap in transform()
-' — and it is what lets the labels below go through translate(), which reads
+' promise callback. That is deliberate and bounded: see the cap in transform().
+' It is also what lets the labels below go through translate(), which reads
 ' m.global.translations.
 
 import "pkg:/source/constants/searchLayout.bs"
@@ -16,11 +16,11 @@ import "pkg:/source/utils/translate.bs"
 namespace searchHints
 
   ' Transform a raw SearchHintResult payload into lightweight display rows.
-  ' Pure function — no node graph, no side effects — so it's unit-testable.
+  ' Pure function (no node graph, no side effects) so it's unit-testable.
   '
   ' @param raw - Parsed /Search/Hints JSON body, or invalid. Expected shape:
   '              { SearchHints: [ { Id, Name, Type, ProductionYear, ... } ] }
-  ' @returns Array of { text, name, id, type } — at most HINTS_LIMIT items.
+  ' @returns Array of { text, name, id, type }: at most HINTS_LIMIT items.
   '
   ' The `text` field is the user-visible string. Format:
   '   "{Name} · {Context}"              (Episode: its series; MusicAlbum, Audio: the artist)
@@ -45,7 +45,7 @@ namespace searchHints
       if not isValid(name) or name = "" then continue for
 
       ' Unknown types yield an empty label and the name stands alone. Passing the
-      ' raw Jellyfin type string through — the previous behaviour — put an
+      ' raw Jellyfin type string through (the previous behaviour) put an
       ' untranslated API enum in front of the user in every locale.
       text = name
       ' The name that places the item (its series, its artist) says more than its category,

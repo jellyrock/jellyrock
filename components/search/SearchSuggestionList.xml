@@ -9,13 +9,13 @@
          (updateCounter). -->
     <LabelSecondarySmall id="counter" width="480" height="36" horizAlign="right" translation="[0, 0]" visible="false" />
 
-    <!-- EscapingLabelList — the app's standard JRLabelList, plus an "escape"
+    <!-- EscapingLabelList: the app's standard JRLabelList, plus an "escape"
          signal when the user presses DOWN on the last row (Clear History, or
          the results, are below it). Rows are sized in bs: 57px rows, 12px apart,
          five (y 56–389) or four (y 56–320) while Clear History needs the space below. -->
     <EscapingLabelList id="list" translation="[0, 56]" />
 
-    <!-- Pinned Clear History button — visible only in recent mode with a
+    <!-- Pinned Clear History button: visible only in recent mode with a
          non-empty history. Sits below the list so it never scrolls off when
          the history grows past numRows, and ends at y=400 with the keyboard
          beside it. Standard TextButton colors (a colorPrimary focus border).
@@ -32,18 +32,18 @@
       visible="false" />
   </children>
   <interface>
-    <!-- "recent" | "hints" | "empty" — governs section label + Clear button
+    <!-- "recent" | "hints" | "empty": governs section label + Clear button
          visibility. Changing mode re-renders the list header.
-         alwaysNotify so repeated writes of the same mode (e.g. still "hints"
+         alwaysNotify so repeated writes of the same mode (for example still "hints"
          but with new items) reliably fire even when the string is unchanged. -->
     <field id="mode" type="string" onChange="renderSectionLabel" alwaysNotify="true" />
 
     <!-- Array of { text, value } AAs. For recent mode, value == the term string;
          for hints mode, value == the name string (we drive full search from the
          name). Writing this field fully replaces the list contents.
-         alwaysNotify is critical: once the list is "full" (e.g. 8 entries) and
+         alwaysNotify is critical: once the list is "full" (for example 8 entries) and
          the next hint set is also 8 entries, the Scenegraph can elide the
-         change-notification — leaving the old items on screen. alwaysNotify
+         change-notification: leaving the old items on screen. alwaysNotify
          forces the re-render every time. -->
     <field id="items" type="array" onChange="renderItems" alwaysNotify="true" />
 
