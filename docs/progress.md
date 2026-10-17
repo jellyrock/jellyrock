@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-17: fix(search): Find the Live TV programs that match a search
 - 2026-10-17: fix: Treat the 512 MB Roku Express `3900X`, `3910X` and `3930X` as low memory
 - 2026-10-14: fix(subtitles): Stop Perfect match showing old results mid-search
 - 2026-10-14: feat(subtitles): Show and announce a failed or empty subtitle search
