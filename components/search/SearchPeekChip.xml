@@ -8,14 +8,14 @@
 
     <!-- Magnifying-glass icon — always visible on the left of the pill. -->
     <Poster id="searchIcon"
-      translation="[24, 18]"
-      width="24"
-      height="24"
+      translation="[24, 12]"
+      width="36"
+      height="36"
       uri="pkg:/images/icons/search_$$RES$$.png" />
 
     <!-- Query text label. Pinned width so the pill doesn't grow with text;
          long queries marquee-scroll within the fixed pill bounds. -->
-    <Label id="queryLabel" height="60" translation="[64, 0]"
+    <Label id="queryLabel" height="60" translation="[76, 0]"
       horizAlign="left" vertAlign="center" />
   </children>
   <interface>
