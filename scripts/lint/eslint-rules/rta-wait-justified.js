@@ -174,6 +174,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // holds until the next items write, which only a keystroke, a pick or a history change
   // makes. Terminal for a query that stands still. Read against the app source 2026-10-14.
   '#suggestions.#list.content.0.description',
+  // Roku's DynamicKeyGrid sets it as focus moves between keys (its reference lists it as a
+  // read-only field); the app only moves focus to a key through focusEdge's jumpToKey. It
+  // holds until the next key: terminal, not a pulse. Read against the app source 2026-10-14.
+  '#kbd.keyGrid.keyFocused',
   '#trickplayCarousel.isVisible',
   '#userRow',
   '#versionLabel.text',

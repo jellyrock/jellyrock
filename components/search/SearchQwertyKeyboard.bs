@@ -7,8 +7,8 @@ import "pkg:/source/utils/misc.bs"
 '    (clearRequested) the parent observes. Submit/Enter key was removed —
 '    submission happens via DOWN from the bottom row or suggestion tap.
 ' 2. Edge-escape signalling: arrow presses at grid edges set m.top.escape so
-'    the parent can hand focus to adjacent UI (suggestion list to the right,
-'    results list downward) instead of wrapping inside the grid.
+'    the parent can hand focus to adjacent UI (the suggestion column on either
+'    side, the results below) instead of wrapping inside the grid.
 ' 3. Voice conflict avoidance: disables the keyboard's internal voiceEnabled
 '    textEditBox so the screen-level VoiceTextEditBox owns Roku's single
 '    voice slot exclusively.
@@ -38,6 +38,10 @@ sub init()
   ' (searchLayout.OVERLAY_HEIGHT).
   m.top.hideTextBox = true
 
+  ' No wrap inside a row: the edge keys hand off to the suggestion column instead
+  ' (onKeyEvent). Roku documents false as the default; set so it is not relied on.
+  m.top.keyGrid.horizWrap = false
+
   ' Voice: keep Roku's single voice slot for the screen-level VoiceTextEditBox
   ' (SearchScreen.initVoiceBox), so the hidden built-in box never claims it.
   if isValid(m.top.textEditBox)
@@ -58,24 +62,27 @@ function keySelected(key as string) as boolean
   return false
 end function
 
-' onKeyEvent — set m.top.escape at grid edges so the parent can redirect focus.
-' Roku's DynamicCustomKeyboard wraps horizontally within the grid by default; we
-' override that at the outer edges because there's content outside the grid
-' (suggestion list to the LEFT now, results grid below).
-'
-' Grid layout (see SearchQwertyKDF.json) — rows 1-3 are 10 wide, row 4 is 9
-' wide after the Submit key was removed (DynamicCustomKeyboard tolerates a
-' ragged bottom row; right edge of row 4 is now Clear instead of Submit):
+' The grid's rows by the keyFocused value of each key (its strOut, else its label), as
+' SearchQwertyKDF.json lays them out. Rows 1-3 are 10 wide, row 4 is 9:
 '   Row 1:   Q  W  E  R  T  Y  U  I  O  P
 '   Row 2:   A  S  D  F  G  H  J  K  L  [backspace]
 '   Row 3:   Z  X  C  V  B  N  M  0  1  2
-'   Row 4:   3  4  5  6  7  8  9  [Space-icon]  [Clear-icon]
-'
-' Keyboard sits on the RIGHT (right edge at x=1824 = 5% right safe edge),
-' suggestion list on the LEFT (left edge at x=96 = 5% left safe edge). So:
-'   LEFT at the left edge (Q, A, Z, 3) escapes to suggestions in 1 press.
-'   RIGHT at the right edge (P, backspace, 2, clear) is a dead-end (nothing
-'   to the right of the keyboard) — kept as the keyboard's internal wrap.
+'   Row 4:   3  4  5  6  7  8  9  [space]  [clear]
+function keyRows() as object
+  return [
+    ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+    ["A", "S", "D", "F", "G", "H", "J", "K", "L", "backspace"],
+    ["Z", "X", "C", "V", "B", "N", "M", "0", "1", "2"],
+    ["3", "4", "5", "6", "7", "8", "9", " ", "clear"]
+  ]
+end function
+
+' onKeyEvent — at a grid edge, set m.top.escape (and, for left / right, m.top.escapeRow)
+' so the screen moves focus off the keyboard: up and down off the top and bottom rows,
+' and left and right off either side edge. Left and right are the two ends of the
+' overlay's horizontal loop (suggestions, keyboard, suggestions): the screen sends both
+' to the suggestion column, and back into the keyboard through focusEdge. horizWrap is
+' off (init), so the grid itself never wraps a row and the edge keys reach this handler.
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
@@ -84,20 +91,36 @@ function onKeyEvent(key as string, press as boolean) as boolean
   focused = focusedChild.keyFocused
   if not isValid(focused) then return false
 
-  topRowKeys = ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
-  bottomRowKeys = ["3", "4", "5", "6", "7", "8", "9", " ", "clear"]
-  leftEdgeKeys = ["Q", "A", "Z", "3"]
-
-  if key = "up" and inArray(topRowKeys, focused)
+  rows = keyRows()
+  if key = "up" and inArray(rows[0], focused)
     m.top.escape = key
     return true
-  else if key = "down" and inArray(bottomRowKeys, focused)
+  else if key = "down" and inArray(rows[3], focused)
     m.top.escape = key
     return true
-  else if key = "left" and inArray(leftEdgeKeys, focused)
-    m.top.escape = key
-    return true
+  else if key = "left" or key = "right"
+    for row = 0 to rows.count() - 1
+      edge = rows[row][0]
+      if key = "right" then edge = rows[row][rows[row].count() - 1]
+      if focused = edge
+        m.top.escapeRow = row
+        m.top.escape = key
+        return true
+      end if
+    end for
   end if
 
   return false
 end function
+
+' focusEdge(row, side): take focus on the left ("left") or right ("right") edge key of
+' `row`, the way into the keyboard from the suggestion column. An out-of-range row means
+' the top row.
+sub focusEdge(row as integer, side as string)
+  rows = keyRows()
+  if row < 0 or row >= rows.count() then row = 0
+  index = 0
+  if side = "right" then index = rows[row].count() - 1
+  m.top.setFocus(true)
+  m.top.keyGrid.jumpToKey = [0, row, index]
+end sub

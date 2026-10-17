@@ -2126,6 +2126,16 @@ Cost accepted: a slow search while typing shows no "Still loading" text, and the
 
 Cost accepted: a server that dies while the viewer types leaves the live results empty until they submit. The visible empty text stays `MessageNoResultsFor1` and is what the screen reader reads. Same submit-only rule as `search-spinner-on-submit-only`.
 
+## decision-id: search-overlay-horizontal-loop
+
+**date**: 2026-10-16
+**status**: accepted
+**related-files**: `components/search/SearchScreen.bs`, `components/search/SearchQwertyKeyboard.bs`, `components/search/SearchSuggestionList.bs`
+
+`SearchScreen`'s overlay is one horizontal loop: suggestion column, keyboard, suggestion column. Left on the keyboard's left edge and Right on its right edge both go to the suggestions. From the suggestions, Right enters the keyboard's left edge and Left its right edge, on the row focus left the keyboard from (else the bottom row from Clear History, the top row otherwise). With an empty column the loop is the keyboard alone: Left on Q reaches P. The grid's `horizWrap` is set false explicitly, so the edge keys reach `SearchQwertyKeyboard.onKeyEvent`.
+
+Wrapping the keyboard on itself (Left on Q straight to P) was ruled out: it leaves the suggestions with no one-press route from either edge. Cost accepted: Q to P goes through the suggestion column, two presses. Entering the keyboard on the row nearest the focused suggestion was dropped, because `LabelList` does not expose its scroll offset, so the nearest row can't be computed exactly.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

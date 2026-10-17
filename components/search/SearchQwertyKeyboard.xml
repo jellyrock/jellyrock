@@ -12,8 +12,14 @@
     <field id="clearRequested" type="bool" alwaysNotify="true" />
 
     <!-- Set to "up" | "down" | "left" | "right" when focus reaches a grid edge
-         and the parent should take over (e.g. collapse overlay on "down",
-         focus suggestion list on "right"). -->
+         and the parent should take over (submit on "down"; the suggestion
+         column on "left" or "right"). -->
     <field id="escape" type="string" alwaysNotify="true" />
+
+    <!-- The row (0-3) a "left" or "right" escape left from, set before escape. -->
+    <field id="escapeRow" type="integer" value="0" />
+
+    <!-- focusEdge(row, side): focus the left or right edge key of a row. -->
+    <function name="focusEdge" />
   </interface>
 </component>

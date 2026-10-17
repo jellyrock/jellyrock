@@ -166,6 +166,9 @@ sub init()
   ' picked, so the overlay reopens where the viewer was (onExpansionChanged).
   m.overlayFocusColumn = "keyboard"
   m.lastPickedSuggestion = ""
+  ' The keyboard row focus last left for the suggestion column, for the way back in;
+  ' -1 when the column was entered another way (onSuggestionEscape).
+  m.kbdRow = -1
 
   ' Keyboard → query pipeline. DynamicCustomKeyboard emits typed characters
   ' into its own text field; mirror every change into m.top.query so the rest
@@ -545,6 +548,7 @@ sub onExpansionChanged()
     ' keyboard could not be typed on at all.
     if m.overlayFocusColumn = "suggestions" and m.suggestions.callFunc("focusItem", m.lastPickedSuggestion)
       m.top.lastFocus = m.suggestionList
+      m.kbdRow = -1
     else
       m.kbd.setFocus(true)
       m.top.lastFocus = m.kbd
@@ -629,8 +633,10 @@ sub onQueryChanged()
     return
   end if
 
-  ' Non-empty: show the Suggestions header immediately and arm both debounces.
-  m.overlay.suggestionMode = "hints"
+  ' Non-empty: the column becomes this query's hints. Leaving the recent searches up until
+  ' the hints arrive would list them under a Suggestions header, so the first keystroke
+  ' clears them; a later keystroke keeps the previous query's hints until the new ones land.
+  if m.overlay.suggestionMode <> "hints" then showSuggestions("hints", [])
   m.debounceTimer.control = "start"
   m.fullSearchTimer.control = "start"
 end sub
@@ -708,8 +714,7 @@ sub renderHintSuggestions(hints as object)
     end if
   end for
 
-  m.overlay.suggestionMode = "hints"
-  m.overlay.suggestionItems = items
+  showSuggestions("hints", items)
 end sub
 
 ' Populate the suggestion panel with the user's recent search list.
@@ -722,8 +727,24 @@ sub renderRecentSuggestions()
     end if
   end for
 
-  m.overlay.suggestionMode = "recent"
+  showSuggestions("recent", items)
+end sub
+
+' The one writer of the suggestion column: its mode and rows together. When the rows run
+' out while focus is in the column (Clear History, removing the last recent search, a
+' query whose hints came back empty), the focused node is going away, so focus moves to
+' the keyboard; left there it would sit on a hidden node and the remote would do nothing.
+sub showSuggestions(mode as string, items as object)
+  m.overlay.suggestionMode = mode
   m.overlay.suggestionItems = items
+  if items.count() > 0 then return
+  inColumn = m.suggestions.isInFocusChain()
+  if isValid(m.top.lastFocus) and (m.top.lastFocus.isSameNode(m.suggestionList) or m.top.lastFocus.isSameNode(m.suggestions.findNode("clearButton")))
+    inColumn = true
+  end if
+  if not inColumn then return
+  m.kbd.setFocus(true)
+  m.top.lastFocus = m.kbd
 end sub
 
 ' ============================================================================
@@ -815,8 +836,25 @@ end sub
 ' to the right of the suggestion list) so the user can resume typing.
 sub onSuggestionEscape()
   direction = m.suggestions.escape
-  if direction = "right"
-    if isValid(m.kbd) then m.kbd.setFocus(true)
+  if direction = "right" or direction = "left"
+    ' Back into the keyboard: RIGHT onto its left edge, LEFT around the loop onto its right
+    ' edge, on the row focus left the keyboard from. Entered another way (the overlay
+    ' reopening here), there is no such row: Clear History lines up with the bottom row,
+    ' anything else with the top.
+    row = m.kbdRow
+    if row < 0
+      row = 0
+      clearButton = m.suggestions.findNode("clearButton")
+      if isValid(clearButton) and clearButton.hasFocus() then row = 3
+    end if
+    side = "left"
+    if direction = "left" then side = "right"
+    m.kbd.callFunc("focusEdge", row, side)
+  else if direction = "empty"
+    ' Focus landed on the list with no rows in it (a dialog restoring its opener after the
+    ' last recent search was removed): nothing there takes a key, so the keyboard does.
+    m.kbd.setFocus(true)
+    m.top.lastFocus = m.kbd
   else if direction = "down"
     ' DOWN past the last suggestion (or Clear History) does what DOWN off the keyboard's
     ' bottom row does: submit what is typed and move to the results. With nothing typed
@@ -1071,20 +1109,24 @@ sub onKeyboardEscape()
     if isValid(query) and query <> ""
       submitSearch(query)
     end if
-  else if direction = "left"
-    ' LEFT from left-edge keys (Q/A/Z/3): hand focus to the suggestion list
-    ' on the LEFT side of the overlay. Single-press escape — the dominant
-    ' reason suggestions sit on the left rather than the right. If the list
-    ' is empty (no recent, no hints), stay on the keyboard.
-    list = m.suggestions.findNode("list")
-    if isValid(list) and isValid(list.content) and list.content.getChildCount() > 0
-      list.setFocus(true)
+  else if direction = "left" or direction = "right"
+    ' Either side edge leads to the suggestion column: the overlay is one horizontal
+    ' loop (suggestions, keyboard, suggestions), so from P the suggestions are one press
+    ' away, as from Q, and Q to P is two. The row is kept for the way back in. With no
+    ' suggestions the loop is the keyboard alone: on to the other edge of the same row.
+    row = m.kbd.escapeRow
+    if isValid(m.suggestionList.content) and m.suggestionList.content.getChildCount() > 0
+      m.kbdRow = row
+      m.suggestionList.setFocus(true)
+    else if direction = "left"
+      m.kbd.callFunc("focusEdge", row, "right")
+    else
+      m.kbd.callFunc("focusEdge", row, "left")
     end if
   else if direction = "up"
     ' No content above the keyboard within the overlay (peek chip is screen-
     ' level, not focusable) — stay put rather than looping focus.
   end if
-  ' "right" is an edge-stop — nothing to the right of the keyboard.
 end sub
 
 ' ============================================================================

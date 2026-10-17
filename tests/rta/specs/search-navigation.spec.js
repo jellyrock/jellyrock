@@ -18,9 +18,11 @@ import { authenticate } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { failRequests } from '../lib/failRequests.js';
+import { captureRawUI } from '../capture.js';
 import { openSearchKeyboard, submitSearchFromKeyboard } from '../lib/nav.js';
 import {
   getActiveVal,
+  getVal,
   hasChildren,
   press,
   waitFocused,
@@ -31,6 +33,8 @@ import {
 
 const LOCALE = RTA_CONFIG.languages[0];
 const LIST = '#suggestions.#list';
+// RTA_CAPTURE=1 also saves the overlay's states to out/rta-captures/ for review.
+const CAPTURE = process.env.RTA_CAPTURE === '1';
 
 const atList = (f) => f?.node?.id === 'list';
 const atResults = (f) => f?.node?.id === 'searchSelect';
@@ -191,4 +195,146 @@ it('picking a suggestion before any results arrive stays on the results', async 
     label: 'the results after the pick',
   });
   expect(await getActiveVal('isExpanded'), 'the overlay stayed closed').toBe(false);
+});
+
+/** Submits a search, goes Home and reopens search, so the list shows recent searches. */
+async function reopenOnRecentSearches() {
+  await submitTypedQuery();
+  await press(ecp.Key.Back);
+  await waitFocused(atSearchIcon, {
+    timeout: 15000,
+    interval: 250,
+    label: 'the search icon on Home',
+  });
+  await press(ecp.Key.Ok);
+  await waitFocusInside('#kbd', { label: 'search reopened on the keyboard', timeout: 15000 });
+}
+
+const TOP_ROW = ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'];
+
+const keyIs = (want, label) =>
+  waitFor('#kbd.keyGrid.keyFocused', (v) => v === want, {
+    read: getActiveVal,
+    timeout: 5000,
+    interval: 250,
+    label,
+  });
+
+it('Clear History empties the list and moves focus to the keyboard', async () => {
+  await freshSearch();
+  await reopenOnRecentSearches();
+  await enterSuggestions();
+  await waitFocused(atClear, {
+    timeout: 15000,
+    interval: 350,
+    action: walkFocusUntil(ecp.Key.Down, atClear),
+    label: 'Clear History',
+  });
+  await press(ecp.Key.Ok);
+  await waitFocusInside('#kbd', { label: 'the keyboard after Clear History', timeout: 5000 });
+  expect(await getActiveVal('#suggestions.#list.content.getChildCount()'), 'history cleared').toBe(
+    0,
+  );
+  expect(await getActiveVal('#suggestions.#sectionLabel.text'), 'no header over nothing').toBe('');
+  if (CAPTURE) await captureRawUI('searchHistoryCleared');
+
+  // With the column empty, the horizontal loop is the keyboard alone: Left on the left edge
+  // goes round to the right edge of the same row.
+  await waitFor('#kbd.keyGrid.keyFocused', (v) => v === 'Q', {
+    read: getActiveVal,
+    timeout: 15000,
+    interval: 350,
+    // Off the top row, Up; on it, Left until Q. A key read that lags a press costs one
+    // extra press at most: Left past Q wraps to P on this empty column and walks on.
+    action: async () => {
+      const key = await getActiveVal('#kbd.keyGrid.keyFocused');
+      if (typeof key !== 'string' || key === 'Q') return;
+      await press(TOP_ROW.includes(key) ? ecp.Key.Left : ecp.Key.Up);
+    },
+    label: "Q, the top row's left edge",
+  });
+  await press(ecp.Key.Left);
+  await keyIs('P', 'P, round the keyboard from Q');
+});
+
+it('the first keystroke replaces the recent searches; no header until hints arrive', async () => {
+  await freshSearch();
+  await reopenOnRecentSearches();
+  expect(
+    await getActiveVal('#suggestions.#list.content.getChildCount()'),
+    'recent listed',
+  ).toBeGreaterThan(0);
+  // Hold the hints so the moment between the keystroke and their arrival can be read.
+  await failRequests([{ prefix: 'searchHints', kind: 'slow', ms: 15000 }]);
+  await ecp.sendText('e');
+  await waitFor('#suggestions.#list.content.getChildCount()', (v) => v === 0, {
+    read: getActiveVal,
+    timeout: 5000,
+    interval: 250,
+    label: 'the recent searches gone on the first keystroke',
+  });
+  expect(await getActiveVal('#suggestions.#sectionLabel.text'), 'no header while waiting').toBe('');
+  if (CAPTURE) await captureRawUI('searchAwaitingHints');
+});
+
+it('the overlay loops horizontally: suggestions, keyboard, suggestions', async () => {
+  await freshSearch();
+  await typeAndWaitForHints();
+  await keyIs('Q', 'the keyboard on Q');
+  if (CAPTURE) await captureRawUI('searchHints');
+  await enterSuggestions();
+  await press(ecp.Key.Left);
+  await keyIs('P', 'Left from the suggestions lands on the right edge, same row');
+  await press(ecp.Key.Right);
+  await waitFocused(atList, {
+    timeout: 5000,
+    interval: 250,
+    label: 'Right from P reaches the suggestions',
+  });
+  await press(ecp.Key.Right);
+  await keyIs('Q', 'Right from the suggestions lands on the left edge, same row');
+});
+
+it('removing the last recent search with Options moves focus to the keyboard', async () => {
+  await freshSearch();
+  // Exactly one recent search: clear the history, then submit one.
+  await reopenOnRecentSearches();
+  await enterSuggestions();
+  await waitFocused(atClear, {
+    timeout: 15000,
+    interval: 350,
+    action: walkFocusUntil(ecp.Key.Down, atClear),
+    label: 'Clear History',
+  });
+  await press(ecp.Key.Ok);
+  await waitFocusInside('#kbd', { label: 'the keyboard after Clear History', timeout: 5000 });
+  await reopenOnRecentSearches();
+  expect(
+    await getActiveVal('#suggestions.#list.content.getChildCount()'),
+    'one recent search',
+  ).toBe(1);
+
+  await enterSuggestions();
+  await press(ecp.Key.Option);
+  // showConfirmDialog opens on the safe button (Cancel, #buttonRow.0); Remove is to its right.
+  await waitFocusInside('#jrDialog', { label: 'the remove confirm dialog', timeout: 8000 });
+  const cancelLabel = await getVal('#buttonRow.0.text');
+  const removeLabel = await getVal('#buttonRow.1.text');
+  expect(cancelLabel, 'dialog labels readable').toBeTruthy();
+  expect(removeLabel, 'dialog labels readable and distinct').toBeTruthy();
+  expect(removeLabel).not.toBe(cancelLabel);
+  await press(ecp.Key.Right);
+  await waitFocused((f) => f?.node?.text === removeLabel, {
+    timeout: 5000,
+    label: 'Remove focused',
+  });
+  await press(ecp.Key.Ok);
+
+  // The dialog hands focus back to its opener, the list, which is now empty; focus has to
+  // end on the keyboard, not on that empty list.
+  await waitFocusInside('#kbd', {
+    label: 'the keyboard after removing the last entry',
+    timeout: 8000,
+  });
+  expect(await getActiveVal('#suggestions.#list.content.getChildCount()'), 'history empty').toBe(0);
 });

@@ -249,8 +249,9 @@ export async function navSearch() {
  * wait), unless the rows already answer the typed query.
  *
  * The escape is DOWN, not Right: SearchScreen's keyboard is a key GRID inside a pull-down
- * overlay, and Right wraps within the grid forever (measured on .178: the old Right-walk
- * timed out with focus still on DynamicKeyGrid). Down walks to the bottom row and then
+ * overlay, and Right never reaches the results (measured on .178: the old Right-walk timed
+ * out with focus still on DynamicKeyGrid; since the overlay became a horizontal loop, Right
+ * off the right edge goes to the suggestions). Down walks to the bottom row and then
  * leaves, which SearchQwertyKeyboard reports as escape="down" and
  * SearchScreen.onKeyboardEscape turns into a submit: the overlay collapses and focus lands
  * on the results, even while they still show an earlier query's rows. The guard stops the
