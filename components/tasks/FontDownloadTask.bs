@@ -23,7 +23,7 @@ sub downloadFallbackFont()
     m.top.isFontDownloadCompleted = true
     return
   end if
-  r = rr_Requests().get(encodingUrl, authArgs)
+  r = requestWithJsonOnSuccess("GET", encodingUrl, authArgs)
   if not serverSupportsFallbackFont(r)
     print "FontDownloadTask: Server does not support fallback fonts"
     m.top.errorMessage = "Server does not support fallback fonts"
@@ -42,7 +42,7 @@ sub downloadFallbackFont()
     m.top.isFontDownloadCompleted = true
     return
   end if
-  r = rr_Requests().get(fontsUrl, authArgs)
+  r = requestWithJsonOnSuccess("GET", fontsUrl, authArgs)
   if not r.ok or r.text = ""
     print "FontDownloadTask: Failed to get font list from server"
     m.top.errorMessage = "Failed to get font list from server"

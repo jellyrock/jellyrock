@@ -1,0 +1,88 @@
+' @fileoverview Recent-searches storage for the SearchScreen.
+' Persists the user's most recent search queries to the per-user registry so
+' they survive app restarts. Stored as a JSON array of strings in MRU order,
+' case-insensitively de-duplicated, and capped at RECENT_MAX entries.
+'
+' Stored per-user because different users have different libraries and their
+' search histories should not bleed between accounts on the same device.
+
+import "pkg:/source/constants/searchLayout.bs"
+import "pkg:/source/utils/config.bs"
+
+namespace searchHistory
+
+  ' Registry key used for per-user recent-search storage. lowerCamelCase to match the
+  ' other user-scoped keys (authToken, username, primaryImageTag). Never shipped under
+  ' another name, so no migration is needed.
+  const KEY = "searchRecent"
+
+  ' Load the user's recent search list.
+  ' Returns an empty array if nothing is stored or the payload is corrupt.
+  function load() as object
+    raw = getUserSetting(KEY)
+    if not isValid(raw) or raw = "" then return []
+
+    parsed = ParseJson(raw)
+    if type(parsed) = "roArray" then return parsed
+    return []
+  end function
+
+  ' Push a term onto the MRU list.
+  ' Trims whitespace, case-insensitively de-duplicates, caps at RECENT_MAX.
+  ' No-op for empty input.
+  sub push(term as string)
+    trimmed = term.Trim()
+    if trimmed = "" then return
+
+    list = load()
+    lower = LCase(trimmed)
+
+    cleaned = []
+    for each existing in list
+      if type(existing) = "roString" or type(existing) = "String"
+        if LCase(existing) <> lower then cleaned.push(existing)
+      end if
+    end for
+
+    cleaned.Unshift(trimmed)
+    while cleaned.count() > searchLayout.RECENT_MAX
+      cleaned.pop()
+    end while
+
+    setUserSetting(KEY, FormatJson(cleaned))
+  end sub
+
+  ' Remove a single term from the recent list, preserving the order of remaining
+  ' entries. Matching is case-insensitive + whitespace-trimmed, mirroring push()
+  ' so a term the user sees on screen can be removed by the string shown.
+  ' No-op if the term is empty or not present.
+  sub remove(term as string)
+    trimmed = term.Trim()
+    if trimmed = "" then return
+
+    list = load()
+    lower = LCase(trimmed)
+
+    cleaned = []
+    removed = false
+    for each existing in list
+      if type(existing) = "roString" or type(existing) = "String"
+        if LCase(existing) = lower
+          removed = true
+        else
+          cleaned.push(existing)
+        end if
+      end if
+    end for
+
+    if removed
+      setUserSetting(KEY, FormatJson(cleaned))
+    end if
+  end sub
+
+  ' Wipe the user's recent-search list.
+  sub clear()
+    setUserSetting(KEY, "[]")
+  end sub
+
+end namespace

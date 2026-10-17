@@ -20,8 +20,8 @@ end sub
 
 ' Searches multiple Jellyfin endpoints for media matching the query.
 ' Runs on SearchTask thread: each read blocks waiting for its ApiPool response.
-' Every result echoes the query it ANSWERS. The caller gives each keystroke a new node and
-' drops a delivery from any node it has since replaced (`SearchResults.loadResults`); the
+' Every result echoes the query it ANSWERS. The caller gives each run a new node and
+' drops a delivery from any node it has since replaced (`SearchScreen.onFullSearchResults`); the
 ' echo is what that drop logs, so a superseded delivery names the query it answered. Taken
 ' from the local the search actually ran with, so the echo and the items cannot disagree.
 '
@@ -29,7 +29,7 @@ end sub
 ' Task's last act, and that is essential, not incidental. It is what lets the caller's `control = "stop"` prevent a
 ' superseded query from delivering at all (measured 2026-08-14: 12 keystrokes, 6 deliveries, every one
 ' current). Publishing partial results as each fetch lands would widen the window of
-' superseded deliveries that `SearchResults.loadResults` has to drop.
+' superseded deliveries that `SearchScreen.onFullSearchResults` has to drop.
 '
 ' Every result also carries a `status` (searchOutcome.statusOf): a read that did not answer
 ' says nothing about what the server holds, so the screen never shows a search whose reads

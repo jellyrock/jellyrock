@@ -1,0 +1,122 @@
+' @fileoverview Pure transform for /Search/Hints API responses.
+' Kept in source/ (rather than inside the screen) so unit tests can exercise the
+' formatting logic without a node graph or a live pool.
+'
+' Runs on the RENDER thread: SearchScreen consumes /Search/Hints through
+' fetchAsync() rather than a Task node, so this transform executes in the
+' promise callback. That is deliberate and bounded: see the cap in transform().
+' It is also what lets the labels below go through translate(), which reads
+' m.global.translations.
+
+import "pkg:/source/constants/searchLayout.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+namespace searchHints
+
+  ' Transform a raw SearchHintResult payload into lightweight display rows.
+  ' Pure function (no node graph, no side effects) so it's unit-testable.
+  '
+  ' @param raw - Parsed /Search/Hints JSON body, or invalid. Expected shape:
+  '              { SearchHints: [ { Id, Name, Type, ProductionYear, ... } ] }
+  ' @returns Array of { text, name, id, type }: at most HINTS_LIMIT items.
+  '
+  ' The `text` field is the user-visible string. Format:
+  '   "{Name} · {Context}"              (Episode: its series; MusicAlbum, Audio: the artist)
+  '   "{Name} · {TypeLabel}"            (default, and when the hint carries no context)
+  '   "{Name} · {TypeLabel} ({Year})"   (Movie or Series with ProductionYear)
+  '   "{Name}"                          (type not one we have a label for)
+  function transform(raw as dynamic) as object
+    rows = []
+    if not isValid(raw) then return rows
+
+    hints = raw.SearchHints
+    if not isValid(hints) or type(hints) <> "roArray" then return rows
+
+    for each hint in hints
+      ' Hard cap the work this loop can do. `limit` is sent on the request, but the
+      ' response is server-controlled and this runs on the render thread, so the
+      ' bound has to be enforced here rather than assumed from the query param.
+      if rows.count() >= searchLayout.HINTS_LIMIT then exit for
+
+      if not isValid(hint) then continue for
+      name = hint.Name
+      if not isValid(name) or name = "" then continue for
+
+      ' Unknown types yield an empty label and the name stands alone. Passing the
+      ' raw Jellyfin type string through (the previous behaviour) put an
+      ' untranslated API enum in front of the user in every locale.
+      text = name
+      ' The name that places the item (its series, its artist) says more than its category,
+      ' and comes in the hint itself, so it costs no request.
+      label = contextName(hint)
+      if label = "" then label = typeLabel(hint.Type)
+      if label <> ""
+        text = text + " · " + label
+        year = hint.ProductionYear
+        if isValid(year) and year > 0 and (hint.Type = "Movie" or hint.Type = "Series")
+          text = text + " (" + year.toStr() + ")"
+        end if
+      end if
+
+      rows.push({
+        text: text,
+        name: name,
+        id: hint.Id,
+        type: hint.Type
+      })
+    end for
+
+    return rows
+  end function
+
+  ' The name that places a hint, from fields the hint already carries (SearchHint in the
+  ' Jellyfin API, 10.7 onward): an Episode's series, a MusicAlbum's album artist, an Audio
+  ' track's first artist (else its album artist). "" when the type has none or the server left
+  ' it empty, so the caller falls back to the type word.
+  '
+  ' @returns the context name, or ""
+  function contextName(hint as object) as string
+    itemType = hint.Type
+    if itemType = "Episode" then return textOrEmpty(hint.Series)
+    if itemType = "MusicAlbum" then return textOrEmpty(hint.AlbumArtist)
+    if itemType = "Audio"
+      artists = hint.Artists
+      if type(artists) = "roArray" and artists.count() > 0
+        first = textOrEmpty(artists[0])
+        if first <> "" then return first
+      end if
+      return textOrEmpty(hint.AlbumArtist)
+    end if
+    return ""
+  end function
+
+  ' A string field as a string, or "" when it is missing or not a string.
+  function textOrEmpty(value as dynamic) as string
+    if type(value) = "roString" or type(value) = "String" then return value
+    return ""
+  end function
+
+  ' Map Jellyfin item-type strings to short, user-facing category labels, using the
+  ' same translation keys SearchRow.bs labels its result rows with so a hint and the
+  ' row it leads to read identically.
+  '
+  ' @returns the localized label, or "" for a type we have no label for.
+  function typeLabel(itemType as dynamic) as string
+    if not isValid(itemType) or itemType = "" then return ""
+
+    if itemType = "Movie" then return translate(translationKeys.LabelMovies)
+    if itemType = "Series" then return translate(translationKeys.LabelShows)
+    if itemType = "Episode" then return translate(translationKeys.LabelEpisodes)
+    if itemType = "Person" then return translate(translationKeys.LabelPeople)
+    if itemType = "MusicArtist" then return translate(translationKeys.LabelArtists)
+    if itemType = "MusicAlbum" then return translate(translationKeys.LabelAlbums)
+    if itemType = "Audio" then return translate(translationKeys.LabelSongs)
+    if itemType = "Playlist" then return translate(translationKeys.LabelPlaylists)
+    if itemType = "BoxSet" then return translate(translationKeys.LabelCollections)
+
+    return ""
+  end function
+
+end namespace

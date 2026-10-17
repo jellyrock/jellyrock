@@ -1,7 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 
 ' The whole app is routed (pre-login SetServerScreen / UserSelect / LoginScene via loginRouter;
-' Home / ItemDetails / SearchResults self-wire under the router). What remains here is one
+' Home / ItemDetails / SearchScreen self-wire under the router). What remains here is one
 ' router-agnostic helper that doesn't belong to any one view: a performance beacon.
 ' (SaveServerList / DeleteFromServerList live in source/utils/config.bs.)
 

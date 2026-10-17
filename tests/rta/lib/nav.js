@@ -199,7 +199,7 @@ export async function navSettings() {
 }
 
 /**
- * home -> overhang search icon -> SearchResults, stopping once the search keyboard holds
+ * home -> overhang search icon -> SearchScreen, stopping once the search keyboard holds
  * focus and so will take typed text. `navSearch` carries on from here; a spec that has to act
  * between opening search and typing (setting request rules, `slow-search.spec.js`) calls this
  * directly.
@@ -208,24 +208,25 @@ export async function openSearchKeyboard() {
   await focusOverhangIcon('searchIcon');
   await press(ecp.Key.Ok);
   // `sendText` types into whatever holds focus, so the keyboard HOLDING it is the
-  // precondition, not a guess at how long the push takes. `SearchResults.bs` says the
+  // precondition, not a guess at how long the push takes. `SearchScreen.bs` says the
   // screen is built before it is typable ("nothing has focus until the router shows the
-  // view and `onScreenShown` runs, which is a later turn of the event loop") and
-  // `onScreenShown` is what calls `m.searchAlphabox.setFocus(true)` on first show. That
-  // focus landing is the app's own statement that it will accept a keystroke.
+  // view and onScreenShown runs, which is a later turn of the event loop"). On first show
+  // `onScreenShown` expands the overlay, and `onExpansionChanged` calls
+  // `m.kbd.setFocus(true)`. That focus landing is the app's own statement that it will
+  // accept a keystroke.
   //
   // The screen's readiness ledger declares the same thing as `pending("focus")`, and is
   // not usable here: it is `#if perfTiming`, which `harden-prod-manifest.js` forces off in
   // `build:prod`, the build `screenshots:capture` runs through this very nav.
-  await waitFocusInside('#searchKey', {
+  await waitFocusInside('#kbd', {
     label: 'search keyboard typable (pre-sendText)',
     timeout: 15000,
   });
 }
 
 /**
- * home -> overhang search icon -> SearchResults -> type RTA_CONFIG.searchQuery.
- * The screen opens with the keyboard (#searchKey) focused + active (main.bs), so an
+ * home -> overhang search icon -> SearchScreen -> type RTA_CONFIG.searchQuery.
+ * The screen opens with the keyboard (#kbd) focused + active, so an
  * ECP text input both fills the visible search box AND triggers the search (the
  * keyboard's text change fans out to SearchTask). The grouped result rows render
  * into #searchSelect; its child count is the load gate. The query is tuned in config
@@ -238,23 +239,41 @@ export async function navSearch() {
     label: `search results for "${RTA_CONFIG.searchQuery}"`,
     timeout: 20000,
   });
-  // Walk focus ALL THE WAY off the keyboard onto the result rows (#searchSelect):
-  // this highlights the first result AND clears the voice-search / "scan QR to use
-  // your phone keyboard" overlays, which appear intermittently while the search text
-  // box is focused. The keyboard is a 6-column grid, so Right steps through its keys
-  // then crosses to the results; the guard stops the instant focus reaches them (so
-  // it lands on the first tile without over-scrolling the row).
-  // `walkFocusUntil`, not a hand-rolled press, because the hand-rolled version pressed
-  // wherever focus WAS. On 2026-09-09 that meant 12.4 s of Right delivered into Home's row
-  // list while the active view was SearchResults (see that helper for the dump).
-  const arrivedAtResults = (f) => f?.node?.id === 'searchSelect';
-  await waitFocused(arrivedAtResults, {
+  await submitSearchFromKeyboard();
+  await sleep(1500); // let the focus settle + result posters paint before capture
+}
+
+/**
+ * From the search keyboard, submit what is typed and land focus on the result rows
+ * (#searchSelect). Submitting is what opens the search screen's spinner (its `results`
+ * wait), unless the rows already answer the typed query.
+ *
+ * The escape is DOWN, not Right: SearchScreen's keyboard is a key GRID inside a pull-down
+ * overlay, and Right never reaches the results (measured on .178: the old Right-walk timed
+ * out with focus still on DynamicKeyGrid; since the overlay became a horizontal loop, Right
+ * off the right edge goes to the suggestions). Down walks to the bottom row and then
+ * leaves, which SearchQwertyKeyboard reports as escape="down" and
+ * SearchScreen.onKeyboardEscape turns into a submit: the overlay collapses and focus lands
+ * on the results, even while they still show an earlier query's rows. The guard stops the
+ * instant focus reaches them, so it lands on the first tile without over-scrolling the row.
+ * `walkFocusUntil`, not a hand-rolled press, because the hand-rolled version pressed
+ * wherever focus WAS. On 2026-09-09 that meant 12.4 s of Right delivered into Home's row
+ * list while the active view was the search screen (see that helper for the dump).
+ *
+ * `arrived` is where focus lands: the result rows by default. A submit that fails moves focus
+ * on to Try again (`#searchRetryButton`), so a spec driving a failure passes a predicate that
+ * accepts either.
+ */
+export async function submitSearchFromKeyboard({
+  arrived = (f) => f?.node?.id === 'searchSelect',
+  label = 'search results (off keyboard)',
+} = {}) {
+  await waitFocused(arrived, {
     timeout: 12000,
     interval: 350,
-    action: walkFocusUntil(ecp.Key.Right, arrivedAtResults),
-    label: 'search results (off keyboard)',
+    action: walkFocusUntil(ecp.Key.Down, arrived),
+    label,
   });
-  await sleep(1500); // let the focus settle + result posters paint before capture
 }
 
 const HOME_TILE_WAIT_MS = 15000;
@@ -1529,7 +1548,7 @@ export async function navHomeReturnAfterDetails(ctx) {
  *
  * Search is here because its teardown is the most consequential of the three routed screens
  * and, until ADR 0029, the least exercised: `/search` was `keepAlive`, so a popped
- * `SearchResults` was suspended rather than closed and `onDestroy` never ran in production,
+ * search view was suspended rather than closed and `onDestroy` never ran in production,
  * including the part that releases the firmware's global voice route (only one node may hold
  * `voiceEnabled` at a time, so a leaked claim would deny it to the next screen that wants it).
  * `navSearch` already gates on rendered result rows, so the only thing added here is the exit.
@@ -2018,7 +2037,7 @@ export async function navCellSweepExtras(ctx) {
 
 /**
  * home -> search -> type the configured query -> sweep the result rows -> back to home,
- * which pops `SearchResults` and emits its cell-load session.
+ * which pops the search view and emits its cell-load session.
  *
  * `navSearch` already lands focus on `#searchSelect` (it walks off the keyboard onto the
  * first result), so the sweep starts from the state it leaves behind. The rows are grouped

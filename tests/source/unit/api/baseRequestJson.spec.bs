@@ -1,0 +1,70 @@
+namespace tests
+
+  ' responseWithJson() decides which response bodies get parsed as JSON: only those that
+  ' succeeded. Every reader of a parsed body checks `ok` first, and Roku's ParseJSON prints a
+  ' console error for each body that is not JSON, such as the HTML page a server or proxy sends
+  ' with a 401 or 503. So parsing a failed body bought nothing and logged an error.
+  @suite("baseRequest - responseWithJson parses only successful bodies")
+  class BaseRequestJsonTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a failed response")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves an HTML error page unparsed and keeps its text and status")
+    function _()
+      html = "<html><head><title>Service Unavailable</title></head><body>down</body></html>"
+      res = responseWithJson({ ok: false, statusCode: 503, text: html })
+      m.assertInvalid(res.json)
+      m.assertEqual(res.text, html)
+      m.assertEqual(res.statusCode, 503)
+      m.assertFalse(res.ok)
+    end function
+
+    @it("leaves a JSON error body unparsed too: no reader uses it")
+    function _()
+      res = responseWithJson({ ok: false, statusCode: 401, text: `{"Message":"nope"}` })
+      m.assertInvalid(res.json)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a successful response")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses an object body")
+    function _()
+      res = responseWithJson({ ok: true, statusCode: 200, text: `{"Name":"Jelly","Count":2}` })
+      m.assertEqual(res.json.Name, "Jelly")
+      m.assertEqual(res.json.Count, 2)
+    end function
+
+    @it("parses an array body")
+    function _()
+      res = responseWithJson({ ok: true, statusCode: 200, text: `[1,2,3]` })
+      m.assertEqual(res.json.count(), 3)
+    end function
+
+    @it("parses a bare boolean body, as the Quick Connect probe answers")
+    function _()
+      res = responseWithJson({ ok: true, statusCode: 200, text: "true" })
+      m.assertTrue(res.json)
+    end function
+
+    @it("leaves an empty body unparsed")
+    function _()
+      res = responseWithJson({ ok: true, statusCode: 204, text: "" })
+      m.assertInvalid(res.json)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("no response")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("passes invalid through")
+    function _()
+      m.assertInvalid(responseWithJson(invalid))
+    end function
+
+  end class
+
+end namespace

@@ -40,7 +40,7 @@ Group
       └─ JRGroup            components/JRGroup.xml + .bs
           ├─ sub-panels and dialogs (ExtrasSlider, JRDialog, OverviewDialog, ...)
           └─ JRScreen       components/JRScreen.xml + .bs
-              ├─ Home, ItemDetails, BaseGridView, SearchResults, Settings
+              ├─ Home, ItemDetails, BaseGridView, SearchScreen, Settings
               ├─ PlayerHostView, AudioPlayerView, PhotoDetails
               └─ SetServerScreen, UserSelect, LoginScene (pre-login)
 
@@ -127,7 +127,7 @@ It does not navigate. Each entry point that navigates calls it first (`routerNav
 | `play` | `/details/:type/:id/play` | `PlayerHostView` | guard |
 | `details` | `/details/:type/:id` | `ItemDetails` | guard |
 | `library` | `/library/:id` | `BaseGridView` | guard |
-| `search` | `/search` | `SearchResults` | guard |
+| `search` | `/search` | `SearchScreen` | guard |
 | `settings` | `/settings` | `Settings` | guard |
 | `photo` | `/photo` | `PhotoDetails` | guard |
 | `audio` | `/audio` | `AudioPlayerView` | guard |
@@ -216,7 +216,7 @@ The main thread reaches the ones in `JRScene.xml`'s interface by `callFunc`.
 | `BaseGridView` | `prepareDataLoad()`, from `loadInitialItems()` | `stopGridSpinner()` |
 | Live TV schedule (`schedule.bs`) | `startLoading()`, `reloadChannels()` | `onChannelsLoaded()`, `onChannelPageFailed()` |
 | `ItemDetails` | `onItemIdChanged()`, before the metadata fetch | `onDetailsLoaded()` |
-| `SearchResults` | a content wait, `screenWaits.begin()` in `searchMedias()` | `screenWaits.finish()` |
+| `SearchScreen` | a content wait, `screenWaits.begin()` in `submitSearch()` (not the live search while typing) | `screenWaits.finish()` in `onFullSearchResults()`, or when the query is emptied |
 | `PhotoDetails` | `QueueManager.launchItem()` | `showPhoto()` |
 
 `ItemDetails` starts the spinner from its `itemId` observer, which runs before the empty screen draws a frame. When the route context already holds the full item, as from a resolved deep link, it shows no spinner. Every other item type that `launchItem()` handles opens a playback start instead of a spinner ([below](#what-kind-of-wait-a-spinner-is)).

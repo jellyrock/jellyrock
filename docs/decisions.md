@@ -2106,6 +2106,36 @@ A subtitle search that got no usable reply (a timeout, an HTTP or network error,
 
 Ruled out: a Try again button in the results column (a second retry beside Search, and new focus paths in a modal panel), and a toast alone (a failure would look empty once it faded). Measured 2026-10-13 on `.178` (Ultra) against a local 10.11.11 server with Open Subtitles 24.0.0.0 and no credentials: the plugin's login fails, the server logs it and answers `200 []` in 14 to 29 ms; `subtitle-search-failure.spec.js` failed 3 of 4 cases on the old code and passes 4 of 4 on the new. The spec skips on the public demo, whose user cannot manage subtitles.
 
+## decision-id: search-spinner-on-submit-only
+
+**date**: 2026-10-14
+**status**: accepted
+**related-files**: `components/search/SearchScreen.bs`, `tests/rta/specs/slow-search.spec.js`
+
+`SearchScreen` opens its `results` screen wait (ADR 0044) only on a submit, not for the live search that runs while typing. A wait on every full search, as `SearchResults` had, was ruled out because the scene spinner at [897, 477] draws over the expanded overlay's bottom edge (the overlay spans y 130–530: the keyboard's bottom row and the suggestion list's Clear History button). Hiding a screen's waits while its overlay is expanded was ruled out for now, because it needs a new rule in the shared `screenWaits` / `JRScene` code.
+
+Cost accepted: a slow search while typing shows no "Still loading" text, and the updating suggestion list is the only feedback. If that turns out to matter, revisit by hiding the waits while the overlay is expanded. `slow-search.spec.js` submits before it asserts.
+
+## decision-id: search-outcome-on-submit-only
+
+**date**: 2026-10-14
+**status**: accepted
+**related-files**: `components/search/SearchScreen.bs`, `tests/rta/specs/search-failure.spec.js`
+
+`SearchScreen` reports a search's outcome (`searchOutcome.view`: the failed state with Try again, the no-results label, the partial toast, the screen-reader announcement) only for a submitted search, never for the live search that runs 0.15 s after each pause in typing. Reporting every search, as `SearchResults` did, was ruled out because on a slow or flaky server it toasts and announces mid-word. A failed submit with the overlay collapsed moves focus to Try again (OK runs it again through `submitSearch`, Up reopens the keyboard). With the overlay open, focus stays and the failure is announced. A submit skipped because the live results already answer its query raises the stored partial toast then.
+
+Cost accepted: a server that dies while the viewer types leaves the live results empty until they submit. The visible empty text stays `MessageNoResultsFor1` and is what the screen reader reads. Same submit-only rule as `search-spinner-on-submit-only`.
+
+## decision-id: search-overlay-horizontal-loop
+
+**date**: 2026-10-16
+**status**: accepted
+**related-files**: `components/search/SearchScreen.bs`, `components/search/SearchQwertyKeyboard.bs`, `components/search/SearchSuggestionList.bs`
+
+`SearchScreen`'s overlay is one horizontal loop: suggestion column, keyboard, suggestion column. Left on the keyboard's left edge and Right on its right edge both go to the suggestions. From the suggestions, Right enters the keyboard's left edge and Left its right edge, on the row focus left the keyboard from (else the bottom row from Clear History, the top row otherwise). With an empty column the loop is the keyboard alone: Left on Q reaches P. The grid's `horizWrap` is set false explicitly, so the edge keys reach `SearchQwertyKeyboard.onKeyEvent`.
+
+Wrapping the keyboard on itself (Left on Q straight to P) was ruled out: it leaves the suggestions with no one-press route from either edge. Cost accepted: Q to P goes through the suggestion column, two presses. Entering the keyboard on the row nearest the focused suggestion was dropped, because `LabelList` does not expose its scroll offset, so the nearest row can't be computed exactly.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -117,7 +117,9 @@ sub onCurrentUserChanged()
     m.userDropdown.triggerText = ""
     m.userDropdown.triggerIconUri = ""
   else
-    ' User logged in: configure and show the dropdown
+    ' User logged in: configure and show the dropdown. A screen that wants no
+    ' dropdown leaves shouldShowUserDropdown false, and the controller clears
+    ' currentUser instead, which lands in the branch above.
     m.userDropdown.triggerText = username
     m.userDropdown.visible = true
 
@@ -300,14 +302,14 @@ end sub
 ' POSITIONING
 ' ============================================
 
-' Hides the overhang clock and repositions the user dropdown to fill the freed space.
-' Called by Home.bs when the user's uiDesignHideClock setting is enabled.
-sub hideClock()
-  if isValid(m.clock)
-    m.top.removeChild(m.clock)
-    m.clock = invalid
-  end if
-  m.isClockHidden = true
+' Observer for the isClockVisible interface field. Toggles the clock's visibility
+' and repositions the user dropdown so the right-edge chrome still lines up.
+' Replaces the older imperative hideClock() function so every screen uses the
+' same field-assignment pattern for overhang chrome customization.
+sub isClockVisibleChanged()
+  visible = m.top.isClockVisible
+  if isValid(m.clock) then m.clock.visible = visible
+  m.isClockHidden = not visible
   positionUserDropdown()
 end sub
 

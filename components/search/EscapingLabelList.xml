@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="EscapingLabelList" extends="JRLabelList">
+  <interface>
+    <!-- Extends JRLabelList, the app's standard label list: floatingFocus, the
+         shared focus border (applyListFocusChrome), its row spacing and the
+         user's fallback font.
+         Set to "down" when the user presses DOWN while focused on the last
+         content row. Roku's LabelList consumes DOWN at the edge (stop
+         behavior) so parent onKeyEvent never sees it, meaning a sibling node
+         below the list can't be reached via DOWN. This subclass intercepts
+         the DOWN press at the edge and emits the escape signal so the parent
+         can reroute focus (for example to a pinned Clear History button). -->
+    <field id="escape" type="string" alwaysNotify="true" />
+  </interface>
+</component>

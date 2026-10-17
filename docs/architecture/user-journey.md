@@ -222,7 +222,7 @@ Writing a field and then `invalid` makes the next write of the same value a chan
 
 ## Starting playback
 
-`Home`, `BaseGridView`, `SearchResults` and `ItemDetails` each observe their own `quickPlayNode` and call `m.global.queueManager.callFunc("launchItem", node)`.
+`Home`, `BaseGridView`, `SearchScreen` and `ItemDetails` each observe their own `quickPlayNode` and call `m.global.queueManager.callFunc("launchItem", node)`.
 
 ### `QueueManager.launchItem`
 

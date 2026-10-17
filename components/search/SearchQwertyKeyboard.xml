@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="SearchQwertyKeyboard" extends="DynamicCustomKeyboard">
+  <interface>
+    <!-- Caller invokes this from its own onKeyEvent to handle special keys that
+         emit strOut tokens (submit, clear): DynamicCustomKeyboard calls it for
+         every key press, and the keyboard returns true to consume tokens it
+         handled internally. -->
+    <function name="keySelected" />
+
+    <!-- Raised true when the user activates the Clear key. Observer should
+         wipe the current query text in response. -->
+    <field id="clearRequested" type="bool" alwaysNotify="true" />
+
+    <!-- Set to "up" | "down" | "left" | "right" when focus reaches a grid edge
+         and the parent should take over (submit on "down"; the suggestion
+         column on "left" or "right"). -->
+    <field id="escape" type="string" alwaysNotify="true" />
+
+    <!-- The row (0-3) a "left" or "right" escape left from, set before escape. -->
+    <field id="escapeRow" type="integer" value="0" />
+
+    <!-- focusEdge(row, side): focus the left or right edge key of a row. -->
+    <function name="focusEdge" />
+  </interface>
+</component>

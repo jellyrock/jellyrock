@@ -2,14 +2,18 @@
  * A search that failed never reads as one that found nothing, driven through the
  * request-failure switch (`rtaFailRequests`) against a healthy server:
  *
- *  - every read failed: the results area says so with a Try again, the keyboard keeps focus,
- *    and Try again runs the same search again;
+ *  - every read failed: the results area says so with a Try again, which takes focus, and
+ *    Try again runs the same search again;
  *  - some reads failed: what answered shows, and a toast says some results are missing;
- *  - every read answered empty: the screen says there are no results;
+ *  - every read answered empty: the screen says there are no results for the query;
  *  - typing on after a failure clears it.
  *
- * The search ids all start with `search` (`SearchTask.searchMedia`); the demo user has Live
- * TV access, so a search sends all four reads.
+ * Only a SUBMITTED search reports its outcome (decision search-outcome-on-submit-only): the live
+ * search that runs while typing stays quiet. So each case types, then submits. A submit replaces the live search partway
+ * through its reads, so how many reads the live one sent varies; the rules here therefore
+ * cover every matching read (no `times`) and are cleared before a retry.
+ *
+ * The search ids all start with `search` (`SearchTask.searchMedia`).
  */
 import { beforeAll, it, expect } from 'vitest';
 import { ecp } from 'roku-test-automation';
@@ -17,7 +21,7 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { openSearchKeyboard } from '../lib/nav.js';
+import { openSearchKeyboard, submitSearchFromKeyboard } from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
   getActiveVal,
@@ -27,17 +31,17 @@ import {
   waitFocusInside,
   waitFor,
   waitToast,
-  walkFocusUntil,
 } from '../lib/steps.js';
 import { captureRawUI } from '../capture.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const SEARCH_FAILED = "Couldn't load search results.";
 const SEARCH_PARTIAL = "Some results couldn't load.";
-const SEARCH_EMPTY = 'No results.';
-const EVERY_READ = 4;
+const SEARCH_EMPTY = `No results for "${RTA_CONFIG.searchQuery}"`;
 // RTA_CAPTURE=1 also saves each state to out/rta-captures/ for review.
 const CAPTURE = process.env.RTA_CAPTURE === '1';
+
+const atRetry = (f) => f?.node?.id === 'searchRetryButton';
 
 let session;
 
@@ -52,10 +56,15 @@ async function freshSearch() {
   await openSearchKeyboard();
 }
 
-/** Types the query with every read of its search failing, and waits for the failure state. */
+/** Types and submits the query with every read failing, and waits for the failure state. */
 async function failedSearch() {
-  await failRequests([{ prefix: 'search', kind: 'http', status: 500, times: EVERY_READ }]);
+  await failRequests([{ prefix: 'search', kind: 'http', status: 500 }]);
   await ecp.sendText(RTA_CONFIG.searchQuery);
+  // The submit collapses onto the rows first; the failure then hands focus to Try again.
+  await submitSearchFromKeyboard({
+    arrived: (f) => atRetry(f) || f?.node?.id === 'searchSelect',
+    label: 'the submit left the keyboard',
+  });
   // On `visible`, not the text: the text is set when the screen opens, so a wait on it would
   // pass before the search ran.
   await waitFor('#searchFailed.visible', (v) => v === true, {
@@ -67,20 +76,14 @@ async function failedSearch() {
   expect(await getActiveVal('#searchFailedText.text'), 'the failure message').toBe(SEARCH_FAILED);
 }
 
-it('a failed search says so, keeps the keyboard, and Try again runs it again', async () => {
+it('a failed search says so, takes focus to Try again, and Try again runs it again', async () => {
   await freshSearch();
   await failedSearch();
   expect(await getActiveVal('#searchSelect.content.getChildCount()'), 'no result rows').toBe(0);
-  await waitFocusInside('#searchKey', { label: 'the keyboard kept focus', timeout: 5000 });
-
-  const atRetry = (f) => f?.node?.id === 'searchRetryButton';
-  await waitFocused(atRetry, {
-    timeout: 12000,
-    interval: 350,
-    action: walkFocusUntil(ecp.Key.Right, atRetry),
-    label: 'Try again, right of the keyboard',
-  });
+  await waitFocused(atRetry, { timeout: 5000, interval: 250, label: 'Try again took focus' });
   if (CAPTURE) await captureRawUI('searchFailed');
+
+  await failRequests([]);
   await press(ecp.Key.Ok);
   await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
     read: getActiveVal,
@@ -92,8 +95,9 @@ it('a failed search says so, keeps the keyboard, and Try again runs it again', a
 
 it('a search with one failed read shows what answered and says some is missing', async () => {
   await freshSearch();
-  await failRequests([{ prefix: 'searchPersons', kind: 'http', status: 500, times: 1 }]);
+  await failRequests([{ prefix: 'searchPersons', kind: 'http', status: 500 }]);
   await ecp.sendText(RTA_CONFIG.searchQuery);
+  await submitSearchFromKeyboard();
   await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
     read: getActiveVal,
     timeout: 20000,
@@ -108,6 +112,7 @@ it('a search that finds nothing says so', async () => {
   await freshSearch();
   await failRequests([{ prefix: 'search', kind: 'empty' }]);
   await ecp.sendText(RTA_CONFIG.searchQuery);
+  await submitSearchFromKeyboard();
   await waitFor('#SearchHelpText.text', (v) => v === SEARCH_EMPTY, {
     read: getActiveVal,
     timeout: 20000,
@@ -122,6 +127,9 @@ it('a search that finds nothing says so', async () => {
 it('typing on after a failed search clears the failure', async () => {
   await freshSearch();
   await failedSearch();
+  // Up from Try again reopens the keyboard (SearchScreen.onKeyEvent).
+  await press(ecp.Key.Up);
+  await waitFocusInside('#kbd', { label: 'back on the search keyboard', timeout: 10000 });
   await ecp.sendText('e');
   await waitFor('#searchFailed.visible', (v) => v === false, {
     read: getActiveVal,

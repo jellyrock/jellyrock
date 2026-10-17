@@ -55,14 +55,14 @@ Each category below carries its reason. `FN`, `ABS` and `ACT` are properties of 
 
 | Category | n | Why a poll, not an observer |
 |---|---|---|
-| `FN` Function `keyPath` | 23 | ODC observes a **field**. `getChildCount()` and `subtype()` are calls, not fields, so the primitive can't apply. |
+| `FN` Function `keyPath` | 27 | ODC observes a **field**. `getChildCount()` and `subtype()` are calls, not fields, so the primitive can't apply. |
 | `ABS` Waits for absence | 1 | The node is gone, and a departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument for the dialog-dismiss sites that route through it. |
-| `ACT` `action:` retry loops | 6 | The re-press on each tick **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
-| `SETTLE` Plain field settle | 77 | The primitive could apply; it is ruled out below. |
+| `ACT` `action:` retry loops | 7 | The re-press on each tick **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
+| `SETTLE` Plain field settle | 81 | The primitive could apply; it is ruled out below. |
 | `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is resolved at run time. Syntax can't classify them, so each carries a rule disable naming the reason, and the argument lives in its docblock. |
-| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 41 | ODC has no "observe global focus" primitive. Its requests offer `getFocusedNode`, `hasFocus` and `isInFocusChain`, all reads, and one observer, `onFieldChange`, which needs a node keyPath and a field name and so can't express "wherever focus now is". |
+| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 48 | ODC has no "observe global focus" primitive. Its requests offer `getFocusedNode`, `hasFocus` and `isInFocusChain`, all reads, and one observer, `onFieldChange`, which needs a node keyPath and a field name and so can't express "wherever focus now is". |
 | `FOCUS_SUBTYPE` Focus containment by subtype (`waitFocusInHomeContent`) | 7 | No primitive, as above. A separate row because the question differs: Home's content is whichever of `HomeRows` and `FavoritesRows` the selected tab put in the scene, so it can't be asked by container id at all. |
-| `FOCUS_IDENTITY` Focus identity (`waitFocused`) | 20 | No primitive, as above, and focus stays where it landed until the next key. There is no pulse to miss. |
+| `FOCUS_IDENTITY` Focus identity (`waitFocused`) | 35 | No primitive, as above, and focus stays where it landed until the next key. There is no pulse to miss. |
 
 <!-- rta-wait-inventory:end -->
 
@@ -106,7 +106,7 @@ A fixed wait before an action usually stands in for a state you can read. These 
 
 | Before | Wait for | Why it is the right signal |
 |---|---|---|
-| `ecp.sendText` | `waitFocusInside('#searchKey')` | `sendText` types into whatever holds focus, and `SearchResults.bs` focuses the keyboard in `onScreenShown`, a later turn of the event loop. |
+| `ecp.sendText` | `waitFocusInside('#kbd')` | `sendText` types into whatever holds focus, and `SearchScreen.bs` focuses the keyboard only once `onScreenShown` (a later turn of the event loop) opens its overlay. |
 | The first OSD press | `waitOsdUp`'s state gate | `stateAllowsOSD()` reads `m.top.state` on the player node, and `VideoPlayerView` stamps that node with the item id, so the key's precondition is readable. |
 | Reading `#buttons.buttonFocused` | `waitFocusInside('#buttons')` | `onGroupFocusChanged` re-asserts the group's index when it takes focus, so focus arriving is what makes the index meaningful. |
 | Reading focus after a dialog closes | `waitFocusInside` on the opener | The dialog restores focus to its opener, so waiting for focus to arrive there can only pass once that has happened. |

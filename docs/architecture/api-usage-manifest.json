@@ -548,6 +548,18 @@
       ]
     },
     {
+      "path": "/Search/Hints",
+      "normalized": "/search/hints",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/sessions",
       "normalized": "/sessions",
       "methods": [
@@ -3317,7 +3329,7 @@
       }
     },
     "counts": {
-      "endpoints": 79,
+      "endpoints": 80,
       "requestFields": 50,
       "responseFields": 223,
       "unresolvedEndpointSinks": 2

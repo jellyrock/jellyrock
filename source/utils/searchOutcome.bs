@@ -2,7 +2,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' What a search ended with, and what the search screen shows for it. SearchTask reports the
-' status; SearchResults shows the view. Pure, so the rules are unit-tested without a network
+' status; SearchScreen shows the view. Pure, so the rules are unit-tested without a network
 ' seam. Also which reads a search sends (canSearchLiveTv), since a read the server refuses
 ' would make every search look partial.
 '

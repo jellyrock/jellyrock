@@ -1,0 +1,281 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' SearchSuggestionList: vertical list of selectable suggestions rendered to
+' the left of the QWERTY keyboard inside the SearchOverlay.
+'
+' Two modes:
+'   "recent": the user's stored recent-search history. A pinned "Clear
+'              History" TextButton below the list wipes the full list, and
+'              OPTIONS on a focused row emits removeRequested for per-entry
+'              deletion.
+'   "hints" : live /Search/Hints typeahead results for the current query.
+'
+' The `items` field carries an array of { text, value } AAs. `text` is shown;
+' `value` is emitted on activation so the screen can populate the query and
+' run a full search.
+
+sub init()
+  m.list = m.top.findNode("list")
+  m.sectionLabel = m.top.findNode("sectionLabel")
+  m.clearButton = m.top.findNode("clearButton")
+
+  m.counter = m.top.findNode("counter")
+
+  ' Colors, fonts (the user's fallback font included) and the focus border come from
+  ' JRLabelList. What differs here is the shape: left-aligned text, and rows more compact
+  ' than the list dialog's 60 + 24, to fit five above the overlay's bottom edge. The gap is
+  ' the least that keeps the focus ring, which draws about 10px outside its row
+  ' (list-grid-item-layout.md), off the next row; 57 + 12 = 69 keeps each row on the 720p
+  ' grid. The row count follows Clear History (refreshClearButtonVisibility).
+  m.list.textHorizAlign = "left"
+  m.list.itemSize = [480, 57]
+  m.list.itemSpacing = [0, 12]
+  ' Two focusable lists share this screen (these suggestions and the results), so the
+  ' idle footprint is hidden: drawn, it reads as a selection while focus is elsewhere
+  ' (components/CLAUDE.md, custom list rows).
+  m.list.focusFootprintBitmapUri = "pkg:/images/1px-transparent.png"
+
+  m.list.observeField("itemSelected", "onItemSelected")
+  m.list.observeField("escape", "onListEscape")
+  ' Focus can arrive on the list when it holds no rows: a dialog handing focus back to
+  ' its opener after the last recent search was removed, for one. Nothing there can
+  ' take a key, so the column hands focus on ("empty", onListFocusChanged).
+  m.list.observeField("focusedChild", "onListFocusChanged")
+  m.list.observeField("itemFocused", "updateCounter")
+
+  ' The pinned Clear History button keeps TextButton's standard colors.
+  m.clearButton.text = translate(translationKeys.ButtonClearHistory)
+
+  renderSectionLabel()
+  renderItems()
+end sub
+
+' Section header: the mode's name, shown only while the list has rows. A header over an
+' empty column (hints that failed or found nothing, a cleared history) names something
+' that is not there. Called when the mode or the items change.
+sub renderSectionLabel()
+  if not isValid(m.sectionLabel) then return
+
+  mode = m.top.mode
+  items = m.top.items
+  if not isValid(items) or items.count() = 0
+    m.sectionLabel.text = ""
+  else if mode = "recent"
+    m.sectionLabel.text = translate(translationKeys.LabelRecentSearches)
+  else if mode = "hints"
+    m.sectionLabel.text = translate(translationKeys.LabelSuggestions)
+  else
+    m.sectionLabel.text = ""
+  end if
+
+  refreshClearButtonVisibility()
+end sub
+
+' Rebuild the list content node from the items array.
+' Creates a FRESH ContentNode each call and reassigns m.list.content: mutating
+' a shared ContentNode's children (clear() + CreateChild) didn't reliably
+' trigger LabelList to re-render, so repeated typeahead pushes stacked old
+' items on top of new ones in the UI.
+sub renderItems()
+  if not isValid(m.list) then return
+
+  newContent = CreateObject("roSGNode", "ContentNode")
+
+  items = m.top.items
+  if not isValid(items) then items = []
+
+  for each item in items
+    if isValid(item) and isValid(item.text)
+      row = newContent.CreateChild("ContentNode")
+      row.title = item.text
+      ' LabelList doesn't expose custom fields per-row; store the activation
+      ' value in `description` so onItemSelected can retrieve it by index.
+      row.description = item.value
+    end if
+  end for
+
+  m.list.content = newContent
+  renderSectionLabel()
+end sub
+
+' Show the Clear History button only in recent mode when the list is
+' non-empty: matches the old synthetic-row logic without the row-shift
+' weirdness that came with a sentinel row inside the LabelList.
+sub refreshClearButtonVisibility()
+  if not isValid(m.clearButton) then return
+  items = m.top.items
+  haveItems = isValid(items) and items.count() > 0
+  m.clearButton.visible = (m.top.mode = "recent" and haveItems)
+  ' Five rows (y 56-389, the last ring ending at 399 inside the overlay's 400) unless Clear
+  ' History, at y 344, needs the space; then four (y 56-320, the ring ending at 330).
+  if m.clearButton.visible
+    m.list.numRows = 4
+  else
+    m.list.numRows = 5
+  end if
+  updateCounter()
+end sub
+
+' "3 of 8" on the header line, or nothing. Shown only when the list holds more rows than it
+' shows, the one time the question it answers exists, and focused or not, so it says there
+' is more before the viewer goes looking. The same rule and string (Message1Of2) as
+' SubtitlePanel.updateListCounter, so a position readout means one thing across the app.
+sub updateCounter()
+  if not isValid(m.counter) then return
+  total = 0
+  if isValid(m.list.content) then total = m.list.content.getChildCount()
+  if total <= m.list.numRows
+    m.counter.visible = false
+    return
+  end if
+  ' itemFocused indexes the content, so this is a position in the whole list. It is -1
+  ' before the list has been focused, where the honest answer is the first row.
+  position = m.list.itemFocused + 1
+  if position < 1 then position = 1
+  m.counter.text = translate(translationKeys.Message1Of2, [position.toStr(), total.toStr()])
+  m.counter.visible = true
+end sub
+
+' Fired by the LabelList when the user presses OK on a row. Emit the row's
+' stashed activation value so the parent can run a full search.
+sub onItemSelected()
+  if not isValid(m.list.content) then return
+  row = m.list.content.getChild(m.list.itemSelected)
+  if not isValid(row) then return
+  m.top.selectedSuggestion = row.description
+end sub
+
+' Fired by EscapingLabelList when the user presses DOWN on the last row: on to the
+' pinned Clear History button when it is shown, else out of the column ("down"),
+' which the screen treats as Down off the keyboard (on to the results).
+sub onListEscape()
+  if m.list.escape <> "down" then return
+  if isValid(m.clearButton) and m.clearButton.visible
+    m.clearButton.setFocus(true)
+  else
+    m.top.escape = "down"
+  end if
+end sub
+
+' Focus arrived on the list while it has no rows: ask the screen to move it ("empty").
+sub onListFocusChanged()
+  if not m.list.hasFocus() then return
+  content = m.list.content
+  if isValid(content) and content.getChildCount() > 0 then return
+  m.top.escape = "empty"
+end sub
+
+' Where focus is in this column: the focused row's activation value, or Clear History.
+' The screen keeps it when the overlay closes and hands it back to focusItem on reopen.
+function focusedState() as object
+  if m.clearButton.hasFocus() then return { value: "", onClear: true }
+  value = ""
+  content = m.list.content
+  if isValid(content) and m.list.itemFocused >= 0
+    row = content.getChild(m.list.itemFocused)
+    if isValid(row) and isValid(row.description) then value = row.description
+  end if
+  return { value: value, onClear: false }
+end function
+
+' Focuses where focusedState() said focus was: Clear History when it is still shown, else the
+' row with that activation value, else the first row. Returns false, focusing nothing, when
+' the list is empty. The screen calls it when its overlay reopens on this column. A pick
+' rebuilds the list for the picked term while the overlay is closed, so the row may have
+' moved or gone; leaving by Down changes nothing, so the row is where it was.
+function focusItem(state as dynamic) as boolean
+  if not isValid(state) then state = {}
+  if state.onClear = true and m.clearButton.visible
+    m.clearButton.setFocus(true)
+    return true
+  end if
+  content = m.list.content
+  if not isValid(content) or content.getChildCount() = 0 then return false
+  value = state.value
+  index = 0
+  if isValidAndNotEmpty(value)
+    for i = 0 to content.getChildCount() - 1
+      if content.getChild(i).description = value
+        index = i
+        exit for
+      end if
+    end for
+  end if
+  m.list.jumpToItem = index
+  m.list.setFocus(true)
+  return true
+end function
+
+' Key handling:
+'   RIGHT or LEFT on any row (or the Clear button): escape to the keyboard.
+'   OPTIONS on a list row in recent mode: emit removeRequested for that term.
+'   DOWN on the last list row: focus the Clear button if visible, else escape "down".
+'   DOWN on the Clear button: escape "down".
+'   UP on the Clear button: return focus to the list (last row).
+'   OK on a row: consumed here, after the list has acted on it.
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  ' OK on the focused Clear History button: TextButton is "dumb" (no
+  ' internal OK handling), so the parent emits clearHistoryRequested here.
+  if key = "OK" and isValid(m.clearButton) and m.clearButton.isInFocusChain()
+    m.top.clearHistoryRequested = true
+    return true
+  end if
+
+  ' Every other OK that reaches this column was a row's: the list has already acted on it
+  ' (itemSelected). Consume it. Passed on, it reaches SearchScreen after the pick has
+  ' collapsed the overlay, and while the results are still empty its "OK in the empty
+  ' state" reopens the overlay onto the keyboard. Measured on a Stick 4K with the full
+  ' search's first read held: the pick submitted, then focus landed back on the keyboard.
+  if key = "OK" then return true
+
+  ' DOWN from Clear History leaves the column, like DOWN past the last row.
+  if key = "down" and isValid(m.clearButton) and m.clearButton.isInFocusChain()
+    m.top.escape = "down"
+    return true
+  end if
+
+  ' RIGHT and LEFT both leave for the keyboard: RIGHT onto its left edge beside this
+  ' column, LEFT around the overlay's horizontal loop onto its right edge.
+  if key = "right" or key = "left"
+    m.top.escape = key
+    return true
+  end if
+
+  ' OPTIONS on a focused list row: emit the focused term's value so the
+  ' parent can attempt to remove it from the recent-search registry. The
+  ' parent treats removeRequested as a request (not a fait accompli) and
+  ' no-ops if the term isn't in history. Mode-gating removed because the
+  ' hints list can contain strings that are also in the user's history
+  ' (for example the user searched "Star Wars" before, now sees it echoed as a
+  ' /Search/Hints result), and expecting the user to distinguish modes to
+  ' delete a visible entry was unintuitive.
+  if key = "options" and isValid(m.list) and m.list.isInFocusChain()
+    if isValid(m.list.content)
+      idx = m.list.itemFocused
+      row = m.list.content.getChild(idx)
+      if isValid(row) and isValid(row.description) and row.description <> ""
+        m.top.removeRequested = row.description
+        return true
+      end if
+    end if
+  end if
+
+  ' DOWN-from-last-row escape is handled by EscapingLabelList via the
+  ' `escape` field observer (onListEscape). It fires before the base
+  ' LabelList can edge-stop. Nothing to do at this level.
+
+  ' UP from the Clear button returns focus to the list's last row.
+  if key = "up" and isValid(m.clearButton) and m.clearButton.isInFocusChain()
+    if isValid(m.list) and isValid(m.list.content) and m.list.content.getChildCount() > 0
+      m.list.jumpToItem = m.list.content.getChildCount() - 1
+      m.list.setFocus(true)
+      return true
+    end if
+  end if
+
+  return false
+end function

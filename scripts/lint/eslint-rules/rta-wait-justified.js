@@ -118,14 +118,15 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // leaves `message` holding the last text. Terminal, not a pulse. Read against the app
   // source 2026-09-25 (JRScene.showToast, Toast.onShouldShow).
   '#toast.message',
-  // `SearchResults.showSearchFailure` sets it true when every read of a search failed, and
-  // `clearSearchOutcome` is the only write back to false, on the next query or a retry. Both
-  // values hold until the viewer types or presses Try again: terminal, not a pulse. Read
-  // against the app source 2026-10-13, both write sites.
+  // `SearchScreen.showSearchOutcome` sets it true when every read of a submitted search
+  // failed, and `clearSearchOutcome` is the only write back to false, on the next query, a
+  // retry or an emptied query. Both values hold until the viewer types or presses Try again:
+  // terminal, not a pulse. Read against the app source 2026-10-14, both write sites.
   '#searchFailed.visible',
-  // `SearchResults.init` sets the help text and `loadResults` replaces it with "No results."
-  // for an answered empty search; nothing writes it back. Terminal. Read against the app
-  // source 2026-10-13, both write sites.
+  // `SearchScreen.init` sets the help text, `showSearchOutcome` replaces it with "No results
+  // for …" for an answered empty submitted search, and `onQueryChanged` writes the help text
+  // back only when the viewer empties the query. Each value holds until the viewer acts:
+  // terminal. Read against the app source 2026-10-14, all three write sites.
   '#SearchHelpText.text',
   // `BaseGridView.onLoadingMoreDue` sets it true and `updateLoadingMore` is the only write
   // back to false, when the page lands (or fails, or the view is hidden). `true` holds for as
@@ -163,6 +164,20 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#quickConnectCode.text',
   '#scrollContent.translation',
   '#scrollTrack.visible',
+  // Roku's LabelList sets it as focus moves between rows. SearchSuggestionList writes it only
+  // through jumpToItem (Up from Clear History, focusItem when the overlay reopens), and a
+  // content swap resets it; neither happens while the typed query stands still. It holds
+  // until the next key: terminal, not a pulse. Read against the app source 2026-10-14.
+  '#suggestions.#list.itemFocused',
+  // `SearchSuggestionList.renderItems` writes each row's description from the items the screen
+  // sends (recent searches, then each query's hints) and nothing else writes it, so row 0's
+  // holds until the next items write, which only a keystroke, a pick or a history change
+  // makes. Terminal for a query that stands still. Read against the app source 2026-10-14.
+  '#suggestions.#list.content.0.description',
+  // Roku's DynamicKeyGrid sets it as focus moves between keys (its reference lists it as a
+  // read-only field); the app only moves focus to a key through focusEdge's jumpToKey. It
+  // holds until the next key: terminal, not a pulse. Read against the app source 2026-10-14.
+  '#kbd.keyGrid.keyFocused',
   '#trickplayCarousel.isVisible',
   '#userRow',
   '#versionLabel.text',
