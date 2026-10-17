@@ -11,9 +11,8 @@
 
     <!-- EscapingLabelList — the app's standard JRLabelList, plus an "escape"
          signal when the user presses DOWN on the last row (Clear History, or
-         the results, are below it). Rows are sized in bs: 60px rows with JRLabelList's
-         24px spacing (the list dialog's measure), four (y 56–368) or three (y
-         56–284) while Clear History needs the space below. -->
+         the results, are below it). Rows are sized in bs: 57px rows, 12px apart,
+         five (y 56–389) or four (y 56–320) while Clear History needs the space below. -->
     <EscapingLabelList id="list" translation="[0, 56]" />
 
     <!-- Pinned Clear History button — visible only in recent mode with a

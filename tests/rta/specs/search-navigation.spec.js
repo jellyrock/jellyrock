@@ -339,19 +339,17 @@ it('removing the last recent search with Options moves focus to the keyboard', a
   expect(await getActiveVal('#suggestions.#list.content.getChildCount()'), 'history empty').toBe(0);
 });
 
-it('shows four hints, but three recent searches beside Clear History', async () => {
+it('shows five hints, but four recent searches beside Clear History', async () => {
   await freshSearch();
   await reopenOnRecentSearches();
   expect(await getActiveVal('#suggestions.#clearButton.visible'), 'Clear History shown').toBe(true);
-  expect(await getActiveVal('#suggestions.#list.numRows'), 'three rows above Clear History').toBe(
-    3,
-  );
+  expect(await getActiveVal('#suggestions.#list.numRows'), 'four rows above Clear History').toBe(4);
   await typeAndWaitForHints();
   expect(
     await getActiveVal('#suggestions.#clearButton.visible'),
     'no Clear History for hints',
   ).toBe(false);
-  expect(await getActiveVal('#suggestions.#list.numRows'), 'four rows for hints').toBe(4);
+  expect(await getActiveVal('#suggestions.#list.numRows'), 'five rows for hints').toBe(5);
 });
 
 it('Up from the results returns to the last suggestion left by Down', async () => {
@@ -359,7 +357,7 @@ it('Up from the results returns to the last suggestion left by Down', async () =
   await typeAndWaitForHints();
   await enterSuggestions();
   const count = await getActiveVal('#suggestions.#list.content.getChildCount()');
-  expect(count, 'more hints than rows, so the list scrolls').toBeGreaterThan(4);
+  expect(count, 'more hints than rows, so the list scrolls').toBeGreaterThan(5);
   // Down through every hint and off the end, which submits and lands on the results.
   await waitFocused(atResults, {
     timeout: 20000,
@@ -379,7 +377,7 @@ it('counts the suggestions only while the list scrolls', async () => {
   await freshSearch();
   await typeAndWaitForHints();
   const count = await getActiveVal('#suggestions.#list.content.getChildCount()');
-  expect(count, 'more hints than rows').toBeGreaterThan(4);
+  expect(count, 'more hints than rows').toBeGreaterThan(5);
   expect(await getActiveVal('#suggestions.#counter.visible'), 'counter shown').toBe(true);
   expect(await getActiveVal('#suggestions.#counter.text'), 'first row before entering').toBe(
     `1 of ${count}`,
@@ -394,4 +392,5 @@ it('counts the suggestions only while the list scrolls', async () => {
     label: 'the second suggestion focused',
   });
   expect(await getActiveVal('#suggestions.#counter.text'), 'follows focus').toBe(`2 of ${count}`);
+  if (CAPTURE) await captureRawUI('searchHintsFocused');
 });

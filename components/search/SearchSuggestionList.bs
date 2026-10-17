@@ -1,5 +1,4 @@
 import "pkg:/source/translationKeys.bs"
-import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -25,11 +24,14 @@ sub init()
   m.counter = m.top.findNode("counter")
 
   ' Colors, fonts (the user's fallback font included) and the focus border come from
-  ' JRLabelList. What differs here is the shape: left-aligned text, and rows of the list
-  ' dialog's height (dialogLayout LIST_ROW_HEIGHT) with JRLabelList's spacing. The row
-  ' count follows Clear History (refreshClearButtonVisibility).
+  ' JRLabelList. What differs here is the shape: left-aligned text, and rows more compact
+  ' than the list dialog's 60 + 24, to fit five above the overlay's bottom edge. The gap is
+  ' the least that keeps the focus ring, which draws about 10px outside its row
+  ' (list-grid-item-layout.md), off the next row; 57 + 12 = 69 keeps each row on the 720p
+  ' grid. The row count follows Clear History (refreshClearButtonVisibility).
   m.list.textHorizAlign = "left"
-  m.list.itemSize = [480, LIST_ROW_HEIGHT]
+  m.list.itemSize = [480, 57]
+  m.list.itemSpacing = [0, 12]
   ' Two focusable lists share this screen (these suggestions and the results), so the
   ' idle footprint is hidden: drawn, it reads as a selection while focus is elsewhere
   ' (components/CLAUDE.md, custom list rows).
@@ -106,12 +108,12 @@ sub refreshClearButtonVisibility()
   items = m.top.items
   haveItems = isValid(items) and items.count() > 0
   m.clearButton.visible = (m.top.mode = "recent" and haveItems)
-  ' Four rows (y 56-368, inside the overlay's 400) unless Clear History, at y 344, needs
-  ' the space; then three (y 56-284).
+  ' Five rows (y 56-389, the last ring ending at 399 inside the overlay's 400) unless Clear
+  ' History, at y 344, needs the space; then four (y 56-320, the ring ending at 330).
   if m.clearButton.visible
-    m.list.numRows = 3
-  else
     m.list.numRows = 4
+  else
+    m.list.numRows = 5
   end if
   updateCounter()
 end sub

@@ -44,8 +44,8 @@ namespace searchLayout
   '     86px rows; hideTextBox puts the key grid at the top of the node), so it
   '     ends at y=400 with the Clear History button.
   '   Suggestion list at y=0 inside slideGroup: section label 36 (y=0), list of
-  '     three 60px rows with 24px spacing (y=56, ends at y=284), pinned Clear
-  '     button 56 (y=344, ends at y=400).
+  '     57px rows 12px apart (y=56: five end at 389, four at 320 above Clear
+  '     History), pinned Clear button 56 (y=344, ends at y=400).
   '   Both columns end at exactly 400 — overlay height matches.
   const OVERLAY_OPEN_Y = 130
   const OVERLAY_CLOSED_Y = -400
