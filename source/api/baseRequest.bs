@@ -1,6 +1,7 @@
 import "pkg:/source/api/apiTimeout.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/roku_modules/rr/Requests.brs"
+import "pkg:/source/utils/misc.bs"
 
 ' Functions for making requests to the API
 function buildParams(params = {} as object) as string
@@ -229,5 +230,31 @@ function executeHttpRequest(req as object, defaultMethod as string, logLabel as 
     return invalid
   end if
 
-  return rr_Requests().request(method, req.url, args)
+  return requestWithJsonOnSuccess(method, req.url, args)
+end function
+
+' Every rr_Requests() call in the app goes through this. The library parses each response body
+' as JSON unless told not to, and Roku's ParseJSON prints a console error for every body that
+' is not JSON, such as the HTML page a server or proxy sends with a 401 or 503. Every reader
+' of a parsed body checks `ok` first, so only a successful body is parsed (responseWithJson).
+'
+' @param method - HTTP method
+' @param url    - full request URL
+' @param args   - rr_Requests() args (headers, timeout, data, ...); parseJson is set here
+' @return roku-requests result (.ok / .statusCode / .json / .text)
+function requestWithJsonOnSuccess(method as string, url as string, args as object) as dynamic
+  args.parseJson = false
+  return responseWithJson(rr_Requests().request(method, url, args))
+end function
+
+' Sets res.json from res.text when the response succeeded and has a body, and to invalid
+' otherwise. Pure, so the rule is tested without a network (baseRequestJson.spec.bs).
+'
+' @param res - a roku-requests result, or invalid
+' @return the same result, its json set
+function responseWithJson(res as dynamic) as dynamic
+  if not isValid(res) then return res
+  res.json = invalid
+  if isBooleanTrue(res.ok) and isValidAndNotEmpty(res.text) then res.json = parseJson(res.text)
+  return res
 end function
