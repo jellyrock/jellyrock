@@ -17,7 +17,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-10-13
+last-reviewed: 2026-10-17
 ---
 
 # API layer and task pool
@@ -252,7 +252,7 @@ This blocks the Task thread, not the render thread, for up to `apiTimeout.waitMs
 
 `fetchJson(req, id)` returns only `res.json`, or `invalid` on a timeout, an HTTP error or a list body that failed its shape check ([Reading a list endpoint's body](#reading-a-list-endpoints-body)).
 
-`fetchJson` drops the reason. A caller that must tell a failed load from an empty one, and log why, calls `fetchRes` and asks [`apiResponse.jsonFailure(res)`](../../source/api/apiResponse.bs). It returns `""` for a usable body, and otherwise a short cause (`timed out`, `HTTP 500`, `network error -7`, `unreadable reply`) for the warning line. `LoadItemsTask2.executeItemQuery()` is the reference. A Task that makes several reads in one run and must say whether any of them failed reads through an [`apiRead.Reader`](../../source/api/apiRead.bs): one per run, built with the Task's logger, it does that per read and counts the reads sent and failed (`QuickPlayTask`, `SearchTask`).
+`fetchJson` drops the reason. A caller that must tell a failed load from an empty one, and log why, calls `fetchRes` and asks [`apiResponse.jsonFailure(res)`](../../source/api/apiResponse.bs). It returns `""` for a usable body, and otherwise a short cause (`timed out`, `HTTP 500`, `network error -7`, `unreadable reply`) for the warning line. `LoadItemsTask2.executeItemQuery()` is the reference. A Task that makes several reads in one run and must say whether any of them failed reads through an [`apiRead.Reader`](../../source/api/apiRead.bs): one per run, built with the Task's logger, it does that per read and counts the reads sent and failed (`QuickPlayTask`, `SearchTask`). A read made through `apiPipeline` already holds its response, so the Task hands it to `Reader.answered()` instead, which judges and counts it the same way (`SearchTask.searchMedia()`).
 
 ### Pattern 2: `fetchAsync` (non-blocking, from the render thread)
 

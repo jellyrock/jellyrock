@@ -9,7 +9,8 @@
  *  - typing on after a failure clears it.
  *
  * The search ids all start with `search` (`SearchTask.searchMedia`); the demo user has Live
- * TV access, so a search sends all four reads.
+ * TV access, so a search sends all seven reads (four library families, people, artists,
+ * programs: `SearchTask.searchMedia`).
  */
 import { beforeAll, it, expect } from 'vitest';
 import { ecp } from 'roku-test-automation';
@@ -35,7 +36,7 @@ const LOCALE = RTA_CONFIG.languages[0];
 const SEARCH_FAILED = "Couldn't load search results.";
 const SEARCH_PARTIAL = "Some results couldn't load.";
 const SEARCH_EMPTY = 'No results.';
-const EVERY_READ = 4;
+const EVERY_READ = 7;
 // RTA_CAPTURE=1 also saves each state to out/rta-captures/ for review.
 const CAPTURE = process.env.RTA_CAPTURE === '1';
 
