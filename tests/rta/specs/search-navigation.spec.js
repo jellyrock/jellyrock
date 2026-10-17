@@ -394,3 +394,41 @@ it('counts the suggestions only while the list scrolls', async () => {
   expect(await getActiveVal('#suggestions.#counter.text'), 'follows focus').toBe(`2 of ${count}`);
   if (CAPTURE) await captureRawUI('searchHintsFocused');
 });
+
+it('picking a recent search fills the column with its hints', async () => {
+  await freshSearch();
+  await reopenOnRecentSearches();
+  await enterSuggestions();
+  const picked = await getActiveVal('#suggestions.#list.content.0.description');
+  expect(typeof picked === 'string' && picked !== '', 'a recent search to pick').toBe(true);
+  await press(ecp.Key.Ok);
+  await waitFocused(atResults, {
+    timeout: 15000,
+    interval: 350,
+    label: 'the results after the pick',
+  });
+  // The pick changed the query, so the column turns to that term's hints, as when typed.
+  await waitFor('#suggestions.#list.content.getChildCount()', hasChildren, {
+    read: getActiveVal,
+    timeout: 20000,
+    label: `hints for the picked "${picked}"`,
+  });
+  await press(ecp.Key.Up);
+  await waitFocused(atList, { timeout: 8000, interval: 250, label: 'back in the suggestion list' });
+  expect(await getActiveVal('#suggestions.#sectionLabel.text'), 'the hints header').toBe(
+    'Suggestions',
+  );
+});
+
+it('keeps the help text hidden while a submitted search loads', async () => {
+  await freshSearch();
+  // Hold every search read, so the spinner is up for the whole check.
+  await failRequests([{ prefix: 'searchItems', kind: 'slow', ms: 15000 }]);
+  await ecp.sendText(RTA_CONFIG.searchQuery);
+  await submitSearchFromKeyboard();
+  expect(await getVal('#spinner.visible'), 'the spinner is up: the search is loading').toBe(true);
+  expect(await getActiveVal('#SearchHelpText.visible'), 'help text hidden under the spinner').toBe(
+    false,
+  );
+  if (CAPTURE) await captureRawUI('searchLoadingAfterSubmit');
+});

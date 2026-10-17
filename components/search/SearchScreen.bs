@@ -121,6 +121,9 @@ sub init()
   ' instead of searching again (submitSearch).
   m.isSubmittedRun = false
   m.lastOutcome = invalid
+  ' A full search is in flight, so the help text stays hidden until it answers: shown under
+  ' the spinner it reads as a result (onExpansionChanged).
+  m.isAwaitingResults = false
 
   ' Whether this view is the one on screen: a search answer can land while a result's details
   ' screen covers this one, and its toast or announcement must not reach that screen.
@@ -514,7 +517,8 @@ sub onExpansionChanged()
   '   5% bottom safe edge = 1080 × 0.95 = 1026. Midpoint = 778.
   '   Collapsed — mid-screen (y=540), out of the way of the peek chip and
   '   the eventual results row at RESULTS_Y=140.
-  '   Hidden when results are present, or while the failure state takes its place.
+  '   Hidden when results are present, while a search is in flight (the spinner sits
+  '   over this spot), or while the failure state takes its place.
   '   The failure state moves with it: its group offset is the help label's travel.
   if expanded
     m.searchFailed.translation = [0, 778 - 540]
@@ -522,7 +526,7 @@ sub onExpansionChanged()
     m.searchFailed.translation = [0, 0]
   end if
   haveResults = hasResults()
-  if haveResults or m.searchFailed.visible
+  if haveResults or m.searchFailed.visible or m.isAwaitingResults
     m.searchHelpText.visible = false
   else if expanded
     m.searchHelpText.translation = [263, 778]
@@ -623,6 +627,7 @@ sub onQueryChanged()
     ' is refused by startHintsFetch's empty-query guard.
     m.searchTask = releaseTask(m.searchTask, "results")
     ' An emptied search box waits on nothing, and has no outcome to show.
+    m.isAwaitingResults = false
     screenWaits.finish(m.top, "results")
     clearSearchOutcome()
     m.lastOutcome = invalid
@@ -763,11 +768,19 @@ sub onSuggestionSelected()
   term = m.suggestions.selectedSuggestion
   if not isValid(term) or term = "" then return
 
+  ' Where focus is, read before the query changes: picking a recent search turns the column
+  ' to hints and empties it, which moves focus to the keyboard (showSuggestions), so the
+  ' collapse below would otherwise remember the keyboard. Reopening returns here instead.
+  pickedFrom = m.suggestions.callFunc("focusedState")
+
   ' Mirror the choice into the keyboard's text field so the header + query
   ' stay consistent (user may re-open the overlay to edit).
   m.kbd.text = term
   m.top.query = term
   submitSearch(term)
+
+  m.overlayFocusColumn = "suggestions"
+  m.suggestionFocus = pickedFrom
 end sub
 
 sub onClearHistoryRequested()
@@ -877,6 +890,7 @@ sub runFullSearch(query as string, isSubmitted = false as boolean)
   ' A new query (or a retry) clears what the last one ended with.
   clearSearchOutcome()
   m.isSubmittedRun = isSubmitted
+  m.isAwaitingResults = true
 
   ' A new query is a NEW run, not a continuation — `begin` restarts the ledger so the clock
   ' starts at the keystroke rather than at the screen opening. A superseded run simply never
@@ -902,8 +916,9 @@ end sub
 sub submitSearch(query as string)
   m.log.info("submit query=" + query)
 
-  ' Cancel any pending debounces — submit supersedes them.
-  m.debounceTimer.control = "stop"
+  ' Cancel the pending full search: the submit runs its own. The hints debounce is left
+  ' running: a pick changes the query, and the column then shows that query's hints, as it
+  ' would had the term been typed. Cancelling it left the column empty after a pick.
   m.fullSearchTimer.control = "stop"
 
   searchHistory.push(query)
@@ -971,6 +986,7 @@ sub onFullSearchResults(event as object)
 
   ' Read ONCE and used for everything below.
   results = m.searchTask.results
+  m.isAwaitingResults = false
 
   ' The server work is done. Resolved at the TOP because this handler returns early on the
   ' no-results path.

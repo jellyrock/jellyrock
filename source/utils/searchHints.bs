@@ -23,7 +23,8 @@ namespace searchHints
   ' @returns Array of { text, name, id, type } — at most HINTS_LIMIT items.
   '
   ' The `text` field is the user-visible string. Format:
-  '   "{Name} · {TypeLabel}"            (default)
+  '   "{Name} · {Context}"              (Episode: its series; MusicAlbum, Audio: the artist)
+  '   "{Name} · {TypeLabel}"            (default, and when the hint carries no context)
   '   "{Name} · {TypeLabel} ({Year})"   (Movie or Series with ProductionYear)
   '   "{Name}"                          (type not one we have a label for)
   function transform(raw as dynamic) as object
@@ -47,7 +48,10 @@ namespace searchHints
       ' raw Jellyfin type string through — the previous behaviour — put an
       ' untranslated API enum in front of the user in every locale.
       text = name
-      label = typeLabel(hint.Type)
+      ' The name that places the item (its series, its artist) says more than its category,
+      ' and comes in the hint itself, so it costs no request.
+      label = contextName(hint)
+      if label = "" then label = typeLabel(hint.Type)
       if label <> ""
         text = text + " · " + label
         year = hint.ProductionYear
@@ -65,6 +69,33 @@ namespace searchHints
     end for
 
     return rows
+  end function
+
+  ' The name that places a hint, from fields the hint already carries (SearchHint in the
+  ' Jellyfin API, 10.7 onward): an Episode's series, a MusicAlbum's album artist, an Audio
+  ' track's first artist (else its album artist). "" when the type has none or the server left
+  ' it empty, so the caller falls back to the type word.
+  '
+  ' @returns the context name, or ""
+  function contextName(hint as object) as string
+    itemType = hint.Type
+    if itemType = "Episode" then return textOrEmpty(hint.Series)
+    if itemType = "MusicAlbum" then return textOrEmpty(hint.AlbumArtist)
+    if itemType = "Audio"
+      artists = hint.Artists
+      if type(artists) = "roArray" and artists.count() > 0
+        first = textOrEmpty(artists[0])
+        if first <> "" then return first
+      end if
+      return textOrEmpty(hint.AlbumArtist)
+    end if
+    return ""
+  end function
+
+  ' A string field as a string, or "" when it is missing or not a string.
+  function textOrEmpty(value as dynamic) as string
+    if type(value) = "roString" or type(value) = "String" then return value
+    return ""
   end function
 
   ' Map Jellyfin item-type strings to short, user-facing category labels, using the

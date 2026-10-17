@@ -147,6 +147,58 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("transform(raw) - context name in place of the type word")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("labels an Episode with its series")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "e1", Name: "Dumbbell Indemnity", Type: "Episode", Series: "The Simpsons", ParentIndexNumber: 9, IndexNumber: 22 }]
+      })
+      m.assertEqual(rows[0].text, "Dumbbell Indemnity · The Simpsons")
+    end function
+
+    @it("falls back to the type word for an Episode with an empty series")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "e1", Name: "Pilot", Type: "Episode", Series: "" }]
+      })
+      m.assertEqual(rows[0].text, "Pilot · Episodes")
+    end function
+
+    @it("labels a MusicAlbum with its album artist")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "a1", Name: "Thriller", Type: "MusicAlbum", AlbumArtist: "Michael Jackson", ProductionYear: 1982 }]
+      })
+      m.assertEqual(rows[0].text, "Thriller · Michael Jackson")
+    end function
+
+    @it("labels an Audio track with its first artist")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "s1", Name: "Billie Jean", Type: "Audio", Artists: ["Michael Jackson", "Quincy Jones"], AlbumArtist: "Someone Else" }]
+      })
+      m.assertEqual(rows[0].text, "Billie Jean · Michael Jackson")
+    end function
+
+    @it("labels an Audio track with its album artist when it lists no artists")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "s1", Name: "Billie Jean", Type: "Audio", Artists: [], AlbumArtist: "Michael Jackson" }]
+      })
+      m.assertEqual(rows[0].text, "Billie Jean · Michael Jackson")
+    end function
+
+    @it("falls back to the type word for an Audio track with no artist at all")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "s1", Name: "Billie Jean", Type: "Audio" }]
+      })
+      m.assertEqual(rows[0].text, "Billie Jean · Songs")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("transform(raw) - hygiene")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
