@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update vitest from v5.0.4 to v5.0.5 ([#1210](https://github.com/jellyrock/jellyrock/pull/1210))
 - Update dotenv from v18.0.7 to v18.0.8 ([#1207](https://github.com/jellyrock/jellyrock/pull/1207))
 
 ## [3.1.0](https://github.com/jellyrock/jellyrock/compare/v3.0.0...v3.1.0) - 2026-10-15
