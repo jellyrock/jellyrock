@@ -42,11 +42,9 @@ function searchMedia(query as string)
   allItems = []
   ' One per search, so one search's failed reads never count against the next.
   reader = new apiRead.Reader(m.log, "search")
-  ' Read once: on a Task thread each m.global read crosses to the render thread.
-  limit = searchReadLimit(m.global.device.isLowMemoryDevice)
 
   ' Every read runs side by side on this one thread (apiPipeline), each with its own limit
-  ' (searchReadLimit). The library is read in families rather than in one read: one read
+  ' (SEARCH_READ_LIMIT). The library is read in families rather than in one read: one read
   ' shared by every type filled its limit of 100 with whatever the server listed first
   ' (measured 2026-10-17 on 10.11 and 12.1: 99 episodes and 1 movie for "t", "th" and "the"),
   ' so a short search lost whole rows.
@@ -63,7 +61,7 @@ function searchMedia(query as string)
         "Fields": "ChildCount",
         "EnableTotalRecordCount": false,
         "Recursive": true,
-        "limit": limit
+        "limit": SEARCH_READ_LIMIT
       })
     })
   end for
@@ -71,14 +69,14 @@ function searchMedia(query as string)
   entries.push({
     requestId: "searchPersons", kind: "other", req: GetApi().BuildGetPersonsRequest({
       "searchTerm": query,
-      "Limit": limit,
+      "Limit": SEARCH_READ_LIMIT,
       "EnableTotalRecordCount": false
     })
   })
   entries.push({
     requestId: "searchArtists", kind: "other", req: GetApi().BuildGetArtistsRequest({
       "searchTerm": query,
-      "Limit": limit,
+      "Limit": SEARCH_READ_LIMIT,
       "EnableTotalRecordCount": false
     })
   })
@@ -95,7 +93,7 @@ function searchMedia(query as string)
         "IncludeItemTypes": "LiveTvProgram",
         "Recursive": true,
         "EnableTotalRecordCount": false,
-        "limit": limit
+        "limit": SEARCH_READ_LIMIT
       })
     })
   end if
@@ -137,19 +135,14 @@ function searchMedia(query as string)
 end function
 
 ' The most items one search read asks for. Rows have no cap of their own, so this is the most a
-' row from one read can show. Two limits, chosen by device class as the API pool width is
-' (apiPool.widthFor): on a 512 MB device each returned item costs render time, so a broad search
-' at 100 per read settled about 0.6 s later than at the old single shared read (measured
-' 2026-10-17 on a 3600X Streaming Stick, query "a", 10.11 server: 2004 ms at 100, 1148 ms at 40,
-' 1381 ms before). Do not change without measuring on device (npm run measure).
-const SEARCH_READ_LIMIT = 100
-const SEARCH_READ_LIMIT_LOW_MEMORY = 50
-
-' The per-read limit for a device class (m.global.device.isLowMemoryDevice).
-function searchReadLimit(isLowMemoryDevice as boolean) as integer
-  if isLowMemoryDevice then return SEARCH_READ_LIMIT_LOW_MEMORY
-  return SEARCH_READ_LIMIT
-end function
+' row from one read can show. The cost is per item, not per read: each one becomes a
+' JellyfinBaseItem on this thread, and creating that node and writing its fields is most of
+' the search's time. Measured 2026-10-17, query "a", median of 5 cold runs: on a Stick 4K
+' (12.1 server) 1237 ms before this split, 1239 ms at 50 and 2300 ms at 100; on a 512 MB
+' Streaming Stick (10.11 server) 1381 ms before, 1314 ms at 50 and 2004 ms at 100. So 50 keeps
+' today's speed on both. A cheaper item node is what would let this rise. Do not change it
+' without measuring on device (npm run measure).
+const SEARCH_READ_LIMIT = 50
 
 ' The library's item types, read in families (one /Items read each) so no type can crowd
 ' another's row out of a shared limit. Episodes read alone: on a typical library they outnumber

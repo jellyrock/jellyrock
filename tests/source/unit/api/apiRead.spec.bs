@@ -80,6 +80,40 @@ namespace tests
       m.assertEqual(reader.failedCount, 2)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Reader.answered")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the body of a usable reply, counted as sent and not failed")
+    function _()
+      reader = new apiRead.Reader(m.newLogger(), "test")
+      body = { Items: [{ Id: "one" }] }
+      data = reader.answered({ ok: true, statusCode: 200, json: body }, "qp_ok")
+      m.assertEqual(data.Items[0].Id, "one")
+      m.assertEqual(reader.sentCount, 1)
+      m.assertEqual(reader.failedCount, 0)
+      m.assertFalse(reader.anyFailed)
+    end function
+
+    @it("fails a read that never answered (a pipeline hands back invalid)")
+    function _()
+      logger = m.newLogger()
+      reader = new apiRead.Reader(logger, "test")
+      m.assertInvalid(reader.answered(invalid, "qp_late"))
+      m.assertEqual(reader.sentCount, 1)
+      m.assertEqual(reader.failedCount, 1)
+      m.assertTrue(logger.warnings[0].instr("qp_late") >= 0, logger.warnings[0])
+    end function
+
+    @it("fails a reply with an HTTP error, and logs the status")
+    function _()
+      logger = m.newLogger()
+      reader = new apiRead.Reader(logger, "test")
+      m.assertInvalid(reader.answered({ ok: false, statusCode: 500 }, "qp_500"))
+      m.assertEqual(reader.failedCount, 1)
+      m.assertTrue(logger.warnings[0].instr("HTTP 500") >= 0, logger.warnings[0])
+    end function
+
   end class
 
 end namespace
