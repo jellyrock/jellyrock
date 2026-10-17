@@ -162,10 +162,10 @@ sub init()
   m.kbd = m.overlay.findNode("kbd")
   m.suggestions = m.overlay.findNode("suggestions")
   m.suggestionList = m.suggestions.findNode("list")
-  ' Where focus left the overlay ("keyboard" | "suggestions") and the suggestion last
-  ' picked, so the overlay reopens where the viewer was (onExpansionChanged).
+  ' Where focus left the overlay ("keyboard" | "suggestions") and, for the suggestions, the
+  ' column's focusedState(), so the overlay reopens where the viewer was (onExpansionChanged).
   m.overlayFocusColumn = "keyboard"
-  m.lastPickedSuggestion = ""
+  m.suggestionFocus = invalid
   ' The keyboard row focus last left for the suggestion column, for the way back in;
   ' -1 when the column was entered another way (onSuggestionEscape).
   m.kbdRow = -1
@@ -536,8 +536,9 @@ sub onExpansionChanged()
     ' Overlay covers the top of the screen — clear any item backdrop so it
     ' doesn't bleed through the alpha layer.
     m.global.sceneManager.callFunc("setBackgroundImage", "")
-    ' Back to the column focus left the overlay from: the suggestions (on the picked
-    ' term's row, or the first when the rebuilt list no longer has it) or the keyboard,
+    ' Back to the column focus left the overlay from: the suggestions (on the row or
+    ' Clear History it left from, or the first row when a pick rebuilt the list without
+    ' it) or the keyboard,
     ' whose grid keeps its last key. An empty suggestion list falls back to the keyboard.
     ' lastFocus must move WITH the focus, not just on collapse. sgRouter calls
     ' handleFocus() after onViewOpen has already run onScreenShown, and
@@ -546,7 +547,7 @@ sub onExpansionChanged()
     ' Measured on device (.178): the overlay opened with isExpanded=true while focus
     ' sat on SearchRow, so every keypress went to an empty results list and the
     ' keyboard could not be typed on at all.
-    if m.overlayFocusColumn = "suggestions" and m.suggestions.callFunc("focusItem", m.lastPickedSuggestion)
+    if m.overlayFocusColumn = "suggestions" and m.suggestions.callFunc("focusItem", m.suggestionFocus)
       m.top.lastFocus = m.suggestionList
       m.kbdRow = -1
     else
@@ -558,6 +559,8 @@ sub onExpansionChanged()
     ' when focus is in the overlay: a collapse with focus elsewhere keeps the last one.
     if m.suggestions.isInFocusChain()
       m.overlayFocusColumn = "suggestions"
+      ' The row (or Clear History) focus leaves from, by a pick or by Down alike.
+      m.suggestionFocus = m.suggestions.callFunc("focusedState")
     else if m.kbd.isInFocusChain()
       m.overlayFocusColumn = "keyboard"
     end if
@@ -759,7 +762,6 @@ end sub
 sub onSuggestionSelected()
   term = m.suggestions.selectedSuggestion
   if not isValid(term) or term = "" then return
-  m.lastPickedSuggestion = term
 
   ' Mirror the choice into the keyboard's text field so the header + query
   ' stay consistent (user may re-open the overlay to edit).

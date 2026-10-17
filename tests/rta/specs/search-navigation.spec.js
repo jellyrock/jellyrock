@@ -338,3 +338,60 @@ it('removing the last recent search with Options moves focus to the keyboard', a
   });
   expect(await getActiveVal('#suggestions.#list.content.getChildCount()'), 'history empty').toBe(0);
 });
+
+it('shows four hints, but three recent searches beside Clear History', async () => {
+  await freshSearch();
+  await reopenOnRecentSearches();
+  expect(await getActiveVal('#suggestions.#clearButton.visible'), 'Clear History shown').toBe(true);
+  expect(await getActiveVal('#suggestions.#list.numRows'), 'three rows above Clear History').toBe(
+    3,
+  );
+  await typeAndWaitForHints();
+  expect(
+    await getActiveVal('#suggestions.#clearButton.visible'),
+    'no Clear History for hints',
+  ).toBe(false);
+  expect(await getActiveVal('#suggestions.#list.numRows'), 'four rows for hints').toBe(4);
+});
+
+it('Up from the results returns to the last suggestion left by Down', async () => {
+  await freshSearch();
+  await typeAndWaitForHints();
+  await enterSuggestions();
+  const count = await getActiveVal('#suggestions.#list.content.getChildCount()');
+  expect(count, 'more hints than rows, so the list scrolls').toBeGreaterThan(4);
+  // Down through every hint and off the end, which submits and lands on the results.
+  await waitFocused(atResults, {
+    timeout: 20000,
+    interval: 350,
+    action: walkFocusUntil(ecp.Key.Down, atResults),
+    label: 'the results, below the last suggestion',
+  });
+  await press(ecp.Key.Up);
+  await waitFocused(atList, { timeout: 8000, interval: 250, label: 'back in the suggestion list' });
+  expect(
+    await getActiveVal('#suggestions.#list.itemFocused'),
+    'on the last suggestion, as left',
+  ).toBe(count - 1);
+});
+
+it('counts the suggestions only while the list scrolls', async () => {
+  await freshSearch();
+  await typeAndWaitForHints();
+  const count = await getActiveVal('#suggestions.#list.content.getChildCount()');
+  expect(count, 'more hints than rows').toBeGreaterThan(4);
+  expect(await getActiveVal('#suggestions.#counter.visible'), 'counter shown').toBe(true);
+  expect(await getActiveVal('#suggestions.#counter.text'), 'first row before entering').toBe(
+    `1 of ${count}`,
+  );
+  if (CAPTURE) await captureRawUI('searchHintsCounter');
+  await enterSuggestions();
+  await press(ecp.Key.Down);
+  await waitFor('#suggestions.#list.itemFocused', (v) => v === 1, {
+    read: getActiveVal,
+    timeout: 5000,
+    interval: 250,
+    label: 'the second suggestion focused',
+  });
+  expect(await getActiveVal('#suggestions.#counter.text'), 'follows focus').toBe(`2 of ${count}`);
+});

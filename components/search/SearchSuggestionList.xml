@@ -5,11 +5,15 @@
          LabelSecondarySmall for its pre-configured font + dim color default;
          text is set in bs by the mode-change handler. -->
     <LabelSecondarySmall id="sectionLabel" width="480" height="36" translation="[0, 0]" />
+    <!-- "3 of 8" on the header line, right-aligned: shown only while the list can scroll
+         (updateCounter). -->
+    <LabelSecondarySmall id="counter" width="480" height="36" horizAlign="right" translation="[0, 0]" visible="false" />
 
     <!-- EscapingLabelList — the app's standard JRLabelList, plus an "escape"
          signal when the user presses DOWN on the last row (Clear History, or
-         the results, are below it). Rows are sized in bs: three 60px rows with
-         JRLabelList's 24px spacing (the list dialog's measure), y 56–284. -->
+         the results, are below it). Rows are sized in bs: 60px rows with JRLabelList's
+         24px spacing (the list dialog's measure), four (y 56–368) or three (y
+         56–284) while Clear History needs the space below. -->
     <EscapingLabelList id="list" translation="[0, 56]" />
 
     <!-- Pinned Clear History button — visible only in recent mode with a
@@ -60,8 +64,11 @@
          its last row or Clear History, or "empty" when focus lands on the
          list while it has no rows. -->
     <field id="escape" type="string" alwaysNotify="true" />
-    <!-- focusItem(value) as boolean: focus the row with that activation value,
-         else the first; false when the list is empty. -->
+    <!-- focusItem(state) as boolean: focus Clear History when state.onClear and it is
+         shown, else the row with value state.value, else the first row; false when
+         nothing in the column can take focus. -->
+    <!-- focusedState(): { value, onClear }, where focus is in this column, for focusItem. -->
+    <function name="focusedState" />
     <function name="focusItem" />
   </interface>
 </component>
