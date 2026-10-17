@@ -1,4 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiRead.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
@@ -41,76 +42,91 @@ function searchMedia(query as string)
   allItems = []
   ' One per search, so one search's failed reads never count against the next.
   reader = new apiRead.Reader(m.log, "search")
+  ' Read once: on a Task thread each m.global read crosses to the render thread.
+  limit = searchReadLimit(m.global.device.isLowMemoryDevice)
 
-  ' Regular library items. Person and MusicArtist are fetched via dedicated endpoints below.
-  ' LiveTvProgram is read separately below, with its own limit, so guide programs cannot
-  ' crowd the library out of this read.
-  data = reader.json(GetApi().BuildGetItemsByQueryRequest({
-    "searchTerm": query,
-    "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
-    ' ChildCount gives a collection or photo album tile its "N items" line, as in the details
-    ' Collections row; a list query returns it for those only when asked.
-    "Fields": "ChildCount",
-    "EnableTotalRecordCount": false,
-    "Recursive": true,
-    "limit": 100
-  }), "searchItems")
-  if isValid(data) and isValid(data.Items)
-    for each item in data.Items
-      ' Live TV recordings come back from /Items as the content type (Movie/Episode).
-      ' The only reliable discriminator is the container format: recordings are always
-      ' stored as MPEG transport streams ("ts"), while library items never are.
-      if LCase(item.Container ?? "") = "ts"
-        item.Type = "Recording"
-      end if
-      allItems.push(transformer.transformBaseItem(item))
-    end for
-  end if
-
-  ' People: /Items does not return Person type; /Persons endpoint required.
-  personData = reader.json(GetApi().BuildGetPersonsRequest({
-    "searchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  }), "searchPersons")
-  if isValid(personData) and isValid(personData.Items)
-    for each item in personData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
-  end if
-
-  ' Artists: /Items does not return MusicArtist type; /Artists endpoint required.
-  artistData = reader.json(GetApi().BuildGetArtistsRequest({
-    "searchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  }), "searchArtists")
-  if isValid(artistData) and isValid(artistData.Items)
-    for each item in artistData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
-  end if
-
+  ' Every read runs side by side on this one thread (apiPipeline), each with its own limit
+  ' (searchReadLimit). The library is read in families rather than in one read: one read
+  ' shared by every type filled its limit of 100 with whatever the server listed first
+  ' (measured 2026-10-17 on 10.11 and 12.1: 99 episodes and 1 movie for "t", "th" and "the"),
+  ' so a short search lost whole rows.
+  ' A family can still crowd within itself, which is why episodes, the largest, read alone.
+  ' The request ids keep their `search` prefixes: the device specs fail and slow reads by them.
+  entries = []
+  for each family in searchReadFamilies()
+    entries.push({
+      requestId: family.id, kind: "library", req: GetApi().BuildGetItemsByQueryRequest({
+        "searchTerm": query,
+        "IncludeItemTypes": family.types,
+        ' ChildCount gives a collection or photo album tile its "N items" line, as in the
+        ' details Collections row; a list query returns it for those only when asked.
+        "Fields": "ChildCount",
+        "EnableTotalRecordCount": false,
+        "Recursive": true,
+        "limit": limit
+      })
+    })
+  end for
+  ' People and artists: /Items returns neither type, so each has its own endpoint.
+  entries.push({
+    requestId: "searchPersons", kind: "other", req: GetApi().BuildGetPersonsRequest({
+      "searchTerm": query,
+      "Limit": limit,
+      "EnableTotalRecordCount": false
+    })
+  })
+  entries.push({
+    requestId: "searchArtists", kind: "other", req: GetApi().BuildGetArtistsRequest({
+      "searchTerm": query,
+      "Limit": limit,
+      "EnableTotalRecordCount": false
+    })
+  })
   ' Live TV guide programs, through /Items with LiveTvProgram, as Jellyfin's web client searches
-  ' them. /LiveTv/Programs takes no search term (none in the API from 10.7 to 10.11, and 12.1
-  ' ignores one), so it answered every search with the first guide programs, whatever was typed.
+  ' them. /LiveTv/Programs takes no search term (none in the API from 10.7 to 10.11, and every
+  ' server to 12.1 ignores one), so it answered every search with the first guide programs.
   ' Not asked for a user without Live TV access (searchOutcome.canSearchLiveTv). The policy is
   ' read once, as this runs on a Task thread, where each m.global read crosses to the render
   ' thread.
   if searchOutcome.canSearchLiveTv(m.global.user.policy)
-    programData = reader.json(GetApi().BuildGetItemsByQueryRequest({
-      "searchTerm": query,
-      "IncludeItemTypes": "LiveTvProgram",
-      "Recursive": true,
-      "EnableTotalRecordCount": false,
-      "limit": 20
-    }), "searchPrograms")
-    if isValid(programData) and isValid(programData.Items)
-      for each item in programData.Items
+    entries.push({
+      requestId: "searchPrograms", kind: "other", req: GetApi().BuildGetItemsByQueryRequest({
+        "searchTerm": query,
+        "IncludeItemTypes": "LiveTvProgram",
+        "Recursive": true,
+        "EnableTotalRecordCount": false,
+        "limit": limit
+      })
+    })
+  end if
+
+  ' A read whose request could not be built is counted as not sent, not pipelined.
+  sendable = []
+  for each entry in entries
+    if isValid(entry.req)
+      sendable.push(entry)
+    else
+      reader.json(invalid, entry.requestId)
+    end if
+  end for
+
+  pipe = apiPipelineBegin(sendable)
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    data = reader.answered(result.res, result.entry.requestId)
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        ' Live TV recordings come back from /Items as the content type (Movie/Episode).
+        ' The only reliable discriminator is the container format: recordings are always
+        ' stored as MPEG transport streams ("ts"), while library items never are.
+        if result.entry.kind = "library" and LCase(item.Container ?? "") = "ts"
+          item.Type = "Recording"
+        end if
         allItems.push(transformer.transformBaseItem(item))
       end for
     end if
-  end if
+    result = apiPipelineNext(pipe)
+  end while
 
   result = {}
   result.Items = allItems
@@ -118,4 +134,31 @@ function searchMedia(query as string)
   result.query = query
   result.status = searchOutcome.statusOf(reader.sentCount, reader.failedCount)
   return result
+end function
+
+' The most items one search read asks for. Rows have no cap of their own, so this is the most a
+' row from one read can show. Two limits, chosen by device class as the API pool width is
+' (apiPool.widthFor): on a 512 MB device each returned item costs render time, so a broad search
+' at 100 per read settled about 0.6 s later than at the old single shared read (measured
+' 2026-10-17 on a 3600X Streaming Stick, query "a", 10.11 server: 2004 ms at 100, 1148 ms at 40,
+' 1381 ms before). Do not change without measuring on device (npm run measure).
+const SEARCH_READ_LIMIT = 100
+const SEARCH_READ_LIMIT_LOW_MEMORY = 50
+
+' The per-read limit for a device class (m.global.device.isLowMemoryDevice).
+function searchReadLimit(isLowMemoryDevice as boolean) as integer
+  if isLowMemoryDevice then return SEARCH_READ_LIMIT_LOW_MEMORY
+  return SEARCH_READ_LIMIT
+end function
+
+' The library's item types, read in families (one /Items read each) so no type can crowd
+' another's row out of a shared limit. Episodes read alone: on a typical library they outnumber
+' everything else. Rows are grouped by type in SearchRow, so the family split is not visible.
+function searchReadFamilies() as object
+  return [
+    { id: "searchItemsVideo", types: "Movie,Series,BoxSet,Video" },
+    { id: "searchItemsEpisodes", types: "Episode" },
+    { id: "searchItemsMusic", types: "MusicAlbum,Audio,MusicVideo,Playlist" },
+    { id: "searchItemsOther", types: "PhotoAlbum,Photo,LiveTvChannel" }
+  ]
 end function
