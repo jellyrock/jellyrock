@@ -19,7 +19,7 @@
     "brighterscript-formatter": "1.8.4",
     "brighterscript-xml-plugin": "1.0.0-alpha.3",
     "dotenv": "18.0.8",
-    "eslint": "10.12.0",
+    "eslint": "10.13.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-n": "18.4.1",
     "espree": "11.2.0",
