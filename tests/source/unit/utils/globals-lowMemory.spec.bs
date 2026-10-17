@@ -80,6 +80,30 @@ namespace tests
       m.assertEqual(result, true, `Model ${model} should be detected as low memory`)
     end function
 
+    @it("detects Roku Express (Gilbert) 3900 variants (512MB) as low memory")
+    @params("3900X")
+    @params("3900RW")
+    @params("3900EU")
+    function _(model)
+      result = checkIsLowMemoryDevice(model)
+      m.assertEqual(result, true, `Model ${model} should be detected as low memory`)
+    end function
+
+    @it("detects Roku Express+ (Gilbert) 3910X as low memory")
+    @params("3910X")
+    function _(model)
+      result = checkIsLowMemoryDevice(model)
+      m.assertEqual(result, true, `Model ${model} should be detected as low memory`)
+    end function
+
+    @it("detects Roku Express (Nemo) 3930 variants as low memory")
+    @params("3930X")
+    @params("3930EU")
+    function _(model)
+      result = checkIsLowMemoryDevice(model)
+      m.assertEqual(result, true, `Model ${model} should be detected as low memory`)
+    end function
+
     @it("detects Roku Streaming Stick (Briscoe) 3600 variants as low memory")
     @params("3600X")
     @params("3600R")
@@ -230,15 +254,6 @@ namespace tests
     @params("3830EU")
     @params("3830BR")
     @params("3830CA")
-    function _(model)
-      result = checkIsLowMemoryDevice(model)
-      m.assertEqual(result, false, `Model ${model} should NOT be detected as low memory`)
-    end function
-
-    @it("returns false for Roku Express 4K (Gilbert) 3900 variants (1GB+ RAM)")
-    @params("3900X")
-    @params("3900RW")
-    @params("3900EU")
     function _(model)
       result = checkIsLowMemoryDevice(model)
       m.assertEqual(result, false, `Model ${model} should NOT be detected as low memory`)
