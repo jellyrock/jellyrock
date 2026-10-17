@@ -43,7 +43,8 @@ function searchMedia(query as string)
   reader = new apiRead.Reader(m.log, "search")
 
   ' Regular library items. Person and MusicArtist are fetched via dedicated endpoints below.
-  ' LiveTvProgram is excluded here because /Items EPG search is incomplete; /LiveTv/Programs is used instead.
+  ' LiveTvProgram is read separately below, with its own limit, so guide programs cannot
+  ' crowd the library out of this read.
   data = reader.json(GetApi().BuildGetItemsByQueryRequest({
     "searchTerm": query,
     "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
@@ -90,15 +91,19 @@ function searchMedia(query as string)
     end for
   end if
 
-  ' Live TV Programs: /LiveTv/Programs searches the full EPG; /Items only covers recordings.
+  ' Live TV guide programs, through /Items with LiveTvProgram, as Jellyfin's web client searches
+  ' them. /LiveTv/Programs takes no search term (none in the API from 10.7 to 10.11, and 12.1
+  ' ignores one), so it answered every search with the first guide programs, whatever was typed.
   ' Not asked for a user without Live TV access (searchOutcome.canSearchLiveTv). The policy is
   ' read once, as this runs on a Task thread, where each m.global read crosses to the render
   ' thread.
   if searchOutcome.canSearchLiveTv(m.global.user.policy)
-    programData = reader.json(GetApi().BuildGetLiveTVProgramsRequest({
-      "SearchTerm": query,
-      "Limit": 20,
-      "EnableTotalRecordCount": false
+    programData = reader.json(GetApi().BuildGetItemsByQueryRequest({
+      "searchTerm": query,
+      "IncludeItemTypes": "LiveTvProgram",
+      "Recursive": true,
+      "EnableTotalRecordCount": false,
+      "limit": 20
     }), "searchPrograms")
     if isValid(programData) and isValid(programData.Items)
       for each item in programData.Items
