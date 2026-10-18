@@ -11,9 +11,33 @@
 import "pkg:/source/constants/searchLayout.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/searchOutcome.bs"
 import "pkg:/source/utils/translate.bs"
 
 namespace searchHints
+
+  ' The /Search/Hints query for `query`: the item types the full search reads
+  ' (searchOutcome.LIBRARY_TYPES, plus people and artists, which it reads from their own
+  ' endpoints), so anything the results can show can also be suggested.
+  '
+  ' @param query - the text typed so far
+  ' @returns query parameters for ApiClient.BuildGetSearchHintsRequest
+  function requestParams(query as string) as object
+    itemTypes = []
+    itemTypes.append(searchOutcome.LIBRARY_TYPES)
+    itemTypes.push("Person")
+    itemTypes.push("MusicArtist")
+    return {
+      searchTerm: query,
+      limit: searchLayout.HINTS_LIMIT,
+      includeItemTypes: itemTypes.join(","),
+      includePeople: true,
+      includeMedia: true,
+      includeArtists: true,
+      includeGenres: false,
+      includeStudios: false
+    }
+  end function
 
   ' Transform a raw SearchHintResult payload into lightweight display rows.
   ' Pure function (no node graph, no side effects) so it's unit-testable.
@@ -115,6 +139,11 @@ namespace searchHints
     if itemType = "Audio" then return translate(translationKeys.LabelSongs)
     if itemType = "Playlist" then return translate(translationKeys.LabelPlaylists)
     if itemType = "BoxSet" then return translate(translationKeys.LabelCollections)
+    if itemType = "Video" then return translate(translationKeys.LabelVideos)
+    if itemType = "MusicVideo" then return translate(translationKeys.LabelMusicVideos)
+    if itemType = "TvChannel" then return translate(translationKeys.LabelChannels)
+    if itemType = "PhotoAlbum" then return translate(translationKeys.LabelPhotoAlbums)
+    if itemType = "Photo" then return translate(translationKeys.LabelPhotos)
 
     return ""
   end function

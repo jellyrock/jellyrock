@@ -702,16 +702,7 @@ sub startHintsFetch()
   if not isValid(query) or query = "" then return
   if m.hintsInFlight then return
 
-  req = GetApi().BuildGetSearchHintsRequest({
-    searchTerm: query,
-    limit: searchLayout.HINTS_LIMIT,
-    includeItemTypes: "Movie,Series,Episode,Person,MusicArtist,MusicAlbum",
-    includePeople: true,
-    includeMedia: true,
-    includeArtists: true,
-    includeGenres: false,
-    includeStudios: false
-  })
+  req = GetApi().BuildGetSearchHintsRequest(searchHints.requestParams(query))
   if not isValid(req) then return
 
   m.hintsSeq += 1

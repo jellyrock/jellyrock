@@ -20,11 +20,42 @@ namespace tests
           "LabelAlbums": "Albums",
           "LabelSongs": "Songs",
           "LabelPlaylists": "Playlists",
-          "LabelCollections": "Collections"
+          "LabelCollections": "Collections",
+          "LabelVideos": "Videos",
+          "LabelMusicVideos": "Music Videos",
+          "LabelChannels": "Channels",
+          "LabelPhotoAlbums": "Photo Albums",
+          "LabelPhotos": "Photos"
         },
         translationsFallback: {},
         translationLocale: "en_US"
       })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("requestParams(query)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for every type the full search can show, people and artists included")
+    function _()
+      ' A type left out here is a result that can never be suggested: songs were, until the
+      ' list was taken from the full search's own.
+      types = searchHints.requestParams("bend").includeItemTypes.split(",")
+      expected = []
+      expected.append(searchOutcome.LIBRARY_TYPES)
+      expected.push("Person")
+      expected.push("MusicArtist")
+      m.assertEqual(types, expected)
+      m.assertArrayContains(types, "Audio")
+    end function
+
+    @it("sends the query and the hint limit")
+    function _()
+      params = searchHints.requestParams("bend")
+      m.assertEqual(params.searchTerm, "bend")
+      m.assertEqual(params.limit, searchLayout.HINTS_LIMIT)
+      m.assertFalse(params.includeGenres)
+      m.assertFalse(params.includeStudios)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -98,6 +129,11 @@ namespace tests
     @params("Audio", "Songs")
     @params("Playlist", "Playlists")
     @params("BoxSet", "Collections")
+    @params("Video", "Videos")
+    @params("MusicVideo", "Music Videos")
+    @params("TvChannel", "Channels")
+    @params("PhotoAlbum", "Photo Albums")
+    @params("Photo", "Photos")
     function _(itemType as string, expectedLabel as string)
       result = searchHints.typeLabel(itemType)
       m.assertEqual(result, expectedLabel)
@@ -108,7 +144,7 @@ namespace tests
       ' A Jellyfin type string we have no translation key for is untranslatable,
       ' so showing it would put English-ish API vocabulary in front of every
       ' non-English user. The name stands alone instead.
-      m.assertEqual(searchHints.typeLabel("PhotoAlbum"), "")
+      m.assertEqual(searchHints.typeLabel("Folder"), "")
     end function
 
     @it("returns no label for invalid or empty input")
@@ -120,7 +156,7 @@ namespace tests
     @it("omits the separator entirely when the type has no label")
     function _()
       rows = searchHints.transform({
-        SearchHints: [{ Id: "x", Name: "Holiday 2019", Type: "PhotoAlbum" }]
+        SearchHints: [{ Id: "x", Name: "Holiday 2019", Type: "Folder" }]
       })
       m.assertEqual(rows.count(), 1)
       m.assertEqual(rows[0].text, "Holiday 2019")
