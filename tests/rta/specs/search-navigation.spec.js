@@ -210,7 +210,10 @@ async function reopenOnRecentSearches() {
   await waitFocusInside('#kbd', { label: 'search reopened on the keyboard', timeout: 15000 });
 }
 
-const TOP_ROW = ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'];
+// The keyboard's top row by keyFocused (SearchKeyboard.keyRows): Space, A to G, Backspace, Clear.
+const TOP_ROW = [' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'backspace', 'clear'];
+const TOP_LEFT = ' ';
+const TOP_RIGHT = 'clear';
 
 const keyIs = (want, label) =>
   waitFor('#kbd.keyGrid.keyFocused', (v) => v === want, {
@@ -240,21 +243,21 @@ it('Clear History empties the list and moves focus to the keyboard', async () =>
 
   // With the column empty, the horizontal loop is the keyboard alone: Left on the left edge
   // goes round to the right edge of the same row.
-  await waitFor('#kbd.keyGrid.keyFocused', (v) => v === 'Q', {
+  await waitFor('#kbd.keyGrid.keyFocused', (v) => v === TOP_LEFT, {
     read: getActiveVal,
     timeout: 15000,
     interval: 350,
-    // Off the top row, Up; on it, Left until Q. A key read that lags a press costs one
-    // extra press at most: Left past Q wraps to P on this empty column and walks on.
+    // Off the top row, Up; on it, Left until Space. A key read that lags a press costs one
+    // extra press at most: Left past Space wraps to Clear on this empty column and walks on.
     action: async () => {
       const key = await getActiveVal('#kbd.keyGrid.keyFocused');
-      if (typeof key !== 'string' || key === 'Q') return;
+      if (typeof key !== 'string' || key === TOP_LEFT) return;
       await press(TOP_ROW.includes(key) ? ecp.Key.Left : ecp.Key.Up);
     },
-    label: "Q, the top row's left edge",
+    label: "Space, the top row's left edge",
   });
   await press(ecp.Key.Left);
-  await keyIs('P', 'P, round the keyboard from Q');
+  await keyIs(TOP_RIGHT, 'Clear, round the keyboard from Space');
 });
 
 it('the first keystroke replaces the recent searches; no header until hints arrive', async () => {
@@ -280,19 +283,19 @@ it('the first keystroke replaces the recent searches; no header until hints arri
 it('the overlay loops horizontally: suggestions, keyboard, suggestions', async () => {
   await freshSearch();
   await typeAndWaitForHints();
-  await keyIs('Q', 'the keyboard on Q');
+  await keyIs('A', 'the keyboard opens on A');
   if (CAPTURE) await captureRawUI('searchHints');
   await enterSuggestions();
   await press(ecp.Key.Left);
-  await keyIs('P', 'Left from the suggestions lands on the right edge, same row');
+  await keyIs(TOP_RIGHT, 'Left from the suggestions lands on the right edge, same row');
   await press(ecp.Key.Right);
   await waitFocused(atList, {
     timeout: 5000,
     interval: 250,
-    label: 'Right from P reaches the suggestions',
+    label: 'Right from Clear reaches the suggestions',
   });
   await press(ecp.Key.Right);
-  await keyIs('Q', 'Right from the suggestions lands on the left edge, same row');
+  await keyIs(TOP_LEFT, 'Right from the suggestions lands on the left edge, same row');
 });
 
 it('removing the last recent search with Options moves focus to the keyboard', async () => {

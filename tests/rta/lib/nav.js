@@ -252,7 +252,7 @@ export async function navSearch() {
  * overlay, and Right never reaches the results (measured on .178: the old Right-walk timed
  * out with focus still on DynamicKeyGrid; since the overlay became a horizontal loop, Right
  * off the right edge goes to the suggestions). Down walks to the bottom row and then
- * leaves, which SearchQwertyKeyboard reports as escape="down" and
+ * leaves, which SearchKeyboard reports as escape="down" and
  * SearchScreen.onKeyboardEscape turns into a submit: the overlay collapses and focus lands
  * on the results, even while they still show an earlier query's rows. The guard stops the
  * instant focus reaches them, so it lands on the first tile without over-scrolling the row.

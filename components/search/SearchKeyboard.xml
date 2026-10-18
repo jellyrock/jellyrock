@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<component name="SearchQwertyKeyboard" extends="DynamicCustomKeyboard">
+<component name="SearchKeyboard" extends="DynamicCustomKeyboard">
   <interface>
     <!-- Caller invokes this from its own onKeyEvent to handle special keys that
          emit strOut tokens (submit, clear): DynamicCustomKeyboard calls it for

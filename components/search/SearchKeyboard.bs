@@ -1,6 +1,6 @@
 import "pkg:/source/utils/misc.bs"
 
-' SearchQwertyKeyboard: custom DynamicCustomKeyboard subclass used inside the
+' SearchKeyboard: custom DynamicCustomKeyboard subclass used inside the
 ' SearchOverlay pull-down. Extends the stock keyboard with:
 '
 ' 1. Special-key handling: Clear strOut token bubbles up as a boolean field
@@ -14,8 +14,10 @@ import "pkg:/source/utils/misc.bs"
 '    voice slot exclusively.
 
 sub init()
-  m.top.keyGrid.keyDefinitionUri = "pkg:/components/keyboards/SearchQwertyKDF.json"
+  m.top.keyGrid.keyDefinitionUri = "pkg:/components/keyboards/SearchKeyboardKDF.json"
   m.top.keyGrid.mode = "alphanumeric"
+  ' Open on A, not on Space, the grid's first key (keyRows).
+  m.top.keyGrid.jumpToKey = [0, 0, 1]
 
   ' Theme the keys from the app palette. DynamicKeyGrid takes its colors only from an
   ' RSGPalette on its `palette` field (Roku's DynamicKeyGrid reference); without one it
@@ -63,17 +65,19 @@ function keySelected(key as string) as boolean
 end function
 
 ' The grid's rows by the keyFocused value of each key (its strOut, else its label), as
-' SearchQwertyKDF.json lays them out. Rows 1-3 are 10 wide, row 4 is 9:
-'   Row 1:   Q  W  E  R  T  Y  U  I  O  P
-'   Row 2:   A  S  D  F  G  H  J  K  L  [backspace]
-'   Row 3:   Z  X  C  V  B  N  M  0  1  2
-'   Row 4:   3  4  5  6  7  8  9  [space]  [clear]
+' SearchKeyboardKDF.json lays them out. Alphabetical, so a letter is found without knowing
+' QWERTY, with Space, Backspace and Clear on the top row, where the keyboard opens. Rows 1-3
+' are 10 wide, row 4 is 9:
+'   Row 1:   [space]  A  B  C  D  E  F  G  [backspace]  [clear]
+'   Row 2:   H  I  J  K  L  M  N  O  P  Q
+'   Row 3:   R  S  T  U  V  W  X  Y  Z  0
+'   Row 4:   1  2  3  4  5  6  7  8  9
 function keyRows() as object
   return [
-    ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-    ["A", "S", "D", "F", "G", "H", "J", "K", "L", "backspace"],
-    ["Z", "X", "C", "V", "B", "N", "M", "0", "1", "2"],
-    ["3", "4", "5", "6", "7", "8", "9", " ", "clear"]
+    [" ", "A", "B", "C", "D", "E", "F", "G", "backspace", "clear"],
+    ["H", "I", "J", "K", "L", "M", "N", "O", "P", "Q"],
+    ["R", "S", "T", "U", "V", "W", "X", "Y", "Z", "0"],
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
   ]
 end function
 

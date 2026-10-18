@@ -30,14 +30,14 @@ import "pkg:/source/utils/translate.bs"
 '   - Collapsed state: peek chip + full-width SearchRow results. UP from row 0
 '     expands the overlay.
 '   - Expanded state: SearchOverlay slides down from above the viewport; custom
-'     QWERTY keyboard gains focus. Typing routes through keyGrid.text,
+'     search keyboard gains focus. Typing routes through keyGrid.text,
 '     then m.top.query, then the hints debounce pipeline.
 '   - Submit (Go key / suggestion tap / voice): full SearchTask runs against
 '     /Items + /Persons + /Artists + /LiveTv/Programs; overlay slides up; results
 '     populate; focus lands on SearchRow row 0.
 '
 ' Voice: a screen-level hidden VoiceTextEditBox owns Roku's single voice slot
-' exclusively (the QWERTY keyboard's inner voice popup is disabled). This
+' exclusively (the search keyboard's inner voice popup is disabled). This
 ' matches the pattern used by Home.
 
 sub init()

@@ -24,7 +24,7 @@
            top row lines up with the first suggestion row, and ends with the
            Clear History button at y=400 (see searchLayout.OVERLAY_HEIGHT). -->
       <SearchSuggestionList id="suggestions" translation="[96, 0]" />
-      <SearchQwertyKeyboard id="kbd" translation="[824, 56]" />
+      <SearchKeyboard id="kbd" translation="[824, 56]" />
     </Group>
 
     <!-- Slide-in/out animation. keyValue overridden in bs from searchLayout

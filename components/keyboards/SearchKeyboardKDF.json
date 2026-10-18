@@ -1,0 +1,84 @@
+{
+  "keyboardWidthFHD": 1000,
+  "keyboardHeightFHD": 344,
+  "keyboardWidthHD": 655,
+  "keyboardHeightHD": 228,
+  "sections": [
+    {
+      "grids": [
+        {
+          "rows": [
+            {
+              "keys": [
+                {
+                  "icon": "theme:DKB_SpaceKeyBitmap",
+                  "focusIcon": "theme:DKB_SpaceKeyFocusBitmap",
+                  "strOut": " "
+                },
+                { "label": "A" },
+                { "label": "B" },
+                { "label": "C" },
+                { "label": "D" },
+                { "label": "E" },
+                { "label": "F" },
+                { "label": "G" },
+                {
+                  "icon": "theme:DKB_DeleteKeyBitmap",
+                  "focusIcon": "theme:DKB_DeleteKeyFocusBitmap",
+                  "autoRepeat": 1,
+                  "strOut": "backspace"
+                },
+                {
+                  "icon": "theme:DKB_ClearKeyBitmap",
+                  "focusIcon": "theme:DKB_ClearKeyFocusBitmap",
+                  "strOut": "clear"
+                }
+              ]
+            },
+            {
+              "keys": [
+                { "label": "H" },
+                { "label": "I" },
+                { "label": "J" },
+                { "label": "K" },
+                { "label": "L" },
+                { "label": "M" },
+                { "label": "N" },
+                { "label": "O" },
+                { "label": "P" },
+                { "label": "Q" }
+              ]
+            },
+            {
+              "keys": [
+                { "label": "R" },
+                { "label": "S" },
+                { "label": "T" },
+                { "label": "U" },
+                { "label": "V" },
+                { "label": "W" },
+                { "label": "X" },
+                { "label": "Y" },
+                { "label": "Z" },
+                { "label": "0" }
+              ]
+            },
+            {
+              "keys": [
+                { "label": "1" },
+                { "label": "2" },
+                { "label": "3" },
+                { "label": "4" },
+                { "label": "5" },
+                { "label": "6" },
+                { "label": "7" },
+                { "label": "8" },
+                { "label": "9" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
