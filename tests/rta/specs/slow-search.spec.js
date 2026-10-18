@@ -15,9 +15,11 @@
  *
  * Only a SUBMIT opens the wait: typing runs a live search under the open keyboard first
  * (`SearchScreen.onFullSearchDebounceFire`, 0.15 s after the last key) with no spinner, and
- * the submit replaces it. So each search here is two `searchItems` requests, the live one and
- * the submitted one, and each `slow` rule covers both (`times: 2`). The queries are one
- * character, so typing starts exactly one live search.
+ * the submit replaces it. Each search sends one read per library type, side by side, and
+ * waits for all of them (`SearchTask.searchMedia`), so slowing its Movie read alone holds the
+ * whole search. Each `slow` rule names that read (SLOW_READ): one request per search, so the
+ * live search and the submitted one are two, `times: 2`, and the held counts stay exact. The
+ * queries are one character, so typing starts exactly one live search.
  */
 import { beforeAll, it, expect } from 'vitest';
 import { ecp } from 'roku-test-automation';
@@ -40,6 +42,8 @@ import {
 } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
+// The one read per search the `slow` rules hold: the search's Movie read, which every search sends.
+const SLOW_READ = 'searchItemsMovie';
 const STILL_LOADING = 'Still loading…';
 // The first stage (loadingStages.STILL_LOADING_MS), and the latest the text may show when it
 // counts from the search's start: the stage plus polling and ODC latency.
@@ -113,7 +117,7 @@ async function openOldResultWhileNewerSearchLoads(rules) {
 it('a slow search says it is still loading, and the text goes with its results', async () => {
   await freshApp();
   await openSearchKeyboard();
-  await failRequests([{ prefix: 'searchItems', kind: 'slow', ms: 11000, times: 2 }]);
+  await failRequests([{ prefix: SLOW_READ, kind: 'slow', ms: 11000, times: 2 }]);
   await typeThenSubmit(RTA_CONFIG.searchQuery);
 
   await waitFor('#loadingStageText.text', (v) => v === STILL_LOADING, {
@@ -137,7 +141,7 @@ it('Back mid-search takes the spinner with the screen', async () => {
   await freshApp();
   await openSearchKeyboard();
   // Far longer than the spec waits, so only leaving the screen can take the spinner down.
-  await failRequests([{ prefix: 'searchItems', kind: 'slow', ms: 90000, times: 2 }]);
+  await failRequests([{ prefix: SLOW_READ, kind: 'slow', ms: 90000, times: 2 }]);
   await typeThenSubmit(RTA_CONFIG.searchQuery);
   expect(await getVal('#spinner.visible'), 'spinner up while the search waits').toBe(true);
 
@@ -153,7 +157,7 @@ it('Back mid-search takes the spinner with the screen', async () => {
 
 it("a late search answer does not stop the details screen's spinner", async () => {
   await openOldResultWhileNewerSearchLoads([
-    { prefix: 'searchItems', kind: 'slow', ms: 8000, times: 2 },
+    { prefix: SLOW_READ, kind: 'slow', ms: 8000, times: 2 },
     { prefix: 'itemMetaData', kind: 'slow', ms: 25000, times: 1 },
   ]);
   await waitHeld(3, "the details screen's metadata is on a slot too");
@@ -169,7 +173,7 @@ it("a late search answer does not stop the details screen's spinner", async () =
 
 it('returning to a search that is still loading shows its spinner, counted from the search', async () => {
   const startedAt = await openOldResultWhileNewerSearchLoads([
-    { prefix: 'searchItems', kind: 'slow', ms: 25000, times: 2 },
+    { prefix: SLOW_READ, kind: 'slow', ms: 25000, times: 2 },
     // Holds the viewer on details long enough that a clock restarted on return could not
     // reach the first stage by STILL_LOADING_LATEST_MS.
     { prefix: 'itemMetaData', kind: 'slow', ms: 4000, times: 1 },
