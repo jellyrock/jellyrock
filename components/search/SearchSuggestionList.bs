@@ -1,9 +1,10 @@
+import "pkg:/source/constants/searchLayout.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' SearchSuggestionList: vertical list of selectable suggestions rendered to
-' the left of the QWERTY keyboard inside the SearchOverlay.
+' the left of the search keyboard inside the SearchOverlay.
 '
 ' Two modes:
 '   "recent": the user's stored recent-search history. A pinned "Clear
@@ -30,7 +31,7 @@ sub init()
   ' (list-grid-item-layout.md), off the next row; 57 + 12 = 69 keeps each row on the 720p
   ' grid. The row count follows Clear History (refreshClearButtonVisibility).
   m.list.textHorizAlign = "left"
-  m.list.itemSize = [480, 57]
+  m.list.itemSize = [searchLayout.SUGGESTIONS_WIDTH, 57]
   m.list.itemSpacing = [0, 12]
   ' Two focusable lists share this screen (these suggestions and the results), so the
   ' idle footprint is hidden: drawn, it reads as a selection while focus is elsewhere
@@ -44,6 +45,11 @@ sub init()
   ' take a key, so the column hands focus on ("empty", onListFocusChanged).
   m.list.observeField("focusedChild", "onListFocusChanged")
   m.list.observeField("itemFocused", "updateCounter")
+
+  ' The header line and Clear History span the column, as the rows do.
+  m.sectionLabel.width = searchLayout.SUGGESTIONS_WIDTH
+  m.counter.width = searchLayout.SUGGESTIONS_WIDTH
+  m.clearButton.minWidth = searchLayout.SUGGESTIONS_WIDTH
 
   ' The pinned Clear History button keeps TextButton's standard colors.
   m.clearButton.text = translate(translationKeys.ButtonClearHistory)

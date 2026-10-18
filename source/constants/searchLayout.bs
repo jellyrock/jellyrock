@@ -19,7 +19,11 @@ namespace searchLayout
   '     keyboard key (Q/A/Z/3) reaches it).
   '   Keyboard on the RIGHT (right edge x=1824 = 5% right safe edge).
   ' Both columns frame to the safe area, leaving a 44px gap between: suggestions x=96, 684
-  ' wide; keyboard x=824. Set in SearchOverlay.xml.
+  ' wide; keyboard x=824. Positions set in SearchOverlay.xml.
+  ' The suggestion column's width: its rows, header, counter and Clear History button. The
+  ' focus ring draws about 10px outside a row (list-grid-item-layout.md), so it stays clear
+  ' of the keyboard.
+  const SUGGESTIONS_WIDTH = 684
 
   ' Results row list (SearchRow) translation when collapsed.
   ' Sits below the peek chip (peek chip ends at y=114) with breathing room.
@@ -40,7 +44,7 @@ namespace searchLayout
   ' CLOSED_Y: placed fully above the viewport.
   ' Height budget:
   '   Keyboard at y=56 inside slideGroup, so its top row lines up with the first
-  '     suggestion row, and 344 tall (SearchQwertyKDF.json keyboardHeightFHD, four
+  '     suggestion row, and 344 tall (SearchKeyboardKDF.json keyboardHeightFHD, four
   '     86px rows; hideTextBox puts the key grid at the top of the node), so it
   '     ends at y=400 with the Clear History button.
   '   Suggestion list at y=0 inside slideGroup: section label 36 (y=0), list of
