@@ -22,12 +22,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   ' UP at the first row: edge-stop. Nothing sits above the list inside the
-  ' overlay, so consume the press and emit an "up" escape for the parent to
-  ' route if it ever needs to (currently a no-op).
-  if key = "up" and m.top.itemFocused = 0
-    m.top.escape = "up"
-    return true
-  end if
+  ' overlay, so consume the press.
+  if key = "up" and m.top.itemFocused = 0 then return true
 
   return false
 end function

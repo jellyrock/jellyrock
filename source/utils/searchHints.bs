@@ -44,7 +44,7 @@ namespace searchHints
   '
   ' @param raw - Parsed /Search/Hints JSON body, or invalid. Expected shape:
   '              { SearchHints: [ { Id, Name, Type, ProductionYear, ... } ] }
-  ' @returns Array of { text, name, id, type }: at most HINTS_LIMIT items.
+  ' @returns Array of { text, name }: at most HINTS_LIMIT items.
   '
   ' The `text` field is the user-visible string. Format:
   '   "{Name} · {Context}"              (Episode: its series; MusicAlbum, Audio: the artist)
@@ -84,12 +84,7 @@ namespace searchHints
         end if
       end if
 
-      rows.push({
-        text: text,
-        name: name,
-        id: hint.Id,
-        type: hint.Type
-      })
+      rows.push({ text: text, name: name })
     end for
 
     return rows

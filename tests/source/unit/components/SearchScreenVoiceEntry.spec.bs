@@ -76,13 +76,6 @@ namespace tests
       m.assertFalse(m.screen.isExpanded)
     end function
 
-    @it("mirrors isExpanded to the peek chip")
-    function _()
-      m.screen.isExpanded = true
-      peekChip = m.screen.findNode("peekChip")
-      m.assertTrue(peekChip.isExpanded)
-    end function
-
     @it("mirrors isExpanded to the overlay")
     function _()
       m.screen.isExpanded = true

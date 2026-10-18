@@ -95,8 +95,6 @@ namespace tests
       m.assertEqual(rows.count(), 1)
       m.assertEqual(rows[0].text, "The Matrix · Movies (1999)")
       m.assertEqual(rows[0].name, "The Matrix")
-      m.assertEqual(rows[0].id, "abc")
-      m.assertEqual(rows[0].type, "Movie")
     end function
 
     @it("omits production year when missing")

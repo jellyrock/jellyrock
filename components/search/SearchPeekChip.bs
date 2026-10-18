@@ -54,9 +54,3 @@ sub renderLabel()
   if not isValid(queryText) then queryText = ""
   m.queryLabel.text = queryText
 end sub
-
-' Currently unused visually but kept as a hook: if we later add a focus ring
-' or background tint shift, this is the place to drive it.
-sub onExpandedChanged()
-  ' no-op
-end sub

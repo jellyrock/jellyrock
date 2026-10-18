@@ -210,8 +210,7 @@ sub init()
   ' Voice: screen owns the voiceEnabled slot. Initialize once, release in onDestroy.
   initVoiceBox()
 
-  ' Peek chip starts collapsed and empty (no placeholder text: icon alone).
-  m.peekChip.isExpanded = false
+  ' Peek chip starts empty (no placeholder text: icon alone).
   m.peekChip.queryText = ""
 
   ' Seed the suggestion panel with the recent list so opening the overlay
@@ -510,7 +509,6 @@ sub onExpansionChanged()
   expanded = m.top.isExpanded
   m.log.verbose("expansion→" + (expanded ? "true" : "false"))
 
-  m.peekChip.isExpanded = expanded
   m.overlay.isExpanded = expanded
 
   ' Slide SearchRow down/up in sync with the overlay so row 0 remains

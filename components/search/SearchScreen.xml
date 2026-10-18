@@ -83,9 +83,5 @@
          own, and by Play on a focused result; observed by this screen (see init) and
          forwarded to QueueManager.launchItem. -->
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
-
-    <!-- Image display mode hint: kept for backward compat with any subtype-
-         based callers (for example backdrop refresh logic). -->
-    <field id="imageDisplayMode" type="string" value="scaleToZoom" />
   </interface>
 </component>

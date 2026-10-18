@@ -22,9 +22,5 @@
     <!-- Current query text to display. Empty string -> empty pill (no
          placeholder; the search icon alone signals purpose). -->
     <field id="queryText" type="string" onChange="renderLabel" />
-
-    <!-- Mirrors the parent's expanded state. Currently a no-op cosmetically;
-         kept as a hook in case we add focus-ring / tint state later. -->
-    <field id="isExpanded" type="boolean" onChange="onExpandedChanged" />
   </interface>
 </component>
