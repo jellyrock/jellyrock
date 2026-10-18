@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-18: fix(search): Show a row for every result type, up to 50 items each
 - 2026-10-17: fix(search): Find the Live TV programs that match a search
 - 2026-10-17: fix: Treat the 512 MB Roku Express `3900X`, `3910X` and `3930X` as low memory
 - 2026-10-14: fix(subtitles): Stop Perfect match showing old results mid-search
@@ -98,10 +99,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-04 — docs: Cite symbols instead of line numbers in every tracked doc
 - 2026-10-04 — ci: Time out wedged CI jobs instead of letting them run 6 hours
 - 2026-10-04 — chore(scripts): Drop unused `git` and `progress` catchup state sections
-- 2026-10-03 — feat(video): Ask "Are you still watching?" before endless auto-play
-- 2026-10-03 — chore(journal): Give every open followup a permanent id
-- 2026-10-03 — fix(video): Keep Next Episode and Skip pop-ups off open dialogs
-- 2026-10-03 — refactor: Remove unused components, dev dependencies and JS exports
 
 ## Open followups
 
