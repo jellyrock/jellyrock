@@ -125,6 +125,27 @@ namespace tests
       m.assertEmpty(sources, "a read for a type search does not show")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("countText")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows nothing for a search with no results")
+    function _()
+      m.assertEqual(searchOutcome.countText(0, false), "")
+      m.assertEqual(searchOutcome.countText(0, true), "")
+    end function
+
+    @it("counts one result, and many")
+    function _()
+      m.assertEqual(searchOutcome.countText(1, false), "1 result")
+      m.assertEqual(searchOutcome.countText(132, false), "132 results")
+    end function
+
+    @it("marks a count the server may exceed")
+    function _()
+      m.assertEqual(searchOutcome.countText(132, true), "132+ results")
+    end function
+
   end class
 
 end namespace

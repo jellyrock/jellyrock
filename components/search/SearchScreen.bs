@@ -90,6 +90,8 @@ sub init()
   m.peekChip = m.top.findNode("peekChip")
   m.overlay = m.top.findNode("overlay")
   m.searchHelpText = m.top.findNode("SearchHelpText")
+  m.resultCount = m.top.findNode("resultCount")
+  m.resultCount.width = searchLayout.SUGGESTIONS_WIDTH
   m.voiceBox = m.top.findNode("searchVoiceBox")
   ' A spoken query held until dictation ends (onVoiceText).
   m.pendingVoiceText = ""
@@ -389,6 +391,7 @@ sub onDestroy()
   m.suggestions = invalid
   m.suggestionList = invalid
   m.searchHelpText = invalid
+  m.resultCount = invalid
   m.searchFailed = invalid
   m.searchFailedText = invalid
   m.searchRetryButton = invalid
@@ -659,6 +662,7 @@ sub onQueryChanged()
       m.searchSelect.content = invalid
     end if
     m.searchHelpText.text = translate(translationKeys.MessageYouCanSearchForTitlesPeople)
+    showResultCount("")
     renderRecentSuggestions()
     return
   end if
@@ -1034,6 +1038,7 @@ sub onFullSearchResults(event as object)
 
   total = (results.TotalRecordCount ?? 0)
   m.log.info("full results total=" + total.toStr(), "status", results.status)
+  showResultCount(searchOutcome.countText(total, results.isLowerBound = true))
 
   ' What the search ended with. A read that failed says nothing about what the server holds,
   ' so a failed search must never read as one that found nothing (searchOutcome.view).
@@ -1054,6 +1059,13 @@ sub onFullSearchResults(event as object)
     m.searchSelect.setFocus(true)
     m.top.lastFocus = m.searchSelect
   end if
+end sub
+
+' The last search's result count (searchOutcome.countText) on the title's line, so the viewer
+' sees how much was found whatever rows are on screen. "" clears it.
+sub showResultCount(countText as string)
+  if not isValid(m.resultCount) then return
+  m.resultCount.text = countText
 end sub
 
 ' ============================================================================

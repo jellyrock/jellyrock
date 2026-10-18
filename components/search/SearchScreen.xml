@@ -12,6 +12,12 @@
          layout now that the keyboard is a pull-down. -->
     <SearchRow id="searchSelect" focusable="true" />
 
+    <!-- The last search's result count ("132 results"), on the title's line and right-aligned
+         to the suggestion column, so it lines up with that column's "3 of 8" below it. Width
+         and text are set in bs (showResultCount). y=60 sits its baseline on the title's, which
+         is larger text, so their centers differ. -->
+    <LabelSecondarySmall id="resultCount" height="36" horizAlign="right" vertAlign="center" translation="[96, 60]" />
+
     <!-- Empty-state help label (shown when no query has been submitted yet).
          Secondary color (dim) so it reads as helper copy, not primary content.
          Translation is updated in bs: repositioned below the overlay when

@@ -108,11 +108,14 @@ function searchMedia(query as string)
     end if
   end for
 
+  reachedLimit = false
   pipe = apiPipelineBegin(sendable)
   delivery = apiPipelineNext(pipe)
   while isValid(delivery)
     data = reader.answered(delivery.res, delivery.entry.requestId)
     if isValid(data) and isValid(data.Items)
+      ' A read that filled its limit may have had more: the count is then a lower bound.
+      if data.Items.count() >= SEARCH_READ_LIMIT then reachedLimit = true
       for each item in data.Items
         ' Live TV recordings come back from /Items as the content type (Movie/Episode).
         ' The only reliable discriminator is the container format: recordings are always
@@ -131,6 +134,8 @@ function searchMedia(query as string)
   result.TotalRecordCount = allItems.count()
   result.query = query
   result.status = searchOutcome.statusOf(reader.sentCount, reader.failedCount)
+  ' The server may hold more than TotalRecordCount: a read stopped at its limit, or one failed.
+  result.isLowerBound = reachedLimit or reader.failedCount > 0
   return result
 end function
 
