@@ -124,15 +124,15 @@ sub refreshClearButtonVisibility()
   updateCounter()
 end sub
 
-' "3 of 8" on the header line, or nothing. Shown only when the list holds more rows than it
-' shows, the one time the question it answers exists, and focused or not, so it says there
-' is more before the viewer goes looking. The same rule and string (Message1Of2) as
-' SubtitlePanel.updateListCounter, so a position readout means one thing across the app.
+' "3 of 8" on the header line whenever the list has rows, focused or not, so it says how
+' many suggestions there are before the viewer goes looking, even when they all fit. The
+' same string (Message1Of2) as SubtitlePanel.updateListCounter, which shows it only while
+' its list scrolls.
 sub updateCounter()
   if not isValid(m.counter) then return
   total = 0
   if isValid(m.list.content) then total = m.list.content.getChildCount()
-  if total <= m.list.numRows
+  if total = 0
     m.counter.visible = false
     return
   end if

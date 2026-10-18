@@ -6,7 +6,7 @@
          LabelSecondarySmall for its pre-configured font + dim color default;
          text is set in bs by the mode-change handler. -->
     <LabelSecondarySmall id="sectionLabel" height="36" translation="[0, 0]" />
-    <!-- "3 of 8" on the header line, right-aligned: shown only while the list can scroll
+    <!-- "3 of 8" on the header line, right-aligned: shown whenever the list has rows
          (updateCounter). -->
     <LabelSecondarySmall id="counter" height="36" horizAlign="right" translation="[0, 0]" visible="false" />
 
