@@ -115,5 +115,95 @@
         "isDefault": true,
       },
     },
+    // The device lock for F5 (scripts/device-lock.js, "F5 debug sessions"). Every
+    // launch config in launch.json starts `device-lock: hold` before its build and
+    // stops it with `device-lock: release` when the session ends. VS Code ignores a
+    // background task's exit code, so the problem matcher is what stops F5 on a
+    // busy device: the refusal line becomes an error in Problems.
+    {
+      "label": "device-lock: hold",
+      "type": "process",
+      "command": "node",
+      // One argument each, so an unset host arrives as `--host=` and is refused.
+      "args": [
+        "scripts/device-lock.js",
+        "hold",
+        "--host=${config:brightscript.debug.host}",
+        "--what=F5 debug session",
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "device-lock",
+        "source": "device-lock",
+        "severity": "error",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(\\.vscode/launch\\.json): error: (.*)$",
+          "file": 1,
+          "message": 2,
+          "kind": "file",
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": "^\\[device-lock\\] acquiring ",
+          "endsPattern": "^(\\[device-lock\\] ready: |\\.vscode/launch\\.json: error: )",
+        },
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "silent",
+        "revealProblems": "onProblem",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true,
+      },
+    },
+    {
+      "label": "device-lock: release",
+      "type": "process",
+      "command": "node",
+      "args": ["scripts/device-lock.js", "release-hold"],
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": false,
+        "close": true,
+      },
+    },
+    // Lock first, then build: a busy device is refused before the build runs.
+    {
+      "label": "F5: lock + build-dev",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "build-dev"],
+      "problemMatcher": [],
+    },
+    {
+      "label": "F5: lock + build-tests-unit",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "build-tests-unit"],
+      "problemMatcher": [],
+    },
+    {
+      "label": "F5: lock + build-tdd",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "build-tdd"],
+      "problemMatcher": [],
+    },
+    {
+      "label": "F5: lock + build-tests-integration",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "build-tests-integration"],
+      "problemMatcher": [],
+    },
+    {
+      "label": "F5: lock + build-tests-all",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "build-tests-all"],
+      "problemMatcher": [],
+    },
   ],
 }

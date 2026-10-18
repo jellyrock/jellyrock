@@ -127,6 +127,28 @@ async function createSignedPackage() {
     outDir,
     outFile,
   };
+  // A Roku runs one job at a time, and signing deploys to it. Taken after every
+  // local check above (so those still fail fast with no network) and before the
+  // first device contact below. Same rules as every other device tool: a busy
+  // device refuses at once, naming the holder.
+  const { acquireDeviceLock } = await import('./device-lock.js');
+  const lock = await acquireDeviceLock({ what: 'package:signed', deviceHost: host });
+  // A signal skips `finally`, so Ctrl-C needs its own release, as in measure.js.
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(signal, async () => {
+      console.error(`\n${signal}: stopping and releasing the device.`);
+      await lock.release().catch(() => {});
+      process.exit(130);
+    });
+  }
+  try {
+    await signWithLock({ host, password, devId, version, options, outDir, outFile });
+  } finally {
+    await lock.release().catch(() => {});
+  }
+}
+
+async function signWithLock({ host, password, devId, version, options, outDir, outFile }) {
   // Note: roku-deploy's `options.devId` is only consulted inside rekeyDevice()
   // (which we don't call). signExistingPackage/deployAndSignPackage silently
   // ignore it. So we have to run the check ourselves before signing, and fail
@@ -150,7 +172,9 @@ async function createSignedPackage() {
       console.error("   the device's reported value above is correct — copy it into .env:");
       console.error(`     ROKU_DEV_ID=${actualDevId}`);
       console.error('   Otherwise, this device is on a different cert than the published channel.');
-      process.exit(1);
+      // Not process.exit(): the caller's `finally` releases the device lock.
+      process.exitCode = 1;
+      return;
     }
     console.log(`  • devId verified: ${actualDevId}`);
   }

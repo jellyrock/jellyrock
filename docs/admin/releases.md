@@ -113,6 +113,7 @@ If the current Channel Store `.pkg` installs on this Roku through **Install from
 ### Safety checks
 
 - **Production build only.** The script refuses to sign if `build/` contains any source map (`*.map`), which means a dev or test build is sitting there. `npm run package:signed` runs `build:prod` first, so this only catches running the script directly against an old build.
+- **One job per Roku.** The script takes the device lock before it contacts the Roku, and stops if a test run or an `F5` session holds it, naming the holder ([the device lock](../dev/rta-tests.md#the-device-lock)).
 - **Right key.** When `ROKU_DEV_ID` is set, the script reads the Roku's `keyed-developer-id` and stops before signing if it doesn't match. This catches a `.pkg` signed with the wrong key before you upload it.
 
 ### Why it runs locally, not in CI

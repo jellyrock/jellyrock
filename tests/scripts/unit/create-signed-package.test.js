@@ -191,4 +191,54 @@ describe('create-signed-package', () => {
       ws.cleanup();
     }
   });
+
+  // The device lock (scripts/device-lock.js). A Roku runs one job at a time, and
+  // signing deploys to it. These spawn the script, so they cannot stub GitHub; they
+  // pin the ORDER instead, with RTA_REQUIRE_LOCK=1 making an unavailable lock fatal
+  // without any network call (a temp dir has no git remote, so no repo resolves).
+  const lockEnv = {
+    ROKU_IP: '127.0.0.1',
+    ROKU_PASSWORD: 'pw',
+    ROKU_SIGNING_PASSWORD: 'sp',
+    ROKU_DEV_ID: '',
+    GITHUB_REPOSITORY: '',
+    RTA_REQUIRE_LOCK: '1',
+    RTA_SKIP_LOCK: '',
+  };
+
+  it('checks its prerequisites before asking for the device lock', () => {
+    const ws = freshWorkspace();
+    try {
+      const { exitCode, stdout, stderr } = spawnScript('scripts/create-signed-package.cjs', [], {
+        cwd: ws.dir,
+        env: lockEnv,
+      });
+      expect(exitCode).not.toBe(0);
+      expect(stderr).toMatch(/build:prod/);
+      expect(stdout + stderr).not.toMatch(/device lock|device-lock/i);
+    } finally {
+      ws.cleanup();
+    }
+  });
+
+  it('takes the device lock before it signs, and stops when it cannot', () => {
+    const ws = freshWorkspace();
+    try {
+      const buildDir = join(ws.dir, 'build');
+      mkdirSync(buildDir, { recursive: true });
+      writeFileSync(
+        join(buildDir, 'manifest'),
+        'title=JellyRock\nmajor_version=1\nminor_version=2\nbuild_version=3\n',
+      );
+      const { exitCode, stdout, stderr } = spawnScript('scripts/create-signed-package.cjs', [], {
+        cwd: ws.dir,
+        env: lockEnv,
+      });
+      expect(exitCode).not.toBe(0);
+      expect(stderr).toMatch(/Device lock required but unavailable/);
+      expect(stdout).not.toMatch(/Creating signed Roku package/);
+    } finally {
+      ws.cleanup();
+    }
+  });
 });
