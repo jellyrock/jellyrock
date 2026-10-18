@@ -4,7 +4,8 @@
 # session's claim on it, prints the PLAN sections a resume needs in full (Status, the open
 # punch-list, the kickoff, the last session-log entry), resolves what the project waits on, says
 # where it sits on your priorities list and the open messages other repos left about it when this
-# machine keeps them, and runs the continuity checks and the PLAN check, so the model orients
+# machine keeps them, names the files another worktree of the repo has also changed (overlap.sh),
+# and runs the continuity checks and the PLAN check, so the model orients
 # instead of gathering. Sections are labeled `=== NAME ===` and read top to bottom; text copied from the PLAN, git or the operator's
 # words sits inside an XML tag (`<kickoff>`…`</kickoff>`), so it reads as data, never as this
 # script's own BANNER, NOTE or ERROR lines, which stay outside every tag. The same PLAN check, run by /end-session before it
@@ -532,6 +533,19 @@ kickoff_overlap() {
     echo "  $p$as: $cnt commit(s), newest: $newest"
   done < <(plan_section "$plan" "Next-session kickoff" | grep -o '`[^`]*`' | tr -d '`')
 }
+
+# The files this checkout and another worktree of the repo have both changed (overlap.sh, after
+# the fetch above): nothing, and no section, with no other worktree. Paths come from git: tagged.
+o_out=""; [ -f "$here/overlap.sh" ] && o_out="$(bash "$here/overlap.sh" 2>/dev/null </dev/null)"
+if [ -n "$o_out" ]; then
+  section "OVERLAP"
+  o_hits="$(grep -v '^NOTE:' <<<"$o_out")"
+  if [ -n "$o_hits" ]; then
+    echo "BANNER: $(cut -f1 <<<"$o_hits" | sort -u | grep -c .) file(s) this checkout changed are also changed in another worktree of this repo: read that work before building on it (git -C {{worktree}} diff origin/HEAD...HEAD -- {{path}}, and its git status)"
+    tagged overlap "$o_hits"
+  fi
+  grep '^NOTE:' <<<"$o_out"
+fi
 
 section "CONTINUITY"
 pdir="$(dirname "$plan")"; since=()
