@@ -56,6 +56,25 @@ namespace searchOutcome
     return { show: searchOutcome.SHOW_FAILED, toastKey: "", announceKey: translationKeys.MessageSearchFailed }
   end function
 
+  ' The library item types a search reads from /Items, one read each, so no type can crowd
+  ' another out of a shared limit (one shared read once came back as 99 episodes and 1 movie).
+  ' People, artists and Live TV programs have reads of their own, and a recording is found
+  ' inside the Movie and Episode reads, so none of them is here.
+  const LIBRARY_TYPES = [
+    "Movie",
+    "Series",
+    "Episode",
+    "Playlist",
+    "MusicAlbum",
+    "Audio",
+    "Video",
+    "MusicVideo",
+    "LiveTvChannel",
+    "PhotoAlbum",
+    "Photo",
+    "BoxSet"
+  ]
+
   ' Whether a search sends its Live TV program read. Jellyfin refuses that read to a user
   ' without Live TV access (its LiveTvAccess policy), so asking would count every one of that
   ' user's searches as partial. A policy, or a field, that is missing reads as allowed, as

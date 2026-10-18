@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-17
+last-updated: 2026-10-18
 ---
 
 # Progress
@@ -533,7 +533,7 @@ Each goes away when its call site moves onto a named wait, so fix it then, not s
 
 #### Per-item `transformBaseItem` without a server version still crosses to the render thread per item outside the grid (from the grid page-cost fix). `[fid: transform-base-item-per-item-crossing]` `[captured 2026-09-25]`
 
-Without a version, `transformBaseItem` reads `m.global.server.version` itself — two rendezvous per item. Once `LoadItemsTask2` passed the version it had already read, building a grid page on the 512 MB Stick went from 1.5–3.3 s to 0.22–0.32 s while scrolling (measured 2026-09-25, [`threading.md`](architecture/threading.md#measured-findings)). The same loop shape remains in Home `LoadItemsTask`, `SearchTask` and `source/api/items.bs`. **Fix:** read the version once and pass it (or use `transformBaseItemArray` where no per-item fix-up follows), measured before and after. **Then gate it:** a BSC rule flagging `transformBaseItem` inside a loop with no version argument, the sites not yet converted on a pending list like `no-same-node-relaunch`'s `PENDING_MIGRATIONS`. This is the third instance of the class (`LoadScheduleTask` and `LoadChannelsTask` in the TV guide, #991, then the grid), so a gate beats review.
+Without a version, `transformBaseItem` reads `m.global.server.version` itself — two rendezvous per item. Once `LoadItemsTask2` passed the version it had already read, building a grid page on the 512 MB Stick went from 1.5–3.3 s to 0.22–0.32 s while scrolling (measured 2026-09-25, [`threading.md`](architecture/threading.md#measured-findings)). The same loop shape remains in Home `LoadItemsTask` and `source/api/items.bs`. `SearchTask` was fixed in #1216: search settled in 1040 ms instead of 1239 ms on a Stick 4K and in 1140 ms instead of 1314 ms on a 512 MB Stick (50 per read, query "a", median of 5 cold runs, measured 2026-10-18). **Fix:** read the version once and pass it (or use `transformBaseItemArray` where no per-item fix-up follows), measured before and after. **Then gate it:** a BSC rule flagging `transformBaseItem` inside a loop with no version argument, the sites not yet converted on a pending list like `no-same-node-relaunch`'s `PENDING_MIGRATIONS`. This is the third instance of the class (`LoadScheduleTask` and `LoadChannelsTask` in the TV guide, #991, then the grid), so a gate beats review.
 
 #### Refresh on a details screen makes an in-flight Task print `Rendezvous aborted` — which Task, and does it matter? (from #1047). `[fid: details-refresh-rendezvous-aborted]` `[captured 2026-09-26]`
 
@@ -689,6 +689,12 @@ Over an identical, settled Home workload, `binds` still spans about 16 cells fro
 
 Why not now: it needs a device campaign tracing which cells `HomeRows` / `JRRowItem` bind beyond the visible set. Closes when the extra binds are explained, and removed if they turn out redundant.
 
+#### Search rows stop at 50 items: load more as the viewer scrolls a row, so rows can reach 100 or more without building every item up front `[fid: search-row-paging]` `[captured 2026-10-18]`
+
+Search reads each library type on its own (`searchOutcome.LIBRARY_TYPES`, #1216), so no type crowds another out, but each read stops at `SEARCH_READ_LIMIT` = 50, and so does each row. Raising it to 100 was built and measured on 2026-10-18 (median of 5 cold runs, `npm run measure -- --measurement screen-load --nav search --variant query`, per-type reads at 50 against 100): a Stick 4K on a 12.1 server went from 1561 to 2280 ms for "a" and from 1207 to 1726 ms for "the"; a 512 MB Streaming Stick on a 10.11 server went from 1396 to 1969 ms and from 1205 to 1601 ms. Timers in a throwaway build: 864 items for "a" on the Stick 4K at 100, about 2 ms each to build; on the 512 MB Stick the search ended when its two 100-item reads (episodes, people) were parsed and handed over. Each request also has a fixed device cost of about 20 ms, tracked in `api-pool-render-thread-crossings`.
+
+A row shows only a few tiles at once, so building 100 per type up front pays for items the viewer may never scroll to. **Fix:** keep the first read per type small, and have `SearchRow` load the next page when focus nears the end of a row, up to 100 or more, keeping focus and scroll position still while items are appended. Needs RTA specs for the scroll and focus behavior. Not done in #1216 because it is new row machinery and that PR fixes the crowding. Closes when a search row can reach 100 items and a broad search settles no slower than at 50 per read, measured on a Stick 4K and a 512 MB Stick. Related: `lean-tile-node-cost` lowers the per-item cost itself.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -799,6 +805,14 @@ Options: `walk` (recommended): descend while `child.focusedChild` is valid and n
 
 Why not now: the fix needs a device test run, and the batch that found it changed only comments. Closes when `lastFocusedChild()` walks the real focus chain and a spec pins it on a device.
 
+#### A tile's `JellyfinBaseItem` costs about 1.5 ms to build on a Task, so large rows are slow and search caps each read at 50 `[fid: lean-tile-node-cost]` `[captured 2026-10-17]`
+
+Every tile in the app is a `JellyfinBaseItem` (167 interface fields) built on a Task by `JellyfinDataTransformer.transformBaseItem()`, and building one is the dominant cost of a large row. Measured 2026-10-17 on a Stick 4K (Jellyfin 12.1, search for "a", 100 items per read, 698 items, temporary timers in a throwaway build): network for the seven pipelined search reads about 240 ms, converting the items about 1650 ms, the handoff to the render thread about 250 ms, `SearchRow`'s row build about 80 ms more than at 50 per read. Reading the server version once instead of per item (`transform-base-item-per-item-crossing`) brought conversion to about 1290 ms, so about 1.85 ms per item remains. A 200-node benchmark on the Task thread: creating an empty `JellyfinBaseItem` about 0.7 ms, writing its 81 fields one by one about 0.8 ms more, one `setFields()` call instead saved about 10%, a plain `ContentNode` about 0.03 ms. So the cost is the node, not the writes' batching.
+
+Because of it, search caps each read at `SEARCH_READ_LIMIT` = 50 (#1216, one read per type: 100 cost about +0.7 s for "a" on the Stick 4K and about +0.6 s on a 512 MB Stick, measured 2026-10-18; `search-row-paging` has the numbers and the other way to longer rows), and Home rows default to 32 (`HOME_ROW_LIMIT_DEFAULT`). The TV guide followup on program-cell memory names the same node from the memory side.
+
+Not now: it changes the item every tile renderer (`BrowseRowItem` and the other row and grid cells) reads, and the path that opens an item, so it needs a design and its own measurements. Direction to evaluate: the Task sends plain associative arrays (about 0.2 to 0.4 ms each in the same benchmark, and cheap to marshal), the render thread builds a light tile node with only the fields cells read, and the full item is loaded when a tile is opened. Closes when a tile costs a small fraction of today's, measured on a Stick 4K and a 512 MB Stick, and search's limit is raised on that evidence.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -822,6 +836,8 @@ Opening a live stream makes the server probe it inside `PlaybackInfo` (a 3 s del
 #### The API pool's own render-thread crossings slow EVERY Task while the render thread is busy. `[fid: api-pool-render-thread-crossings]` `[captured 2026-09-22]`
 
 Measured 2026-09-21 on a Stick 4K while the TV guide scrolled at 400 ms per row: a ~70 ms channel fetch through `fetchRes` took 2.5–8.8 s, and a Task's first few `m.top` / `m.global` reads before it took up to 1.4 s — each crossing waits on the animating grid ([`threading.md`](architecture/threading.md#measured-findings)). The guide's own per-item crossings are fixed; this is the shared remainder. `fetchRes` appends a result node to the render-owned coordinator and observes it per request; find which of those crossings dominate before designing anything.
+
+The cost shows on an idle screen too, as a fixed price per request. Measured 2026-10-18 (median of 5 cold runs, `npm run measure -- --measurement screen-load --nav search --variant query`): search reading 15 requests instead of 7, for the same 129 items ("the" on a 10.11 server), settled 221 ms later on the 512 MB Stick (pool width 4); on the Stick 4K (width 6, a 12.1 server) "the" went 978 to 1207 ms. The server accounts for about 50 to 65 ms of it (13 against 5 concurrent `/Items` searches from the dev machine, at width 4 and 6), so roughly 20 ms per request is spent on the device. Not yet split by crossing; this entry's two candidates (the coordinator's result node and observer, `api-slot-http-wait-event-driven`) are where to look. Search pays it on every query since #1216 (one read per type), and Home pays it per row.
 
 #### The API pool slot's HTTP wait crosses to the render thread on every pass — replace it with an event-driven wait (#1043 follow-up; user call 2026-09-25). `[fid: api-slot-http-wait-event-driven]` `[captured 2026-09-25]`
 

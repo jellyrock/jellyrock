@@ -1,3 +1,4 @@
+import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/utils/searchOutcome.bs"
 
 namespace tests
@@ -92,6 +93,36 @@ namespace tests
     function _()
       m.assertTrue(searchOutcome.canSearchLiveTv(invalid))
       m.assertTrue(searchOutcome.canSearchLiveTv({}))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("LIBRARY_TYPES")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A row type with no read never shows, and one read by two sources shows twice. The row
+    ' types are SearchRow's (itemTypeOrder.SEARCH). Besides the library reads, SearchTask
+    ' reads people, artists and programs on their own, and a recording is found inside the
+    ' Movie and Episode reads.
+    @it("gives every search row type exactly one source")
+    function _()
+      ' The server answers a LiveTvChannel read with items of type TvChannel.
+      rowTypeOf = { "LiveTvChannel": "TvChannel" }
+      sources = {}
+      for each itemType in searchOutcome.LIBRARY_TYPES
+        rowType = rowTypeOf[itemType] ?? itemType
+        m.assertFalse(sources.doesExist(rowType), "two reads for " + rowType)
+        sources[rowType] = true
+      end for
+      for each rowType in ["Person", "MusicArtist", "Program", "Recording"]
+        m.assertFalse(sources.doesExist(rowType), "a library read for " + rowType)
+        sources[rowType] = true
+      end for
+
+      for each rowType in itemTypeOrder.SEARCH
+        m.assertTrue(sources.doesExist(rowType), "no read for " + rowType)
+        sources.delete(rowType)
+      end for
+      m.assertEmpty(sources, "a read for a type search does not show")
     end function
 
   end class
