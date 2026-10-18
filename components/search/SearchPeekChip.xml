@@ -13,9 +13,9 @@
       height="36"
       uri="pkg:/images/icons/search_$$RES$$.png" />
 
-    <!-- Query text label. Pinned width so the pill doesn't grow with text;
-         long queries marquee-scroll within the fixed pill bounds. -->
-    <Label id="queryLabel" height="60" translation="[76, 0]"
+    <!-- Query text. A ScrollingLabel, so a query wider than maxWidth (set in bs) scrolls
+         within the pill instead of being cut off; one that fits is drawn still. -->
+    <ScrollingLabel id="queryLabel" height="60" translation="[76, 0]"
       horizAlign="left" vertAlign="center" />
   </children>
   <interface>

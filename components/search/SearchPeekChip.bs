@@ -33,9 +33,9 @@ sub init()
   ' Fixed pill width: matches the keyboard's width below.
   m.bg.width = searchLayout.PEEK_CHIP_WIDTH
 
-  ' Label width = pill width minus the icon area on the left and right padding.
-  ' Past this width the label marquee-scrolls (set in renderLabel when needed).
-  m.queryLabel.width = searchLayout.PEEK_CHIP_WIDTH - LABEL_X - RIGHT_PADDING
+  ' Text width = pill width minus the icon area on the left and right padding. Past it the
+  ' ScrollingLabel scrolls on its own.
+  m.queryLabel.maxWidth = searchLayout.PEEK_CHIP_WIDTH - LABEL_X - RIGHT_PADDING
 
   ' No placeholder text when empty: the magnifying-glass icon on the left is
   ' enough to communicate "this is the search input." A "Search" word on a
@@ -45,26 +45,14 @@ sub init()
   renderLabel()
 end sub
 
-' Update label text. Empty when no query (icon alone signals purpose). Long
-' queries marquee-scroll so the overflow stays readable.
+' Update label text. Empty when no query (icon alone signals purpose). A long query
+' scrolls (the ScrollingLabel does it), so the overflow stays readable.
 sub renderLabel()
   if not isValid(m.queryLabel) then return
 
   queryText = m.top.queryText
   if not isValid(queryText) then queryText = ""
   m.queryLabel.text = queryText
-
-  if queryText = ""
-    m.queryLabel.repeatCount = 0
-    return
-  end if
-
-  bounds = m.queryLabel.localBoundingRect()
-  if type(bounds) = "roAssociativeArray" and isValid(bounds.width) and bounds.width > m.queryLabel.width
-    m.queryLabel.repeatCount = -1
-  else
-    m.queryLabel.repeatCount = 0
-  end if
 end sub
 
 ' Currently unused visually but kept as a hook: if we later add a focus ring
