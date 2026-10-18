@@ -2130,11 +2130,21 @@ Cost accepted: a server that dies while the viewer types leaves the live results
 
 **date**: 2026-10-16
 **status**: accepted
-**related-files**: `components/search/SearchScreen.bs`, `components/search/SearchQwertyKeyboard.bs`, `components/search/SearchSuggestionList.bs`
+**related-files**: `components/search/SearchScreen.bs`, `components/search/SearchKeyboard.bs`, `components/search/SearchSuggestionList.bs`
 
-`SearchScreen`'s overlay is one horizontal loop: suggestion column, keyboard, suggestion column. Left on the keyboard's left edge and Right on its right edge both go to the suggestions. From the suggestions, Right enters the keyboard's left edge and Left its right edge, on the row focus left the keyboard from (else the bottom row from Clear History, the top row otherwise). With an empty column the loop is the keyboard alone: Left on Q reaches P. The grid's `horizWrap` is set false explicitly, so the edge keys reach `SearchQwertyKeyboard.onKeyEvent`.
+`SearchScreen`'s overlay is one horizontal loop: suggestion column, keyboard, suggestion column. Left on the keyboard's left edge and Right on its right edge both go to the suggestions. From the suggestions, Right enters the keyboard's left edge and Left its right edge, on the row focus left the keyboard from (else the bottom row from Clear History, the top row otherwise). With an empty column the loop is the keyboard alone: Left on Space reaches Clear. The grid's `horizWrap` is set false explicitly, so the edge keys reach `SearchKeyboard.onKeyEvent`.
 
-Wrapping the keyboard on itself (Left on Q straight to P) was ruled out: it leaves the suggestions with no one-press route from either edge. Cost accepted: Q to P goes through the suggestion column, two presses. Entering the keyboard on the row nearest the focused suggestion was dropped, because `LabelList` does not expose its scroll offset, so the nearest row can't be computed exactly.
+Wrapping the keyboard on itself (Left on Space straight to Clear) was ruled out: it leaves the suggestions with no one-press route from either edge. Cost accepted: Space to Clear goes through the suggestion column, two presses. Entering the keyboard on the row nearest the focused suggestion was dropped, because `LabelList` does not expose its scroll offset, so the nearest row can't be computed exactly.
+
+## decision-id: search-keyboard-alphabetical
+
+**date**: 2026-10-18
+**status**: accepted
+**related-files**: `components/keyboards/SearchKeyboardKDF.json`, `components/search/SearchKeyboard.bs`
+
+The search keyboard is alphabetical in a 10 by 4 grid: Space, A to G, Backspace and Clear on the top row, then H to Q, R to Z and 0, and 1 to 9. It opens on A. QWERTY was ruled out: on a remote its order helps only someone who already knows it, and its Space and Clear sat at the bottom right, far from where focus starts. Counted D-pad presses (every letter pair weighted alike, a loop crossing counted as two) put letter to letter at 3.62 for QWERTY and 3.58 here, so the gain is finding a letter, not fewer presses; A to Space is 1 press where Q to Space was 7. An 8 by 5 grid (3.19) was ruled out: about a quarter press per letter, for an overlay 86 pixels taller or smaller keys.
+
+Cost accepted: Backspace is a little farther on average (4.12 presses against 3.88), and Left from the suggestions on the top row lands on Clear, so a stray OK there clears the query.
 
 ## Migrated to ADRs
 

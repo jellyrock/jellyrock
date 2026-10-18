@@ -682,6 +682,12 @@ Search reads each library type on its own (`searchOutcome.LIBRARY_TYPES`, #1216)
 
 A row shows only a few tiles at once, so building 100 per type up front pays for items the viewer may never scroll to. **Fix:** keep the first read per type small, and have `SearchRow` load the next page when focus nears the end of a row, up to 100 or more, keeping focus and scroll position still while items are appended. Needs RTA specs for the scroll and focus behavior. Not done in #1216 because it is new row machinery and that PR fixes the crowding. Closes when a search row can reach 100 items and a broad search settles no slower than at 50 per read, measured on a Stick 4K and a 512 MB Stick. Related: `lean-tile-node-cost` lowers the per-item cost itself.
 
+#### Search: suggest completions of the word being typed, above the keyboard `[fid: search-word-completions]` `[captured 2026-10-18]`
+
+Raised in manual testing of #1217 (2026-10-18). Like a phone's autocomplete, offer completions of the partial word, built from the library's own titles: typing "shre" offers "shrek". They would sit in the gap between the search bar and the keyboard (the bar ends at y=114, the keyboard's top row starts at y=186) and be reached with Up from the keyboard's top row. This is separate from the suggestion column, which lists whole items.
+
+Needs its own design: where the words come from (the /Search/Hints names already fetched, or a dedicated query), how many fit, and how Up from the top row fits today's overlay focus loop (decision `search-overlay-horizontal-loop`). Not done in #1217: it is a new feature with its own layout and focus rules.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
