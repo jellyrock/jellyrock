@@ -20,6 +20,7 @@ import "pkg:/source/utils/searchHints.bs"
 import "pkg:/source/utils/searchHistory.bs"
 import "pkg:/source/utils/searchOutcome.bs"
 import "pkg:/source/utils/searchRoute.bs"
+import "pkg:/source/utils/searchVoice.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
@@ -417,29 +418,22 @@ sub initVoiceBox()
   m.voiceBox.observeField("isDictating", "onVoiceDictatingChanged")
 end sub
 
-' onVoiceText: voice input captured. The firmware writes one spoken query more than once
-' while the viewer is still dictating (measured 2026-10-18 on a Streaming Stick 4K: two writes
-' per word, each a submit), so a write during dictation is held and submitted once when
-' dictation ends (onVoiceDictatingChanged). A write outside dictation submits at once.
+' Voice input captured, or dictation started or ended. searchVoice decides whether to submit,
+' hold or ignore the text: a write during dictation is held and submitted once when it ends.
 sub onVoiceText()
-  voiceText = m.voiceBox.text
-  if voiceText = "" then return
-  if m.voiceBox.isDictating = true
-    m.pendingVoiceText = voiceText
-    return
-  end if
-  submitVoiceText(voiceText)
+  applyVoiceStep(searchVoice.onText(m.pendingVoiceText, m.voiceBox.text, m.voiceBox.isDictating = true))
 end sub
 
 sub onVoiceDictatingChanged()
-  if m.voiceBox.isDictating = true then return
-  if m.pendingVoiceText = "" then return
-  voiceText = m.pendingVoiceText
-  submitVoiceText(voiceText)
+  applyVoiceStep(searchVoice.onDictatingChanged(m.pendingVoiceText, m.voiceBox.isDictating = true))
+end sub
+
+sub applyVoiceStep(voiceStep as object)
+  m.pendingVoiceText = voiceStep.pending
+  if voiceStep.submit <> "" then submitVoiceText(voiceStep.submit)
 end sub
 
 sub submitVoiceText(voiceText as string)
-  m.pendingVoiceText = ""
   m.voiceBox.text = "" ' reset for next voice search
   m.log.info("voice input: " + voiceText)
   applyQueryAndSubmit(voiceText)
