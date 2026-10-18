@@ -32,6 +32,9 @@ import {
 } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
+// A query whose hints all fit in the column: on the demo server it has one, "Pioneer One"
+// (checked 2026-10-18 against Jellyfin 12.2.0). The case reads the count before asserting.
+const FEW_HINTS_QUERY = 'pioneer';
 const LIST = '#suggestions.#list';
 // RTA_CAPTURE=1 also saves the overlay's states to out/rta-captures/ for review.
 const CAPTURE = process.env.RTA_CAPTURE === '1';
@@ -60,9 +63,9 @@ async function freshSearch() {
  * arrive and replace them, which also puts focus back on row 0. So "the list has rows" is
  * true too early: wait for the first row to change from the recent list's first row.
  */
-async function typeAndWaitForHints() {
+async function typeAndWaitForHints(query = RTA_CONFIG.searchQuery) {
   const recentFirst = await getActiveVal('#suggestions.#list.content.0.description');
-  await ecp.sendText(RTA_CONFIG.searchQuery);
+  await ecp.sendText(query);
   await waitFor(
     '#suggestions.#list.content.0.description',
     (v) => typeof v === 'string' && v !== '' && v !== recentFirst,
@@ -70,7 +73,7 @@ async function typeAndWaitForHints() {
       read: getActiveVal,
       timeout: 20000,
       interval: 250,
-      label: `hints for "${RTA_CONFIG.searchQuery}" in place of the recent searches`,
+      label: `hints for "${query}" in place of the recent searches`,
     },
   );
 }
@@ -376,7 +379,7 @@ it('Up from the results returns to the last suggestion left by Down', async () =
   ).toBe(count - 1);
 });
 
-it('counts the suggestions only while the list scrolls', async () => {
+it('counts the suggestions, following focus, when they scroll', async () => {
   await freshSearch();
   await typeAndWaitForHints();
   const count = await getActiveVal('#suggestions.#list.content.getChildCount()');
@@ -396,6 +399,18 @@ it('counts the suggestions only while the list scrolls', async () => {
   });
   expect(await getActiveVal('#suggestions.#counter.text'), 'follows focus').toBe(`2 of ${count}`);
   if (CAPTURE) await captureRawUI('searchHintsFocused');
+});
+
+it('counts the suggestions when they all fit', async () => {
+  await freshSearch();
+  await typeAndWaitForHints(FEW_HINTS_QUERY);
+  const count = await getActiveVal('#suggestions.#list.content.getChildCount()');
+  expect(count, `hints for "${FEW_HINTS_QUERY}"`).toBeGreaterThan(0);
+  expect(count, 'every hint fits in the five rows').toBeLessThanOrEqual(5);
+  expect(await getActiveVal('#suggestions.#counter.visible'), 'counter shown').toBe(true);
+  expect(await getActiveVal('#suggestions.#counter.text'), 'first row before entering').toBe(
+    `1 of ${count}`,
+  );
 });
 
 it('picking a recent search fills the column with its hints', async () => {
