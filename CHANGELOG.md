@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- (search) Show a row for every result type, up to 50 items each ([#1216](https://github.com/jellyrock/jellyrock/pull/1216))
+- (search) Find the Live TV programs that match a search ([#1214](https://github.com/jellyrock/jellyrock/pull/1214))
+- Treat the 512 MB Roku Express `3900X`, `3910X` and `3930X` as low memory ([#1215](https://github.com/jellyrock/jellyrock/pull/1215))
+
+### Dependencies
+
+- Update vitest from v5.0.4 to v5.0.5 ([#1210](https://github.com/jellyrock/jellyrock/pull/1210))
+- Update dotenv from v18.0.7 to v18.0.8 ([#1207](https://github.com/jellyrock/jellyrock/pull/1207))
+
+## [3.1.0](https://github.com/jellyrock/jellyrock/compare/v3.0.0...v3.1.0) - 2026-10-15
+
 ### Added
 
 - (subtitles) Show and announce a failed or empty subtitle search ([#1203](https://github.com/jellyrock/jellyrock/pull/1203))

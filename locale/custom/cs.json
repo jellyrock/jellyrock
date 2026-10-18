@@ -340,6 +340,7 @@
   "MessageMoreFrom1": "Více od {0}",
   "MessageRememberMe": "Zapamatovat si mě?",
   "MessageSaveCredentials": "Uložit přihlašovací údaje?",
+  "MessageSearchNoResults": "Žádné výsledky.",
   "MessageServerNotFoundIsItOnline": "Server nenalezen, je online?",
   "MessageSetHowManySecondsBeforeThe": "Nastavte kolik vteřin před koncem epizody se objeví tlačítko pro přechod na další epizodu. Pro deaktivaci nastavte 0.",
   "MessageSetTheMaximumAmountOfDays": "Maximální počet dnů, po který zůstane seriál v seznamu dalších epizod ke zhlédnutí.",

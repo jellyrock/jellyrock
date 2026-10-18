@@ -342,6 +342,7 @@
   "MessageMoreFrom1": "Altro di {0}",
   "MessageRememberMe": "Ricordami?",
   "MessageSaveCredentials": "Salvare le Credenziali?",
+  "MessageSearchNoResults": "Nessun risultato.",
   "MessageServerNotFoundIsItOnline": "Il server non è stato trovato, è online?",
   "MessageSetHowManySecondsBeforeThe": "Imposta quanti secondi prima della fine di un episodio appare il tasto Prossimo episodio. Impostare a 0 per disabilitare.",
   "MessageSetTheMaximumAmountOfDays": "Imposta il numero massimo di giorni che uno spettacolo può rimanere nella lista 'Prossimo' senza essere guardato.",

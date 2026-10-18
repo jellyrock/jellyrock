@@ -55,7 +55,7 @@ Each category below carries its reason. `FN`, `ABS` and `ACT` are properties of 
 
 | Category | n | Why a poll, not an observer |
 |---|---|---|
-| `FN` Function `keyPath` | 27 | ODC observes a **field**. `getChildCount()` and `subtype()` are calls, not fields, so the primitive can't apply. |
+| `FN` Function `keyPath` | 29 | ODC observes a **field**. `getChildCount()` and `subtype()` are calls, not fields, so the primitive can't apply. |
 | `ABS` Waits for absence | 1 | The node is gone, and a departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument for the dialog-dismiss sites that route through it. |
 | `ACT` `action:` retry loops | 7 | The re-press on each tick **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
 | `SETTLE` Plain field settle | 81 | The primitive could apply; it is ruled out below. |

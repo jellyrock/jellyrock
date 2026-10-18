@@ -219,5 +219,6 @@
   "MessageDisc1": "Schijf {0}",
   "MessageEndsAt1": "Afgelopen om {0}",
   "MessageMoreFrom1": "Meer van {0}",
+  "MessageSearchNoResults": "Geen resultaten.",
   "MessageSetTheMaximumAmountOfDays": "Stel het maximaal aantal dagen in dat een serie in de 'Als volgende'-lijst staat zonder deze te kijken."
 }

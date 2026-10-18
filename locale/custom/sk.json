@@ -275,6 +275,7 @@
   "MessageEndsAt1": "Končí o {0}",
   "MessageMoreFrom1": "Viac od {0}",
   "MessageSaveCredentials": "Uložiť prihlasovacie údaje?",
+  "MessageSearchNoResults": "Žiadne výsledky.",
   "MessageServerNotFoundIsItOnline": "Server nebol nájdený, je online?",
   "MessageSetTheMaximumAmountOfDays": "Určuje maximálny počet dní, po ktoré zostane seriál v sekcií \"Nasleduje\" bez pozretia.",
   "MessageShowItemCountInTheLibrary": "Zobraziť počet položiek v knižnici a poradnie zvolenej položky.",

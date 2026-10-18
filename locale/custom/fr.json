@@ -340,6 +340,7 @@
   "MessageMoreFrom1": "Plus de {0}",
   "MessageRememberMe": "Se souvenir de moi ?",
   "MessageSaveCredentials": "Sauvegarder vos identifiants ?",
+  "MessageSearchNoResults": "Pas de résultats.",
   "MessageServerNotFoundIsItOnline": "Le serveur est introuvable. Est-ce qu'il est connecté au réseau ?",
   "MessageSetHowManySecondsBeforeThe": "Définit combien de secondes avant la fin d'un épisode le bouton « Prochain épisode » doit apparaître. La valeur 0 permet de le désactiver.",
   "MessageSetTheMaximumAmountOfDays": "Définir le nombre de jours d'inactivité avant qu'une série ne soit automatiquement ôtée de la section 'À suivre'.",

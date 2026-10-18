@@ -239,5 +239,6 @@
   "MessageDisc1": "Диск {0}",
   "MessageEndsAt1": "Завершиться о {0}",
   "MessageMoreFrom1": "Більше від {0}",
+  "MessageSearchNoResults": "Нічого не знайдено.",
   "MessageSetTheMaximumAmountOfDays": "Встановлює максимальну кількість днів, протягом яких серіал має залишатися в списку «Далі» без перегляду."
 }

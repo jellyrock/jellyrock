@@ -12,6 +12,9 @@ const LOW_MEMORY_DEVICE_PREFIXES = [
   "T100", ' Roku TV (Alpine) - 512MB - 720p
   ' Updatable Models
   "3960", ' Roku Express (Rockett) - 512MB - 720p
+  "3900", ' Roku Express (Gilbert) - 512MB - 720p
+  "3910", ' Roku Express+ (Gilbert) - 512MB - 720p
+  "3930", ' Roku Express (Nemo) - 512MB - 720p
   "3931", ' Roku Express+ (Nemo) - 512MB - 720p
   "3600", ' Roku Streaming Stick (Briscoe) - 512MB - 720p
   "3700", ' Roku Express (Littlefield) - 512MB - 720p

@@ -24,7 +24,7 @@ Every skill pins a model in frontmatter (`model: opus | sonnet | haiku`). The ch
 
 - A new helper script under `.claude/skills/<name>/`? `Bash(node .claude/skills/*)` in `.claude/settings.json` already allows a Node helper. For any other command shape the helper introduces (a `bash` script, a `gh` subcommand), add an allow rule to `.claude/settings.json` in the same change, so the permission prompt doesn't fire mid-skill. Project settings reach every contributor; personal overrides go in `.claude/settings.local.json`.
 - Changed a step's intent? Update the skill's row in [`README.md`](README.md).
-- Did an audit of the skill's runs drive the change? Append a dated section to that skill's `AUDIT-LOG.md`. Invoke `/log decision` only when the audit produced an architectural change: a new agent, a model change, a new helper script, a hook change, or a rule change in a `CLAUDE.md`.
+- Did an audit of the skill's runs drive the change? An audit's log is kept outside this repo. Invoke `/log decision` only when the audit produced an architectural change: a new agent, a model change, a new helper script, a hook change, or a rule change in a `CLAUDE.md`.
 - Touched a file listed in an architecture doc's `related-files:` frontmatter? The [Doc maintenance discipline](../../CLAUDE.md#doc-maintenance-discipline) in the root `CLAUDE.md` applies. The skills tree is not architecture-doc territory itself, but a skill change can touch a file that is (a validator `/docs-lint` runs, for example).
 
 ## When you retire a skill

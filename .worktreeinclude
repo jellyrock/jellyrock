@@ -1,0 +1,3 @@
+# Ignored files a new worktree needs, copied in when it is created (.gitignore syntax).
+/.env
+/bsconfig-tdd.json

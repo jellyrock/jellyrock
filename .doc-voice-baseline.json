@@ -61,10 +61,6 @@
   ".claude/skills/ci-triage/ci-triage-state.sh": {
     "em-dash": 1
   },
-  ".claude/skills/crash-backtrace/AUDIT-LOG.md": {
-    "em-dash": 14,
-    "filler": 1
-  },
   ".claude/skills/create-issue/SKILL.md": {
     "caps-emphasis": 1,
     "em-dash": 21,
@@ -78,9 +74,8 @@
   },
   ".claude/skills/end-session/SKILL.md": {
     "caps-emphasis": 1,
-    "em-dash": 34,
-    "filler": 1,
-    "prose-arrow": 1
+    "em-dash": 33,
+    "filler": 1
   },
   ".claude/skills/focus/SKILL.md": {
     "caps-emphasis": 3,
@@ -88,12 +83,6 @@
     "filler": 2,
     "latin-abbrev": 1,
     "prose-arrow": 9
-  },
-  ".claude/skills/issue-triage/AUDIT-LOG.md": {
-    "caps-emphasis": 1,
-    "em-dash": 7,
-    "filler": 1,
-    "prose-arrow": 3
   },
   ".claude/skills/issue-triage/SKILL.md": {
     "caps-emphasis": 1,
@@ -108,12 +97,6 @@
   },
   ".claude/skills/log/journal.sh": {
     "em-dash": 2
-  },
-  ".claude/skills/pr/AUDIT-LOG.md": {
-    "caps-emphasis": 3,
-    "em-dash": 25,
-    "filler": 2,
-    "prose-arrow": 14
   },
   ".claude/skills/pr/SKILL.md": {
     "caps-emphasis": 1,
@@ -139,11 +122,6 @@
   ".claude/skills/second-opinion/review-run.sh": {
     "em-dash": 3
   },
-  ".claude/skills/server-upgrade/AUDIT-LOG.md": {
-    "em-dash": 37,
-    "filler": 3,
-    "prose-arrow": 11
-  },
   ".claude/skills/snag/SKILL.md": {
     "caps-emphasis": 2,
     "em-dash": 8,
@@ -164,9 +142,6 @@
     "caps-emphasis": 2,
     "em-dash": 24,
     "filler": 4
-  },
-  ".claude/skills/start-project/projects-dir.sh": {
-    "em-dash": 2
   },
   ".claude/skills/start-project/scaffold-project.sh": {
     "caps-emphasis": 3,
@@ -371,7 +346,7 @@
   },
   "docs/progress.md": {
     "caps-emphasis": 38,
-    "em-dash": 437,
+    "em-dash": 433,
     "filler": 56,
     "latin-abbrev": 9,
     "prose-arrow": 35

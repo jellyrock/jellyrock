@@ -337,6 +337,7 @@
   "MessageMoreFrom1": "Več od {0}",
   "MessageRememberMe": "Zapomni si me?",
   "MessageSaveCredentials": "Shranite poverilnice?",
+  "MessageSearchNoResults": "Ni rezultatov.",
   "MessageServerNotFoundIsItOnline": "Strežnika ni mogoče najti, ali je prižgan?",
   "MessageSetHowManySecondsBeforeThe": "Nastavite, koliko sekund pred koncem epizode naj se prikaže gumb Naslednja epizoda. 0 = onemogočeno.",
   "MessageSetTheMaximumAmountOfDays": "Nastavite največje število dni, v katerih mora oddaja ostati na seznamu »Sledi«, ne da bi si jo ogledali.",

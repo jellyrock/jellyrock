@@ -40,13 +40,28 @@ namespace apiRead
     ' @param requestId - the pool request id, also the log's label
     ' @return the parsed body, or invalid
     function json(req as dynamic, requestId as string) as dynamic
-      m.sentCount++
-      cause = "not sent"
-      if isValid(req)
-        res = fetchRes(req, requestId)
-        cause = apiResponse.jsonFailure(res)
-        if cause = "" then return res.json
+      if not isValid(req) then return m.fail(requestId, "not sent")
+      return m.answered(fetchRes(req, requestId), requestId)
+    end function
+
+    ' The parsed body of a response another path already fetched (apiPipelineNext, which
+    ' hands back invalid for a read that never answered), counted as json() counts its own.
+    '
+    ' @param res - the pool response AA, or invalid when the read did not answer
+    ' @param requestId - the pool request id, also the log's label
+    ' @return the parsed body, or invalid
+    function answered(res as dynamic, requestId as string) as dynamic
+      cause = apiResponse.jsonFailure(res)
+      if cause = ""
+        m.sentCount++
+        return res.json
       end if
+      return m.fail(requestId, cause)
+    end function
+
+    ' Counts a read that did not answer, or could not be sent, and logs why.
+    private function fail(requestId as string, cause as string) as dynamic
+      m.sentCount++
       m.anyFailed = true
       m.failedCount++
       m.log.warn("read failed", m.label, requestId, "cause", cause)
