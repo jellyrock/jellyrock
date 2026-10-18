@@ -20,7 +20,8 @@ sub search()
 end sub
 
 ' Searches multiple Jellyfin endpoints for media matching the query.
-' Runs on SearchTask thread: each read blocks waiting for its ApiPool response.
+' Runs on SearchTask thread: the reads run side by side through apiPipeline, and this thread
+' blocks until each one answers or the pipeline's budget runs out.
 ' Every result echoes the query it ANSWERS. The caller gives each keystroke a new node and
 ' drops a delivery from any node it has since replaced (`SearchResults.loadResults`); the
 ' echo is what that drop logs, so a superseded delivery names the query it answered. Taken
@@ -46,19 +47,15 @@ function searchMedia(query as string)
   ' One per search, so one search's failed reads never count against the next.
   reader = new apiRead.Reader(m.log, "search")
 
-  ' Every read runs side by side on this one thread (apiPipeline), each with its own limit
-  ' (SEARCH_READ_LIMIT). The library is read in families rather than in one read: one read
-  ' shared by every type filled its limit of 100 with whatever the server listed first
-  ' (measured 2026-10-17 on 10.11 and 12.1: 99 episodes and 1 movie for "t", "th" and "the"),
-  ' so a short search lost whole rows.
-  ' A family can still crowd within itself, which is why episodes, the largest, read alone.
-  ' The request ids keep their `search` prefixes: the device specs fail and slow reads by them.
+  ' One read per library type (searchOutcome.LIBRARY_TYPES), each with its own limit, so no
+  ' type can crowd another's row out. The request ids keep their `searchItems` prefix: the
+  ' device specs fail and slow reads by it.
   entries = []
-  for each family in searchReadFamilies()
+  for each itemType in searchOutcome.LIBRARY_TYPES
     entries.push({
-      requestId: family.id, kind: "library", req: GetApi().BuildGetItemsByQueryRequest({
+      requestId: "searchItems" + itemType, library: true, req: GetApi().BuildGetItemsByQueryRequest({
         "searchTerm": query,
-        "IncludeItemTypes": family.types,
+        "IncludeItemTypes": itemType,
         ' ChildCount gives a collection or photo album tile its "N items" line, as in the
         ' details Collections row; a list query returns it for those only when asked.
         "Fields": "ChildCount",
@@ -70,14 +67,14 @@ function searchMedia(query as string)
   end for
   ' People and artists: /Items returns neither type, so each has its own endpoint.
   entries.push({
-    requestId: "searchPersons", kind: "other", req: GetApi().BuildGetPersonsRequest({
+    requestId: "searchPersons", library: false, req: GetApi().BuildGetPersonsRequest({
       "searchTerm": query,
       "Limit": SEARCH_READ_LIMIT,
       "EnableTotalRecordCount": false
     })
   })
   entries.push({
-    requestId: "searchArtists", kind: "other", req: GetApi().BuildGetArtistsRequest({
+    requestId: "searchArtists", library: false, req: GetApi().BuildGetArtistsRequest({
       "searchTerm": query,
       "Limit": SEARCH_READ_LIMIT,
       "EnableTotalRecordCount": false
@@ -91,7 +88,7 @@ function searchMedia(query as string)
   ' thread.
   if searchOutcome.canSearchLiveTv(m.global.user.policy)
     entries.push({
-      requestId: "searchPrograms", kind: "other", req: GetApi().BuildGetItemsByQueryRequest({
+      requestId: "searchPrograms", library: false, req: GetApi().BuildGetItemsByQueryRequest({
         "searchTerm": query,
         "IncludeItemTypes": "LiveTvProgram",
         "Recursive": true,
@@ -112,21 +109,21 @@ function searchMedia(query as string)
   end for
 
   pipe = apiPipelineBegin(sendable)
-  result = apiPipelineNext(pipe)
-  while isValid(result)
-    data = reader.answered(result.res, result.entry.requestId)
+  delivery = apiPipelineNext(pipe)
+  while isValid(delivery)
+    data = reader.answered(delivery.res, delivery.entry.requestId)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Live TV recordings come back from /Items as the content type (Movie/Episode).
         ' The only reliable discriminator is the container format: recordings are always
         ' stored as MPEG transport streams ("ts"), while library items never are.
-        if result.entry.kind = "library" and LCase(item.Container ?? "") = "ts"
+        if delivery.entry.library and LCase(item.Container ?? "") = "ts"
           item.Type = "Recording"
         end if
         allItems.push(transformer.transformBaseItem(item, serverVersion))
       end for
     end if
-    result = apiPipelineNext(pipe)
+    delivery = apiPipelineNext(pipe)
   end while
 
   result = {}
@@ -137,25 +134,8 @@ function searchMedia(query as string)
   return result
 end function
 
-' The most items one search read asks for. Rows have no cap of their own, so this is the most a
-' row from one read can show. The cost is per item, not per read: each one becomes a
-' JellyfinBaseItem on this thread, and creating that node and writing its fields is most of
-' the search's time. Measured 2026-10-17, query "a", median of 5 cold runs, before the server
-' version was read once: on a Stick 4K (12.1 server) 1239 ms at 50 and 2300 ms at 100; on a
-' 512 MB Streaming Stick (10.11 server) 1314 ms at 50 and 2004 ms at 100. At 50 with the version
-' read once, 1040 ms and 1140 ms (2026-10-18), against 1237 ms and 1381 ms for the single shared
-' read this replaced. A cheaper item node is what would let this rise. Do not change it
-' without measuring on device (npm run measure).
+' The most items one search read asks for, so the most one row can show. The cost is per
+' item, not per read: each one is parsed, handed to this thread and built into a
+' JellyfinBaseItem, and that is most of a broad search's time (followups lean-tile-node-cost
+' and search-row-paging). Measure on a device before changing it (npm run measure).
 const SEARCH_READ_LIMIT = 50
-
-' The library's item types, read in families (one /Items read each) so no type can crowd
-' another's row out of a shared limit. Episodes read alone: on a typical library they outnumber
-' everything else. Rows are grouped by type in SearchRow, so the family split is not visible.
-function searchReadFamilies() as object
-  return [
-    { id: "searchItemsVideo", types: "Movie,Series,BoxSet,Video" },
-    { id: "searchItemsEpisodes", types: "Episode" },
-    { id: "searchItemsMusic", types: "MusicAlbum,Audio,MusicVideo,Playlist" },
-    { id: "searchItemsOther", types: "PhotoAlbum,Photo,LiveTvChannel" }
-  ]
-end function

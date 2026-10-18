@@ -74,9 +74,8 @@
   },
   ".claude/skills/end-session/SKILL.md": {
     "caps-emphasis": 1,
-    "em-dash": 34,
-    "filler": 1,
-    "prose-arrow": 1
+    "em-dash": 33,
+    "filler": 1
   },
   ".claude/skills/focus/SKILL.md": {
     "caps-emphasis": 3,
@@ -143,9 +142,6 @@
     "caps-emphasis": 2,
     "em-dash": 24,
     "filler": 4
-  },
-  ".claude/skills/start-project/projects-dir.sh": {
-    "em-dash": 2
   },
   ".claude/skills/start-project/scaffold-project.sh": {
     "caps-emphasis": 3,
@@ -350,7 +346,7 @@
   },
   "docs/progress.md": {
     "caps-emphasis": 38,
-    "em-dash": 437,
+    "em-dash": 433,
     "filler": 56,
     "latin-abbrev": 9,
     "prose-arrow": 35
