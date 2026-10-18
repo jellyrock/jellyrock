@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (search) Show a row for every result type, up to 50 items each ([#1216](https://github.com/jellyrock/jellyrock/pull/1216))
 - (search) Find the Live TV programs that match a search ([#1214](https://github.com/jellyrock/jellyrock/pull/1214))
 - Treat the 512 MB Roku Express `3900X`, `3910X` and `3930X` as low memory ([#1215](https://github.com/jellyrock/jellyrock/pull/1215))
 
