@@ -7,6 +7,7 @@ import "pkg:/source/utils/misc.bs"
 '
 ' A spec writes rules to m.global.rtaFailRequests:
 '   { prefix: "itemQuery_usersItems", kind: "timeout" | "http" | "slow" | "empty", status: 500, ms: 20000, times: 1, after: 0 }
+' `ms` is how long a slow answer, or a timeout given one, keeps its slot busy.
 ' A rule matches a request whose requestId starts with `prefix`. `times` is how many
 ' matching requests it applies to; without it, every one. `after` is how many matching
 ' requests it lets through first, for a request id that repeats too quickly for a spec to set
@@ -14,7 +15,9 @@ import "pkg:/source/utils/misc.bs"
 '
 ' A failed request is answered with the response the pool itself delivers for that failure. A
 ' slow one is sent, and its real answer is held until `ms` after it was sent, with its slot kept
-' busy all that time: what a slow server costs the app, pool slot included. An empty one is
+' busy all that time: what a slow server costs the app, pool slot included. A timeout given an
+' `ms` is held the same way and then answered as a timeout: what a server that never answers
+' costs, a slot busy until roku-requests gives up (pass timeouts.HTTP_MS). An empty one is
 ' answered as a server with nothing to give answers: ok, with an empty list in the shape its
 ' request expects. Nothing marks any of them as injected: code that could tell them apart
 ' could handle a test differently from the real thing, which is what these specs exist to
@@ -57,9 +60,16 @@ namespace apiFaults
     return invalid
   end function
 
-  ' Whether `fault` delays a request rather than failing it.
+  ' Whether `fault` holds a request's slot before answering it, rather than answering at once.
   function isSlow(fault as object) as boolean
-    return fault.kind = "slow"
+    return fault.kind = "slow" or (fault.kind = "timeout" and fault.ms > 0)
+  end function
+
+  ' The answer a held request gets: its real `response`, or for a timeout held for `ms`, the
+  ' timeout. `fault` is invalid for a request no rule touched.
+  function dueAnswer(fault as dynamic, requestId as string, response as dynamic) as dynamic
+    if isValid(fault) and fault.kind = "timeout" then return apiFaults.responseFor(fault, requestId)
+    return response
   end function
 
   ' How long the coordinator may wait for its next event before a held answer is due: 0 (no
@@ -132,7 +142,13 @@ namespace apiFaults
     else if rule.kind = "slow"
       ms = wholeNumber(rule.ms)
       if ms < 1 then return invalid
-    else if rule.kind <> "timeout" and rule.kind <> "empty"
+    else if rule.kind = "timeout"
+      ' Optional: without it, the timeout is answered at once.
+      if rule.doesExist("ms")
+        ms = wholeNumber(rule.ms)
+        if ms < 1 then return invalid
+      end if
+    else if rule.kind <> "empty"
       return invalid
     end if
 

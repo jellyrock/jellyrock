@@ -93,6 +93,36 @@ it('a failed search says so, takes focus to Try again, and Try again runs it aga
   expect(await getActiveVal('#searchFailed.visible'), 'the failure state is gone').toBe(false);
 });
 
+// timeouts.HTTP_MS: how long roku-requests waits before it gives a request up.
+const HTTP_MS = 10000;
+// A search's reads share one budget (timeouts.PIPELINE_RUN_MS, 20 s), so on a dead server the
+// failure shows once it runs out, plus the time to hand back and draw. The headroom is for a
+// slower device; reads waiting their turn one after another would take several HTTP_MS.
+const DEAD_SERVER_LIMIT_MS = 25000;
+
+it('a search on a server that never answers shows the failure in time', async () => {
+  await freshSearch();
+  // Every search read, hints included, holds its pool slot until the HTTP layer gives up,
+  // then answers as a timeout: a server that accepts the connection and never replies.
+  await failRequests([{ prefix: 'search', kind: 'timeout', ms: HTTP_MS }]);
+  await ecp.sendText(RTA_CONFIG.searchQuery);
+  const submittedAt = Date.now();
+  await submitSearchFromKeyboard({
+    arrived: (f) => atRetry(f) || f?.node?.id === 'searchSelect',
+    label: 'the submit left the keyboard',
+  });
+  await waitFor('#searchFailed.visible', (v) => v === true, {
+    read: getActiveVal,
+    timeout: DEAD_SERVER_LIMIT_MS,
+    interval: 250,
+    label: 'the failed search state on a server that never answers',
+  });
+  const elapsedMs = Date.now() - submittedAt;
+  console.log(`[dead-server] failure shown ${elapsedMs} ms after the submit`);
+  expect(await getActiveVal('#searchFailedText.text'), 'the failure message').toBe(SEARCH_FAILED);
+  expect(elapsedMs, 'the failure within its limit').toBeLessThan(DEAD_SERVER_LIMIT_MS);
+});
+
 it('a search with one failed read shows what answered and says some is missing', async () => {
   await freshSearch();
   await failRequests([{ prefix: 'searchPersons', kind: 'http', status: 500 }]);
