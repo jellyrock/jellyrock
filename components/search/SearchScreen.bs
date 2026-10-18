@@ -33,8 +33,8 @@ import "pkg:/source/utils/translate.bs"
 '   - Expanded state: SearchOverlay slides down from above the viewport; custom
 '     search keyboard gains focus. Typing routes through keyGrid.text,
 '     then m.top.query, then the hints debounce pipeline.
-'   - Submit (Go key / suggestion tap / voice): full SearchTask runs against
-'     /Items + /Persons + /Artists + /LiveTv/Programs; overlay slides up; results
+'   - Submit (Down off the keyboard's bottom row or past the last suggestion, a
+'     suggestion pick, voice): the full SearchTask runs; overlay slides up; results
 '     populate; focus lands on SearchRow row 0.
 '
 ' Voice: a screen-level hidden VoiceTextEditBox owns Roku's single voice slot
@@ -69,10 +69,8 @@ sub init()
   ' column, with the search pill above the keyboard.
   m.top.overhangTitle = translate(translationKeys.ButtonSearch)
 
-  ' Show the app-wide overhang, but configure it to clock-only in
-  ' OnScreenShown. This respects the user's uiDesignHideClock setting and
-  ' keeps a single overhang chrome path across screens instead of a
-  ' SearchScreen-only bypass.
+  ' Show the app-wide overhang, so this screen uses the same chrome path as every other
+  ' rather than a bypass of its own. What it shows is declared below.
   m.top.isOverhangVisible = true
 
   ' Chrome intent is DECLARED on this node; JRScene's overhang controller projects it
@@ -209,7 +207,7 @@ sub init()
   ' ItemDetails use. Without it, Play on a result sets a field nobody reads.
   m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
 
-  ' Voice: screen owns the voiceEnabled slot. initialise once, release in destroy.
+  ' Voice: screen owns the voiceEnabled slot. Initialize once, release in onDestroy.
   initVoiceBox()
 
   ' Peek chip starts collapsed and empty (no placeholder text: icon alone).
@@ -637,7 +635,7 @@ sub onQueryChanged()
   if trimmed = ""
     ' No input: stop any in-flight full search, wipe the existing results from
     ' the SearchRow, and show the recent-searches list. Without the results-wipe,
-    ' the trashcan key (or repeated backspace) leaves stale results visible below
+    ' the Clear key (or repeated backspace) leaves stale results visible below
     ' the overlay even though there's no query: they can't be re-focused (the
     ' overlay is open) and the user has no way to clear them short of leaving.
     '
@@ -920,8 +918,8 @@ sub runFullSearch(query as string, isSubmitted = false as boolean)
   launchTask(m.searchTask)
 end sub
 
-' User-initiated submit: Go key, suggestion tap, voice, or DOWN from the
-' keyboard bottom row. Pushes the term to recent history, kicks off the task
+' User-initiated submit: a suggestion pick, voice, Try again, or DOWN off the keyboard's
+' bottom row or past the last suggestion. Pushes the term to recent history, kicks off the task
 ' (only if we don't already have results for this exact query), and collapses
 ' the overlay so the user can browse results.
 sub submitSearch(query as string)
@@ -941,7 +939,7 @@ sub submitSearch(query as string)
   ' that rebuild is what the user perceives as a "reload flash" (new Poster
   ' nodes have to re-associate with their textures even when URLs match).
   ' Common case: live-typing debounce already fetched these exact results,
-  ' user presses Go / picks a matching suggestion to confirm.
+  ' user presses Down / picks a matching suggestion to confirm.
   if isValid(m.searchSelect.query) and m.searchSelect.query = query and hasResults()
     m.log.verbose("submit: skipping re-run — results already match query")
     ' The live search that found these reported nothing, so a partial answer says so now.

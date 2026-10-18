@@ -18,9 +18,9 @@
            The peek chip (outside this overlay, at SearchScreen level) is
            pinned directly above the keyboard at the same width: search
            bar + keyboard form a single visual column on the right.
-           Default focus lands on Q (top-left of the keyboard); pressing
-           LEFT from any left-edge key (Q, A, Z, 3) escapes into the
-           suggestion list in a single press. The keyboard starts at y=56 so its
+           Focus opens on A (the keyboard's top row starts with Space); LEFT
+           from any left-edge key (Space, H, R, 1) reaches the suggestion
+           list in a single press, as does RIGHT from any right-edge key. The keyboard starts at y=56 so its
            top row lines up with the first suggestion row, and ends with the
            Clear History button at y=400 (see searchLayout.OVERLAY_HEIGHT). -->
       <SearchSuggestionList id="suggestions" translation="[96, 0]" />

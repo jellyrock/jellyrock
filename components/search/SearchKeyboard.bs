@@ -54,7 +54,7 @@ end sub
 
 ' keySelected: called by DynamicCustomKeyboard for every key press.
 ' Returns true if the key was handled internally (preventing its strOut from
-' being appended to the text field), false to let the default behaviour run.
+' being appended to the text field), false to let the default behavior run.
 function keySelected(key as string) as boolean
   if key = "clear"
     m.top.clearRequested = true

@@ -16,7 +16,7 @@ namespace searchLayout
   ' Two-column layout inside the overlay slideGroup:
   '   Suggestions on the LEFT (left edge x=96 = 5% left safe edge: matches
   '     result row items so the single LEFT-press escape from any left-edge
-  '     keyboard key (Q/A/Z/3) reaches it).
+  '     keyboard key (Space/H/R/1) reaches it).
   '   Keyboard on the RIGHT (right edge x=1824 = 5% right safe edge).
   ' Both columns frame to the safe area, leaving a 44px gap between: suggestions x=96, 684
   ' wide; keyboard x=824. Positions set in SearchOverlay.xml.

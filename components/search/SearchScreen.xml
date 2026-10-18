@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="SearchScreen" extends="JRScreen">
   <children>
-    <!-- Hidden VoiceTextEditBox: screen-level voice capture. Same pattern as
-         Home (components/home/Home.xml:4). voiceEnabled + active are set once
-         in init() and released in destroy() to yield the firmware's single
-         voice slot on teardown. The keyboard's internal voice box is disabled
-         so we're the only claimant. -->
+    <!-- Hidden VoiceTextEditBox: screen-level voice capture, the same pattern as
+         Home's homeVoiceBox. voiceEnabled is set once in init() and released in
+         onDestroy() to yield the firmware's single voice slot on teardown; active
+         follows whether the screen is shown. The keyboard's internal voice box is
+         disabled so we're the only claimant. -->
     <VoiceTextEditBox id="searchVoiceBox" visible="true" width="40" translation="[0, 0]" />
 
     <!-- Results list: full-width RowList. Repositioned from the old side-by-side
@@ -47,8 +47,8 @@
          and expanded states: sits directly above the keyboard at the same
          width and x position. y=54 = 5% top safe-area edge, x=824 aligns
          with the keyboard's left edge below (keyboard right edge at x=1824
-         = 5% right safe edge). Coexists with the clock at the far-right of
-         the overhang area. -->
+         = 5% right safe edge). It covers the clock's corner, so this screen
+         hides the clock (isClockVisible, set in init). -->
     <SearchPeekChip id="peekChip" translation="[824, 54]" />
 
     <!-- Results slide animation: runs in sync with the overlay. When
@@ -63,7 +63,7 @@
         fieldToInterp="searchSelect.translation" />
     </Animation>
 
-    <!-- Existing options side panel: unchanged behaviour. -->
+    <!-- Existing options side panel: unchanged behavior. -->
     <OptionsSlider id="options" />
   </children>
   <interface>

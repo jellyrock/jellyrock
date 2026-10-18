@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="SearchKeyboard" extends="DynamicCustomKeyboard">
   <interface>
-    <!-- Caller invokes this from its own onKeyEvent to handle special keys that
-         emit strOut tokens (submit, clear): DynamicCustomKeyboard calls it for
-         every key press, and the keyboard returns true to consume tokens it
-         handled internally. -->
+    <!-- DynamicCustomKeyboard calls this for every key press, so special keys that
+         emit strOut tokens (clear) are handled here: it returns true to consume a
+         token it handled. -->
     <function name="keySelected" />
 
     <!-- Raised true when the user activates the Clear key. Observer should

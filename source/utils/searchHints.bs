@@ -69,7 +69,7 @@ namespace searchHints
       if not isValid(name) or name = "" then continue for
 
       ' Unknown types yield an empty label and the name stands alone. Passing the
-      ' raw Jellyfin type string through (the previous behaviour) put an
+      ' raw Jellyfin type string through (the previous behavior) put an
       ' untranslated API enum in front of the user in every locale.
       text = name
       ' The name that places the item (its series, its artist) says more than its category,
