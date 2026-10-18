@@ -108,6 +108,47 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("remove(term)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes the term and keeps the others in order")
+    function _()
+      searchHistory.push("first")
+      searchHistory.push("second")
+      searchHistory.push("third")
+      searchHistory.remove("second")
+      list = searchHistory.load()
+
+      m.assertEqual(list.count(), 2)
+      m.assertEqual(list[0], "third")
+      m.assertEqual(list[1], "first")
+    end function
+
+    @it("matches the term whatever its case and surrounding spaces, as push does")
+    function _()
+      searchHistory.push("Star Wars")
+      searchHistory.push("batman")
+      searchHistory.remove("  STAR WARS ")
+      list = searchHistory.load()
+
+      m.assertEqual(list.count(), 1)
+      m.assertEqual(list[0], "batman")
+    end function
+
+    @it("leaves the list as it was for a term it does not hold, or an empty one")
+    function _()
+      searchHistory.push("first")
+      searchHistory.push("second")
+      searchHistory.remove("missing")
+      searchHistory.remove("   ")
+      list = searchHistory.load()
+
+      m.assertEqual(list.count(), 2)
+      m.assertEqual(list[0], "second")
+      m.assertEqual(list[1], "first")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("clear()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
