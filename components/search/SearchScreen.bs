@@ -91,6 +91,8 @@ sub init()
   m.overlay = m.top.findNode("overlay")
   m.searchHelpText = m.top.findNode("SearchHelpText")
   m.voiceBox = m.top.findNode("searchVoiceBox")
+  ' A spoken query held until dictation ends (onVoiceText).
+  m.pendingVoiceText = ""
   m.resultsSlideAnim = m.top.findNode("resultsSlideAnim")
   m.resultsSlideInterp = m.top.findNode("resultsSlideInterp")
 
@@ -324,6 +326,7 @@ sub onDestroy()
   ' reclaim it. Same release the screen this replaced performed on its own keyboard.
   if isValid(m.voiceBox)
     m.voiceBox.unobserveField("text")
+    m.voiceBox.unobserveField("isDictating")
     m.voiceBox.voiceEnabled = false
     m.voiceBox.active = false
   end if
@@ -408,14 +411,33 @@ sub initVoiceBox()
   m.voiceBox.voiceEnabled = true
   m.voiceBox.active = true
   m.voiceBox.observeField("text", "onVoiceText")
+  m.voiceBox.observeField("isDictating", "onVoiceDictatingChanged")
 end sub
 
-' onVoiceText: voice input captured. Populate query and immediately submit.
+' onVoiceText: voice input captured. The firmware writes one spoken query more than once
+' while the viewer is still dictating (measured 2026-10-18 on a Streaming Stick 4K: two writes
+' per word, each a submit), so a write during dictation is held and submitted once when
+' dictation ends (onVoiceDictatingChanged). A write outside dictation submits at once.
 sub onVoiceText()
   voiceText = m.voiceBox.text
   if voiceText = "" then return
-  m.voiceBox.text = "" ' reset for next voice search
+  if m.voiceBox.isDictating = true
+    m.pendingVoiceText = voiceText
+    return
+  end if
+  submitVoiceText(voiceText)
+end sub
 
+sub onVoiceDictatingChanged()
+  if m.voiceBox.isDictating = true then return
+  if m.pendingVoiceText = "" then return
+  voiceText = m.pendingVoiceText
+  submitVoiceText(voiceText)
+end sub
+
+sub submitVoiceText(voiceText as string)
+  m.pendingVoiceText = ""
+  m.voiceBox.text = "" ' reset for next voice search
   m.log.info("voice input: " + voiceText)
   applyQueryAndSubmit(voiceText)
 end sub
