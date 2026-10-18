@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-17
+last-updated: 2026-10-18
 ---
 
 # Progress
@@ -533,7 +533,7 @@ Each goes away when its call site moves onto a named wait, so fix it then, not s
 
 #### Per-item `transformBaseItem` without a server version still crosses to the render thread per item outside the grid (from the grid page-cost fix). `[fid: transform-base-item-per-item-crossing]` `[captured 2026-09-25]`
 
-Without a version, `transformBaseItem` reads `m.global.server.version` itself — two rendezvous per item. Once `LoadItemsTask2` passed the version it had already read, building a grid page on the 512 MB Stick went from 1.5–3.3 s to 0.22–0.32 s while scrolling (measured 2026-09-25, [`threading.md`](architecture/threading.md#measured-findings)). The same loop shape remains in Home `LoadItemsTask`, `SearchTask` and `source/api/items.bs`. **Fix:** read the version once and pass it (or use `transformBaseItemArray` where no per-item fix-up follows), measured before and after. **Then gate it:** a BSC rule flagging `transformBaseItem` inside a loop with no version argument, the sites not yet converted on a pending list like `no-same-node-relaunch`'s `PENDING_MIGRATIONS`. This is the third instance of the class (`LoadScheduleTask` and `LoadChannelsTask` in the TV guide, #991, then the grid), so a gate beats review.
+Without a version, `transformBaseItem` reads `m.global.server.version` itself — two rendezvous per item. Once `LoadItemsTask2` passed the version it had already read, building a grid page on the 512 MB Stick went from 1.5–3.3 s to 0.22–0.32 s while scrolling (measured 2026-09-25, [`threading.md`](architecture/threading.md#measured-findings)). The same loop shape remains in Home `LoadItemsTask` and `source/api/items.bs`. `SearchTask` was fixed in #1216: search settled in 1040 ms instead of 1239 ms on a Stick 4K and in 1140 ms instead of 1314 ms on a 512 MB Stick (50 per read, query "a", median of 5 cold runs, measured 2026-10-18). **Fix:** read the version once and pass it (or use `transformBaseItemArray` where no per-item fix-up follows), measured before and after. **Then gate it:** a BSC rule flagging `transformBaseItem` inside a loop with no version argument, the sites not yet converted on a pending list like `no-same-node-relaunch`'s `PENDING_MIGRATIONS`. This is the third instance of the class (`LoadScheduleTask` and `LoadChannelsTask` in the TV guide, #991, then the grid), so a gate beats review.
 
 #### Refresh on a details screen makes an in-flight Task print `Rendezvous aborted` — which Task, and does it matter? (from #1047). `[fid: details-refresh-rendezvous-aborted]` `[captured 2026-09-26]`
 
@@ -798,6 +798,14 @@ Not reproduced: it needs a device spec with a focus chain deeper than its root's
 Options: `walk` (recommended): descend while `child.focusedChild` is valid and not `child` itself, with a fixed safety cap, and add a spec with a deep chain under a one-child root (`misc.bs` plus one spec; low risk, the cap and the self-check end the loop whatever the leaf returns). `bound`: test `child.focusedChild` but bound the loop by a constant (a guess to keep). `note`: document the limit only (the flaw stays).
 
 Why not now: the fix needs a device test run, and the batch that found it changed only comments. Closes when `lastFocusedChild()` walks the real focus chain and a spec pins it on a device.
+
+#### A tile's `JellyfinBaseItem` costs about 1.5 ms to build on a Task, so large rows are slow and search caps each read at 50 `[fid: lean-tile-node-cost]` `[captured 2026-10-17]`
+
+Every tile in the app is a `JellyfinBaseItem` (167 interface fields) built on a Task by `JellyfinDataTransformer.transformBaseItem()`, and building one is the dominant cost of a large row. Measured 2026-10-17 on a Stick 4K (Jellyfin 12.1, search for "a", 100 items per read, 698 items, temporary timers in a throwaway build): network for the seven pipelined search reads about 240 ms, converting the items about 1650 ms, the handoff to the render thread about 250 ms, `SearchRow`'s row build about 80 ms more than at 50 per read. Reading the server version once instead of per item (`transform-base-item-per-item-crossing`) brought conversion to about 1290 ms, so about 1.85 ms per item remains. A 200-node benchmark on the Task thread: creating an empty `JellyfinBaseItem` about 0.7 ms, writing its 81 fields one by one about 0.8 ms more, one `setFields()` call instead saved about 10%, a plain `ContentNode` about 0.03 ms. So the cost is the node, not the writes' batching.
+
+Because of it, search caps each read at `SEARCH_READ_LIMIT` = 50 (#1216: 100 cost about +1 s per broad search on the Stick 4K and about +0.6 s on a 512 MB Stick), and Home rows default to 32 (`HOME_ROW_LIMIT_DEFAULT`). The TV guide followup on program-cell memory names the same node from the memory side.
+
+Not now: it changes the item every tile renderer (`BrowseRowItem` and the other row and grid cells) reads, and the path that opens an item, so it needs a design and its own measurements. Direction to evaluate: the Task sends plain associative arrays (about 0.2 to 0.4 ms each in the same benchmark, and cheap to marshal), the render thread builds a light tile node with only the fields cells read, and the full item is loaded when a tile is opened. Closes when a tile costs a small fraction of today's, measured on a Stick 4K and a 512 MB Stick, and search's limit is raised on that evidence.
 
 ### api
 

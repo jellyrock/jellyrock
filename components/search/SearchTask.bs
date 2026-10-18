@@ -39,6 +39,9 @@ function searchMedia(query as string)
   if query = "" then return { Items: [], TotalRecordCount: 0, query: query, status: searchOutcome.STATUS_OK }
 
   transformer = JellyfinDataTransformer()
+  ' Read once and handed to every transformBaseItem call: without it the transformer reads
+  ' m.global.server.version itself, two crossings to the render thread per item.
+  serverVersion = m.global.server.version
   allItems = []
   ' One per search, so one search's failed reads never count against the next.
   reader = new apiRead.Reader(m.log, "search")
@@ -120,7 +123,7 @@ function searchMedia(query as string)
         if result.entry.kind = "library" and LCase(item.Container ?? "") = "ts"
           item.Type = "Recording"
         end if
-        allItems.push(transformer.transformBaseItem(item))
+        allItems.push(transformer.transformBaseItem(item, serverVersion))
       end for
     end if
     result = apiPipelineNext(pipe)
@@ -137,10 +140,11 @@ end function
 ' The most items one search read asks for. Rows have no cap of their own, so this is the most a
 ' row from one read can show. The cost is per item, not per read: each one becomes a
 ' JellyfinBaseItem on this thread, and creating that node and writing its fields is most of
-' the search's time. Measured 2026-10-17, query "a", median of 5 cold runs: on a Stick 4K
-' (12.1 server) 1237 ms before this split, 1239 ms at 50 and 2300 ms at 100; on a 512 MB
-' Streaming Stick (10.11 server) 1381 ms before, 1314 ms at 50 and 2004 ms at 100. So 50 keeps
-' today's speed on both. A cheaper item node is what would let this rise. Do not change it
+' the search's time. Measured 2026-10-17, query "a", median of 5 cold runs, before the server
+' version was read once: on a Stick 4K (12.1 server) 1239 ms at 50 and 2300 ms at 100; on a
+' 512 MB Streaming Stick (10.11 server) 1314 ms at 50 and 2004 ms at 100. At 50 with the version
+' read once, 1040 ms and 1140 ms (2026-10-18), against 1237 ms and 1381 ms for the single shared
+' read this replaced. A cheaper item node is what would let this rise. Do not change it
 ' without measuring on device (npm run measure).
 const SEARCH_READ_LIMIT = 50
 
