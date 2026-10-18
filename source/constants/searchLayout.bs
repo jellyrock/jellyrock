@@ -56,6 +56,15 @@ namespace searchLayout
   const OVERLAY_HEIGHT = 400
   const OVERLAY_WIDTH = 1920
 
+  ' Empty-state help text, and the failure state that takes its place. 1394 wide, so x=263
+  ' centers it on the 1920 screen. Collapsed it sits mid-screen; expanded, midway between
+  ' the overlay's bottom edge and the 5% bottom safe edge (1080 x 0.95 = 1026). The failure
+  ' state moves by the same distance. Its starting position is in SearchScreen.xml.
+  const HELP_TEXT_X = 263
+  const HELP_TEXT_Y = 540
+  const SAFE_AREA_BOTTOM_Y = 1026
+  const HELP_TEXT_Y_EXPANDED = (OVERLAY_OPEN_Y + OVERLAY_HEIGHT + SAFE_AREA_BOTTOM_Y) \ 2
+
   ' Typeahead debounce: a burst filter, and only that. Its one job is to avoid
   ' firing between keystrokes while fingers are still moving; 120ms is below the
   ' threshold where a suggestion list feels laggy and above a fast typist's

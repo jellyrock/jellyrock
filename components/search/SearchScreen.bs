@@ -525,18 +525,13 @@ sub onExpansionChanged()
   ' states. The overlay's solid background already hides anything behind it
   ' so there's no double-bar bleed-through to worry about.
 
-  ' Empty-state help label:
-  '   Expanded: vertically centered between the keyboard bottom and the 5%
-  '   bottom safe-area edge. Keyboard bottom = overlay bottom =
-  '   OVERLAY_OPEN_Y + OVERLAY_HEIGHT = 130 + 400 = 530.
-  '   5% bottom safe edge = 1080 × 0.95 = 1026. Midpoint = 778.
-  '   Collapsed: mid-screen (y=540), out of the way of the peek chip and
-  '   the eventual results row at RESULTS_Y=140.
+  ' Empty-state help label: below the overlay while it is open, mid-screen while it is
+  ' closed (searchLayout.HELP_TEXT_Y_EXPANDED and HELP_TEXT_Y).
   '   Hidden when results are present, while a search is in flight (the spinner sits
   '   over this spot), or while the failure state takes its place.
   '   The failure state moves with it: its group offset is the help label's travel.
   if expanded
-    m.searchFailed.translation = [0, 778 - 540]
+    m.searchFailed.translation = [0, searchLayout.HELP_TEXT_Y_EXPANDED - searchLayout.HELP_TEXT_Y]
   else
     m.searchFailed.translation = [0, 0]
   end if
@@ -544,10 +539,10 @@ sub onExpansionChanged()
   if haveResults or m.searchFailed.visible or m.isAwaitingResults
     m.searchHelpText.visible = false
   else if expanded
-    m.searchHelpText.translation = [263, 778]
+    m.searchHelpText.translation = [searchLayout.HELP_TEXT_X, searchLayout.HELP_TEXT_Y_EXPANDED]
     m.searchHelpText.visible = true
   else
-    m.searchHelpText.translation = [263, 540]
+    m.searchHelpText.translation = [searchLayout.HELP_TEXT_X, searchLayout.HELP_TEXT_Y]
     m.searchHelpText.visible = true
   end if
 
