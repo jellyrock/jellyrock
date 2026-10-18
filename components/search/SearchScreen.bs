@@ -1022,7 +1022,9 @@ sub onFullSearchResults(event as object)
   screenLoad.pending("rows")
 
   m.searchSelect.itemdata = results
-  m.searchSelect.query = m.top.query
+  ' The query these rows ANSWER, which submitSearch's skip compares against: what is typed
+  ' now can already be a keystroke ahead, since a new search starts only once typing pauses.
+  m.searchSelect.query = results.query
 
   ' PAINT: results handed over, rows built, spinner down.
   screenLoad.paint("query")
