@@ -160,6 +160,9 @@
         "clear": true,
       },
     },
+    // Its own terminal and no `close`: VS Code keeps a closing task terminal open after
+    // a nonzero exit yet reuses it, and the next run never starts (1.142.0,
+    // `TerminalInstance.dispose()`). Same for `release`, which can exit 1 too.
     {
       "label": "device-lock: confirm",
       "type": "process",
@@ -174,9 +177,8 @@
         "echo": false,
         "reveal": "silent",
         "focus": false,
-        "panel": "shared",
+        "panel": "dedicated",
         "showReuseMessage": false,
-        "close": true,
       },
     },
     {
@@ -189,9 +191,8 @@
         "echo": false,
         "reveal": "silent",
         "focus": false,
-        "panel": "shared",
+        "panel": "dedicated",
         "showReuseMessage": false,
-        "close": true,
       },
     },
     // Lock, confirm, then build: a busy device is refused before the build runs.
