@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-18
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -495,7 +495,7 @@ For an account with a password, set `MEASURE_SIGNIN_PASSWORD` in `.env` rather t
 
 ## The device lock
 
-[`scripts/device-lock.js`](../../scripts/device-lock.js) keeps two runs off one device: `test:rta`, `test:unit`, `demo` and `screenshots:capture` can each take the same device from different terminals, and the Rooibos path has no snapshot to fall back on. CI has its own device, so the contention is between local runs; the lock keys on the device's identity, so it also covers a local run pointed at the CI device. Which device is which is in the header of `device-lock.js`.
+[`scripts/device-lock.js`](../../scripts/device-lock.js) keeps two runs off one device: `test:rta`, `test:unit`, `demo`, `screenshots:capture`, `package:signed` and a VS Code `F5` session can each take the same device, and the Rooibos path has no snapshot to fall back on. CI has its own device, so the contention is between local runs; the lock keys on the device's identity, so it also covers a local run pointed at the CI device. Which device is which is in the header of `device-lock.js`.
 
 - **The lock is a git ref,** `refs/device-lock/<key>` in this repo. Creating a ref that exists fails with 422, which makes it a true compare-and-swap with no service to run. A tag object the ref points at holds the holder and the lease clock.
 - **The key is a hash of the device's identity,** `sha256(device-id)` cut to 16 hex characters. Ref names are public on a public repo, and a `device-id` partly encodes the serial. An address would be worse: a new DHCP lease would give each side a different key, and both would run. A run that can't identify the device over ECP says so instead of guessing.
@@ -504,6 +504,7 @@ For an account with a password, set `MEASURE_SIGNIN_PASSWORD` in `.env` rather t
 - **Reads can be stale; the create is not.** A 422 followed by a read saying "free" means the read is wrong. Never decide the device is free from a read.
 - **The holder record names the run, not you:** `what`, a `pid`, and `local` or `ci`. No hostname, since the tag object is public while held.
 - **A crashed holder's lease expires after 15 minutes.** Live holders renew every 5 minutes, so a long `screenshots:capture` never expires. `npm run device:status` names the holder, and `npm run device:release` drops a stuck lock.
+- **An `F5` session holds the lock until it ends.** `F5` deploys through the BrightScript extension, so `.vscode/tasks.json` runs `node scripts/device-lock.js hold`, then `confirm-hold`, before the build, and `release-hold` when the debug session ends. It locks the Roku in `brightscript.debug.host`, not `ROKU_IP`, because that is where `F5` deploys. `confirm-hold` is what stops `F5`: VS Code counts a background task as succeeded once its output reaches the task's end pattern, refusal included, so only a plain task's exit code stops the chain. The refusal's reason still shows in **Problems**.
 - **`rta-restore.js` takes no lock,** since it is the repair for an abandoned run, which may have left one behind.
 
 When GitHub is unreachable or you aren't signed in, a run warns and proceeds without the lock, and records `locked: false` in `run-meta.json` and in its `runs.jsonl` line. Set `RTA_REQUIRE_LOCK=1` to make that a failure, or `RTA_SKIP_LOCK=1` to bypass the lock on purpose. CI doesn't set `RTA_REQUIRE_LOCK`: it is alone on its device, so the flag would only turn a GitHub outage into a red run.

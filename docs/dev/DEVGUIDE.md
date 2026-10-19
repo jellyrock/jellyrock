@@ -4,7 +4,7 @@ related-files:
   - package.json
   - Makefile
   - .vscode/settings.json
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-18
 ---
 
 # Dev guide
@@ -50,6 +50,8 @@ We recommend Visual Studio Code for this project. Its [BrightScript Language ext
 
 Visual Studio Code builds the app, installs it on your Roku and starts it.
 
+`F5` first takes the device lock, so a test run in a terminal can't install over your session, and yours can't install over a run already going. If another run holds the Roku, `F5` stops before the build and **Problems** names the run: wait for it, or use another Roku. Visual Studio Code may first ask whether to debug anyway; choose **Abort** or **Show Errors**, since **Debug Anyway** installs over the other run. The lock is released when you stop the session. Taking it needs a `gh` login and your Roku's address saved in your settings (next section); without either, `F5` runs without the lock and says so in its terminal.
+
 ### Save your Roku's address and password
 
 By default the extension asks for the Roku and its password on every run. To skip that, set them in your Visual Studio Code user settings:
@@ -63,7 +65,7 @@ By default the extension asks for the Roku and its password on every run. To ski
 
 ![The two settings in a user settings file](https://user-images.githubusercontent.com/2544493/170485209-0dbe6787-8026-47e7-9095-1df96cda8a0a.png)
 
-Put them in your user settings, not in `.vscode/launch.json`, so your password stays out of the repository.
+Put them in your user settings, not in `.vscode/launch.json`, so your password stays out of the repository. The saved address is also the Roku `F5` locks.
 
 ## Method 2: Command line
 

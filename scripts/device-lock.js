@@ -4,6 +4,9 @@
  *   import { acquireDeviceLock } from './device-lock.js'   // library
  *   node scripts/device-lock.js status                     // who holds it?
  *   node scripts/device-lock.js release                    // recovery escape hatch
+ *   node scripts/device-lock.js hold --host=<ip>           // hold for a VS Code F5 session
+ *   node scripts/device-lock.js confirm-hold --host=<ip>   // exit 1 unless a hold covers it
+ *   node scripts/device-lock.js release-hold               // end this checkout's holds
  *
  * ## What this protects
  *
@@ -737,6 +740,152 @@ export function writeRunMeta(meta, extra = {}, dir) {
   }
 }
 
+// ── F5 debug sessions ────────────────────────────────────────────────────────
+//
+// VS Code's F5 deploys through the BrightScript extension, not through an npm script,
+// so no tool of ours runs for the length of the session to hold the lock. `hold` is
+// that process: a background `preLaunchTask` starts it, and the `postDebugTask` stops
+// it with `release-hold` (see `.vscode/tasks.json`). VS Code runs the postDebugTask
+// whenever the debug adapter ends: on Stop, when the app exits, and when the adapter
+// crashes.
+//
+// VS Code does not see a background task's exit code: it waits for the task's
+// problem matcher to go idle, and in a `dependsOn` chain it then counts the step as
+// exit code 0, refusal included (1.142.0, `_createInactiveDependencyPromise`). A
+// chain that exits 0 starts the debugger without reading Problems
+// (`runTaskAndCheckErrors`), so a Problems entry alone let F5 deploy over a busy
+// device. What stops F5 is `confirm-hold`, a plain task between `hold` and the build:
+// it exits 1 unless a live hold of this checkout covers the device.
+//
+// `hold` still prints a ready line in every mode, degraded included, since the
+// matcher's end pattern is what VS Code waits on before the next step; and the
+// refusal is still ONE `<file>: error: <message>` line, which puts the reason in
+// Problems.
+
+/**
+ * Take the lock for a debug session and record the holder for `releaseHolds`.
+ *
+ * Throws, like `acquireDeviceLock`, when the device is busy. An empty host runs
+ * degraded, with no network call: F5 deploys to `brightscript.debug.host`, and a
+ * contributor who leaves it unset types the address at F5's prompt instead, so
+ * there is no device to lock. Refusing would stop F5 for that documented setup;
+ * `RTA_REQUIRE_LOCK=1` still makes it a refusal, as everywhere else.
+ */
+export async function holdDeviceLock({ deviceHost, what, dir = '.device-runs' }) {
+  const lock = deviceHost
+    ? await acquireDeviceLock({ what, deviceHost })
+    : degraded(
+        'no device to lock: set `brightscript.debug.host` in your VS Code user settings so F5 can take it',
+        process.env.RTA_REQUIRE_LOCK === '1',
+        what,
+      );
+  const file = path.join(dir, `hold-${process.pid}.json`);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      file,
+      `${JSON.stringify({ pid: process.pid, host: deviceHost || null, what, startedAt: new Date().toISOString() })}\n`,
+    );
+  } catch (e) {
+    await lock.release();
+    throw e;
+  }
+  return {
+    lock,
+    readyLine: `[device-lock] ready: ${lock.mode} on ${deviceHost || 'no device'} for ${what}`,
+    release: async () => {
+      await lock.release();
+      fs.rmSync(file, { force: true });
+    },
+  };
+}
+
+/** The refusal as the single line `.vscode/tasks.json`'s problem matcher reads. */
+export function refusalLine(err) {
+  const first = String(err?.message ?? err)
+    .split('\n')[0]
+    .trim();
+  return `.vscode/launch.json: error: ${first}`;
+}
+
+/**
+ * Stop every `hold` process this checkout started, and wait for each to release.
+ *
+ * A holder that is already gone (killed, or its window closed) has its record
+ * removed without a signal. Its GitHub ref, if any, still waits out the lease:
+ * this checkout cannot prove the ref is that holder's to delete.
+ */
+export async function releaseHolds({ dir = '.device-runs', timeoutMs = 10_000 } = {}) {
+  let files;
+  try {
+    files = fs.readdirSync(dir).filter((f) => /^hold-\d+\.json$/.test(f));
+  } catch {
+    return []; // no `.device-runs/` yet: nothing was ever held here
+  }
+  const results = [];
+  for (const name of files) {
+    const file = path.join(dir, name);
+    let record = {};
+    try {
+      record = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      // A truncated record still names its pid in the filename.
+    }
+    const pid = Number.isInteger(record.pid) ? record.pid : Number(/\d+/.exec(name)[0]);
+    const what = record.what ?? null;
+    if (!isProcessAlive(pid)) {
+      fs.rmSync(file, { force: true });
+      results.push({ pid, what, outcome: 'gone' });
+      continue;
+    }
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // It exited between the check and the signal; the wait below sees that.
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (isProcessAlive(pid) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (isProcessAlive(pid)) {
+      results.push({ pid, what, outcome: 'still running' });
+      continue;
+    }
+    fs.rmSync(file, { force: true });
+    results.push({ pid, what, outcome: 'stopped' });
+  }
+  return results;
+}
+
+/**
+ * The live hold of this checkout that covers `deviceHost`, or null.
+ *
+ * `holdDeviceLock` writes its record only once it holds the device (or runs
+ * degraded, which records a null host for an unset one), so a refused hold leaves
+ * nothing to find. A dead holder's record is left for `releaseHolds` to remove.
+ */
+export function confirmHold({ deviceHost, dir = '.device-runs' }) {
+  let files;
+  try {
+    files = fs.readdirSync(dir).filter((f) => /^hold-\d+\.json$/.test(f));
+  } catch {
+    return null;
+  }
+  const want = deviceHost || null;
+  for (const name of files) {
+    let record;
+    try {
+      record = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+    } catch {
+      continue; // a truncated record proves nothing about which device it holds
+    }
+    if (record.host === want && Number.isInteger(record.pid) && isProcessAlive(record.pid)) {
+      return record;
+    }
+  }
+  return null;
+}
+
 export const _internals = {
   deviceKey,
   resolveDeviceKey,
@@ -916,6 +1065,15 @@ function acceptedResidueLines(dir = '.device-runs') {
 if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1])}`) {
   const [cmd] = process.argv.slice(2);
   const host = process.env.ROKU_IP;
+  // `.vscode/tasks.json` passes `--host=${config:brightscript.debug.host}` as ONE
+  // argument, so an unset setting arrives as `--host=`, an empty host, rather than
+  // dropped. Only an absent `--host` falls back to ROKU_IP, for use from a terminal.
+  const opt = (name) => {
+    const joined = process.argv.find((a) => a.startsWith(`--${name}=`));
+    if (joined !== undefined) return joined.slice(name.length + 3);
+    const i = process.argv.indexOf(`--${name}`);
+    return i > 0 ? (process.argv[i + 1] ?? '') : undefined;
+  };
   if (cmd === 'status') {
     // A device that cannot answer ECP makes `readDeviceLock` throw (it resolves the
     // key first), which surfaced as a raw Node stack trace. An unreachable device
@@ -951,7 +1109,48 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
     const repo = await getRepo();
     await releaseRef(repo, token, `device-lock/${await resolveDeviceKey(host)}`, true);
     console.log('released');
+  } else if (cmd === 'confirm-hold') {
+    const confirmHost = opt('host') ?? host;
+    if (!confirmHold({ deviceHost: confirmHost })) {
+      // The `device-lock: hold` terminal and Problems already say why; this line is
+      // for anyone reading this task's own terminal.
+      console.error(
+        `[device-lock] no device lock is held for ${confirmHost || 'no device'}: F5 stops here, before the build`,
+      );
+      process.exit(1);
+    }
+  } else if (cmd === 'hold') {
+    const holdHost = opt('host') ?? host;
+    const what = opt('what') || 'F5 debug session';
+    console.log(`[device-lock] acquiring ${holdHost || 'no device'} for ${what}`);
+    let hold;
+    try {
+      hold = await holdDeviceLock({ deviceHost: holdHost, what });
+    } catch (e) {
+      console.log(refusalLine(e));
+      console.error(e.message);
+      process.exit(1);
+    }
+    console.log(hold.readyLine);
+    let stopping = false;
+    for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+      process.on(signal, async () => {
+        if (stopping) process.exit(1); // a second signal never traps anyone
+        stopping = true;
+        console.log(`[device-lock] ${signal}: releasing ${holdHost}`);
+        await hold.release().catch(() => {});
+        process.exit(0);
+      });
+    }
+    // Keep the process alive for the session: the lease refresh timer is unref()'d.
+    setInterval(() => {}, 1 << 30);
+  } else if (cmd === 'release-hold') {
+    const results = await releaseHolds();
+    for (const { pid, what, outcome } of results) {
+      console.log(`[device-lock] ${what ?? 'a hold'} (pid ${pid}): ${outcome}`);
+    }
+    if (results.some((r) => r.outcome === 'still running')) process.exit(1);
   } else {
-    console.log('usage: node scripts/device-lock.js status|release');
+    console.log('usage: node scripts/device-lock.js status|release|hold|confirm-hold|release-hold');
   }
 }

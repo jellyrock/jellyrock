@@ -115,5 +115,122 @@
         "isDefault": true,
       },
     },
+    // The device lock for F5 (scripts/device-lock.js, "F5 debug sessions"). Every
+    // launch config in launch.json runs `device-lock: hold`, then `device-lock:
+    // confirm`, then its build, and stops the hold with `device-lock: release` when
+    // the session ends. VS Code counts a background step as exit code 0 once its
+    // matcher goes idle, refusal included, so `confirm`'s exit code is what stops F5
+    // on a busy device. The matcher puts the reason in Problems.
+    {
+      "label": "device-lock: hold",
+      "type": "process",
+      "command": "node",
+      // One argument each, so an unset host arrives as `--host=`, not dropped.
+      "args": [
+        "scripts/device-lock.js",
+        "hold",
+        "--host=${config:brightscript.debug.host}",
+        "--what=F5 debug session",
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "device-lock",
+        "source": "device-lock",
+        "severity": "error",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(\\.vscode/launch\\.json): error: (.*)$",
+          "file": 1,
+          "message": 2,
+          "kind": "file",
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": "^\\[device-lock\\] acquiring ",
+          "endsPattern": "^(\\[device-lock\\] ready: |\\.vscode/launch\\.json: error: )",
+        },
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "silent",
+        "revealProblems": "onProblem",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true,
+      },
+    },
+    // Its own terminal and no `close`: VS Code keeps a closing task terminal open after
+    // a nonzero exit yet reuses it, and the next run never starts (1.142.0,
+    // `TerminalInstance.dispose()`). Same for `release`, which can exit 1 too.
+    {
+      "label": "device-lock: confirm",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "scripts/device-lock.js",
+        "confirm-hold",
+        "--host=${config:brightscript.debug.host}",
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+      },
+    },
+    {
+      "label": "device-lock: release",
+      "type": "process",
+      "command": "node",
+      "args": ["scripts/device-lock.js", "release-hold"],
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+      },
+    },
+    // Lock, confirm, then build: a busy device is refused before the build runs.
+    {
+      "label": "F5: lock",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "device-lock: confirm"],
+      "problemMatcher": [],
+    },
+    {
+      "label": "F5: lock + build-dev",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "device-lock: confirm", "build-dev"],
+      "problemMatcher": [],
+    },
+    {
+      "label": "F5: lock + build-tests-unit",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "device-lock: confirm", "build-tests-unit"],
+      "problemMatcher": [],
+    },
+    {
+      "label": "F5: lock + build-tdd",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "device-lock: confirm", "build-tdd"],
+      "problemMatcher": [],
+    },
+    {
+      "label": "F5: lock + build-tests-integration",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "device-lock: confirm", "build-tests-integration"],
+      "problemMatcher": [],
+    },
+    {
+      "label": "F5: lock + build-tests-all",
+      "dependsOrder": "sequence",
+      "dependsOn": ["device-lock: hold", "device-lock: confirm", "build-tests-all"],
+      "problemMatcher": [],
+    },
   ],
 }
