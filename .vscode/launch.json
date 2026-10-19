@@ -24,7 +24,7 @@
       "name": "Deploy",
       "type": "brightscript",
       "request": "launch",
-      "preLaunchTask": "device-lock: hold",
+      "preLaunchTask": "F5: lock",
       "postDebugTask": "device-lock: release",
       "rootDir": "${workspaceFolder}/build",
       "outDir": "${workspaceFolder}/build",

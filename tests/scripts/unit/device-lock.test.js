@@ -744,6 +744,97 @@ describe('device-lock: hold (F5 debug sessions)', () => {
   });
 });
 
+describe('device-lock: confirming a hold (the step between the lock and the build)', () => {
+  // VS Code counts a background `dependsOn` step as exit code 0 once its matcher's end
+  // pattern matches, refusal included, and skips Problems when the chain exits 0
+  // (1.142.0: `_createInactiveDependencyPromise`, `runTaskAndCheckErrors`). So F5
+  // deployed over a busy device. The confirm step is a plain task: its exit code is
+  // the one signal VS Code always acts on.
+  let dir;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'device-lock-confirm-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const writeHold = (pid, host = DEVICE, into = dir) => {
+    fs.mkdirSync(into, { recursive: true });
+    fs.writeFileSync(
+      path.join(into, `hold-${pid}.json`),
+      JSON.stringify({ pid, host, what: 'F5 debug session' }),
+    );
+  };
+  const deadPid = async () => {
+    const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' });
+    await new Promise((resolve) => child.once('exit', resolve));
+    return child.pid;
+  };
+
+  it('finds the live hold for the device F5 is about to use', async () => {
+    mod._internals.setTransport(fakeGitHub().handler);
+    const hold = await mod.holdDeviceLock({ deviceHost: DEVICE, what: 'F5 debug session', dir });
+
+    expect(mod.confirmHold({ deviceHost: DEVICE, dir })).toMatchObject({
+      pid: process.pid,
+      host: DEVICE,
+    });
+    await hold.release();
+  });
+
+  it('finds nothing after a refused hold, so the build never starts', async () => {
+    mod._internals.setTransport(fakeGitHub().handler);
+    await mod.acquireDeviceLock({ what: 'test:rta', deviceHost: DEVICE });
+    await mod.holdDeviceLock({ deviceHost: DEVICE, what: 'F5 debug session', dir }).catch(() => {});
+
+    expect(mod.confirmHold({ deviceHost: DEVICE, dir })).toBeNull();
+  });
+
+  it('finds nothing when no hold was ever taken here', () => {
+    expect(mod.confirmHold({ deviceHost: DEVICE, dir })).toBeNull();
+    expect(mod.confirmHold({ deviceHost: DEVICE, dir: path.join(dir, 'missing') })).toBeNull();
+  });
+
+  it('ignores a hold on another Roku: it does not cover this one', () => {
+    writeHold(process.pid, '192.0.2.99');
+    expect(mod.confirmHold({ deviceHost: DEVICE, dir })).toBeNull();
+  });
+
+  it('ignores the record of a holder that has died', async () => {
+    writeHold(await deadPid());
+    expect(mod.confirmHold({ deviceHost: DEVICE, dir })).toBeNull();
+  });
+
+  it('accepts the unlocked hold an unset host runs, so that setup still starts F5', async () => {
+    mod._internals.setTransport(fakeGitHub().handler);
+    const hold = await mod.holdDeviceLock({ deviceHost: '', what: 'F5 debug session', dir });
+
+    expect(mod.confirmHold({ deviceHost: '', dir })).toMatchObject({ host: null });
+    await hold.release();
+  });
+
+  it('exits 1 from the command line when no hold covers the device, and 0 when one does', async () => {
+    // `.device-runs` is read relative to the working directory, as VS Code runs it.
+    const script = path.resolve('scripts/device-lock.js');
+    const run = () =>
+      new Promise((resolve) => {
+        const child = spawn(process.execPath, [script, 'confirm-hold', `--host=${DEVICE}`], {
+          cwd: dir,
+        });
+        let out = '';
+        child.stdout.on('data', (d) => (out += d));
+        child.stderr.on('data', (d) => (out += d));
+        child.on('exit', (code) => resolve({ code, out }));
+      });
+
+    const refused = await run();
+    expect(refused.code).toBe(1);
+    expect(refused.out).toContain(`no device lock is held for ${DEVICE}`);
+
+    writeHold(process.pid, DEVICE, path.join(dir, '.device-runs'));
+    expect((await run()).code).toBe(0);
+  });
+});
+
 describe('device-lock: releasing holds (the postDebugTask)', () => {
   let dir;
   beforeEach(() => {

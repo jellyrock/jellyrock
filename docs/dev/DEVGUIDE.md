@@ -50,7 +50,7 @@ We recommend Visual Studio Code for this project. Its [BrightScript Language ext
 
 Visual Studio Code builds the app, installs it on your Roku and starts it.
 
-`F5` first takes the device lock, so a test run in a terminal can't install over your session, and yours can't install over a run already going. If another run holds the Roku, `F5` stops and **Problems** names it: wait for it, or use another Roku. The lock is released when you stop the session. Taking it needs a `gh` login and your Roku's address saved in your settings (next section); without either, `F5` runs without the lock and says so in its terminal.
+`F5` first takes the device lock, so a test run in a terminal can't install over your session, and yours can't install over a run already going. If another run holds the Roku, `F5` stops before the build and **Problems** names the run: wait for it, or use another Roku. Visual Studio Code may first ask whether to debug anyway; choose **Abort** or **Show Errors**, since **Debug Anyway** installs over the other run. The lock is released when you stop the session. Taking it needs a `gh` login and your Roku's address saved in your settings (next section); without either, `F5` runs without the lock and says so in its terminal.
 
 ### Save your Roku's address and password
 
