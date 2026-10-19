@@ -1,4 +1,5 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/searchKeyboardRows.bs"
 
 ' SearchKeyboard: custom DynamicCustomKeyboard subclass used inside the
 ' SearchOverlay pull-down. Extends the stock keyboard with:
@@ -16,7 +17,7 @@ import "pkg:/source/utils/misc.bs"
 sub init()
   m.top.keyGrid.keyDefinitionUri = "pkg:/components/keyboards/SearchKeyboardKDF.json"
   m.top.keyGrid.mode = "alphanumeric"
-  ' Open on A, not on Space, the grid's first key (keyRows).
+  ' Open on A, not on Space, the grid's first key (searchKeyboardRows.rows).
   m.top.keyGrid.jumpToKey = [0, 0, 1]
 
   ' Theme the keys from the app palette. DynamicKeyGrid takes its colors only from an
@@ -64,23 +65,6 @@ function keySelected(key as string) as boolean
   return false
 end function
 
-' The grid's rows by the keyFocused value of each key (its strOut, else its label), as
-' SearchKeyboardKDF.json lays them out. Alphabetical, so a letter is found without knowing
-' QWERTY, with Space, Backspace and Clear on the top row, where the keyboard opens. Rows 1-3
-' are 10 wide, row 4 is 9:
-'   Row 1:   [space]  A  B  C  D  E  F  G  [backspace]  [clear]
-'   Row 2:   H  I  J  K  L  M  N  O  P  Q
-'   Row 3:   R  S  T  U  V  W  X  Y  Z  0
-'   Row 4:   1  2  3  4  5  6  7  8  9
-function keyRows() as object
-  return [
-    [" ", "A", "B", "C", "D", "E", "F", "G", "backspace", "clear"],
-    ["H", "I", "J", "K", "L", "M", "N", "O", "P", "Q"],
-    ["R", "S", "T", "U", "V", "W", "X", "Y", "Z", "0"],
-    ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-  ]
-end function
-
 ' onKeyEvent: at a grid edge, set m.top.escape (and, for left / right, m.top.escapeRow)
 ' so the screen moves focus off the keyboard: up and down off the top and bottom rows,
 ' and left and right off either side edge. Left and right are the two ends of the
@@ -95,7 +79,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   focused = focusedChild.keyFocused
   if not isValid(focused) then return false
 
-  rows = keyRows()
+  rows = searchKeyboardRows.rows()
   if key = "up" and inArray(rows[0], focused)
     m.top.escape = key
     return true
@@ -121,7 +105,7 @@ end function
 ' `row`, the way into the keyboard from the suggestion column. An out-of-range row means
 ' the top row.
 sub focusEdge(row as integer, side as string)
-  rows = keyRows()
+  rows = searchKeyboardRows.rows()
   if row < 0 or row >= rows.count() then row = 0
   index = 0
   if side = "right" then index = rows[row].count() - 1

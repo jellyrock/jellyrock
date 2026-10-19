@@ -213,7 +213,7 @@ async function reopenOnRecentSearches() {
   await waitFocusInside('#kbd', { label: 'search reopened on the keyboard', timeout: 15000 });
 }
 
-// The keyboard's top row by keyFocused (SearchKeyboard.keyRows): Space, A to G, Backspace, Clear.
+// The keyboard's top row by keyFocused (searchKeyboardRows.rows): Space, A to G, Backspace, Clear.
 const TOP_ROW = [' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'backspace', 'clear'];
 const TOP_LEFT = ' ';
 const TOP_RIGHT = 'clear';

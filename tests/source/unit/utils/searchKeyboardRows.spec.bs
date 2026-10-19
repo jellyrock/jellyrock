@@ -1,0 +1,35 @@
+namespace tests
+
+  @suite("searchKeyboardRows.bs - the search keyboard's rows")
+  class SearchKeyboardRowsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rows()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches the layout the keyboard draws, key by key")
+    function _()
+      ' SearchKeyboard finds its edge keys in rows(), and the grid draws the layout file. A
+      ' re-layout that edits one leaves Left, Right, Up and Down at the wrong keys.
+      kdf = ParseJson(ReadAsciiFile("pkg:/components/keyboards/SearchKeyboardKDF.json"))
+      m.assertNotInvalid(kdf, "the layout file parses")
+
+      drawn = []
+      for each row in kdf.sections[0].grids[0].rows
+        keys = []
+        for each key in row.keys
+          if isValid(key.strOut)
+            keys.push(key.strOut)
+          else
+            keys.push(key.label)
+          end if
+        end for
+        drawn.push(keys)
+      end for
+
+      m.assertEqual(searchKeyboardRows.rows(), drawn)
+    end function
+
+  end class
+
+end namespace

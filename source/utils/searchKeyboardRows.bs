@@ -1,0 +1,26 @@
+' @fileoverview The search keyboard's key rows, for its edge navigation.
+'
+' SearchKeyboardKDF.json is what the grid draws; this is the same layout as SearchKeyboard
+' reads it to find the edge keys. It is a literal rather than parsed from the file, which
+' costs 1.8 ms per search open (measured 2026-10-18 on a Streaming Stick 4K, 200 reads), and
+' searchKeyboardRows.spec.bs fails when the two disagree, so a re-layout edits both.
+
+namespace searchKeyboardRows
+
+  ' The grid's rows by the keyFocused value of each key (its strOut, else its label).
+  ' Alphabetical, so a letter is found without knowing QWERTY, with Space, Backspace and
+  ' Clear on the top row, where the keyboard opens. Rows 1-3 are 10 wide, row 4 is 9:
+  '   Row 1:   [space]  A  B  C  D  E  F  G  [backspace]  [clear]
+  '   Row 2:   H  I  J  K  L  M  N  O  P  Q
+  '   Row 3:   R  S  T  U  V  W  X  Y  Z  0
+  '   Row 4:   1  2  3  4  5  6  7  8  9
+  function rows() as object
+    return [
+      [" ", "A", "B", "C", "D", "E", "F", "G", "backspace", "clear"],
+      ["H", "I", "J", "K", "L", "M", "N", "O", "P", "Q"],
+      ["R", "S", "T", "U", "V", "W", "X", "Y", "Z", "0"],
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    ]
+  end function
+
+end namespace
