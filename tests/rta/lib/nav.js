@@ -224,6 +224,30 @@ export async function openSearchKeyboard() {
   });
 }
 
+/** The `type` a skeleton tile carries (skeleton.PLACEHOLDER_TYPE in source/utils/skeleton.bs). */
+export const SKELETON_TYPE = 'Loading';
+
+/**
+ * Waits until a search's results are on screen and returns how many rows they fill.
+ * SearchScreen shows a skeleton row for every read the moment a search starts
+ * (`SearchScreen.runFullSearch`), so a row count passes before any answer; the first tile
+ * being a real item does not. A search that found nothing has no first tile and keeps
+ * waiting: wait for the outcome a case expects instead.
+ */
+export async function waitSearchResults({ label, timeout = 20000 } = {}) {
+  await waitFor(
+    '#searchSelect.content.0.0.type',
+    (v) => typeof v === 'string' && v !== SKELETON_TYPE,
+    {
+      read: getActiveVal,
+      timeout,
+      interval: 250,
+      label,
+    },
+  );
+  return getActiveVal('#searchSelect.content.getChildCount()');
+}
+
 /**
  * home -> overhang search icon -> SearchScreen -> type RTA_CONFIG.searchQuery.
  * The screen opens with the keyboard (#kbd) focused + active, so an
@@ -235,10 +259,7 @@ export async function openSearchKeyboard() {
 export async function navSearch() {
   await openSearchKeyboard();
   await ecp.sendText(RTA_CONFIG.searchQuery); // types into the focused search box
-  await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
-    label: `search results for "${RTA_CONFIG.searchQuery}"`,
-    timeout: 20000,
-  });
+  await waitSearchResults({ label: `search results for "${RTA_CONFIG.searchQuery}"` });
   await submitSearchFromKeyboard();
   await sleep(1500); // let the focus settle + result posters paint before capture
 }

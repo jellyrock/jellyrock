@@ -1,3 +1,4 @@
+import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
@@ -99,6 +100,24 @@ namespace searchOutcome
     access = policy.enableLiveTvAccess
     if not isValid(access) then return true
     return access <> false
+  end function
+
+  ' The result rows a search sends a read for, in the order the screen shows them
+  ' (itemTypeOrder.SEARCH). The screen draws a skeleton row for each while a search runs.
+  ' A recording has no read of its own (it comes back inside the Movie and Episode reads),
+  ' and programs are read only for a user with Live TV access (canSearchLiveTv).
+  '
+  ' @param {dynamic} policy - m.global.user.policy, or invalid
+  ' @return {object} an roArray of row types
+  function rowTypes(policy as dynamic) as object
+    withPrograms = searchOutcome.canSearchLiveTv(policy)
+    types = []
+    for each rowType in itemTypeOrder.SEARCH
+      if rowType = "Recording" then continue for
+      if rowType = "Program" and not withPrograms then continue for
+      types.push(rowType)
+    end for
+    return types
   end function
 
 end namespace

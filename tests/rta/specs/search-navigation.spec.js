@@ -19,7 +19,12 @@ import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { failRequests } from '../lib/failRequests.js';
 import { captureRawUI } from '../capture.js';
-import { openSearchKeyboard, submitSearchFromKeyboard } from '../lib/nav.js';
+import {
+  openSearchKeyboard,
+  SKELETON_TYPE,
+  submitSearchFromKeyboard,
+  waitSearchResults,
+} from '../lib/nav.js';
 import {
   getActiveVal,
   getVal,
@@ -81,11 +86,7 @@ async function typeAndWaitForHints(query = RTA_CONFIG.searchQuery) {
 /** Types the query, waits for its results, and submits it from the keyboard. */
 async function submitTypedQuery() {
   await ecp.sendText(RTA_CONFIG.searchQuery);
-  await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
-    read: getActiveVal,
-    timeout: 20000,
-    label: `results for "${RTA_CONFIG.searchQuery}"`,
-  });
+  await waitSearchResults({ label: `results for "${RTA_CONFIG.searchQuery}"` });
   await submitSearchFromKeyboard();
 }
 
@@ -160,11 +161,7 @@ it('Up from the results returns to the suggestion that was picked', async () => 
     interval: 350,
     label: 'the results after the pick',
   });
-  await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
-    read: getActiveVal,
-    timeout: 20000,
-    label: `results for "${picked}"`,
-  });
+  await waitSearchResults({ label: `results for "${picked}"` });
 
   await press(ecp.Key.Up);
   await waitFocused(atList, { timeout: 8000, interval: 250, label: 'back in the suggestion list' });
@@ -185,11 +182,14 @@ it('Up from the results returns to the keyboard when the keyboard was left', asy
 
 it('picking a suggestion before any results arrive stays on the results', async () => {
   await freshSearch();
-  // Hold the full search so the results list is still empty when the pick lands. The pick's
-  // OK must not travel on to the screen, where OK on empty results reopens the overlay.
+  // Hold the full search so the list shows only skeleton rows when the pick lands. The pick's
+  // OK must not travel on to the screen, where OK with no results reopens the overlay.
   await failRequests([{ prefix: 'searchItems', kind: 'slow', ms: 15000 }]);
   await typeAndWaitForHints();
-  expect(await getActiveVal('#searchSelect.content.getChildCount()'), 'no results yet').toBe(0);
+  expect(
+    await getActiveVal('#searchSelect.content.0.0.type'),
+    'skeleton rows, no results yet',
+  ).toBe(SKELETON_TYPE);
   await enterSuggestions();
   await press(ecp.Key.Ok);
   await waitFocused(atResults, {

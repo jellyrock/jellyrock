@@ -6,8 +6,8 @@
  *
  *  - a slow search says it is still loading, and the text goes with its results;
  *  - Back mid-search takes the spinner with the screen;
- *  - a search answer that lands after the viewer opened a result does not stop the details
- *    screen's own spinner;
+ *  - a search answer that lands after a deep link opened a library grid over it does not
+ *    stop the grid's own spinner;
  *  - returning to a search that is still loading shows its spinner again, counted from when
  *    the search began rather than from the return.
  *
@@ -24,19 +24,23 @@
 import { beforeAll, it, expect } from 'vitest';
 import { ecp } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate } from '../lib/jellyfin.js';
+import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { navSearch, openSearchKeyboard, submitSearchFromKeyboard } from '../lib/nav.js';
+import {
+  openSearchKeyboard,
+  SKELETON_TYPE,
+  submitSearchFromKeyboard,
+  waitSearchResults,
+} from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
   getActiveVal,
+  getActiveVals,
   getGlobalVal,
   getVal,
-  hasChildren,
   press,
   sleep,
-  waitFocusInside,
   waitFor,
   waitHome,
 } from '../lib/steps.js';
@@ -52,8 +56,18 @@ const STILL_LOADING_LATEST_MS = 11000;
 
 let session;
 
+let heroId; // a Movie: a details deep link
+let moviesLibraryId; // a CollectionFolder: a library deep link
+
 beforeAll(async () => {
   session = await authenticate(RTA_CONFIG.server);
+  heroId = (await getHero(session)).id;
+  moviesLibraryId = libraryIdFor(await getLibraries(session), 'movies');
+  if (!heroId || !moviesLibraryId) {
+    throw new Error(
+      'slow-search setup: could not resolve a movie and a movies library on the demo server',
+    );
+  }
 });
 
 async function freshApp() {
@@ -93,24 +107,19 @@ async function typeThenSubmit(text, heldBefore = 0) {
 }
 
 /**
- * Search, then submit a NEWER query whose answer is held, then open one of the previous
- * query's results, still on screen and reachable because a search keeps the remote live.
- * Leaves the details screen active with the newer search still waiting behind it. Returns
- * the time the submit landed, the latest the search's wait can have begun.
+ * Submit a search whose answer is held, then cover the search screen with a runtime deep link
+ * (ECP `/input?contentId=…`, deeplink.spec.js) while it still loads. Its rows are skeleton
+ * tiles until it answers (SearchScreen.runFullSearch), so a deep link is the way a viewer can
+ * open another screen over a search in flight. Returns the time the submit landed, the latest
+ * the search's wait can have begun.
  */
-async function openOldResultWhileNewerSearchLoads(rules) {
+async function coverSearchWhileItLoads(rules, contentId) {
   await freshApp();
-  await navSearch();
-  // Up from the first result row reopens the keyboard (SearchScreen.onKeyEvent).
-  await press(ecp.Key.Up);
-  await waitFocusInside('#kbd', { label: 'back on the search keyboard', timeout: 10000 });
+  await openSearchKeyboard();
   await failRequests(rules);
   await typeThenSubmit('e');
   const startedAt = Date.now();
-
-  // The submit lands focus on the result rows, which still show the previous query's results.
-  await press(ecp.Key.Ok);
-  await waitActive('ItemDetails', 'details opened from a previous result');
+  await ecp.sendInput({ params: { contentId } });
   return startedAt;
 }
 
@@ -125,16 +134,40 @@ it('a slow search says it is still loading, and the text goes with its results',
     interval: 500,
     label: '"Still loading" under the spinner',
   });
-  await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
-    timeout: 20000,
-    label: 'the slow search results',
-  });
+  await waitSearchResults({ label: 'the slow search results' });
   await waitFor('#spinner.visible', (v) => v === false, {
     timeout: 5000,
     interval: 250,
     label: 'the spinner gone with the results',
   });
   expect(await getVal('#loadingStageText.visible')).toBe(false);
+});
+
+it('a slow search shows a skeleton row for each read, then its results', async () => {
+  await freshApp();
+  await openSearchKeyboard();
+  await failRequests([{ prefix: SLOW_READ, kind: 'slow', ms: 11000, times: 2 }]);
+  await typeThenSubmit(RTA_CONFIG.searchQuery);
+
+  // SearchScreen.runFullSearch: one titled row per read (searchOutcome.rowTypes), each a
+  // loading tile, until the held read answers. Movies come first in the result order.
+  const [firstTile, firstTitle, skeletonRows] = await getActiveVals([
+    '#searchSelect.content.0.0.type',
+    '#searchSelect.content.0.title',
+    '#searchSelect.content.getChildCount()',
+  ]);
+  expect(firstTile, 'a skeleton tile while the search is held').toBe(SKELETON_TYPE);
+  expect(firstTitle, 'the first row is titled').toBe('Movies');
+  // 15 row types read with Live TV access, 14 without (searchOutcome.spec.bs pins the list).
+  expect(skeletonRows, 'a row for each read').toBeGreaterThanOrEqual(14);
+
+  // OK on a skeleton tile goes nowhere: it is not a result.
+  await press(ecp.Key.Ok);
+  const rows = await waitSearchResults({ label: 'the slow search results' });
+  expect(rows, 'only the types that found something keep a row').toBeLessThan(skeletonRows);
+  const [view, expanded] = await getActiveVals(['subtype()', 'isExpanded']);
+  expect(view, 'still on the search screen').toBe('SearchScreen');
+  expect(expanded, 'the OK did not reopen the keyboard either').toBe(false);
 });
 
 it('Back mid-search takes the spinner with the screen', async () => {
@@ -155,31 +188,42 @@ it('Back mid-search takes the spinner with the screen', async () => {
   expect(await getVal('#loadingStageText.visible')).toBe(false);
 });
 
-it("a late search answer does not stop the details screen's spinner", async () => {
-  await openOldResultWhileNewerSearchLoads([
-    { prefix: SLOW_READ, kind: 'slow', ms: 8000, times: 2 },
-    { prefix: 'itemMetaData', kind: 'slow', ms: 25000, times: 1 },
-  ]);
-  await waitHeld(3, "the details screen's metadata is on a slot too");
-  await waitHeld(1, 'both searches answered while details still waits', 15000);
+it("a late search answer does not stop the library grid's spinner", async () => {
+  // A library deep link opens its grid, which loads its own items under the scene spinner.
+  // (A details deep link would not do: details takes the item the deep link fetched and loads
+  // nothing of its own, so it has no spinner a late answer could stop.)
+  await coverSearchWhileItLoads(
+    [
+      { prefix: SLOW_READ, kind: 'slow', ms: 8000, times: 2 },
+      { prefix: 'itemQuery_', kind: 'slow', ms: 25000, times: 1 },
+    ],
+    moviesLibraryId,
+  );
+  await waitActive('BaseGridView', 'the library grid opened over the search');
+  await waitHeld(3, "the grid's items are on a slot too");
+  await waitHeld(1, 'both searches answered while the grid still waits', 15000);
 
   // Timer window, proving a non-event: the search's results reach its (hidden) screen a few
   // round trips after this answer, and must not end the details spinner when they do. No
   // app field reports that a delivery did not happen, so this out-waits it.
   await sleep(3000);
-  expect(await getVal('isLoading'), "details' own spinner still up").toBe(true);
-  expect(await getVal('isRemoteDisabled'), 'details still blocking while it loads').toBe(true);
+  expect(await getVal('isLoading'), "the grid's own spinner still up").toBe(true);
 });
 
 it('returning to a search that is still loading shows its spinner, counted from the search', async () => {
-  const startedAt = await openOldResultWhileNewerSearchLoads([
-    { prefix: SLOW_READ, kind: 'slow', ms: 25000, times: 2 },
-    // Holds the viewer on details long enough that a clock restarted on return could not
-    // reach the first stage by STILL_LOADING_LATEST_MS.
-    { prefix: 'itemMetaData', kind: 'slow', ms: 4000, times: 1 },
-  ]);
-  await waitHeld(3, "the details screen's metadata is on a slot too");
-  await waitHeld(2, 'details answered; the searches still wait');
+  const startedAt = await coverSearchWhileItLoads(
+    [
+      { prefix: SLOW_READ, kind: 'slow', ms: 25000, times: 2 },
+      // Holds the deep link's item fetch long enough that a clock restarted on return could
+      // not reach the first stage by STILL_LOADING_LATEST_MS.
+      { prefix: 'itemMetaData', kind: 'slow', ms: 4000, times: 1 },
+    ],
+    heroId,
+  );
+  await waitHeld(3, "the deep link's item fetch is on a slot too");
+  await waitHeld(2, 'the item answered; the searches still wait');
+  // Back while the deep link still resolves would cancel it rather than leave details.
+  await waitActive('ItemDetails', 'details opened over the search');
 
   await press(ecp.Key.Back);
   await waitActive('SearchScreen', 'back on the search that is still loading');

@@ -132,6 +132,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // through showHelpText or onExpansionChanged; nothing else writes it, so it holds until the
   // next search or overlay move: terminal, not a pulse. Read against the app source 2026-10-19.
   '#SearchHelpText.visible',
+  // The first result tile's `type`: `SearchRow.showSkeleton` writes the skeleton's
+  // placeholder (`Loading`) when a search starts and `SearchRow.getData` replaces the content
+  // with the results when it answers. Each holds until the next search: terminal, not a
+  // pulse. Read against the app source 2026-10-19.
+  '#searchSelect.content.0.0.type',
   // `BaseGridView.onLoadingMoreDue` sets it true and `updateLoadingMore` is the only write
   // back to false, when the page lands (or fails, or the view is hidden). `true` holds for as
   // long as the user waits at the last loaded row, and `false` until the next wait: neither

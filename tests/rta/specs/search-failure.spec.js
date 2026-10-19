@@ -21,12 +21,11 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { openSearchKeyboard, submitSearchFromKeyboard } from '../lib/nav.js';
+import { openSearchKeyboard, submitSearchFromKeyboard, waitSearchResults } from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
   getActiveVal,
   getActiveVals,
-  hasChildren,
   press,
   waitFocused,
   waitFocusInside,
@@ -87,11 +86,7 @@ it('a failed search says so, takes focus to Try again, and Try again runs it aga
 
   await failRequests([]);
   await press(ecp.Key.Ok);
-  await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
-    read: getActiveVal,
-    timeout: 20000,
-    label: 'the results of the search run again',
-  });
+  await waitSearchResults({ label: 'the results of the search run again' });
   expect(await getActiveVal('#searchFailed.visible'), 'the failure state is gone').toBe(false);
 });
 
@@ -130,11 +125,7 @@ it('a search with one failed read shows what answered and says some is missing',
   await failRequests([{ prefix: 'searchPersons', kind: 'http', status: 500 }]);
   await ecp.sendText(RTA_CONFIG.searchQuery);
   await submitSearchFromKeyboard();
-  await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
-    read: getActiveVal,
-    timeout: 20000,
-    label: 'the results that answered',
-  });
+  await waitSearchResults({ label: 'the results that answered' });
   await waitToast(SEARCH_PARTIAL, { label: 'the some-results-missing toast' });
   if (CAPTURE) await captureRawUI('searchPartial');
   expect(await getActiveVal('#searchFailed.visible'), 'not the failure state').toBe(false);

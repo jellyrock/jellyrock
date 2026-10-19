@@ -126,6 +126,26 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rowTypes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names a row for every search row type but Recording, in the order rows show")
+    function _()
+      expected = []
+      for each rowType in itemTypeOrder.SEARCH
+        if rowType <> "Recording" then expected.push(rowType)
+      end for
+      m.assertEqual(searchOutcome.rowTypes({ enableLiveTvAccess: true }), expected)
+    end function
+
+    @it("leaves out programs for a user without Live TV access, as the search does")
+    function _()
+      types = searchOutcome.rowTypes({ enableLiveTvAccess: false })
+      m.assertArrayNotContains(types, "Program")
+      m.assertArrayContains(types, "TvChannel")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("countText")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
