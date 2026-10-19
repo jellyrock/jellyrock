@@ -76,12 +76,13 @@ namespace searchOutcome
     "BoxSet"
   ]
 
-  ' The result count shown after "Search" in the screen's title: "", "1 result", "132 results",
-  ' or "132+ results" when the server may hold more (isLowerBound: a read stopped at its
-  ' limit, or one failed). A search never asks the server for totals, so the count is what
-  ' the rows hold.
+  ' The result count shown after "Search" in the screen's title: "0 results", "1 result",
+  ' "132 results", or "132+ results" when the server may hold more (isLowerBound: a read
+  ' stopped at its limit, or the search did not fully answer). A search never asks the
+  ' server for totals, so the count is what the rows hold. "" when a search that did not
+  ' fully answer found nothing: it cannot claim 0, and the failure state speaks for it.
   function countText(itemCount as integer, isLowerBound as boolean) as string
-    if itemCount <= 0 then return ""
+    if itemCount < 0 or (itemCount = 0 and isLowerBound) then return ""
     if isLowerBound then return translate(translationKeys.LabelSearchResultCountAtLeast, [itemCount.toStr()])
     return translatePlural(translationKeys.LabelSearchResultCount, itemCount, [itemCount.toStr()])
   end function

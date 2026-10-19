@@ -129,9 +129,13 @@ namespace tests
     @describe("countText")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("shows nothing for a search with no results")
+    @it("counts an answered search that found nothing, as it counts one that found some")
     function _()
-      m.assertEqual(searchOutcome.countText(0, false), "")
+      m.assertEqual(searchOutcome.countText(0, false), "0 results")
+    end function
+
+    @it("claims no count for a search that found nothing and did not fully answer")
+    function _()
       m.assertEqual(searchOutcome.countText(0, true), "")
     end function
 

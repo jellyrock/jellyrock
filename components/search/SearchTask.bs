@@ -134,8 +134,9 @@ function searchMedia(query as string)
   result.TotalRecordCount = allItems.count()
   result.query = query
   result.status = searchOutcome.statusOf(reader.sentCount, reader.failedCount)
-  ' The server may hold more than TotalRecordCount: a read stopped at its limit, or one failed.
-  result.isLowerBound = reachedLimit or reader.failedCount > 0
+  ' The server may hold more than TotalRecordCount: a read stopped at its limit, or the search
+  ' did not fully answer (a read failed, or none could be sent).
+  result.isLowerBound = reachedLimit or result.status <> searchOutcome.STATUS_OK
   return result
 end function
 

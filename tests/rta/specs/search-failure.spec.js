@@ -25,6 +25,7 @@ import { openSearchKeyboard, submitSearchFromKeyboard } from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
   getActiveVal,
+  getActiveVals,
   hasChildren,
   press,
   waitFocused,
@@ -38,6 +39,7 @@ const LOCALE = RTA_CONFIG.languages[0];
 const SEARCH_FAILED = "Couldn't load search results.";
 const SEARCH_PARTIAL = "Some results couldn't load.";
 const SEARCH_EMPTY = `No results for "${RTA_CONFIG.searchQuery}"`;
+const SEARCH_HELP = 'You can search for Titles, People, Live TV Channels and more';
 // RTA_CAPTURE=1 also saves each state to out/rta-captures/ for review.
 const CAPTURE = process.env.RTA_CAPTURE === '1';
 
@@ -143,15 +145,59 @@ it('a search that finds nothing says so', async () => {
   await failRequests([{ prefix: 'search', kind: 'empty' }]);
   await ecp.sendText(RTA_CONFIG.searchQuery);
   await submitSearchFromKeyboard();
+  // The live search already showed this text under the keyboard, so the text alone does not
+  // say the submitted search answered. The submit hides the label until it does.
+  await waitFor('#SearchHelpText.visible', (v) => v === true, {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label: 'the no-results message after the submit',
+  });
+  expect(await getActiveVal('#SearchHelpText.text'), 'the message').toBe(SEARCH_EMPTY);
+  if (CAPTURE) await captureRawUI('searchNoResults');
+  expect(await getActiveVal('#searchFailed.visible'), 'not the failure state').toBe(false);
+});
+
+it('a live search that finds nothing says so below the keyboard, and counts 0', async () => {
+  await freshSearch();
+  await failRequests([{ prefix: 'search', kind: 'empty' }]);
+  await ecp.sendText(RTA_CONFIG.searchQuery);
+  await waitFor('#SearchHelpText.text', (v) => v === SEARCH_EMPTY, {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label: 'the no-results message under the keyboard',
+  });
+  const [visible, expanded, count] = await getActiveVals([
+    '#SearchHelpText.visible',
+    'isExpanded',
+    '#resultCount.text',
+  ]);
+  expect(visible, 'the message shows').toBe(true);
+  expect(expanded, 'the keyboard is still open').toBe(true);
+  expect(count, 'the count says 0').toBe('0 results');
+});
+
+it('emptying the query brings the help text back', async () => {
+  await freshSearch();
+  await failRequests([{ prefix: 'search', kind: 'empty' }]);
+  await ecp.sendText(RTA_CONFIG.searchQuery);
   await waitFor('#SearchHelpText.text', (v) => v === SEARCH_EMPTY, {
     read: getActiveVal,
     timeout: 20000,
     interval: 250,
     label: 'the no-results message',
   });
-  expect(await getActiveVal('#SearchHelpText.visible'), 'the message shows').toBe(true);
-  if (CAPTURE) await captureRawUI('searchNoResults');
-  expect(await getActiveVal('#searchFailed.visible'), 'not the failure state').toBe(false);
+  for (let i = 0; i < RTA_CONFIG.searchQuery.length; i++) await press(ecp.Key.Backspace);
+  await waitFor('#SearchHelpText.text', (v) => v === SEARCH_HELP, {
+    read: getActiveVal,
+    timeout: 10000,
+    interval: 250,
+    label: 'the help text once the query is empty',
+  });
+  const [visible, count] = await getActiveVals(['#SearchHelpText.visible', '#resultCount.text']);
+  expect(visible, 'the help text shows').toBe(true);
+  expect(count, 'no count for an empty query').toBe('');
 });
 
 it('typing on after a failed search clears the failure', async () => {

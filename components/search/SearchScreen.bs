@@ -646,7 +646,7 @@ sub onQueryChanged()
       m.searchSelect.query = ""
       m.searchSelect.content = invalid
     end if
-    m.searchHelpText.text = translate(translationKeys.MessageYouCanSearchForTitlesPeople)
+    showHelpText(translate(translationKeys.MessageYouCanSearchForTitlesPeople))
     showResultCount("")
     renderRecentSuggestions()
     return
@@ -1031,7 +1031,13 @@ sub onFullSearchResults(event as object)
   ' Only a submitted search reports: the live search runs on every pause in typing, and
   ' reporting each one would toast and announce mid-word (decision
   ' search-outcome-on-submit-only).
-  if m.isSubmittedRun then showSearchOutcome(outcome)
+  if m.isSubmittedRun
+    showSearchOutcome(outcome)
+  else if outcome.show = searchOutcome.SHOW_EMPTY
+    ' A live search that found nothing says so on screen, below the keyboard, but is not
+    ' announced: the decision rules out speaking mid-word, not the text.
+    showHelpText(translate(translationKeys.MessageNoResultsFor1, [results.query]))
+  end if
 
   if total = 0 then return
 
@@ -1078,8 +1084,7 @@ sub showSearchOutcome(outcome as object)
     end if
   else if outcome.show = searchOutcome.SHOW_EMPTY
     if not m.top.isExpanded
-      m.searchHelpText.text = translate(translationKeys.MessageNoResultsFor1, [m.top.query])
-      m.searchHelpText.visible = true
+      showHelpText(translate(translationKeys.MessageNoResultsFor1, [m.top.query]))
       if m.isShown then narrateStatus(m.searchHelpText.text)
     end if
   else if outcome.toastKey <> "" and m.isShown
@@ -1105,6 +1110,17 @@ sub clearSearchOutcome()
     m.searchSelect.setFocus(true)
     m.top.lastFocus = m.searchSelect
   end if
+end sub
+
+' Shows `text` in the help label where the screen puts it now: below the keyboard while it is
+' open, mid-screen while it is closed. Placed here, not only when the overlay moves, because a
+' label hidden while the overlay moved kept its old position.
+sub showHelpText(text as string)
+  y = searchLayout.HELP_TEXT_Y
+  if m.top.isExpanded then y = searchLayout.HELP_TEXT_Y_EXPANDED
+  m.searchHelpText.translation = [searchLayout.HELP_TEXT_X, y]
+  m.searchHelpText.text = text
+  m.searchHelpText.visible = true
 end sub
 
 sub focusRetryButton()
