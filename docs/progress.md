@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-18
+last-updated: 2026-10-19
 ---
 
 # Progress
@@ -687,6 +687,16 @@ A row shows only a few tiles at once, so building 100 per type up front pays for
 Raised in manual testing of #1217 (2026-10-18). Like a phone's autocomplete, offer completions of the partial word, built from the library's own titles: typing "shre" offers "shrek". They would sit in the gap between the search bar and the keyboard (the bar ends at y=114, the keyboard's top row starts at y=186) and be reached with Up from the keyboard's top row. This is separate from the suggestion column, which lists whole items.
 
 Needs its own design: where the words come from (the /Search/Hints names already fetched, or a dedicated query), how many fit, and how Up from the top row fits today's overlay focus loop (decision `search-overlay-horizontal-loop`). Not done in #1217: it is a new feature with its own layout and focus rules.
+
+#### Home's overhang press can be lost to a navigation the router refuses after Back `[fid: home-overhang-press-lost-to-refused-navigation]` `[captured 2026-10-19]`
+
+After Back from search, Home's `onScreenShown` puts focus on its search icon before sgRouter ends the Back navigation (`navigationInProgress` stays true until `showView`'s `.finally` dispatches `NavigationEnd`). An OK sent then calls `sgrouter.navigateTo("/search")`, which the router refuses with "Navigation already in progress". `Home.handleHomeMenuAction` ignored the rejection, so the press was lost.
+
+Confirmed 2026-10-19 on a Roku Ultra: the `search-navigation` reopen cases (`reopenOnRecentSearches`) failed 5 of 10 runs, 1 of them without the per-read change, and the failing run's console logged `navigation refused /search` (the log added in `11c4852d`).
+
+Options: `retry` (recommended): `JRScene.navigateThenFocus` retries a refused navigation once the router is idle, polling the public `routerState` with a timer (an observer drops `NavigationEnd`) and giving up after a bounded time; Home's actions go through it via `routerNavigate`; the 18 other direct `sgrouter.navigateTo` calls can move to it later; risk: a press takes effect slightly late. `re-press`: the test re-sends the OK with a warning; rejected because a viewer's press can still be lost. Patching sgRouter was ruled out by decision `router-focus-left-notice`. Not now because it needs its own design (the give-up time, then the other call sites) and predates the search redesign.
+
+Not checked: how wide the window is (a probe sampling every 20 to 70 ms never saw focus on the icon before `NavigationEnd`); whether a person pressing OK can hit it; whether it happens on the Stick 4K outside capture mode.
 
 ### source
 
