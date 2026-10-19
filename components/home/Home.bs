@@ -94,10 +94,15 @@ end sub
 ' as userMenuAction for main.bs, which tears down the routed Home and re-enters the
 ' login flow IN PLACE via reenterLogin (see handleMenuAction).
 sub handleHomeMenuAction(actionId as string)
-  if actionId = HomeAction.OPEN_SEARCH
-    sgrouter.navigateTo("/search")
-  else if actionId = HomeAction.OPEN_SETTINGS
-    sgrouter.navigateTo("/settings")
+  if actionId = HomeAction.OPEN_SEARCH or actionId = HomeAction.OPEN_SETTINGS
+    path = "/search"
+    if actionId = HomeAction.OPEN_SETTINGS then path = "/settings"
+    ' sgRouter refuses a navigation while another is in progress and nothing else reports it,
+    ' so a refused press would vanish without a trace. Log it, as JRScene.navigateThenFocus
+    ' does; log err whole, since a rejection is not always an AA.
+    promises.chain(sgrouter.navigateTo(path), { path: path }).catch(sub(err as object, ctx as object)
+      m.log.warn("navigation refused", ctx.path, err)
+    end sub)
   else
     ' Session-reset (change user/server, sign out) needs main.bs to re-enter the login flow.
     ' Set it on the SCENE, which main.bs observes via its message port. Observing a routed
