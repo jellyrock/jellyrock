@@ -23,6 +23,9 @@ sub init()
   m.clearButton = m.top.findNode("clearButton")
 
   m.counter = m.top.findNode("counter")
+  ' The row focus will land on when it next enters the list (resetToTop), or -1. An unfocused
+  ' list keeps the jump until focus arrives and reports its old row until then.
+  m.landingIndex = -1
 
   ' Colors, fonts (the user's fallback font included) and the focus border come from
   ' JRLabelList. What differs here is the shape: left-aligned text, and rows more compact
@@ -140,6 +143,7 @@ sub updateCounter()
   ' itemFocused indexes the content, so this is a position in the whole list. It is -1
   ' before the list has been focused, where the honest answer is the first row.
   position = m.list.itemFocused + 1
+  if m.landingIndex >= 0 and not m.list.hasFocus() then position = m.landingIndex + 1
   if position < 1 then position = 1
   m.counter.text = translate(translationKeys.Message1Of2, [position.toStr(), total.toStr()])
   m.counter.visible = true
@@ -169,6 +173,8 @@ end sub
 ' Focus arrived on the list while it has no rows: ask the screen to move it ("empty").
 sub onListFocusChanged()
   if not m.list.hasFocus() then return
+  ' Focus has landed, so itemFocused says where again.
+  m.landingIndex = -1
   content = m.list.content
   if isValid(content) and content.getChildCount() > 0 then return
   m.top.escape = "empty"
@@ -186,6 +192,16 @@ function focusedState() as object
   end if
   return { value: value, onClear: false }
 end function
+
+' Starts the list at its first row while focus is elsewhere: the screen calls it for rows
+' written while the viewer types, which are a new list. Measured on a Streaming Stick 4K
+' (2026-10-18): an unfocused list applies jumpToItem only when focus next enters it, and
+' itemFocused keeps the old row until then, so the counter is told where focus will land.
+sub resetToTop()
+  m.list.jumpToItem = 0
+  m.landingIndex = 0
+  updateCounter()
+end sub
 
 ' Focuses where focusedState() said focus was: Clear History when it is still shown, else the
 ' row with that activation value, else the first row. Returns false, focusing nothing, when

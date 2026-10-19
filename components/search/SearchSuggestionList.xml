@@ -69,7 +69,10 @@
          shown, else the row with value state.value, else the first row; false when
          nothing in the column can take focus. -->
     <!-- focusedState(): { value, onClear }, where focus is in this column, for focusItem. -->
+    <!-- resetToTop(): start the list at its first row, for rows written while focus is
+         elsewhere. -->
     <function name="focusedState" />
+    <function name="resetToTop" />
     <function name="focusItem" />
   </interface>
 </component>

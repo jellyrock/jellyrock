@@ -413,6 +413,44 @@ it('counts the suggestions when they all fit', async () => {
   );
 });
 
+it('new hints typed after a visit to the column start at the first row', async () => {
+  // The list keeps its focused row after focus leaves it, so without a reset the next
+  // query's hints counted from the old row ("3 of 8" with focus on the keyboard) and Left
+  // into the column landed there.
+  await freshSearch();
+  await typeAndWaitForHints();
+  await enterSuggestions();
+  await press(ecp.Key.Down);
+  await waitFor('#suggestions.#list.itemFocused', (v) => v === 1, {
+    read: getActiveVal,
+    timeout: 5000,
+    interval: 250,
+    label: 'the second suggestion focused',
+  });
+  await press(ecp.Key.Right);
+  await waitFocusInside('#kbd', { label: 'back on the keyboard', timeout: 8000 });
+
+  await ecp.sendText('l');
+  await waitFor(
+    '#suggestions.#counter.text',
+    (v) => typeof v === 'string' && v.startsWith('1 of '),
+    {
+      read: getActiveVal,
+      timeout: 20000,
+      interval: 250,
+      label: 'the new hints counted from the first row',
+    },
+  );
+  const count = await getActiveVal('#suggestions.#list.content.getChildCount()');
+  expect(count, 'hints for the longer query').toBeGreaterThan(0);
+  expect(await getActiveVal('#suggestions.#counter.text'), 'the whole list counted').toBe(
+    `1 of ${count}`,
+  );
+  // An unfocused list applies the jump only when focus enters it, so entering is the check.
+  await enterSuggestions();
+  expect(await getActiveVal('#suggestions.#list.itemFocused'), 'landed on the first row').toBe(0);
+});
+
 it('picking a recent search fills the column with its hints', async () => {
   await freshSearch();
   await reopenOnRecentSearches();

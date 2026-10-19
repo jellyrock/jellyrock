@@ -747,7 +747,13 @@ end sub
 sub showSuggestions(mode as string, items as object)
   m.overlay.suggestionMode = mode
   m.overlay.suggestionItems = items
-  if items.count() > 0 then return
+  if items.count() > 0
+    ' Rows written while the viewer types are a new list, so it starts at its first row. The
+    ' list keeps its focused row after focus leaves it, and the counter and the way back in
+    ' would otherwise both use that old row ("3 of 8" with focus on the keyboard).
+    if m.kbd.isInFocusChain() then m.suggestions.callFunc("resetToTop")
+    return
+  end if
   inColumn = m.suggestions.isInFocusChain()
   if isValid(m.top.lastFocus) and (m.top.lastFocus.isSameNode(m.suggestionList) or m.top.lastFocus.isSameNode(m.suggestions.findNode("clearButton")))
     inColumn = true
