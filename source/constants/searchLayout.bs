@@ -9,7 +9,7 @@ namespace searchLayout
   ' same width so the search bar and keyboard form a single visual column.
   ' Top edge at y=54 = 5% top-safe-area edge. x position aligns with keyboard
   ' (x=824, the keyboard's left edge) so the bar visually couples to the keys below.
-  ' Its position [824, 54] and 60px height are set in SearchScreen.xml and SearchPeekChip.xml;
+  ' Its position [824, 54] and 44px height are set in SearchScreen.xml and SearchPeekChip.xml;
   ' only the width is read in code.
   const PEEK_CHIP_WIDTH = 1000
 
@@ -26,7 +26,7 @@ namespace searchLayout
   const SUGGESTIONS_WIDTH = 684
 
   ' Results row list (SearchRow) translation when collapsed.
-  ' Sits below the peek chip (peek chip ends at y=114) with breathing room.
+  ' Sits below the peek chip (peek chip ends at y=98) with breathing room.
   const RESULTS_Y = 140
 
   ' Results row list translation when the overlay is expanded. Positioned
@@ -39,7 +39,7 @@ namespace searchLayout
 
   ' Overlay (keyboard + suggestion panel): slides down from above the viewport.
   ' OPEN_Y: resting position when expanded. y=130: directly below the peek
-  '         chip (peek chip occupies y=54–114 with a 16px gap before the
+  '         chip (peek chip occupies y=54–98 with a 32px gap before the
   '         overlay starts). Peek chip stays visible above the overlay.
   ' CLOSED_Y: placed fully above the viewport.
   ' Height budget:

@@ -16,7 +16,7 @@ import "pkg:/source/utils/translate.bs"
 ' Layout geometry: kept local (not in searchLayout.bs) because every value
 ' here is internal to the pill's own coordinate system.
 ' LABEL_X is the icon's x (24) plus its width (36) plus a 16px gap; the icon's translation
-' and size are set in SearchPeekChip.xml (36px, centered in the 60px pill).
+' and size are set in SearchPeekChip.xml (36px, centered in the 44px pill).
 const LABEL_X = 76
 const RIGHT_PADDING = 24 ' breathing room on the right edge
 
