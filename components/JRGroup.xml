@@ -26,8 +26,10 @@
          overhang updates in one frame. Screens DECLARE these (typically in init); they never
          poke the overhang node directly. Defaults give a bare overhang (detail/grid screens). -->
     <!-- Clock visibility. Defaults TRUE, unlike its neighbors: the clock is app-wide
-         chrome a screen opts OUT of (Home honors uiDesignHideClock, SearchScreen's peek
-         chip occupies the clock's corner), whereas the logo/icons/dropdown are opted IN. -->
+         chrome a screen opts OUT of (SearchScreen's peek chip occupies the clock's corner),
+         whereas the logo/icons/dropdown are opted IN. The user's Hide clock setting
+         (uiDesignHideClock) is not declared here: JRScene's overhang controller applies it
+         on top of this field for every screen. -->
     <field id="isClockVisible" type="boolean" value="true" />
     <field id="isLogoVisible" type="boolean" value="false" />
     <field id="shouldShowIcons" type="boolean" value="false" />

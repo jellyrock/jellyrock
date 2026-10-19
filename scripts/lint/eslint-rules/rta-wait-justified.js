@@ -123,6 +123,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // retry or an emptied query. Both values hold until the viewer types or presses Try again:
   // terminal, not a pulse. Read against the app source 2026-10-14, both write sites.
   '#searchFailed.visible',
+  // JRScene's overhang controller writes it: `registerOverhangData` on every view change and
+  // `updateOverhangClock` when the active view's own field changes (both AND the user's
+  // `uiDesignHideClock`). Nothing writes it between those, so it holds until the next view
+  // change: terminal, not a pulse. Read against the app source 2026-10-19, both write sites.
+  '#overhang.isClockVisible',
   // `SearchScreen.init` sets the help text, `showHelpText` replaces it with "No results for …"
   // for an answered empty search (submitted, or live while the keyboard is open), and
   // `onQueryChanged` writes the help text back only when the viewer empties the query. Each
