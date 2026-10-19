@@ -617,6 +617,7 @@
   "MessageBringTheTheaterExperienceStraightTo": "Bring the theater experience straight to your living room with the ability to play custom intros before the main feature.",
   "MessageCastCanceled": "Cast canceled.",
   "MessageCausedByTheSetting": "Caused by the {0} setting.",
+  "MessageClearRecentSearches": "Remove all of your recent searches?",
   "MessageConfigureTheMaximumResolutionWhenTranscoding": "Configure the maximum resolution when transcoding video files to this device.",
   "MessageContentOnUnknownServer": "This content is on a Jellyfin server you haven't added to this device.",
   "MessageContentUnavailable": "This content isn't available.",

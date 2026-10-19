@@ -226,10 +226,13 @@ const keyIs = (want, label) =>
     label,
   });
 
-it('Clear History empties the list and moves focus to the keyboard', async () => {
-  await freshSearch();
-  await reopenOnRecentSearches();
-  await enterSuggestions();
+/**
+ * From the suggestion column in recent mode: walk to Clear History, press OK and answer its
+ * confirm dialog with `answer` ('confirm' or 'cancel'). showConfirmDialog opens on the safe
+ * button (Cancel, #buttonRow.0); the action is to its right. Confirmed, the history is gone
+ * and focus ends on the keyboard; cancelled, focus returns to Clear History.
+ */
+async function clearHistory(answer = 'confirm') {
   await waitFocused(atClear, {
     timeout: 15000,
     interval: 350,
@@ -237,7 +240,31 @@ it('Clear History empties the list and moves focus to the keyboard', async () =>
     label: 'Clear History',
   });
   await press(ecp.Key.Ok);
-  await waitFocusInside('#kbd', { label: 'the keyboard after Clear History', timeout: 5000 });
+  await waitFocusInside('#jrDialog', { label: 'the Clear History confirm dialog', timeout: 8000 });
+  const cancelLabel = await getVal('#buttonRow.0.text');
+  const clearLabel = await getVal('#buttonRow.1.text');
+  expect(cancelLabel, 'dialog labels readable').toBeTruthy();
+  expect(clearLabel, 'dialog labels readable and distinct').toBeTruthy();
+  expect(clearLabel).not.toBe(cancelLabel);
+  if (answer === 'cancel') {
+    await press(ecp.Key.Ok);
+    await waitFocused(atClear, { timeout: 8000, label: 'Clear History after Cancel' });
+    return;
+  }
+  await press(ecp.Key.Right);
+  await waitFocused((f) => f?.node?.text === clearLabel, {
+    timeout: 5000,
+    label: "the dialog's Clear History focused",
+  });
+  await press(ecp.Key.Ok);
+  await waitFocusInside('#kbd', { label: 'the keyboard after Clear History', timeout: 8000 });
+}
+
+it('Clear History empties the list and moves focus to the keyboard', async () => {
+  await freshSearch();
+  await reopenOnRecentSearches();
+  await enterSuggestions();
+  await clearHistory();
   expect(await getActiveVal('#suggestions.#list.content.getChildCount()'), 'history cleared').toBe(
     0,
   );
@@ -306,14 +333,7 @@ it('removing the last recent search with Options moves focus to the keyboard', a
   // Exactly one recent search: clear the history, then submit one.
   await reopenOnRecentSearches();
   await enterSuggestions();
-  await waitFocused(atClear, {
-    timeout: 15000,
-    interval: 350,
-    action: walkFocusUntil(ecp.Key.Down, atClear),
-    label: 'Clear History',
-  });
-  await press(ecp.Key.Ok);
-  await waitFocusInside('#kbd', { label: 'the keyboard after Clear History', timeout: 5000 });
+  await clearHistory();
   await reopenOnRecentSearches();
   expect(
     await getActiveVal('#suggestions.#list.content.getChildCount()'),
@@ -343,6 +363,48 @@ it('removing the last recent search with Options moves focus to the keyboard', a
     timeout: 8000,
   });
   expect(await getActiveVal('#suggestions.#list.content.getChildCount()'), 'history empty').toBe(0);
+});
+
+it('Cancel on the Clear History dialog keeps the recent searches', async () => {
+  await freshSearch();
+  await reopenOnRecentSearches();
+  const before = await getActiveVal('#suggestions.#list.content.getChildCount()');
+  expect(before, 'recent listed').toBeGreaterThan(0);
+  await enterSuggestions();
+  await clearHistory('cancel');
+  expect(await getActiveVal('#suggestions.#list.content.getChildCount()'), 'history kept').toBe(
+    before,
+  );
+});
+
+it('Options on a suggestion opens nothing, even one that is also a recent search', async () => {
+  await freshSearch();
+  await typeAndWaitForHints();
+  await enterSuggestions();
+  const picked = await getActiveVal(`${LIST}.content.0.description`);
+  expect(typeof picked === 'string' && picked !== '', 'the picked suggestion read').toBe(true);
+
+  // Picking it saves it as a recent search; Up from the results reopens the column on the
+  // picked row, now a suggestion whose value is also in the history.
+  await press(ecp.Key.Ok);
+  await waitFocused(atResults, {
+    timeout: 15000,
+    interval: 350,
+    label: 'the results after the pick',
+  });
+  await waitSearchResults({ label: `results for "${picked}"` });
+  await press(ecp.Key.Up);
+  await waitFocused(atList, { timeout: 8000, interval: 250, label: 'back in the suggestion list' });
+  const index = await getActiveVal(`${LIST}.itemFocused`);
+  expect(await getActiveVal(`${LIST}.content.${index}.description`), 'on the picked row').toBe(
+    picked,
+  );
+
+  await press(ecp.Key.Option);
+  // A dialog would take focus, and Left would then move between its buttons. Left reaching
+  // the keyboard proves the Option press opened nothing, with no wait for a non-event.
+  await press(ecp.Key.Left);
+  await waitFocusInside('#kbd', { label: 'the keyboard, with no dialog open', timeout: 8000 });
 });
 
 it('shows five hints, but four recent searches beside Clear History', async () => {

@@ -56,14 +56,14 @@
     <!-- Emitted when the user activates the pinned Clear History button. -->
     <field id="clearHistoryRequested" type="boolean" alwaysNotify="true" />
 
-    <!-- Emitted when the user presses OPTIONS on a focused recent-search row.
-         Value is the term string that should be removed from registry. -->
+    <!-- Emitted when the user presses OPTIONS on a focused row in recent mode.
+         Value is the term to remove from the recent searches (the screen confirms first). -->
     <field id="removeRequested" type="string" alwaysNotify="true" />
 
     <!-- Set to "right" or "left" when the user leaves for the keyboard (onto
          its left or right edge), or "down" when DOWN leaves the column past
          its last row or Clear History, or "empty" when focus lands on the
-         list while it has no rows. -->
+         list while it has no rows, or on Clear History while it is hidden. -->
     <field id="escape" type="string" alwaysNotify="true" />
     <!-- focusItem(state) as boolean: focus Clear History when state.onClear and it is
          shown, else the row with value state.value, else the first row; false when

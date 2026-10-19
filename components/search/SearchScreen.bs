@@ -347,6 +347,11 @@ sub onDestroy()
 
   m.top.unobserveField("quickPlayNode") ' playback launcher
 
+  ' The confirm dialogs are appended to the scene, so they would outlive this view; their
+  ' handlers read nodes released below.
+  abandonDialog(m.removeDialog)
+  abandonDialog(m.clearHistoryDialog)
+
   if isValid(m.searchRetryButton) then m.searchRetryButton.unobserveField("isReady")
   if isValid(m.failureNarrationTimer)
     m.failureNarrationTimer.unobserveField("fire")
@@ -383,6 +388,8 @@ sub onDestroy()
 
   m.searchTask = releaseTask(m.searchTask, "results")
 
+  m.removeDialog = invalid
+  m.clearHistoryDialog = invalid
   m.searchSelect = invalid
   m.peekChip = invalid
   m.overlay = invalid
@@ -797,43 +804,34 @@ sub onSuggestionSelected()
   m.suggestionFocus = pickedFrom
 end sub
 
+' Clear History: wipes every recent search, so it confirms first, as removing one does
+' (destructive actions always confirm, #889).
 sub onClearHistoryRequested()
   if not m.suggestions.clearHistoryRequested then return
+  m.log.info("clear history confirm")
+  title = translate(translationKeys.ButtonClearHistory)
+  msg = translate(translationKeys.MessageClearRecentSearches)
+  m.clearHistoryDialog = showConfirmDialog(title, msg, "onClearHistoryDialogResponse", translate(translationKeys.ButtonClearHistory), translate(translationKeys.ButtonCancel))
+end sub
+
+' Only the Clear History button clears: Cancel, Back and a dialog superseded by another
+' all arrive as not confirmed.
+sub onClearHistoryDialogResponse()
+  result = m.clearHistoryDialog.result
+  m.clearHistoryDialog = invalid
+  if not isValid(result) or not result.confirmed then return
+
+  m.log.info("clear history confirmed")
   searchHistory.clear()
   renderRecentSuggestions()
 end sub
 
-' Per-entry delete: SearchSuggestionList emits this when the user presses
-' OPTIONS on a focused row. Show a confirm dialog; on confirm remove the
-' term from registry and re-render. The dialog makes the destructive action
-' discoverable and recoverable (the old silent-remove was jarring).
-'
-' The SuggestionList emits for any focused row (not only recent-mode rows);
-' we gate here by looking up the term in the saved history. If it's not a
-' saved recent, the OPTIONS press is a no-op.
+' Per-entry delete: SearchSuggestionList emits this when the user presses OPTIONS on a
+' focused recent search (only there: OK on that row runs the search, so removing it is
+' the row's secondary action, #889). Confirm, then remove it and re-render.
 sub onSuggestionRemoveRequested()
   term = m.suggestions.removeRequested
   if not isValid(term) or term = "" then return
-
-  ' Only prompt if the term is actually in the user's recent-search list.
-  ' OPTIONS on a pure hint row that the user never searched should not open
-  ' a "remove?" dialog for a phantom entry.
-  recent = searchHistory.load()
-  isInHistory as boolean = false
-  lowerTerm = LCase(term)
-  for each existing in recent
-    if type(existing) = "roString" or type(existing) = "String"
-      if LCase(existing) = lowerTerm
-        isInHistory = true
-        exit for
-      end if
-    end if
-  end for
-
-  if not isInHistory
-    m.log.verbose("remove ignored — not in history: " + term)
-    return
-  end if
 
   m.pendingRemoveTerm = term
   m.log.info("remove confirm for term=" + term)
@@ -880,8 +878,9 @@ sub onSuggestionEscape()
     if direction = "left" then side = "right"
     m.kbd.callFunc("focusEdge", row, side)
   else if direction = "empty"
-    ' Focus landed on the list with no rows in it (a dialog restoring its opener after the
-    ' last recent search was removed): nothing there takes a key, so the keyboard does.
+    ' Focus landed on the list with no rows in it, or on Clear History while it is hidden
+    ' (a confirm dialog restoring its opener after the history it removed): nothing there
+    ' takes a key, so the keyboard does.
     m.kbd.setFocus(true)
     m.top.lastFocus = m.kbd
   else if direction = "down"

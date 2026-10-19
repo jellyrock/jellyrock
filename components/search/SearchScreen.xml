@@ -62,9 +62,6 @@
         keyValue="[[0, 140],[0, 550]]"
         fieldToInterp="searchSelect.translation" />
     </Animation>
-
-    <!-- Existing options side panel: unchanged behavior. -->
-    <OptionsSlider id="options" />
   </children>
   <interface>
     <!-- Canonical current query. Writing triggers the state machine (hints /
