@@ -2146,6 +2146,16 @@ The search keyboard is alphabetical in a 10 by 4 grid: Space, A to G, Backspace 
 
 Cost accepted: Backspace is a little farther on average (4.12 presses against 3.88), and Left from the suggestions on the top row lands on Clear, so a stray OK there clears the query.
 
+## decision-id: search-history-render-thread-write
+
+**date**: 2026-10-19
+**status**: accepted
+**related-files**: `source/utils/searchHistory.bs`, `docs/architecture/threading.md`
+
+Recent searches are read and written in the registry on the render thread, not on a Task. Measured 2026-10-19 on a Streaming Stick 4K (Roku OS 15.3.4) with a 10-term list, 60 runs each: read and parse took a median 0.22 ms (worst 0.78), write and flush 18 ms (worst 37), a whole `searchHistory.push` 19 ms (worst 38). The write happens once per submitted search, inside the key press and before the overlay's close animation starts, and every setting already writes and flushes the registry on the render thread (`JellyfinUserSettings.onSettingChanged`). `searchHistory.push` skips the write when the term is already first as typed. So `threading.md`, `components/CLAUDE.md` and `source/CLAUDE.md` now name a small registry write on a user action as the exception to the I/O-on-a-Task rule.
+
+Ruled out: a fire-and-forget Task per write, which adds a thread start per search against the 100-thread ceiling, an ordering race between overlapping writes, and a pattern no other writer uses. Also one long-lived registry-writer Task for the whole app: the right fix if registry writes ever show up as dropped frames across the app, but its own project. Not measured: the low-end Roku. Revisit if a measurement there, or a report of dropped frames, shows the write.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

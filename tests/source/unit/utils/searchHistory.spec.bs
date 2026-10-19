@@ -86,6 +86,30 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("push(term) - skips a write that changes nothing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The stored text is spaced differently from what FormatJson writes, so a rewrite of the
+    ' same list shows up as a changed string.
+    @it("leaves the stored list alone when the term is already first, as typed")
+    function _()
+      stored = "[ ""dune"", ""alien"" ]"
+      setUserSetting(searchHistory.KEY, stored)
+      searchHistory.push("dune")
+      searchHistory.push("  dune ")
+      m.assertEqual(getUserSetting(searchHistory.KEY), stored)
+    end function
+
+    @it("writes when the first term differs only in case")
+    function _()
+      setUserSetting(searchHistory.KEY, "[ ""dune"", ""alien"" ]")
+      searchHistory.push("Dune")
+      list = searchHistory.load()
+      m.assertEqual(list.count(), 2)
+      m.assertEqual(list[0], "Dune")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("push(term) - cap at RECENT_MAX")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

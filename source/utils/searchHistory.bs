@@ -35,6 +35,10 @@ namespace searchHistory
     if trimmed = "" then return
 
     list = load()
+    ' Already first, as typed (searching it again, Try again, the top recent search): the
+    ' list would not change, so skip the write. A flush costs a render-thread frame or two
+    ' (decision search-history-render-thread-write).
+    if list.count() > 0 and list[0] = trimmed then return
     lower = LCase(trimmed)
 
     cleaned = []

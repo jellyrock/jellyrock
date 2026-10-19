@@ -58,7 +58,7 @@ If a toggle has an exit that can't unobserve (an `else` for an unhandled state, 
 
 ## Render thread protection
 
-- Roku's render thread runs the UI. Network, registry and large file I/O **must run on a Task thread**. Which thread is which (there are three, and main is not render), and the measured list of what can be created where, are in [threading.md](../docs/architecture/threading.md).
+- Roku's render thread runs the UI. Network and large file I/O **must run on a Task thread**. A small registry write on a user action (a setting, a recent search) is the exception; a large or repeated one goes on a Task too (decision `search-history-render-thread-write`). Which thread is which (there are three, and main is not render), and the measured list of what can be created where, are in [threading.md](../docs/architecture/threading.md).
 - For HTTP from a component, build the request with `GetApi().Build*Request()` and send it with `fetchAsync()`, which returns a promise ([api.md](../docs/architecture/api.md)). `fetchRes()` blocks and is for Task threads only.
 - One `m.global.<child>` read is fine. For several reads in a hot path, keep the node in a local first (`globalUser = m.global.user`, then `globalUser.foo`, `globalUser.bar`).
 - For bulk field updates, prefer `node.setFields({ a: 1, b: 2 })` to a run of assignments.
