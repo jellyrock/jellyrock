@@ -494,10 +494,64 @@ describe('docs-check — signals-backlog schema', () => {
     );
     const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
     expect(exitCode).toBe(1);
-    const parsed = JSON.parse(stdout);
-    const errs = parsed.errors.filter((e) => e.category === 'signals-schema-invalid');
+    const errs = JSON.parse(stdout).errors.filter((e) => e.category === 'signals-schema-invalid');
     expect(errs.length).toBe(1);
     expect(errs[0].message).toMatch(/invalid last_checked "yesterday"/);
+  });
+
+  it('FAILs when a hand-managed row has no last_checked', () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-signals-'));
+    mkdirSync(join(dir, 'docs'), { recursive: true });
+    writeFileSync(
+      join(dir, 'docs/signals-backlog.md'),
+      SIGNALS_FRONTMATTER + makeRow('hand-managed', { last_checked: null }),
+    );
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(exitCode).toBe(1);
+    const errs = JSON.parse(stdout).errors.filter((e) => e.category === 'signals-schema-invalid');
+    expect(errs.length).toBe(1);
+    expect(errs[0].message).toMatch(/missing required bullet `\*\*last_checked\*\*`/);
+  });
+
+  it('FAILs when a hand-managed row has no latest_upstream', () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-signals-'));
+    mkdirSync(join(dir, 'docs'), { recursive: true });
+    writeFileSync(
+      join(dir, 'docs/signals-backlog.md'),
+      SIGNALS_FRONTMATTER + makeRow('hand-managed', { latest_upstream: null }),
+    );
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(exitCode).toBe(1);
+    const errs = JSON.parse(stdout).errors.filter((e) => e.category === 'signals-schema-invalid');
+    expect(errs.length).toBe(1);
+    expect(errs[0].message).toMatch(/missing required bullet `\*\*latest_upstream\*\*`/);
+  });
+
+  it('passes an auto-managed row without latest_upstream and last_checked, and FAILs one that carries either', () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-signals-'));
+    mkdirSync(join(dir, 'docs'), { recursive: true });
+    const file = join(dir, 'docs/signals-backlog.md');
+    writeFileSync(
+      file,
+      SIGNALS_FRONTMATTER + makeRow('roku-os', { latest_upstream: null, last_checked: null }),
+    );
+    expect(spawnScript(SCRIPT, [dir, '--json']).exitCode).toBe(0);
+
+    writeFileSync(file, SIGNALS_FRONTMATTER + makeRow('roku-os', { last_checked: null }));
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(exitCode).toBe(1);
+    const errs = JSON.parse(stdout).errors.filter((e) => e.category === 'signals-schema-invalid');
+    expect(errs.length).toBe(1);
+    expect(errs[0].message).toMatch(/must not carry `\*\*latest_upstream\*\*`/);
+
+    writeFileSync(file, SIGNALS_FRONTMATTER + makeRow('roku-os', { latest_upstream: null }));
+    const second = spawnScript(SCRIPT, [dir, '--json']);
+    expect(second.exitCode).toBe(1);
+    const errs2 = JSON.parse(second.stdout).errors.filter(
+      (e) => e.category === 'signals-schema-invalid',
+    );
+    expect(errs2.length).toBe(1);
+    expect(errs2[0].message).toMatch(/must not carry `\*\*last_checked\*\*`/);
   });
 
   it('accepts an optional staleness_days override', () => {

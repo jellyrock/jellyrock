@@ -22,7 +22,7 @@ import {
 
 const SCRIPT = 'scripts/server-upgrade-tracker.js';
 
-function signalsDoc({ acknowledged = '10.11.8', upstream = '10.11.10', status = 'watching' } = {}) {
+function signalsDoc({ acknowledged = '10.11.8', status = 'watching' } = {}) {
   return `---
 last-updated: 2026-05-29
 ---
@@ -40,9 +40,7 @@ last-updated: 2026-05-29
 
 - **watching**: latest stable
 - **current**: 10.7.0 minimum supported
-- **latest_upstream**: ${upstream}
 - **latest_acknowledged**: ${acknowledged}
-- **last_checked**: 2026-05-29
 - **action_when_moves**: run /server-upgrade
 - **status**: ${status}
 
@@ -55,10 +53,9 @@ last-updated: 2026-05-29
 
 describe('parseStableSignal', () => {
   it('extracts the stable row, skipping the code-fence example and the rc row', () => {
-    const sig = parseStableSignal(signalsDoc({ acknowledged: '10.11.8', upstream: '10.11.10' }));
+    const sig = parseStableSignal(signalsDoc({ acknowledged: '10.11.8' }));
     expect(sig).toEqual({
       latest_acknowledged: '10.11.8',
-      latest_upstream: '10.11.10',
       status: 'watching',
     });
   });

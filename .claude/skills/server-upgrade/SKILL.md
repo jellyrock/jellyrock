@@ -17,7 +17,7 @@ Like `/crash-report`, this skill has no sibling `INVESTIGATION.md`: each filed i
 
 ## Inputs
 
-The arguments are optional: the path to a data report (`.api-watch/cache/findings-candidates-<from>..<to>.json`), or a `<from> <to>` version pair. With none, Step 0 resolves the pair from the `jellyfin-server-stable` row in the signals backlog (`latest_acknowledged` is `<from>`, `latest_upstream` is `<to>`).
+The arguments are optional: the path to a data report (`.api-watch/cache/findings-candidates-<from>..<to>.json`), or a `<from> <to>` version pair. With none, Step 0 resolves the pair from the `jellyfin-server-stable` row in the signals backlog (`latest_acknowledged` is `<from>`) and the reader's fetched upstream for that row (`<to>`).
 
 `<to>` picks the channel and the path through this skill:
 
@@ -26,7 +26,7 @@ The arguments are optional: the path to a data report (`.api-watch/cache/finding
 
 ## Step 0: Preflight
 
-1. **Find or build the data report.** If the arguments name a report file, use it. Otherwise read the `jellyfin-server-stable` row in [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) for `latest_acknowledged` (`<from>`) and `latest_upstream` (`<to>`), and look for `.api-watch/cache/findings-candidates-<from>..<to>.json`. If it is missing, build it, committing the `<to>` fingerprint first when there is none (committed fingerprints are the diff's forward anchor):
+1. **Find or build the data report.** If the arguments name a report file, use it. Otherwise read the `jellyfin-server-stable` row in [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) for `latest_acknowledged` (`<from>`), take `<to>` from the reader's fetched upstream for that row (`node scripts/catchup-state.js --no-gh | jq -r '.signals.rows[] | select(.slug=="jellyfin-server-stable") | .latest_upstream // empty'`; empty means the fetch failed, so ask for `<to>`), and look for `.api-watch/cache/findings-candidates-<from>..<to>.json`. If it is missing, build it, committing the `<to>` fingerprint first when there is none (committed fingerprints are the diff's forward anchor):
 
    ```bash
    ls docs/architecture/spec-fingerprints/jellyfin-<to>.json 2>/dev/null \
@@ -51,7 +51,7 @@ You take this path when `<to>` has an `-rcN`, `-betaN` or `-alphaN` suffix, is t
 Skip the rest of Step 0: label checks, the digest and its counts all exist for GitHub, and a pre-release has no digest. Run this sequence instead:
 
 1. **Resolve `<from>` and `<to>`.** Explicit arguments always win.
-   - **Release candidate:** read the `jellyfin-server-rc` row in [`docs/signals-backlog.md`](../../../docs/signals-backlog.md): `latest_acknowledged` is `<from>` and `latest_upstream` is `<to>`. Once you triage `rc1`, step 5 below sets that row's `latest_acknowledged` to `rc1`, so when `rc2` lands the next run diffs `rc1` to `rc2` and shows only what changed since.
+   - **Release candidate:** read the `jellyfin-server-rc` row in [`docs/signals-backlog.md`](../../../docs/signals-backlog.md): `latest_acknowledged` is `<from>`, and `<to>` is the reader's fetched upstream for that row (`node scripts/catchup-state.js --no-gh | jq -r '.signals.rows[] | select(.slug=="jellyfin-server-rc") | .latest_upstream // empty'`). Once you triage `rc1`, step 5 below sets that row's `latest_acknowledged` to `rc1`, so when `rc2` lands the next run diffs `rc1` to `rc2` and shows only what changed since.
    - **Unstable or master:** pass `unstable` (or `master`) as `<to>`. `findings-candidates.js` resolves it to the newest immutable datestamped build and prints `resolved unstable → <datestamp>` to stderr; the datestamp also lands in the report's `toVersion`. **Tell the user the datestamp:** it makes the run reproducible and is the next `<from>` for a master-to-master diff. `<from>` defaults to the latest acknowledged stable, or a prior datestamp you pass. The mutable `jellyfin-openapi-unstable.json` pointer is never pinned.
 
 2. **Build the report in memory**, with no committed fingerprint: the archive is permanent, so `--fetch` can rebuild these throwaway anchors any time.

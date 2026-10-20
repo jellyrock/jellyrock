@@ -41,7 +41,7 @@
 //
 // It never files per-finding issues (that stays human-gated behind
 // `/server-upgrade execute`, which files them as sub-issues of the digest) and
-// never touches the journals (latest_upstream / last_checked stay /catchup's job).
+// never touches the journals.
 //
 // CLI:
 //   node scripts/server-upgrade-tracker.js [--root <dir>] [--signals <path>]
@@ -98,7 +98,7 @@ const TRACKER_LABEL = DIGEST_LABEL;
 
 // Parse the jellyfin-server-stable row out of signals-backlog.md. Mirrors the
 // H3-slug + `- **key**: value` parser in scripts/catchup-state.js (code fences
-// skipped). Returns { latest_acknowledged, latest_upstream, status } or null if
+// skipped). Returns { latest_acknowledged, status } or null if
 // the row is absent.
 export function parseStableSignal(markdown) {
   const lines = markdown.split(/\r?\n/);
@@ -127,7 +127,6 @@ export function parseStableSignal(markdown) {
   if (Object.keys(bullets).length === 0) return null;
   return {
     latest_acknowledged: bullets.latest_acknowledged ?? null,
-    latest_upstream: bullets.latest_upstream ?? null,
     status: bullets.status ?? null,
   };
 }

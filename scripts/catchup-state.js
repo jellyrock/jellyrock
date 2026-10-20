@@ -30,14 +30,7 @@
 // the caller.
 
 import { execSync } from 'node:child_process';
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -49,7 +42,11 @@ const {
   compareSemverBase,
   isReleaseVersionBase,
 } = require('./lib/signals-fetch.cjs');
-const { signalStaleness, STABLE_SLUG } = require('./lib/signal-staleness.cjs');
+const {
+  signalStaleness,
+  STABLE_SLUG,
+  AUTO_MANAGED_SIGNAL_SLUGS,
+} = require('./lib/signal-staleness.cjs');
 const { typedLines } = require('./lib/catchup-typed.cjs');
 
 // The server-upgrade per-version digest labels. Single-sourced in
@@ -82,13 +79,6 @@ const AREA_ARG = args.find((a) => a.startsWith('--area='));
 const AREA = AREA_ARG ? AREA_ARG.split('=')[1] : null;
 
 const SIGNALS_PATH = 'docs/signals-backlog.md';
-// Slugs whose latest_upstream + last_checked are auto-maintained by the
-// aggregator. Anything else stays manually managed via /log signal.
-const AUTO_MANAGED_SIGNAL_SLUGS = new Set([
-  'jellyfin-server-stable',
-  'jellyfin-server-rc',
-  'roku-os',
-]);
 
 const VALID_AREAS = [
   'components',
@@ -137,10 +127,6 @@ function exec(cmd) {
 
 function execTrim(cmd) {
   return exec(cmd).trim();
-}
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function isoDaysAgo(n) {
@@ -501,23 +487,20 @@ run('docs_stale', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────
-// Async tail: auto-maintain known-managed signals.
+// Async tail: fetch the upstream version of the auto-managed signals.
 //
 // Done after all sync sections so the file's parsed state is the baseline.
-// For each auto-managed slug whose `last_checked != today`, fetch the upstream
-// version and (if anything changed) write back to docs/signals-backlog.md
-// in-place. Per-slug failures fall back to the file's existing values and
-// surface in `_errors.signals_fetch`. The skipped-when-already-checked-today
-// behavior IS the cache: no separate cache file, no gitignored state.
+// Every run (unless --no-network) fetches the upstream version of each
+// auto-managed slug and sets it on the row in memory only: a reader never writes,
+// so no file changes and there is no once-a-day cache. A per-slug failure leaves
+// that row without an upstream for this run (not stale) and surfaces in
+// `_errors.signals_fetch`.
 
 async function maintainSignals() {
   if (NO_NETWORK) return;
   if (!state.signals || !Array.isArray(state.signals.rows)) return;
 
-  const today = todayIso();
-  const needs = state.signals.rows.filter(
-    (r) => AUTO_MANAGED_SIGNAL_SLUGS.has(r.slug) && r.last_checked !== today,
-  );
+  const needs = state.signals.rows.filter((r) => AUTO_MANAGED_SIGNAL_SLUGS.has(r.slug));
   if (needs.length === 0) return;
 
   const wantJellyfin = needs.some(
@@ -544,10 +527,7 @@ async function maintainSignals() {
       : Promise.resolve(),
   ]);
 
-  // Build per-slug update map from the fetch results.
-  const updatesBySlug = {};
-  for (const row of state.signals.rows) {
-    if (!AUTO_MANAGED_SIGNAL_SLUGS.has(row.slug)) continue;
+  for (const row of needs) {
     let upstream = null;
     if (row.slug === 'jellyfin-server-stable' && jellyfin) {
       upstream = jellyfin.stable;
@@ -556,84 +536,18 @@ async function maintainSignals() {
     } else if (row.slug === 'roku-os' && roku) {
       upstream = roku;
     }
-    if (upstream === null) continue; // fetch failed for this slug
-
-    const u = { last_checked: today };
-    if (row.latest_upstream !== upstream) u.latest_upstream = upstream;
-    updatesBySlug[row.slug] = u;
-
-    // Reflect in the in-memory state so the JSON output matches what we wrote.
-    row.last_checked = today;
-    row.latest_upstream = upstream;
+    // A failed fetch leaves no upstream for this run, whatever an old file line says.
+    if (upstream === null) delete row.latest_upstream;
+    else row.latest_upstream = upstream;
   }
 
-  if (Object.keys(updatesBySlug).length > 0) {
-    const content = readFileSync(SIGNALS_PATH, 'utf8');
-    const updated = applySignalUpdates(content, updatesBySlug, today);
-    if (updated !== content) writeFileSync(SIGNALS_PATH, updated);
-  }
-
-  // Recompute stale + counts after updates (reusing the digest ctx from run('signals')).
+  // Recompute stale + counts with the fetched values (reusing the digest ctx from run('signals')).
   for (const row of state.signals.rows) row.stale = signalStaleness(row, stableDigestCtx);
   state.signals.stale_count = state.signals.rows.filter((r) => r.stale).length;
 
   if (Object.keys(fetchErrors).length > 0) {
     _errors.signals_fetch = JSON.stringify(fetchErrors);
   }
-}
-
-// In-place line-targeted rewrite of the signals file. Touches only the lines we
-// own (latest_upstream/last_checked bullets in known slug blocks, plus the
-// frontmatter last-updated date). Everything else is preserved byte-for-byte.
-function applySignalUpdates(content, updatesBySlug, today) {
-  const lines = content.split(/\r?\n/);
-  let inFence = false;
-  let currentSlug = null;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^```/.test(lines[i])) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-
-    if (/^##\s+/.test(lines[i])) {
-      currentSlug = null;
-      continue;
-    }
-    const h3 = lines[i].match(/^###\s+([a-z0-9][a-z0-9-]*)\s*:/);
-    if (h3) {
-      currentSlug = h3[1];
-      continue;
-    }
-    if (!currentSlug || !updatesBySlug[currentSlug]) continue;
-
-    const u = updatesBySlug[currentSlug];
-    if (u.latest_upstream !== undefined) {
-      const m = lines[i].match(/^(-\s+\*\*latest_upstream\*\*:\s*)(.+?)(\s*)$/);
-      if (m && m[2] !== u.latest_upstream) {
-        lines[i] = m[1] + u.latest_upstream + m[3];
-      }
-    }
-    if (u.last_checked !== undefined) {
-      const m = lines[i].match(/^(-\s+\*\*last_checked\*\*:\s*)(\d{4}-\d{2}-\d{2})(\s*)$/);
-      if (m && m[2] !== u.last_checked) {
-        lines[i] = m[1] + u.last_checked + m[3];
-      }
-    }
-  }
-
-  // Frontmatter `last-updated` lives in the first ~10 lines. Bump only when
-  // a row write happened (the staleness lint only cares that the file moved
-  // on a real change day, which mirrors how /log signal already updates it).
-  for (let i = 0; i < Math.min(lines.length, 20); i++) {
-    if (/^last-updated:\s*\d{4}-\d{2}-\d{2}/.test(lines[i])) {
-      const updated = lines[i].replace(/^(last-updated:\s*)\d{4}-\d{2}-\d{2}/, `$1${today}`);
-      if (updated !== lines[i]) lines[i] = updated;
-      break;
-    }
-  }
-
-  return lines.join('\n');
 }
 
 // ────────────────────────────────────────────────────────────────────
