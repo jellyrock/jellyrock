@@ -1,6 +1,6 @@
 ---
 name: catchup
-description: "Session-start briefing: where did I leave off, what is in flight, what needs attention. One tested script reads git, the journal (followups, running work, cadences) and tracked projects and prints every fixed-threshold check that fires; JellyRock's own aggregator adds open PRs, high-engagement bugs, recent bug reports, current-branch CI, pending handoffs, the signals watchlist, recent ADRs, tech debt and architecture-doc staleness. Ends with one Suggested next move that hands off to /log, /done, /issue-triage, /runtime-triage, /ci-triage or /server-upgrade. Mandated by AGENTS.md's catchup-discipline rule: run at the start of any genuine new session, after a multi-day gap, or whenever you ask what the state of the world is."
+description: "Session-start briefing: where did I leave off, what is in flight, what needs attention. One tested script reads git, the journal (followups, running work, cadences) and tracked projects and prints every fixed-threshold check that fires; JellyRock's own aggregator adds open PRs, high-engagement bugs, recent bug reports, current-branch CI, pending handoffs, open upstream-watch issues (Jellyfin releases and release candidates, Roku OS), recent ADRs, tech debt and architecture-doc staleness. Ends with one Suggested next move that hands off to /log, /done, /issue-triage, /runtime-triage, /ci-triage or /server-upgrade. Mandated by AGENTS.md's catchup-discipline rule: run at the start of any genuine new session, after a multi-day gap, or whenever you ask what the state of the world is."
 model: sonnet
 effort: low
 audit-span: read-only
@@ -10,10 +10,10 @@ audit-span: read-only
 
 ## This repo
 
-- **Own reader:** `node scripts/catchup-state.js --typed --pretty` ([source](../../../scripts/catchup-state.js)), which the shared reader runs from `catchup.conf`. Its banners and errors come back ranked in the CANDIDATES block, each with its route; its JSON (PRs, issues, CI, handoffs, signals, decisions, tech debt, doc staleness, and `_errors`) follows the `=== STATE ===` line under `=== OWN READER ===`.
+- **Own reader:** `node scripts/catchup-state.js --typed --pretty` ([source](../../../scripts/catchup-state.js)), which the shared reader runs from `catchup.conf`. Its banners and errors come back ranked in the CANDIDATES block, each with its route; its JSON (PRs, issues, CI, handoffs, watches, decisions, tech debt, doc staleness, and `_errors`) follows the `=== STATE ===` line under `=== OWN READER ===`.
 - **Extra sections:** [jellyrock.md](jellyrock.md), for its sections only: its banners are the reader's typed lines now (`scripts/lib/catchup-typed.cjs`), ranked in the CANDIDATES block.
 - **Handoffs:** pending handoffs are `.claude/handoffs/*.md` (untracked): a paused `/runtime-triage` resumes from its `INVESTIGATION.md`; `/crash-report` and `/server-upgrade` leave run summaries there.
-- **Known write exception of the reader (to remove, so the tree stays clean):** it deletes handoffs older than 30 days. It never writes `docs/signals-backlog.md`: the three auto-managed signal rows are fetched on every run and held in memory.
+- **Known write exception of the reader (to remove, so the tree stays clean):** it deletes handoffs older than 30 days.
 - **Area re-entry:** after more than two weeks away from one subsystem, `/ramp <area>` instead of this briefing.
 
 ## Contract

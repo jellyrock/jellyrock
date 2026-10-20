@@ -28,22 +28,6 @@ Note schema:
 
 `/log decision --revise=<slug>` edits an existing `docs/decisions.md` note in place: the one exception to append-only. Use it only when the record describes wrongly what was decided or shipped (a function that no longer exists, a mechanism a later commit reverted, a measurement quoted wrong). A decision that changed is a supersede; wording polish is neither. Same gate as an append: draft the corrected text, show it as a diff, confirm, edit in place. Leave `**status**` alone and add no supersede pointer. The common case is a note written earlier on the same unmerged branch.
 
-## `signal`
-
-A row in [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) for an upstream the app depends on (Renovate covers npm dependencies, so not those). New row: an `H3` block at the bottom of `## Watching`, then bump the frontmatter `last-updated:` to today (`date +%Y-%m-%d`).
-
-    ### <slug>: <one-line label>
-
-    - **watching**: <what is watched upstream>
-    - **current**: <this repo's posture toward it>
-    - **latest_upstream**: <last known upstream version; omit on jellyfin-server-stable, jellyfin-server-rc and roku-os>
-    - **latest_acknowledged**: <last version reviewed via /done; seed = latest_upstream>
-    - **last_checked**: YYYY-MM-DD (omit on jellyfin-server-stable, jellyfin-server-rc and roku-os)
-    - **action_when_moves**: <what triggers a change here>
-    - **status**: watching | action_pending | completed
-
-Ask for the slug, label and fields not given. Defaults: `last_checked` today, `latest_acknowledged` = `latest_upstream`, `status` `watching`. The slug is unique (`grep -n '^### <slug>:' docs/signals-backlog.md`); on a hit ask: other slug, update the row, or abort. Those three rows carry no `latest_upstream` or `last_checked`: `scripts/catchup-state.js` fetches it on every run and never writes it. `npm run lint:docs` validates the schema (required bullets, status enum, an ISO date, a positive-integer `staleness_days` when present).
-
 ## `running`
 
 Replaces the one paragraph under `## Currently running` in `docs/progress.md`: what is in flight right now (not a followup, not shipped work). The post-merge journal-sync reads that paragraph and moves it to `## Recently shipped`, so keep the shape: heading, blank line, paragraph, blank line.

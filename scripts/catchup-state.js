@@ -2,7 +2,7 @@
 //
 // Single Node call returns JSON describing the repo state the shared reader
 // (.claude/skills/catchup/catchup-state.sh) does not cover: open PRs, recent
-// issues, CI runs, pending handoffs, signal watchlist age, recent ADRs, tech
+// issues, CI runs, pending handoffs, open upstream-watch issues, recent ADRs, tech
 // debt, doc staleness. Git position and the followup journal are the shared
 // reader's. Replaces ~13 parallel-bash calls with one allowlisted invocation. Banner-detection in /catchup becomes deterministic
 // JSON compares instead of agent text-parsing of mixed tool outputs.
@@ -21,9 +21,8 @@
 //                  tests, locale, scripts. Filters PR/issue gh queries
 //                  via the area-to-keyword map (mirrors /ramp/SKILL.md).
 //   --no-gh        skip all `gh` API calls (offline / fast tests)
-//   --no-network   skip all network I/O: --no-gh, plus skip the
-//                  signals upstream-version fetch. Used by tests and any
-//                  fully offline invocation.
+//   --no-network   skip all network I/O (today the same as --no-gh). Used
+//                  by tests and any fully offline invocation.
 //
 // Per-section error handling: each fetcher is wrapped in try/catch; failures
 // return null for that section + an entry in `_errors`. Never throws to
@@ -36,29 +35,14 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const {
-  fetchJellyfinVersions,
-  fetchRokuOs,
-  compareSemverBase,
-  isReleaseVersionBase,
-} = require('./lib/signals-fetch.cjs');
-const {
-  signalStaleness,
-  STABLE_SLUG,
-  AUTO_MANAGED_SIGNAL_SLUGS,
-} = require('./lib/signal-staleness.cjs');
 const { typedLines } = require('./lib/catchup-typed.cjs');
 
-// The server-upgrade per-version digest labels. Single-sourced in
-// scripts/server-upgrade.js (DIGEST_LABEL / TRIAGING_LABEL); duplicated here as
-// string literals to avoid importing that whole module into the aggregator.
-const STABLE_DIGEST_LABEL = 'server-upgrade:tracker';
-const STABLE_TRIAGING_LABEL = 'server-upgrade:triaging';
-
-// The stable row's open-digest context, queried once in run('signals') and reused
-// by maintainSignals()'s post-fetch staleness recompute. { stableDigest } where
-// stableDigest is an object (open) / null (none) / undefined (offline, so fallback).
-let stableDigestCtx = {};
+// The labels of the issues CI opens when an upstream moves: the per-version
+// Jellyfin digest and release-candidate issues (scripts/server-upgrade-tracker.js)
+// and the Roku OS review issue (scripts/roku-os-watch.js). Duplicated here as
+// string literals to avoid importing those modules into the aggregator.
+const WATCH_LABELS = ['server-upgrade:tracker', 'server-upgrade:rc', 'roku-os'];
+const TRIAGING_LABEL = 'server-upgrade:triaging';
 
 // Resolve sibling script paths relative to THIS script's location, not cwd.
 // Lets the aggregator be invoked from any working directory (real repo, test
@@ -77,8 +61,6 @@ const NO_NETWORK = args.includes('--no-network');
 const NO_GH = NO_NETWORK || args.includes('--no-gh');
 const AREA_ARG = args.find((a) => a.startsWith('--area='));
 const AREA = AREA_ARG ? AREA_ARG.split('=')[1] : null;
-
-const SIGNALS_PATH = 'docs/signals-backlog.md';
 
 const VALID_AREAS = [
   'components',
@@ -286,100 +268,27 @@ run('handoffs', () => {
   return { pending, pruned_count };
 });
 
-// Query the live open server-upgrade digest (if any) for the stable row's
-// staleness. Returns { number, triaging } for the newest-versioned open digest,
-// null when none are open, or undefined when gh is unavailable (so staleness
-// falls back to the string compare). Never throws.
-function fetchStableDigest() {
-  if (NO_GH) return undefined;
-  try {
+// The open upstream-watch issues, newest first. An open issue is the "needs
+// attention" signal: CI opens one when an upstream moves, and closing it is the
+// acknowledgment.
+run('watches', () => {
+  if (NO_GH) return { open: [] };
+  const open = [];
+  for (const label of WATCH_LABELS) {
     const out = exec(
-      `gh issue list --label ${STABLE_DIGEST_LABEL} --state open ` +
-        `--json number,title,labels --limit 20`,
+      `gh issue list --label ${label} --state open --json number,title,labels --limit 20`,
     );
-    const open = JSON.parse(out);
-    if (!Array.isArray(open) || open.length === 0) return null;
-    // ≤1 open digest is the norm; if several, pick the newest by title version.
-    const versioned = open
-      .map((iss) => {
-        const m = typeof iss.title === 'string' && iss.title.match(/Jellyfin (\S+)/);
-        return m && isReleaseVersionBase(m[1]) ? { iss, version: m[1] } : { iss, version: null };
-      })
-      .sort((a, b) => {
-        if (a.version && b.version) return compareSemverBase(b.version, a.version);
-        return a.version ? -1 : 1;
+    for (const iss of JSON.parse(out)) {
+      open.push({
+        label,
+        number: iss.number,
+        title: iss.title,
+        triaging: (iss.labels ?? []).some((l) => l.name === TRIAGING_LABEL),
       });
-    const top = versioned[0].iss;
-    return {
-      number: top.number,
-      triaging: (top.labels ?? []).some((l) => l.name === STABLE_TRIAGING_LABEL),
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-run('signals', () => {
-  if (!existsSync(SIGNALS_PATH)) return null;
-  const content = readFileSync(SIGNALS_PATH, 'utf8');
-  const lines = content.split(/\r?\n/);
-
-  let inFence = false;
-  let currentSlug = null;
-  let currentBullets = {};
-  const rows = [];
-
-  function finalize() {
-    if (!currentSlug) return;
-    rows.push({ slug: currentSlug, ...currentBullets });
-  }
-
-  for (const line of lines) {
-    if (/^```/.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-
-    if (/^##\s+/.test(line)) {
-      finalize();
-      currentSlug = null;
-      currentBullets = {};
-      continue;
-    }
-
-    const h3 = line.match(/^###\s+([a-z0-9][a-z0-9-]*)\s*:/);
-    if (h3) {
-      finalize();
-      currentSlug = h3[1];
-      currentBullets = {};
-      continue;
-    }
-
-    if (!currentSlug) continue;
-    const bullet = line.match(/^-\s+\*\*([a-z_]+)\*\*:\s*(.+?)\s*$/);
-    if (bullet) {
-      currentBullets[bullet[1]] = bullet[2];
     }
   }
-  finalize();
-
-  // Query the stable row's open digest ONCE; reused here and in the post-fetch
-  // recompute inside maintainSignals(). Stored module-scoped so both passes agree.
-  stableDigestCtx = { stableDigest: fetchStableDigest() };
-
-  for (const row of rows) {
-    row.stale = signalStaleness(row, stableDigestCtx);
-    // Surface the open digest on the stable row so /catchup + /focus can route to
-    // `/server-upgrade #N` instead of `/done`.
-    if (row.slug === STABLE_SLUG && stableDigestCtx.stableDigest) {
-      row.digest = stableDigestCtx.stableDigest;
-    }
-  }
-  const stale_count = rows.filter((r) => r.stale).length;
-  const action_pending_count = rows.filter((r) => r.status === 'action_pending').length;
-
-  return { rows, stale_count, action_pending_count };
+  open.sort((a, b) => b.number - a.number);
+  return { open };
 });
 
 run('decisions', () => {
@@ -487,81 +396,8 @@ run('docs_stale', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────
-// Async tail: fetch the upstream version of the auto-managed signals.
-//
-// Done after all sync sections so the file's parsed state is the baseline.
-// Every run (unless --no-network) fetches the upstream version of each
-// auto-managed slug and sets it on the row in memory only: a reader never writes,
-// so no file changes and there is no once-a-day cache. A per-slug failure leaves
-// that row without an upstream for this run (not stale) and surfaces in
-// `_errors.signals_fetch`.
-
-async function maintainSignals() {
-  if (NO_NETWORK) return;
-  if (!state.signals || !Array.isArray(state.signals.rows)) return;
-
-  const needs = state.signals.rows.filter((r) => AUTO_MANAGED_SIGNAL_SLUGS.has(r.slug));
-  if (needs.length === 0) return;
-
-  const wantJellyfin = needs.some(
-    (r) => r.slug === 'jellyfin-server-stable' || r.slug === 'jellyfin-server-rc',
-  );
-  const wantRoku = needs.some((r) => r.slug === 'roku-os');
-
-  const fetchErrors = {};
-  let jellyfin = null;
-  let roku = null;
-
-  await Promise.all([
-    wantJellyfin
-      ? fetchJellyfinVersions().then(
-          (v) => (jellyfin = v),
-          (err) => (fetchErrors.jellyfin = String(err.message || err).slice(0, 200)),
-        )
-      : Promise.resolve(),
-    wantRoku
-      ? fetchRokuOs().then(
-          (v) => (roku = v),
-          (err) => (fetchErrors.roku = String(err.message || err).slice(0, 200)),
-        )
-      : Promise.resolve(),
-  ]);
-
-  for (const row of needs) {
-    let upstream = null;
-    if (row.slug === 'jellyfin-server-stable' && jellyfin) {
-      upstream = jellyfin.stable;
-    } else if (row.slug === 'jellyfin-server-rc' && jellyfin) {
-      upstream = jellyfin.rc || '(no RC in flight)';
-    } else if (row.slug === 'roku-os' && roku) {
-      upstream = roku;
-    }
-    // A failed fetch leaves no upstream for this run, whatever an old file line says.
-    if (upstream === null) delete row.latest_upstream;
-    else row.latest_upstream = upstream;
-  }
-
-  // Recompute stale + counts with the fetched values (reusing the digest ctx from run('signals')).
-  for (const row of state.signals.rows) row.stale = signalStaleness(row, stableDigestCtx);
-  state.signals.stale_count = state.signals.rows.filter((r) => r.stale).length;
-
-  if (Object.keys(fetchErrors).length > 0) {
-    _errors.signals_fetch = JSON.stringify(fetchErrors);
-  }
-}
-
-// ────────────────────────────────────────────────────────────────────
 // Output
 
-(async () => {
-  try {
-    await maintainSignals();
-  } catch (err) {
-    _errors.signals_fetch = String(err.message || err)
-      .split('\n')[0]
-      .slice(0, 200);
-  }
-  const result = { ...state, _errors };
-  if (TYPED) process.stdout.write([...typedLines(result), '=== STATE ==='].join('\n') + '\n');
-  process.stdout.write(JSON.stringify(result, null, PRETTY ? 2 : 0) + '\n');
-})();
+const result = { ...state, _errors };
+if (TYPED) process.stdout.write([...typedLines(result), '=== STATE ==='].join('\n') + '\n');
+process.stdout.write(JSON.stringify(result, null, PRETTY ? 2 : 0) + '\n');

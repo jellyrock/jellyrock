@@ -11,7 +11,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh issue create:*), Bash(bash .
 
 ## This repo
 
-- **Routing** (Step 1): a user-facing bug, feature or enhancement is an issue. Internal tech debt, upstream version watches and other deferred work go where [Capture & state discipline](../../../AGENTS.md#capture--state-discipline) says (`/tech-debt-scan`, `/log signal`, `/log followup`).
+- **Routing** (Step 1): a user-facing bug, feature or enhancement is an issue. Internal tech debt, upstream version watches and other deferred work go where [Capture & state discipline](../../../AGENTS.md#capture--state-discipline) says (`/tech-debt-scan`, `/log followup`).
 - **Regression label** (Step 3): `regression`.
 - **Tracking issues** (Step 8): open epics carry the `epic` label (`bash .claude/skills/pr/forge.sh issue list --label epic --state open`); offer `--parent <N>` when the report belongs under one.
 - **Tooling issues** (Step 6): an issue about tooling only (tests, scripts, CI, dev setup) also gets `dev-improvement`, as #910 did.

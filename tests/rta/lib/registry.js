@@ -54,8 +54,8 @@ import { isProcessAlive } from '../../../scripts/lib/process-liveness.cjs';
  * leaves every later ODC call awaiting a promise that never settles, and no RTA timeout can
  * fire (the per-request one wraps the request, not the socket setup). Measured 2026-09-06:
  * still pending at 45 s against a socket that accepts and never replies. Observed for real
- * once, on `.178` after a SIGINT, at 8+ minutes. See `rta-odc-connect-hang` in
- * `docs/signals-backlog.md`.
+ * once, on `.178` after a SIGINT, at 8+ minutes. See followup `rta-odc-connect-hang` in
+ * `docs/progress.md`.
  *
  * 60 s is ~10,000x a healthy ODC round trip (~5.4 ms on the slower of the two devices), so
  * it bounds the hang without being reachable by a slow-but-working read. It is a diagnosis,
@@ -71,7 +71,7 @@ const REGISTRY_READ_TIMEOUT_MS = 60 * 1000;
 const readTimedOut = (what, timeoutMs) =>
   `the ODC port is open but the component never answered ${what} within ` +
   `${timeoutMs / 1000}s. This is roku-test-automation's setupClientSocket ` +
-  'defect (docs/signals-backlog.md -> rta-odc-connect-hang): a failed post-connect ' +
+  'defect (followup rta-odc-connect-hang in docs/progress.md): a failed post-connect ' +
   'handshake leaves the cached socket promise unsettled, so every later ODC call awaits a ' +
   'dead promise and no RTA timeout can fire. Recovery is a kill plus a re-deploy — ' +
   '`npm run test:rta` does it for you, since snapshotRegistry restores from the stranded ' +

@@ -3,7 +3,6 @@ topic: system-shape
 related-files:
   - CLAUDE.md
   - docs/progress.md
-  - docs/signals-backlog.md
   - docs/adr/README.md
   - docs/decisions.md
   - docs/architecture/tech-debt.md
@@ -41,7 +40,7 @@ The rules themselves live in [`CLAUDE.md`](../../CLAUDE.md), the journals under 
 The system is an engineering journal for one developer working with AI agents. It has four pillars:
 
 1. An information architecture for static knowledge, loosely after Diátaxis.
-2. Five journal surfaces, one per kind of project state, grouped by how fast that state goes out of date.
+2. Four journal surfaces, one per kind of project state, grouped by how fast that state goes out of date.
 3. Skills for the daily work of capturing, closing and catching up.
 4. Hooks, pre-push checks and CI that close drift loops so nobody has to remember to.
 
@@ -62,21 +61,22 @@ Static knowledge lives in four folders under [`docs/`](../), borrowed loosely fr
 
 It is not strict Diátaxis. There is no tutorial folder, because `DEVGUIDE.md` already plays that role. Splitting `docs/dev/` by type would make a reader pick a folder before they can find anything, which costs more than purity is worth at this size.
 
-### 2. Five surfaces for project state
+### 2. Four surfaces for project state
 
 | File | Job | Goes stale in | Written by |
 |---|---|---|---|
 | [`docs/progress.md`](../progress.md) | The live cursor: currently running, recently shipped, open followups | Hours to days | `/log followup` and `/log running`; `/done`, which adds a Recently shipped line on `main` (on a branch, `journal-sync` writes it after the merge) |
 | [`docs/adr/`](../adr/README.md) | Numbered architecture decision records for choices that are architectural, hard to reverse or cross-component | Never. A record is superseded, not edited: the supersede updates the older record's `**Status:**` line. | `/log decision` (ADR grade) |
 | [`docs/decisions.md`](../decisions.md) | Append-only notes for narrow, single-component decisions below the ADR bar | Never while the note is true. A supersede is the one field edit to an older note; `/log decision --revise=<slug>` corrects a note whose text is wrong about what shipped. | `/log decision` (below the bar) |
-| [`docs/signals-backlog.md`](../signals-backlog.md) | Upstream version watching (Jellyfin, Roku OS, BrighterScript, dependencies), one row per upstream | Slowly | `/log signal`, `/done <slug>` |
 | [`docs/architecture/tech-debt.md`](tech-debt.md) | Internal refactor candidates, each with a slug and a severity | Slowly | [`/tech-debt-scan`](../../.claude/skills/tech-debt-scan/SKILL.md), which adds and removes entries |
 
 Each file has one job. A file with several jobs makes every update raise "what else needs changing?", and that friction kills the habit of updating it.
 
+Upstream watching has no file. A scheduled CI job opens one issue when an upstream moves: a Jellyfin release digest or release candidate ([`server-upgrade-tracker.yml`](../../.github/workflows/server-upgrade-tracker.yml)) or a Roku OS release ([`roku-hardware-sync.yml`](../../.github/workflows/roku-hardware-sync.yml)), and closing the issue is the acknowledgment. Anything else upstream is a followup. A file of watch rows went stale because only a hand-run `/catchup` refreshed it, and its server-upgrade anchor is the newest committed stable fingerprint now ([ADR 0051](../adr/0051-retire-signals-backlog.md)).
+
 The ADRs follow Michael Nygard's [2011 essay](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions). The backlogs borrow from [Getting Things Done](https://gettingthingsdone.com) (David Allen): queues with a status per entry and a named blocker.
 
-GitHub issues stay the backlog for issue-shaped work: bugs, features and public requests. The journals hold what is not issue-shaped yet: decisions, deferred internal work, upstream watching and debt.
+GitHub issues stay the backlog for issue-shaped work: bugs, features and public requests. The journals hold what is not issue-shaped yet: decisions, deferred internal work and debt.
 
 ### 3. Skills for the daily work
 
@@ -84,10 +84,10 @@ Rules without skills drift. A rule that says "remember to update file X at momen
 
 | Skill | When | What it does |
 |---|---|---|
-| [`/catchup`](../../.claude/skills/catchup/SKILL.md) | The start of a session, after a gap of days, or "what is the state of things?" | Runs the shared state reader (git, the followup journal, projects). That reader runs [`scripts/catchup-state.js`](../../scripts/catchup-state.js), named in `catchup.conf`, for GitHub, signals, decisions and tech debt. It ranks both readers' warnings in one list: a stale journal, stale signal rows, failing CI. |
+| [`/catchup`](../../.claude/skills/catchup/SKILL.md) | The start of a session, after a gap of days, or "what is the state of things?" | Runs the shared state reader (git, the followup journal, projects). That reader runs [`scripts/catchup-state.js`](../../scripts/catchup-state.js), named in `catchup.conf`, for GitHub (its open upstream-watch issues included), decisions and tech debt. It ranks both readers' warnings in one list: a stale journal, an open upstream-watch issue, failing CI. |
 | [`/focus`](../../.claude/skills/focus/SKILL.md) | The same moments, when several things look actionable and you want one picked | Uses the same readers and ranks what is actionable by a fixed order. It recommends one next move with the rule that picked it and one to three alternatives, then prints the one command to take it. An ad-hoc fix becomes a saved plan that a Sonnet sub-agent runs. Pinned to Opus, since picking is judgment. |
-| [`/log <type>`](../../.claude/skills/log/SKILL.md) | Any new entry: `decision`, `followup`, `signal` or `running` | Writes the entry to the right journal in its template. A followup is a `####` entry with a permanent id (`fid`), written by `.claude/skills/log/journal.sh`, which also bumps `last-updated:`. The mechanical types apply directly. Only `decision` shows a diff and asks first, because routing a decision is a judgment. |
-| [`/done <slug>`](../../.claude/skills/done/SKILL.md) | Work landed: a followup finished, a signal handled, the cursor closed by hand | Proves the work landed, then closes the entry with no confirm step. A followup goes through `journal.sh close`, which removes it. A signal flips to `completed`, except the three auto-managed rows, which record the acknowledged version and go back to `watching`. The `running` cursor normally closes itself through [`journal-sync.yml`](../../.github/workflows/journal-sync.yml); `/done running` is the manual path. |
+| [`/log <type>`](../../.claude/skills/log/SKILL.md) | Any new entry: `decision`, `followup` or `running` | Writes the entry to the right journal in its template. A followup is a `####` entry with a permanent id (`fid`), written by `.claude/skills/log/journal.sh`, which also bumps `last-updated:`. The mechanical types apply directly. Only `decision` shows a diff and asks first, because routing a decision is a judgment. |
+| [`/done <slug>`](../../.claude/skills/done/SKILL.md) | Work landed: a followup finished, the cursor closed by hand | Proves the work landed, then closes the entry with no confirm step. A followup goes through `journal.sh close`, which removes it. The `running` cursor normally closes itself through [`journal-sync.yml`](../../.github/workflows/journal-sync.yml); `/done running` is the manual path. |
 | [`/pr`](../../.claude/skills/pr/SKILL.md) | Opening a PR | Runs the three judgment passes (tech-debt scan, decision-shape check, followup capture) so journal updates land in the same change set as the code. |
 
 `/log decision --revise=<slug>` exists because a supersede cannot fix a note whose text was wrong from the start. A supersede asserts a decision that never happened and leaves the false text as the first thing a reader sees. A revise corrects the record and leaves `status` alone, since the decision's standing did not change. Changing your mind is still a supersede.
@@ -129,7 +129,6 @@ The spell-check and description check skip the PRs `journal-sync` skips (`should
 
 `docs-check.cjs` checks the journals like this:
 
-- **`signals-backlog.md`:** every row has its required bullets, a valid `status` and a positive `staleness_days`.
 - **`docs/adr/` and `decisions.md`:** links and tech-debt anchors resolve. No staleness check, since both are immutable or append-only.
 - **The `decisions.md` supersede chain:** it fails on a duplicate slug, a missing or repeated field, an invalid `status`, a pointer that does not resolve in the file, a one-sided full or partial supersede pair, a full supersede whose target is not `superseded`, a `partially-*` value without its scope, a `superseded` note naming no successor, a `withdrawn` note at either end of a supersede, or a note pointing at itself. A supersede is a hand edit in several places, and a half-applied one would leave the chain wrong without anyone noticing. ADRs state the same relationship in prose, which nothing checks.
 
@@ -154,7 +153,7 @@ The spell-check and description check skip the PRs `journal-sync` skips (`should
 - **Friction at the cause, not the symptom:** a pre-push nudge on a decision-shaped commit, not a quarterly cleanup.
 - **Drift shows at retrieval,** as warnings, not as sentences buried in a file.
 - **Confirmation goes where the judgment is.** `/log decision` shows a diff and waits, because whether and where to record a decision is a judgment. Mechanical captures and proven closures apply directly. When they go wrong, the fix is auditing the skill's runs, not a prompt in every session.
-- **One workflow writes a journal outside the skills, mechanically.** `journal-sync.yml` writes the post-merge close to `progress.md` from merged-PR data. It makes no judgment, so it carries no risk of an invented entry. `catchup-state.js` fetches the upstream version of the three auto-managed signal rows on every run and holds it in memory, never in the file.
+- **One workflow writes a journal outside the skills, mechanically.** `journal-sync.yml` writes the post-merge close to `progress.md` from merged-PR data. It makes no judgment, so it carries no risk of an invented entry.
 
 **Iteration:**
 

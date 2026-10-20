@@ -1,6 +1,6 @@
 ---
 name: log
-description: "Single-entry-point capture for the journals this repo keeps: `decision` (agent-gated: ADR-grade becomes a numbered record in `docs/adr/`, sub-architectural a note in `docs/decisions.md`, trivia is declined; `--revise=<slug>` corrects a note that misdescribes what shipped, which is not a supersede), `followup` (an open entry in `docs/progress.md`, written by the journal script with a permanent fid; `--area=<name>` picks its category), `signal` (a `docs/signals-backlog.md` upstream version-watch row) or `running` (the `## Currently running` paragraph in `docs/progress.md`). Routes by the first argument. Mechanical types apply directly with no confirmation prompt; `decision` is agent-classified: the agent drafts, applies a significance gate (architectural / hard-to-reverse / cross-component?), routes it, and shows a diff-and-confirm before writing, with one-tap human override. The only sanctioned write path for these journals. Pure local-file edits; it commits nothing, the change that prompted the entry carries it. Use when you have something to write down. NOT for status flips on existing entries (use /done) and not for half-formed thoughts (refine first, /log once the shape is clear)."
+description: "Single-entry-point capture for the journals this repo keeps: `decision` (agent-gated: ADR-grade becomes a numbered record in `docs/adr/`, sub-architectural a note in `docs/decisions.md`, trivia is declined; `--revise=<slug>` corrects a note that misdescribes what shipped, which is not a supersede), `followup` (an open entry in `docs/progress.md`, written by the journal script with a permanent fid; `--area=<name>` picks its category; an upstream to watch is a followup too, since CI opens an issue for Jellyfin and Roku OS releases) or `running` (the `## Currently running` paragraph in `docs/progress.md`). Routes by the first argument. Mechanical types apply directly with no confirmation prompt; `decision` is agent-classified: the agent drafts, applies a significance gate (architectural / hard-to-reverse / cross-component?), routes it, and shows a diff-and-confirm before writing, with one-tap human override. The only sanctioned write path for these journals. Pure local-file edits; it commits nothing, the change that prompted the entry carries it. Use when you have something to write down. NOT for status flips on existing entries (use /done) and not for half-formed thoughts (refine first, /log once the shape is clear)."
 model: sonnet
 effort: low
 ---
@@ -9,11 +9,11 @@ effort: low
 
 ## This repo
 
-- **Types beyond `followup` and `decision`:** `signal` and `running`; their steps, and this repo's decision routing and `--revise=<slug>`, are in [jellyrock.md](jellyrock.md): read it before any `decision`, `signal` or `running` capture.
-- **Capture rule:** agents never raw-edit `docs/decisions.md`, `docs/progress.md` or `docs/signals-backlog.md`; a capture goes through this skill and a closure through `/done` ([AGENTS.md](../../../AGENTS.md), Capture & state discipline). The post-merge journal-sync workflow is the one other writer to `progress.md`.
+- **Types beyond `followup` and `decision`:** `running`; its steps, and this repo's decision routing and `--revise=<slug>`, are in [jellyrock.md](jellyrock.md): read it before any `decision` or `running` capture.
+- **Capture rule:** agents never raw-edit `docs/decisions.md` or `docs/progress.md`; a capture goes through this skill and a closure through `/done` ([AGENTS.md](../../../AGENTS.md), Capture & state discipline). The post-merge journal-sync workflow is the one other writer to `progress.md`.
 - **`followup` category:** `--area=<name>` in the arguments is the category. The areas are the `### ` headings under `## Open followups` in `docs/progress.md` (`journal.sh list`); with no `--area`, infer it from the files the work touched, and ask before adding a new one.
 - **Nothing is committed by `/log` here** (`commit=no`): an entry rides in the commit of the change that prompted it, so a journal file with uncommitted edits is normal: `journal.sh` never refuses for it, and skip Step 1's check for a decision's file too.
-- **Check after every write**, a `signal`, `running` or `decision` write included: `npm run lint:docs`.
+- **Check after every write**, a `running` or `decision` write included: `npm run lint:docs`.
 - **Not here:** internal tech debt goes to `/tech-debt-scan` (`docs/architecture/tech-debt.md`); a user-facing bug or feature request goes to a GitHub issue (`/create-issue`).
 
 ## Contract

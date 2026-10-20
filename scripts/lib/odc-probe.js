@@ -19,8 +19,8 @@
  * rejection, at whatever later point the connect gives up. Proven by control: patching a
  * `.catch()` onto that one derived promise removes the crash and nothing else changes.
  * The orphan is unreachable from our code (`setupClientSocket` returns the ORIGINAL
- * promise), so no `try`/`catch` and no `withTimeout` can prevent it. Tracked upstream as
- * `rta-odc-connect-hang` in `docs/signals-backlog.md`.
+ * promise), so no `try`/`catch` and no `withTimeout` can prevent it. Tracked as followup
+ * `rta-odc-connect-hang` in `docs/progress.md`.
  *
  * The earlier sighting is the same defect read one step short: 2026-08-17, both plain-arm
  * blocks of the ODC calibration passed their probe, printed "identity asserted by

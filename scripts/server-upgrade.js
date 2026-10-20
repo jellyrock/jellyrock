@@ -587,8 +587,8 @@ export function digestCandidateLine(candidate) {
 
 // The highest version among CLOSED tracker digests strictly BELOW `version`,
 // that is, how far the mechanical pass has cleared (or a human has triaged) past
-// the diff anchor. A clean release auto-closes its digest WITHOUT bumping the
-// `latest_acknowledged` anchor (CI never writes the journals), so the anchor
+// the diff anchor. A clean release auto-closes its digest WITHOUT moving the
+// anchor (CI never commits a fingerprint: reviewedAnchor()), so the anchor
 // legitimately trails the newest release; this is what lets the digest say
 // "cleared through X" instead of reading as stale. `issues` is the gh JSON
 // (`[{ title, state }]`); titles that don't carry a version token are ignored.
@@ -1033,7 +1033,7 @@ export function renderRunSummary(plan, results, { createdAt, digest = null } = {
     );
   }
   if (monitored.length) {
-    sections.push('## Monitor — real but deferred (consider `/log signal`)');
+    sections.push('## Monitor — real but deferred (consider `/log followup`)');
     sections.push(
       list(monitored, (r) => `- \`${r.findingKey}\`${r.rationale ? ` — ${r.rationale}` : ''}`),
     );

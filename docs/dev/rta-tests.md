@@ -450,7 +450,7 @@ Every RTA entry point checks the on-device component is there before its first O
 
 It is a gate rather than a longer timeout because a failed connect in `roku-test-automation` leaves a rejection nothing can catch, which ends the process at an unrelated point and loses the run record ([`scripts/lib/odc-probe.js`](../../scripts/lib/odc-probe.js); `rta-odc-gated-before-bounded` in [`decisions.md`](../decisions.md)). The gate waits longer than RTA's own connect retry, so a slow but working boot passes; if it fails on a device that is coming up, the gate has a bug.
 
-A port that is open while the component never answers is a separate case: *"the ODC port is open but the component never answered ... within 60 s"*, an upstream defect (`rta-odc-connect-hang` in [`signals-backlog.md`](../signals-backlog.md)). Kill the run and deploy again.
+A port that is open while the component never answers is a separate case: *"the ODC port is open but the component never answered ... within 60 s"*, an upstream defect (followup `rta-odc-connect-hang` in [`progress.md`](../progress.md)). Kill the run and deploy again.
 
 ## Leaving the device as you found it
 

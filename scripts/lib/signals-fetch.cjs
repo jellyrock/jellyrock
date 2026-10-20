@@ -1,11 +1,10 @@
-// scripts/lib/signals-fetch.cjs: Upstream version fetchers for the three
-// auto-managed signals in docs/signals-backlog.md (jellyfin-server-stable,
-// jellyfin-server-rc, roku-os).
+// scripts/lib/signals-fetch.cjs: upstream version fetchers (the latest Jellyfin
+// stable and release candidate, the newest master build, the newest Roku OS) and
+// the version helpers every server-version check shares.
 //
-// Used by scripts/catchup-state.js, which fetches them on every run and holds
-// each as the row's in-memory `latest_upstream` (the file never stores it).
-// Per-signal failures are non-fatal: the caller leaves that row without an
-// upstream for the run and surfaces the error in `_errors.signals_fetch`.
+// The CI watches use them: scripts/server-upgrade-tracker.js (Jellyfin stable and
+// RC) and scripts/roku-os-watch.js (Roku OS). The name is from the retired signals
+// journal these once fed.
 //
 // `.cjs` because other .cjs helpers (spec-fetch.cjs, version-boundaries.cjs,
 // endpoint-availability.cjs) require() it. See scripts/CLAUDE.md ("Module system

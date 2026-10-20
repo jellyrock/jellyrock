@@ -17,7 +17,7 @@ Like `/crash-report`, this skill has no sibling `INVESTIGATION.md`: each filed i
 
 ## Inputs
 
-The arguments are optional: the path to a data report (`.api-watch/cache/findings-candidates-<from>..<to>.json`), or a `<from> <to>` version pair. With none, Step 0 resolves the pair from the `jellyfin-server-stable` row in the signals backlog (`latest_acknowledged` is `<from>`) and the reader's fetched upstream for that row (`<to>`).
+The arguments are optional: the path to a data report (`.api-watch/cache/findings-candidates-<from>..<to>.json`), or a `<from> <to>` version pair. With none, Step 0 resolves the pair: `<from>` is the reviewed anchor (the newest committed stable fingerprint) and `<to>` the version of the open release digest.
 
 `<to>` picks the channel and the path through this skill:
 
@@ -26,7 +26,7 @@ The arguments are optional: the path to a data report (`.api-watch/cache/finding
 
 ## Step 0: Preflight
 
-1. **Find or build the data report.** If the arguments name a report file, use it. Otherwise read the `jellyfin-server-stable` row in [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) for `latest_acknowledged` (`<from>`), take `<to>` from the reader's fetched upstream for that row (`node scripts/catchup-state.js --no-gh | jq -r '.signals.rows[] | select(.slug=="jellyfin-server-stable") | .latest_upstream // empty'`; empty means the fetch failed, so ask for `<to>`), and look for `.api-watch/cache/findings-candidates-<from>..<to>.json`. If it is missing, build it, committing the `<to>` fingerprint first when there is none (committed fingerprints are the diff's forward anchor):
+1. **Find or build the data report.** If the arguments name a report file, use it. Otherwise `<from>` is `node scripts/generate/spec-fingerprint.js --anchor` (the newest stable version with a committed fingerprint: committing a stable fingerprint is the acknowledgment, ADR 0015 for why it trails clean releases). **Read it before writing the `<to>` fingerprint below, and keep it for the whole run:** once that file exists, `--anchor` prints `<to>`. `<to>` is the version in the open digest's title (`gh issue list --label server-upgrade:tracker --state open --json number,title`); with none open, ask for it. Then look for `.api-watch/cache/findings-candidates-<from>..<to>.json`. If it is missing, build it, committing the `<to>` fingerprint first when there is none (committed fingerprints are the diff's forward anchor):
 
    ```bash
    ls docs/architecture/spec-fingerprints/jellyfin-<to>.json 2>/dev/null \
@@ -51,7 +51,7 @@ You take this path when `<to>` has an `-rcN`, `-betaN` or `-alphaN` suffix, is t
 Skip the rest of Step 0: label checks, the digest and its counts all exist for GitHub, and a pre-release has no digest. Run this sequence instead:
 
 1. **Resolve `<from>` and `<to>`.** Explicit arguments always win.
-   - **Release candidate:** read the `jellyfin-server-rc` row in [`docs/signals-backlog.md`](../../../docs/signals-backlog.md): `latest_acknowledged` is `<from>`, and `<to>` is the reader's fetched upstream for that row (`node scripts/catchup-state.js --no-gh | jq -r '.signals.rows[] | select(.slug=="jellyfin-server-rc") | .latest_upstream // empty'`). Once you triage `rc1`, step 5 below sets that row's `latest_acknowledged` to `rc1`, so when `rc2` lands the next run diffs `rc1` to `rc2` and shows only what changed since.
+   - **Release candidate:** the open `server-upgrade:rc` issue CI opened for it names both (`gh issue list --label server-upgrade:rc --state open --json number,title,body`): its body gives the exact `/server-upgrade <from> <to>` command. `<from>` is the previous release candidate of the same version that has an issue, else the reviewed anchor, so when `rc2` lands its issue diffs `rc1` to `rc2` and shows only what changed since.
    - **Unstable or master:** pass `unstable` (or `master`) as `<to>`. `findings-candidates.js` resolves it to the newest immutable datestamped build and prints `resolved unstable → <datestamp>` to stderr; the datestamp also lands in the report's `toVersion`. **Tell the user the datestamp:** it makes the run reproducible and is the next `<from>` for a master-to-master diff. `<from>` defaults to the latest acknowledged stable, or a prior datestamp you pass. The mutable `jellyfin-openapi-unstable.json` pointer is never pinned.
 
 2. **Build the report in memory**, with no committed fingerprint: the archive is permanent, so `--fetch` can rebuild these throwaway anchors any time.
@@ -69,7 +69,7 @@ Skip the rest of Step 0: label checks, the digest and its counts all exist for G
 
    Here a `file` verdict doesn't need a full `draftIssueBody`: the verdicts file is a temporary you delete at the end. Put the fix direction in the handoff's list (what changed, the cited sites, how removal versus rename resolved, the suggested fix). Each verdict still needs a short `rationale`, as the record of why.
 
-5. **Close the loop** (Step 6 applies). For a release candidate, offer `/log signal jellyfin-server-rc` to set `latest_acknowledged` to `<to>`, so the next diff starts from it. For unstable, the pinned datestamp lives in the handoff, since master moves too fast for a daily cursor. The pre-release path ends here.
+5. **Close the loop** (Step 6 applies). For a release candidate, offer to close its `server-upgrade:rc` issue: closing it is the acknowledgment, and the next release candidate's issue diffs from this one. For unstable, the pinned datestamp lives in the handoff, since master moves too fast for a daily cursor. The pre-release path ends here.
 
 ## Step 1: Build the verdict template
 
@@ -122,7 +122,7 @@ For each entry, fill in place (never change `findingKey`):
 - `real` (bool), `severity` (`high`, `medium` or `low`), and `recommendedAction`:
   - **`file`:** a real problem, or an opportunity worth having, that deserves an issue. Needs `severity` and a `draftIssueBody` in GitHub markdown: what changed, why it affects us, the cited sites, the suggested fix. The filer wraps it in a provenance header and footer, so write only the substance.
   - **`skip`:** investigated and not a real problem (a false positive, no runtime effect, a covering fallback, a regeneration artifact). No body, but a one-paragraph `rationale` is required: it records why we looked and passed.
-  - **`monitor`:** real but deferred (an opportunity for later, a floor-coverage advisory not worth filing yet). `rationale` required; it is offered for a `/log signal` in Step 6.
+  - **`monitor`:** real but deferred (an opportunity for later, a floor-coverage advisory not worth filing yet). `rationale` required; it is offered for a `/log followup` in Step 6.
 - Add any `labels` beyond the prefilled base set (`regression`, for example).
 
 Write the filled verdicts to the new `$VERDICTS` path with the Write tool, not back over `$SCAFFOLD`: the Write tool refuses to overwrite a file you haven't read with the Read tool, and a fresh path avoids that. Copy every entry from the template into `$VERDICTS`, filled in. Every entry needs a `recommendedAction`: the filer reports one left blank as `missing-verdict` instead of dropping it.
@@ -172,15 +172,15 @@ Read the run summary and recap it briefly, for example:
 
 Then close the loops the capture-discipline rule expects:
 
-- For each `monitor` finding worth tracking upstream, offer to run `/log signal <slug>`. Don't write the journal directly.
+- For each `monitor` finding worth tracking upstream, offer to run `/log followup`, naming what to check upstream and what to do when it moves. Don't write the journal directly.
 - If Step 2 case 3 found a recurring cosmetic artifact, remind the user it can go in `.api-watch/suppressions.yml` so the next run drops it.
-- This run acknowledged `<to>`: offer to move the `jellyfin-server-stable` row's `latest_acknowledged` with `/log signal`, or `/done` if the watch is over.
+- This run acknowledged `<to>`: the `<to>` fingerprint committed in Step 0 is the acknowledgment, and it becomes the next run's `<from>` once the triage merges. Nothing else moves.
 
 Delete the temporary files: `rm -f "$SCAFFOLD" "$VERDICTS" "$PLAN"`.
 
 ## When not to use
 
-- A new Jellyfin release candidate or master build: this skill does handle it, through the pre-release path (Step 0a), which triages locally, writes a handoff and files no issues. The `jellyfin-server-rc` signal also tracks it. Don't use the stable Steps 3 to 5 for a pre-release.
+- A new Jellyfin release candidate or master build: this skill does handle it, through the pre-release path (Step 0a), which triages locally, writes a handoff and files no issues. CI opens a `server-upgrade:rc` issue for each release candidate. Don't use the stable Steps 3 to 5 for a pre-release.
 - You want to investigate one `[server-upgrade]` issue that is already filed: use `/issue-triage <N>`.
 - The report has no candidates to investigate: there is nothing to do, and that is the system working.
 - You need to rebuild the manifest, the fingerprints or the report itself: those are the generators (`docs:api-manifest`, `docs:spec-fingerprints`, `api-watch:findings`), not this skill.

@@ -616,7 +616,6 @@
 (?:sideloading)\.
 (?:sideloads)\.
 (?:SIGINT)\.
-(?:signals-schema-invalid)\.
 (?:slow-decay)\.
 (?:socio-economic)\.
 (?:solo-ish)\.

@@ -84,8 +84,10 @@ parts; raw markdown edits to this file are not the sanctioned path.
 ## decision-id: signals-backlog-scope
 
 **date**: 2026-05-08
-**status**: accepted
+**status**: withdrawn
 **related-files**: docs/signals-backlog.md, scripts/catchup-state.js, scripts/lib/signals-fetch.cjs
+
+Withdrawn 2026-10-20: the journal this note scoped was retired by [ADR 0051](adr/0051-retire-signals-backlog.md). npm dependencies stay Renovate's.
 
 `docs/signals-backlog.md` tracks external platform and upstream version signals (Jellyfin server, Roku OS) but explicitly excludes npm package dependencies. The exclusion holds because Renovate already tracks and proposes bumps for npm packages (`brighterscript`, `rooibos`, `roku-log` and the rest) — two systems tracking the same thing produces noise, not signal. The signal rows that were deleted (`brighterscript`, `rooibos`, `roku-log`) were manual-update-only and always stale; Renovate PRs surface the same information more reliably and sooner.
 
