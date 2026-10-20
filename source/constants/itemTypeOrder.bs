@@ -69,14 +69,17 @@ namespace itemTypeOrder
     "Program"
   ]
 
-  ' Types that do not track playback position (no resume button).
-  ' Controls: manageResumeButton in itemContentChanged.
+  ' Types with no resume button: they don't track playback position, or the app can't resume
+  ' them yet. Controls: manageResumeButton in itemContentChanged.
   const NO_RESUME = [
     "Series",
     "Season",
     "MusicArtist",
     "MusicAlbum",
     "Audio",
+    ' The server saves its position, but AudioPlayerView doesn't start there, so Resume would
+    ' restart the book. Remove when it does (followup audiobook-resume-in-audio-player).
+    "AudioBook",
     "Playlist",
     "Photo",
     "PhotoAlbum",

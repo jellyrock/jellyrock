@@ -727,14 +727,14 @@ When it moves: if an official history-depth / `canGoBack()` API lands, bump the 
 
 #### When audiobooks are supported, the audio player must honor a resume position `[fid: audiobook-resume-in-audio-player]` `[captured 2026-10-20]`
 
-When audiobooks are supported, the audio player must honor a resume position, and an `AudioBook` details screen must offer Resume. Neither is true today, and neither can matter until then.
+When audiobooks are supported, the audio player must honor a resume position, and an `AudioBook` details screen must offer Resume again. Neither is true today: `AudioBook` is in `itemTypeOrder.NO_RESUME` until the audio player can start where the book was left.
 
-Why it waits: Jellyfin saves no position for an `Audio` item. `BaseItem.SupportsPositionTicksResume` is false and `Audio` does not override it, so `UserDataManager.UpdatePlayState` forces the saved position to 0 for every song, however long (read at v10.10.0 and v12.2). `AudioBook` overrides it to true, with the server's `MinAudiobookResume` and `MaxAudiobookResume` settings. JellyRock does not support audiobooks yet, so no reachable item has a position to resume.
+Why it waits: Jellyfin saves no position for an `Audio` item. `BaseItem.SupportsPositionTicksResume` is false and `Audio` does not override it, so `UserDataManager.UpdatePlayState` forces the saved position to 0 for every song, however long (read at v10.10.0 and v12.2). `AudioBook` overrides it to true, with the server's `MinAudiobookResume` and `MaxAudiobookResume` settings. JellyRock does not support audiobooks yet. An audiobook can still reach its details screen as an edge case: the Home Favorites row drops only `Book` (`LoadItemsTask`), so an audiobook marked as a favorite in another client shows there. Its Resume would have opened the audio player at the start, which is why the button is hidden for now.
 
 What closes it, as part of audiobook support:
 
 - `AudioPlayerView` reads the queue item's `startingPoint` (today nothing there reads it) and starts there, as the video loader sets `content.PlayStart`. Measure seeking on a transcoded audio stream first: the audio transcode is progressive HTTP, not HLS, and the server can also start a transcode at `StartTimeTicks`, so the two must not add up.
-- `AudioBook` is not in `itemTypeOrder.NO_RESUME`, so its details screen already manages a Resume button. Check on a real audiobook that it shows, and that Resume goes through `launchQueueItemToPlay`, which now routes audio to the audio player (decision `play-kind-single-table`).
+- Remove `AudioBook` from `itemTypeOrder.NO_RESUME`. Check on a real audiobook that Resume shows and goes through `launchQueueItemToPlay`, which routes audio to the audio player (decision `play-kind-single-table`).
 - Decide whether a tap on a part-played audiobook tile resumes, as `quickplay.video` does for video (`quickplay.audio` sets no start).
 
 ### source
