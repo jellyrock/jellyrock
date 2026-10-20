@@ -234,11 +234,11 @@ Writing a field and then `invalid` makes the next write of the same value a chan
 | Item type | Builds the queue with | Then |
 |---|---|---|
 | `chapter` | A queue item of the parent's type that starts at the chapter (`nodeHelpers.setExactStart`) | `playQueue()` |
-| `episode`, `recording`, `movie`, `video`, `musicvideo` | `quickplay.video` | `playQueue()` |
-| `audio` | `quickplay.audio` | `playQueue()` |
 | `photo` | `quickplay.photo`, which opens the photo viewer | nothing |
 | `tvchannel` | `quickplay.tvChannel` | `playQueue()` |
 | `program` | `quickplay.program` | `playQueue()` |
+| Any type `playKind` calls video (`episode`, `recording`, `movie`, `video`, `musicvideo`, `trailer`) | `quickplay.video` | `playQueue()` |
+| Any type `playKind` calls audio (`audio`, `audiobook`) | `quickplay.audio` | `playQueue()` |
 | anything else | `runQuickPlayAction()`, which runs a `QuickPlayTask` | the Task finishes the queue |
 
 The types in the table carry everything needed to play. Anything else (a series, a season, an album, a playlist, a library) needs API calls to expand into a queue, so `QuickPlayTask` runs them. `runQuickPlayAction` is used here, not `launchQuickPlayAction`, because `launchItem()` has already opened the playback start. A read that searches a whole library (Play on a library, folder or collection tile) or every library for one person or artist gets `timeouts.QUICKPLAY_LIBRARY_MS` (60 s), as a grid page does (#811). The spinner says it is still loading meanwhile, and **Back** stops the Task, which frees the request's pool slot.
