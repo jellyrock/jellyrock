@@ -18,8 +18,9 @@ description: |
   before...after range. Other contexts (workflow_dispatch, schedule) can't
   produce a diff and fall back to `relevant=true` so manual / scheduled runs
   always execute the work. A push with no resolvable base (branch creation,
-  all-zero before SHA), a failed compare call, or a truncated (>300-file)
-  compare response also falls back to `relevant=true` — never a false skip.
+  all-zero before SHA), a failed compare call, a truncated (>300-file)
+  compare response, or a failed `gh pr diff` also falls back to
+  `relevant=true` — never a false skip.
 
   The pattern is passed to `grep -E` (extended regex) and matched against
   one path per line.
@@ -75,7 +76,8 @@ runs:
         if [ -n "${PR_NUMBER:-}" ]; then
           # gh pr diff --name-only lists files changed by the PR (one per line).
           # No git history needed; works with the default shallow checkout.
-          CHANGED=$(gh pr diff "$PR_NUMBER" --name-only)
+          CHANGED=$(gh pr diff "$PR_NUMBER" --name-only) \
+            || run_all "PR diff unavailable — running unconditionally."
         elif [ "$EVENT_NAME" = "push" ]; then
           # Branch creation / rewritten base has an all-zero or missing before
           # SHA — no computable range, so run rather than risk a false skip.
