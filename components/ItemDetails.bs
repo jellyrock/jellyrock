@@ -20,6 +20,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/people.bs"
 import "pkg:/source/utils/placeholderImage.bs"
+import "pkg:/source/utils/playKind.bs"
 import "pkg:/source/utils/remoteSubtitles.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
@@ -441,7 +442,7 @@ end sub
 ' content is there, but the hook runs MID-navigation, and the router rejects a navigateTo issued
 ' while a navigation is in progress (Router.brs _navigateTo).
 ' So wait for the navigation to settle (routerState -> NavigationEnd) before launching, otherwise
-' startPlayFromDetail's navigateTo("/play") is swallowed (toast fires, but no player). Fresh mounts
+' the launch's navigation to the player is swallowed (toast fires, but no player). Fresh mounts
 ' don't need this: they launch from onDetailsLoaded, which is already async / router-idle.
 sub deferDeepLinkLaunchUntilIdle()
   router = invalid
@@ -810,16 +811,12 @@ sub onWatchChannelButtonPressed(item as object)
   queueItem = nodeHelpers.createQueueItem(item)
   if not isValid(queueItem) then return
 
-  routeType = m.top.itemType
-  routeId = item.id
   ' Program: play the channel the program is on.
   if item.type = "Program" and isValidAndNotEmpty(item.channelId)
     queueItem.id = item.channelId
     queueItem.type = "TvChannel"
-    routeType = "TvChannel"
-    routeId = item.channelId
   end if
-  launchQueueItemToPlay(queueItem, routeType, routeId)
+  launchQueueItemToPlay(queueItem)
 end sub
 
 ' Shuffle button. Routes by item type so new types can be added. PhotoAlbum launches a random
@@ -844,19 +841,17 @@ sub resumeSeriesNextUp()
   queueItem = nodeHelpers.createQueueItem(nextEp)
   if not isValid(queueItem) then return
   nodeHelpers.setResumeStart(queueItem, nextEp.playbackPositionTicks)
-  launchQueueItemToPlay(queueItem, "Episode", nextEp.id)
+  launchQueueItemToPlay(queueItem)
 end sub
 
 ' True for item types whose Play builds a multi-item queue via an API call (handled by
 ' QuickPlayTask, not the single-item path below).
 function isPlayAllType(itemType as dynamic) as boolean
-  if not isValidAndNotEmpty(itemType) then return false
-  return itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
+  return playKind.of(itemType) = playKind.PLAY_ALL
 end function
 
-' Build the single-item play queue from this detail's own state and navigate to the play
-' route. The router is idle (the user pressed a button on this settled view), so navigateTo
-' won't hit the in-progress guard, and the PlayerHostView reads this queue on mount.
+' Build the single-item play queue from this detail's own state and play it. The player that
+' mounts reads this queue.
 sub startPlayFromDetail(startingPoint as longinteger)
   item = m.top.itemContent
   if not isValid(item) or not isValidAndNotEmpty(item.id) then return
@@ -886,21 +881,21 @@ sub startPlayFromDetail(startingPoint as longinteger)
     preference = versionPick.preferenceFor(mediaSourceForId(item.mediaSourcesData.mediaSources, m.top.selectedVideoStreamId))
   end if
 
-  launchQueueItemToPlay(queueItem, m.top.itemType, item.id, preference)
+  launchQueueItemToPlay(queueItem, preference)
 end sub
 
-' Seed the queue with a single item and navigate to the play route. The router is idle (the
-' user pressed a button on this settled view), so navigateTo won't hit the in-progress guard;
-' PlayerHostView reads this queue on mount. :type/:id give the route a deep-link identity; the
-' queue is the source of truth for what actually plays.
+' Seed the queue with a single item and play it. QueueManager.playQueue picks the player from
+' the item's type (playKind) and JRScene navigates to it, failing the start if the navigation
+' is refused. Never navigate to a player from here: this screen can't know which one the item
+' needs, and a song once opened the video player that way.
 '
 ' @param {dynamic} versionPreference - an explicit version pick for the queue (versionPick), or invalid
-sub launchQueueItemToPlay(queueItem as object, routeType as string, routeId as string, versionPreference = invalid as dynamic)
+sub launchQueueItemToPlay(queueItem as object, versionPreference = invalid as dynamic)
   m.global.queueManager.callFunc("beginPlaybackStart", "")
   m.global.queueManager.callFunc("clear")
   if isValid(versionPreference) then m.global.queueManager.callFunc("setVersionPreference", versionPreference)
   m.global.queueManager.callFunc("push", queueItem)
-  sgrouter.navigateTo("/details/" + routeType + "/" + routeId + "/play")
+  m.global.queueManager.callFunc("playQueue")
 end sub
 
 ' Resolve the artist id for goToArtist: prefer the primary album artist, fall back
@@ -4648,12 +4643,13 @@ sub setupButtons(item as object)
     end if
   end if
 
-  ' Play button: standard content types (not Person, Photo, PhotoAlbum, TvChannel, Program)
-  if itemType <> "Person" and itemType <> "Photo" and itemType <> "PhotoAlbum" and itemType <> "TvChannel" and itemType <> "Program"
+  ' Play button: only for a type playKind lists as playable here. A live type gets Watch above,
+  ' and an unlisted type (Person, Photo, Book) gets none.
+  if playKind.hasPlayButton(itemType)
     playButton = CreateObject("roSGNode", "IconButton")
     playButton.id = "playButton"
     playButton.icon = "pkg:/images/icons/play_$$RES$$.png"
-    if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
+    if isPlayAllType(itemType)
       playButton.text = translate(translationKeys.LabelPlayAll)
     else
       playButton.text = translate(translationKeys.ButtonPlay)

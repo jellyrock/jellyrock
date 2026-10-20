@@ -1,0 +1,90 @@
+import "pkg:/source/utils/playKind.bs"
+
+namespace tests
+
+  ' Contract tests for how each item type plays (source/utils/playKind.bs).
+  '
+  ' This table picks the player and decides whether the details screen offers Play. Wrong one
+  ' way, a song opens the video player (the bug this table replaced). Wrong the other way, a
+  ' type that can't play shows a Play button that does nothing, or a playable type loses its
+  ' button.
+  @suite("playKind - which player each item type uses")
+  class PlayKindTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("of")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("plays a song and an audiobook in the audio player")
+    function _()
+      m.assertEqual(playKind.of("Audio"), playKind.AUDIO)
+      m.assertEqual(playKind.of("AudioBook"), playKind.AUDIO)
+    end function
+
+    @it("plays each single video type in the video player")
+    function _()
+      for each itemType in ["Movie", "Episode", "Video", "MusicVideo", "Recording", "Trailer", "Chapter"]
+        m.assertEqual(playKind.of(itemType), playKind.VIDEO, itemType)
+      end for
+    end function
+
+    @it("plays a channel and a program live")
+    function _()
+      m.assertEqual(playKind.of("TvChannel"), playKind.LIVE)
+      m.assertEqual(playKind.of("Program"), playKind.LIVE)
+    end function
+
+    @it("builds a queue for each container")
+    function _()
+      for each itemType in ["Series", "Season", "BoxSet", "MusicArtist", "MusicAlbum", "Playlist"]
+        m.assertEqual(playKind.of(itemType), playKind.PLAY_ALL, itemType)
+      end for
+    end function
+
+    @it("plays nothing for a type the app doesn't play")
+    function _()
+      for each itemType in ["Person", "Photo", "PhotoAlbum", "Book", "Folder", "SomethingNew"]
+        m.assertEqual(playKind.of(itemType), playKind.NONE, itemType)
+      end for
+    end function
+
+    @it("reads a queue's lowercased type the same as the item's own")
+    function _()
+      m.assertEqual(playKind.of("audio"), playKind.AUDIO)
+      m.assertEqual(playKind.of("musicvideo"), playKind.VIDEO)
+      m.assertEqual(playKind.of("tvchannel"), playKind.LIVE)
+    end function
+
+    @it("plays nothing for a missing type")
+    function _()
+      m.assertEqual(playKind.of(invalid), playKind.NONE)
+      m.assertEqual(playKind.of(""), playKind.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hasPlayButton")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers Play for audio, video and containers")
+    function _()
+      for each itemType in ["Audio", "AudioBook", "Movie", "Episode", "MusicVideo", "Series", "MusicAlbum", "Playlist"]
+        m.assertTrue(playKind.hasPlayButton(itemType), itemType)
+      end for
+    end function
+
+    @it("offers no Play for a live type, which has Watch instead")
+    function _()
+      m.assertFalse(playKind.hasPlayButton("TvChannel"))
+      m.assertFalse(playKind.hasPlayButton("Program"))
+    end function
+
+    @it("offers no Play for a type the app doesn't play")
+    function _()
+      for each itemType in ["Person", "Photo", "PhotoAlbum", "Book"]
+        m.assertFalse(playKind.hasPlayButton(itemType), itemType)
+      end for
+    end function
+
+  end class
+
+end namespace

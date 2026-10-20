@@ -30,10 +30,11 @@ import { beforeAll, it, expect } from 'vitest';
 import { ecp } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
-import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
+import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import {
   focusDetailButton,
+  navAudioDetails,
   navLibraryGrid,
   openLibraryByType,
   navSeriesDetails,
@@ -138,6 +139,22 @@ it('Back mid-start from details ends the start', async () => {
   await press(ecp.Key.Back);
   await waitActive('ItemDetails', 'back on details');
   await expectStartEndedOn('details');
+});
+
+// Play on a song's own details opens the audio player, as a song tapped anywhere else does.
+// The details screen once opened the video player route directly instead of asking the queue
+// which player the item needs.
+it("Play on a song's details opens the audio player", async () => {
+  const expectedServer = await seedHome(ctx.session, LOCALE);
+  // navAudioDetails walks Albums -> album -> song, so the music library must land on Albums.
+  await seedLibraryLanding(ctx.session, libraryIdFor(ctx.libraries, 'music'), 'Albums');
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'playback-start');
+  await navAudioDetails(ctx);
+  await focusDetailButton('playButton');
+  await press(ecp.Key.Ok);
+  await waitActive('AudioPlayerView', 'Play on a song opens the audio player');
+  await stopPlayback();
 });
 
 it('Back mid-start from a grid ends the start', async () => {

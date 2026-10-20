@@ -9,7 +9,8 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-10-13
+  - source/utils/playKind.bs
+last-reviewed: 2026-10-20
 ---
 
 # The user journey
@@ -193,17 +194,19 @@ The row holds only what fits before the logo, 8 buttons ([`buttonOverflow.bs`](.
 
 ### How Play starts here
 
-**One item** (Play, Resume, the next-up episode) goes through `ItemDetails.launchQueueItemToPlay()`. It fills the queue first, then opens the play route:
+Which buttons offer playback comes from one table, `playKind` ([`source/utils/playKind.bs`](../../source/utils/playKind.bs)). Play shows only for a type it lists as audio, video or a container. A live type (a channel, a program on now) gets **Watch** instead, and a type it doesn't list (a person, a photo, a book) gets no Play button.
+
+**One item** (Play, Resume, Watch, the next-up episode) goes through `ItemDetails.launchQueueItemToPlay()`. It fills the queue, then asks the queue manager to play it:
 
 ```brightscript
 m.global.queueManager.callFunc("beginPlaybackStart", "")
 m.global.queueManager.callFunc("clear")
 if isValid(versionPreference) then m.global.queueManager.callFunc("setVersionPreference", versionPreference)
 m.global.queueManager.callFunc("push", queueItem)
-sgrouter.navigateTo("/details/" + routeType + "/" + routeId + "/play")
+m.global.queueManager.callFunc("playQueue")
 ```
 
-`PlayerHostView` reads the queue when it mounts, so the route's `:type` and `:id` only name the item for deep links; the queue decides what plays. The version preference is recorded only when the user picked one in the Video menu, and the items the queue reaches next keep to it ([playback.md](playback.md#items-a-queue-arrives-at)).
+`playQueue()` picks the player from the item's type ([below](#queuemanagerplayqueue)), so a song opens the audio player from here as it does from anywhere else. Don't navigate to a player route from the details screen: it can't tell which player an item needs, and a song once opened the video player that way. The version preference is recorded only when the user picked one in the Video menu, and the items the queue reaches next keep to it ([playback.md](playback.md#items-a-queue-arrives-at)).
 
 **Several items** (Play on a type `isPlayAllType()` accepts) go to `QueueManager.launchQuickPlayAction` with a `playAll` action, and its `QuickPlayTask` builds the queue. Shuffle uses `launchShuffle`, or `launchPhotoAlbum` for a photo album. **Trailer** uses `launchQuickPlayAction` with `loadTrailers`.
 
@@ -244,11 +247,13 @@ When the build finds nothing to play, the start ends, the screen Play was presse
 
 ### `QueueManager.playQueue`
 
-`playQueue()` asks for a player by setting `m.global.playbackLaunchRequest`. It neither creates a player nor navigates, since a data node has no router. It reads the current item's type:
+`playQueue()` asks for a player by setting `m.global.playbackLaunchRequest`. It neither creates a player nor navigates, since a data node has no router. It looks up the current item's type in `playKind`:
 
-- **`audio` or `audiobook`:** a request with `media: "audio"`.
-- **A video type** (`musicvideo`, `video`, `movie`, `episode`, `recording`, `chapter`, `trailer`, `program`, `tvchannel`): a request with the item's type and id.
+- **Audio** (`Audio`, `AudioBook`): a request with `media: "audio"`.
+- **Video or live** (a movie, an episode, a channel, and the rest `playKind` lists): a request with the item's type and id.
 - **An empty queue, an item with no type, or any other type:** no request; it ends the playback-start wait with the reason (`failPendingPlaybackStart`).
+
+Every single-item start, from a tile or from the details screen, comes through here, so `playKind` is the one place that decides which player an item gets.
 
 A photo never reaches `playQueue()`: `quickplay.photo` sets `m.global.photoLaunchRequest`.
 

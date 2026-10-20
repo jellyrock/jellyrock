@@ -10,6 +10,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/playKind.bs"
 import "pkg:/source/utils/quickplay.bs"
 import "pkg:/source/utils/quickplayOutcome.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -195,8 +196,10 @@ end function
 '
 ' QueueManager has no router chain, so it can't navigateTo. It sets
 ' m.global.playbackLaunchRequest and JRScene.onPlaybackLaunchRequested turns that into
-' the route: audio -> /audio (AudioPlayerView), every video-family type -> the play route
-' (/details/:type/:id/play, PlayerHostView). The view reads this same queue on mount.
+' the route. playKind decides which: audio -> /audio (AudioPlayerView), video and live -> the
+' play route (/details/:type/:id/play, PlayerHostView). Every single-item start goes through
+' here, so that table is the one place the player is chosen. The view reads this same queue
+' on mount.
 ' In-view queue advancement (next-item / Live TV restart / channel switch) does not come
 ' back through here: the video host remounts its child; the audio view reloads in place.
 sub playQueue()
@@ -213,23 +216,10 @@ sub playQueue()
     return
   end if
 
-  if nextItemMediaType = "audio" or nextItemMediaType = "audiobook"
+  kind = playKind.of(nextItemMediaType)
+  if kind = playKind.AUDIO
     m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id, media: "audio" }
-    return
-  end if
-
-  videoTypes = {
-    "musicvideo": true,
-    "video": true,
-    "movie": true,
-    "episode": true,
-    "recording": true,
-    "chapter": true,
-    "trailer": true,
-    "program": true,
-    "tvchannel": true
-  }
-  if videoTypes.DoesExist(nextItemMediaType)
+  else if kind = playKind.VIDEO or kind = playKind.LIVE
     m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id }
   else
     failPendingPlaybackStart("queue item is not playable")

@@ -2158,6 +2158,16 @@ Recent searches are read and written in the registry on the render thread, not o
 
 Ruled out: a fire-and-forget Task per write, which adds a thread start per search against the 100-thread ceiling, an ordering race between overlapping writes, and a pattern no other writer uses. Also one long-lived registry-writer Task for the whole app: the right fix if registry writes ever show up as dropped frames across the app, but its own project. Not measured: the low-end Roku. Revisit if a measurement there, or a report of dropped frames, shows the write.
 
+## decision-id: play-kind-single-table
+
+**date**: 2026-10-20
+**status**: accepted
+**related-files**: `source/utils/playKind.bs`, `components/ItemDetails.bs`, `components/manager/QueueManager.bs`
+
+Every Play decision reads one table, `playKind`: the details screen shows Play only for a type it lists, `ItemDetails.isPlayAllType` reads it, and `QueueManager.playQueue` picks the player from it. The details screen never navigates to a player itself; `launchQueueItemToPlay` fills the queue and calls `playQueue`. Before this, three type lists decided Play with nothing linking them, and #677 had the details screen go straight to the video route, so a song's Play opened the video player while every other entry point played it in the audio player.
+
+An allow-list was chosen over the old exclusion list so a type the app can't play (Book) gets no Play button instead of one that fails. A per-type audio check in the details screen was ruled out as a second copy of the routing. Recheck: a newly supported playable type needs a `playKind` entry, or it gets no Play button.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
