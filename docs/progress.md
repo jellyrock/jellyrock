@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-20: chore(catchup): Stop the reader rewriting `docs/signals-backlog.md`
 - 2026-10-20: feat(search): Pull-down keyboard, live suggestions and recent searches
 - 2026-10-19: chore(device-lock): Hold the device lock for `F5` and `package:signed`
 - 2026-10-18: fix(search): Show a row for every result type, up to 50 items each
