@@ -1,7 +1,7 @@
 // Tests for scripts/server-upgrade-tracker.js: the proactive-CI surface,
 // Phase 4 generalized by Phase 6 into the PER-VERSION release-triage DIGEST model.
 //
-// The pure parts (signal parse, version-state + digest-action decisions) are
+// The pure parts (version-state + digest-action decisions) are
 // exercised directly. The report-computation + CLI path is driven OFFLINE via
 // --to-file (an injected `to` spec) against tiny hand-written committed inputs
 // (from/floor fingerprints + manifest + boundaries + suppressions + the
@@ -14,7 +14,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnScript } from './_helpers/spawn-script.js';
 import {
-  parseStableSignal,
+  decideRc,
+  rcTitle,
+  renderRcBody,
   decideVersionState,
   decideDigestAction,
   computeReport,
@@ -22,46 +24,35 @@ import {
 
 const SCRIPT = 'scripts/server-upgrade-tracker.js';
 
-function signalsDoc({ acknowledged = '10.11.8', status = 'watching' } = {}) {
-  return `---
-last-updated: 2026-05-29
----
+describe('decideRc: the release-candidate issue', () => {
+  it('is null when no RC is in flight', () => {
+    expect(decideRc({ rc: null, anchor: '12.0' })).toBeNull();
+  });
 
-# Signals backlog
-
-\`\`\`markdown
-### <slug>: <one-line label>
-- **latest_acknowledged**: 99.99.99
-\`\`\`
-
-## Watching
-
-### jellyfin-server-stable: Jellyfin server stable channel
-
-- **watching**: latest stable
-- **current**: 10.7.0 minimum supported
-- **latest_acknowledged**: ${acknowledged}
-- **action_when_moves**: run /server-upgrade
-- **status**: ${status}
-
-### jellyfin-server-rc: Jellyfin server release candidate channel
-
-- **latest_acknowledged**: (no RC in flight)
-- **status**: watching
-`;
-}
-
-describe('parseStableSignal', () => {
-  it('extracts the stable row, skipping the code-fence example and the rc row', () => {
-    const sig = parseStableSignal(signalsDoc({ acknowledged: '10.11.8' }));
-    expect(sig).toEqual({
-      latest_acknowledged: '10.11.8',
-      status: 'watching',
+  it('diffs the first RC of a version from the reviewed anchor', () => {
+    expect(decideRc({ rc: '12.3-rc1', anchor: '12.0', rcIssues: [] })).toEqual({
+      version: '12.3-rc1',
+      title: '[server-upgrade] Jellyfin 12.3-rc1 — release candidate',
+      from: '12.0',
     });
   });
 
-  it('returns null when the stable row is absent', () => {
-    expect(parseStableSignal('# Signals\n\n### roku-os: x\n- **status**: watching\n')).toBeNull();
+  it('diffs a later RC from the newest earlier RC of the same version', () => {
+    const rcIssues = ['12.3-rc1', '12.3-rc2', '12.2-rc4', '12.3-rc3'].map((v) => ({
+      title: rcTitle(v),
+    }));
+    expect(decideRc({ rc: '12.3-rc3', anchor: '12.0', rcIssues }).from).toBe('12.3-rc2');
+  });
+
+  it('ignores issues whose title is not an RC title', () => {
+    const rcIssues = [{ title: 'Jellyfin 12.3-rc1 notes' }];
+    expect(decideRc({ rc: '12.3-rc2', anchor: '12.0', rcIssues }).from).toBe('12.0');
+  });
+
+  it('renders a body naming the exact /server-upgrade command', () => {
+    expect(renderRcBody({ version: '12.3-rc2', from: '12.3-rc1' })).toContain(
+      '`/server-upgrade 12.3-rc1 12.3-rc2`',
+    );
   });
 });
 
@@ -183,7 +174,6 @@ describe('computeReport + CLI (offline, injected toSpec)', () => {
     write('docs/dev/jellyfin-version-boundaries.yml', BOUNDARIES_YML);
     write('.api-watch/suppressions.yml', 'rules: []\n');
     write('docs/dev/jellyfin-endpoint-availability.yml', availability);
-    write('docs/signals-backlog.md', signalsDoc());
   }
 
   it('runs the Phase-2 report against an ephemeral to fingerprint', async () => {
@@ -281,12 +271,51 @@ describe('computeReport + CLI (offline, injected toSpec)', () => {
     expect(decision.version).toBe('10.11.8');
   });
 
-  it("CLI degrades to 'triage' (announce-only) when a baseline fingerprint is missing (offline)", () => {
+  it('CLI takes the acknowledged version from the newest committed stable fingerprint', () => {
     scaffoldRepo();
-    // Acknowledged 10.10.0 has no committed fingerprint, so readFingerprint(from)
+    const res = spawnScript(SCRIPT, ['--root', dir, '--latest', '10.11.8']);
+    expect(JSON.parse(res.stdout).acknowledged).toBe('10.11.8');
+  });
+
+  it('CLI reports the RC even when stable is caught up, and writes its body', () => {
+    scaffoldRepo();
+    const rcBody = join(dir, 'rc.md');
+    const res = spawnScript(SCRIPT, [
+      '--root',
+      dir,
+      '--latest',
+      '10.11.8',
+      '--rc',
+      '10.12.0-rc1',
+      '--rc-body-out',
+      rcBody,
+    ]);
+    const decision = JSON.parse(res.stdout);
+    expect(decision.action).toBe('none');
+    expect(decision.rc).toEqual({
+      version: '10.12.0-rc1',
+      title: rcTitle('10.12.0-rc1'),
+      from: '10.11.8',
+    });
+    expect(decision.rcLabel).toBe('server-upgrade:rc');
+    expect(readFileSync(rcBody, 'utf8')).toContain('`/server-upgrade 10.11.8 10.12.0-rc1`');
+  });
+
+  it('CLI fails when no stable fingerprint is committed (no anchor)', () => {
+    scaffoldRepo();
+    rmSync(join(dir, 'docs/architecture/spec-fingerprints'), { recursive: true, force: true });
+    const res = spawnScript(SCRIPT, ['--root', dir, '--latest', '10.11.10']);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toMatch(/no committed stable fingerprint/);
+  });
+
+  it("CLI degrades to 'triage' (announce-only) when the floor fingerprint is missing (offline)", () => {
+    scaffoldRepo();
+    // The floor 10.7.0 has no committed fingerprint, so readFingerprint(floor)
     // throws inside computeReport. With --to-file there is NO network, so the
-    // degradation is the fingerprint miss, exercised fully offline.
-    writeFileSync(join(dir, 'docs/signals-backlog.md'), signalsDoc({ acknowledged: '10.10.0' }));
+    // degradation is the fingerprint miss, exercised fully offline. (The anchor
+    // can't be missing: it is derived from the committed fingerprints.)
+    rmSync(join(dir, 'docs/architecture/spec-fingerprints/jellyfin-10.7.0.json'));
     const toFile = join(dir, 'to-spec.json');
     writeFileSync(toFile, JSON.stringify(TO_SPEC_TRIAGE));
     const res = spawnScript(SCRIPT, ['--root', dir, '--latest', '10.11.10', '--to-file', toFile]);
@@ -295,6 +324,6 @@ describe('computeReport + CLI (offline, injected toSpec)', () => {
     expect(decision.action).toBe('triage');
     expect(decision.degraded).toBe(true);
     expect(decision.needsInvestigation).toBeNull();
-    expect(decision.error).toMatch(/no committed fingerprint for 10\.10\.0/);
+    expect(decision.error).toMatch(/no committed fingerprint for 10\.7\.0/);
   });
 });

@@ -10,8 +10,8 @@ name: server-upgrade tracker
 #
 # Behavior (per-version digests, mirroring docs-stale-tracker.yml's
 # single-issue lifecycle but keyed on the version, not one rolling issue):
-#   - Detects the latest Jellyfin STABLE (RCs excluded) and compares it to
-#     `latest_acknowledged` on the jellyfin-server-stable row of signals-backlog.md.
+#   - Detects the latest Jellyfin STABLE (RCs excluded) and compares it to the
+#     reviewed anchor: the newest committed stable fingerprint (reviewedAnchor()).
 #   - action 'none'   (caught up): do nothing. Acknowledging != work done, so the
 #     first design's "close on caught-up" (a single rolling issue, Phase 4 in the
 #     design doc's History, which never ran) is intentionally GONE.
@@ -27,6 +27,11 @@ name: server-upgrade tracker
 #
 # One digest issue PER version (label `server-upgrade:tracker`, found by its
 # version-stamped title); they stack as a per-release audit trail.
+#
+# Release candidates: when one is in flight, open ONE issue per RC (label
+# `server-upgrade:rc`, found by exact title, any state) naming the local
+# `/server-upgrade <from> <rc>` command. Never refreshed or closed by CI: closing it
+# is the acknowledgment, and the next RC of that version diffs from it.
 
 on:
   schedule:
@@ -39,6 +44,9 @@ on:
     inputs:
       version:
         description: 'Override the detected latest stable (testing); blank = fetch live'
+        required: false
+      rc:
+        description: 'With version: the release candidate in flight (testing); blank = none'
         required: false
 
 # Permissions are unused when authenticating as the JellyRock GitHub App (the
@@ -82,6 +90,7 @@ jobs:
         run: |
           gh label create server-upgrade:tracker --color 1D76DB --description "Per-version Jellyfin release-triage digest (run /server-upgrade)" --force
           gh label create server-upgrade:triaging --color FBCA04 --description "A server-upgrade digest /server-upgrade has triaged — CI hands off the body" --force
+          gh label create server-upgrade:rc --color C5DEF5 --description "A Jellyfin release candidate to triage locally with /server-upgrade" --force
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
@@ -100,6 +109,9 @@ jobs:
           gh issue list --label server-upgrade:tracker --state all \
             --json number,title,state,labels --limit 100 > /tmp/digests.json
           echo "Listed $(jq length /tmp/digests.json) tracker digest(s)."
+          gh issue list --label server-upgrade:rc --state all \
+            --json number,title,state --limit 100 > /tmp/rc-issues.json
+          echo "Listed $(jq length /tmp/rc-issues.json) release-candidate issue(s)."
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
@@ -107,11 +119,14 @@ jobs:
         id: detect
         env:
           VERSION: ${{ github.event.inputs.version }}
+          RC: ${{ github.event.inputs.rc }}
         run: |
           set -euo pipefail
-          ARGS=(--body-out /tmp/digest-body.md --tracker-issues /tmp/digests.json)
+          ARGS=(--body-out /tmp/digest-body.md --tracker-issues /tmp/digests.json \
+            --rc-issues /tmp/rc-issues.json --rc-body-out /tmp/rc-body.md)
           if [ -n "$VERSION" ]; then
             ARGS+=(--latest "$VERSION")
+            if [ -n "$RC" ]; then ARGS+=(--rc "$RC"); fi
           fi
           node scripts/server-upgrade-tracker.js "${ARGS[@]}" > /tmp/decision.json
           cat /tmp/decision.json
@@ -119,7 +134,29 @@ jobs:
             echo "action=$(jq -r .action /tmp/decision.json)"
             echo "version=$(jq -r .version /tmp/decision.json)"
             echo "title=$(jq -r '.title // empty' /tmp/decision.json)"
+            echo "rc_title=$(jq -r '.rc.title // empty' /tmp/decision.json)"
           } >> "$GITHUB_OUTPUT"
+
+      # One issue per release candidate, opened once. Matched by exact title among
+      # every server-upgrade:rc issue (any state), so a closed (acknowledged) RC is
+      # never reopened or duplicated.
+      - name: Open release-candidate issue
+        if: steps.detect.outputs.rc_title != ''
+        run: |
+          set -euo pipefail
+          NUM=$(jq -r --arg t "$RC_TITLE" 'map(select(.title == $t)) | .[0].number // ""' /tmp/rc-issues.json)
+          if [ -n "$NUM" ]; then
+            echo "Release-candidate issue #$NUM already exists — nothing to do."
+          else
+            echo "Opening release-candidate issue: $RC_TITLE"
+            gh api "repos/$GITHUB_REPOSITORY/issues" \
+              -f "title=$RC_TITLE" \
+              -F "body=@/tmp/rc-body.md" \
+              -f "labels[]=server-upgrade:rc" >/dev/null
+          fi
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RC_TITLE: ${{ steps.detect.outputs.rc_title }}
 
       # Find THIS version's digest (per-version: matched by exact title among the
       # tracker-labelled issues, any state) and whether it's already been triaged.

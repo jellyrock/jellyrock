@@ -14,6 +14,8 @@ import { spawnScript } from '../_helpers/spawn-script.js';
 import {
   buildFingerprint,
   serializeFingerprint,
+  committedVersions,
+  reviewedAnchor,
 } from '../../../../scripts/generate/spec-fingerprint.js';
 
 const SCRIPT = 'scripts/generate/spec-fingerprint.js';
@@ -201,5 +203,45 @@ describe('CLI --from-file write + --check drift gate', () => {
     const check = spawnScript(SCRIPT, [dir, '--check']);
     expect(check.exitCode).toBe(0);
     expect(check.stdout).toMatch(/12\.0/);
+  });
+});
+
+describe('reviewedAnchor: the server-upgrade diff anchor', () => {
+  let dir;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  function seed(names) {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-spec-anchor-'));
+    const fpDir = join(dir, 'docs/architecture/spec-fingerprints');
+    mkdirSync(fpDir, { recursive: true });
+    for (const n of names) writeFileSync(join(fpDir, n), '{}');
+    return dir;
+  }
+
+  it('orders versions numerically, not as text', () => {
+    seed(['jellyfin-10.7.0.json', 'jellyfin-12.0.json', 'jellyfin-10.11.8.json']);
+    expect(committedVersions(dir)).toEqual(['10.7.0', '10.11.8', '12.0']);
+    expect(reviewedAnchor(dir)).toBe('12.0');
+  });
+
+  it('ignores pre-release and unstable fingerprints', () => {
+    seed(['jellyfin-12.0.json', 'jellyfin-12.1-rc1.json', 'jellyfin-20261001.json']);
+    expect(reviewedAnchor(dir)).toBe('12.0');
+  });
+
+  it('is null with no committed fingerprint, and --anchor exits non-zero', () => {
+    seed([]);
+    expect(reviewedAnchor(dir)).toBeNull();
+    expect(spawnScript(SCRIPT, ['--anchor', dir]).exitCode).toBe(1);
+  });
+
+  it('--anchor prints the anchor', () => {
+    seed(['jellyfin-10.11.8.json', 'jellyfin-12.0.json']);
+    const r = spawnScript(SCRIPT, ['--anchor', dir]);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe('12.0');
   });
 });

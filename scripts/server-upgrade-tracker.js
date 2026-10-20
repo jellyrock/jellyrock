@@ -9,7 +9,8 @@
 //   1. DETECTS whether a newer Jellyfin STABLE release exists than the version
 //      JellyRock has acknowledged. Detection is robust whether or not /catchup
 //      has run: it fetches the live latest stable (RCs excluded, per the
-//      fetcher) and reads `latest_acknowledged` from docs/signals-backlog.md.
+//      fetcher) and takes the acknowledged version from reviewedAnchor() (the
+//      newest committed stable fingerprint).
 //   2. COMPUTES the full mechanical report (the Phase-2 buildReport, including the
 //      Phase-6 endpoint-availability ledger so the recurring floor findings are
 //      floor-known, not flagged) against an EPHEMERAL, in-memory `to` fingerprint
@@ -44,19 +45,24 @@
 // never touches the journals.
 //
 // CLI:
-//   node scripts/server-upgrade-tracker.js [--root <dir>] [--signals <path>]
+//   node scripts/server-upgrade-tracker.js [--root <dir>]
 //        [--latest <version>] [--floor <version>] [--to-file <spec.json>]
 //        [--tracker-issues <file.json>] [--body-out <file>]
+//        [--rc <version>] [--rc-issues <file.json>] [--rc-body-out <file>]
 //     --latest         override the live upstream fetch (workflow_dispatch / tests)
 //     --to-file        build the `to` fingerprint from a local spec (offline; tests)
 //     --tracker-issues gh JSON ([{title,state}]) of the per-version digests; used
 //                      to derive "mechanically cleared through" for the body header
 //     --body-out       write the rendered issue body markdown to this path
+//     --rc             the RC in flight, used only with --latest (tests / dispatch)
+//     --rc-issues      gh JSON ([{title}]) of the RC_LABEL issues, for decideRc()
+//     --rc-body-out    write the RC issue body to this path when an RC is in flight
 //   Prints decision JSON: { action, version, acknowledged, clearedThrough, floor,
 //                           needsInvestigation, title, triagingLabel,
-//                           trackerLabel, degraded, error }
+//                           trackerLabel, degraded, error, rc, rcLabel }
+//     rc is null, or { version, title, from } for the release candidate in flight.
 //     action ∈ { none | clean | triage }; a 'none' decision carries only
-//     action, version and acknowledged.
+//     action, version, acknowledged, rc and rcLabel.
 //
 // Pure parts (parse / decide / render) are named exports so the Vitest suite at
 // tests/scripts/unit/server-upgrade-tracker.test.js drives them offline.
@@ -71,8 +77,9 @@ import {
   readSuppressions,
   readAvailability,
 } from './generate/findings-candidates.js';
-import { buildFingerprint } from './generate/spec-fingerprint.js';
+import { buildFingerprint, reviewedAnchor } from './generate/spec-fingerprint.js';
 import {
+  TITLE_PREFIX,
   digestTitle,
   renderDigestBody,
   clearedThroughFrom,
@@ -89,47 +96,8 @@ const {
 } = require('./lib/signals-fetch.cjs');
 const { loadBoundaries } = require('./lib/version-boundaries.cjs');
 
-const SIGNALS_REL = 'docs/signals-backlog.md';
-const STABLE_SLUG = 'jellyfin-server-stable';
 // The per-version digest label, single-sourced from the filer (server-upgrade.js).
 const TRACKER_LABEL = DIGEST_LABEL;
-
-// ── Signal parsing ────────────────────────────────────────────────────────────
-
-// Parse the jellyfin-server-stable row out of signals-backlog.md. Mirrors the
-// H3-slug + `- **key**: value` parser in scripts/catchup-state.js (code fences
-// skipped). Returns { latest_acknowledged, status } or null if
-// the row is absent.
-export function parseStableSignal(markdown) {
-  const lines = markdown.split(/\r?\n/);
-  let inFence = false;
-  let inRow = false;
-  const bullets = {};
-  for (const line of lines) {
-    if (/^```/.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-
-    const h3 = line.match(/^###\s+([a-z0-9][a-z0-9-]*)\s*:/);
-    if (h3) {
-      if (inRow) break; // next row starts, so we already captured ours
-      inRow = h3[1] === STABLE_SLUG;
-      continue;
-    }
-    if (/^##\s+/.test(line) && inRow) break; // a new H2 closes the row
-    if (!inRow) continue;
-
-    const bullet = line.match(/^-\s+\*\*([a-z_]+)\*\*:\s*(.+?)\s*$/);
-    if (bullet) bullets[bullet[1]] = bullet[2];
-  }
-  if (Object.keys(bullets).length === 0) return null;
-  return {
-    latest_acknowledged: bullets.latest_acknowledged ?? null,
-    status: bullets.status ?? null,
-  };
-}
 
 // ── Decision ──────────────────────────────────────────────────────────────────
 
@@ -153,6 +121,55 @@ export function decideDigestAction(versionState, report) {
   if (versionState === 'caught-up') return 'none';
   if (!report) return 'triage';
   return (report.counts?.needsInvestigation ?? 0) > 0 ? 'triage' : 'clean';
+}
+
+// ── Release candidates ───────────────────────────────────────────────────────
+
+// The label on the one issue CI opens per Jellyfin release candidate. It replaces
+// the old jellyfin-server-rc journal row: closing the issue is the acknowledgment.
+export const RC_LABEL = 'server-upgrade:rc';
+
+export function rcTitle(version) {
+  return `${TITLE_PREFIX} Jellyfin ${version} — release candidate`;
+}
+
+const RC_TITLE_RE =
+  /^\[server-upgrade\] Jellyfin (\d+\.\d+(?:\.\d+)?)-(rc|beta|alpha)(\d+) — release candidate$/;
+
+// Where the RC's diff starts: the newest earlier pre-release of the same base
+// version that already has an issue (so rc2 diffs from rc1 and shows only what
+// changed since), else the reviewed stable anchor. Returns null when no RC is in
+// flight. `rcIssues` is gh JSON ([{title}]) of the issues carrying RC_LABEL.
+export function decideRc({ rc, anchor, rcIssues = [] }) {
+  if (!rc) return null;
+  const m = rc.match(/^(.+)-[a-z]+(\d+)$/);
+  if (!m) return null;
+  const [, base, n] = m;
+  let from = anchor;
+  let best = -1;
+  for (const issue of rcIssues) {
+    const hit = String(issue.title ?? '').match(RC_TITLE_RE);
+    if (!hit || hit[1] !== base) continue;
+    const k = parseInt(hit[3], 10);
+    if (k < parseInt(n, 10) && k > best) {
+      best = k;
+      from = `${hit[1]}-${hit[2]}${hit[3]}`;
+    }
+  }
+  return { version: rc, title: rcTitle(rc), from };
+}
+
+export function renderRcBody({ version, from }) {
+  return [
+    `Jellyfin published release candidate **${version}**.`,
+    '',
+    `Triage it locally with \`/server-upgrade ${from} ${version}\`. A release candidate takes the local path: findings go to a \`.claude/handoffs/\` note and nothing is filed until the stable release.`,
+    '',
+    'Close this issue once it is triaged. Closing it is the acknowledgment; the next release candidate of this version diffs from this one.',
+    '',
+    '_Opened by `.github/workflows/server-upgrade-tracker.yml`._',
+    '',
+  ].join('\n');
 }
 
 // ── Report computation (the only network/IO path) ───────────────────────────────
@@ -198,20 +215,26 @@ function parseFlags(argv) {
 async function main() {
   const flags = parseFlags(process.argv.slice(2));
   const rootDir = flags.root ?? '.';
-  const signalsPath = flags.signals ?? `${rootDir}/${SIGNALS_REL}`;
-
-  const signal = parseStableSignal(readFileSync(signalsPath, 'utf8'));
-  if (!signal) {
-    throw new Error(`server-upgrade-tracker: no '${STABLE_SLUG}' row in ${signalsPath}`);
+  const acknowledged = reviewedAnchor(rootDir);
+  if (!acknowledged) {
+    throw new Error(`server-upgrade-tracker: no committed stable fingerprint under ${rootDir}`);
   }
-  const acknowledged = signal.latest_acknowledged;
 
-  // Live latest stable (RCs excluded by fetchJellyfinVersions), unless overridden.
-  const latestStable = flags.latest ?? (await fetchJellyfinVersions()).stable;
+  // Live latest stable and RC in flight, unless --latest overrides (then the RC
+  // comes only from --rc, so tests and workflow_dispatch stay offline).
+  const live = flags.latest ? null : await fetchJellyfinVersions();
+  const latestStable = flags.latest ?? live.stable;
+  const rcVersion = flags.latest ? (typeof flags.rc === 'string' ? flags.rc : null) : live.rc;
+  const rc = decideRc({
+    rc: rcVersion,
+    anchor: acknowledged,
+    rcIssues: readJsonFlag(flags, 'rc-issues'),
+  });
+  if (rc && flags['rc-body-out']) writeFileSync(flags['rc-body-out'], renderRcBody(rc));
 
   const versionState = decideVersionState({ latestStable, acknowledged });
   if (versionState === 'caught-up') {
-    emit({ action: 'none', version: latestStable, acknowledged });
+    emit({ action: 'none', version: latestStable, acknowledged, rc, rcLabel: RC_LABEL });
     return;
   }
 
@@ -237,14 +260,7 @@ async function main() {
   // The CI surface never writes the journals, so the `acknowledged` anchor trails
   // the newest release; `clearedThrough` is what lets the digest report that
   // honestly ("cleared through X") instead of reading as a stale baseline.
-  let trackerIssues = [];
-  if (flags['tracker-issues']) {
-    try {
-      trackerIssues = JSON.parse(readFileSync(flags['tracker-issues'], 'utf8'));
-    } catch (err) {
-      console.error(`server-upgrade-tracker: could not read --tracker-issues — ${err.message}`);
-    }
-  }
+  const trackerIssues = readJsonFlag(flags, 'tracker-issues');
   const clearedThrough = clearedThroughFrom(trackerIssues, latestStable);
   // Render the per-version digest body (mechanical checklist, or the clean record).
   const body = renderDigestBody({
@@ -270,7 +286,20 @@ async function main() {
     trackerLabel: TRACKER_LABEL,
     degraded: report === null,
     error,
+    rc,
+    rcLabel: RC_LABEL,
   });
+}
+
+// Read a gh JSON list passed by path in --<name>; [] when absent or unreadable.
+function readJsonFlag(flags, name) {
+  if (!flags[name]) return [];
+  try {
+    return JSON.parse(readFileSync(flags[name], 'utf8'));
+  } catch (err) {
+    console.error(`server-upgrade-tracker: could not read --${name} — ${err.message}`);
+    return [];
+  }
 }
 
 // Single-line JSON on stdout: the workflow parses it with jq. Human-readable
