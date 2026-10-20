@@ -74,6 +74,7 @@
 const fs = require('fs');
 const path = require('path');
 const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
+const { AUTO_MANAGED_SIGNAL_SLUGS } = require('../lib/signal-staleness.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
@@ -100,13 +101,14 @@ const VERBOSE = process.argv.includes('--verbose') && !JSON_MODE;
 
 // Signals-backlog row schema. Required bullets, valid status values,
 // optional `staleness_days` override (must be a positive integer when
-// present). The schema is documented in docs/signals-backlog.md's preamble.
+// present). On a hand-managed row `latest_upstream` and `last_checked` (an ISO
+// date) are required. Both are forbidden on an auto-managed row: the reader
+// fetches its upstream into memory on every run. The schema is documented in
+// docs/signals-backlog.md's preamble.
 const SIGNALS_REQUIRED_BULLETS = [
   'watching',
   'current',
-  'latest_upstream',
   'latest_acknowledged',
-  'last_checked',
   'action_when_moves',
   'status',
 ];
@@ -673,7 +675,23 @@ function checkSignalsSchema() {
 
   function finalize() {
     if (!currentSlug) return;
-    for (const required of SIGNALS_REQUIRED_BULLETS) {
+    const autoManaged = AUTO_MANAGED_SIGNAL_SLUGS.has(currentSlug);
+    const requiredBullets = autoManaged
+      ? SIGNALS_REQUIRED_BULLETS
+      : [...SIGNALS_REQUIRED_BULLETS, 'latest_upstream', 'last_checked'];
+    for (const field of ['latest_upstream', 'last_checked']) {
+      if (autoManaged && field in currentBullets) {
+        pushError({
+          category: 'signals-schema-invalid',
+          file: SIGNALS_PATH,
+          message:
+            `signals row "${currentSlug}" (line ${currentStartLine + 1}) must not carry ` +
+            `\`**${field}**\`: the catchup reader fetches the upstream on every run and never writes the file`,
+          target: currentSlug,
+        });
+      }
+    }
+    for (const required of requiredBullets) {
       if (!(required in currentBullets)) {
         pushError({
           category: 'signals-schema-invalid',
@@ -695,7 +713,11 @@ function checkSignalsSchema() {
         target: currentSlug,
       });
     }
-    if ('last_checked' in currentBullets && !ISO_DATE_RE.test(currentBullets.last_checked)) {
+    if (
+      'last_checked' in currentBullets &&
+      !autoManaged &&
+      !ISO_DATE_RE.test(currentBullets.last_checked)
+    ) {
       pushError({
         category: 'signals-schema-invalid',
         file: SIGNALS_PATH,

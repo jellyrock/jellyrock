@@ -27,7 +27,7 @@ related-files:
   - .github/workflows/journal-sync-precheck.yml
   - .github/workflows/_lint-docs.yml
   - .github/workflows/docs-stale-tracker.yml
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-20
 ---
 
 # System shape
@@ -129,7 +129,7 @@ The spell-check and description check skip the PRs `journal-sync` skips (`should
 
 `docs-check.cjs` checks the journals like this:
 
-- **`signals-backlog.md`:** every row has its required bullets, a valid `status`, an ISO `last_checked` date and a positive `staleness_days`.
+- **`signals-backlog.md`:** every row has its required bullets, a valid `status` and a positive `staleness_days`.
 - **`docs/adr/` and `decisions.md`:** links and tech-debt anchors resolve. No staleness check, since both are immutable or append-only.
 - **The `decisions.md` supersede chain:** it fails on a duplicate slug, a missing or repeated field, an invalid `status`, a pointer that does not resolve in the file, a one-sided full or partial supersede pair, a full supersede whose target is not `superseded`, a `partially-*` value without its scope, a `superseded` note naming no successor, a `withdrawn` note at either end of a supersede, or a note pointing at itself. A supersede is a hand edit in several places, and a half-applied one would leave the chain wrong without anyone noticing. ADRs state the same relationship in prose, which nothing checks.
 
@@ -154,7 +154,7 @@ The spell-check and description check skip the PRs `journal-sync` skips (`should
 - **Friction at the cause, not the symptom:** a pre-push nudge on a decision-shaped commit, not a quarterly cleanup.
 - **Drift shows at retrieval,** as warnings, not as sentences buried in a file.
 - **Confirmation goes where the judgment is.** `/log decision` shows a diff and waits, because whether and where to record a decision is a judgment. Mechanical captures and proven closures apply directly. When they go wrong, the fix is auditing the skill's runs, not a prompt in every session.
-- **Two scripts write journals outside the skills, both mechanically.** `journal-sync.yml` writes the post-merge close to `progress.md` from merged-PR data. `catchup-state.js` writes `last_checked` and `latest_upstream` on the three auto-managed signal rows from the upstream versions it fetches. Neither makes a judgment, so neither carries the risk of an invented entry.
+- **One workflow writes a journal outside the skills, mechanically.** `journal-sync.yml` writes the post-merge close to `progress.md` from merged-PR data. It makes no judgment, so it carries no risk of an invented entry. `catchup-state.js` fetches the upstream version of the three auto-managed signal rows on every run and holds it in memory, never in the file.
 
 **Iteration:**
 

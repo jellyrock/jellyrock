@@ -36,13 +36,13 @@ A row in [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) for an up
 
     - **watching**: <what is watched upstream>
     - **current**: <this repo's posture toward it>
-    - **latest_upstream**: <last known upstream version>
+    - **latest_upstream**: <last known upstream version; omit on jellyfin-server-stable, jellyfin-server-rc and roku-os>
     - **latest_acknowledged**: <last version reviewed via /done; seed = latest_upstream>
-    - **last_checked**: YYYY-MM-DD
+    - **last_checked**: YYYY-MM-DD (omit on jellyfin-server-stable, jellyfin-server-rc and roku-os)
     - **action_when_moves**: <what triggers a change here>
     - **status**: watching | action_pending | completed
 
-Ask for the slug, label and fields not given. Defaults: `last_checked` today, `latest_acknowledged` = `latest_upstream`, `status` `watching`. The slug is unique (`grep -n '^### <slug>:' docs/signals-backlog.md`); on a hit ask: other slug, update the row, or abort. Never hand-edit `latest_upstream` or `last_checked` on `jellyfin-server-stable`, `jellyfin-server-rc` or `roku-os`: `scripts/catchup-state.js` owns them. `npm run lint:docs` validates the schema (required bullets, status enum, ISO date, a positive-integer `staleness_days` when present).
+Ask for the slug, label and fields not given. Defaults: `last_checked` today, `latest_acknowledged` = `latest_upstream`, `status` `watching`. The slug is unique (`grep -n '^### <slug>:' docs/signals-backlog.md`); on a hit ask: other slug, update the row, or abort. Those three rows carry no `latest_upstream` or `last_checked`: `scripts/catchup-state.js` fetches it on every run and never writes it. `npm run lint:docs` validates the schema (required bullets, status enum, an ISO date, a positive-integer `staleness_days` when present).
 
 ## `running`
 

@@ -7,6 +7,11 @@
 // The slug whose staleness is digest-driven rather than a version string compare.
 const STABLE_SLUG = 'jellyfin-server-stable';
 
+// Rows whose upstream version scripts/catchup-state.js fetches on every run and
+// holds in memory only. Their file rows carry no `latest_upstream`; every other
+// row is hand-managed and keeps it.
+const AUTO_MANAGED_SIGNAL_SLUGS = new Set([STABLE_SLUG, 'jellyfin-server-rc', 'roku-os']);
+
 // Stale = the row needs human attention.
 //
 // For most rows that's the close-loop string compare: upstream moved past the
@@ -31,4 +36,4 @@ function signalStaleness(row, ctx = {}) {
   return row.latest_upstream !== row.latest_acknowledged;
 }
 
-module.exports = { signalStaleness, STABLE_SLUG };
+module.exports = { signalStaleness, STABLE_SLUG, AUTO_MANAGED_SIGNAL_SLUGS };

@@ -5,8 +5,8 @@
 // parsers, area filtering, error fallthrough, and JSON shape.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, utimesSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync, utimesSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { spawnScript } from './_helpers/spawn-script.js';
 import { createGitFixture } from './_helpers/temp-git-fixture.js';
 
@@ -169,6 +169,76 @@ describe('catchup-state', () => {
     delete p.meta.generated_at;
     delete c.meta.generated_at;
     expect(p).toEqual(c);
+  });
+
+  describe('signals fetch (network on, https stubbed)', () => {
+    const STUB = resolve('tests/scripts/unit/_helpers/stub-https-get.cjs');
+    // The three auto-managed rows carry no latest_upstream and no last_checked:
+    // the reader fetches them on every run and keeps them in memory only.
+    const AUTO_ROWS =
+      `---\nlast-updated: ${TODAY}\n---\n# Signals\n\n## Watching\n\n` +
+      `### jellyfin-server-stable: stable\n\n- **latest_acknowledged**: 12.0\n- **status**: watching\n\n` +
+      `### jellyfin-server-rc: rc\n\n- **latest_acknowledged**: (no RC in flight)\n- **status**: watching\n\n` +
+      `### roku-os: firmware\n\n- **latest_acknowledged**: 15.3\n- **status**: watching\n`;
+
+    // A file from before the fields left it: old values and an old last-updated date,
+    // the exact bytes the reader used to rewrite on its first run of a day.
+    const LEGACY_ROWS = AUTO_ROWS.replace(`last-updated: ${TODAY}`, 'last-updated: 2026-01-01')
+      .replace(
+        '- **latest_acknowledged**: 12.0',
+        '- **latest_upstream**: 11.0\n- **latest_acknowledged**: 12.0\n- **last_checked**: 2026-01-01',
+      )
+      .replace(
+        '- **latest_acknowledged**: 15.3',
+        '- **latest_upstream**: 15.3\n- **latest_acknowledged**: 15.3\n- **last_checked**: 2026-01-01',
+      );
+
+    function runFetching(cwd, mode) {
+      return spawnScript(SCRIPT, ['--no-gh'], {
+        cwd,
+        env: { NODE_OPTIONS: `--require ${STUB}`, STUB_HTTPS_MODE: mode },
+      });
+    }
+
+    it.each([
+      ['rows without the fields', AUTO_ROWS],
+      ['a file that still carries the fields', LEGACY_ROWS],
+    ])(
+      'keeps the fetched upstream in memory and leaves docs/signals-backlog.md untouched: %s',
+      (_name, file) => {
+        fix = setupFixture();
+        fix.commit('seed', { 'docs/signals-backlog.md': file });
+        const { exitCode, stdout } = runFetching(fix.dir, 'ok');
+        expect(exitCode).toBe(0);
+        const parsed = JSON.parse(stdout);
+        const bySlug = Object.fromEntries(parsed.signals.rows.map((r) => [r.slug, r]));
+        expect(bySlug['jellyfin-server-stable'].latest_upstream).toBe('12.1');
+        expect(bySlug['jellyfin-server-rc'].latest_upstream).toBe('(no RC in flight)');
+        expect(bySlug['roku-os'].latest_upstream).toBe('15.4');
+        // upstream moved past the acknowledged version: stale, from the in-memory value
+        expect(bySlug['roku-os'].stale).toBe(true);
+        expect(bySlug['jellyfin-server-rc'].stale).toBe(false);
+        expect(parsed.signals.stale_count).toBe(2);
+        expect(parsed._errors).toEqual({});
+        expect(readFileSync(join(fix.dir, 'docs/signals-backlog.md'), 'utf8')).toBe(file);
+        expect(fix.git('status', '--porcelain')).toBe('');
+      },
+    );
+
+    it('a failed fetch leaves the row without an upstream, reports it, and writes nothing', () => {
+      fix = setupFixture();
+      fix.commit('seed', { 'docs/signals-backlog.md': AUTO_ROWS });
+      const { exitCode, stdout } = runFetching(fix.dir, 'fail');
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(stdout);
+      for (const row of parsed.signals.rows) {
+        expect(row.latest_upstream).toBeUndefined();
+        expect(row.stale).toBe(false);
+      }
+      expect(JSON.parse(parsed._errors.signals_fetch)).toHaveProperty('jellyfin');
+      expect(JSON.parse(parsed._errors.signals_fetch)).toHaveProperty('roku');
+      expect(fix.git('status', '--porcelain')).toBe('');
+    });
   });
 
   it('--typed prints the typed lines, then one === STATE === line, then the same JSON', () => {

@@ -2,10 +2,10 @@
 // auto-managed signals in docs/signals-backlog.md (jellyfin-server-stable,
 // jellyfin-server-rc, roku-os).
 //
-// Used by scripts/catchup-state.js to auto-maintain `latest_upstream` +
-// `last_checked` so the watchlist reflects reality without manual journaling.
-// Per-signal failures are non-fatal: the caller falls back to the file's
-// existing latest_upstream and surfaces the error in `_errors.signals_fetch`.
+// Used by scripts/catchup-state.js, which fetches them on every run and holds
+// each as the row's in-memory `latest_upstream` (the file never stores it).
+// Per-signal failures are non-fatal: the caller leaves that row without an
+// upstream for the run and surfaces the error in `_errors.signals_fetch`.
 //
 // `.cjs` because other .cjs helpers (spec-fetch.cjs, version-boundaries.cjs,
 // endpoint-availability.cjs) require() it. See scripts/CLAUDE.md ("Module system

@@ -41,7 +41,7 @@
 //
 // It never files per-finding issues (that stays human-gated behind
 // `/server-upgrade execute`, which files them as sub-issues of the digest) and
-// never touches the journals (latest_upstream / last_checked stay /catchup's job).
+// never touches the journals.
 //
 // CLI:
 //   node scripts/server-upgrade-tracker.js [--root <dir>] [--signals <path>]

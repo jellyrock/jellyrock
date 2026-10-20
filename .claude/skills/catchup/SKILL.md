@@ -13,7 +13,7 @@ audit-span: read-only
 - **Own reader:** `node scripts/catchup-state.js --typed --pretty` ([source](../../../scripts/catchup-state.js)), which the shared reader runs from `catchup.conf`. Its banners and errors come back ranked in the CANDIDATES block, each with its route; its JSON (PRs, issues, CI, handoffs, signals, decisions, tech debt, doc staleness, and `_errors`) follows the `=== STATE ===` line under `=== OWN READER ===`.
 - **Extra sections:** [jellyrock.md](jellyrock.md), for its sections only: its banners are the reader's typed lines now (`scripts/lib/catchup-typed.cjs`), ranked in the CANDIDATES block.
 - **Handoffs:** pending handoffs are `.claude/handoffs/*.md` (untracked): a paused `/runtime-triage` resumes from its `INVESTIGATION.md`; `/crash-report` and `/server-upgrade` leave run summaries there.
-- **Known write exceptions of the reader (to remove, so the tree stays clean):** it rewrites tracked `docs/signals-backlog.md` (`latest_upstream` and `last_checked` lines) and deletes handoffs older than 30 days. A dirty tree whose only change is those signal lines is this rewrite: report it as such, not as unfinished work.
+- **Known write exception of the reader (to remove, so the tree stays clean):** it deletes handoffs older than 30 days. It never writes `docs/signals-backlog.md`: the three auto-managed signal rows are fetched on every run and held in memory.
 - **Area re-entry:** after more than two weeks away from one subsystem, `/ramp <area>` instead of this briefing.
 
 ## Contract
