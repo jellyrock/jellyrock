@@ -345,6 +345,15 @@ Where JellyRock stands: pinned to 1.7.27. 1.7.28 over-indents every statement af
 
 When it moves: when a release after 1.7.28 ships, format the multi-line-AA reproduction snippet under it (`npx bsfmt --write` on a `fn("x", { k: v })`-across-lines snippet followed by a top-level function); if indentation is correct, merge the Renovate bump and drop the 1.7.27 pin in `package.json`. Link the upstream issue once filed
 
+#### The next brighterscript bump past 1.0.0-alpha.57 needs two fixes here: the `TaskLedgerBench` interface and the lost unreachable-code gate `[fid: brighterscript-alpha57-bump-blockers]` `[captured 2026-10-20]`
+
+Renovate PR #1202 (brighterscript and bslint `1.0.0-alpha.57`) was closed on 2026-10-20 because the build failed with 13 errors that alpha.56 doesn't report. The PR comment has the full findings. Six are bslint `uninitialized-variable` false positives on calls inside inactive `#if` blocks; upstream fixed them in bslint PR #227, unreleased at that date. The other two problems remain after that fix and need work here before the next bump lands:
+
+1. **`components/testing/TaskLedgerBench.xml` reports 7 × `function-not-found`.** Its `<interface>` names functions whose bodies in `TaskLedgerBench.bs` sit inside `#if ENABLE_RTA`, which is false in the committed manifest. brighterscript alpha.57 (its PR #1886) leaves functions in inactive branches out of scope, so the check is a brighterscript check and arguably correct. Pick a fix, such as moving the `#if` inside each function body so the functions always exist. Not checked: how a Roku device treats an interface function with no implementation.
+2. **`unreachable-code` silently stops failing the build.** bslint dropped the rule (its PR #228), so `"unreachable-code": "error"` in `bslint.json` does nothing, and brighterscript reports the code as a Hint the CLI doesn't print. Raising it with `diagnosticSeverityOverrides: {"unreachable-code": "error"}` in `bsconfig-base.json` restores the error, but it then flags the deliberate trailing `return` after `while true` in `RemoteControlTask.bs` and `apiPipeline.bs`. Remove that `return` and the bslint rule `unsafe-return-value` fails instead. Choose between a recorded `bs:disable` at those two sites, an upstream report of the conflict, or accepting the hint, and drop the dead `bslint.json` key.
+
+Closes when the next brighterscript bump builds clean with both items handled.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
