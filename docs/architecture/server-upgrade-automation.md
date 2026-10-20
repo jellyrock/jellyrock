@@ -190,7 +190,7 @@ A `clean` release can still carry `floor-known`, `frozen-skip` or suppressed can
 
 The workflow finds this version's digest by its exact title among all `server-upgrade:tracker` issues, open or closed, since `gh --search` would mangle the brackets and dash in the title. Once `/server-upgrade` adds `server-upgrade:triaging`, CI leaves the digest alone. A candidate-bearing digest is closed only by a person or by `execute --close-digest`. If someone closes it before triage, CI leaves it closed. Clean digests outlive the 90-day retention of GitHub Actions logs, so each release keeps a record of what the mechanical pass found ([ADR 0011](../adr/0011-server-upgrade-phase6.md)).
 
-The workflow authenticates as the JellyRock GitHub App, so the installation's permissions apply. The workflow's `permissions:` block (`contents: read`, `issues: write`) records the intent. The workflow never writes the journals; `/catchup` updates `latest_upstream` and `last_checked`.
+The workflow authenticates as the JellyRock GitHub App, so the installation's permissions apply. The workflow's `permissions:` block (`contents: read`, `issues: write`) records the intent. The workflow never writes the journals, and neither does `/catchup`, which fetches the latest stable on every run and holds it in memory.
 
 ### The diff anchor trails clean releases
 
