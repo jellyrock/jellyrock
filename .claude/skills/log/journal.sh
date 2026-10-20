@@ -22,7 +22,9 @@
 # first entry, is intro and is kept. Headings inside fenced blocks (CommonMark: md-skip.awk beside this script) are text, not structure.
 #
 # Where the journal is. docs/cursor.md with a bold `**Last updated**:` line, unless journal.conf
-# beside this script says otherwise (key=value lines, `#` comments):
+# says otherwise (key=value lines, `#` comments). It is the one beside this script, or with
+# SKILLS_CONFIG_DIR=<a repo's .claude/skills folder> set, that folder's log/journal.conf (a copy of
+# this script reading another repo):
 #   file=<path>               the journal, relative to the repo root
 #   date=bold|frontmatter     the date line: `**Last updated**: …` or a frontmatter `last-updated:`
 #   commit=yes|no             no: journal writes ride in the commit of the change that prompted them
@@ -83,7 +85,7 @@ MD_LIB="$(cat "$here/md-skip.awk")"$'\n'
 usage()  { sed -n '/^# Usage:/,/^# setup error/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 FILE=docs/cursor.md; DATE=bold; COMMIT=yes; SUBJECT=cursor; REVIEW_DAYS=""
-conf="$here/journal.conf"
+conf="$here/journal.conf"; [ -n "${SKILLS_CONFIG_DIR:-}" ] && conf="$SKILLS_CONFIG_DIR/log/journal.conf"
 if [ -f "$conf" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"; line="${line%"${line##*[![:space:]]}"}"
