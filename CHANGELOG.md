@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (search) Pull-down keyboard, live suggestions and recent searches ([#1217](https://github.com/jellyrock/jellyrock/pull/1217))
+
 ### Fixed
 
 - (search) Show a row for every result type, up to 50 items each ([#1216](https://github.com/jellyrock/jellyrock/pull/1216))
