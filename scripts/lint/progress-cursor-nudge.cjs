@@ -19,7 +19,7 @@
 //     backstop that renders the `--json` output into a tracking issue.
 //
 // Why a separate script and not in docs-check.cjs:
-//   - docs-check.cjs is a per-PR validator (broken refs, signals schema:
+//   - docs-check.cjs is a per-PR validator (broken refs, journal schemas:
 //     all properties of the PR under review). Journal *freshness* is not a
 //     per-PR property, so it does not live there, by design.
 //   - The cursor-shipped heuristic is fuzzy (token overlap); advisory-only.

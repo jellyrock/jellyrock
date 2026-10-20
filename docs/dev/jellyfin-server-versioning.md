@@ -171,7 +171,7 @@ On 10.7 only, `QuickConnectResult` also has `Error` and `Authentication`; 10.8.0
 
 The server-upgrade pipeline diffs the API between two server versions ([`server-upgrade-automation.md`](../architecture/server-upgrade-automation.md)). Run `/server-upgrade <from> <to>` when a stable release lands.
 
-You can also triage before the release. `<to>` can be a release candidate (`10.12.0-rc1`), `unstable` or `master` (the latest datestamped build), or a datestamp. A pre-release triage writes a note to `.claude/handoffs/` and files no GitHub issues. To follow a release candidate, set the `jellyfin-server-rc` signal's `latest_acknowledged` to the RC you triaged, and the next run diffs only what changed since. A release candidate can still change, so triage the final release again when it ships.
+You can also triage before the release. `<to>` can be a release candidate (`10.12.0-rc1`), `unstable` or `master` (the latest datestamped build), or a datestamp. A pre-release triage writes a note to `.claude/handoffs/` and files no GitHub issues. CI opens a `server-upgrade:rc` issue for each release candidate, naming the command: the next one diffs from the previous release candidate's issue, so it shows only what changed since. Close the issue once triaged. A release candidate can still change, so triage the final release again when it ships.
 
 ### Add a guard
 

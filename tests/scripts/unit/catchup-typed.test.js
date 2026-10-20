@@ -16,27 +16,19 @@ const run = (o) => ({
   createdAt: '2026-10-06T10:00:00Z',
   ...o,
 });
-const signal = (o) => ({
-  status: 'watching',
-  latest_upstream: '2',
-  latest_acknowledged: '1',
-  stale: false,
-  ...o,
-});
 
 describe('typedLines', () => {
   it('a healthy state prints nothing', () => {
     expect(typedLines({ _errors: {} })).toEqual([]);
   });
 
-  it('each _errors entry is an ERROR line naming the section; signals adds the fix as a detail', () => {
+  it('each _errors entry is an ERROR line naming the section', () => {
     const lines = typedLines({
-      _errors: { ci: 'gh: not logged in', signals: 'bad row at line 9' },
+      _errors: { ci: 'gh: not logged in', watches: 'HTTP 502' },
     });
     expect(lines).toEqual([
       `ERROR${T}ci${T}catchup-state: ci failed: gh: not logged in`,
-      `ERROR${T}signals${T}catchup-state: signals failed: bad row at line 9`,
-      '  fix docs/signals-backlog.md, then npm run lint:docs',
+      `ERROR${T}watches${T}catchup-state: watches failed: HTTP 502`,
     ]);
   });
 
@@ -142,46 +134,32 @@ describe('typedLines', () => {
     });
   });
 
-  describe('signals', () => {
-    it('one signals-stale banner per stale row, routed to /done <slug>', () => {
-      const rows = [
-        signal({
-          slug: 'roku-os',
-          stale: true,
-          latest_upstream: '15.2',
-          latest_acknowledged: '15.1',
-        }),
-        signal({ slug: 'quiet' }),
+  describe('watches', () => {
+    it('one upstream-watch banner per open issue, routed by its label', () => {
+      const open = [
+        { label: 'roku-os', number: 90, title: '[roku-os] Roku OS 16.0 released', triaging: false },
+        {
+          label: 'server-upgrade:tracker',
+          number: 80,
+          title: '[server-upgrade] Jellyfin 12.2 — release triage',
+          triaging: true,
+        },
+        {
+          label: 'server-upgrade:rc',
+          number: 70,
+          title: '[server-upgrade] Jellyfin 12.3-rc1 — release candidate',
+          triaging: false,
+        },
       ];
-      expect(typedLines({ signals: { rows, stale_count: 1, action_pending_count: 0 } })).toEqual([
-        `BANNER${T}signals-stale${T}signals-backlog: roku-os needs attention (upstream 15.2, acknowledged 15.1)${T}review the upstream change, then /done roku-os`,
+      expect(typedLines({ watches: { open } })).toEqual([
+        `BANNER${T}upstream-watch${T}#90 [roku-os] Roku OS 16.0 released${T}review the release notes, then close #90`,
+        `BANNER${T}upstream-watch${T}#80 [server-upgrade] Jellyfin 12.2 — release triage (triage started)${T}/server-upgrade (digest #80)`,
+        `BANNER${T}upstream-watch${T}#70 [server-upgrade] Jellyfin 12.3-rc1 — release candidate${T}/server-upgrade with the versions issue #70 names`,
       ]);
     });
 
-    it('a stale row with an open digest routes to /server-upgrade and names the digest', () => {
-      const rows = [
-        signal({
-          slug: 'jellyfin-server-stable',
-          stale: true,
-          latest_upstream: '10.11.11',
-          latest_acknowledged: '10.11.8',
-          digest: { number: 632, triaging: false },
-        }),
-      ];
-      expect(typedLines({ signals: { rows, stale_count: 1, action_pending_count: 0 } })).toEqual([
-        `BANNER${T}signals-stale${T}signals-backlog: jellyfin-server-stable needs attention (upstream 10.11.11, acknowledged 10.11.8; open digest #632)${T}/server-upgrade`,
-      ]);
-    });
-
-    it('rows in action_pending are one signals-action-pending banner, routed to /focus', () => {
-      const rows = [
-        signal({ slug: 'a', status: 'action_pending' }),
-        signal({ slug: 'b', status: 'action_pending' }),
-        signal({ slug: 'c' }),
-      ];
-      expect(typedLines({ signals: { rows, stale_count: 0, action_pending_count: 2 } })).toEqual([
-        `BANNER${T}signals-action-pending${T}2 signal(s) in action_pending (a, b): these need a JellyRock change${T}`,
-      ]);
+    it('no open issue fires nothing', () => {
+      expect(typedLines({ watches: { open: [] } })).toEqual([]);
     });
   });
 
@@ -230,7 +208,7 @@ describe('typedLines', () => {
       _errors: { ci: 'x' },
       ci: null,
       prs: null,
-      signals: null,
+      watches: null,
       docs_stale: null,
       handoffs: null,
     };

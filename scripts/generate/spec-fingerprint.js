@@ -23,6 +23,8 @@
 //   node scripts/generate/spec-fingerprint.js <version> --from-file <spec.json>
 //       builds from a local spec instead of fetching (offline; tests)
 //   node scripts/generate/spec-fingerprint.js <version> --check --from-file …
+//   node scripts/generate/spec-fingerprint.js --anchor        prints the
+//       server-upgrade diff anchor (reviewedAnchor()) and exits
 //
 // npm scripts:
 //   docs:spec-fingerprints        refreshes committed fingerprints (write)
@@ -35,7 +37,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { fetchSpec } = require('../lib/spec-fetch.cjs');
-const { isReleaseVersionBase } = require('../lib/signals-fetch.cjs');
+const { isReleaseVersionBase, compareSemverBase } = require('../lib/signals-fetch.cjs');
 
 const SCHEMA_VERSION = 1;
 const GENERATOR = 'scripts/generate/spec-fingerprint.js';
@@ -204,8 +206,9 @@ function fingerprintPath(rootDir, version) {
   return path.join(outputDir(rootDir), `${FILE_PREFIX}${version}.json`);
 }
 
-// Versions of the currently-committed fingerprints (derived from filenames).
-function committedVersions(rootDir) {
+// Versions of the currently-committed fingerprints (derived from filenames),
+// oldest first.
+export function committedVersions(rootDir = '.') {
   const dir = outputDir(rootDir);
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
@@ -214,7 +217,16 @@ function committedVersions(rootDir) {
       return m && isReleaseVersionBase(m[1]) ? m[1] : null;
     })
     .filter(Boolean)
-    .sort();
+    .sort(compareSemverBase);
+}
+
+// The server-upgrade diff anchor: the newest stable version with a committed
+// fingerprint, or null when none is committed. A stable fingerprint is committed
+// only by a /server-upgrade triage, so committing it is the acknowledgment and
+// no journal stores the anchor a second time (ADR 0015 for why the anchor trails
+// clean releases).
+export function reviewedAnchor(rootDir = '.') {
+  return committedVersions(rootDir).at(-1) ?? null;
 }
 
 // Resolve a version's spec: from --from-file if given, else fetch/cache it.
@@ -259,6 +271,16 @@ async function main() {
   // First positional that looks like a version; otherwise root defaults to '.'.
   const explicitVersion = positional.find((p) => isReleaseVersionBase(p)) ?? null;
   const rootDir = positional.find((p) => !isReleaseVersionBase(p)) ?? '.';
+
+  if (args.includes('--anchor')) {
+    const anchor = reviewedAnchor(rootDir);
+    if (!anchor) {
+      console.error('docs:spec-fingerprints: no committed stable fingerprint, so no anchor.');
+      process.exit(1);
+    }
+    console.log(anchor);
+    process.exit(0);
+  }
 
   let versions;
   if (explicitVersion) {

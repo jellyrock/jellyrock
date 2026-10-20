@@ -1,6 +1,6 @@
 # ADR 0015: Decouple the server-upgrade diff anchor from the review cursor
 
-**Status:** Accepted
+**Status:** Accepted. Partially superseded by [ADR 0051](0051-retire-signals-backlog.md) (where the anchor is stored; the anchor still trails clean releases)
 **Date:** 2026-06-07
 
 **related-files**: scripts/server-upgrade.js, scripts/server-upgrade-tracker.js, scripts/catchup-state.js, scripts/lib/signal-staleness.cjs, .github/workflows/server-upgrade-tracker.yml, docs/architecture/server-upgrade-automation.md, docs/signals-backlog.md

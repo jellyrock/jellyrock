@@ -18,17 +18,15 @@ related-files:
   - scripts/lint/apiversion-consistency-check.js
   - scripts/lib/spec-fetch.cjs
   - scripts/lib/signals-fetch.cjs
-  - scripts/lib/signal-staleness.cjs
   - scripts/lib/version-boundaries.cjs
   - .claude/skills/new-api-version/SKILL.md
   - docs/architecture/api-usage-manifest.json
   - docs/architecture/api-usage-manifest.md
   - docs/architecture/spec-fingerprints/
   - docs/dev/jellyfin-version-boundaries.yml
-  - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-20
 ---
 
 # Jellyfin server-upgrade automation
@@ -37,7 +35,7 @@ When Jellyfin ships a new server version, this pipeline finds every API change t
 
 ## Why this exists
 
-JellyRock's Jellyfin client is hand-written, with no code generated from the OpenAPI spec (see [`api.md`](api.md)). Before this pipeline, knowing that a release had shipped was automatic (the `jellyfin-server-stable` row in [`signals-backlog.md`](../signals-backlog.md)), but judging its impact was manual: download the spec, read the diff, guess whether anything we use changed. That is slow, it fails both ways (a missed break, or an afternoon lost on a hotfix that touches nothing we use), and it repeats every release.
+JellyRock's Jellyfin client is hand-written, with no code generated from the OpenAPI spec (see [`api.md`](api.md)). Before this pipeline, knowing that a release had shipped was automatic (a row in the since-retired signals journal), but judging its impact was manual: download the spec, read the diff, guess whether anything we use changed. That is slow, it fails both ways (a missed break, or an afternoon lost on a hotfix that touches nothing we use), and it repeats every release.
 
 ## How it works: a script finds, an agent judges
 
@@ -178,11 +176,11 @@ To split it by class, group on the kind label that follows `[server-upgrade]` in
 
 The [tracker workflow](../../.github/workflows/server-upgrade-tracker.yml) runs daily at noon UTC, or by hand with a `version` input. It runs [`server-upgrade-tracker.js`](../../scripts/server-upgrade-tracker.js) and keeps one digest issue per server version, titled `[server-upgrade] Jellyfin <version> — release triage` and labeled `server-upgrade:tracker`. Daily, because Jellyfin can ship more than one hotfix in a week, and a caught-up run stops after a version compare.
 
-The script compares the latest stable release (`fetchJellyfinVersions().stable`, which excludes release candidates) with `latest_acknowledged` in the `jellyfin-server-stable` signal row. When a newer stable exists, it builds that version's fingerprint in memory and runs the same report the join does, reading the same committed fingerprints, manifest, suppression rules and ledger, so CI's counts match a local run. It writes nothing to the repo.
+The script compares the latest stable release (`fetchJellyfinVersions().stable`, which excludes release candidates) with the diff anchor, `reviewedAnchor()` in [`spec-fingerprint.js`](../../scripts/generate/spec-fingerprint.js): the newest stable version with a committed fingerprint. When a newer stable exists, it builds that version's fingerprint in memory and runs the same report the join does, reading the same committed fingerprints, manifest, suppression rules and ledger, so CI's counts match a local run. It writes nothing to the repo.
 
 | Action | When | What the workflow does |
 | --- | --- | --- |
-| `none` | No stable release newer than `latest_acknowledged` | Nothing |
+| `none` | No stable release newer than the anchor | Nothing |
 | `clean` | Newer release, and no candidate needs investigation | Opens the digest, comments that it is clean, and closes it, as a record. This is the only digest CI closes. |
 | `triage` | Newer release with at least one candidate to investigate, or the report could not be built | Opens the digest, or refreshes its body while it is open and not yet triaged |
 
@@ -190,14 +188,16 @@ A `clean` release can still carry `floor-known`, `frozen-skip` or suppressed can
 
 The workflow finds this version's digest by its exact title among all `server-upgrade:tracker` issues, open or closed, since `gh --search` would mangle the brackets and dash in the title. Once `/server-upgrade` adds `server-upgrade:triaging`, CI leaves the digest alone. A candidate-bearing digest is closed only by a person or by `execute --close-digest`. If someone closes it before triage, CI leaves it closed. Clean digests outlive the 90-day retention of GitHub Actions logs, so each release keeps a record of what the mechanical pass found ([ADR 0011](../adr/0011-server-upgrade-phase6.md)).
 
-The workflow authenticates as the JellyRock GitHub App, so the installation's permissions apply. The workflow's `permissions:` block (`contents: read`, `issues: write`) records the intent. The workflow never writes the journals, and neither does `/catchup`, which fetches the latest stable on every run and holds it in memory.
+The workflow authenticates as the JellyRock GitHub App, so the installation's permissions apply. The workflow's `permissions:` block (`contents: read`, `issues: write`) records the intent. The workflow never writes the journals or commits a fingerprint.
+
+**Release candidates.** The same run reports the release candidate in flight, if any (`decideRc()`), and the workflow opens one issue for it, titled `[server-upgrade] Jellyfin <rc> — release candidate` and labeled `server-upgrade:rc`, found by exact title in any state. CI never refreshes or closes it: its body names the local `/server-upgrade <from> <rc>` command, where `<from>` is the newest earlier release candidate of the same version with an issue, else the anchor, and closing it is the acknowledgment.
 
 ### The diff anchor trails clean releases
 
-`latest_acknowledged` is the diff anchor: the last version a maintainer triaged with `/server-upgrade`, which commits that version's fingerprint and moves the signal row. A clean release closes its digest without moving it, so the anchor can sit several releases behind. That costs nothing, because the diff is point to point. Two things keep the gap from reading as neglect ([ADR 0015](../adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md)):
+The diff anchor is the last version a maintainer triaged with `/server-upgrade`, which commits that version's fingerprint: committing it is the acknowledgment, so nothing stores the anchor a second time ([ADR 0051](../adr/0051-retire-signals-backlog.md)). A clean release closes its digest without moving it, so the anchor can sit several releases behind. That costs nothing, because the diff is point to point. Two things keep the gap from reading as neglect ([ADR 0015](../adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md)):
 
 - The tracker passes the digest list to the renderer (`--tracker-issues`). `clearedThroughFrom()` finds the newest closed digest below this release, and the body shows a "Mechanically cleared through `<X>`" line under the "Diff baseline (last full review)" row.
-- `/catchup` calls the `jellyfin-server-stable` row stale only while an open digest exists (`signalStaleness()` in [`signal-staleness.cjs`](../../scripts/lib/signal-staleness.cjs)), so clean releases never nag. Offline, it falls back to comparing the version strings.
+- `/catchup` raises a banner only for an open digest (its `watches` section), so clean releases never nag.
 
 ## The endpoint-availability ledger
 
@@ -239,7 +239,7 @@ CI runs it, with `lint:endpoint-availability`, `lint:apiversion-consistency` and
 | Raw specs (about a megabyte each) | `.api-watch/cache/`, ignored by git | Jellyfin's archive keeps every version, so a refetch is always possible |
 | Spec fingerprints | Committed under [`spec-fingerprints/`](spec-fingerprints/): the 10.7.0 floor, 10.11.8 and 12.0 | The diff anchors, reproducible offline |
 | Diff and data report | The same cache | Rebuilt on every run |
-| What was reviewed and filed | GitHub issues and `signals-backlog.md` | The ledger that already exists |
+| What was reviewed and filed | GitHub issues and the committed fingerprints | The ledger that already exists |
 
 A fingerprint keeps a spec's structure and drops the rest: for each operation, its parameters (name, location, type, required, with `$ref`s resolved), the type signatures of its request body and of its success response; for each component schema, its property names, types and enum values. Descriptions, summaries and examples are stripped, which removes Jellyfin's cosmetic churn between releases. `npm run docs:spec-fingerprints:check` rebuilds each committed fingerprint from its spec (fetching it if it isn't cached) and fails on drift. CI runs it in [`_lint-floor-system.yml`](../../.github/workflows/_lint-floor-system.yml) behind its own path filter (the fingerprints, `spec-fingerprint.js`, `spec-fetch.cjs` and `signals-fetch.cjs`) and on every dependency PR, so only those PRs pay for the fetch from api.jellyfin.org.
 
@@ -259,7 +259,7 @@ The pipeline does not care what a version string means, so a maintainer can run 
 
 - **Nothing is committed.** Pre-release fingerprints are built in memory (`findings-candidates.js --fetch`), which keeps a committed fingerprint meaning "a reviewed stable release".
 - **Builds are pinned, never the pointer.** The `unstable` or `master` token resolves through `fetchLatestUnstable()` to the newest datestamped build and records that datestamp, so a run can be repeated and diffed again.
-- **No GitHub issues.** A pre-release run writes a handoff note in `.claude/handoffs/` with its verdicts and a "fix proactively" list. The RC baseline for the next diff is `latest_acknowledged` in the `jellyfin-server-rc` signal row; a master datestamp lives in the handoff note, since master moves too fast for a signal row.
+- **No GitHub issues.** A pre-release run writes a handoff note in `.claude/handoffs/` with its verdicts and a "fix proactively" list. The RC baseline for the next diff is the previous release candidate's `server-upgrade:rc` issue; a master datestamp lives in the handoff note, since master moves too fast for an issue per build.
 - **Run it again on the final release.** A release candidate can still change, and the stable run is the one that files issues.
 
 If a pre-release shows a break that needs a new tier, see [Version tiers and the floor](#version-tiers-and-the-floor).
@@ -302,6 +302,7 @@ Each decision's alternatives and reasons are in its ADR.
 | Graduating a class relaxes the human gate, never adds CI filing | CI cannot read code, and reading code is what removes false positives | [ADR 0010](../adr/0010-server-upgrade-phase5-maturation.md) |
 | One digest per release with sub-issues, and the ledger for floor findings | A record per release, opt-in issues for real work, and floor findings resolved at the source without hiding a regression | [ADR 0011](../adr/0011-server-upgrade-phase6.md), replacing parts of ADRs 0008 and 0009 |
 | The diff anchor and the "cleared through" line are separate | CI never writes the journals or commits a fingerprint, so the anchor trails clean releases and progress is derived from the digests | [ADR 0015](../adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md) |
+| The anchor is the newest committed stable fingerprint, not a journal field | A triage commits the fingerprint and the anchor together, so storing it twice only let them disagree | [ADR 0051](../adr/0051-retire-signals-backlog.md) |
 
 ## History
 
@@ -325,4 +326,3 @@ The rolling tracker of Phase 4 never ran: its workflow reached `main` together w
 - [`api-usage-manifest.md`](api-usage-manifest.md): the demand side, what the app calls.
 - [`api.md`](api.md): the API client and task pool the manifest is read from.
 - [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md): the version policy, the tiers and the guards.
-- [`signals-backlog.md`](../signals-backlog.md): upstream version watching, and the acknowledged baselines this pipeline diffs from.

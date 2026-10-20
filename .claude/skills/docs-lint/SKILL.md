@@ -1,6 +1,6 @@
 ---
 name: docs-lint
-description: Run JellyRock's docs governance checks (broken markdown links, link anchors that match no heading, broken related-files frontmatter paths, stale tech-debt anchor references, journal-schema gates for progress.md / signals-backlog.md / the decisions.md supersede chain, stale-doc detection) and surface a structured fix list grouped by category. Consumes the --json output of scripts/lint/docs-check.cjs and the human-readable output of scripts/lint/docs-stale.cjs. Use when a commit hits the docs-lint pre-push hook, before pushing a PR that touched docs/ or any CLAUDE.md, or when you want a one-shot pass over doc references.
+description: Run JellyRock's docs governance checks (broken markdown links, link anchors that match no heading, broken related-files frontmatter paths, stale tech-debt anchor references, journal-schema gates for progress.md and the decisions.md supersede chain, stale-doc detection) and surface a structured fix list grouped by category. Consumes the --json output of scripts/lint/docs-check.cjs and the human-readable output of scripts/lint/docs-stale.cjs. Use when a commit hits the docs-lint pre-push hook, before pushing a PR that touched docs/ or any CLAUDE.md, or when you want a one-shot pass over doc references.
 model: sonnet
 effort: low
 ---
@@ -9,7 +9,7 @@ effort: low
 
 Wraps JellyRock's doc validators with structured parsing and fixes proposed through `Edit`. Two layers:
 
-1. **Reference integrity and journal schema:** [`scripts/lint/docs-check.cjs`](../../../scripts/lint/docs-check.cjs), in `--json` mode. It catches broken `related-files:` frontmatter paths, broken inline markdown links, link anchors that match no heading (checked by GitHub's slug rule), stale `tech-debt.md#anchor` references, and three journal-schema gates (`docs/progress.md` frontmatter, `docs/signals-backlog.md` rows, the `docs/decisions.md` supersede chain). It scans `docs/architecture/`, `docs/dev/`, `docs/adr/`, the three journals and every `CLAUDE.md` (the root one included, which links to `AGENTS.md`), but no directory whose name starts with a dot: check a link in `.claude/` or `.github/` by hand.
+1. **Reference integrity and journal schema:** [`scripts/lint/docs-check.cjs`](../../../scripts/lint/docs-check.cjs), in `--json` mode. It catches broken `related-files:` frontmatter paths, broken inline markdown links, link anchors that match no heading (checked by GitHub's slug rule), stale `tech-debt.md#anchor` references, and two journal-schema gates (`docs/progress.md` frontmatter, the `docs/decisions.md` supersede chain). It scans `docs/architecture/`, `docs/dev/`, `docs/adr/`, the journals and every `CLAUDE.md` (the root one included, which links to `AGENTS.md`), but no directory whose name starts with a dot: check a link in `.claude/` or `.github/` by hand.
 2. **Staleness:** [`scripts/lint/docs-stale.cjs`](../../../scripts/lint/docs-stale.cjs). An informational list of docs whose `last-reviewed:` is past the threshold (90 days by default). CI runs the blocking variant ([`docs-stale-blocking.cjs`](../../../scripts/lint/docs-stale-blocking.cjs)), which blocks only when a PR touches the territory of an architecture doc more than 120 days old without updating the doc.
 
 ## Step 1: Run the validators
@@ -29,7 +29,7 @@ npm run docs:stale --silent
     {
       "category": "broken-related-file" | "broken-link" | "broken-anchor"
                 | "stale-anchor" | "progress-frontmatter"
-                | "signals-schema-invalid" | "decisions-supersede-chain",
+                | "decisions-supersede-chain",
       "file": "<repo-relative path>",
       "message": "<full diagnostic>",
       "target": "<the broken path or anchor>"
@@ -69,10 +69,6 @@ A `tech-debt.md#<slug>` citation names an entry that no longer exists in [`docs/
 ### `progress-frontmatter`
 
 [`docs/progress.md`](../../../docs/progress.md) lacks a well-formed `last-updated:` field. This is a structural check only: the age of the date is not gated (it is a property of `main`, not of one PR). **Fix:** restore the field with today's date through `/log running` or `/done running`, not a hand edit. Those are the sanctioned ways to write this journal.
-
-### `signals-schema-invalid`
-
-A [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) row lacks a required bullet, has an invalid `status`, or has a malformed ISO date. **Fix:** `/log signal <slug>` (create or update) or `/done <slug>` (close), again not a hand edit.
 
 ### `decisions-supersede-chain`
 

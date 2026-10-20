@@ -346,17 +346,10 @@
   },
   "docs/progress.md": {
     "caps-emphasis": 38,
-    "em-dash": 427,
+    "em-dash": 418,
     "filler": 55,
     "latin-abbrev": 9,
     "prose-arrow": 35
-  },
-  "docs/signals-backlog.md": {
-    "caps-emphasis": 2,
-    "em-dash": 34,
-    "filler": 2,
-    "latin-abbrev": 4,
-    "prose-arrow": 2
   },
   "docs/user/app-settings.md": {
     "em-dash": 1,

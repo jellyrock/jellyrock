@@ -5,7 +5,7 @@
 // Three checks, all offline:
 //   1. Pending handoffs in .claude/handoffs/ (count + max age)
 //   2. docs/progress.md staleness (>7d since last-updated AND commits since)
-//   3. Schema-broken journals (frontmatter parse error on progress / signals)
+//   3. A schema-broken journal (frontmatter parse error on progress)
 //
 // Network-dependent banners (failed CI, PR review requested) stay in
 // /focus itself: this hook is cheap and offline-tolerant by design so it
@@ -28,7 +28,6 @@ const { readFrontmatter, getLastUpdated } = require('../lib/frontmatter.cjs');
 const REPO_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const HANDOFFS_DIR = join(REPO_ROOT, '.claude/handoffs');
 const PROGRESS_PATH = join(REPO_ROOT, 'docs/progress.md');
-const SIGNALS_PATH = join(REPO_ROOT, 'docs/signals-backlog.md');
 
 const STALE_DAYS_THRESHOLD = 7;
 const HANDOFF_RETENTION_DAYS = 30;
@@ -83,7 +82,7 @@ function checkProgressStale() {
 
 function checkSchemaBroken() {
   const broken = [];
-  for (const path of [PROGRESS_PATH, SIGNALS_PATH]) {
+  for (const path of [PROGRESS_PATH]) {
     if (!existsSync(path)) continue;
     try {
       const content = readFileSync(path, 'utf8');

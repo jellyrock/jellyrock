@@ -5,13 +5,12 @@
 // parsers, area filtering, error fallthrough, and JSON shape.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdirSync, readFileSync, writeFileSync, utimesSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { mkdirSync, writeFileSync, utimesSync } from 'node:fs';
+import { join } from 'node:path';
 import { spawnScript } from './_helpers/spawn-script.js';
 import { createGitFixture } from './_helpers/temp-git-fixture.js';
 
 const SCRIPT = 'scripts/catchup-state.js';
-const TODAY = new Date().toISOString().slice(0, 10);
 
 function setupFixture() {
   const fix = createGitFixture();
@@ -26,8 +25,7 @@ function setupFixture() {
 }
 
 function runAggregator(cwd, args = []) {
-  // --no-network implies --no-gh AND skips the signals upstream-version fetch.
-  // Critical for tests so we never hit api.jellyfin.org or raw.githubusercontent.com.
+  // --no-network implies --no-gh. Critical for tests so we never call GitHub.
   return spawnScript(SCRIPT, ['--no-network', ...args], { cwd });
 }
 
@@ -55,8 +53,8 @@ describe('catchup-state', () => {
         'issues',
         'meta',
         'prs',
-        'signals',
         'tech_debt',
+        'watches',
       ].sort(),
     );
   });
@@ -69,31 +67,33 @@ describe('catchup-state', () => {
     expect(parsed.prs).toEqual({ review_requested: [], yours_open: [] });
     expect(parsed.issues.high_engagement_bugs).toEqual([]);
     expect(parsed.ci.current_branch_runs).toEqual([]);
+    expect(parsed.watches).toEqual({ open: [] });
     expect(parsed._errors).toEqual({});
   });
 
-  it('signals section flags stale when latest_upstream != latest_acknowledged', () => {
+  it('watches lists the open issues of every watch label, newest first, with the triage mark', () => {
     fix = setupFixture();
-    // Three rows exercising the stale rule:
-    //   in-sync: latest_upstream == latest_acknowledged, so not stale
-    //   ahead:   latest_upstream != latest_acknowledged AND status=watching, so stale
-    //   ahead-pending: ahead BUT status=action_pending, so not stale (already triaged)
-    fix.commit('seed', {
-      'docs/signals-backlog.md':
-        `---\nlast-updated: ${TODAY}\n---\n# Signals\n\n## Watching\n\n` +
-        `### in-sync: label\n\n- **watching**: x\n- **current**: prose\n- **latest_upstream**: 1.0.0\n- **latest_acknowledged**: 1.0.0\n- **last_checked**: ${TODAY}\n- **action_when_moves**: do\n- **status**: watching\n\n` +
-        `### ahead: label\n\n- **watching**: y\n- **current**: prose\n- **latest_upstream**: 2.0.0\n- **latest_acknowledged**: 1.0.0\n- **last_checked**: ${TODAY}\n- **action_when_moves**: do\n- **status**: watching\n\n` +
-        `### ahead-pending: label\n\n- **watching**: z\n- **current**: prose\n- **latest_upstream**: 3.0.0\n- **latest_acknowledged**: 2.0.0\n- **last_checked**: ${TODAY}\n- **action_when_moves**: do\n- **status**: action_pending\n`,
-    });
-    const { stdout } = runAggregator(fix.dir);
-    const parsed = JSON.parse(stdout);
-    expect(parsed.signals.rows).toHaveLength(3);
-    const bySlug = Object.fromEntries(parsed.signals.rows.map((r) => [r.slug, r]));
-    expect(bySlug['in-sync'].stale).toBe(false);
-    expect(bySlug['ahead'].stale).toBe(true);
-    expect(bySlug['ahead-pending'].stale).toBe(false);
-    expect(parsed.signals.stale_count).toBe(1);
-    expect(parsed.signals.action_pending_count).toBe(1);
+    fix.commit('seed');
+    const bin = join(fix.dir, '.stub-bin');
+    mkdirSync(bin);
+    const digest = [
+      { number: 80, title: 'digest 12.2', labels: [{ name: 'server-upgrade:triaging' }] },
+    ];
+    const roku = [{ number: 90, title: 'Roku OS 16.0', labels: [] }];
+    writeFileSync(
+      join(bin, 'gh'),
+      '#!/bin/sh\ncase "$*" in\n' +
+        `  *"--label server-upgrade:tracker "*) echo '${JSON.stringify(digest)}' ;;\n` +
+        `  *"--label roku-os "*) echo '${JSON.stringify(roku)}' ;;\n` +
+        "  *) echo '[]' ;;\nesac\n",
+      { mode: 0o755 },
+    );
+    const env = { PATH: `${bin}:${process.env.PATH}` };
+    const parsed = JSON.parse(spawnScript(SCRIPT, [], { cwd: fix.dir, env }).stdout);
+    expect(parsed.watches.open).toEqual([
+      { label: 'roku-os', number: 90, title: 'Roku OS 16.0', triaging: false },
+      { label: 'server-upgrade:tracker', number: 80, title: 'digest 12.2', triaging: true },
+    ]);
   });
 
   it('decisions section surfaces the newest 3 ADRs (highest number first), skipping README', () => {
@@ -171,92 +171,17 @@ describe('catchup-state', () => {
     expect(p).toEqual(c);
   });
 
-  describe('signals fetch (network on, https stubbed)', () => {
-    const STUB = resolve('tests/scripts/unit/_helpers/stub-https-get.cjs');
-    // The three auto-managed rows carry no latest_upstream and no last_checked:
-    // the reader fetches them on every run and keeps them in memory only.
-    const AUTO_ROWS =
-      `---\nlast-updated: ${TODAY}\n---\n# Signals\n\n## Watching\n\n` +
-      `### jellyfin-server-stable: stable\n\n- **latest_acknowledged**: 12.0\n- **status**: watching\n\n` +
-      `### jellyfin-server-rc: rc\n\n- **latest_acknowledged**: (no RC in flight)\n- **status**: watching\n\n` +
-      `### roku-os: firmware\n\n- **latest_acknowledged**: 15.3\n- **status**: watching\n`;
-
-    // A file from before the fields left it: old values and an old last-updated date,
-    // the exact bytes the reader used to rewrite on its first run of a day.
-    const LEGACY_ROWS = AUTO_ROWS.replace(`last-updated: ${TODAY}`, 'last-updated: 2026-01-01')
-      .replace(
-        '- **latest_acknowledged**: 12.0',
-        '- **latest_upstream**: 11.0\n- **latest_acknowledged**: 12.0\n- **last_checked**: 2026-01-01',
-      )
-      .replace(
-        '- **latest_acknowledged**: 15.3',
-        '- **latest_upstream**: 15.3\n- **latest_acknowledged**: 15.3\n- **last_checked**: 2026-01-01',
-      );
-
-    function runFetching(cwd, mode) {
-      return spawnScript(SCRIPT, ['--no-gh'], {
-        cwd,
-        env: { NODE_OPTIONS: `--require ${STUB}`, STUB_HTTPS_MODE: mode },
-      });
-    }
-
-    it.each([
-      ['rows without the fields', AUTO_ROWS],
-      ['a file that still carries the fields', LEGACY_ROWS],
-    ])(
-      'keeps the fetched upstream in memory and leaves docs/signals-backlog.md untouched: %s',
-      (_name, file) => {
-        fix = setupFixture();
-        fix.commit('seed', { 'docs/signals-backlog.md': file });
-        const { exitCode, stdout } = runFetching(fix.dir, 'ok');
-        expect(exitCode).toBe(0);
-        const parsed = JSON.parse(stdout);
-        const bySlug = Object.fromEntries(parsed.signals.rows.map((r) => [r.slug, r]));
-        expect(bySlug['jellyfin-server-stable'].latest_upstream).toBe('12.1');
-        expect(bySlug['jellyfin-server-rc'].latest_upstream).toBe('(no RC in flight)');
-        expect(bySlug['roku-os'].latest_upstream).toBe('15.4');
-        // upstream moved past the acknowledged version: stale, from the in-memory value
-        expect(bySlug['roku-os'].stale).toBe(true);
-        expect(bySlug['jellyfin-server-rc'].stale).toBe(false);
-        expect(parsed.signals.stale_count).toBe(2);
-        expect(parsed._errors).toEqual({});
-        expect(readFileSync(join(fix.dir, 'docs/signals-backlog.md'), 'utf8')).toBe(file);
-        expect(fix.git('status', '--porcelain')).toBe('');
-      },
-    );
-
-    it('a failed fetch leaves the row without an upstream, reports it, and writes nothing', () => {
-      fix = setupFixture();
-      fix.commit('seed', { 'docs/signals-backlog.md': AUTO_ROWS });
-      const { exitCode, stdout } = runFetching(fix.dir, 'fail');
-      expect(exitCode).toBe(0);
-      const parsed = JSON.parse(stdout);
-      for (const row of parsed.signals.rows) {
-        expect(row.latest_upstream).toBeUndefined();
-        expect(row.stale).toBe(false);
-      }
-      expect(JSON.parse(parsed._errors.signals_fetch)).toHaveProperty('jellyfin');
-      expect(JSON.parse(parsed._errors.signals_fetch)).toHaveProperty('roku');
-      expect(fix.git('status', '--porcelain')).toBe('');
-    });
-  });
-
   it('--typed prints the typed lines, then one === STATE === line, then the same JSON', () => {
     fix = setupFixture();
     mkdirSync(join(fix.dir, '.claude/handoffs'), { recursive: true });
     writeFileSync(join(fix.dir, '.claude/handoffs/issue-1.md'), 'paused');
-    fix.commit('seed', {
-      'docs/signals-backlog.md':
-        `---\nlast-updated: ${TODAY}\n---\n# Signals\n\n## Watching\n\n` +
-        `### ahead: label\n\n- **latest_upstream**: 2.0.0\n- **latest_acknowledged**: 1.0.0\n- **last_checked**: ${TODAY}\n- **status**: watching\n`,
-    });
+    fix.commit('seed');
     const { exitCode, stdout } = runAggregator(fix.dir, ['--typed', '--pretty']);
     expect(exitCode).toBe(0);
     const lines = stdout.split('\n');
     const at = lines.indexOf('=== STATE ===');
     expect(at).toBeGreaterThan(0);
     expect(lines.slice(0, at)).toEqual([
-      'BANNER\tsignals-stale\tsignals-backlog: ahead needs attention (upstream 2.0.0, acknowledged 1.0.0)\treview the upstream change, then /done ahead',
       'BANNER\thandoff-pending\tpending handoff .claude/handoffs/issue-1.md (0d old)\tread it and follow the skill that wrote it',
     ]);
     const typed = JSON.parse(lines.slice(at + 1).join('\n'));
@@ -405,7 +330,7 @@ describe('catchup-state', () => {
     // Healthy fixture, no errors.
     expect(parsed._errors).toEqual({});
     // All sections present and non-undefined.
-    for (const k of ['signals', 'decisions', 'tech_debt']) {
+    for (const k of ['watches', 'decisions', 'tech_debt']) {
       expect(k in parsed).toBe(true);
     }
   });

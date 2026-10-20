@@ -6,13 +6,7 @@
 // Fields are tab-separated, so a field never carries a tab or newline; a line of two
 // leading spaces is a detail of the line above.
 
-const BANNER_IDS = [
-  'ci-failing',
-  'handoff-pending',
-  'signals-stale',
-  'review-requested',
-  'signals-action-pending',
-];
+const BANNER_IDS = ['ci-failing', 'handoff-pending', 'upstream-watch', 'review-requested'];
 
 // A finished run with any other conclusion did not pass (failure, cancelled, timed_out,
 // startup_failure, action_required, ...). A run still in progress has no verdict yet.
@@ -39,45 +33,36 @@ function ciLines(runs) {
   });
 }
 
-function signalLines(signals) {
-  const rows = Array.isArray(signals.rows) ? signals.rows : [];
-  const out = rows
-    .filter((r) => r.stale)
-    .map((r) => {
-      const digest = r.digest ? `; open digest #${r.digest.number}` : '';
-      const text = `signals-backlog: ${r.slug} needs attention (upstream ${r.latest_upstream}, acknowledged ${r.latest_acknowledged}${digest})`;
-      return banner(
-        'signals-stale',
-        text,
-        r.digest ? '/server-upgrade' : `review the upstream change, then /done ${r.slug}`,
-      );
-    });
-  const pending = rows.filter((r) => r.status === 'action_pending').map((r) => r.slug);
-  if (pending.length > 0) {
-    out.push(
-      banner(
-        'signals-action-pending',
-        `${pending.length} signal(s) in action_pending (${pending.join(', ')}): these need a JellyRock change`,
-      ),
-    );
-  }
-  return out;
+// One banner per open upstream-watch issue (catchup-state.js `watches`), routed by
+// its label: a Jellyfin release digest or release candidate goes to /server-upgrade,
+// a Roku OS release to a read of its notes.
+const WATCH_ROUTES = {
+  'server-upgrade:tracker': (w) => `/server-upgrade (digest #${w.number})`,
+  'server-upgrade:rc': (w) => `/server-upgrade with the versions issue #${w.number} names`,
+  'roku-os': (w) => `review the release notes, then close #${w.number}`,
+};
+
+function watchLines(watches) {
+  const open = Array.isArray(watches.open) ? watches.open : [];
+  return open.map((w) => {
+    const triaging = w.triaging ? ' (triage started)' : '';
+    const route = WATCH_ROUTES[w.label]?.(w) ?? `read #${w.number}`;
+    return banner('upstream-watch', `#${w.number} ${w.title}${triaging}`, route);
+  });
 }
 
 function typedLines(state) {
   const out = [];
   for (const [name, error] of Object.entries(state._errors ?? {})) {
     out.push(note('ERROR', name, `catchup-state: ${name} failed: ${error}`));
-    if (name === 'signals')
-      out.push(`  ${field('fix docs/signals-backlog.md, then npm run lint:docs')}`);
   }
 
   const ci = section(state, 'ci');
   if (ci && Array.isArray(ci.current_branch_runs)) out.push(...ciLines(ci.current_branch_runs));
   if (ci?.note) out.push(note('INFO', 'ci-none', ci.note));
 
-  const signals = section(state, 'signals');
-  if (signals) out.push(...signalLines(signals));
+  const watches = section(state, 'watches');
+  if (watches) out.push(...watchLines(watches));
 
   const prs = section(state, 'prs');
   for (const pr of prs?.review_requested ?? []) {

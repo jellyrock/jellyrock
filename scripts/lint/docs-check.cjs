@@ -61,7 +61,7 @@
 //   --json     emit a single JSON object on stdout: {filesChecked, errorsCount,
 //              errors: [{category, file, message, target}]} where category is
 //              one of "broken-related-file", "broken-link", "broken-anchor",
-//              "stale-anchor", "progress-frontmatter", "signals-schema-invalid", or
+//              "stale-anchor", "progress-frontmatter", or
 //              "decisions-supersede-chain".
 //              Mutually exclusive with --verbose (verbose is a no-op under
 //              --json). Exit code semantics unchanged.
@@ -74,7 +74,6 @@
 const fs = require('fs');
 const path = require('path');
 const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
-const { AUTO_MANAGED_SIGNAL_SLUGS } = require('../lib/signal-staleness.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
@@ -82,7 +81,6 @@ const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
 const ADR_DIR = path.join(ROOT_DIR, 'docs/adr');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
 const PROGRESS_PATH = path.join(ROOT_DIR, 'docs/progress.md');
-const SIGNALS_PATH = path.join(ROOT_DIR, 'docs/signals-backlog.md');
 const TECH_DEBT_PATH = path.join(ARCH_DIR, 'tech-debt.md');
 const SCRIPTS_DIR = path.join(ROOT_DIR, 'scripts');
 const JSON_MODE = process.argv.includes('--json');
@@ -98,22 +96,6 @@ const VERBOSE = process.argv.includes('--verbose') && !JSON_MODE;
 // (checkProgressFrontmatter): a well-formed `last-updated` is a per-PR property.
 // A PR that malforms it is at fault, and the tracker, /catchup, and
 // journal-sync all read that field.
-
-// Signals-backlog row schema. Required bullets, valid status values,
-// optional `staleness_days` override (must be a positive integer when
-// present). On a hand-managed row `latest_upstream` and `last_checked` (an ISO
-// date) are required. Both are forbidden on an auto-managed row: the reader
-// fetches its upstream into memory on every run. The schema is documented in
-// docs/signals-backlog.md's preamble.
-const SIGNALS_REQUIRED_BULLETS = [
-  'watching',
-  'current',
-  'latest_acknowledged',
-  'action_when_moves',
-  'status',
-];
-const SIGNALS_VALID_STATUSES = ['watching', 'action_pending', 'completed'];
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // docs/decisions.md note statuses, per that file's own Format section.
 const DECISION_VALID_STATUSES = ['accepted', 'superseded', 'withdrawn'];
@@ -353,7 +335,7 @@ function checkLinkFragment(docPath, link, fragment, target) {
 
 // ────────────────────────────────────────────────────────────────────
 // Journal-system checks: operate on specific files (progress.md,
-// signals-backlog.md) rather than directory iteration. These are post-loop
+// decisions.md) rather than directory iteration. These are post-loop
 // because they're whole-file validations, not link / anchor checks.
 // ────────────────────────────────────────────────────────────────────
 
@@ -663,122 +645,6 @@ function checkDecisionsSupersedeChain() {
   }
 }
 
-function checkSignalsSchema() {
-  if (!fs.existsSync(SIGNALS_PATH)) return;
-  const content = fs.readFileSync(SIGNALS_PATH, 'utf8');
-  const lines = content.split(/\r?\n/);
-
-  let inCodeFence = false;
-  let currentSlug = null;
-  let currentStartLine = 0;
-  let currentBullets = {};
-
-  function finalize() {
-    if (!currentSlug) return;
-    const autoManaged = AUTO_MANAGED_SIGNAL_SLUGS.has(currentSlug);
-    const requiredBullets = autoManaged
-      ? SIGNALS_REQUIRED_BULLETS
-      : [...SIGNALS_REQUIRED_BULLETS, 'latest_upstream', 'last_checked'];
-    for (const field of ['latest_upstream', 'last_checked']) {
-      if (autoManaged && field in currentBullets) {
-        pushError({
-          category: 'signals-schema-invalid',
-          file: SIGNALS_PATH,
-          message:
-            `signals row "${currentSlug}" (line ${currentStartLine + 1}) must not carry ` +
-            `\`**${field}**\`: the catchup reader fetches the upstream on every run and never writes the file`,
-          target: currentSlug,
-        });
-      }
-    }
-    for (const required of requiredBullets) {
-      if (!(required in currentBullets)) {
-        pushError({
-          category: 'signals-schema-invalid',
-          file: SIGNALS_PATH,
-          message:
-            `signals row "${currentSlug}" (line ${currentStartLine + 1}) is ` +
-            `missing required bullet \`**${required}**\``,
-          target: currentSlug,
-        });
-      }
-    }
-    if ('status' in currentBullets && !SIGNALS_VALID_STATUSES.includes(currentBullets.status)) {
-      pushError({
-        category: 'signals-schema-invalid',
-        file: SIGNALS_PATH,
-        message:
-          `signals row "${currentSlug}" has invalid status "${currentBullets.status}" — ` +
-          `must be one of: ${SIGNALS_VALID_STATUSES.join(', ')}`,
-        target: currentSlug,
-      });
-    }
-    if (
-      'last_checked' in currentBullets &&
-      !autoManaged &&
-      !ISO_DATE_RE.test(currentBullets.last_checked)
-    ) {
-      pushError({
-        category: 'signals-schema-invalid',
-        file: SIGNALS_PATH,
-        message:
-          `signals row "${currentSlug}" has invalid last_checked ` +
-          `"${currentBullets.last_checked}" — must be ISO YYYY-MM-DD`,
-        target: currentSlug,
-      });
-    }
-    if ('staleness_days' in currentBullets) {
-      const n = Number(currentBullets.staleness_days);
-      if (!Number.isInteger(n) || n <= 0) {
-        pushError({
-          category: 'signals-schema-invalid',
-          file: SIGNALS_PATH,
-          message:
-            `signals row "${currentSlug}" has invalid staleness_days ` +
-            `"${currentBullets.staleness_days}" — must be a positive integer`,
-          target: currentSlug,
-        });
-      }
-    }
-  }
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (/^```/.test(line)) {
-      inCodeFence = !inCodeFence;
-      continue;
-    }
-    if (inCodeFence) continue;
-
-    // H2 boundary closes any active row
-    if (/^##\s+/.test(line)) {
-      finalize();
-      currentSlug = null;
-      currentBullets = {};
-      continue;
-    }
-
-    // H3 starts a new row: ### <slug>: <label>
-    const h3 = line.match(/^###\s+([a-z0-9][a-z0-9-]*)\s*:/);
-    if (h3) {
-      finalize();
-      currentSlug = h3[1];
-      currentBullets = {};
-      currentStartLine = i;
-      continue;
-    }
-
-    if (!currentSlug) continue;
-
-    // Bullet: - **key**: value
-    const bullet = line.match(/^-\s+\*\*([a-z_]+)\*\*:\s*(.+?)\s*$/);
-    if (bullet) {
-      currentBullets[bullet[1]] = bullet[2];
-    }
-  }
-  finalize();
-}
-
 function checkDirOfMds(dir) {
   if (!fs.existsSync(dir)) return;
   const files = fs
@@ -834,19 +700,6 @@ if (fs.existsSync(PROGRESS_PATH)) {
   if (VERBOSE) {
     console.log(
       `  ${path.relative(ROOT_DIR, PROGRESS_PATH)} — ${linkCount} links, ${anchorCount} anchors`,
-    );
-  }
-}
-
-// Signals backlog: same. Schema gate runs post-loop in checkSignalsSchema().
-if (fs.existsSync(SIGNALS_PATH)) {
-  const content = fs.readFileSync(SIGNALS_PATH, 'utf8');
-  const linkCount = checkBodyLinks(SIGNALS_PATH, content);
-  const anchorCount = checkAnchorRefs(SIGNALS_PATH, content);
-  filesChecked++;
-  if (VERBOSE) {
-    console.log(
-      `  ${path.relative(ROOT_DIR, SIGNALS_PATH)} — ${linkCount} links, ${anchorCount} anchors`,
     );
   }
 }
@@ -917,7 +770,6 @@ for (const file of findPluginScripts()) {
 // specific paths) so they run after the per-file scan so their errors
 // participate in the same accumulator.
 checkProgressFrontmatter();
-checkSignalsSchema();
 checkDecisionsSupersedeChain();
 
 if (JSON_MODE) {
