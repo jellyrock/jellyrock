@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-19
+last-updated: 2026-10-20
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-20: feat(search): Pull-down keyboard, live suggestions and recent searches
 - 2026-10-19: chore(device-lock): Hold the device lock for `F5` and `package:signed`
 - 2026-10-18: fix(search): Show a row for every result type, up to 50 items each
 - 2026-10-17: fix(search): Find the Live TV programs that match a search
@@ -91,7 +92,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-07 — chore(catchup): add `--typed` banner lines to the catchup reader
 - 2026-10-06 — fix: Clearer subtitle track names; dropdowns keep short text on pick
 - 2026-10-06 — fix(home): Show Home sections placed in web client slots 8-10
-- 2026-10-05 — chore(skills): allow `forge.sh repo file-url` without a prompt
 
 ## Open followups
 
