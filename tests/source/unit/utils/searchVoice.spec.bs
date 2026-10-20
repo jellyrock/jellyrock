@@ -1,0 +1,73 @@
+namespace tests
+
+  @suite("searchVoice.bs - when a spoken query is submitted")
+  class SearchVoiceTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("one dictation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("submits a word written twice while dictating once, when dictation ends")
+    function _()
+      ' The firmware's shape, measured on a Streaming Stick 4K: two writes inside one dictation.
+      first = searchVoice.onText("", "star", true)
+      second = searchVoice.onText(first.pending, "star", true)
+      ended = searchVoice.onDictatingChanged(second.pending, false)
+
+      m.assertEqual(first.submit, "")
+      m.assertEqual(second.submit, "")
+      m.assertEqual(ended.submit, "star")
+      m.assertEqual(ended.pending, "")
+    end function
+
+    @it("submits the last text written during the dictation")
+    function _()
+      first = searchVoice.onText("", "star", true)
+      second = searchVoice.onText(first.pending, "star wars", true)
+      m.assertEqual(searchVoice.onDictatingChanged(second.pending, false).submit, "star wars")
+    end function
+
+    @it("submits nothing when dictation starts")
+    function _()
+      result = searchVoice.onDictatingChanged("star", true)
+      m.assertEqual(result.submit, "")
+      m.assertEqual(result.pending, "star")
+    end function
+
+    @it("submits nothing when dictation ends with nothing held")
+    function _()
+      result = searchVoice.onDictatingChanged("", false)
+      m.assertEqual(result.submit, "")
+      m.assertEqual(result.pending, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("outside dictation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("submits a write at once")
+    function _()
+      result = searchVoice.onText("", "star", false)
+      m.assertEqual(result.submit, "star")
+      m.assertEqual(result.pending, "")
+    end function
+
+    @it("ignores the empty write the screen makes after a submit")
+    function _()
+      m.assertEqual(searchVoice.onText("", "", false).submit, "")
+      held = searchVoice.onText("star", "", true)
+      m.assertEqual(held.submit, "")
+      m.assertEqual(held.pending, "star")
+    end function
+
+    @it("runs a word again when it is spoken in a new dictation")
+    function _()
+      firstRun = searchVoice.onDictatingChanged(searchVoice.onText("", "star", true).pending, false)
+      secondRun = searchVoice.onDictatingChanged(searchVoice.onText(firstRun.pending, "star", true).pending, false)
+      m.assertEqual(firstRun.submit, "star")
+      m.assertEqual(secondRun.submit, "star")
+    end function
+
+  end class
+
+end namespace

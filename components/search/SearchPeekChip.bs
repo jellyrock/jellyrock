@@ -1,0 +1,56 @@
+import "pkg:/source/constants/searchLayout.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' SearchPeekChip: pinned search-bar pill that is the single search-bar
+' surface on the SearchScreen. Width is fixed at PEEK_CHIP_WIDTH so the pill
+' aligns with the keyboard below it (search bar + keyboard form one column).
+' Long queries marquee-scroll within the fixed bounds.
+'
+' Not independently focusable: expansion is initiated from the results list
+' (UP on row 0) or via OK in the empty state, matching SearchScreen's keymap.
+' No directional chevron: with BACK always popping the scene, the former
+' "chevron indicates pull direction" affordance was redundant.
+
+' Layout geometry: kept local (not in searchLayout.bs) because every value
+' here is internal to the pill's own coordinate system.
+' LABEL_X is the icon's x (24) plus its width (36) plus a 16px gap; the icon's translation
+' and size are set in SearchPeekChip.xml (36px, centered in the 44px pill).
+const LABEL_X = 76
+const RIGHT_PADDING = 24 ' breathing room on the right edge
+
+sub init()
+  constants = m.global.constants
+  m.bg = m.top.findNode("chipBg")
+  m.queryLabel = m.top.findNode("queryLabel")
+  m.searchIcon = m.top.findNode("searchIcon")
+
+  ' Background: secondary panel tint so the chip stands out against the
+  ' screen's primary background, but with enough alpha to feel integrated.
+  m.bg.color = constants.colorBackgroundSecondary + constants.alpha80
+
+  ' Fixed pill width: matches the keyboard's width below.
+  m.bg.width = searchLayout.PEEK_CHIP_WIDTH
+
+  ' Text width = pill width minus the icon area on the left and right padding. Past it the
+  ' ScrollingLabel scrolls on its own.
+  m.queryLabel.maxWidth = searchLayout.PEEK_CHIP_WIDTH - LABEL_X - RIGHT_PADDING
+
+  ' No placeholder text when empty: the magnifying-glass icon on the left is
+  ' enough to communicate "this is the search input." A "Search" word on a
+  ' wide pill below an empty keyboard reads as redundant chrome.
+  m.queryLabel.color = m.global.constants.colorTextPrimary
+
+  renderLabel()
+end sub
+
+' Update label text. Empty when no query (icon alone signals purpose). A long query
+' scrolls (the ScrollingLabel does it), so the overflow stays readable.
+sub renderLabel()
+  if not isValid(m.queryLabel) then return
+
+  queryText = m.top.queryText
+  if not isValid(queryText) then queryText = ""
+  m.queryLabel.text = queryText
+end sub

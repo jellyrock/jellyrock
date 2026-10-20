@@ -34,6 +34,14 @@ namespace tests
       m.assertTrue(apiFaults.isSlow(faults[0]))
     end function
 
+    @it("keeps a timeout rule given how long to hold it, which then holds its slot")
+    function _()
+      faults = apiFaults.fromRules([{ prefix: "search", kind: "timeout", ms: 10000 }])
+
+      m.assertEqual(faults, [{ prefix: "search", kind: "timeout", status: 0, ms: 10000, remaining: -1, passes: 0 }])
+      m.assertTrue(apiFaults.isSlow(faults[0]))
+    end function
+
     @it("keeps an empty rule, which needs neither a status nor a time")
     function _()
       faults = apiFaults.fromRules([{ prefix: "qp_videoContainerMovies", kind: "empty", times: 1 }])
@@ -46,6 +54,8 @@ namespace tests
     @params({ prefix: "itemQuery_", kind: "slow" }, "slow without ms")
     @params({ prefix: "itemQuery_", kind: "slow", ms: 0 }, "slow by 0 ms")
     @params({ prefix: "itemQuery_", kind: "slow", ms: "20000" }, "an ms that is not a number")
+    @params({ prefix: "itemQuery_", kind: "timeout", ms: 0 }, "a timeout held 0 ms")
+    @params({ prefix: "itemQuery_", kind: "timeout", ms: "10000" }, "a timeout ms that is not a number")
     @params({ kind: "timeout" }, "no prefix")
     @params({ prefix: "", kind: "timeout" }, "empty prefix")
     @params({ prefix: "itemQuery_", kind: "hang" }, "unknown kind")
@@ -174,6 +184,27 @@ namespace tests
 
       m.assertEqual(apiFaults.takeDue(held, 5999), [])
       m.assertEqual(held.count(), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("dueAnswer()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("answers a held timeout as a timeout, whatever the server sent")
+    function _()
+      fault = apiFaults.fromRules([{ prefix: "search", kind: "timeout", ms: 10000 }])[0]
+      real = { requestId: "searchItemsMovie", ok: true, statusCode: 200, json: { Items: [] }, text: "{}" }
+
+      m.assertEqual(apiFaults.dueAnswer(fault, "searchItemsMovie", real), apiFaults.responseFor(fault, "searchItemsMovie"))
+    end function
+
+    @it("answers a slowed request, or one no rule touched, with its real answer")
+    @params({ prefix: "search", kind: "slow", status: 0, ms: 10000, remaining: -1, passes: 0 })
+    @params(invalid)
+    function _(fault)
+      real = { requestId: "searchItemsMovie", ok: true, statusCode: 200, json: { Items: [] }, text: "{}" }
+
+      m.assertEqual(apiFaults.dueAnswer(fault, "searchItemsMovie", real), real)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

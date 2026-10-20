@@ -138,7 +138,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: Both teardown plugins cover only descendants of `JRScreen` (`TARGET_BASE = 'JRScreen'`). A `Group` or `LayoutGroup` used as a widget gets no coverage, and several dozen such components observe a field they never unobserve. Most of that is self-observation, which dies with the node. The cross-node cases are the real leak shape:
   - `JRButtons` held a `TextSizeTask` observer for its lifetime until it was fixed by hand under #728.
   - [`GridItem`](../../components/ItemGrid/GridItem.bs) observes the content root its `BaseGridView` owns, unobserves only when the root changes, and has no `onDestroy`. [ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md) breaks the resulting retain cycle from the container side: `BaseGridView.onDestroy` drops the content root.
-  - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) and its `BrowseRowItem` subclass (the cell for `ExtrasRowList` and `SearchRow`) cache `m.contentRoot` and observe it in a one-time `setupTextureObserver()`, with no `onDestroy`. `SearchResults.onDestroy` drops its content, but `ExtrasRowList.onDestroy` does not.
+  - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) and its `BrowseRowItem` subclass (the cell for `ExtrasRowList` and `SearchRow`) cache `m.contentRoot` and observe it in a one-time `setupTextureObserver()`, with no `onDestroy`. `SearchScreen.onDestroy` drops its content, but `ExtrasRowList.onDestroy` does not.
 
   Container-side mitigation is per container by construction, and nothing makes the next container remember.
 - **direction**: Widen the check to every component with a codebehind. The teardown method differs by class (`onDestroy` for routed screens, an explicit release sub for widgets), so this likely needs a per-class allowlist of teardown methods. Expect a large first count: separate self-observation from cross-node observation before turning it on, or land it as a warning.
@@ -183,7 +183,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `backdrop-ownership-guard`
 
-- **area**: `components/JRScene.bs` (`setBackgroundImage`, `imageFader`), `components/ui/BackdropFader.*`, and every backdrop writer (`HomeRows`, `FavoritesRows`, `BaseGridView`, `ItemDetails`, `SearchResults`, `AudioPlayerView`, `queueBackdropHelper`)
+- **area**: `components/JRScene.bs` (`setBackgroundImage`, `imageFader`), `components/ui/BackdropFader.*`, and every backdrop writer (`HomeRows`, `FavoritesRows`, `BaseGridView`, `ItemDetails`, `SearchScreen`, `AudioPlayerView`, `queueBackdropHelper`)
 - **issue**: There is one backdrop node (`JRScene.imageFader`), and `setBackgroundImage` is last-writer-wins with no notion of which routed view owns the screen. A view whose data lands after it stopped being the active view can overwrite the foreground's backdrop. Home's late row load once blanked a deep-linked `ItemDetails` backdrop. `HomeRows.updateBackdropForFocusedItem` now guards with `backgroundWriteIsStale` ([`backdrop.bs`](../../source/utils/backdrop.bs)), but the other writers do not. Separately, the `forceBackdrop` clear empties `imageFader.uri` without resetting `m.lastBackdropUri`, so a later write of the same URI is dropped as a duplicate.
 - **direction**: Move the ownership check into `setBackgroundImage`, keyed to `m.global.activeRoutedView`, then drop the per-caller guard in `HomeRows`. `SceneManager.setBackgroundImage` forwards only `uri`, `isAnimated` and `forceBackdrop` today, so the writer's identity has to be passed in first. Reset `m.lastBackdropUri` on the `forceBackdrop` clear.
 
@@ -282,10 +282,10 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `failure-state-ui-copied`
 
-- **area**: `components/search/SearchResults.xml` and `.bs` (the `searchFailed` group; `onRetryButtonReady`, `focusRetryButton`, `onFailureNarrationDue`), `components/ItemGrid/BaseGridView.xml` and `.bs` (the `loadFailed` group and the same three handlers)
+- **area**: `components/search/SearchScreen.xml` and `.bs` (the `searchFailed` group; `onRetryButtonReady`, `focusRetryButton`, `onFailureNarrationDue`), `components/ItemGrid/BaseGridView.xml` and `.bs` (the `loadFailed` group and the same three handlers)
 - **issue**: The search failure state (#1199) copies the grid's load-failure state nearly line for line: a bold message label, a `TextButton` Try again centered on the 720p grid once it has measured itself, and a `Timer` that announces message and button after `narration.OPENING_DELAY` when Try again takes focus. A fix to one copy (its layout, its narration timing) can miss the other, and a third screen with a failure state would make a third copy.
 - **severity**: Medium. Two copies, small today; the drift risk grows with each screen that adds one.
-- **direction**: One failure-state component (message, button label, the area to center in) that does the centering and the opening announcement itself, and reports a retry press on a field. What stays with each screen: when to show it, where focus goes (the grid moves focus to Try again, Search keeps it on the keyboard), and Search's announcement on arrival (`announceSearchOutcome`).
+- **direction**: One failure-state component (message, button label, the area to center in) that does the centering and the opening announcement itself, and reports a retry press on a field. What stays with each screen: when to show it, where focus goes (the grid moves focus to Try again; Search does too once its overlay has closed, and otherwise keeps it on the keyboard), and Search's announcement on arrival while the keyboard is open (`showSearchOutcome`).
 
 ### Low
 
@@ -375,8 +375,8 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `quickplaynode-set-then-clear`
 
-- **area**: the `quickPlayNode` writers (`ItemDetails`, `BaseGridView`, `SearchResults`, `HomeRows`, `FavoritesRows`) and the `<field id="quickPlayNode">` declarations beside them
-- **issue**: Writing the field and then setting it to `invalid` exists so a repeat write of the same node fires its observer ([`user-journey.md`](user-journey.md#the-set-then-clear-pattern)). Where the field is `alwaysNotify="true"` (`ItemDetails`, `BaseGridView`, `SearchResults`, `Home`), Roku notifies on every set, so the clear is redundant; `ItemDetails.onExtrasItemSelected` already writes without one. `HomeRows` and `FavoritesRows` declare it without `alwaysNotify`, so there the clear may be what lets a repeat fire (not traced). That is two rules for one field, and a reader cannot tell which clears matter.
+- **area**: the `quickPlayNode` writers (`ItemDetails`, `BaseGridView`, `SearchScreen`, `HomeRows`, `FavoritesRows`) and the `<field id="quickPlayNode">` declarations beside them
+- **issue**: Writing the field and then setting it to `invalid` exists so a repeat write of the same node fires its observer ([`user-journey.md`](user-journey.md#the-set-then-clear-pattern)). Where the field is `alwaysNotify="true"` (`ItemDetails`, `BaseGridView`, `SearchScreen`, `Home`), Roku notifies on every set, so the clear is redundant; `ItemDetails.onExtrasItemSelected` already writes without one. `HomeRows` and `FavoritesRows` declare it without `alwaysNotify`, so there the clear may be what lets a repeat fire (not traced). That is two rules for one field, and a reader cannot tell which clears matter.
 - **direction**: One rule: `alwaysNotify="true"` on every `quickPlayNode` field and no clears. Before removing a clear, check on a device that choosing the same item twice still plays twice on that screen.
 - **severity**: Low. Consistency; nothing is known to be broken.
 
@@ -513,7 +513,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `legacy-print-statements`
 
-- **area**: 13 component `.bs` files (the font tasks, `JRButtons`, `JRButtonGroup`, `JRLabel`, `JRScrollingLabel`, `JRLabelList`, `JRRowList`, `JRTimeGrid`, `HomeRows`, `SearchResults`, `VideoPlayerView`) and `source/data/JellyfinDataTransformer.bs`. `ResumeButton.bs` carries the opt-out header with no `print` left.
+- **area**: 12 component `.bs` files (the font tasks, `JRButtons`, `JRButtonGroup`, `JRLabel`, `JRScrollingLabel`, `JRLabelList`, `JRRowList`, `JRTimeGrid`, `HomeRows`, `VideoPlayerView`) and `source/data/JellyfinDataTransformer.bs`. `ResumeButton.bs` carries the opt-out header with no `print` left.
 - **issue**: Raw `print` statements remain where `m.log.*` could be used (component and class methods). Prod builds strip `m.log` calls but not `print`, so these reach the device log unconditionally.
 - **direction**: In each file, import `pkg:/source/roku_modules/log/LogMixin.brs`, create `m.log = new log.Logger("…")` in `init()` (or the class constructor), and convert each `print` to the right level. Each file carries a `' bsc-disable-file print-locations` header pointing here; remove it with the last `print`. Remove `ResumeButton.bs`' header now, so a new `print` there is flagged.
 - **enforced**: `scripts/bsc-plugins/print-locations.cjs` flags every new `print` outside `source/main.bs` and the `globals.bs` debug block, skipping free functions in `source/`, which have no `m`.
@@ -667,9 +667,9 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `dead-selecteditem-fields`
 
-- **area**: `components/home/Home.xml`, `components/search/SearchResults.xml`
-- **issue**: `Home.selectedItem` and `SearchResults.selectedItem` are declared, and nothing writes or observes them. A reader can wire to a field that never fires.
-- **direction**: Remove both fields, or list them in the dead-code epic #1072.
+- **area**: `components/home/Home.xml`
+- **issue**: `Home.selectedItem` is declared, and nothing writes or observes it. A reader can wire to a field that never fires. (`SearchResults.selectedItem` went with that screen; `SearchScreen` declares none.)
+- **direction**: Remove the field, or list it in the dead-code epic #1072.
 
 #### `path-normalization-triplicated`
 

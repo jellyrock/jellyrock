@@ -182,11 +182,14 @@ sub runQueueLoop()
         if slotIdx >= 0
           entry = m.inFlight[slotIdx]
           if isValid(entry)
+            response = msg.getData()
             isHeld = false
             #if ENABLE_RTA
-              isHeld = heldOnPurpose(slotIdx, entry, msg.getData())
+              ' A held timeout answers as one, held to its due time or delivered past it.
+              response = apiFaults.dueAnswer(entry.rtaFault, entry.req.requestId, response)
+              isHeld = heldOnPurpose(slotIdx, entry, response)
             #end if
-            if not isHeld then deliverResponse(slotIdx, entry, msg.getData())
+            if not isHeld then deliverResponse(slotIdx, entry, response)
           end if
         end if
       end if
@@ -406,6 +409,7 @@ end sub
     if apiFaults.isSlow(fault)
       m.log.info("slowing a request on purpose", entry.req.requestId, "ms", fault.ms)
       entry.rtaHoldMs = fault.ms
+      entry.rtaFault = fault
       return false
     end if
 

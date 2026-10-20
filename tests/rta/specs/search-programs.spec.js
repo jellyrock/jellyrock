@@ -16,8 +16,8 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getJson, tokenHeader } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { openSearchKeyboard } from '../lib/nav.js';
-import { getActiveVal, hasChildren, waitFor } from '../lib/steps.js';
+import { openSearchKeyboard, waitSearchResults } from '../lib/nav.js';
+import { getActiveVal } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const QUERY = process.env.RTA_PROGRAMS_QUERY || 'eddie';
@@ -56,16 +56,14 @@ it('lists only the guide programs that match the search', async (testCtx) => {
   await ecp.sendText(QUERY);
 
   // Rows build as the search answers; wait for the programs row by its title.
-  const rowIndex = await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
-    read: getActiveVal,
-    timeout: 20000,
-    label: `search results for "${QUERY}"`,
-  }).then(async (rows) => {
-    for (let i = 0; i < rows; i++) {
-      if ((await getActiveVal(`#searchSelect.content.${i}.title`)) === PROGRAMS_ROW) return i;
-    }
-    return -1;
-  });
+  const rowIndex = await waitSearchResults({ label: `search results for "${QUERY}"` }).then(
+    async (rows) => {
+      for (let i = 0; i < rows; i++) {
+        if ((await getActiveVal(`#searchSelect.content.${i}.title`)) === PROGRAMS_ROW) return i;
+      }
+      return -1;
+    },
+  );
   expect(rowIndex, `a "${PROGRAMS_ROW}" row`).toBeGreaterThan(-1);
 
   const count = await getActiveVal(`#searchSelect.content.${rowIndex}.getChildCount()`);

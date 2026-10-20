@@ -21,8 +21,8 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getJson, tokenHeader } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { openSearchKeyboard } from '../lib/nav.js';
-import { getActiveVals, hasChildren, getActiveVal, waitFor } from '../lib/steps.js';
+import { openSearchKeyboard, waitSearchResults } from '../lib/nav.js';
+import { getActiveVals } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const QUERY = RTA_CONFIG.searchQuery;
@@ -72,10 +72,9 @@ function searchedRows() {
     await assertSeedTookEffect(expectedServer, 'search-rows');
     await openSearchKeyboard();
     await ecp.sendText(QUERY);
-    const rows = await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
-      read: getActiveVal,
-      timeout: 30000,
+    const rows = await waitSearchResults({
       label: `search results for "${QUERY}"`,
+      timeout: 30000,
     });
     const keyPaths = [];
     for (let i = 0; i < rows; i++)

@@ -9,6 +9,9 @@
  *  - `prefix` matches the start of the request id the app passes to fetchRes / fetchAsync
  *    (`itemQuery_usersItems`, `itemMetaData`, …).
  *  - `timeout` answers as roku-requests does when it gives up; `http` needs a `status` >= 400.
+ *    Given `ms`, a timeout first keeps its pool slot busy that long, as a server that never
+ *    answers does until roku-requests gives up (`ms: 10000`, timeouts.HTTP_MS); without it, it
+ *    answers at once.
  *  - `slow` needs `ms`: the answer arrives `ms` after the request was sent, its pool slot busy
  *    all that time.
  *  - `empty` answers ok with nothing in it, as a server with nothing to give would: a screen's

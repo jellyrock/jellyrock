@@ -423,7 +423,7 @@ sub initRouter()
     ' keepAlive views by design, so nothing short of sgrouter.destroy() at sign-out releases
     ' them. With it set, every distinct library and item visited stayed alive for the session,
     ' and onDestroy (tasks stopped, observers dropped, textures freed, promises abandoned, and
-    ' SearchResults releasing the firmware's voice route) never ran. Without it: covered =>
+    ' SearchScreen releasing the firmware's voice route) never ran. Without it: covered =>
     ' suspended, popped => closed.
     '
     ' NO allowReuse: JellyRock has always created a FRESH ItemDetails per navigation (the
@@ -437,7 +437,7 @@ sub initRouter()
     ' the player, not popped, so it suspends and resumes.
     { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", canActivate: guard }
     { pattern: "/library/:id", name: "library", component: "BaseGridView", canActivate: guard }
-    { pattern: "/search", name: "search", component: "SearchResults", canActivate: guard }
+    { pattern: "/search", name: "search", component: "SearchScreen", canActivate: guard }
     { pattern: "/settings", name: "settings", component: "Settings", canActivate: guard }
     ' Photo viewer / slideshow. A fresh PhotoDetails per launch (the launch data arrives as
     ' route context), destroyed on goBack: the router equivalent of the old SceneManager
@@ -919,6 +919,9 @@ sub registerOverhangData(group as object)
     m.overhang.isLogoVisible = group.isLogoVisible
     group.observeField("isLogoVisible", "updateOverhangLogo")
 
+    m.overhang.isClockVisible = resolveClockVisible(group.isClockVisible)
+    group.observeField("isClockVisible", "updateOverhangClock")
+
     m.overhang.shouldShowIcons = group.shouldShowIcons
     group.observeField("shouldShowIcons", "updateOverhangIcons")
 
@@ -935,6 +938,7 @@ sub unregisterOverhangData(group as object)
     group.unobserveField("overhangTabs")
     group.unobserveField("isOverhangVisible")
     group.unobserveField("isLogoVisible")
+    group.unobserveField("isClockVisible")
     group.unobserveField("shouldShowIcons")
     group.unobserveField("shouldShowUserDropdown")
     m.overhang.unobserveField("selectedTabId")
@@ -948,6 +952,17 @@ end sub
 sub updateOverhangLogo(msg)
   m.overhang.isLogoVisible = msg.getData()
 end sub
+
+sub updateOverhangClock(msg)
+  m.overhang.isClockVisible = resolveClockVisible(msg.getData())
+end sub
+
+' The clock shows only when the active view declares it AND the user has not chosen
+' "Hide clock" (uiDesignHideClock). Applying the preference here, once, covers every routed
+' screen without each one having to declare it.
+function resolveClockVisible(screenWantsClock as boolean) as boolean
+  return screenWantsClock and not m.global.user.settings.uiDesignHideClock
+end function
 
 sub updateOverhangIcons(msg)
   m.overhang.shouldShowIcons = msg.getData()

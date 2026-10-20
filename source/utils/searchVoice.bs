@@ -1,0 +1,35 @@
+' @fileoverview When a spoken query reaches the search screen's voice box, decide whether to
+' submit it now, hold it, or ignore it.
+'
+' Extracted from SearchScreen so the rule is unit-tested with plain values, the same reason
+' searchRoute.bs holds the route-context rule. The firmware writes one spoken query to the
+' box more than once while the viewer is still dictating (measured 2026-10-18 on a Streaming
+' Stick 4K: two writes per word), and each write used to be a submit. So a write during
+' dictation is held, and the held text is submitted once, when dictation ends.
+'
+' Each function takes the text held so far and returns the next step:
+' { pending: the text to hold now, submit: the text to submit now, or "" }.
+
+namespace searchVoice
+
+  ' The box's text changed.
+  '
+  ' @param pending     - the text held so far ("" if none)
+  ' @param text        - the box's new text; "" is the screen clearing it after a submit
+  ' @param isDictating - whether the viewer is still speaking
+  function onText(pending as string, text as string, isDictating as boolean) as object
+    if text = "" then return { pending: pending, submit: "" }
+    if isDictating then return { pending: text, submit: "" }
+    return { pending: "", submit: text }
+  end function
+
+  ' Dictation started or ended. Ending submits what was held, once.
+  '
+  ' @param pending     - the text held so far ("" if none)
+  ' @param isDictating - whether the viewer is still speaking
+  function onDictatingChanged(pending as string, isDictating as boolean) as object
+    if isDictating or pending = "" then return { pending: pending, submit: "" }
+    return { pending: "", submit: pending }
+  end function
+
+end namespace

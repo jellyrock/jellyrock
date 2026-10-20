@@ -3,10 +3,13 @@
   <interface>
     <field id="itemData" type="assocarray" onChange="getData" />
     <!-- Set true once getData has built every row; cleared at the start of each build.
-         SearchResults resolves its readiness ledger's `rows` fill on this, because a row
+         SearchScreen resolves its readiness ledger's `rows` fill on this, because a row
          list building in its own `m` cannot close a fill on the screen that owns it. -->
     <field id="contentReady" type="bool" value="false" />
     <field id="query" type="string" />
+    <!-- The row types a search reads (searchOutcome.rowTypes): writing it shows a skeleton row
+         for each until itemData replaces them (showSkeleton). -->
+    <field id="skeletonTypes" type="array" onChange="showSkeleton" />
     <field id="itemSelected" type="node" alwaysNotify="true" />
   </interface>
 </component>

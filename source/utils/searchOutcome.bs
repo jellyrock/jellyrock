@@ -1,8 +1,10 @@
+import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' What a search ended with, and what the search screen shows for it. SearchTask reports the
-' status; SearchResults shows the view. Pure, so the rules are unit-tested without a network
+' status; SearchScreen shows the view. Pure, so the rules are unit-tested without a network
 ' seam. Also which reads a search sends (canSearchLiveTv), since a read the server refuses
 ' would make every search look partial.
 '
@@ -75,6 +77,17 @@ namespace searchOutcome
     "BoxSet"
   ]
 
+  ' The result count shown after "Search" in the screen's title: "0 results", "1 result",
+  ' "132 results", or "132+ results" when the server may hold more (isLowerBound: a read
+  ' stopped at its limit, or the search did not fully answer). A search never asks the
+  ' server for totals, so the count is what the rows hold. "" when a search that did not
+  ' fully answer found nothing: it cannot claim 0, and the failure state speaks for it.
+  function countText(itemCount as integer, isLowerBound as boolean) as string
+    if itemCount < 0 or (itemCount = 0 and isLowerBound) then return ""
+    if isLowerBound then return translate(translationKeys.LabelSearchResultCountAtLeast, [itemCount.toStr()])
+    return translatePlural(translationKeys.LabelSearchResultCount, itemCount, [itemCount.toStr()])
+  end function
+
   ' Whether a search sends its Live TV program read. Jellyfin refuses that read to a user
   ' without Live TV access (its LiveTvAccess policy), so asking would count every one of that
   ' user's searches as partial. A policy, or a field, that is missing reads as allowed, as
@@ -87,6 +100,24 @@ namespace searchOutcome
     access = policy.enableLiveTvAccess
     if not isValid(access) then return true
     return access <> false
+  end function
+
+  ' The result rows a search sends a read for, in the order the screen shows them
+  ' (itemTypeOrder.SEARCH). The screen draws a skeleton row for each while a search runs.
+  ' A recording has no read of its own (it comes back inside the Movie and Episode reads),
+  ' and programs are read only for a user with Live TV access (canSearchLiveTv).
+  '
+  ' @param {dynamic} policy - m.global.user.policy, or invalid
+  ' @return {object} an roArray of row types
+  function rowTypes(policy as dynamic) as object
+    withPrograms = searchOutcome.canSearchLiveTv(policy)
+    types = []
+    for each rowType in itemTypeOrder.SEARCH
+      if rowType = "Recording" then continue for
+      if rowType = "Program" and not withPrograms then continue for
+      types.push(rowType)
+    end for
+    return types
   end function
 
 end namespace

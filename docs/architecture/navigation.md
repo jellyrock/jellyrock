@@ -21,7 +21,7 @@ related-files:
   - source/utils/appWaits.bs
   - components/AppWaitHost.bs
   - components/AppWaitHost.xml
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-19
 ---
 
 # Navigation (sgRouter)
@@ -40,7 +40,7 @@ Group
       └─ JRGroup            components/JRGroup.xml + .bs
           ├─ sub-panels and dialogs (ExtrasSlider, JRDialog, OverviewDialog, ...)
           └─ JRScreen       components/JRScreen.xml + .bs
-              ├─ Home, ItemDetails, BaseGridView, SearchResults, Settings
+              ├─ Home, ItemDetails, BaseGridView, SearchScreen, Settings
               ├─ PlayerHostView, AudioPlayerView, PhotoDetails
               └─ SetServerScreen, UserSelect, LoginScene (pre-login)
 
@@ -127,7 +127,7 @@ It does not navigate. Each entry point that navigates calls it first (`routerNav
 | `play` | `/details/:type/:id/play` | `PlayerHostView` | guard |
 | `details` | `/details/:type/:id` | `ItemDetails` | guard |
 | `library` | `/library/:id` | `BaseGridView` | guard |
-| `search` | `/search` | `SearchResults` | guard |
+| `search` | `/search` | `SearchScreen` | guard |
 | `settings` | `/settings` | `Settings` | guard |
 | `photo` | `/photo` | `PhotoDetails` | guard |
 | `audio` | `/audio` | `AudioPlayerView` | guard |
@@ -216,7 +216,7 @@ The main thread reaches the ones in `JRScene.xml`'s interface by `callFunc`.
 | `BaseGridView` | `prepareDataLoad()`, from `loadInitialItems()` | `stopGridSpinner()` |
 | Live TV schedule (`schedule.bs`) | `startLoading()`, `reloadChannels()` | `onChannelsLoaded()`, `onChannelPageFailed()` |
 | `ItemDetails` | `onItemIdChanged()`, before the metadata fetch | `onDetailsLoaded()` |
-| `SearchResults` | a content wait, `screenWaits.begin()` in `searchMedias()` | `screenWaits.finish()` |
+| `SearchScreen` | a content wait, `screenWaits.begin()` in `submitSearch()` (not the live search while typing) | `screenWaits.finish()` in `onFullSearchResults()`, or when the query is emptied |
 | `PhotoDetails` | `QueueManager.launchItem()` | `showPhoto()` |
 
 `ItemDetails` starts the spinner from its `itemId` observer, which runs before the empty screen draws a frame. When the route context already holds the full item, as from a resolved deep link, it shows no spinner. Every other item type that `launchItem()` handles opens a playback start instead of a spinner ([below](#what-kind-of-wait-a-spinner-is)).
@@ -308,11 +308,12 @@ Saving the deepest node, not only `focusedChild`, is what returns the cursor to 
 3. If the new view is a `JRGroup`, `registerOverhangData()` copies and observes its fields.
 4. `bindLoadingWaits()` follows the new view's `loadingWaits`, and `AppWaitHost.failLeftBehind` fails a playback start the viewer has left.
 
-`registerOverhangData()` keeps three behaviors:
+`registerOverhangData()` keeps four behaviors:
 
 - **Tabs before title.** It sets `overhang.tabs` before `overhang.title`, so `onTabsChanged` can hide the title before it draws, with no flash from title to tabs.
 - **`selectedTabId` both ways.** When the viewer changes tab in the overhang, `JRScene.onOverhangTabSelected()` writes the view's `selectedTabId`, which the view observes to swap its content. Home uses it for its Home and Favorites tabs.
 - **Logo, icons and user dropdown.** `isLogoVisible`, `shouldShowIcons` and `shouldShowUserDropdown` are copied and observed with the tabs and title, so the bar settles in one frame. `shouldShowUserDropdown` is a boolean because the controller takes the name from the signed-in user (`applyOverhangUserDropdown`): a view says only whether the dropdown shows.
+- **Clock.** `isClockVisible` defaults to true on `JRGroup`, and a view sets it false to opt out (the search screen does). The controller shows the clock only when the view allows it and the viewer has not turned on Hide clock (`uiDesignHideClock`), through `resolveClockVisible`. Views don't read that setting, so it holds on every routed screen.
 
 ## `SceneManager` is a service node
 

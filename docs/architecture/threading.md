@@ -16,7 +16,7 @@ related-files:
   - tests/source/unit/platform/TaskThreadSlots.spec.bs
   - tests/source/unit/platform/TaskStopProgress.spec.bs
   - tests/source/unit/utils/tasks.spec.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-19
 ---
 
 # Threading
@@ -129,7 +129,7 @@ The decision it supported, a toast instead of a blocking dialog for a photo that
 
 ## Rules of thumb
 
-- **I/O goes on a Task.** Network, registry and large file reads never run on the render thread. Start a Task with `launchTask(node)` from `source/utils/tasks.bs`, never a raw `control = "RUN"`. The `no-raw-run` build rule makes the raw form an error, so every launch goes through the thread ledger (#728).
+- **I/O goes on a Task.** Network and large file reads never run on the render thread. The registry is the one exception: a small write on a user action (a setting, a recent search) runs there, as every setting has, and costs a frame or two; a large or repeated one goes on a Task (decision `search-history-render-thread-write`). Start a Task with `launchTask(node)` from `source/utils/tasks.bs`, never a raw `control = "RUN"`. The `no-raw-run` build rule makes the raw form an error, so every launch goes through the thread ledger (#728).
 - **`launchTask()` bounds the thread count.** Past `TASK_THREAD_WATERMARK` running threads it queues the launch instead of starting it, and starts it when a slot frees ([ADR 0041](../adr/0041-task-launch-queue.md)). A queued node does not read `state = "run"`, so ask `isTaskInFlight(node)` whether a launch is still pending.
 - **One Task per screen, never one per item.** `no-task-fanout` makes a `launchTask()` inside a loop an error unless it names a fixed `m.` slot (`m.loadTask`, `m.view.loadTask`) that the loop does not rebind. The two rules split the job: `no-raw-run` bounds where a thread may start, `no-task-fanout` how many. #728 needed both. Its fan-out went through an ordinary launch site and already tore its tasks down correctly, because the crash came from concurrent launches inside one Home load, not from threads leaked across screens. Fan every item through one orchestrator Task instead (`components/home/LoadLatestRowsTask.bs`).
 - **Don't assume a component is forbidden on the render thread because it sounds graphical.** Measure.

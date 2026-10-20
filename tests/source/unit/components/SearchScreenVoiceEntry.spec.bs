@@ -1,0 +1,88 @@
+namespace tests
+
+  @suite("SearchScreen - Voice entry")
+  class SearchScreenVoiceEntryTests extends tests.BaseTestSuite
+
+    protected screen as dynamic
+
+    protected override sub setup()
+      super.setup()
+
+      ' Ensure sceneManager stub exists: SearchScreen calls through it to clear
+      ' the backdrop during init and expansion transitions.
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.screen = CreateObject("roSGNode", "SearchScreen")
+    end sub
+
+    protected override sub teardown()
+      m.screen = invalid
+      super.teardown()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("VoiceTextEditBox setup")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ' `voiceEnabled` on the SCREEN-level box is intentionally not asserted. Roku grants the
+    ' voice route to one node at a time and the firmware manages the field itself (see
+    ' Home.bs initVoiceBox), so a standalone component instantiated in a suite where another
+    ' voice node already exists reads back false through no fault of this screen. The
+    ' sibling spec for the same pattern (HomeVoiceSearch) asserts active / opacity /
+    ' hintText for exactly this reason. Whether voice actually works with Home suspended
+    ' beneath /search is an app-level question and belongs in RTA, not here.
+
+    @it("creates the hidden screen-level voice box")
+    function _()
+      voiceBox = m.screen.findNode("searchVoiceBox")
+      m.assertNotInvalid(voiceBox)
+    end function
+
+    @it("configures voiceBox as active so voice capture is live")
+    function _()
+      voiceBox = m.screen.findNode("searchVoiceBox")
+      m.assertTrue(voiceBox.active)
+    end function
+
+    @it("configures voiceBox as nearly invisible")
+    function _()
+      voiceBox = m.screen.findNode("searchVoiceBox")
+      m.assertTrue(voiceBox.opacity < 0.01)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Keyboard voice popup conflict avoidance")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("disables the keyboard's internal textEditBox voice capture")
+    function _()
+      ' Only ONE voiceEnabled node may be active at a time; the screen-level
+      ' box owns the slot, so the keyboard's internal voice popup must be off.
+      kbd = m.screen.findNode("overlay").findNode("kbd")
+      m.assertNotInvalid(kbd)
+      m.assertNotInvalid(kbd.textEditBox)
+      m.assertFalse(kbd.textEditBox.voiceEnabled)
+      m.assertFalse(kbd.textEditBox.active)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Expansion state machine")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("defaults to collapsed on mount")
+    function _()
+      m.assertFalse(m.screen.isExpanded)
+    end function
+
+    @it("mirrors isExpanded to the overlay")
+    function _()
+      m.screen.isExpanded = true
+      overlay = m.screen.findNode("overlay")
+      m.assertTrue(overlay.isExpanded)
+    end function
+
+  end class
+
+end namespace

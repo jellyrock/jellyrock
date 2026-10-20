@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="SearchScreen" extends="JRScreen">
+  <children>
+    <!-- Hidden VoiceTextEditBox: screen-level voice capture, the same pattern as
+         Home's homeVoiceBox. voiceEnabled is set once in init() and released in
+         onDestroy() to yield the firmware's single voice slot on teardown; active
+         follows whether the screen is shown. The keyboard's internal voice box is
+         disabled so we're the only claimant. -->
+    <VoiceTextEditBox id="searchVoiceBox" visible="true" width="40" translation="[0, 0]" />
+
+    <!-- Results list: full-width RowList. Repositioned from the old side-by-side
+         layout now that the keyboard is a pull-down. -->
+    <SearchRow id="searchSelect" focusable="true" />
+
+    <!-- The last search's result count ("132 results"), on the title's line and right-aligned
+         to the suggestion column, so it lines up with that column's "3 of 8" below it. Width
+         and text are set in bs (showResultCount). y=60 sits its baseline on the title's, which
+         is larger text, so their centers differ. -->
+    <LabelSecondarySmall id="resultCount" height="36" horizAlign="right" vertAlign="center" translation="[96, 60]" />
+
+    <!-- Empty-state help label (shown when no query has been submitted yet).
+         Secondary color (dim) so it reads as helper copy, not primary content.
+         Translation is updated in bs: repositioned below the overlay when
+         expanded, and back to the mid-screen position when collapsed. -->
+    <LabelSecondaryLarge id="SearchHelpText" width="1394" horizAlign="center" text="" translation="[263, 540]" />
+
+    <!-- Search-failure state: the server did not answer, which says nothing about what it
+         holds, so it is not the no-results text. Sits where the help text does, and moves
+         with it when the overlay opens (the group's translation, set in bs). The button's x
+         is set once it has measured itself (onRetryButtonReady), so a longer translation
+         stays centered under the message. -->
+    <Group id="searchFailed" visible="false">
+      <LabelPrimaryLarge id="searchFailedText" isBold="true" width="1394" horizAlign="center" vertAlign="center" height="64" translation="[263, 540]" />
+      <TextButton id="searchRetryButton" translation="[0, 642]" />
+    </Group>
+    <!-- Delays only the failure state's announcement; see narration.OPENING_DELAY in
+         source/utils/dialogNarration.bs for why it cannot be event-driven. -->
+    <Timer id="failureNarrationTimer" repeat="false" />
+
+    <!-- Sliding overlay: keyboard + suggestion list. Animated by its own bs.
+         Rendered BEFORE the peek chip so the chip stays visually on top even
+         mid-slide animation when the overlay is passing through the peek
+         chip's y range. -->
+    <SearchOverlay id="overlay" />
+
+    <!-- Pinned search-bar pill. Single search-bar surface for both collapsed
+         and expanded states: sits directly above the keyboard at the same
+         width and x position. y=54 = 5% top safe-area edge, x=824 aligns
+         with the keyboard's left edge below (keyboard right edge at x=1824
+         = 5% right safe edge). It covers the clock's corner, so this screen
+         hides the clock (isClockVisible, set in init). -->
+    <SearchPeekChip id="peekChip" translation="[824, 54]" />
+
+    <!-- Results slide animation: runs in sync with the overlay. When
+         expanded, SearchRow slides down to RESULTS_Y_EXPANDED so row 0
+         remains visible below the overlay's bottom edge. When collapsed,
+         slides back up to RESULTS_Y (below the peek chip).
+         keyValue overridden from bs so searchLayout constants are the
+         single source of truth. -->
+    <Animation id="resultsSlideAnim" duration="0.3" repeat="false" easeFunction="outCubic">
+      <Vector2DFieldInterpolator id="resultsSlideInterp" key="[0.0, 1.0]"
+        keyValue="[[0, 140],[0, 550]]"
+        fieldToInterp="searchSelect.translation" />
+    </Animation>
+  </children>
+  <interface>
+    <!-- Canonical current query. Writing triggers the state machine (hints /
+         recent / full-search collapse) through onQueryChanged, observed in init. -->
+    <field id="query" type="string" alwaysNotify="true" />
+
+    <!-- Expansion state. Writing flips overlay animation, focus, and backdrop
+         (onExpansionChanged, observed in init).
+         alwaysNotify so repeated writes (for example a prior handler already set
+         false, then another submit path re-sets false) still fire: without
+         it the Scenegraph silently elides same-value writes and the overlay
+         can end up stranded in the wrong visual state. -->
+    <field id="isExpanded" type="boolean" alwaysNotify="true" />
+
+    <!-- Quick-play flow. Set by onSearchItemSelected for results with no route of their
+         own, and by Play on a focused result; observed by this screen (see init) and
+         forwarded to QueueManager.launchItem. -->
+    <field id="quickPlayNode" type="node" alwaysNotify="true" />
+  </interface>
+</component>
