@@ -122,7 +122,7 @@ It replaces exactly one `## ` section and leaves the rest of the PLAN byte for b
 
 ### Step 5 — Append one line to the Session log
 
-Dated; a second session the same day is `(s2)`, and so on. A session that began with `/start-project` already wrote its line: extend that line rather than adding a second. Say what shipped (with its commit range), what was found, and what went wrong or had to be redone: a log that records only successes is useless for a cold read. Name any landmine you dropped and why it stopped being true.
+Add it at the bottom: the log is oldest first, and a resume shows its last entry. Dated; a second session the same day is `(s2)`, and so on. A session that began with `/start-project` already wrote its line: extend that line rather than adding a second. Say what shipped (with its commit range), what was found, and what went wrong or had to be redone: a log that records only successes is useless for a cold read. Name any landmine you dropped and why it stopped being true.
 
 ### Step 6 — Route the deferred tails
 
@@ -141,8 +141,6 @@ Default to `active`: no change, and no question, while phases are still in progr
 - **paused** — `status: paused` in the frontmatter and on its row in the projects folder's `README.md`; it stays in the Active table (`/resume-project` won't auto-select it). No archival.
 - **completed** — `status: completed`; move the project directory into the projects folder's `_archive/` (`git mv` where the folder is tracked, plain `mv` where it is gitignored); move its README row to the Archived list with a one-line closing summary and the date. Before `completed`, read each Charter success criterion against what shipped: one not met is written UNMET in the closing summary, never counted met through a substitute; one waiting on an event that may never come closes as a recorded defer, with a followup that tracks it.
 - **abandoned** — as completed, plus a one-line reason in Status and on the archived row.
-
-For `paused`, `completed` or `abandoned`, run `bash .claude/skills/start-project/priorities.sh line . --project {{folder}}` before any archive move and show the user its line in the closing message: a project still ranked there is dropped at the list's next review. It prints nothing on a machine that keeps no list.
 
 For a terminal close, the kickoff becomes one line, `Project closed {{date}}: {{why}}`, put in place with `replace-section.sh` as in Step 4; its landmines drop with it, and the Step 5 log line says so, since Step 8's check skips its landmine review on a closed PLAN. After an archive move, search the whole repo (not only the docs) for the old path and re-point every hit in the same commit: a moved PLAN breaks links, registries and tests that name it. Decide this before Step 8 so every change lands in one commit.
 

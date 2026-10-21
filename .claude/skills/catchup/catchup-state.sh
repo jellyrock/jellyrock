@@ -2,7 +2,7 @@
 #
 # catchup-state.sh — the one read /catchup makes (and /focus through it). It prints the repo's git
 # position, the journal, the projects, this repo's own reader, the recent commits and, when this
-# machine keeps them, your ranked priorities list and the open messages other repos left this one,
+# machine keeps a mailbox, the open messages other repos left this one,
 # then one CANDIDATES block: every check that fired, as a typed line, ranked in code, so the model
 # takes the first line instead of ordering banners itself. Sections are labeled `=== NAME ===` and
 # read top to bottom.
@@ -89,7 +89,6 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 journal_sh="$here/../log/journal.sh"
 resolver="$here/../start-project/projects-dir.sh"
 resume_sh="$here/../resume-project/resume-state.sh"
-priorities_sh="$here/../start-project/priorities.sh"
 mailbox_sh="$here/../start-project/mailbox.sh"
 conf_file="$here/catchup.conf"; [ -n "${SKILLS_CONFIG_DIR:-}" ] && conf_file="$SKILLS_CONFIG_DIR/catchup/catchup.conf"
 # MD_LIB: the awk function md_skip, the one rule for what is not a heading (CommonMark fenced code),
@@ -523,11 +522,6 @@ fi
 
 section "RECENT COMMITS"
 git log --oneline -10 2>/dev/null || serr "RECENT COMMITS" "git log failed"
-
-# Your ranked priorities list, through the shared helper. It prints nothing on a machine that keeps
-# no list, and then this section is left out. The list labels; it is never a candidate.
-p_out=""; [ -f "$priorities_sh" ] && p_out="$(bash "$priorities_sh" top "$top" 2>&1 </dev/null)"
-if [ -n "$p_out" ]; then section "PRIORITIES"; printf '%s\n' "$p_out"; fi
 
 # The open messages other repos left this one (the mailbox), through the shared helper: nothing on
 # a machine with no mailbox. One about a project ranks with work to resume, any other as overdue.

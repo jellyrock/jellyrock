@@ -103,8 +103,6 @@ Within a judgment slot, consequence beats age (an item whose failure takes a liv
 
 Classify the pick into exactly one route: **resume** (an active or paused tracked project; its slug is the folder name without the `YYYY-MM-` prefix), **scaffold** (new project-shaped work), **another skill** (one that covers it: `/done` or `/log` for a journal fix, or a triage or recipe skill `## This repo` names), or **plan** (everything else). A one-off that *might* grow is a plan; a stub project can come later.
 
-Then ask where the pick sits on your priorities list: `bash .claude/skills/start-project/priorities.sh line . --project {{folder}}` for a project, `--fid {{fid}}` for a followup, `--none` for anything else. It prints one line, or nothing on a machine that keeps no list. The list labels the pick; it never changes it.
-
 Show it in this shape, with real names only:
 
 ````markdown
@@ -113,8 +111,6 @@ Show it in this shape, with real names only:
 **Recommended:** {{the pick, one line}}
 
 **Why:** {{for a picked line: "the reader's first candidate", or "its first after" the skipped line and why, with the line quoted; for a judgment slot: rank n and the rule}} — {{the state behind it: `[fid: …]`, backlog row or commit, cited}}.
-
-{{only when the priorities helper printed a line:}} **On your list:** {{its line, word for word}}
 
 **Route:** {{resume | scaffold | another skill | plan}}. {{For a command route:}} Type this to take it:
 
