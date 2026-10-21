@@ -725,6 +725,18 @@ Where JellyRock stands: `sgrouter.goBack()` returns a bare `false` for THREE dif
 
 When it moves: if an official history-depth / `canGoBack()` API lands, bump the pin and gate the `JRScene` Exit confirmation on it to close the stale `nodeId` edge cleanly (replaces the navigation-in-progress mirror). Consider contributing the API upstream as a PR
 
+#### When audiobooks are supported, the audio player must honor a resume position `[fid: audiobook-resume-in-audio-player]` `[captured 2026-10-20]`
+
+When audiobooks are supported, the audio player must honor a resume position, and an `AudioBook` details screen must offer Resume again. Neither is true today: `AudioBook` is in `itemTypeOrder.NO_RESUME` until the audio player can start where the book was left.
+
+Why it waits: Jellyfin saves no position for an `Audio` item. `BaseItem.SupportsPositionTicksResume` is false and `Audio` does not override it, so `UserDataManager.UpdatePlayState` forces the saved position to 0 for every song, however long (read at v10.10.0 and v12.2). `AudioBook` overrides it to true, with the server's `MinAudiobookResume` and `MaxAudiobookResume` settings. JellyRock does not support audiobooks yet. An audiobook can still reach its details screen as an edge case: the Home Favorites row drops only `Book` (`LoadItemsTask`), so an audiobook marked as a favorite in another client shows there. Its Resume would have opened the audio player at the start, which is why the button is hidden for now.
+
+What closes it, as part of audiobook support:
+
+- `AudioPlayerView` reads the queue item's `startingPoint` (today nothing there reads it) and starts there, as the video loader sets `content.PlayStart`. Measure seeking on a transcoded audio stream first: the audio transcode is progressive HTTP, not HLS, and the server can also start a transcode at `StartTimeTicks`, so the two must not add up.
+- Remove `AudioBook` from `itemTypeOrder.NO_RESUME`. Check on a real audiobook that Resume shows and goes through `launchQueueItemToPlay`, which routes audio to the audio player (decision `play-kind-single-table`).
+- Decide whether a tap on a part-played audiobook tile resumes, as `quickplay.video` does for video (`quickplay.audio` sets no start).
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

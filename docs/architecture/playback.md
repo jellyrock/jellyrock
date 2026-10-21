@@ -2,6 +2,7 @@
 topic: playback
 related-files:
   - components/manager/QueueManager.bs
+  - source/utils/playKind.bs
   - components/video/PlayerHostView.bs
   - components/video/PlayerHostView.xml
   - components/video/VideoPlayerView.bs
@@ -50,7 +51,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-13
+last-reviewed: 2026-10-20
 ---
 
 # Video and audio playback
@@ -88,7 +89,7 @@ The launchers build a queue and start it: `launchItem`, `launchQuickPlayAction`,
 
 A launcher whose Task finds nothing to play ends its start and shows a toast (`showNothingToPlay`): "couldn't load" when a read failed, "nothing here" when the server answered empty, and "can't" when nothing builds that launch, such as a Shuffle another device sends for a movie. The text is worded for what the build was (`source/utils/quickplayOutcome.bs`). Each Task reads through an `apiRead.Reader` (`source/api/apiRead.bs`), which records a read that did not answer, so a failure never looks like an empty item. A failed read also never falls back to a guess: a series whose resume or Next Up read fails stops there, rather than start some other episode.
 
-`playQueue()` then looks at the current item's type and sets `m.global.playbackLaunchRequest = { type, id[, media: "audio"] }`. `JRScene.onPlaybackLaunchRequested` turns that into a route: audio goes to `/audio`, every video type to `/details/<type>/<id>/play`. The queue is the source of truth for what plays; the route's `:type` and `:id` only give the launch a deep-link identity. The whole path from a press to a mounted player is in [`user-journey.md`](user-journey.md#starting-playback).
+`playQueue()` then looks up the current item's type in `playKind` ([`source/utils/playKind.bs`](../../source/utils/playKind.bs), the one table of how each type plays) and sets `m.global.playbackLaunchRequest = { type, id[, media: "audio"] }`. `JRScene.onPlaybackLaunchRequested` turns that into a route: audio goes to `/audio`, every video type to `/details/<type>/<id>/play`. The queue is the source of truth for what plays; the route's `:type` and `:id` only give the launch a deep-link identity. The whole path from a press to a mounted player is in [`user-journey.md`](user-journey.md#starting-playback).
 
 ### Methods
 

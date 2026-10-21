@@ -145,6 +145,42 @@ namespace tests
       m.queue.callFunc("failPendingPlaybackStart", "test done")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a trailer launch")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is queued as a video, with no audio media")
+    function _()
+      trailer = CreateObject("roSGNode", "JellyfinBaseItem")
+      trailer.id = "trailer-1"
+      trailer.type = "Trailer"
+      m.queue.callFunc("launchItem", trailer)
+
+      m.assertEqual(m.queue.callFunc("getCount"), 1)
+      m.assertEqual(m.global.playbackLaunchRequest.id, "trailer-1")
+      m.assertFalse(m.global.playbackLaunchRequest.doesExist("media"))
+
+      m.queue.callFunc("failPendingPlaybackStart", "test done")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an audiobook launch")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is queued as audio")
+    function _()
+      audiobook = CreateObject("roSGNode", "JellyfinBaseItem")
+      audiobook.id = "audiobook-1"
+      audiobook.type = "AudioBook"
+      m.queue.callFunc("launchItem", audiobook)
+
+      m.assertEqual(m.queue.callFunc("getCount"), 1)
+      m.assertEqual(m.global.playbackLaunchRequest.id, "audiobook-1")
+      m.assertEqual(m.global.playbackLaunchRequest.media, "audio")
+
+      m.queue.callFunc("failPendingPlaybackStart", "test done")
+    end function
+
   end class
 
 end namespace

@@ -67,6 +67,8 @@ assignees
 AST
 async
 Async
+audiobook
+audiobooks
 auditable
 auth
 Auth

@@ -1,0 +1,58 @@
+import "pkg:/source/utils/misc.bs"
+
+' How an item of each Jellyfin type plays: the one table every Play decision reads. The details
+' screen shows Play only for a type listed here, QueueManager.playQueue picks the player from
+' it, and ItemDetails sends a "Play all" type to QuickPlayTask. Pure, so a test pins the table.
+'
+' A type missing here has no Play button and plays nothing. That is the safe default for a type
+' the app doesn't support yet (Book): a button that can't work is worse than none.
+namespace playKind
+
+  ' One item the audio player plays (AudioPlayerView).
+  const AUDIO = "audio"
+  ' One item the video player plays (PlayerHostView).
+  const VIDEO = "video"
+  ' A live channel, played by the video player. The details screen offers Watch, not Play.
+  const LIVE = "live"
+  ' A container whose Play builds a queue of its items (QuickPlayTask, "playAll" + type).
+  const PLAY_ALL = "playAll"
+  ' Not playable.
+  const NONE = ""
+
+  ' @param {dynamic} itemType - a Jellyfin item type, in any case ("Audio", "audio")
+  ' @return {string} one of the constants above
+  function of(itemType as dynamic) as string
+    if not isValidAndNotEmpty(itemType) then return playKind.NONE
+    ' An AA's keys are case-insensitive, so a queue's lowercased type finds its entry too.
+    kinds = {
+      "Audio": playKind.AUDIO,
+      "AudioBook": playKind.AUDIO,
+      "Movie": playKind.VIDEO,
+      "Episode": playKind.VIDEO,
+      "Video": playKind.VIDEO,
+      "MusicVideo": playKind.VIDEO,
+      "Recording": playKind.VIDEO,
+      "Trailer": playKind.VIDEO,
+      "Chapter": playKind.VIDEO,
+      "TvChannel": playKind.LIVE,
+      "Program": playKind.LIVE,
+      "Series": playKind.PLAY_ALL,
+      "Season": playKind.PLAY_ALL,
+      "BoxSet": playKind.PLAY_ALL,
+      "MusicArtist": playKind.PLAY_ALL,
+      "MusicAlbum": playKind.PLAY_ALL,
+      "Playlist": playKind.PLAY_ALL
+    }
+    kind = kinds.Lookup(itemType)
+    if not isValid(kind) then return playKind.NONE
+    return kind
+  end function
+
+  ' Whether the details screen offers a Play (or "Play all") button for this type. A live
+  ' type is watched through its own Watch button instead.
+  function hasPlayButton(itemType as dynamic) as boolean
+    kind = playKind.of(itemType)
+    return kind = playKind.AUDIO or kind = playKind.VIDEO or kind = playKind.PLAY_ALL
+  end function
+
+end namespace
