@@ -150,6 +150,10 @@ sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdro
 
   ' Force backdrop mode bypasses user settings (used for login splashscreen)
   if forceBackdrop
+    ' A forced write replaces the image behind the dedupe below, so forget the last URI:
+    ' otherwise the next screen writing that same URI (Home after a sign-out and back in)
+    ' is dropped as a duplicate and the cleared or splash image stays up.
+    m.lastBackdropUri = ""
     ' For empty URI in force mode, clear URI and reset state for next screen
     if uri = invalid or uri = ""
       m.imageFader.uri = ""
