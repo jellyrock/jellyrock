@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (backdrop) Show My Media backdrops and restore one after sign-in ([#1227](https://github.com/jellyrock/jellyrock/pull/1227))
 - (search) Pull-down keyboard, live suggestions and recent searches ([#1217](https://github.com/jellyrock/jellyrock/pull/1217))
 
 ### Fixed
