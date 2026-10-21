@@ -2634,7 +2634,7 @@ end sub
 '   - error.generic: op semantically unsupported in this context
 '   - unhandled: command we don't recognize; lets Roku show "Command not available"
 '
-' See https://github.com/rokudev/dev-doc, docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+' See https://gitlab.com/rokudev/dev-doc, docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
 function handleTransport(evt as object) as object
   if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
   cmd = lcase(evt.command)
