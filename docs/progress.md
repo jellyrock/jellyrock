@@ -741,6 +741,16 @@ What closes it, as part of audiobook support:
 
 Issue #1134 asks for backdrops that change over time. `feat/library-backdrops` gives each My Media tile one backdrop from an item inside the library: `libraryBackdrop.query` asks for `Limit: 1`, and `HomeRows` caches that one URL per library for Home's lifetime. The Jellyfin web client takes up to 20 (`src/scripts/autoBackdrops.js`, `SortBy=IsFavoriteOrLiked,Random`) and rotates them. Not done now: rotating needs a timer on Home with a lifecycle to get right (pause off Home, stop on teardown), and a UX call on how often to change. Closes when a focused My Media tile cycles through several backdrops, or when we decide not to rotate.
 
+#### The `JRScene` first-use backdrop setting check never runs (a boolean field cannot hold invalid) `[fid: jrscene-backdrop-lazy-resolve-dead]` `[captured 2026-10-21]`
+
+`JRScene.setBackgroundImage` and `onBackgroundImageUriChanged` decide backdrop visibility "on first use" with `if m.top.shouldShowBackdrop = invalid`, and the forced clear writes `m.top.shouldShowBackdrop = invalid`. The field is a `boolean` (`JRScene.xml`, declared `value="false"`), so it never holds `invalid` and the branch never runs. Measured over ODC on a Stick 4K (2026-10-20): after a forced clear the field reads `false`, and every ordinary backdrop write is ignored until `refreshBackdropSetting` runs, which only `Home.onScreenShown` calls. Dead from the start: `e909d0311` (2025-12-08) added the field, the branch and the Home refresh together; `eac8bb9ed` only renamed it. `docs/architecture/bootstrap.md` describes the lazy resolve as real.
+
+No user-visible failure shown: on known paths Home is shown before any other backdrop writer after sign-in (the cold deep-link clobber in tech-debt `backdrop-ownership-guard` implies the deep-linked item's backdrop was showing).
+
+Options: `resolve` (recommended): track "setting decided" with an `m` flag instead of `invalid` on a boolean field, reset by the forced clear, so the documented behavior becomes true for every path; small, one intended behavior change. `remove`: delete the dead branches and the `invalid` write, leave the Home refresh as the only decider, and correct `bootstrap.md`; no behavior change. `doc`: correct `bootstrap.md` only. No unit test covers the backdrop logic in `JRScene`.
+
+Not checked: whether any real path shows a backdrop-writing screen after sign-in before Home's `onScreenShown`, such as a cold deep link straight to an item. If one exists, that screen loses its backdrop today.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
