@@ -752,6 +752,14 @@ Options: `resolve` (recommended): track "setting decided" with an `m` flag inste
 
 Not checked: whether any real path shows a backdrop-writing screen after sign-in before Home's `onScreenShown`, such as a cold deep link straight to an item. If one exists, that screen loses its backdrop today.
 
+#### The Roku FLAC seek defect behind #662 is unreported, so its workaround has no exit `[fid: roku-flac-seek-defect-unreported]` `[captured 2026-10-21]`
+
+Roku can't finish a FLAC it starts at a non-zero position (a `seek` or a `PlayStart`) when the file's last frame is shorter than its frame size: it stalls in `playing` a moment before the end, or ends at once with "malformed data" (#662, [ADR 0052](../docs/adr/0052-flac-seek-server-stream.md)). JellyRock works around it by loading a FLAC stream the server starts at the seek target (`audioSeek.startAction()`, `AudioPlayerView.startAudioAt()`), with the `AudioPlayer` end guard as backstop. Nobody has told Roku, so no fix is tracked.
+
+Close it by reporting the defect to Roku (developer forum or partner channel) with the minimal reproduction: the same FLAC with and without its short last frame, seeking to 50% on Roku OS 15.3.4, where only the first freezes. Link the report here. When a Roku OS release fixes it, measure again and, if native FLAC seeks then finish, remove the server-stream path and decide whether the end guard stays.
+
+Why not now: it needs an account and a public post, which are the operator's to make.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
