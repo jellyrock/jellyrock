@@ -358,6 +358,10 @@ Renovate PR #1202 (brighterscript and bslint `1.0.0-alpha.57`) was closed on 202
 
 Closes when the next brighterscript bump builds clean with all three items handled.
 
+#### The hardware sync's GitLab fetch has not run in CI yet `[fid: roku-hardware-sync-gitlab-first-ci-run]` `[captured 2026-10-21]`
+
+`15f0377e` changed `.github/workflows/roku-hardware-sync.yml`: the fetch step no longer has `GH_TOKEN` and now reads GitLab through `npm run roku-hardware:fetch`, and the sync PR body builds a GitLab commit link from `UPSTREAM_FULL`. The fetch ran locally against GitLab (data checksum unchanged), but the workflow's shell was never run in CI, and the PR-body step only runs when device data changes. Close it after the first scheduled run following the merge: confirm the fetch step passes (`gh run list --workflow roku-hardware-sync.yml`), and trigger it with `workflow_dispatch` if no device change shows up soon. The committed dataset's provenance (`upstreamCommit` `c685ceb7`) is behind the current GitLab commit `8abc84b1` with identical data, so the next data change will also refresh it.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
