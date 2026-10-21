@@ -58,7 +58,7 @@ Use the slug the user passed. If none, propose a short kebab-case slug from the 
 
 ### Step 2 — Check the slug is free
 
-Run `bash .claude/skills/start-project/scaffold-project.sh --check {{slug}}`. It writes nothing. Exit 1 with "already exists" means the project is there: stop and route the user to `/resume-project {{slug}}`. Exit 1 for a bad slug: propose another. Exit 0: run `bash .claude/skills/start-project/priorities.sh line . --none` and show the user the line it prints (your #1, so new work is started knowing what it is not), then go on. It prints nothing on a machine that keeps no list. (The scaffold re-checks atomically in Step 4; this check only keeps the Charter co-design from being spent on a taken slug.)
+Run `bash .claude/skills/start-project/scaffold-project.sh --check {{slug}}`. It writes nothing. Exit 1 with "already exists" means the project is there: stop and route the user to `/resume-project {{slug}}`. Exit 1 for a bad slug: propose another. Exit 0: go on. (The scaffold re-checks atomically in Step 4; this check only keeps the Charter co-design from being spent on a taken slug.)
 
 ### Step 3 — Co-design the Charter with the user (the judgment)
 

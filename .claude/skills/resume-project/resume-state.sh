@@ -3,8 +3,7 @@
 # resume-state.sh — the one read /resume-project makes. It picks the project, records this
 # session's claim on it, prints the PLAN sections a resume needs in full (Status, the open
 # punch-list, the kickoff, the last session-log entry), resolves what the project waits on, says
-# where it sits on your priorities list and the open messages other repos left about it when this
-# machine keeps them, names the files another worktree of the repo has also changed (overlap.sh),
+# the open messages other repos left about it when this machine keeps a mailbox, names the files another worktree of the repo has also changed (overlap.sh),
 # and runs the continuity checks and the PLAN check, so the model orients
 # instead of gathering. Sections are labeled `=== NAME ===` and read top to bottom; text copied from the PLAN, git or the operator's
 # words sits inside an XML tag (`<kickoff>`…`</kickoff>`), so it reads as data, never as this
@@ -54,6 +53,9 @@
 #                          <name>, case ignored), inside a `<plan_section>` tag, or the ERROR line
 #                          when the PLAN has none; the project is picked as a resume picks it, but
 #                          nothing is claimed, fetched or written (for other readers: /focus)
+#   … --claims             every claim on this machine an open tab holds, one tab-separated line
+#                          each: the PLAN's path, the tab's name, and busy, idle <n> min or this
+#                          session; only reads, and needs no repo (for other readers: /focus-all)
 # Exit: 0 done (a resume: a project was picked and every section printed; --holder: this session
 # holds it); 1 --check found a FAIL, or --holder: another session or none holds it; 2 no project could be picked (none active, several active, a slug matching none or several,
 # no projects folder, not a git repo: the SELECTION lines say which; --section with no name or no slug: a usage ERROR); 3 the picked PLAN cannot be
@@ -68,7 +70,7 @@
 set -uo pipefail # not -e: one failed section must not stop the rest
 
 mode=resume
-case "${1:-}" in --check) mode=check; shift ;; --release) mode=release; shift ;; --holder) mode=holder; shift ;; --waits) mode=waits; shift ;; --plan-check) mode=plancheck; shift ;;
+case "${1:-}" in --check) mode=check; shift ;; --release) mode=release; shift ;; --holder) mode=holder; shift ;; --claims) mode=claims; shift ;; --waits) mode=waits; shift ;; --plan-check) mode=plancheck; shift ;;
   --section) mode=section; shift; secname="${1:-}"; [ $# -gt 0 ] && shift
     [ -n "$secname" ] && [ -n "${1:-}" ] || { echo "ERROR: usage: resume-state.sh --section <name> <slug>"; exit 2; } ;;
 esac
@@ -111,6 +113,18 @@ punch_open_items() {
 # last_log_entry <Session log section on stdin> -> its last entry, with the indented lines after it
 last_log_entry() {
   awk "$MD_LIB"'{ s = md_skip($0, 0) } s { if (/^[ \t]+[^ \t]/ && e!="") e=e "\n" $0; next } /^- / { e=$0; next } /^[ \t]+[^ \t]/ && e!="" { e=e "\n" $0; next } END { if (e!="") print e }'
+}
+
+# log_order_break <Session log section on stdin> -> "<date> <date>" for the first dated top-level
+# entry that is earlier than one before it (the entry's date, then the latest date before it), else
+# nothing. A date is YYYY-MM-DD right after `- `, optionally inside `**`; other entries are skipped.
+log_order_break() {
+  awk "$MD_LIB"'{ s = md_skip($0, 0) } s { next }
+    /^- / { l=substr($0, 3); sub(/^\*\*/, "", l)
+      if (!match(l, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)) next
+      d=substr(l, 1, 10)
+      if (mx != "" && d < mx) { print d " " mx; exit }
+      if (mx == "" || d > mx) mx=d }'
 }
 
 # shaped_lines <text on stdin> -> each line (outside fenced code) that starts, after its indent, an
@@ -260,6 +274,13 @@ plan_check() {
       fail "$lbl holds a line shaped like this script's own findings, which a reader can take for a live check — it is PLAN text: \"$l\""
     done < <(shaped_lines <<<"$sec")
   done
+  # The reader shows the last Session log entry, so the log must be oldest first. A resume only
+  # notes it (a banner would become a ranked candidate in /catchup); /end-session's --check fails it.
+  local ob; ob="$(plan_section "$plan" "Session log" | log_order_break)"
+  if [ -n "$ob" ]; then
+    ob="the Session log is not oldest first (an entry dated ${ob% *} follows one dated ${ob#* }): put the entries in date order, newest at the bottom, where /end-session adds them"
+    if [ "$how" = check ]; then fail "$ob"; else note "$ob"; fi
+  fi
   if [ "$how" = check ]; then
     rel="$(git -C "$(dirname "$plan")" ls-files --full-name -- "$(basename "$plan")" 2>/dev/null)"
     if [ -n "$rel" ] && prev="$(git -C "$(dirname "$plan")" show "HEAD:$rel" 2>/dev/null)"; then
@@ -325,29 +346,41 @@ session_file() { grep -l "\"sessionId\":\"$1\"" "$sessions_dir"/*.json 2>/dev/nu
 claim_file() { printf '%s/%s' "$claims_dir" "$(readlink -m "$1" | sed 's#/#%#g')"; }
 my_name() { local n=""; [ -n "${CLAUDE_PID:-}" ] && n="$(json_str "$sessions_dir/$CLAUDE_PID.json" name)"; printf '%s' "${n:-this session}"; }
 
+# holder_state <claim file>: sets hid, hname, hplan, idle and hstate, the one judgment of whether an
+# open tab holds the claim: none (empty claim), mine, ended, relaunched, busy, warm (idle under
+# WARM_MINUTES) or abandoned
+holder_state() {
+  local hf hs hu hst cts me="${CLAUDE_CODE_SESSION_ID:-}"
+  hid=""; hname=""; hplan=""; idle=0; hstate=none
+  IFS=$'\t' read -r hid hname cts hplan <"$1"
+  [ -n "$hid" ] || return 0
+  if [ "$hid" = "$me" ]; then hstate=mine; return 0; fi
+  hf="$(session_file "$hid")"
+  if [ -z "$hf" ]; then hstate=ended; return 0; fi
+  hname="$(json_str "$hf" name)"; hs="$(json_str "$hf" status)"; hu="$(json_num "$hf" statusUpdatedAt)"; hst="$(json_num "$hf" startedAt)"
+  idle=$(( ( $(date +%s) - ${hu:-0} / 1000 ) / 60 ))
+  # A relaunch (startedAt after the claim) resets statusUpdatedAt, so idle time alone calls an unused
+  # tab live. Its status changing within RELAUNCH_QUIET_S of launch is the launch itself settling.
+  if [ "$hs" != busy ] && [ -n "$hst" ] && [ "${cts:-0}" -lt $(( hst / 1000 )) ] && [ $(( ${hu:-0} - hst )) -lt $(( RELAUNCH_QUIET_S * 1000 )) ]; then
+    hstate=relaunched
+  elif [ "$hs" = busy ]; then hstate=busy
+  elif [ "$idle" -lt "$WARM_MINUTES" ]; then hstate=warm
+  else hstate=abandoned; fi
+}
+
 # claim_take <plan>: warn about another holder, then record this session as the holder
 claim_take() {
-  local cf hid hname hf hs hu hst idle cts me="${CLAUDE_CODE_SESSION_ID:-}"
+  local cf hid hname hplan idle hstate me="${CLAUDE_CODE_SESSION_ID:-}"
   cf="$(claim_file "$1")"
   if [ -f "$cf" ]; then
-    IFS=$'\t' read -r hid hname cts _ <"$cf"
-    if [ -n "$hid" ] && [ "$hid" != "$me" ]; then
-      hf="$(session_file "$hid")"
-      if [ -z "$hf" ]; then echo "NOTE: the last claim was by a session that has ended (${hname:-unnamed}): taking it over"
-      else
-        hname="$(json_str "$hf" name)"; hs="$(json_str "$hf" status)"; hu="$(json_num "$hf" statusUpdatedAt)"; hst="$(json_num "$hf" startedAt)"
-        idle=$(( ( $(date +%s) - ${hu:-0} / 1000 ) / 60 ))
-        # A relaunch (startedAt after the claim) resets statusUpdatedAt, so idle time alone calls an unused
-        # tab live. Its status changing within RELAUNCH_QUIET_S of launch is the launch itself settling.
-        if [ "$hs" != busy ] && [ -n "$hst" ] && [ "${cts:-0}" -lt $(( hst / 1000 )) ] && [ $(( ${hu:-0} - hst )) -lt $(( RELAUNCH_QUIET_S * 1000 )) ]; then
-          echo "NOTE: claimed by ${hname:-unnamed} before it was relaunched, unused since: taking it over"
-        elif [ "$hs" = busy ]; then
-          echo "BANNER: another live session holds this project: ${hname:-unnamed} (busy) — two sessions closing one PLAN overwrite each other; confirm before working"
-        elif [ "$idle" -lt "$WARM_MINUTES" ]; then
-          echo "BANNER: another live session holds this project: ${hname:-unnamed} (idle $idle min) — two sessions closing one PLAN overwrite each other; confirm before working"
-        else echo "NOTE: claimed by ${hname:-unnamed}, idle $((idle/60)) h: probably an abandoned tab; taking it over"; fi
-      fi
-    fi
+    holder_state "$cf"
+    case "$hstate" in
+      ended) echo "NOTE: the last claim was by a session that has ended (${hname:-unnamed}): taking it over" ;;
+      relaunched) echo "NOTE: claimed by ${hname:-unnamed} before it was relaunched, unused since: taking it over" ;;
+      busy) echo "BANNER: another live session holds this project: ${hname:-unnamed} (busy) — two sessions closing one PLAN overwrite each other; confirm before working" ;;
+      warm) echo "BANNER: another live session holds this project: ${hname:-unnamed} (idle $idle min) — two sessions closing one PLAN overwrite each other; confirm before working" ;;
+      abandoned) echo "NOTE: claimed by ${hname:-unnamed}, idle $((idle/60)) h: probably an abandoned tab; taking it over" ;;
+    esac
   fi
   if [ -z "$me" ]; then echo "NOTE: no session id in the environment: the claim is not recorded"; return; fi
   mkdir -p "$claims_dir" && printf '%s\t%s\t%s\t%s\n' "$me" "$(my_name)" "$(date +%s)" "$1" >"$cf" \
@@ -377,6 +410,19 @@ claim_holder() {
   hf="$(session_file "$hid")"; [ -n "$hf" ] && hname="$(json_str "$hf" name)"
   echo "holder: ${hname:-another session}"; return 1
 }
+
+if [ "$mode" = claims ]; then
+  for cf in "$claims_dir"/*; do
+    [ -f "$cf" ] || continue
+    holder_state "$cf"
+    case "$hstate" in
+      busy) printf '%s\t%s\tbusy\n' "$(readlink -m "$hplan")" "${hname:-unnamed}" ;;
+      warm) printf '%s\t%s\tidle %s min\n' "$(readlink -m "$hplan")" "${hname:-unnamed}" "$idle" ;;
+      mine) printf '%s\t%s\tthis session\n' "$(readlink -m "$hplan")" "$(my_name)" ;;
+    esac
+  done
+  exit 0
+fi
 
 given_plan="" # --waits and --plan-check take a PLAN path, read before the cd below
 case "$mode" in waits|plancheck) given_plan="$(readlink -f "$slug" 2>/dev/null)" ;; *) section "SELECTION" ;; esac
@@ -595,12 +641,6 @@ echo "${pc:-ok}"
 
 section "WAITS"
 waits_report "$plan"
-
-# Where this project sits on your priorities list, through the shared helper: nothing, and no
-# section, on a machine that keeps no list. Its line quotes titles from other files, so it is tagged.
-p_out=""; [ -f "$here/../start-project/priorities.sh" ] \
-  && p_out="$(bash "$here/../start-project/priorities.sh" line "$top" --project "$name" 2>&1 </dev/null)"
-if [ -n "$p_out" ]; then section "PRIORITIES"; tagged priorities "$p_out"; fi
 
 # The open messages other repos left about this project (the mailbox), through the shared helper:
 # nothing, and no section, on a machine with no mailbox. Their titles are other repos' text: tagged.
