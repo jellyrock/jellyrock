@@ -93,9 +93,9 @@ it('resuming a suspended grid does not manufacture cell appearances', async (tes
   // arrive, and it does so only when the suite runs in the order that puts that spec first:
   // caught 2026-08-22 by the full suite after the spec had passed twice in isolation.
   const expectedServer = await seedHome(session, LOCALE);
-  await seedLibraryLanding(session, moviesId, MOVIES_GRID.landing);
-  await hardRelaunch(); // never plain relaunch: the app re-persists over the seed
-  await assertSeedTookEffect(expectedServer, 'cell-load suspend/resume');
+  const landing = await seedLibraryLanding(session, moviesId, MOVIES_GRID.landing);
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
+  await assertSeedTookEffect(expectedServer, 'cell-load suspend/resume', { landing });
 
   await waitHome();
   // home -> Movies grid -> movie detail. Opening the detail SUSPENDS the grid

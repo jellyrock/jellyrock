@@ -72,8 +72,8 @@ beforeAll(async () => {
  */
 async function focusQuickConnectButton() {
   const expectedServer = await seedUserSelect(session, LOCALE);
-  // hardRelaunch, not relaunch: a plain relaunch re-persists the running session
-  // over the seed and the suite silently drives a signed-IN app.
+  // hardRelaunch, not relaunch: only a confirmed cold start reads the seed, and a
+  // seed the app never read leaves the suite silently driving a signed-IN app.
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'quickConnect');
 

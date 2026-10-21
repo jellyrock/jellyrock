@@ -192,11 +192,12 @@ export const RTA_CONFIG = {
   // `resolveContent` for why a missing film used to pass rather than fail.
   ...content,
   // Time to let the app boot + the RTA on-device component come up after a
-  // relaunch or a fresh deploy.
+  // `relaunch()`, a fresh deploy, or `hardRelaunch({ timing: 'fixed' })`. The default
+  // `hardRelaunch()` waits on signals instead (see its docblock).
   bootMs: 10000,
   // Time to let the channel fully EXIT after a Home keypress, before relaunching.
-  // Only `hardRelaunch` uses this: the restore path needs a genuine cold start
-  // so the app re-reads the registry instead of re-persisting its live session.
+  // Only `hardRelaunch({ timing: 'fixed' })` uses this; the default `hardRelaunch()`
+  // confirms the exit instead, which a cold start needs so the app reads the registry.
   exitMs: 4000,
   // Full capture matrix: folder name == the exact translationLocale value.
   // Functional tests exercise the first entry (en_US); the store orchestrator

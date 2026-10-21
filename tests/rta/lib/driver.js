@@ -11,7 +11,8 @@ import fs from 'node:fs';
 import { ecp, odc, device, utils } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { ODC_PORT, odcIsResident } from '../../../scripts/lib/odc-probe.js';
-import { sleep } from './steps.js';
+import { recordRecovery } from '../../../scripts/run-record.js';
+import { sleep, waitLandingSettled } from './steps.js';
 import { withTimeout } from './timeout.js';
 
 export { ecp, odc, device, utils };
@@ -251,12 +252,20 @@ const withDeployTimeout = (deployPromise) =>
   );
 
 /**
- * Foreground the dev channel and wait for boot + the RTA on-device component.
+ * Launch the dev channel and sleep `bootMs`.
  *
- * ⚠️ Not safe after writing the registry; use `hardRelaunch()` there. This only
- * foregrounds an already-running channel, so the app keeps its in-memory session
- * and re-persists it over anything freshly seeded. Use this only for relaunches that
- * do not depend on registry state having changed.
+ * ⚠️ After a registry write, use `hardRelaunch()`, not this. What a launch does to a
+ * channel that is already running is the OS's choice, and this confirms nothing: it
+ * waits for no exit and checks no screen. Measured 2026-10-20, it restarted a running
+ * app cold on a Stick 4K (Roku OS 15.3.4, 10 of 10) and on an Ultra (16.0.4, 20 of 20):
+ * an `m.global` marker set before the launch was gone after it, and the app held a
+ * landing view written to the registry in between. That contradicts the note this
+ * replaced, which said it "only foregrounds" a running channel; no measurement behind
+ * that note was recorded. `hardRelaunch()` confirms the exit itself, and
+ * `assertSeedTookEffect()` proves the result, so neither depends on which is true.
+ *
+ * Kept for callers that only need the channel up, including builds with no on-device
+ * component, where there is nothing to poll.
  */
 export async function relaunch() {
   await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
@@ -292,9 +301,11 @@ export async function relaunch() {
  * child. Sharing the version that throws is the point of sharing it; the difference was
  * in the one property a duplicate is most likely to get wrong.
  *
- * **Not a replacement for `bootMs`.** `relaunch()` is also used against `ENABLE_RTA=false`
- * builds, where ODC never answers at all, so polling there would burn the full timeout on
- * every call instead of sleeping once. The lifecycle sleeps stay.
+ * **It replaces `bootMs` only in `hardRelaunch()`'s polled path,** after
+ * `ensureOdcReachable()` has shown the port open. `relaunch()` and
+ * `hardRelaunch({ timing: 'fixed' })` keep sleeping, because they also run against
+ * `ENABLE_RTA=false` builds, where ODC never answers at all and polling would burn the full
+ * timeout on every call instead of sleeping once.
  *
  * @param {object} [opts]
  * @param {number} [opts.timeout] how long to wait for the scene to answer
@@ -321,29 +332,151 @@ export async function waitSceneAnswering({ timeout = 60000, interval = 500 } = {
 }
 
 /**
- * Restart the channel for real: exit to the Roku home screen first, then launch.
- *
- * An ECP `/launch/dev` against an already-running channel only foregrounds it, so
- * the app's in-memory session survives untouched. That is how a seeded demo
- * session outlived a "relaunch" and re-persisted itself over a restored
- * registry, leaving devices signed into `demo.jellyfin.org`. Exiting first
- * forces a cold start that actually re-reads the registry.
- *
- * **Every relaunch that follows a registry write must use this**, not `relaunch()`,
- * for the restore and for all seeding. An earlier revision applied that rule to the restore
- * path only, reasoning that mid-test relaunches wanted the cheap foreground path.
- * That was wrong in a way that hid for weeks: seeds were silently re-persisted
- * away, so the suite drove an app pointed at the operator's own server using
- * demo-server ids. Fixing the restore leak is what exposed it. Before that,
- * devices were routinely left on the demo server, so the seed happened to agree
- * with what was already there. See `assertSeedTookEffect` in seed.js, which now
- * fails loudly instead.
- *
- * Cost is `exitMs` (~4s) per call. That is the price of the seed actually taking.
+ * Ceiling on the channel exiting after the Home press. A Limit: the slowest exit measured
+ * was 0.78 s (Stick 4K, 20 samples, 2026-10-20), so this only ever fires on a channel that
+ * did not exit at all.
  */
-export async function hardRelaunch() {
+const CHANNEL_EXIT_TIMEOUT_MS = 10 * 1000;
+
+/** Cadence of the exit poll: one ECP read and one TCP connect per tick. */
+const CHANNEL_EXIT_POLL_MS = 100;
+
+/**
+ * How long the dev channel may stay in front after a Home press before the press counts as
+ * lost and is sent again: about 2.5x the slowest exit measured (0.78 s, 2026-10-20).
+ */
+const CHANNEL_EXIT_RESEND_MS = 2 * 1000;
+
+/**
+ * Ceiling on the scene answering once the component's port is open. The scene answered
+ * within tens of milliseconds of the port opening in every sample (2026-10-20), so this
+ * only bounds a component that accepts connections and never serves them.
+ */
+const SCENE_ANSWER_TIMEOUT_MS = 10 * 1000;
+
+/** The app ECP names while the dev channel is in front. */
+const frontAppId = (res) => (res?.app ? (res.app.id ?? res.app.title ?? '') : null);
+
+/**
+ * Wait until the dev channel has exited after a Home press.
+ *
+ * Two readings must agree: ECP's `query/active-app` names something other than the dev
+ * channel, and nothing listens on the ODC port, which the on-device component holds open
+ * for as long as the app runs. The first says what is in front; only the second says the
+ * app's process has gone, and a cold start needs the process gone.
+ *
+ * An ECP read that fails counts as "not yet", never as "exited". The poll reads ECP and TCP
+ * only, never ODC: the component is going away by design here, and an ODC call against a
+ * closed port crashes the process (see `ensureOdcReachable`). That is also why it throws a
+ * plain `Error` rather than through `diagnosedError`, which reads ODC to build its dump.
+ *
+ * **A Home press can be lost, so it is sent again.** On 2026-10-20 the first restart after a
+ * fresh deploy left the dev channel in front, port open, for the whole 10 s. The old fixed
+ * sleep never noticed, because it launched regardless. This re-sends Home while ECP still
+ * names the dev channel `resendMs` after the last press, and only then: an unknown reading
+ * sends nothing. Each re-press is recorded, because a recovery nobody sees hides how often it
+ * happens.
+ *
+ * @param {object} [options]
+ * @param {string} [options.host] device to probe; defaults to the configured one.
+ * @param {number} [options.port] the component's port. Only the tests pass this.
+ */
+export async function waitChannelExited({
+  host = device.getCurrentDeviceConfig().host,
+  port = ODC_PORT,
+  timeoutMs = CHANNEL_EXIT_TIMEOUT_MS,
+  pollMs = CHANNEL_EXIT_POLL_MS,
+  resendMs = CHANNEL_EXIT_RESEND_MS,
+} = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let resendAt = Date.now() + resendMs;
+  let resends = 0;
+  for (;;) {
+    const [front, resident] = await Promise.all([
+      ecp.getActiveApp({ retryCount: 0 }).then(frontAppId, () => null),
+      odcIsResident(host, { port }),
+    ]);
+    if (front !== null && front !== 'dev' && !resident) return;
+    if (front === 'dev' && Date.now() >= resendAt && Date.now() < deadline) {
+      resends += 1;
+      recordRecovery({
+        at: new Date().toISOString(),
+        what: 'Home press lost on restart',
+        detail:
+          `the dev channel was still in front ${resendMs} ms after the Home press, so the ` +
+          `press was taken as lost and sent again (resend ${resends} in this restart).`,
+        observed: { front, resident, resends },
+      });
+      await ecp.sendKeypress('Home');
+      resendAt = Date.now() + resendMs;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `the dev channel had not exited ${timeoutMs / 1000}s after the Home press ` +
+          `(in front: ${front === null ? 'unknown, ECP did not answer' : JSON.stringify(front)}; ` +
+          `ODC port ${resident ? 'still open' : 'closed'}). A Home press the device never ` +
+          'received leaves the app running, and launching it then would not start it cold.',
+      );
+    }
+    await sleep(pollMs);
+  }
+}
+
+/**
+ * Restart the channel cold: exit to the Roku home screen, confirm the exit, launch, and
+ * return once the first screen is up (and settled, when that screen is Home).
+ *
+ * **Every relaunch that follows a registry write must use this**, not `relaunch()`, for the
+ * restore and for all seeding: the app reads the registry only when it starts, so the seed
+ * reaches it only through a cold start. Exiting first and confirming the exit makes the
+ * cold start something this function checks, not a behavior of the OS it relies on (see
+ * `relaunch()`). `assertSeedTookEffect` in seed.js then proves the seed was read. An
+ * earlier revision applied this rule to the restore path only, and seeds were lost
+ * silently for weeks: the suite drove an app pointed at the operator's own server using
+ * demo-server ids.
+ *
+ * ## Why it polls
+ *
+ * It used to sleep `exitMs` and then `bootMs`, 14 s a call, and a default `test:rta` makes
+ * about 130 calls. Measured 2026-10-20 on a Stick 4K (20 samples): the app had exited 0.5 s
+ * after the Home press, its port was open 1.5 s after the launch, and Home's rows stopped
+ * changing 6.6 s after the press (8.1 s at worst). So each step now waits for its own
+ * signal: `waitChannelExited()`, then `ensureOdcReachable()` and `waitSceneAnswering()`,
+ * then `waitLandingSettled()`.
+ *
+ * The last step keeps the state every caller got from the sleep. After 14 s Home had long
+ * settled (the `waitHome()` that followed returned in 20 ms), while a polled restart reaches
+ * Home about 2.5 s before its rows stop changing. Returning then would start every walk
+ * inside the window the north star in `tests/rta/CLAUDE.md` describes.
+ *
+ * ## `timing: 'fixed'`
+ *
+ * The old sleeps, for the callers the polled path does not fit:
+ *  - builds with no on-device component (`measure`'s calibration arms, a Rooibos or
+ *    `build:prod` install), where there is no port to poll;
+ *  - `scripts/measure.js`'s sample loop, which opens its window `exitMs` after it calls this;
+ *  - the registry restore, which hands back the user's own registry: its server may be slow
+ *    or unreachable, so no screen is promised to land.
+ *
+ * @param {object} [options]
+ * @param {'polled'|'fixed'} [options.timing]
+ */
+export async function hardRelaunch({ timing = 'polled' } = {}) {
+  if (timing !== 'polled' && timing !== 'fixed') {
+    throw new Error(
+      `hardRelaunch: timing must be 'polled' or 'fixed', not ${JSON.stringify(timing)}`,
+    );
+  }
   await ecp.sendKeypress('Home');
-  await sleep(RTA_CONFIG.exitMs);
+  if (timing === 'fixed') {
+    await sleep(RTA_CONFIG.exitMs);
+    await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
+    await sleep(RTA_CONFIG.bootMs);
+    return;
+  }
+  await waitChannelExited();
   await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
-  await sleep(RTA_CONFIG.bootMs);
+  await ensureOdcReachable();
+  await waitSceneAnswering({ timeout: SCENE_ANSWER_TIMEOUT_MS, interval: 200 });
+  await waitLandingSettled();
 }

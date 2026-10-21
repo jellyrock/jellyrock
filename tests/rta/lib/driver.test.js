@@ -8,21 +8,64 @@
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // `driver.js` re-exports the device clients at module scope, so they have to exist for it
-// to import at all. Only `odc.getValue` is driven; `shippedRtaFlagMismatch` is pure and
-// never reaches any of this.
+// to import at all. `odc.getValue` and the ECP calls are driven by the restart tests;
+// `shippedRtaFlagMismatch` is pure and never reaches any of this.
 const getValue = vi.fn();
+const getActiveApp = vi.fn();
+const sendKeypress = vi.fn();
+const sendLaunchChannel = vi.fn();
 vi.mock('roku-test-automation', () => ({
   odc: { getValue: (...a) => getValue(...a) },
-  ecp: { sendKeypress: vi.fn(), sendLaunchChannel: vi.fn() },
+  ecp: {
+    sendKeypress: (...a) => sendKeypress(...a),
+    sendLaunchChannel: (...a) => sendLaunchChannel(...a),
+    getActiveApp: (...a) => getActiveApp(...a),
+  },
   device: { getCurrentDeviceConfig: () => ({ host: '127.0.0.1' }) },
   utils: { sleep: (ms) => new Promise((r) => setTimeout(r, ms)) },
 }));
 
-const { shippedRtaFlagMismatch, waitSceneAnswering, ensureOdcReachable } =
-  await import('./driver.js');
+// The TCP probe stays REAL unless a test swaps it: the `ensureOdcReachable` cases below test
+// real sockets on purpose, while the restart cases need to say when the port opens.
+const probe = { impl: null };
+vi.mock('../../../scripts/lib/odc-probe.js', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, odcIsResident: (...a) => (probe.impl ?? real.odcIsResident)(...a) };
+});
+
+// The fixed path sleeps `exitMs` and `bootMs`; at their real 14 s a unit test would wait
+// them out.
+vi.mock('../config.js', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, RTA_CONFIG: { ...real.RTA_CONFIG, exitMs: 5, bootMs: 5 } };
+});
+
+// A re-sent Home press is recorded as a recovery, which writes into the run record outside a
+// run; a spy keeps it out of the repo and lets the tests read what was recorded.
+const recordRecovery = vi.fn();
+vi.mock('../../../scripts/run-record.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  recordRecovery: (...a) => recordRecovery(...a),
+}));
+
+// The landing half lives in `steps.js` and has its own tests there; here it only has to
+// run last.
+const waitLandingSettled = vi.fn();
+vi.mock('./steps.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  waitLandingSettled: (...a) => waitLandingSettled(...a),
+}));
+
+const {
+  shippedRtaFlagMismatch,
+  waitSceneAnswering,
+  ensureOdcReachable,
+  waitChannelExited,
+  hardRelaunch,
+} = await import('./driver.js');
 
 describe('shippedRtaFlagMismatch — did the ENABLE_RTA flip actually take?', () => {
   const RTA = 'bs_const=debug=false;ENABLE_RTA=true;perfTiming=true';
@@ -208,5 +251,155 @@ describe('ensureOdcReachable — refuse the first ODC call rather than hang on i
     } finally {
       await new Promise((r) => silent.close(r));
     }
+  });
+});
+
+/** ECP's answer while the Roku home screen is in front: it carries a title and no id. */
+const HOME_SCREEN = { app: { title: 'Roku' } };
+/** ECP's answer while the dev channel is in front. */
+const DEV_CHANNEL = { app: { id: 'dev', title: 'JellyRock' } };
+
+/**
+ * `waitChannelExited` decides whether the launch after it starts the app COLD, which is the
+ * only way a seed reaches it. So the property gated is that it never says "exited" early: not
+ * while the channel is still in front, not while its port is still open, and not on an ECP
+ * read that failed.
+ */
+describe('waitChannelExited — the restart launches only after the app is gone', () => {
+  beforeEach(() => {
+    getActiveApp.mockReset();
+    sendKeypress.mockReset();
+    recordRecovery.mockReset();
+    probe.impl = vi.fn();
+  });
+  afterEach(() => {
+    probe.impl = null;
+  });
+
+  const wait = (opts = {}) => waitChannelExited({ timeoutMs: 500, pollMs: 5, ...opts });
+
+  it('returns once another app is in front AND the port has closed', async () => {
+    getActiveApp.mockResolvedValue(HOME_SCREEN);
+    probe.impl.mockResolvedValue(false);
+    await expect(wait()).resolves.toBeUndefined();
+    expect(getActiveApp).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps waiting while the dev channel is still in front', async () => {
+    getActiveApp
+      .mockResolvedValueOnce(DEV_CHANNEL)
+      .mockResolvedValueOnce(DEV_CHANNEL)
+      .mockResolvedValue(HOME_SCREEN);
+    probe.impl.mockResolvedValue(false);
+    await wait();
+    expect(getActiveApp).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps waiting while the port is still open, whatever ECP says is in front', async () => {
+    // ECP says what is in front; only the port says the app's process has gone.
+    getActiveApp.mockResolvedValue(HOME_SCREEN);
+    probe.impl.mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValue(false);
+    await wait();
+    expect(probe.impl).toHaveBeenCalledTimes(3);
+  });
+
+  it('treats an ECP read that failed as "not yet", never as "exited"', async () => {
+    getActiveApp.mockRejectedValueOnce(new Error('ECONNRESET')).mockResolvedValue(HOME_SCREEN);
+    probe.impl.mockResolvedValue(false);
+    await wait();
+    expect(getActiveApp).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not read an answer with no app in it as "exited"', async () => {
+    getActiveApp.mockResolvedValue({});
+    probe.impl.mockResolvedValue(false);
+    await expect(wait({ timeoutMs: 40 })).rejects.toThrow(/had not exited/);
+  });
+
+  it('re-sends a Home press the device lost, and records that it did', async () => {
+    // Seen on the first restart after a fresh deploy: the channel stayed in front, port open.
+    let presses = 0;
+    sendKeypress.mockImplementation(async () => presses++);
+    getActiveApp.mockImplementation(async () => (presses > 0 ? HOME_SCREEN : DEV_CHANNEL));
+    probe.impl.mockImplementation(async () => presses === 0);
+    await wait({ resendMs: 20 });
+    expect(sendKeypress).toHaveBeenCalledWith('Home');
+    expect(recordRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  it('never re-sends Home on a reading it could not make', async () => {
+    getActiveApp.mockRejectedValue(new Error('ECONNRESET'));
+    probe.impl.mockResolvedValue(true);
+    await wait({ timeoutMs: 80, resendMs: 10 }).catch(() => {});
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('gives up with what it saw, as a plain Error (ODC is down, so no device dump)', async () => {
+    getActiveApp.mockRejectedValue(new Error('ECONNRESET'));
+    probe.impl.mockResolvedValue(true);
+    const err = await wait({ timeoutMs: 40 }).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/ECP did not answer/);
+    expect(err.message).toMatch(/ODC port still open/);
+  });
+});
+
+describe('hardRelaunch — a confirmed cold start, then the landing', () => {
+  let log;
+  let launched;
+
+  beforeEach(() => {
+    log = [];
+    launched = false;
+    sendKeypress.mockReset().mockImplementation(async (key) => log.push(`key:${key}`));
+    sendLaunchChannel.mockReset().mockImplementation(async () => {
+      launched = true;
+      log.push('launch');
+    });
+    getActiveApp.mockReset().mockImplementation(async () => {
+      log.push('front');
+      return launched ? DEV_CHANNEL : HOME_SCREEN;
+    });
+    probe.impl = vi.fn(async () => {
+      log.push(launched ? 'port-open' : 'port-closed');
+      return launched;
+    });
+    getValue.mockReset().mockImplementation(async () => {
+      log.push('scene');
+      return { found: true };
+    });
+    waitLandingSettled.mockReset().mockImplementation(async () => log.push('landing'));
+  });
+  afterEach(() => {
+    probe.impl = null;
+  });
+
+  it('presses Home, confirms the exit, launches, then waits for port, scene and landing', async () => {
+    await hardRelaunch();
+
+    const first = (step) => log.indexOf(step);
+    for (const step of ['key:Home', 'front', 'port-closed', 'launch', 'port-open', 'scene']) {
+      expect(log).toContain(step);
+    }
+    expect(log.at(-1)).toBe('landing');
+    expect(first('key:Home')).toBe(0);
+    // The launch comes only after the exit was confirmed, by both readings.
+    expect(first('front')).toBeLessThan(first('launch'));
+    expect(first('port-closed')).toBeLessThan(first('launch'));
+    expect(first('launch')).toBeLessThan(first('port-open'));
+    expect(first('port-open')).toBeLessThan(first('scene'));
+  });
+
+  it("with timing: 'fixed', sleeps instead and polls nothing", async () => {
+    // For builds with no on-device component, where polling would burn every timeout.
+    await hardRelaunch({ timing: 'fixed' });
+
+    expect(log).toEqual(['key:Home', 'launch']);
+    expect(waitLandingSettled).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unknown timing before it presses anything', async () => {
+    await expect(hardRelaunch({ timing: 'fast' })).rejects.toThrow(/timing must be/);
+    expect(sendKeypress).not.toHaveBeenCalled();
   });
 });

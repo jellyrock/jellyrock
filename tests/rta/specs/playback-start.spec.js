@@ -147,9 +147,13 @@ it('Back mid-start from details ends the start', async () => {
 it("Play on a song's details opens the audio player", async () => {
   const expectedServer = await seedHome(ctx.session, LOCALE);
   // navAudioDetails walks Albums -> album -> song, so the music library must land on Albums.
-  await seedLibraryLanding(ctx.session, libraryIdFor(ctx.libraries, 'music'), 'Albums');
+  const landing = await seedLibraryLanding(
+    ctx.session,
+    libraryIdFor(ctx.libraries, 'music'),
+    'Albums',
+  );
   await hardRelaunch();
-  await assertSeedTookEffect(expectedServer, 'playback-start');
+  await assertSeedTookEffect(expectedServer, 'playback-start', { landing });
   await navAudioDetails(ctx);
   await focusDetailButton('playButton');
   await press(ecp.Key.Ok);

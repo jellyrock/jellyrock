@@ -45,9 +45,9 @@
  *
  * Then: snapshot the WHOLE registry to disk BEFORE any write (`lib/registry.js`; that file
  * is the device's only backup and the reason a killed run is still recoverable), authenticate,
- * seed, cold restart, and PROVE the seed took. `assertSeedTookEffect` is not ceremony: a plain
- * relaunch only foregrounds a running channel, so the app re-persists its in-memory session
- * over the seed and the run measures the wrong server using the right server's name.
+ * seed, cold restart, and PROVE the seed took. `assertSeedTookEffect` is not ceremony: an app
+ * that did not start cold keeps its in-memory session and can write it back over the seed, and
+ * the run then measures the wrong server using the right server's name.
  *
  * Putting the device back is not this script's job: the driver runs
  * `rta-restore.js` after the series, so a device is restored whether the measurement passed,
@@ -246,7 +246,9 @@ async function signIn() {
   // FIRST. See the header: the ODC is inside the app, and reading the registry of a device
   // parked on the Roku home screen hangs rather than failing.
   console.log(`[signin] ${host}: relaunching so the on-device component is reachable ...`);
-  await hardRelaunch();
+  // Fixed timing: this runs before anything shows the resident build has an on-device
+  // component, and the header's wall-clock limit is what handles one that does not.
+  await hardRelaunch({ timing: 'fixed' });
 
   await snapshotRegistry();
 
@@ -254,7 +256,7 @@ async function signIn() {
   const session = await authenticate({ url, username, password }, { role: 'measure-matrix' });
 
   const seeded = await seedHome(session, locale);
-  await hardRelaunch();
+  await hardRelaunch({ timing: 'fixed' });
   await assertSeedTookEffect(seeded, `measure:devices --sign-in (${host})`);
 
   // The locale is named because the seed CHANGED it and no record will carry it: see the

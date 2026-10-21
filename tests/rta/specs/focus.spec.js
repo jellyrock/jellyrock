@@ -37,7 +37,7 @@ beforeAll(async () => {
 
 it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
   const expectedServer = await seedHome(session, LOCALE);
-  await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
   await assertSeedTookEffect(expectedServer, 'focus restoration');
   await waitHome();
 

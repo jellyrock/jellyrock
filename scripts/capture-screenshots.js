@@ -393,18 +393,19 @@ async function main() {
     else if (screen.state === 'serverSelect')
       expectedServer = await seedServerSelect(session, locale);
     // Deterministic landing view for library-dependent screens (resolve id at runtime).
+    let landing = null;
     if (screen.view) {
-      await seedLibraryLanding(
+      landing = await seedLibraryLanding(
         session,
         libraryIdFor(libraries, screen.view.collectionType),
         screen.view.landing,
       );
     }
-    // hardRelaunch, not relaunch (see assertSeedTookEffect). A soft relaunch lets
-    // the running app re-persist its own session over the seed, which here would
-    // silently photograph the WRONG server's library into the public store set.
+    // hardRelaunch, not relaunch (see assertSeedTookEffect). A seed the app never
+    // read would silently photograph the WRONG server's library, or the wrong view,
+    // into the public store set.
     await hardRelaunch();
-    await assertSeedTookEffect(expectedServer, screen.name);
+    await assertSeedTookEffect(expectedServer, screen.name, { landing });
     if (screen.nav) await screen.nav(ctx);
     // Store-only polish: fill the un-capturable black video plane with the real
     // in-film frame (osd's paused frame). trickplay has no backdrop on purpose: it
