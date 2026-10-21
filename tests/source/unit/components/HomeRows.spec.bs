@@ -1,362 +1,127 @@
 namespace tests
 
+  ' What HomeRows asks the scene to show as the backdrop when focus moves. The scene manager
+  ' is BaseTestSuite's MockSceneManager, which records each setBackgroundImage request.
   @suite("HomeRows - updateBackdropForFocusedItem()")
   class HomeRowsUpdateBackdropTests extends tests.BaseTestSuite
 
     protected homeRows as dynamic
 
-    protected override sub setup()
-      super.setup()
-
-      ' Create a test instance of HomeRows component for isolated testing
+    ' beforeEach, not setup: every test loads its own content (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
       m.homeRows = CreateObject("roSGNode", "HomeRows")
+      if not m.global.doesExist("activeRoutedView") then m.global.addField("activeRoutedView", "node", false)
+      m.global.activeRoutedView = invalid
+    end function
 
-      ' Create a mock sceneManager
-      if not m.global.doesExist("sceneManager")
-        m.global.addField("sceneManager", "node", false)
-        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
-      end if
-    end sub
-
-    protected override sub teardown()
-      super.teardown()
+    protected override function afterEach()
+      m.global.activeRoutedView = invalid
       m.homeRows = invalid
-    end sub
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Invalid rowItemFocused scenarios")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("handles invalid rowItemFocused gracefully")
-    function _()
-      m.homeRows.rowItemFocused = invalid
-
-      ' Should not crash
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
+      super.afterEach()
     end function
 
-    @it("handles rowItemFocused with -1 row index")
-    function _()
-      m.homeRows.rowItemFocused = [-1, 0]
-
-      ' Should not crash
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    @it("handles rowItemFocused with -1 item index")
-    function _()
-      m.homeRows.rowItemFocused = [0, -1]
-
-      ' Should not crash
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    @it("handles rowItemFocused with both indices -1")
-    function _()
-      m.homeRows.rowItemFocused = [-1, -1]
-
-      ' Should not crash
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Empty content scenarios")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("handles invalid content gracefully")
-    function _()
-      m.homeRows.content = invalid
-      m.homeRows.rowItemFocused = [0, 0]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    @it("handles empty content (no rows)")
-    function _()
-      ' Content exists but has no children
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      m.homeRows.rowItemFocused = [0, 0]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    @it("handles row with no items")
-    function _()
-      ' Create a row with no items
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      m.homeRows.content.CreateChild("HomeRow")
-      m.homeRows.rowItemFocused = [0, 0]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Out of bounds indices")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("handles row index out of bounds (exceeds row count)")
-    function _()
-      ' Create content with 2 rows
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      row1 = m.homeRows.content.CreateChild("HomeRow")
-      row1Item = row1.CreateChild("ContentNode")
-      row1Item.addField("backdropUrl", "string", false)
-      row1Item.backdropUrl = "http://test.com/backdrop1.jpg"
-
-      row2 = m.homeRows.content.CreateChild("HomeRow")
-      row2Item = row2.CreateChild("ContentNode")
-      row2Item.addField("backdropUrl", "string", false)
-      row2Item.backdropUrl = "http://test.com/backdrop2.jpg"
-
-      ' Try to access row index 2 (out of bounds - only 0 and 1 exist)
-      m.homeRows.rowItemFocused = [2, 0]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    @it("handles item index out of bounds (exceeds item count)")
-    function _()
-      ' Create content with 1 row containing 2 items
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      row = m.homeRows.content.CreateChild("HomeRow")
-
-      item1 = row.CreateChild("ContentNode")
-      item1.addField("backdropUrl", "string", false)
-      item1.backdropUrl = "http://test.com/backdrop1.jpg"
-
-      item2 = row.CreateChild("ContentNode")
-      item2.addField("backdropUrl", "string", false)
-      item2.backdropUrl = "http://test.com/backdrop2.jpg"
-
-      ' Try to access item index 2 (out of bounds - only 0 and 1 exist)
-      m.homeRows.rowItemFocused = [0, 2]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    @it("handles row index at exact boundary (equals row count)")
-    function _()
-      ' Create content with 2 rows (indices 0 and 1)
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      row1 = m.homeRows.content.CreateChild("HomeRow")
-      row1.CreateChild("ContentNode")
-
-      row2 = m.homeRows.content.CreateChild("HomeRow")
-      row2.CreateChild("ContentNode")
-
-      ' Try to access row index 2 (equals getChildCount())
-      m.homeRows.rowItemFocused = [2, 0]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    @it("handles item index at exact boundary (equals item count)")
-    function _()
-      ' Create content with 1 row containing 2 items (indices 0 and 1)
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      row = m.homeRows.content.CreateChild("HomeRow")
-      row.CreateChild("ContentNode")
-      row.CreateChild("ContentNode")
-
-      ' Try to access item index 2 (equals getChildCount())
-      m.homeRows.rowItemFocused = [0, 2]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Valid backdrop updates")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("updates backdrop when all conditions are valid")
-    function _()
-      ' Create valid content structure
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      row = m.homeRows.content.CreateChild("HomeRow")
-
-      item = row.CreateChild("ContentNode")
-      expectedBackdropUrl = "http://test.com/backdrop.jpg"
-      item.addField("backdropUrl", "string", false)
-      item.backdropUrl = expectedBackdropUrl
-
-      m.homeRows.rowItemFocused = [0, 0]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' Function should complete without crashing - backdrop should be set
-      m.assertTrue(true)
-    end function
-
-    @it("does not update when item has no backdropUrl field")
-    function _()
-      ' Create item without backdropUrl
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      row = m.homeRows.content.CreateChild("HomeRow")
-      row.CreateChild("ContentNode")
-
-      m.homeRows.rowItemFocused = [0, 0]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    @it("does not update when item has invalid backdropUrl")
-    function _()
-      ' Create item with invalid backdropUrl
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      row = m.homeRows.content.CreateChild("HomeRow")
-      item = row.CreateChild("ContentNode")
-      item.addField("backdropUrl", "string", false)
-      item.backdropUrl = invalid
-
-      m.homeRows.rowItemFocused = [0, 0]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' If we got here without crashing, the test passed
-      m.assertTrue(true)
-    end function
-
-    @it("does not update when item has empty backdropUrl")
-    function _()
-      ' Create item with empty string backdropUrl
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      row = m.homeRows.content.CreateChild("HomeRow")
-      item = row.CreateChild("ContentNode")
-      item.addField("backdropUrl", "string", false)
-      item.backdropUrl = ""
-
-      m.homeRows.rowItemFocused = [0, 0]
-
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' Should not crash (empty string is not valid)
-      m.assertTrue(true)
-    end function
-
-    @it("updates backdrop for different row and item positions")
-    @params(0, 0)
-    @params(1, 0)
-    @params(0, 1)
-    @params(1, 2)
-    function _(rowIndex, itemIndex)
-      ' Create content with 2 rows, each with 3 items
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-
-      for r = 0 to 1
-        row = m.homeRows.content.CreateChild("HomeRow")
-        for i = 0 to 2
-          item = row.CreateChild("ContentNode")
-          item.addField("backdropUrl", "string", false)
-          item.backdropUrl = `http://test.com/backdrop${r}${i}.jpg`
-        end for
+    ' A row of items; each spec is { id, type, backdropTags } or a prebuilt node.
+    private function makeRow(specs as object) as object
+      row = CreateObject("roSGNode", "HomeRow")
+      for each spec in specs
+        item = CreateObject("roSGNode", "JellyfinBaseItem")
+        item.setFields({ id: spec.id, type: spec.type })
+        if isValid(spec.backdropTags) then item.backdropImageTags = spec.backdropTags
+        row.appendChild(item)
       end for
+      return row
+    end function
 
-      m.homeRows.rowItemFocused = [rowIndex, itemIndex]
+    ' Loads rows, moves focus with jumpToRowItem (rowItemFocused is READ_ONLY on a RowList),
+    ' checks focus really landed, then clears what the mock recorded on the way.
+    private function focus(rows as object, indices as object)
+      content = CreateObject("roSGNode", "ContentNode")
+      for each row in rows
+        content.appendChild(row)
+      end for
+      m.homeRows.content = content
+      m.homeRows.jumpToRowItem = indices
+      focused = m.homeRows.rowItemFocused
+      m.assertEqual(focused[0], indices[0], "focus moved to the row")
+      m.assertEqual(focused[1], indices[1], "focus moved to the item")
+      m.global.sceneManager.setFields({ lastBackgroundImage: "<none>", backgroundImageWrites: 0 })
+    end function
 
-      m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' Function should complete without crashing - backdrop should be set
-      m.assertTrue(true)
+    private function lastWrite() as string
+      return m.global.sceneManager.lastBackgroundImage
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Integration with row updates")
+    @describe("an item")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("updates backdrop correctly after replaceChild on focused row")
+    @it("shows the focused item's own backdrop")
     function _()
-      ' Create initial content
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      oldRow = m.homeRows.content.CreateChild("HomeRow")
-      oldItem = oldRow.CreateChild("ContentNode")
-      oldItem.addField("backdropUrl", "string", false)
-      oldItem.backdropUrl = "http://test.com/old.jpg"
-
-      ' Focus on the item
-      m.homeRows.rowItemFocused = [0, 0]
-
-      ' Replace the row with new content
-      newRow = CreateObject("roSGNode", "HomeRow")
-      newRow.title = "New Row"
-      newItem = newRow.CreateChild("ContentNode")
-      newItem.addField("backdropUrl", "string", false)
-      newItem.backdropUrl = "http://test.com/new.jpg"
-
-      m.homeRows.content.replaceChild(newRow, 0)
-
-      ' Call updateBackdropForFocusedItem (simulating what happens in row update functions)
+      m.focus([m.makeRow([{ id: "movie1", type: "Movie", backdropTags: ["tagA"] }])], [0, 0])
       m.homeRows.callFunc("updateBackdropForFocusedItem")
-
-      ' Should update to the new item's backdrop without crashing
-      m.assertTrue(true)
+      m.assertEqual(m.global.sceneManager.backgroundImageWrites, 1)
+      m.assertNotEqual(m.lastWrite().inStr("/Items/movie1/Images/Backdrop"), -1, m.lastWrite())
+      m.assertNotEqual(m.lastWrite().inStr("tag=tagA"), -1, m.lastWrite())
     end function
 
-    @it("handles replaceChild where new row has fewer items than focus position")
+    @it("follows focus to another row and item")
     function _()
-      ' Create initial content with 3 items
-      m.homeRows.content = CreateObject("roSGNode", "ContentNode")
-      oldRow = m.homeRows.content.CreateChild("HomeRow")
-      for i = 0 to 2
-        item = oldRow.CreateChild("ContentNode")
-        item.addField("backdropUrl", "string", false)
-        item.backdropUrl = `http://test.com/item${i}.jpg`
-      end for
-
-      ' Focus on third item (index 2)
-      m.homeRows.rowItemFocused = [0, 2]
-
-      ' Replace with new row that only has 2 items
-      newRow = CreateObject("roSGNode", "HomeRow")
-      newRow.title = "Shorter Row"
-      for i = 0 to 1
-        item = newRow.CreateChild("ContentNode")
-        item.addField("backdropUrl", "string", false)
-        item.backdropUrl = `http://test.com/new${i}.jpg`
-      end for
-
-      m.homeRows.content.replaceChild(newRow, 0)
-
-      ' Call updateBackdropForFocusedItem
+      rows = [
+        m.makeRow([{ id: "a", type: "Movie", backdropTags: ["tagA"] }]),
+        m.makeRow([{ id: "b", type: "Movie", backdropTags: ["tagB"] }, { id: "c", type: "Movie", backdropTags: ["tagC"] }])
+      ]
+      m.focus(rows, [1, 1])
       m.homeRows.callFunc("updateBackdropForFocusedItem")
+      m.assertNotEqual(m.lastWrite().inStr("/Items/c/Images/Backdrop"), -1, m.lastWrite())
+    end function
 
-      ' Should not crash (index out of bounds is handled gracefully)
-      m.assertTrue(true)
+    @it("clears the backdrop for an item with none")
+    function _()
+      m.focus([m.makeRow([{ id: "photo1", type: "Photo" }])], [0, 0])
+      m.homeRows.callFunc("updateBackdropForFocusedItem")
+      m.assertEqual(m.global.sceneManager.backgroundImageWrites, 1)
+      m.assertEqual(m.lastWrite(), "")
+    end function
+
+    @it("clears the backdrop when the focused row was replaced by a shorter one")
+    function _()
+      m.focus([m.makeRow([{ id: "a", type: "Movie", backdropTags: ["t"] }, { id: "b", type: "Movie", backdropTags: ["t"] }])], [0, 1])
+      m.homeRows.content.replaceChild(m.makeRow([{ id: "c", type: "Movie", backdropTags: ["t"] }]), 0)
+      m.global.sceneManager.setFields({ lastBackgroundImage: "<none>", backgroundImageWrites: 0 })
+      m.homeRows.callFunc("updateBackdropForFocusedItem")
+      m.assertEqual(m.lastWrite(), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a My Media tile")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows a library's own backdrop when it has one")
+    function _()
+      m.focus([m.makeRow([{ id: "lib1", type: "CollectionFolder", backdropTags: ["libTag"] }])], [0, 0])
+      m.homeRows.callFunc("updateBackdropForFocusedItem")
+      m.assertNotEqual(m.lastWrite().inStr("/Items/lib1/Images/Backdrop"), -1, m.lastWrite())
+    end function
+
+    @it("clears the backdrop while a library without one is looked up")
+    function _()
+      m.focus([m.makeRow([{ id: "lib2", type: "CollectionFolder" }])], [0, 0])
+      m.homeRows.callFunc("updateBackdropForFocusedItem")
+      m.assertEqual(m.global.sceneManager.backgroundImageWrites, 1)
+      m.assertEqual(m.lastWrite(), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("another screen is in front")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves the backdrop alone when Home is not the active view")
+    function _()
+      m.focus([m.makeRow([{ id: "movie1", type: "Movie", backdropTags: ["tagA"] }])], [0, 0])
+      m.global.activeRoutedView = CreateObject("roSGNode", "ContentNode")
+      m.homeRows.callFunc("updateBackdropForFocusedItem")
+      m.assertEqual(m.global.sceneManager.backgroundImageWrites, 0)
     end function
 
   end class

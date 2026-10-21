@@ -98,15 +98,11 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `homerows-spec-asserts-nothing`
 
-- **area**: [`tests/source/unit/components/HomeRows.spec.bs`](../../tests/source/unit/components/HomeRows.spec.bs), [`components/home/HomeRows.xml`](../../components/home/HomeRows.xml), [`bsconfig-tests-unit.json`](../../bsconfig-tests-unit.json)
-- **issue**: The suite's 18 tests verify nothing, and they are green in CI. There are two defects, either enough on its own. Every assertion is `m.assertTrue(true)`. And every test calls `m.homeRows.callFunc("updateBackdropForFocusedItem")`, which is a silent no-op: the function is not in `HomeRows.xml`'s `<interface>`, and an undeclared `callFunc` runs nothing and raises nothing ([`components/CLAUDE.md`](../../components/CLAUDE.md)). The `callfunc-interface` plugin would make that a build error, but no test bsconfig loads it, and [`bsconfig.json`](../../bsconfig.json) does not include `tests/`. So the test build cannot catch this class. The #1010 caption teardown fix found the same class elsewhere.
+- **area**: the test bsconfig plugin lists ([`bsconfig-tests-unit.json`](../../bsconfig-tests-unit.json)), [`components/home/HomeRows.bs`](../../components/home/HomeRows.bs) (`buildSectionPlan`)
+- **issue**: Two gaps are left from a suite that verified nothing. Its assertions were `m.assertTrue(true)`, and every test called an undeclared `callFunc`, which runs nothing and raises nothing ([`components/CLAUDE.md`](../../components/CLAUDE.md)). The assertions, the `<interface>` declaration and the per-test build are fixed. What is left: no test bsconfig loads the `callfunc-interface` plugin, and [`bsconfig.json`](../../bsconfig.json) does not include `tests/`, so the test build still cannot catch an undeclared `callFunc` in a spec. The #1010 caption teardown fix found the same class elsewhere. And `buildSectionPlan()` has no direct test: [`homeSlots.spec.bs`](../../tests/source/unit/utils/homeSlots.spec.bs) covers the slot count, the settings fields, `user.SaveUserHomeSections()` and `user.hasHomeSectionData()`.
 - **direction**:
-  - Give the tests real assertions; they can read the backdrop `m.global.sceneManager` recorded.
-  - Declare `updateBackdropForFocusedItem` in the `<interface>`, so the calls run.
   - Add `callfunc-interface` to the test plugin lists, so an undeclared `callFunc` in a spec fails the build. That plugin list is the duplication [`bsconfig-files-duplicated`](#bsconfig-files-duplicated) tracks.
-  - Audit before rewriting. The suite has been vacuous since it was written (81f2397c1), so the behaviors it names were never covered and need real cases.
-
-  It is also on [`rooibos-setup-not-per-test`](#rooibos-setup-not-per-test)'s list, so do both in one pass. `buildSectionPlan()` has no direct test either: [`homeSlots.spec.bs`](../../tests/source/unit/utils/homeSlots.spec.bs) covers the slot count, the settings fields, `user.SaveUserHomeSections()` and `user.hasHomeSectionData()`. Add a plan-level case once the seam exists, or extract the plan builder into `source/` as a pure function.
+  - Add a plan-level case for `buildSectionPlan()` once the seam exists, or extract the plan builder into `source/` as a pure function.
 
 ### Medium
 
@@ -184,8 +180,8 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `backdrop-ownership-guard`
 
 - **area**: `components/JRScene.bs` (`setBackgroundImage`, `imageFader`), `components/ui/BackdropFader.*`, and every backdrop writer (`HomeRows`, `FavoritesRows`, `BaseGridView`, `ItemDetails`, `SearchScreen`, `AudioPlayerView`, `queueBackdropHelper`)
-- **issue**: There is one backdrop node (`JRScene.imageFader`), and `setBackgroundImage` is last-writer-wins with no notion of which routed view owns the screen. A view whose data lands after it stopped being the active view can overwrite the foreground's backdrop. Home's late row load once blanked a deep-linked `ItemDetails` backdrop. `HomeRows.updateBackdropForFocusedItem` now guards with `backgroundWriteIsStale` ([`backdrop.bs`](../../source/utils/backdrop.bs)), but the other writers do not. Separately, the `forceBackdrop` clear empties `imageFader.uri` without resetting `m.lastBackdropUri`, so a later write of the same URI is dropped as a duplicate.
-- **direction**: Move the ownership check into `setBackgroundImage`, keyed to `m.global.activeRoutedView`, then drop the per-caller guard in `HomeRows`. `SceneManager.setBackgroundImage` forwards only `uri`, `isAnimated` and `forceBackdrop` today, so the writer's identity has to be passed in first. Reset `m.lastBackdropUri` on the `forceBackdrop` clear.
+- **issue**: There is one backdrop node (`JRScene.imageFader`), and `setBackgroundImage` is last-writer-wins with no notion of which routed view owns the screen. A view whose data lands after it stopped being the active view can overwrite the foreground's backdrop. Home's late row load once blanked a deep-linked `ItemDetails` backdrop. `HomeRows.updateBackdropForFocusedItem` now guards with `backgroundWriteIsStale` ([`backdrop.bs`](../../source/utils/backdrop.bs)), but the other writers do not. The `forceBackdrop` half is fixed: `setBackgroundImage` resets `m.lastBackdropUri` on a forced write, so a later write of the same URI is no longer dropped as a duplicate.
+- **direction**: Move the ownership check into `setBackgroundImage`, keyed to `m.global.activeRoutedView`, then drop the per-caller guard in `HomeRows`. `SceneManager.setBackgroundImage` forwards only `uri`, `isAnimated` and `forceBackdrop` today, so the writer's identity has to be passed in first.
 
 #### `per-item-cross-thread-appends`
 

@@ -6,5 +6,6 @@
     <function name="updateHomeRows" />
     <function name="loadLibraries" />
     <function name="onDestroy" />
+    <function name="updateBackdropForFocusedItem" />
   </interface>
 </component>

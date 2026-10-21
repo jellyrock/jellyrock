@@ -736,6 +736,10 @@ What closes it, as part of audiobook support:
 - Remove `AudioBook` from `itemTypeOrder.NO_RESUME`. Check on a real audiobook that Resume shows and goes through `launchQueueItemToPlay`, which routes audio to the audio player (decision `play-kind-single-table`).
 - Decide whether a tap on a part-played audiobook tile resumes, as `quickplay.video` does for video (`quickplay.audio` sets no start).
 
+#### Rotate through several backdrops for a focused My Media tile (the shuffle part of #1134) `[fid: library-tile-backdrop-rotation]` `[captured 2026-10-21]`
+
+Issue #1134 asks for backdrops that change over time. `feat/library-backdrops` gives each My Media tile one backdrop from an item inside the library: `libraryBackdrop.query` asks for `Limit: 1`, and `HomeRows` caches that one URL per library for Home's lifetime. The Jellyfin web client takes up to 20 (`src/scripts/autoBackdrops.js`, `SortBy=IsFavoriteOrLiked,Random`) and rotates them. Not done now: rotating needs a timer on Home with a lifecycle to get right (pause off Home, stop on teardown), and a UX call on how often to change. Closes when a focused My Media tile cycles through several backdrops, or when we decide not to rotate.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

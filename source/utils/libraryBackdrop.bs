@@ -1,0 +1,68 @@
+import "pkg:/source/api/image.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
+import "pkg:/source/utils/misc.bs"
+
+' A full-screen backdrop for a library tile (a My Media tile on Home).
+'
+' A library rarely has a backdrop of its own: its Primary is usually the server-generated
+' tile art, a small image with the library's name drawn on it, which would show upscaled
+' and lettered behind the UI. So, as the Jellyfin web client does for a library page
+' (`src/scripts/autoBackdrops.js`), the backdrop comes from an item inside the library
+' that has one, favorites first, then random. The library's own backdrop still wins when
+' it has one.
+'
+' Pure apart from building the URL, so the whole decision is unit-testable; the caller
+' owns the request, the cache and the write.
+namespace libraryBackdrop
+
+  ' True for the item types a My Media tile carries.
+  function isLibrary(item as dynamic) as boolean
+    if not isValid(item) or not isValid(item.type) then return false
+    return item.type = "CollectionFolder" or item.type = "UserView"
+  end function
+
+  ' Query params for one backdrop-bearing item inside the library, for
+  ' GetApi().BuildGetItemsByQueryRequest. One item: the tile shows one backdrop.
+  function query(libraryId as string) as object
+    return {
+      ParentId: libraryId,
+      Recursive: true,
+      ImageTypes: "Backdrop",
+      SortBy: "IsFavoriteOrLiked,Random",
+      Limit: 1,
+      EnableTotalRecordCount: false,
+      EnableUserData: false
+    }
+  end function
+
+  ' The backdrop URL of the first item in a query() reply, or "" when the library has no
+  ' item with a backdrop or the reply is not the expected shape.
+  function urlFrom(json as dynamic, size as object) as string
+    if not isValid(json) or type(json.Items) <> "roArray" or json.Items.Count() = 0 then return ""
+    first = json.Items[0]
+    if not isValid(first) or not isValidAndNotEmpty(first.Id) then return ""
+    tags = first.BackdropImageTags
+    if type(tags) <> "roArray" or tags.Count() = 0 then return ""
+    return ImageURL(first.Id, "Backdrop", { tag: tags[0], maxHeight: size.height, maxWidth: size.width })
+  end function
+
+  ' The backdrop to show for a focused item, and whether a library still needs looking up.
+  '
+  ' @param item - the focused content node (may be invalid or a skeleton placeholder)
+  ' @param cache - library id -> backdrop URL from earlier lookups ("" means it has none)
+  ' @param size - { width, height } of the backdrop
+  ' @returns an AA with url (what to show now) and fetchId (the library id to look up, or "")
+  function resolve(item as dynamic, cache as object, size as object) as object
+    result = { url: getItemBackdropUrl(item, size), fetchId: "" }
+    if result.url <> "" or not libraryBackdrop.isLibrary(item) or not isValidAndNotEmpty(item.id)
+      return result
+    end if
+    if cache.doesExist(item.id)
+      result.url = cache[item.id]
+    else
+      result.fetchId = item.id
+    end if
+    return result
+  end function
+
+end namespace

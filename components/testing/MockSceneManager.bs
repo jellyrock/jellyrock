@@ -20,7 +20,10 @@ end sub
 sub resetTime()
 end sub
 
-sub setBackgroundImage(_url as string, _fade = false as boolean, _alwaysShow = false as boolean)
+' Records the request so a test can assert what a view asked the scene to show.
+sub setBackgroundImage(url as string, _fade = false as boolean, _alwaysShow = false as boolean)
+  m.top.lastBackgroundImage = url
+  m.top.backgroundImageWrites = m.top.backgroundImageWrites + 1
 end sub
 
 function isDialogOpen() as boolean
