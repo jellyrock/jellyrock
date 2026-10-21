@@ -36,6 +36,7 @@ const ALLOWLIST = new Set([
   'JavaScript',
   'TypeScript',
   'GitHub',
+  'GitLab',
   'YouTube',
   'JellyRock',
   'Jellyfin',
