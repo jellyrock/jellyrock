@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-20
+last-updated: 2026-10-21
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-21: fix(playback): Play songs and trailers in the right player
 - 2026-10-20: ci: Run the job when the PR diff can't be fetched
 - 2026-10-20: chore(journal): Retire the signals journal; watch upstreams from CI
 - 2026-10-20: chore(catchup): Stop the reader rewriting `docs/signals-backlog.md`
@@ -93,8 +94,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-07: docs(voice): Add a writing style guide, its gate and a plugin catalog
 - 2026-10-07 — test(rta): Discard a Home rows snapshot taken across a rebuild
 - 2026-10-07 — chore(catchup): add `--typed` banner lines to the catchup reader
-- 2026-10-06 — fix: Clearer subtitle track names; dropdowns keep short text on pick
-- 2026-10-06 — fix(home): Show Home sections placed in web client slots 8-10
 
 ## Open followups
 
