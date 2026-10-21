@@ -1,0 +1,126 @@
+import "pkg:/source/utils/libraryBackdrop.bs"
+
+namespace tests
+
+  @suite("libraryBackdrop")
+  class LibraryBackdropTests extends tests.BaseTestSuite
+
+    protected size = { width: 1920, height: 1080 }
+
+    private function makeItem(id as string, itemType as string, backdropTags = invalid as dynamic) as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.setFields({ id: id, type: itemType })
+      if isValid(backdropTags) then item.backdropImageTags = backdropTags
+      return item
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isLibrary()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for the types a My Media tile carries")
+    function _()
+      m.assertTrue(libraryBackdrop.isLibrary(m.makeItem("a", "CollectionFolder")))
+      m.assertTrue(libraryBackdrop.isLibrary(m.makeItem("b", "UserView")))
+    end function
+
+    @it("is false for anything else")
+    function _()
+      m.assertFalse(libraryBackdrop.isLibrary(m.makeItem("a", "Movie")))
+      m.assertFalse(libraryBackdrop.isLibrary(m.makeItem("b", "Folder")))
+      m.assertFalse(libraryBackdrop.isLibrary(invalid))
+      m.assertFalse(libraryBackdrop.isLibrary(CreateObject("roSGNode", "ContentNode")))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("query()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for one backdrop-bearing item inside the library, favorites first")
+    function _()
+      q = libraryBackdrop.query("lib1")
+      m.assertEqual(q.ParentId, "lib1")
+      m.assertEqual(q.Recursive, true)
+      m.assertEqual(q.ImageTypes, "Backdrop")
+      m.assertEqual(q.SortBy, "IsFavoriteOrLiked,Random")
+      m.assertEqual(q.Limit, 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("urlFrom()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds the first item's backdrop URL at the requested size")
+    function _()
+      url = libraryBackdrop.urlFrom({ Items: [{ Id: "movie9", BackdropImageTags: ["tag9", "tag10"] }] }, m.size)
+      m.assertNotEqual(url.inStr("/Items/movie9/Images/Backdrop"), -1, url)
+      m.assertNotEqual(url.inStr("tag=tag9"), -1, url)
+      m.assertNotEqual(url.inStr("maxwidth=1920"), -1, url)
+      m.assertNotEqual(url.inStr("maxheight=1080"), -1, url)
+    end function
+
+    @it("returns empty for a library with no item that has a backdrop")
+    function _()
+      m.assertEqual(libraryBackdrop.urlFrom({ Items: [] }, m.size), "")
+    end function
+
+    @it("returns empty for a reply that is not the expected shape")
+    function _()
+      m.assertEqual(libraryBackdrop.urlFrom(invalid, m.size), "")
+      m.assertEqual(libraryBackdrop.urlFrom({}, m.size), "")
+      m.assertEqual(libraryBackdrop.urlFrom({ Items: "x" }, m.size), "")
+      m.assertEqual(libraryBackdrop.urlFrom({ Items: [{ Id: "m1" }] }, m.size), "")
+      m.assertEqual(libraryBackdrop.urlFrom({ Items: [{ Id: "m1", BackdropImageTags: [] }] }, m.size), "")
+      m.assertEqual(libraryBackdrop.urlFrom({ Items: [{ BackdropImageTags: ["t"] }] }, m.size), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolve()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses an item's own backdrop and looks nothing up")
+    function _()
+      r = libraryBackdrop.resolve(m.makeItem("movie1", "Movie", ["t1"]), {}, m.size)
+      m.assertNotEqual(r.url.inStr("/Items/movie1/Images/Backdrop"), -1, r.url)
+      m.assertEqual(r.fetchId, "")
+    end function
+
+    @it("uses a library's own backdrop over a lookup")
+    function _()
+      r = libraryBackdrop.resolve(m.makeItem("lib1", "CollectionFolder", ["t1"]), { lib1: "http://cached" }, m.size)
+      m.assertNotEqual(r.url.inStr("/Items/lib1/Images/Backdrop"), -1, r.url)
+      m.assertEqual(r.fetchId, "")
+    end function
+
+    @it("asks for a lookup for a library not looked up yet")
+    function _()
+      r = libraryBackdrop.resolve(m.makeItem("lib1", "CollectionFolder"), {}, m.size)
+      m.assertEqual(r.url, "")
+      m.assertEqual(r.fetchId, "lib1")
+    end function
+
+    @it("uses a cached lookup")
+    function _()
+      r = libraryBackdrop.resolve(m.makeItem("lib1", "UserView"), { lib1: "http://cached" }, m.size)
+      m.assertEqual(r.url, "http://cached")
+      m.assertEqual(r.fetchId, "")
+    end function
+
+    @it("does not ask again for a library known to have none")
+    function _()
+      r = libraryBackdrop.resolve(m.makeItem("lib1", "CollectionFolder"), { lib1: "" }, m.size)
+      m.assertEqual(r.url, "")
+      m.assertEqual(r.fetchId, "")
+    end function
+
+    @it("clears and looks nothing up for anything else without a backdrop")
+    function _()
+      r = libraryBackdrop.resolve(m.makeItem("p1", "Photo"), {}, m.size)
+      m.assertEqual(r, { url: "", fetchId: "" })
+      r = libraryBackdrop.resolve(invalid, {}, m.size)
+      m.assertEqual(r, { url: "", fetchId: "" })
+    end function
+
+  end class
+
+end namespace

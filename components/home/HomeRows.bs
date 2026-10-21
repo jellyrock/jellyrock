@@ -1,4 +1,6 @@
 ' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/constants/homeSlots.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/home/homeRowFailure.bs"
@@ -8,6 +10,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
+import "pkg:/source/utils/libraryBackdrop.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
 import "pkg:/source/utils/screenReadiness.bs"
@@ -40,6 +43,11 @@ sub init()
 
   m.top.observeField("rowItemSelected", "itemSelected")
   m.top.observeField("rowItemFocused", "onItemFocused")
+
+  ' My Media tiles' backdrops, looked up on first focus (fetchLibraryBackdrop): library id ->
+  ' URL, "" for a library with none. Kept for Home's lifetime, so each library asks once.
+  m.libraryBackdrops = {}
+  m.libraryBackdropPendingId = ""
 
   ' One LoadItemsTask per section load, a new node per run (see "Per-section loads");
   ' invalid until the section first loads, and again once its run has delivered.
@@ -1548,13 +1556,47 @@ sub updateBackdropForFocusedItem()
   focusedItem = getItemAtIndices(m.top.rowItemFocused)
 
   ' Always call setBackgroundImage so the backdrop clears when the focused item has none.
-  ' Passing "" explicitly removes the previous backdrop (photos, channels, etc.)
-  backdropUrl = ""
-  if isValid(focusedItem)
+  ' Passing "" explicitly removes the previous backdrop (photos, channels, etc.), and stands
+  ' in while a library tile's backdrop is looked up.
+  deviceRes = m.global.device.uiResolution
+  resolved = libraryBackdrop.resolve(focusedItem, m.libraryBackdrops, { width: deviceRes[0], height: deviceRes[1] })
+  if resolved.fetchId <> "" then fetchLibraryBackdrop(resolved.fetchId)
+  m.global.sceneManager.callFunc("setBackgroundImage", resolved.url)
+end sub
+
+' Looks up a backdrop for a library tile from an item inside the library (libraryBackdrop).
+'
+' One lookup at a time: a promise callback captures no locals, so the library id rides on m,
+' and scrolling quickly across the row asks only for the first tile and the one focus stops
+' on. When the answer lands, updateBackdropForFocusedItem runs again: it repeats the
+' still-on-Home check, shows the backdrop only if that tile is still focused, and starts the
+' next lookup if focus moved to another library. A failure is not cached, so the next focus
+' on that tile asks again, and it does not re-run the update, which would ask again at once.
+sub fetchLibraryBackdrop(libraryId as string)
+  if m.libraryBackdropPendingId <> "" then return
+
+  ' No lookup when backdrops are off: the scene would drop the write anyway.
+  globalUser = m.global.user
+  if not isValid(globalUser) or not resolveShowBackdrop(globalUser.settings, globalUser.config) then return
+
+  req = GetApi().BuildGetItemsByQueryRequest(libraryBackdrop.query(libraryId))
+  if not isValid(req) then return
+  m.libraryBackdropPendingId = libraryId
+
+  promises.chain(fetchAsync(req, "libraryBackdrop-" + libraryId)).then(sub(res as object)
+    libraryId = m.libraryBackdropPendingId
+    m.libraryBackdropPendingId = ""
+    if not res.ok
+      m.log.warn("library backdrop lookup failed", libraryId, "status", res.statusCode)
+      return
+    end if
     deviceRes = m.global.device.uiResolution
-    backdropUrl = getItemBackdropUrl(focusedItem, { width: deviceRes[0], height: deviceRes[1] })
-  end if
-  m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
+    m.libraryBackdrops[libraryId] = libraryBackdrop.urlFrom(res.json, { width: deviceRes[0], height: deviceRes[1] })
+    updateBackdropForFocusedItem()
+  end sub).catch(sub(err as object)
+    m.log.warn("library backdrop lookup failed", m.libraryBackdropPendingId, "reason", err.reason)
+    m.libraryBackdropPendingId = ""
+  end sub)
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
