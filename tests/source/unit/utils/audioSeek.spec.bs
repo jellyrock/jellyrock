@@ -214,6 +214,14 @@ namespace tests
       m.assertEqual(postData.StartTimeTicks, 910000000&)
     end function
 
+    @it("turns off direct stream, so every server version returns a stream URL")
+    function _()
+      ' Jellyfin 10.7 answers a direct stream with no TranscodingUrl when it may.
+      postData = m.postDataWithProfiles()
+      audioSeek.applyFlacRemuxProfile(postData, 910000000&)
+      m.assertFalse(postData.EnableDirectStream)
+    end function
+
     @it("offers the server exactly one FLAC transcoding profile")
     function _()
       postData = m.postDataWithProfiles()

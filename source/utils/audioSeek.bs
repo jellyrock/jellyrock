@@ -96,6 +96,8 @@ namespace audioSeek
   ' it the stream's samples match the source's (checked against the demo server's FLACs).
   sub applyFlacRemuxProfile(postData as object, startTicks as longinteger)
     postData.EnableDirectPlay = false
+    ' Jellyfin 10.7 picks a direct stream when it may, and then returns no TranscodingUrl.
+    postData.EnableDirectStream = false
     postData.StartTimeTicks = startTicks
     postData.DeviceProfile.TranscodingProfiles = [{
       "Container": "flac",
