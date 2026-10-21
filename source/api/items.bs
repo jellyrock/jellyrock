@@ -5,6 +5,7 @@ import "pkg:/source/api/image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/enums/NextUpSeriesStart.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
@@ -398,43 +399,88 @@ function GetMediaSegments(id as string)
   return fetchJson(GetApi().BuildGetMediaSegmentsRequest(id), "mediaSegments")
 end function
 
-function AudioStream(id as string)
+' The stream content for an audio item, starting at startSeconds.
+'
+' With useServerSeek, the server makes a FLAC stream that starts at startSeconds, so the player
+' starts it from zero (audioSeek explains why a FLAC must not start mid-file on the player).
+' Otherwise the item plays as the server decides, direct or transcoded, and a direct stream
+' starts at startSeconds through PlayStart.
+'
+' Besides url, streamformat and id (the PlaySessionId), the content carries the fields the
+' player reads: length (the track's seconds), isFlac (a FLAC stream the player decodes),
+' isServerSeek (a stream the server started at startOffset) and startOffset (where the stream
+' begins in the track, so position plus startOffset is the position in the track).
+'
+' @return {dynamic} the ContentNode, or invalid when the item or its stream could not be had
+function AudioStream(id as string, startSeconds = 0.0 as float, useServerSeek = false as boolean)
   songData = AudioItem(id)
-  if isValid(songData)
-    content = createObject("RoSGNode", "ContentNode")
-    if isValid(songData.title)
-      content.title = songData.title
-    end if
+  if not isValid(songData) or not isValidAndNotEmpty(songData.mediaSources) then return invalid
+  mediaSource = songData.mediaSources[0]
 
-    playbackInfo = ItemPostPlaybackInfo(songData.id, songData.mediaSources[0].id)
-    if isValid(playbackInfo)
-      content.id = playbackInfo.PlaySessionId
-
-      if useTranscodeAudioStream(playbackInfo)
-        ' Transcode the audio
-        audioUrl = buildURL(playbackInfo.mediaSources[0].TranscodingURL)
-        if not isValid(audioUrl) then return invalid
-        content.url = audioUrl
-      else
-        ' Direct Stream the audio
-        params = {
-          "Static": "true",
-          "Container": songData.mediaSources[0].container,
-          "MediaSourceId": songData.mediaSources[0].id
-        }
-        content.streamformat = songData.mediaSources[0].container
-        audioUrl = buildURL(Substitute("Audio/{0}/stream", songData.id), params)
-        if not isValid(audioUrl) then return invalid
-        content.url = audioUrl
-      end if
-    else
-      return invalid
-    end if
-
-    return content
-  else
-    return invalid
+  content = createObject("RoSGNode", "ContentNode")
+  if isValid(songData.title)
+    content.title = songData.title
   end if
+  if isValid(songData.RunTimeTicks) and songData.RunTimeTicks > 0
+    content.length = songData.RunTimeTicks / 10000000.0
+  end if
+
+  isFlac = false
+  isServerSeek = false
+  startOffset = 0.0
+
+  if useServerSeek and startSeconds > 0
+    ' Whole milliseconds first: int() is 32-bit, and ticks past about 3.5 minutes overflow it.
+    startTicks& = int(startSeconds * 1000) * 10000&
+    playbackInfo = AudioServerSeekPlaybackInfo(songData.id, mediaSource.id, startTicks&)
+    if not isValid(playbackInfo) or not useTranscodeAudioStream(playbackInfo) then return invalid
+    audioUrl = buildURL(playbackInfo.mediaSources[0].TranscodingURL)
+    if not isValid(audioUrl) then return invalid
+    content.id = playbackInfo.PlaySessionId
+    content.url = audioUrl
+    content.streamformat = "flac"
+    isFlac = true
+    isServerSeek = true
+    startOffset = startSeconds
+  else
+    playbackInfo = ItemPostPlaybackInfo(songData.id, mediaSource.id)
+    if not isValid(playbackInfo) then return invalid
+    content.id = playbackInfo.PlaySessionId
+
+    if useTranscodeAudioStream(playbackInfo)
+      ' Transcode the audio
+      audioUrl = buildURL(playbackInfo.mediaSources[0].TranscodingURL)
+      if not isValid(audioUrl) then return invalid
+      content.url = audioUrl
+    else
+      ' Direct Stream the audio
+      params = {
+        "Static": "true",
+        "Container": mediaSource.container,
+        "MediaSourceId": mediaSource.id
+      }
+      content.streamformat = mediaSource.container
+      audioUrl = buildURL(Substitute("Audio/{0}/stream", songData.id), params)
+      if not isValid(audioUrl) then return invalid
+      content.url = audioUrl
+      isFlac = isValid(mediaSource.container) and LCase(mediaSource.container) = "flac"
+      if startSeconds > 0 then content.PlayStart = startSeconds
+    end if
+  end if
+
+  content.addFields({ isFlac: isFlac, isServerSeek: isServerSeek, startOffset: startOffset })
+  return content
+end function
+
+' PlaybackInfo for a FLAC stream the server starts at startTicks (audioSeek.applyFlacRemuxProfile).
+'
+' @return {dynamic} the PlaybackInfo response body, or invalid when the server did not answer it
+function AudioServerSeekPlaybackInfo(id as string, mediaSourceId as string, startTicks as longinteger) as dynamic
+  postData = buildPlaybackInfoPostData(mediaSourceId, -1, SubtitleSelection.NONE, startTicks)
+  audioSeek.applyFlacRemuxProfile(postData, startTicks)
+  res = fetchRes(GetApi().BuildPostPlaybackInfoRequest(id, postData), "playbackInfo")
+  if isValid(res) and res.ok then return res.json
+  return invalid
 end function
 
 function useTranscodeAudioStream(playbackInfo)

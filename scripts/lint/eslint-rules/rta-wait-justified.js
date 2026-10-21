@@ -201,6 +201,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#userRow',
   '#versionLabel.text',
   '#videoTitle.text',
+  // Roku's `Video.state` on the global AudioPlayer engine (m.global.audioPlayer). The one
+  // target is `playing`: held while audio plays, and entered again after a rebuffer, so a
+  // tick that misses it gets another chance. Read 2026-10-21 against AudioPlayer.bs and
+  // AudioPlayerView.bs, which write only `control`, `seek` and the engine's own `finished`.
+  'audioPlayer.state',
   'itemId',
   'loadState',
   // Roku's `Video.position`, read off the player by id. While the video plays it only

@@ -1,0 +1,109 @@
+import "pkg:/source/utils/misc.bs"
+
+' Pure helpers for starting an audio track at a position, and for ending one Roku leaves stuck.
+' AudioPlayerView and the AudioPlayer engine own the node writes; the decisions live here so
+' they are unit-tested without a player.
+'
+' Why FLAC is special: Roku plays a FLAC that it starts at a non-zero position (a seek or
+' PlayStart) but, when the file's last frame is shorter than its frame size, never reaches the
+' end. It stalls in "playing" a moment before that frame, or ends at once with "malformed data".
+' Most FLACs end that way. Starting a fresh server stream at the target avoids it, because
+' Roku then plays from zero. The evidence is in issue #662 and docs/architecture/playback.md.
+namespace audioSeek
+
+  ' Seek inside the stream that is playing.
+  const ACTION_NATIVE = "native"
+  ' Play the item's direct stream again, from startSeconds.
+  const ACTION_RELOAD_DIRECT = "reloadDirect"
+  ' Ask the server for a FLAC stream that starts at startSeconds.
+  const ACTION_REMUX = "remux"
+
+  ' The end-of-track guard arms this close to the end. A stuck stream stopped up to about half
+  ' a second before its last frame, and position updates every half second, so this leaves room.
+  const END_MARGIN_SECONDS = 1.5
+  ' How long the position must stand still, while playing, before the guard ends the track.
+  ' Several position updates' worth, so a slow update never ends a track that is still moving.
+  const STALL_SECONDS = 2.0
+
+  ' How to start the current track at targetSeconds.
+  '
+  ' @param {dynamic} stream - the loaded stream's content node (isFlac, isServerSeek), or invalid
+  ' @param {float} targetSeconds - the position in the whole track
+  ' @param {boolean} canRemux - whether the server may make the stream (the user's audio transcoding policy)
+  ' @return {object} { action, startSeconds, isFallback }: isFallback marks a FLAC start that
+  '   could not go through the server, which Roku may not finish
+  function startAction(stream as dynamic, targetSeconds as float, canRemux as boolean) as object
+    if not isValid(stream) or not isBooleanTrue(stream.isFlac)
+      return { action: ACTION_NATIVE, startSeconds: targetSeconds, isFallback: false }
+    end if
+
+    ' From 0, the direct stream plays to its end, so the server has nothing to fix.
+    if targetSeconds <= 0
+      return { action: ACTION_RELOAD_DIRECT, startSeconds: 0.0, isFallback: false }
+    end if
+
+    if canRemux
+      return { action: ACTION_REMUX, startSeconds: targetSeconds, isFallback: false }
+    end if
+
+    ' A server stream ignores an in-stream seek, so the fallback goes back to the direct stream.
+    if isBooleanTrue(stream.isServerSeek)
+      return { action: ACTION_RELOAD_DIRECT, startSeconds: targetSeconds, isFallback: true }
+    end if
+    return { action: ACTION_NATIVE, startSeconds: targetSeconds, isFallback: true }
+  end function
+
+  ' Whether a stream begins somewhere other than the track's start: one the server started at
+  ' a position, or a direct stream with a PlayStart. Playing such a stream again replays from
+  ' that point, not from 0.
+  function startsMidTrack(stream as dynamic) as boolean
+    if not isValid(stream) then return false
+    if isBooleanTrue(stream.isServerSeek) then return true
+    return isValid(stream.PlayStart) and stream.PlayStart > 0
+  end function
+
+  ' The position in the whole track. A server stream counts from its own start, so its start
+  ' offset is added back.
+  '
+  ' @return {dynamic} seconds, or invalid while the player has no position
+  function logicalPosition(startOffset as dynamic, position as dynamic) as dynamic
+    if not isValid(position) then return invalid
+    if not isValid(startOffset) then return position
+    return startOffset + position
+  end function
+
+  ' Whether a position is close enough to the end for the guard to watch it.
+  function isNearEnd(position as dynamic, lengthSeconds as dynamic) as boolean
+    if not isValid(position) or not isValid(lengthSeconds) or lengthSeconds <= 0 then return false
+    return position >= lengthSeconds - END_MARGIN_SECONDS
+  end function
+
+  ' Whether the guard should end a track Roku has left stuck: playing, near the end, and with a
+  ' position that has not moved for STALL_SECONDS.
+  '
+  ' @param {string} state - the player's state
+  ' @param {dynamic} position - the position in the whole track (logicalPosition)
+  ' @param {dynamic} lengthSeconds - the track's length from the server (RunTimeTicks)
+  ' @param {dynamic} stalledSeconds - how long the position has stood still
+  function shouldForceEnd(state as string, position as dynamic, lengthSeconds as dynamic, stalledSeconds as dynamic) as boolean
+    if state <> "playing" then return false
+    if not isValid(stalledSeconds) or stalledSeconds < STALL_SECONDS then return false
+    return isNearEnd(position, lengthSeconds)
+  end function
+
+  ' Shapes a PlaybackInfo body so the server returns a FLAC stream starting at startTicks.
+  ' The one profile has no MaxAudioChannels, which would downmix a multichannel source; without
+  ' it the stream's samples match the source's (checked against the demo server's FLACs).
+  sub applyFlacRemuxProfile(postData as object, startTicks as longinteger)
+    postData.EnableDirectPlay = false
+    postData.StartTimeTicks = startTicks
+    postData.DeviceProfile.TranscodingProfiles = [{
+      "Container": "flac",
+      "Type": "Audio",
+      "AudioCodec": "flac",
+      "Context": "Streaming",
+      "Protocol": "http"
+    }]
+  end sub
+
+end namespace

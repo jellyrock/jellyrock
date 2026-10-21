@@ -1,40 +1,157 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = new log.Logger("AudioPlayer")
   m.isPlayReported = false
+  ' The loaded stream's server session, until its end is reported: { id, itemId, position }.
+  m.openSession = invalid
+  ' Position in the whole track at its last change, and when that was (for the end guard).
+  m.lastPosition = invalid
+  m.lastMoveMs = 0
+  m.clock = CreateObject("roTimespan")
+
+  ' End-of-track guard: Roku can leave a stream it started mid-file stuck in "playing" a moment
+  ' before its end (audioSeek). This ends such a track, so the queue moves on as for a real end.
+  m.endGuardTimer = CreateObject("roSGNode", "Timer")
+  m.endGuardTimer.duration = audioSeek.STALL_SECONDS
+  m.endGuardTimer.repeat = false
+  m.endGuardTimer.observeField("fire", "onEndGuardFire")
+
+  m.top.observeField("content", "onContentChanged")
   m.top.observeField("state", "audioStateChanged")
+  m.top.observeField("position", "onPositionChanged")
+end sub
+
+' A new stream replaces the old one. The old stream's end is reported here when nothing
+' reported it yet: a server stream replaced by a seek keeps its server job running until
+' its session reports a stop.
+sub onContentChanged()
+  content = m.top.content
+  if isValid(m.openSession) and (not isValid(content) or m.openSession.id <> content.id)
+    reportEnd()
+  end if
+  m.endGuardTimer.control = "stop"
+  m.lastPosition = invalid
+  m.lastMoveMs = m.clock.TotalMilliseconds()
+  openSession()
 end sub
 
 ' State Change Event Handler
 sub audioStateChanged()
   currentState = LCase(m.top.state)
 
-  reportedPlaybackState = "update"
-
   m.top.disableScreenSaver = (currentState = "playing")
-
-  if currentState = "playing" and not m.isPlayReported
-    reportedPlaybackState = "start"
-    m.isPlayReported = true
-  else if currentState = "stopped" or currentState = "finished"
-    reportedPlaybackState = "stop"
-    m.isPlayReported = false
+  if currentState <> "playing"
+    m.endGuardTimer.control = "stop"
+  else
+    ' Back to playing near the end (after a rebuffer, say): a stuck stream never moves its
+    ' position again, so the countdown starts here rather than at the next position change.
+    content = m.top.content
+    if isValid(content) and audioSeek.isNearEnd(m.lastPosition, content.length)
+      m.lastMoveMs = m.clock.TotalMilliseconds()
+      m.endGuardTimer.control = "stop"
+      m.endGuardTimer.control = "start"
+    end if
   end if
 
-  reportPlayback(reportedPlaybackState)
+  if currentState = "stopped" or currentState = "finished"
+    ' Only the stream that is loaded now: a replaced stream was reported when it was replaced.
+    if isValid(m.openSession) and isValid(m.top.content) and m.openSession.id = m.top.content.id
+      reportEnd()
+    end if
+    return
+  end if
+
+  ' A stream played again after its end (repeat one, play after the queue ended) is a new run.
+  if currentState = "playing" and not isValid(m.openSession) then openSession()
+  if not isValid(m.openSession) then return
+
+  if currentState = "playing" and not m.isPlayReported
+    m.isPlayReported = true
+    sendReport("start", m.openSession)
+  else
+    sendReport("update", m.openSession)
+  end if
+end sub
+
+sub onPositionChanged()
+  content = m.top.content
+  if not isValid(content) then return
+  position = audioSeek.logicalPosition(content.startOffset, m.top.position)
+  if not isValid(position) then return
+  if isValid(m.openSession) then m.openSession.position = position
+
+  ' Position can be set again with the same value; only a change counts as moving.
+  if isValid(m.lastPosition) and position = m.lastPosition then return
+  m.lastPosition = position
+  m.lastMoveMs = m.clock.TotalMilliseconds()
+
+  if LCase(m.top.state) = "playing" and audioSeek.isNearEnd(position, content.length)
+    ' Restart the countdown: the guard fires only after a full stall with no movement.
+    m.endGuardTimer.control = "stop"
+    m.endGuardTimer.control = "start"
+  end if
+end sub
+
+sub onEndGuardFire()
+  content = m.top.content
+  if not isValid(content) then return
+  state = LCase(m.top.state)
+  stalledSeconds = (m.clock.TotalMilliseconds() - m.lastMoveMs) / 1000.0
+  if audioSeek.shouldForceEnd(state, m.lastPosition, content.length, stalledSeconds)
+    forceEnd()
+    return
+  end if
+  ' Fired early (a position change raced the countdown): keep watching while near the end.
+  if state = "playing" and audioSeek.isNearEnd(m.lastPosition, content.length) then m.endGuardTimer.control = "start"
+end sub
+
+' Ends a stream Roku left stuck at its end, as a real end would: the stop is reported once,
+' then "finished" goes to every state observer, so AudioPlayerView advances the queue.
+sub forceEnd()
+  m.log.warn("Track stuck at its end; ending it", m.lastPosition, m.top.content.length)
+  reportEnd()
+  m.top.control = "stop"
+  m.top.state = "finished"
+end sub
+
+' Records the loaded stream as the session whose end is still to be reported.
+sub openSession()
+  m.isPlayReported = false
+  content = m.top.content
+  if not isValid(content) or not isValidAndNotEmpty(content.id)
+    m.openSession = invalid
+    return
+  end if
+  currentItem = m.global.queueManager.callFunc("getCurrentItem")
+  itemId = ""
+  if isValid(currentItem) and isValid(currentItem.id) then itemId = currentItem.id
+  startOffset = 0.0
+  if isValid(content.startOffset) then startOffset = content.startOffset
+  m.openSession = { id: content.id, itemId: itemId, position: startOffset }
+end sub
+
+' Reports the open session's stop, once.
+sub reportEnd()
+  if not isValid(m.openSession) then return
+  session = m.openSession
+  m.openSession = invalid
+  m.isPlayReported = false
+  sendReport("stop", session)
 end sub
 
 ' Report playback to server
-sub reportPlayback(state as string)
-
-  if not isValid(m.top.position) then return
+sub sendReport(state as string, session as object)
+  if session.itemId = "" then return
 
   params = {
-    "ItemId": m.global.queueManager.callFunc("getCurrentItem").id,
-    "PlaySessionId": m.top.content.id,
-    "PositionTicks": int(m.top.position) * 10000000&, 'Ensure a LongInteger is used
+    "ItemId": session.itemId,
+    "PlaySessionId": session.id,
+    "PositionTicks": int(session.position) * 10000000&, 'Ensure a LongInteger is used
     "IsPaused": (LCase(m.top.state) = "paused")
   }
 

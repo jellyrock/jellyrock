@@ -6,6 +6,7 @@ import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
+import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -22,6 +23,9 @@ sub init()
   m.lastRecordedPositionTimestamp = 0
   m.scrubTimestamp = -1
   m.currentBackdropUrl = ""
+  ' A start at a position waiting for its stream (startAudioAt): { seconds, useServerSeek }.
+  m.pendingSeek = invalid
+  m.hasShownSeekFallbackNotice = false
 
   m.queueManager = m.global.queueManager
   ' The playback start this screen was opened for (QueueManager.beginPlaybackStart): done when
@@ -202,18 +206,23 @@ sub bufferPositionChanged()
 end sub
 
 sub audioPositionChanged()
+  ' While a stream that starts at the seek target loads, the old one is paused: hold the
+  ' display on the target instead of showing where the old stream stopped.
+  if isValid(m.pendingSeek) then return
+
   stopLoadingSpinner()
 
-  if m.audioPlayer.position = 0
+  position = currentAudioPosition()
+  if isValid(position) and position = 0
     m.playPosition.width = 0
   end if
 
-  if not isValid(m.audioPlayer.position)
+  if not isValid(position)
     playPositionBarWidth = 0
   else if not isValid(m.songDuration)
     playPositionBarWidth = 0
   else
-    songPercentComplete = m.audioPlayer.position / m.songDuration
+    songPercentComplete = position / m.songDuration
     playPositionBarWidth = m.seekBar.width * songPercentComplete
   end if
 
@@ -222,10 +231,10 @@ sub audioPositionChanged()
     playPositionBarWidth = m.seekBar.width
   end if
 
-  if not m.isInScrubMode
+  if not m.isInScrubMode and isValid(position)
     moveSeekbarThumb(playPositionBarWidth)
     ' Change the seek position timestamp
-    m.seekTimestamp.text = secondsToTimestamp(m.audioPlayer.position, false)
+    m.seekTimestamp.text = secondsToTimestamp(position, false)
   end if
 
   ' Use animation to make the display smooth
@@ -233,9 +242,9 @@ sub audioPositionChanged()
   m.playPositionAnimation.control = "start"
 
   ' Update displayed position timestamp
-  if isValid(m.audioPlayer.position)
-    m.lastRecordedPositionTimestamp = m.audioPlayer.position
-    m.positionTimestamp.text = secondsToTimestamp(m.audioPlayer.position, false)
+  if isValid(position)
+    m.lastRecordedPositionTimestamp = position
+    m.positionTimestamp.text = secondsToTimestamp(position, false)
   else
     m.lastRecordedPositionTimestamp = 0
     m.positionTimestamp.text = "0:00"
@@ -286,7 +295,7 @@ end sub
 sub audioStateChanged()
   ' Update play/pause button icon based on audio state
   if isValid(m.playButton)
-    if m.audioPlayer.state = "playing"
+    if m.audioPlayer.state = "playing" or isValid(m.pendingSeek)
       m.playButton.icon = "pkg:/images/icons/pause_$$RES$$.png"
     else
       m.playButton.icon = "pkg:/images/icons/play_$$RES$$.png"
@@ -298,7 +307,7 @@ sub audioStateChanged()
     ' User has enabled single song loop, play current song again
     if m.audioPlayer.loopMode = "one"
       m.scrubTimestamp = -1
-      playAction()
+      replayFromStart()
       exitScrubMode()
       return
     end if
@@ -353,6 +362,8 @@ sub exitAudioPlayback()
 end sub
 
 function playAction() as boolean
+  ' The old stream is paused only until the seek's stream arrives.
+  if isValid(m.pendingSeek) then return true
 
   if m.audioPlayer.state = "playing"
     m.audioPlayer.control = "pause"
@@ -365,7 +376,7 @@ function playAction() as boolean
       m.playButton.icon = "pkg:/images/icons/pause_$$RES$$.png"
     end if
   else if m.audioPlayer.state = "finished"
-    m.audioPlayer.control = "play"
+    replayFromStart()
     if isValid(m.playButton)
       m.playButton.icon = "pkg:/images/icons/pause_$$RES$$.png"
     end if
@@ -373,6 +384,117 @@ function playAction() as boolean
 
   return true
 end function
+
+' Plays the current track again from 0. A stream that started mid-track (a server stream, or
+' a direct stream with a PlayStart) would replay from its own start, so it is loaded again.
+sub replayFromStart()
+  if audioSeek.startsMidTrack(m.audioPlayer.content)
+    reloadStreamAt(0, false)
+    return
+  end if
+  m.audioPlayer.control = "play"
+end sub
+
+' The position in the whole track: a server stream counts from its own start (startOffset).
+function currentAudioPosition() as dynamic
+  content = m.audioPlayer.content
+  startOffset = invalid
+  if isValid(content) then startOffset = content.startOffset
+  return audioSeek.logicalPosition(startOffset, m.audioPlayer.position)
+end function
+
+' Starts the current track at seconds, the one way every seek goes (scrub, voice, remote).
+' A FLAC can't be started mid-file on the player (audioSeek), so it gets a stream the server
+' starts there; anything else seeks inside the stream that is playing.
+sub startAudioAt(seconds as float)
+  canRemux = true
+  policy = m.global.user.policy
+  if isValid(policy) and policy.enableAudioPlaybackTranscoding = false then canRemux = false
+
+  plan = audioSeek.startAction(m.audioPlayer.content, seconds, canRemux)
+  if plan.isFallback then showSeekFallbackNotice()
+
+  if plan.action = audioSeek.ACTION_NATIVE
+    m.audioPlayer.seek = plan.startSeconds
+    return
+  end if
+  reloadStreamAt(plan.startSeconds, plan.action = audioSeek.ACTION_REMUX)
+end sub
+
+' Loads the current track's stream again, starting at seconds, and swaps it in when it arrives.
+' The old stream pauses meanwhile, so it neither plays on nor moves the progress bar.
+sub reloadStreamAt(seconds as float, useServerSeek as boolean)
+  currentItem = m.queueManager.callFunc("getCurrentItem")
+  if not isValid(currentItem) or not isValidAndNotEmpty(currentItem.id) then return
+
+  m.pendingSeek = { seconds: seconds, useServerSeek: useServerSeek }
+  startLoadingSpinner()
+  holdDisplayAt(seconds)
+  if m.audioPlayer.state = "playing" then m.audioPlayer.control = "pause"
+
+  m.log.info("Loading the stream again", "startSeconds", seconds, "useServerSeek", useServerSeek)
+  m.LoadAudioStreamTask = replaceTask(m.LoadAudioStreamTask, "LoadItemsTask", "content", {
+    itemsToLoad: "audioStream",
+    itemId: currentItem.id,
+    startSeconds: seconds,
+    useServerSeek: useServerSeek
+  })
+  m.LoadAudioStreamTask.observeField("content", "onSeekStreamLoaded")
+  launchTask(m.LoadAudioStreamTask)
+end sub
+
+sub onSeekStreamLoaded(event as object)
+  if not isCurrentTaskEvent(event, m.LoadAudioStreamTask) then return
+  data = m.LoadAudioStreamTask.content[0]
+  m.LoadAudioStreamTask.unobserveField("content")
+  pending = m.pendingSeek
+  if not isValid(pending) then return
+
+  if isValid(data) and data.count() > 0
+    m.pendingSeek = invalid
+    m.audioPlayer.content = data
+    m.audioPlayer.control = "none"
+    m.audioPlayer.control = "play"
+    return
+  end if
+
+  ' The new stream did not come. A server stream falls back as when the server may not make
+  ' one, without the notice: the account is not why it failed.
+  m.log.warn("The stream for a seek did not load", "startSeconds", pending.seconds, "useServerSeek", pending.useServerSeek)
+  m.pendingSeek = invalid
+  if pending.useServerSeek
+    plan = audioSeek.startAction(m.audioPlayer.content, pending.seconds, false)
+    if plan.action = audioSeek.ACTION_RELOAD_DIRECT
+      reloadStreamAt(plan.startSeconds, false)
+      return
+    end if
+    m.audioPlayer.seek = plan.startSeconds
+  end if
+  ' Nothing left to try (the direct stream failed too): carry on where the old stream was.
+  stopLoadingSpinner()
+  if m.audioPlayer.state = "paused" then m.audioPlayer.control = "resume"
+end sub
+
+' Shows seconds on the progress bar and timestamps while its stream loads.
+sub holdDisplayAt(seconds as float)
+  if not isValid(m.songDuration) or m.songDuration <= 0 then return
+  playPositionBarWidth = m.seekBar.width * (seconds / m.songDuration)
+  if playPositionBarWidth > m.seekBar.width then playPositionBarWidth = m.seekBar.width
+  m.playPosition.width = playPositionBarWidth
+  moveSeekbarThumb(playPositionBarWidth)
+  m.lastRecordedPositionTimestamp = seconds
+  m.positionTimestamp.text = secondsToTimestamp(seconds, false)
+  m.seekTimestamp.text = secondsToTimestamp(seconds, false)
+end sub
+
+' Tells the listener once per player screen why a seek in a FLAC may misbehave: the server
+' could make a stream that starts at the target, but this account may not transcode audio.
+sub showSeekFallbackNotice()
+  m.log.warn("Seeking in a FLAC without a server stream: the account may not transcode audio")
+  if m.hasShownSeekFallbackNotice then return
+  m.hasShownSeekFallbackNotice = true
+  displayToast(translate(translationKeys.MessageFlacSeekNeedsTranscoding), "info")
+end sub
 
 function previousClicked() as boolean
   currentQueuePosition = m.queueManager.callFunc("getPosition")
@@ -541,6 +663,8 @@ end sub
 
 ' Update values on screen when page content changes
 sub pageContentChanged()
+  ' A seek still loading belongs to the track being left; replaceTask below drops its load.
+  m.pendingSeek = invalid
 
   m.LoadAudioStreamTask = replaceTask(m.LoadAudioStreamTask, "LoadItemsTask", "content", { itemsToLoad: "audioStream" })
   ' A metadata run still in flight belongs to the song being left. Dropped here, not only when
@@ -845,7 +969,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
         if m.isInScrubMode
           startLoadingSpinner()
           m.isInScrubMode = false
-          m.audioPlayer.seek = m.scrubTimestamp
+          startAudioAt(m.scrubTimestamp)
           return true
         end if
 
@@ -984,13 +1108,16 @@ function handleTransport(evt as object) as object
   cmd = LCase(evt.command)
   m.log.info("voice transport", cmd)
 
+  ' The old stream is paused only until the seek's stream arrives (playAction).
+  if isValid(m.pendingSeek) and (cmd = "play" or cmd = "resume" or cmd = "playpause") then return { status: "success" }
+
   if cmd = "play" or cmd = "resume"
     if m.audioPlayer.state = "paused"
       m.audioPlayer.control = "resume"
       return { status: "success" }
     end if
     if m.audioPlayer.state = "playing" then return { status: "error.redundant" }
-    m.audioPlayer.control = "play"
+    replayFromStart()
     return { status: "success" }
   end if
 
@@ -1047,7 +1174,7 @@ function handleTransport(evt as object) as object
     if m.audioPlayer.state = "paused"
       m.audioPlayer.control = "resume"
     else
-      m.audioPlayer.control = "play"
+      replayFromStart()
     end if
     return { status: "success" }
   end if
@@ -1073,8 +1200,10 @@ function handleTransport(evt as object) as object
 end function
 
 function audioSeekRelative(deltaSeconds as integer) as object
-  if not isValid(m.audioPlayer) or not isValid(m.audioPlayer.position) then return { status: "error.generic" }
-  return audioSeekTo(m.audioPlayer.position + deltaSeconds)
+  if not isValid(m.audioPlayer) then return { status: "error.generic" }
+  position = currentAudioPosition()
+  if not isValid(position) then return { status: "error.generic" }
+  return audioSeekTo(position + deltaSeconds)
 end function
 
 ' 5s end-slack (vs 30s for video): songs are short, and we still want the seek to
@@ -1082,7 +1211,7 @@ end function
 function audioSeekTo(targetSeconds as float) as object
   if not isValid(m.audioPlayer) then return { status: "error.generic" }
   result = voiceTransport.computeSeekStatus(targetSeconds, m.songDuration, 5)
-  m.audioPlayer.seek = result.clamped
+  startAudioAt(result.clamped)
   return { status: result.status }
 end function
 
