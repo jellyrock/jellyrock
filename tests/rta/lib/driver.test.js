@@ -43,6 +43,14 @@ vi.mock('../config.js', async (importOriginal) => {
   return { ...real, RTA_CONFIG: { ...real.RTA_CONFIG, exitMs: 5, bootMs: 5 } };
 });
 
+// A re-sent Home press is recorded as a recovery, which writes into the run record outside a
+// run; a spy keeps it out of the repo and lets the tests read what was recorded.
+const recordRecovery = vi.fn();
+vi.mock('../../../scripts/run-record.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  recordRecovery: (...a) => recordRecovery(...a),
+}));
+
 // The landing half lives in `steps.js` and has its own tests there; here it only has to
 // run last.
 const waitLandingSettled = vi.fn();
@@ -260,6 +268,8 @@ const DEV_CHANNEL = { app: { id: 'dev', title: 'JellyRock' } };
 describe('waitChannelExited — the restart launches only after the app is gone', () => {
   beforeEach(() => {
     getActiveApp.mockReset();
+    sendKeypress.mockReset();
+    recordRecovery.mockReset();
     probe.impl = vi.fn();
   });
   afterEach(() => {
@@ -304,6 +314,24 @@ describe('waitChannelExited — the restart launches only after the app is gone'
     getActiveApp.mockResolvedValue({});
     probe.impl.mockResolvedValue(false);
     await expect(wait({ timeoutMs: 40 })).rejects.toThrow(/had not exited/);
+  });
+
+  it('re-sends a Home press the device lost, and records that it did', async () => {
+    // Seen on the first restart after a fresh deploy: the channel stayed in front, port open.
+    let presses = 0;
+    sendKeypress.mockImplementation(async () => presses++);
+    getActiveApp.mockImplementation(async () => (presses > 0 ? HOME_SCREEN : DEV_CHANNEL));
+    probe.impl.mockImplementation(async () => presses === 0);
+    await wait({ resendMs: 20 });
+    expect(sendKeypress).toHaveBeenCalledWith('Home');
+    expect(recordRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  it('never re-sends Home on a reading it could not make', async () => {
+    getActiveApp.mockRejectedValue(new Error('ECONNRESET'));
+    probe.impl.mockResolvedValue(true);
+    await wait({ timeoutMs: 80, resendMs: 10 }).catch(() => {});
+    expect(sendKeypress).not.toHaveBeenCalled();
   });
 
   it('gives up with what it saw, as a plain Error (ODC is down, so no device dump)', async () => {

@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import { ecp, odc, device, utils } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { ODC_PORT, odcIsResident } from '../../../scripts/lib/odc-probe.js';
+import { recordRecovery } from '../../../scripts/run-record.js';
 import { sleep, waitLandingSettled } from './steps.js';
 import { withTimeout } from './timeout.js';
 
@@ -341,6 +342,12 @@ const CHANNEL_EXIT_TIMEOUT_MS = 10 * 1000;
 const CHANNEL_EXIT_POLL_MS = 100;
 
 /**
+ * How long the dev channel may stay in front after a Home press before the press counts as
+ * lost and is sent again: about 2.5x the slowest exit measured (0.78 s, 2026-10-20).
+ */
+const CHANNEL_EXIT_RESEND_MS = 2 * 1000;
+
+/**
  * Ceiling on the scene answering once the component's port is open. The scene answered
  * within tens of milliseconds of the port opening in every sample (2026-10-20), so this
  * only bounds a component that accepts connections and never serves them.
@@ -363,6 +370,13 @@ const frontAppId = (res) => (res?.app ? (res.app.id ?? res.app.title ?? '') : nu
  * closed port crashes the process (see `ensureOdcReachable`). That is also why it throws a
  * plain `Error` rather than through `diagnosedError`, which reads ODC to build its dump.
  *
+ * **A Home press can be lost, so it is sent again.** On 2026-10-20 the first restart after a
+ * fresh deploy left the dev channel in front, port open, for the whole 10 s. The old fixed
+ * sleep never noticed, because it launched regardless. This re-sends Home while ECP still
+ * names the dev channel `resendMs` after the last press, and only then: an unknown reading
+ * sends nothing. Each re-press is recorded, because a recovery nobody sees hides how often it
+ * happens.
+ *
  * @param {object} [options]
  * @param {string} [options.host] device to probe; defaults to the configured one.
  * @param {number} [options.port] the component's port. Only the tests pass this.
@@ -372,14 +386,30 @@ export async function waitChannelExited({
   port = ODC_PORT,
   timeoutMs = CHANNEL_EXIT_TIMEOUT_MS,
   pollMs = CHANNEL_EXIT_POLL_MS,
+  resendMs = CHANNEL_EXIT_RESEND_MS,
 } = {}) {
   const deadline = Date.now() + timeoutMs;
+  let resendAt = Date.now() + resendMs;
+  let resends = 0;
   for (;;) {
     const [front, resident] = await Promise.all([
       ecp.getActiveApp({ retryCount: 0 }).then(frontAppId, () => null),
       odcIsResident(host, { port }),
     ]);
     if (front !== null && front !== 'dev' && !resident) return;
+    if (front === 'dev' && Date.now() >= resendAt && Date.now() < deadline) {
+      resends += 1;
+      recordRecovery({
+        at: new Date().toISOString(),
+        what: 'Home press lost on restart',
+        detail:
+          `the dev channel was still in front ${resendMs} ms after the Home press, so the ` +
+          `press was taken as lost and sent again (resend ${resends} in this restart).`,
+        observed: { front, resident, resends },
+      });
+      await ecp.sendKeypress('Home');
+      resendAt = Date.now() + resendMs;
+    }
     if (Date.now() >= deadline) {
       throw new Error(
         `the dev channel had not exited ${timeoutMs / 1000}s after the Home press ` +
