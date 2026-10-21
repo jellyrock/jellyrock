@@ -279,6 +279,7 @@
 (?:filesystem)\.
 (?:flac)\.
 (?:FLAC)\.
+(?:FLACs)\.
 (?:fns)\.
 (?:focusable)\.
 (?:followup)\.
@@ -401,6 +402,7 @@
 (?:mka)\.
 (?:MKV)\.
 (?:mkv)\.
+(?:MP3)\.
 (?:mp4)\.
 (?:multicast)\.
 (?:multichannel)\.
@@ -760,6 +762,7 @@
 (?:Vitest)\.
 (?:Vitest's)\.
 (?:vorbis)\.
+(?:Vorbis)\.
 (?:vscode)\.
 (?:VSCode)\.
 (?:VTT)\.
@@ -767,6 +770,7 @@
 (?:wakeup-signal)\.
 (?:walkthrough)\.
 (?:wav)\.
+(?:WAV)\.
 (?:WCAG)\.
 (?:Weblate)\.
 (?:WebP)\.
