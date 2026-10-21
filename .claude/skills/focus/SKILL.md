@@ -33,7 +33,7 @@ effort: high
 **Success criteria.**
 
 - The pick is ranked by the fixed order in the steps, and **Why** names the rule that won and cites real state (a banner, a fid, a backlog row, a commit) — never "it feels like the next thing", never an invented candidate.
-- With a fid, the pick is that followup and nothing else: no triage runs, and a fid that is closed, unknown or tracked by a project is said in one line (a tracked one with its `/resume-project` command), never replaced by another pick.
+- With a fid, the pick is that followup and nothing else: no triage runs, and a fid that is closed, unknown or tracked by a project is said in one line (a tracked one with its `/resume-project` command), never replaced by another pick. The pick's block, naming its route, opens the message that ends the turn (on the plan route, the fork questions or the final report), the point where the user replies, since text mid-turn is easily skipped.
 - Each pick is classified into exactly one route; a resume route names the slug. Disclosure stays flat: one recommendation, a command for it and for each command-route alternative, one reply.
 - Every command handed to the user sits alone in its own `text` block, so the copy button copies exactly the command.
 - Every choice with two or more viable answers is asked as a chat question — the decision, the options, a **Recommended** option with why, the reply words — and the turn ends there. Never a pop-up, never a loose prose question.
@@ -75,7 +75,7 @@ If `## This repo` keeps handoff packets, follow its packet steps: its check for 
 
 ### Step 1 — Load state
 
-**With a fid in the arguments**, skip the triage (this step's reads and Step 2's ranking): run `bash .claude/skills/log/journal.sh show {{fid}}`. When it prints no entry (closed or unknown), say its line and stop. When the entry's body says a project tracks it, print `/resume-project {{slug}} {{fid}}` in its own block and stop. Otherwise the followup is the pick: classify its route by Step 2's rules and show Step 2's block with **Why:** "you named it", the entry cited, and no Alternatives. On the plan route, the block ends with "Planning it now." in place of the `ok` line, and Step 4 follows at once: typing the fid was the choice.
+**With a fid in the arguments**, skip the triage (this step's reads and Step 2's ranking): run `bash .claude/skills/focus/focus-fid.sh {{fid}}` in place of `journal.sh show`. Exit 1 means no open entry (closed or unknown): say its line and stop. Otherwise follow its PICK section, its route filled by Step 2's rules and with no Alternatives. On a command route the block is the whole reply, so end the turn; a project that tracks the followup prints `/resume-project {{slug}} {{fid}}` instead, as its note says. On the plan route Step 4 follows at once (typing the fid was the choice), and the block opens the message that ends the turn, the fork questions or the final report: only text you write reaches the user, and a turn's last message is the one always shown.
 
 Read `.claude/skills/catchup/SKILL.md` and follow its steps inline: its reader's `=== CANDIDATES ===` block is this triage's ranked input, and the user sees the briefing as it is produced — without its `Suggested next` line, which Step 2's pick replaces (two "next" answers in a row contradict each other), and with its `Captures for /log` items folded into this skill's own tail. If `/catchup` already ran in this session and HEAD and the working tree are unchanged since, reuse that briefing instead (say so in one line).
 
@@ -153,7 +153,7 @@ Sub-agents are an escape hatch: at most three Explore sub-agents in parallel, on
 
 ### Step 5 — Draft internally; ask the forks in chat
 
-Draft the plan without rendering any of it. Conversation text in this step is one short status sentence per phase ("Drafting the plan internally — it will be saved and linked when it runs."), plus the fork questions: each a chat question with the decision, its options, a **Recommended** option with why and risk, and its reply words, carrying the context the choice needs and no plan content. Several forks may go in one message; then end the turn and wait.
+Draft the plan without rendering any of it. Conversation text in this step is one short status sentence per phase ("Drafting the plan internally — it will be saved and linked when it runs."), plus the fork questions: each a chat question with the decision, its options, a **Recommended** option with why and risk, and its reply words, carrying the context the choice needs and no plan content. Several forks may go in one message; with a fid, it opens with the pick block (Step 1). Then end the turn and wait.
 
 **The Always ask call.** In a repo whose `## Landing` level is `gated`, a supervised run whose plan says `**Always ask:** none` is pushed without asking, so that line is decided here, in front of the user: read the repo's Always ask list (its `## Landing`) against the change, and with the forks (or, with no fork, as one line before the plan is saved) say `Always ask: none`, or the item it touches and why. The user's reply corrects it; silence keeps it. In a repo at any other level, write the line without showing it: every push stops there anyway.
 
