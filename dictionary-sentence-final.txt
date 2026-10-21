@@ -297,6 +297,7 @@
 (?:getters)\.
 (?:GH)\.
 (?:GitHub)\.
+(?:GitLab)\.
 (?:gitignored)\.
 (?:GitOps)\.
 (?:GitOps-adjacent)\.

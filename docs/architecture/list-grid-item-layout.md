@@ -29,7 +29,7 @@ For an item component that shows a poster with a title below it:
 1. **`rowItemSize`** is the poster slot, the area the focus indicator frames.
 2. **`rowHeights`** (`RowList`) is the slot height plus a title area. Setting it taller than `rowItemSize` is what pins the indicator to the slot and leaves the title outside it. A `MarkupGrid` gets the same from its presenter's `rowHeights` and `itemSize`.
 
-   **One `rowHeights` entry covers every row, but keep `itemSize.y` equal to it anyway.** Roku's [`RowList` reference](https://github.com/rokudev/dev-doc/blob/v2.0/docs/REFERENCES/scenegraph/list-and-grid-nodes/rowlist.md) says rows past the end of the array fall back to `itemSize.y`, unlike `rowItemSize`, `rowLabelOffset` and `rowItemSpacing`, which repeat their last value. Measured 2026-08-09 on an Ultra, it repeats like the others: `rowHeights="[415]"` with `itemSize.y` forced to `200` left rows 2 and 3 at a 455-pixel pitch, not 240. So the app relies on behavior the docs do not promise, and a second `rowHeights` entry would bring the documented fallback back. Keeping the two equal is correct under either reading.
+   **One `rowHeights` entry covers every row, but keep `itemSize.y` equal to it anyway.** Roku's [`RowList` reference](https://gitlab.com/rokudev/dev-doc/-/blob/v2.0/docs/REFERENCES/scenegraph/list-and-grid-nodes/rowlist.md) says rows past the end of the array fall back to `itemSize.y`, unlike `rowItemSize`, `rowLabelOffset` and `rowItemSpacing`, which repeat their last value. Measured 2026-08-09 on an Ultra, it repeats like the others: `rowHeights="[415]"` with `itemSize.y` forced to `200` left rows 2 and 3 at a 455-pixel pitch, not 240. So the app relies on behavior the docs do not promise, and a second `rowHeights` entry would bring the documented fallback back. Keeping the two equal is correct under either reading.
 3. **The poster fills the slot.** The two item components do it two ways:
    - `GridItem` places the poster `POSTER_TOP_OFFSET` below the slot's top, so it runs past the slot's bottom and the indicator, drawn behind, shows a clear margin above the image.
    - `JRRowItem` places the poster at the slot's origin, the same size as the slot.
@@ -82,7 +82,7 @@ After an unload Roku reports the poster's `loadStatus` as `failed`. That is the 
 
 - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) with [`HomeRows`](../../components/home/HomeRows.bs): `setRowItemSize()` in `HomeRows` sets each row's `rowHeights` to the slot plus a 90-pixel text area (library tiles get the slot only), and `JRRowItem` puts its title `FOCUS_PADDING` below the poster. `SearchRow` and `FavoritesRows` do the same in their `applyRowSizes()`.
 - [`GridItem`](../../components/ItemGrid/GridItem.bs) in the genre `RowList` (`genreList` in [`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml)): `rowItemSize="[[213, 320]]"` and `rowHeights="[415]"`, with `itemSize="[1702, 415]"` to match. The comment above the list in the markup says why those numbers.
-- Roku's [`RowList` sample](https://github.com/rokudev/samples/tree/master/ux%20components/lists%20and%20grids/RowListExample) uses `rowItemSize=[536,308]` with the poster inset to 512×288, another way to keep the indicator off the image.
+- Roku's [`RowList` sample](https://gitlab.com/rokudev/samples/-/tree/master/ux%20components/lists%20and%20grids/RowListExample) uses `rowItemSize=[536,308]` with the poster inset to 512×288, another way to keep the indicator off the image.
 
 ## Why this doc exists
 

@@ -978,7 +978,7 @@ end sub
 '     which matches the Roku platform spec; users wanting loop control use the "loop" command.
 '   - "skip" advances to the next track.
 '
-' See https://github.com/rokudev/dev-doc, file docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+' See https://gitlab.com/rokudev/dev-doc, file docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
 function handleTransport(evt as object) as object
   if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
   cmd = LCase(evt.command)

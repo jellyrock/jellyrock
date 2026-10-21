@@ -3,7 +3,7 @@
 ' m.top.seek, m.audioPlayer.*) but delegate the math + setting resolution + payload
 ' parsing here so it's unit-testable without instantiating a full player.
 '
-' See https://github.com/rokudev/dev-doc, file docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+' See https://gitlab.com/rokudev/dev-doc, file docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
 namespace voiceTransport
 
   ' Resolve the user's instant-replay setting (in seconds), falling back to 10s

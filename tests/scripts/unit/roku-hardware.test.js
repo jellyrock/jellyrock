@@ -18,6 +18,9 @@ import { ROKU_HARDWARE } from '../../../scripts/roku-devices.js';
 import {
   assertInvariants,
   checksum,
+  fetchUpstream,
+  gitlabUrls,
+  mapUpstream,
   parseCpuArch,
   parseHdr,
   parseRam,
@@ -151,5 +154,53 @@ describe('the spec cell normalizers', () => {
     expect(table.rows[0]['roDeviceInfo.GetModel()']).toBe('A000X');
     expect(table.rows[0]['Max UI Resolution']).toBe('1920X1080');
     expect(tierForTable(table)).toBe('current');
+  });
+});
+
+describe('the GitLab upstream', () => {
+  // Roku archived the GitHub repo and moved the live docs to GitLab. The GitHub copy
+  // still serves, so reading it would not fail, it would go stale.
+  it('builds GitLab API v4 URLs with the project and file path encoded', () => {
+    const urls = gitlabUrls();
+    expect(urls.project).toBe('https://gitlab.com/api/v4/projects/rokudev%2Fdev-doc');
+    expect(urls.file).toBe(
+      'https://gitlab.com/api/v4/projects/rokudev%2Fdev-doc/repository/files/' +
+        'docs%2FSPECIFICATIONS%2Fhardware.md?ref=v2.0',
+    );
+    expect(urls.commits).toBe(
+      'https://gitlab.com/api/v4/projects/rokudev%2Fdev-doc/repository/commits' +
+        '?ref_name=v2.0&path=docs%2FSPECIFICATIONS%2Fhardware.md&per_page=1',
+    );
+  });
+
+  it('maps the file and commit responses to the fetch result, with a UTC Z date', () => {
+    const markdown = '# Hardware\n\n| a | b |\n';
+    const result = mapUpstream(
+      {
+        content: Buffer.from(markdown).toString('base64'),
+        blob_id: 'd712287287c2bccecec3a7b8aaf8808bd30297e3',
+        last_commit_id: 'not-this-one',
+      },
+      [
+        {
+          id: '8abc84b18f4e733e5ef28d84f6f90a5d0baa6321',
+          committed_date: '2026-10-12T16:04:11.000-07:00',
+        },
+      ],
+    );
+    expect(result).toEqual({
+      markdown,
+      blobSha: 'd712287287c2bccecec3a7b8aaf8808bd30297e3',
+      upstreamCommit: '8abc84b18f4e733e5ef28d84f6f90a5d0baa6321',
+      upstreamCommittedAt: '2026-10-12T23:04:11Z',
+    });
+  });
+
+  it('refuses an empty commit list instead of recording no provenance', () => {
+    expect(() => mapUpstream({ content: '', blob_id: 'x' }, [])).toThrow(/no commits/);
+  });
+
+  it('exports fetchUpstream', () => {
+    expect(typeof fetchUpstream).toBe('function');
   });
 });

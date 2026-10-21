@@ -25,7 +25,7 @@ Which thread your code runs on, what that thread forbids, and how we find out wh
 
 ## There are three threads, not two
 
-"Main" and "render" are different threads. This is the part that keeps getting misremembered. From Roku's [`threads.md`](https://github.com/rokudev/dev-doc/blob/v2.0/docs/DEVELOPER/core-concepts/threads.md):
+"Main" and "render" are different threads. This is the part that keeps getting misremembered. From Roku's [`threads.md`](https://gitlab.com/rokudev/dev-doc/-/blob/v2.0/docs/DEVELOPER/core-concepts/threads.md):
 
 | Thread | Roku's description | In JellyRock |
 |---|---|---|
@@ -39,7 +39,7 @@ A `.bs` file in `source/` runs on whichever thread calls it. Code that `Main()` 
 
 ## Roku does not publish the restricted-component list
 
-Roku's `threads.md` says "the thread usage of these operations and components is listed in BrightScript support". But [`brightscript-support.md`](https://github.com/rokudev/dev-doc/blob/v2.0/docs/DEVELOPER/core-concepts/scenegraph-brightscript/brightscript-support.md) has only its introduction. It says each entry would name the SceneGraph node to use instead, or that the component works only in a Task node, and then the file ends with no entries (checked 2026-10-10 in the `v2.0` repo).
+Roku's `threads.md` says "the thread usage of these operations and components is listed in BrightScript support". But [`brightscript-support.md`](https://gitlab.com/rokudev/dev-doc/-/blob/v2.0/docs/DEVELOPER/core-concepts/scenegraph-brightscript/brightscript-support.md) has only its introduction. It says each entry would name the SceneGraph node to use instead, or that the component works only in a Task node, and then the file ends with no entries (checked 2026-10-10 in the `v2.0` repo).
 
 So there is no authority to look this up in. A claim about what a thread can construct is folklore unless someone measured it, and folklore here has already produced one wrong decision record in this repo ([below](#a-correction-worth-keeping)).
 
