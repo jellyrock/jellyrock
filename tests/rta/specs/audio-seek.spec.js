@@ -141,12 +141,13 @@ it('without audio transcoding, a FLAC seek says so once and the song still ends'
     value: false,
   });
   const target = await scrubForward(Math.floor((length * 0.75) / 10), length);
+  const seekedAt = Date.now();
+  const left = (length - target) * 1000;
   await waitToast(FALLBACK_NOTICE, { label: 'the fallback notice' });
   // The direct stream may stall at its end; the engine's guard ends it.
-  await waitSongEnded(
-    'the song ended through the fallback',
-    (length - target) * 1000 + END_SLACK_MS,
-  );
+  await waitSongEnded('the song ended through the fallback', left + END_SLACK_MS);
+  // Ending well before the rest could play is the "malformed data" early end, not a fallback.
+  expect(Date.now() - seekedAt, 'the rest of the song played').toBeGreaterThan(left - 5000);
 });
 
 it('when the server stream for a seek fails, the song still ends', async () => {
@@ -154,12 +155,14 @@ it('when the server stream for a seek fails, the song still ends', async () => {
   const length = flac.RunTimeTicks / 1e7;
   await playSong(FLAC_TRACK);
   // The next PlaybackInfo is the seek's: the song's own already loaded.
-  await failRequests([{ prefix: 'playbackInfo', kind: 'fail', times: 1 }]);
+  await failRequests([{ prefix: 'playbackInfo', kind: 'timeout', times: 1 }]);
   const target = await scrubForward(Math.floor((length * 0.75) / 10), length);
-  await waitSongEnded(
+  const left = (length - target) * 1000;
+  const waited = await waitSongEnded(
     'the song ended after a failed server stream',
-    (length - target) * 1000 + END_SLACK_MS,
+    left + END_SLACK_MS,
   );
+  expect(waited, 'the rest of the song played').toBeGreaterThan(left - 5000);
 });
 
 it('an MP3 seek stays in the stream that is playing', async () => {

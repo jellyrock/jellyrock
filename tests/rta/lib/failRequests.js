@@ -19,14 +19,50 @@
  *  - `times` is how many matching requests the rule applies to; omit it for all of them.
  *  - `after` is how many matching requests go through before the rule starts failing, for an
  *    id that repeats faster than a spec can set a rule in between (a grid's page 1 and 2).
- * A rule the app cannot honor exactly is dropped, not guessed at.
+ * A rule the app cannot honor exactly is dropped, not guessed at, and the app logs only how
+ * many it kept. So `failRequests` refuses such a rule here first (`checkFailRule`): a dropped
+ * rule leaves the spec running against a healthy server, passing without its failure path.
  *
  * Set rules AFTER relaunching: they live in app memory, so a relaunch clears them and no
  * restore step is needed.
  */
 import { odc } from 'roku-test-automation';
 
-/** Replace the active rules. */
+const KINDS = new Set(['timeout', 'http', 'slow', 'empty']);
+
+const isWhole = (n, min) => Number.isInteger(n) && n >= min;
+
+/**
+ * Throws when the app would drop `rule`. The same checks as `apiFaults.checkedRule` in
+ * `source/api/apiFaults.bs`; change the two together.
+ */
+export function checkFailRule(rule) {
+  const where = `failRequests rule ${JSON.stringify(rule)}`;
+  if (typeof rule?.prefix !== 'string' || rule.prefix === '') {
+    throw new Error(`${where}: needs a non-empty prefix`);
+  }
+  if (!KINDS.has(rule.kind)) {
+    throw new Error(`${where}: kind must be one of ${[...KINDS].join(', ')}`);
+  }
+  if (rule.kind === 'http' && !isWhole(rule.status, 400)) {
+    throw new Error(`${where}: an http rule needs a status of 400 or more`);
+  }
+  if (rule.kind === 'slow' && !isWhole(rule.ms, 1)) {
+    throw new Error(`${where}: a slow rule needs ms of 1 or more`);
+  }
+  if (rule.kind === 'timeout' && 'ms' in rule && !isWhole(rule.ms, 1)) {
+    throw new Error(`${where}: a timeout's ms, when given, must be 1 or more`);
+  }
+  if ('times' in rule && !isWhole(rule.times, 1)) {
+    throw new Error(`${where}: times must be 1 or more`);
+  }
+  if ('after' in rule && !isWhole(rule.after, 0)) {
+    throw new Error(`${where}: after must be 0 or more`);
+  }
+}
+
+/** Replace the active rules. Throws on a rule the app would drop (`checkFailRule`). */
 export async function failRequests(rules) {
+  for (const rule of rules) checkFailRule(rule);
   await odc.setValue({ base: 'global', keyPath: 'rtaFailRequests', value: rules });
 }
