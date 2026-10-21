@@ -502,9 +502,9 @@ export async function snapshotRegistry() {
  * Put the registry back to `saved`, and PROVE it took.
  *
  * Write, cold restart, read back, compare EVERYTHING, retry, throw. The
- * cold restart is not optional and `relaunch()` will not do: an ECP
- * `/launch/dev` against a running channel only foregrounds it, so the app keeps
- * the seeded session in memory and re-persists it over the restore. Verifying
+ * cold restart is not optional and `relaunch()` will not do: an app that did not
+ * start cold keeps the seeded session in memory and can write it back over the
+ * restore, and only `hardRelaunch()` confirms the exit. Verifying
  * after the restart is what makes the check mean "this survives", rather than
  * "the write landed for now".
  *
@@ -526,8 +526,9 @@ async function applyRestore(saved, { attempts, label, accept = false }) {
     if (Object.keys(writes).length) await odc.writeRegistry({ values: writes });
 
     // Cold start, so the verify below reads what SURVIVES rather than what we
-    // wrote over a still-running app.
-    await hardRelaunch();
+    // wrote over a still-running app. Fixed timing: this is the user's own registry,
+    // and its server may be slow or unreachable, so no screen is promised to land.
+    await hardRelaunch({ timing: 'fixed' });
 
     // Bounded like the read above, but its failure is still swallowed into "nothing came
     // back" so the retry semantics do not move: this loop exists to converge a restore that

@@ -466,8 +466,9 @@ const since = (from) => lines.filter((l) => l.at >= from).map((l) => l.raw);
 // ─── Tier 1 + tier 2, at the session boundary ────────────────────────────────
 // Read BEFORE any sample, and again after the last one. Never between a relaunch
 // and the line being measured (see the guard's header for why ODC traffic stays
-// out of the measured window).
-await hardRelaunch();
+// out of the measured window). Fixed timing: a calibration arm's build has no on-device
+// component to poll, and the sample loop below times its window from `exitMs`.
+await hardRelaunch({ timing: 'fixed' });
 
 /** Fold the run as a NON-sample, release everything, and exit. */
 async function refuse(message) {
@@ -732,7 +733,8 @@ try {
     {
       now: Date.now,
       sleep,
-      relaunch: hardRelaunch,
+      // Fixed timing: `runSeries` opens each window `exitMs` after it calls this.
+      relaunch: () => hardRelaunch({ timing: 'fixed' }),
       nav: navEntry?.nav ? () => navEntry.nav(navContext) : null,
       // Publish this launch's window to the console reader: the socket callback gates its
       // own `lastMatchAt` write on `windowFrom`, so a window it has not been told about

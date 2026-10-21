@@ -53,7 +53,7 @@ it('an episode that ends naturally advances to the next episode', async () => {
   // fact about the fixture rather than the app, so pin it. rta-run.js restores the
   // whole registry afterwards.
   await odc.writeRegistry({ values: { [session.userId]: { playbackPlayNextEpisode: 'enabled' } } });
-  await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
   await assertSeedTookEffect(expectedServer, 'playback-advance');
   await waitHome();
 

@@ -137,7 +137,7 @@ function makeContext(sessions, serversByName, primaryName) {
         // eslint-disable-next-line no-restricted-syntax -- fail-fast on a take asking for a seed that does not exist
         throw new Error(`land(): unsupported screen "${screen}" (add a seed for it)`);
       await seedHome(session, LOCALE); // demo server only; the home server is never written
-      await hardRelaunch(); // soft relaunch lets the running app re-persist over the seed
+      await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
       await waitHome();
     },
 
@@ -147,7 +147,7 @@ function makeContext(sessions, serversByName, primaryName) {
      */
     async landWithSavedServers() {
       await seedHomeWithSavedServers(session, Object.values(sessions), LOCALE);
-      await hardRelaunch(); // soft relaunch lets the running app re-persist over the seed
+      await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
       await waitHome();
     },
 

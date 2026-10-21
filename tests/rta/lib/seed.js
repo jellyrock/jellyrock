@@ -15,9 +15,10 @@ export const GLOBAL = 'JellyRock';
 /**
  * Prove a seed actually survived the relaunch.
  *
- * The failure this exists to catch is silent and expensive. `relaunch()` only
- * FOREGROUNDS an already-running channel, so the app keeps its in-memory session
- * and re-persists it over whatever was seeded. The suite then drives an app
+ * The failure this exists to catch is silent and expensive. The app reads the
+ * registry only when it starts, so a seed reaches it only through a cold start;
+ * if the app did not start cold, it keeps its in-memory session and can write it
+ * back over the seed. The suite then drives an app
  * pointed at the wrong server using the seeded server's item ids: every
  * content-dependent test fails with an unrelated-looking timeout, and a capture
  * run would silently photograph the wrong library. It cost a full CI run and two
@@ -27,19 +28,45 @@ export const GLOBAL = 'JellyRock';
  * server-select, where the key is deleted on purpose), so this stays correct
  * as seeds are added.
  *
+ * ## The landing view, when one was seeded
+ *
+ * `server` alone cannot see a lost seed when two seeds in a row name the same server,
+ * which is every pair of Home seeds in the suite. A seeded landing view can: pass what
+ * `seedLibraryLanding` returned, and this also checks the view the APP holds in memory
+ * (`m.global.user.settings.displaySettings`, filled from the registry at login). The
+ * registry alone would hold the seed even if the app never read it again, so only the
+ * app's copy proves the cold start happened. Call it after `hardRelaunch()`, which
+ * returns once the login flow has landed.
+ *
  * @param {string|null} expectedServer - what the seed said it wrote
  * @param {string} label - screen / test name, for the error message
+ * @param {object} [options]
+ * @param {{libraryId: string, view: string}|null} [options.landing] - what
+ *   `seedLibraryLanding` returned, to check the view as well
  */
-export async function assertSeedTookEffect(expectedServer, label) {
+export async function assertSeedTookEffect(expectedServer, label, { landing = null } = {}) {
   const values = (await odc.readRegistry({}))?.values || {};
   const live = values[GLOBAL]?.server ?? null;
   const want = expectedServer ?? null;
-  if (live === want) return;
+  if (live !== want) {
+    throw new Error(
+      `seed did not take for "${label}": registry says server=${JSON.stringify(live)} ` +
+        `but the seed wrote ${JSON.stringify(want)}. The app did not start cold and wrote ` +
+        'its in-memory session back over the seed: the relaunch after seeding must be ' +
+        'hardRelaunch(), which confirms the app exited before launching it again.',
+    );
+  }
+  if (!landing) return;
+  // Named field only: `displaySettings` holds view settings, never a credential, while a
+  // read of `m.global.user` whole would carry `authToken` into whatever logs the error.
+  const held = (await odc.getValue({ base: 'global', keyPath: 'user.settings.displaySettings' }))
+    ?.value?.[landing.libraryId]?.landing;
+  if (held === landing.view) return;
   throw new Error(
-    `seed did not take for "${label}": registry says server=${JSON.stringify(live)} ` +
-      `but the seed wrote ${JSON.stringify(want)}. The app re-persisted its in-memory ` +
-      'session over the seed — the relaunch after seeding must be hardRelaunch() ' +
-      '(a plain relaunch only foregrounds a running channel).',
+    `seed did not take for "${label}": the app holds landing view ${JSON.stringify(held)} ` +
+      `for library ${landing.libraryId}, but the seed wrote ${JSON.stringify(landing.view)}. ` +
+      'The app did not read the registry again after the seed, so it did not start cold: ' +
+      'the relaunch after seeding must be hardRelaunch().',
   );
 }
 
@@ -199,10 +226,14 @@ export async function seedUserSelect(session, locale) {
  * `libraryId` is resolved at runtime (libraryIdFor), never hardcoded. Call after
  * seedHome and before relaunch; the per-key write merges into the user section
  * seedHome wrote.
+ *
+ * @returns {Promise<{libraryId: string, view: string}|null>} what was written, for
+ *   `assertSeedTookEffect`'s `landing` option; `null` when nothing was.
  */
 export async function seedLibraryLanding(session, libraryId, view) {
-  if (!libraryId || !view) return;
+  if (!libraryId || !view) return null;
   await odc.writeRegistry({
     values: { [session.userId]: { [`display.${libraryId}.landing`]: view } },
   });
+  return { libraryId, view };
 }

@@ -81,6 +81,7 @@ const {
   walkHomeToFirstRow,
   overhangWalkKey,
   waitHome,
+  waitLandingSettled,
   scrollFocus,
   waitCellsQuiet,
   waitRowsSettled,
@@ -972,6 +973,119 @@ describe('waitHome — the login flow is a separate question, asked first', () =
 
     await expect(waitHome({ viewTimeout: 1 })).rejects.toThrow();
     expect(sendKeypress).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * `waitLandingSettled` is the landing half of a polled `hardRelaunch()`. The fixed sleep it
+ * replaced handed every caller a SETTLED Home, so the property gated here is that it still
+ * does: on Home it must not return while rows are still arriving, and on a login screen it
+ * must not go looking for Home at all.
+ */
+describe('waitLandingSettled — the first screen after a cold start, settled', () => {
+  const VIEW = 'activeRoutedView.subtype()';
+
+  beforeEach(() => {
+    getValue.mockReset();
+    getFocusedNode.mockReset().mockResolvedValue(null);
+    getValues.mockReset().mockResolvedValue({
+      results: { k0: { found: true, value: 'HomeRows' }, k1: { found: false } },
+    });
+  });
+
+  /**
+   * A device on Home whose rows walk through `shapes`, one step per complete
+   * `waitRowsSettled` sample. `waitHome`'s scene-rooted count read is answered from the
+   * current shape and never advances it.
+   */
+  const homeWithRows = (shapes) => {
+    let i = 0;
+    let rowReads = 0;
+    const reader = async ({ base, keyPath }) => {
+      if (keyPath === VIEW) return { found: true, value: 'Home' };
+      const shape = shapes[Math.min(i, shapes.length - 1)];
+      if (keyPath.endsWith('content.getChildCount()')) {
+        if (base === 'global') rowReads = 0;
+        return { found: true, value: shape.length };
+      }
+      const m = keyPath.match(/content\.(\d+)\.getChildCount\(\)$/);
+      if (!m) return { found: false };
+      rowReads++;
+      if (rowReads >= shape.length) i++;
+      return { found: true, value: shape[Number(m[1])] };
+    };
+    reader.step = () => i;
+    return reader;
+  };
+
+  it('returns on a login screen without asking anything about Home', async () => {
+    // A user-select or server-select seed lands there on purpose. Home's rows are absent by
+    // design, so reading for them would turn a correct landing into a 20 s timeout.
+    const seen = [];
+    getValue.mockImplementation(async ({ keyPath }) => {
+      seen.push(keyPath);
+      return keyPath === VIEW ? { found: true, value: 'UserSelect' } : { found: false };
+    });
+
+    await waitLandingSettled();
+
+    expect(seen.every((k) => k === VIEW)).toBe(true);
+    expect(getValues).not.toHaveBeenCalled();
+  });
+
+  it('keeps polling while the login flow has mounted no screen yet', async () => {
+    // `found: false` is the app mid-login: no routed view exists until the flow resolves.
+    let reads = 0;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      if (keyPath !== VIEW) return { found: false };
+      reads++;
+      return reads < 3 ? { found: false } : { found: true, value: 'SetServerScreen' };
+    });
+
+    await waitLandingSettled();
+
+    expect(reads).toBe(3);
+  });
+
+  it('on Home, does not return while rows are still arriving', async () => {
+    // The window the fixed sleep used to cover: `waitHome()` passes on the first row while
+    // `HomeRows` keeps inserting rows mid-list for about 2.5 s more (Stick 4K, 2026-10-20).
+    const reader = homeWithRows([[1], [1, 1], [1, 1, 1], [16, 1, 1], [16, 16, 16]]);
+    getValue.mockImplementation(reader);
+
+    await waitLandingSettled({ settle: { quietMs: 20, interval: 5, timeout: 3000 } });
+
+    expect(reader.step()).toBeGreaterThanOrEqual(4);
+  });
+
+  it('throws, naming the landing, when no screen ever mounts', async () => {
+    getValue.mockResolvedValue({ found: false });
+
+    await expect(waitLandingSettled({ viewTimeout: 1 })).rejects.toThrow(
+      /first screen after a cold start/,
+    );
+  });
+
+  it('reports a Home that never settles in its own words, not as a sweep', async () => {
+    // `waitRowsSettled`'s own warnings describe a cell sweep; printed after a restart they
+    // would send the reader after a sweep that never ran.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      let n = 0;
+      getValue.mockImplementation(async ({ keyPath }) => {
+        if (keyPath === VIEW) return { found: true, value: 'Home' };
+        if (keyPath.endsWith('content.getChildCount()')) return { found: true, value: 1 };
+        return { found: true, value: ++n }; // the one row never stops filling
+      });
+
+      await waitLandingSettled({ settle: { quietMs: 50, interval: 5, timeout: 100 } });
+
+      const messages = warn.mock.calls.map(([m]) => String(m));
+      expect(messages.some((m) => m.startsWith('[relaunch]'))).toBe(true);
+      expect(messages.some((m) => /sweep/.test(m))).toBe(false);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

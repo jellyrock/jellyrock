@@ -58,9 +58,9 @@ it('genre skeleton window: select is a no-op, scroll survives the fill, backdrop
     testCtx.skip(`needs 3+ movie genres to exercise scroll restore, has ${genreCount}`);
 
   const expectedServer = await seedHome(session, LOCALE);
-  await seedLibraryLanding(session, moviesId, 'Genres');
+  const landing = await seedLibraryLanding(session, moviesId, 'Genres');
   await hardRelaunch();
-  await assertSeedTookEffect(expectedServer, 'genre-skeleton');
+  await assertSeedTookEffect(expectedServer, 'genre-skeleton', { landing });
 
   // Widen the skeleton window BEFORE the genre load starts. It lives in app memory only: the
   // next relaunch resets it, so no restore step is needed.

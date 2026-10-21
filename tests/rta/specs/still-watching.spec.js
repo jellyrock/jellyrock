@@ -59,7 +59,7 @@ async function advanceIntoPrompt() {
   await odc.writeRegistry({
     values: { [session.userId]: { playbackPlayNextEpisode: 'enabled' } },
   });
-  await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
   await assertSeedTookEffect(expectedServer, 'still-watching');
   await waitHome();
   await odc.setValue({ base: 'global', keyPath: 'rtaForceStillWatching', value: true });

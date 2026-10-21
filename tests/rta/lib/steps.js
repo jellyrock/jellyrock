@@ -1084,6 +1084,61 @@ export async function waitHome({ viewTimeout = 45000, rowsTimeout = 20000 } = {}
 }
 
 /**
+ * After a cold start, wait for the first screen the app routes to and, when it is Home, for
+ * Home's rows to stop changing. The landing half of `hardRelaunch()` in `driver.js`.
+ *
+ * ## Why it asks for any view, where `waitHome()` asks for Home by name
+ *
+ * The login flow mounts exactly one routed view per cold start (`loginRouter.bs` routes to
+ * `/`, `/server`, `/users` or `/login`) and none before it, so straight after a cold start the
+ * first view to answer IS the landing screen. `waitHome()` must name Home because it also runs
+ * after navigation, where a non-empty answer can be a grid (see its docblock); here there is no
+ * earlier view to find. This does not judge WHICH screen landed: the caller seeded it, and
+ * asserts it.
+ *
+ * ## Why Home gets a second wait
+ *
+ * `waitHome()` passes on the first row, while `HomeRows` is still inserting the latest-media
+ * rows mid-list. Measured 2026-10-20 on a Stick 4K (20 cold starts), the rows kept changing for
+ * about 2.5 s after it passed. The fixed sleep this replaces outlasted that window, so every
+ * caller of `hardRelaunch()` was handed a settled Home; this keeps that true.
+ *
+ * A Home that never holds still is reported, not thrown: the caller's own gates still run, and
+ * `waitRowsSettled` already treats "never settled" as a finding to print rather than a failure.
+ *
+ * @param {object} [options]
+ * @param {number} [options.viewTimeout] budget for the login flow to mount a screen. Bounded by
+ *   a remote login, so it matches `waitHome()`'s login budget.
+ * @param {object} [options.settle] passed to `waitRowsSettled` (its defaults otherwise).
+ *   Exposed, like `waitHome()`'s budgets, so the hardware-free gate in `steps.test.js` can
+ *   drive a settle in milliseconds instead of its 1.5 s quiet window.
+ */
+export async function waitLandingSettled({ viewTimeout = 45000, settle: settleOptions = {} } = {}) {
+  const view = await waitFor('subtype()', (v) => typeof v === 'string' && v.length > 0, {
+    read: getActiveVal,
+    label: 'the first screen after a cold start (past the login flow)',
+    timeout: viewTimeout,
+    interval: 300,
+  });
+  if (view !== 'Home') return;
+  await waitHome();
+  const list = await homeListId();
+  const settle = await waitRowsSettled(list, { ...settleOptions, warn: false });
+  if (!settle.resolved) {
+    console.warn(
+      `[relaunch] Home's row list (${list}) did not answer after Home appeared, so the restart ` +
+        'returned without knowing whether Home had settled.',
+    );
+  } else if (!settle.settled) {
+    console.warn(
+      `[relaunch] Home's rows were still changing ${settle.waitedMs} ms after Home appeared ` +
+        `(last ${settle.rows} row(s), ${settle.items} item(s)); returning anyway, so the next ` +
+        'step starts on a Home that may still be inserting rows.',
+    );
+  }
+}
+
+/**
  * Bring Home's active row list to row 0, the precondition for leaving Home upward.
  *
  * ## Why anything has to do this
@@ -2112,6 +2167,8 @@ export async function waitCellsQuiet(
  * @param {string} listId the list's `#id`; rows hang off `<listId>.content`
  * @param {object} [opts]
  * @param {(k:string)=>Promise<any>} [opts.read] defaults to `getActiveVal`
+ * @param {boolean} [opts.warn] print the two give-up warnings below. A caller that reports
+ *   the outcome in its own words passes `false` (`waitLandingSettled`): these name a sweep.
  * @returns {Promise<{settled:boolean, resolved:boolean, rows:number|undefined,
  *                    items:number|undefined, widths:number[], waitedMs:number}>}
  *   `resolved` is answered at GATE-OPEN: false only when the list never answered at all.
@@ -2122,7 +2179,7 @@ export async function waitCellsQuiet(
  */
 export async function waitRowsSettled(
   listId,
-  { read = getActiveVal, quietMs = 1500, timeout = 20000, interval = 400 } = {},
+  { read = getActiveVal, quietMs = 1500, timeout = 20000, interval = 400, warn = true } = {},
 ) {
   const start = Date.now();
   const sample = async () => {
@@ -2149,10 +2206,11 @@ export async function waitRowsSettled(
 
   let shape = await sample();
   if (typeof shape.rows !== 'number') {
-    console.warn(
-      `[nav] ${listId}: the content root did not resolve, so the sweep that follows was not ` +
-        'gated on a settled structure. Check the keyPath and whether the list is mounted.',
-    );
+    if (warn)
+      console.warn(
+        `[nav] ${listId}: the content root did not resolve, so the sweep that follows was not ` +
+          'gated on a settled structure. Check the keyPath and whether the list is mounted.',
+      );
     return {
       settled: false,
       resolved: false,
@@ -2192,17 +2250,18 @@ export async function waitRowsSettled(
       };
     }
   }
-  console.warn(
-    typeof shape.rows === 'number'
-      ? `[nav] ${listId}: the row structure never held still for ${quietMs} ms within ` +
-          `${timeout} ms — last ${lastGood.rows} row(s), ${total(lastGood)} item(s). The sweep ` +
-          'still ran, but it read its bounds off a screen that was still being built, so its ' +
-          'counts are comparable only to other runs that also failed to settle.'
-      : `[nav] ${listId}: the list STOPPED ANSWERING mid-settle — the last structure it read was ` +
-          `${lastGood.rows} row(s), ${total(lastGood)} item(s), and it read nothing for the rest ` +
-          `of ${timeout} ms. The screen was replaced or unmounted underneath this call, so the ` +
-          'structure reported here is the LAST ONE OBSERVED and NOT the one the sweep travelled.',
-  );
+  if (warn)
+    console.warn(
+      typeof shape.rows === 'number'
+        ? `[nav] ${listId}: the row structure never held still for ${quietMs} ms within ` +
+            `${timeout} ms — last ${lastGood.rows} row(s), ${total(lastGood)} item(s). The sweep ` +
+            'still ran, but it read its bounds off a screen that was still being built, so its ' +
+            'counts are comparable only to other runs that also failed to settle.'
+        : `[nav] ${listId}: the list STOPPED ANSWERING mid-settle — the last structure it read was ` +
+            `${lastGood.rows} row(s), ${total(lastGood)} item(s), and it read nothing for the rest ` +
+            `of ${timeout} ms. The screen was replaced or unmounted underneath this call, so the ` +
+            'structure reported here is the LAST ONE OBSERVED and NOT the one the sweep travelled.',
+    );
   return {
     settled: false,
     resolved: true,

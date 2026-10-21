@@ -64,7 +64,7 @@ it('the next-episode button stays down while a dialog is open over the player', 
       [session.userId]: { playbackNextUpButtonSeconds: String(NEXT_UP_BUTTON_SECONDS) },
     },
   });
-  await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
   await assertSeedTookEffect(expectedServer, 'playback-notifications');
   await waitHome();
 

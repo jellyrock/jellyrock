@@ -143,9 +143,13 @@ beforeAll(async () => {
  */
 async function retainedAfter(walk, label) {
   const expectedServer = await seedHome(session, LOCALE);
-  await seedLibraryLanding(session, libraryIdFor(ctx.libraries, 'movies'), MOVIES_GRID.landing);
-  await hardRelaunch(); // never plain relaunch: the app would re-persist over the seed
-  await assertSeedTookEffect(expectedServer, label);
+  const landing = await seedLibraryLanding(
+    session,
+    libraryIdFor(ctx.libraries, 'movies'),
+    MOVIES_GRID.landing,
+  );
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
+  await assertSeedTookEffect(expectedServer, label, { landing });
   await waitHome();
 
   await walk(ctx);

@@ -23,7 +23,7 @@ import { beforeAll, afterAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
-import { relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
+import { hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { navSeriesDetails, navMovieDetails, focusDetailButton } from '../lib/nav.js';
 import {
   waitFor,
@@ -123,7 +123,7 @@ async function seedPlaybackSettings(userSettings) {
 async function pausedOsd(userSettings = null) {
   const expectedServer = await seedHome(session, LOCALE);
   await seedPlaybackSettings(userSettings);
-  await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
   await assertSeedTookEffect(expectedServer, 'pausedOsd');
   await waitHome();
 
@@ -198,9 +198,10 @@ async function playingOsd(userSettings = null) {
 }
 
 it('series watched button opens the standard confirm dialog; back cancels it', async () => {
-  await seedHome(session, LOCALE);
-  await seedLibraryLanding(session, libraryIdFor(libraries, 'tvshows'), 'Shows');
-  await relaunch();
+  const expectedServer = await seedHome(session, LOCALE);
+  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'tvshows'), 'Shows');
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'series watched dialog', { landing });
   await navSeriesDetails();
 
   // The group walk, the identity gate and the pressed-on capture all live in
@@ -315,9 +316,10 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
 // findable by the shared id, and passing `returnFocusTo` explicitly still lands
 // focus back on the opener rather than wherever derivation would have guessed.
 it('item description opens the overview overlay; back restores focus to it', async () => {
-  await seedHome(session, LOCALE);
-  await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'Movies');
-  await relaunch();
+  const expectedServer = await seedHome(session, LOCALE);
+  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'Movies');
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'item description overlay', { landing });
   await navMovieDetails({ libraries });
 
   // Guard the fixture before asserting on it: a movie with no overview leaves
@@ -388,9 +390,10 @@ it('item description opens the overview overlay; back restores focus to it', asy
 // spare), so a content-dependent version of this test would silently assert the
 // non-scrolling branch, which is the branch that passes either way.
 it('a scrolling overview overlay opens focused on the text, not on OK', async () => {
-  await seedHome(session, LOCALE);
-  await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'Movies');
-  await relaunch();
+  const expectedServer = await seedHome(session, LOCALE);
+  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'Movies');
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'scrolling overview overlay', { landing });
   await navMovieDetails({ libraries });
 
   const overview = await getVal('#itemDescription.text');

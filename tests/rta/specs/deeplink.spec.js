@@ -57,7 +57,7 @@ beforeAll(async () => {
 /** Land logged-in on Home, then fire a runtime cast (ECP /input?contentId=...). */
 async function castFromHome(contentId) {
   const expectedServer = await seedHome(session, LOCALE);
-  await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
   await assertSeedTookEffect(expectedServer, 'castFromHome');
   await waitHome();
   await ecp.sendInput({ params: { contentId } }); // querystring.build URL-encodes | and =

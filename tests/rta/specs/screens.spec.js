@@ -87,18 +87,19 @@ for (const screen of SCREENS) {
     else if (screen.state === 'serverSelect')
       expectedServer = await seedServerSelect(session, LOCALE);
     // Deterministic landing view for library-dependent screens (resolve id at runtime).
+    let landing = null;
     if (screen.view) {
-      await seedLibraryLanding(
+      landing = await seedLibraryLanding(
         session,
         libraryIdFor(libraries, screen.view.collectionType),
         screen.view.landing,
       );
     }
-    // hardRelaunch, not relaunch: a plain relaunch only foregrounds the running
-    // channel, which then re-persists its in-memory session over everything seeded
-    // above. See assertSeedTookEffect for what that failure looks like.
+    // hardRelaunch, not relaunch: the app reads the seed only on a cold start, and
+    // hardRelaunch confirms the exit before launching. assertSeedTookEffect proves it,
+    // the landing view included.
     await hardRelaunch();
-    await assertSeedTookEffect(expectedServer, screen.name);
+    await assertSeedTookEffect(expectedServer, screen.name, { landing });
     if (screen.nav) await screen.nav(ctx); // nav's waitFor gates assert "loaded"
     // Loaded is not enough: the screen it covers must also be gone. Every route suspends
     // with "show", so a view that skips JRScene's screen swap leaves it showing underneath.

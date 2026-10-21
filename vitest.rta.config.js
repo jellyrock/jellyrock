@@ -14,15 +14,19 @@ export default defineConfig({
     // `diagnosedError` and reports the device state it saw, whereas a Vitest timeout reports
     // nothing at all, so the budget here has to stay clear of the worst-case gate chain, or
     // the suite loses its best diagnostic exactly when it needs it. `screen "settings"` is the
-    // longest: hardRelaunch 14s (exitMs + bootMs) + waitHome 65s (45s login + 20s rows) +
-    // walkHomeToFirstRow 10s + overhang focus 15s + version label 20s + 1s settle = ~125s.
-    // The OSD playback wait alone is ~90s. Re-do this arithmetic when a gate's timeout moves.
+    // longest: hardRelaunch 140s (exit 10 + port 30 + scene 10 + first view 45 + Home rows 20
+    // + list 5 + rows settle 20) + waitHome 65s (45s login + 20s rows) + walkHomeToFirstRow
+    // 10s + overhang focus 15s + version label 20s + 1s settle = ~251s. The OSD playback wait
+    // alone is ~90s. Re-do this arithmetic when a gate's timeout moves.
     // That sum is a REAL bound as of the `nextTickMs` fix in `lib/steps.js`: `waitFor` and
     // `waitFocused` used to sleep a full poll interval after deciding to give up, so each
     // gate in the chain could overshoot its stated timeout by its own interval and the true
     // worst case sat above this arithmetic rather than at it.
-    testTimeout: 180_000,
-    hookTimeout: 120_000, // deploy + boot in globalSetup/beforeAll
+    testTimeout: 300_000,
+    // deploy + boot in globalSetup/beforeAll. The longest hook chain is a beforeAll that
+    // restarts and then waits for Home (`task-thread-peak`, `task-ledger-screen-cost`):
+    // hardRelaunch 140s + waitHome 65s + server reads = ~210s.
+    hookTimeout: 240_000,
     // One real device: everything must run serially. `poolOptions` was removed in
     // Vitest 4 and these top-level options replace it. `minWorkers` was removed in
     // Vitest 5: it resolves but nothing reads it, so do not re-add it; the serial

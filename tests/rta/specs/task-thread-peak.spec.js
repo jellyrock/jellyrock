@@ -80,7 +80,7 @@ beforeAll(async () => {
   // the device was last signed into by another run. It would pass against the wrong
   // fixture and report a peak for a library nobody chose.
   const expectedServer = await seedHome(session, RTA_CONFIG.languages[0]);
-  await hardRelaunch(); // never plain relaunch: the app re-persists over the seed
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
   await assertSeedTookEffect(expectedServer, 'task-thread peak');
   await waitHome();
   await odc.createChild({
