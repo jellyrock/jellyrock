@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-21: feat(backdrop): Show My Media backdrops and restore one after sign-in
 - 2026-10-21: fix(playback): Play songs and trailers in the right player
 - 2026-10-20: ci: Run the job when the PR diff can't be fetched
 - 2026-10-20: chore(journal): Retire the signals journal; watch upstreams from CI
