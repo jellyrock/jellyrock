@@ -156,14 +156,14 @@ Quick pointers:
 
 ### Looking up Roku platform docs
 
-The source of Roku's developer docs is [`rokudev/dev-doc`](https://github.com/rokudev/dev-doc), on branch `v2.0`. Prefer the GitHub source to the rendered site at `developer.roku.com/dev`: the rendered site sometimes blocks fetches and cuts off HTML tables the markdown source keeps. Fetch through `gh`:
+The source of Roku's developer docs is [`rokudev/dev-doc`](https://gitlab.com/rokudev/dev-doc), on branch `v2.0`. Roku archived the GitHub repo of the same name, which is frozen and still serves, so a read of it succeeds with stale data. Use GitLab. Prefer the markdown source to the rendered site at `developer.roku.com/dev`: the rendered site sometimes blocks fetches and cuts off HTML tables the markdown source keeps.
 
 ```bash
-# Path discovery:
-gh api repos/rokudev/dev-doc/git/trees/v2.0?recursive=1 --jq '.tree[].path' | grep <topic>
+# Search: shallow-clone into the session scratchpad (a few seconds), then grep it.
+git clone --depth 1 -b v2.0 https://gitlab.com/rokudev/dev-doc.git <scratchpad>/dev-doc
 
-# Read a file (decode the base64 content field):
-gh api repos/rokudev/dev-doc/contents/<path>?ref=v2.0 --jq '.content' | base64 -d
+# Read one file:
+curl -s https://gitlab.com/rokudev/dev-doc/-/raw/v2.0/<path>
 ```
 
 The most useful subtrees: `docs/REFERENCES/scenegraph/` (SceneGraph nodes and interface fields), `docs/REFERENCES/brightscript/` (components, events and interfaces such as `roInput`, `roInputEvent` and `roMessagePort`), and `docs/DEVELOPER/` (feature guides: voice transport, deep linking, certification). When the repo and the rendered site disagree, trust the repo: the site is built from it.

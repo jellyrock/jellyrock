@@ -175,7 +175,8 @@ async function fetchLatestUnstable({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   return parseUnstableIndex(html);
 }
 
-// Pure parser for the rokudev/dev-doc release-notes markdown. File order is
+// Pure parser for the rokudev/dev-doc release-notes markdown (read from GitLab; the
+// GitHub copy is archived and frozen). File order is
 // newest-first by author convention, so the first `## Roku OS X.Y` heading
 // wins. Exported separately for unit-test parity with parseJellyfinIndex.
 function parseRokuOsMarkdown(md) {
@@ -186,7 +187,7 @@ function parseRokuOsMarkdown(md) {
 
 async function fetchRokuOs({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const md = await httpGet(
-    'https://raw.githubusercontent.com/rokudev/dev-doc/v2.0/docs/DEVELOPER/release-notes/index.md',
+    'https://gitlab.com/rokudev/dev-doc/-/raw/v2.0/docs/DEVELOPER/release-notes/index.md',
     { timeoutMs },
   );
   return parseRokuOsMarkdown(md);

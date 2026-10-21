@@ -7,11 +7,12 @@
 // test that runs when `node scripts/catchup-state.js` itself runs without
 // --no-network.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const {
+  fetchRokuOs,
   parseJellyfinIndex,
   parseUnstableIndex,
   parseRokuOsMarkdown,
@@ -178,5 +179,38 @@ describe('compareSemverBase', () => {
     expect(compareSemverBase('10.11.8', '10.11.7')).toBeGreaterThan(0);
     expect(compareSemverBase('10.11.0', '10.9.0')).toBeGreaterThan(0);
     expect(compareSemverBase('10.11.0', '10.11.0')).toBe(0);
+  });
+});
+
+describe('fetchRokuOs', () => {
+  it('reads the release notes from the live GitLab repo, not the archived GitHub copy', async () => {
+    // Roku archived the GitHub repo and moved the docs to GitLab. The GitHub copy
+    // still serves, so a fetch against it would succeed with frozen data.
+    const https = require('node:https');
+    const urls = [];
+    const spy = vi.spyOn(https, 'get').mockImplementation((url, _opts, cb) => {
+      urls.push(url);
+      const res = {
+        statusCode: 200,
+        headers: {},
+        resume() {},
+        setEncoding() {},
+        on(evt, fn) {
+          if (evt === 'data') fn('# Release notes\n\n## Roku OS 16.0\n');
+          if (evt === 'end') fn();
+        },
+      };
+      cb(res);
+      return { on() {}, setTimeout() {}, destroy() {} };
+    });
+    try {
+      const version = await fetchRokuOs();
+      expect(urls).toEqual([
+        'https://gitlab.com/rokudev/dev-doc/-/raw/v2.0/docs/DEVELOPER/release-notes/index.md',
+      ]);
+      expect(version).toBe('16.0');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

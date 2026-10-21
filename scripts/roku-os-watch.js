@@ -3,7 +3,7 @@
 // which does the GitHub writes; this script only reads.
 //
 // The newest Roku OS is the first `## Roku OS X.Y` heading in rokudev/dev-doc's
-// release notes (fetchRokuOs()). There is one issue per version (label `roku-os`,
+// release notes on GitLab (fetchRokuOs()). There is one issue per version (label `roku-os`,
 // found by exact title, any state), so a version is announced once and closing
 // its issue is the acknowledgment. Nothing in the repo stores the last reviewed
 // version: the closed issues are that record.
@@ -51,7 +51,7 @@ export function renderRokuOsBody({ version, since }) {
   return [
     `Roku published release notes for **Roku OS ${version}**.`,
     '',
-    `Read ${range} in the [release notes](https://github.com/rokudev/dev-doc/blob/v2.0/docs/DEVELOPER/release-notes/index.md) for video pipeline and SceneGraph capability changes. If a codec, DRM or OSD change affects JellyRock, update \`docs/architecture/playback.md\` and file the work.`,
+    `Read ${range} in the [release notes](https://gitlab.com/rokudev/dev-doc/-/blob/v2.0/docs/DEVELOPER/release-notes/index.md) for video pipeline and SceneGraph capability changes. If a codec, DRM or OSD change affects JellyRock, update \`docs/architecture/playback.md\` and file the work.`,
     '',
     'Close this issue once reviewed. Closing it is the acknowledgment.',
     '',

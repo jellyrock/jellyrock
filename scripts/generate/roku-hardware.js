@@ -90,7 +90,10 @@ const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 export const OUTPUT_REL = path.join('scripts', 'data', 'roku-hardware.json');
 
 /**
- * Upstream. `v2.0` is `rokudev/dev-doc`'s DEFAULT branch, not a pinned historical
+ * Upstream. Roku archived the GitHub repo `rokudev/dev-doc` (frozen read-only, so
+ * reading it never fails, it goes stale) and moved the live docs to GitLab at
+ * the same path. `repo` names the project on both hosts and is the provenance label.
+ * `v2.0` is its DEFAULT branch, not a pinned historical
  * ref (verified at authoring time), so `--fetch` resolves the default branch and
  * asserts it still has this name. A future v3.0 cut then fails the sync loudly
  * instead of silently pinning us to an abandoned ref, which is the failure mode of
@@ -627,8 +630,41 @@ export function readDataset(file = path.join(rootDir, OUTPUT_REL)) {
 
 // ── Upstream ─────────────────────────────────────────────────────────────────
 
-const gh = (args) =>
-  execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }).trim();
+const curl = (url) =>
+  execFileSync('curl', ['-fsSL', url], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }).trim();
+
+const GITLAB_API = 'https://gitlab.com/api/v4';
+
+/** The three GitLab REST API v4 URLs `fetchUpstream` reads (no auth needed). */
+export function gitlabUrls(upstream = UPSTREAM) {
+  const project = `${GITLAB_API}/projects/${encodeURIComponent(upstream.repo)}`;
+  const filePath = encodeURIComponent(upstream.path);
+  return {
+    project,
+    file: `${project}/repository/files/${filePath}?ref=${encodeURIComponent(upstream.ref)}`,
+    commits:
+      `${project}/repository/commits?ref_name=${encodeURIComponent(upstream.ref)}` +
+      `&path=${filePath}&per_page=1`,
+  };
+}
+
+/**
+ * GitLab's file and commit-list responses -> the fetch result. GitLab dates carry the
+ * committer's offset (`2026-10-12T16:04:11.000-07:00`); the dataset stores UTC with a
+ * `Z` and no milliseconds, so a timezone change never reads as an upstream change.
+ */
+export function mapUpstream(file, commits) {
+  if (!Array.isArray(commits) || commits.length === 0) {
+    throw new SpecParseError(`GitLab returned no commits for ${UPSTREAM.path}`);
+  }
+  const { id, committed_date: committedDate } = commits[0];
+  return {
+    markdown: Buffer.from(file.content, 'base64').toString('utf8'),
+    blobSha: file.blob_id,
+    upstreamCommit: id,
+    upstreamCommittedAt: new Date(committedDate).toISOString().replace(/\.\d+Z$/, 'Z'),
+  };
+}
 
 /**
  * Pull the spec, and everything needed to point at the exact bytes it came from.
@@ -639,7 +675,8 @@ const gh = (args) =>
  * without anyone noticing.
  */
 export function fetchUpstream() {
-  const defaultBranch = gh(['api', `repos/${UPSTREAM.repo}`, '--jq', '.default_branch']);
+  const urls = gitlabUrls();
+  const defaultBranch = JSON.parse(curl(urls.project)).default_branch;
   if (defaultBranch !== UPSTREAM.ref) {
     throw new SpecParseError(
       `${UPSTREAM.repo}'s default branch is now ${JSON.stringify(defaultBranch)}, not ` +
@@ -647,28 +684,7 @@ export function fetchUpstream() {
         'checking whether the table moved with it.',
     );
   }
-  const meta = JSON.parse(
-    gh([
-      'api',
-      `repos/${UPSTREAM.repo}/contents/${UPSTREAM.path}?ref=${UPSTREAM.ref}`,
-      '--jq',
-      '{sha: .sha, content: .content}',
-    ]),
-  );
-  const commit = JSON.parse(
-    gh([
-      'api',
-      `repos/${UPSTREAM.repo}/commits?path=${UPSTREAM.path}&sha=${UPSTREAM.ref}&per_page=1`,
-      '--jq',
-      '.[0] | {sha: .sha, date: .commit.committer.date}',
-    ]),
-  );
-  return {
-    markdown: Buffer.from(meta.content, 'base64').toString('utf8'),
-    blobSha: meta.sha,
-    upstreamCommit: commit.sha,
-    upstreamCommittedAt: commit.date,
-  };
+  return mapUpstream(JSON.parse(curl(urls.file)), JSON.parse(curl(urls.commits)));
 }
 
 /** Assemble the committed document from a fetch. `fetchedAt` is passed in, for tests. */
