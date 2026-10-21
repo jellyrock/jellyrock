@@ -970,6 +970,18 @@
       "sourceFiles": [
         "source/api/ApiClient.bs"
       ]
+    },
+    {
+      "path": "/Videos/ActiveEncodings",
+      "normalized": "/videos/activeencodings",
+      "methods": [
+        "DELETE"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
     }
   ],
   "requestFields": [
@@ -3335,7 +3347,7 @@
       }
     },
     "counts": {
-      "endpoints": 80,
+      "endpoints": 81,
       "requestFields": 51,
       "responseFields": 223,
       "unresolvedEndpointSinks": 3
@@ -3343,11 +3355,11 @@
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 437
+        "line": 440
       },
       {
         "sourceFile": "source/api/items.bs",
-        "line": 452
+        "line": 455
       },
       {
         "sourceFile": "source/utils/subtitles.bs",

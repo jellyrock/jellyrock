@@ -101,6 +101,42 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("streamHandover() - what a new stream does with the session it replaces")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has nothing to hand over without an open session")
+    @params(invalid)
+    @params("")
+    function _(openSessionId)
+      m.assertEqual(audioSeek.streamHandover(openSessionId, { id: "new", continuesListen: true }), audioSeek.HANDOVER_NONE)
+    end function
+
+    @it("has nothing to hand over when the same stream is set again")
+    function _()
+      m.assertEqual(audioSeek.streamHandover("same", { id: "same" }), audioSeek.HANDOVER_NONE)
+    end function
+
+    ' A seek that loads a new stream is the same listen: a second start would count a second
+    ' play (Jellyfin's SessionManager.OnPlaybackStart adds one to PlayCount on every start).
+    @it("continues the listen in a stream a seek loaded")
+    function _()
+      m.assertEqual(audioSeek.streamHandover("old", { id: "new", continuesListen: true }), audioSeek.HANDOVER_CONTINUE)
+    end function
+
+    @it("ends the listen for any other new stream (a new track, a replay)")
+    function _()
+      streams = [{ id: "new" }, { id: "new", continuesListen: false }]
+      for each stream in streams
+        m.assertEqual(audioSeek.streamHandover("old", stream), audioSeek.HANDOVER_END, FormatJson(stream))
+      end for
+    end function
+
+    @it("ends the listen when the stream is cleared")
+    function _()
+      m.assertEqual(audioSeek.streamHandover("old", invalid), audioSeek.HANDOVER_END)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("logicalPosition() - position in the whole track")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

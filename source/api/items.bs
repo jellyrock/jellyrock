@@ -401,8 +401,9 @@ end function
 
 ' The stream content for an audio item, starting at startSeconds.
 '
-' With useServerSeek, the server makes a FLAC stream that starts at startSeconds, so the player
-' starts it from zero (audioSeek explains why a FLAC must not start mid-file on the player).
+' With useServerSeek and a FLAC source, the server makes a FLAC stream that starts at
+' startSeconds, so the player starts it from zero (audioSeek explains why a FLAC must not start
+' mid-file on the player).
 ' Otherwise the item plays as the server decides, direct or transcoded, and a direct stream
 ' starts at startSeconds through PlayStart.
 '
@@ -429,7 +430,9 @@ function AudioStream(id as string, startSeconds = 0.0 as float, useServerSeek = 
   isServerSeek = false
   startOffset = 0.0
 
-  if useServerSeek and startSeconds > 0
+  ' Only a FLAC source: the server stream is FLAC, so any other source would be transcoded to it.
+  isFlacSource = isValid(mediaSource.container) and LCase(mediaSource.container) = "flac"
+  if useServerSeek and startSeconds > 0 and isFlacSource
     ' Whole milliseconds first: int() is 32-bit, and ticks past about 3.5 minutes overflow it.
     startTicks& = int(startSeconds * 1000) * 10000&
     playbackInfo = AudioServerSeekPlaybackInfo(songData.id, mediaSource.id, startTicks&)
@@ -463,7 +466,7 @@ function AudioStream(id as string, startSeconds = 0.0 as float, useServerSeek = 
       audioUrl = buildURL(Substitute("Audio/{0}/stream", songData.id), params)
       if not isValid(audioUrl) then return invalid
       content.url = audioUrl
-      isFlac = isValid(mediaSource.container) and LCase(mediaSource.container) = "flac"
+      isFlac = isFlacSource
       if startSeconds > 0 then content.PlayStart = startSeconds
     end if
   end if

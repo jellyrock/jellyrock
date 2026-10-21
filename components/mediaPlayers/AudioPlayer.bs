@@ -7,7 +7,8 @@ import "pkg:/source/utils/misc.bs"
 sub init()
   m.log = new log.Logger("AudioPlayer")
   m.isPlayReported = false
-  ' The loaded stream's server session, until its end is reported: { id, itemId, position }.
+  ' The loaded stream's server session, until its end is reported:
+  ' { id, itemId, position, isServerSeek }.
   m.openSession = invalid
   ' Position in the whole track at its last change, and when that was (for the end guard).
   m.lastPosition = invalid
@@ -26,18 +27,29 @@ sub init()
   m.top.observeField("position", "onPositionChanged")
 end sub
 
-' A new stream replaces the old one. The old stream's end is reported here when nothing
-' reported it yet: a server stream replaced by a seek keeps its server job running until
-' its session reports a stop.
+' A new stream replaces the old one (audioSeek.streamHandover). For a new listen, the old
+' stream's end is reported here when nothing reported it yet. A stream a seek loaded continues
+' the listen instead: the old stream reports no stop and the new one no start, so the server
+' counts one play, and a server stream it replaces has its server job ended directly, since
+' that job otherwise runs until its session reports a stop.
 sub onContentChanged()
   content = m.top.content
-  if isValid(m.openSession) and (not isValid(content) or m.openSession.id <> content.id)
-    reportEnd()
+  isContinuingListen = false
+  if isValid(m.openSession)
+    handover = audioSeek.streamHandover(m.openSession.id, content)
+    if handover = audioSeek.HANDOVER_END
+      reportEnd()
+    else if handover = audioSeek.HANDOVER_CONTINUE
+      isContinuingListen = m.isPlayReported
+      if m.openSession.isServerSeek then SubmitSideEffect(GetApi().BuildStopEncodingRequest(m.openSession.id))
+    end if
   end if
   m.endGuardTimer.control = "stop"
   m.lastPosition = invalid
   m.lastMoveMs = m.clock.TotalMilliseconds()
   openSession()
+  ' After openSession, which resets it: a continued listen already reported its start.
+  m.isPlayReported = isContinuingListen
 end sub
 
 ' State Change Event Handler
@@ -132,7 +144,7 @@ sub openSession()
   if isValid(currentItem) and isValid(currentItem.id) then itemId = currentItem.id
   startOffset = 0.0
   if isValid(content.startOffset) then startOffset = content.startOffset
-  m.openSession = { id: content.id, itemId: itemId, position: startOffset }
+  m.openSession = { id: content.id, itemId: itemId, position: startOffset, isServerSeek: isBooleanTrue(content.isServerSeek) }
 end sub
 
 ' Reports the open session's stop, once.

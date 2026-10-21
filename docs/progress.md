@@ -981,6 +981,12 @@ Where JellyRock stands: pinned to 10.11.11. The plugin's session-controller + lo
 
 When it moves: re-pin the plugin's `Jellyfin.Controller`/`Jellyfin.Model` + `build.yaml` `targetAbi` to the new line, rebuild in the SDK container, and re-verify the cast and closed app liveness gate on a test server (12.0 RC restructures the API: check `ISessionController` / `SessionInfo` shapes)
 
+#### Nobody has checked whether Roku's FLAC seek defect also hits FLAC in an Ogg container, which the workaround skips `[fid: ogg-flac-seek-unchecked]` `[captured 2026-10-21]`
+
+The FLAC seek workaround (#662, ADR 0052) marks a stream `isFlac` only when its container is `flac` (`AudioStream` in `source/api/items.bs`). The device profile also direct-plays an `ogg` container probed for `flac` (`deviceCapabilities.bs`), so FLAC audio in an Ogg file seeks natively, with no server stream, and nobody has checked whether Roku's short-last-frame seek defect hits it too. Found in the PR #1234 review, 2026-10-21.
+
+Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame is shorter than its frame size. If it stalls before the end like a `.flac` does, extend the check to the audio codec and cover it in `audio-seek.spec.js`; if it ends cleanly, record that here and drop the entry. Why not now: it needs such a fixture, which the demo server does not have.
+
 ### tests
 
 #### Re-derive what actually reddened PR #800 — the device-contention explanation is REFUTED. `[fid: pr-800-red-cause-rederive]` `[captured 2026-08-10]`

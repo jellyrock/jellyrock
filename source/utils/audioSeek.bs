@@ -53,6 +53,28 @@ namespace audioSeek
     return { action: ACTION_NATIVE, startSeconds: targetSeconds, isFallback: true }
   end function
 
+  ' What a new stream does with the open session of the one it replaces (streamHandover).
+  ' Nothing is open, or the same stream was set again.
+  const HANDOVER_NONE = "none"
+  ' A new listen (another track, a replay): report the old session's stop.
+  const HANDOVER_END = "end"
+  ' The same listen goes on in a stream a seek loaded: no stop for the old session and no start
+  ' for the new one, since Jellyfin adds a play to the item on every start.
+  const HANDOVER_CONTINUE = "continue"
+
+  ' What the engine does with its open session when its content changes.
+  '
+  ' @param {dynamic} openSessionId - the PlaySessionId whose end is still to be reported, or invalid
+  ' @param {dynamic} content - the new stream's content node (id, continuesListen), or invalid
+  ' @return {string} HANDOVER_NONE, HANDOVER_END or HANDOVER_CONTINUE
+  function streamHandover(openSessionId as dynamic, content as dynamic) as string
+    if not isValidAndNotEmpty(openSessionId) then return HANDOVER_NONE
+    if not isValid(content) then return HANDOVER_END
+    if content.id = openSessionId then return HANDOVER_NONE
+    if isBooleanTrue(content.continuesListen) then return HANDOVER_CONTINUE
+    return HANDOVER_END
+  end function
+
   ' Whether a stream begins somewhere other than the track's start: one the server started at
   ' a position, or a direct stream with a PlayStart. Playing such a stream again replays from
   ' that point, not from 0.

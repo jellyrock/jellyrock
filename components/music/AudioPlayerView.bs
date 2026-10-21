@@ -23,8 +23,12 @@ sub init()
   m.lastRecordedPositionTimestamp = 0
   m.scrubTimestamp = -1
   m.currentBackdropUrl = ""
-  ' A start at a position waiting for its stream (startAudioAt): { seconds, useServerSeek }.
+  ' A start at a position waiting for its stream (reloadStreamAt):
+  ' { seconds, useServerSeek, continuesListen }.
   m.pendingSeek = invalid
+  ' The current track's own stream is loading (pageContentChanged until onAudioStreamLoaded).
+  ' The player still holds the previous track's stream then, so a seek has nothing to act on.
+  m.isTrackLoading = false
   m.hasShownSeekFallbackNotice = false
 
   m.queueManager = m.global.queueManager
@@ -389,7 +393,7 @@ end function
 ' a direct stream with a PlayStart) would replay from its own start, so it is loaded again.
 sub replayFromStart()
   if audioSeek.startsMidTrack(m.audioPlayer.content)
-    reloadStreamAt(0, false)
+    reloadStreamAt(0, false, false)
     return
   end if
   m.audioPlayer.control = "play"
@@ -406,7 +410,14 @@ end function
 ' Starts the current track at seconds, the one way every seek goes (scrub, voice, remote).
 ' A FLAC can't be started mid-file on the player (audioSeek), so it gets a stream the server
 ' starts there; anything else seeks inside the stream that is playing.
-sub startAudioAt(seconds as float)
+'
+' @return {boolean} false when the seek was dropped because the track's stream is still loading
+function startAudioAt(seconds as float) as boolean
+  if m.isTrackLoading
+    m.log.info("Seek dropped: the track's stream is still loading", "seconds", seconds)
+    return false
+  end if
+
   canRemux = true
   policy = m.global.user.policy
   if isValid(policy) and policy.enableAudioPlaybackTranscoding = false then canRemux = false
@@ -416,18 +427,21 @@ sub startAudioAt(seconds as float)
 
   if plan.action = audioSeek.ACTION_NATIVE
     m.audioPlayer.seek = plan.startSeconds
-    return
+    return true
   end if
-  reloadStreamAt(plan.startSeconds, plan.action = audioSeek.ACTION_REMUX)
-end sub
+  reloadStreamAt(plan.startSeconds, plan.action = audioSeek.ACTION_REMUX, true)
+  return true
+end function
 
 ' Loads the current track's stream again, starting at seconds, and swaps it in when it arrives.
 ' The old stream pauses meanwhile, so it neither plays on nor moves the progress bar.
-sub reloadStreamAt(seconds as float, useServerSeek as boolean)
+' continuesListen marks a seek, which the engine reports as the same listen; a replay from the
+' start is a new one (audioSeek.streamHandover).
+sub reloadStreamAt(seconds as float, useServerSeek as boolean, continuesListen as boolean)
   currentItem = m.queueManager.callFunc("getCurrentItem")
   if not isValid(currentItem) or not isValidAndNotEmpty(currentItem.id) then return
 
-  m.pendingSeek = { seconds: seconds, useServerSeek: useServerSeek }
+  m.pendingSeek = { seconds: seconds, useServerSeek: useServerSeek, continuesListen: continuesListen }
   startLoadingSpinner()
   holdDisplayAt(seconds)
   if m.audioPlayer.state = "playing" then m.audioPlayer.control = "pause"
@@ -452,6 +466,7 @@ sub onSeekStreamLoaded(event as object)
 
   if isValid(data) and data.count() > 0
     m.pendingSeek = invalid
+    data.addFields({ continuesListen: pending.continuesListen })
     m.audioPlayer.content = data
     m.audioPlayer.control = "none"
     m.audioPlayer.control = "play"
@@ -465,7 +480,7 @@ sub onSeekStreamLoaded(event as object)
   if pending.useServerSeek
     plan = audioSeek.startAction(m.audioPlayer.content, pending.seconds, false)
     if plan.action = audioSeek.ACTION_RELOAD_DIRECT
-      reloadStreamAt(plan.startSeconds, false)
+      reloadStreamAt(plan.startSeconds, false, pending.continuesListen)
       return
     end if
     m.audioPlayer.seek = plan.startSeconds
@@ -665,6 +680,7 @@ end sub
 sub pageContentChanged()
   ' A seek still loading belongs to the track being left; replaceTask below drops its load.
   m.pendingSeek = invalid
+  m.isTrackLoading = true
 
   m.LoadAudioStreamTask = replaceTask(m.LoadAudioStreamTask, "LoadItemsTask", "content", { itemsToLoad: "audioStream" })
   ' A metadata run still in flight belongs to the song being left. Dropped here, not only when
@@ -695,6 +711,7 @@ end sub
 sub onAudioStreamLoaded(event as object)
   ' Before the spinner: an event from a replaced run must not stop the live run's spinner.
   if not isCurrentTaskEvent(event, m.LoadAudioStreamTask) then return
+  m.isTrackLoading = false
   stopLoadingSpinner()
   data = m.LoadAudioStreamTask.content[0]
   m.LoadAudioStreamTask.unobserveField("content")
@@ -1211,7 +1228,7 @@ end function
 function audioSeekTo(targetSeconds as float) as object
   if not isValid(m.audioPlayer) then return { status: "error.generic" }
   result = voiceTransport.computeSeekStatus(targetSeconds, m.songDuration, 5)
-  startAudioAt(result.clamped)
+  if not startAudioAt(result.clamped) then return { status: "error.generic" }
   return { status: result.status }
 end function
 
