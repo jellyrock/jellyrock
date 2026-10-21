@@ -21,13 +21,17 @@
 #     a tab, after an indent, list marker or checkbox) reads as a live check, so a NOTE under its
 #     section's header names it as journal text. It is never a candidate.
 #   - Read-only: nothing in the repo is written, and no fetch is made (unpushed commits are counted
-#     against the last fetch). The own reader may read the network, never write.
+#     against the last fetch). The own reader may read the network, never write: a change to the
+#     tree while it ran is reported as an ERROR candidate naming each changed path.
 #   - A repo's own state (CI, PRs, pipelines, disk) is its own reader's job, not this one's.
 #
-# CANDIDATES: typed, tab-separated lines (free text never breaks the parse), only in that block:
+# CANDIDATES: typed, tab-separated lines (free text never breaks the parse), only in that block. Each
+# leads with its class and a tab (the one score /focus-all ranks every repo by): 1 on fire (ERROR,
+# fire), 2 pinned (PIN), 3 resume (resume, SLOT 3), 4 overdue, 5 the judgment slot SLOT 5-6, 7 debt
+# (debt, SLOT 7), `-` for FIX, INFO and CAVEAT; a detail line has none. After it:
 #   ERROR<TAB><section><TAB><text>
 #   BANNER<TAB><id><TAB><text><TAB><route: what to run; empty = /focus>
-#   PIN<TAB><fid><TAB><title>             a pinned followup (journal.sh list)
+#   PIN<TAB><fid><TAB><title>             a pinned followup (journal.sh list), the oldest captured first
 #   SLOT<TAB>5-6 | SLOT<TAB>7             where /focus weighs what no check forces; always printed
 #   SLOT<TAB>3                            the journal's in-flight section has items: one no project
 #                                         tracks is the pick here; printed only then
@@ -53,7 +57,12 @@
 #   cadence-overdue: overdue      a Recurring cadences row past its next-due date
 #   followups-unreviewed: overdue journal.sh review: followups not re-read within journal.conf's
 #                                 review_days (off without it); the oldest three as details
+#   mail-open: overdue            an open message from another repo about no project, once
+#                                 CATCHUP_MAIL_OVERDUE_DAYS (14) old or undated; debt before that
 #   cadence-unfilled: debt        the cadence table still holds its placeholder row
+#   verify-first-format: debt     a PLAN's Verify first lines not in the `command` prints `value`
+#                                 shape, one line per PLAN (the rest of the PLAN check is
+#                                 plan-contradicts)
 #   off-branch, unpushed, gate-missing, journal-shaped (a NOTE named a journal line): FIX
 #
 # This repo's own reader: catchup.conf beside this script (the repo's own file, never overwritten
@@ -69,6 +78,8 @@
 #
 # Usage: bash .claude/skills/catchup/catchup-state.sh   (from inside the repo)
 # CATCHUP_TODAY=YYYY-MM-DD overrides today's date (tests); dates are UTC, as journal.sh's are.
+# SKILLS_CONFIG_DIR=<a repo's .claude/skills folder> reads that repo's catchup.conf and journal.conf
+# in place of the ones beside this script: a copy of it reading another repo (/focus-all).
 # Exit: 0 read; 2 no journal to brief from, or not a git repository (the ERROR candidates say which),
 # or the log skill's md-skip.awk is missing (said on stderr).
 
@@ -80,7 +91,7 @@ resolver="$here/../start-project/projects-dir.sh"
 resume_sh="$here/../resume-project/resume-state.sh"
 priorities_sh="$here/../start-project/priorities.sh"
 mailbox_sh="$here/../start-project/mailbox.sh"
-conf_file="$here/catchup.conf"
+conf_file="$here/catchup.conf"; [ -n "${SKILLS_CONFIG_DIR:-}" ] && conf_file="$SKILLS_CONFIG_DIR/catchup/catchup.conf"
 # MD_LIB: the awk function md_skip, the one rule for what is not a heading (CommonMark fenced code),
 # read from the log skill's md-skip.awk, which every script that reads headings shares.
 [ -r "$here/../log/md-skip.awk" ] || { echo "catchup-state: cannot read $here/../log/md-skip.awk: the log skill is incomplete" >&2; exit 2; }
@@ -105,15 +116,16 @@ declare -A RANK=([fire]=2 [resume]=4 [overdue]=5 [debt]=7)
 # shared ids: "<rank> <position>"; a shared id's class is fixed (catchup.conf cannot move it)
 declare -A SHARED=([dirty-tree]="2 1" [work-running]="4 1" [project-unblocked]="4 2" [mail-project]="4 3"
   [journal-stale]="5 1" [wait-unknown]="5 2" [plan-contradicts]="5 3" [project-dormant]="5 4"
-  [cadence-overdue]="5 5" [followups-unreviewed]="5 6" [mail-open]="5 7" [cadence-unfilled]="7 1"
+  [cadence-overdue]="5 5" [followups-unreviewed]="5 6" [mail-open]="5 7" [cadence-unfilled]="7 1" [verify-first-format]="7 2"
   [off-branch]="9 1" [unpushed]="9 2" [gate-missing]="9 3" [journal-shaped]="9 4")
-shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, with its route
+shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, with its route;
+  # AT="<rank> <position>" before the call ranks this one firing elsewhere (a message's age)
   local id="$1" r p route type=BANNER
-  read -r r p <<<"${SHARED[$id]}"
+  read -r r p <<<"${AT:-${SHARED[$id]}}"
   case "$id" in
     dirty-tree) route="look at it first: finish and commit it, or /resume-project {{slug}} if it is a project's" ;;
     work-running) route="check on it" ;;
-    project-unblocked|wait-unknown|plan-contradicts|project-dormant|mail-project) route="/resume-project $3" ;;
+    project-unblocked|wait-unknown|plan-contradicts|verify-first-format|project-dormant|mail-project) route="/resume-project $3" ;;
     mail-open) route="read it (bash .claude/skills/start-project/mailbox.sh show $3), act on it, then /done message $3" ;;
     journal-stale) route="/log what landed, or /done what finished" ;;
     followups-unreviewed) route="re-read each against today's state, then /done followup {{fid}}, or keep it with a dated Re-checked YYYY-MM-DD note (journal.sh replace)" ;;
@@ -131,9 +143,12 @@ shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, 
 finish() { # print the CANDIDATES block and END, and exit
   section "CANDIDATES"
   cand 6 0 0 "SLOT${TAB}5-6"; cand 8 0 0 "SLOT${TAB}7"
-  printf '%s\n' "${CANDS[@]}" | LC_ALL=C sort -t "$TAB" -k1,1n -k2,2n -k3,3n -k4,4n | cut -f5- | tr '\036' '\n'
+  # each line leads with its class, from its rank: the score /focus-all ranks every repo by
+  printf '%s\n' "${CANDS[@]}" | LC_ALL=C sort -t "$TAB" -k1,1n -k2,2n -k3,3n -k4,4n \
+    | awk -F'\t' 'BEGIN { split("1 1 2 3 4 5 7 7 - - -", c, " ") }
+        { r = $1; for (i = 1; i <= 4; i++) sub(/^[^\t]*\t/, ""); print c[r] "\t" $0 }' | tr '\036' '\n'
   section "END"
-  echo "Read-only: nothing here writes. Thresholds: journal ${stale_days:-14} days, project ${dormant_days:-21} days (CATCHUP_JOURNAL_STALE_DAYS, CATCHUP_PROJECT_DORMANT_DAYS)."
+  echo "Read-only: nothing here writes. Thresholds: journal ${stale_days:-14} days, project ${dormant_days:-21} days, message ${mail_days:-14} days (CATCHUP_JOURNAL_STALE_DAYS, CATCHUP_PROJECT_DORMANT_DAYS, CATCHUP_MAIL_OVERDUE_DAYS)."
   exit "$rc"
 }
 
@@ -141,6 +156,7 @@ today="${CATCHUP_TODAY:-$(date -u +%F)}"
 [[ $today =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { rc=2; serr REPO "CATCHUP_TODAY must be YYYY-MM-DD, not '$today'"; finish; }
 stale_days="$(num CATCHUP_JOURNAL_STALE_DAYS "${CATCHUP_JOURNAL_STALE_DAYS:-14}" 14)"
 dormant_days="$(num CATCHUP_PROJECT_DORMANT_DAYS "${CATCHUP_PROJECT_DORMANT_DAYS:-21}" 21)"
+mail_days="$(num CATCHUP_MAIL_OVERDUE_DAYS "${CATCHUP_MAIL_OVERDUE_DAYS:-14}" 14)"
 today_s="$(date -u -d "$today" +%s)"
 # days_since <YYYY-MM-DD> -> whole days before today, or nothing if it is not a date
 days_since() { local s; s="$(date -u -d "$1" +%s 2>/dev/null)" && echo $(( (today_s - s) / 86400 )); }
@@ -148,7 +164,9 @@ day_start() { date -u -d "$today - $1 days" +%FT00:00:00Z; } # the start of the 
 
 # --- catchup.conf: read before the reader starts; its notes print under OWN READER ---
 reader=""; reader_timeout=30; conf_notes=(); declare -A cls=() clspos=(); np=0
-if [ ! -f "$conf_file" ]; then conf_notes+=("NOTE: no catchup.conf beside the shared reader: no own reader runs")
+if [ ! -f "$conf_file" ]; then
+  if [ -n "${SKILLS_CONFIG_DIR:-}" ]; then conf_notes+=("NOTE: no catchup.conf in ${conf_file%/*}: no own reader runs")
+  else conf_notes+=("NOTE: no catchup.conf beside the shared reader: no own reader runs"); fi
 else
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"; line="${line%"${line##*[![:space:]]}"}"
@@ -193,9 +211,22 @@ dirty="$(git status --porcelain 2>/dev/null)"
 # the own reader starts only now, after the tree is read: a reader that writes cannot make the
 # dirty tree come and go between runs. Its output goes to a file outside the repo.
 own_pid=""; own_out=""
+# tree_state <array>: each path git status lists -> its status line and a content hash (hash-object
+# without -w writes nothing; a deleted path has none), so a path changed again while dirty differs too
+tree_state() {
+  local -n _ts="$1"; local e p o=""
+  _ts=()
+  while IFS= read -r -d '' e; do
+    p="${e:3}"; o=""
+    case "${e:0:2}" in *[RC]*) IFS= read -r -d '' o ;; esac
+    _ts["$p"]="$e|$o|$(git hash-object --no-filters -- "$p" 2>/dev/null)"
+  done < <(git status --porcelain -z --untracked-files=all 2>/dev/null)
+}
+declare -A tree_before=() tree_after=()
 if [ -n "$reader" ]; then
   if ! command -v timeout >/dev/null; then oerr "OWN READER" "no timeout command (coreutils): the own reader is not run"
   else
+    tree_state tree_before
     own_out="$(mktemp)"; trap 'rm -f "$own_out"' EXIT
     timeout "$reader_timeout" bash -c "$reader" >"$own_out" 2>&1 </dev/null &
     own_pid=$!
@@ -271,14 +302,16 @@ else
       head -3 <<<"$probs" | sed 's/^/  /'
       serr JOURNAL "followup counts n/a — journal.sh check failed ($(grep -c . <<<"$probs") problem(s)); fix them, or convert an old journal with journal.sh migrate"
     fi
-    # pinned followups, in journal order (list still lists when check fails: the error above says
-    # its counts are n/a, and the pins it does find are not hidden)
+    # pinned followups, the oldest captured first, then in journal order (list still lists when check
+    # fails: the error above says its counts are n/a, and the pins it does find are not hidden)
     if lst="$(jr list --tsv)"; then
       # its fields: category, fid, captured, age, prompt, title, pinned; the prompt is often empty,
-      # so split by awk (read would merge the empty field away)
+      # so split by awk (read would merge the empty field away). The position is the captured date
+      # as a number; an undated pin sorts last.
       npin=0
-      while IFS= read -r p; do cand 3 1 0 "PIN$TAB$p"; npin=$((npin+1)); done \
-        < <(awk -F'\t' '$7 == "pinned" { print $2 "\t" $6 }' <<<"$lst")
+      while IFS="$TAB" read -r pos p; do cand 3 1 "$pos" "PIN$TAB$p"; npin=$((npin+1)); done \
+        < <(awk -F'\t' '$7 == "pinned" { d = $3; gsub(/-/, "", d); if (d !~ /^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$/) d = 99999999
+              print d "\t" $2 "\t" $6 }' <<<"$lst")
       echo "pinned: $npin"
     else serr JOURNAL "pinned followups n/a — journal.sh list failed: ${lst#journal.sh: }"; fi
 
@@ -410,10 +443,16 @@ else
         fi
         # the PLAN check as a resume shows it: a real contradiction only; a kickoff older than the
         # skeleton is the writer's to fix at its next close, not a candidate here
+        # A Verify first line in an older format is a kickoff to rewrite, not a contradiction: one
+        # debt line per PLAN, counting them
         if pout="$(bash "$resume_sh" --plan-check "$plan" 2>&1)"; then
+          vf=0
           while IFS= read -r b; do
-            shared plan-contradicts "project $name: its PLAN contradicts itself: ${b#BANNER: PLAN check: }" "$slug"
+            b="${b#BANNER: PLAN check: }"
+            if [[ $b == "a Verify first line is not \`command\` prints \`value\`"* ]]; then vf=$((vf + 1))
+            else shared plan-contradicts "project $name: its PLAN contradicts itself: $b" "$slug"; fi
           done < <(grep '^BANNER: PLAN check: ' <<<"$pout")
+          [ "$vf" -gt 0 ] && shared verify-first-format "project $name: $vf Verify first line(s) are not \`command\` prints \`value\` (resume-state.sh --plan-check lists them)" "$slug"
         else
           prc=$?
           [ -n "${pc_noted:-}" ] || { lines+=("NOTE: the PLAN check did not run (resume-state.sh --plan-check exit $prc): update /resume-project's script"); pc_noted=1; }
@@ -472,6 +511,14 @@ if [ -n "$own_pid" ]; then
   flush_own
   if [ "$own_rc" = 124 ]; then oerr "OWN READER" "the own reader did not finish within $reader_timeout s: $reader"
   elif [ "$own_rc" != 0 ]; then oerr "OWN READER" "the own reader exited $own_rc: $reader"; fi
+  # a path that appeared, vanished or changed since before the reader started: a reader never writes
+  tree_state tree_after; changed=()
+  for p in "${!tree_before[@]}"; do [ "${tree_after[$p]-}" = "${tree_before[$p]}" ] || changed+=("$p"); done
+  for p in "${!tree_after[@]}"; do [ -n "${tree_before[$p]+x}" ] || changed+=("$p"); done
+  if [ "${#changed[@]}" -gt 0 ]; then
+    mapfile -t changed < <(printf '%s\n' "${changed[@]}" | LC_ALL=C sort -u | sed 's/^/  /')
+    oerr "OWN READER" "the tree changed while this repo's own reader ran (readers never write)" "${changed[@]}"
+  fi
 fi
 
 section "RECENT COMMITS"
@@ -495,6 +542,9 @@ if [ -n "$m_out" ]; then
     printf 'mail: %s from %s (%s)%s: %s\n' "$mid" "$mfrom" "$when" "${mproj:+, about $mproj}" "$mtitle"
     if [ -n "$mproj" ]; then
       shared mail-project "an open message from $mfrom about $mproj, $age: $mtitle (mail: $mid)" "${mproj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}"
+    elif [ -n "$msent" ] && [[ $mdays =~ ^[0-9]+$ ]] && [ "$mdays" -lt "$mail_days" ]; then
+      # younger than the threshold: debt; once it is that old, or undated, overdue
+      AT="7 3" shared mail-open "an open message from $mfrom, $age: $mtitle (mail: $mid)" "$mid"
     else
       shared mail-open "an open message from $mfrom, $age: $mtitle (mail: $mid)" "$mid"
     fi

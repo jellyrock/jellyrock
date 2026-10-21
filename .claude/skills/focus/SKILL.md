@@ -21,7 +21,7 @@ effort: high
 
 **Goal.** Turn a cold session-start into the right next move: rank what's actionable from observed state by a fixed order, recommend one pick with the rule that chose it, and hand it off down the one route that fits its shape. **Resume:** forward motion on an existing tracked project → `/resume-project {{slug}}`. **Scaffold:** new work that is project-shaped (spans sessions, crosses a phase boundary, or carries a decision worth recording) → `/start-project`. **Another skill:** a pick one of this repo's skills already covers (a triage skill for an investigation, a recipe skill for recurring "add an X" work, `/done` or `/log` for a journal fix) → that skill. **Plan:** an ad-hoc one-off becomes a written, agreed-upon plan saved to disk and executed by a fresh Sonnet sub-agent that this skill supervises — planning is judgment- and context-heavy, implementation procedural, so splitting them is cheaper (the implementation runs on Sonnet, following `/sonnet`'s steps), more accurate (no context bleed between "what" and "how"), and leaves a re-runnable artifact; the planner reviews the result and turns what the run taught into better plans. Every route but the plan is handed off by **printing the command for the user to type**, never by invoking it: a skill's `model:` pin applies only when the user types it, so an invoked `/resume-project` runs on this skill's tier instead of its own. This skill ships at the judgment-grade tier: ranking, the route call and the fork-by-fork plan interrogation are all judgment, and a wrong call sends the next session into the wrong shape.
 
-**Inputs.** None: the triage comes from observed state, not from direction. The one exception: when this skill's `## This repo` defines areas, `--area={{name}}` keeps only candidates in that area. If you already know the route — a project to resume, a new project, a one-off you can plan yourself — run that command (or plan mode) and skip `/focus`; its value is the triage, the route call, the fork interrogation and the clean hand-off.
+**Inputs.** None for the triage: it comes from observed state, not from direction. Two exceptions: when this skill's `## This repo` defines areas, `--area={{name}}` keeps only candidates in that area; and an open followup's fid skips the triage and makes that followup the pick, for an item already chosen (by a triage across all your repos, or by you) that still needs its route and, on the plan route, its plan. If you already know the route — a project to resume, a new project, a one-off you can plan yourself — run that command (or plan mode) and skip `/focus`; its value is the triage, the route call, the fork interrogation and the clean hand-off.
 
 **Outputs.**
 
@@ -33,6 +33,7 @@ effort: high
 **Success criteria.**
 
 - The pick is ranked by the fixed order in the steps, and **Why** names the rule that won and cites real state (a banner, a fid, a backlog row, a commit) — never "it feels like the next thing", never an invented candidate.
+- With a fid, the pick is that followup and nothing else: no triage runs, and a fid that is closed, unknown or tracked by a project is said in one line (a tracked one with its `/resume-project` command), never replaced by another pick.
 - Each pick is classified into exactly one route; a resume route names the slug. Disclosure stays flat: one recommendation, a command for it and for each command-route alternative, one reply.
 - Every command handed to the user sits alone in its own `text` block, so the copy button copies exactly the command.
 - Every choice with two or more viable answers is asked as a chat question — the decision, the options, a **Recommended** option with why, the reply words — and the turn ends there. Never a pop-up, never a loose prose question.
@@ -61,7 +62,7 @@ effort: high
 
 - A coffee-break resume on the same task — just continue.
 - You already know the route: run `/resume-project {{slug}}`, `/start-project`, or plan mode directly.
-- You already know the work and only need a plan: use plan mode.
+- You already know the work, it has no followup, and you only need a plan: use plan mode.
 - Triaging one pasted alert, failure or finding — that's this repo's scoped triage skill, anchored to one signal.
 - Periodic audits and cadences — this repo's audit skill; how a skill's run went — a skill audit.
 - "What's been going on this week?" — a digest question; `/focus` is forward-looking.
@@ -74,21 +75,23 @@ If `## This repo` keeps handoff packets, follow its packet steps: its check for 
 
 ### Step 1 — Load state
 
+**With a fid in the arguments**, skip the triage (this step's reads and Step 2's ranking): run `bash .claude/skills/log/journal.sh show {{fid}}`. When it prints no entry (closed or unknown), say its line and stop. When the entry's body says a project tracks it, print `/resume-project {{slug}} {{fid}}` in its own block and stop. Otherwise the followup is the pick: classify its route by Step 2's rules and show Step 2's block with **Why:** "you named it", the entry cited, and no Alternatives. On the plan route, the block ends with "Planning it now." in place of the `ok` line, and Step 4 follows at once: typing the fid was the choice.
+
 Read `.claude/skills/catchup/SKILL.md` and follow its steps inline: its reader's `=== CANDIDATES ===` block is this triage's ranked input, and the user sees the briefing as it is produced — without its `Suggested next` line, which Step 2's pick replaces (two "next" answers in a row contradict each other), and with its `Captures for /log` items folded into this skill's own tail. If `/catchup` already ran in this session and HEAD and the working tree are unchanged since, reuse that briefing instead (say so in one line).
 
-Then `bash .claude/skills/log/journal.sh list` for every open followup's title, age, pin and prompt. Read an entry in full (`journal.sh show {{fid}}`) only once it is a candidate being weighed; never read the journal file. For a project candidate, read its PLAN's Next-session kickoff section and the `**Open questions / blockers:**` part of its Status, never the whole PLAN. Read the backlogs `## This repo` names only for their ready rows. With `--area={{name}}`, keep only candidates in that area.
+Then `bash .claude/skills/log/journal.sh list` for every open followup's title, age, pin and prompt. Read an entry in full (`journal.sh show {{fid}}`) only once it is a candidate being weighed; never read the journal file. For a project candidate, read its kickoff with `bash .claude/skills/resume-project/resume-state.sh --section 'Next-session kickoff' {{slug}}` and the `**Open questions / blockers:**` part of its Status with `--section Status {{slug}}`, never the whole PLAN. Read the backlogs `## This repo` names only for their ready rows. With `--area={{name}}`, keep only candidates in that area.
 
 ### Step 2 — Rank, pick one, classify its route, recommend
 
-Take the CANDIDATES block's lines in order; the first that yields a candidate is the pick. The reader ranked them in code, by kind; never re-rank them here. What each part of the block holds, in its order:
+Take the CANDIDATES block's lines in order; the first that yields a candidate is the pick. The reader ranked them in code, by kind; never re-rank them here. What each part of the block holds, in its order (each number is the class its lines lead with):
 
 1. **On fire:** `ERROR` lines, then fire `BANNER` lines (a failing pipeline, CI run or deploy; a dirty tree left by an unclosed session).
-2. **Pinned followups:** `PIN` lines, above all project work. One its body says a project tracks routes to that project (resume) with the fid after the slug, `/resume-project {{slug}} {{fid}}`, so the session starts at the followup rather than the kickoff.
+2. **Pinned followups:** `PIN` lines, the oldest captured first, above all project work. One its body says a project tracks routes to that project (resume) with the fid after the slug, `/resume-project {{slug}} {{fid}}`, so the session starts at the followup rather than the kickoff.
 3. **In-flight work to resume:** resume `BANNER` lines (a paused handoff, running work, a project that no longer waits, an open message from another repo about a project), then `SLOT 3`, printed when the journal's in-flight section has items: one no project tracks is a candidate here; when every item is a project's, the slot yields nothing.
-4. **Overdue:** overdue `BANNER` lines (an overdue cadence, a stale journal, a dormant project, a PLAN that contradicts itself: a close that should have fixed it; an open message from another repo about no project).
+4. **Overdue:** overdue `BANNER` lines (an overdue cadence, a stale journal, a dormant project, a PLAN that contradicts itself: a close that should have fixed it; an open message from another repo about no project, once 14 days old).
 5. **Cheap unblocks**, at `SLOT 5-6`: a followup whose fix is already named and small (pick the likely ones from their titles, then `show` them to confirm); a ready row in a backlog `## This repo` names.
 6. **Project forward motion**, at `SLOT 5-6`, after rank 5: the next step in an active project's kickoff.
-7. **Maintenance debt:** debt `BANNER` lines, then `SLOT 7`: known smells no line forces.
+7. **Maintenance debt:** debt `BANNER` lines (a younger open message about no project; a PLAN whose Verify first lines predate the `command` prints `value` shape), then `SLOT 7`: known smells no line forces.
 
 **No candidate in any rank:** say so in one line (the last commit, the tree's state) and stop, with no pick and no route; never promote something to fill the block.
 

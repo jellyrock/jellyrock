@@ -50,9 +50,13 @@
 #   … --waits <PLAN path>  only what that PLAN waits on, resolved (for other readers)
 #   … --plan-check <PLAN path>  only the PLAN check, as a resume shows it: BANNER lines for a
 #                          contradiction, NOTEs, else ok; exit 0 (for other readers: /catchup)
+#   … --section <name> <slug>  only that PLAN section (the heading after its emoji starts with
+#                          <name>, case ignored), inside a `<plan_section>` tag, or the ERROR line
+#                          when the PLAN has none; the project is picked as a resume picks it, but
+#                          nothing is claimed, fetched or written (for other readers: /focus)
 # Exit: 0 done (a resume: a project was picked and every section printed; --holder: this session
 # holds it); 1 --check found a FAIL, or --holder: another session or none holds it; 2 no project could be picked (none active, several active, a slug matching none or several,
-# no projects folder, not a git repo: the SELECTION lines say which); 3 the picked PLAN cannot be
+# no projects folder, not a git repo: the SELECTION lines say which; --section with no name or no slug: a usage ERROR); 3 the picked PLAN cannot be
 # read.
 #
 # Claims: a session is known by CLAUDE_CODE_SESSION_ID and CLAUDE_PID, which every command a
@@ -64,7 +68,10 @@
 set -uo pipefail # not -e: one failed section must not stop the rest
 
 mode=resume
-case "${1:-}" in --check) mode=check; shift ;; --release) mode=release; shift ;; --holder) mode=holder; shift ;; --waits) mode=waits; shift ;; --plan-check) mode=plancheck; shift ;; esac
+case "${1:-}" in --check) mode=check; shift ;; --release) mode=release; shift ;; --holder) mode=holder; shift ;; --waits) mode=waits; shift ;; --plan-check) mode=plancheck; shift ;;
+  --section) mode=section; shift; secname="${1:-}"; [ $# -gt 0 ] && shift
+    [ -n "$secname" ] && [ -n "${1:-}" ] || { echo "ERROR: usage: resume-state.sh --section <name> <slug>"; exit 2; } ;;
+esac
 slug="${1:-}"; [ $# -gt 0 ] && shift
 start="$*"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -431,6 +438,8 @@ else
   esac
 fi
 if [ ! -r "$plan" ]; then echo "ERROR: $plan is not readable"; exit 3; fi
+# --section reads one section and stops: before the claim, the fetch and every other read
+[ "$mode" = section ] && { print_section "$plan" "$secname" plan_section; exit 0; }
 
 name="$(basename "$(dirname "$plan")")"; pslug="${name#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}"
 st="$(frontmatter "$plan" status)"; lu="$(frontmatter "$plan" last-updated)"
