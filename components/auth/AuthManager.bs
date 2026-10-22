@@ -17,7 +17,7 @@ end sub
 '                        sgrouter.createRedirectCommand("/login") produces, without pulling the
 '                        whole router namespace into this guard node.
 '
-' The requested path is NOT kept for after sign-in. Nothing a person can do while signed out
+' The requested path is not kept for after sign-in. Nothing a person can do while signed out
 ' requests a guarded route: every screen that navigates to one is torn down at sign-out. So a
 ' request that reaches here is a stray (a late remote-control command, for one), and opening
 ' it after the next sign-in sent the user somewhere they never asked to go. A deep link that

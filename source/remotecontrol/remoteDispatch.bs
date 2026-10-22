@@ -17,7 +17,7 @@ namespace remoteDispatch
     if not isValid(command) or not isValidAndNotEmpty(command.kind) then return
     ' Signed out: drop it. The receiver runs only while signed in (Home starts it, SignOut stops
     ' it), but STOP is not a join, so a command already queued on the main port still drains
-    ' after sign-out. It belongs to the session just left: queued, a route would open after the
+    ' after sign-out. It belongs to the session that ended: queued, a route would open after the
     ' next sign-in and a cast would open the old session's item for whoever signs in next. A
     ' deep link while signed out is unaffected: it arrives as a Roku launch or roInputEvent.
     if not user.IsAuthenticated()
