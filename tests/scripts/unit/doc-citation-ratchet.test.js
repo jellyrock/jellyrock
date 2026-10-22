@@ -21,7 +21,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { spawnScript } from './_helpers/spawn-script.js';
+import { gitSafeEnv } from './_helpers/git-env.js';
 
 const LINT = 'scripts/lint/doc-citation-ratchet.js';
 
@@ -578,5 +580,58 @@ describe('doc-citation-ratchet — --init-comment-baseline', () => {
     expect(res.exitCode).toBe(1);
     expect(res.stderr).toContain('already has code-file entries');
     expect(readFileSync(join(r, '.doc-voice-baseline.json'), 'utf8')).toBe(before);
+  });
+});
+
+describe('doc-citation-ratchet — which files a git checkout governs', () => {
+  const gitIn = (dir, ...args) =>
+    execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: gitSafeEnv() });
+
+  it('skips gitignored files and counts tracked and untracked-not-ignored ones', () => {
+    const r = makeRoot({
+      '.gitignore': 'scratch/\n',
+      'docs/clean.md': 'A plain sentence.\n',
+      'docs/untracked.md': 'This is just a draft.\n',
+      'scratch/notes.md': 'This is just a note → with an arrow.\n',
+    });
+    gitIn(r, 'init', '--quiet');
+    gitIn(r, 'add', '.gitignore', 'docs/clean.md');
+
+    const res = run(r);
+    expect(res.stderr).not.toContain('scratch/');
+    expect(res.stderr).toContain('docs/untracked.md: filler 1 (allowed 0)');
+    expect(res.exitCode).toBe(1);
+  });
+
+  it('passes when the only violations are in a gitignored folder', () => {
+    const r = makeRoot({
+      '.gitignore': 'scratch/\n',
+      'docs/clean.md': 'A plain sentence.\n',
+      'scratch/notes.md': 'This is just a note → with an arrow.\n',
+    });
+    gitIn(r, 'init', '--quiet');
+    gitIn(r, 'add', '.gitignore', 'docs/clean.md');
+
+    const res = run(r);
+    expect(res.stderr).not.toContain('scratch/');
+    expect(res.exitCode).toBe(0);
+  });
+
+  it('ignores a GIT_DIR that points at another repository', () => {
+    const r = makeRoot({
+      '.gitignore': 'scratch/\n',
+      'docs/clean.md': 'A plain sentence.\n',
+      'scratch/notes.md': 'This is just a note.\n',
+    });
+    gitIn(r, 'init', '--quiet');
+    const other = mkdtempSync(join(tmpdir(), 'cite-ratchet-other-'));
+    try {
+      gitIn(other, 'init', '--quiet');
+      const res = spawnScript(LINT, [r], { env: { GIT_DIR: join(other, '.git') } });
+      expect(res.stderr).not.toContain('scratch/');
+      expect(res.exitCode).toBe(0);
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
   });
 });

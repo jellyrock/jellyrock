@@ -117,9 +117,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { Lexer, TokenKind } from 'brighterscript';
 import * as espree from 'espree';
 import YAML from 'yaml';
+
+// git-safe clears GIT_DIR and friends, which git sets for a hook run in a worktree.
+const { git } = createRequire(import.meta.url)('../lib/git-safe.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const BASELINE_REL = '.doc-citation-baseline.json';
@@ -210,6 +214,23 @@ function stripFencedBlocks(text) {
 }
 
 /**
+ * The repo-relative paths git considers part of the checkout: tracked files plus
+ * untracked files that are not ignored. A gitignored scratch folder (for example
+ * `.claude/worktrees/<name>/` without its own `.git`) is therefore not governed,
+ * which matches CI, where a clean checkout never has one. Returns null when `rootDir`
+ * is not a git repository or git is missing, and the caller then walks everything.
+ */
+function gitVisiblePaths(rootDir) {
+  let out;
+  try {
+    out = git(rootDir, ['ls-files', '--cached', '--others', '--exclude-standard', '-z']);
+  } catch {
+    return null;
+  }
+  return new Set(out.split('\0').filter(Boolean));
+}
+
+/**
  * Every tracked markdown or code file a gate governs, as `{ rel, citation, voice, code }`:
  * whether the line-citation ratchet and the voice ratchet each apply to it, and whether
  * it is a code file (whose comments are read) rather than a doc.
@@ -218,6 +239,7 @@ function collectDocs(rootDir) {
   const found = [];
   const voiceExcluded = (rel) =>
     VOICE_EXCLUDED_RELS.some((x) => rel === x || rel.startsWith(`${x}/`));
+  const visible = gitVisiblePaths(rootDir);
   function walk(dir, insideClaude) {
     let entries;
     try {
@@ -242,6 +264,8 @@ function collectDocs(rootDir) {
         continue;
       }
       const rel = path.relative(rootDir, full).split(path.sep).join('/');
+      // Skip what git ignores. A tracked file deleted from disk is never visited.
+      if (visible && !visible.has(rel)) continue;
       if (codeLang(rel)) {
         if (!voiceExcluded(rel)) found.push({ rel, citation: false, voice: true, code: true });
         continue;
