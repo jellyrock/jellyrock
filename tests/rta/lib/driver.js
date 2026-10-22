@@ -458,10 +458,16 @@ export async function waitChannelExited({
  *  - the registry restore, which hands back the user's own registry: its server may be slow
  *    or unreachable, so no screen is promised to land.
  *
+ * ## `params`
+ *
+ * ECP launch parameters, passed through to the launch. A `contentId` makes it a cold-start
+ * deep link, the same launch the companion plugin sends to wake a closed app (ADR 0023).
+ *
  * @param {object} [options]
  * @param {'polled'|'fixed'} [options.timing]
+ * @param {Record<string, string>} [options.params]
  */
-export async function hardRelaunch({ timing = 'polled' } = {}) {
+export async function hardRelaunch({ timing = 'polled', params } = {}) {
   if (timing !== 'polled' && timing !== 'fixed') {
     throw new Error(
       `hardRelaunch: timing must be 'polled' or 'fixed', not ${JSON.stringify(timing)}`,
@@ -470,12 +476,12 @@ export async function hardRelaunch({ timing = 'polled' } = {}) {
   await ecp.sendKeypress('Home');
   if (timing === 'fixed') {
     await sleep(RTA_CONFIG.exitMs);
-    await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
+    await ecp.sendLaunchChannel({ channelId: 'dev', params, verifyLaunch: false });
     await sleep(RTA_CONFIG.bootMs);
     return;
   }
   await waitChannelExited();
-  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
+  await ecp.sendLaunchChannel({ channelId: 'dev', params, verifyLaunch: false });
   await ensureOdcReachable();
   await waitSceneAnswering({ timeout: SCENE_ANSWER_TIMEOUT_MS, interval: 200 });
   await waitLandingSettled();

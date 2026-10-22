@@ -20,7 +20,7 @@ related-files:
   - scripts/lint/socket-thread-release-check.js
   - scripts/lint/socket-auth-binding-check.js
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-22
 ---
 
 # Remote control: cast to JellyRock
@@ -68,6 +68,7 @@ The command rides a field on the Task node, `dispatchCommand`, which the main lo
 
 - **Start:** `Home`'s first-run block launches it with `launchTask()` after sign-in, next to the capabilities POST and the pairing report ([below](#cold-launch-pairing-report-668)). First run is per Home instance, so the receiver restarts on each fresh sign-in, including after a server switch. The node is app-wide and never replaced: `main.bs` observes its `dispatchCommand` once at start-up, so a new node would go unheard. A new Home with no sign-out since the last one relaunches the node while it runs, which Roku ignores, and the one receiver keeps listening. The `no-same-node-relaunch` suppression on that launch records this.
 - **Stop:** `SignOut` in `source/api/userAuth.bs`, the one teardown point for sign-out and server switch (a switch reaches `SignOut(false)` once the new server answers its probe). So the socket never outlives a session. `StopRemoteControlReceiver()` stops the receiver, then the live `WebSocketClient` child the receiver publishes on `socketNode`. The child needs its own stop, because stopping the receiver kills its thread before its own `closeSocket()` cleanup can run. A STOP does not wait for the thread to end, so the child is copied into a local first: the receiver may still be clearing that field, and a dot on `invalid` would crash sign-out.
+- **Commands that arrive after sign-out are dropped.** For the same reason, a command already queued on the main thread's port still drains after `SignOut`. `remoteDispatch.dispatch` drops any command while `user.IsAuthenticated()` is false, with a console line. It belongs to the session that ended: kept, a route command would open after the next sign-in, and a `DisplayContent` would open the old session's item for whoever signs in next. A cold-launch cast is not affected, because the plugin wakes the app with a Roku launch, not through the receiver ([below](#cold-launch-pairing-report-668)).
 
 ### Releasing socket threads
 

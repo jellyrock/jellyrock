@@ -60,7 +60,6 @@
     <function name="showToast" />
     <!-- sgRouter host hooks (called from main.bs / loginRouter on the main thread) -->
     <function name="routerNavigate" />
-    <function name="replayRoutedDeepLink" />
     <function name="resolveDeepLink" />
     <function name="reloadRoutedHome" />
     <function name="resetRouter" />

@@ -406,9 +406,8 @@ sub initRouter()
   m.global.observeField("photoLaunchRequest", "onPhotoLaunchRequested")
 
   ' The auth guard. The SAME node we put on m.global in setGlobalNodes, registered by NODE
-  ' REFERENCE so the path it stashes on a signed-out redirect is readable by the main-thread
-  ' replay helper after login. Added to every POST-login route below; the pre-login routes
-  ' carry no guard (their redirect target, /login, is one of them).
+  ' REFERENCE. Added to every POST-login route below; the pre-login routes carry no guard
+  ' (their redirect target, /login, is one of them).
   guard = [m.global.AuthManager]
 
   sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })
@@ -519,49 +518,25 @@ sub routerNavigate(routePath as string, context = {} as object, clearSpinner = f
   navigateThenFocus(routePath, context, clearSpinner)
 end sub
 
-' Replay the route the auth guard stashed on a signed-out redirect, after login, by navigating
-' a SEQUENCE of routes, each step waiting for the previous to settle. Called from
-' replayAfterLogin (source/replayRoute.bs) via callFunc when no deep link is stashed; `routes`
-' is buildReplayRoutes' ordered array of path strings: ["/"] (a plain Home nav) when nothing
-' was stashed, ["/", stashed] for most paths, and ["/", "/details/:type/:id",
-' "/details/:type/:id/play"] for a /play path, so back lands Player -> Details -> Home. The
-' queue for a /play step was built before the redirect (QueueManager.playQueue); PlayerHostView
-' reads it on mount. A stashed deep link goes through resolveDeepLink / onDeepLinkResolved
-' instead.
-sub replayRoutedDeepLink(routes as object)
-  initRouter()
-  if not isValidAndNotEmpty(routes) then routes = ["/"]
-  ' Post-login replay: the blocking login spinner is still up on the outgoing pre-login view.
-  ' Keep it up across the async nav and clear it when the FINAL route settles (clearLoginSpinnerOnEnd
-  ' -> navigateThenFocus clearSpinner). Clearing it synchronously in createAndShowHomeGroup re-showed
-  ' the outgoing view for a frame before Home mounted (the #677 login flash).
-  navigateChainStep(routes, 0, true)
-end sub
-
 ' Navigate routes[index], then chain to the next step once it settles (sgRouter's
 ' navigateTo promise resolves at NavigationEnd, so each .then() defers until the previous
 ' route is fully mounted). The final step takes remote focus. Context carries routes/index
-' (BrightScript closures can't capture locals).
-' clearLoginSpinnerOnEnd: threaded through to the FINAL step's navigateThenFocus so the login
-' replay (replayRoutedDeepLink) keeps the blocking spinner up across the whole chain and clears it
-' only once the last route mounts. The runtime-cast caller (replayDeepLinkReplacingPlayer) leaves
-' it false: no login spinner is up there.
-sub navigateChainStep(routes as object, index as integer, clearLoginSpinnerOnEnd = false as boolean)
+' (BrightScript closures can't capture locals). The runtime-cast caller
+' (replayDeepLinkReplacingPlayer) is the one user.
+sub navigateChainStep(routes as object, index as integer)
   if index >= routes.count() then return
   ' Final step: navigate + take focus + catch is exactly the shared settle tail.
   if index = routes.count() - 1
-    navigateThenFocus(routes[index], {}, clearLoginSpinnerOnEnd)
+    navigateThenFocus(routes[index])
     return
   end if
   ' Intermediate step: navigate, then chain to the next once it settles. A rejection stops the
   ' chain (a later step would build on a route that never mounted) and takes focus on whatever IS
   ' mounted, so a failed deep-link replay can't strand the remote.
-  promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index, clearSpinner: clearLoginSpinnerOnEnd }).then(sub(_result as object, ctx as object)
-    navigateChainStep(ctx.routes, ctx.index + 1, ctx.clearSpinner)
+  promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index }).then(sub(_result as object, ctx as object)
+    navigateChainStep(ctx.routes, ctx.index + 1)
   end sub).catch(sub(err as object, ctx as object)
-    ' If this was the login replay, don't leave the blocking spinner stranded on a failed chain.
     ' Recover before logging, and log err whole (`.message` crashes on a non-AA rejection).
-    if ctx.clearSpinner then stopLoadingSpinner()
     sgrouter.setFocus({ focus: true })
     m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err)
   end sub)

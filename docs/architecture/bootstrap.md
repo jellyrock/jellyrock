@@ -7,7 +7,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-22
 ---
 
 # Bootstrap and lifecycle
@@ -121,7 +121,7 @@ The app has one scene for its whole life, `components/JRScene.xml`, which extend
 Its `callFunc` functions:
 
 - `setBackgroundImage(uri, isAnimated, forceBackdrop)`, `refreshBackdropSetting()` and `showToast(message, type)`.
-- The router bridge, for main-thread code in `main.bs`, `loginRouter.bs` and `replayRoute.bs`: `routerNavigate`, `replayRoutedDeepLink`, `resolveDeepLink`, `reloadRoutedHome`, `resetRouter` and `routerGoBack`. Main-thread code cannot call the `sgrouter` functions itself, because they run on the render thread.
+- The router bridge, for main-thread code in `main.bs`, `loginRouter.bs` and `replayRoute.bs`: `routerNavigate`, `resolveDeepLink`, `reloadRoutedHome`, `resetRouter` and `routerGoBack`. Main-thread code cannot call the `sgrouter` functions itself, because they run on the render thread.
 
 ### What `JRScene.bs` does
 
@@ -218,7 +218,7 @@ Both carry a `contentId` and may carry a `mediaType` and an `itemName`. `content
 
 Back from the player then goes to details, then Home.
 
-A route the auth guard stashed while signed out is a separate path. It is stored on `AuthManager.stashedRoute` and replayed by `buildReplayRoutes()` as Home, then the route, with the details screen between them for a `/play` route ([`navigation.md`](navigation.md#replaying-a-stashed-route)).
+A deep link is the only thing a signed-out moment hands to the sign-in. The auth guard redirects a signed-out request for a signed-in screen to `/login` and keeps nothing ([`navigation.md`](navigation.md#the-auth-guard)), and a remote-control command that arrives while signed out is dropped ([`remote-control.md`](remote-control.md)).
 
 ## Known cruft
 

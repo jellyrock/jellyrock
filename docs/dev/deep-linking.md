@@ -6,7 +6,7 @@ related-files:
   - components/JRScene.bs
   - components/ItemDetails.bs
   - components/auth/AuthManager.bs
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-22
 ---
 
 # Deep linking and casting
@@ -89,7 +89,7 @@ A link can name a different server from the one the user is signed in to (`sourc
 
 ## Links that arrive while signed out
 
-A link that arrives while signed out is stashed (`m.global.AuthManager.stashedDeepLink`), the user sees "Sign in to open your content.", and `replayAfterLogin()` opens it once sign-in completes. The `AuthManager` `canActivate` guard uses the separate `stashedRoute` for redirects inside the app; see [navigation.md](../architecture/navigation.md).
+A link that arrives while signed out is stashed (`m.global.AuthManager.stashedDeepLink`), the user sees "Sign in to open your content.", and `replayAfterLogin()` opens it once sign-in completes. It is the only thing kept for after sign-in: the `AuthManager` `canActivate` guard redirects a signed-out request for a signed-in screen to sign-in without keeping it, and a remote-control cast that arrives while signed out is dropped. See [navigation.md](../architecture/navigation.md#the-auth-guard).
 
 ## What the user sees
 

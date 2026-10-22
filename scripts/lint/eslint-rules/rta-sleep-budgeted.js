@@ -90,6 +90,8 @@ export const BUDGETS = new Map([
   // thing being disproven.
   ['tests/rta/specs/deeplink.spec.js', 2],
   ['tests/rta/specs/genre-skeleton.spec.js', 1],
+  // Sign-in must land on Home and stay there: a replay would move on from Home a moment later.
+  ['tests/rta/specs/sign-in-landing.spec.js', 1],
   // A search answer delivered to a hidden screen must not end the details spinner; no app
   // field reports a delivery that did not happen.
   ['tests/rta/specs/slow-search.spec.js', 1],

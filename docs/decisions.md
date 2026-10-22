@@ -2168,6 +2168,16 @@ Every Play decision reads one table, `playKind`: the details screen shows Play o
 
 An allow-list was chosen over the old exclusion list so a type the app can't play (Book) gets no Play button instead of one that fails. A per-type audio check in the details screen was ruled out as a second copy of the routing. Recheck: a newly supported playable type needs a `playKind` entry, or it gets no Play button.
 
+## decision-id: sign-in-lands-on-home
+
+**date**: 2026-10-22
+**status**: accepted
+**related-files**: `components/auth/AuthManager.bs`, `source/replayRoute.bs`, `source/remotecontrol/remoteDispatch.bs`, `components/JRScene.bs`
+
+After sign-in the app opens a deep link that arrived while signed out (`AuthManager.stashedDeepLink`), else Home, and nothing else. The auth guard (`AuthManager.canActivate`) still redirects a signed-out request for a guarded route to `/login`, but no longer keeps the path: `stashedRoute`, its replay in `replayAfterLogin`, `buildReplayRoutes` and `JRScene.replayRoutedDeepLink` are gone. `remoteDispatch.dispatch` drops remote-control commands while `user.IsAuthenticated()` is false. Nothing a person can do while signed out requests a guarded route, because every screen that navigates to one is torn down at sign-out, so a kept path was only ever a stray. Replaying it sent a manual sign-in to Search instead of Home. On a Stick 4K (2026-10-22), a `/search` requested on the sign-in screen and a late remote route command each landed on Search, and a late `DisplayContent` opened the old session's item. The receiver's STOP is not a join, so commands already queued on the main port drain after `SignOut`, and they belong to the session that ended.
+
+Ruled out: clearing the stash at each sign-in attempt, because a stray that arrives while on the sign-in screen still replays; and keeping a late cast queued, because it opens the previous session's item for whoever signs in next. Deep links are unaffected: cold start, `roInputEvent`, a server switch and the companion plugin's ECP `/launch` wake (ADR 0023) all use `stashedDeepLink`. Recheck if the app ever signs a user out mid-session (on a 401, say): resuming where they were then needs its own intent, captured at that point, not a guard stash.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -10,7 +10,7 @@ related-files:
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
   - source/utils/playKind.bs
-last-reviewed: 2026-10-20
+last-reviewed: 2026-10-22
 ---
 
 # The user journey
@@ -86,7 +86,7 @@ There are four ways in: a saved token (checked with `AboutMe`), an empty passwor
 `loadHomeScreen()` waits for that download when one is running, then calls `createAndShowHomeGroup()`, which calls `replayAfterLogin()`:
 
 - **A stashed deep link** goes to `JRScene.resolveDeepLink` with `homeFirst`. Home opens first, so it is the bottom of the back stack, and the item opens from there ([`bootstrap.md`](bootstrap.md#deep-links)).
-- **Otherwise** `buildReplayRoutes()` turns the route the auth guard stashed, if any, into a chain for `JRScene.replayRoutedDeepLink`. With nothing stashed the chain is Home alone.
+- **Otherwise** it opens Home, through `JRScene.routerNavigate`. Nothing else a signed-out moment left behind is opened ([`navigation.md`](navigation.md#the-auth-guard)).
 
 The Home route has `clearStackOnResolve`, so opening it drops the sign-in screens from the back stack. Home loads its own rows when it opens.
 
