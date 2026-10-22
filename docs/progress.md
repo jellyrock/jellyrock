@@ -539,7 +539,18 @@ The library grid first: #1043 gave it its own stage timer (`BaseGridView.startSl
 
 #### Build the remaining app waits and loading kinds (ADR 0044, ADR 0046), then gate them. `[fid: remaining-app-waits-and-loading-kinds]` `[captured 2026-09-27]`
 
-Playback start is built: a `PLAYBACK_START` app wait, one Promise per start (`appWaits`, `QueueManager.beginPlaybackStart`), kept by `AppWaitHost`, with a time limit that fails and logs one nobody ended; while it hides the screen it was pressed on it holds the remote focus, and Back cancels it. Remaining: session change (no stage text; login's `clearSpinner` handoff moves onto a session-change wait, and it is the one kind that blocks input on purpose), buffering (the player's own; no stage text), and the photo launches (slideshow, photo shuffle, a photo tile), which still use the plain spinner because a photo viewer is not a play session. A render-thread `fetchAsync` wait may be bound to its promise so it ends on success, failure, timeout or abandon (check the pool's settle guarantee first). Once no call site uses bare `startLoadingSpinner()`, add a lint against it.
+Playback start is built: a `PLAYBACK_START` app wait, one Promise per start (`appWaits`, `QueueManager.beginPlaybackStart`), kept by `AppWaitHost`, with a time limit that fails and logs one nobody ended; while it hides the screen it was pressed on it holds the remote focus, and Back cancels it. The sign-in steps are built too (PR #1238): a `SESSION` app wait opened at the press (`signInStep.press`) for a server connect, a user pick, a password or Quick Connect sign-in and a server switch; Back cancels it until `appWaits.commit`, and `loginRouter` drops the late answer. ADR 0053 replaces ADR 0044's "session change blocks input": Back cancels every network wait, and only local commits ignore it.
+
+Remaining, all still on the plain blocking `startLoadingSpinner()`, where extra presses reach the hidden screen and Back reaches it only by accident:
+
+- Buffering: the audio seek and scrub-commit spinner (`AudioPlayerView.reloadStreamAt`) becomes the player's own handling: the player stays on screen and ignores every key but Back during a seek. No stage text.
+- The photo launches (slideshow, photo shuffle, a photo tile), which still use the plain spinner because a photo viewer is not a play session.
+- Details Refresh (`ItemDetails.onButtonSelected`, `refreshButton`): an app wait Back cancels.
+- The boot fallback font download (`main.bs` `initializeFallbackFont`): Back shows the exit confirmation, since there is no previous screen. After a sign-in, the committed `SESSION` wait covers it for now, so Back is ignored there.
+- Sign-out, change user and change server (`main.bs` `handleMenuAction`): local commits, so a committed wait with no cancel.
+- Then retire `clearSpinner` on `JRScene.routerNavigate`, which stays only for the cold-start boot spinner.
+
+A render-thread `fetchAsync` wait may be bound to its promise so it ends on success, failure, timeout or abandon (check the pool's settle guarantee first). Once no call site uses bare `startLoadingSpinner()`, add a lint against it. Details open and the TV guide are `content-loads-onto-screen-waits`.
 
 #### Spinner stops that end someone else's wait, found by the ADR 0044 survey (2026-09-25; read from code, the first two checked against it, none run on a device). `[fid: spinner-stops-ending-others-waits]` `[captured 2026-09-26]`
 
