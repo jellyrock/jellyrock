@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-22: fix(audio): Seek in FLAC without freezing or skipping the end
 - 2026-10-21: chore(tooling): Read Roku's developer docs from GitLab, not GitHub
 - 2026-10-21: test(rta): Restart the app on signals instead of a fixed 14 s sleep
 - 2026-10-21: feat(backdrop): Show My Media backdrops and restore one after sign-in
@@ -92,11 +93,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-08: fix(focus): Stop screens taking focus back when it leaves the router
 - 2026-10-08: test(rta): Say what the hourly demo reset wipes, and not to debug past it
 - 2026-10-08: update(manifest): Require Roku OS 15.1 and SceneGraph 1.3
-- 2026-10-07: chore(catchup): Filter CI runs locally, drop the prose banner rules
-- 2026-10-07: chore(journal-sync): Write Recently shipped bullets without em-dashes
-- 2026-10-07: docs(voice): Add a writing style guide, its gate and a plugin catalog
-- 2026-10-07 — test(rta): Discard a Home rows snapshot taken across a rebuild
-- 2026-10-07 — chore(catchup): add `--typed` banner lines to the catchup reader
 
 ## Open followups
 
