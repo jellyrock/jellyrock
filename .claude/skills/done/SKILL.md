@@ -5,7 +5,7 @@ model: sonnet
 effort: low
 ---
 
-# /done — mark journal work complete
+# /done: mark journal work complete
 
 ## This repo
 
@@ -16,26 +16,26 @@ effort: low
 
 ## Contract
 
-**Goal.** Be the single closure entry point for every kind of journal entry this repo keeps. When a piece of work lands — a followup is done, a backlog row is built, a queued item is materialized — the user types `/done {{thing}}` and the skill finds the existing entry, proves the work landed, and closes it directly — no per-invocation diff-then-confirm gate (see Success criteria). **Landed** means in this branch's history (or deployed, when the entry is about a deploy): it need not be pushed or merged, because the closure commits on the same branch and reaches the default branch only with the fix. So the closure belongs in the fix's own change set, never in a later commit, push or pull request of its own. A `message` another repo left this one is the exception: its closing line goes into the shared mailbox at once, where the sender reads it, so the work it points at must already be pushed. A followup is closed by the journal script (`journal.sh`), which removes the entry by its fid, bumps the journal's date line and makes the commit, so the model carries only the judgment. Companion to `/log`: same journal system, different moment. `/log` captures new entries; `/done` closes existing ones. The reasoning load is **not** uniformly mechanical, and the tier follows the riskiest step rather than the average one. Finding an entry and closing it are mechanical. But deciding that the work *actually landed* (Success criteria: "Closure writes reflect reality, not optimism") is a judgment call with an asymmetric downside: a wrong close **deletes** a known gap and leaves no trace that anything was lost, whereas a wrong *capture* only adds noise a later reader can discard. That is the same plausible-wrong shape that rules the cheapest tier out for `/log`, and it applies with more force here, so this skill is pinned at the **Sonnet tier with `effort: low`** — `low` because the verdict correlates evidence already in front of it (the entry's own closing clause, plus the command output) rather than generating anything absent. Started by the agent it runs on the session's own model and effort; its pin applies when it is typed.
+**Goal.** Be the single closure entry point for every kind of journal entry this repo keeps. When a piece of work lands (a followup is done, a backlog row is built, a queued item is materialized), the user types `/done {{thing}}` and the skill finds the existing entry, proves the work landed, and closes it directly, with no per-invocation diff-then-confirm gate (see Success criteria). **Landed** means in this branch's history (or deployed, when the entry is about a deploy): it need not be pushed or merged, because the closure commits on the same branch and reaches the default branch only with the fix. So the closure belongs in the fix's own change set, never in a later commit, push or pull request of its own. A `message` another repo left this one is the exception: its closing line goes into the shared mailbox at once, where the sender reads it, so the work it points at must already be pushed. A followup is closed by the journal script (`journal.sh`), which removes the entry by its fid, bumps the journal's date line and makes the commit, so the model carries only the judgment. Companion to `/log`: same journal system, different moment. `/log` captures new entries; `/done` closes existing ones. The reasoning load is **not** uniformly mechanical, and the tier follows the riskiest step rather than the average one. Finding an entry and closing it are mechanical. But deciding that the work *actually landed* (Success criteria: "Closure writes reflect reality, not optimism") is a judgment call with an asymmetric downside: a wrong close **deletes** a known gap and leaves no trace that anything was lost, whereas a wrong *capture* only adds noise a later reader can discard. That is the same plausible-wrong shape that rules the cheapest tier out for `/log`, and it applies with more force here, so this skill is pinned at the **Sonnet tier with `effort: low`**: `low` because the verdict correlates evidence already in front of it (the entry's own closing clause, plus the command output) rather than generating anything absent. Started by the agent it runs on the session's own model and effort; its pin applies when it is typed.
 
-**Inputs.** The arguments are a pointer — a followup's fid, or a few words of its title — optionally preceded by a type (`/done followup {{pointer}}`; a type of this repo's own takes the pointer form its steps give). `/done message {{id}}` closes an open message another repo left this one. An explicit type always wins. A pointer matching more than one entry → the skill shows the candidates and asks in chat which, never silently picks. No arguments → it lists the open entries and asks.
+**Inputs.** The arguments are a pointer (a followup's fid, or a few words of its title), optionally preceded by a type (`/done followup {{pointer}}`; a type of this repo's own takes the pointer form its steps give). `/done message {{id}}` closes an open message another repo left this one. An explicit type always wins. A pointer matching more than one entry: the skill shows the candidates and asks in chat which, never silently picks. No arguments: it lists the open entries and asks.
 
 **Outputs.**
 
 - For a followup: the entry removed from the journal by `journal.sh close` (its category too, when it was the last), the journal's date line bumped.
 - For a message: one closing line appended to it in this repo's mailbox (`closed:`, the date, this repo's `owner/name@sha` and a one-line note), pushed to the projects home; nothing in this repo changes.
 - For a type of this repo's own: that type's closure writes (a status flip, a row move), per this skill's `## This repo`.
-- A standalone path-restricted commit made by `journal.sh commit`: its body says what closed the item and how that was checked, and ends with a `Closes fid:` line — unless this repo commits journal writes together with the change that prompted them, which the script knows and says.
+- A standalone path-restricted commit made by `journal.sh commit`: its body says what closed the item and how that was checked, and ends with a `Closes fid:` line, unless this repo commits journal writes together with the change that prompted them, which the script knows and says.
 - A one-line confirmation after the writes (and after any commit), so the user has the new HEAD's short SHA or the equivalent confirmation that the closure landed.
 
 **Success criteria.**
 
-- A proven closure is applied directly — no per-invocation diff-then-confirm gate. Trust the skill; if outputs go wrong, audit the skill's runs and fix the SKILL.md. Per-invocation confirmation is the wrong corrective loop for systematic issues — it adds friction every session, and `git reset --soft HEAD~1` recovers a rare mis-closure.
+- A proven closure is applied directly, with no per-invocation diff-then-confirm gate. Trust the skill; if outputs go wrong, audit the skill's runs and fix the SKILL.md. Per-invocation confirmation is the wrong corrective loop for systematic issues: it adds friction every session, and `git reset --soft HEAD~1` recovers a rare mis-closure.
 - Closure writes reflect reality, not optimism. When the entry's claim depends on work being committed, deployed, materialized or shipped, the skill proves it landed before closing. Pre-marking optimistically is the failure shape `/done` exists to prevent.
 - Closed entries are removed, not annotated with a `✅`-style marker. Git is the history; the journal tracks open work.
 - An entry is closed by its fid, the identity it keeps for life. Closing one never changes what any other reference points at, and the closing commit names the fid, so the item's whole history is one `git log --grep` away.
-- A fid that is no longer open is reported as closed, with the commit it left in — not as unknown, and never re-closed.
-- Disambiguation asks only when the pointer genuinely matches more than one entry. Unambiguous pointers apply directly.
+- A fid that is no longer open is reported as closed, with the commit it left in, not as unknown, and never re-closed.
+- Disambiguation asks only when the pointer matches more than one entry. Unambiguous pointers apply directly.
 - The skill is pure local-file edits, except for the read-only checks that the work landed and a message's closing line, which is pushed to the projects home.
 
 **Failure modes to avoid.**
@@ -46,15 +46,15 @@ effort: low
 - **Closing a partly done item.** If only part of the work landed, revise the entry to say what remains (`journal.sh replace`, the `/log` path) and leave it open.
 - **Hand-editing the journal instead of running the script.** It skips the date line and the checks, and can break the format every reader depends on.
 - **Closing by position.** "#3 under Tooling" means a different item once anything above it closes. Close by fid.
-- **Adding friction prompts in place of audit-driven fixes.** Same as `/log`'s rule: bad outputs get fixed by an audit of the skill's runs → SKILL.md revision → re-dogfood, not by a confirmation gate on every run.
-- **Silent ambiguous-pointer resolution.** Picking the first match, the most recent, or the likeliest is silent corruption — the user knew which one they meant; ask.
+- **Adding friction prompts in place of audit-driven fixes.** Same as `/log`'s rule: bad outputs get fixed by an audit of the skill's runs, then a SKILL.md revision, then a re-dogfood, not by a confirmation gate on every run.
+- **Silent ambiguous-pointer resolution.** Picking the first match, the most recent, or the likeliest is silent corruption: the user knew which one they meant, so ask.
 - **Bundling the closure into an unrelated code commit.** A closure commit is standalone (unless this repo commits journal writes with the change that prompted them); bundling it creates conflicts when the code commit moves on its own.
 
-**When NOT to use.**
+**When not to use.**
 
 - The work isn't done yet: not committed on this branch, or not deployed when the entry is about a deploy. A commit on this branch is done: don't wait for the push or the merge.
-- The work is a tactical bug fix with no journal entry to close — just commit normally.
-- The entry is deferred, not closed — leave it in place (update its body with the new context via `/log`'s `replace` path if useful).
+- The work is a tactical bug fix with no journal entry to close: commit it normally.
+- The entry is deferred, not closed: leave it in place (update its body with the new context via `/log`'s `replace` path if useful).
 - Only some pieces of a multi-step landing are done. Revise the entry; `/done` it when the last piece lands.
 - The capture is a new entry. That's `/log`.
 - The thing to close is a decision. Decisions are records, not to-dos: a later `/log decision` supersedes one.
@@ -64,41 +64,41 @@ effort: low
 
 Every followup read and write goes through `bash .claude/skills/log/journal.sh` (run from anywhere in the repo; with no arguments it prints its commands). A closure type of this repo's own is closed per this skill's `## This repo`.
 
-### Step 1 — Resolve the pointer
+### Step 1: Resolve the pointer
 
-- `/done decision …` → say decisions are records, not to-dos (a later `/log decision` supersedes one), and stop.
+- `/done decision …`: say decisions are records, not to-dos (a later `/log decision` supersedes one), and stop.
 - `/done message {{id}}`: go to Step 5.
-- A type of this repo's own named first (or plainly meant) → its steps in `## This repo`.
+- A type of this repo's own named first (or plainly meant): its steps in `## This repo`.
 - Otherwise a followup; `followup`, `f` and `todo` may lead. The pointer:
-  - **a fid** → `journal.sh show {{fid}}`. If the script says it is not open, pass that on (it names the commit the entry left in) and stop.
-  - **words of the title** → match them against the titles `journal.sh list` prints. One match → its fid. Several → show them and ask in chat which. None → say so and stop: `/done` closes existing entries; new ones are `/log`.
-  - **nothing** → show `journal.sh list` and ask which to close.
-  - **a position** ("#3", "Tooling #3") → positions are not identities; show that category's entries and ask which fid is meant.
+  - **a fid**: `journal.sh show {{fid}}`. If the script says it is not open, pass that on (it names the commit the entry left in) and stop.
+  - **words of the title**: match them against the titles `journal.sh list` prints. One match is its fid. Several: show them and ask in chat which. None: say so and stop, since `/done` closes existing entries and new ones are `/log`.
+  - **nothing**: show `journal.sh list` and ask which to close.
+  - **a position** ("#3", "Tooling #3"): positions are not identities; show that category's entries and ask which fid is meant.
 
 **If `journal.sh close` refuses for uncommitted journal edits**, show them and ask in chat which of the two ways its refusal names to take: the edits are the user's, so the choice is theirs.
 
-### Step 2 — Prove the work landed
+### Step 2: Prove the work landed
 
 Read the entry's body for what closes it, and check that:
 
-- **A committed change** (a file, script, config) → find the commit that made it (`git log -S'{{the changed text}}' --format='%h %s' -- {{path}}`, or the sha the entry names), then check it is in this branch's history: `git merge-base --is-ancestor {{sha}} HEAD`. A path's log alone proves only that some commit touched it. Pushed or not does not matter: this close commits on the same branch, on top of the fix, so it can reach the remote only with it. For a behavior fix, run the test that covers it.
-- **A deploy, a converged host, a synced change** → this repo's own way of proving it, in this skill's `## This repo`.
-- **A fact about a live box or an outside service** → the user reports what they actually saw; never assert it from documentation.
-- **An entry that names a pull request** → the forge says it is merged, or it is the one open for this branch and its commits are in this branch's history. Where this repo has `.claude/skills/pr/forge.sh`, `bash .claude/skills/pr/forge.sh pr view {{N}} | jq -r .state` prints `MERGED` on either forge; without it, the user reports what the pull request's page shows, as for an outside service above.
-- **An entry that says it is tracked in a project** → that project's PLAN Status records the work done (the projects folder is what `bash .claude/skills/start-project/projects-dir.sh` prints).
-- **"Noticed and dealt with"**, with nothing checkable named → no check; close.
+- **A committed change** (a file, script, config): find the commit that made it (`git log -S'{{the changed text}}' --format='%h %s' -- {{path}}`, or the sha the entry names), then check it is in this branch's history: `git merge-base --is-ancestor {{sha}} HEAD`. A path's log alone proves only that some commit touched it. Pushed or not does not matter: this close commits on the same branch, on top of the fix, so it can reach the remote only with it. For a behavior fix, run the test that covers it.
+- **A deploy, a converged host, a synced change**: this repo's own way of proving it, in this skill's `## This repo`.
+- **A fact about a live box or an outside service**: the user reports what they actually saw; never assert it from documentation.
+- **An entry that names a pull request**: the forge says it is merged, or it is the one open for this branch and its commits are in this branch's history. Where this repo has `.claude/skills/pr/forge.sh`, `bash .claude/skills/pr/forge.sh pr view {{N}} | jq -r .state` prints `MERGED` on either forge; without it, the user reports what the pull request's page shows, as for an outside service above.
+- **An entry that says it is tracked in a project**: that project's PLAN Status records the work done (the projects folder is what `bash .claude/skills/start-project/projects-dir.sh` prints).
+- **"Noticed and dealt with"**, with nothing checkable named: no check; close.
 
-**Pass** → Step 3. **Inconclusive** → show exactly what was and wasn't confirmed, and close only on the user's explicit go-ahead. **Fail** → refuse: show the evidence and say what would make it pass, naming the step ("commit the fix on this branch"); never offer to run it, to push, or to wait for CI yourself. A checking command that errors is inconclusive, never a pass. If only part of the work landed, don't close: revise the entry with `journal.sh replace {{fid}} --body-file {{file}}` to say what remains, and stop.
+**Pass**: go to Step 3. **Inconclusive**: show exactly what was and wasn't confirmed, and close only on the user's explicit go-ahead. **Fail**: refuse: show the evidence and say what would make it pass, naming the step ("commit the fix on this branch"); never offer to run it, to push, or to wait for CI yourself. A checking command that errors is inconclusive, never a pass. If only part of the work landed, don't close: revise the entry with `journal.sh replace {{fid}} --body-file {{file}}` to say what remains, and stop.
 
-### Step 3 — Close it
+### Step 3: Close it
 
-`bash .claude/skills/log/journal.sh close {{fid}}` — it removes the entry (and its category, when it was the last), and bumps the journal's date line. No confirmation: the check in Step 2 is the gate.
+`bash .claude/skills/log/journal.sh close {{fid}}` removes the entry (and its category, when it was the last) and bumps the journal's date line. No confirmation: the check in Step 2 is the gate.
 
-### Step 4 — Check, commit, suggest the follow-on
+### Step 4: Check, commit, suggest the follow-on
 
 1. Write the commit body to a temporary file with a quoted heredoc: what closed the item (with its commit, when there is one) and how that was checked, in a sentence or two. When [this repo's public posture](../../../AGENTS.md#public-posture) is `public`, re-read the body and the subject: no other repository or host, no person, email or home path, no secret.
 2. Run `journal.sh check` and [this repo's docs check](../../../AGENTS.md#docs-check) unless it is `none`. Surface every FAIL or WARN.
-3. `bash .claude/skills/log/journal.sh commit --intent "close [fid:{{fid}}]" --closes {{fid}} --body-file "$tmp"` — a path-restricted commit of the journal whose body ends with the `Closes fid:` line; it prints `committed as {{sha}} on {{branch}}` (or says this repo commits journal writes with the change that prompted them). If it refuses for journal edits it did not write, nothing was committed: show them and leave the closure uncommitted; they are the user's, so never commit them another way. If a hook refuses, nothing was committed: fix what it names and commit again; never `--no-verify`. Skip the commit only when the user said "don't commit".
+3. `bash .claude/skills/log/journal.sh commit --intent "close [fid:{{fid}}]" --closes {{fid}} --body-file "$tmp"` makes a path-restricted commit of the journal whose body ends with the `Closes fid:` line; it prints `committed as {{sha}} on {{branch}}` (or says this repo commits journal writes with the change that prompted them). If it refuses for journal edits it did not write, nothing was committed: show them and leave the closure uncommitted; they are the user's, so never commit them another way. If a hook refuses, nothing was committed: fix what it names and commit again; never `--no-verify`. Skip the commit only when the user said "don't commit".
 4. If closing the work settled a choice nobody recorded (a rule changed, a new pattern, a tool picked), suggest `/log decision`; don't run it. Closing is a common moment for an unrecorded decision to surface.
 
 ### Step 5: `message`
@@ -112,4 +112,4 @@ Every mailbox read and write goes through `bash .claude/skills/start-project/mai
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent, the parent passes: `Read .claude/skills/done/SKILL.md and follow the steps with the arguments {{thing}}: resolve it to one fid with journal.sh, run the Step 2 check, and report the fid with the evidence that the work landed — never run close or commit. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link. A sub-agent this section starts NEVER applies a closure: a wrong "closed" deletes a known gap from the journal `/catchup` reads first every session, and nothing afterwards shows it was lost. The one grant is elsewhere: a `/sonnet` sub-agent its parent supervises runs the close its saved plan names, as one of the plan's own steps, and the parent reviews it before any push.
+To invoke from a sub-agent, the parent passes: `Read .claude/skills/done/SKILL.md and follow the steps with the arguments {{thing}}: resolve it to one fid with journal.sh, run the Step 2 check, and report the fid with the evidence that the work landed — never run close or commit. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself.` A parent writing that prompt for an Explore sub-agent (which loads no instruction files) spells the types out from the slot in place of the link. A sub-agent this section starts never applies a closure: a wrong "closed" deletes a known gap from the journal `/catchup` reads first every session, and nothing afterwards shows it was lost. The one grant is elsewhere: a `/sonnet` sub-agent its parent supervises runs the close its saved plan names, as one of the plan's own steps, and the parent reviews it before any push.

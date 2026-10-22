@@ -19,7 +19,11 @@
 #   line-citation  file.ext:123 or file.ext:12-14 (counted inside backticks too, fences removed
 #                  only) and the shorthand :123 or :12-14 after whitespace, a backtick, [ or (
 #
-# Scope: tracked Markdown files (git ls-files '*.md') except any file named CHANGELOG.md.
+# Scope: tracked Markdown files (git ls-files '*.md') except any file named CHANGELOG.md and any
+# file the optional <repo root>/.voice-ignore matches: gitignore patterns, matched by git itself,
+# for Markdown that is not prose (test fixtures, vendored text). A pattern that matches no tracked
+# Markdown file prints a NOTE, since a typo there would hide nothing and say nothing. --counts
+# counts whatever files it is given.
 # Fences come from md-skip.awk beside this script (CommonMark: backtick and tilde fences), the one
 # rule for what is not prose that every script reading Markdown shares. It sits in the log skill
 # for that reason only: the voice check is not part of the journal.
@@ -40,6 +44,7 @@ die()    { printf 'voice-check.sh: %s\n' "$*" >&2; exit 2; }
 refuse() { printf 'voice-check.sh: %s\n' "$*" >&2; exit 1; }
 
 BASELINE_NAME=.voice-baseline.tsv
+IGNORE_NAME=.voice-ignore
 
 mode=check; paths=()
 while [ $# -gt 0 ]; do
@@ -65,6 +70,7 @@ MDSKIP="$here/md-skip.awk"
 [ -r "$MDSKIP" ] || die "cannot read $MDSKIP: the log skill is incomplete"
 MD_LIB="$(cat "$MDSKIP")"$'\n'
 baseline="$root/$BASELINE_NAME"
+ignorefile="$root/$IGNORE_NAME"
 
 read -r -d '' COUNT_AWK <<'AWK'
 # One pass over the files named on the command line. Prints path<TAB>category<TAB>count for the six
@@ -203,9 +209,28 @@ count_files() {
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
-# scope: tracked Markdown files minus CHANGELOG.md, one root-relative path per line
+# scope: tracked Markdown files minus CHANGELOG.md and .voice-ignore's matches, one root-relative
+# path per line
 git -C "$root" ls-files -z -- '*.md' | tr '\0' '\n' | grep -v -e '^CHANGELOG\.md$' -e '/CHANGELOG\.md$' \
   | LC_ALL=C sort >"$tmp/scope" || true
+if [ -f "$ignorefile" ]; then
+  git -C "$root" ls-files -z -c -i --exclude-from="$ignorefile" -- '*.md' | tr '\0' '\n' \
+    | LC_ALL=C sort >"$tmp/ignored" || die "git could not read $IGNORE_NAME"
+  LC_ALL=C comm -23 "$tmp/scope" "$tmp/ignored" >"$tmp/kept" && mv "$tmp/kept" "$tmp/scope"
+fi
+
+ignore_notes() { # a NOTE on stderr for each .voice-ignore pattern that matches no tracked Markdown file
+  local pat
+  [ -f "$ignorefile" ] || return 0
+  while IFS= read -r pat || [ -n "$pat" ]; do
+    pat="${pat%$'\r'}"
+    case "$pat" in '#'*|'!'*) continue ;; esac
+    [[ "$pat" =~ ^[[:space:]]*$ ]] && continue
+    [ -n "$(git -C "$root" ls-files -c -i --exclude="$pat" -- '*.md' | head -n 1)" ] && continue
+    printf "voice-check: NOTE: %s pattern '%s' matches no tracked Markdown file: fix it or remove it\n" \
+      "$IGNORE_NAME" "$pat" >&2
+  done <"$ignorefile"
+}
 
 abs_scope() { # <list file> : the existing files of a root-relative list, as absolute paths
   local p
@@ -229,6 +254,7 @@ counts)
   count_files 0 "" "${files[@]}"
   exit 0 ;;
 esac
+ignore_notes
 
 # the files this run looks at
 if [ "$mode" = check ] && [ "${#paths[@]}" -gt 0 ]; then
@@ -258,7 +284,7 @@ lower)
     FILENAME == cf { cur[$1 SUBSEP $2] = $3 + 0; tracked[$1] = 1; next }
     /^#/ || $0 == "" { next }
     {
-      if (!($1 in tracked)) { print "dropped\t" $1 "\t" $2 "\t" "file is no longer tracked" >"/dev/stderr"; next }
+      if (!($1 in tracked)) { print "dropped\t" $1 "\t" $2 "\t" "file is out of scope (untracked, or matched by .voice-ignore)" >"/dev/stderr"; next }
       c = cur[$1 SUBSEP $2] + 0; a = $3 + 0
       n = (c < a) ? c : a
       if (n == 0) { print "dropped\t" $1 "\t" $2 "\t" "count is now zero" >"/dev/stderr"; next }
