@@ -7,7 +7,7 @@ user-invocable: true
 allowed-tools: Bash(bash .claude/skills/pr/forge.sh issue view:*), Bash(bash .claude/skills/pr/forge.sh issue list:*), Bash(bash .claude/skills/pr/forge.sh pr list:*), Bash(git log:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
 ---
 
-# /issue-triage — investigate one GitHub issue
+# /issue-triage: investigate one GitHub issue
 
 ## This repo
 
@@ -54,7 +54,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh issue view:*), Bash(bash .cl
 - **Claiming a test that did not run.** A test that needs hardware, a service or credentials this machine lacks is reported as not run, and why.
 - **Filing a followup for what the issue already tracks.** The issue is the record; unbuilt findings go on it as a drafted comment, if anywhere.
 
-**When NOT to use.**
+**When not to use.**
 
 - The issue is a support question: answer it with the contact links, no investigation.
 - You want to file a new issue: that is `/create-issue`.
@@ -64,7 +64,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh issue view:*), Bash(bash .cl
 
 This skill's `## This repo` holds the repo's own parts: the area map (what words in an issue point at which paths), the user docs that say what is expected behavior, how to reproduce in this repo (and what needs hardware or a service), and any routing its areas carry. Where a step needs one, it says so.
 
-### Step 1 — Fetch
+### Step 1: Fetch
 
 ```sh
 bash .claude/skills/pr/forge.sh issue view {{N}}
@@ -72,7 +72,7 @@ bash .claude/skills/pr/forge.sh issue view {{N}}
 
 Never add `2>/dev/null`: forge.sh passes the forge's own message on whole. Keep the body and every comment whole. A closed issue: say how it closed (`stateReason`, `closedByPullRequestsReferences`; both `null` means the forge records neither, as Forgejo does, so say that rather than guess) and ask in chat whether to revisit it before going on.
 
-### Step 2 — Is it still true?
+### Step 2: Is it still true?
 
 For every path, file, function, setting, command or workflow the issue names, check it exists now:
 
@@ -85,7 +85,7 @@ git log --oneline -S'{{name}}' | head -5               # gone: which commits las
 
 Prefer `git ls-files` over `ls`: an untracked leftover must not answer for a tracked file. **Premise gone:** the outcome is a recommendation to close, citing the commit that removed it; go to Step 7 to draft that comment, and stop. **Premise intact:** continue.
 
-### Step 3 — Read and classify
+### Step 3: Read and classify
 
 When the repo has issue forms, read them live (`.github/ISSUE_TEMPLATE/*.yml`, never a copied field list): each field appears in the body as `### {{its attributes.label}}`, so the body splits into named fields. Without forms the body is plain Markdown. When the issue states acceptance criteria, keep them: they are what done means.
 
@@ -99,30 +99,30 @@ bash .claude/skills/pr/forge.sh issue list --state all --search "{{2-3 keywords}
 
 A likely duplicate: show it in one line with its state, and ask in chat whether to draft a pointer comment (Step 7) or go on.
 
-### Step 4 — Validate
+### Step 4: Validate
 
 Answer in order, each in a sentence with its evidence; stop at the first that settles it:
 
 1. **Expected behavior?** Read the user docs this skill's `## This repo` names. Expected: draft the explaining reply (Step 7), and stop.
 2. **Already fixed?** Its `closedByPullRequestsReferences`, then `bash .claude/skills/pr/forge.sh pr list --state merged --search "{{keywords}}" --limit 10`, and `git log --oneline -S'{{symbol}}'` on the code it names. Fixed in a release newer than the reporter's version: the answer is to upgrade (Step 7), not a new fix.
 3. **Reproducible?** Are the steps specific enough to run? Not: draft a comment asking for exactly what is missing (Step 7); never fill the gap with a guess.
-4. **Scope?** Just the named spot, its area, or a pattern that repeats elsewhere. Say so honestly; a narrowed fix names what it leaves.
+4. **Scope?** Only the named spot, its area, or a pattern that repeats elsewhere. Say so honestly; a narrowed fix names what it leaves.
 
 A `feature` or `enhancement` is validated the same way in spirit: does it already exist, does it fit the project, what does done look like. An `arch-decision-needed` issue, or anything too big for one session, goes to Step 8 as options, where `later` routes it.
 
-### Step 5 — Area and context
+### Step 5: Area and context
 
 Match the issue's words against the area map in this skill's `## This repo`. List every matching area, or say `uncertain area` and search. Pick 2 to 5 files that matter (the code the issue names, its tests, the area's recent history: `git log --oneline -10 -- {{area}}`); read more as the work needs it.
 
-### Step 6 — Reproduce and find the root cause
+### Step 6: Reproduce and find the root cause
 
 Reproduce it for real (this skill's `## This repo` says how in this repo, and what needs a device or a service): run it, keep the command and what it showed. When it cannot run here, say what is missing. Then name the root cause at a file and line, not the first symptom; when the same cause likely sits elsewhere, search and list those places as a scope question.
 
-### Step 7 — Anything posted on the issue
+### Step 7: Anything posted on the issue
 
 A comment, a label, a close or an edit is drafted, never sent. Write a comment to `"$(git rev-parse --git-dir)/issue-comment.md"` (it can never be committed there). When [this repo's public posture](../../../AGENTS.md#public-posture) is `public`, sweep it as `/create-issue`'s Step 7 does (a home path, a person's name or email, a secret, another repository's or host's name) and remove what is private. Show it, and ask in chat: `post`, `edit: <text>` or `cancel`. On `post`: `bash .claude/skills/pr/forge.sh issue comment {{N}} --body-file "$(git rev-parse --git-dir)/issue-comment.md"`; a close is `bash .claude/skills/pr/forge.sh issue close {{N}} --reason not-planned` (or `duplicate`, or `completed`) only on its own approval.
 
-### Step 8 — Decide and build, the `/snag` way
+### Step 8: Decide and build, the `/snag` way
 
 Read `.claude/skills/snag/SKILL.md` and follow its Steps 2 to 7, carrying in what Steps 2 to 6 here found (finish its Step 2 with the history, what depends on the code, and at least two options). Four differences:
 

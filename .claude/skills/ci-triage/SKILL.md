@@ -7,7 +7,7 @@ user-invocable: true
 allowed-tools: Bash(bash .claude/skills/pr/forge.sh run view:*), Bash(bash .claude/skills/pr/forge.sh run list:*), Bash(bash .claude/skills/pr/forge.sh repo default-branch:*), Bash(git log:*), Bash(git diff:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
 ---
 
-# /ci-triage — diagnose a failed CI run
+# /ci-triage: diagnose a failed CI run
 
 ## This repo
 
@@ -26,7 +26,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh run view:*), Bash(bash .clau
 
 - Every failed job is diagnosed, not only the first; jobs that share one root cause are said to.
 - The category and any banner come from the script; nothing it reports is re-derived by hand.
-- A transient failure is re-run before any code is changed, and a failure that points at code is never just re-run.
+- A transient failure is re-run before any code is changed, and a failure that points at code is never only re-run.
 - A failure that reproduces locally is reproduced before any theory; one that cannot is said to.
 - The root cause is named at a file and line, and the screen separates what was measured from what was not.
 - The fix is the user's pick, built test-first, committed on its own paths, and not pushed.
@@ -41,7 +41,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh run view:*), Bash(bash .clau
 - **Re-running, or pushing, on the user's behalf.** A re-run spends CI and a push lands work; both are the user's to run.
 - **Re-running a failure that points at code, or theorizing about one that is transient.** Decide which it is from the tail first.
 
-**When NOT to use.**
+**When not to use.**
 
 - The run is still in progress, or did not fail: there is nothing to triage yet.
 - The failure is not a CI run: a flaw found mid-work is `/snag`, and a log from the running app goes to whatever this repo uses for runtime failures.
@@ -51,7 +51,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh run view:*), Bash(bash .clau
 
 Two repo-owned parts: `gates.tsv` beside the script maps each CI step to a category, an optional sub-check pattern and a banner (its header says the format); this skill's `## This repo` gives each gate's local command and anything the repo's gates need beyond the shared steps.
 
-### Step 1 — Which run
+### Step 1: Which run
 
 A run URL gives its id after `/runs/`. With no arguments, list the newest failures and ask in chat which one:
 
@@ -61,7 +61,7 @@ bash .claude/skills/pr/forge.sh run list --branch "$(git branch --show-current)"
 
 None on this branch: say so, and offer the same list for the default branch (`bash .claude/skills/pr/forge.sh repo default-branch`).
 
-### Step 2 — The state read
+### Step 2: The state read
 
 ```sh
 bash .claude/skills/ci-triage/ci-triage-state.sh {{run id}}
@@ -75,11 +75,11 @@ bash .claude/skills/ci-triage/ci-triage-state.sh {{run id}}
 
 Never re-fetch what it printed with your own `forge.sh` calls. Its output is the evidence the decision screen cites.
 
-### Step 3 — Read each failed job
+### Step 3: Read each failed job
 
 For each `FAILED JOB` section: the step, the category, the sub-check when the gate wraps several checks in one step (the sub-check, not the step name, is the finding), any `BANNER:` line, and the tail. A banner outranks the obvious fix; follow it. Several failed jobs often share one cause (a build failure that fails every job after it): name which, and diagnose the cause once.
 
-### Step 4 — Transient or code?
+### Step 4: Transient or code?
 
 Transient: a platform outage, a runner that never started, a network fetch or tool install that failed upstream, a device or service the job needs that was unreachable, or a time limit hit with nothing in the tail pointing at code. Then print the re-run command alone in its own block, say why it looks transient, and stop: triage it only if it fails again.
 
@@ -89,11 +89,11 @@ bash .claude/skills/pr/forge.sh run rerun {{run id}}
 
 Anything else is code or configuration: continue.
 
-### Step 5 — Reproduce locally
+### Step 5: Reproduce locally
 
 Run the gate's local command from this skill's `## This repo`; with none there, the command in the tail's `##[group]Run …` line. Keep the command and the lines that show the failure. It fails in CI but passes locally: the difference between the two environments is the finding, never a reason to change the check. It cannot be run here (it needs a network service, a tool or a device this machine lacks): say so, and work from the tail.
 
-### Step 6 — Root cause
+### Step 6: Root cause
 
 Read the file and line the tail names, and the change that brought it in:
 
@@ -104,7 +104,7 @@ git diff "origin/$(bash .claude/skills/pr/forge.sh repo default-branch)...HEAD" 
 
 For a failing test, read the test and the code it covers. Ask whether the diagnostic is the cause or a symptom of one upstream (a type error at a call site whose contract changed), and name the cause at a file and line.
 
-### Step 7 — Decide and build, the `/snag` way
+### Step 7: Decide and build, the `/snag` way
 
 Read `.claude/skills/snag/SKILL.md` and follow its Steps 2 to 7, carrying in what Steps 2 to 6 here found (the reproduction and the root cause are done; finish its Step 2 with the history, what depends on the code, and at least two fixes). Three differences:
 

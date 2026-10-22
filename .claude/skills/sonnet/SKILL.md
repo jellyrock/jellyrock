@@ -5,7 +5,7 @@ effort: low
 description: "Execute a procedural implementation plan on the Sonnet model for token savings. Runs when the user types /sonnet with a plan path, or as a Sonnet sub-agent that a parent (usually /focus, right after it saves the plan) starts and supervises. Checks the plan is for this repo, walks its Approach literally, runs its Verification, commits, records the landing in the plan's project, and stops before push for an explicit OK. Not for judgment-heavy work: if the plan still has open forks, architectural decisions or \"we need to figure out X\" gaps, stay on the judgment-grade model and finish the planning first. Not for investigation or recipe work that has its own skill (/ci-triage, /issue-triage, /new-setting and the like): the recipe is the better plan."
 ---
 
-# /sonnet — execute a procedural plan with token savings
+# /sonnet: execute a procedural plan with token savings
 
 ## This repo
 
@@ -16,13 +16,13 @@ description: "Execute a procedural implementation plan on the Sonnet model for t
 
 ## Contract
 
-**Goal.** A clear-spec implementation plan doesn't need a judgment-grade model's reasoning budget — it needs careful execution, and this skill is the cheap path for that half. There are two ways in. The user types `/sonnet {{plan-path}}`: the `model: sonnet` pin applies only then (invoked through the Skill tool, the skill would run on the caller's model). Or a parent — usually `/focus`, right after it saves its plan (the user's choices are its fork questions; there is no separate approval) — starts a sub-agent with its model set to Sonnet and these steps as its task, and supervises it: the parent answers what the plan already settles, brings everything else to the user, reviews the result before the user sees it, and turns what the run taught into proposals that improve the next plan. Either way the plan is the spec.
+**Goal.** A clear-spec implementation plan doesn't need a judgment-grade model's reasoning budget. It needs careful execution, and this skill is the cheap path for that half. There are two ways in. The user types `/sonnet {{plan-path}}`: the `model: sonnet` pin applies only then (invoked through the Skill tool, the skill would run on the caller's model). Or a parent (usually `/focus`, right after it saves its plan, where the user's choices are its fork questions and there is no separate approval) starts a sub-agent with its model set to Sonnet and these steps as its task, and supervises it: the parent answers what the plan already settles, brings everything else to the user, reviews the result before the user sees it, and turns what the run taught into proposals that improve the next plan. Either way the plan is the spec.
 
-**Inputs.** The arguments are the plan-file path: most often a `/focus` plan at this repo's plan path, but any markdown plan with the sections Context, Approach, Critical files, Verification, Landing & closeout and What this plan deliberately does NOT do works (a project's build spec too). A `/focus` plan carries a `**Project:** {{slug | n/a}}` line naming the tracked project it advances. With no arguments, the steps list the plans at the plan path that are for this repo and ask which (or whether to cancel).
+**Inputs.** The arguments are the plan-file path: most often a `/focus` plan at this repo's plan path, but any markdown plan with the sections `Context`, `Approach`, `Critical files`, `Verification`, `Landing & closeout` and `What this plan deliberately does NOT do` works (a project's build spec too). A `/focus` plan carries a `**Project:** {{slug | n/a}}` line naming the tracked project it advances. With no arguments, the steps list the plans at the plan path that are for this repo and ask which (or whether to cancel).
 
 **Outputs.**
 
-- Edits to the files in the plan's Critical files table — and only those, unless the user approves widening the scope.
+- Edits to the files in the plan's Critical files table, and only those, unless the user approves widening the scope.
 - The plan's Verification run end to end, each output surfaced as it came (not paraphrased).
 - A commit on the current branch, staged per the Critical files list, whose body gives the plan's why and names the plan by its file name, except in a [public](../../../AGENTS.md#public-posture) repo, where it names no plan file (nobody else can open one) and the why stands alone.
 - The landing recorded when the plan's `**Project:**` names a tracked project this session is not closing: one dated Session-log line and a bumped `last-updated` in that project's `PLAN.md`, committed alone as a second local commit (the one push ships both), or left as a local edit where `git check-ignore` says the projects folder is ignored. Status and the kickoff stay `/end-session`'s. A session that holds the project leaves the record to its `/end-session`.
@@ -33,9 +33,9 @@ description: "Execute a procedural implementation plan on the Sonnet model for t
 
 - The plan is checked to be for this repo before any edit.
 - The Approach section is walked literally, not reinterpreted on the fly.
-- The Critical files table is the scope envelope — no surprise files touched without an explicit surface-and-confirm.
+- The Critical files table is the scope envelope: no surprise files touched without an explicit surface-and-confirm.
 - Every command in the plan's Verification section runs and either passes or has its failure surfaced verbatim; never auto-fixed. Its output is read, not only its exit code.
-- The commit message reflects the plan's Context (the **why**), not just a restatement of what changed.
+- The commit message reflects the plan's Context (the **why**), not only a restatement of what changed.
 - Push happens only after an explicit `ok` or `push`, with one exception: a run a parent supervised, in a repo whose `## Landing` level is `gated`, whose plan says `**Always ask:** none`, whose work matches the plan (`plan-run.sh gate` exits `0`), whose every check passed and whose review found no issue. The parent pushes that one and reports it landed. A typed run always stops; never push on session end; a sub-agent never pushes.
 - Production steps follow the plan's `Landing & closeout` exactly: after the push, only a step the plan assigns to the implementing session runs (routine and undoable, with the exact command approved as part of the plan); a step assigned to the operator is shown in the ready-to-push message as the exact command to run, never run here; anything the section does not cover is surfaced, not improvised.
 - Run as a sub-agent, every point where the steps stop, ask or surface reaches the parent as `STATUS: stuck` with its evidence; nothing is guessed past.
@@ -44,28 +44,28 @@ description: "Execute a procedural implementation plan on the Sonnet model for t
 **Failure modes to avoid.**
 
 - **Running a plan written for another repo.** Plans kept in one folder for every repo look alike. A plan whose Critical files are not here is stopped and confirmed before a single edit.
-- **Improvising past a missing-tool error.** "command not found" or "no module named X" → stop and surface; never substitute an ad-hoc command path or guess at `find ~/.local`. Past audits show 30+ minutes lost to environmental yak-shaving that one user clarification would have answered in seconds.
+- **Improvising past a missing-tool error.** "command not found" or "no module named X" means stop and surface; never substitute an ad-hoc command path or guess at `find ~/.local`. Past audits show 30+ minutes lost to environmental yak-shaving that one user clarification would have answered in seconds.
 - **Auto-fixing a Verification failure.** Surface verbatim, let the user choose: (a) extend skill work to fix inline, (b) cancel and revise the plan, (c) commit-with-known-failure noted in the body. Never silently retry-with-tweaks.
-- **Widening scope.** A file not in the plan's Critical files table → surface the proposed add and the reason; don't sneak it into the commit.
+- **Widening scope.** For a file not in the plan's Critical files table, surface the proposed add and the reason; don't sneak it into the commit.
 - **Following a plan step that breaks one of this repo's hard rules.** The plan is wrong there: stop and surface it rather than follow it.
-- **Pushing without explicit OK where the gate does not clear.** The commit-then-stop boundary is load-bearing: before the push a commit is undone with `git reset --soft HEAD~1`; after it, only by a revert commit everyone sees, and a push that deploys may not be undone at all. One unclear condition (a level not plainly `gated`, an Always ask line missing or naming an item, a file outside the plan, a check not run, an issue in the review) means stop.
+- **Pushing without explicit OK where the gate does not clear.** The commit-then-stop boundary keeps a mistake cheap: before the push a commit is undone with `git reset --soft HEAD~1`; after it, only by a revert commit everyone sees, and a push that deploys may not be undone at all. One unclear condition (a level not plainly `gated`, an Always ask line missing or naming an item, a file outside the plan, a check not run, an issue in the review) means stop.
 - **Loose prose in place of a chat question.** A fork the plan left open is asked as a chat question (the options, a **Recommended** one with why and risk, the reply words), never papered over with "should we Y" or "let me know which"; run as a sub-agent, it is reported as stuck.
 - **Bypassing a commit hook.** `--no-verify`, or a hook manager's skip variable: address the finding and re-stage instead.
-- **Pre-rendering a verification summary before the gates actually run.** Run each command, surface its output, then summarize — not the other way around. Optimistic summaries that mismatch actual output corrupt the trust signal.
+- **Pre-rendering a verification summary before the gates actually run.** Run each command, surface its output, then summarize, never the other way around. Optimistic summaries that mismatch actual output corrupt the trust signal.
 
-**When NOT to use.**
+**When not to use.**
 
 - The plan still has open architectural forks or unresolved questions. Stay on the judgment-grade model and finish the planning side first via `/focus`.
 - No written plan exists. "Implement feature X" without a spec is judgment-heavy by default; don't reach for `/sonnet`.
-- The work is so trivial it doesn't warrant a plan (typo, one-line config edit). Just edit and commit; the skill overhead isn't worth it.
-- When this repo has a dedicated write skill for the work (a deploy, a secret rotation) with its own verify chain — use that skill. A generic plan run skips the chain it encodes.
-- The plan flags `Risk / blast radius: large` or touches load-bearing infra (migrations, deploy scripts, secret-handling, backup and restore paths). Stay on the judgment-grade model for the implementation half too — the token savings aren't worth the marginal risk on infra changes. **This bullet is the one "must not be a Sonnet run" list; `/focus`'s implementation-tier choice checks it rather than keeping its own copy.**
+- The work is so trivial it doesn't warrant a plan (typo, one-line config edit). Edit and commit directly; the skill overhead isn't worth it.
+- When this repo has a dedicated write skill for the work (a deploy, a secret rotation) with its own verify chain: use that skill. A generic plan run skips the chain it encodes.
+- The plan flags `Risk / blast radius: large` or touches critical infra (migrations, deploy scripts, secret-handling, backup and restore paths). Stay on the judgment-grade model for the implementation half too: the token savings aren't worth the marginal risk on infra changes. **This bullet is the one "must not be a Sonnet run" list; `/focus`'s implementation-tier choice checks it rather than keeping its own copy.**
 
 ## Implementation
 
 Repo facts this skill reads: [this repo's verification commands](../../../AGENTS.md#verification-commands), [its plan path](../../../AGENTS.md#plan-path) and [its capture types](../../../AGENTS.md#capture-types). The mechanics go through `bash .claude/skills/sonnet/plan-run.sh` (`check`, `scope`, `land`, and `gate` for the parent). **Run as a sub-agent**, wherever a step says to ask the user, stop and report `STATUS: stuck` instead (`## Sub-agent invocation`): a sub-agent cannot ask the user anything.
 
-### Step 1 — Check the plan, then read it
+### Step 1: Check the plan, then read it
 
 With no arguments, run `bash .claude/skills/sonnet/plan-run.sh check --list {{plan path}}` and ask in chat which candidate to run (or whether to cancel); it lists only plans whose Critical files are here, newest first. Then, with the plan:
 
@@ -82,31 +82,31 @@ Its `BANNER:` lines say what else to raise: a plan with no Verification section 
 
 Read the plan file in full: the `Context` (the why now, which the commit body needs), the `Approach` (the steps), the `Critical files` (the scope envelope), the `Verification` (the regression floor), the `Landing & closeout` (who lands each production step after the push), and `What this plan deliberately does NOT do` (the boundaries not to widen).
 
-**State drift.** If `/catchup`'s read already ran in this session and nothing has moved since, reuse it; as a sub-agent, that is the read the parent's prompt reports, never assumed. Otherwise run `bash .claude/skills/catchup/catchup-state.sh`. When the plan file is more than 12 hours old and the read shows state moved under it (a failed pipeline, commits touching the plan's files, another hand-off in flight), ask in chat whether to run `/catchup` first or proceed as planned; don't invoke it. If its REPO section says the commit gate is not installed, say so before Step 4 commits.
+**State drift.** If `/catchup`'s read already ran in this session and nothing has moved since, reuse it. Otherwise, and always as a sub-agent (it cannot see a read its parent ran), run `bash .claude/skills/catchup/catchup-state.sh`. When the plan file is more than 12 hours old and the read shows state moved under it (a failed pipeline, commits touching the plan's files, another hand-off in flight), ask in chat whether to run `/catchup` first or proceed as planned; don't invoke it. If its REPO section says the commit gate is not installed, say so before Step 4 commits.
 
-### Step 2 — Walk the plan
+### Step 2: Walk the plan
 
 Execute the `Approach` section in order. For each step:
 
-- **File creates / edits:** use `Write` / `Edit` against the paths named in `Critical files`. Don't invent new paths — the plan's path list is the scope. If a file you need to touch isn't in the table, surface it before editing: the plan's files, the extra one, and the reason.
+- **File creates / edits:** use `Write` / `Edit` against the paths named in `Critical files`. Don't invent new paths: the plan's path list is the scope. If a file you need to touch isn't in the table, surface it before editing: the plan's files, the extra one, and the reason.
 - **Commands the plan flags** (migrations, builds, test runs, deploy steps): run them via Bash, through this repo's wrappers, and surface output inline so regressions show immediately.
 - **A step that would break one of this repo's hard rules** (its `AGENTS.md` or `.claude/rules/`): stop and surface it. The plan is wrong there.
 - **A commit step in the Approach** (a plan's own "commit" sub-step): hold it, and every step after it (a followup closed through `journal.sh` or `/done`'s steps is the usual one: it records work that has landed). The commit is made in Step 4, after Step 3's gates pass, with the plan's subject and body (and its file name, outside a public repo), and the held steps run there, right after it; committing mid-Approach leaves the checks to run on work already committed.
-- **Open questions** the plan left (a "user to confirm X"): ask them in chat. Don't guess — the no-fabrication rule applies in spades to plan execution.
+- **Open questions** the plan left (a "user to confirm X"): ask them in chat. Don't guess: the no-fabrication rule applies in full to plan execution.
 
-Stay literal. The plan is the spec; bias toward "what does the plan say" over "what would I do if I were planning this." If you find yourself wanting to deviate (a cleaner approach, a missing edge case, a refactor while you're in the file), stop and surface it — that's a plan-revision moment, not an implementation moment.
+Stay literal. The plan is the spec; bias toward "what does the plan say" over "what would I do if I were planning this." If you find yourself wanting to deviate (a cleaner approach, a missing edge case, a refactor while you're in the file), stop and surface it: that's a plan-revision moment, not an implementation moment.
 
-### Step 3 — Run the Verification gates
+### Step 3: Run the Verification gates
 
-Walk the plan's `Verification` section in order and surface each command's output inline. **Read the output, not just the exit code:** a check can report success because its own pattern errored into a fallback, or a measurement can read zero because an anchor missed. A passing check whose output looks odd is a failing check until shown otherwise. Each check runs in a Bash call of its own, never chained with another command such as `git commit` and never piped through `tail`, `head` or `grep`: a pipe replaces the check's exit code with the pipe's, and a cut output hides what failed above the cut. Read its whole output, and write a PASS line only for what that command itself printed.
+Walk the plan's `Verification` section in order and surface each command's output inline. **Read the output, not only the exit code:** a check can report success because its own pattern errored into a fallback, or a measurement can read zero because an anchor missed. A passing check whose output looks odd is a failing check until shown otherwise. Each check runs in a Bash call of its own, never chained with another command such as `git commit` and never piped through `tail`, `head` or `grep`: a pipe replaces the check's exit code with the pipe's, and a cut output hides what failed above the cut. Read its whole output, and write a PASS line only for what that command itself printed.
 
-If a command in the plan's own Verification fails, stop there — don't go on to the floor. Surface the failure verbatim with a one-line diagnosis, and ask in chat whether to (a) extend this work to fix it inline, (b) cancel and revise the plan, or (c) commit anyway with the failure noted in the body. Never auto-fix, never retry-with-tweaks.
+If a command in the plan's own Verification fails, stop there; don't go on to the floor. Surface the failure verbatim with a one-line diagnosis, and ask in chat whether to (a) extend this work to fix it inline, (b) cancel and revise the plan, or (c) commit anyway with the failure noted in the body. Never auto-fix, never retry-with-tweaks.
 
 Once the plan's own gates pass, run this repo's no-regressions floor from [its verification commands](../../../AGENTS.md#verification-commands) as the tail, for any of it the plan's list lacks. A part of the floor not run is a `NOT RUN` line under Checks with the reason, never left out and never summed into "all passed". **Use the wrappers that slot names, never the bare runners it replaces.** On "command not found", "no module named X" or a missing network: stop, don't improvise another path; check the slot and the repo's command help, and if that doesn't answer it, surface the failure verbatim. When the floor command reads committed work (a `--from-ref`/`HEAD` range), it cannot check anything yet: it is not run here; Step 4 passes it to `land`, which runs it after the commit.
 
-### Step 4 — Commit, check the scope, record the landing, stop
+### Step 4: Commit, check the scope, record the landing, stop
 
-When Verification is clean (or the user accepted a known failure in Step 3), stage explicitly per the Critical files list — no `git add -A`. Subject: `{{area}}: {{short summary}}` in this repo's commit style (skim `git log --oneline -10`). Body: the why (the plan's Context answers it), and the plan named by its file name, never its path (a path under a home folder is personal information); in a [public](../../../AGENTS.md#public-posture) repo, no plan file at all, since nobody else can open it.
+When Verification is clean (or the user accepted a known failure in Step 3), stage explicitly per the Critical files list, never with `git add -A`. Subject: `{{area}}: {{short summary}}` in this repo's commit style (skim `git log --oneline -10`). Body: the why (the plan's Context answers it), and the plan named by its file name, never its path (a path under a home folder is personal information); in a [public](../../../AGENTS.md#public-posture) repo, no plan file at all, since nobody else can open it.
 
 Run the commit and let the repo's hooks run; if one fails, fix what it found, re-stage and commit again. Never bypass a hook (`--no-verify`, or a hook manager's skip variable; the verification-commands slot names this repo's).
 
@@ -152,23 +152,23 @@ Then, in order:
 - **Needs your ok** holds every candidate this run surfaced: each way the run differed from the plan (a lesson), and any followup or decision for later, using [this repo's capture types](../../../AGENTS.md#capture-types). Each one goes through `/log`'s entry test (its Step 2, first item) and is listed with its outcome: **Fix** (the edit itself, made as its own commit after `ok`; an edit to [the verification commands](../../../AGENTS.md#verification-commands) or `AGENTS.md` for a repo fact is the usual one), **Drop** (listed so it can be overridden, written nowhere), or **File** (a followup, its body saying why not now); a decision as `/log` routes it. A step that worked as written is not a lesson. Name the real file each goes to (`journal.sh path` prints the journal). With no follow-on items, leave out the section and the `edit` row; `ok` then means push.
 - **A failing check the user accepted in Step 3:** the headline says so ("Push 2 commits with 1 failing check you accepted?"), and its FAIL line comes first under Checks, quoting the error's first line.
 - **A file outside the plan, or a planned file unchanged, that nothing explains:** recommend `fix`, not `ok`.
-- **After the push, a step for the user:** the exact command, alone in its own fenced block, just above the reply table.
+- **After the push, a step for the user:** the exact command, alone in its own fenced block, right above the reply table.
 - **No upstream yet:** the headline names the one the push creates (`origin/{{branch}}`).
 
 On `ok`, make each item (a fix as its own commit; a followup or decision through `/log`'s steps, which commit only their own files), then push; on `push`, push. Surface the result. Then run only the `Landing & closeout` steps the plan assigns to this session, exactly as written, and surface their output; never run a step assigned to the operator. Silence is not a reply: nothing is pushed, and the next session's reader shows the commits as not pushed.
 
-### Step 5 — The session
+### Step 5: The session
 
 A session opened with `/resume-project` or `/start-project` still ends with `/end-session`: pushing does not end a tracked session. After the push, say so in one line, and leave running it to the user.
 
 ## Sub-agent invocation
 
-**Starting it.** The parent notes the starting commit (`git rev-parse HEAD`), then starts a general-purpose sub-agent with its model set to Sonnet — the Agent tool's `model` parameter; without it the sub-agent runs the parent's model, and a skill's `model:` pin does not apply to a sub-agent — in the foreground (the parent waits for its report; a run past an hour costs the parent one re-write of its cached context, since the sub-agent's requests do not keep it warm), with this prompt: `Read .claude/skills/sonnet/SKILL.md and follow its steps for the plan at {{plan path}}, starting from commit {{sha}}, as a sub-agent. State drift: the parent's /catchup read ran at {{time}}; {{nothing has moved since | what moved}}. As a sub-agent: never ask the user and never push. Wherever the steps say to ask, stop or surface, stop there and report. End with "STATUS: done" and the facts for the ready-to-push message (the commits, the plan-run.sh land output (its FLOOR, LAND and SCOPE sections), each check and its result, the landing, what the push sets off, and each follow-on item with its kind, file and why) but no reply table, since the parent writes the one message the user sees; or "STATUS: stuck" with the step, the evidence word for word, the question, its options and your recommendation. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself. The plan's own steps, which Step 4 runs, are the one exception.` Reader output the prompt quotes under what moved (a `BANNER` line, a commit) sits in its own XML tag (`<catchup>`), so the sub-agent reads it as data, never as its instructions. A general-purpose sub-agent starts with the repo's `AGENTS.md`, so the link resolves.
+**Starting it.** The parent notes the starting commit (`git rev-parse HEAD`), then starts a general-purpose sub-agent with its model set to Sonnet (the Agent tool's `model` parameter: without it the sub-agent runs the parent's model, and a skill's `model:` pin does not apply to a sub-agent), in the foreground (the parent waits for its report; a run past an hour costs the parent one re-write of its cached context, since the sub-agent's requests do not keep it warm), with this prompt: `Read .claude/skills/sonnet/SKILL.md and follow its steps for the plan at {{plan path}}, starting from commit {{sha}}, as a sub-agent. As a sub-agent: never ask the user and never push. Wherever the steps say to ask, stop or surface, stop there and report. End with "STATUS: done" and the facts for the ready-to-push message (the commits, the plan-run.sh land output (its FLOOR, LAND and SCOPE sections), each check and its result, the landing, what the push sets off, and each follow-on item with its kind, file and why) but no reply table, since the parent writes the one message the user sees; or "STATUS: stuck" with the step, the evidence word for word, the question, its options and your recommendation. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is one of [this repo's capture types](../../../AGENTS.md#capture-types); omit the section if there are none, and never write to journals yourself. The plan's own steps, which Step 4 runs, are the one exception.` A general-purpose sub-agent starts with the repo's `AGENTS.md`, so the link resolves.
 
 **When it stops.** On `STATUS: stuck`:
 
 - **The plan already settles it** (a wording gap, the one path the plan implies): answer it, resume the same sub-agent with `SendMessage` (it keeps its context), and note the call for the done message.
-- **It touches scope, the Critical files, Verification, production or the push:** ask the user in chat — the evidence, the options, a **Recommended** one with why and risk, the reply words — and resume the sub-agent with the answer.
+- **It touches scope, the Critical files, Verification, production or the push:** ask the user in chat (the evidence, the options, a **Recommended** one with why and risk, the reply words), and resume the sub-agent with the answer.
 - **The plan is wrong:** end the run, ask the user the choice that makes it wrong (a chat question, as above), revise the saved plan, and start a fresh sub-agent.
 
 On `STATUS: done`, review before the user sees anything: run `plan-run.sh scope {{plan}} {{starting commit}}` yourself, read each check's output in the report (not only its verdict), and read `git diff {{starting commit}}..HEAD` whole against the Approach. The verdict names what the review compared: a diff read truncated or sampled is a spot-check, and is called one. Then show the ready-to-push message of Step 4 with its *parent only* lines: your review's verdict, each question the user answered and each call you made without them, and the time Sonnet worked (the sum of the `duration_ms` the harness reports for each of its stretches, so waiting on the user never counts). Put each way the run differed from the plan (a stop, a check that could not pass as written, a missed file, a gotcha), and each item the sub-agent's report proposes, through `/log`'s entry test, and list it with its outcome, as Step 4 says: the sub-agent proposes, you decide.

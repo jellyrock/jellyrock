@@ -58,7 +58,7 @@
 #                          session; only reads, and needs no repo (for other readers: /focus-all)
 # Exit: 0 done (a resume: a project was picked and every section printed; --holder: this session
 # holds it); 1 --check found a FAIL, or --holder: another session or none holds it; 2 no project could be picked (none active, several active, a slug matching none or several,
-# no projects folder, not a git repo: the SELECTION lines say which; --section with no name or no slug: a usage ERROR); 3 the picked PLAN cannot be
+# no projects folder, not a git repo: the SELECTION lines say which; --section with no name or no slug: a usage ERROR; --check run by a Verify first command: an ERROR); 3 the picked PLAN cannot be
 # read.
 #
 # Claims: a session is known by CLAUDE_CODE_SESSION_ID and CLAUDE_PID, which every command a
@@ -74,6 +74,8 @@ case "${1:-}" in --check) mode=check; shift ;; --release) mode=release; shift ;;
   --section) mode=section; shift; secname="${1:-}"; [ $# -gt 0 ] && shift
     [ -n "$secname" ] && [ -n "${1:-}" ] || { echo "ERROR: usage: resume-state.sh --section <name> <slug>"; exit 2; } ;;
 esac
+# A Verify first command that runs --check again would recurse without end: verify_first marks its commands.
+[ "$mode" = check ] && [ -n "${RESUME_STATE_IN_CHECK:-}" ] && { echo "ERROR: a Verify first command runs the PLAN check itself"; exit 2; }
 slug="${1:-}"; [ $# -gt 0 ] && shift
 start="$*"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -211,8 +213,8 @@ plan_check() {
     elif [[ "$line" =~ ^-\ \`([^\`]+)\`\ prints\ \`([^\`]*)\` ]]; then val="${BASH_REMATCH[2]}"
     else fail "a Verify first value is not in backticks (write \`command\` prints \`what it printed\`): $line"; return; fi
     cmd="${BASH_REMATCH[1]}"
-    if command -v timeout >/dev/null; then got="$(timeout "$t" bash -c "$cmd" 2>&1)"; rc=$?
-    else got="$(bash -c "$cmd" 2>&1)"; rc=$?; fi
+    if command -v timeout >/dev/null; then got="$(RESUME_STATE_IN_CHECK=1 timeout "$t" bash -c "$cmd" 2>&1)"; rc=$?
+    else got="$(RESUME_STATE_IN_CHECK=1 bash -c "$cmd" 2>&1)"; rc=$?; fi
     [ "$rc" = 124 ] && { fail "Verify first: \`$cmd\` did not finish in ${t}s"; return; }
     lines="$(grep -c '' <<<"$got")"; got="${got%"${got##*[![:space:]]}"}"
     if [ "$lines" -gt 1 ]; then fail "Verify first: \`$cmd\` printed $lines lines: narrow it to the one line the value is"
