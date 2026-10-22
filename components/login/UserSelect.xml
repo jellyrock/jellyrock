@@ -31,5 +31,7 @@
          way. -->
     <field id="quickConnectAuth" type="assocarray" />
     <field id="saveCredentials" type="boolean" value="false" />
+    <!-- The wait of the sign-in step pressed here (signInStep.press); loginRouter takes it. -->
+    <field id="pendingWait" type="node" />
   </interface>
 </component>

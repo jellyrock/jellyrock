@@ -14,4 +14,10 @@ enum LoadingKind
   ' Same stages as CONTENT, under the channel label on a channel switch. Back cancels it and
   ' shows the screen it was pressed on again; other keys wait for it (AppWaitHost).
   PLAYBACK_START = "playbackStart"
+  ' A sign-in step the viewer pressed: a server connect, a user pick, a password or Quick Connect
+  ' sign-in, a server switch. An app wait opened by the press, which the next screen mounting
+  ' ends. It hides the screen it was pressed on and holds the keys; Back cancels it and shows
+  ' that screen again, until the step commits (appWaits.commit) and only local work is left
+  ' (ADR 0053). No stage text.
+  SESSION = "session"
 end enum

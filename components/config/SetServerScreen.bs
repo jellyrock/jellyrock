@@ -5,6 +5,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/screenReadiness.bs"
+import "pkg:/source/utils/signInStep.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -60,14 +61,14 @@ sub setupDeleteSavedOption()
   sidepanel.observeField("closeSidePanel", "onCloseSidePanel")
 end sub
 
-' Submit pressed: publish the entered URL and emit the serverSubmitted intent.
-' The coordinator (loginRouter.onServerSubmitted) runs the blocking connect.
+' Submit pressed: publish the entered URL and emit the serverSubmitted intent, with the step's
+' wait (signInStep). The coordinator (loginRouter.onServerSubmitted) runs the blocking connect.
 sub onButtonSelected(event as object)
   buttonGroup = event.getRoSGNode()
   buttonSelected = buttonGroup.getChild(event.getData())
   if buttonSelected.id = "submit"
     m.top.enteredUrl = m.top.serverUrl
-    m.top.getScene().preLoginIntent = "serverSubmitted"
+    signInStep.press(m.top, "serverSubmitted")
   end if
 end sub
 

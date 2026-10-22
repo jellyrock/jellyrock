@@ -36,6 +36,8 @@ Every screen on the path, before and after sign-in, is a route in `JRScene`'s ou
 
 `loginRouter.bs` coordinates sign-in from the main thread. The three sign-in screens (`SetServerScreen`, `UserSelect`, `LoginScene`) are routed views that own their UI. Each reports what the user asked for by setting `m.scene.preLoginIntent` to an action name, with the details on its own `m.top` fields. `Main()` observes `preLoginIntent`, and `handlePreLoginIntent()` runs the sign-in API calls (synchronous calls are allowed on the main thread) and picks the next route.
 
+A press that starts a sign-in step (`serverSubmitted`, `userSelected`, `credentialsSubmitted`, `quickConnectAuthenticated`) opens a session wait as it raises the action (`signInStep.press`). The wait hides the screen and holds the keys until the next screen mounts, so a second OK starts nothing. Back cancels it: the screen comes back, and the handler drops the answer when its blocking call returns, undoing what the attempt had done ([ADR 0053](../adr/0053-back-cancels-every-wait.md)). Once only local work is left, the handler commits the wait and Back no longer cancels it.
+
 `reenterLogin()` is the entry point, at cold start and on every sign-out or change of user. It loads the sign-in locale, then `beginLogin()` tries the saved server and saved token with no UI and returns a decision. `enterDecision()` acts on it:
 
 | Decision | Next |
@@ -81,7 +83,7 @@ There are four ways in: a saved token (checked with `AboutMe`), an empty passwor
 
 ## Bringing up Home
 
-`finishLogin()` first checks that `user.Login` left a signed-in session (`user.IsAuthenticated()`). If it did not, it stops the spinner, clears the half-written user, shows a toast and returns to `/users` or `/login`. It never forgets the server here: nobody asked it to. Otherwise it starts the fallback-font download when the user needs one (`initializeFallbackFont()`) and calls `loadHomeScreen()`.
+`finishLogin()` first checks that `user.Login` left a signed-in session (`user.IsAuthenticated()`). If it did not, it ends the sign-in step's wait as failed, clears the half-written user, shows a toast and returns to `/users` or `/login`. It never forgets the server here: nobody asked it to. Otherwise it starts the fallback-font download when the user needs one (`initializeFallbackFont()`) and calls `loadHomeScreen()`.
 
 `loadHomeScreen()` waits for that download when one is running, then calls `createAndShowHomeGroup()`, which calls `replayAfterLogin()`:
 

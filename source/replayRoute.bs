@@ -127,6 +127,10 @@ end sub
 ' After a successful login (or at once when already authed): open the stashed deep link, if
 ' any, else Home. Home is always first, so it is the back-stack root.
 sub replayAfterLogin()
+  ' The sign-in step's wait (loginRouter.finishLogin), invalid on a cold start: it ends when Home
+  ' mounts, on either path below.
+  signInWait = m.signInWait
+  m.signInWait = invalid
   deepLink = m.global.AuthManager.stashedDeepLink
   if isValid(deepLink) and isValidAndNotEmpty(deepLink.itemId)
     m.global.AuthManager.stashedDeepLink = invalid
@@ -138,14 +142,16 @@ sub replayAfterLogin()
       isPlayback: isDeepLinkPlaybackAction(deepLink.action),
       homeFirst: true,
       replacePlayer: false,
-      detailsRoute: deepLinkDetailsRoute(deepLink)
+      detailsRoute: deepLinkDetailsRoute(deepLink),
+      signInWait: signInWait
     })
     return
   end if
 
-  ' clearSpinner: the blocking login spinner is still up on the outgoing pre-login view. It
-  ' stays up across the async nav and clears once Home mounts (the #677 login flash).
-  m.scene.callFunc("routerNavigate", "/", {}, true)
+  ' clearSpinner (the cold-start spinner) and signInWait (a sign-in step's) are still up on the
+  ' outgoing view. Both stay up across the async nav and end once Home mounts (the #677 login
+  ' flash).
+  m.scene.callFunc("routerNavigate", "/", {}, true, signInWait)
 end sub
 
 ' Runtime replay (app already signed in, deep link for the active server). Unlike the post-login
@@ -362,7 +368,9 @@ sub performServerSwitch(entry as object)
   m.pendingSwitchServer = invalid
   if not isValid(entry) then return
 
-  startLoadingSpinner()
+  ' A sign-in step: Back cancels it until the switch commits, and a probe answer that arrives
+  ' after a cancel is dropped (ADR 0053).
+  m.serverSwitchWait = appWaits.begin(LoadingKind.SESSION)
   ' Hold the entry for the async callback: the probe outcome decides whether we tear down the
   ' session, and the result arrives later via the main loop's "reachable" handler.
   m.serverSwitchEntry = entry
@@ -380,12 +388,29 @@ end sub
 sub onServerProbeDone(reachable as boolean)
   entry = m.serverSwitchEntry
   m.serverSwitchEntry = invalid
+  wait = m.serverSwitchWait
+  m.serverSwitchWait = invalid
   if not isValid(entry) then return
 
+  ' Canceled with Back while the probe ran: the viewer stays where they were, and the cast that
+  ' asked for the switch goes with it, as a Cancel in the prompt does.
+  if signInStep.canceled(wait)
+    m.global.AuthManager.stashedDeepLink = invalid
+    return
+  end if
+
   if not reachable
-    stopLoadingSpinner()
+    appWaits.fail(wait, "server unreachable")
     m.global.AuthManager.stashedDeepLink = invalid
     displayToast(Substitute(translate(translationKeys.MessageCouldNotReachServer), entry.name), "error")
+    return
+  end if
+
+  ' From here the switch tears the session down, so Back no longer cancels it. A Back that got
+  ' in after the check above is caught here, before anything says the switch is happening. The
+  ' wait ends when the new server's first screen mounts.
+  if not signInStep.commit(wait)
+    m.global.AuthManager.stashedDeepLink = invalid
     return
   end if
 
@@ -396,5 +421,5 @@ sub onServerProbeDone(reachable as boolean)
   m.scene.callFunc("resetRouter")
   setSetting("server", entry.originalUrl)
   SignOut(false)
-  reenterLogin()
+  reenterLogin(wait)
 end sub

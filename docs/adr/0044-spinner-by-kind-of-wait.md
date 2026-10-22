@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Partially superseded by:** [ADR 0046](0046-playback-start-wait-is-a-promise.md) (app waits end by their Promise, not by name)
+**Partially superseded by:** [ADR 0053](0053-back-cancels-every-wait.md) (Back cancels every wait, session changes and the plain spinner included)
 **Date:** 2026-09-25
 
 **related-files**: `source/enums/LoadingKind.bs`, `source/utils/loadingStages.bs`, `source/utils/screenWaits.bs`, `source/utils/misc.bs`, `components/JRGroup.xml`, `components/JRScene.bs`, `components/JRScene.xml`, `components/search/SearchResults.bs`, `docs/architecture/navigation.md`, `components/CLAUDE.md`

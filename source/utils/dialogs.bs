@@ -294,9 +294,15 @@ end function
 ' SceneManager.isDialogOpen() folds this in; prefer that if you have it, because
 ' it covers the keyboard dialogs on the modal channel too.
 function isOverlayDialogOpen() as boolean
+  return isValid(openOverlayDialog())
+end function
+
+' The open overlay dialog, or invalid. AppWaitHost reads its `returnFocusTo`: a wait pressed
+' from a dialog takes the focus the dialog would hand back to the screen it hides.
+function openOverlayDialog() as dynamic
   scene = appScene()
-  if not isValid(scene) then return false
-  return isValid(scene.findNode(OVERLAY_DIALOG_ID))
+  if not isValid(scene) then return invalid
+  return scene.findNode(OVERLAY_DIALOG_ID)
 end function
 
 ' Abandon a dialog this screen opened, delivering no result. Call from onDestroy
@@ -356,8 +362,9 @@ end sub
 ' ---- internals ----
 
 ' The id every overlay dialog is stamped with. One definition, because three
-' things depend on being able to FIND the open dialog by it: isOverlayDialogOpen,
-' cancelOpenDialog, and presentOverlayDialog's supersede below. It identifies
+' things depend on being able to FIND the open dialog by it: openOverlayDialog
+' (and isOverlayDialogOpen through it), cancelOpenDialog, and presentOverlayDialog's
+' supersede below. It identifies
 ' exactly one node because presentOverlayDialog keeps it that way.
 const OVERLAY_DIALOG_ID = "jrDialog"
 

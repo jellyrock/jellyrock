@@ -30,16 +30,13 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero } from '../lib/jellyfin.js';
 import { seedUserSelect, assertSeedTookEffect, GLOBAL } from '../lib/seed.js';
 import { hardRelaunch, ecp, odc } from '../lib/driver.js';
+import { openManualLogin, submitSignIn, waitForSignInScreen } from '../lib/nav.js';
 import {
   waitFor,
-  waitFocused,
   waitFocusInside,
-  walkFocusInto,
-  walkFocusUntil,
   waitHome,
   waitToast,
   getActiveVal,
-  press,
   sleep,
 } from '../lib/steps.js';
 
@@ -50,6 +47,8 @@ const LOCALE = RTA_CONFIG.languages[0];
 const LANDING_HOLD_MS = 3000;
 // locale/custom/en_US.json MessageDeepLinkAfterSignIn.
 const DEEP_LINK_DEFERRED = 'Sign in to open your content.';
+// locale/custom/en_US.json ErrorLoginAttemptFailed.
+const LOGIN_FAILED = 'Login attempt failed.';
 
 let session;
 let heroId;
@@ -61,57 +60,18 @@ beforeAll(async () => {
     throw new Error('sign-in-landing setup: could not resolve a movie on the demo server');
 });
 
-/** Seed the signed-out user picker with the username prefilled for Manual Login, and restart cold. */
-async function startSignedOut({ launchParams } = {}) {
+/**
+ * Seed the signed-out user picker with the username prefilled for Manual Login, and restart cold.
+ * `password` prefills the password field the same way (`LoginScene.buildConfig` reads the global
+ * `password` setting); without it the field is empty, which the demo user accepts.
+ */
+async function startSignedOut({ launchParams, password = null } = {}) {
   const expectedServer = await seedUserSelect(session, LOCALE);
-  await odc.writeRegistry({ values: { [GLOBAL]: { username: RTA_CONFIG.server.username } } });
+  await odc.writeRegistry({
+    values: { [GLOBAL]: { username: RTA_CONFIG.server.username, password } },
+  });
   await hardRelaunch({ params: launchParams });
   await assertSeedTookEffect(expectedServer, 'sign-in-landing');
-}
-
-/** From the user picker, take Manual Login and wait for the sign-in screen. */
-async function openManualLogin() {
-  await waitFor('subtype()', (v) => v === 'UserSelect', {
-    read: getActiveVal,
-    label: 'the user picker after a signed-out start',
-    timeout: 30000,
-  });
-  await waitFocusInside('#buttons', {
-    label: 'user picker buttons focused',
-    timeout: 8000,
-    interval: 300,
-    action: walkFocusInto(ecp.Key.Down, '#buttons'),
-  });
-  // Quick Connect sits left of Manual Login only when the server enables it, so walk to the
-  // button by id rather than by index.
-  const onManualLogin = (f) => f?.node?.id === 'manualLoginButton';
-  await waitFocused(onManualLogin, {
-    label: 'Manual Login focused',
-    timeout: 8000,
-    interval: 400,
-    action: walkFocusUntil(ecp.Key.Right, onManualLogin),
-  });
-  await press(ecp.Key.Ok);
-  await waitForSignInScreen();
-}
-
-async function waitForSignInScreen() {
-  await waitFor('subtype()', (v) => v === 'LoginScene', {
-    read: getActiveVal,
-    label: 'the sign-in screen',
-    timeout: 15000,
-  });
-}
-
-/** On the sign-in screen with the username prefilled: walk to Submit and press it once. */
-async function submitSignIn() {
-  await waitFocusInside('#buttons', {
-    label: 'Submit focused',
-    timeout: 10000,
-    interval: 400,
-    action: walkFocusInto(ecp.Key.Down, '#buttons'),
-  });
-  await press(ecp.Key.Ok);
 }
 
 /** Home, and still Home once the window a replay would have used has passed. */
@@ -206,5 +166,25 @@ it('a launch with a contentId into the open sign-in screen opens the item after 
     read: getActiveVal,
     label: 'deep link into the open sign-in screen -> ItemDetails(itemId) after sign-in',
     timeout: 30000,
+  });
+}, 180000);
+
+// Submit starts a blocking spinner that hides the sign-in screen. The spinner holds the remote
+// focus in AppWaitHost, so extra presses never reach the hidden Submit and run the login again.
+// A rejected sign-in is the case where the same screen stays, so stopping the spinner must hand
+// the focus back to Submit, where the viewer can try again.
+it('a rejected sign-in shows the error and gives the focus back to Submit', async () => {
+  await startSignedOut({ password: 'rta-wrong-password-not-the-real-one' });
+  await openManualLogin();
+  await submitSignIn();
+  await waitFor('#alert.text', (text) => text === LOGIN_FAILED, {
+    read: getActiveVal,
+    label: 'the rejected sign-in alert',
+    timeout: 30000,
+  });
+  await waitFocusInside('#buttons', {
+    label: 'focus back on the sign-in screen after the rejection',
+    timeout: 10000,
+    interval: 300,
   });
 }, 180000);

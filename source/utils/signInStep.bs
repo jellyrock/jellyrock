@@ -1,0 +1,49 @@
+import "pkg:/source/enums/LoadingKind.bs"
+import "pkg:/source/utils/appWaits.bs"
+import "pkg:/source/utils/misc.bs"
+
+' A sign-in step the viewer pressed (a server connect, a user pick, a password or Quick Connect
+' sign-in) is an app wait of kind SESSION: it hides the screen it was pressed on, holds the keys,
+' and Back cancels it until it commits (ADR 0053).
+'
+' The screen opens the wait in the handler that takes the press, on the render thread, and the
+' loginRouter coordinator takes it with the rest of the intent's payload. Opened at the press
+' and not in loginRouter, so a second press reaches AppWaitHost from the first frame instead of
+' queueing a second sign-in while the main thread picks up the first.
+namespace signInStep
+
+  ' `view` took the press for `intent`: open the step's wait, publish it on the view's
+  ' `pendingWait`, and raise the intent.
+  sub press(view as object, intent as string)
+    view.pendingWait = appWaits.begin(LoadingKind.SESSION)
+    view.getScene().preLoginIntent = intent
+  end sub
+
+  ' loginRouter: takes the wait the press on `view` opened, or invalid when there is none. An
+  ' intent with no wait is a stale one (a second press already took it) or a screen that raised
+  ' its intent without `press`, and is dropped: running it would be the second sign-in this
+  ' exists to stop.
+  function take(view as object) as dynamic
+    if not view.hasField("pendingWait") then return invalid
+    wait = view.pendingWait
+    view.pendingWait = invalid
+    if not isValid(wait) then print "signInStep: intent with no wait, dropped (view "; view.subtype(); ")"
+    return wait
+  end function
+
+  ' Whether the viewer canceled `wait` with Back. loginRouter asks between blocking calls and
+  ' drops the attempt when they have. A Back after the last ask is caught by `commit`.
+  function canceled(wait as dynamic) as boolean
+    return isValid(wait) and not appWaits.isOpen(wait)
+  end function
+
+  ' The step's last server call has returned: commit `wait`, so Back no longer cancels it, and
+  ' say whether the step may go on. False when Back canceled it first; the caller undoes the
+  ' attempt and stops. True with no wait (a cold start has nothing to cancel). A step commits
+  ' before any local work or navigation, so everything after it runs to the end.
+  function commit(wait as dynamic) as boolean
+    if not isValid(wait) then return true
+    return appWaits.commit(wait)
+  end function
+
+end namespace

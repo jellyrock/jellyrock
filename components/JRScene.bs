@@ -1,6 +1,7 @@
 import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/loadingStages.bs"
@@ -491,11 +492,15 @@ end function
 ' synchronously before the nav settles re-shows the outgoing pre-login view for a frame (the
 ' #677 login flash). Mirrors the ItemDetails -> player pattern (spinner stays up across the nav,
 ' the destination clears it).
-sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner = false as boolean)
+' signInWait: a sign-in step's app wait (signInStep), which hides the screen it was pressed on.
+' It ends the same way, once the destination has mounted, so that screen is never shown again
+' on the way out; a rejected nav fails it, so it gives the remote back.
+sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner = false as boolean, signInWait = invalid as dynamic)
   options = {}
   if isValidAndNotEmpty(context) then options = { context: context }
-  promises.chain(sgrouter.navigateTo(routePath, options), { routePath: routePath, clearSpinner: clearSpinner }).then(sub(_result as object, ctx as object)
+  promises.chain(sgrouter.navigateTo(routePath, options), { routePath: routePath, clearSpinner: clearSpinner, signInWait: signInWait }).then(sub(_result as object, ctx as object)
     if ctx.clearSpinner then stopLoadingSpinner()
+    appWaits.done(ctx.signInWait)
     sgrouter.setFocus({ focus: true })
   end sub).catch(sub(err as object, ctx as object)
     ' navigateTo rejects when a nav is already in progress (transient) or the route isn't
@@ -504,6 +509,7 @@ sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner
     ' whole: reading `.message` crashes when a rejection is not an AA, which skips the recovery.
     ' Clear the spinner even on a rejected login nav so a failure can't strand it up.
     if ctx.clearSpinner then stopLoadingSpinner()
+    appWaits.fail(ctx.signInWait, "navigation rejected")
     sgrouter.setFocus({ focus: true })
     m.log.warn("navigateThenFocus failed; re-asserting focus", ctx.routePath, err)
   end sub)
@@ -513,9 +519,9 @@ end sub
 ' the mounted view remote focus. Called from main.bs / loginRouter (main thread) to drive
 ' BOTH the pre-login flow (/server, /users, /login) and the transition to Home ("/").
 ' context is forwarded as route context (for example a prefilled username for /login).
-sub routerNavigate(routePath as string, context = {} as object, clearSpinner = false as boolean)
+sub routerNavigate(routePath as string, context = {} as object, clearSpinner = false as boolean, signInWait = invalid as dynamic)
   initRouter()
-  navigateThenFocus(routePath, context, clearSpinner)
+  navigateThenFocus(routePath, context, clearSpinner, signInWait)
 end sub
 
 ' Navigate routes[index], then chain to the next step once it settles (sgRouter's
@@ -565,7 +571,7 @@ end sub
 
 ' VALIDATE a deep-link id (a metadata fetch) BEFORE navigating, so an invalid id never disturbs
 ' the active session: it only toasts. `args` = { itemId, action, isPlayback,
-' homeFirst, replacePlayer, detailsRoute } from source/replayRoute.bs.
+' homeFirst, replacePlayer, detailsRoute, signInWait } from source/replayRoute.bs.
 '   homeFirst (post-login/cold): land on Home first so an invalid id toasts on Home (good UX).
 '   On a valid id, onDeepLinkResolved navigates (replacing an active player for a playback cast).
 sub resolveDeepLink(args as object)
@@ -583,11 +589,14 @@ sub resolveDeepLink(args as object)
     ' Home has not mounted yet (the #677 login flash; see createAndShowHomeGroup). Until then the
     ' blocking sign-in spinner stays up. A rejected nav still starts the resolve, so the link is
     ' never dropped.
+    ' The sign-in step's wait (args.signInWait) ends here too, once Home has mounted.
     promises.chain(sgrouter.navigateTo("/"), { args: args, seq: m.deepLinkResolveSeq }).then(sub(_result as object, ctx as object)
+      appWaits.done(ctx.args.signInWait)
       startDeepLinkResolve(ctx.args, ctx.seq)
     end sub).catch(sub(err as object, ctx as object)
       ' Start before logging, and log err whole: reading `.message` crashes when a rejection is not
       ' an AA, which would leave the blocking sign-in spinner up for good.
+      appWaits.fail(ctx.args.signInWait, "navigation rejected")
       startDeepLinkResolve(ctx.args, ctx.seq)
       m.log.warn("deep-link Home nav failed; resolving anyway", err)
     end sub)
