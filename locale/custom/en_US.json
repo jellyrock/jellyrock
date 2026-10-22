@@ -672,6 +672,7 @@
   "MessageSearchFailed": "Couldn't load search results.",
   "MessageSearchNoResults": "No results.",
   "MessageSearchPartial": "Some results couldn't load.",
+  "MessageSeekFailedTryAgain": "Couldn't move to that point in the track. Try again.",
   "MessageSelectAColorThemeChooseCustom": "Select a color theme, or choose 'Custom' to fine-tune individual colors from any theme.",
   "MessageServerNotFoundIsItOnline": "Server not found, is it online?",
   "MessageServerTakingAWhileToAnswer": "The server is taking a while to answer.",

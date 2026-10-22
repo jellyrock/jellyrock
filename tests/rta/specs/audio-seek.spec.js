@@ -33,6 +33,8 @@ const MP3_TRACK = 'Thunderdays';
 // locale/custom/en_US.json MessageFlacSeekNeedsTranscoding.
 const FALLBACK_NOTICE =
   "Seeking in FLAC needs audio transcoding, which this account doesn't allow. The track may end early.";
+// locale/custom/en_US.json MessageSeekFailedTryAgain.
+const SEEK_FAILED_NOTICE = "Couldn't move to that point in the track. Try again.";
 // Past the end of what is left to play: the guard's stall window and the swap to a server
 // stream both fit inside it.
 const END_SLACK_MS = 30000;
@@ -150,19 +152,27 @@ it('without audio transcoding, a FLAC seek says so once and the song still ends'
   expect(Date.now() - seekedAt, 'the rest of the song played').toBeGreaterThan(left - 5000);
 });
 
-it('when the server stream for a seek fails, the song still ends', async () => {
+// A native FLAC seek can end the song at once (measured 2026-10-21: 6 of 10 runs on a Stick 4K
+// ended it within 2.5 s), so a seek whose server stream fails is refused instead of made.
+it('when the server stream for a seek fails, the seek is refused and the song plays on', async () => {
   const flac = track(FLAC_TRACK);
   const length = flac.RunTimeTicks / 1e7;
   await playSong(FLAC_TRACK);
   // The next PlaybackInfo is the seek's: the song's own already loaded.
   await failRequests([{ prefix: 'playbackInfo', kind: 'timeout', times: 1 }]);
   const target = await scrubForward(Math.floor((length * 0.75) / 10), length);
-  const left = (length - target) * 1000;
-  const waited = await waitSongEnded(
-    'the song ended after a failed server stream',
-    left + END_SLACK_MS,
-  );
-  expect(waited, 'the rest of the song played').toBeGreaterThan(left - 5000);
+  await waitToast(SEEK_FAILED_NOTICE, { label: 'the seek-failed notice' });
+  await waitFor('audioPlayer.state', (v) => v === 'playing', {
+    read: getGlobalVal,
+    timeout: 15000,
+    interval: 250,
+    label: 'the song playing on after the refused seek',
+  });
+  // Still the song, at the position it had before the seek rather than at the target.
+  expect(await getActiveVal('subtype()'), 'still on the audio player').toBe('AudioPlayerView');
+  const position = await getGlobalVal('audioPlayer.position');
+  expect(position, 'the player stayed where it was, not at the target').toBeLessThan(target - 10);
+  await stopPlayback();
 });
 
 it('an MP3 seek stays in the stream that is playing', async () => {

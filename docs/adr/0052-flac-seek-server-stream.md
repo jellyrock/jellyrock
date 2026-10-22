@@ -9,7 +9,7 @@ Roku can't finish a FLAC it starts at a non-zero position (a `seek` or a `PlaySt
 
 A seek's new stream continues the same listen on the server: no `stop` for the old stream and no `start` for the new one, since Jellyfin adds a play on every `start`, and the replaced server stream's transcode ends through `DELETE /Videos/ActiveEncodings` instead (`audioSeek.streamHandover()`). A seek while the track's own stream is still loading is dropped, because the player then still holds the previous track's stream.
 
-Without the user's `EnableAudioPlaybackTranscoding` policy, or when the server stream fails, the seek falls back to a native seek (or the direct stream with a `PlayStart`). The `AudioPlayer` end guard then ends a track left stuck at its end, and a one-time toast tells the listener when the policy is the cause.
+Without the user's `EnableAudioPlaybackTranscoding` policy, the seek falls back to a native seek (or the direct stream with a `PlayStart`). The `AudioPlayer` end guard then ends a track left stuck at its end, and a one-time toast says why the track may end early. When the server stream fails instead, the seek is refused: the track plays on where it was and a toast asks the listener to try again. A native seek there ended the track within 2.5 s in 6 of 10 runs (Stick 4K, 2026-10-21), whatever the order of pause, resume and seek, and a failed server stream is usually brief.
 
 **Ruled out:** the guard alone (it ends a stuck track but can't recover the skipped seconds or early ends); transcoding every FLAC to AAC (loses lossless for every listener); the `Audio` node (the same defect, and only `Video` has `disableScreenSaver`).
 

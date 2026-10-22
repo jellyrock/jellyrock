@@ -473,19 +473,13 @@ sub onSeekStreamLoaded(event as object)
     return
   end if
 
-  ' The new stream did not come. A server stream falls back as when the server may not make
-  ' one, without the notice: the account is not why it failed.
+  ' The new stream did not come. A server stream's seek is refused rather than made natively:
+  ' a native FLAC seek often ends the track at once (audioSeek), and a failed server stream is
+  ' usually brief, so the listener can simply try again.
   m.log.warn("The stream for a seek did not load", "startSeconds", pending.seconds, "useServerSeek", pending.useServerSeek)
   m.pendingSeek = invalid
-  if pending.useServerSeek
-    plan = audioSeek.startAction(m.audioPlayer.content, pending.seconds, false)
-    if plan.action = audioSeek.ACTION_RELOAD_DIRECT
-      reloadStreamAt(plan.startSeconds, false, pending.continuesListen)
-      return
-    end if
-    m.audioPlayer.seek = plan.startSeconds
-  end if
-  ' Nothing left to try (the direct stream failed too): carry on where the old stream was.
+  if pending.useServerSeek then displayToast(translate(translationKeys.MessageSeekFailedTryAgain), "info")
+  ' Carry on where the old stream was.
   stopLoadingSpinner()
   if m.audioPlayer.state = "paused" then m.audioPlayer.control = "resume"
 end sub

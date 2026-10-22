@@ -459,6 +459,7 @@ So `AudioPlayerView.startAudioAt()` takes every seek (scrub, voice, Jellyfin rem
 | FLAC | 0 | load the direct stream again, from 0 |
 | FLAC | above 0, server may transcode audio | load a FLAC stream the server starts at the target |
 | FLAC | above 0, it may not | `seek` (or the direct stream with a `PlayStart`, from a server stream), the guard as backstop, and a one-time toast |
+| FLAC | above 0, the server stream failed | no seek: the track plays on where it was, and a toast asks to try again (a native seek there often ends the track at once) |
 
 The server stream comes from `AudioStream(id, startSeconds, true)`: `PlaybackInfo` with `StartTimeTicks`, `EnableDirectPlay: false`, `EnableDirectStream: false` and one FLAC transcoding profile (`audioSeek.applyFlacRemuxProfile`). Without the direct-stream switch, Jellyfin 10.7 answers with no stream URL. It has no `MaxAudioChannels`, which would mix a multichannel source down, and its decoded samples matched the source's (checked 2026-10-21 against both demo FLACs, and on Jellyfin 10.7.7, 10.8.13, 10.11.11 and 12.0.0). An in-stream seek inside such a stream is ignored, so every later seek loads again. The reload took about 1.3 to 2.0 s on the Stick 4K; the old stream pauses and the progress bar holds the target meanwhile (`m.pendingSeek`).
 
