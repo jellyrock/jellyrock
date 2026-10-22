@@ -475,7 +475,7 @@ sub onSeekStreamLoaded(event as object)
 
   ' The new stream did not come. A server stream's seek is refused rather than made natively:
   ' a native FLAC seek often ends the track at once (audioSeek), and a failed server stream is
-  ' usually brief, so the listener can simply try again.
+  ' usually brief, so the listener can try again.
   m.log.warn("The stream for a seek did not load", "startSeconds", pending.seconds, "useServerSeek", pending.useServerSeek)
   m.pendingSeek = invalid
   if pending.useServerSeek then displayToast(translate(translationKeys.MessageSeekFailedTryAgain), "info")
