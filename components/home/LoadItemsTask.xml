@@ -14,5 +14,8 @@
     <field id="status" type="string" value="" />
     <field id="content" type="array" />
     <field id="shouldForceRefresh" type="bool" value="false" />
+    <!-- "audioStream" only: where the stream starts, and whether the server starts it there (AudioStream). -->
+    <field id="startSeconds" type="float" value="0" />
+    <field id="useServerSeek" type="bool" value="false" />
   </interface>
 </component>

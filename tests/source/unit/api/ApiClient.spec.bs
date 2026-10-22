@@ -771,6 +771,45 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildStopEncodingRequest() - ends one server transcode with no playstate report")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("DELETEs /Videos/ActiveEncodings with this device and the session, on both API versions")
+    function _()
+      ' The id the auth header sends (buildAuthHeader), which the server matches the job by.
+      deviceId = m.global.device.serverDeviceName
+      m.assertTrue(isValidAndNotEmpty(deviceId), "the test device should have a server device name")
+      for each version in [1, 2]
+        m.setApiVersion(version)
+
+        result = m.apiClient.BuildStopEncodingRequest("session-456")
+
+        ' buildURL lowercases query keys; the server binds them without regard to case.
+        url = LCase(result.url)
+        m.assertEqual(result.method, "DELETE", "v" + version.toStr())
+        m.assertTrue(url.inStr("/videos/activeencodings?") >= 0, "v" + version.toStr() + " should use /Videos/ActiveEncodings")
+        m.assertTrue(url.inStr("deviceid=" + LCase(deviceId)) >= 0, "v" + version.toStr() + " should carry the device id, got " + result.url)
+        m.assertTrue(url.inStr("playsessionid=session-456") >= 0, "v" + version.toStr() + " should carry the session, got " + result.url)
+      end for
+      m.setApiVersion(2)
+    end function
+
+    @it("returns invalid for an empty session, rather than a stop the server rejects")
+    function _()
+      m.assertInvalid(m.apiClient.BuildStopEncodingRequest(""))
+    end function
+
+    @it("returns invalid when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildStopEncodingRequest("session-456")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Per-version resume requests")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

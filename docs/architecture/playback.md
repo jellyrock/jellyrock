@@ -15,6 +15,7 @@ related-files:
   - source/utils/deviceCapabilities.bs
   - source/utils/playbackErrorInfo.bs
   - source/utils/playbackReport.bs
+  - source/utils/audioSeek.bs
   - source/utils/transcodeCause.bs
   - components/video/CaptionRenderer.bs
   - components/video/LoadCaptionTask.bs
@@ -51,7 +52,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-20
+last-reviewed: 2026-10-21
 ---
 
 # Video and audio playback
@@ -434,13 +435,39 @@ Two instances overlay playback:
 
 ## `AudioPlayer` engine
 
-`components/mediaPlayers/AudioPlayer` extends `Video` but plays only audio. It lives at `m.global.audioPlayer` for the whole app, but music does not play on once the viewer leaves `/audio`: every exit from `AudioPlayerView` stops it (Back, `exitAudioPlayback()`, a deep link, a move to a video in a mixed queue). It observes its own `state` and reports to Jellyfin on each change: `start` on the first `playing`, `stop` on `stopped` or `finished`, `update` otherwise, through the same `BuildPlaystateRequest` and `SubmitSideEffect` as video. It reports nothing while its position is invalid. It sets `disableScreenSaver` while playing, which keeps Roku's screensaver off during audio, and has a `loopMode` field for repeat.
+`components/mediaPlayers/AudioPlayer` extends `Video` but plays only audio. It lives at `m.global.audioPlayer` for the whole app, but music does not play on once the viewer leaves `/audio`: every exit from `AudioPlayerView` stops it (Back, `exitAudioPlayback()`, a deep link, a move to a video in a mixed queue). It sets `disableScreenSaver` while playing, which keeps Roku's screensaver off during audio, and has a `loopMode` field for repeat. `Video` and not `Audio` is deliberate: `disableScreenSaver` exists only on `Video`, and Roku documents it for audio-only streams.
+
+**Reporting is per listen.** Each `content` the engine is given opens a session (its `PlaySessionId`, the queue item, the last position). It reports `start` on the first `playing` and `update` on each other state change, through the same `BuildPlaystateRequest` and `SubmitSideEffect` as video, with positions in the whole track (below). A session's `stop` is reported once: when the stream reaches `stopped` or `finished`, or when another `content` replaces it for a new listen (another track, a replay).
+
+A stream a seek loaded is not a new listen. `AudioPlayerView` marks it `continuesListen`, and `audioSeek.streamHandover()` then has the engine send no `stop` for the old session and no `start` for the new one, only `update`s under the new `PlaySessionId`. This matters because Jellyfin adds a play on every `start` (`SessionManager.OnPlaybackStart()`, on 10.7.7 and on master): reporting each reload as a new listen counted a FLAC play with one seek as two (measured 2026-10-21 on the demo server, against one for an MP3 play with a seek). A server stream replaced this way still has a transcode the server runs until told otherwise, so the engine ends it with `BuildStopEncodingRequest` (`DELETE /Videos/ActiveEncodings`), which kills the job without a playstate report.
+
+**The end-of-track guard.** A one-shot `Timer` that `init()` creates and registers once. It restarts on every position change within `audioSeek.END_MARGIN_SECONDS` of the track's length (`content.length`, from `RunTimeTicks`) while `playing`, and stops on any other state. If it fires and the position has not moved for `audioSeek.STALL_SECONDS`, `forceEnd()` reports the stop and sets `state = "finished"` itself, as `VideoPlayerView.forceFinishPlayback()` does, so `AudioPlayerView` advances as for a real end. It exists for the FLAC case below when no server stream could be had, and for any other stall at the very end.
 
 Video reports differently: an end once, through `reportPlaybackEnd()`, and updates on a timer.
 
+### Seeking, and why a FLAC seek reloads the stream
+
+Roku plays a FLAC that it starts at a non-zero position (a `seek` or a `PlayStart`) and, when the file's last frame is shorter than its frame size, never finishes it. Most FLACs end that way. Mid-track, it stalls in `playing` forever, a moment before the last frame; near the end it ends at once with "malformed data", skipping the rest. A stream played from 0 always finishes (#662).
+
+Measured 2026-10-21 on a Stick 4K (Roku OS 15.3.4) with the demo FLAC "Jellyfin", about 70 runs: a 50% seek froze 13 of 13 times. It made no difference whether the seek went through `seek` or `PlayStart`, which `seekMode` was set, whether the player paused first, `autoplayAfterSeek`, or whether the node was `Video` or `Audio`. A seek table, the embedded picture, the sample rate and the encoder did not matter either. Removing the short last frame cured it. Frame sizes 1,152, 2,304, 4,608 and 8,192 with a short tail all failed; 4,096 played through twice, unexplained. MP3, AAC, ALAC, WAV and Vorbis seek and end cleanly.
+
+So `AudioPlayerView.startAudioAt()` takes every seek (scrub, voice, Jellyfin remote, repeat), and `audioSeek.startAction()` in `source/utils/audioSeek.bs` picks how:
+
+| Stream | Target | Action |
+|---|---|---|
+| not FLAC | any | `seek` in the playing stream |
+| FLAC | 0 | load the direct stream again, from 0 |
+| FLAC | above 0, server may transcode audio | load a FLAC stream the server starts at the target |
+| FLAC | above 0, it may not | `seek` (or the direct stream with a `PlayStart`, from a server stream), the guard as backstop, and a one-time toast |
+| FLAC | above 0, the server stream failed | no seek: the track plays on where it was, and a toast asks to try again (a native seek there often ends the track at once) |
+
+The server stream comes from `AudioStream(id, startSeconds, true)`: `PlaybackInfo` with `StartTimeTicks`, `EnableDirectPlay: false`, `EnableDirectStream: false` and one FLAC transcoding profile (`audioSeek.applyFlacRemuxProfile`). Without the direct-stream switch, Jellyfin 10.7 answers with no stream URL. It has no `MaxAudioChannels`, which would mix a multichannel source down, and its decoded samples matched the source's (checked 2026-10-21 against both demo FLACs, and on Jellyfin 10.7.7, 10.8.13, 10.11.11 and 12.0.0). An in-stream seek inside such a stream is ignored, so every later seek loads again. The reload took about 1.3 to 2.0 s on the Stick 4K; the old stream pauses and the progress bar holds the target meanwhile (`m.pendingSeek`).
+
+A server stream counts position from its own start, and its node `duration` means nothing. The content carries `startOffset`, and `audioSeek.logicalPosition()` (offset plus position) is the only position the screen and the reports read. Length is `content.length` or the queue item's `RunTimeTicks`.
+
 ## `AudioPlayerView`
 
-The "now playing" screen for music, a `JRScreen` routed at `/audio`. It shows the artwork, title, artist, progress and controls, and drives the engine by writing its fields (`content`, `control`, `seek`, `loopMode`) and observing `state`, `position` and `bufferingStatus`. The engine outlives the screen, but leaving the screen stops the audio: **Back** sets `control = "stop"` and clears `loopMode`, and `exitAudioPlayback` and `teardownForDeepLink` stop it too.
+The "now playing" screen for music, a `JRScreen` routed at `/audio`. It shows the artwork, title, artist, progress and controls, and drives the engine by writing its fields (`content`, `control`, `seek`, `loopMode`) and observing `state`, `position` and `bufferingStatus`. Every seek goes through `startAudioAt()`, and a replay from the start through `replayFromStart()` ([above](#seeking-and-why-a-flac-seek-reloads-the-stream)). The engine outlives the screen, but leaving the screen stops the audio: **Back** sets `control = "stop"` and clears `loopMode`, and `exitAudioPlayback` and `teardownForDeepLink` stop it too.
 
 ## Choosing a stream
 

@@ -1,0 +1,307 @@
+import "pkg:/source/utils/audioSeek.bs"
+
+namespace tests
+
+  @suite("audioSeek helpers")
+  class AudioSeekTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("startAction() - how a track starts at a position")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("seeks natively in a stream that is not FLAC")
+    function _()
+      result = audioSeek.startAction({ isFlac: false, isServerSeek: false }, 90, true)
+      m.assertEqual(result.action, audioSeek.ACTION_NATIVE)
+      m.assertEqual(result.startSeconds, 90.0)
+      m.assertFalse(result.isFallback)
+    end function
+
+    @it("seeks natively when the stream is unknown")
+    function _()
+      result = audioSeek.startAction(invalid, 90, true)
+      m.assertEqual(result.action, audioSeek.ACTION_NATIVE)
+      m.assertFalse(result.isFallback)
+    end function
+
+    @it("asks the server for a FLAC stream from the target")
+    @params(false)
+    @params(true)
+    function _(isServerSeek)
+      result = audioSeek.startAction({ isFlac: true, isServerSeek: isServerSeek }, 91.5, true)
+      m.assertEqual(result.action, audioSeek.ACTION_REMUX)
+      m.assertEqual(result.startSeconds, 91.5)
+      m.assertFalse(result.isFallback)
+    end function
+
+    @it("restarts the direct FLAC stream from 0 for a target of 0 or less")
+    @params(false, 0)
+    @params(true, 0)
+    @params(true, -3)
+    function _(isServerSeek, target)
+      result = audioSeek.startAction({ isFlac: true, isServerSeek: isServerSeek }, target, true)
+      m.assertEqual(result.action, audioSeek.ACTION_RELOAD_DIRECT)
+      m.assertEqual(result.startSeconds, 0.0)
+      m.assertFalse(result.isFallback)
+    end function
+
+    @it("restarts from 0 even when the server may not transcode")
+    function _()
+      result = audioSeek.startAction({ isFlac: true, isServerSeek: true }, 0, false)
+      m.assertEqual(result.action, audioSeek.ACTION_RELOAD_DIRECT)
+      m.assertFalse(result.isFallback)
+    end function
+
+    @it("falls back to a native seek in direct FLAC when the server may not transcode")
+    function _()
+      result = audioSeek.startAction({ isFlac: true, isServerSeek: false }, 60, false)
+      m.assertEqual(result.action, audioSeek.ACTION_NATIVE)
+      m.assertEqual(result.startSeconds, 60.0)
+      m.assertTrue(result.isFallback)
+    end function
+
+    @it("falls back to the direct stream at the target when a server stream cannot seek")
+    function _()
+      ' A server stream ignores an in-stream seek, so the fallback leaves it for the direct URL.
+      result = audioSeek.startAction({ isFlac: true, isServerSeek: true }, 60, false)
+      m.assertEqual(result.action, audioSeek.ACTION_RELOAD_DIRECT)
+      m.assertEqual(result.startSeconds, 60.0)
+      m.assertTrue(result.isFallback)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("startsMidTrack() - whether a replay must load the stream again")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a stream the server started mid-track")
+    function _()
+      m.assertTrue(audioSeek.startsMidTrack({ isFlac: true, isServerSeek: true, PlayStart: 0 }))
+    end function
+
+    @it("is true for a direct stream with a start position")
+    function _()
+      m.assertTrue(audioSeek.startsMidTrack({ isFlac: true, isServerSeek: false, PlayStart: 60 }))
+    end function
+
+    @it("is false for a stream that starts at 0")
+    function _()
+      streams = [
+        { isFlac: true, isServerSeek: false, PlayStart: 0 },
+        { isFlac: false, isServerSeek: false },
+        {}
+      ]
+      for each stream in streams
+        m.assertFalse(audioSeek.startsMidTrack(stream), FormatJson(stream))
+      end for
+    end function
+
+    @it("is false without a stream")
+    function _()
+      m.assertFalse(audioSeek.startsMidTrack(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("streamHandover() - what a new stream does with the session it replaces")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has nothing to hand over without an open session")
+    @params(invalid)
+    @params("")
+    function _(openSessionId)
+      m.assertEqual(audioSeek.streamHandover(openSessionId, { id: "new", continuesListen: true }), audioSeek.HANDOVER_NONE)
+    end function
+
+    @it("has nothing to hand over when the same stream is set again")
+    function _()
+      m.assertEqual(audioSeek.streamHandover("same", { id: "same" }), audioSeek.HANDOVER_NONE)
+    end function
+
+    ' A seek that loads a new stream is the same listen: a second start would count a second
+    ' play (Jellyfin's SessionManager.OnPlaybackStart adds one to PlayCount on every start).
+    @it("continues the listen in a stream a seek loaded")
+    function _()
+      m.assertEqual(audioSeek.streamHandover("old", { id: "new", continuesListen: true }), audioSeek.HANDOVER_CONTINUE)
+    end function
+
+    @it("ends the listen for any other new stream (a new track, a replay)")
+    function _()
+      streams = [{ id: "new" }, { id: "new", continuesListen: false }]
+      for each stream in streams
+        m.assertEqual(audioSeek.streamHandover("old", stream), audioSeek.HANDOVER_END, FormatJson(stream))
+      end for
+    end function
+
+    @it("ends the listen when the stream is cleared")
+    function _()
+      m.assertEqual(audioSeek.streamHandover("old", invalid), audioSeek.HANDOVER_END)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("logicalPosition() - position in the whole track")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds the stream's start offset to the player position")
+    @params(0, 12.5, 12.5)
+    @params(91, 0, 91)
+    @params(91, 30.25, 121.25)
+    function _(offset, position, expected)
+      m.assertEqual(audioSeek.logicalPosition(offset, position), expected)
+    end function
+
+    @it("treats a missing offset as 0")
+    function _()
+      m.assertEqual(audioSeek.logicalPosition(invalid, 42), 42)
+    end function
+
+    @it("returns invalid while the player has no position")
+    function _()
+      m.assertInvalid(audioSeek.logicalPosition(91, invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isNearEnd() - when the end-of-track guard arms")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("arms within the margin of the end, and past it")
+    @params(182.5, 183.05)
+    @params(181.6, 183.05)
+    @params(183.05, 183.05)
+    @params(185, 183.05)
+    function _(position, length)
+      m.assertTrue(audioSeek.isNearEnd(position, length))
+    end function
+
+    @it("stays disarmed before the margin")
+    @params(0, 183.05)
+    @params(100, 183.05)
+    @params(181.5, 183.05)
+    function _(position, length)
+      m.assertFalse(audioSeek.isNearEnd(position, length))
+    end function
+
+    @it("stays disarmed without a usable position or length")
+    @params(invalid, 183.05)
+    @params(182.9, invalid)
+    @params(0, 0)
+    @params(1, -5)
+    function _(position, length)
+      m.assertFalse(audioSeek.isNearEnd(position, length))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldForceEnd() - when the guard ends a stuck track")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("ends a track stalled near its end while playing")
+    @params(182.55, 183.05, 2.0)
+    @params(182.97, 183.05, 5)
+    @params(49.5, 49.65, 2.5)
+    function _(position, length, stalled)
+      m.assertTrue(audioSeek.shouldForceEnd("playing", position, length, stalled))
+    end function
+
+    @it("never ends a track that is not playing")
+    @params("paused")
+    @params("buffering")
+    @params("stopped")
+    @params("finished")
+    @params("error")
+    @params("none")
+    function _(state)
+      m.assertFalse(audioSeek.shouldForceEnd(state, 182.9, 183.05, 10))
+    end function
+
+    @it("waits while the position moved recently")
+    @params(0)
+    @params(1.0)
+    @params(1.99)
+    function _(stalled)
+      m.assertFalse(audioSeek.shouldForceEnd("playing", 182.9, 183.05, stalled))
+    end function
+
+    @it("never ends a track stalled away from its end")
+    function _()
+      ' A stall mid-track is a network or decoder problem, not a missing end.
+      m.assertFalse(audioSeek.shouldForceEnd("playing", 120, 183.05, 30))
+    end function
+
+    @it("never ends a track without a usable position or length")
+    @params(invalid, 183.05)
+    @params(182.9, invalid)
+    @params(182.9, 0)
+    function _(position, length)
+      m.assertFalse(audioSeek.shouldForceEnd("playing", position, length, 10))
+    end function
+
+    @it("never ends a track when the stall time is unknown")
+    function _()
+      m.assertFalse(audioSeek.shouldForceEnd("playing", 182.9, 183.05, invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyFlacRemuxProfile() - the PlaybackInfo body for a server seek")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("turns off direct play and sets the start position")
+    function _()
+      postData = m.postDataWithProfiles()
+      audioSeek.applyFlacRemuxProfile(postData, 910000000&)
+      m.assertFalse(postData.EnableDirectPlay)
+      m.assertEqual(postData.StartTimeTicks, 910000000&)
+    end function
+
+    @it("turns off direct stream, so every server version returns a stream URL")
+    function _()
+      ' Jellyfin 10.7 answers a direct stream with no TranscodingUrl when it may.
+      postData = m.postDataWithProfiles()
+      audioSeek.applyFlacRemuxProfile(postData, 910000000&)
+      m.assertFalse(postData.EnableDirectStream)
+    end function
+
+    @it("offers the server exactly one FLAC transcoding profile")
+    function _()
+      postData = m.postDataWithProfiles()
+      audioSeek.applyFlacRemuxProfile(postData, 910000000&)
+      profiles = postData.DeviceProfile.TranscodingProfiles
+      m.assertEqual(profiles.count(), 1)
+      m.assertEqual(profiles[0].Container, "flac")
+      m.assertEqual(profiles[0].AudioCodec, "flac")
+      m.assertEqual(profiles[0].Type, "Audio")
+      m.assertEqual(profiles[0].Protocol, "http")
+      m.assertEqual(profiles[0].Context, "Streaming")
+    end function
+
+    @it("leaves the channel count to the source")
+    function _()
+      ' A MaxAudioChannels here would downmix a multichannel FLAC.
+      postData = m.postDataWithProfiles()
+      audioSeek.applyFlacRemuxProfile(postData, 910000000&)
+      m.assertFalse(postData.DeviceProfile.TranscodingProfiles[0].doesExist("MaxAudioChannels"))
+    end function
+
+    @it("leaves the rest of the device profile alone")
+    function _()
+      postData = m.postDataWithProfiles()
+      audioSeek.applyFlacRemuxProfile(postData, 910000000&)
+      m.assertEqual(postData.DeviceProfile.DirectPlayProfiles.count(), 1)
+      m.assertEqual(postData.DeviceProfile.MaxStreamingBitrate, 120000000)
+    end function
+
+    function postDataWithProfiles() as object
+      return {
+        UserId: "user",
+        StartTimeTicks: 0&,
+        DeviceProfile: {
+          MaxStreamingBitrate: 120000000,
+          DirectPlayProfiles: [{ Container: "flac", Type: "Audio" }],
+          TranscodingProfiles: [
+            { Container: "aac", Type: "Audio", AudioCodec: "aac", Context: "Streaming", Protocol: "http", MaxAudioChannels: "2" },
+            { Container: "mp3", Type: "Audio", AudioCodec: "mp3", Context: "Streaming", Protocol: "http", MaxAudioChannels: "2" }
+          ]
+        }
+      }
+    end function
+
+  end class
+
+end namespace

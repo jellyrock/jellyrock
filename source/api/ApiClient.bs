@@ -1082,6 +1082,19 @@ class ApiClient
     return m.validatedReq("POST", buildURL("/LiveStreams/Close", { liveStreamId: liveStreamId }))
   end function
 
+  ' Build a request AA to end one server transcode, for use with SubmitSideEffect(). Unlike a
+  ' playstate stop, it reports nothing about the item: the play count, played state and the
+  ' server's playback events stay as they are. The same endpoint and query on every supported
+  ' server (10.7.0 through 12.x). The server matches the job by the device id the auth header
+  ' sends, so the query carries the same one.
+  ' @param playSessionId - The PlaySessionId of the stream whose transcode ends
+  ' @returns Request AA: { method, url } or invalid if the id is empty or no server URL is set
+  function BuildStopEncodingRequest(playSessionId as string) as dynamic
+    if playSessionId = "" then return invalid
+    params = { deviceId: m.global.device.serverDeviceName, playSessionId: playSessionId }
+    return m.validatedReq("DELETE", buildURL("/Videos/ActiveEncodings", params))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' PRIVATE HELPERS
   ' ═══════════════════════════════════════════════════════════════════════════

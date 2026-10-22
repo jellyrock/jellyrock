@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-21
+last-updated: 2026-10-22
 ---
 
 # Progress
@@ -757,6 +757,14 @@ Options: `resolve` (recommended): track "setting decided" with an `m` flag inste
 
 Not checked: whether any real path shows a backdrop-writing screen after sign-in before Home's `onScreenShown`, such as a cold deep link straight to an item. If one exists, that screen loses its backdrop today.
 
+#### The Roku FLAC seek defect behind #662 is unreported, so its workaround has no exit `[fid: roku-flac-seek-defect-unreported]` `[captured 2026-10-21]`
+
+Roku can't finish a FLAC it starts at a non-zero position (a `seek` or a `PlayStart`) when the file's last frame is shorter than its frame size: it stalls in `playing` a moment before the end, or ends at once with "malformed data" (#662, [ADR 0052](../docs/adr/0052-flac-seek-server-stream.md)). JellyRock works around it by loading a FLAC stream the server starts at the seek target (`audioSeek.startAction()`, `AudioPlayerView.startAudioAt()`), with the `AudioPlayer` end guard as backstop. Nobody has told Roku, so no fix is tracked.
+
+Close it by reporting the defect to Roku (developer forum or partner channel) with the minimal reproduction: the same FLAC with and without its short last frame, seeking to 50% on Roku OS 15.3.4, where only the first freezes. Link the report here. When a Roku OS release fixes it, measure again and, if native FLAC seeks then finish, remove the server-stream path and decide whether the end guard stays.
+
+Why not now: it needs an account and a public post, which are the operator's to make.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -978,6 +986,12 @@ Where JellyRock stands: pinned to 10.11.11. The plugin's session-controller + lo
 
 When it moves: re-pin the plugin's `Jellyfin.Controller`/`Jellyfin.Model` + `build.yaml` `targetAbi` to the new line, rebuild in the SDK container, and re-verify the cast and closed app liveness gate on a test server (12.0 RC restructures the API: check `ISessionController` / `SessionInfo` shapes)
 
+#### Nobody has checked whether Roku's FLAC seek defect also hits FLAC in an Ogg container, which the workaround skips `[fid: ogg-flac-seek-unchecked]` `[captured 2026-10-21]`
+
+The FLAC seek workaround (#662, ADR 0052) marks a stream `isFlac` only when its container is `flac` (`AudioStream` in `source/api/items.bs`). The device profile also direct-plays an `ogg` container probed for `flac` (`deviceCapabilities.bs`), so FLAC audio in an Ogg file seeks natively, with no server stream, and nobody has checked whether Roku's short-last-frame seek defect hits it too. Found in the PR #1234 review, 2026-10-21.
+
+Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame is shorter than its frame size. If it stalls before the end like a `.flac` does, extend the check to the audio codec and cover it in `audio-seek.spec.js`; if it ends cleanly, record that here and drop the entry. Why not now: it needs such a fixture, which the demo server does not have.
+
 ### tests
 
 #### Re-derive what actually reddened PR #800 — the device-contention explanation is REFUTED. `[fid: pr-800-red-cause-rederive]` `[captured 2026-08-10]`
@@ -1093,10 +1107,6 @@ The shared dev device carries 4 from 2026-08-22 (`homeSection2/3/5/6`, on a NON-
 #### A killed `measure` holds the device lock until its lease expires, and the refusal does not say how to clear it. `[fid: killed-measure-holds-device-lock]` `[captured 2026-08-26]`
 
 Hit twice on 2026-08-26: an `npm run measure` running in the background was killed, its GitHub-ref lock (`device-lock/<key>`) was never released, and the next run refused with `The Roku at <host> is in use by measure (local, pid 680690)` — for a `pid` that was no longer running. The lease-expiry steal path (`stealIfExpired`) does eventually recover, so this is friction rather than a wedge. **Fix shape:** when the holder is `local` and its process is not alive, either say so in the refusal and name `npm run device:release`, or steal the ref outright — a local holder's liveness is strictly better evidence than the lease clock. **Cheaper as of 2026-09-05:** that predicate now exists as `isProcessAlive` in `scripts/lib/process-liveness.cjs` (shipped in `af38ff9c` for the `device:status` live-run fix), so this is a call plus a message, not new machinery. The refusal message quoted above has also changed since — it now prints `ROKU_IP=<host> npm run device:status` — so the remaining gap is naming `device:release` for a dead local holder. Surfaced 2026-08-26.
-
-#### The RTA wait inventory in [`tests/rta/CLAUDE.md`](../tests/rta/CLAUDE.md) is hand-maintained prose with no derivation, and it has been wrong five times. `[fid: rta-wait-inventory-hand-maintained]` `[captured 2026-09-09]`
-
-The doc carries exact figures — 93 waits, `12 + 1 + 7 + 36 + 1 = 57` `waitFor` calls, plus 21 + 15 focus waits — and the `jellyrock-rta/wait-justified` ESLint rule gates the CATEGORIES but not the COUNTS, so every number there is maintained by hand against a codebase that moves. The project's own history records five grep-derived miscounts (103-vs-101, 34-vs-31, 94-vs-104, 44-vs-47, "two hand-rolled loops" that were seven). **Concrete evidence it still cannot be reproduced, 2026-09-07:** an ad-hoc AST counter written to verify a one-category change reported 91 total against the doc's 94, because it counts bare `waitFor(` identifiers and misses the `ctx.waitFor` member calls in [`tests/rta/demos/`](../tests/rta/demos/) — so the discrepancy was a property of the counting method, and there is no canonical method to check against. Only the single category the change moved was edited, deliberately, rather than write a total from an unverified method into a load-bearing inventory. **Fix shape:** a small AST script (sibling to the existing lint rules, run via `npm run lint:js` or its own npm script) that derives the counts — handling both bare and member call forms — and fails when the doc's stated figures disagree. That turns a recurring "I re-derived it by hand and hoped" into a red/green gate, which is the same trade `rta-sleep-budgeted` already makes for the sleep table. Surfaced in `fbfe5b97`, which moved one category and documents why it moved only that one.
 
 #### The RTA suite's whole fixture is a third-party demo server, and that dependency is recorded only in a source comment. `[fid: rta-fixture-demo-server-undocumented]` `[captured 2026-09-09]`
 

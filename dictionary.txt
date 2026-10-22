@@ -288,6 +288,7 @@ FHD
 filesystem
 flac
 FLAC
+FLACs
 fns
 focusable
 followup
@@ -411,6 +412,7 @@ Mixin
 mka
 MKV
 mkv
+MP3
 mp4
 multicast
 multichannel
@@ -448,6 +450,7 @@ ODC
 ODC-precondition
 oga
 ogg
+Ogg
 onboarding
 OpenAPI
 opencode
@@ -770,6 +773,7 @@ virtuals
 Vitest
 Vitest's
 vorbis
+Vorbis
 vscode
 VSCode
 VTT
@@ -777,6 +781,7 @@ wakeup
 wakeup-signal
 walkthrough
 wav
+WAV
 WCAG
 Weblate
 WebP

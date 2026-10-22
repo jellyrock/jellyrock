@@ -970,6 +970,18 @@
       "sourceFiles": [
         "source/api/ApiClient.bs"
       ]
+    },
+    {
+      "path": "/Videos/ActiveEncodings",
+      "normalized": "/videos/activeencodings",
+      "methods": [
+        "DELETE"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
     }
   ],
   "requestFields": [
@@ -1175,6 +1187,12 @@
       "name": "PlaybackPositionTicks",
       "sourceFiles": [
         "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "PlayStart",
+      "sourceFiles": [
+        "source/api/items.bs"
       ]
     },
     {
@@ -3329,15 +3347,19 @@
       }
     },
     "counts": {
-      "endpoints": 80,
-      "requestFields": 50,
+      "endpoints": 81,
+      "requestFields": 51,
       "responseFields": 223,
-      "unresolvedEndpointSinks": 2
+      "unresolvedEndpointSinks": 3
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 415
+        "line": 440
+      },
+      {
+        "sourceFile": "source/api/items.bs",
+        "line": 455
       },
       {
         "sourceFile": "source/utils/subtitles.bs",

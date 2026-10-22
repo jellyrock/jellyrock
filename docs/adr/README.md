@@ -63,3 +63,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0049](0049-house-voice-ratchet.md) | Every doc is held to one house voice by a per-file ratchet | Accepted | 2026-10-07 |
 | [0050](0050-same-frame-screen-swap.md) | Screens change in one render pass: every route suspends with "show" and JellyRock drives the swap | Accepted | 2026-10-08 |
 | [0051](0051-retire-signals-backlog.md) | Upstream watches are CI issues, and the server-upgrade anchor is the newest committed fingerprint | Accepted | 2026-10-20 |
+| [0052](0052-flac-seek-server-stream.md) | A seek in a direct-played FLAC loads a FLAC stream the server starts at the target | Accepted | 2026-10-21 |
