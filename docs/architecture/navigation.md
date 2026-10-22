@@ -21,7 +21,7 @@ related-files:
   - source/utils/appWaits.bs
   - components/AppWaitHost.bs
   - components/AppWaitHost.xml
-last-reviewed: 2026-10-19
+last-reviewed: 2026-10-22
 ---
 
 # Navigation (sgRouter)
@@ -114,7 +114,7 @@ The `sgrouter` namespace resolves only on the render thread, so the main thread 
 2. Builds the guard list from the `AuthManager` node on `m.global`.
 3. Calls `sgrouter.initialize()` with the outlet, sets `suspendMode: "show"` on every route in a loop, then calls `sgrouter.addRoutes()`.
 
-It does not navigate. Each entry point that navigates calls it first (`routerNavigate`, `replayRoutedDeepLink`, `resolveDeepLink`, `replayDeepLinkReplacingPlayer`), so it runs again after `resetRouter()` at sign-out.
+It does not navigate. Each entry point that navigates calls it first (`routerNavigate`, `resolveDeepLink`, `replayDeepLinkReplacingPlayer`), so it runs again after `resetRouter()` at sign-out.
 
 ### The route table
 
@@ -162,26 +162,18 @@ Steps 2 and 3 run in one synchronous call, so nothing renders between them. Goin
 ```brightscript
 function canActivate(currentRequest as object) as dynamic
   if isValidAndNotEmpty(m.global.user.authToken) then return true
-  if isValid(currentRequest) and isValidAndNotEmpty(currentRequest.path)
-    m.top.stashedRoute = currentRequest.path
-  end if
+  ' ...logs the requested path as a warning...
   return { path: "/login" }
 end function
 ```
 
-With no token, it stores the requested path on `stashedRoute` and returns `{ path: "/login" }`. The router treats any associative array with a non-empty `path` as a redirect (`sgrouter_runGuardChecks`), the shape `sgrouter.createRedirectCommand("/login")` builds, so the guard node does not need the router namespace. Registering the node that lives on `m.global` is what lets the main thread read the stash after sign-in.
+With no token, it returns `{ path: "/login" }`. The router treats any associative array with a non-empty `path` as a redirect (`sgrouter_runGuardChecks`), the shape `sgrouter.createRedirectCommand("/login")` builds, so the guard node does not need the router namespace.
 
-#### Replaying a stashed route
+**It keeps nothing for after sign-in.** Nothing a person can do while signed out requests a guarded route, because every screen that navigates to one is torn down at sign-out. So a request that reaches the guard is a stray, such as a late remote-control command, and the warning it logs means something went wrong. The guard used to store the path and replay it after the next sign-in, which sent a user who signed in by hand to Search instead of Home. The decision is `sign-in-lands-on-home` in [`decisions.md`](../decisions.md).
 
-After sign-in, `main.bs` `createAndShowHomeGroup()` calls `replayAfterLogin()` (`source/replayRoute.bs`). A stashed deep link (`AuthManager.stashedDeepLink`) goes first, through `JRScene.resolveDeepLink`: [bootstrap.md](bootstrap.md#deep-links) owns that path. Otherwise it reads and clears `stashedRoute`, and passes `buildReplayRoutes(stashed)` to `JRScene.replayRoutedDeepLink`:
+#### What sign-in opens
 
-| Stash | Route chain |
-|---|---|
-| empty | `["/"]`: Home |
-| a plain route | `["/", route]`: Home, then the route |
-| a `/play` route | `["/", detailsPath, playPath]`, so Back goes Player, Details, Home |
-
-`AuthManager.canActivate` is the only writer of `stashedRoute`.
+After sign-in, `main.bs` `createAndShowHomeGroup()` calls `replayAfterLogin()` (`source/replayRoute.bs`). A deep link that arrived while signed out (`AuthManager.stashedDeepLink`) goes through `JRScene.resolveDeepLink`, which lands on Home and then opens the item: [bootstrap.md](bootstrap.md#deep-links) owns that path. Otherwise it calls `routerNavigate("/", {}, true)`: Home.
 
 ### Navigation functions on `JRScene`
 
@@ -189,10 +181,9 @@ The main thread reaches the ones in `JRScene.xml`'s interface by `callFunc`.
 
 | Function | What it does | Called from |
 |---|---|---|
-| `routerNavigate(path, context, clearSpinner)` | `initRouter()`, then `navigateThenFocus()` | `loginRouter.routerNav()` (the pre-login routes) and the remote-control commands Home, Search and Settings (`remoteDispatch.dispatchRoute()`) |
+| `routerNavigate(path, context, clearSpinner)` | `initRouter()`, then `navigateThenFocus()` | `loginRouter.routerNav()` (the pre-login routes), `replayAfterLogin()` (Home after sign-in) and the remote-control commands Home, Search and Settings (`remoteDispatch.dispatchRoute()`) |
 | `navigateThenFocus(path, context, clearSpinner)` | `sgrouter.navigateTo()`; when it settles, `sgrouter.setFocus()`; when it fails, logs and takes focus again so the remote is never stranded. With `clearSpinner`, stops the spinner at either end ([spinners](#loading-spinners-across-navigation)) | `routerNavigate`, the last step of `navigateChainStep`, deep-link resolve |
-| `replayRoutedDeepLink(routes)` | `initRouter()`, then `navigateChainStep(routes, 0, true)`. Defaults to `["/"]` | `replayAfterLogin()` |
-| `navigateChainStep(routes, index, clearLoginSpinnerOnEnd)` | Navigates one route and, when its promise settles, the next. The last step takes focus and, if asked, clears the sign-in spinner | `replayRoutedDeepLink`, `replayDeepLinkReplacingPlayer` |
+| `navigateChainStep(routes, index)` | Navigates one route and, when its promise settles, the next. The last step takes focus | `replayDeepLinkReplacingPlayer` |
 | `resolveDeepLink(args)` | Fetches the item before navigating, then `onDeepLinkResolved` routes to it ([bootstrap.md](bootstrap.md#resolving)). `cancelDeepLinkResolve()` stops the fetch | `replayAfterLogin()`, `replayDeepLinkRuntime()` |
 | `replayDeepLinkReplacingPlayer(targetRoute)` | Replaces a playing player ([below](#replacing-an-active-player)) | `onDeepLinkResolved`, for a playback cast over a player |
 | `onPlaybackLaunchRequested()` | Observer of `m.global.playbackLaunchRequest`: audio goes to `/audio`, every video type to `/details/<type>/<id>/play`. The queue decides what plays | `QueueManager.playQueue`, which cannot navigate |
@@ -221,7 +212,7 @@ The main thread reaches the ones in `JRScene.xml`'s interface by `callFunc`.
 
 `ItemDetails` starts the spinner from its `itemId` observer, which runs before the empty screen draws a frame. When the route context already holds the full item, as from a resolved deep link, it shows no spinner. Every other item type that `launchItem()` handles opens a playback start instead of a spinner ([below](#what-kind-of-wait-a-spinner-is)).
 
-**Sign-in is the one spinner that crosses screens.** `loginRouter.bs` starts a blocking spinner on the outgoing pre-login screen (`onServerSubmitted`, `onUserSelected`, `onCredentialsSubmitted`), then navigates to a different screen. `navigateTo` settles only at `NavigationEnd`, so until then `activeRoutedView` is still the outgoing screen. Stopping the spinner before that resets `isRemoteDisabled` and shows the outgoing screen again for a frame before the next one mounts: the "login flash" of #677. So the spinner stays up across the navigation and is cleared when it settles, through `clearSpinner` on `navigateThenFocus`. The step to `/login` passes it through `routerNavigate`, and the step to Home through `replayRoutedDeepLink` and `navigateChainStep`. When a deep link is stashed, `resolveDeepLink` takes the spinner over and `onDeepLinkResolved` clears it.
+**Sign-in is the one spinner that crosses screens.** `loginRouter.bs` starts a blocking spinner on the outgoing pre-login screen (`onServerSubmitted`, `onUserSelected`, `onCredentialsSubmitted`), then navigates to a different screen. `navigateTo` settles only at `NavigationEnd`, so until then `activeRoutedView` is still the outgoing screen. Stopping the spinner before that resets `isRemoteDisabled` and shows the outgoing screen again for a frame before the next one mounts: the "login flash" of #677. So the spinner stays up across the navigation and is cleared when it settles, through `clearSpinner` on `navigateThenFocus`. The step to `/login` and the step to Home both pass it through `routerNavigate`. When a deep link is stashed, `resolveDeepLink` takes the spinner over and `onDeepLinkResolved` clears it.
 
 ### What kind of wait a spinner is
 

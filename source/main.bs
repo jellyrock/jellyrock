@@ -305,8 +305,7 @@ sub createAndShowHomeGroup()
   ' Home is mounted by the router (in JRScene's outlet). replayAfterLogin
   ' (source/replayRoute.bs) brings the router up. A stashed deep link goes to
   ' JRScene.resolveDeepLink with homeFirst: Home mounts, then the id is fetched and a valid one
-  ' navigates on. Otherwise replayRoutedDeepLink replays any stashed guard route as an ordered
-  ' route chain, or Home alone when there is none. Home self-loads its libraries in its own
+  ' navigates on. Otherwise it navigates to Home. Home self-loads its libraries in its own
   ' onViewOpen. (exit + activeRoutedView + the pre-login intent bridge are observed once during
   ' bootstrap, not here.)
   ' The blocking login spinner (started on the outgoing pre-login view) is intentionally not
@@ -314,8 +313,8 @@ sub createAndShowHomeGroup()
   ' at NavigationEnd), so the outgoing UserSelect/LoginScene is still the active routed view at this
   ' point. Stopping the spinner now resets isRemoteDisabled and re-shows that view for a frame
   ' before Home mounts (the #677 login flash). The spinner is cleared when the Home nav settles
-  ' (replayRoutedDeepLink -> navigateChainStep clearLoginSpinnerOnEnd). The deep-link branch owns
-  ' its own spinner via resolveDeepLink/onDeepLinkResolved.
+  ' (routerNavigate -> navigateThenFocus clearSpinner). The deep-link branch owns its own spinner
+  ' via resolveDeepLink/onDeepLinkResolved.
   replayAfterLogin()
 
   ' update lastRunVersion but only on prod

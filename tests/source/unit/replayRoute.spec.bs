@@ -257,32 +257,6 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("buildReplayRoutes() — guard-path replay chain")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("empty/invalid stash replays plain Home")
-    @params("")
-    @params(invalid)
-    function _(stashed)
-      m.assertEqual(buildReplayRoutes(stashed), ["/"])
-    end function
-
-    @it("a plain route replays Home then the destination")
-    function _()
-      m.assertEqual(buildReplayRoutes("/settings"), ["/", "/settings"])
-    end function
-
-    @it("a /play route inserts its Details screen between Home and the player")
-    function _()
-      m.assertEqual(buildReplayRoutes("/details/Movie/abc/play"), ["/", "/details/Movie/abc", "/details/Movie/abc/play"])
-    end function
-
-    @it("a /play route with a query strips the query for the Details step but keeps the full play route")
-    function _()
-      m.assertEqual(buildReplayRoutes("/details/Movie/abc/play?deeplink=play"), ["/", "/details/Movie/abc", "/details/Movie/abc/play?deeplink=play"])
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("findServerInList() — saved-server GUID match")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

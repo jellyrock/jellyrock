@@ -172,7 +172,7 @@ sub setGlobalNodes()
   ' Auth guard. Created here, BEFORE the router's addRoutes (which runs lazily in
   ' JRScene.initRouter on the first navigation), and registered by node reference as the
   ' canActivate guard on every post-login route. Living on m.global lets the main-thread replay
-  ' helper read the path it stashes on a signed-out redirect. See components/auth/AuthManager.bs.
+  ' helper read the deep link stashed on it while signed out. See components/auth/AuthManager.bs.
   m.global.addFields({ AuthManager: CreateObject("roSGNode", "AuthManager") })
 
   ' Title to toast ("Playing <title>") when the player mounts for a deep-link launch. Set by

@@ -2,20 +2,16 @@ import "pkg:/source/utils/tasks.bs"
 ' ===========================================================================
 ' Deep-link resolution + deferred replay
 '
-' Two stash sources, both replayed after login by replayAfterLogin():
+' A DEEP LINK (cold-start launchArgs or runtime roInputEvent) stashes a STRUCTURED intent on
+' m.global.AuthManager.stashedDeepLink ({ itemId, mediaType, serverGuid }), and
+' replayAfterLogin() opens it once the user is signed in. A deep link's contentId is untrusted,
+' so it routes through ItemDetails: navigate Home -> /details/<mediaType>/<itemId>?deeplink=<action>.
+' ItemDetails validates (fetch by id), and on load auto-launches with the REAL type + Jellyfin
+' bookmark (resume position), or shows an error and returns Home if the id doesn't resolve.
+' This reuses ItemDetails' canonical play path instead of a bare {id} queue seed.
 '
-'   1. The auth guard (components/auth/AuthManager.bs) stashes the PATH of any
-'      signed-out in-app navigation on m.global.AuthManager.stashedRoute (a string).
-'      Its queue (for a /play path) was already populated by the launcher, so replay
-'      re-walks Home -> [Details ->] target (buildReplayRoutes).
-'
-'   2. A DEEP LINK (cold-start launchArgs or runtime roInputEvent) stashes a STRUCTURED
-'      intent on m.global.AuthManager.stashedDeepLink ({ itemId, mediaType, serverGuid }).
-'      A deep link's contentId is untrusted, so it routes through ItemDetails: navigate
-'      Home -> /details/<mediaType>/<itemId>?deeplink=<mediaType>. ItemDetails validates
-'      (fetch by id), and on load auto-launches with the REAL type + Jellyfin bookmark
-'      (resume position), or shows an error and returns Home if the id doesn't resolve.
-'      This reuses ItemDetails' canonical play path instead of a bare {id} queue seed.
+' It is the only intent a signed-out moment hands to the sign-in. The auth guard keeps nothing:
+' see AuthManager.canActivate for why a guarded route requested while signed out is a stray.
 '
 ' MAIN-THREAD code (shares Main()'s m). It never touches the sgrouter namespace (that
 ' resolves on the render thread); it hands route chains to JRScene via callFunc.
@@ -128,9 +124,8 @@ sub stashDeepLink(rawContentId as string, mediaType as string, itemName = "" as 
   }
 end sub
 
-' Read + clear whatever is stashed and replay it after a successful login (or immediately
-' when already authed). Deep link wins over a guard path. Always navigates Home first so it
-' is the back-stack root.
+' After a successful login (or at once when already authed): open the stashed deep link, if
+' any, else Home. Home is always first, so it is the back-stack root.
 sub replayAfterLogin()
   deepLink = m.global.AuthManager.stashedDeepLink
   if isValid(deepLink) and isValidAndNotEmpty(deepLink.itemId)
@@ -148,9 +143,9 @@ sub replayAfterLogin()
     return
   end if
 
-  stashed = m.global.AuthManager.stashedRoute
-  m.global.AuthManager.stashedRoute = ""
-  m.scene.callFunc("replayRoutedDeepLink", buildReplayRoutes(stashed))
+  ' clearSpinner: the blocking login spinner is still up on the outgoing pre-login view. It
+  ' stays up across the async nav and clears once Home mounts (the #677 login flash).
+  m.scene.callFunc("routerNavigate", "/", {}, true)
 end sub
 
 ' Runtime replay (app already signed in, deep link for the active server). Unlike the post-login
@@ -235,25 +230,6 @@ sub notifyDeepLinkDeferred()
     displayToast(translate(translationKeys.MessageDeepLinkAfterSignIn), "info")
   end if
 end sub
-
-' Pure: turn a guard-stashed path into the ordered route chain to replay. Home is always
-' first (back-stack root); a /play path additionally inserts its Details screen between Home
-' and the player (the details path is the play path minus the trailing "/play").
-function buildReplayRoutes(stashed as dynamic) as object
-  if not isValidAndNotEmpty(stashed) then return ["/"]
-
-  ' Separate the base path from any query string.
-  basePath = stashed
-  q = Instr(1, stashed, "?")
-  if q > 0 then basePath = Left(stashed, q - 1)
-
-  if basePath.endsWith("/play")
-    detailsPath = Left(basePath, Len(basePath) - Len("/play"))
-    return ["/", detailsPath, stashed]
-  end if
-
-  return ["/", stashed]
-end function
 
 ' ---------------------------------------------------------------------------
 ' Server resolution: a deep link's contentId may name a serverId (GUID). The whole app
