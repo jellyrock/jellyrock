@@ -774,6 +774,12 @@ Close it by reporting the defect to Roku (developer forum or partner channel) wi
 
 Why not now: it needs an account and a public post, which are the operator's to make.
 
+#### A server switch confirmed over a player can't be canceled with Back `[fid: server-switch-over-player-not-cancellable]` `[captured 2026-10-22]`
+
+A cast naming another saved server can show the "Switch server?" prompt while a video plays: the `roInputEvent` branch in `main.bs` calls `onRuntimeDeepLink`, which reaches `promptServerSwitch` with no check of the active view (the remote-control socket's Play command takes the same path). On Switch, `performServerSwitch` opens the `SESSION` wait with the player as `launchedFrom`, and `AppWaitHost.begin` never hides a playback screen (the exception channel switches need). So the wait holds no keys: Back goes to the player while the switch goes on, and ADR 0053's "Back cancels a server switch" does not hold there. `main` behaved the same before PR #1238, so this is not a regression; found reading the code in that PR's review, not run on a device.
+
+Before choosing a fix, measure on a device whether `opacity = 0` hides the video plane, and whether the player takes the focus back on its own events (the next episode starting, "still watching") during the probe (`ServerReachableTask`, up to 8 s). Options weighed in the review: hide the player for `SESSION` waits (keys held, Back returns to the playing video), or close the player first (loses the viewer's place when the server is unreachable). Closes when Back cancels a switch confirmed over a player, with an RTA case.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
