@@ -79,6 +79,11 @@ import { calleeName, walkAst } from './_shared.js';
  */
 const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#buttons.buttonFocused',
+  // Not an app field: the title of the picker's content node, which `sign-in-waits.spec.js`
+  // sets as a marker over ODC. `SetServerScreen.onScanForServersComplete` replaces the content
+  // with a fresh node whose title is empty, and nothing writes the old node again, so "the
+  // marker is gone" is terminal. Read against the app source 2026-10-22.
+  '#serverPicker.content.title',
   // `ItemDetails.bs` assigns `m.extrasGrid.type = item.type` on content load and on an
   // explicit extras refresh, and never clears it: terminal for the life of that
   // content, so a poll cannot miss it. Read against the app source 2026-09-06, both

@@ -197,15 +197,22 @@ sub onScanForServersComplete(event)
 
   m.serverPicker.content = items
 
-  'if we have at least one server, focus on the server picker
+  ' Focus only while this screen holds it. A re-scan can end while an app wait or a dialog holds
+  ' the focus, and taking it back would let a second OK press Submit again. Record the target in
+  ' lastFocus instead, unless a saved focus is there (the wait saved Submit), so the router
+  ' restores it when the screen gets focus back.
   if m.servers.Count() > 0
-    m.serverPicker.setFocus(true)
-    'no servers found...focus on the input textbox
+    focusTarget = m.serverPicker
   else
-    m.serverUrlContainer.setFocus(true)
-    'show/hide input box outline
-    m.serverUrlOutline.visible = true
+    focusTarget = m.serverUrlContainer
   end if
+  if m.top.isInFocusChain()
+    focusTarget.setFocus(true)
+  else if not isValid(m.top.lastFocus)
+    m.top.lastFocus = focusTarget
+  end if
+  'no servers found: show the input box outline
+  if m.servers.Count() = 0 then m.serverUrlOutline.visible = true
 
   ' Paint LAST, and on purpose not at the end of init(). At the end of init() the
   ' user has prompt text, hints and a spinner: something to look at, and nothing to
