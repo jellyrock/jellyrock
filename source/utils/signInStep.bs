@@ -31,10 +31,19 @@ namespace signInStep
     return wait
   end function
 
-  ' Whether the viewer canceled `wait` with Back. loginRouter asks after every blocking call
-  ' and drops the attempt when they have.
+  ' Whether the viewer canceled `wait` with Back. loginRouter asks between blocking calls and
+  ' drops the attempt when they have. A Back after the last ask is caught by `commit`.
   function canceled(wait as dynamic) as boolean
     return isValid(wait) and not appWaits.isOpen(wait)
+  end function
+
+  ' The step's last server call has returned: commit `wait`, so Back no longer cancels it, and
+  ' say whether the step may go on. False when Back canceled it first; the caller undoes the
+  ' attempt and stops. True with no wait (a cold start has nothing to cancel). A step commits
+  ' before any local work or navigation, so everything after it runs to the end.
+  function commit(wait as dynamic) as boolean
+    if not isValid(wait) then return true
+    return appWaits.commit(wait)
   end function
 
 end namespace

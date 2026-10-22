@@ -93,9 +93,9 @@ export const BUDGETS = new Map([
   // Sign-in must land on Home and stay there: a replay would move on from Home a moment later.
   ['tests/rta/specs/sign-in-landing.spec.js', 1],
   // A sign-in step canceled with Back must not act on its answer once it lands; no app field
-  // reports an answer that was dropped. One per step: password, user pick, server connect,
-  // server switch.
-  ['tests/rta/specs/sign-in-waits.spec.js', 4],
+  // reports an answer that was dropped. One per step: password (before the token and after the
+  // session), user pick, server connect, server switch.
+  ['tests/rta/specs/sign-in-waits.spec.js', 5],
   // The same for a Quick Connect code request canceled with Back.
   ['tests/rta/specs/quick-connect.spec.js', 1],
   // A search answer delivered to a hidden screen must not end the details spinner; no app

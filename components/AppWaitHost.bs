@@ -156,17 +156,22 @@ function cancelOnBack() as boolean
   return appWaits.hiding(m.waits).count() > 0
 end function
 
-' The wait `promise` has committed (appWaits.commit): Back no longer cancels it. Only through
-' callFunc.
-sub commit(promise as object)
+' The wait `promise` commits (appWaits.commit): Back no longer cancels it. Only through
+' callFunc. It runs on the thread that handles Back, so a Back either cancels the wait before
+' this or finds it committed, never both.
+'
+' @return {boolean} whether the wait was still open and is now committed
+function commit(promise as object) as boolean
   for each key in m.waits
     entry = m.waits[key]
     if entry.promise.isSameNode(promise)
+      if promises.isComplete(promise) then return false
       entry.committed = true
-      return
+      return true
     end if
   end for
-end sub
+  return false
+end function
 
 ' The viewer reached `newView`: end the playback starts they have left (appWaits.leftBehind).
 sub failLeftBehind(newView as dynamic)

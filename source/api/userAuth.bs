@@ -4,7 +4,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/session.bs"
 
 function getToken(username as string, password as string)
-  rtaSignInHold()
+  rtaSignInHold("token")
   #if ENABLE_RTA
     m.global.rtaSignInCount = m.global.rtaSignInCount + 1
   #end if
@@ -13,13 +13,17 @@ function getToken(username as string, password as string)
 end function
 
 ' RTA-only: hold a sign-in step on the main thread for m.global.rtaSignInHoldMs, as a slow server
-' would, so specs can press Back while it waits. Compiled out of dev and prod builds (see
-' setGlobalNodes).
-sub rtaSignInHold()
+' would, so specs can press Back while it waits. It holds only at the point m.global.rtaSignInHoldAt
+' names, so a spec can land its Back before or after a step changed something:
+'   lookup    - before a server connect's lookup (loginRouter.onServerSubmitted)
+'   connected - after the connect saved the server, before ServerInfo
+'   token     - before a password or no-password sign-in (getToken)
+'   session   - after user.Login set up the session (loginRouter.onCredentialsSubmitted)
+' Compiled out of dev and prod builds (see setGlobalNodes).
+sub rtaSignInHold(stage as string)
   #if ENABLE_RTA
-    if isValid(m.global.rtaSignInHoldMs) and m.global.rtaSignInHoldMs > 0
-      sleep(m.global.rtaSignInHoldMs)
-    end if
+    holdMs = m.global.rtaSignInHoldMs
+    if isValid(holdMs) and holdMs > 0 and m.global.rtaSignInHoldAt = stage then sleep(holdMs)
   #end if
 end sub
 

@@ -2178,13 +2178,30 @@ export async function waitForSignInScreen() {
   });
 }
 
-/** On the sign-in screen with the username prefilled: walk to Submit and press it once. */
-export async function submitSignIn() {
+/**
+ * On the sign-in screen with the username prefilled: walk to Submit and press it once.
+ * `save: true` first ticks "save credentials" (the checkbox above Submit, off by default), so
+ * the sign-in writes a token a spec can look for.
+ */
+export async function submitSignIn({ save = false } = {}) {
   await waitFocusInside('#buttons', {
     label: 'Submit focused',
     timeout: 10000,
     interval: 400,
     action: walkFocusInto(ecp.Key.Down, '#buttons'),
   });
+  if (save) {
+    // LoginScene.onKeyEvent: Up from the buttons goes to the checkbox, Down from it back.
+    await press(ecp.Key.Up);
+    await waitFocusInside('#onOff', { label: 'the save checkbox focused', timeout: 5000 });
+    await press(ecp.Key.Ok);
+    await waitFor('#onOff.checkedState', (v) => Array.isArray(v) && v[0] === true, {
+      read: getActiveVal,
+      label: 'save credentials ticked',
+      timeout: 5000,
+    });
+    await press(ecp.Key.Down);
+    await waitFocusInside('#buttons', { label: 'Submit focused again', timeout: 5000 });
+  }
   await press(ecp.Key.Ok);
 }

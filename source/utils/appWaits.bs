@@ -43,15 +43,19 @@ namespace appWaits
   end sub
 
   ' Marks `appWait` committed: what is left is local work, so Back no longer cancels it
-  ' (ADR 0053). It still hides its screen and holds the keys until it ends. Does nothing once
-  ' it has ended.
-  sub commit(appWait as dynamic)
-    if not isOpen(appWait) then return
+  ' (ADR 0053). It still hides its screen and holds the keys until it ends. The host checks and
+  ' commits in one step, on the thread that handles Back, so false means Back (or anything else)
+  ' ended it first and the caller must stop.
+  '
+  ' @return {boolean} whether the wait was still open and is now committed
+  function commit(appWait as dynamic) as boolean
+    if not promises.isPromise(appWait) then return false
     scene = appScene()
-    if not isValid(scene) then return
+    if not isValid(scene) then return false
     host = scene.findNode("appWaitHost")
-    if isValid(host) then host.callFunc("commit", appWait)
-  end sub
+    if not isValid(host) then return false
+    return host.callFunc("commit", appWait) = true
+  end function
 
   ' Whether `appWait` is a wait that has not ended yet.
   function isOpen(appWait as dynamic) as boolean

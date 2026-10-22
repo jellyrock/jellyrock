@@ -14,7 +14,8 @@
     <function name="failLeftBehind" />
     <!-- JRScene's Back arbiter: cancels the waits hiding a screen; true when there were any. -->
     <function name="cancelOnBack" />
-    <!-- appWaits.commit: the wait has only local work left, so Back no longer cancels it. -->
+    <!-- appWaits.commit: the wait has only local work left, so Back no longer cancels it;
+         false when it had already ended. -->
     <function name="commit" />
   </interface>
   <children>

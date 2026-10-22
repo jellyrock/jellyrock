@@ -73,9 +73,19 @@ async function startOnUserPicker() {
   });
 }
 
-/** Hold each sign-in step for `ms` from now on. Set after the relaunch: it lives in app memory. */
-function holdSignIn(ms) {
-  return odc.setValue({ base: 'global', keyPath: 'rtaSignInHoldMs', value: ms });
+/**
+ * Hold a sign-in for `ms` at `stage` from now on, one of the points `rtaSignInHold` lists
+ * (`lookup`, `connected`, `token`, `session`). Set after the relaunch: it lives in app memory.
+ */
+async function holdSignIn(stage, ms) {
+  await odc.setValue({ base: 'global', keyPath: 'rtaSignInHoldAt', value: stage });
+  await odc.setValue({ base: 'global', keyPath: 'rtaSignInHoldMs', value: ms });
+}
+
+/** One section of the device registry, `{}` when it is absent. */
+async function registrySection(section) {
+  const { values } = await odc.readRegistry();
+  return values?.[section] ?? {};
 }
 
 /** The step's wait took the keys: AppWaitHost holds the focus. */
@@ -98,7 +108,7 @@ async function expectShownOn(subtype) {
 it('extra OK presses during a sign-in send one sign-in, and it lands on Home', async () => {
   await startOnUserPicker();
   await openManualLogin();
-  await holdSignIn(3000);
+  await holdSignIn('token', 3000);
   await submitSignIn();
   await waitHeld('the sign-in holds the keys');
   // The presses the bug report describes: OK again while the spinner is up. Any press while
@@ -112,7 +122,7 @@ it('extra OK presses during a sign-in send one sign-in, and it lands on Home', a
 it('Back during a password sign-in returns to Submit, and the late answer is dropped', async () => {
   await startOnUserPicker();
   await openManualLogin();
-  await holdSignIn(HOLD_MS);
+  await holdSignIn('token', HOLD_MS);
   await submitSignIn();
   await waitHeld('the sign-in holds the keys');
 
@@ -134,7 +144,7 @@ it('Back during a password sign-in returns to Submit, and the late answer is dro
 it('Back during a user pick returns to the picker, and the late answer is dropped', async () => {
   await startOnUserPicker();
   await waitFocusInside('#userRow', { label: 'a user tile focused', timeout: 8000, interval: 300 });
-  await holdSignIn(HOLD_MS);
+  await holdSignIn('token', HOLD_MS);
   await press(ecp.Key.Ok);
   await waitHeld('the user pick holds the keys');
 
@@ -150,7 +160,10 @@ it('Back during a user pick returns to the picker, and the late answer is droppe
   await expectShownOn('UserSelect');
 }, 180000);
 
-it('Back during a server connect returns to Submit, and the late answer is dropped', async () => {
+// Held after the connect reached the server and UpdateURL saved it, so Back lands where there
+// is something to undo: the saved server must be put back (loginRouter.undoServerConnect), or
+// the next cold start goes to the server the viewer canceled.
+it('Back during a server connect returns to Submit and leaves no server saved', async () => {
   const expectedServer = await seedServerSelect(session, LOCALE);
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'sign-in-waits');
@@ -167,9 +180,16 @@ it('Back during a server connect returns to Submit, and the late answer is dropp
   // OK on the saved server fills the address and moves to Submit.
   await press(ecp.Key.Ok);
   await waitFocusInside('#buttons', { label: 'Submit focused', timeout: 5000, interval: 250 });
-  await holdSignIn(HOLD_MS);
+  await holdSignIn('connected', HOLD_MS);
   await press(ecp.Key.Ok);
   await waitHeld('the connect holds the keys');
+  // Back must land after the connect saved the server, or it hits the earlier check, which has
+  // nothing to undo, and this case would pass without testing the undo.
+  await waitFor('server', (v) => typeof v === 'string' && v !== '', {
+    read: async (key) => (await registrySection(GLOBAL))[key],
+    label: 'the connect saved the server',
+    timeout: 30000,
+  });
 
   await press(ecp.Key.Back);
   await waitFocusInside('#buttons', {
@@ -181,6 +201,46 @@ it('Back during a server connect returns to Submit, and the late answer is dropp
 
   await sleep(AFTER_HOLD_MS);
   await expectShownOn('SetServerScreen');
+  expect((await registrySection(GLOBAL)).server, 'no server saved after the cancel').toBe(
+    undefined,
+  );
+  // What the viewer sees of it: a cold start lands where it would have before the attempt.
+  await hardRelaunch();
+  await waitFor('subtype()', (v) => v === 'SetServerScreen', {
+    read: getActiveVal,
+    label: 'a cold start back on the server picker',
+    timeout: 30000,
+  });
+}, 180000);
+
+// Held after user.Login set up the session and saved the token the viewer asked to keep, so
+// Back lands on the commit: the session is dropped and the token this attempt wrote removed.
+it('Back after a password sign-in reached the server leaves no session and no saved token', async () => {
+  await startOnUserPicker();
+  await openManualLogin();
+  await holdSignIn('session', HOLD_MS);
+  await submitSignIn({ save: true });
+  await waitHeld('the sign-in holds the keys');
+  // Back must land after user.Login saved the token, or it hits the earlier check and this case
+  // would pass without testing the undo.
+  await waitFor('authToken', (v) => typeof v === 'string' && v !== '', {
+    read: async (key) => (await registrySection(session.userId))[key],
+    label: 'the sign-in saved its token',
+    timeout: 30000,
+  });
+
+  await press(ecp.Key.Back);
+  await waitFocusInside('#buttons', {
+    label: 'focus back on Submit after Back',
+    timeout: 5000,
+    interval: 250,
+  });
+
+  await sleep(AFTER_HOLD_MS);
+  await expectShownOn('LoginScene');
+  expect((await registrySection(session.userId)).authToken, 'the saved token removed').toBe(
+    undefined,
+  );
 }, 180000);
 
 // A cast that names another saved server asks to switch; the switch then probes that server

@@ -137,6 +137,17 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // Nothing clears it, so it holds until the screen closes: terminal, not a pulse. Read against
   // the app source 2026-10-22, the one write site.
   '#alert.text',
+  // LoginScene's save-credentials `CheckList`: the app only reads it (`onButtonSelected`) and
+  // never writes it, so only the viewer's OK changes it, and it holds until the next OK:
+  // terminal, not a pulse. Read against the app source 2026-10-22.
+  '#onOff.checkedState',
+  // Registry keys `sign-in-waits.spec.js` reads (a custom `read`, not a node) to land Back after
+  // a sign-in step wrote them: `server` (`server.UpdateURL`) and `authToken` (`user.Login`). The
+  // step then sleeps in `rtaSignInHold` on the main thread, the only thread that writes them,
+  // so each holds for the whole hold: the window is widened in the app, as `rtaSkeletonHoldMs`
+  // does. Read against the app source 2026-10-22.
+  'server',
+  'authToken',
   // SearchScreen hides the help label while a full search runs (runFullSearch) and shows it
   // through showHelpText or onExpansionChanged; nothing else writes it, so it holds until the
   // next search or overlay move: terminal, not a pulse. Read against the app source 2026-10-19.

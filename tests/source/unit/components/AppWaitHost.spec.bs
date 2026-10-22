@@ -1,5 +1,6 @@
 import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/utils/appWaits.bs"
+import "pkg:/source/utils/signInStep.bs"
 
 namespace tests
 
@@ -316,12 +317,33 @@ namespace tests
       m.assertTrue(m.button.hasFocus())
     end function
 
-    @it("ignores a commit for a wait that has ended")
+    @it("ignores a commit for a wait that has ended, and says so")
     function _()
       signIn = appWaits.begin(LoadingKind.SESSION)
       appWaits.done(signIn)
-      appWaits.commit(signIn)
+      m.assertFalse(appWaits.commit(signIn))
       m.assertEqual(m.host.openWaits.count(), 0)
+    end function
+
+    @it("reports a commit that took, while the step is open")
+    function _()
+      signIn = appWaits.begin(LoadingKind.SESSION)
+      m.assertTrue(signInStep.commit(signIn))
+      m.assertTrue(appWaits.isOpen(signIn))
+    end function
+
+    @it("refuses a commit after Back canceled the step, so the step stops there")
+    function _()
+      signIn = appWaits.begin(LoadingKind.SESSION)
+      m.host.callFunc("cancelOnBack")
+      m.assertFalse(signInStep.commit(signIn))
+      m.assertEqual(signIn.promiseState, "rejected")
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("lets a step with no wait go on: a cold start has nothing to cancel")
+    function _()
+      m.assertTrue(signInStep.commit(invalid))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -406,13 +406,18 @@ sub onServerProbeDone(reachable as boolean)
     return
   end if
 
+  ' From here the switch tears the session down, so Back no longer cancels it. A Back that got
+  ' in after the check above is caught here, before anything says the switch is happening. The
+  ' wait ends when the new server's first screen mounts.
+  if not signInStep.commit(wait)
+    m.global.AuthManager.stashedDeepLink = invalid
+    return
+  end if
+
   ' Tell the user what's happening: the switch tears down the session and re-logs into the
   ' new server, so Home re-loading from scratch (the "everything's changing" moment) has context.
   displayToast(Substitute(translate(translationKeys.MessageSwitchingToServer), entry.name), "info")
 
-  ' From here the switch tears the session down, so Back no longer cancels it. The wait ends
-  ' when the new server's first screen mounts.
-  appWaits.commit(wait)
   m.scene.callFunc("resetRouter")
   setSetting("server", entry.originalUrl)
   SignOut(false)
