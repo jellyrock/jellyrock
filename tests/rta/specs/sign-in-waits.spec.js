@@ -30,6 +30,7 @@ import {
   getActiveVal,
   getActiveVals,
   getGlobalVal,
+  getVal,
   press,
   sleep,
   waitFor,
@@ -210,6 +211,54 @@ it('Back during a server connect returns to Submit and leaves no server saved', 
     read: getActiveVal,
     label: 'a cold start back on the server picker',
     timeout: 30000,
+  });
+}, 180000);
+
+// A re-scan (Back on the picker) keeps the screen usable, so a connect can start while it runs.
+// When the scan ends, `onScanForServersComplete` must not take the focus from the wait, or a
+// second OK reaches Submit and runs a second connect.
+it('a server re-scan ending during a connect leaves the focus on the wait', async () => {
+  const expectedServer = await seedServerSelect(session, LOCALE);
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'sign-in-waits');
+  await waitFor('subtype()', (v) => v === 'SetServerScreen', {
+    read: getActiveVal,
+    label: 'the server picker',
+    timeout: 30000,
+  });
+  await waitFocusInside('#serverPicker', {
+    label: 'the saved server focused',
+    timeout: 15000,
+    interval: 300,
+  });
+  // The scan's end replaces the picker's content node, so a title written on the current one
+  // is gone when it ends. That is the signal; nothing else the scan writes is readable.
+  const titleKeyPath = '#serverPicker.content.title';
+  await odc.setValue({ base: 'scene', keyPath: titleKeyPath, value: 'before-rescan' });
+  expect(await getVal(titleKeyPath), 'the marker took').toBe('before-rescan');
+
+  await holdSignIn('lookup', HOLD_MS * 2);
+  await press(ecp.Key.Back); // starts the re-scan, focus stays on the picker
+  await press(ecp.Key.Ok); // fills the address, moves to Submit
+  await press(ecp.Key.Ok); // Submit: the connect wait opens
+  await waitHeld('the connect holds the keys');
+
+  await waitFor('#serverPicker.content.title', (v) => v !== 'before-rescan', {
+    label: 'the re-scan ended and rebuilt the picker',
+    timeout: 20000,
+  });
+  await waitHeld('the wait still holds the keys after the scan ended');
+
+  await press(ecp.Key.Ok);
+  await press(ecp.Key.Ok);
+  const { value: waits } = await odc.getValue({ base: 'scene', keyPath: '#appWaitHost.openWaits' });
+  expect(Object.keys(waits ?? {}), 'one connect wait open').toHaveLength(1);
+
+  await press(ecp.Key.Back);
+  await waitFocusInside('#buttons', {
+    label: 'focus back on Submit after Back',
+    timeout: 5000,
+    interval: 250,
   });
 }, 180000);
 
