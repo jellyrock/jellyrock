@@ -198,7 +198,7 @@ The main thread reaches the ones in `JRScene.xml`'s interface by `callFunc`.
 
 ## Loading spinners across navigation
 
-`startLoadingSpinner()` and `stopLoadingSpinner()` (`source/utils/misc.bs`) set the scene's `isLoading` and `isRemoteDisabled`. `JRScene.onIsLoadingChanged()` shows the spinner and also sets `activeRoutedView.visible = not isRemoteDisabled`, so a blocking spinner hides the screen and stopping it shows the screen again.
+`startLoadingSpinner()` and `stopLoadingSpinner()` (`source/utils/misc.bs`) set the scene's `isLoading` and `isRemoteDisabled`. `JRScene.onIsLoadingChanged()` shows the spinner and also sets `activeRoutedView.visible = not isRemoteDisabled`, so a blocking spinner hides the screen and stopping it shows the screen again. Hiding a screen does not move its focus, so a blocking spinner (`isLoading` with `isRemoteDisabled`) also has `AppWaitHost` hold the remote focus (`holdForSpinner()`), and stopping it gives the focus back (`releaseForSpinner()`). Without the hold, a second OK would reach the hidden screen's button. A spinner started with `disableRemote = false` holds nothing.
 
 **A screen that loads data on open owns its spinner.** Callers only navigate. When a spinner goes missing, the destination screen is the first place to look.
 
@@ -225,7 +225,7 @@ The spinner is one widget, but the waits it covers are not alike, and each kind 
 | **Buffering**, not built yet | The player refilling mid-playback | The player's own handling | None: the wait is not a server answer |
 | **Session change**, not built yet | Sign in or out, switching user or server, the server scan, the boot-time font download | Blocked | None |
 
-**Plain** (`startLoadingSpinner()`) is a spinner no call site has given a kind yet: the spinner and the caller's text, nothing else. A call site moves to a kind only when it meets that kind's rules.
+**Plain** (`startLoadingSpinner()`) is a spinner no call site has given a kind yet: the spinner and the caller's text, nothing else. Started with the remote disabled, it holds the focus in `AppWaitHost`, the same way a playback start does. A call site moves to a kind only when it meets that kind's rules.
 
 - **A screen's waits live on the screen, by name.** `screenWaits.begin(m.top, "results")` opens a wait in the screen's `loadingWaits` field, and `screenWaits.finish(m.top, "results")` ends it. `JRScene.bindLoadingWaits()` follows the active view's field, so a screen's waits show only while it is the active view. They go when it closes, hide while another view covers it, and show again when it returns, still counting from when each began. A screen can end only its own waits, so a late answer for a screen the viewer has left cannot stop the spinner of the one they are on. The spinner stays until the last open wait ends. Beginning an open wait restarts it (a new query replaces the last), and finishing one that is not open does nothing, so every exit path can call it. Don't end a screen's wait with `stopLoadingSpinner()`: that is the scene's spinner.
 - **The scene's own spinner shows over a screen's waits.** `startLoadingSpinner()` and a deep-link fetch are waits the whole app is in. While one is up it owns the spinner, and the screen's waits show again when it stops. Its stop ends whatever scene spinner is up, which is why each call site moves to a named kind.

@@ -11,6 +11,8 @@ sub init()
   ' Each ends when its Promise settles (endWait).
   m.waits = {}
   m.waitCount = 0
+  ' True while a plain blocking spinner (JRScene.isRemoteDisabled) holds the focus here.
+  m.isSpinnerHolding = false
   m.limitTimer = m.top.findNode("limitTimer")
   m.limitTimer.observeField("fire", "onLimit")
 end sub
@@ -76,6 +78,22 @@ sub releaseFocus()
   if isValid(view) then view.callFunc("handleFocus", {})
 end sub
 
+' A plain blocking spinner went up (JRScene.onIsLoadingChanged, isRemoteDisabled): it hides the
+' active screen but leaves focus on it, so a second OK would reach the hidden screen's button.
+' Hold the focus here the way a playback start does. Idempotent. Only through callFunc.
+sub holdForSpinner()
+  m.isSpinnerHolding = true
+  view = m.global.activeRoutedView
+  if isValid(view) then holdFocus(view)
+end sub
+
+' The blocking spinner stopped. Give the focus back unless a playback start still hides a
+' screen (its end gives it back). Idempotent. Only through callFunc.
+sub releaseForSpinner()
+  m.isSpinnerHolding = false
+  if appWaits.hiding(m.waits).count() = 0 then releaseFocus()
+end sub
+
 ' A wait's Promise settled: drop it, show the screen it hid, give the focus back, and redraw the
 ' spinner.
 sub endWait(key as string)
@@ -85,7 +103,8 @@ sub endWait(key as string)
   if isValid(entry.hidden) and not appWaits.hides(m.waits, entry.hidden) then entry.hidden.opacity = 1
   if appWaits.hiding(m.waits).count() = 0
     setOverhangShown(true)
-    releaseFocus()
+    ' A blocking spinner still up keeps the focus; its release gives it back.
+    if not m.isSpinnerHolding then releaseFocus()
   end if
   if entry.promise.promiseState = "rejected"
     reason = ""

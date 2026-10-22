@@ -133,6 +133,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // `onQueryChanged` writes the help text back only when the viewer empties the query. Each
   // value holds until the viewer acts: terminal. Read against the app source 2026-10-19.
   '#SearchHelpText.text',
+  // `loginRouter.onCredentialsSubmitted` is the only writer (`view.alert`, a rejected sign-in).
+  // Nothing clears it, so it holds until the screen closes: terminal, not a pulse. Read against
+  // the app source 2026-10-22, the one write site.
+  '#alert.text',
   // SearchScreen hides the help label while a full search runs (runFullSearch) and shows it
   // through showHelpText or onExpansionChanged; nothing else writes it, so it holds until the
   // next search or overlay move: terminal, not a pulse. Read against the app source 2026-10-19.

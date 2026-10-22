@@ -318,7 +318,8 @@ sub onServerSubmitted()
   screenLoad.begin("preLogin")
 
   ' Disable the remote across the blocking connect (inferServerUrl waits up to 15s, ServerInfo() is
-  ' sync) so repeat Submit presses can't queue duplicate serverSubmitted intents. Matches onUserSelected.
+  ' sync). The spinner makes AppWaitHost hold the remote focus, so repeat Submit presses never
+  ' reach SetServerScreen to queue duplicate serverSubmitted intents. Matches onUserSelected.
   startLoadingSpinner()
   ' `infer` is its own fill because it is the one step here that can dominate everything else:
   ' it probes for a scheme and waits up to 15 s, against two round trips measured in tens of ms

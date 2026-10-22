@@ -150,6 +150,63 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("holdForSpinner() / releaseForSpinner() — a blocking spinner holds the remote focus")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("holds the remote focus and remembers where it was")
+    function _()
+      m.host.callFunc("holdForSpinner")
+      m.assertTrue(m.host.hasFocus())
+      m.assertTrue(m.launcher.lastFocus.isSameNode(m.button))
+    end function
+
+    @it("gives the focus back when the spinner stops")
+    function _()
+      m.host.callFunc("holdForSpinner")
+      m.host.callFunc("releaseForSpinner")
+      m.assertTrue(m.button.hasFocus())
+      m.assertFalse(m.host.hasFocus())
+    end function
+
+    @it("can be held and released twice without harm")
+    function _()
+      m.host.callFunc("holdForSpinner")
+      m.host.callFunc("holdForSpinner")
+      m.assertTrue(m.host.hasFocus())
+      m.host.callFunc("releaseForSpinner")
+      m.host.callFunc("releaseForSpinner")
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("leaves the focus alone when the screen is not in the focus chain (a dialog has it)")
+    function _()
+      m.other.setFocus(true)
+      m.host.callFunc("holdForSpinner")
+      m.assertTrue(m.other.hasFocus())
+      m.assertFalse(m.host.hasFocus())
+    end function
+
+    @it("keeps the focus held when a playback start ends while the spinner holds")
+    function _()
+      m.host.callFunc("holdForSpinner")
+      appWait = m.begin()
+      appWaits.done(appWait)
+      m.assertTrue(m.host.hasFocus())
+      m.host.callFunc("releaseForSpinner")
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("keeps the focus held when the spinner stops while a playback start still hides the screen")
+    function _()
+      m.host.callFunc("holdForSpinner")
+      appWait = m.begin()
+      m.host.callFunc("releaseForSpinner")
+      m.assertTrue(m.host.hasFocus())
+      appWaits.done(appWait)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("the overhang goes and comes back with the hidden screen")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

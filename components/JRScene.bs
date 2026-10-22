@@ -216,6 +216,14 @@ sub onIsLoadingChanged()
     group.visible = not m.top.isRemoteDisabled
   end if
 
+  ' A blocking spinner hides the screen but not its focus, so AppWaitHost holds the focus
+  ' until the spinner stops. A spinner that leaves the remote enabled holds nothing.
+  if m.top.isLoading and m.top.isRemoteDisabled
+    m.appWaitHost.callFunc("holdForSpinner")
+  else
+    m.appWaitHost.callFunc("releaseForSpinner")
+  end if
+
   if m.top.isLoading
     ' Every start is a new wait, so its stages count from here.
     m.sceneWaitStartedMs = loadingStages.nowMs()
