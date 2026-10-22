@@ -401,7 +401,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 | `lint:dictionary` | Identifier-shaped entries in `dictionary.txt`; code names belong in backticks ([code-style.md](../dev/code-style.md#when-to-add-to-dictionarytxt-instead)) |
 | `lint:issue-templates` | `.github/ISSUE_TEMPLATE/*.yml` against GitHub's issue-forms schema. GitHub drops an invalid form from the new-issue page without an error |
 | `lint:json` | jshint over JSON, which catches duplicate keys. Prettier handles the whitespace |
-| `lint:rta-capabilities`, `lint:rta-waits` | The ODC capability inventory and the per-category wait counts in [`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md) against the installed client and the suite |
+| `lint:rta-capabilities`, `lint:rta-waits` | The ODC capability inventory and the wait categories in [`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md) against the installed client and the suite |
 | `lint:ci-workflow-sync` | Every `_lint-*`, `_test-*` and `_smoke-test-*` workflow has a job in `_validate-dependencies.yml` |
 | `lint:ci-parity` | Every `lint` member is run by some workflow. Deliberate exceptions sit in `LOCAL_ONLY` with a reason. It does not prove the workflow's path filter matches what the check reads ([tech-debt](tech-debt.md#ci-path-filters-unverified)) |
 | `lint:promise-ratchet` | The count of raw `observeField("isDone", …)` pool consumers in app code can only fall; new code uses `fetchAsync` ([promises.md](../dev/promises.md)) |

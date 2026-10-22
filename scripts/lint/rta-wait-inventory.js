@@ -3,10 +3,10 @@
 //
 // WHY THIS EXISTS
 // ---------------
-// The inventory publishes a count per category, and those counts are the one part of that
-// doc nothing derived. `jellyrock-rta/wait-justified` gates the CATEGORIES (a wait may not
-// land outside them), but it never counts, so the numbers were maintained by hand against a
-// suite that changes every time a nav is added.
+// The inventory used to publish a count per category, and those counts were the one part of
+// that doc nothing derived. `jellyrock-rta/wait-justified` gates the CATEGORIES (a wait may
+// not land outside them), but it never counts, so the numbers were maintained by hand against
+// a suite that changes every time a nav is added.
 //
 // They were wrong seven times before this gate. The doc's note at the time said five, then
 // said the totals were "derived from those known deltas rather than re-counted", and that
@@ -15,16 +15,21 @@
 // wrong figure (101) for the same population. Two documents, two different wrong numbers, in
 // one branch. That is not a proofreading failure: it is what an ungated number does.
 //
-// So the number stops being prose. This is the same answer, and on purpose the same shape,
-// as `rta-capability-coverage.cjs` in this directory: markers around the block, a `--check`
-// that fails on drift, a `npm run lint:*` entry and a CI home.
+// The first answer was this gate, checking each count against the suite. It worked, but
+// every new wait then meant hand-editing a count that only the gate read. The counts left
+// the doc: a tracked count is a Live figure under `derive-dont-duplicate`, so the doc names
+// the command (`npm run lint:rta-waits -- --json`) and the checker prints today's value. What
+// the doc still owns is one row per category with its argued reason, and this gate checks
+// that: every category has a row and no row names a category that does not exist. It has the
+// same shape as `rta-capability-coverage.cjs` in this directory: markers around the block, a
+// `--check` that fails on drift, a `npm run lint:*` entry and a CI home.
 //
 // WHY IT CHECKS RATHER THAN GENERATES
 // -----------------------------------
 // The table's value is its "Why a poll, not an observer" column, which is argued prose and
 // must stay hand-written. A generator would own the whole table and either clobber that or
 // need a templating layer to preserve it. Checking costs one regex and leaves the writing
-// alone, and a red gate naming the right number is as actionable as a rewrite.
+// alone, and a red gate naming the missing row is as actionable as a rewrite.
 //
 // WHY IT DRIVES ESLINT RATHER THAN WALKING THE AST ITSELF
 // -------------------------------------------------------
@@ -40,7 +45,7 @@
 // with no internal callers on ESM by default.
 //
 // Usage:  node scripts/lint/rta-wait-inventory.js [--json]
-// Exit:   0 = inventory matches · 1 = drift (or an unclassifiable wait) · 2 = internal error
+// Exit:   0 = every category has a row · 1 = a missing or unknown row (or an unclassifiable wait) · 2 = internal error
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -148,24 +153,49 @@ async function countWaits({ cwd = process.cwd(), targets = LINT_TARGETS } = {}) 
 }
 
 /**
- * The `n` published for each row, keyed by the code span that opens its first cell.
+ * The category token that opens each row's first cell, in table order.
  *
  * Keying on an explicit token rather than on the row's prose label is what makes this
  * robust: the label is documentation and should stay free to be reworded, while the token
  * is a contract. The tokens are the rule's own category names, which the gate's messages
- * and its header already speak in, so the table now names the thing that judges it.
+ * and its header already speak in, so the table names the thing that judges it.
  */
-export function publishedCounts(block) {
-  const published = {};
+export function publishedCategories(block) {
+  const published = [];
   for (const line of block.split('\n')) {
     if (!line.trimStart().startsWith('|')) continue;
     const cells = line.split('|');
     if (cells.length < 3) continue;
-    const key = cells[1].match(/`([A-Z_]+)`/)?.[1];
-    const n = cells[2].trim();
-    if (key && /^\d+$/.test(n)) published[key] = Number(n);
+    const key = cells[1].match(/^\s*`([A-Z_]+)`/)?.[1];
+    if (key) published.push(key);
   }
   return published;
+}
+
+/**
+ * The categories that must have a row: the rule's own categories minus `UNVERIFIED` (a
+ * failure, never a category to document), plus the focus rows this checker counts itself.
+ * Derived from both sources so a new category fails the gate until its row exists.
+ */
+export const REQUIRED_CATEGORIES = [
+  ...Object.values(WAIT_CATEGORIES).filter((c) => c !== WAIT_CATEGORIES.UNVERIFIED),
+  ...Object.keys(FOCUS_ROWS),
+];
+
+/**
+ * What is wrong with the inventory: categories with no row, row tokens that are not a
+ * category, and the count of waits that fall in no category.
+ *
+ * An UNVERIFIED wait is a gate failure, not a number to publish: `lint:js` fails on it
+ * first. Reported here anyway rather than silently folded into a row: if this ever runs
+ * where the gate did not, a wait outside every category must not read as an inventory.
+ */
+export function inventoryProblems({ published, actual }) {
+  return {
+    missing: REQUIRED_CATEGORIES.filter((c) => !published.includes(c)),
+    unknown: [...new Set(published)].filter((c) => !REQUIRED_CATEGORIES.includes(c)),
+    unverified: actual[WAIT_CATEGORIES.UNVERIFIED] ?? 0,
+  };
 }
 
 /** The inventory block, or null when the markers are missing or inverted. */
@@ -192,9 +222,9 @@ async function main() {
   }
 
   const actual = await countWaits({ cwd: root });
-  const published = publishedCounts(block);
+  const published = publishedCategories(block);
 
-  if (!Object.keys(published).length) {
+  if (!published.length) {
     console.error(
       `[rta-waits] no rows parsed from the inventory block in ${DOC_REL}. Each row's first ` +
         'cell must open with its category token in backticks (e.g. `FN`).',
@@ -202,46 +232,40 @@ async function main() {
     return 2;
   }
 
-  // An UNVERIFIED wait is a gate failure, not a number to publish: `lint:js` fails on it
-  // first. Reported here anyway rather than silently folded into a row: if this ever runs
-  // where the gate did not, a wait outside every category must not read as an inventory.
-  const unverified = actual[WAIT_CATEGORIES.UNVERIFIED] ?? 0;
-
-  const rows = [...new Set([...Object.keys(published), ...Object.keys(actual)])]
-    .filter((k) => k !== WAIT_CATEGORIES.UNVERIFIED)
-    .sort();
-  const drift = rows
-    .map((key) => ({ key, published: published[key] ?? null, actual: actual[key] ?? 0 }))
-    .filter((r) => r.published !== r.actual);
+  const problems = inventoryProblems({ published, actual });
+  const failed = problems.missing.length || problems.unknown.length || problems.unverified;
 
   if (json) {
-    console.log(JSON.stringify({ actual, published, drift, unverified }, null, 2));
-    return drift.length || unverified ? 1 : 0;
+    console.log(JSON.stringify({ actual, ...problems }, null, 2));
+    return failed ? 1 : 0;
   }
 
-  if (unverified) {
+  if (problems.unverified) {
     console.error(
-      `[rta-waits] ${unverified} wait(s) fall in NO justified category. Run \`npm run lint:js\` ` +
+      `[rta-waits] ${problems.unverified} wait(s) fall in NO justified category. Run \`npm run lint:js\` ` +
         '— `jellyrock-rta/wait-justified` names them and says what to do.',
     );
   }
-  if (drift.length) {
+  if (problems.missing.length) {
     console.error(
-      `[rta-waits] ${drift.length} inventory row(s) in ${DOC_REL} disagree with the suite:\n` +
-        drift
-          .map(
-            (d) =>
-              `  - \`${d.key}\` publishes ${d.published ?? '(no row)'}, the suite has ${d.actual}`,
-          )
-          .join('\n') +
-        '\n\n  Update the `n` column to match. The counts are derived from the same' +
-        '\n  `classifyWait` the gate uses, so the suite is right and the doc is stale.',
+      `[rta-waits] ${problems.missing.length} category(ies) have no row in ${DOC_REL}:\n` +
+        problems.missing.map((k) => `  - \`${k}\``).join('\n') +
+        '\n\n  Add a row whose first cell opens with the category token in backticks.',
     );
   }
-  if (drift.length || unverified) return 1;
+  if (problems.unknown.length) {
+    console.error(
+      `[rta-waits] ${problems.unknown.length} row(s) in ${DOC_REL} name no known category:\n` +
+        problems.unknown.map((k) => `  - \`${k}\``).join('\n') +
+        `\n\n  The known categories are: ${REQUIRED_CATEGORIES.join(', ')}.`,
+    );
+  }
+  if (failed) return 1;
 
-  const total = rows.reduce((sum, k) => sum + (actual[k] ?? 0), 0);
-  console.log(`[rta-waits] OK — all ${rows.length} inventory rows match (${total} waits).`);
+  const total = REQUIRED_CATEGORIES.reduce((sum, k) => sum + (actual[k] ?? 0), 0);
+  console.log(
+    `[rta-waits] OK — all ${REQUIRED_CATEGORIES.length} categories have a row (${total} waits).`,
+  );
   return 0;
 }
 

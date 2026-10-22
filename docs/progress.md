@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-21
+last-updated: 2026-10-22
 ---
 
 # Progress
@@ -1102,10 +1102,6 @@ The shared dev device carries 4 from 2026-08-22 (`homeSection2/3/5/6`, on a NON-
 #### A killed `measure` holds the device lock until its lease expires, and the refusal does not say how to clear it. `[fid: killed-measure-holds-device-lock]` `[captured 2026-08-26]`
 
 Hit twice on 2026-08-26: an `npm run measure` running in the background was killed, its GitHub-ref lock (`device-lock/<key>`) was never released, and the next run refused with `The Roku at <host> is in use by measure (local, pid 680690)` — for a `pid` that was no longer running. The lease-expiry steal path (`stealIfExpired`) does eventually recover, so this is friction rather than a wedge. **Fix shape:** when the holder is `local` and its process is not alive, either say so in the refusal and name `npm run device:release`, or steal the ref outright — a local holder's liveness is strictly better evidence than the lease clock. **Cheaper as of 2026-09-05:** that predicate now exists as `isProcessAlive` in `scripts/lib/process-liveness.cjs` (shipped in `af38ff9c` for the `device:status` live-run fix), so this is a call plus a message, not new machinery. The refusal message quoted above has also changed since — it now prints `ROKU_IP=<host> npm run device:status` — so the remaining gap is naming `device:release` for a dead local holder. Surfaced 2026-08-26.
-
-#### The RTA wait inventory in [`tests/rta/CLAUDE.md`](../tests/rta/CLAUDE.md) is hand-maintained prose with no derivation, and it has been wrong five times. `[fid: rta-wait-inventory-hand-maintained]` `[captured 2026-09-09]`
-
-The doc carries exact figures — 93 waits, `12 + 1 + 7 + 36 + 1 = 57` `waitFor` calls, plus 21 + 15 focus waits — and the `jellyrock-rta/wait-justified` ESLint rule gates the CATEGORIES but not the COUNTS, so every number there is maintained by hand against a codebase that moves. The project's own history records five grep-derived miscounts (103-vs-101, 34-vs-31, 94-vs-104, 44-vs-47, "two hand-rolled loops" that were seven). **Concrete evidence it still cannot be reproduced, 2026-09-07:** an ad-hoc AST counter written to verify a one-category change reported 91 total against the doc's 94, because it counts bare `waitFor(` identifiers and misses the `ctx.waitFor` member calls in [`tests/rta/demos/`](../tests/rta/demos/) — so the discrepancy was a property of the counting method, and there is no canonical method to check against. Only the single category the change moved was edited, deliberately, rather than write a total from an unverified method into a load-bearing inventory. **Fix shape:** a small AST script (sibling to the existing lint rules, run via `npm run lint:js` or its own npm script) that derives the counts — handling both bare and member call forms — and fails when the doc's stated figures disagree. That turns a recurring "I re-derived it by hand and hoped" into a red/green gate, which is the same trade `rta-sleep-budgeted` already makes for the sleep table. Surfaced in `fbfe5b97`, which moved one category and documents why it moved only that one.
 
 #### The RTA suite's whole fixture is a third-party demo server, and that dependency is recorded only in a source comment. `[fid: rta-fixture-demo-server-undocumented]` `[captured 2026-09-09]`
 

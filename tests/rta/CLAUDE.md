@@ -53,22 +53,22 @@ Each category below carries its reason. `FN`, `ABS` and `ACT` are properties of 
 
 <!-- rta-wait-inventory:start -->
 
-| Category | n | Why a poll, not an observer |
-|---|---|---|
-| `FN` Function `keyPath` | 24 | ODC observes a **field**. `getChildCount()` and `subtype()` are calls, not fields, so the primitive can't apply. |
-| `ABS` Waits for absence | 1 | The node is gone, and a departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument for the dialog-dismiss sites that route through it. |
-| `ACT` `action:` retry loops | 7 | The re-press on each tick **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
-| `SETTLE` Plain field settle | 93 | The primitive could apply; it is ruled out below. |
-| `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is resolved at run time. Syntax can't classify them, so each carries a rule disable naming the reason, and the argument lives in its docblock. |
-| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 49 | ODC has no "observe global focus" primitive. Its requests offer `getFocusedNode`, `hasFocus` and `isInFocusChain`, all reads, and one observer, `onFieldChange`, which needs a node keyPath and a field name and so can't express "wherever focus now is". |
-| `FOCUS_SUBTYPE` Focus containment by subtype (`waitFocusInHomeContent`) | 7 | No primitive, as above. A separate row because the question differs: Home's content is whichever of `HomeRows` and `FavoritesRows` the selected tab put in the scene, so it can't be asked by container id at all. |
-| `FOCUS_IDENTITY` Focus identity (`waitFocused`) | 38 | No primitive, as above, and focus stays where it landed until the next key. There is no pulse to miss. |
+| Category | Why a poll, not an observer |
+|---|---|
+| `FN` Function `keyPath` | ODC observes a **field**. `getChildCount()` and `subtype()` are calls, not fields, so the primitive can't apply. |
+| `ABS` Waits for absence | The node is gone, and a departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument for the dialog-dismiss sites that route through it. |
+| `ACT` `action:` retry loops | The re-press on each tick **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
+| `SETTLE` Plain field settle | The primitive could apply; it is ruled out below. |
+| `DYN` Dynamic `keyPath` | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is resolved at run time. Syntax can't classify them, so each carries a rule disable naming the reason, and the argument lives in its docblock. |
+| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | ODC has no "observe global focus" primitive. Its requests offer `getFocusedNode`, `hasFocus` and `isInFocusChain`, all reads, and one observer, `onFieldChange`, which needs a node keyPath and a field name and so can't express "wherever focus now is". |
+| `FOCUS_SUBTYPE` Focus containment by subtype (`waitFocusInHomeContent`) | No primitive, as above. A separate row because the question differs: Home's content is whichever of `HomeRows` and `FavoritesRows` the selected tab put in the scene, so it can't be asked by container id at all. |
+| `FOCUS_IDENTITY` Focus identity (`waitFocused`) | No primitive, as above, and focus stays where it landed until the next key. There is no pulse to miss. |
 
 <!-- rta-wait-inventory:end -->
 
-*(Counts are call sites, which is what the gate sees; one call can stand for several waits. `FOCUS_IDENTITY` counts sites that call `waitFocused` directly: the calls inside `waitFocusInside` and `waitFocusInHomeContent` are those rows' implementations.)*
+*(`npm run lint:rta-waits -- --json` prints how many waits each category has today. `FOCUS_IDENTITY` counts sites that call `waitFocused` directly: the calls inside `waitFocusInside` and `waitFocusInHomeContent` are those rows' implementations.)*
 
-**Every `n` above is checked by [`npm run lint:rta-waits`](../../scripts/lint/rta-wait-inventory.js), so update a row only through that gate.** It imports `classifyWait` from the `wait-justified` rule and runs ESLint with the repo's config, so the counts and the categories can't disagree. Hand-kept counts here were wrong several times before the gate; a stale row now fails a lint instead of being believed. Add a category and the check fails until its row exists.
+**[`npm run lint:rta-waits`](../../scripts/lint/rta-wait-inventory.js) checks that every category has a row and that no row names a category that doesn't exist.** It imports `classifyWait` from the `wait-justified` rule and runs ESLint with the repo's config, so the categories can't disagree with the gate. The doc carries no counts because a hand-kept count was wrong several times before the gate. Add a category and the check fails until its row exists.
 
 ### The plain-field waits, and the gate that keeps them honest
 

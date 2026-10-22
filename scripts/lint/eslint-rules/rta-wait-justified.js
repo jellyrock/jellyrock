@@ -277,9 +277,9 @@ export const WAIT_CATEGORIES = Object.freeze({
  * call at all.
  *
  * EXPORTED, and the rule below is one of its two callers. The other is
- * `scripts/lint/rta-wait-inventory.js`, which counts the categories the wait inventory in
- * `tests/rta/CLAUDE.md` publishes. They must not be able to answer differently: a checker
- * with its own copy of this ladder would drift from the gate, and the doc would then be
+ * `scripts/lint/rta-wait-inventory.js`, which counts the waits per category and checks that
+ * the wait inventory in `tests/rta/CLAUDE.md` has a row for each. They must not be able to
+ * answer differently: a checker with its own copy of this ladder would drift from the gate, and the doc would then be
  * verified against something other than the rule it claims to describe. Same argument, and
  * the same fix, as `scripts/lib/process-liveness.cjs` and `_shared.js` in this directory.
  *
