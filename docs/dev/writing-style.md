@@ -77,7 +77,7 @@ A doc says what is true and why it matters. Measurements, reproductions and the 
 
 ### 11. American spelling, symbols not line numbers
 
-Write "behavior", "color", "license". Cite a function by name (`ApiQueueTask.forgetCaller()`), never by line number. See [`american-spelling.md`](../../.claude/rules/american-spelling.md) and [`derive-dont-duplicate.md`](../../.claude/rules/derive-dont-duplicate.md).
+Write "behavior", "color", "license". Cite a function by name (`ApiQueueTask.forgetCaller()`), never by line number. See [`writing-style.md`](../../.claude/rules/writing-style.md) and [`derive-dont-duplicate.md`](../../.claude/rules/derive-dont-duplicate.md).
 
 ## In code comments
 
