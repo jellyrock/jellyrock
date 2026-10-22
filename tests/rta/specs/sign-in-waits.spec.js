@@ -30,6 +30,7 @@ import {
   getActiveVal,
   getActiveVals,
   getGlobalVal,
+  getVal,
   press,
   sleep,
   waitFor,
@@ -233,10 +234,8 @@ it('a server re-scan ending during a connect leaves the focus on the wait', asyn
   // The scan's end replaces the picker's content node, so a title written on the current one
   // is gone when it ends. That is the signal; nothing else the scan writes is readable.
   const titleKeyPath = '#serverPicker.content.title';
-  const readTitle = async () =>
-    (await odc.getValue({ base: 'scene', keyPath: titleKeyPath })).value;
   await odc.setValue({ base: 'scene', keyPath: titleKeyPath, value: 'before-rescan' });
-  expect(await readTitle(), 'the marker took').toBe('before-rescan');
+  expect(await getVal(titleKeyPath), 'the marker took').toBe('before-rescan');
 
   await holdSignIn('lookup', HOLD_MS * 2);
   await press(ecp.Key.Back); // starts the re-scan, focus stays on the picker
@@ -245,7 +244,6 @@ it('a server re-scan ending during a connect leaves the focus on the wait', asyn
   await waitHeld('the connect holds the keys');
 
   await waitFor('#serverPicker.content.title', (v) => v !== 'before-rescan', {
-    read: readTitle,
     label: 'the re-scan ended and rebuilt the picker',
     timeout: 20000,
   });

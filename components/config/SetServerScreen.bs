@@ -210,9 +210,12 @@ sub onScanForServersComplete(event)
     focusTarget.setFocus(true)
   else if not isValid(m.top.lastFocus)
     m.top.lastFocus = focusTarget
+  else
+    focusTarget = m.top.lastFocus
   end if
-  'no servers found: show the input box outline
-  if m.servers.Count() = 0 then m.serverUrlOutline.visible = true
+  ' The input box outline shows only where the focus goes: a restore after a wait runs no key
+  ' handler to correct it.
+  m.serverUrlOutline.visible = focusTarget.isSameNode(m.serverUrlContainer)
 
   ' Paint LAST, and on purpose not at the end of init(). At the end of init() the
   ' user has prompt text, hints and a spinner: something to look at, and nothing to
