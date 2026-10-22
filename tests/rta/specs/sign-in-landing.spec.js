@@ -192,11 +192,19 @@ it('a launch with a contentId into the open sign-in screen opens the item after 
     verifyLaunch: false,
   });
   await waitToast(DEEP_LINK_DEFERRED, { label: 'deep link deferred until sign-in' });
-  await openManualLogin();
+  // Roku may hand the link to the running app, which keeps the sign-in screen, or restart the
+  // app, which starts again on the user picker (followup ecp-launch-restarts-running-app in
+  // docs/progress.md). The item must open after sign-in either way.
+  const screen = await waitFor('subtype()', (v) => v === 'LoginScene' || v === 'UserSelect', {
+    read: getActiveVal,
+    label: 'the sign-in screen or, after a restart, the user picker',
+    timeout: 30000,
+  });
+  if (screen === 'UserSelect') await openManualLogin();
   await submitSignIn();
   await waitFor('itemId', (id) => id === heroId, {
     read: getActiveVal,
-    label: 'running-app deep link -> ItemDetails(itemId) after sign-in',
+    label: 'deep link into the open sign-in screen -> ItemDetails(itemId) after sign-in',
     timeout: 30000,
   });
 }, 180000);
