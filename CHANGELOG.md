@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (sign-in) Ignore extra presses and let Back cancel a sign-in ([#1238](https://github.com/jellyrock/jellyrock/pull/1238))
 - (login) Land on Home after sign-in; drop casts while signed out ([#1237](https://github.com/jellyrock/jellyrock/pull/1237))
 - (audio) Seek in FLAC without freezing or skipping the end ([#1234](https://github.com/jellyrock/jellyrock/pull/1234))
 
