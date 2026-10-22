@@ -2,6 +2,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/signInStep.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
@@ -77,8 +78,9 @@ sub onScreenShown()
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 end sub
 
-' Submit pressed: publish the entered credentials + save flag, emit the intent.
-' The coordinator (loginRouter.onCredentialsSubmitted) runs the blocking getToken.
+' Submit pressed: publish the entered credentials + save flag, emit the intent with the step's
+' wait (signInStep). The coordinator (loginRouter.onCredentialsSubmitted) runs the blocking
+' getToken.
 sub onButtonSelected(event as object)
   buttonGroup = event.getRoSGNode()
   btn = buttonGroup.getChild(event.getData())
@@ -89,7 +91,7 @@ sub onButtonSelected(event as object)
   m.top.enteredUsername = usernameField.value
   m.top.enteredPassword = passwordField.value
   m.top.saveCredentials = (m.checkbox.checkedState[0] = true)
-  m.top.getScene().preLoginIntent = "credentialsSubmitted"
+  signInStep.press(m.top, "credentialsSubmitted")
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

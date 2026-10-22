@@ -34,15 +34,19 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, authorizeQuickConnect, quickConnectEnabled } from '../lib/jellyfin.js';
 import { seedUserSelect, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp } from '../lib/driver.js';
+import { failRequests } from '../lib/failRequests.js';
 import {
   waitFor,
+  waitFocused,
   waitDialogClosed,
   waitFocusInside,
   walkFocusInto,
   waitHome,
   hasChildren,
   getVal,
+  getActiveVals,
   press,
+  sleep,
 } from '../lib/steps.js';
 import { captureRawUI } from '../capture.js';
 
@@ -195,4 +199,35 @@ it('cancel leaves the code dialog and returns to the user picker', async (testCt
     timeout: 8000,
   });
   expect(await getVal('#userRow.content.getChildCount()')).toBeGreaterThan(0);
+}, 120000);
+
+// The code request is a sign-in step's wait (ADR 0053): Back cancels it, the picker comes back
+// with its focus, and the code that arrives afterward opens no dialog.
+it('Back while the code is requested returns to the picker, and the late code opens nothing', async (testCtx) => {
+  if (!qcAvailable) testCtx.skip('server reports Quick Connect disabled');
+  // Long enough to press into; the answer then arrives within the spec.
+  const HOLD_MS = 6000;
+
+  await focusQuickConnectButton();
+  await failRequests([{ prefix: 'quickConnectInitiate', kind: 'slow', ms: HOLD_MS, times: 1 }]);
+  await press(ecp.Key.Ok);
+  await waitFocused((f) => f?.node?.subtype === 'AppWaitHost', {
+    label: 'the code request holds the keys',
+    timeout: 8000,
+    interval: 250,
+  });
+
+  await press(ecp.Key.Back);
+  await waitFocusInside('#buttons', {
+    label: 'focus back on the picker after Back',
+    timeout: 5000,
+    interval: 250,
+  });
+  const [visible, opacity] = await getActiveVals(['visible', 'opacity']);
+  expect(visible === true && opacity === 1, 'the picker shown again').toBe(true);
+
+  // Timer window: the held code arrives, and nothing may open for it.
+  await sleep(HOLD_MS + 3000);
+  expect(await getVal('#jrDialog.id'), 'no code dialog for a canceled request').toBeUndefined();
+  await waitFocusInside('#buttons', { label: 'focus still on the picker', timeout: 2000 });
 }, 120000);

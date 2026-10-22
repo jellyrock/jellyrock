@@ -55,7 +55,7 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0041](0041-task-launch-queue.md) | A Task launch past the thread watermark waits in a queue instead of being refused | Accepted | 2026-09-23 |
 | [0042](0042-pr-title-type-places-changelog.md) | A PR title's type decides where the change lands in the changelog | Accepted | 2026-09-24 |
 | [0043](0043-pool-stops-long-reads-of-gone-callers.md) | The API pool stops a long read whose caller has gone (partially supersedes 0040) | Accepted | 2026-09-25 |
-| [0044](0044-spinner-by-kind-of-wait.md) | A loading spinner is started by the kind of wait it covers | Accepted | 2026-09-25 |
+| [0044](0044-spinner-by-kind-of-wait.md) | A loading spinner is started by the kind of wait it covers (partially superseded by 0046, 0053) | Accepted | 2026-09-25 |
 | [0045](0045-live-stream-open-handed-off-by-stage.md) | A live stream's open is handed off by stage, and waits as long as the server can | Accepted | 2026-09-26 |
 | [0046](0046-playback-start-wait-is-a-promise.md) | A playback start's wait is a Promise per start (partially supersedes 0044) | Accepted | 2026-09-27 |
 | [0047](0047-dead-code-gate.md) | Dead code is a build error, judged the way SceneGraph resolves names | Accepted | 2026-09-28 |
@@ -64,3 +64,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0050](0050-same-frame-screen-swap.md) | Screens change in one render pass: every route suspends with "show" and JellyRock drives the swap | Accepted | 2026-10-08 |
 | [0051](0051-retire-signals-backlog.md) | Upstream watches are CI issues, and the server-upgrade anchor is the newest committed fingerprint | Accepted | 2026-10-20 |
 | [0052](0052-flac-seek-server-stream.md) | A seek in a direct-played FLAC loads a FLAC stream the server starts at the target | Accepted | 2026-10-21 |
+| [0053](0053-back-cancels-every-wait.md) | Back cancels every wait; only a local commit ignores it (partially supersedes 0044) | Accepted | 2026-10-22 |

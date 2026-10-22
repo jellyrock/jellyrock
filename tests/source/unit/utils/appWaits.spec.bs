@@ -83,6 +83,11 @@ namespace tests
       m.assertEqual(appWaits.limitMs(LoadingKind.CONTENT), 0)
     end function
 
+    @it("gives a sign-in step its limit")
+    function _()
+      m.assertEqual(appWaits.limitMs(LoadingKind.SESSION), timeouts.SESSION_WAIT_LIMIT_MS)
+    end function
+
     @it("outlasts the longest live open")
     function _()
       m.assertTrue(timeouts.PLAYBACK_START_LIMIT_MS > timeouts.LIVE_OPEN_MS + timeouts.API_WAIT_MS)
@@ -140,6 +145,13 @@ namespace tests
       m.assertEqual(appWaits.leftBehind({ w1: m.start(0, m.player) }, m.other).count(), 1)
     end function
 
+    @it("leaves a sign-in step alone when the viewer reaches the next screen: that ends it")
+    function _()
+      signIn = m.start(0, m.launcher)
+      signIn.kind = LoadingKind.SESSION
+      m.assertEqual(appWaits.leftBehind({ w1: signIn }, m.other).count(), 0)
+    end function
+
     @it("tells a playing screen from any other")
     function _()
       m.assertTrue(appWaits.isPlaybackScreen(m.player))
@@ -163,6 +175,13 @@ namespace tests
       m.assertEqual(appWaits.hiding({}).count(), 0)
     end function
 
+    @it("hides the screen a playback start or a sign-in step was pressed on, and nothing else")
+    function _()
+      m.assertTrue(appWaits.hidesLaunchingScreen(LoadingKind.PLAYBACK_START))
+      m.assertTrue(appWaits.hidesLaunchingScreen(LoadingKind.SESSION))
+      m.assertFalse(appWaits.hidesLaunchingScreen(LoadingKind.CONTENT))
+    end function
+
     @it("tells whether a screen is still hidden by an open wait")
     function _()
       hidingStart = m.start(0, m.launcher)
@@ -171,6 +190,29 @@ namespace tests
       m.assertTrue(appWaits.hides(entries, m.launcher))
       m.assertFalse(appWaits.hides(entries, m.other))
       m.assertFalse(appWaits.hides({}, m.launcher))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cancellable() — the waits Back cancels")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds the waits that hide a screen and have not committed")
+    function _()
+      open = m.start(0, m.launcher)
+      open.hidden = m.launcher
+      committed = m.start(0, m.launcher)
+      committed.hidden = m.launcher
+      committed.committed = true
+      notHiding = m.start(0, m.player)
+      notHiding.hidden = invalid
+      keys = appWaits.cancellable({ w1: open, w2: committed, w3: notHiding })
+      m.assertEqual(keys.count(), 1)
+      m.assertEqual(keys[0], "w1")
+    end function
+
+    @it("has none with nothing open")
+    function _()
+      m.assertEqual(appWaits.cancellable({}).count(), 0)
     end function
 
   end class

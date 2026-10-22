@@ -2140,3 +2140,51 @@ export async function navGridScroll(ctx) {
   await press(ecp.Key.Back);
   await waitHome();
 }
+
+// ---- Sign-in (pre-login screens) ----
+
+/** From the user picker, take Manual Login and wait for the sign-in screen. */
+export async function openManualLogin() {
+  await waitFor('subtype()', (v) => v === 'UserSelect', {
+    read: getActiveVal,
+    label: 'the user picker after a signed-out start',
+    timeout: 30000,
+  });
+  await waitFocusInside('#buttons', {
+    label: 'user picker buttons focused',
+    timeout: 8000,
+    interval: 300,
+    action: walkFocusInto(ecp.Key.Down, '#buttons'),
+  });
+  // Quick Connect sits left of Manual Login only when the server enables it, so walk to the
+  // button by id rather than by index.
+  const onManualLogin = (f) => f?.node?.id === 'manualLoginButton';
+  await waitFocused(onManualLogin, {
+    label: 'Manual Login focused',
+    timeout: 8000,
+    interval: 400,
+    action: walkFocusUntil(ecp.Key.Right, onManualLogin),
+  });
+  await press(ecp.Key.Ok);
+  await waitForSignInScreen();
+}
+
+/** Wait until the sign-in screen (LoginScene) is the active view. */
+export async function waitForSignInScreen() {
+  await waitFor('subtype()', (v) => v === 'LoginScene', {
+    read: getActiveVal,
+    label: 'the sign-in screen',
+    timeout: 15000,
+  });
+}
+
+/** On the sign-in screen with the username prefilled: walk to Submit and press it once. */
+export async function submitSignIn() {
+  await waitFocusInside('#buttons', {
+    label: 'Submit focused',
+    timeout: 10000,
+    interval: 400,
+    action: walkFocusInto(ecp.Key.Down, '#buttons'),
+  });
+  await press(ecp.Key.Ok);
+}

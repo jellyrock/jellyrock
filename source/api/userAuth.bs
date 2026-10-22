@@ -4,9 +4,24 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/session.bs"
 
 function getToken(username as string, password as string)
+  rtaSignInHold()
+  #if ENABLE_RTA
+    m.global.rtaSignInCount = m.global.rtaSignInCount + 1
+  #end if
   json = GetApi().AuthenticateByName(username, password)
   return userDataFromAuthResult(json)
 end function
+
+' RTA-only: hold a sign-in step on the main thread for m.global.rtaSignInHoldMs, as a slow server
+' would, so specs can press Back while it waits. Compiled out of dev and prod builds (see
+' setGlobalNodes).
+sub rtaSignInHold()
+  #if ENABLE_RTA
+    if isValid(m.global.rtaSignInHoldMs) and m.global.rtaSignInHoldMs > 0
+      sleep(m.global.rtaSignInHoldMs)
+    end if
+  #end if
+end sub
 
 ' Turn a Jellyfin AuthenticationResult into the UserData node user.Login() expects,
 ' registering the user in `available_users` on the way.

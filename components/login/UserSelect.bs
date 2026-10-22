@@ -6,6 +6,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/quickConnect.bs"
+import "pkg:/source/utils/signInStep.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
@@ -118,8 +119,7 @@ sub onItemContentChanged()
 end sub
 
 ' A user tile was picked. Resolve its id from the rendered list (UserRow fires the
-' username), publish both, and emit the userSelected intent (was CreateUserSelectGroup
-' returning the username to LoginFlow's public-user branch).
+' username), publish both, and emit the userSelected intent with the step's wait (signInStep).
 sub onUserSelected(event as object)
   name = event.getData()
   if not isValidAndNotEmpty(name) then return
@@ -132,7 +132,7 @@ sub onUserSelected(event as object)
   end for
   m.top.selectedUserName = name
   m.top.selectedUserId = userId
-  m.top.getScene().preLoginIntent = "userSelected"
+  signInStep.press(m.top, "userSelected")
 end sub
 
 ' Manual-login / Quick Connect buttons emit intents the loginRouter coordinator handles.
@@ -184,16 +184,17 @@ sub startQuickConnect()
     return
   end if
 
-  ' A blocking spinner, briefly: the user pressed a button and nothing can happen
-  ' until the server issues a code. This used to be a SYNCHRONOUS call on the
-  ' main thread (loginRouter.onQuickConnectRequested), which froze the whole
-  ' event loop (remote input included) for up to timeouts.HTTP_MS (10s) on an
-  ' unreachable server.
-  startLoadingSpinner()
+  ' A sign-in step's wait, briefly: the user pressed a button and nothing can happen until the
+  ' server issues a code. Back cancels it and the answer is dropped (ADR 0053). This used to
+  ' be a SYNCHRONOUS call on the main thread (loginRouter.onQuickConnectRequested), which
+  ' froze the whole event loop (remote input included) for up to timeouts.HTTP_MS (10s) on
+  ' an unreachable server.
+  wait = appWaits.begin(LoadingKind.SESSION)
   m.log.info("Starting Quick Connect", "method:", req.method)
 
-  promises.chain(fetchAsync(req, "quickConnectInitiate")).then(sub(res as object)
-    stopLoadingSpinner()
+  promises.chain(fetchAsync(req, "quickConnectInitiate"), { wait: wait }).then(sub(res as object, ctx as object)
+    if signInStep.canceled(ctx.wait) then return
+    appWaits.done(ctx.wait)
     if not res.ok
       ' Only a 401 means the feature is off; a 10.11 server that is still
       ' starting answers 503, and telling that user Quick Connect is disabled
@@ -213,8 +214,9 @@ sub startQuickConnect()
     end if
 
     openQuickConnectDialog(session)
-  end sub).catch(sub(err as object)
-    stopLoadingSpinner()
+  end sub).catch(sub(err as object, ctx as object)
+    if signInStep.canceled(ctx.wait) then return
+    appWaits.done(ctx.wait)
     m.log.warn("Quick Connect initiate failed", err.reason)
     reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
   end sub)
@@ -310,9 +312,12 @@ sub exchangeQuickConnect()
     return
   end if
 
-  startLoadingSpinner()
-  promises.chain(fetchAsync(req, "quickConnectAuthenticate")).then(sub(res as object)
-    stopLoadingSpinner()
+  ' The code on the phone is spent once the exchange is sent, so a cancel leaves the user on the
+  ' picker to start again (ADR 0053).
+  wait = appWaits.begin(LoadingKind.SESSION)
+  promises.chain(fetchAsync(req, "quickConnectAuthenticate"), { wait: wait }).then(sub(res as object, ctx as object)
+    if signInStep.canceled(ctx.wait) then return
+    appWaits.done(ctx.wait)
     if not res.ok or not isValid(res.json)
       ' Almost always the secret being spent: it is consumed on first use and
       ' it expires. The exception is a 503, which is the server starting rather
@@ -339,8 +344,9 @@ sub exchangeQuickConnect()
 
     m.quickConnectAuthResult = res.json
     askToSaveQuickConnectCredentials()
-  end sub).catch(sub(err as object)
-    stopLoadingSpinner()
+  end sub).catch(sub(err as object, ctx as object)
+    if signInStep.canceled(ctx.wait) then return
+    appWaits.done(ctx.wait)
     m.log.warn("Quick Connect token exchange failed", err.reason)
     reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
   end sub)
@@ -366,7 +372,7 @@ sub onSaveQuickConnectCredentialsResult()
   m.top.saveCredentials = isValid(dialog) and isValid(dialog.result) and dialog.result.confirmed = true
   m.top.quickConnectAuth = auth
   m.log.info("Quick Connect complete", "saveCredentials:", m.top.saveCredentials)
-  m.top.getScene().preLoginIntent = "quickConnectAuthenticated"
+  signInStep.press(m.top, "quickConnectAuthenticated")
 end sub
 
 ' The user dismissed the code dialog. The only outcome it can produce on its own.

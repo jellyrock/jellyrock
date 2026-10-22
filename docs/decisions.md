@@ -2178,14 +2178,6 @@ After sign-in the app opens a deep link that arrived while signed out (`AuthMana
 
 Ruled out: clearing the stash at each sign-in attempt, because a stray that arrives while on the sign-in screen still replays; and keeping a late cast queued, because it opens the previous session's item for whoever signs in next. Deep links are unaffected: cold start, `roInputEvent`, a server switch and the companion plugin's ECP `/launch` wake (ADR 0023) all use `stashedDeepLink`. Recheck if the app ever signs a user out mid-session (on a 401, say): resuming where they were then needs its own intent, captured at that point, not a guard stash.
 
-## decision-id: blocking-spinner-holds-focus
-
-**date**: 2026-10-22
-**status**: accepted
-**related-files**: `components/AppWaitHost.bs`, `components/JRScene.bs`
-
-A blocking spinner (`startLoadingSpinner()` with the remote disabled) makes `AppWaitHost` hold the remote focus, through `holdForSpinner` and `releaseForSpinner` from `JRScene.onIsLoadingChanged`, so `AppWaitHost` is the one owner of every focus hold. The spinner hid the screen but left focus on it, and `isRemoteDisabled` is read only by `JRScene.onKeyEvent`, after the focused node has the key. So every extra OK on Submit ran the whole login again (two presses, two logins, on a Stick 4K, 2026-10-22). Ruled out: each pre-login screen ignoring its own repeat Submit, which leaves every other blocking spinner open and still lets arrows move a hidden screen; and the coordinator dropping a sign-in once signed in, which stops only the second login.
-
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

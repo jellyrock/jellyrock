@@ -1,18 +1,18 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/roku_modules/promises/promises.brs"
 import "pkg:/source/utils/appWaits.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.log = new log.Logger("AppWaitHost")
   m.top.focusable = true
-  ' The open waits: key -> { kind, label, startedMs, deadlineMs, promise, launchedFrom, hidden }.
+  ' The open waits: key -> { kind, label, startedMs, deadlineMs, promise, launchedFrom, hidden,
+  ' committed }.
   ' Each ends when its Promise settles (endWait).
   m.waits = {}
   m.waitCount = 0
-  ' True while a plain blocking spinner (JRScene.isRemoteDisabled) holds the focus here.
-  m.isSpinnerHolding = false
   m.limitTimer = m.top.findNode("limitTimer")
   m.limitTimer.observeField("fire", "onLimit")
 end sub
@@ -39,7 +39,7 @@ function begin(kind as string, label as string) as object
   m.waitCount++
   key = "w" + m.waitCount.toStr()
   launchedFrom = m.global.activeRoutedView
-  entry = { kind: kind, label: label, startedMs: now, deadlineMs: now + appWaits.limitMs(kind), promise: promise, launchedFrom: launchedFrom, hidden: invalid }
+  entry = { kind: kind, label: label, startedMs: now, deadlineMs: now + appWaits.limitMs(kind), promise: promise, launchedFrom: launchedFrom, hidden: invalid, committed: false }
   if appWaits.hidesLaunchingScreen(kind) and isValid(launchedFrom) and not appWaits.isPlaybackScreen(launchedFrom)
     ' opacity, not visible: the router owns a screen's `visible` (it hides one it suspends and
     ' shows it on return), so hiding by opacity can never undo, or be undone by, the router.
@@ -62,36 +62,49 @@ end function
 ' A hidden screen must take no keys: a second OK would start a second launch, and arrows would
 ' move a focus nobody can see. So remember where its focus was, the way the router's suspend
 ' does (JRScreen.saveLastFocus), and hold the focus here until no wait hides a screen
-' (releaseFocus). A screen outside the focus chain (a dialog has it) is left alone.
+' (releaseFocus). A wait pressed from a dialog finds the dialog still holding the focus, and
+' closing it would hand the focus back into the hidden screen, so the dialog hands it here
+' instead. A screen outside the focus chain for any other reason is left alone.
 sub holdFocus(screen as object)
-  if not screen.isInFocusChain() then return
-  screen.callFunc("saveLastFocus")
-  m.top.setFocus(true)
+  if screen.isInFocusChain()
+    screen.callFunc("saveLastFocus")
+    m.top.setFocus(true)
+    return
+  end if
+  dialog = openOverlayDialog()
+  if not isValid(dialog) or not dialog.hasField("returnFocusTo") then return
+  target = dialog.returnFocusTo
+  if not isInside(target, screen) then return
+  screen.lastFocus = target
+  dialog.returnFocusTo = m.top
 end sub
+
+' Whether `node` is `screen` or one of its descendants.
+function isInside(node as dynamic, screen as object) as boolean
+  while isValid(node)
+    if node.isSameNode(screen) then return true
+    node = node.getParent()
+  end while
+  return false
+end function
 
 ' No wait hides a screen any more. If the focus is still held here, the active screen takes it
 ' back and restores its own (the router's handleFocus, which restores lastFocus). A player that mounted, or a
-' screen the viewer went to, has taken it already.
+' screen the viewer went to, has taken it already. A dialog that opened while the focus was
+' held here (a wait ended by an answer that opens one) would give it back here when it closes,
+' so it gives it back to the screen's saved focus instead.
 sub releaseFocus()
-  if not m.top.hasFocus() then return
   view = m.global.activeRoutedView
+  if not m.top.hasFocus()
+    dialog = openOverlayDialog()
+    if isValid(view) and isValid(dialog) and dialog.hasField("returnFocusTo") and isValid(dialog.returnFocusTo) and dialog.returnFocusTo.isSameNode(m.top)
+      target = view.lastFocus
+      if not isValid(target) then target = view
+      dialog.returnFocusTo = target
+    end if
+    return
+  end if
   if isValid(view) then view.callFunc("handleFocus", {})
-end sub
-
-' A plain blocking spinner went up (JRScene.onIsLoadingChanged, isRemoteDisabled): it hides the
-' active screen but leaves focus on it, so a second OK would reach the hidden screen's button.
-' Hold the focus here the way a playback start does. Idempotent. Only through callFunc.
-sub holdForSpinner()
-  m.isSpinnerHolding = true
-  view = m.global.activeRoutedView
-  if isValid(view) then holdFocus(view)
-end sub
-
-' The blocking spinner stopped. Give the focus back unless a playback start still hides a
-' screen (its end gives it back). Idempotent. Only through callFunc.
-sub releaseForSpinner()
-  m.isSpinnerHolding = false
-  if appWaits.hiding(m.waits).count() = 0 then releaseFocus()
 end sub
 
 ' A wait's Promise settled: drop it, show the screen it hid, give the focus back, and redraw the
@@ -103,8 +116,7 @@ sub endWait(key as string)
   if isValid(entry.hidden) and not appWaits.hides(m.waits, entry.hidden) then entry.hidden.opacity = 1
   if appWaits.hiding(m.waits).count() = 0
     setOverhangShown(true)
-    ' A blocking spinner still up keeps the focus; its release gives it back.
-    if not m.isSpinnerHolding then releaseFocus()
+    releaseFocus()
   end if
   if entry.promise.promiseState = "rejected"
     reason = ""
@@ -131,18 +143,30 @@ sub setOverhangShown(shown as boolean)
 end sub
 
 ' Back reached JRScene's arbiter with no navigation in flight: cancel every wait that hides the
-' screen it was started from, so the viewer is back where they pressed Play: the same place
-' Back from the player returns them to.
+' screen it was started from and has not committed, so the viewer is back where they pressed:
+' the same place Back from the player returns them to. A committed wait has only local work
+' left and ignores Back (ADR 0053).
 '
-' @return {boolean} whether there was a wait to cancel
+' @return {boolean} whether a wait hides a screen, so this Back is spent here
 function cancelOnBack() as boolean
-  keys = appWaits.hiding(m.waits)
-  for each key in keys
+  for each key in appWaits.cancellable(m.waits)
     entry = m.waits[key]
     if isValid(entry) then appWaits.fail(entry.promise, "cancelled with Back")
   end for
-  return keys.count() > 0
+  return appWaits.hiding(m.waits).count() > 0
 end function
+
+' The wait `promise` has committed (appWaits.commit): Back no longer cancels it. Only through
+' callFunc.
+sub commit(promise as object)
+  for each key in m.waits
+    entry = m.waits[key]
+    if entry.promise.isSameNode(promise)
+      entry.committed = true
+      return
+    end if
+  end for
+end sub
 
 ' The viewer reached `newView`: end the playback starts they have left (appWaits.leftBehind).
 sub failLeftBehind(newView as dynamic)

@@ -8,6 +8,8 @@
     <!-- Submit payload read by the loginRouter coordinator (via getActiveView) when this view
          emits the "serverSubmitted" intent. -->
     <field id="enteredUrl" type="string" />
+    <!-- The wait of the sign-in step pressed here (signInStep.press); loginRouter takes it. -->
+    <field id="pendingWait" type="node" />
   </interface>
 
   <children>

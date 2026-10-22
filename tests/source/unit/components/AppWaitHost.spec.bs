@@ -99,6 +99,61 @@ namespace tests
       m.assertTrue(m.other.hasFocus())
     end function
 
+    @it("takes the focus a closing dialog would give back to the screen it hides (pressed from a dialog)")
+    function _()
+      ' Stands in for an overlay dialog: found by its id, closed by focusing returnFocusTo.
+      dialog = CreateObject("roSGNode", "Group")
+      dialog.id = "jrDialog"
+      dialog.focusable = true
+      dialog.addField("returnFocusTo", "node", false)
+      dialog.returnFocusTo = m.button
+      m.mountedIn.appendChild(dialog)
+      dialog.setFocus(true)
+
+      appWait = m.begin()
+      m.assertTrue(dialog.returnFocusTo.isSameNode(m.host))
+      m.assertTrue(m.launcher.lastFocus.isSameNode(m.button))
+
+      m.mountedIn.removeChild(dialog)
+      dialog.returnFocusTo.setFocus(true)
+      m.assertTrue(m.host.hasFocus())
+      appWaits.done(appWait)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("hands a dialog opened while it held the focus the screen's focus to give back (Quick Connect's code)")
+    function _()
+      appWait = m.begin()
+      ' A dialog opened now records the host as where focus was.
+      dialog = CreateObject("roSGNode", "Group")
+      dialog.id = "jrDialog"
+      dialog.focusable = true
+      dialog.addField("returnFocusTo", "node", false)
+      dialog.returnFocusTo = m.host
+      m.mountedIn.appendChild(dialog)
+      dialog.setFocus(true)
+
+      appWaits.done(appWait)
+      m.assertTrue(dialog.returnFocusTo.isSameNode(m.button))
+      m.assertTrue(dialog.hasFocus())
+      m.mountedIn.removeChild(dialog)
+    end function
+
+    @it("leaves a dialog alone when it gives the focus back somewhere else")
+    function _()
+      dialog = CreateObject("roSGNode", "Group")
+      dialog.id = "jrDialog"
+      dialog.focusable = true
+      dialog.addField("returnFocusTo", "node", false)
+      dialog.returnFocusTo = m.other
+      m.mountedIn.appendChild(dialog)
+      dialog.setFocus(true)
+
+      m.begin()
+      m.assertTrue(dialog.returnFocusTo.isSameNode(m.other))
+      m.mountedIn.removeChild(dialog)
+    end function
+
     @it("is what appWaits.begin opens")
     function _()
       appWait = appWaits.begin(LoadingKind.PLAYBACK_START)
@@ -147,63 +202,6 @@ namespace tests
       appWaits.done(appWait)
       m.assertTrue(m.player.hasFocus())
       m.assertTrue(m.launcher.opacity = 1)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("holdForSpinner() / releaseForSpinner() — a blocking spinner holds the remote focus")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("holds the remote focus and remembers where it was")
-    function _()
-      m.host.callFunc("holdForSpinner")
-      m.assertTrue(m.host.hasFocus())
-      m.assertTrue(m.launcher.lastFocus.isSameNode(m.button))
-    end function
-
-    @it("gives the focus back when the spinner stops")
-    function _()
-      m.host.callFunc("holdForSpinner")
-      m.host.callFunc("releaseForSpinner")
-      m.assertTrue(m.button.hasFocus())
-      m.assertFalse(m.host.hasFocus())
-    end function
-
-    @it("can be held and released twice without harm")
-    function _()
-      m.host.callFunc("holdForSpinner")
-      m.host.callFunc("holdForSpinner")
-      m.assertTrue(m.host.hasFocus())
-      m.host.callFunc("releaseForSpinner")
-      m.host.callFunc("releaseForSpinner")
-      m.assertTrue(m.button.hasFocus())
-    end function
-
-    @it("leaves the focus alone when the screen is not in the focus chain (a dialog has it)")
-    function _()
-      m.other.setFocus(true)
-      m.host.callFunc("holdForSpinner")
-      m.assertTrue(m.other.hasFocus())
-      m.assertFalse(m.host.hasFocus())
-    end function
-
-    @it("keeps the focus held when a playback start ends while the spinner holds")
-    function _()
-      m.host.callFunc("holdForSpinner")
-      appWait = m.begin()
-      appWaits.done(appWait)
-      m.assertTrue(m.host.hasFocus())
-      m.host.callFunc("releaseForSpinner")
-      m.assertTrue(m.button.hasFocus())
-    end function
-
-    @it("keeps the focus held when the spinner stops while a playback start still hides the screen")
-    function _()
-      m.host.callFunc("holdForSpinner")
-      appWait = m.begin()
-      m.host.callFunc("releaseForSpinner")
-      m.assertTrue(m.host.hasFocus())
-      appWaits.done(appWait)
-      m.assertTrue(m.button.hasFocus())
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -275,6 +273,55 @@ namespace tests
       appWait = m.begin("Ch 5")
       m.assertFalse(m.host.callFunc("cancelOnBack"))
       m.assertTrue(appWaits.isOpen(appWait))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a sign-in step (LoadingKind.SESSION) — Back cancels it until it commits")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hides the screen it was pressed on and holds the remote focus")
+    function _()
+      m.host.callFunc("begin", LoadingKind.SESSION, "")
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertTrue(m.host.hasFocus())
+      m.assertTrue(m.launcher.lastFocus.isSameNode(m.button))
+    end function
+
+    @it("is canceled by Back, and the screen comes back with its focus")
+    function _()
+      signIn = appWaits.begin(LoadingKind.SESSION)
+      m.assertTrue(m.host.callFunc("cancelOnBack"))
+      m.assertEqual(signIn.promiseState, "rejected")
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("survives Back once committed, still hiding the screen and holding the focus")
+    function _()
+      signIn = appWaits.begin(LoadingKind.SESSION)
+      appWaits.commit(signIn)
+      ' True: Back is spent here, so the scene's arbiter does not offer to exit.
+      m.assertTrue(m.host.callFunc("cancelOnBack"))
+      m.assertTrue(appWaits.isOpen(signIn))
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertTrue(m.host.hasFocus())
+    end function
+
+    @it("gives the focus back when done, committed or not")
+    function _()
+      signIn = appWaits.begin(LoadingKind.SESSION)
+      appWaits.commit(signIn)
+      appWaits.done(signIn)
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("ignores a commit for a wait that has ended")
+    function _()
+      signIn = appWaits.begin(LoadingKind.SESSION)
+      appWaits.done(signIn)
+      appWaits.commit(signIn)
+      m.assertEqual(m.host.openWaits.count(), 0)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

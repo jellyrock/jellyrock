@@ -231,16 +231,19 @@ end function
 ' this, a changed global sign-in language would only apply after a full app restart, and
 ' the sign-in screens would render in the signed-out user's language rather than the
 ' device-wide default (isPostLogin defaults false, which selects the pre-login cascade).
-sub reenterLogin()
+' signInWait: a server switch's committed wait (replayRoute.onServerProbeDone), or invalid. It ends
+' when the first screen of the new login flow mounts.
+sub reenterLogin(signInWait = invalid as dynamic)
   loadTranslations(resolveTranslationLocale())
-  enterDecision(beginLogin())
+  enterDecision(beginLogin(), signInWait)
 end sub
 
 ' Bring the router up on (or navigate it to) the route the decision names. Shared by
 ' cold start, session reset, and the post-server-connect step.
-' clearSpinner: pass true when navigating here with a blocking spinner up, so it stays up across the
-' async nav and clears at NavigationEnd instead of being stopped early (which re-shows the outgoing
-' view for a frame). The success branch defers to finishLogin, which carries the spinner to Home.
+' signInWait: the server connect's wait (signInStep), or invalid. It stays up across the async nav
+' and ends at NavigationEnd, so the screen it hides is not shown again for a frame on the way out
+' (the #677 flash). The success branch commits it and hands it to finishLogin, which carries it to
+' Home.
 '
 ' ## What `paint` means for `preLogin`, which is not a screen
 '
@@ -261,17 +264,18 @@ end sub
 ' The destination is already legible from the fills (a run carrying `users` built the picker),
 ' and one run per entry point is what keeps two loads that route to the same place from
 ' merging into one population.
-sub enterDecision(decision as object, clearSpinner = false as boolean, variant = "start" as string)
+sub enterDecision(decision as object, signInWait = invalid as dynamic, variant = "start" as string)
   screenLoad.paint(variant)
 
   if decision.status = "success"
-    finishLogin()
+    appWaits.commit(signInWait)
+    finishLogin(signInWait)
   else if decision.status = "server"
-    routerNav("/server", {}, clearSpinner)
+    routerNav("/server", {}, signInWait)
   else if decision.status = "users"
-    routerNav("/users", { users: decision.users }, clearSpinner)
+    routerNav("/users", { users: decision.users }, signInWait)
   else if decision.status = "login"
-    routerNav("/login", { username: decision.username }, clearSpinner)
+    routerNav("/login", { username: decision.username }, signInWait)
   end if
 end sub
 
@@ -301,12 +305,16 @@ end sub
 sub onServerSubmitted()
   view = getActiveView()
   if not isValid(view) then return
+  wait = signInStep.take(view)
   originalUrl = view.enteredUrl
   ' enteredUrl reads invalid when the active view isn't SetServerScreen: a stale preLoginIntent that
   ' drained after activeRoutedView advanced (for example, a duplicate submit landing post-navigation). Ignore
   ' it: passing invalid to inferServerUrl(as string) crashes, and coercing to "" would run a bogus
   ' connect whose failure path signs the user out.
-  if not isValid(originalUrl) then return
+  if not isValid(originalUrl) or not isValid(wait)
+    appWaits.fail(wait, "stale intent")
+    return
+  end if
 
   ' previousServerUrl: the canonical URL before this connect attempt. When a successful
   ' connect lands on a different canonical URL, the saved username and password belong
@@ -317,16 +325,18 @@ sub onServerSubmitted()
   ' own run, told apart by `variant`, exactly as `search` separates its open from its query.
   screenLoad.begin("preLogin")
 
-  ' Disable the remote across the blocking connect (inferServerUrl waits up to 15s, ServerInfo() is
-  ' sync). The spinner makes AppWaitHost hold the remote focus, so repeat Submit presses never
-  ' reach SetServerScreen to queue duplicate serverSubmitted intents. Matches onUserSelected.
-  startLoadingSpinner()
+  ' The blocking connect (inferServerUrl waits up to 15s, ServerInfo() is sync) runs under the wait
+  ' the Submit press opened: repeat presses reach AppWaitHost, and Back cancels it, which each
+  ' step below checks once its call returns (ADR 0053).
   ' `infer` is its own fill because it is the one step here that can dominate everything else:
   ' it probes for a scheme and waits up to 15 s, against two round trips measured in tens of ms
   ' on a LAN. Folded into the connect it would be an outlier nobody could attribute.
   screenLoad.pending("infer")
+  rtaSignInHold()
   serverUrl = inferServerUrl(originalUrl)
   screenLoad.resolve("infer")
+  ' Nothing has changed yet, so a cancel here has nothing to undo.
+  if signInStep.canceled(wait) then return
   screenLoad.pending("serverConnect")
   isConnected = server.UpdateURL(serverUrl, originalUrl)
   screenLoad.resolve("serverConnect")
@@ -342,34 +352,48 @@ sub onServerSubmitted()
     end if
   end if
 
+  ' Canceled: undo the connect the way a failed one is undone, without saying it failed.
+  if signInStep.canceled(wait)
+    SignOut(false)
+    return
+  end if
+
   if isConnected = false or not isValid(serverInfoResult) or (isValid(serverInfoResult.Error) and serverInfoResult.Error)
-    ' Failure stays here: stop the spinner so SetServerScreen re-shows with the error.
+    ' Failure stays here: end the wait so SetServerScreen re-shows with the error.
     ' Not painted, on purpose: a connect that failed is not a load, so the run stays open and
     ' emits nothing rather than publishing a time for something that did not happen. The next
     ' attempt's `begin` restarts it.
-    stopLoadingSpinner()
+    appWaits.fail(wait, "server not found")
     print "Server not found, is it online?"
     view.errorMessage = translate(translationKeys.MessageServerNotFoundIsItOnline)
     SignOut(false)
     return
   end if
 
-  ' Connected: persist, resolve the user step, navigate. Keep the spinner up across the async nav
-  ' (clearSpinner=true, cleared at NavigationEnd) so the hidden SetServerScreen isn't re-shown for a
-  ' frame before the destination mounts.
+  ' Connected: persist, resolve the user step, navigate. The wait stays up across the async nav
+  ' and ends at NavigationEnd, so the hidden SetServerScreen isn't re-shown for a frame before the
+  ' destination mounts.
   SaveServerList()
-  enterDecision(resolveUser(), true, "connect")
+  decision = resolveUser()
+  if signInStep.canceled(wait)
+    SignOut(false)
+    return
+  end if
+  enterDecision(decision, wait, "connect")
 end sub
 
 ' A public/saved user was picked in UserSelect.
 sub onUserSelected()
   view = getActiveView()
   if not isValid(view) then return
+  wait = signInStep.take(view)
   userSelected = view.selectedUserName
   userId = view.selectedUserId
-  if not isValidAndNotEmpty(userSelected) then return
+  if not isValidAndNotEmpty(userSelected) or not isValid(wait)
+    appWaits.fail(wait, "stale intent")
+    return
+  end if
 
-  startLoadingSpinner()
   localUser = m.global.user
   localUser.name = userSelected
   localUser.id = userId
@@ -378,8 +402,15 @@ sub onUserSelected()
   myToken = getUserSetting("authToken")
   if isValid(myToken)
     print "Auth token found in registry for selected user"
-    if validateSavedToken(localUser, myToken)
-      finishLogin()
+    isTokenValid = validateSavedToken(localUser, myToken)
+    ' Canceled: drop the speculative user this attempt set up (user.Logout is local).
+    if signInStep.canceled(wait)
+      user.Logout()
+      return
+    end if
+    if isTokenValid
+      appWaits.commit(wait)
+      finishLogin(wait)
       return
     end if
     print "Auth token is no longer valid - deleting token"
@@ -393,19 +424,30 @@ sub onUserSelected()
   ' Try a no-password login.
   print "Attempting to login with no password"
   userData = getToken(userSelected, "")
+  if signInStep.canceled(wait)
+    user.Logout()
+    return
+  end if
   if isValid(userData)
     print "login success!"
     user.Login(userData, true)
-    finishLogin()
+    ' user.Login loads the user's preferences from the server, so Back may land here too. A
+    ' token the server issued goes unused.
+    if signInStep.canceled(wait)
+      SignOut()
+      return
+    end if
+    appWaits.commit(wait)
+    finishLogin(wait)
     return
   end if
 
-  ' Password required: go to manual sign-in with the username prefilled. Keep the blocking spinner
-  ' up across the async nav and clear it when LoginScene mounts (clearSpinner=true). Stopping it
-  ' here first re-shows the UserSelect row for a frame before LoginScene mounts, the same #677
-  ' flash class as the login -> Home path.
+  ' Password required: go to manual sign-in with the username prefilled. The wait stays up
+  ' across the async nav and ends when LoginScene mounts. Ending it here first re-shows the
+  ' UserSelect row for a frame before LoginScene mounts, the same #677 flash class as the
+  ' login -> Home path.
   print "Auth failed. Password required"
-  routerNav("/login", { username: userSelected }, true)
+  routerNav("/login", { username: userSelected }, wait)
 end sub
 
 ' Back from UserSelect: forget the saved server and return to server select.
@@ -429,58 +471,77 @@ end sub
 sub onQuickConnectAuthenticated()
   view = getActiveView()
   if not isValid(view) then return
+  wait = signInStep.take(view)
 
   auth = view.quickConnectAuth
   saveCreds = view.saveCredentials
   ' Stale-intent guard (as in onCredentialsSubmitted): if the active view is no
   ' longer UserSelect when this drains, the field reads invalid. Ignore it.
-  if not isValid(auth) then return
+  if not isValid(auth) or not isValid(wait)
+    appWaits.fail(wait, "stale intent")
+    return
+  end if
 
-  startLoadingSpinner()
   activeUser = userDataFromAuthResult(auth)
   if not isValid(activeUser)
-    stopLoadingSpinner()
+    appWaits.fail(wait, "no usable session")
     print "Quick Connect returned no usable session"
     return
   end if
 
   user.Login(activeUser, saveCreds)
+  ' user.Login loads the user's preferences from the server, so Back may land here. The session
+  ' Quick Connect opened goes unused, and anything it saved is removed.
+  if signInStep.canceled(wait)
+    SignOut()
+    return
+  end if
+  appWaits.commit(wait)
   ' user.Login persists authToken + primaryImageTag when saveCredentials is set,
   ' but not the username: the same gap onCredentialsSubmitted fills by hand, and
   ' the saved-user picker reads it (getSavedUsers).
   if saveCreds then setUserSetting("username", activeUser.username)
-  finishLogin()
+  finishLogin(wait)
 end sub
 
 ' Credentials submitted from LoginScene.
 sub onCredentialsSubmitted()
   view = getActiveView()
   if not isValid(view) then return
+  wait = signInStep.take(view)
   username = view.enteredUsername
   password = view.enteredPassword
   saveCreds = view.saveCredentials
   ' Stale-intent guard (as in onServerSubmitted): if the active view isn't LoginScene when this drains,
   ' these fields read invalid and getToken(as string) would crash. Ignore the superseded intent.
-  if not isValid(username) or not isValid(password) then return
+  if not isValid(username) or not isValid(password) or not isValid(wait)
+    appWaits.fail(wait, "stale intent")
+    return
+  end if
 
-  startLoadingSpinner()
   activeUser = getToken(username, password)
+  ' Canceled while the server answered: a token it issued goes unused (ADR 0053).
+  if signInStep.canceled(wait) then return
   if isValid(activeUser)
+    user.Login(activeUser, saveCreds = true)
+    ' user.Login loads the user's preferences from the server, so Back may land here too.
+    if signInStep.canceled(wait)
+      SignOut()
+      return
+    end if
+    appWaits.commit(wait)
     if saveCreds = true
-      user.Login(activeUser, true)
       setUserSetting("authToken", activeUser.token)
       setUserSetting("username", username)
       if isValidAndNotEmpty(activeUser.json.PrimaryImageTag)
         setUserSetting("primaryImageTag", activeUser.json.PrimaryImageTag)
       end if
-    else
-      user.Login(activeUser)
     end if
-    finishLogin()
+    finishLogin(wait)
     return
   end if
 
-  stopLoadingSpinner()
+  appWaits.fail(wait, "sign-in refused")
   print "Login attempt failed..."
   view.alert = translate(translationKeys.ErrorLoginAttemptFailed)
 end sub
@@ -521,7 +582,9 @@ end sub
 ' it. See user.IsAuthenticated() for why this reads `isLoaded` rather than the
 ' `id`/`authToken` rule JellyfinUser.xml states (those are written speculatively
 ' before auth, so they answer "yes" after a failed attempt).
-sub finishLogin()
+' signInWait: the committed wait of the sign-in step that got here (signInStep), or invalid on a
+' cold start. It stays up, holding the keys, until Home mounts (replayAfterLogin).
+sub finishLogin(signInWait = invalid as dynamic)
   if not user.IsAuthenticated()
     ' Not reachable from a healthy server (it needs a 200 whose AccessToken is
     ' present but whose User carries no usable Id), so this is the honest report
@@ -529,6 +592,7 @@ sub finishLogin()
     ' silently returning here leaves the blocking login spinner up forever.
     print "Login did not establish a session - returning to the picker"
     stopLoadingSpinner()
+    appWaits.fail(signInWait, "no session")
     ' Clears the SPECULATIVE id/authToken this attempt left on the node. Without
     ' it the next screen still reads a half-populated user, which is the state
     ' this whole guard exists to stop anyone acting on. Purely local: Logout
@@ -557,13 +621,15 @@ sub finishLogin()
     return
   end if
 
+  ' Read by replayAfterLogin, which ends it when Home mounts. It may wait for the fallback font
+  ' download first (loadHomeScreen), which is why it is kept here rather than passed along.
+  m.signInWait = signInWait
   initializeFallbackFont()
   loadHomeScreen()
 end sub
 
-' Thin main-thread to render-thread navigation bridge. clearSpinner (login paths only) keeps a
-' blocking login spinner up across the async nav and clears it when the destination view mounts
-' (see JRScene.navigateThenFocus).
-sub routerNav(routePath as string, context as object, clearSpinner = false as boolean)
-  m.scene.callFunc("routerNavigate", routePath, context, clearSpinner)
+' Thin main-thread to render-thread navigation bridge. signInWait (sign-in steps only) stays up
+' across the async nav and ends when the destination view mounts (see JRScene.navigateThenFocus).
+sub routerNav(routePath as string, context as object, signInWait = invalid as dynamic)
+  m.scene.callFunc("routerNavigate", routePath, context, false, signInWait)
 end sub

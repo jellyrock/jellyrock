@@ -30,16 +30,13 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero } from '../lib/jellyfin.js';
 import { seedUserSelect, assertSeedTookEffect, GLOBAL } from '../lib/seed.js';
 import { hardRelaunch, ecp, odc } from '../lib/driver.js';
+import { openManualLogin, submitSignIn, waitForSignInScreen } from '../lib/nav.js';
 import {
   waitFor,
-  waitFocused,
   waitFocusInside,
-  walkFocusInto,
-  walkFocusUntil,
   waitHome,
   waitToast,
   getActiveVal,
-  press,
   sleep,
 } from '../lib/steps.js';
 
@@ -75,51 +72,6 @@ async function startSignedOut({ launchParams, password = null } = {}) {
   });
   await hardRelaunch({ params: launchParams });
   await assertSeedTookEffect(expectedServer, 'sign-in-landing');
-}
-
-/** From the user picker, take Manual Login and wait for the sign-in screen. */
-async function openManualLogin() {
-  await waitFor('subtype()', (v) => v === 'UserSelect', {
-    read: getActiveVal,
-    label: 'the user picker after a signed-out start',
-    timeout: 30000,
-  });
-  await waitFocusInside('#buttons', {
-    label: 'user picker buttons focused',
-    timeout: 8000,
-    interval: 300,
-    action: walkFocusInto(ecp.Key.Down, '#buttons'),
-  });
-  // Quick Connect sits left of Manual Login only when the server enables it, so walk to the
-  // button by id rather than by index.
-  const onManualLogin = (f) => f?.node?.id === 'manualLoginButton';
-  await waitFocused(onManualLogin, {
-    label: 'Manual Login focused',
-    timeout: 8000,
-    interval: 400,
-    action: walkFocusUntil(ecp.Key.Right, onManualLogin),
-  });
-  await press(ecp.Key.Ok);
-  await waitForSignInScreen();
-}
-
-async function waitForSignInScreen() {
-  await waitFor('subtype()', (v) => v === 'LoginScene', {
-    read: getActiveVal,
-    label: 'the sign-in screen',
-    timeout: 15000,
-  });
-}
-
-/** On the sign-in screen with the username prefilled: walk to Submit and press it once. */
-async function submitSignIn() {
-  await waitFocusInside('#buttons', {
-    label: 'Submit focused',
-    timeout: 10000,
-    interval: 400,
-    action: walkFocusInto(ecp.Key.Down, '#buttons'),
-  });
-  await press(ecp.Key.Ok);
 }
 
 /** Home, and still Home once the window a replay would have used has passed. */
