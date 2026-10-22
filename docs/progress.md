@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-22: fix(sign-in): Ignore extra presses and let Back cancel a sign-in
 - 2026-10-22: fix(login): Land on Home after sign-in; drop casts while signed out
 - 2026-10-22: chore(lint): Check only git-visible files in the doc-citation ratchet
 - 2026-10-22: fix(audio): Seek in FLAC without freezing or skipping the end
