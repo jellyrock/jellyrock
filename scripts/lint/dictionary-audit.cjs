@@ -40,6 +40,7 @@ const ALLOWLIST = new Set([
   'YouTube',
   'JellyRock',
   'Jellyfin',
+  'SyncPlay',
   'OAuth',
   'OpenAPI',
   'OpenSSL',
