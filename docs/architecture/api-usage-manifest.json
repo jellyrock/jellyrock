@@ -668,6 +668,18 @@
       ]
     },
     {
+      "path": "/SyncPlay/List",
+      "normalized": "/syncplay/list",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/System/Configuration",
       "normalized": "/system/configuration",
       "methods": [
@@ -3347,12 +3359,16 @@
       }
     },
     "counts": {
-      "endpoints": 81,
+      "endpoints": 82,
       "requestFields": 51,
       "responseFields": 223,
-      "unresolvedEndpointSinks": 3
+      "unresolvedEndpointSinks": 4
     },
     "unresolvedEndpointSinks": [
+      {
+        "sourceFile": "source/api/ApiClient.bs",
+        "line": 533
+      },
       {
         "sourceFile": "source/api/items.bs",
         "line": 443
