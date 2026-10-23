@@ -48,24 +48,22 @@ namespace tests
 
     @it("uses the setting when nothing was picked")
     function _()
-      m.assertEqual(GetBitRateLimit("h264").Value, "12000000")
+      m.assertEqual(GetBitRateLimit().Value, "12000000")
     end function
 
-    @it("uses a picked bitrate over the setting, for every codec")
+    @it("uses a picked bitrate over the setting")
     function _()
-      for each codec in ["h264", "h265", "av1", "vp9", "mpeg4"]
-        m.assertEqual(GetBitRateLimit(codec, { maxBitrateMbps: 2 }).Value, "2000000", codec + " must honour the pick")
-      end for
+      m.assertEqual(GetBitRateLimit({ maxBitrateMbps: 2 }).Value, "2000000")
     end function
 
-    @it("sends no cap for an Auto pick, even with a cap in Settings")
+    @it("sends no cap for a No limit pick, even with a cap in Settings")
     function _()
-      m.assertEqual(GetBitRateLimit("h264", { maxBitrateMbps: 0 }).count(), 0)
+      m.assertEqual(GetBitRateLimit({ maxBitrateMbps: 0 }).count(), 0)
     end function
 
     @it("leaves the bitrate to Settings when only the resolution was picked")
     function _()
-      m.assertEqual(GetBitRateLimit("h264", { maxResolution: "720" }).Value, "12000000")
+      m.assertEqual(GetBitRateLimit({ maxResolution: "720" }).Value, "12000000")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

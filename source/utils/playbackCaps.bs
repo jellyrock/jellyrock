@@ -6,19 +6,20 @@
 ' bitrate dropped for one bad connection does not follow the viewer into tomorrow.
 '
 ' The caps AA holds only what the viewer changed:
-'   maxBitrateMbps - integer Mbps, 0 for Auto (no cap)
+'   maxBitrateMbps - integer Mbps, 0 for no limit
 '   maxResolution  - a playbackResolutionMax option id ("off", "auto", "720", ...)
 ' invalid means no pick at all, and every reader then falls back to Settings.
 import "pkg:/source/utils/misc.bs"
 
 namespace playbackCaps
 
-  ' The Settings cap in Mbps, or 0 for Auto.
+  ' The Settings cap in Mbps, or 0 for no limit: the limit switched off, or set to 0.
   '
-  ' Reads the setting through the same coercion as GetBitRateLimit() and
-  ' causedByBitrateLimit(), so all three agree on what counts as a cap. "Enabled with 0"
-  ' applies Roku's per-codec ceilings rather than a number the user chose, so it reads as
-  ' Auto here too.
+  ' The one reading of the setting. GetBitRateLimit() builds the profile condition from it
+  ' and causedByBitrateLimit() attributes a transcode to it, so the two cannot disagree on
+  ' what counts as a cap. mediaNumber, because a node integer field reports its type as
+  ' "roInt" (measured 2026-08-25 on a Stick 4K), and an exact type check once dropped every
+  ' value a user set.
   '
   ' @param {object} settings - m.global.user.settings
   function settingsBitrateMbps(settings as object) as integer

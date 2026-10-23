@@ -9,7 +9,7 @@ namespace tests
     @describe("settingsBitrateMbps")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("is Auto (0) while the limit is off, whatever number is saved")
+    @it("is no limit (0) while the limit is off, whatever number is saved")
     function _()
       m.assertEqual(playbackCaps.settingsBitrateMbps({ playbackBitrateMaxLimited: false, playbackBitrateLimit: 8 }), 0)
     end function
@@ -19,14 +19,13 @@ namespace tests
       m.assertEqual(playbackCaps.settingsBitrateMbps({ playbackBitrateMaxLimited: true, playbackBitrateLimit: 8 }), 8)
     end function
 
-    ' "On with 0" applies Roku's per-codec ceilings, not a number the user picked, so it
-    ' reads as Auto: the same line GetBitRateLimit and causedByBitrateLimit draw.
-    @it("is Auto while the limit is on with 0")
+    ' "On with 0" is no limit, the same as the limit switched off.
+    @it("is no limit while the limit is on with 0")
     function _()
       m.assertEqual(playbackCaps.settingsBitrateMbps({ playbackBitrateMaxLimited: true, playbackBitrateLimit: 0 }), 0)
     end function
 
-    @it("is Auto with no settings at all")
+    @it("is no limit with no settings at all")
     function _()
       m.assertEqual(playbackCaps.settingsBitrateMbps(invalid), 0)
     end function
@@ -50,8 +49,8 @@ namespace tests
       m.assertEqual(playbackCaps.resolution(settings, caps), "720")
     end function
 
-    ' Auto is a real pick: a viewer with a Settings cap can lift it for one playback.
-    @it("lets an Auto pick lift a Settings cap")
+    ' No limit is a real pick: a viewer with a Settings cap can lift it for one playback.
+    @it("lets a No limit pick lift a Settings cap")
     function _()
       settings = { playbackBitrateMaxLimited: true, playbackBitrateLimit: 8 }
       m.assertEqual(playbackCaps.bitrateMbps(settings, { maxBitrateMbps: 0 }), 0)
@@ -105,7 +104,7 @@ namespace tests
       m.assertEqual(playbackCaps.settingsOverlay({ maxResolution: "720" }), { playbackResolutionMax: "720" })
     end function
 
-    @it("turns the limit off for an Auto pick")
+    @it("turns the limit off for a No limit pick")
     function _()
       m.assertEqual(playbackCaps.settingsOverlay({ maxBitrateMbps: 0 }), { playbackBitrateMaxLimited: false, playbackBitrateLimit: 0 })
     end function

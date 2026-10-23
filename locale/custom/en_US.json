@@ -680,7 +680,7 @@
   "MessageServerTakingAWhileToAnswer": "The server is taking a while to answer.",
   "MessageSetHowManySecondsBeforeThe": "Set how many seconds before the end of an episode the Next Episode button should appear. Set to 0 to disable.",
   "MessageSetTheMaximumAmountOfDays": "Set the maximum amount of days a show should stay in the 'Next Up' list without watching it.",
-  "MessageSetTheMaximumBitrateInMbps": "Set the maximum bitrate in Mbps. Set to 0 to use Roku's specifications. This setting must be enabled to take effect.",
+  "MessageSetTheMaximumBitrateZeroIsNoLimit": "Set the maximum bitrate in Mbps. 0 means no limit. This setting must be enabled to take effect.",
   "MessageSettingsRelatingToPlaybackAndSupported": "Settings relating to playback and supported codec and media types.",
   "MessageSettingsRelatingToTheAppearanceOf": "Settings relating to the appearance of pages in all Libraries.",
   "MessageSettingsRelatingToTheAppearanceOf2": "Settings relating to the appearance of pages in Movie Libraries.",
