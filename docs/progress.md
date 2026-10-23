@@ -719,7 +719,7 @@ Raised in manual testing of #1217 (2026-10-18). Like a phone's autocomplete, off
 
 Needs its own design: where the words come from (the /Search/Hints names already fetched, or a dedicated query), how many fit, and how Up from the top row fits today's overlay focus loop (decision `search-overlay-horizontal-loop`). Not done in #1217: it is a new feature with its own layout and focus rules.
 
-#### Home's overhang press can be lost to a navigation the router refuses after Back `[fid: home-overhang-press-lost-to-refused-navigation]` `[captured 2026-10-19]`
+#### Home's overhang press can be lost to a navigation the router refuses after Back `[fid: home-overhang-press-lost-to-refused-navigation]` `[captured 2026-10-19]` `[pinned]`
 
 After Back from search, Home's `onScreenShown` puts focus on its search icon before sgRouter ends the Back navigation (`navigationInProgress` stays true until `showView`'s `.finally` dispatches `NavigationEnd`). An OK sent then calls `sgrouter.navigateTo("/search")`, which the router refuses with "Navigation already in progress". `Home.handleHomeMenuAction` ignored the rejection, so the press was lost.
 
@@ -728,6 +728,8 @@ Confirmed 2026-10-19 on a Roku Ultra: the `search-navigation` reopen cases (`reo
 Options: `retry` (recommended): `JRScene.navigateThenFocus` retries a refused navigation once the router is idle, polling the public `routerState` with a timer (an observer drops `NavigationEnd`) and giving up after a bounded time; Home's actions go through it via `routerNavigate`; the 18 other direct `sgrouter.navigateTo` calls can move to it later; risk: a press takes effect slightly late. `re-press`: the test re-sends the OK with a warning; rejected because a viewer's press can still be lost. Patching sgRouter was ruled out by decision `router-focus-left-notice`. Not now because it needs its own design (the give-up time, then the other call sites) and predates the search redesign.
 
 Not checked: how wide the window is (a probe sampling every 20 to 70 ms never saw focus on the icon before `NavigationEnd`); whether a person pressing OK can hit it; whether it happens on the Stick 4K outside capture mode.
+
+Seen again 2026-10-23 on a Stick 4K (Roku OS 15.3.4) against the demo server: `main` (`34a621e3`) failed 1 of 8 runs and the blocking-spinners phase C branch 4 of 13, always at the step "search reopened on the keyboard" with focus left on `#overhang.#searchIcon`. The run ledger holds 16 such failures since 2026-10-18. Four runs with the debug console attached all passed, so no new console capture. The search redesign shipped in v3.2.0, so a viewer's press may be lost in the released app. Pinned: every full `test:rta` can go red on it.
 
 #### Upstream watch: sgRouter history-depth / `canGoBack()` API `[fid: sgrouter-can-go-back]` `[captured 2026-10-20]`
 
@@ -784,6 +786,18 @@ Before choosing a fix, measure on a device whether `opacity = 0` hides the video
 A server re-scan that ends while `SetServerScreen` is on screen moves the focus to the picker (or to the URL box when no server answered), from wherever the viewer moved it meanwhile. Back on the picker, then OK, puts the focus on Submit; when the scan ends the focus jumps back to the picker, so the next OK picks a row instead of submitting. With no servers, Up then Down lands on Submit and the scan's end moves the focus to the URL box, where OK opens the keyboard. `SetServerScreen.onScanForServersComplete` assumes it owns the focus whenever the screen does. #1242 fixed only the hidden-screen case (a connect's wait holding the focus). Read from code on 2026-10-22, not run on a device.
 
 **Not fixed now:** the server select screen is due to be redone, so this belongs in that redesign. **Fix shape:** a scan moves the focus only when it is still where the scan started (the screen itself on first load, or the node Back or Up was pressed on), and the URL box outline follows wherever the focus actually goes.
+
+#### The FLAC seek fallback (no audio transcoding) now ends the song about 1 s after the seek on the demo server `[fid: flac-seek-fallback-ends-early-demo]` `[captured 2026-10-23]` `[pinned]`
+
+`audio-seek.spec.js`, case "without audio transcoding, a FLAC seek says so once and the song still ends", failed 3 of 3 on `main` (`34a621e3`) on 2026-10-23 on a Stick 4K (Roku OS 15.3.4), 6 of 7 counting the phase C branch runs. Every time the song ended 1,084 to 1,643 ms after the seek. The same case passed at 01:33 UTC that day on `a92781b3`, and 5 of 5 when #1234 merged. The app code did not change between the pass and the failures (`git diff a92781b3 34a621e3` touches only `CHANGELOG.md`, `docs/progress.md` and one unit spec), and the device OS is the same. The fallback path is `audioSeek.startAction()`: with no transcoding permission and a direct stream, a native seek (`AudioPlayerView.startAudioAt()`).
+
+Root cause not confirmed. Lead: the demo server now reports Jellyfin 12.2.0, and Jellyfin 12.3 was published at 00:30 UTC that day, so the demo may have been redeployed. The run records do not store the server version.
+
+Options: `measure` (recommended): run this one case against the local server matrix (12.0, 12.1, 12.2) with the debug console captured, find what changed, then fix. `loosen`: make the case accept what the fallback's toast promises (notice once, queue moves on) whether or not the rest plays; test only, and it would hide a real change for users.
+
+Not checked: which server version the demo ran at 01:33; whether this case passes against a local 12.1 or 12.0 server; whether the early end is the "malformed data" end or something else (no debug console capture yet).
+
+Why not now: found mid-way through blocking-spinners phase C; it needs its own device session.
 
 ### source
 

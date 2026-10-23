@@ -231,7 +231,7 @@ Writing a field and then `invalid` makes the next write of the same value a chan
 
 ### `QueueManager.launchItem`
 
-`launchItem()` returns at once for an item with no id or type. Otherwise it opens the playback-start wait (`beginPlaybackStart`), or the plain spinner for a photo, which opens a viewer rather than a play session. It clears the queue and the shuffle, then builds the queue by type with the helpers in `source/utils/quickplay.bs`:
+`launchItem()` returns at once for an item with no id or type. Otherwise it opens the playback-start wait (`beginPlaybackStart`), a photo's included: the photo viewer takes it and ends it once a photo shows. It clears the queue and the shuffle, then builds the queue by type with the helpers in `source/utils/quickplay.bs`:
 
 | Item type | Builds the queue with | Then |
 |---|---|---|

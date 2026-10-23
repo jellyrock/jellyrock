@@ -88,6 +88,17 @@ namespace tests
       m.assertEqual(appWaits.limitMs(LoadingKind.SESSION), timeouts.SESSION_WAIT_LIMIT_MS)
     end function
 
+    @it("gives a pressed action its limit, and a player's own buffering none")
+    function _()
+      m.assertEqual(appWaits.limitMs(LoadingKind.ACTION), timeouts.ACTION_WAIT_LIMIT_MS)
+      m.assertEqual(appWaits.limitMs(LoadingKind.BUFFERING), 0)
+    end function
+
+    @it("outlasts a pressed action's request")
+    function _()
+      m.assertTrue(timeouts.ACTION_WAIT_LIMIT_MS > timeouts.API_WAIT_MS)
+    end function
+
     @it("outlasts the longest live open")
     function _()
       m.assertTrue(timeouts.PLAYBACK_START_LIMIT_MS > timeouts.LIVE_OPEN_MS + timeouts.API_WAIT_MS)
@@ -175,11 +186,13 @@ namespace tests
       m.assertEqual(appWaits.hiding({}).count(), 0)
     end function
 
-    @it("hides the screen a playback start or a sign-in step was pressed on, and nothing else")
+    @it("hides the screen a playback start, a sign-in step or a pressed action was pressed on, and nothing else")
     function _()
       m.assertTrue(appWaits.hidesLaunchingScreen(LoadingKind.PLAYBACK_START))
       m.assertTrue(appWaits.hidesLaunchingScreen(LoadingKind.SESSION))
+      m.assertTrue(appWaits.hidesLaunchingScreen(LoadingKind.ACTION))
       m.assertFalse(appWaits.hidesLaunchingScreen(LoadingKind.CONTENT))
+      m.assertFalse(appWaits.hidesLaunchingScreen(LoadingKind.BUFFERING))
     end function
 
     @it("tells whether a screen is still hidden by an open wait")

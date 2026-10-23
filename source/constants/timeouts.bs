@@ -91,6 +91,12 @@ namespace timeouts
   ' the committed wait stays up across until Home mounts.
   const SESSION_WAIT_LIMIT_MS = 180000
 
+  ' Time limit on a pressed action's app wait (LoadingKind.ACTION). A safety net, like
+  ' PLAYBACK_START_LIMIT_MS: every action ends its wait (its answer, a failure, Back). It must
+  ' outlast the longest action still going: a details Refresh, one default-limit request
+  ' (API_WAIT_MS) behind whatever else holds the pool.
+  const ACTION_WAIT_LIMIT_MS = 60000
+
   ' Fallback-font scale measurement wait (main.bs calculateFontScaleFactor).
   ' A safety net for a task that never reports, not an expected duration: it measures two
   ' labels. Blocks the main thread during bootstrap, so it is not larger.
