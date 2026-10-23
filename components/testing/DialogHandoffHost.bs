@@ -1,0 +1,36 @@
+import "pkg:/source/utils/dialogs.bs"
+
+sub init()
+  opener = CreateObject("roSGNode", "Button")
+  opener.text = "opener"
+  m.top.appendChild(opener)
+  m.top.opener = opener
+end sub
+
+' Focus the opener and open the first dialog from it, the way a button press does.
+' shape: "menu" (a list menu whose handler opens a confirm, like More) or "alert" (an
+' alert whose handler opens a report, like the playback error's Details)
+sub openFirst(shape as string)
+  m.shape = shape
+  m.top.opener.setFocus(true)
+  if shape = "alert"
+    m.top.first = showAlertDialog("Playback error", "The stream stopped.", "onFirstResult", "", "Details")
+  else
+    m.top.first = showListDialog("More", ["Delete", "Refresh"], "onFirstResult")
+  end if
+end sub
+
+' Runs inside the first dialog's `result` write, before that dialog closes.
+sub onFirstResult()
+  if m.shape = "alert"
+    second = showReportDialog("Playback error", "The stream stopped.", [])
+  else
+    second = showConfirmDialog("Delete", "Delete this item?")
+  end if
+  m.top.second = second
+  m.top.inHandler = {
+    openDialog: openOverlayDialog(),
+    firstId: m.top.first.id,
+    secondId: second.id
+  }
+end sub
