@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Show a spinner over details and the TV guide while they load, and let Back leave them ([#1243](https://github.com/jellyrock/jellyrock/pull/1243))
+
 ### Fixed
 
 - (sign-in) Keep a server re-scan from taking focus from a connect ([#1242](https://github.com/jellyrock/jellyrock/pull/1242))
