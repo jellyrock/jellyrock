@@ -80,8 +80,10 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" || die 3 "not inside a git r
 abs() { case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$PWD" "$1" ;; esac; }
 
 # crit_rows <plan> -> "<KIND>\t<path>" per Critical files row, "UNPARSED\t<cell>" for a row with no
-# backticked path. Read cell by cell, never by one anchored pattern: a File cell may carry prose
-# after its path, and a row the parser cannot read must be reported, not dropped from the vote.
+# backticked path, and one more "MULTI\t<cell>" after a row whose File cell holds a second backticked
+# token (only the first is read as the path). Read cell by cell, never by one anchored pattern: a File
+# cell may carry prose after its path, and a row the parser cannot read must be reported, not dropped
+# from the vote.
 crit_rows() {
   awk -F'|' "$MD_LIB"'
     { if (md_skip($0, 0)) next }
@@ -92,11 +94,13 @@ crit_rows() {
       file = $2; change = $3
       if (file ~ /^[[:space:]]*File[[:space:]]*$/) next
       if (file ~ /^[[:space:]]*:?-+:?[[:space:]]*$/) next
-      if (match(file, /`[^`]+`/)) path = substr(file, RSTART + 1, RLENGTH - 2)
+      multi = 0
+      if (match(file, /`[^`]+`/)) { path = substr(file, RSTART + 1, RLENGTH - 2); multi = match(substr(file, RSTART + RLENGTH), /`[^`]+`/) }
       else { gsub(/^[[:space:]]+|[[:space:]]+$/, "", file); print "UNPARSED\t" file; next }
       kind = change; sub(/^[^A-Za-z]*/, "", kind); sub(/[^A-Za-z].*$/, "", kind)
       kind = toupper(kind); if (kind == "") kind = "UNKNOWN"
       print kind "\t" path
+      if (multi) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", file); print "MULTI\t" file }
     }' "$1"
 }
 label() { local k="$1"; printf '%s%s' "${k:0:1}" "$(printf '%s' "${k:1}" | tr '[:upper:]' '[:lower:]')"; }
@@ -141,7 +145,7 @@ vote() {
   local kind path hit=0 n=0
   while IFS=$'\t' read -r kind path; do
     [ -n "$path" ] || continue
-    case "$kind" in UNPARSED|CREATE) continue ;; esac
+    case "$kind" in UNPARSED|CREATE|MULTI) continue ;; esac
     n=$((n+1)); [ -e "$root/$path" ] && hit=$((hit+1))
   done < <(crit_rows "$1")
   echo "$hit $n"
@@ -183,6 +187,7 @@ do_check() {
       [ -n "$path" ] || continue
       case "$kind" in
         UNPARSED) unp=$((unp+1)); printf 'UNPARSED  %s\n' "$path" ;;
+        MULTI) printf 'MULTI  %s: one path per row; only the first path was read\n' "$path" ;;
         CREATE) new=$((new+1)); printf 'NEW   %s\n' "$path" ;;
         *) n=$((n+1))
            if [ -e "$root/$path" ]; then hit=$((hit+1)); printf 'HIT   %s\n' "$path"
@@ -238,6 +243,7 @@ do_scope() {
   while IFS=$'\t' read -r kind path; do
     [ -n "$path" ] || continue
     [ "$kind" = UNPARSED ] && { echo "UNPARSED  $path: compare it by hand"; continue; }
+    [ "$kind" = MULTI ] && { echo "MULTI  $path: one path per row; only the first path was read"; continue; }
     planned["$path"]="$kind"
   done <<<"$rows"
 
@@ -439,7 +445,7 @@ case "$cmd" in
     rev=HEAD dry=0 floor="" base="" lrc=0
     while [ $# -gt 0 ]; do
       case "$1" in
-        --commit) rev="${2:-}"; shift 2 ;;
+        --commit) rev="${2:-}"; shift 2 || die 3 "$1 needs a value" ;;
         --dry-run) dry=1; shift ;;
         --floor) [ -n "${2:-}" ] || die 3 "--floor needs a command"; floor="$2"; shift 2 ;;
         --base) [ -n "${2:-}" ] || die 3 "--base needs a commit"; base="$2"; shift 2 ;;

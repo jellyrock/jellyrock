@@ -66,7 +66,7 @@ Run `bash .claude/skills/second-opinion/review-run.sh check {{brief}}`. Each `PR
 
 ### Step 4: Turn 1, the criteria
 
-Start an Explore sub-agent with its model set to Opus (the Agent tool's `model` parameter), in the foreground, with the turn 1 prompt from `## Sub-agent invocation` followed by the contents of `criteria.md`, word for word. Its reply, the weighted criteria, may come back as a message from the agent rather than as the tool's result; the sender is its agent id, which the next steps need. If it asks about the brief instead, answer only from the brief's facts.
+Start an Explore sub-agent with its model set to Opus (the Agent tool's `model` parameter), with the turn 1 prompt from `## Sub-agent invocation` followed by the contents of `criteria.md`, word for word. Its reply, the weighted criteria, may come back as the tool's result or, when the call returns a launch notice (the default in an interactive session), as a later message from the agent: wait for it, never poll or ask whether it is done. The sender is its agent id, which the next steps need. If it asks about the brief instead, answer only from the brief's facts.
 
 ### Step 5: Turn 2, the items
 

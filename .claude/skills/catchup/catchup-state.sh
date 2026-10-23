@@ -132,7 +132,7 @@ shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, 
     cadence-unfilled) route="fill the table (or say there are none)" ;;
     off-branch) route="confirm the branch" ;;
     unpushed) route="git push" ;;
-    gate-missing) route="pre-commit install" ;;
+    gate-missing) route="pre-commit install --allow-missing-config" ;;
     journal-shaped) route="reword each one in $3" ;;
     *) route="" ;;
   esac

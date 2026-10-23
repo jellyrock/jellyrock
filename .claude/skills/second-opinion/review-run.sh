@@ -177,7 +177,7 @@ cmd_cost() {
   local id="${1:-}" note="" f repo log line
   [ -n "$id" ] || die 3 "no agent id named"
   shift
-  while [ $# -gt 0 ]; do case "$1" in --note) note="${2:-}"; shift 2 ;; *) die 3 "unknown option: $1" ;; esac; done
+  while [ $# -gt 0 ]; do case "$1" in --note) note="${2:-}"; shift 2 || die 3 "$1 needs a value" ;; *) die 3 "unknown option: $1" ;; esac; done
   case "$id" in *[!A-Za-z0-9]*) die 3 "not an agent id: $id" ;; esac
   f=""
   for line in "${REVIEW_RUN_PROJECTS_DIR:-$HOME/.claude/projects}"/*/*/subagents/"agent-$id.jsonl"; do
