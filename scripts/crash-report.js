@@ -1024,7 +1024,8 @@ export function getOrBuildAnalysis(
   const buildDir = join(cacheDir, 'build-analysis');
 
   if (existsSync(buildDir)) {
-    const ageMs = Date.now() - statSync(buildDir).mtimeMs;
+    // Date.now() is whole ms but mtimeMs has fractions, so a fresh dir can read as slightly in the future.
+    const ageMs = Math.max(0, Date.now() - statSync(buildDir).mtimeMs);
     if (ageMs < ttlMs) {
       logger(
         `[crash-report] reusing cached worktree at ${cacheDir} (${Math.round(ageMs / 1000)}s old)`,
