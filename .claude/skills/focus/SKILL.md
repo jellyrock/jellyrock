@@ -27,7 +27,7 @@ effort: high
 
 - A triage block: the **Recommended** pick, **Why** (the ranking rule that won, and the state behind it, cited), its route with the one command to type in its own copyable block (or "reply `ok` to plan it"), and 1-3 **Alternatives**, one line each, with a command route's command in its own block under its line. Nothing else happens until the user replies.
 - **On a non-plan route:** only that printed command. `/focus` writes nothing.
-- **On the plan route:** a plan file at this repo's plan path with a required `**Project:** {{slug | n/a}}` line and the sections `Context`, `Approach`, `Critical files`, `Verification`, `Landing & closeout` and `What this plan deliberately does NOT do`, saved without a separate approval (the user's choices are the fork questions before it, with the plan's Always ask call; after it, the push stop, or in a `gated` repo whose plan touches nothing on its Always ask list, the review, the checks and `/sonnet`'s gate), then a hand-off block, in a message of its own before anything runs: the one line to paste in a fresh session, alone in its own block, for the implementation tier `/focus` classified (`/sonnet {{plan-path}}` by default). On the default tier the run follows at once: a Sonnet sub-agent supervised to a reviewed ready-to-push message (`/sonnet`'s `## Sub-agent invocation`).
+- **On the plan route:** a plan file at this repo's plan path with a required `**Project:** {{slug | n/a}}` line, a required `**Checkout:** {{worktree | main clone: reason}}` line and the sections `Context`, `Approach`, `Critical files`, `Verification`, `Landing & closeout` and `What this plan deliberately does NOT do`, saved without a separate approval (the user's choices are the fork questions before it, with the plan's Always ask call; after it, the push stop, or in a `gated` repo whose plan touches nothing on its Always ask list, the review, the checks and `/sonnet`'s gate), then a hand-off block, in a message of its own before anything runs: the one line to paste in a fresh session, alone in its own block, for the implementation tier `/focus` classified (`/sonnet {{plan-path}}` by default). On the default tier the run follows at once: a Sonnet sub-agent supervised to a reviewed ready-to-push message (`/sonnet`'s `## Sub-agent invocation`).
 - A `Captures for /log` tail listing anything journal-worthy that surfaced and isn't captured yet, using the types `/log` records. Omit it when there are none.
 
 **Success criteria.**
@@ -164,6 +164,8 @@ Draft with this structure:
 
 **Project:** {{slug of the tracked project this plan advances | n/a}}
 
+**Checkout:** {{worktree | main clone: why this plan must run in the main clone}}
+
 ## Context
 
 {{What the problem is, why now (cite the banner, `[fid: …]` or row that surfaced it), the intended outcome. Name files and prior decisions.}}
@@ -176,7 +178,7 @@ Draft with this structure:
 
 | File | Change |
 |---|---|
-| `{{path}}` | {{Create / Edit / Delete: one line}} |
+| `{{path}}` | {{Create / Edit / Delete: one line. One path per row: plan-run.sh reads one path from each File cell}} |
 | `{{dir}}/` | {{Create / Edit / Delete: a directory; its path ends in `/`, and every file under it is in the plan}} |
 
 ## Verification
@@ -196,6 +198,8 @@ Draft with this structure:
 
 The `**Project:**` line is required: a run outside that project's session never reaches its `/end-session`, so the line is how the project's PLAN learns the work landed (`plan-run.sh land` records it, and leaves it to `/end-session` when this session holds the project).
 
+The `**Checkout:**` line says where the run works. `worktree` (the default) gives the run its own short-lived worktree off the fresh default branch, so the main clone stays clean on its default branch. `main clone` is only for a plan whose steps must write the main clone itself (for example a step that runs a script which writes the main clone even when started from a worktree); the line then names that reason.
+
 **Classify the implementation tier.** Every fork was settled here, so the plan is fork-free and its implementation procedural: default **`/sonnet`**. Choose the judgment-grade tier only when a step needs in-flight judgment the plan cannot pre-specify (a rewrite shaped by a live measurement, an unknown root cause, a step marked "approach TBD pending {{discovery}}"), or when the plan meets `/sonnet`'s "must not be a Sonnet run" list (the last bullet of its *When not to use*; check it rather than keeping a copy here).
 
 ### Step 6: Save, hand off, run it
@@ -212,7 +216,7 @@ Your choices are made at the fork questions (Step 5), with the Always ask call; 
    /sonnet {{plan path}}/focus-YYYY-MM-DD-{{task-slug}}.md
    ```
 
-   If a fork answer has the user act before the run (an edit only they may make, a box only they can reach), end the turn here and ask in chat: `done` starts the run, `skip` runs without it. Otherwise read `/sonnet`'s `## Sub-agent invocation` (in `.claude/skills/sonnet/SKILL.md`) and follow it: start the sub-agent, handle its stops, review its result (say what the review covered: a truncated or sampled read is a spot-check, and is called one), run its gate, and either push and show the landed report or show the ready-to-push message and push only on the user's `ok` or `push`. A timestamp any step writes comes from `date -u` at that write, never estimated.
+   If a fork answer has the user act before the run (an edit only they may make, a box only they can reach), end the turn here and ask in chat: `done` starts the run, `skip` runs without it. Otherwise read `/sonnet`'s `## Sub-agent invocation` (in `.claude/skills/sonnet/SKILL.md`) and follow it: start the sub-agent (its report may come in a later turn, as that section's **While it runs.** says), handle its stops, review its result (say what the review covered: a truncated or sampled read is a spot-check, and is called one), run its gate, and either push and show the landed report or show the ready-to-push message and push only on the user's `ok` or `push`. A timestamp any step writes comes from `date -u` at that write, never estimated.
 
    For the judgment-grade tier: "Plan saved: `{{path}}` (needs the judgment-grade tier: {{one-line reason}}). Paste this in a fresh session:"
 

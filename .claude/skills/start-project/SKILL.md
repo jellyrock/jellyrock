@@ -28,7 +28,7 @@ description: This skill should be used only when the user explicitly types "/sta
 - The PLAN is a single file: Charter, Phases, Status, kickoff, Reference and log all live in `PLAN.md`, never split across files (only `DECISIONS.md` sits beside it, and `/end-session` makes that).
 - `status: active` and the README index entry are both written, so the state-briefing and resume skills can find the project.
 - A project that waits on another project or a followup says so in `waits-on:`, and a project spun off from another is added to that project's `waits-on:` when it holds the parent up, so the briefing can show when either is unblocked.
-- Where the projects folder is committed, the scaffold `PLAN.md` and README row are committed at creation (path-restricted, not pushed), so nothing pushed before `/end-session` can link to a PLAN missing from the tree; where it is gitignored, there is nothing to commit.
+- Where the projects folder is committed, the scaffold `PLAN.md` and README row are committed at creation (path-restricted), so nothing pushed before `/end-session` can link to a PLAN missing from the tree. In this repo that commit is not pushed; in a projects home (a repo of its own) it is committed and pushed there. Where the folder is gitignored, there is nothing to commit.
 - The session is explicitly bound to the lifecycle, and the user is told `/end-session` is the mandatory close.
 
 **Failure modes to avoid.**
@@ -85,7 +85,9 @@ Commit the new PLAN and its README row now, so nothing pushed before `/end-sessi
 bash .claude/skills/start-project/scaffold-project.sh --commit {{slug}} --subject "{{subject naming the slug, in this repo's commit style}}" [--with {{regenerated file}}]...
 ```
 
-It prints `committed as {{sha}} on {{branch}}`: check that is the intended branch (another session may share the working tree). `not committed: …` means the folder is gitignored, and there is nothing to commit. A refusal names its cause (other edits in the README, a hook): fix it and run it again, never `--no-verify`. Do not push: that stays with `/end-session`.
+In this repo it prints `committed as {{sha}} on {{branch}}`: check that is the intended branch (another session may share the working tree). Do not push: that stays with `/end-session`. `not committed: …` means the folder is gitignored, and there is nothing to commit. A refusal names its cause (other edits in the README, a hook): fix it and run it again, never `--no-verify`.
+
+In a projects home (a repo of its own) it commits there and pushes, and prints `committed and pushed as {{sha}} to the projects home`; a `NOTE:` line above it says what to run in that clone. A line starting `scaffold-project: refused:` or `scaffold-project: not pushed:` means nothing was committed and the stub stays in the home, uncommitted: the lines above it name the cause (the change overlaps the home's remote, a hook refused, or the remote was unreachable). Fix that cause, then run `--commit` again.
 
 ### Step 6: Fill the PLAN
 

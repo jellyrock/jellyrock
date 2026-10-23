@@ -54,9 +54,10 @@
 #                                            rewrite one entry's title or body, or set or clear its
 #                                            pin; its other markers stay
 #   close <fid>                              remove the entry, and its category if now empty
-#   commit --intent "<words>" [--closes <fid>] [--body-file <p>] [<path>…]
+#   commit --intent "<words>" [--closes <fid>]… [--body-file <p>] [<path>…]
 #                                            commit the journal as "<prefix>: <words>"
-#   commit --subject "<subject>" [--closes <fid>] [--body-file <p>] <path>…
+#                                            --closes repeats: one "Closes fid:" line per fid, a repeat once
+#   commit --subject "<subject>" [--closes <fid>]… [--body-file <p>] <path>…
 #                                            commit exactly these paths with this subject
 #   check                                    the format gate: every entry has a valid unique fid
 #                                            and captured date; nothing numbered outside entries;
@@ -425,11 +426,11 @@ case "$cmd" in
     category=""; fid=""; title=""; body=""; prompt=""; pinned=0; dirty=0
     while [ $# -gt 0 ]; do
       case "$1" in
-        --category) category="${2:-}"; shift 2 ;;
-        --fid) fid="${2:-}"; shift 2 ;;
-        --title) title="${2-}"; shift 2 ;;
-        --body-file) body="${2:-}"; shift 2 ;;
-        --prompt) prompt="${2:-}"; shift 2 ;;
+        --category) category="${2:-}"; shift 2 || die "$cmd: $1 needs a value" ;;
+        --fid) fid="${2:-}"; shift 2 || die "$cmd: $1 needs a value" ;;
+        --title) title="${2-}"; shift 2 || die "$cmd: $1 needs a value" ;;
+        --body-file) body="${2:-}"; shift 2 || die "$cmd: $1 needs a value" ;;
+        --prompt) prompt="${2:-}"; shift 2 || die "$cmd: $1 needs a value" ;;
         --pinned) pinned=1; shift ;;
         --allow-dirty) dirty=1; shift ;;
         *) die "add: unknown argument '$1'" ;;
@@ -465,8 +466,8 @@ case "$cmd" in
     title=""; body=""; have=0; pin=""; dirty=0
     while [ $# -gt 0 ]; do
       case "$1" in
-        --title) title="${2-}"; have=1; shift 2 ;;
-        --body-file) body="${2:-}"; have=1; shift 2 ;;
+        --title) title="${2-}"; have=1; shift 2 || die "$cmd: $1 needs a value" ;;
+        --body-file) body="${2:-}"; have=1; shift 2 || die "$cmd: $1 needs a value" ;;
         --pin|--unpin) [ -n "$pin" ] && [ "$pin" != "$1" ] && die "replace takes --pin or --unpin, not both"; pin="$1"; have=1; shift ;;
         --allow-dirty) dirty=1; shift ;;
         *) die "replace: unknown argument '$1'" ;;
@@ -515,13 +516,14 @@ case "$cmd" in
     ;;
 
   commit)
-    intent=""; subject=""; closes=""; bodyf=""; paths=()
+    intent=""; subject=""; closes=(); bodyf=""; paths=()
     while [ $# -gt 0 ]; do
       case "$1" in
-        --intent) intent="${2:-}"; shift 2 ;;
-        --subject) subject="${2:-}"; shift 2 ;;
-        --closes) closes="${2:-}"; shift 2 ;;
-        --body-file) bodyf="${2:-}"; shift 2 ;;
+        --intent) intent="${2:-}"; shift 2 || die "$cmd: $1 needs a value" ;;
+        --subject) subject="${2:-}"; shift 2 || die "$cmd: $1 needs a value" ;;
+        --closes) [ -n "${2:-}" ] || die "commit: --closes needs a fid"
+          case " ${closes[*]-} " in *" $2 "*) ;; *) closes+=("$2") ;; esac; shift 2 ;;
+        --body-file) bodyf="${2:-}"; shift 2 || die "$cmd: $1 needs a value" ;;
         --) shift; paths+=("$@"); break ;;
         -*) die "commit: unknown argument '$1'" ;;
         *) paths+=("$1"); shift ;;
@@ -547,7 +549,7 @@ case "$cmd" in
     for p in "${paths[@]}"; do
       git ls-files --error-unmatch -- "$p" >/dev/null 2>&1 || git add -- "$p" || die "commit: cannot stage $p"
     done
-    msg=(-m "$subject"); [ -n "$bodyf" ] && msg+=(-m "$(cat "$bodyf")"); [ -n "$closes" ] && msg+=(-m "Closes fid: $closes")
+    msg=(-m "$subject"); [ -n "$bodyf" ] && msg+=(-m "$(cat "$bodyf")"); [ "${#closes[@]}" -gt 0 ] && msg+=(-m "$(printf 'Closes fid: %s\n' "${closes[@]}")")
     if ! out="$(git commit "${msg[@]}" -- "${paths[@]}" 2>&1)"; then
       printf '%s\n' "$out"; refuse "the commit was refused (a hook, most likely): nothing was committed"
     fi

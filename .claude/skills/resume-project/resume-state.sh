@@ -38,7 +38,7 @@
 #
 # Usage (from inside the repo):
 #   bash .claude/skills/resume-project/resume-state.sh [<slug> [<starting point>…]]
-#       the resume read. Words after the slug are where this session starts instead of the
+#       the resume read. <slug> is a project's short slug (hub) or its whole folder name (2026-10-hub), which picks that folder alone. Words after the slug are where this session starts instead of the
 #       kickoff's Starts at: one open followup's fid (optionally fid:<fid>) is shown in full;
 #       anything else is the operator's words.
 #   … --check [<slug>]     the PLAN check alone: FAIL lines exit 1; REVIEW lines ask the writer to
@@ -445,6 +445,17 @@ case "$mode" in waits|plancheck)
   exit 0 ;;
 esac
 
+# project_plans <folder>: the PLAN of each project in <folder> the argument names: the folder
+# it names in full (YYYY-MM-<slug>) when there is one, else each folder ending in -<slug>
+project_plans() {
+  local p
+  if [[ "$slug" =~ ^[0-9]{4}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$ ]] && [ -e "$1/$slug/PLAN.md" ]; then
+    printf '%s\n' "$1/$slug/PLAN.md"; return
+  fi
+  for p in "$1"/*-"$slug"/PLAN.md; do [ -e "$p" ] && printf '%s\n' "$p"; done
+  return 0
+}
+
 active_list() { # the active projects' folders, one per line
   local p; for p in "$dir"/*/PLAN.md; do
     [ -f "$p" ] && [ "$(frontmatter "$p" status)" = active ] && basename "$(dirname "$p")"
@@ -453,22 +464,22 @@ active_list() { # the active projects' folders, one per line
 
 plan=""
 if [ -n "$slug" ]; then
-  hits=(); for p in "$dir"/*-"$slug"/PLAN.md; do [ -e "$p" ] && hits+=("$p"); done
+  mapfile -t hits < <(project_plans "$dir")
   # a terminal close archives the PLAN before /end-session checks it: --check reads the archived one
-  [ ${#hits[@]} -eq 0 ] && [ "$mode" = check ] && for p in "$dir"/_archive/*-"$slug"/PLAN.md; do [ -e "$p" ] && hits+=("$p"); done
+  [ ${#hits[@]} -eq 0 ] && [ "$mode" = check ] && mapfile -t hits < <(project_plans "$dir/_archive")
   case ${#hits[@]} in
     1) plan="${hits[0]}"; echo "requested: $slug" ;;
     0) if [ "$mode" = release ]; then
          # a terminal close archives the PLAN first: its claim is keyed on the path it had before
-         arch=(); for p in "$dir"/_archive/*-"$slug"/PLAN.md; do [ -e "$p" ] && arch+=("$p"); done
+         mapfile -t arch < <(project_plans "$dir/_archive")
          if [ ${#arch[@]} -gt 0 ]; then
            echo "requested: $slug (archived)"; section "CLAIM"
            for p in "${arch[@]}"; do claim_release "$dir/$(basename "$(dirname "$p")")/PLAN.md"; done; exit 0
          fi
        fi
        echo "ERROR: no project matches '$slug'"
-       arch_hit=0; for p in "$dir"/_archive/*-"$slug"/PLAN.md; do
-         [ -e "$p" ] && { arch_hit=1; echo "archived: $(basename "$(dirname "$p")") (closed; not resumable)"; }; done
+       arch_hit=0; while IFS= read -r p; do
+         [ -e "$p" ] && { arch_hit=1; echo "archived: $(basename "$(dirname "$p")") (closed; not resumable)"; }; done < <(project_plans "$dir/_archive")
        echo "active projects:"; active_list | sed 's/^/  /'
        # a closed project is not a slug to ask about: a terminal /end-session reads this on purpose
        if [ "$arch_hit" = 1 ]; then echo "BANNER: '$slug' is closed (archived): nothing to resume"
