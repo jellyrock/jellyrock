@@ -1,0 +1,104 @@
+' The quality caps a viewer picked for one playback, over the defaults in Settings.
+'
+' A pick in the OSD's gear (and, later, the details screen) applies to this playback and the
+' rest of its queue, and is never saved: QueueManager holds it beside the version pick
+' (setPlaybackCaps), and a new queue starts without it. Settings stays the default. That way a
+' bitrate dropped for one bad connection does not follow the viewer into tomorrow.
+'
+' The caps AA holds only what the viewer changed:
+'   maxBitrateMbps - integer Mbps, 0 for no limit
+'   maxResolution  - a playbackResolutionMax option id ("off", "auto", "720", ...)
+' invalid means no pick at all, and every reader then falls back to Settings.
+import "pkg:/source/utils/misc.bs"
+
+namespace playbackCaps
+
+  ' The Settings cap in Mbps, or 0 for no limit: the limit switched off, or set to 0.
+  '
+  ' The one reading of the setting. GetBitRateLimit() builds the profile condition from it
+  ' and causedByBitrateLimit() attributes a transcode to it, so the two cannot disagree on
+  ' what counts as a cap. mediaNumber, because a node integer field reports its type as
+  ' "roInt" (measured 2026-08-25 on a Stick 4K), and an exact type check once dropped every
+  ' value a user set.
+  '
+  ' @param {object} settings - m.global.user.settings
+  function settingsBitrateMbps(settings as object) as integer
+    if not isValid(settings) then return 0
+    if not isBooleanTrue(settings.playbackBitrateMaxLimited) then return 0
+    limitMbps = mediaNumber(settings.playbackBitrateLimit)
+    if limitMbps <= 0 then return 0
+    return limitMbps
+  end function
+
+  ' The Settings resolution cap, as a playbackResolutionMax option id.
+  function settingsResolution(settings as object) as string
+    if not isValid(settings) then return "auto"
+    resolution = LCase(textOrEmpty(settings.playbackResolutionMax).trim())
+    if resolution = "" then return "auto"
+    return resolution
+  end function
+
+  ' The bitrate cap that applies now: the viewer's pick, else Settings.
+  function bitrateMbps(settings as object, caps as dynamic) as integer
+    if hasBitrate(caps) then return mediaNumber(caps.maxBitrateMbps)
+    return settingsBitrateMbps(settings)
+  end function
+
+  ' The resolution cap that applies now: the viewer's pick, else Settings.
+  function resolution(settings as object, caps as dynamic) as string
+    if hasResolution(caps) then return LCase(textOrEmpty(caps.maxResolution))
+    return settingsResolution(settings)
+  end function
+
+  function hasBitrate(caps as dynamic) as boolean
+    return type(caps) = "roAssociativeArray" and caps.DoesExist("maxBitrateMbps")
+  end function
+
+  function hasResolution(caps as dynamic) as boolean
+    return type(caps) = "roAssociativeArray" and caps.DoesExist("maxResolution")
+  end function
+
+  ' The caps after the viewer picks `value` for `field` ("maxBitrateMbps" or "maxResolution").
+  '
+  ' A pick equal to the Settings value drops that field, so "back to my default" leaves no
+  ' pick behind, and caps with no field left come back invalid.
+  '
+  ' @returns {dynamic} - a new caps AA, or invalid
+  function withPick(settings as object, caps as dynamic, field as string, value as dynamic) as dynamic
+    picked = {}
+    if hasBitrate(caps) then picked.maxBitrateMbps = mediaNumber(caps.maxBitrateMbps)
+    if hasResolution(caps) then picked.maxResolution = LCase(textOrEmpty(caps.maxResolution))
+
+    if field = "maxBitrateMbps"
+      if mediaNumber(value) = settingsBitrateMbps(settings)
+        picked.Delete(field)
+      else
+        picked[field] = mediaNumber(value)
+      end if
+    else if field = "maxResolution"
+      if LCase(textOrEmpty(value)) = settingsResolution(settings)
+        picked.Delete(field)
+      else
+        picked[field] = LCase(textOrEmpty(value))
+      end if
+    end if
+
+    if picked.count() = 0 then return invalid
+    return picked
+  end function
+
+  ' The setting fields the caps stand in for, for code that reads caps off a settings
+  ' object (the playback report's cause checks in transcodeCause.bs). Append it over a copy of
+  ' the settings: only the fields the viewer picked are present.
+  function settingsOverlay(caps as dynamic) as object
+    overlay = {}
+    if hasBitrate(caps)
+      mbps = mediaNumber(caps.maxBitrateMbps)
+      overlay.playbackBitrateMaxLimited = mbps > 0
+      overlay.playbackBitrateLimit = mbps
+    end if
+    if hasResolution(caps) then overlay.playbackResolutionMax = LCase(textOrEmpty(caps.maxResolution))
+    return overlay
+  end function
+
+end namespace

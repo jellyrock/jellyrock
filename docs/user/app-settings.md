@@ -277,7 +277,7 @@ Enable or disable the 'Maximum Bitrate' setting.
 
 <a href="#playback">Playback</a> › <a href="#playback-bitrate-limit">Bitrate Limit</a> › <a href="#playbackBitrateLimit">Maximum Bitrate</a>
 
-Set the maximum bitrate in Mbps. Set to 0 to use Roku's specifications. This setting must be enabled to take effect.
+Set the maximum bitrate in Mbps. 0 means no limit. This setting must be enabled to take effect.
 
 | Property | Value |
 | --- | --- |

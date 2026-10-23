@@ -1,0 +1,100 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  @suite("deviceCapabilities.bs - user caps reach every direct-played video codec")
+  class DeviceCapabilitiesUserCapsTests extends tests.BaseTestSuite
+
+    protected savedResolutionMax as dynamic
+    protected savedBitrateMaxLimited as dynamic
+    protected savedBitrateLimit as dynamic
+    protected savedPlaybackMpeg2 as dynamic
+    protected savedPlaybackMpeg4 as dynamic
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      settings = m.global.user.settings
+      m.savedResolutionMax = settings.playbackResolutionMax
+      m.savedBitrateMaxLimited = settings.playbackBitrateMaxLimited
+      m.savedBitrateLimit = settings.playbackBitrateLimit
+      m.savedPlaybackMpeg2 = settings.playbackMpeg2
+      m.savedPlaybackMpeg4 = settings.playbackMpeg4
+    end sub
+
+    protected override sub afterEach()
+      settings = m.global.user.settings
+      settings.playbackResolutionMax = m.savedResolutionMax
+      settings.playbackBitrateMaxLimited = m.savedBitrateMaxLimited
+      settings.playbackBitrateLimit = m.savedBitrateLimit
+      settings.playbackMpeg2 = m.savedPlaybackMpeg2
+      settings.playbackMpeg4 = m.savedPlaybackMpeg4
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getCodecProfiles() - caps on every direct-played video codec")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Jellyfin matches a codec profile by codec name, so a video codec that
+    ' DirectPlayProfiles lists but no Type "Video" profile names escapes the
+    ' user's Bitrate Limit and Maximum Resolution and direct-plays at full bitrate.
+    ' The codec list is derived from GetDirectPlayProfiles() so a codec added to
+    ' it later is held to the same rule.
+
+    private function directPlayedVideoCodecs() as object
+      codecs = {}
+      for each profile in GetDirectPlayProfiles()
+        if profile.Type = "Video" and isValid(profile.VideoCodec)
+          for each codec in profile.VideoCodec.split(",")
+            codecs[codec] = true
+          end for
+        end if
+      end for
+      return codecs.keys()
+    end function
+
+    private function findVideoProfile(codecProfiles as object, codec as string) as dynamic
+      for each profile in codecProfiles
+        if profile.Type = "Video" and isValid(profile.Codec)
+          for each name in profile.Codec.split(",")
+            if name = codec then return profile
+          end for
+        end if
+      end for
+      return invalid
+    end function
+
+    @it("gives every direct-played codec a profile with the bitrate cap and the resolution cap")
+    function _()
+      settings = m.global.user.settings
+      settings.playbackBitrateMaxLimited = true
+      settings.playbackBitrateLimit = 12
+      settings.playbackResolutionMax = "720"
+      settings.playbackMpeg2 = true
+      settings.playbackMpeg4 = true
+
+      codecs = m.directPlayedVideoCodecs()
+      m.assertTrue(codecs.count() > 0, "the device must direct-play at least one video codec")
+      codecProfiles = getCodecProfiles()
+
+      for each codec in codecs
+        profile = m.findVideoProfile(codecProfiles, codec)
+        m.assertNotInvalid(profile, codec + " is direct-played so it needs a Video codec profile")
+        if isValid(profile)
+          hasBitrate = false
+          hasHeight = false
+          hasWidth = false
+          for each condition in profile.Conditions
+            if condition.Property = "VideoBitrate" and condition.Condition = "LessThanEqual" and condition.Value = "12000000" then hasBitrate = true
+            if condition.Property = "Height" then hasHeight = true
+            if condition.Property = "Width" then hasWidth = true
+          end for
+          m.assertTrue(hasBitrate, codec + " must carry the 12 Mbps VideoBitrate cap")
+          m.assertTrue(hasHeight, codec + " must carry the Height cap")
+          m.assertTrue(hasWidth, codec + " must carry the Width cap")
+        end if
+      end for
+    end function
+  end class
+end namespace

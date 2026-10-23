@@ -40,6 +40,7 @@ import {
   PLAYING_STATES,
   getVal,
   getActiveVals,
+  getVals,
   press,
   sleep,
 } from '../lib/steps.js';
@@ -145,6 +146,35 @@ async function pausedOsd(userSettings = null) {
     interval: 500,
     label: 'osd visible (paused)',
   });
+}
+
+/**
+ * A transcode a bitrate cap caused, checked on both sides.
+ *
+ * The report blames the Maximum Bitrate setting, spelled as the Settings screen spells it.
+ * The server's reason code passes through verbatim and we do not maintain its vocabulary,
+ * so the attribution is looked for on every reason row that names a bitrate, and a report
+ * with no such row fails rather than skipping the check.
+ *
+ * And the server was asked for no more video than the cap. Its session reports a total
+ * that carries its own audio allowance (1.256 Mbps under a 1 Mbps cap with 67 kbps audio,
+ * measured 2026-10-23 on the stable demo), so the figure compared is the `VideoBitrate`
+ * of the transcode URL the player was handed.
+ */
+async function expectBitrateCapApplied(reasons, capBps) {
+  const bitrateRows = reasons.rows.filter((r) => /bitrate/i.test(r.label));
+  expect(bitrateRows.length, 'a capped transcode must report a bitrate reason').toBeGreaterThan(0);
+  expect(
+    bitrateRows.some((r) => r.value.includes('Maximum Bitrate')),
+    'the bitrate reason must name the Maximum Bitrate setting',
+  ).toBe(true);
+
+  const url = await getVal(`#${heroId}.content.url`);
+  const videoBitrate = Number(new URL(url).searchParams.get('VideoBitrate'));
+  expect(videoBitrate, 'the transcode must carry a video bitrate').toBeGreaterThan(0);
+  expect(videoBitrate, 'the transcode must not target more than the cap').toBeLessThanOrEqual(
+    capBps,
+  );
 }
 
 /**
@@ -631,16 +661,7 @@ it('a user-capped bitrate transcodes, and the report says which setting did it',
   const reasons = sections.find((sec) => sec.id === 'reasons');
   expect(reasons, 'a transcode must report why').toBeTruthy();
 
-  // The server's code passes through verbatim; we do not maintain its vocabulary.
-  const codes = reasons.rows.map((r) => r.label);
-  expect(codes.some((c) => c.includes('Bitrate') || c.includes('BitRate'))).toBe(true);
-
-  // ...and the row for the bitrate reason names the setting responsible, spelled
-  // exactly as the Settings screen spells it.
-  const bitrateRow = reasons.rows.find((r) => r.label === 'VideoBitrateNotSupported');
-  if (bitrateRow) {
-    expect(bitrateRow.value).toContain('Maximum Bitrate');
-  }
+  await expectBitrateCapApplied(reasons, 1000000);
 
   // An arrow appears only where something actually changed, so a transcode must
   // produce at least one.
@@ -674,6 +695,157 @@ it('a user-capped bitrate transcodes, and the report says which setting did it',
 
   await stopPlayback();
 }, 240000);
+
+// The OSD's gear: the whole Maximum Bitrate round trip a viewer makes. The menu shows
+// the value that applies, Back in a picker steps out one level onto the row it came from,
+// and a pick applies to this playback by a reload, which the report attributes to the cap.
+// It is not saved: Settings stays the default, so the registry must still hold no cap. The
+// trim, label and lifetime rules are unit-gated (playbackSettingsMenu.spec.bs,
+// playbackCaps.spec.bs, queueArrival.spec.bs); this proves the flow on a device.
+it('osd gear caps the bitrate for this playback without saving it, and Back steps out one level', async () => {
+  await pausedOsd();
+  await pressOsdButton('showPlaybackSettings');
+
+  // The gear menu, carrying each value (No limit: pausedOsd cleared any bitrate cap). Waited on
+  // by its first row's title, because a row count cannot tell it from a short picker.
+  const gearMenuOpen = (label) =>
+    waitFor(
+      '#optionList.content.0.title',
+      (t) => typeof t === 'string' && t.startsWith('Maximum Bitrate ('),
+      {
+        label,
+        timeout: 10000,
+      },
+    );
+  await gearMenuOpen('gear menu open');
+  await waitFocusInside('#optionList', { label: 'gear menu focused', timeout: 5000 });
+  const [bitrateRow, resolutionRow] = await getVals([
+    '#optionList.content.0.title',
+    '#optionList.content.1.title',
+  ]);
+  expect(bitrateRow).toBe('Maximum Bitrate (No limit)');
+  expect(resolutionRow).toMatch(/^Maximum Resolution \(.+\)$/);
+  // Each row wears its glyph in the gutter, the way the More menu's rows do.
+  const [bitrateIcon, resolutionIcon] = await getVals([
+    '#optionList.content.0.icon',
+    '#optionList.content.1.icon',
+  ]);
+  expect(bitrateIcon).toContain('speed_');
+  expect(resolutionIcon).toContain('hd_');
+  if (CAPTURE) await captureRawUI('playbackSettingsMenu');
+
+  // OK opens the bitrate picker, with No limit first and checked.
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === 'No limit', {
+    label: 'bitrate picker open',
+    timeout: 10000,
+  });
+  // FOCUSED, not only mounted: the picker opens from the gear menu's result handler,
+  // and the gear menu closes after that, so a close that restored its own focus would
+  // leave this picker on screen and deaf. Reading rows cannot see that.
+  await waitFocusInside('#optionList', { label: 'bitrate picker focused', timeout: 5000 });
+  // Scene-rooted: the dialog is appended to the scene, not to the routed view.
+  expect(await getVal('#optionList.content.0.isSelected'), 'No limit is the current value').toBe(
+    true,
+  );
+
+  // Back returns to the gear menu, not to the OSD, on the bitrate row.
+  await press(ecp.Key.Back);
+  await gearMenuOpen('Back from the bitrate picker reopened the gear menu');
+  await waitFocusInside('#optionList', { label: 'reopened gear menu focused', timeout: 5000 });
+  await waitFor('#optionList.itemFocused', (n) => n === 0, {
+    label: 'reopened on the bitrate row',
+    timeout: 5000,
+  });
+
+  // The same from the resolution picker: Back lands on the resolution row.
+  await press(ecp.Key.Down);
+  await waitFor('#optionList.itemFocused', (n) => n === 1, {
+    label: 'resolution row focused',
+    timeout: 5000,
+  });
+  await press(ecp.Key.Ok);
+  await waitFor(
+    '#optionList.content.0.title',
+    (t) => typeof t === 'string' && !t.startsWith('Maximum'),
+    {
+      label: 'resolution picker open',
+      timeout: 10000,
+    },
+  );
+  await waitFocusInside('#optionList', { label: 'resolution picker focused', timeout: 5000 });
+  await press(ecp.Key.Back);
+  await gearMenuOpen('Back from the resolution picker reopened the gear menu');
+  await waitFor('#optionList.itemFocused', (n) => n === 1, {
+    label: 'reopened on the resolution row',
+    timeout: 5000,
+  });
+
+  // Into the bitrate picker again, down to the lowest step, and pick it.
+  await press(ecp.Key.Up);
+  await waitFor('#optionList.itemFocused', (n) => n === 0, {
+    label: 'bitrate row focused',
+    timeout: 5000,
+  });
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === 'No limit', {
+    label: 'bitrate picker open (second time)',
+    timeout: 10000,
+  });
+  await waitFocusInside('#optionList', {
+    label: 'bitrate picker focused (second time)',
+    timeout: 5000,
+  });
+  const rows = await getVal('#optionList.content.getChildCount()');
+  const startIndex = await getVal('#optionList.itemFocused');
+  for (let i = startIndex; i < rows - 1; i++) await press(ecp.Key.Down);
+  await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {
+    label: 'focus walked to the lowest bitrate',
+    timeout: 8000,
+  });
+  expect(await getVal(`#optionList.content.${rows - 1}.title`)).toBe('1 Mbps');
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('the pick closed the picker', { timeout: 10000 });
+
+  // The reload plays again, and Settings were left alone: the pick lasts for this queue.
+  await waitMediaPlaying('reload after the bitrate pick');
+  const reg = await odc.readRegistry();
+  const section = reg?.values?.[session.userId] ?? {};
+  expect(section.playbackBitrateMaxLimited, 'a gear pick must not be saved').toBeUndefined();
+  expect(section.playbackBitrateLimit, 'a gear pick must not be saved').toBeUndefined();
+
+  // ...and applied: the stream now transcodes, and the report names the cap.
+  await waitOsdUp('osd visible after the reload', { itemId: heroId });
+  await pressOsdButton('showVideoInfoPopup');
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
+    label: 'playback info report reached the dialog',
+    timeout: 25000,
+  });
+  expect(await getVal('#jrDialog.tagline'), 'a 1 Mbps cap must not direct play').not.toBe(
+    'Direct playing',
+  );
+  const sections = await getVal('#jrDialog.sections');
+  const reasons = sections.find((sec) => sec.id === 'reasons');
+  expect(reasons, 'a transcode must report why').toBeTruthy();
+  // The cause is the picked cap, which the report must see although Settings hold none.
+  await expectBitrateCapApplied(reasons, 1000000);
+
+  await press(ecp.Key.Back);
+  await waitDialogClosed('playback info dismissed', { timeout: 10000 });
+
+  // The gear menu now reads the picked value.
+  await pressOsdButton('showPlaybackSettings');
+  await gearMenuOpen('gear menu open after the pick');
+  expect(await getVal('#optionList.content.0.title')).toBe('Maximum Bitrate (1 Mbps)');
+  await press(ecp.Key.Back);
+  await waitDialogClosed('gear menu dismissed', { timeout: 10000 });
+  await waitFocused((f) => f.node?.id === 'showPlaybackSettings', {
+    label: 'focus restored to the gear',
+    timeout: 8000,
+  });
+
+  await stopPlayback();
+}, 300000);
 
 // The report's KEY MODEL, driven for real rather than inspected. The focus-ring
 // fix above is about appearance; this asserts the dialog actually WORKS: that it

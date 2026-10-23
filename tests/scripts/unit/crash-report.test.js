@@ -8,7 +8,7 @@
 // that fail on its fake tag.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SourceMapGenerator } from 'source-map';
@@ -1095,6 +1095,21 @@ describe('getOrBuildAnalysis (worktree cache)', () => {
       // worktree can be built from it. We only care that we entered the rebuild
       // branch, verified via the staleness log message.
       .toThrow();
+    expect(logs.some((m) => m.includes('stale') && m.includes('rebuilding'))).toBe(true);
+  });
+
+  it('treats a TTL of 0 as stale even when the directory mtime is ahead of the clock', () => {
+    // Date.now() has whole-millisecond precision and mtimeMs does not, so a directory written
+    // in the current millisecond can read as newer than "now". Force that deterministically.
+    // The previous test's rebuild path removed the fixture, so recreate it first.
+    mkdirSync(buildDirPath, { recursive: true });
+    const future = new Date(Date.now() + 5);
+    utimesSync(buildDirPath, future, future);
+    const gitExec = () => `${tag}\n`;
+    const logs = [];
+    expect(() =>
+      getOrBuildAnalysis('9.99.99', { gitExec, ttlMs: 0, logger: (m) => logs.push(m) }),
+    ).toThrow();
     expect(logs.some((m) => m.includes('stale') && m.includes('rebuilding'))).toBe(true);
   });
 });

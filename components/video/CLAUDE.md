@@ -13,6 +13,7 @@ The video playback subsystem. [docs/architecture/playback.md](../../docs/archite
 ## OSD
 
 - One `OSD` instance per `VideoPlayerView`. It hides after 5 seconds without input (`inactiveTimeout="5"` on the instance in `VideoPlayerView.xml`).
+- **A gear pick lasts for the playback and the rest of its queue, and is never saved.** `QueueManager` holds it beside the version pick, and Settings stays the default. It reaches the request as the `caps` argument of `getDeviceProfile()`, so read caps through that argument or `playbackCaps.bs`, never by writing the setting. A new gear row goes in `playbackSettingsMenu.rows()`. Opening one dialog from another's result handler needs `handOffFocus` first, or the closing dialog takes focus back. See [playback.md](../../docs/architecture/playback.md#playback-settings-the-gear).
 - For a Live TV channel the OSD adapts: a `goToLive` button, the behind-live math (in `source/utils/liveTv.bs`), and times from the guide data and the wall clock, falling back to the player's `positionTime` when program timing is missing. A DVR recording gets episode-style titles only. See [playback.md](../../docs/architecture/playback.md#live-tv-mode).
 
 ## How an item plays

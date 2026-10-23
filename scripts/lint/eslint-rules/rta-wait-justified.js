@@ -193,6 +193,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // viewer dismisses it or the episode ends. Terminal, not a pulse. Read against the app
   // source 2026-10-02 (VideoNotification.show / hide / dismiss).
   '#nextEpisodeNotification.state',
+  // The first row's title in the open list dialog. JRListDialog.onItemsChanged sets every row's
+  // title when `items` is assigned, which each dialog does once before it is shown, and nothing
+  // writes it again until the dialog closes; the next dialog's list replaces it. Terminal, not
+  // a pulse. Read against the app source 2026-10-23.
+  '#optionList.content.0.title',
   '#optionList.itemFocused',
   '#osd.visible',
   '#quickConnectCode.text',

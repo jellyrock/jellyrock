@@ -5,15 +5,16 @@ import "pkg:/source/utils/translate.bs"
 
 namespace tests
 
-  ' The OSD's left row held 7 buttons at its busiest against a cap of 10 (2026-09-07), so like
-  ' ItemDetails its overflow is not reachable through real data, and unlike
-  ' ItemDetails it is three buttons short rather than none. This suite is therefore
+  ' The OSD's left row held 7 buttons at its busiest against a cap of 10 (2026-09-07), and
+  ' 9 once the playback-settings gear joined the right group (2026-10-23), so like
+  ' ItemDetails its overflow is not reachable through real data. This suite is therefore
   ' the entire deliverable for the OSD half: it proves the split works before the
   ' button that needs it exists.
   '
-  ' The cap being 10 and not 8 is the point worth gating. Same arithmetic, different
-  ' geometry: spacing 24 rather than 18, and the bound is the right-aligned playback
-  ' info button rather than the logo.
+  ' The cap being 9 and not ItemDetails' 8 is the point worth gating. Same arithmetic,
+  ' different geometry: spacing 24 rather than 18, and the bound is the right-aligned
+  ' gear and playback-info buttons rather than the logo. A Live TV channel drops the
+  ' gear, which gives the slot back.
   @suite("OSD - button row overflow")
   class OSDButtonOverflowTests extends tests.BaseTestSuite
 
@@ -102,29 +103,29 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("the cap is 10 here, not ItemDetails' 8")
+    @describe("the cap is 9 here, not ItemDetails' 8")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' The central assertion of this suite. Nine buttons already overflow on
     ' ItemDetails; here they must not, because the spacing and the bound differ.
-    @it("still fits 10 buttons without a More button")
+    @it("still fits 9 buttons without a More button")
     function _()
-      m.addFutureButtons(3)
+      m.addFutureButtons(2)
       m.osd.itemData = m.richMovie()
 
-      m.assertEqual(m.buttonMenuLeft.getChildCount(), 10)
+      m.assertEqual(m.buttonMenuLeft.getChildCount(), 9)
       m.assertInvalid(m.buttonMenuLeft.findNode("moreButton"))
       m.assertEqual(m.stash.getChildCount(), 0)
     end function
 
-    @it("spends the last slot on More at 11")
+    @it("spends the last slot on More at 10")
     function _()
-      m.addFutureButtons(4)
+      m.addFutureButtons(3)
       m.osd.itemData = m.richMovie()
 
-      m.assertEqual(m.buttonMenuLeft.getChildCount(), 10, "9 real buttons plus More")
-      m.assertEqual(m.buttonMenuLeft.getChild(9).id, "moreButton")
-      m.assertEqual(m.stashIds(), ["future2", "future3"])
+      m.assertEqual(m.buttonMenuLeft.getChildCount(), 9, "8 real buttons plus More")
+      m.assertEqual(m.buttonMenuLeft.getChild(8).id, "moreButton")
+      m.assertEqual(m.stashIds(), ["future1", "future2"])
     end function
 
     @it("labels and icons More from the shared asset and translation")
@@ -142,16 +143,17 @@ namespace tests
     @describe("the right group keeps its pin")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' Overflow spills at the END of the LEFT row, so the button a user reaches for
-    ' when playback misbehaves stays one press away at the same screen position.
-    @it("never touches the playback-info button")
+    ' Overflow spills at the END of the LEFT row, so the buttons a user reaches for
+    ' when playback misbehaves stay one press away at the same screen position.
+    @it("never touches the gear or the playback-info button")
     function _()
       m.addFutureButtons(6)
       m.osd.itemData = m.richMovie()
 
       buttonMenuRight = m.osd.findNode("buttonMenuRight")
-      m.assertEqual(buttonMenuRight.getChildCount(), 1)
-      m.assertEqual(buttonMenuRight.getChild(0).id, "showVideoInfoPopup")
+      m.assertEqual(buttonMenuRight.getChildCount(), 2)
+      m.assertEqual(buttonMenuRight.getChild(0).id, "showPlaybackSettings")
+      m.assertEqual(buttonMenuRight.getChild(1).id, "showVideoInfoPopup")
       ' Membership is checked by walking the stash, not with findNode: findNode
       ' resolves from the nearest COMPONENT ancestor, and the stash is a plain Group,
       ' so `stash.findNode(id)` would search the whole OSD and answer yes for a node
@@ -171,10 +173,10 @@ namespace tests
     function _()
       m.addFutureButtons(4)
       m.osd.itemData = m.richMovie()
-      m.assertEqual(m.stashIds(), ["future2", "future3"])
+      m.assertEqual(m.stashIds(), ["future1", "future2", "future3"])
 
-      ' A live channel: setButtonStates drops the source and chapter buttons and
-      ' keeps goToLive, so the row shrinks back under the cap.
+      ' A live channel: setButtonStates drops the source and chapter buttons and the
+      ' gear, and keeps goToLive, so the row shrinks back under the cap.
       channel = CreateObject("roSGNode", "JellyfinBaseItem")
       channel.setFields({
         id: "test-channel-1",

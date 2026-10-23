@@ -268,6 +268,19 @@ namespace tests
       m.assertFalse(row.findNode("rowIcon").visible, "the check owns the gutter when both are set")
     end function
 
+    ' Drawn at a button's icon size and centred on the 36px slot, so the glyph inside
+    ' the icon file's padding fills the slot instead of shrinking to about 20px.
+    @it("draws a leading icon at the button's size, centred on the gutter slot")
+    function _()
+      rowIcon = m.rowWith({ isSelected: false, icon: "pkg:/images/icons/refresh_$$RES$$.png" }).findNode("rowIcon")
+      m.assertEqual(int(rowIcon.width), 64)
+      m.assertEqual(int(rowIcon.height), 64)
+      ' Slot: x 24..60, centre 42. Poster: x 10..74, centre 42.
+      m.assertEqual(int(rowIcon.translation[0]) + 32, 42)
+      ' Row 60 high: centre 30.
+      m.assertEqual(int(rowIcon.translation[1]) + 32, 30)
+    end function
+
     @it("hides the icon poster when a row carries no icon")
     function _()
       m.assertFalse(m.rowWith({ isSelected: false, icon: "" }).findNode("rowIcon").visible)
@@ -575,6 +588,73 @@ namespace tests
       m.dialog.callFunc("cancelDialog")
 
       m.assertTrue(m.dialog.result.externallyCancelled)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The gutter is kept only when the list can fill it")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function rowFor(hasGutter as dynamic) as object
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "Play"
+      fields = { isSelected: false, icon: "" }
+      if isValid(hasGutter) then fields.hasGutter = hasGutter
+      content.addFields(fields)
+      row.itemContent = content
+      return row
+    end function
+
+    @it("stamps every row of a plain list with no gutter")
+    function _()
+      m.dialog.items = ["Play", "Shuffle"]
+      content = m.dialog.findNode("content")
+      m.assertFalse(content.getChild(0).hasGutter)
+      m.assertFalse(content.getChild(1).hasGutter)
+    end function
+
+    @it("stamps every row with the gutter when the list has a current option")
+    function _()
+      m.dialog.selectedIndex = 1
+      m.dialog.items = ["English", "Spanish"]
+      content = m.dialog.findNode("content")
+      m.assertTrue(content.getChild(0).hasGutter, "an unchecked row keeps the gutter so labels line up")
+      m.assertTrue(content.getChild(1).hasGutter)
+    end function
+
+    @it("stamps every row with the gutter when any row has an icon")
+    function _()
+      m.dialog.icons = ["pkg:/a.png"]
+      m.dialog.items = ["Delete", "Refresh"]
+      m.assertTrue(m.dialog.findNode("content").getChild(1).hasGutter, "a row without an icon still lines up")
+    end function
+
+    @it("starts a row's label at the row padding when its list has no gutter")
+    function _()
+      m.assertEqual(int(m.rowFor(false).findNode("rowLabel").translation[0]), 24)
+      m.assertEqual(int(m.rowFor(true).findNode("rowLabel").translation[0]), 84)
+    end function
+
+    ' A row built by anything but JRListDialog carries no flag, and renders as it always did.
+    @it("keeps the gutter for a row that carries no flag")
+    function _()
+      m.assertEqual(int(m.rowFor(invalid).findNode("rowLabel").translation[0]), 84)
+    end function
+
+    @it("sizes a plain menu narrower than the same menu with icons")
+    function _()
+      plain = CreateObject("roSGNode", "JRListDialog")
+      plain.sizeToContent = true
+      plain.items = ["Go to Series and then some more words"]
+
+      withIcons = CreateObject("roSGNode", "JRListDialog")
+      withIcons.sizeToContent = true
+      withIcons.icons = ["pkg:/a.png"]
+      withIcons.items = ["Go to Series and then some more words"]
+
+      m.assertTrue(m.listWidthOf(plain) < m.listWidthOf(withIcons), "a plain menu still paid for an empty gutter")
     end function
 
   end class

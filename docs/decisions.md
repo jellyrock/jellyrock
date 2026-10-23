@@ -2186,6 +2186,26 @@ Ruled out: clearing the stash at each sign-in attempt, because a stray that arri
 
 A photo, a slideshow and an album Shuffle open the playback-start wait (`QueueManager.beginPlaybackStart`), and `PhotoDetails` takes it like a player (`isPlaybackScreen`, `takePlaybackStart`) and ends it once a photo shows. The start already does what a photo launch needs: Back cancels it and stops the album's `QuickPlayTask` (`onPlaybackStartEnded`), and a Play pressed meanwhile replaces it. Ruled out: a photo kind of its own, which would need a second slot and cancel path in `QueueManager` to keep in step with the start's; and leaving a single photo's launch without a wait because it makes no request, since the wait is for the slow case and opening the viewer was never timed. Cost: logs and the kind's name say "playback start" for a photo, and a start pressed while the photo viewer is up (a cast) no longer hides it, as a channel switch does not hide a player.
 
+## decision-id: gear-picks-last-for-the-queue
+
+**date**: 2026-10-23
+**status**: accepted
+**related-files**: `source/utils/playbackCaps.bs`, `components/manager/QueueManager.bs`, `components/video/VideoPlayerView.bs`, `source/utils/deviceCapabilities.bs`, `components/video/PlayerHostView.bs`
+
+A quality cap picked in the playback-settings gear on the OSD (Maximum Bitrate, Maximum Resolution) applies to the playback and the rest of its queue, and is never saved; Settings stays the default. `QueueManager` holds it beside the version pick (`setPlaybackCaps`): `clear()` forgets it when a new queue starts, `set()` keeps it through a shuffle, and a pick equal to the Settings value records nothing (`playbackCaps.withPick()`). It reaches the request as the `caps` argument of `getDeviceProfile()`, which passes it to `GetBitRateLimit()` and `getResolutionConditions()`; with no argument they read Settings, so every other caller is unchanged. The playback report lays the picked caps over Settings (`PlayerHostView.reportSettings()`), so a transcode the gear caused is still attributed to the cap.
+
+Ruled out: saving the pick as the Bitrate Limit setting, which the first cut of the gear did. A bitrate dropped for one bad connection then stays for every later video until changed back, and a viewer cannot lower quality for one playback without changing their default. The version pick is the in-repo model. Recheck if viewers ask for a pick to stick across queues: that is a "save as default" action beside the pick, not a change to this lifetime.
+
+## decision-id: bitrate-zero-means-no-limit
+
+**date**: 2026-10-23
+**status**: accepted
+**related-files**: `source/utils/deviceCapabilities.bs`, `source/utils/playbackCaps.bs`, `source/utils/transcodeCause.bs`, `source/utils/playbackSettingsMenu.bs`, `settings/settings.json`
+
+A Maximum Bitrate of 0 means no limit. With the Bitrate Limit setting on and its value at 0, `GetBitRateLimit()` used to send Roku's per-codec ceilings (10 Mbps `h264`, 40 Mbps `h265`, `av1` and `vp9`); it now sends no condition, the same as the limit switched off, and one positive limit caps every codec. `playbackCaps.settingsBitrateMbps()` is the one reading of the setting: `GetBitRateLimit()` builds the condition from it and `causedByBitrateLimit()` attributes a transcode to it, so the two cannot drift. The gear's 0 choice had meant two things (the ceilings for a user on 0, no limit for a user with a number), and the ceilings were hard to explain and did not work as expected. The gear labels 0 "No limit" rather than "Auto", because Auto suggests the app measures the connection and nothing here does.
+
+Ruled out: keeping the ceilings as a separate "Roku default" choice, which is hard to explain to a viewer. Cost: a user who had the limit on with 0 loses the ceilings and plays as the default does. Recheck if a device is shown to fail direct play above one of the old ceilings.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

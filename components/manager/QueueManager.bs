@@ -33,6 +33,9 @@ sub init()
   ' The video the viewer explicitly picked for this queue (versionPick.preferenceFor), carried
   ' to the items the queue arrives at. Belongs to the queue, so a new queue starts without one.
   m.versionPreference = invalid
+  ' The quality caps the viewer picked for this queue (playbackCaps.bs), over Settings. Belongs
+  ' to the queue for the same reason as the version pick.
+  m.playbackCaps = invalid
   ' The playback start no player has taken yet (beginPlaybackStart / takePlaybackStart).
   m.playbackStart = invalid
 end sub
@@ -91,6 +94,7 @@ sub clear()
   m.queue = []
   m.queueTypes = []
   m.versionPreference = invalid
+  m.playbackCaps = invalid
   m.isPrerollActive = m.global.user.settings.playbackCinemaMode
   setPosition(0)
 end sub
@@ -574,11 +578,14 @@ end sub
 ' Replace play queue with passed array
 sub set(items)
   ' set() replaces the contents (a shuffle toggle reorders through it), so the viewer's
-  ' version pick and the playing state stay; a new queue starts with clear(), which forgets them.
+  ' version pick, quality caps and the playing state stay; a new queue starts with clear(),
+  ' which forgets them.
   versionPreference = m.versionPreference
+  caps = m.playbackCaps
   isPlaying = m.isPlaying
   clear()
   m.versionPreference = versionPreference
+  m.playbackCaps = caps
   m.isPlaying = isPlaying
   m.queue = items
   for each item in items
@@ -617,6 +624,19 @@ end sub
 ' getVersionPreference: The explicit version pick for this queue, or invalid when there is none.
 function getVersionPreference() as dynamic
   return m.versionPreference
+end function
+
+' setPlaybackCaps: Record the quality caps the viewer picked for the rest of this queue (the
+' OSD's gear). invalid forgets them, and Settings applies again.
+'
+' @param {dynamic} caps - from playbackCaps.withPick()
+sub setPlaybackCaps(caps as dynamic)
+  m.playbackCaps = caps
+end sub
+
+' getPlaybackCaps: The quality caps picked for this queue, or invalid when there are none.
+function getPlaybackCaps() as dynamic
+  return m.playbackCaps
 end function
 
 ' getItemType: Returns the media type of the passed item

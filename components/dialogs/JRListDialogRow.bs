@@ -1,3 +1,4 @@
+import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -18,15 +19,20 @@ sub init()
   m.checkIcon = m.top.findNode("checkIcon")
   m.rowIcon = m.top.findNode("rowIcon")
   m.rowLabel = m.top.findNode("rowLabel")
+  m.hasGutter = true
 
   constants = m.global.constants
 
-  ' The leading icon fills the gutter's slot. colorTextPrimary, not the check's
-  ' colorSecondary: it labels the row, it does not mark a state.
-  m.rowIcon.width = LIST_ROW_ICON_SIZE
-  m.rowIcon.height = LIST_ROW_ICON_SIZE
-  m.rowIcon.loadWidth = LIST_ROW_ICON_SIZE
-  m.rowIcon.loadHeight = LIST_ROW_ICON_SIZE
+  ' The leading icon is drawn at the size a button draws it (ICON_BUTTON_ICON_SIZE),
+  ' centred on the gutter's slot, so a row shows the same glyph at the same size as
+  ' the button it stands for. The icon files carry transparent padding around the
+  ' glyph (resources/icons/icons.json), so a standard glyph then fills the 36px slot;
+  ' drawn at the slot's own size it came out about 20px. colorTextPrimary, not the
+  ' check's colorSecondary: it labels the row, it does not mark a state.
+  m.rowIcon.width = ICON_BUTTON_ICON_SIZE
+  m.rowIcon.height = ICON_BUTTON_ICON_SIZE
+  m.rowIcon.loadWidth = ICON_BUTTON_ICON_SIZE
+  m.rowIcon.loadHeight = ICON_BUTTON_ICON_SIZE
   m.rowIcon.loadDisplayMode = "limitSize"
   m.rowIcon.blendColor = constants.colorTextPrimary
   m.selectedBackground.blendColor = constants.colorBackgroundSecondary
@@ -69,6 +75,10 @@ sub onItemContentChanged()
   m.rowIcon.uri = iconUri
   m.rowIcon.visible = iconUri <> "" and not isSelected
 
+  ' Whether this list keeps the gutter (dialogLayout.listHasGutter), stamped on every
+  ' row by JRListDialog. Absent (a row built by anything else) keeps it, as before.
+  m.hasGutter = not isValid(content.hasGutter) or content.hasGutter
+
   ' The LABEL stays colorTextPrimary either way. Recolouring it to match the
   ' check was tried and read as too much contrast on device once the surface
   ' landed: three simultaneous treatments on one row is louder than the state
@@ -95,9 +105,12 @@ sub layoutRow()
   m.selectedBackground.height = rowHeight
 
   m.checkIcon.translation = [LIST_ROW_PADDING, int((rowHeight - CHECK_ICON_SIZE) / 2)]
-  m.rowIcon.translation = [LIST_ROW_PADDING, int((rowHeight - LIST_ROW_ICON_SIZE) / 2)]
+  ' Centred on the slot, so the padding around the glyph overhangs it on every side.
+  iconOffset = int((ICON_BUTTON_ICON_SIZE - LIST_ROW_ICON_SIZE) / 2)
+  m.rowIcon.translation = [LIST_ROW_PADDING - iconOffset, int((rowHeight - ICON_BUTTON_ICON_SIZE) / 2)]
 
-  m.rowLabel.translation = [LIST_ROW_CHECK_GUTTER, 0]
-  m.rowLabel.width = rowWidth - LIST_ROW_CHECK_GUTTER - LIST_ROW_PADDING
+  labelInset = listRowLabelInset(m.hasGutter)
+  m.rowLabel.translation = [labelInset, 0]
+  m.rowLabel.width = rowWidth - labelInset - LIST_ROW_PADDING
   m.rowLabel.height = rowHeight
 end sub

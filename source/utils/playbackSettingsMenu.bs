@@ -1,0 +1,191 @@
+' The OSD's playback-settings (gear) menu: its rows, and the choices behind each.
+'
+' Pure, so the mapping from "the caps that apply + the playing source" to "what the user sees,
+' and what a pick means" is testable without a device. The OSD presents these, and
+' VideoPlayerView applies a pick through playbackCaps.withPick().
+'
+' A pick applies to this playback and the rest of its queue, and is never saved; Settings is
+' the default (see playbackCaps.bs).
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+namespace playbackSettingsMenu
+
+  ' Row ids, which the OSD dispatches on. Each is also the playbackCaps field its pick sets.
+  const ROW_MAX_BITRATE = "maxBitrateMbps"
+  const ROW_MAX_RESOLUTION = "maxResolution"
+
+  ' Each row's glyph, drawn in the list row's gutter the way the More menu's rows wear
+  ' their buttons' icons.
+  const ICON_MAX_BITRATE = "pkg:/images/icons/speed_$$RES$$.png"
+  const ICON_MAX_RESOLUTION = "pkg:/images/icons/hd_$$RES$$.png"
+
+  ' The Maximum Bitrate choices, in Mbps, highest first. Modeled on jellyfin-web's
+  ' quality ladder, kept to whole numbers because playbackBitrateLimit stores whole Mbps.
+  ' 0 is No limit and is not part of the ladder.
+  function ladderMbps() as object
+    return [120, 80, 60, 40, 20, 15, 10, 8, 6, 4, 3, 2, 1]
+  end function
+
+  ' "No limit" or "8 Mbps". Not "Auto": that suggests the app measures the connection,
+  ' and 0 here measures nothing.
+  function bitrateLabel(mbps as integer) as string
+    if mbps <= 0 then return translate(translationKeys.LabelNoLimit)
+    return translate(translationKeys.LabelBitrateMbps, [mbps.toStr()])
+  end function
+
+  ' The short name of a resolution option, for the gear row: "Off", "Auto" or the option's
+  ' own title ("720p"). The picker shows the options' full titles instead.
+  '
+  ' @param {string} resolutionId - a playbackResolutionMax option id
+  ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
+  function resolutionLabel(resolutionId as string, resolutionSetting as dynamic) as string
+    if resolutionId = "off" then return translate(translationKeys.LabelOff)
+    if resolutionId = "auto" then return translate(translationKeys.LabelAuto)
+    for each option in settingOptions(resolutionSetting)
+      if option.id = resolutionId then return optionTitle(option)
+    end for
+    return resolutionId
+  end function
+
+  ' The gear menu's rows. Empty when the menu has nothing to offer, and the OSD then drops
+  ' the gear button.
+  '
+  ' Live TV gets no rows: a reload there opens a new live stream, and the
+  ' one-release-per-stream rule has not been checked for that path yet.
+  '
+  ' @param {boolean} isLiveTv - the playing item is a TvChannel
+  ' @param {integer} bitrateMbps - playbackCaps.bitrateMbps()
+  ' @param {string} resolutionId - playbackCaps.resolution()
+  ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
+  ' @returns {object} - { labels: [string], ids: [string], icons: [string] }
+  function rows(isLiveTv as boolean, bitrateMbps as integer, resolutionId as string, resolutionSetting as dynamic) as object
+    menu = { labels: [], ids: [], icons: [] }
+    if isLiveTv then return menu
+
+    menu.labels.push(rowLabel(translationKeys.LabelMaximumBitrate, bitrateLabel(bitrateMbps)))
+    menu.ids.push(ROW_MAX_BITRATE)
+    menu.icons.push(ICON_MAX_BITRATE)
+
+    if settingOptions(resolutionSetting).count() > 0
+      menu.labels.push(rowLabel(translationKeys.LabelMaximumResolution, resolutionLabel(resolutionId, resolutionSetting)))
+      menu.ids.push(ROW_MAX_RESOLUTION)
+      menu.icons.push(ICON_MAX_RESOLUTION)
+    end if
+    return menu
+  end function
+
+  ' The Maximum Bitrate picker, in the shape trackPickerOptions builds:
+  ' { labels, values, defaultIndex, selectedIndex }, where `values` are Mbps and 0 is No limit.
+  '
+  ' Trimmed the way jellyfin-web trims its list: the steps at or below the source's video
+  ' bitrate, plus the one step above it. Anything higher constrains nothing this source
+  ' has, so it would only lengthen the list. An unknown bitrate keeps the whole ladder.
+  ' The current value always appears and is checked, even when it is off the ladder (a
+  ' number typed in Settings) or trimmed away.
+  '
+  ' @param {integer} currentValueMbps - playbackCaps.bitrateMbps()
+  ' @param {integer} sourceVideoBitrate - the playing video stream's bitrate in bit/s, 0 if unknown
+  ' @returns {object}
+  function bitrateOptions(currentValueMbps as integer, sourceVideoBitrate as integer) as object
+    choices = []
+    stepAbove = 0
+    for each mbps in ladderMbps()
+      bitrate = mbps * 1000000
+      if sourceVideoBitrate <= 0 or bitrate <= sourceVideoBitrate
+        choices.push(mbps)
+      else
+        ' Highest first, so the last step above the source is the smallest one.
+        stepAbove = mbps
+      end if
+    end for
+    if stepAbove > 0 then choices.unshift(stepAbove)
+
+    if currentValueMbps > 0 and not containsInteger(choices, currentValueMbps)
+      insertAt = choices.count()
+      for i = 0 to choices.count() - 1
+        if choices[i] < currentValueMbps
+          insertAt = i
+          exit for
+        end if
+      end for
+      choices = insertIntoArray(choices, insertAt, currentValueMbps)
+    end if
+
+    options = { labels: [], values: [], defaultIndex: 0, selectedIndex: 0 }
+    options.labels.push(bitrateLabel(0))
+    options.values.push(0)
+    for each mbps in choices
+      if mbps = currentValueMbps
+        options.selectedIndex = options.values.count()
+      end if
+      options.labels.push(bitrateLabel(mbps))
+      options.values.push(mbps)
+    end for
+    options.defaultIndex = options.selectedIndex
+    return options
+  end function
+
+  ' The Maximum Resolution picker: the setting's own options from settings.json, in its order
+  ' and with its titles, so the gear and the Settings screen offer one list. `values` are
+  ' option ids.
+  '
+  ' @param {string} currentId - playbackCaps.resolution()
+  ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
+  ' @returns {object} - { labels, values, defaultIndex, selectedIndex }
+  function resolutionOptions(currentId as string, resolutionSetting as dynamic) as object
+    options = { labels: [], values: [], defaultIndex: 0, selectedIndex: -1 }
+    for each option in settingOptions(resolutionSetting)
+      if option.id = currentId
+        options.selectedIndex = options.values.count()
+        options.defaultIndex = options.selectedIndex
+      end if
+      options.labels.push(optionTitle(option))
+      options.values.push(option.id)
+    end for
+    return options
+  end function
+
+  ' "Maximum Bitrate (No limit)".
+  function rowLabel(nameKey as string, valueLabel as string) as string
+    return translate(translationKeys.LabelSettingWithValue, [translate(nameKey), valueLabel])
+  end function
+
+  ' A settings.json entry's options that carry an id, or [] when it has none.
+  function settingOptions(setting as dynamic) as object
+    valid = []
+    if type(setting) <> "roAssociativeArray" or type(setting.options) <> "roArray" then return valid
+    for each option in setting.options
+      if type(option) = "roAssociativeArray" and isValidAndNotEmpty(option.id) then valid.push(option)
+    end for
+    return valid
+  end function
+
+  ' An option's translated title, as the Settings screen shows it.
+  function optionTitle(option as object) as string
+    if isValidAndNotEmpty(option.titleKey) then return translate(option.titleKey)
+    return textOrEmpty(option.title)
+  end function
+
+  ' Whether `items` holds `value`. misc.bs's inArray compares as strings, which an
+  ' integer cannot take.
+  function containsInteger(items as object, value as integer) as boolean
+    for each item in items
+      if item = value then return true
+    end for
+    return false
+  end function
+
+  ' A copy of `items` with `value` inserted at `index`.
+  function insertIntoArray(items as object, index as integer, value as dynamic) as object
+    result = []
+    for i = 0 to items.count() - 1
+      if i = index then result.push(value)
+      result.push(items[i])
+    end for
+    if index >= items.count() then result.push(value)
+    return result
+  end function
+
+end namespace

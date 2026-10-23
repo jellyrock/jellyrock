@@ -209,3 +209,5 @@ this table automatically.
 | `studio_filled.svg` | `domain` | Rounded | 500 | 1 | `24px` | 2026-05-15 |
 | `more_horiz.svg` | `more_horiz` | Rounded | 500 | 1 | `24px` | 2026-09-04 |
 | `versions.svg` | `content_copy` | Rounded | 500 | 0 | `24px` | 2026-09-20 |
+| `speed.svg` | `speed` | Rounded | 500 | 0 | `24px` | 2026-10-23 |
+| `hd.svg` | `hd` | Rounded | 500 | 0 | `24px` | 2026-10-23 |

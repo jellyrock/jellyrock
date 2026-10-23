@@ -52,8 +52,11 @@
       <IconButton id="showSubtitleMenu" icon="pkg:/images/icons/closedCaptions_$$RES$$.png" />
       <IconButton id="chapterList" icon="pkg:/images/icons/chapters_$$RES$$.png" />
     </OSDButtonGroup>
-    <!-- Video info popup is right aligned-->
+    <!-- Right aligned: the playback-settings gear, then the video info popup. The gear opens
+         its own menu (see openSettingsMenu in OSD.bs) and is removed by setButtonStates()
+         when that menu would have no rows. -->
     <OSDButtonGroup id="buttonMenuRight" horizAlignment="right" translation="[1830,932]">
+      <IconButton id="showPlaybackSettings" icon="pkg:/images/icons/settings_$$RES$$.png" />
       <IconButton id="showVideoInfoPopup" icon="pkg:/images/icons/fileInfo_$$RES$$.png" />
     </OSDButtonGroup>
 
@@ -88,6 +91,9 @@
          when multiple video sources exist. Set by VideoPlayerView. -->
     <field id="videoSourceTag" type="string" value="" />
     <field id="runTimeMinutes" type="integer" />
+    <!-- The playing video stream's bitrate in bit/s, 0 when unknown. Trims the Maximum
+         Bitrate choices to the ones that can change anything. Set by VideoPlayerView. -->
+    <field id="sourceVideoBitrate" type="integer" value="0" />
 
     <!-- Playback state (set by VideoPlayerView) -->
     <field id="videoLogo" type="string" value="" />
@@ -101,5 +107,9 @@
     <field id="action" type="string" alwaysNotify="true" />
     <field id="shouldShowChapterList" type="boolean" alwaysNotify="true" />
     <field id="hasFocus" type="boolean" alwaysNotify="true" />
+    <!-- A pick in the gear menu: { field, value }, field a playbackCaps field
+         ("maxBitrateMbps", "maxResolution"). Written only when it differs from the value
+         that applies; VideoPlayerView applies it to this queue and reloads the stream. -->
+    <field id="playbackCapsPick" type="assocarray" alwaysNotify="true" />
   </interface>
 </component>

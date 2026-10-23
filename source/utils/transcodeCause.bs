@@ -25,6 +25,7 @@
 ' WRONG rather than merely missing.
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackCaps.bs"
 
 ' The 1080p hardware ceiling buildPlaybackInfoPostData() (source/api/items.bs)
 ' clamps h264 to, independently of any setting. Renamed from
@@ -157,21 +158,15 @@ function causedByMultichannelDecodeOff(ctx as object, settings as object) as boo
   return arrayHasValue(cappedCodecs, LCase(stream.Codec))
 end function
 
-' Mirrors GetBitRateLimit() in deviceCapabilities.bs, and mirrors it through the
-' SAME `mediaNumber` coercion on purpose. That function emits the user's value
-' only when the limit is enabled and the stored value reads as a positive number;
-' otherwise it falls through to Roku's per-codec HARDWARE ceilings, which are not
-' the user's doing and must not be reported as such. If the two ever disagree
-' about what counts as a usable limit, this module would name a setting that did
-' not constrain anything.
+' Reads the limit through playbackCaps.settingsBitrateMbps(), the same reading
+' GetBitRateLimit() in deviceCapabilities.bs builds the profile condition from, so
+' this can never name a setting that did not constrain anything.
 '
 ' The last conjunct (the source actually exceeding the limit) is what turns
 ' "the setting is on" into "the setting is why". A 5 Mbps stream under a 20 Mbps
 ' cap transcoded for some other reason entirely.
 function causedByBitrateLimit(ctx as object, settings as object) as boolean
-  if not isBooleanTrue(settings.playbackBitrateMaxLimited) then return false
-
-  limitMbps = mediaNumber(settings.playbackBitrateLimit)
+  limitMbps = playbackCaps.settingsBitrateMbps(settings)
   if limitMbps <= 0 then return false
 
   stream = ctx.videoStream

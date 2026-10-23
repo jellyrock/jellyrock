@@ -2,9 +2,12 @@ import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/buttonOverflow.bs"
+import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackCaps.bs"
+import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
@@ -275,6 +278,13 @@ sub setButtonStates()
       ' position tick re-derives this through setGoToLiveEnabled().
       m.goToLiveButton.isEnabled = false
     end if
+  end if
+
+  ' Playback settings: the gear stays only while its menu has a row to show. Removed before
+  ' applyOverflow below, because the right group's width sets the left row's cap.
+  if playbackSettingsMenu.rows(isTvChannel, 0, "auto", invalid).ids.count() = 0
+    gearButton = m.buttonMenuRight.findNode("showPlaybackSettings")
+    if isValid(gearButton) then m.buttonMenuRight.removeChild(gearButton)
   end if
 
   ' Debug-only: pad the row so the overflow can be reached on a device. Inert at
@@ -782,6 +792,12 @@ sub onButtonSelected()
     return
   end if
 
+  ' The gear is the same kind of affordance: it opens a menu rather than acting.
+  if selectedButton.id = "showPlaybackSettings"
+    openSettingsMenu()
+    return
+  end if
+
   dispatchOsdAction(selectedButton.id)
 end sub
 
@@ -811,11 +827,11 @@ end sub
 ' Button-row overflow: the same contract ItemDetails runs, over this row.
 '
 ' The left group is capped at whatever fits before the RIGHT group's leftmost
-' edge, so the transport row can never run into the pinned playback-info button.
-' That cap is 10, not ItemDetails' 8: the spacing is 24 rather than 18 and the
-' bound is a button rather than the logo. Both numbers come out of the same
-' arithmetic in source/utils/buttonOverflow.bs, which is why neither is written
-' down anywhere.
+' edge, so the transport row can never run into the pinned gear and playback-info
+' buttons. It differs from ItemDetails' cap because the spacing is 24 rather than
+' 18 and the bound is the right group rather than the logo, and it grows by one
+' when the gear is dropped. Both caps come out of the same arithmetic in
+' source/utils/buttonOverflow.bs, which is why neither is written down anywhere.
 '
 ' Only setButtonStates() changes this row's membership (since goToLive stopped
 ' attaching and detaching mid-playback, nothing else does), so unlike ItemDetails
@@ -827,8 +843,8 @@ function osdRowSpacing(group as object) as integer
   return 0
 end function
 
-' The left row's geometry, in ONE place so the cap and the overflow menu's anchor
-' cannot be derived from different numbers.
+' The button row's geometry, in ONE place so the cap and the menus' anchors (More and
+' the gear) cannot be derived from different numbers.
 '
 ' The right group is right-ALIGNED, so its origin is its right edge and it grows
 ' leftward. Its width is derived from its live child count so pinning a second button there
@@ -842,9 +858,9 @@ function osdRowGeometry() as object
   leftSpacing = osdRowSpacing(m.buttonMenuLeft)
 
   rightCount = m.buttonMenuRight.getChildCount()
+  rightSpacing = osdRowSpacing(m.buttonMenuRight)
   rightWidth = 0
   if rightCount > 0
-    rightSpacing = osdRowSpacing(m.buttonMenuRight)
     rightWidth = (rightCount * buttonWidth) + ((rightCount - 1) * rightSpacing)
   end if
   rightGroupLeftEdge = int(m.buttonMenuRight.translation[0]) - rightWidth
@@ -854,7 +870,9 @@ function osdRowGeometry() as object
     rowY: int(m.buttonMenuLeft.translation[1]),
     spacing: leftSpacing,
     itemWidth: buttonWidth,
-    rightBound: rightGroupLeftEdge - leftSpacing
+    rightBound: rightGroupLeftEdge - leftSpacing,
+    rightOriginX: rightGroupLeftEdge,
+    rightSpacing: rightSpacing
   }
 end function
 
@@ -911,6 +929,132 @@ sub onMoreMenuResult()
   ' ItemDetails' identical handler rather than copied into both.
   buttonId = overflowMenuSelection(dialog.result, ids)
   if buttonId <> "" then dispatchOsdAction(buttonId)
+end sub
+
+' ===========================================================================
+' Playback settings (the gear). Rows and choices come from
+' source/utils/playbackSettingsMenu.bs; a pick goes out on playbackCapsPick, and
+' VideoPlayerView applies it to this queue (playbackCaps.bs) and reloads.
+'
+' Two levels: the gear menu, anchored to the gear like More, then the row's
+' picker, centred like the playback track pickers. Back in a picker returns to
+' the gear menu on that row; Back there returns to the gear.
+'
+' Each level opens the next from inside its own result handler, and a dialog
+' delivers its result BEFORE it closes (JRListDialog.resolveDialog). Its close then
+' restores focus to its returnFocusTo, which would take focus off the dialog the handler
+' opened and leave it on screen but deaf. So the handler clears the closing
+' dialog's returnFocusTo first (handOffFocus), and every level returns focus to
+' the gear itself rather than to whatever held focus when it opened.
+' ===========================================================================
+
+' Let `closing` close without restoring focus, because the caller is about to open
+' the next dialog, which takes focus itself.
+sub handOffFocus(closing as object)
+  if isValid(closing) then closing.returnFocusTo = invalid
+end sub
+
+' Where the gear sits, for anchoring its menu. The right group is right-ALIGNED, so
+' its children run left to right from its left edge (osdRowGeometry).
+function gearButtonAnchor() as object
+  geometry = osdRowGeometry()
+  gearIndex = 0
+  for i = 0 to m.buttonMenuRight.getChildCount() - 1
+    if m.buttonMenuRight.getChild(i).id = "showPlaybackSettings" then gearIndex = i
+  end for
+  return {
+    x: geometry.rightOriginX + (gearIndex * (geometry.itemWidth + geometry.rightSpacing)),
+    y: geometry.rowY,
+    width: geometry.itemWidth
+  }
+end function
+
+' The caps that apply to this playback: the viewer's picks for this queue over Settings.
+function effectiveCaps() as object
+  settings = m.global.user.settings
+  caps = m.global.queueManager.callFunc("getPlaybackCaps")
+  return {
+    bitrateMbps: playbackCaps.bitrateMbps(settings, caps),
+    resolution: playbackCaps.resolution(settings, caps)
+  }
+end function
+
+' The playbackResolutionMax entry of settings.json, read once per OSD: the Maximum Resolution
+' row offers that setting's own options.
+function resolutionSetting() as dynamic
+  if not isValid(m.resolutionSetting)
+    tree = GetConfigTree()
+    if isValid(tree) then m.resolutionSetting = findConfigTreeKey("playbackResolutionMax", tree)
+  end if
+  return m.resolutionSetting
+end function
+
+' @param {string} focusRowId - the row to focus, for Back from one of its pickers
+sub openSettingsMenu(focusRowId = "" as string)
+  current = effectiveCaps()
+  menu = playbackSettingsMenu.rows(isLiveTvItem(), current.bitrateMbps, current.resolution, resolutionSetting())
+  if menu.ids.count() = 0 then return
+
+  focusIndex = 0
+  for i = 0 to menu.ids.count() - 1
+    if menu.ids[i] = focusRowId then focusIndex = i
+  end for
+
+  m.settingsMenuIds = menu.ids
+  m.settingsMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onSettingsMenuResult", gearButtonAnchor(), menu.icons, focusIndex)
+  m.settingsMenuDialog.returnFocusTo = m.buttonMenuRight.findNode("showPlaybackSettings")
+end sub
+
+sub onSettingsMenuResult()
+  dialog = m.settingsMenuDialog
+  ids = m.settingsMenuIds
+  m.settingsMenuDialog = invalid
+  m.settingsMenuIds = invalid
+  if not isValid(dialog) then return
+
+  ' Same rule as the More menu: only a user's pick acts, never a close code made.
+  rowId = overflowMenuSelection(dialog.result, ids)
+  if rowId = "" then return
+
+  current = effectiveCaps()
+  if rowId = playbackSettingsMenu.ROW_MAX_BITRATE
+    handOffFocus(dialog)
+    openCapPicker(rowId, translationKeys.LabelMaximumBitrate, playbackSettingsMenu.bitrateOptions(current.bitrateMbps, m.top.sourceVideoBitrate), current.bitrateMbps)
+  else if rowId = playbackSettingsMenu.ROW_MAX_RESOLUTION
+    handOffFocus(dialog)
+    openCapPicker(rowId, translationKeys.LabelMaximumResolution, playbackSettingsMenu.resolutionOptions(current.resolution, resolutionSetting()), current.resolution)
+  end if
+end sub
+
+' One picker for every gear row. `field` is the row id, which is also the playbackCaps field
+' a pick sets.
+sub openCapPicker(field as string, titleKey as string, options as object, current as dynamic)
+  m.capPicker = { field: field, options: options, current: current }
+  m.capPickerDialog = showListDialog(translate(titleKey), options.labels, "onCapPicked", options.defaultIndex, options.selectedIndex)
+  m.capPickerDialog.returnFocusTo = m.buttonMenuRight.findNode("showPlaybackSettings")
+end sub
+
+sub onCapPicked()
+  dialog = m.capPickerDialog
+  picker = m.capPicker
+  m.capPickerDialog = invalid
+  m.capPicker = invalid
+  if not isValid(dialog) or not isValid(dialog.result) or not isValid(picker) then return
+
+  result = dialog.result
+  ' A close code made (teardown, another dialog replacing this one) must not act.
+  if result.externallyCancelled then return
+  if result.cancelled
+    handOffFocus(dialog)
+    openSettingsMenu(picker.field)
+    return
+  end if
+
+  index = result.optionIndex
+  if not isValid(index) or index < 0 or index >= picker.options.values.count() then return
+  picked = picker.options.values[index]
+  m.log.info("onCapPicked", "field", picker.field, "picked", picked, "current", picker.current)
+  if picked <> picker.current then m.top.playbackCapsPick = { field: picker.field, value: picked }
 end sub
 
 function createSubtitleLabelNode(labelId as string) as object
@@ -1012,6 +1156,14 @@ sub onDestroy()
   abandonDialog(m.moreMenuDialog)
   m.moreMenuDialog = invalid
   m.overflowMenuIds = invalid
+  ' The gear's two levels act too (a pick reloads playback).
+  abandonDialog(m.settingsMenuDialog)
+  abandonDialog(m.capPickerDialog)
+  m.settingsMenuDialog = invalid
+  m.settingsMenuIds = invalid
+  m.capPickerDialog = invalid
+  m.capPicker = invalid
+  m.resolutionSetting = invalid
 
   ' Unobserve all m.top observers
   m.top.unobserveField("itemData")

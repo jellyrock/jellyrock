@@ -21,6 +21,7 @@ import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackEnd.bs"
 import "pkg:/source/utils/playbackErrorInfo.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
@@ -118,6 +119,7 @@ sub init()
   m.chapterContent = m.top.findNode("chapterContent")
   m.osd = m.top.findNode("osd")
   m.osd.observeField("action", "onOSDAction")
+  m.osd.observeField("playbackCapsPick", "onPlaybackCapsPicked")
   m.trickplayCarousel = m.top.findNode("trickplayCarousel")
 
   ' Trickplay seek position tracking - we parse Roku's trickPlayBar text to get
@@ -675,12 +677,7 @@ sub onSubtitleChange()
 
   m.log.info("Subtitle change requires stream reload", "subtitleIndex", m.top.SelectedSubtitle, "position", m.top.position)
 
-  ' Save the current video position
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
-
-  m.top.control = "stop"
-
-  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
+  reloadAtCurrentPosition()
 end sub
 
 ' Event handler for when audioIndex changes.
@@ -710,12 +707,53 @@ sub onAudioIndexChange()
   if isTrackPickAgainstOldVersion() then return
   m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded)
 
-  ' Save the current video position
+  reloadAtCurrentPosition()
+end sub
+
+' Reload the stream that is playing, with its version, audio and subtitle, from where it
+' is now. A change the server has to answer again (a subtitle burned in, an audio track a
+' transcode must carry, a new Maximum Bitrate) goes through here.
+sub reloadAtCurrentPosition()
   m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
-
   m.top.control = "stop"
-
   startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
+end sub
+
+' The playing video stream's bitrate in bit/s, or 0 when it is unknown. Read from the
+' version that loaded (mediaSourceForId), never the server's default.
+function playedVideoBitrate() as integer
+  playedSource = mediaSourceForId(m.top.fullVideoSourceData, m.loadedMediaSourceId)
+  if not isValid(playedSource) then return 0
+  videoStream = getFirstVideoStream(playedSource.MediaStreams)
+  if not isValid(videoStream) then return 0
+  return mediaNumber(videoStream.BitRate)
+end function
+
+' The viewer picked a quality cap in the OSD's gear menu ({ field, value }). It applies to
+' this playback and the rest of its queue and is not saved: QueueManager holds it
+' (playbackCaps.withPick), the next PlaybackInfo request reads it through the device profile,
+' and the stream reloads so it applies now.
+sub onPlaybackCapsPicked()
+  pick = m.osd.playbackCapsPick
+  if not isValid(pick) or not isValidAndNotEmpty(pick.field) then return
+
+  queueManager = m.global.queueManager
+  caps = playbackCaps.withPick(m.global.user.settings, queueManager.callFunc("getPlaybackCaps"), pick.field, pick.value)
+  queueManager.callFunc("setPlaybackCaps", caps)
+  m.log.info("Playback cap picked", "field", pick.field, "value", pick.value, "isTranscoded", m.top.isTranscoded, "position", m.top.position)
+
+  ' The menu offers no rows for Live TV, and before the content loads nothing is playing to
+  ' reload; either way the pick applies to the next load.
+  if not m.isContentLoaded or isLiveTvPlayback() then return
+
+  ' A version switch still loading: rerun its load so it reads the new pick, with the
+  ' audio track it chose for that version. Its start point is already mapped.
+  if m.isVersionSwitchLoading
+    startVideoLoad(m.versionSwitchAudioIndex, SubtitleSelection.NOT_SET)
+    return
+  end if
+
+  reloadAtCurrentPosition()
 end sub
 
 ' onVideoSourceChange: Handles video source switching from OSD
@@ -771,6 +809,7 @@ sub onVideoSourceChange()
 
   m.videoLoadMediaSourceId = newSourceId
   m.isVersionSwitchLoading = true
+  m.versionSwitchAudioIndex = audioStreamIdx
   ' Subtitles reset to auto-detect for the new source
   startVideoLoad(audioStreamIdx, SubtitleSelection.NOT_SET)
 end sub
@@ -1196,6 +1235,8 @@ sub onVideoContentLoaded(event as object)
     else
       m.osd.videoSourceTag = ""
     end if
+    ' Before itemData too: the gear's bitrate choices are trimmed to this.
+    m.osd.sourceVideoBitrate = playedVideoBitrate()
     m.osd.itemData = videoContent[0].meta
 
     ' Extract media segments from metadata node for segment detection during playback
@@ -2515,6 +2556,7 @@ sub onDestroy()
 
   if isValid(m.osd)
     m.osd.unobserveField("action")
+    m.osd.unobserveField("playbackCapsPick")
     m.osd.callFunc("onDestroy")
   end if
 
