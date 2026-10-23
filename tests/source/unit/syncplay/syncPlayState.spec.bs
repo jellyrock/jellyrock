@@ -50,7 +50,6 @@ namespace tests
       m.assertEqual(state.groupId, "g-1")
       m.assertEqual(state.groupName, "Movie night")
       m.assertEqual(state.groupState, "Idle")
-      m.assertEqual(state.participants, ["ann"])
       m.assertEqual(state.joinedAtMs, 1792788440500&)
       m.assertTrue(state.following)
     end function
@@ -73,13 +72,14 @@ namespace tests
       m.assertEqual(state.playingItemId, "")
     end function
 
-    @it("UserJoined and UserLeft keep the participants")
+    @it("UserJoined and UserLeft keep no member list: one account on two devices would break it")
     function _()
       state = m.joined()
-      syncPlayState.applyGroupUpdate(state, m.update("UserJoined", "bob"))
-      m.assertEqual(state.participants, ["ann", "bob"])
+      syncPlayState.applyGroupUpdate(state, m.update("UserJoined", "ann"))
       syncPlayState.applyGroupUpdate(state, m.update("UserLeft", "ann"))
-      m.assertEqual(state.participants, ["bob"])
+      m.assertFalse(state.doesExist("participants"))
+      m.assertTrue(state.inGroup)
+      m.assertEqual(state.groupId, "g-1")
     end function
 
     @it("StateUpdate moves the group state")

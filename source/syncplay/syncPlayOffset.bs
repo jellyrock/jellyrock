@@ -10,8 +10,8 @@
 ' toward zero: a sub-millisecond offset is below anything the estimate resolves.
 ' The last 8 rounds are kept and the estimate is the one with the shortest delay. The first
 ' HTTPS round carries the TLS handshake (690 ms and 411 ms on the two test devices, 2026-10-23)
-' and loses on delay by itself, so nothing drops it by hand. Measured spread of the estimate on
-' the Stick 4K: 5 ms over HTTP, about 60 ms over HTTPS (SPIKES.md in the project folder).
+' and loses on delay by itself, so nothing drops it by hand. Measured on the Stick 4K on
+' 2026-10-23, the estimate's spread was 5 ms over HTTP and about 60 ms over HTTPS.
 namespace syncPlayOffset
 
   const RING_SIZE = 8

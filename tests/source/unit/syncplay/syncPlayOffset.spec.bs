@@ -4,7 +4,7 @@ import "pkg:/source/syncplay/syncPlayTime.bs"
 namespace tests
 
   ' The clock-offset estimate. The fixtures are the rounds the Stick 4K recorded on 2026-10-23
-  ' (spike 3, .device-runs/spike-syncplay-<stick-ip>.json): eight HTTP rounds whose offsets lay
+  ' (spike 3): eight HTTP rounds whose offsets lay
   ' within 5 ms of each other, and eight HTTPS rounds whose first carried the TLS handshake.
   @suite("syncPlayOffset — clock offset estimate")
   class SyncPlayOffsetTests extends tests.BaseTestSuite

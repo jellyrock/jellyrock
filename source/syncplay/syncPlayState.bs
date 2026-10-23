@@ -4,15 +4,18 @@
 ' schedules a command. Specced against the frame sequence recorded on the long poll 2026-10-23.
 namespace syncPlayState
 
-  ' Not in a group. `following` is true so a fresh join follows at once (the Charter: a group start
-  ' auto-plays). `isPlaying` is invalid until a queue update says otherwise (a 10.7 line never does).
+  ' Not in a group. `following` is true so a fresh join follows at once (a group start auto-plays:
+  ' a prompt would hold the whole group). `isPlaying` is invalid until a queue update says
+  ' otherwise (a 10.7 line never does).
+  ' There is no member list: UserJoined and UserLeft come once per session with only a user name,
+  ' so one account on two devices makes any list kept from them wrong. The group menu reads the
+  ' server's list from GET /SyncPlay/List when it opens instead.
   function newState() as object
     return {
       inGroup: false,
       groupId: "",
       groupName: "",
       groupState: "",
-      participants: [],
       joinedAtMs: 0&,
       following: true,
       playlist: [],
@@ -25,7 +28,8 @@ namespace syncPlayState
   end function
 
   ' Apply one parsed SyncPlayGroupUpdate (kind "syncplayupdate"). Returns the state, mutated in
-  ' place; a GroupLeft or NotInGroup returns a fresh one. Toast-only types change nothing.
+  ' place; a GroupLeft or NotInGroup returns a fresh one. Toast-only types (UserJoined and UserLeft
+  ' among them) change nothing.
   function applyGroupUpdate(state as object, update as object) as object
     if not isValid(update) or update.kind <> "syncplayupdate" then return state
     updateType = update.updateType
@@ -35,21 +39,12 @@ namespace syncPlayState
       state.groupId = update.groupId
       state.groupName = update.groupName
       state.groupState = update.groupState
-      state.participants = update.participants
       ' Commands emitted before this moment belong to the group's past, as jellyfin-web treats
       ' them (Manager.processCommand): see acceptsCommand.
       state.joinedAtMs = update.lastUpdatedAtMs
       state.following = true
     else if updateType = "GroupLeft" or updateType = "NotInGroup"
       return newState()
-    else if updateType = "UserJoined"
-      if isValidAndNotEmpty(update.userName) then state.participants.push(update.userName)
-    else if updateType = "UserLeft"
-      remaining = []
-      for each name in state.participants
-        if name <> update.userName then remaining.push(name)
-      end for
-      state.participants = remaining
     else if updateType = "StateUpdate"
       state.groupState = update.groupState
     else if updateType = "PlayQueue"
@@ -66,7 +61,7 @@ namespace syncPlayState
     return state
   end function
 
-  ' Back during group playback: stop following, keep the membership (decision `halt`, 2026-10-23).
+  ' Back during group playback: stop following, keep the membership, as jellyfin-web and mpv-shim do.
   function halt(state as object) as object
     state.following = false
     return state

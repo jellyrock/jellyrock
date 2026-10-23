@@ -8,7 +8,8 @@ namespace syncPlayRequests
 
   ' POST /SyncPlay/Ready: this client is ready at `whenMs` (server time) with the player at
   ' positionTicks on playlistItemId. Sent once a seek or load settles, never at the playing edge
-  ' (the position can still read the pre-seek value there: SPIKES.md, 2026-10-23).
+  ' (the position can still read the pre-seek value there, seen once on a transcode on the Ultra,
+  ' 2026-10-23).
   function ready(whenMs as longinteger, positionTicks as longinteger, isPlaying as boolean, playlistItemId as string) as object
     return playbackReport(whenMs, positionTicks, isPlaying, playlistItemId)
   end function
