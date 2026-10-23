@@ -325,7 +325,6 @@
   "MessageServerNotFoundIsItOnline": "A szerver nem található. Biztosan működik?",
   "MessageSetHowManySecondsBeforeThe": "Beállíthatja, hogy hány másodperccel az epizód vége előtt jelenjen meg a Következő epizód gomb. A letiltáshoz állítsa 0-ra.",
   "MessageSetTheMaximumAmountOfDays": "Beállítja, hogy a műsor hány napig maradjon a „Következő” listában anélkül, hogy megnézné.",
-  "MessageSetTheMaximumBitrateInMbps": "A maximális bitráta beállítása Mbps-ban. A Roku specifikációinak használatához állítsa 0-ra. Ezt a beállítást engedélyezni kell a hatálybalépéshez.",
   "MessageSettingsRelatingToPlaybackAndSupported": "A lejátszással, valamint a támogatott kodolókkal és médiatípusokkal kapcsolatos beállítások.",
   "MessageSettingsRelatingToTheAppearanceOf2": "A filmkönyvtárak oldalainak megjelenésével kapcsolatos beállítások.",
   "MessageSettingsRelatingToTheAppearanceOf3": "A TV Könyvtárak oldalainak megjelenésével kapcsolatos beállítások.",

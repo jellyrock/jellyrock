@@ -345,7 +345,6 @@
   "MessageServerNotFoundIsItOnline": "Il server non è stato trovato, è online?",
   "MessageSetHowManySecondsBeforeThe": "Imposta quanti secondi prima della fine di un episodio appare il tasto Prossimo episodio. Impostare a 0 per disabilitare.",
   "MessageSetTheMaximumAmountOfDays": "Imposta il numero massimo di giorni che uno spettacolo può rimanere nella lista 'Prossimo' senza essere guardato.",
-  "MessageSetTheMaximumBitrateInMbps": "Imposta il massimo bitrate in Mbps. Impostare a 0 per utilizzare la configurazione di Roku. Questa impostazione dev'essere abilitata affinché abbia effetto.",
   "MessageSettingsRelatingToPlaybackAndSupported": "Impostazioni di riproduzione, codec supportati e tipi di media.",
   "MessageSettingsRelatingToTheAppearanceOf2": "Impostazioni relative all'aspetto delle pagine nelle librerie dei film.",
   "MessageSettingsRelatingToTheAppearanceOf3": "Impostazioni relative all'aspetto delle pagine nelle librerie TV.",
