@@ -438,23 +438,24 @@ export async function firstItemId(session, includeItemTypes) {
 }
 
 /**
- * How many items of `includeItemTypes` the user has marked favorite, which is the content a
- * Favorites tab spec depends on. Same query shape as the app's Favorites load (`LoadItemsTask`
- * `favorites`), narrowed to one type.
+ * The distinct item types, among `includeItemTypes`, that the user has marked favorite: the
+ * content a Favorites tab spec depends on. Same query shape as the app's Favorites load
+ * (`LoadItemsTask` `favorites`).
  *
- * Throws on a failed request; `0` means the server answered and the user has none, which a
- * spec must treat as a fixture that cannot support it, never as a pass.
+ * Throws on a failed request; an empty list means the server answered and the user has no
+ * favorite of those types, which a spec must treat as a fixture that cannot support it,
+ * never as a pass.
  *
  * @param {{serverUrl: string, userId: string, token: string}} session
- * @param {string} includeItemTypes - for example `Movie`
- * @returns {Promise<number>}
+ * @param {string} includeItemTypes - a comma-joined list, for example `Movie,Series`
+ * @returns {Promise<string[]>}
  */
-export async function favoriteCount(session, includeItemTypes) {
+export async function favoriteItemTypes(session, includeItemTypes) {
   const url =
     `${session.serverUrl}/Items?UserId=${session.userId}` +
     `&Filters=IsFavorite&IncludeItemTypes=${includeItemTypes}&Recursive=true`;
   const data = await getJson(url, tokenHeader(session.token));
-  return data?.Items?.length ?? 0;
+  return [...new Set((data?.Items ?? []).map((item) => item.Type))];
 }
 
 /**

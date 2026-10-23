@@ -24,8 +24,11 @@
  *    than sending it again;
  *  - the items load failing on a refresh keeps the rows' items.
  *
- * The Favorites cases need a favorite Movie on the server (the demo user has one); they throw,
- * not skip, when it is gone, so a thinned fixture is not read as a pass.
+ * The Home cases run on the app's built-in layout (`uiHomeUseWebArrangement` seeded to false), so
+ * the public demo's layout cannot change what they test.
+ *
+ * The Favorites cases need at least one favorite of a type the Favorites tab shows; they throw,
+ * not skip, when there is none, so a thinned fixture is not read as a pass.
  *
  * A first load only runs when a HomeRows is mounted: at launch, before a spec can set a rule,
  * or when the Home tab is selected again, which mounts a fresh one. So the first-load cases
@@ -38,7 +41,7 @@ import fs from 'node:fs';
 import { beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate, favoriteCount } from '../lib/jellyfin.js';
+import { authenticate, favoriteItemTypes } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { failRequests } from '../lib/failRequests.js';
@@ -51,6 +54,9 @@ const LIBRARY_SECTION_TYPES = ['smalllibrarytiles', 'librarybuttons'];
 // Home section slots the app reads: homeSlots.SLOT_COUNT, read from its source so the two
 // cannot drift (it mirrors the Jellyfin web client's MAX_SECTIONS).
 const HOME_SLOT_COUNT = readHomeSlotCount();
+// The Favorites tab's type order: `const FAVORITES` in the app's source, minus People, which
+// has its own request and row.
+const FAVORITE_TYPES = readFavoriteTypes();
 // RTA_CAPTURE=1 also saves the failed tiles, focused, to out/rta-captures/ for review.
 const CAPTURE = process.env.RTA_CAPTURE === '1';
 
@@ -64,6 +70,21 @@ function readHomeSlotCount() {
   return count;
 }
 
+function readFavoriteTypes() {
+  const source = fs.readFileSync(
+    new URL('../../../source/constants/itemTypeOrder.bs', import.meta.url),
+    'utf8',
+  );
+  const list = /const FAVORITES = \[([\s\S]*?)\]/.exec(source)?.[1] ?? '';
+  const types = list
+    .split('\n')
+    .map((line) => /^\s*"(\w+)"/.exec(line)?.[1])
+    .filter((type) => type !== undefined && type !== 'Person');
+  if (types.length === 0)
+    throw new Error('source/constants/itemTypeOrder.bs declares no `const FAVORITES = [ ... ]`');
+  return types;
+}
+
 let session;
 
 beforeAll(async () => {
@@ -72,9 +93,29 @@ beforeAll(async () => {
 
 async function freshApp() {
   const expectedServer = await seedHome(session, LOCALE);
+  // Use the app's built-in Home layout, not the server's, so the demo's layout cannot change
+  // these cases. The runner's registry snapshot and restore undo the key.
+  await odc.writeRegistry({ values: { [session.userId]: { uiHomeUseWebArrangement: 'false' } } });
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'home-failure');
   await waitHome();
+  const layout = await readHomeLayout();
+  if (
+    !layout.includes('resume') ||
+    !layout.includes('latestmedia') ||
+    !layout.some((type) => LIBRARY_SECTION_TYPES.includes(type))
+  )
+    throw new Error(
+      `the built-in Home layout did not apply (user.getDefaultHomeSections() in source/utils/session.bs); slots read: ${JSON.stringify(layout)}`,
+    );
+}
+
+/** The Home section types the app holds in memory, one per slot. */
+async function readHomeLayout() {
+  const sections = [];
+  for (let i = 0; i < HOME_SLOT_COUNT; i++)
+    sections.push(await getGlobalVal(`user.settings.homeSection${i}`));
+  return sections;
 }
 
 /** A row that has loaded real items: more than a lone placeholder. */
@@ -166,15 +207,11 @@ it('the libraries failing on first load show My Media failed, and OK builds Rece
   );
 });
 
-it('the libraries failing with no My Media row show one Recently Added row, and OK replaces it', async (testCtx) => {
+it('the libraries failing with no My Media row show one Recently Added row, and OK replaces it', async () => {
   await freshApp();
-  // The layout is the server's (DisplayPreferences), held in memory on the user's settings.
-  // Changing it there reaches only this app run and the local registry, which the runner
-  // restores, and never the server.
-  const sections = [];
-  for (let i = 0; i < HOME_SLOT_COUNT; i++)
-    sections.push(await getGlobalVal(`user.settings.homeSection${i}`));
-  if (!sections.includes('latestmedia')) testCtx.skip('layout shows no latest media');
+  // The layout is the app's built-in one (seeded in `freshApp()`), held in memory on the
+  // user's settings. Blanking the library slots there reaches only this app run.
+  const sections = await readHomeLayout();
   for (let i = 0; i < HOME_SLOT_COUNT; i++) {
     if (LIBRARY_SECTION_TYPES.includes(sections[i])) {
       await odc.setValue({
@@ -275,17 +312,22 @@ it('OK on a failed Recently Added row while the rest are still loading spins it,
 });
 
 /**
- * The fixture holds what the Favorites cases assert on: at least one favorite Movie. Thrown,
- * not skipped: a case that loads nothing would pass on the very blank tab it exists to catch.
+ * The type of the row the Favorites cases assert on: the first type, in the Favorites tab's
+ * order, that the user has a favorite of. Thrown, not skipped, when there is none: a case that
+ * loads nothing would pass on the very blank tab it exists to catch.
  */
-async function assertFavoriteMovie() {
-  const movies = await favoriteCount(session, 'Movie');
-  if (movies < 1)
-    throw new Error(`the server user has no favorite Movie (${RTA_CONFIG.server.url})`);
+async function favoriteRowType() {
+  const have = await favoriteItemTypes(session, FAVORITE_TYPES.join(','));
+  const type = FAVORITE_TYPES.find((t) => have.includes(t));
+  if (!type)
+    throw new Error(
+      `the server user has no favorite of a type the Favorites tab shows (${RTA_CONFIG.server.url})`,
+    );
+  return type;
 }
 
 it('Favorites: the items load failing on first load shows one Favorites row, and OK loads it', async () => {
-  await assertFavoriteMovie();
+  const favType = await favoriteRowType();
   await freshApp();
   // The Favorites tab's first load runs when the tab is selected, so the rule is set before.
   await failRequests([{ prefix: 'favorites', kind: 'timeout', times: 1 }]);
@@ -302,13 +344,13 @@ it('Favorites: the items load failing on first load shows one Favorites row, and
 
   await pressOkOnFailedRow('favoritesStandIn', 'favoritesFailedStandIn');
   await waitHomeRows(
-    (s) => homeRow(s, 'favoritesStandIn') === undefined && hasItems(homeRow(s, 'Movie')),
-    { label: 'the Movies row replaced the stand-in after OK' },
+    (s) => homeRow(s, 'favoritesStandIn') === undefined && hasItems(homeRow(s, favType)),
+    { label: `the ${favType} row replaced the stand-in after OK` },
   );
 });
 
 it('Favorites: People failing alone shows its failed tile while the other rows load', async () => {
-  await assertFavoriteMovie();
+  const favType = await favoriteRowType();
   await freshApp();
   await failRequests([{ prefix: 'favoritePeople', kind: 'timeout', times: 1 }]);
   await selectHomeTab('favorites');
@@ -317,9 +359,9 @@ it('Favorites: People failing alone shows its failed tile while the other rows l
     (s) =>
       settled(s) &&
       isFailedTile(homeRow(s, 'Person')) &&
-      hasItems(homeRow(s, 'Movie')) &&
+      hasItems(homeRow(s, favType)) &&
       s.results.favoritePeople?.status === 'failed',
-    { label: 'People showed its failed tile and Movies loaded' },
+    { label: `People showed its failed tile and ${favType} loaded` },
   );
 
   await pressOkOnFailedRow('Person', 'favoritesFailedPeople');
@@ -333,7 +375,7 @@ it('Favorites: People failing alone shows its failed tile while the other rows l
 });
 
 it('Favorites: OK on People while the items load is still running does not send it again', async () => {
-  await assertFavoriteMovie();
+  const favType = await favoriteRowType();
   await freshApp();
   // People fails at once; the items load is held for 11 s, so it is still running at OK, a
   // little under the 12 s its caller waits for a default-limit answer (timeouts.API_WAIT_MS). `times:
@@ -345,7 +387,7 @@ it('Favorites: OK on People while the items load is still running does not send 
   await selectHomeTab('favorites');
 
   const snap = await waitHomeRows(
-    (s) => isFailedTile(homeRow(s, 'Person')) && isSpinning(homeRow(s, 'Movie')),
+    (s) => isFailedTile(homeRow(s, 'Person')) && isSpinning(homeRow(s, favType)),
     { label: 'People failed while the items load is still running' },
   );
   const index = snap.rows.findIndex((r) => r.sectionId === 'Person');
@@ -363,18 +405,18 @@ it('Favorites: OK on People while the items load is still running does not send 
 
   // The held answer is already on its way; anything after it goes at full speed.
   await failRequests([]);
-  const after = await waitHomeRows((s) => hasItems(homeRow(s, 'Movie')), {
-    label: 'the Movies row loaded from the first items request',
+  const after = await waitHomeRows((s) => hasItems(homeRow(s, favType)), {
+    label: `the ${favType} row loaded from the first items request`,
   });
   expect(after.results.favorites.count).toBe(1);
 });
 
 it('Favorites: the items load failing on a refresh keeps the rows', async () => {
-  await assertFavoriteMovie();
+  const favType = await favoriteRowType();
   await freshApp();
   await selectHomeTab('favorites');
   const loaded = await waitHomeRows(
-    (s) => hasItems(homeRow(s, 'Movie')) && s.results.favorites?.status === 'ok',
+    (s) => hasItems(homeRow(s, favType)) && s.results.favorites?.status === 'ok',
     { label: 'Favorites loaded' },
   );
   const before = { rows: loaded.rows, count: loaded.results.favorites.count };

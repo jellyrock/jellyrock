@@ -1344,22 +1344,6 @@ The `getOrBuildAnalysis` case with a TTL of 0 in `tests/scripts/unit/crash-repor
 
 `tests/source/BaseTestSuite.spec.bs` defines `setTestDisplaySetting()`; nothing in `tests/` calls it, and `docs/dev/unit-tests.md` lists it in the helper table and an error row. Remove it and both doc mentions, or use it in the suites that set display settings by hand. Checked 2026-10-13.
 
-#### `home-failure.spec.js` fails 10 of 11 cases on `main`: the demo server's `demo` user no longer has the Home layout or favorite Movie the spec needs `[fid: home-failure-spec-demo-layout-drift]` `[captured 2026-10-13]` `[pinned]`
-
-Found 2026-10-13 while verifying the search failure state (`feat/search-failure-state`). `ROKU_IP=192.168.1.178 npm run test:rta -- tests/rta/specs/home-failure.spec.js` on `main` (`511c91c1`) printed `Tests  10 failed | 1 skipped (11)`, the same 10 as on the branch: the six Home-row cases time out, and the four Favorites cases throw "the server user has no favorite Movie". A full `test:rta` the same day was red on these 10 only.
-
-**Root cause:** the demo server's `demo` user changed, not the app or the spec. Its home layout (`DisplayPreferences`, client `emby`) is now `smalllibrarytiles, librarybuttons, none, none, livetv, none…`, so there is no Continue Watching (`resume`) row to fail, and it has no favorite Movie, only one Series (queried 2026-10-13). The server reports 12.2.0. The spec's snapshots match: no `resume` section in its results. Nothing in `tests/rta` writes the server's layout or favorites; the public demo's `demo` user is editable by anyone signed in as it. Related: `[fid: demo-server-hourly-reset-suite-flake]`.
-
-**Options:**
-
-- `pin-layout` (recommended): the spec sets the Home layout it needs (`resume`, `nextup`, `latestmedia`, …) in app memory before each first load, through `odc.setValue` as its stand-in case already does, never writing the server; the Favorites cases keep their check but accept any favorite type the user has. One spec file. Removes the Home cases' dependence on a public server's settings; Favorites still rest on the demo keeping some favorite, and the spec keeps throwing (not skipping) when it has none.
-- `local-fixture`: run `home-failure` against a local server (`RTA_SERVER_URL`, port 8101) with a known layout and favorites. Same result every time, but setup and CI wiring (CI uses the demo, so it needs a skip there).
-- `write-demo`: restore the demo user's layout and a favorite Movie through the API before running. Writes to a shared public server others use, and recurs.
-
-While open, these 10 cases are red in every full `test:rta`, so a real regression in the Home and Favorites failure tiles (#1051, #1057) would go unnoticed.
-
-**Not checked:** when the demo user changed, and when the spec last passed against the demo; whether the Home cases pass once the layout is set in app memory; whether the Favorites assertions hold for a favorite Series.
-
 #### The `SubtitlePanel` Perfect match toggle after a failed search has no automated guard `[fid: subtitle-toggle-after-failure-unguarded]` `[captured 2026-10-14]`
 
 `SubtitlePanel`'s Perfect match toggle after a failed search has no automated guard. Found in review of PR #1203: `togglePerfectMatch()` re-rendered without the failed flag, so turning the filter off after a failed search showed "No subtitles found". The fix is structural (`m.searchFailed` beside `m.allResults`, written only by `showSearchOutcome()`, and `renderResults()` takes no flag), but nothing fails if a later render path bypasses it.
