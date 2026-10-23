@@ -115,13 +115,17 @@ namespace tests
     @describe("a photo launch")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("replaces a start still pending, as a newer start would")
+    @it("replaces a start still pending with its own, which the photo viewer takes")
     function _()
       pending = m.beginStart()
       m.queue.callFunc("launchItem", { id: "photo-1", type: "Photo" })
       m.assertEqual(pending.promiseState, "rejected")
-      m.assertEqual(pending.promiseResult.message, "replaced by a photo launch")
-      m.assertEqual(m.host.openWaits.count(), 0)
+      m.assertEqual(pending.promiseResult.message, "replaced by a newer start")
+      m.assertEqual(m.host.openWaits.count(), 1)
+      photoStart = m.queue.callFunc("takePlaybackStart")
+      m.assertTrue(appWaits.isOpen(photoStart))
+
+      appWaits.fail(photoStart, "test done")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

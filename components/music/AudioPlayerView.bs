@@ -3,12 +3,14 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/screenWaits.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/voiceTransport.bs"
@@ -214,6 +216,7 @@ sub audioPositionChanged()
   ' display on the target instead of showing where the old stream stopped.
   if isValid(m.pendingSeek) then return
 
+  endSeekWait()
   stopLoadingSpinner()
 
   position = currentAudioPosition()
@@ -442,7 +445,7 @@ sub reloadStreamAt(seconds as float, useServerSeek as boolean, continuesListen a
   if not isValid(currentItem) or not isValidAndNotEmpty(currentItem.id) then return
 
   m.pendingSeek = { seconds: seconds, useServerSeek: useServerSeek, continuesListen: continuesListen }
-  startLoadingSpinner()
+  beginSeekWait()
   holdDisplayAt(seconds)
   if m.audioPlayer.state = "playing" then m.audioPlayer.control = "pause"
 
@@ -480,9 +483,27 @@ sub onSeekStreamLoaded(event as object)
   m.pendingSeek = invalid
   if pending.useServerSeek then displayToast(translate(translationKeys.MessageSeekFailedTryAgain), "info")
   ' Carry on where the old stream was.
-  stopLoadingSpinner()
+  endSeekWait()
   if m.audioPlayer.state = "paused" then m.audioPlayer.control = "resume"
 end sub
+
+' A seek is waiting for its new stream to play (reloadStreamAt): the player's own wait (LoadingKind.BUFFERING), so it
+' stays on show under the spinner. Until it ends, every key but Back is ignored (onKeyEvent):
+' the old stream is paused, and a key acting on it would fight the seek. Back leaves as ever.
+sub beginSeekWait()
+  screenWaits.begin(m.top, "seek", LoadingKind.BUFFERING)
+end sub
+
+' The seek landed, or was given up. Ending one that is not open does nothing.
+sub endSeekWait()
+  screenWaits.finish(m.top, "seek")
+end sub
+
+' Whether a seek is still waiting for the player to move.
+function isSeekWaiting() as boolean
+  waits = m.top.loadingWaits
+  return isValid(waits) and waits.doesExist("seek")
+end function
 
 ' Shows seconds on the progress bar and timestamps while its stream loads.
 sub holdDisplayAt(seconds as float)
@@ -962,6 +983,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
       return true
     end if
 
+    if isSeekWaiting() and key <> "back" then return true
+
     ' Key Event handler when m.thumb is in focus
     if m.thumb.hasFocus()
       if key = "right"
@@ -978,7 +1001,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
       if key = "OK" or key = "play"
         if m.isInScrubMode
-          startLoadingSpinner()
+          ' A seek that loads a new stream waits under its own spinner (reloadStreamAt); a
+          ' native one moves the stream in place, with nothing to wait for.
           m.isInScrubMode = false
           startAudioAt(m.scrubTimestamp)
           return true

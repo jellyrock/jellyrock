@@ -6,8 +6,10 @@ import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/focusableOverview.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/deepLink.bs"
+import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
@@ -205,6 +207,9 @@ sub init()
   m.shuffleButton = invalid
   m.shuffleLoadingButton = invalid
   m.resumeLoadingButton = invalid
+
+  ' The Refresh the viewer pressed, while it waits for the item (startRefresh).
+  m.refreshWait = invalid
 
   ' Series: fetch the resume/next-up episode in the background for the Resume button
   m.loadSeriesResumeTask = CreateObject("roSGNode", "LoadItemsTask")
@@ -567,13 +572,12 @@ sub dispatchDetailButtonAction(buttonId as string)
   else if buttonId = "shuffleButton"
     onShuffleButtonPressed(item)
   else if buttonId = "viewPhotoButton"
-    ' Open a single Photo in the viewer. launchItem routes the "photo" type to
-    ' quickplay.photo; PhotoDetails stops the spinner on mount.
+    ' Open a single Photo in the viewer. launchItem opens its start and routes the "photo" type
+    ' to quickplay.photo; PhotoDetails ends the start once the photo shows.
     m.global.queueManager.callFunc("launchItem", item)
   else if buttonId = "slideshowButton"
     ' Sequential PhotoAlbum slideshow.
     if isValidAndNotEmpty(item.id)
-      startLoadingSpinner()
       m.global.queueManager.callFunc("launchPhotoAlbum", false, item.id)
     end if
   else if buttonId = "favoriteButton"
@@ -590,11 +594,36 @@ sub dispatchDetailButtonAction(buttonId as string)
   else if buttonId = "watchChannelButton"
     onWatchChannelButtonPressed(item)
   else if buttonId = "refreshButton"
-    ' Refresh this screen's data.
-    startLoadingSpinner()
-    m.top.refreshExtrasData = not m.top.refreshExtrasData
-    m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
+    startRefresh()
   end if
+end sub
+
+' Refresh button: load this screen's item again under a pressed-action wait (appWaits,
+' LoadingKind.ACTION), which hides the screen and holds the keys until the item arrives. Back
+' cancels it (onRefreshWaitEnded). The extras reload with it, in the background as on any
+' return to this screen.
+sub startRefresh()
+  refreshWait = appWaits.begin(LoadingKind.ACTION)
+  m.refreshWait = refreshWait
+  if isValid(refreshWait)
+    promises.onFinally(refreshWait, sub(ctx as object)
+      onRefreshWaitEnded(ctx.refreshWait)
+    end sub, { refreshWait: refreshWait })
+  end if
+  m.top.refreshExtrasData = not m.top.refreshExtrasData
+  m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
+end sub
+
+' The Refresh wait ended. One that failed (Back, or its time limit) drops the item still on its
+' way, and puts back the Resume button the reload set loading (onRefreshItemDetailsData).
+sub onRefreshWaitEnded(endedWait as object)
+  if not isValid(m.refreshWait) or not m.refreshWait.isSameNode(endedWait) then return
+  m.refreshWait = invalid
+  if endedWait.promiseState <> "rejected" then return
+  m.loadDetailsTask = releaseTask(m.loadDetailsTask, "content")
+  resumeButton = m.top.findNode("resumeButton")
+  if isValid(resumeButton) then resumeButton.isLoading = false
+  removeResumeLoadingButton()
 end sub
 
 ' Watched button. Movie/Episode toggle immediately; a Series confirms first (marking all
@@ -826,8 +855,7 @@ end sub
 sub onShuffleButtonPressed(item as object)
   if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
   if item.type = "PhotoAlbum"
-    ' A slideshow is not a play session: the plain spinner (QueueManager.launchPhotoAlbum).
-    startLoadingSpinner()
+    ' A random slideshow, which opens its own start (QueueManager.launchPhotoAlbum).
     m.global.queueManager.callFunc("launchPhotoAlbum", true, item.id)
   else
     m.global.queueManager.callFunc("launchShuffle", { type: item.type, id: item.id, seriesId: item.seriesId })
@@ -1292,14 +1320,8 @@ sub onRefreshDetailsLoaded(event as object)
     end if
   end if
 
-  ' Stop spinner only when this screen is the active view (watched/refresh button flow).
-  ' If a video player or other scene is on top, the spinner belongs to that flow, so don't touch it.
-  ' getActiveView() resolves the routed detail (SceneManager.getActiveScene would be invalid
-  ' for it), so the isSameNode guard still holds.
-  activeScene = getActiveView()
-  if isValid(activeScene) and activeScene.isSameNode(m.top)
-    stopLoadingSpinner()
-  end if
+  ' A Refresh the viewer pressed ends here; a background refresh has none open.
+  appWaits.done(m.refreshWait)
 end sub
 
 sub onTrailerAvailableChanged()
@@ -5504,9 +5526,12 @@ sub onDestroy()
 
   destroyTextureManager(m.extrasGrid.content)
 
-  ' Safety net: stop the loading spinner in case the component is destroyed while a refresh
-  ' is still in flight. The initial load's wait is this screen's, so it goes with the screen.
-  stopLoadingSpinner()
+  ' A Refresh still waiting has nowhere to show its item. Forgotten before it fails, so its end
+  ' (onRefreshWaitEnded) touches nothing this teardown releases. The initial load's wait is this
+  ' screen's, so it goes with the screen.
+  refreshWait = m.refreshWait
+  m.refreshWait = invalid
+  appWaits.fail(refreshWait, "its screen closed")
 
   ' Unobserve child node observers
   m.itemLogo.unobserveField("loadStatus")
@@ -5567,9 +5592,8 @@ sub onDestroy()
   m.loadLyricsTask.control = "STOP"
   m.loadLyricsTask = invalid
 
-  m.loadDetailsTask.unobserveField("content")
-  m.loadDetailsTask.control = "STOP"
-  m.loadDetailsTask = invalid
+  ' Already invalid after a cancelled Refresh (onRefreshWaitEnded).
+  m.loadDetailsTask = releaseTask(m.loadDetailsTask, "content")
 
   ' Tear down the record task. The delete / series-watched confirmations no longer
   ' route through SceneManager.isDataReturned: they use the standard dialog helpers,

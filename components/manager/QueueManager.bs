@@ -240,14 +240,9 @@ sub launchItem(itemNode as object)
   if isValidAndNotEmpty(itemNode.type) then itemType = LCase(itemNode.type)
   if itemType = "" then return
 
-  if itemType = "photo" or itemType = "photoalbum"
-    ' A photo opens a viewer, not a play session: the plain spinner, which PhotoDetails stops.
-    ' It replaces a start still pending, as a newer start would (beginPlaybackStart).
-    failPendingPlaybackStart("replaced by a photo launch")
-    startLoadingSpinner()
-  else
-    beginPlaybackStart("")
-  end if
+  ' A photo or an album opens the viewer the way a song opens the player: PhotoDetails takes the
+  ' start and ends it once a photo shows.
+  beginPlaybackStart("")
   clear()
   resetShuffle()
 
@@ -375,9 +370,7 @@ sub onQuickPlayTaskOutput(msg as object)
       isRandom: m.photoAlbumShuffleMode = true
     }
     m.photoAlbumShuffleMode = false
-    ' A photo opens a viewer, not a play session: whatever wait was up ends here.
-    appWaits.done(m.playbackStart)
-    stopLoadingSpinner()
+    ' The start stays open until the viewer that mounts takes it (PhotoDetails).
   else if output.action = "trailer"
     if isValid(output.items[0]) and isValidAndNotEmpty(output.items[0].id)
       clear()
@@ -390,18 +383,13 @@ sub onQuickPlayTaskOutput(msg as object)
   end if
 end sub
 
-' A QuickPlayTask found nothing to play. A playback start fails; a photo-album run, which has
-' no start and uses the plain spinner (launchPhotoAlbum), stops that spinner. Then the viewer
-' is told why (showNothingToPlay).
+' A QuickPlayTask found nothing to play: its playback start fails, and the viewer is told why
+' (showNothingToPlay).
 '
 ' @param {dynamic} kind - quickplayOutcome.KIND_*, from the Task's output
 ' @param {dynamic} status - quickplayOutcome.STATUS_*, from the Task's output
 sub endQuickPlayWithNothing(kind as dynamic, status as dynamic)
-  if appWaits.isOpen(m.playbackStart)
-    failPendingPlaybackStart("nothing to play")
-  else
-    stopLoadingSpinner()
-  end if
+  failPendingPlaybackStart("nothing to play")
   showNothingToPlay(kind, status)
 end sub
 
@@ -410,8 +398,7 @@ end sub
 ' build whose output arrived gets here, and that means the viewer still waits on it. Back,
 ' leaving the screen and a start's time limit end the start, which stops the Task
 ' (onPlaybackStartEnded); a newer press of the same launcher stops its own Task first
-' (runQuickPlayAction, launchShuffle); and a slideshow's plain spinner holds the remote until
-' it ends. So none of those ever shows a message.
+' (runQuickPlayAction, launchShuffle). So none of those ever shows a message.
 '
 ' @param {dynamic} kind - quickplayOutcome.KIND_*
 ' @param {dynamic} status - quickplayOutcome.STATUS_*
@@ -479,10 +466,9 @@ end sub
 ' mode the onQuickPlayTaskOutput photo branch reads, then runs the loadPhotoAlbum task.
 sub launchPhotoAlbum(isRandom as boolean, id as string)
   m.photoAlbumShuffleMode = isRandom
-  ' No playback start: a slideshow is not a play session, so it keeps the caller's plain spinner.
+  ' A slideshow opens the viewer the way a song opens the player: PhotoDetails takes the start.
   ' It replaces a start still pending, whose queue build runQuickPlayAction is about to stop.
-  ' Left open, that start would make endQuickPlayWithNothing take this run for a playback one.
-  failPendingPlaybackStart("replaced by a photo launch")
+  beginPlaybackStart("")
   runQuickPlayAction({ action: "loadPhotoAlbum", id: id })
 end sub
 
