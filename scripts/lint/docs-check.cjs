@@ -17,14 +17,14 @@
 //   - Every `related-files:` path in docs/architecture/*.md frontmatter
 //     resolves to an existing file (or directory) in the repo.
 //   - Every relative markdown link in docs/architecture/*.md, docs/dev/*.md,
-//     docs/adr/*.md, and docs/decisions.md resolves (skipping http(s): and
-//     mailto:). A link with a `#fragment`, to another .md file or to the
-//     same file (`#x`), must also name a heading or an explicit anchor
-//     (`<a id>`, `<a name>`, `<hN id>`) that exists in the target, using
-//     GitHub's slug rule (see headingToAnchor). Line anchors such as `#L12`
-//     and `#L12-L20` are not checked. The same-file check covers the
-//     CLAUDE.md files this script scans, which markdownlint MD051 does not
-//     lint. Files under .claude/ are not scanned.
+//     docs/user/*.md, docs/adr/*.md, and docs/decisions.md resolves
+//     (skipping http(s): and mailto:). A link with a `#fragment`, to another
+//     .md file or to the same file (`#x`), must also name a heading or an
+//     explicit anchor (`<a id>`, `<a name>`, `<hN id>`) that exists in the
+//     target, using GitHub's slug rule (see headingToAnchor). Line anchors
+//     such as `#L12` and `#L12-L20` are not checked. The same-file check
+//     covers the CLAUDE.md files this script scans, which markdownlint MD051
+//     does not lint. Files under .claude/ are not scanned.
 //   - Every tech-debt anchor reference (anywhere in scanned files) of
 //     the form `tech-debt.md#<anchor>` resolves to a real heading
 //     anchor in docs/architecture/tech-debt.md. This is the canonical
@@ -78,6 +78,7 @@ const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/f
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
+const USER_DIR = path.join(ROOT_DIR, 'docs/user');
 const ADR_DIR = path.join(ROOT_DIR, 'docs/adr');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
 const PROGRESS_PATH = path.join(ROOT_DIR, 'docs/progress.md');
@@ -672,6 +673,10 @@ checkDirOfMds(ARCH_DIR);
 
 // Dev how-to guides
 checkDirOfMds(DEV_DIR);
+
+// User guides (published at docs.jellyrock.app; their links are rewritten for
+// the site, so a link that's broken here is broken there too)
+checkDirOfMds(USER_DIR);
 
 // Architecture Decision Records (body links + tech-debt anchors; ADRs carry no
 // YAML frontmatter, so related-files validation is a no-op for them)

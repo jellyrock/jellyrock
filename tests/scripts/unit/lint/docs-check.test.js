@@ -1,7 +1,7 @@
 // Tests for scripts/lint/docs-check.cjs.
 //
 // Validates: related-files frontmatter paths, markdown links, tech-debt
-// anchor refs across docs/architecture/, docs/dev/, docs/decisions.md,
+// anchor refs across docs/architecture/, docs/dev/, docs/user/, docs/decisions.md,
 // every CLAUDE.md, and the BSC plugin sources under scripts/bsc-plugins/.
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -268,6 +268,29 @@ describe('docs-check — GitHub heading anchors', () => {
     });
     expect(exitCode).toBe(1);
     expect(cats(stdout)).toEqual(['broken-anchor']);
+  });
+
+  it('checks docs/user, including cross-site links into docs/dev', () => {
+    const { exitCode, stdout } = run({
+      'docs/user/guide.md':
+        '# Guide\n\n[x](no-such-page.md) and [y](../dev/flags.md#no-such-heading)\n',
+      'docs/dev/flags.md': '# Flags\n\n## Real heading\n',
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(1);
+    expect(cats(stdout).sort()).toEqual(['broken-anchor', 'broken-link']);
+    expect(JSON.parse(stdout).errors.every((e) => e.file.endsWith('docs/user/guide.md'))).toBe(
+      true,
+    );
+  });
+
+  it('passes valid cross-site links between docs/user and docs/dev', () => {
+    const { exitCode } = run({
+      'docs/user/guide.md': '# Guide\n\n## Settings\n\n[x](../dev/flags.md#real-heading)\n',
+      'docs/dev/flags.md': '# Flags\n\n## Real heading\n\n[y](../user/guide.md#settings)\n',
+      'docs/architecture/tech-debt.md': TD,
+    });
+    expect(exitCode).toBe(0);
   });
 
   it('does not check GitHub line anchors', () => {
