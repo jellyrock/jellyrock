@@ -1173,28 +1173,7 @@ function getCodecProfiles() as object
 
   ' MPEG-4 Part 2
   if globalUserSettings.playbackMpeg4
-    mpeg4ProfileArray = {
-      "Type": "Video",
-      "Codec": "mpeg4",
-      "Conditions": [
-        {
-          "Condition": "EqualsAny",
-          "Property": "VideoRangeType",
-          "Value": "SDR",
-          "IsRequired": false
-        }
-      ]
-    }
-
-    ' set max resolution
-    mpeg4ProfileArray.Conditions.Append(resolutionConditions)
-
-    anamorphicCondition = getAnamorphicCondition()
-    if anamorphicCondition.count() > 0
-      mpeg4ProfileArray.Conditions.push(anamorphicCondition)
-    end if
-
-    codecProfiles.push(mpeg4ProfileArray)
+    codecProfiles.push(buildSdrCappedVideoProfile("mpeg4", resolutionConditions))
   end if
 
   if di.CanDecodeVideo({ Codec: "av1" }).Result
@@ -1364,32 +1343,15 @@ function getCodecProfiles() as object
     codecProfiles.push(vp9ProfileArray)
   end if
 
-  ' VP8
-  ' No profile/level system to test; SDR only
-  if di.CanDecodeVideo({ Codec: "vp8" }).Result
-    vp8ProfileArray = {
-      "Type": "Video",
-      "Codec": "vp8",
-      "Conditions": [
-        {
-          "Condition": "EqualsAny",
-          "Property": "VideoRangeType",
-          "Value": "SDR",
-          "IsRequired": false
-        }
-      ]
-    }
-
-    ' set max resolution
-    vp8ProfileArray.Conditions.Append(resolutionConditions)
-
-    anamorphicCondition = getAnamorphicCondition()
-    if anamorphicCondition.count() > 0
-      vp8ProfileArray.Conditions.push(anamorphicCondition)
+  ' VP8, MPEG-1 and H.263
+  ' No profile/level system to test; SDR only. Every video codec GetDirectPlayProfiles()
+  ' lists needs a profile here, because Jellyfin matches codec profiles by codec name and
+  ' a codec with none direct-plays past the user's bitrate and resolution caps.
+  for each codec in ["vp8", "mpeg1video", "h263"]
+    if di.CanDecodeVideo({ Codec: jellyfinToRokuCodecName(codec) }).Result
+      codecProfiles.push(buildSdrCappedVideoProfile(codec, resolutionConditions))
     end if
-
-    codecProfiles.push(vp8ProfileArray)
-  end if
+  end for
 
   ' Filter out version-specific conditions based on server API version
   apiVersion = getApiVersionFromGlobal()
@@ -1401,6 +1363,37 @@ function getCodecProfiles() as object
   end if
 
   return dropConditionsUnevaluableOnAudioFiles(codecProfiles)
+end function
+
+' A Type "Video" codec profile for a codec with no profile/level system: SDR only,
+' plus the user's caps (Maximum Resolution, anamorphic, Bitrate Limit).
+function buildSdrCappedVideoProfile(codec as string, resolutionConditions as object) as object
+  profile = {
+    "Type": "Video",
+    "Codec": codec,
+    "Conditions": [
+      {
+        "Condition": "EqualsAny",
+        "Property": "VideoRangeType",
+        "Value": "SDR",
+        "IsRequired": false
+      }
+    ]
+  }
+
+  profile.Conditions.Append(resolutionConditions)
+
+  anamorphicCondition = getAnamorphicCondition()
+  if anamorphicCondition.count() > 0
+    profile.Conditions.push(anamorphicCondition)
+  end if
+
+  bitRateArray = GetBitRateLimit(codec)
+  if bitRateArray.count() > 0
+    profile.Conditions.push(bitRateArray)
+  end if
+
+  return profile
 end function
 
 ' Properties Jellyfin can evaluate in a Type:"Audio" codec-profile condition.
