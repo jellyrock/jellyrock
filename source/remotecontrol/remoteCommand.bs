@@ -3,6 +3,9 @@
 ' (remoteDispatch) enacts. No socket, no node, no m.global, so it is fully unit-testable. The envelope + Data
 ' shapes below were captured from a live Jellyfin server. Analog of the voice pure layer,
 ' source/utils/voiceTransport.bs. See docs/architecture/remote-control.md.
+import "pkg:/source/syncplay/syncPlayMessage.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
 namespace remoteCommand
 
   ' Parse a message envelope ({ MessageType, Data }) into a normalized command:
@@ -15,6 +18,7 @@ namespace remoteCommand
   '   goback    -> (none)                          (GeneralCommand Back)
   '   message   -> header, text, hasTimeout        (GeneralCommand DisplayMessage; timeout -> toast, else dialog)
   '   keepalive -> intervalSeconds
+  '   syncplaycommand, syncplayupdate -> the SyncPlay frames (fields in syncPlayMessage.bs)
   '   ignore    -> KeepAlive / Sessions / volume / directional / unknown: parsed but not enacted
   function parseMessage(envelope as object) as object
     result = { kind: "ignore", raw: invalid, messageId: "" }
@@ -30,6 +34,8 @@ namespace remoteCommand
     if messageType = "Play" then return parsePlay(envelope.Data, result)
     if messageType = "Playstate" then return parsePlaystate(envelope.Data, result)
     if messageType = "GeneralCommand" then return parseGeneralCommand(envelope.Data, result)
+    if messageType = "SyncPlayCommand" then return syncPlayMessage.parseCommand(envelope.Data, result)
+    if messageType = "SyncPlayGroupUpdate" then return syncPlayMessage.parseGroupUpdate(envelope.Data, result)
     if messageType = "ForceKeepAlive"
       ' Data is the interval in seconds; the receiver answers with a KeepAlive.
       result.kind = "keepalive"

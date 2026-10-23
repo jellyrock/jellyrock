@@ -366,6 +366,12 @@ Closes when the next brighterscript bump builds clean with all three items handl
 
 `15f0377e` changed `.github/workflows/roku-hardware-sync.yml`: the fetch step no longer has `GH_TOKEN` and now reads GitLab through `npm run roku-hardware:fetch`, and the sync PR body builds a GitLab commit link from `UPSTREAM_FULL`. The fetch ran locally against GitLab (data checksum unchanged), but the workflow's shell was never run in CI, and the PR-body step only runs when device data changes. Close it after the first scheduled run following the merge: confirm the fetch step passes (`gh run list --workflow roku-hardware-sync.yml`), and trigger it with `workflow_dispatch` if no device change shows up soon. The committed dataset's provenance (`upstreamCommit` `c685ceb7`) is behind the current GitLab commit `8abc84b1` with identical data, so the next data change will also refresh it.
 
+#### Nothing fails a tracked file that cites a gitignored path as its source `[fid: no-check-tracked-cites-gitignored-path]` `[captured 2026-10-23]`
+
+`CLAUDE.md` says never to cite a gitignored path (`tasks/`, `docs/projects/`, `.claude/handoffs/`, `.claude/plans/`) in tracked content, source comments included, and names comments as where it keeps slipping. Nothing checks it. PR #1253 is the latest case: two source comments cited the project's `SPIKES.md`, a spec cited a `.device-runs/` file, and `syncPlayState.bs` cited the project Charter and a decision recorded only in the project folder. Every CI check passed, and the citations were caught only by a review and replaced by hand.
+
+Closes with a lint in `npm run lint` and its CI home that fails a tracked code comment or Markdown file naming one of those folders, `.device-runs/`, or a project file (`PLAN.md`, `SPIKES.md`, a project's `DECISIONS.md`) as a source. A path named as a destination, such as a skill telling an agent where to write a handoff, stays allowed, so the check needs an allowlist for that case. Not now: it needs a design choice (extend `comment-voice-ratchet.js` or `docs-check.cjs`, or a new check) and tests, including a run against the PR #1253 text before its fix to see it fail.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
@@ -819,6 +825,12 @@ Options considered: `keep` (recommended), a reload-in-flight flag: `reloadAtCurr
 Not checked: whether 300 is the last seek target or the previous load's start point; whether the audio and subtitle paths show it on a device (inferred from the shared code); whether a pick made after the new stream arrives but before it plays also reads a stale value.
 
 Closes when an RTA case with the viewer playing past the start point (OSD re-shown with Up before the gear) first separates one pick from two, confirming the cause, and then fails before `keep` and passes after it.
+
+#### The SyncPlay group menu must show members from GET /SyncPlay/List, not from join and leave updates `[fid: syncplay-group-menu-members-from-list]` `[captured 2026-10-23]`
+
+The SyncPlay membership state (`source/syncplay/syncPlayState.bs`) keeps no member list, on purpose (PR #1253 review). The server sends `UserJoined` and `UserLeft` once per session with only a user name, so one account on two devices makes any list kept from them wrong: `["ann","ann"]`, then empty while one device is still in the group. The server's own list is exact: `GET /SyncPlay/List` returns each group's `Participants` with duplicate names removed (`Group.GetInfo`).
+
+Closes when phase D's group menu (the overhang icon's `showListDialog`) fetches `GetApi().BuildGetSyncPlayGroupsRequest()` each time it opens and shows the members from it: each group's members in the join list, and the current group's members in the in-group menu's header (match on `GroupId`). The in-group header in jellyfin-web reads the list from `GroupJoined` only, so it goes stale; this does better. Decide in phase D whether the menu waits for the fetch or fills the members line in when it arrives, and what it shows when the fetch fails (the group and its actions, no members).
 
 ### source
 

@@ -146,6 +146,36 @@ namespace tests
       m.global.activeRoutedView = invalid
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("dispatchSyncPlay() — hand-off to the SyncPlay manager")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    protected override function afterEach()
+      if m.global.hasField("syncPlayManager") then m.global.syncPlayManager = invalid
+      super.afterEach()
+    end function
+
+    @it("drops a frame when no manager node exists (before phase C)")
+    function _()
+      if m.global.hasField("syncPlayManager") then m.global.syncPlayManager = invalid
+      remoteDispatch.dispatchSyncPlay({ kind: "syncplaycommand", command: "Pause" })
+      m.assertTrue(true) ' no crash is the assertion: there is nothing to apply the frame to
+    end function
+
+    @it("writes the frame to the manager's `frame` field when one exists")
+    function _()
+      manager = createObject("roSGNode", "ContentNode")
+      manager.addFields({ frame: {} })
+      if m.global.hasField("syncPlayManager")
+        m.global.syncPlayManager = manager
+      else
+        m.global.addFields({ syncPlayManager: manager })
+      end if
+      remoteDispatch.dispatchSyncPlay({ kind: "syncplayupdate", updateType: "GroupJoined", groupId: "g-1" })
+      m.assertEqual(manager.frame.updateType, "GroupJoined")
+      m.assertEqual(manager.frame.groupId, "g-1")
+    end function
+
   end class
 
 end namespace

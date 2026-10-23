@@ -1,0 +1,202 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+
+namespace tests
+
+  ' The SyncPlay frame parser, through remoteCommand.parseMessage as the receiver calls it. The
+  ' shapes are the ones the long-poll check recorded against the operator's server (12.2.0,
+  ' 2026-10-23) and the 10.7.0 tagged DTOs. Everything unknown degrades to "ignore".
+  @suite("syncPlayMessage — SyncPlay frame parser")
+  class SyncPlayMessageTests extends tests.BaseTestSuite
+
+    private function commandFrame(data as object) as object
+      base = {
+        GroupId: "g-1",
+        PlaylistItemId: "p-1",
+        When: "2026-10-23T20:47:29.000Z",
+        Command: "Unpause",
+        PositionTicks: 600000000,
+        EmittedAt: "2026-10-23T20:47:28.000Z"
+      }
+      for each entry in data.items()
+        base[entry.key] = entry.value
+      end for
+      return { MessageType: "SyncPlayCommand", Data: base, MessageId: "m-1" }
+    end function
+
+    private function updateFrame(updateType as dynamic, inner as dynamic) as object
+      return { MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: updateType, Data: inner }, MessageId: "m-2" }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("SyncPlayCommand")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses a command with its times in ms and its ids")
+    function _()
+      cmd = remoteCommand.parseMessage(m.commandFrame({}))
+      m.assertEqual(cmd.kind, "syncplaycommand")
+      m.assertEqual(cmd.command, "Unpause")
+      m.assertEqual(cmd.whenMs, 1792788449000&)
+      m.assertEqual(cmd.emittedAtMs, 1792788448000&)
+      m.assertEqual(cmd.positionTicks, 600000000&)
+      m.assertEqual(cmd.playlistItemId, "p-1")
+      m.assertEqual(cmd.groupId, "g-1")
+      m.assertEqual(cmd.messageId, "m-1")
+    end function
+
+    @it("accepts each command name as a string")
+    @params("Unpause")
+    @params("Pause")
+    @params("Stop")
+    @params("Seek")
+    function _(name)
+      cmd = remoteCommand.parseMessage(m.commandFrame({ Command: name }))
+      m.assertEqual(cmd.kind, "syncplaycommand")
+      m.assertEqual(cmd.command, name)
+    end function
+
+    @it("ignores a numeric or unknown Command: enums are matched by name only")
+    @params(0)
+    @params("Play")
+    @params("")
+    @params(invalid)
+    function _(name)
+      cmd = remoteCommand.parseMessage(m.commandFrame({ Command: name }))
+      m.assertEqual(cmd.kind, "ignore")
+    end function
+
+    @it("ignores a command whose When or EmittedAt does not parse")
+    @params("When", "2026-10-23T20:47:29.000+02:00")
+    @params("When", invalid)
+    @params("EmittedAt", "soon")
+    function _(field, value)
+      override = {}
+      override[field] = value
+      cmd = remoteCommand.parseMessage(m.commandFrame(override))
+      m.assertEqual(cmd.kind, "ignore")
+    end function
+
+    @it("reads a missing PositionTicks as 0 (a Stop carries none)")
+    function _()
+      cmd = remoteCommand.parseMessage(m.commandFrame({ Command: "Stop", PositionTicks: invalid }))
+      m.assertEqual(cmd.kind, "syncplaycommand")
+      m.assertEqual(cmd.positionTicks, 0&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("SyncPlayGroupUpdate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses GroupJoined with the group info and the join time")
+    function _()
+      inner = { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann", "bob"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" }
+      cmd = remoteCommand.parseMessage(m.updateFrame("GroupJoined", inner))
+      m.assertEqual(cmd.kind, "syncplayupdate")
+      m.assertEqual(cmd.updateType, "GroupJoined")
+      m.assertEqual(cmd.groupId, "g-1")
+      m.assertEqual(cmd.groupName, "Movie night")
+      m.assertEqual(cmd.groupState, "Idle")
+      m.assertEqual(cmd.participants, ["ann", "bob"])
+      m.assertEqual(cmd.lastUpdatedAtMs, 1792788440500&)
+      m.assertEqual(cmd.messageId, "m-2")
+    end function
+
+    @it("ignores a GroupJoined whose LastUpdatedAt is missing: the join gate needs it")
+    function _()
+      cmd = remoteCommand.parseMessage(m.updateFrame("GroupJoined", { GroupId: "g-1", GroupName: "x" }))
+      m.assertEqual(cmd.kind, "ignore")
+    end function
+
+    @it("parses UserJoined and UserLeft with the user name")
+    @params("UserJoined")
+    @params("UserLeft")
+    function _(updateType)
+      cmd = remoteCommand.parseMessage(m.updateFrame(updateType, "carol"))
+      m.assertEqual(cmd.kind, "syncplayupdate")
+      m.assertEqual(cmd.updateType, updateType)
+      m.assertEqual(cmd.userName, "carol")
+    end function
+
+    @it("parses StateUpdate with the state and reason as strings")
+    function _()
+      cmd = remoteCommand.parseMessage(m.updateFrame("StateUpdate", { State: "Waiting", Reason: "Buffer" }))
+      m.assertEqual(cmd.updateType, "StateUpdate")
+      m.assertEqual(cmd.groupState, "Waiting")
+      m.assertEqual(cmd.reason, "Buffer")
+    end function
+
+    @it("parses PlayQueue with the playlist, the index and IsPlaying")
+    function _()
+      inner = {
+        Reason: "NewPlaylist",
+        LastUpdate: "2026-10-23T20:47:25.000Z",
+        Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }],
+        PlayingItemIndex: 1,
+        StartPositionTicks: 1200000000&,
+        IsPlaying: true,
+        ShuffleMode: "Sorted",
+        RepeatMode: "RepeatNone"
+      }
+      cmd = remoteCommand.parseMessage(m.updateFrame("PlayQueue", inner))
+      m.assertEqual(cmd.updateType, "PlayQueue")
+      m.assertEqual(cmd.reason, "NewPlaylist")
+      m.assertEqual(cmd.lastUpdateMs, 1792788445000&)
+      m.assertEqual(cmd.playlist.count(), 2)
+      m.assertEqual(cmd.playlist[1].itemId, "i-2")
+      m.assertEqual(cmd.playlist[1].playlistItemId, "p-2")
+      m.assertEqual(cmd.playingItemIndex, 1)
+      m.assertEqual(cmd.startPositionTicks, 1200000000&)
+      m.assertTrue(cmd.isPlaying)
+      m.assertEqual(cmd.shuffleMode, "Sorted")
+      m.assertEqual(cmd.repeatMode, "RepeatNone")
+    end function
+
+    @it("keeps IsPlaying unknown on a 10.7 PlayQueue, which has no such field")
+    function _()
+      inner = { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }], PlayingItemIndex: 0, StartPositionTicks: 0 }
+      cmd = remoteCommand.parseMessage(m.updateFrame("PlayQueue", inner))
+      m.assertEqual(cmd.updateType, "PlayQueue")
+      m.assertInvalid(cmd.isPlaying)
+    end function
+
+    @it("drops a playlist entry without both ids and ignores a PlayQueue without a Playlist")
+    function _()
+      inner = { Reason: "Queue", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }], PlayingItemIndex: 0 }
+      cmd = remoteCommand.parseMessage(m.updateFrame("PlayQueue", inner))
+      m.assertEqual(cmd.playlist.count(), 1)
+      m.assertEqual(cmd.playlist[0].playlistItemId, "p-2")
+      m.assertEqual(remoteCommand.parseMessage(m.updateFrame("PlayQueue", { Reason: "Queue" })).kind, "ignore")
+    end function
+
+    @it("parses the toast-only types, 10.7's two included, with nothing more")
+    @params("GroupLeft")
+    @params("NotInGroup")
+    @params("GroupDoesNotExist")
+    @params("LibraryAccessDenied")
+    @params("CreateGroupDenied")
+    @params("JoinGroupDenied")
+    function _(updateType)
+      cmd = remoteCommand.parseMessage(m.updateFrame(updateType, "g-1"))
+      m.assertEqual(cmd.kind, "syncplayupdate")
+      m.assertEqual(cmd.updateType, updateType)
+      m.assertEqual(cmd.groupId, "g-1")
+    end function
+
+    @it("ignores an unknown or numeric Type")
+    @params("GroupUpdate")
+    @params(5)
+    @params(invalid)
+    function _(updateType)
+      cmd = remoteCommand.parseMessage(m.updateFrame(updateType, {}))
+      m.assertEqual(cmd.kind, "ignore")
+    end function
+
+    @it("ignores a frame with no Data")
+    @params("SyncPlayCommand")
+    @params("SyncPlayGroupUpdate")
+    function _(messageType)
+      m.assertEqual(remoteCommand.parseMessage({ MessageType: messageType }).kind, "ignore")
+    end function
+
+  end class
+end namespace

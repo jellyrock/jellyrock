@@ -975,6 +975,73 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildSyncPlayRequest() - one POST per SyncPlay action")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("POSTs each action to its own route")
+    @params("New")
+    @params("Join")
+    @params("Leave")
+    @params("SetNewQueue")
+    @params("Ready")
+    @params("Buffering")
+    @params("Ping")
+    @params("Pause")
+    @params("Unpause")
+    @params("Stop")
+    @params("Seek")
+    @params("SetIgnoreWait")
+    @params("NextItem")
+    @params("PreviousItem")
+    @params("SetPlaylistItem")
+    function _(action)
+      result = m.apiClient.BuildSyncPlayRequest(action)
+      route = "/SyncPlay/" + action
+      m.assertEqual(result.method, "POST")
+      m.assertEqual(Right(result.url, Len(route)), route, result.url)
+    end function
+
+    @it("sends the body as JSON in the spec's casing")
+    function _()
+      result = m.apiClient.BuildSyncPlayRequest("Join", { "GroupId": "g-1" })
+      m.assertEqual(result.body, "{""GroupId"":""g-1""}")
+      m.assertEqual(result.headers["Content-Type"], "application/json")
+    end function
+
+    @it("sends no body for a bodiless action")
+    function _()
+      result = m.apiClient.BuildSyncPlayRequest("Pause")
+      m.assertFalse(result.doesExist("body"))
+      m.assertFalse(result.doesExist("headers"))
+    end function
+
+    ' A SyncPlay request changes group state, so the pool must deliver it even though nobody
+    ' waits for the answer (apiRequestIsSkippable).
+    @it("is not skippable")
+    function _()
+      m.assertFalse(apiRequestIsSkippable(m.apiClient.BuildSyncPlayRequest("Ready", { "PositionTicks": 0 })))
+    end function
+
+    @it("returns invalid for an action it does not know, rather than posting a guess")
+    @params("")
+    @params("pause")
+    @params("List")
+    @params("Bogus")
+    function _(action)
+      m.assertInvalid(m.apiClient.BuildSyncPlayRequest(action))
+    end function
+
+    @it("returns invalid when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildSyncPlayRequest("Leave")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("List requests - bare-array endpoints declare their shape")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -993,7 +1060,8 @@ namespace tests
         specialFeatures: m.apiClient.BuildGetSpecialFeaturesRequest(m.testItemId),
         sessions: m.apiClient.BuildGetSessionsRequest({ deviceId: "d" }),
         remoteSubtitles: m.apiClient.BuildSearchRemoteSubtitlesRequest(m.testItemId, "en"),
-        cultures: m.apiClient.BuildGetCulturesRequest()
+        cultures: m.apiClient.BuildGetCulturesRequest(),
+        syncPlayGroups: m.apiClient.BuildGetSyncPlayGroupsRequest()
       }
       m.setApiVersion(originalApiVersion)
       return reqs

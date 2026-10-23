@@ -1,0 +1,89 @@
+' The follow and halt state of a SyncPlay membership, as a plain AA and the pure reducers that
+' move it. No node, no m.global: phase C's SyncPlayManager holds one of these and applies every
+' parsed frame (syncPlayMessage) through applyGroupUpdate, then asks acceptsCommand before it
+' schedules a command. Specced against the frame sequence recorded on the long poll 2026-10-23.
+namespace syncPlayState
+
+  ' Not in a group. `following` is true so a fresh join follows at once (a group start auto-plays:
+  ' a prompt would hold the whole group). `isPlaying` is invalid until a queue update says
+  ' otherwise (a 10.7 line never does).
+  ' There is no member list: UserJoined and UserLeft come once per session with only a user name,
+  ' so one account on two devices makes any list kept from them wrong. The group menu reads the
+  ' server's list from GET /SyncPlay/List when it opens instead.
+  function newState() as object
+    return {
+      inGroup: false,
+      groupId: "",
+      groupName: "",
+      groupState: "",
+      joinedAtMs: 0&,
+      following: true,
+      playlist: [],
+      playingItemIndex: -1,
+      playingItemId: "",
+      startPositionTicks: 0&,
+      isPlaying: invalid,
+      lastUpdateMs: 0&
+    }
+  end function
+
+  ' Apply one parsed SyncPlayGroupUpdate (kind "syncplayupdate"). Returns the state, mutated in
+  ' place; a GroupLeft or NotInGroup returns a fresh one. Toast-only types (UserJoined and UserLeft
+  ' among them) change nothing.
+  function applyGroupUpdate(state as object, update as object) as object
+    if not isValid(update) or update.kind <> "syncplayupdate" then return state
+    updateType = update.updateType
+
+    if updateType = "GroupJoined"
+      state.inGroup = true
+      state.groupId = update.groupId
+      state.groupName = update.groupName
+      state.groupState = update.groupState
+      ' Commands emitted before this moment belong to the group's past, as jellyfin-web treats
+      ' them (Manager.processCommand): see acceptsCommand.
+      state.joinedAtMs = update.lastUpdatedAtMs
+      state.following = true
+    else if updateType = "GroupLeft" or updateType = "NotInGroup"
+      return newState()
+    else if updateType = "StateUpdate"
+      state.groupState = update.groupState
+    else if updateType = "PlayQueue"
+      state.playlist = update.playlist
+      state.playingItemIndex = update.playingItemIndex
+      state.playingItemId = ""
+      if update.playingItemIndex >= 0 and update.playingItemIndex < update.playlist.count()
+        state.playingItemId = update.playlist[update.playingItemIndex].playlistItemId
+      end if
+      state.startPositionTicks = update.startPositionTicks
+      state.isPlaying = update.isPlaying
+      state.lastUpdateMs = update.lastUpdateMs
+    end if
+    return state
+  end function
+
+  ' Back during group playback: stop following, keep the membership, as jellyfin-web and mpv-shim do.
+  function halt(state as object) as object
+    state.following = false
+    return state
+  end function
+
+  ' Resume following at the group's position.
+  function resume(state as object) as object
+    state.following = true
+    return state
+  end function
+
+  ' Whether a parsed SyncPlayCommand (kind "syncplaycommand") applies to this membership: in a
+  ' group, for this group, emitted at or after the join, and for the current playlist item unless
+  ' it is a Stop (web's rules). `following` is not part of it: a halted member still tracks the
+  ' group's state, and phase C decides what a halted player does with an accepted command.
+  function acceptsCommand(state as object, command as object) as boolean
+    if not isValid(command) or command.kind <> "syncplaycommand" then return false
+    if not state.inGroup then return false
+    if isValidAndNotEmpty(command.groupId) and command.groupId <> state.groupId then return false
+    if command.emittedAtMs < state.joinedAtMs then return false
+    if command.command <> "Stop" and command.playlistItemId <> state.playingItemId then return false
+    return true
+  end function
+
+end namespace

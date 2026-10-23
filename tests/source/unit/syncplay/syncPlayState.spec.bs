@@ -1,0 +1,170 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+import "pkg:/source/syncplay/syncPlayState.bs"
+
+namespace tests
+
+  ' The membership state and the command gate, driven by the frame sequence the long-poll check
+  ' recorded on 2026-10-23: GroupJoined, PlayQueue, StateUpdate, a Stop and an Unpause command,
+  ' then GroupLeft.
+  @suite("syncPlayState — follow and halt state")
+  class SyncPlayStateTests extends tests.BaseTestSuite
+
+    private joinedAt = "2026-10-23T20:47:20.500Z"
+
+    private function update(updateType as string, inner as dynamic) as object
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: updateType, Data: inner } })
+    end function
+
+    private function command(name as string, emittedAt as string, playlistItemId = "p-1" as string, groupId = "g-1" as string) as object
+      data = { GroupId: groupId, PlaylistItemId: playlistItemId, When: "2026-10-23T20:47:40.000Z", Command: name, PositionTicks: 0, EmittedAt: emittedAt }
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: data })
+    end function
+
+    private function joined() as object
+      state = syncPlayState.newState()
+      syncPlayState.applyGroupUpdate(state, m.update("GroupJoined", { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: m.joinedAt }))
+      return state
+    end function
+
+    private function withQueue(state as object) as object
+      inner = { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: false }
+      return syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", inner))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyGroupUpdate()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts outside any group, following")
+    function _()
+      state = syncPlayState.newState()
+      m.assertFalse(state.inGroup)
+      m.assertTrue(state.following)
+      m.assertInvalid(state.isPlaying)
+    end function
+
+    @it("GroupJoined enters the group and records the join time")
+    function _()
+      state = m.joined()
+      m.assertTrue(state.inGroup)
+      m.assertEqual(state.groupId, "g-1")
+      m.assertEqual(state.groupName, "Movie night")
+      m.assertEqual(state.groupState, "Idle")
+      m.assertEqual(state.joinedAtMs, 1792788440500&)
+      m.assertTrue(state.following)
+    end function
+
+    @it("PlayQueue sets the playlist and the current item")
+    function _()
+      state = m.withQueue(m.joined())
+      m.assertEqual(state.playlist.count(), 2)
+      m.assertEqual(state.playingItemIndex, 0)
+      m.assertEqual(state.playingItemId, "p-1")
+      m.assertFalse(state.isPlaying)
+      m.assertEqual(state.lastUpdateMs, 1792788445000&)
+    end function
+
+    @it("PlayQueue with an index past the playlist leaves no current item")
+    function _()
+      state = m.joined()
+      inner = { Reason: "RemoveItems", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [], PlayingItemIndex: -1, StartPositionTicks: 0 }
+      syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", inner))
+      m.assertEqual(state.playingItemId, "")
+    end function
+
+    @it("UserJoined and UserLeft keep no member list: one account on two devices would break it")
+    function _()
+      state = m.joined()
+      syncPlayState.applyGroupUpdate(state, m.update("UserJoined", "ann"))
+      syncPlayState.applyGroupUpdate(state, m.update("UserLeft", "ann"))
+      m.assertFalse(state.doesExist("participants"))
+      m.assertTrue(state.inGroup)
+      m.assertEqual(state.groupId, "g-1")
+    end function
+
+    @it("StateUpdate moves the group state")
+    function _()
+      state = m.joined()
+      syncPlayState.applyGroupUpdate(state, m.update("StateUpdate", { State: "Playing", Reason: "Unpause" }))
+      m.assertEqual(state.groupState, "Playing")
+    end function
+
+    @it("GroupLeft and NotInGroup leave the group")
+    @params("GroupLeft")
+    @params("NotInGroup")
+    function _(updateType)
+      state = syncPlayState.applyGroupUpdate(m.withQueue(m.joined()), m.update(updateType, "g-1"))
+      m.assertFalse(state.inGroup)
+      m.assertEqual(state.groupId, "")
+      m.assertEqual(state.playlist.count(), 0)
+    end function
+
+    @it("toast-only types and non-update frames change nothing")
+    function _()
+      state = m.joined()
+      syncPlayState.applyGroupUpdate(state, m.update("GroupDoesNotExist", "g-9"))
+      syncPlayState.applyGroupUpdate(state, m.command("Pause", "2026-10-23T20:47:30.000Z"))
+      syncPlayState.applyGroupUpdate(state, invalid)
+      m.assertTrue(state.inGroup)
+      m.assertEqual(state.groupId, "g-1")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("halt() and resume()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("halt stops following and keeps the membership; resume follows again")
+    function _()
+      state = syncPlayState.halt(m.joined())
+      m.assertFalse(state.following)
+      m.assertTrue(state.inGroup)
+      syncPlayState.resume(state)
+      m.assertTrue(state.following)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("acceptsCommand()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts a command for the current item emitted after the join")
+    function _()
+      state = m.withQueue(m.joined())
+      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Unpause", "2026-10-23T20:47:30.000Z")))
+    end function
+
+    @it("rejects a command emitted before the join")
+    function _()
+      state = m.withQueue(m.joined())
+      m.assertFalse(syncPlayState.acceptsCommand(state, m.command("Unpause", "2026-10-23T20:47:20.499Z")))
+    end function
+
+    @it("accepts one emitted at the join instant")
+    function _()
+      state = m.withQueue(m.joined())
+      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Pause", m.joinedAt)))
+    end function
+
+    @it("rejects a command for another playlist item, except a Stop")
+    function _()
+      state = m.withQueue(m.joined())
+      m.assertFalse(syncPlayState.acceptsCommand(state, m.command("Seek", "2026-10-23T20:47:30.000Z", "p-2")))
+      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Stop", "2026-10-23T20:47:30.000Z", "p-2")))
+    end function
+
+    @it("rejects a command for another group, outside a group, or that is not a command")
+    function _()
+      state = m.withQueue(m.joined())
+      m.assertFalse(syncPlayState.acceptsCommand(state, m.command("Pause", "2026-10-23T20:47:30.000Z", "p-1", "g-2")))
+      m.assertFalse(syncPlayState.acceptsCommand(syncPlayState.newState(), m.command("Pause", "2026-10-23T20:47:30.000Z")))
+      m.assertFalse(syncPlayState.acceptsCommand(state, m.update("StateUpdate", { State: "Playing", Reason: "Unpause" })))
+      m.assertFalse(syncPlayState.acceptsCommand(state, invalid))
+    end function
+
+    @it("still accepts while halted: the state keeps tracking the group")
+    function _()
+      state = syncPlayState.halt(m.withQueue(m.joined()))
+      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Pause", "2026-10-23T20:47:30.000Z")))
+    end function
+
+  end class
+end namespace

@@ -522,6 +522,58 @@ class ApiClient
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
+  ' SYNCPLAY ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Build a request AA for a SyncPlay action: a POST to the action's route with the body
+  ' syncPlayRequests built (invalid for the bodiless Pause, Unpause, Stop and Leave). One method
+  ' serves every action because the routes and bodies are the same from 10.7.0 to master and the
+  ' bodies are the part worth testing, which syncPlayRequests.spec.bs does without m.global.
+  ' Each route is written out in full, as BuildPlaystateRequest's are, so the API usage manifest
+  ' records every one; an action not listed here returns invalid instead of posting a guess.
+  ' Use with SubmitSideEffect() (a report nobody reads) or fetchAsync() (New, Join).
+  ' @param action - "New" | "Join" | "Leave" | "SetNewQueue" | "Ready" | "Buffering" | "Ping" |
+  '   "Pause" | "Unpause" | "Stop" | "Seek" | "SetIgnoreWait" | "NextItem" | "PreviousItem" |
+  '   "SetPlaylistItem"
+  ' @param body - the request body AA, or invalid
+  ' @returns Request AA: { method, url[, body, headers] } or invalid if the action is unknown or
+  '   the server URL is not set
+  function BuildSyncPlayRequest(action as string, body = invalid as dynamic) as dynamic
+    path = ""
+    if action = "New" then path = "/SyncPlay/New"
+    if action = "Join" then path = "/SyncPlay/Join"
+    if action = "Leave" then path = "/SyncPlay/Leave"
+    if action = "SetNewQueue" then path = "/SyncPlay/SetNewQueue"
+    if action = "Ready" then path = "/SyncPlay/Ready"
+    if action = "Buffering" then path = "/SyncPlay/Buffering"
+    if action = "Ping" then path = "/SyncPlay/Ping"
+    if action = "Pause" then path = "/SyncPlay/Pause"
+    if action = "Unpause" then path = "/SyncPlay/Unpause"
+    if action = "Stop" then path = "/SyncPlay/Stop"
+    if action = "Seek" then path = "/SyncPlay/Seek"
+    if action = "SetIgnoreWait" then path = "/SyncPlay/SetIgnoreWait"
+    if action = "NextItem" then path = "/SyncPlay/NextItem"
+    if action = "PreviousItem" then path = "/SyncPlay/PreviousItem"
+    if action = "SetPlaylistItem" then path = "/SyncPlay/SetPlaylistItem"
+    if path = "" then return invalid
+
+    req = m.validatedReq("POST", buildURL(path))
+    if not isValid(req) then return invalid
+    if isValid(body)
+      req.body = FormatJson(body)
+      req.headers = { "Content-Type": "application/json" }
+    end if
+    return req
+  end function
+
+  ' Build a request AA to list the SyncPlay groups the user may join, for use with fetchJson() or
+  ' fetchAsync(). GET /SyncPlay/List answers a bare array of GroupInfoDto.
+  ' @returns Request AA: { method, url, expect } or invalid if the server URL is not set
+  function BuildGetSyncPlayGroupsRequest() as dynamic
+    return m.listReq("GET", buildURL("/SyncPlay/List"))
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
   ' SYSTEM ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 

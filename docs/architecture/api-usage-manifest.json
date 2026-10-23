@@ -668,6 +668,198 @@
       ]
     },
     {
+      "path": "/SyncPlay/Buffering",
+      "normalized": "/syncplay/buffering",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/Join",
+      "normalized": "/syncplay/join",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/Leave",
+      "normalized": "/syncplay/leave",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/List",
+      "normalized": "/syncplay/list",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/New",
+      "normalized": "/syncplay/new",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/NextItem",
+      "normalized": "/syncplay/nextitem",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/Pause",
+      "normalized": "/syncplay/pause",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/Ping",
+      "normalized": "/syncplay/ping",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/PreviousItem",
+      "normalized": "/syncplay/previousitem",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/Ready",
+      "normalized": "/syncplay/ready",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/Seek",
+      "normalized": "/syncplay/seek",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/SetIgnoreWait",
+      "normalized": "/syncplay/setignorewait",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/SetNewQueue",
+      "normalized": "/syncplay/setnewqueue",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/SetPlaylistItem",
+      "normalized": "/syncplay/setplaylistitem",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/Stop",
+      "normalized": "/syncplay/stop",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/Unpause",
+      "normalized": "/syncplay/unpause",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/System/Configuration",
       "normalized": "/system/configuration",
       "methods": [
@@ -1106,9 +1298,27 @@
       ]
     },
     {
+      "name": "GroupId",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
+      ]
+    },
+    {
+      "name": "GroupName",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
+      ]
+    },
+    {
       "name": "Ids",
       "sourceFiles": [
         "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "IgnoreWait",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
       ]
     },
     {
@@ -1133,6 +1343,12 @@
       "name": "IsPlayed",
       "sourceFiles": [
         "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "IsPlaying",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
       ]
     },
     {
@@ -1184,9 +1400,33 @@
       ]
     },
     {
+      "name": "Ping",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
+      ]
+    },
+    {
       "name": "PlaybackPositionTicks",
       "sourceFiles": [
         "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "PlayingItemPosition",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
+      ]
+    },
+    {
+      "name": "PlayingQueue",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
+      ]
+    },
+    {
+      "name": "PlaylistItemId",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
       ]
     },
     {
@@ -1198,7 +1438,8 @@
     {
       "name": "PositionTicks",
       "sourceFiles": [
-        "source/api/ApiClient.bs"
+        "source/api/ApiClient.bs",
+        "source/syncplay/syncPlayRequests.bs"
       ]
     },
     {
@@ -1241,6 +1482,12 @@
       "name": "SortOrder",
       "sourceFiles": [
         "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "StartPositionTicks",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
       ]
     },
     {
@@ -1290,6 +1537,12 @@
       "name": "Value",
       "sourceFiles": [
         "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "When",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
       ]
     }
   ],
@@ -3330,7 +3583,8 @@
       },
       "requestFields": {
         "globs": [
-          "source/api/**/*.bs"
+          "source/api/**/*.bs",
+          "source/syncplay/syncPlayRequests.bs"
         ],
         "exclude": [
           "source/api/apiFaults.bs",
@@ -3347,8 +3601,8 @@
       }
     },
     "counts": {
-      "endpoints": 81,
-      "requestFields": 51,
+      "endpoints": 97,
+      "requestFields": 61,
       "responseFields": 223,
       "unresolvedEndpointSinks": 3
     },

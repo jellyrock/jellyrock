@@ -1,0 +1,130 @@
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
+namespace tests
+
+  ' SyncPlay server time: the parser accepts every shape Jellyfin emits (spike 1, measured on the
+  ' Stick 4K and the Ultra 2026-10-23) and refuses the one the platform gets silently wrong, a
+  ' non-UTC offset. The formatter is its inverse, always with a Z.
+  @suite("syncPlayTime — server timestamps")
+  class SyncPlayTimeTests extends tests.BaseTestSuite
+
+    ' 2026-10-23T20:47:27.877Z, as the test server answered GetUtcTime on the Stick 4K run.
+    private baseMs = 1792788447877&
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseServerTimeMs()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads a seven-digit fraction with a Z to the millisecond, truncating")
+    function _()
+      m.assertEqual(syncPlayTime.parseServerTimeMs("2026-10-23T20:47:27.8772777Z"), m.baseMs)
+    end function
+
+    @it("reads every fraction length Jellyfin emits")
+    @params("2026-10-23T20:47:27Z", 0)
+    @params("2026-10-23T20:47:27.8Z", 800)
+    @params("2026-10-23T20:47:27.87Z", 870)
+    @params("2026-10-23T20:47:27.877Z", 877)
+    @params("2026-10-23T20:47:27.87727Z", 877)
+    @params("2026-10-23T20:47:27.877277", 877)
+    @params("2026-10-23 20:47:27.877", 877)
+    function _(text, millis)
+      m.assertEqual(syncPlayTime.parseServerTimeMs(text), 1792788447000& + millis)
+    end function
+
+    @it("refuses any offset other than Z, which the platform would silently ignore")
+    @params("2026-10-23T20:47:27.877+02:00")
+    @params("2026-10-23T20:47:27.877-05:00")
+    @params("2026-10-23T20:47:27.877+00:00")
+    @params("2026-10-23T20:47:27+0000")
+    function _(text)
+      m.assertInvalid(syncPlayTime.parseServerTimeMs(text))
+    end function
+
+    @it("refuses what is not a timestamp")
+    @params(invalid)
+    @params("")
+    @params(1792788447877&)
+    @params(1.5)
+    @params("yesterday")
+    @params("2026-10-23")
+    @params("2026-10-23T20:47")
+    @params("2026-10-23T20:47:27x")
+    function _(value)
+      m.assertInvalid(syncPlayTime.parseServerTimeMs(value))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatServerTimeMs()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("formats milliseconds as a UTC timestamp with a Z")
+    function _()
+      m.assertEqual(syncPlayTime.formatServerTimeMs(m.baseMs), "2026-10-23T20:47:27.877Z")
+    end function
+
+    @it("zero-pads every part")
+    function _()
+      ' 2001-02-03T04:05:06.007Z
+      m.assertEqual(syncPlayTime.formatServerTimeMs(981173106007&), "2001-02-03T04:05:06.007Z")
+    end function
+
+    @it("formats a whole Double as it formats the LongInteger")
+    function _()
+      ' On a Double, `\` returns a 32-bit Integer capped at 2^31 - 1, so an unconverted
+      ' value read as 1970-01-25T20:31:23.647Z.
+      m.assertEqual(syncPlayTime.formatServerTimeMs(1792788447877#), "2026-10-23T20:47:27.877Z")
+    end function
+
+    @it("round-trips through the parser")
+    function _()
+      m.assertEqual(syncPlayTime.parseServerTimeMs(syncPlayTime.formatServerTimeMs(m.baseMs)), m.baseMs)
+    end function
+
+    @it("returns empty for a negative, fractional or non-numeric value")
+    @params(-1)
+    @params(invalid)
+    @params("now")
+    @params(1.5)
+    function _(value)
+      m.assertEqual(syncPlayTime.formatServerTimeMs(value), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ticks")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("converts ticks to ms and back without overflowing an integer")
+    function _()
+      ' 6 hours in ticks, past 2^31
+      ticks = 216000000000&
+      m.assertEqual(syncPlayTime.ticksToMs(ticks), 21600000&)
+      m.assertEqual(syncPlayTime.msToTicks(21600000&), ticks)
+    end function
+
+    @it("treats a non-integer value as zero and promotes an Integer")
+    function _()
+      m.assertEqual(syncPlayTime.ticksToMs(invalid), 0&)
+      m.assertEqual(syncPlayTime.msToTicks("x"), 0&)
+      m.assertEqual(syncPlayTime.ticksToMs(600000000), 60000&)
+      m.assertEqual(syncPlayTime.asLong(7), 7&)
+    end function
+
+    @it("accepts a whole Double (a ten-digit literal is one) and refuses a Float or a fraction")
+    function _()
+      m.assertEqual(syncPlayTime.asLong(1200000000), 1200000000&)
+      m.assertEqual(syncPlayTime.asLong(1200000000.5#), 0&)
+      m.assertEqual(syncPlayTime.asLong(1.0), 0&)
+      m.assertEqual(syncPlayTime.asLong(ParseJson("{""t"":3000000000}").t), 3000000000&)
+    end function
+
+    @it("nowMs() reads the device clock in ms since the epoch")
+    function _()
+      now = syncPlayTime.nowMs()
+      ' After 2026-01-01 and before 2100-01-01: a sanity bound, not a measurement.
+      m.assertTrue(now > 1767225600000&)
+      m.assertTrue(now < 4102444800000&)
+    end function
+
+  end class
+end namespace

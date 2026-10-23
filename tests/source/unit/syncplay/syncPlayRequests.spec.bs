@@ -1,0 +1,61 @@
+import "pkg:/source/syncplay/syncPlayRequests.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
+namespace tests
+
+  ' The SyncPlay request bodies: the spec's PascalCase keys survive FormatJson (a bare key would
+  ' be lowercased) and every When ends in a Z.
+  @suite("syncPlayRequests — request bodies")
+  class SyncPlayRequestsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("request bodies")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("Ready carries When as a Z timestamp with the position, state and item")
+    function _()
+      body = syncPlayRequests.ready(1792788449000&, 600000000&, true, "p-1")
+      m.assertEqual(body["When"], "2026-10-23T20:47:29.000Z")
+      m.assertEqual(body["PositionTicks"], 600000000&)
+      m.assertTrue(body["IsPlaying"])
+      m.assertEqual(body["PlaylistItemId"], "p-1")
+    end function
+
+    @it("Buffering has the same shape as Ready")
+    function _()
+      body = syncPlayRequests.buffering(1792788449000&, 0&, false, "p-1")
+      m.assertEqual(body["When"], "2026-10-23T20:47:29.000Z")
+      m.assertFalse(body["IsPlaying"])
+    end function
+
+    @it("keeps the spec's key casing through FormatJson")
+    function _()
+      json = FormatJson(syncPlayRequests.ready(1792788449000&, 0&, true, "p-1"))
+      m.assertTrue(json.inStr("""When""") >= 0, json)
+      m.assertTrue(json.inStr("""PositionTicks""") >= 0, json)
+      m.assertTrue(json.inStr("""IsPlaying""") >= 0, json)
+      m.assertTrue(json.inStr("""PlaylistItemId""") >= 0, json)
+    end function
+
+    @it("builds each small body")
+    function _()
+      m.assertEqual(syncPlayRequests.ping(12&)["Ping"], 12&)
+      m.assertEqual(syncPlayRequests.join("g-1")["GroupId"], "g-1")
+      m.assertEqual(syncPlayRequests.newGroup("Movie night")["GroupName"], "Movie night")
+      m.assertEqual(syncPlayRequests.seek(50000000&)["PositionTicks"], 50000000&)
+      m.assertTrue(syncPlayRequests.setIgnoreWait(true)["IgnoreWait"])
+      m.assertEqual(syncPlayRequests.nextItem("p-1")["PlaylistItemId"], "p-1")
+      m.assertEqual(syncPlayRequests.previousItem("p-2")["PlaylistItemId"], "p-2")
+      m.assertEqual(syncPlayRequests.setPlaylistItem("p-3")["PlaylistItemId"], "p-3")
+    end function
+
+    @it("SetNewQueue carries the ids, the index and the start ticks")
+    function _()
+      body = syncPlayRequests.setNewQueue(["i-1", "i-2"], 1, 1200000000&)
+      m.assertEqual(body["PlayingQueue"], ["i-1", "i-2"])
+      m.assertEqual(body["PlayingItemPosition"], 1)
+      m.assertEqual(body["StartPositionTicks"], 1200000000&)
+    end function
+
+  end class
+end namespace
