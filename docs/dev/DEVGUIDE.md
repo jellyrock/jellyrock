@@ -45,7 +45,7 @@ We recommend Visual Studio Code for this project. Its [BrightScript Language ext
 ### Run the app
 
 1. Open the `jellyrock` folder in Visual Studio Code.
-2. Press `F5`, or choose **Run → Start Debugging**. ![The Run menu with Start Debugging highlighted](https://user-images.githubusercontent.com/2544493/170696233-8ba49bf4-bebb-4655-88f3-ac45150dda02.png)
+2. Press `F5`, or choose **Run → Start Debugging**. ![The Run menu with Start Debugging highlighted](images/devguide-run-start-debugging.png)
 3. When asked, enter your Roku's IP address and developer password.
 
 Visual Studio Code builds the app, installs it on your Roku and starts it.
@@ -63,7 +63,7 @@ By default the extension asks for the Roku and its password on every run. To ski
 }
 ```
 
-![The two settings in a user settings file](https://user-images.githubusercontent.com/2544493/170485209-0dbe6787-8026-47e7-9095-1df96cda8a0a.png)
+![The two settings in a user settings file](images/devguide-user-settings.png)
 
 Put them in your user settings, not in `.vscode/launch.json`, so your password stays out of the repository. The saved address is also the Roku `F5` locks.
 
