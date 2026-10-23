@@ -1,4 +1,5 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/dialogClose.bs"
 import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
@@ -428,13 +429,10 @@ sub cancelDialog()
 end sub
 
 ' Dismiss this overlay. Appended directly to the scene by dialogs.bs, so closing is a
-' removeChild from our parent + restoring focus to the opener (returnFocusTo).
-' Mirrors OverviewDialog.closeDialog().
+' removeChild from our parent + restoring focus to the opener (returnFocusTo), which
+' closeOverlayDialog does only if we still hold focus. See source/utils/dialogClose.bs.
 sub closeDialog()
-  returnFocusTo = m.top.returnFocusTo
-  parent = m.top.getParent()
-  if isValid(parent) then parent.removeChild(m.top)
-  if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+  closeOverlayDialog(m.top)
 end sub
 
 ' The decision itself is buttonDialogKeyAction in source/utils/dialogKeys.bs,

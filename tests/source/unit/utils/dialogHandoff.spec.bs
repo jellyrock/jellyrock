@@ -1,0 +1,94 @@
+import "pkg:/source/utils/dialogs.bs"
+
+namespace tests
+
+  ' A dialog delivers its result BEFORE it closes, so an owner's handler that opens the next
+  ' dialog does so while the first is still mounted and focused. These run that real order:
+  ' DialogHandoffHost's handler opens the second dialog from inside the first one's result write.
+  ' cancelDialog stands in for the user's answer: it writes the result and then closes, the same
+  ' order a pick takes, and the host's handler ignores which answer it was.
+  @suite("presentOverlayDialog - a dialog opened from a result handler")
+  class DialogHandoffTests extends tests.BaseTestSuite
+
+    private host as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.host = CreateObject("roSGNode", "DialogHandoffHost")
+      m.top.getScene().appendChild(m.host)
+    end function
+
+    protected override function afterEach()
+      abandonDialog(m.host.second)
+      abandonDialog(m.host.first)
+      m.top.getScene().removeChild(m.host)
+      m.host = invalid
+      super.afterEach()
+    end function
+
+    ' Open the first dialog and answer it, which runs the host's handler. Returns the dialog
+    ' that handler opened.
+    private function answerFirst(shape as string) as object
+      m.host.callFunc("openFirst", shape)
+      m.assertTrue(m.host.first.isInFocusChain(), "precondition failed: the first dialog never took focus")
+      m.host.first.callFunc("cancelDialog")
+      m.assertNotInvalid(m.host.second, "the handler never opened a second dialog")
+      return m.host.second
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a menu whose handler opens a confirm")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves focus on the confirm once the menu closes")
+    function _()
+      second = m.answerFirst("menu")
+
+      m.assertInvalid(m.host.first.getParent(), "the menu did not close")
+      m.assertTrue(second.isInFocusChain(), "the closing menu took focus from the confirm")
+    end function
+
+    @it("returns focus to the menu's opener when the confirm closes")
+    function _()
+      second = m.answerFirst("menu")
+      opener = m.host.opener
+
+      m.assertNotInvalid(second.returnFocusTo, "the confirm has nowhere to return focus to")
+      m.assertTrue(second.returnFocusTo.isSameNode(opener), "the confirm returns focus to a " + second.returnFocusTo.subtype() + ", not the menu's opener")
+      second.callFunc("cancelDialog")
+      m.assertTrue(opener.hasFocus(), "focus did not return to the opener")
+    end function
+
+    @it("gives the shared overlay id to the confirm alone while the handler runs")
+    function _()
+      second = m.answerFirst("menu")
+      seen = m.host.inHandler
+
+      m.assertTrue(seen.openDialog.isSameNode(second), "openOverlayDialog() still found the closing menu")
+      m.assertNotEqual(seen.firstId, seen.secondId, "the closing menu and the confirm shared the overlay id")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an alert whose handler opens a report (the playback error's Details)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves focus on the report once the alert closes")
+    function _()
+      second = m.answerFirst("alert")
+
+      m.assertInvalid(m.host.first.getParent(), "the alert did not close")
+      m.assertTrue(second.isInFocusChain(), "the closing alert took focus from the report")
+    end function
+
+    @it("returns focus to the alert's opener when the report closes")
+    function _()
+      second = m.answerFirst("alert")
+      opener = m.host.opener
+
+      second.callFunc("cancelDialog")
+      m.assertTrue(opener.hasFocus(), "focus did not return to the opener")
+    end function
+
+  end class
+
+end namespace

@@ -1,0 +1,33 @@
+' The ONE definition of how an overlay dialog closes: JRDialog, JRListDialog,
+' OverviewDialog and QuickConnectDialog all close through it.
+'
+' THE ORDER IS WHAT BITES. A dialog delivers `result` BEFORE it closes, and the
+' owner's result handler runs inside that write. A handler may present another
+' overlay dialog, which takes focus. Control then returns to the first dialog's
+' close, and an unconditional `returnFocusTo.setFocus(true)` steals focus from
+' the new dialog: it stays on screen and ignores every key.
+'
+' THE RULE. Restore focus to returnFocusTo only when this dialog still held it
+' when the close began. If it did not, something else took focus on purpose, and
+' a closing dialog leaves that alone.
+'
+' wasFocused is read BEFORE the detach, because removing a focused node is what
+' destroys the answer (the same trap applyButtonOverflow documents in
+' buttonOverflow.bs).
+'
+' Callers keep their own bookkeeping (the once-only flag, the `closed` signal);
+' this holds only the detach and the focus decision.
+
+' Take the dialog off its parent and hand focus back to returnFocusTo, but only
+' if the dialog still held focus.
+sub closeOverlayDialog(dialog as object)
+  if not isValid(dialog) then return
+
+  returnFocusTo = dialog.returnFocusTo
+  wasFocused = dialog.isInFocusChain()
+
+  parent = dialog.getParent()
+  if isValid(parent) then parent.removeChild(dialog)
+
+  if wasFocused and isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+end sub

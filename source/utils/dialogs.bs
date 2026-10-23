@@ -370,6 +370,14 @@ end sub
 ' exactly one node because presentOverlayDialog keeps it that way.
 const OVERLAY_DIALOG_ID = "jrDialog"
 
+' Has this overlay dialog delivered its result? Then its owner's result handler is
+' running and the dialog closes when it returns. `result` stays unset until
+' resolveDialog writes it, once. OverviewDialog has no `result`, and it detaches
+' before it signals `closed`, so it is never found open in that state.
+function dialogHasAnswered(dialog as object) as boolean
+  return dialog.hasField("result") and isValid(dialog.result)
+end function
+
 ' Append an overlay dialog to the scene, capture focus, wire the caller's
 ' result observer. onResult is resolved in the CALLER's scope because these
 ' helpers execute inside the importing component's script scope.
@@ -397,8 +405,21 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
   '
   ' The log line stays. Two overlays racing is still a signal about something
   ' upstream (two casts in flight), and arbitrating silently would discard it.
+  '
+  ' An incumbent that has already answered is not racing anyone: its owner's
+  ' result handler is opening this dialog. That is a hand-off, below.
   incumbent = scene.findNode(OVERLAY_DIALOG_ID)
-  if isValid(incumbent)
+  handedFocusTo = invalid
+  if isValid(incumbent) and dialogHasAnswered(incumbent)
+    ' A dialog delivers its result before it closes, so the incumbent is still
+    ' mounted and focused, and detaches as soon as the handler returns. Cancelling
+    ' it would do nothing (it has resolved), and deriving returnFocusTo would land
+    ' inside it. So this dialog takes over where the incumbent would have returned
+    ' focus, and takes the id now, so findNode never sees two. The incumbent's close
+    ' then leaves focus here (closeOverlayDialog in dialogClose.bs).
+    handedFocusTo = incumbent.returnFocusTo
+    incumbent.id = ""
+  else if isValid(incumbent)
     print "WARNING - presentOverlayDialog: a dialog was already open; superseding it with a cancelled result"
     ' Reusing the node we found above rather than calling cancelOpenDialog():
     ' that would re-run findNode against a render-thread-owned tree, and on the
@@ -425,10 +446,13 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
   ' to the deepest focused node, which with an incumbent still mounted resolves
   ' INSIDE the incumbent, so returnFocusTo would point at a node that is about
   ' to be detached, and closing this dialog would restore focus to a corpse.
+  ' A hand-off has no supersede to wait for, so it reuses the incumbent's target.
   ' A caller that KNOWS its opener passes it instead and skips the derivation.
   dialog.id = OVERLAY_DIALOG_ID
   if isValid(returnFocusTo)
     dialog.returnFocusTo = returnFocusTo
+  else if isValid(handedFocusTo)
+    dialog.returnFocusTo = handedFocusTo
   else
     dialog.returnFocusTo = lastFocusedChild(scene)
   end if
