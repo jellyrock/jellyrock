@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Hold keys and let Back cancel a Refresh, photo launch or seek ([#1245](https://github.com/jellyrock/jellyrock/pull/1245))
 - (sign-in) Keep a server re-scan from taking focus from a connect ([#1242](https://github.com/jellyrock/jellyrock/pull/1242))
 - (sign-in) Ignore extra presses and let Back cancel a sign-in ([#1238](https://github.com/jellyrock/jellyrock/pull/1238))
 - (login) Land on Home after sign-in; drop casts while signed out ([#1237](https://github.com/jellyrock/jellyrock/pull/1237))
