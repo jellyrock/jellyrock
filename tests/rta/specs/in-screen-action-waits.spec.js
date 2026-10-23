@@ -189,12 +189,16 @@ async function refreshHeld(ms) {
   await waitHeld(1, 'the refresh fetch is on a pool slot');
 }
 
-it('Refresh: Back cancels it and shows details again', async () => {
+it('Refresh: Back cancels it and shows details again, and details can still close', async () => {
   await refreshHeld(HELD_MS);
   await expectHeldUnderSpinner('ItemDetails');
 
   await press(ecp.Key.Back);
   await expectShownAgain('ItemDetails', 'Back cancelled the refresh');
+
+  // The cancel drops the details fetch; closing the screen afterwards must still tear down.
+  await press(ecp.Key.Back);
+  await waitActive('BaseGridView', 'Back left details for the movies grid after the cancel');
 });
 
 it('Refresh: other keys wait, and the refresh lands', async () => {

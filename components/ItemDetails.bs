@@ -5592,9 +5592,8 @@ sub onDestroy()
   m.loadLyricsTask.control = "STOP"
   m.loadLyricsTask = invalid
 
-  m.loadDetailsTask.unobserveField("content")
-  m.loadDetailsTask.control = "STOP"
-  m.loadDetailsTask = invalid
+  ' Already invalid after a cancelled Refresh (onRefreshWaitEnded).
+  m.loadDetailsTask = releaseTask(m.loadDetailsTask, "content")
 
   ' Tear down the record task. The delete / series-watched confirmations no longer
   ' route through SceneManager.isDataReturned: they use the standard dialog helpers,
