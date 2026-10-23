@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-23: feat: Show a spinner over details and the TV guide while they load, and let Back leave them
 - 2026-10-22: fix(sign-in): Keep a server re-scan from taking focus from a connect
 - 2026-10-22: fix(sign-in): Ignore extra presses and let Back cancel a sign-in
 - 2026-10-22: fix(login): Land on Home after sign-in; drop casts while signed out
@@ -93,10 +94,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-09: build(make): Package the zip that `make install` uploads
 - 2026-10-09: fix(home): Hide pilots of not-yet-started series from Next Up
 - 2026-10-09: fix: Change screens and the overhang in one frame
-- 2026-10-08: test(rta): Walk Home rows and the library grid one key at a time
-- 2026-10-08: fix(focus): Stop screens taking focus back when it leaves the router
-- 2026-10-08: test(rta): Say what the hourly demo reset wipes, and not to debug past it
-- 2026-10-08: update(manifest): Require Roku OS 15.1 and SceneGraph 1.3
 
 ## Open followups
 
