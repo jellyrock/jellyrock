@@ -1,0 +1,81 @@
+' The SyncPlay request bodies, as AAs ready for FormatJson. Pure: no node, no m.global. The keys are
+' quoted PascalCase because BrightScript lowercases a bare identifier key; Jellyfin's REST binder
+' is case-insensitive, but the bodies stay in the spec's casing so a capture reads like the spec.
+' The routes are unchanged from 10.7.0 to master (read 2026-10-23), so there is no version branch:
+' ApiClient.BuildSyncPlayRequest(action, body) posts any of them to /SyncPlay/<action>.
+' Times go in through syncPlayTime.formatServerTimeMs, so every When ends in a Z.
+namespace syncPlayRequests
+
+  ' POST /SyncPlay/Ready: this client is ready at `whenMs` (server time) with the player at
+  ' positionTicks on playlistItemId. Sent once a seek or load settles, never at the playing edge
+  ' (the position can still read the pre-seek value there: SPIKES.md, 2026-10-23).
+  function ready(whenMs as longinteger, positionTicks as longinteger, isPlaying as boolean, playlistItemId as string) as object
+    return playbackReport(whenMs, positionTicks, isPlaying, playlistItemId)
+  end function
+
+  ' POST /SyncPlay/Buffering: same body; this client is buffering (a seek started, a load began).
+  function buffering(whenMs as longinteger, positionTicks as longinteger, isPlaying as boolean, playlistItemId as string) as object
+    return playbackReport(whenMs, positionTicks, isPlaying, playlistItemId)
+  end function
+
+  ' POST /SyncPlay/Ping: the measured ping, in ms.
+  function ping(pingMs as longinteger) as object
+    return { "Ping": pingMs }
+  end function
+
+  ' POST /SyncPlay/SetNewQueue: replace the group's queue with these item ids, start at the given
+  ' position (index) and ticks.
+  function setNewQueue(itemIds as object, playingItemPosition as integer, startPositionTicks as longinteger) as object
+    return { "PlayingQueue": itemIds, "PlayingItemPosition": playingItemPosition, "StartPositionTicks": startPositionTicks }
+  end function
+
+  ' POST /SyncPlay/Join
+  function join(groupId as string) as object
+    return { "GroupId": groupId }
+  end function
+
+  ' POST /SyncPlay/New
+  function newGroup(groupName as string) as object
+    return { "GroupName": groupName }
+  end function
+
+  ' POST /SyncPlay/Seek: an absolute position.
+  function seek(positionTicks as longinteger) as object
+    return { "PositionTicks": positionTicks }
+  end function
+
+  ' POST /SyncPlay/SetIgnoreWait: true while halted, so a server before 12.1 (no group-wait
+  ' timeout) never waits on this client for a Ready it will not send.
+  function setIgnoreWait(ignoreWait as boolean) as object
+    return { "IgnoreWait": ignoreWait }
+  end function
+
+  ' POST /SyncPlay/NextItem and /PreviousItem: the playlist item this client is on, so the server
+  ' can ignore a request from a member that is behind.
+  function nextItem(playlistItemId as string) as object
+    return { "PlaylistItemId": playlistItemId }
+  end function
+
+  function previousItem(playlistItemId as string) as object
+    return { "PlaylistItemId": playlistItemId }
+  end function
+
+  ' POST /SyncPlay/SetPlaylistItem: jump the group to this playlist item.
+  function setPlaylistItem(playlistItemId as string) as object
+    return { "PlaylistItemId": playlistItemId }
+  end function
+
+  ' Pause, Unpause, Stop and Leave take no body: BuildSyncPlayRequest(action, invalid).
+
+  ' --- helpers ---
+
+  function playbackReport(whenMs as longinteger, positionTicks as longinteger, isPlaying as boolean, playlistItemId as string) as object
+    return {
+      "When": syncPlayTime.formatServerTimeMs(whenMs),
+      "PositionTicks": positionTicks,
+      "IsPlaying": isPlaying,
+      "PlaylistItemId": playlistItemId
+    }
+  end function
+
+end namespace

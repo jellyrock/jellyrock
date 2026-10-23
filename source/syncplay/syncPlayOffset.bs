@@ -1,0 +1,75 @@
+' The device-to-server clock offset estimate for SyncPlay. Pure: no HTTP, no node. Phase C's
+' TimeSyncTask feeds it one round per GET /GetUtcTime (raw roUrlTransfer, so it can stamp the
+' send and receive times itself) and reads the estimate back.
+'
+' The formula is jellyfin-web's (TimeSync.js): for one round with device send time t0, server
+' reception r, server transmission t and device receive time t1,
+'   offset = ((r - t0) + (t - t1)) / 2      server clock minus device clock
+'   delay  = (t1 - t0) - (t - r)            the round trip less the server's own time
+' All times are whole milliseconds (LongInteger, see syncPlayTime.bs), so the half is truncated
+' toward zero: a sub-millisecond offset is below anything the estimate resolves.
+' The last 8 rounds are kept and the estimate is the one with the shortest delay. The first
+' HTTPS round carries the TLS handshake (690 ms and 411 ms on the two test devices, 2026-10-23)
+' and loses on delay by itself, so nothing drops it by hand. Measured spread of the estimate on
+' the Stick 4K: 5 ms over HTTP, about 60 ms over HTTPS (SPIKES.md in the project folder).
+namespace syncPlayOffset
+
+  const RING_SIZE = 8
+
+  ' A fresh estimator: no rounds, no estimate.
+  function newEstimator() as object
+    return { measurements: [], offsetMs: 0&, delayMs: 0&, hasEstimate: false }
+  end function
+
+  ' One round's offset and delay, all times in ms since the epoch.
+  function measure(txDeviceMs as longinteger, rxServerMs as longinteger, txServerMs as longinteger, rxDeviceMs as longinteger) as object
+    offset& = ((rxServerMs - txDeviceMs) + (txServerMs - rxDeviceMs)) \ 2
+    delay& = (rxDeviceMs - txDeviceMs) - (txServerMs - rxServerMs)
+    return { offsetMs: offset&, delayMs: delay& }
+  end function
+
+  ' Add one round and recompute the estimate. Returns the estimator (mutated in place).
+  function addRound(estimator as object, txDeviceMs as longinteger, rxServerMs as longinteger, txServerMs as longinteger, rxDeviceMs as longinteger) as object
+    estimator.measurements.push(measure(txDeviceMs, rxServerMs, txServerMs, rxDeviceMs))
+    if estimator.measurements.count() > RING_SIZE then estimator.measurements.shift()
+    best = invalid
+    for each candidate in estimator.measurements
+      if best = invalid or candidate.delayMs < best.delayMs then best = candidate
+    end for
+    estimator.offsetMs = best.offsetMs
+    estimator.delayMs = best.delayMs
+    estimator.hasEstimate = true
+    return estimator
+  end function
+
+  ' Add a round from a GetUtcTime response body ({ RequestReceptionTime, ResponseTransmissionTime })
+  ' and the device's send and receive stamps. Returns false, and adds nothing, when either server
+  ' time fails to parse.
+  function addUtcTimeResponse(estimator as object, txDeviceMs as longinteger, rxDeviceMs as longinteger, body as object) as boolean
+    if not isValid(body) then return false
+    rxServerMs = syncPlayTime.parseServerTimeMs(body.RequestReceptionTime)
+    txServerMs = syncPlayTime.parseServerTimeMs(body.ResponseTransmissionTime)
+    if rxServerMs = invalid or txServerMs = invalid then return false
+    addRound(estimator, txDeviceMs, rxServerMs, txServerMs, rxDeviceMs)
+    return true
+  end function
+
+  ' Drop every round (a server switch, a rejoin).
+  sub reset(estimator as object)
+    estimator.measurements = []
+    estimator.offsetMs = 0&
+    estimator.delayMs = 0&
+    estimator.hasEstimate = false
+  end sub
+
+  ' The server's clock now, given the device's clock now.
+  function serverNowMs(estimator as object, deviceNowMs as longinteger) as longinteger
+    return deviceNowMs + estimator.offsetMs
+  end function
+
+  ' The device clock reading at which the server's clock reads whenMs (a command's When).
+  function deviceTimeForServerMs(estimator as object, whenMs as longinteger) as longinteger
+    return whenMs - estimator.offsetMs
+  end function
+
+end namespace

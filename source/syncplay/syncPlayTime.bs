@@ -1,0 +1,120 @@
+' Server-time parsing and formatting for SyncPlay. Pure: no node, no m.global, no HTTP, so it is
+' fully unit-testable. Every SyncPlay timestamp (a command's When and EmittedAt, a group's
+' LastUpdatedAt, the GetUtcTime pair) is a .NET DateTime serialized in UTC with a trailing Z and
+' a fraction of 0 to 7 digits.
+'
+' Server time is held in milliseconds since the epoch as a LongInteger, never a Double: on a
+' Stick 4K (2026-10-23) a Double read back out of an AA came back as a 32-bit roFloat, and Int()
+' rounds a Double through a float, so epoch milliseconds (about 1.8e12) lost up to 31 s both ways.
+' A LongInteger survives an AA, an array, ParseJson and FormatJson exactly, and `\` and `mod`
+' stay in 64 bits. A 32-bit Integer overflows at 2^31 ms. Ticks (100 ns) are LongIntegers too.
+namespace syncPlayTime
+
+  ' Jellyfin ticks are 100 ns units.
+  const TICKS_PER_MS = 10000
+
+  ' Parse a Jellyfin UTC timestamp into milliseconds since the epoch (a LongInteger), or invalid.
+  ' Accepts only a trailing Z or no suffix: roDateTime.FromISO8601String silently ignores any other
+  ' offset (+02:00 parses as if it were Z, measured on two devices 2026-10-23), so a value that
+  ' carries one is a parse failure here rather than a wrong time. Jellyfin always sends Z.
+  ' The fraction is kept to the millisecond, truncated, as the platform does.
+  function parseServerTimeMs(value as dynamic) as dynamic
+    if not isText(value) or value = "" then return invalid
+    text = value
+    if Right(text, 1) = "Z" or Right(text, 1) = "z" then text = Left(text, Len(text) - 1)
+    if not looksLikeUtcTimestamp(text) then return invalid
+
+    dt = CreateObject("roDateTime")
+    dt.FromISO8601String(text)
+    ' FromISO8601String reports no failure; check that the year it kept is the one in the text.
+    if dt.GetYear() <> Val(Left(text, 4)) then return invalid
+    ms& = dt.AsSeconds() * 1000& + dt.GetMilliseconds()
+    return ms&
+  end function
+
+  ' Format milliseconds since the epoch as the UTC timestamp Jellyfin binds: YYYY-MM-DDTHH:MM:SS.mmmZ.
+  ' Built from the date parts rather than ToISOString("milliseconds"), whose suffix is "+0000".
+  ' Returns "" for a negative or non-integer value.
+  function formatServerTimeMs(ms as dynamic) as string
+    if not isWholeNumber(ms) then return ""
+    if ms < 0 then return ""
+    wholeSeconds& = ms \ 1000
+    millis = cint(ms mod 1000)
+    dt = CreateObject("roDateTime")
+    dt.FromSeconds(wholeSeconds&)
+    return pad(dt.GetYear(), 4) + "-" + pad(dt.GetMonth(), 2) + "-" + pad(dt.GetDayOfMonth(), 2) + "T" + pad(dt.GetHours(), 2) + ":" + pad(dt.GetMinutes(), 2) + ":" + pad(dt.GetSeconds(), 2) + "." + pad(millis, 3) + "Z"
+  end function
+
+  ' Ticks (100 ns) to whole milliseconds, truncated.
+  function ticksToMs(ticks as dynamic) as longinteger
+    if not isWholeNumber(ticks) then return 0&
+    return asLong(ticks) \ TICKS_PER_MS
+  end function
+
+  ' Milliseconds to ticks (100 ns).
+  function msToTicks(ms as dynamic) as longinteger
+    if not isWholeNumber(ms) then return 0&
+    return asLong(ms) * TICKS_PER_MS
+  end function
+
+  ' The device's UTC clock in milliseconds since the epoch. The one impure read in this file,
+  ' kept apart so every other function can take a fixed clock in a spec.
+  function nowMs() as longinteger
+    dt = CreateObject("roDateTime")
+    ms& = dt.AsSeconds() * 1000& + dt.GetMilliseconds()
+    return ms&
+  end function
+
+  ' --- helpers ---
+
+  ' "YYYY-MM-DD" + ("T" or " ") + "HH:MM:SS" with an optional ".fraction"; nothing else after it.
+  ' A "+" or "-" past the date part is an offset and is refused.
+  function looksLikeUtcTimestamp(text as string) as boolean
+    if Len(text) < 19 then return false
+    if Mid(text, 5, 1) <> "-" or Mid(text, 8, 1) <> "-" then return false
+    separator = Mid(text, 11, 1)
+    if separator <> "T" and separator <> " " then return false
+    if Mid(text, 14, 1) <> ":" or Mid(text, 17, 1) <> ":" then return false
+    timePart = Mid(text, 12)
+    if timePart.inStr("+") >= 0 or timePart.inStr("-") >= 0 then return false
+    if Len(text) > 19 and Mid(text, 20, 1) <> "." then return false
+    return true
+  end function
+
+  function isText(value as dynamic) as boolean
+    if not isValid(value) then return false
+    return type(value) = "String" or type(value) = "roString"
+  end function
+
+  ' An Integer or LongInteger (ParseJson gives the first below 2^31 and the second above,
+  ' measured 2026-10-23), or a Double, which is what BrightScript makes of a literal of ten or
+  ' more digits and is exact at these magnitudes. A Float is refused: 32 bits cannot hold a tick
+  ' count or epoch milliseconds, so one here is a bug upstream, never a value to convert.
+  function isWholeNumber(value as dynamic) as boolean
+    if not isValid(value) then return false
+    kind = type(value)
+    if kind = "Integer" or kind = "LongInteger" or kind = "roInt" or kind = "roInteger" or kind = "roLongInteger" then return true
+    if kind = "Double" or kind = "roDouble"
+      whole& = value
+      return whole& = value
+    end if
+    return false
+  end function
+
+  ' Coerce a whole number to a LongInteger (Rooibos compares types strictly, and a JSON tick
+  ' count below 2^31 arrives as an Integer). 0 for anything else.
+  function asLong(value as dynamic) as longinteger
+    if not isWholeNumber(value) then return 0&
+    result& = value
+    return result&
+  end function
+
+  function pad(value as integer, width as integer) as string
+    text = value.toStr()
+    while Len(text) < width
+      text = "0" + text
+    end while
+    return text
+  end function
+
+end namespace

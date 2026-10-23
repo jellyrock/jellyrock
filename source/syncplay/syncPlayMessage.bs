@@ -1,0 +1,154 @@
+' Pure parser for the two SyncPlay frames the session socket and the plugin long poll deliver:
+' SyncPlayCommand and SyncPlayGroupUpdate. Called from remoteCommand.parseMessage, which hands it
+' the envelope's Data and a result AA that already carries { kind: "ignore", raw, messageId }.
+'
+' One parser serves every server line from 10.7.0 up: the wire shapes are unchanged (read in the
+' tagged sources 2026-10-23), and every line serializes enums as their names (JsonStringEnumConverter
+' in JsonDefaults), so Command and Type are matched as strings and never as numbers. Anything
+' unknown or malformed degrades to "ignore", never an error, as the rest of the receiver does.
+'
+' Normalized shapes (the Task drops `raw` before marshalling, so these carry everything):
+'   syncplaycommand -> command ("Unpause"|"Pause"|"Stop"|"Seek"), whenMs, emittedAtMs, positionTicks,
+'                      playlistItemId, groupId
+'   syncplayupdate  -> updateType, groupId, and per type:
+'     GroupJoined                      groupName, groupState, participants[], lastUpdatedAtMs
+'     UserJoined / UserLeft            userName
+'     StateUpdate                      groupState, reason
+'     PlayQueue                        reason, lastUpdateMs, playlist[{ itemId, playlistItemId }],
+'                                      playingItemIndex, startPositionTicks, isPlaying (a boolean,
+'                                      or invalid on a 10.7 line, which has no such field)
+'     GroupLeft, NotInGroup, GroupDoesNotExist, LibraryAccessDenied,
+'     CreateGroupDenied, JoinGroupDenied (10.7 only)   nothing more
+namespace syncPlayMessage
+
+  ' SyncPlayCommand.Data: { GroupId, PlaylistItemId, When, Command, PositionTicks, EmittedAt }.
+  function parseCommand(data as object, result as object) as object
+    if not isValid(data) or not syncPlayTime.isText(data.Command) then return result
+    if not isKnownCommand(data.Command) then return result
+    whenMs = syncPlayTime.parseServerTimeMs(data.When)
+    emittedAtMs = syncPlayTime.parseServerTimeMs(data.EmittedAt)
+    if whenMs = invalid or emittedAtMs = invalid then return result
+    result.kind = "syncplaycommand"
+    result.command = data.Command
+    result.whenMs = whenMs
+    result.emittedAtMs = emittedAtMs
+    result.positionTicks = asTicks(data.PositionTicks)
+    result.playlistItemId = asText(data.PlaylistItemId)
+    result.groupId = asText(data.GroupId)
+    return result
+  end function
+
+  ' SyncPlayGroupUpdate.Data: { GroupId, Type, Data } where the inner Data depends on Type.
+  function parseGroupUpdate(data as object, result as object) as object
+    if not isValid(data) or not syncPlayTime.isText(data.Type) then return result
+    updateType = data.Type
+    if not isKnownUpdateType(updateType) then return result
+    inner = data.Data
+    result.kind = "syncplayupdate"
+    result.updateType = updateType
+    result.groupId = asText(data.GroupId)
+
+    if updateType = "GroupJoined"
+      ' GroupInfoDto: { GroupId, GroupName, State, Participants, LastUpdatedAt }
+      if not isValid(inner) then return ignored(result)
+      lastUpdatedAtMs = syncPlayTime.parseServerTimeMs(inner.LastUpdatedAt)
+      if lastUpdatedAtMs = invalid then return ignored(result)
+      if isValidAndNotEmpty(inner.GroupId) then result.groupId = inner.GroupId
+      result.groupName = asText(inner.GroupName)
+      result.groupState = asText(inner.State)
+      result.participants = asTextArray(inner.Participants)
+      result.lastUpdatedAtMs = lastUpdatedAtMs
+    else if updateType = "UserJoined" or updateType = "UserLeft"
+      result.userName = asText(inner)
+    else if updateType = "StateUpdate"
+      ' GroupStateUpdate: { State, Reason }
+      if not isValid(inner) then return ignored(result)
+      result.groupState = asText(inner.State)
+      result.reason = asText(inner.Reason)
+    else if updateType = "PlayQueue"
+      ' PlayQueueUpdate: { Reason, LastUpdate, Playlist, PlayingItemIndex, StartPositionTicks,
+      ' IsPlaying (10.8+), ShuffleMode, RepeatMode }
+      if not isValid(inner) or not isValid(inner.Playlist) then return ignored(result)
+      result.reason = asText(inner.Reason)
+      result.lastUpdateMs = syncPlayTime.parseServerTimeMs(inner.LastUpdate)
+      result.playlist = parsePlaylist(inner.Playlist)
+      result.playingItemIndex = asIndex(inner.PlayingItemIndex)
+      result.startPositionTicks = asTicks(inner.StartPositionTicks)
+      result.isPlaying = invalid
+      if isValid(inner.IsPlaying) then result.isPlaying = isBooleanTrue(inner.IsPlaying)
+      result.shuffleMode = asText(inner.ShuffleMode)
+      result.repeatMode = asText(inner.RepeatMode)
+    end if
+    return result
+  end function
+
+  ' --- the known names, matched as strings ---
+
+  function isKnownCommand(command as string) as boolean
+    return command = "Unpause" or command = "Pause" or command = "Stop" or command = "Seek"
+  end function
+
+  function isKnownUpdateType(updateType as string) as boolean
+    known = {
+      UserJoined: true,
+      UserLeft: true,
+      GroupJoined: true,
+      GroupLeft: true,
+      StateUpdate: true,
+      PlayQueue: true,
+      NotInGroup: true,
+      GroupDoesNotExist: true,
+      LibraryAccessDenied: true,
+      CreateGroupDenied: true,
+      JoinGroupDenied: true
+    }
+    return known.doesExist(updateType)
+  end function
+
+  ' --- helpers ---
+
+  ' A queue entry is { ItemId, PlaylistItemId } on every line (QueueItem on 10.7 and 10.8,
+  ' SyncPlayQueueItem from 10.9). Entries without both ids are dropped.
+  function parsePlaylist(entries as object) as object
+    playlist = []
+    if type(entries) <> "roArray" then return playlist
+    for each entry in entries
+      if isValid(entry) and isValidAndNotEmpty(entry.ItemId) and isValidAndNotEmpty(entry.PlaylistItemId)
+        playlist.push({ itemId: entry.ItemId, playlistItemId: entry.PlaylistItemId })
+      end if
+    end for
+    return playlist
+  end function
+
+  ' Back out of a half-filled update: the frame is malformed, so it is ignored like any other.
+  function ignored(result as object) as object
+    result.kind = "ignore"
+    return result
+  end function
+
+  function asText(value as dynamic) as string
+    if syncPlayTime.isText(value) then return value
+    return ""
+  end function
+
+  function asTextArray(value as dynamic) as object
+    names = []
+    if type(value) <> "roArray" then return names
+    for each entry in value
+      if isValidAndNotEmpty(entry) then names.push(entry)
+    end for
+    return names
+  end function
+
+  ' Ticks arrive as a JSON whole number (an Integer below 2^31, a LongInteger above); held as a
+  ' LongInteger so a long position never overflows and every holder compares alike.
+  function asTicks(value as dynamic) as longinteger
+    return syncPlayTime.asLong(value)
+  end function
+
+  function asIndex(value as dynamic) as integer
+    if syncPlayTime.isWholeNumber(value) then return cint(value)
+    return -1
+  end function
+
+end namespace

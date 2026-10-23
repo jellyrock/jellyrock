@@ -1,0 +1,134 @@
+import "pkg:/source/syncplay/syncPlayOffset.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
+namespace tests
+
+  ' The clock-offset estimate. The fixtures are the rounds the Stick 4K recorded on 2026-10-23
+  ' (spike 3, .device-runs/spike-syncplay-<stick-ip>.json): eight HTTP rounds whose offsets lay
+  ' within 5 ms of each other, and eight HTTPS rounds whose first carried the TLS handshake.
+  @suite("syncPlayOffset — clock offset estimate")
+  class SyncPlayOffsetTests extends tests.BaseTestSuite
+
+    ' { t0: device send, r: server reception, t: server transmission, t1: device receive } in ms.
+    ' The server's reception and transmission were equal on every round (gap 0 ms).
+    private httpRounds = [
+      { t0: 1792788447791&, r: 1792788447877&, t: 1792788447877&, t1: 1792788447797& },
+      { t0: 1792788447805&, r: 1792788447892&, t: 1792788447892&, t1: 1792788447820& },
+      { t0: 1792788447827&, r: 1792788447916&, t: 1792788447916&, t1: 1792788447836& },
+      { t0: 1792788447840&, r: 1792788447929&, t: 1792788447929&, t1: 1792788447846& }
+    ]
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("measure()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("computes web's offset and delay for one round")
+    function _()
+      ' Device sends at 1000, server receives at 1090 and answers at 1092, device receives at 1010:
+      ' offset = ((1090 - 1000) + (1092 - 1010)) / 2 = 86; delay = (1010 - 1000) - (1092 - 1090) = 8.
+      round = syncPlayOffset.measure(1000&, 1090&, 1092&, 1010&)
+      m.assertEqual(round.offsetMs, 86&)
+      m.assertEqual(round.delayMs, 8&)
+    end function
+
+    @it("reads a negative offset when the device clock is ahead")
+    function _()
+      round = syncPlayOffset.measure(2000&, 1500&, 1500&, 2010&)
+      m.assertEqual(round.offsetMs, -505&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("addRound()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts with no estimate")
+    function _()
+      est = syncPlayOffset.newEstimator()
+      m.assertFalse(est.hasEstimate)
+      m.assertEqual(est.offsetMs, 0&)
+    end function
+
+    @it("lands the recorded HTTP rounds within their measured 5 ms spread")
+    function _()
+      est = syncPlayOffset.newEstimator()
+      for each round in m.httpRounds
+        syncPlayOffset.addRound(est, round.t0, round.r, round.t, round.t1)
+      end for
+      m.assertTrue(est.hasEstimate)
+      m.assertTrue(est.offsetMs >= 80& and est.offsetMs <= 85&, "offset " + est.offsetMs.toStr())
+      m.assertTrue(est.delayMs <= 15&, "delay " + est.delayMs.toStr())
+    end function
+
+    @it("never lets the TLS handshake round win: the shortest delay is the estimate")
+    function _()
+      est = syncPlayOffset.newEstimator()
+      ' The handshake: 690 ms round trip, offset read 400.
+      syncPlayOffset.addRound(est, 1792788448845&, 1792788449590&, 1792788449590&, 1792788449535&)
+      m.assertEqual(est.offsetMs, 400&)
+      ' A plain round: 95 ms round trip, offset 108.
+      syncPlayOffset.addRound(est, 1792788450000&, 1792788450155&, 1792788450155&, 1792788450095&)
+      m.assertEqual(est.offsetMs, 107&)
+      m.assertEqual(est.delayMs, 95&)
+    end function
+
+    @it("keeps only the last eight rounds")
+    function _()
+      est = syncPlayOffset.newEstimator()
+      ' A fast early round with offset 1, then nine slow rounds with offset 50: once the fast one
+      ' leaves the ring, the estimate moves to 50.
+      syncPlayOffset.addRound(est, 0&, 2&, 2&, 2&)
+      for i = 1 to 7
+        syncPlayOffset.addRound(est, 0&, 60&, 60&, 20&)
+      end for
+      m.assertEqual(est.offsetMs, 1&)
+      syncPlayOffset.addRound(est, 0&, 60&, 60&, 20&)
+      m.assertEqual(est.measurements.count(), 8)
+      m.assertEqual(est.offsetMs, 50&)
+    end function
+
+    @it("reset() drops every round")
+    function _()
+      est = syncPlayOffset.newEstimator()
+      syncPlayOffset.addRound(est, 0&, 2&, 2&, 2&)
+      syncPlayOffset.reset(est)
+      m.assertFalse(est.hasEstimate)
+      m.assertEqual(est.measurements.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("addUtcTimeResponse()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds a round from a GetUtcTime body")
+    function _()
+      est = syncPlayOffset.newEstimator()
+      body = { RequestReceptionTime: "2026-10-23T20:47:27.8772777Z", ResponseTransmissionTime: "2026-10-23T20:47:27.8772777Z" }
+      m.assertTrue(syncPlayOffset.addUtcTimeResponse(est, 1792788447791&, 1792788447797&, body))
+      m.assertEqual(est.offsetMs, 83&)
+      m.assertEqual(est.delayMs, 6&)
+    end function
+
+    @it("adds nothing when a server time does not parse")
+    @params({ RequestReceptionTime: "2026-10-23T20:47:27.877+02:00", ResponseTransmissionTime: "2026-10-23T20:47:27.877Z" })
+    @params({ RequestReceptionTime: "2026-10-23T20:47:27.877Z" })
+    @params(invalid)
+    function _(body)
+      est = syncPlayOffset.newEstimator()
+      m.assertFalse(syncPlayOffset.addUtcTimeResponse(est, 0&, 10&, body))
+      m.assertFalse(est.hasEstimate)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("conversions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps between device and server clocks with the estimate")
+    function _()
+      est = syncPlayOffset.newEstimator()
+      syncPlayOffset.addRound(est, 1000&, 1090&, 1092&, 1010&) ' offset 86
+      m.assertEqual(syncPlayOffset.serverNowMs(est, 5000&), 5086&)
+      m.assertEqual(syncPlayOffset.deviceTimeForServerMs(est, 5086&), 5000&)
+    end function
+
+  end class
+end namespace
