@@ -993,7 +993,8 @@ namespace tests
         specialFeatures: m.apiClient.BuildGetSpecialFeaturesRequest(m.testItemId),
         sessions: m.apiClient.BuildGetSessionsRequest({ deviceId: "d" }),
         remoteSubtitles: m.apiClient.BuildSearchRemoteSubtitlesRequest(m.testItemId, "en"),
-        cultures: m.apiClient.BuildGetCulturesRequest()
+        cultures: m.apiClient.BuildGetCulturesRequest(),
+        syncPlayGroups: m.apiClient.BuildGetSyncPlayGroupsRequest()
       }
       m.setApiVersion(originalApiVersion)
       return reqs

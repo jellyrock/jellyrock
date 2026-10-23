@@ -36,7 +36,23 @@ namespace remoteDispatch
       dispatchGoBack()
     else if command.kind = "message"
       dispatchMessage(command)
+    else if command.kind = "syncplaycommand" or command.kind = "syncplayupdate"
+      dispatchSyncPlay(command)
     end if
+  end sub
+
+  ' syncplaycommand / syncplayupdate -> the SyncPlay coordinator. The frames ride the same
+  ' dispatchCommand field as every other command, so the main thread hands them to the
+  ' SyncPlayManager node on m.global by writing its `frame` field; the manager (render thread)
+  ' observes it and applies the frame. Until that node exists the frame is dropped with a console
+  ' line: nothing else in the app knows about groups, so there is nothing to apply it to.
+  sub dispatchSyncPlay(command as object)
+    manager = m.global.syncPlayManager
+    if not isValid(manager)
+      print "remoteDispatch: dropped a "; command.kind; " frame: no SyncPlay manager"
+      return
+    end if
+    manager.frame = command
   end sub
 
   ' route (GeneralCommand GoHome / GoToSearch / GoToSettings) -> navigate the router to a fixed path.

@@ -667,6 +667,7 @@ supersampling
 superset
 SVG
 SVGs
+SyncPlay
 Tasker
 TCP
 teardown

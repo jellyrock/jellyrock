@@ -20,7 +20,7 @@ related-files:
   - scripts/lint/socket-thread-release-check.js
   - scripts/lint/socket-auth-binding-check.js
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-23
 ---
 
 # Remote control: cast to JellyRock
@@ -149,6 +149,8 @@ The advertised commands are the navigation and messaging ones JellyRock acts on:
 | `GeneralCommand{DisplayMessage}` | `message` | With `TimeoutMs`, a **toast** (`Header` and `Text`). Without it, a **dialog** that stays until the user presses OK. |
 | `Playstate{Pause, Unpause, Stop, NextTrack, PreviousTrack, Seek, Rewind, FastForward, PlayPause}` | `transport` | `getActiveView().handleTransport(evt)` on the active player |
 | `ForceKeepAlive` | `keepalive` | The receiver sends `KeepAlive` on the interval. Never reaches the main thread. |
+| `SyncPlayCommand{Unpause, Pause, Stop, Seek}` | `syncplaycommand` | Parsed by `syncPlayMessage.parseCommand` (`source/syncplay/`): the command name, `When` and `EmittedAt` in ms, the position in ticks, the playlist item and group. `remoteDispatch.dispatchSyncPlay` writes it to the SyncPlay manager node's `frame` field, or drops it with a console line while no manager exists. |
+| `SyncPlayGroupUpdate{GroupJoined, GroupLeft, UserJoined, UserLeft, StateUpdate, PlayQueue, NotInGroup, GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied}` | `syncplayupdate` | Parsed by `syncPlayMessage.parseGroupUpdate` into the group info, the queue or the state; the same hand-off as the command. One parser covers every server line from 10.7.0: the shapes are unchanged and enums travel as names on every line. |
 | `GeneralCommand{volume, directional, SendKey, …}`, `KeepAlive`, `Sessions`, `RefreshProgress`, `UserDataChanged`, anything unknown | `ignore` | Dropped, never an error, so a hostile, future or unknown frame cannot break the receiver |
 
 `Seek` carries an absolute `SeekPositionTicks` and becomes `seekto`, unlike voice's relative `seek`. Both players (`VideoPlayerView`, `AudioPlayerView`, reached through `PlayerHostView`) handle `previous`, `seekto` and `playpause` for the cast verbs.

@@ -514,6 +514,42 @@ class ApiClient
     }
   end function
 
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' SYNCPLAY ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Build a request AA for any SyncPlay action: POST /SyncPlay/<action> with the body
+  ' syncPlayRequests built (invalid for the bodiless Pause, Unpause, Stop and Leave). One method
+  ' serves every action because the routes and bodies are the same from 10.7.0 to master and the
+  ' bodies are the part worth testing, which syncPlayRequests.spec.bs does without m.global.
+  ' Use with SubmitSideEffect() (a report nobody reads) or fetchAsync() (New, Join).
+  ' @param action - "New" | "Join" | "Leave" | "SetNewQueue" | "Ready" | "Buffering" | "Ping" |
+  '   "Pause" | "Unpause" | "Stop" | "Seek" | "SetIgnoreWait" | "NextItem" | "PreviousItem" |
+  '   "SetPlaylistItem"
+  ' @param body - the request body AA, or invalid
+  ' @returns Request AA: { method, url[, body, headers] } or invalid if the server URL is not set
+  function BuildSyncPlayRequest(action as string, body = invalid as dynamic) as dynamic
+    if action = "" then return invalid
+    req = m.validatedReq("POST", buildURL("/SyncPlay/" + action))
+    if not isValid(req) then return invalid
+    if isValid(body)
+      req.body = FormatJson(body)
+      req.headers = { "Content-Type": "application/json" }
+    end if
+    return req
+  end function
+
+  ' Build a request AA to list the SyncPlay groups the user may join, for use with fetchJson() or
+  ' fetchAsync(). GET /SyncPlay/List answers a bare array of GroupInfoDto.
+  ' @returns Request AA: { method, url, expect } or invalid if the server URL is not set
+  function BuildGetSyncPlayGroupsRequest() as dynamic
+    return m.listReq("GET", buildURL("/SyncPlay/List"))
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' SESSION ENDPOINTS (continued)
+  ' ═══════════════════════════════════════════════════════════════════════════
+
   ' Build a request AA to get active sessions, for use with fetchJson().
   ' @param params - Query parameters (for example { deviceId: "..." })
   ' @returns Request AA: { method, url } or invalid if server URL not set

@@ -61,6 +61,17 @@
         "kind": "test-infra",
         "files": ["components/testing/**"],
         "reason": "Probe components the RTA suite creates by name against the dev build and the Rooibos suite drives."
+      },
+      {
+        "kind": "planned",
+        "files": ["source/syncplay/**"],
+        "reason": "#1251: the SyncPlay pure layer (phase B of the syncplay project); phase C's coordinator is its first consumer."
+      },
+      {
+        "kind": "planned",
+        "files": ["source/api/ApiClient.bs"],
+        "names": ["BuildSyncPlayRequest", "BuildGetSyncPlayGroupsRequest"],
+        "reason": "#1251: the SyncPlay request builders; phase C's coordinator is their first caller."
       }
     ]
   }
