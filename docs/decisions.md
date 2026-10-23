@@ -2206,6 +2206,16 @@ A Maximum Bitrate of 0 means no limit. With the Bitrate Limit setting on and its
 
 Ruled out: keeping the ceilings as a separate "Roku default" choice, which is hard to explain to a viewer. Cost: a user who had the limit on with 0 loses the ceilings and plays as the default does. Recheck if a device is shown to fail direct play above one of the old ceilings.
 
+## decision-id: syncplay-time-longinteger
+
+**date**: 2026-10-23
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayTime.bs`, `source/syncplay/syncPlayOffset.bs`, `source/syncplay/syncPlayMessage.bs`
+
+Epoch milliseconds and Jellyfin ticks in the SyncPlay layer are `LongInteger`s, never `Double`s, and every value parsed from JSON is coerced through `syncPlayTime.asLong`. Measured on the Stick 4K (Roku OS 15.3.4) on 2026-10-23 with a throwaway spec: a `#` literal and an `as double` parameter stay Double, but the same value read back out of an AA or array is a 32-bit `roFloat`, and `Int()` rounds a Double through a float, so epoch milliseconds (about 1.8e12) lost up to 31 s both ways. A `LongInteger` survives an AA, an array, `ParseJson` (an `Integer` below 2^31, a `LongInteger` above) and `FormatJson` exactly, `\` and `mod` stay in 64 bits, and `FromSeconds` takes one. A ten-digit literal is a Double in BrightScript, so spec fixtures write `&`, and the coercion accepts a whole Double and refuses a Float.
+
+Ruled out: the phase A spike's conclusion to keep server time in a double, which the AA demotion falsifies; a 32-bit Integer, which overflows at 2^31 ms. Recheck if a future Roku OS keeps a Double intact through an AA, which would make the coercion unnecessary but not wrong.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
