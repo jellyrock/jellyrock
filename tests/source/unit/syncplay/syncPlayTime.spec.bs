@@ -69,6 +69,13 @@ namespace tests
       m.assertEqual(syncPlayTime.formatServerTimeMs(981173106007&), "2001-02-03T04:05:06.007Z")
     end function
 
+    @it("formats a whole Double as it formats the LongInteger")
+    function _()
+      ' On a Double, `\` returns a 32-bit Integer capped at 2^31 - 1, so an unconverted
+      ' value read as 1970-01-25T20:31:23.647Z.
+      m.assertEqual(syncPlayTime.formatServerTimeMs(1792788447877#), "2026-10-23T20:47:27.877Z")
+    end function
+
     @it("round-trips through the parser")
     function _()
       m.assertEqual(syncPlayTime.parseServerTimeMs(syncPlayTime.formatServerTimeMs(m.baseMs)), m.baseMs)

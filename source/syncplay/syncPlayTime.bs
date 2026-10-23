@@ -37,9 +37,11 @@ namespace syncPlayTime
   ' Returns "" for a negative or non-integer value.
   function formatServerTimeMs(ms as dynamic) as string
     if not isWholeNumber(ms) then return ""
-    if ms < 0 then return ""
-    wholeSeconds& = ms \ 1000
-    millis = cint(ms mod 1000)
+    ' Converted first: `\` on a Double returns a 32-bit Integer, which caps at 2^31 - 1.
+    whole& = asLong(ms)
+    if whole& < 0 then return ""
+    wholeSeconds& = whole& \ 1000
+    millis = cint(whole& mod 1000)
     dt = CreateObject("roDateTime")
     dt.FromSeconds(wholeSeconds&)
     return pad(dt.GetYear(), 4) + "-" + pad(dt.GetMonth(), 2) + "-" + pad(dt.GetDayOfMonth(), 2) + "T" + pad(dt.GetHours(), 2) + ":" + pad(dt.GetMinutes(), 2) + ":" + pad(dt.GetSeconds(), 2) + "." + pad(millis, 3) + "Z"
