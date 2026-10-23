@@ -21,9 +21,10 @@ end function
 ' (apiResponse.noAnswer) from a refusal.
 '
 ' @param {integer} timeoutMs - the request's HTTP limit (apiTimeout); 0 keeps the default
+' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or invalid
 ' @return the pool response AA, or invalid when the caller's wait ran out
-function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer) as dynamic
-  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding)
+function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer, caps = invalid as dynamic) as dynamic
+  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, caps)
   req = GetApi().BuildPostPlaybackInfoRequest(id, postData)
   if isValid(req) and timeoutMs > 0 then req.timeoutMs = timeoutMs
   return fetchRes(req, "playbackInfo")
@@ -33,8 +34,10 @@ end function
 '
 ' Split from ItemPostPlaybackInfo so the body can be tested without a server.
 '
+' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or
+'                        invalid to use Settings alone
 ' @return {object} the POST body for BuildPostPlaybackInfoRequest
-function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean) as object
+function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, caps = invalid as dynamic) as object
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -42,7 +45,7 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
     "AutoOpenLiveStream": true
     ' "AlwaysBurnInSubtitleWhenTranscoding": true
   }
-  postData.DeviceProfile = getDeviceProfile()
+  postData.DeviceProfile = getDeviceProfile(caps)
 
   ' Dynamically adjust transcoding segment length and bitrate based on the video's
   ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
@@ -129,7 +132,7 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
           ' Start from the H264 hardware ceiling, then clamp down to the user's cap if lower
           h264CapHeight = 1080
           h264CapWidth = 1920
-          userResConditions = getResolutionConditions()
+          userResConditions = getResolutionConditions(false, caps)
           for each condition in userResConditions
             if condition.Property = "Height" and condition.Value.toInt() < h264CapHeight
               h264CapHeight = condition.Value.toInt()

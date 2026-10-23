@@ -1,21 +1,20 @@
-' The OSD's playback-settings (gear) menu: its rows, and the Maximum Bitrate choices.
+' The OSD's playback-settings (gear) menu: its rows, and the choices behind each.
 '
-' Pure, so the mapping from "the saved setting + the playing source" to "what the user
-' sees, and what a pick writes" is testable without a device. The OSD presents these and
-' VideoPlayerView applies a pick.
+' Pure, so the mapping from "the caps that apply + the playing source" to "what the user sees,
+' and what a pick means" is testable without a device. The OSD presents these, and
+' VideoPlayerView applies a pick through playbackCaps.withPick().
 '
-' A pick in the player WRITES the user's Bitrate Limit setting (playbackBitrateMaxLimited and
-' playbackBitrateLimit) rather than overriding it for one playback. jellyfin-web and
-' jellyfin-androidtv both do this, and it keeps one source of truth: the device profile
-' (GetBitRateLimit) and the playback report (causedByBitrateLimit) already read that setting.
+' A pick applies to this playback and the rest of its queue, and is never saved; Settings is
+' the default (see playbackCaps.bs).
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 namespace playbackSettingsMenu
 
-  ' Row ids, which the OSD dispatches on.
-  const ROW_MAX_BITRATE = "maxBitrate"
+  ' Row ids, which the OSD dispatches on. Each is also the playbackCaps field its pick sets.
+  const ROW_MAX_BITRATE = "maxBitrateMbps"
+  const ROW_MAX_RESOLUTION = "maxResolution"
 
   ' The Maximum Bitrate choices, in Mbps, highest first. Modeled on jellyfin-web's
   ' quality ladder, kept to whole numbers because playbackBitrateLimit stores whole Mbps.
@@ -24,43 +23,47 @@ namespace playbackSettingsMenu
     return [120, 80, 60, 40, 20, 15, 10, 8, 6, 4, 3, 2, 1]
   end function
 
-  ' The user's cap in Mbps, or 0 for Auto (no cap of their own).
-  '
-  ' Reads the setting through the same coercion as GetBitRateLimit() and
-  ' causedByBitrateLimit(), so all three agree on what counts as a cap. "Enabled with 0"
-  ' applies Roku's per-codec ceilings rather than a number the user chose, so it reads as
-  ' Auto here too, and picking Auto from that state is a no-op that leaves it untouched.
-  '
-  ' @param {object} settings - m.global.user.settings
-  ' @returns {integer}
-  function currentMbps(settings as object) as integer
-    if not isValid(settings) then return 0
-    if not isBooleanTrue(settings.playbackBitrateMaxLimited) then return 0
-    limitMbps = mediaNumber(settings.playbackBitrateLimit)
-    if limitMbps <= 0 then return 0
-    return limitMbps
-  end function
-
   ' "Auto" or "8 Mbps".
-  function valueLabel(mbps as integer) as string
+  function bitrateLabel(mbps as integer) as string
     if mbps <= 0 then return translate(translationKeys.LabelAuto)
     return translate(translationKeys.LabelBitrateMbps, [mbps.toStr()])
+  end function
+
+  ' The short name of a resolution option, for the gear row: "Off", "Auto" or the option's
+  ' own title ("720p"). The picker shows the options' full titles instead.
+  '
+  ' @param {string} resolutionId - a playbackResolutionMax option id
+  ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
+  function resolutionLabel(resolutionId as string, resolutionSetting as dynamic) as string
+    if resolutionId = "off" then return translate(translationKeys.LabelOff)
+    if resolutionId = "auto" then return translate(translationKeys.LabelAuto)
+    for each option in settingOptions(resolutionSetting)
+      if option.id = resolutionId then return optionTitle(option)
+    end for
+    return resolutionId
   end function
 
   ' The gear menu's rows. Empty when the menu has nothing to offer, and the OSD then drops
   ' the gear button.
   '
-  ' Live TV gets no Maximum Bitrate row: a reload there opens a new live stream, and the
+  ' Live TV gets no rows: a reload there opens a new live stream, and the
   ' one-release-per-stream rule has not been checked for that path yet.
   '
   ' @param {boolean} isLiveTv - the playing item is a TvChannel
-  ' @param {integer} maxBitrateMbps - currentMbps() of the user's settings
+  ' @param {integer} bitrateMbps - playbackCaps.bitrateMbps()
+  ' @param {string} resolutionId - playbackCaps.resolution()
+  ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
   ' @returns {object} - { labels: [string], ids: [string] }
-  function rows(isLiveTv as boolean, maxBitrateMbps as integer) as object
+  function rows(isLiveTv as boolean, bitrateMbps as integer, resolutionId as string, resolutionSetting as dynamic) as object
     menu = { labels: [], ids: [] }
-    if not isLiveTv
-      menu.labels.push(translate(translationKeys.LabelSettingWithValue, [translate(translationKeys.LabelMaximumBitrate), valueLabel(maxBitrateMbps)]))
-      menu.ids.push(ROW_MAX_BITRATE)
+    if isLiveTv then return menu
+
+    menu.labels.push(rowLabel(translationKeys.LabelMaximumBitrate, bitrateLabel(bitrateMbps)))
+    menu.ids.push(ROW_MAX_BITRATE)
+
+    if settingOptions(resolutionSetting).count() > 0
+      menu.labels.push(rowLabel(translationKeys.LabelMaximumResolution, resolutionLabel(resolutionId, resolutionSetting)))
+      menu.ids.push(ROW_MAX_RESOLUTION)
     end if
     return menu
   end function
@@ -74,7 +77,7 @@ namespace playbackSettingsMenu
   ' The current value always appears and is checked, even when it is off the ladder (a
   ' number typed in Settings) or trimmed away.
   '
-  ' @param {integer} currentValueMbps - currentMbps() of the user's settings
+  ' @param {integer} currentValueMbps - playbackCaps.bitrateMbps()
   ' @param {integer} sourceVideoBitrate - the playing video stream's bitrate in bit/s, 0 if unknown
   ' @returns {object}
   function bitrateOptions(currentValueMbps as integer, sourceVideoBitrate as integer) as object
@@ -103,24 +106,58 @@ namespace playbackSettingsMenu
     end if
 
     options = { labels: [], values: [], defaultIndex: 0, selectedIndex: 0 }
-    options.labels.push(valueLabel(0))
+    options.labels.push(bitrateLabel(0))
     options.values.push(0)
     for each mbps in choices
       if mbps = currentValueMbps
         options.selectedIndex = options.values.count()
       end if
-      options.labels.push(valueLabel(mbps))
+      options.labels.push(bitrateLabel(mbps))
       options.values.push(mbps)
     end for
     options.defaultIndex = options.selectedIndex
     return options
   end function
 
-  ' The setting fields a pick writes, as { fieldName: value }, for user.settings.Save().
-  ' Auto turns the limit off and keeps the saved number, so Settings still shows it.
-  function settingWrites(mbps as integer) as object
-    if mbps <= 0 then return { playbackBitrateMaxLimited: false }
-    return { playbackBitrateLimit: mbps, playbackBitrateMaxLimited: true }
+  ' The Maximum Resolution picker: the setting's own options from settings.json, in its order
+  ' and with its titles, so the gear and the Settings screen offer one list. `values` are
+  ' option ids.
+  '
+  ' @param {string} currentId - playbackCaps.resolution()
+  ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
+  ' @returns {object} - { labels, values, defaultIndex, selectedIndex }
+  function resolutionOptions(currentId as string, resolutionSetting as dynamic) as object
+    options = { labels: [], values: [], defaultIndex: 0, selectedIndex: -1 }
+    for each option in settingOptions(resolutionSetting)
+      if option.id = currentId
+        options.selectedIndex = options.values.count()
+        options.defaultIndex = options.selectedIndex
+      end if
+      options.labels.push(optionTitle(option))
+      options.values.push(option.id)
+    end for
+    return options
+  end function
+
+  ' "Maximum Bitrate (Auto)".
+  function rowLabel(nameKey as string, valueLabel as string) as string
+    return translate(translationKeys.LabelSettingWithValue, [translate(nameKey), valueLabel])
+  end function
+
+  ' A settings.json entry's options that carry an id, or [] when it has none.
+  function settingOptions(setting as dynamic) as object
+    valid = []
+    if type(setting) <> "roAssociativeArray" or type(setting.options) <> "roArray" then return valid
+    for each option in setting.options
+      if type(option) = "roAssociativeArray" and isValidAndNotEmpty(option.id) then valid.push(option)
+    end for
+    return valid
+  end function
+
+  ' An option's translated title, as the Settings screen shows it.
+  function optionTitle(option as object) as string
+    if isValidAndNotEmpty(option.titleKey) then return translate(option.titleKey)
+    return textOrEmpty(option.title)
   end function
 
   ' Whether `items` holds `value`. misc.bs's inArray compares as strings, which an

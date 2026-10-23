@@ -107,9 +107,9 @@
     <field id="action" type="string" alwaysNotify="true" />
     <field id="shouldShowChapterList" type="boolean" alwaysNotify="true" />
     <field id="hasFocus" type="boolean" alwaysNotify="true" />
-    <!-- A new Maximum Bitrate the user picked in the gear menu, in Mbps (0 = Auto).
-         Written only when it differs from the saved one; VideoPlayerView saves it and
-         reloads the stream. -->
-    <field id="maxBitratePick" type="integer" alwaysNotify="true" />
+    <!-- A pick in the gear menu: { field, value }, field a playbackCaps field
+         ("maxBitrateMbps", "maxResolution"). Written only when it differs from the value
+         that applies; VideoPlayerView applies it to this queue and reloads the stream. -->
+    <field id="playbackCapsPick" type="assocarray" alwaysNotify="true" />
   </interface>
 </component>

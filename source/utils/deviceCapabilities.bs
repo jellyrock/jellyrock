@@ -1,6 +1,7 @@
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/utils/conditional.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackCaps.bs"
 
 ' ========================================
 ' VIDEO BUFFER PROTECTION CONSTANTS
@@ -104,7 +105,9 @@ function getSupportedRemoteCommands() as object
   ]
 end function
 
-function getDeviceProfile() as object
+' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or
+'                        invalid to use Settings alone
+function getDeviceProfile(caps = invalid as dynamic) as object
   globalDevice = m.global.device
 
   ' Check server version to determine which DeviceProfile format to use
@@ -113,15 +116,15 @@ function getDeviceProfile() as object
   ' V1 (10.7.x - 10.8.x): Uses full DeviceProfile with Identification object
   ' V2 (10.9+): Uses simplified DeviceProfile without Identification
   if apiVersion >= 2
-    return getDeviceProfileV2(globalDevice)
+    return getDeviceProfileV2(globalDevice, caps)
   end if
 
-  return getDeviceProfileV1(globalDevice)
+  return getDeviceProfileV1(globalDevice, caps)
 end function
 
 ' V1 DeviceProfile for Jellyfin 10.7.x - 10.8.x servers
 ' Uses the full DeviceProfile format with Identification object
-function getDeviceProfileV1(globalDevice as object) as object
+function getDeviceProfileV1(globalDevice as object, caps = invalid as dynamic) as object
   return {
     "Name": "JellyRock",
     "Id": globalDevice.id,
@@ -136,9 +139,9 @@ function getDeviceProfileV1(globalDevice as object) as object
     "MaxStaticBitrate": 140000000,
     "MusicStreamingTranscodingBitrate": 192000,
     "DirectPlayProfiles": GetDirectPlayProfiles(),
-    "TranscodingProfiles": getTranscodingProfiles(),
+    "TranscodingProfiles": getTranscodingProfiles(caps),
     "ContainerProfiles": getContainerProfiles(),
-    "CodecProfiles": getCodecProfiles(),
+    "CodecProfiles": getCodecProfiles(caps),
     "SubtitleProfiles": getSubtitleProfiles(),
     "SupportedMediaTypes": "Video,Audio",
     "ResponseProfiles": []
@@ -147,7 +150,7 @@ end function
 
 ' V2 DeviceProfile for Jellyfin 10.9+ servers
 ' Uses the simplified DeviceProfile format without Identification object
-function getDeviceProfileV2(globalDevice as object) as object
+function getDeviceProfileV2(globalDevice as object, caps = invalid as dynamic) as object
   return {
     "Name": "JellyRock",
     "Id": globalDevice.id,
@@ -156,9 +159,9 @@ function getDeviceProfileV2(globalDevice as object) as object
     "MusicStreamingTranscodingBitrate": 192000,
     ' "MaxStaticMusicBitrate": 192000,
     "DirectPlayProfiles": GetDirectPlayProfiles(),
-    "TranscodingProfiles": getTranscodingProfiles(),
+    "TranscodingProfiles": getTranscodingProfiles(caps),
     "ContainerProfiles": getContainerProfiles(),
-    "CodecProfiles": getCodecProfiles(),
+    "CodecProfiles": getCodecProfiles(caps),
     "SubtitleProfiles": getSubtitleProfiles()
   }
 end function
@@ -587,7 +590,7 @@ function canDecodeAudioInContainer(di as object, jellyfinCodec as string, rokuCo
   return di.CanDecodeAudio({ Codec: rokuCodec, Container: rokuContainer }).Result
 end function
 
-function getTranscodingProfiles() as object
+function getTranscodingProfiles(caps = invalid as dynamic) as object
   ' ONE rendezvous to get user settings
   globalUserSettings = m.global.user.settings
   transcodingProfiles = []
@@ -752,7 +755,7 @@ function getTranscodingProfiles() as object
     }
 
     ' Add resolution restriction if configured
-    resolutionConditions = getResolutionConditions(true)
+    resolutionConditions = getResolutionConditions(true, caps)
     if resolutionConditions.count() > 0
       profile.Conditions = resolutionConditions
     end if
@@ -846,7 +849,7 @@ function getContainerProfiles() as object
   return containerProfiles
 end function
 
-function getCodecProfiles() as object
+function getCodecProfiles(caps = invalid as dynamic) as object
   ' ONE rendezvous to get user settings
   globalUserSettings = m.global.user.settings
 
@@ -861,7 +864,7 @@ function getCodecProfiles() as object
     "av1": {}
   }
   di = CreateObject("roDeviceInfo")
-  resolutionConditions = getResolutionConditions()
+  resolutionConditions = getResolutionConditions(false, caps)
 
   ' ========================================
   ' USER SETTING: FORCE SERVER-SIDE MULTICHANNEL HANDLING
@@ -1112,7 +1115,7 @@ function getCodecProfiles() as object
   h264ProfileArray.Conditions.Append(resolutionConditions)
 
   ' set bitrate restrictions based on user settings
-  bitRateArray = GetBitRateLimit("h264")
+  bitRateArray = GetBitRateLimit("h264", caps)
   if bitRateArray.count() > 0
     h264ProfileArray.Conditions.push(bitRateArray)
   end if
@@ -1158,7 +1161,7 @@ function getCodecProfiles() as object
     mpeg2ProfileArray.Conditions.Append(resolutionConditions)
 
     ' set bitrate restrictions based on user settings
-    bitRateArray = GetBitRateLimit("mpeg2")
+    bitRateArray = GetBitRateLimit("mpeg2", caps)
     if bitRateArray.count() > 0
       mpeg2ProfileArray.Conditions.push(bitRateArray)
     end if
@@ -1173,7 +1176,7 @@ function getCodecProfiles() as object
 
   ' MPEG-4 Part 2
   if globalUserSettings.playbackMpeg4
-    codecProfiles.push(buildSdrCappedVideoProfile("mpeg4", resolutionConditions))
+    codecProfiles.push(buildSdrCappedVideoProfile("mpeg4", resolutionConditions, caps))
   end if
 
   if di.CanDecodeVideo({ Codec: "av1" }).Result
@@ -1222,7 +1225,7 @@ function getCodecProfiles() as object
     av1ProfileArray.Conditions.Append(resolutionConditions)
 
     ' set bitrate restrictions based on user settings
-    bitRateArray = GetBitRateLimit("av1")
+    bitRateArray = GetBitRateLimit("av1", caps)
     if bitRateArray.count() > 0
       av1ProfileArray.Conditions.push(bitRateArray)
     end if
@@ -1287,7 +1290,7 @@ function getCodecProfiles() as object
     hevcProfileArray.Conditions.Append(resolutionConditions)
 
     ' set bitrate restrictions based on user settings
-    bitRateArray = GetBitRateLimit("h265")
+    bitRateArray = GetBitRateLimit("h265", caps)
     if bitRateArray.count() > 0
       hevcProfileArray.Conditions.push(bitRateArray)
     end if
@@ -1330,7 +1333,7 @@ function getCodecProfiles() as object
     vp9ProfileArray.Conditions.Append(resolutionConditions)
 
     ' set bitrate restrictions based on user settings
-    bitRateArray = GetBitRateLimit("vp9")
+    bitRateArray = GetBitRateLimit("vp9", caps)
     if bitRateArray.count() > 0
       vp9ProfileArray.Conditions.push(bitRateArray)
     end if
@@ -1349,7 +1352,7 @@ function getCodecProfiles() as object
   ' a codec with none direct-plays past the user's bitrate and resolution caps.
   for each codec in ["vp8", "mpeg1video", "h263"]
     if di.CanDecodeVideo({ Codec: jellyfinToRokuCodecName(codec) }).Result
-      codecProfiles.push(buildSdrCappedVideoProfile(codec, resolutionConditions))
+      codecProfiles.push(buildSdrCappedVideoProfile(codec, resolutionConditions, caps))
     end if
   end for
 
@@ -1367,7 +1370,7 @@ end function
 
 ' A Type "Video" codec profile for a codec with no profile/level system: SDR only,
 ' plus the user's caps (Maximum Resolution, anamorphic, Bitrate Limit).
-function buildSdrCappedVideoProfile(codec as string, resolutionConditions as object) as object
+function buildSdrCappedVideoProfile(codec as string, resolutionConditions as object, caps = invalid as dynamic) as object
   profile = {
     "Type": "Video",
     "Codec": codec,
@@ -1388,7 +1391,7 @@ function buildSdrCappedVideoProfile(codec as string, resolutionConditions as obj
     profile.Conditions.push(anamorphicCondition)
   end if
 
-  bitRateArray = GetBitRateLimit(codec)
+  bitRateArray = GetBitRateLimit(codec, caps)
   if bitRateArray.count() > 0
     profile.Conditions.push(bitRateArray)
   end if
@@ -1498,7 +1501,21 @@ function getSubtitleProfiles() as object
   return subtitleProfiles
 end function
 
-function GetBitRateLimit(codec as string) as object
+' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs). A
+'                        bitrate picked there replaces the setting: a number caps every
+'                        codec, and Auto (0) caps none.
+function GetBitRateLimit(codec as string, caps = invalid as dynamic) as object
+  if playbackCaps.hasBitrate(caps)
+    pickedMbps = mediaNumber(caps.maxBitrateMbps)
+    if pickedMbps <= 0 then return {}
+    return {
+      "Condition": "LessThanEqual",
+      "Property": "VideoBitrate",
+      "Value": (pickedMbps * 1000000).ToStr(),
+      "IsRequired": true
+    }
+  end if
+
   ' ONE rendezvous to get user settings
   globalUserSettings = m.global.user.settings
 
@@ -1606,8 +1623,14 @@ function isWithinH264HardwareCeiling(videoStream as object) as boolean
   return sourceHeight <= 1080 and sourceWidth <= 1920
 end function
 
-function getResolutionConditions(isRequired = false as boolean) as object
-  userMaxHeight = m.global.user.settings.playbackResolutionMax
+' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs); a
+'                        resolution picked there replaces the setting
+function getResolutionConditions(isRequired = false as boolean, caps = invalid as dynamic) as object
+  if playbackCaps.hasResolution(caps)
+    userMaxHeight = caps.maxResolution
+  else
+    userMaxHeight = m.global.user.settings.playbackResolutionMax
+  end if
   if userMaxHeight = invalid or userMaxHeight = "" then userMaxHeight = "auto"
   if userMaxHeight = "off" then return []
 

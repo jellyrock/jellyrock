@@ -7,50 +7,76 @@ namespace tests
   @suite("playbackSettingsMenu.bs - the OSD gear menu and its Maximum Bitrate choices")
   class PlaybackSettingsMenuTests extends tests.BaseTestSuite
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("currentMbps")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("is Auto (0) while the limit is off, whatever number is saved")
-    function _()
-      m.assertEqual(playbackSettingsMenu.currentMbps({ playbackBitrateMaxLimited: false, playbackBitrateLimit: 8 }), 0)
-    end function
-
-    @it("is the saved number while the limit is on")
-    function _()
-      m.assertEqual(playbackSettingsMenu.currentMbps({ playbackBitrateMaxLimited: true, playbackBitrateLimit: 8 }), 8)
-    end function
-
-    ' "On with 0" applies Roku's per-codec ceilings, not a number the user picked, so it
-    ' reads as Auto: the same line GetBitRateLimit and causedByBitrateLimit draw.
-    @it("is Auto while the limit is on with 0")
-    function _()
-      m.assertEqual(playbackSettingsMenu.currentMbps({ playbackBitrateMaxLimited: true, playbackBitrateLimit: 0 }), 0)
-    end function
-
-    @it("is Auto with no settings at all")
-    function _()
-      m.assertEqual(playbackSettingsMenu.currentMbps(invalid), 0)
+    ' The playbackResolutionMax entry's shape in settings.json, cut to three options.
+    private function resolutionSetting() as object
+      return {
+        settingName: "playbackResolutionMax",
+        options: [
+          { title: "Off - Attempt to direct play all resolutions", id: "off", titleKey: "LabelOffAttemptToDirectPlayAll" },
+          { title: "Auto - Use TV resolution", id: "auto", titleKey: "LabelAutoUseTvResolution" },
+          { title: "720p", id: "720", titleKey: "Label720p" }
+        ]
+      }
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("rows")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("shows Maximum Bitrate with its value in parentheses")
+    @it("shows each cap with its value in parentheses")
     function _()
-      menu = playbackSettingsMenu.rows(false, 0)
-      m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE])
-      m.assertEqual(menu.labels, ["Maximum Bitrate (Auto)"])
+      menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting())
+      m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE, playbackSettingsMenu.ROW_MAX_RESOLUTION])
+      m.assertEqual(menu.labels, ["Maximum Bitrate (Auto)", "Maximum Resolution (Auto)"])
 
-      m.assertEqual(playbackSettingsMenu.rows(false, 2).labels, ["Maximum Bitrate (2 Mbps)"])
+      menu = playbackSettingsMenu.rows(false, 2, "720", m.resolutionSetting())
+      m.assertEqual(menu.labels, ["Maximum Bitrate (2 Mbps)", "Maximum Resolution (720p)"])
+    end function
+
+    ' The row carries the short form; the picker carries the setting's full titles.
+    @it("names the off resolution briefly")
+    function _()
+      menu = playbackSettingsMenu.rows(false, 0, "off", m.resolutionSetting())
+      m.assertEqual(menu.labels[1], "Maximum Resolution (Off)")
+    end function
+
+    @it("leaves the resolution row out when the setting's options cannot be read")
+    function _()
+      menu = playbackSettingsMenu.rows(false, 0, "auto", invalid)
+      m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE])
     end function
 
     @it("has no rows for Live TV, so the OSD drops the gear")
     function _()
-      menu = playbackSettingsMenu.rows(true, 0)
+      menu = playbackSettingsMenu.rows(true, 0, "auto", m.resolutionSetting())
       m.assertEqual(menu.ids.count(), 0)
       m.assertEqual(menu.labels.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolutionOptions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' One list: the gear offers the Settings entry's own options, in its order and titles.
+    @it("offers the setting's own options, titled as Settings titles them")
+    function _()
+      options = playbackSettingsMenu.resolutionOptions("auto", m.resolutionSetting())
+      m.assertEqual(options.values, ["off", "auto", "720"])
+      m.assertEqual(options.labels, ["Off - Attempt to direct play all resolutions", "Auto - Use TV resolution", "720p"])
+    end function
+
+    @it("checks and focuses the cap that applies")
+    function _()
+      options = playbackSettingsMenu.resolutionOptions("720", m.resolutionSetting())
+      m.assertEqual(options.selectedIndex, 2)
+      m.assertEqual(options.defaultIndex, 2)
+    end function
+
+    @it("checks nothing when the current value is not an option")
+    function _()
+      options = playbackSettingsMenu.resolutionOptions("999", m.resolutionSetting())
+      m.assertEqual(options.selectedIndex, -1)
+      m.assertEqual(options.defaultIndex, 0)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -120,21 +146,6 @@ namespace tests
     function _()
       options = playbackSettingsMenu.bitrateOptions(5, 500000)
       m.assertEqual(options.values, [0, 5, 1])
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("settingWrites")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    ' Auto keeps the saved number, so Settings still remembers it.
-    @it("turns the limit off for Auto and leaves the number alone")
-    function _()
-      m.assertEqual(playbackSettingsMenu.settingWrites(0), { playbackBitrateMaxLimited: false })
-    end function
-
-    @it("saves the number and turns the limit on for a cap")
-    function _()
-      m.assertEqual(playbackSettingsMenu.settingWrites(8), { playbackBitrateLimit: 8, playbackBitrateMaxLimited: true })
     end function
 
   end class

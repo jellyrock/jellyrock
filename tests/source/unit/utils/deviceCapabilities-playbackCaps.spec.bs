@@ -1,0 +1,117 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  ' A cap the viewer picks in the OSD's gear reaches the request as an argument
+  ' (playbackCaps.bs) and replaces its setting for that playback. With no argument every
+  ' reader falls back to Settings, which is what every other caller relies on.
+  @suite("deviceCapabilities.bs - a picked cap replaces its setting")
+  class DeviceCapabilitiesPlaybackCapsTests extends tests.BaseTestSuite
+
+    protected savedResolutionMax as dynamic
+    protected savedBitrateMaxLimited as dynamic
+    protected savedBitrateLimit as dynamic
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      settings = m.global.user.settings
+      m.savedResolutionMax = settings.playbackResolutionMax
+      m.savedBitrateMaxLimited = settings.playbackBitrateMaxLimited
+      m.savedBitrateLimit = settings.playbackBitrateLimit
+
+      ' Settings say 12 Mbps and no resolution cap, so every assertion below that sees
+      ' something else is seeing the pick.
+      settings.playbackBitrateMaxLimited = true
+      settings.playbackBitrateLimit = 12
+      settings.playbackResolutionMax = "off"
+    end sub
+
+    protected override sub afterEach()
+      settings = m.global.user.settings
+      settings.playbackResolutionMax = m.savedResolutionMax
+      settings.playbackBitrateMaxLimited = m.savedBitrateMaxLimited
+      settings.playbackBitrateLimit = m.savedBitrateLimit
+      super.afterEach()
+    end sub
+
+    private function heightCap(conditions as object) as integer
+      for each condition in conditions
+        if condition.Property = "Height" then return condition.Value.toInt()
+      end for
+      return 0
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("GetBitRateLimit()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the setting when nothing was picked")
+    function _()
+      m.assertEqual(GetBitRateLimit("h264").Value, "12000000")
+    end function
+
+    @it("uses a picked bitrate over the setting, for every codec")
+    function _()
+      for each codec in ["h264", "h265", "av1", "vp9", "mpeg4"]
+        m.assertEqual(GetBitRateLimit(codec, { maxBitrateMbps: 2 }).Value, "2000000", codec + " must honour the pick")
+      end for
+    end function
+
+    @it("sends no cap for an Auto pick, even with a cap in Settings")
+    function _()
+      m.assertEqual(GetBitRateLimit("h264", { maxBitrateMbps: 0 }).count(), 0)
+    end function
+
+    @it("leaves the bitrate to Settings when only the resolution was picked")
+    function _()
+      m.assertEqual(GetBitRateLimit("h264", { maxResolution: "720" }).Value, "12000000")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getResolutionConditions()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the setting when nothing was picked")
+    function _()
+      m.assertEqual(getResolutionConditions().count(), 0, "Settings say off")
+    end function
+
+    @it("uses a picked resolution over the setting")
+    function _()
+      m.assertEqual(m.heightCap(getResolutionConditions(false, { maxResolution: "720" })), 720)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getDeviceProfile()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' End to end through the profile the request sends: the codec profiles and the
+    ' transcoding profiles both carry the pick.
+    @it("carries a picked cap into the codec and transcoding profiles")
+    function _()
+      profile = getDeviceProfile({ maxBitrateMbps: 2, maxResolution: "720" })
+
+      h264 = invalid
+      for each codecProfile in profile.CodecProfiles
+        if codecProfile.Type = "Video" and isValid(codecProfile.Codec) and codecProfile.Codec.split(",")[0] = "h264" then h264 = codecProfile
+      end for
+      m.assertNotInvalid(h264, "the device profile has an h264 codec profile")
+
+      bitrate = ""
+      for each condition in h264.Conditions
+        if condition.Property = "VideoBitrate" then bitrate = condition.Value
+      end for
+      m.assertEqual(bitrate, "2000000")
+      m.assertEqual(m.heightCap(h264.Conditions), 720)
+
+      for each transcodingProfile in profile.TranscodingProfiles
+        if transcodingProfile.Type = "Video"
+          m.assertEqual(m.heightCap(transcodingProfile.Conditions), 720, transcodingProfile.Container + " transcodes at the picked resolution")
+        end if
+      end for
+    end function
+
+  end class
+
+end namespace

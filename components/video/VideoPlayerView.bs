@@ -21,9 +21,9 @@ import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackEnd.bs"
 import "pkg:/source/utils/playbackErrorInfo.bs"
-import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/session.bs"
@@ -119,7 +119,7 @@ sub init()
   m.chapterContent = m.top.findNode("chapterContent")
   m.osd = m.top.findNode("osd")
   m.osd.observeField("action", "onOSDAction")
-  m.osd.observeField("maxBitratePick", "onMaxBitratePicked")
+  m.osd.observeField("playbackCapsPick", "onPlaybackCapsPicked")
   m.trickplayCarousel = m.top.findNode("trickplayCarousel")
 
   ' Trickplay seek position tracking - we parse Roku's trickPlayBar text to get
@@ -729,22 +729,24 @@ function playedVideoBitrate() as integer
   return mediaNumber(videoStream.BitRate)
 end function
 
-' The user picked a new Maximum Bitrate in the OSD's gear menu. It is saved as their
-' Bitrate Limit setting (playbackSettingsMenu.settingWrites), which the next PlaybackInfo
-' request reads through the device profile, and the stream reloads so it applies now.
-sub onMaxBitratePicked()
-  mbps = m.osd.maxBitratePick
-  writes = playbackSettingsMenu.settingWrites(mbps)
-  for each fieldName in writes
-    user.settings.Save(fieldName, writes[fieldName])
-  end for
-  m.log.info("Maximum bitrate picked", "mbps", mbps, "isTranscoded", m.top.isTranscoded, "position", m.top.position)
+' The viewer picked a quality cap in the OSD's gear menu ({ field, value }). It applies to
+' this playback and the rest of its queue and is not saved: QueueManager holds it
+' (playbackCaps.withPick), the next PlaybackInfo request reads it through the device profile,
+' and the stream reloads so it applies now.
+sub onPlaybackCapsPicked()
+  pick = m.osd.playbackCapsPick
+  if not isValid(pick) or not isValidAndNotEmpty(pick.field) then return
 
-  ' The menu offers no bitrate row for Live TV, and before the content loads nothing is
-  ' playing to reload; either way the saved setting applies to the next load.
+  queueManager = m.global.queueManager
+  caps = playbackCaps.withPick(m.global.user.settings, queueManager.callFunc("getPlaybackCaps"), pick.field, pick.value)
+  queueManager.callFunc("setPlaybackCaps", caps)
+  m.log.info("Playback cap picked", "field", pick.field, "value", pick.value, "isTranscoded", m.top.isTranscoded, "position", m.top.position)
+
+  ' The menu offers no rows for Live TV, and before the content loads nothing is playing to
+  ' reload; either way the pick applies to the next load.
   if not m.isContentLoaded or isLiveTvPlayback() then return
 
-  ' A version switch still loading: rerun its load so it reads the new setting, with the
+  ' A version switch still loading: rerun its load so it reads the new pick, with the
   ' audio track it chose for that version. Its start point is already mapped.
   if m.isVersionSwitchLoading
     startVideoLoad(m.versionSwitchAudioIndex, SubtitleSelection.NOT_SET)
@@ -2554,7 +2556,7 @@ sub onDestroy()
 
   if isValid(m.osd)
     m.osd.unobserveField("action")
-    m.osd.unobserveField("maxBitratePick")
+    m.osd.unobserveField("playbackCapsPick")
     m.osd.callFunc("onDestroy")
   end if
 

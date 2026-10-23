@@ -2,9 +2,11 @@ import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/buttonOverflow.bs"
+import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -280,7 +282,7 @@ sub setButtonStates()
 
   ' Playback settings: the gear stays only while its menu has a row to show. Removed before
   ' applyOverflow below, because the right group's width sets the left row's cap.
-  if playbackSettingsMenu.rows(isTvChannel, 0).ids.count() = 0
+  if playbackSettingsMenu.rows(isTvChannel, 0, "auto", invalid).ids.count() = 0
     gearButton = m.buttonMenuRight.findNode("showPlaybackSettings")
     if isValid(gearButton) then m.buttonMenuRight.removeChild(gearButton)
   end if
@@ -931,12 +933,12 @@ end sub
 
 ' ===========================================================================
 ' Playback settings (the gear). Rows and choices come from
-' source/utils/playbackSettingsMenu.bs; a Maximum Bitrate pick goes out on
-' maxBitratePick, and VideoPlayerView saves it and reloads.
+' source/utils/playbackSettingsMenu.bs; a pick goes out on playbackCapsPick, and
+' VideoPlayerView applies it to this queue (playbackCaps.bs) and reloads.
 '
-' Two levels: the gear menu, anchored to the gear like More, then the bitrate
-' picker, centred like the playback track pickers. Back in the picker returns to
-' the gear menu; Back there returns to the gear.
+' Two levels: the gear menu, anchored to the gear like More, then the row's
+' picker, centred like the playback track pickers. Back in a picker returns to
+' the gear menu on that row; Back there returns to the gear.
 '
 ' Each level opens the next from inside its own result handler, and a dialog
 ' delivers its result BEFORE it closes (JRListDialog.resolveDialog). Its close then
@@ -967,12 +969,39 @@ function gearButtonAnchor() as object
   }
 end function
 
-sub openSettingsMenu()
-  menu = playbackSettingsMenu.rows(isLiveTvItem(), playbackSettingsMenu.currentMbps(m.global.user.settings))
+' The caps that apply to this playback: the viewer's picks for this queue over Settings.
+function effectiveCaps() as object
+  settings = m.global.user.settings
+  caps = m.global.queueManager.callFunc("getPlaybackCaps")
+  return {
+    bitrateMbps: playbackCaps.bitrateMbps(settings, caps),
+    resolution: playbackCaps.resolution(settings, caps)
+  }
+end function
+
+' The playbackResolutionMax entry of settings.json, read once per OSD: the Maximum Resolution
+' row offers that setting's own options.
+function resolutionSetting() as dynamic
+  if not isValid(m.resolutionSetting)
+    tree = GetConfigTree()
+    if isValid(tree) then m.resolutionSetting = findConfigTreeKey("playbackResolutionMax", tree)
+  end if
+  return m.resolutionSetting
+end function
+
+' @param {string} focusRowId - the row to focus, for Back from one of its pickers
+sub openSettingsMenu(focusRowId = "" as string)
+  current = effectiveCaps()
+  menu = playbackSettingsMenu.rows(isLiveTvItem(), current.bitrateMbps, current.resolution, resolutionSetting())
   if menu.ids.count() = 0 then return
 
+  focusIndex = 0
+  for i = 0 to menu.ids.count() - 1
+    if menu.ids[i] = focusRowId then focusIndex = i
+  end for
+
   m.settingsMenuIds = menu.ids
-  m.settingsMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onSettingsMenuResult", gearButtonAnchor())
+  m.settingsMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onSettingsMenuResult", gearButtonAnchor(), invalid, focusIndex)
   m.settingsMenuDialog.returnFocusTo = m.buttonMenuRight.findNode("showPlaybackSettings")
 end sub
 
@@ -985,44 +1014,47 @@ sub onSettingsMenuResult()
 
   ' Same rule as the More menu: only a user's pick acts, never a close code made.
   rowId = overflowMenuSelection(dialog.result, ids)
+  if rowId = "" then return
+
+  current = effectiveCaps()
   if rowId = playbackSettingsMenu.ROW_MAX_BITRATE
     handOffFocus(dialog)
-    openMaxBitratePicker()
+    openCapPicker(rowId, translationKeys.LabelMaximumBitrate, playbackSettingsMenu.bitrateOptions(current.bitrateMbps, m.top.sourceVideoBitrate), current.bitrateMbps)
+  else if rowId = playbackSettingsMenu.ROW_MAX_RESOLUTION
+    handOffFocus(dialog)
+    openCapPicker(rowId, translationKeys.LabelMaximumResolution, playbackSettingsMenu.resolutionOptions(current.resolution, resolutionSetting()), current.resolution)
   end if
 end sub
 
-sub openMaxBitratePicker()
-  current = playbackSettingsMenu.currentMbps(m.global.user.settings)
-  options = playbackSettingsMenu.bitrateOptions(current, m.top.sourceVideoBitrate)
-  m.maxBitrateCurrent = current
-  m.maxBitrateOptions = options
-  m.maxBitrateDialog = showListDialog(translate(translationKeys.LabelMaximumBitrate), options.labels, "onMaxBitratePicked", options.defaultIndex, options.selectedIndex)
-  m.maxBitrateDialog.returnFocusTo = m.buttonMenuRight.findNode("showPlaybackSettings")
+' One picker for every gear row. `field` is the row id, which is also the playbackCaps field
+' a pick sets.
+sub openCapPicker(field as string, titleKey as string, options as object, current as dynamic)
+  m.capPicker = { field: field, options: options, current: current }
+  m.capPickerDialog = showListDialog(translate(titleKey), options.labels, "onCapPicked", options.defaultIndex, options.selectedIndex)
+  m.capPickerDialog.returnFocusTo = m.buttonMenuRight.findNode("showPlaybackSettings")
 end sub
 
-sub onMaxBitratePicked()
-  dialog = m.maxBitrateDialog
-  options = m.maxBitrateOptions
-  current = m.maxBitrateCurrent
-  m.maxBitrateDialog = invalid
-  m.maxBitrateOptions = invalid
-  m.maxBitrateCurrent = invalid
-  if not isValid(dialog) or not isValid(dialog.result) or not isValid(options) then return
+sub onCapPicked()
+  dialog = m.capPickerDialog
+  picker = m.capPicker
+  m.capPickerDialog = invalid
+  m.capPicker = invalid
+  if not isValid(dialog) or not isValid(dialog.result) or not isValid(picker) then return
 
   result = dialog.result
   ' A close code made (teardown, another dialog replacing this one) must not act.
   if result.externallyCancelled then return
   if result.cancelled
     handOffFocus(dialog)
-    openSettingsMenu()
+    openSettingsMenu(picker.field)
     return
   end if
 
   index = result.optionIndex
-  if not isValid(index) or index < 0 or index >= options.values.count() then return
-  picked = options.values[index]
-  m.log.info("onMaxBitratePicked", "pickedMbps", picked, "currentMbps", current)
-  if picked <> current then m.top.maxBitratePick = picked
+  if not isValid(index) or index < 0 or index >= picker.options.values.count() then return
+  picked = picker.options.values[index]
+  m.log.info("onCapPicked", "field", picker.field, "picked", picked, "current", picker.current)
+  if picked <> picker.current then m.top.playbackCapsPick = { field: picker.field, value: picked }
 end sub
 
 function createSubtitleLabelNode(labelId as string) as object
@@ -1124,14 +1156,14 @@ sub onDestroy()
   abandonDialog(m.moreMenuDialog)
   m.moreMenuDialog = invalid
   m.overflowMenuIds = invalid
-  ' The gear's two menus act too (the picker writes a setting that reloads playback).
+  ' The gear's two levels act too (a pick reloads playback).
   abandonDialog(m.settingsMenuDialog)
-  abandonDialog(m.maxBitrateDialog)
+  abandonDialog(m.capPickerDialog)
   m.settingsMenuDialog = invalid
   m.settingsMenuIds = invalid
-  m.maxBitrateDialog = invalid
-  m.maxBitrateOptions = invalid
-  m.maxBitrateCurrent = invalid
+  m.capPickerDialog = invalid
+  m.capPicker = invalid
+  m.resolutionSetting = invalid
 
   ' Unobserve all m.top observers
   m.top.unobserveField("itemData")

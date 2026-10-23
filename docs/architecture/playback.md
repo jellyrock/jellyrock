@@ -12,6 +12,7 @@ related-files:
   - components/GetPlaybackInfoTask.bs
   - source/utils/trackPickerOptions.bs
   - source/utils/playbackSettingsMenu.bs
+  - source/utils/playbackCaps.bs
   - source/utils/playbackInfo.bs
   - source/utils/deviceCapabilities.bs
   - source/utils/playbackErrorInfo.bs
@@ -415,22 +416,24 @@ The on-screen display: title, current time, position bar, end time and play stat
 
 ### Playback settings (the gear)
 
-The gear sits in the right-hand group, left of playback info, and opens a menu of playback settings. Its one row today is **Maximum Bitrate**, which shows the current value in parentheses: `Maximum Bitrate (Auto)` or `Maximum Bitrate (8 Mbps)`.
+The gear sits in the right-hand group, left of playback info, and opens a menu of quality caps for this playback. Each row shows the value that applies in parentheses: `Maximum Bitrate (Auto)`, `Maximum Resolution (720p)`.
 
 | Step | What happens |
 | --- | --- |
 | OK on the gear | `OSD.openSettingsMenu()` opens the rows from `playbackSettingsMenu.rows()` as a menu anchored to the gear, the way **More** opens |
-| OK on Maximum Bitrate | `openMaxBitratePicker()` opens a list of Auto and a ladder of whole Mbps values from `playbackSettingsMenu.bitrateOptions()`, with the current value checked |
-| Back in the list | The gear menu opens again; Back there returns focus to the gear |
-| A pick that differs from the saved value | The OSD writes `maxBitratePick`. `VideoPlayerView.onMaxBitratePicked()` saves it and reloads at the current position through `reloadAtCurrentPosition()`, the same path an audio or subtitle change takes |
+| OK on a row | `openCapPicker()` opens that cap's choices with the current one checked: `bitrateOptions()` for Maximum Bitrate, `resolutionOptions()` for Maximum Resolution |
+| Back in a picker | The gear menu opens again on that row; Back there returns focus to the gear |
+| A pick that differs from the value that applies | The OSD writes `playbackCapsPick` (`{ field, value }`). `VideoPlayerView.onPlaybackCapsPicked()` records it on the queue and reloads at the current position through `reloadAtCurrentPosition()`, the same path an audio or subtitle change takes |
 
-**A pick is saved, not a one-playback override.** It writes the user's Bitrate Limit setting (`playbackSettingsMenu.settingWrites()`): Auto turns `playbackBitrateMaxLimited` off and keeps the saved number, and a cap writes `playbackBitrateLimit` and turns the limit on. The Jellyfin web and Android TV clients both save their in-player quality pick. It also keeps one source of truth: the device profile (`GetBitRateLimit()`) and the report's cause check (`causedByBitrateLimit()`) already read that setting, so neither needed to change. A limit that is on with `0` (Roku's per-codec ceilings) reads as Auto, the same line both of those draw.
+**A pick lasts for the playback and the rest of its queue, and is never saved.** `QueueManager` holds it beside the version pick (`setPlaybackCaps`, built by `playbackCaps.withPick()`), so `clear()` forgets it when a new queue starts and `set()` keeps it through a shuffle. Settings stays the default, so a bitrate dropped for one bad connection does not follow the viewer into the next thing they play. A pick equal to the Settings value records nothing.
 
-**The ladder is trimmed to the source.** The list keeps the steps at or below the playing video stream's bitrate (`OSD.sourceVideoBitrate`, read from the loaded version) plus the one step above it, as jellyfin-web does, because a higher cap constrains nothing. A saved value that is off the ladder, typed in Settings, is added and checked. The ladder is whole numbers because `playbackBitrateLimit` stores whole Mbps.
+**The caps reach the request as an argument.** `LoadVideoContentTask` reads `getPlaybackCaps` once per load and passes it through `ItemPostPlaybackInfoResponse()` and `buildPlaybackInfoPostData()` to `getDeviceProfile(caps)`, which hands it to `GetBitRateLimit()` and `getResolutionConditions()`. With no argument each of them reads Settings, which is what every other caller relies on. A picked bitrate caps every codec, and an Auto pick lifts a Settings cap. The playback report's cause checks read the same values: `PlayerHostView.reportSettings()` lays the picked caps over Settings (`playbackCaps.settingsOverlay()`), so a transcode the gear caused is still attributed to Maximum Bitrate or Maximum Resolution.
+
+**The bitrate ladder is trimmed to the source.** It keeps the steps at or below the playing video stream's bitrate (`OSD.sourceVideoBitrate`, read from the loaded version) plus the one step above it, because a higher cap constrains nothing. A Settings value that is off the ladder is added and checked. **The resolution choices are the Settings entry's own options,** read from `settings.json` (`findConfigTreeKey()`), so the gear and the Settings screen offer one list.
 
 **Each level opens the next from inside its own result handler,** and a list dialog delivers its result before it closes. Its close then restores focus to its `returnFocusTo`, which would leave the new menu on screen without focus. So the handler clears the closing dialog's `returnFocusTo` first (`handOffFocus`), and both levels return focus to the gear. The RTA test in `dialogs.spec.js` checks focus at each level, and it failed with the hand-off disabled (2026-10-23, Streaming Stick 4K).
 
-**Live TV has no gear yet.** A bitrate reload there opens a new live stream, and the one-release-per-stream rule has not been checked on that path, so `rows()` returns nothing for a `TvChannel` and `setButtonStates()` drops the gear. That also gives the left row its slot back.
+**Live TV has no gear yet.** A reload there opens a new live stream, and the one-release-per-stream rule has not been checked on that path, so `rows()` returns nothing for a `TvChannel` and `setButtonStates()` drops the gear. That also gives the left row its slot back.
 
 ### Live TV mode
 

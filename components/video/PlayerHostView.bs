@@ -6,6 +6,7 @@ import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackReport.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/stillWatching.bs"
@@ -702,6 +703,19 @@ sub onPlaybackInfoLoaded(event as object)
   if reportNeedsPolling(report, session) then startPlaybackInfoRefresh()
 end sub
 
+' The settings the report's cause checks read (transcodeCause.bs): Settings, with any quality
+' cap the viewer picked for this queue in the gear standing in for its setting, because that
+' is what the request for this stream sent.
+function reportSettings() as object
+  settings = m.global.user.settings
+  caps = m.global.queueManager.callFunc("getPlaybackCaps")
+  if not isValid(caps) then return settings
+
+  effective = settings.getFields()
+  effective.append(playbackCaps.settingsOverlay(caps))
+  return effective
+end function
+
 ' Everything the pure report builder needs, gathered on the RENDER thread where
 ' an m.global read costs ~2 µs rather than the ~93 µs it cost inside the task.
 function playbackReportInputs(session as dynamic) as object
@@ -745,7 +759,7 @@ function playbackReportInputs(session as dynamic) as object
     previousCompletion: m.lastCompletionPercentage,
     audioStreamIndex: m.view.audioIndex,
     subtitleStreamIndex: m.view.selectedSubtitle,
-    settings: m.global.user.settings,
+    settings: reportSettings(),
     ' Gates the Path row, which is admin-only. Read defensively rather than
     ' assumed present: `policy` is server-authoritative and only populated from a
     ' real session, so it can legitimately be absent, and absent must mean not an

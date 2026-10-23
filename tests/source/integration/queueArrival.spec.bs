@@ -233,6 +233,36 @@ namespace tests
       m.assertEqual(pick.resolution, "720p")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quality caps")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A cap picked in the gear lasts for the queue, like the version pick, so a
+    ' bitrate dropped for one bad connection does not follow the viewer into the
+    ' next thing they play.
+    @it("forgets the caps when a new queue starts")
+    function _()
+      m.queue.callFunc("setPlaybackCaps", { maxBitrateMbps: 2 })
+
+      m.queue.callFunc("clear")
+
+      m.assertInvalid(m.queue.callFunc("getPlaybackCaps"))
+    end function
+
+    @it("keeps the caps when the queue's contents are replaced or reordered")
+    function _()
+      m.queue.callFunc("set", [m.episode("e1"), m.episode("e2"), m.episode("e3")])
+      m.queue.callFunc("setPlaybackCaps", { maxBitrateMbps: 2, maxResolution: "720" })
+
+      m.queue.callFunc("toggleShuffle")
+      m.queue.callFunc("set", [m.episode("e4")])
+
+      caps = m.queue.callFunc("getPlaybackCaps")
+      m.assertNotInvalid(caps)
+      m.assertEqual(caps.maxBitrateMbps, 2)
+      m.assertEqual(caps.maxResolution, "720")
+    end function
+
   end class
 
 end namespace

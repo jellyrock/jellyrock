@@ -1,0 +1,120 @@
+import "pkg:/source/utils/playbackCaps.bs"
+
+namespace tests
+
+  @suite("playbackCaps.bs - per-queue quality caps over Settings")
+  class PlaybackCapsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("settingsBitrateMbps")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is Auto (0) while the limit is off, whatever number is saved")
+    function _()
+      m.assertEqual(playbackCaps.settingsBitrateMbps({ playbackBitrateMaxLimited: false, playbackBitrateLimit: 8 }), 0)
+    end function
+
+    @it("is the saved number while the limit is on")
+    function _()
+      m.assertEqual(playbackCaps.settingsBitrateMbps({ playbackBitrateMaxLimited: true, playbackBitrateLimit: 8 }), 8)
+    end function
+
+    ' "On with 0" applies Roku's per-codec ceilings, not a number the user picked, so it
+    ' reads as Auto: the same line GetBitRateLimit and causedByBitrateLimit draw.
+    @it("is Auto while the limit is on with 0")
+    function _()
+      m.assertEqual(playbackCaps.settingsBitrateMbps({ playbackBitrateMaxLimited: true, playbackBitrateLimit: 0 }), 0)
+    end function
+
+    @it("is Auto with no settings at all")
+    function _()
+      m.assertEqual(playbackCaps.settingsBitrateMbps(invalid), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("bitrateMbps and resolution")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses Settings when nothing was picked")
+    function _()
+      settings = { playbackBitrateMaxLimited: true, playbackBitrateLimit: 8, playbackResolutionMax: "1080" }
+      m.assertEqual(playbackCaps.bitrateMbps(settings, invalid), 8)
+      m.assertEqual(playbackCaps.resolution(settings, invalid), "1080")
+    end function
+
+    @it("uses the pick over Settings")
+    function _()
+      settings = { playbackBitrateMaxLimited: true, playbackBitrateLimit: 8, playbackResolutionMax: "1080" }
+      caps = { maxBitrateMbps: 2, maxResolution: "720" }
+      m.assertEqual(playbackCaps.bitrateMbps(settings, caps), 2)
+      m.assertEqual(playbackCaps.resolution(settings, caps), "720")
+    end function
+
+    ' Auto is a real pick: a viewer with a Settings cap can lift it for one playback.
+    @it("lets an Auto pick lift a Settings cap")
+    function _()
+      settings = { playbackBitrateMaxLimited: true, playbackBitrateLimit: 8 }
+      m.assertEqual(playbackCaps.bitrateMbps(settings, { maxBitrateMbps: 0 }), 0)
+    end function
+
+    @it("reads an empty resolution setting as auto")
+    function _()
+      m.assertEqual(playbackCaps.resolution({ playbackResolutionMax: "" }, invalid), "auto")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("withPick")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("records a pick that differs from Settings")
+    function _()
+      settings = { playbackBitrateMaxLimited: false, playbackBitrateLimit: 0, playbackResolutionMax: "auto" }
+      m.assertEqual(playbackCaps.withPick(settings, invalid, "maxBitrateMbps", 2), { maxBitrateMbps: 2 })
+    end function
+
+    @it("keeps the other field's pick")
+    function _()
+      settings = { playbackBitrateMaxLimited: false, playbackBitrateLimit: 0, playbackResolutionMax: "auto" }
+      caps = playbackCaps.withPick(settings, { maxBitrateMbps: 2 }, "maxResolution", "720")
+      m.assertEqual(caps, { maxBitrateMbps: 2, maxResolution: "720" })
+    end function
+
+    ' Picking your own default leaves no pick behind.
+    @it("drops a field picked back to its Settings value, and returns invalid when none is left")
+    function _()
+      settings = { playbackBitrateMaxLimited: true, playbackBitrateLimit: 8, playbackResolutionMax: "auto" }
+      m.assertInvalid(playbackCaps.withPick(settings, { maxBitrateMbps: 2 }, "maxBitrateMbps", 8))
+      m.assertEqual(playbackCaps.withPick(settings, { maxBitrateMbps: 2, maxResolution: "720" }, "maxResolution", "auto"), { maxBitrateMbps: 2 })
+    end function
+
+    @it("does not change the caps it was given")
+    function _()
+      settings = { playbackBitrateMaxLimited: false, playbackBitrateLimit: 0, playbackResolutionMax: "auto" }
+      caps = { maxBitrateMbps: 2 }
+      playbackCaps.withPick(settings, caps, "maxBitrateMbps", 4)
+      m.assertEqual(caps, { maxBitrateMbps: 2 })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("settingsOverlay")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stands a picked cap in for its settings")
+    function _()
+      m.assertEqual(playbackCaps.settingsOverlay({ maxBitrateMbps: 2 }), { playbackBitrateMaxLimited: true, playbackBitrateLimit: 2 })
+      m.assertEqual(playbackCaps.settingsOverlay({ maxResolution: "720" }), { playbackResolutionMax: "720" })
+    end function
+
+    @it("turns the limit off for an Auto pick")
+    function _()
+      m.assertEqual(playbackCaps.settingsOverlay({ maxBitrateMbps: 0 }), { playbackBitrateMaxLimited: false, playbackBitrateLimit: 0 })
+    end function
+
+    @it("is empty with no pick")
+    function _()
+      m.assertEqual(playbackCaps.settingsOverlay(invalid), {})
+    end function
+
+  end class
+
+end namespace

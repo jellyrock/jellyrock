@@ -447,7 +447,10 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     openLimitMs = timeouts.LIVE_OPEN_MS
     m.top.liveStream = { stage: LiveStreamStage.OPENING, id: "" }
   end if
-  res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs)
+  ' The quality caps the viewer picked for this queue in the OSD's gear, read once for both
+  ' requests below. invalid when there are none, and Settings applies.
+  pickedCaps = queueManager.callFunc("getPlaybackCaps")
+  res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs, pickedCaps)
   m.playbackInfo = invalid
   if isValid(res) and res.ok then m.playbackInfo = res.json
 
@@ -541,7 +544,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       ' A transcode was built for the server's own picks, so ask for one built for ours, unless
       ' the device plays the upstream URL or the player's retry asks the server with our picks.
       if answerPlays and probedPicksNeedNewAnswer(manifestSource, audioStreamIdx, subtitleIdx, sentSubtitleIdx)
-        res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
+        res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, pickedCaps)
         if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
           m.playbackInfo = res.json
         else

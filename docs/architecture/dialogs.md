@@ -22,7 +22,7 @@ related-files:
   - source/utils/dialogNarration.bs
   - source/utils/buttonOverflow.bs
   - scripts/bsc-plugins/no-hand-rolled-dialog.cjs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-23
 ---
 
 # The dialog family
@@ -188,7 +188,7 @@ If you do build a bespoke one, **test the resemblance**. `QuickConnectDialog`'s 
 
 The helpers and the result contract are in [`navigation.md`](./navigation.md#the-standard-dialog-system-sourceutilsdialogsbs).
 
-`showOverflowMenu` looks like a new surface and is not. It presents the same `JRListDialog` (same chrome, key model, result contract and specs) with three presentation fields set: `anchor`, `sizeToContent` and `titleVisible = false`. Use it for a **More** menu hanging off a button, and `showListDialog` for everything else. If you need a fourth difference, add a field to `JRListDialog`, not a second component.
+`showOverflowMenu` looks like a new surface and is not. It presents the same `JRListDialog` (same chrome, key model, result contract and specs) with three presentation fields set: `anchor`, `sizeToContent` and `titleVisible = false`. Use it for a menu hanging off a button (**More**, or the playback-settings gear on the player), and `showListDialog` for everything else. Its optional `defaultIndex` is `JRListDialog`'s own field, for a menu reopened on the row the user left it from. If you need a fourth difference, add a field to `JRListDialog`, not a second component.
 
 The keyboard (`JRKeyboardDialog`) is Roku's `StandardKeyboardDialog`, themed through `RSGPalette`. It returns the family's result shape but uses Roku's modal channel, not the family's chrome, layout or narration.
 

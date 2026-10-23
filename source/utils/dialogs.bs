@@ -179,12 +179,14 @@ end function
 ' contract, same specs. This is a presentation of the family's list dialog, not
 ' a second surface. See docs/architecture/dialogs.md for why that distinction
 ' is enforced rather than encouraged.
-function showOverflowMenu(title as string, items as object, onResult as string, anchor as object, icons = invalid as object) as object
+' `defaultIndex` is the row to focus, for a menu reopened on the row the user left it from.
+function showOverflowMenu(title as string, items as object, onResult as string, anchor as object, icons = invalid as object, defaultIndex = 0 as integer) as object
   dialog = createObject("roSGNode", "JRListDialog")
   dialog.title = title
   dialog.titleVisible = false
   dialog.sizeToContent = true
   dialog.anchor = anchor
+  dialog.defaultIndex = defaultIndex
   ' selectedIndex is left at -1: these are ACTIONS, so no row is current. That
   ' is also what frees the row gutter for the buttons' own glyphs.
   if isValid(icons) then dialog.icons = icons
