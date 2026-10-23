@@ -547,7 +547,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `api-usage-manifest-no-per-endpoint-binding`
 
 - **area**: [`docs/architecture/api-usage-manifest.json`](api-usage-manifest.json), [`scripts/generate/api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js)
-- **issue**: `requestFields` is flat and repo-wide (`{name, sourceFiles}`, no endpoint), and `REQUEST_FIELD_GLOBS` scans only `source/api/**/*.bs`, narrower than the endpoint scan's `source/**`. So it cannot compare the parameters we send with the ones an endpoint declares, and it cannot see `components/**` (or `source/data/`, `source/utils/`) call sites. #784 hit both: see [Known limitations](server-upgrade-automation.md#known-limitations-what-this-pipeline-cannot-catch).
+- **issue**: `requestFields` is flat and repo-wide (`{name, sourceFiles}`, no endpoint), and `REQUEST_FIELD_GLOBS` scans only `source/api/**/*.bs` plus `source/syncplay/syncPlayRequests.bs`, narrower than the endpoint scan's `source/**`. So it cannot compare the parameters we send with the ones an endpoint declares, and it cannot see `components/**` (or `source/data/`, `source/utils/`) call sites. #784 hit both: see [Known limitations](server-upgrade-automation.md#known-limitations-what-this-pipeline-cannot-catch).
 - **direction**: Bind request fields to the endpoint they are sent to, and widen the scan past `source/api/**`. One data point so far; revisit if it recurs.
 
 #### `cell-load-starts-do-not-reconcile`
