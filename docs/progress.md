@@ -804,6 +804,18 @@ The playback-settings gear on the OSD has no rows for a Live TV channel, so `set
 
 Closes when a device run shows a mid-playback reload of a channel releases the old stream exactly once (the server's open live streams before and after), and the gear's quality rows then show for a `TvChannel` with an RTA case. Deferred from the PR that added the gear (branch `feat/osd-settings-menu`), because the check needs a Live TV fixture and its own design pass.
 
+#### A second reload started while one is loading may resume from a stale position `[fid: reload-during-reload-stale-position]` `[captured 2026-10-23]`
+
+A temporary RTA probe on `.177` (2026-10-23, stable demo server) moved the hero to 300 s, then made two OSD gear bitrate picks 0.5 s apart. The viewer was at 308.5 s, the player read `stopped` at position 300 nine ms after the first pick, and playback resumed at 300.5 s. Candidate cause, not confirmed: `VideoPlayerView.reloadAtCurrentPosition()` saves `int(m.top.position)` through `setCurrentStartingPoint` before it stops the player, and a second reload started before the first one's content lands reads the stopped node's position (the earlier start point), overwriting the correct start point the first reload saved. The save came in with `5a6a3dce` (an audio-track fix); `43385c79` on `feat/osd-settings-menu` only moved it into the shared function, which the subtitle, audio and gear reloads all call. No unit test reaches it.
+
+Not confirmed because a draft RTA case could not discriminate: on the demo server a seek on the paused hero sits buffering at 300 and never advances, so the stale and true positions match. In five runs playback resumed at 300.04 s whatever the starting position (300 to 302), which fits the stale second save and equally fits "every reload after a seek resumes from the seek point". A variant with the hero playing failed before the picks twice (the OSD auto-hid after 5 s; once playback did not move off 300 within 40 s).
+
+Options considered: `keep` (recommended), a reload-in-flight flag: `reloadAtCurrentPosition()` saves the position only when no reload is loading, and the flag clears in `onVideoContentLoaded()` right after `m.top.isRetrying = false`, so a failed load clears it too, the shape the version-switch path already uses; `by-state`, skip the save while `m.top.state` is `stopped` or `none`, which misses a pick during the new stream's buffering and depends on Roku's state timing; `block`, ignore gear and track picks while a reload loads, which hides the bug and silently drops a viewer's pick.
+
+Not checked: whether 300 is the last seek target or the previous load's start point; whether the audio and subtitle paths show it on a device (inferred from the shared code); whether a pick made after the new stream arrives but before it plays also reads a stale value.
+
+Closes when an RTA case with the viewer playing past the start point (OSD re-shown with Up before the gear) first separates one pick from two, confirming the cause, and then fails before `keep` and passes after it.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1378,6 +1390,8 @@ Close it by adding a photo album to a test server (a library of the photos type)
 #### The RTA gear test's reload sometimes ends on an error dialog, and the failure dump does not say which `[fid: rta-gear-reload-error-dialog]` `[captured 2026-10-23]`
 
 The `dialogs` gear test (`osd gear caps the bitrate for this playback…`) failed 1 run in 4 on `.177` (2026-10-23, branch `feat/osd-settings-menu`, against the stable demo server): after the 1 Mbps pick the reload ended on a `JRDialog` instead of playback (`nav timed out waiting for player playable (pre-OSD) (last="stopped")`, focus on `#jrDialog.#buttonRow.0`, `player=close`). The same build passed the test in the other three runs. The run started at 14:12 and failed about two minutes in, so it did not cross the top of the hour and `demo-server-hourly-reset-suite-flake` does not explain it. It has the shape of the suite's other intermittent demo-server failures (a shared server that transcodes in software, 8 fps by its own `TranscodingInfo`), but the cause was not captured: the failure dump does not say what the dialog was.
+
+Seen a second time the same day, in a draft case making two gear picks 0.5 s apart: `nav timed out waiting for player settled after two gear picks (last="stopped")`, focus again on `#jrDialog.#buttonRow.0`. A temporary capture of the dialog's text was in place for a later run, which passed.
 
 Closes when the dump in `tests/rta/lib/diagnostics.js` includes an open dialog's `title` and `message`, and a failing run shows whether the dialog is the playback error (the server's transcode failing) or something the app raised. Not now: it needs a run that fails, and two runs with a temporary capture in place both passed.
 
