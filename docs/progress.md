@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-22
+last-updated: 2026-10-23
 ---
 
 # Progress
@@ -332,11 +332,11 @@ Jellyfin 12.0 marked `GET /Artists`, `GET /Artists/{name}` and `GET /Artists/Alb
 
 Close it by adding a deprecation change kind to `spec-diff.js` (an operation whose `deprecated` turns true), surfacing it from `scripts/generate/findings-candidates.js` only for endpoints the app uses, with tests beside the existing `endpoint-removed` ones. Then rerun the findings from 10.11.8 to 12.0 so the `/Artists` deprecation shows up, and decide how the app moves off those endpoints. Found while closing the Jellyfin 12 readiness project, 2026-10-13.
 
-#### `lint:comment-voice` scans gitignored files, so local scratch files can block any push `[fid: doc-citation-ratchet-scans-gitignored]` `[captured 2026-10-13]`
+#### `comment-voice-ratchet.js` keeps hand-kept skip lists beside git's list of visible files `[fid: doc-citation-ratchet-scans-gitignored]` `[captured 2026-10-13]`
 
-`collectDocs()` (now `collectCodeFiles()`) in the script then named `doc-citation-ratchet.js` (now [`comment-voice-ratchet.js`](../scripts/lint/comment-voice-ratchet.js), `npm run lint:comment-voice`, run by pre-push) says it collects "every tracked markdown or code file", but it walks the filesystem and enters `.claude/`. It skips gitignored paths only through a hand-kept list (`EPHEMERAL_RELS`, `ROOT_ONLY_SKIP_RELS`), so any other gitignored file is scanned. On 2026-10-13 five local perf scripts under the gitignored `.claude/logs/perf/` (em-dashes in their comments) blocked the push of `fix/video-load-new-node-per-run`, whose diff touched none of them. The push went through only after the folder was moved aside. Every new gitignored scratch folder can do this again.
+The push-blocking half is fixed: #1236 made the ratchet read only files git tracks or would track (`gitVisiblePaths()`, `git ls-files --cached --others --exclude-standard`), with tests that a gitignored file is not counted. It is now [`comment-voice-ratchet.js`](../scripts/lint/comment-voice-ratchet.js) (`npm run lint:comment-voice`), which checks code comments only.
 
-Closes when the gate reads only files git tracks or would track: list them with `git ls-files --cached --others --exclude-standard` instead of walking the tree (which also retires the hand-kept skip lists), with a test that a gitignored file holding an em-dash is not counted. Not done in that PR: it is a tooling change with its own test, separate from a playback fix.
+Left: the walk still keeps the hand-kept skip lists `EPHEMERAL_RELS` and `ROOT_ONLY_SKIP_RELS` beside git's list. Closes when they are removed, or each kept with a comment saying what git's list does not already cover.
 
 #### Upstream watch: `brighterscript-formatter` multi-line-AA indent regression `[fid: bsfmt-multiline-indent-regression]` `[captured 2026-10-20]`
 
