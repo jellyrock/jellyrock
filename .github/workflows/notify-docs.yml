@@ -1,0 +1,43 @@
+name: Notify Docs of Content Changes
+
+# When content docs.jellyrock.app and dev.jellyrock.app render at build time
+# changes here, tell jellyrock/docs to rebuild (its deploy.yml listens for
+# docs-update). The paths mirror requiredPaths in ensureClone() of
+# jellyrock/docs shared/fetch-docs.mjs; change both lists together.
+# Mirrors notify-homepage.yml (-> jellyrock.app).
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/user/**"
+      - "docs/dev/**"
+      - "docs/screenshots/**"
+      - "resources/branding/**"
+      - "settings/**"
+  # Manual run: redeploy the docs sites on demand, and test this workflow right
+  # after it merges (the PR adding it touches none of the paths above).
+  workflow_dispatch:
+
+jobs:
+  notify-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: jellyrock
+          repositories: docs
+
+      - name: Trigger docs redeploy
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repository: jellyrock/docs
+          event-type: docs-update
+          client-payload: '{"reason": "docs content updated upstream", "ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
