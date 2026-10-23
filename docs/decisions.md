@@ -2178,6 +2178,16 @@ After sign-in the app opens a deep link that arrived while signed out (`AuthMana
 
 Ruled out: clearing the stash at each sign-in attempt, because a stray that arrives while on the sign-in screen still replays; and keeping a late cast queued, because it opens the previous session's item for whoever signs in next. Deep links are unaffected: cold start, `roInputEvent`, a server switch and the companion plugin's ECP `/launch` wake (ADR 0023) all use `stashedDeepLink`. Recheck if the app ever signs a user out mid-session (on a 401, say): resuming where they were then needs its own intent, captured at that point, not a guard stash.
 
+## decision-id: gear-picks-last-for-the-queue
+
+**date**: 2026-10-23
+**status**: accepted
+**related-files**: `source/utils/playbackCaps.bs`, `components/manager/QueueManager.bs`, `components/video/VideoPlayerView.bs`, `source/utils/deviceCapabilities.bs`, `components/video/PlayerHostView.bs`
+
+A quality cap picked in the playback-settings gear on the OSD (Maximum Bitrate, Maximum Resolution) applies to the playback and the rest of its queue, and is never saved; Settings stays the default. `QueueManager` holds it beside the version pick (`setPlaybackCaps`): `clear()` forgets it when a new queue starts, `set()` keeps it through a shuffle, and a pick equal to the Settings value records nothing (`playbackCaps.withPick()`). It reaches the request as the `caps` argument of `getDeviceProfile()`, which passes it to `GetBitRateLimit()` and `getResolutionConditions()`; with no argument they read Settings, so every other caller is unchanged. The playback report lays the picked caps over Settings (`PlayerHostView.reportSettings()`), so a transcode the gear caused is still attributed to the cap.
+
+Ruled out: saving the pick as the Bitrate Limit setting, which the first cut of the gear did. A bitrate dropped for one bad connection then stays for every later video until changed back, and a viewer cannot lower quality for one playback without changing their default. One reference client keeps its in-player quality pick for the session and its queue the same way; the version pick is the in-repo model. Recheck if viewers ask for a pick to stick across queues: that is a "save as default" action beside the pick, not a change to this lifetime.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

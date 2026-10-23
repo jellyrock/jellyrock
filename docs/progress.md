@@ -786,6 +786,12 @@ A server re-scan that ends while `SetServerScreen` is on screen moves the focus 
 
 **Not fixed now:** the server select screen is due to be redone, so this belongs in that redesign. **Fix shape:** a scan moves the focus only when it is still where the scan started (the screen itself on first load, or the node Back or Up was pressed on), and the URL box outline follows wherever the focus actually goes.
 
+#### The OSD gear offers no quality rows for Live TV until a channel reload is shown to release its stream once `[fid: live-tv-gear-quality-rows]` `[captured 2026-10-23]`
+
+The playback-settings gear on the OSD has no rows for a Live TV channel, so `setButtonStates()` drops it there (`playbackSettingsMenu.rows()` returns nothing for a `TvChannel`). A quality pick reloads the stream through `VideoPlayerView.reloadAtCurrentPosition()`, and on a channel that reload opens a new live stream. Nobody has checked that this path keeps exactly one release per stream (`releaseVideoLoad()`, `source/utils/liveStreamHandoff.bs`): a second release can end another viewer's shared stream, and a missing one leaves a tuner open. An audio-track change on a transcoded channel already takes the same path, so start there.
+
+Closes when a device run shows a mid-playback reload of a channel releases the old stream exactly once (the server's open live streams before and after), and the gear's quality rows then show for a `TvChannel` with an RTA case. Deferred from the PR that added the gear (branch `feat/osd-settings-menu`), because the check needs a Live TV fixture and its own design pass.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -907,6 +913,12 @@ Not now: it changes the item every tile renderer (`BrowseRowItem` and the other 
 #### An ECP `/launch` with a `contentId` restarts a running JellyRock instead of delivering an `roInputEvent` `[fid: ecp-launch-restarts-running-app]` `[captured 2026-10-22]`
 
 Seen on a Streaming Stick 4K (Roku OS 15.3.4), 2026-10-22, while verifying the sign-in landing fix: an ECP `POST /launch/dev?contentId=<id>&mediaType=movie` sent while JellyRock sat on the sign-in screen made the console log the app exiting and starting again, instead of the running app receiving an `roInputEvent`. The manifest sets `supports_input_launch=1`, which Roku's `roInput` docs say lets a running app accept deep-link parameters without relaunching. The link still opened after sign-in, through the cold-start `launchArgs` path, so nothing is lost but what the user had typed on the sign-in screen. The companion plugin's wake (ADR 0023) sends this `/launch` whenever it sees no live session, which includes an app sitting on a pre-login screen. Not yet known: whether the test library's own `RTA_LAUNCH` parameter (`ECP.sendLaunchChannel` always adds it), the dev channel, or the app causes the restart. Closes with: reproduce with a plain `curl -d '' "http://<device>:8060/launch/dev?contentId=<id>&mediaType=movie"` against a running app, then `/snag` it if the restart holds.
+
+#### With a bitrate cap set, a stream that reports no video bitrate always transcodes `[fid: capped-unknown-bitrate-transcodes]` `[captured 2026-10-23]`
+
+With a bitrate cap set (in Settings or picked in the OSD gear), a stream that reports no video bitrate is transcoded even when it would fit. `GetBitRateLimit()` in `source/utils/deviceCapabilities.bs` sends its `VideoBitrate` condition with `IsRequired: true`, and Jellyfin's `ConditionProcessor.IsConditionSatisfied` treats an unknown value as satisfied only when the condition is not required. This was already true for `h264`, `h265`, `av1`, `vp9` and `mpeg2video`; the fix on branch `feat/osd-settings-menu` that put the caps on every direct-played codec extended it to `mpeg4`, `vp8`, `mpeg1video` and `h263`, which more often come from old files with no bitrate in their metadata. Kept on purpose: an unknown bitrate cannot be shown to be under the cap.
+
+Revisit if reports show needless transcodes of such sources. The choice then is `IsRequired: false` for the bitrate condition (an unknown bitrate direct-plays, and so can exceed the cap), measured against a few real files with no reported bitrate first.
 
 ### api
 
