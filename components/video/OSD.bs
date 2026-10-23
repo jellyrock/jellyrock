@@ -1001,7 +1001,7 @@ sub openSettingsMenu(focusRowId = "" as string)
   end for
 
   m.settingsMenuIds = menu.ids
-  m.settingsMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onSettingsMenuResult", gearButtonAnchor(), invalid, focusIndex)
+  m.settingsMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onSettingsMenuResult", gearButtonAnchor(), menu.icons, focusIndex)
   m.settingsMenuDialog.returnFocusTo = m.buttonMenuRight.findNode("showPlaybackSettings")
 end sub
 

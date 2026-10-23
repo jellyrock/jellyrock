@@ -705,6 +705,14 @@ it('osd gear caps the bitrate for this playback without saving it, and Back step
   ]);
   expect(bitrateRow).toBe('Maximum Bitrate (Auto)');
   expect(resolutionRow).toMatch(/^Maximum Resolution \(.+\)$/);
+  // Each row wears its glyph in the gutter, the way the More menu's rows do.
+  const [bitrateIcon, resolutionIcon] = await getVals([
+    '#optionList.content.0.icon',
+    '#optionList.content.1.icon',
+  ]);
+  expect(bitrateIcon).toContain('speed_');
+  expect(resolutionIcon).toContain('hd_');
+  if (CAPTURE) await captureRawUI('playbackSettingsMenu');
 
   // OK opens the bitrate picker, with Auto first and checked.
   await press(ecp.Key.Ok);

@@ -16,6 +16,11 @@ namespace playbackSettingsMenu
   const ROW_MAX_BITRATE = "maxBitrateMbps"
   const ROW_MAX_RESOLUTION = "maxResolution"
 
+  ' Each row's glyph, drawn in the list row's gutter the way the More menu's rows wear
+  ' their buttons' icons.
+  const ICON_MAX_BITRATE = "pkg:/images/icons/speed_$$RES$$.png"
+  const ICON_MAX_RESOLUTION = "pkg:/images/icons/hd_$$RES$$.png"
+
   ' The Maximum Bitrate choices, in Mbps, highest first. Modeled on jellyfin-web's
   ' quality ladder, kept to whole numbers because playbackBitrateLimit stores whole Mbps.
   ' 0 is Auto and is not part of the ladder.
@@ -53,17 +58,19 @@ namespace playbackSettingsMenu
   ' @param {integer} bitrateMbps - playbackCaps.bitrateMbps()
   ' @param {string} resolutionId - playbackCaps.resolution()
   ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
-  ' @returns {object} - { labels: [string], ids: [string] }
+  ' @returns {object} - { labels: [string], ids: [string], icons: [string] }
   function rows(isLiveTv as boolean, bitrateMbps as integer, resolutionId as string, resolutionSetting as dynamic) as object
-    menu = { labels: [], ids: [] }
+    menu = { labels: [], ids: [], icons: [] }
     if isLiveTv then return menu
 
     menu.labels.push(rowLabel(translationKeys.LabelMaximumBitrate, bitrateLabel(bitrateMbps)))
     menu.ids.push(ROW_MAX_BITRATE)
+    menu.icons.push(ICON_MAX_BITRATE)
 
     if settingOptions(resolutionSetting).count() > 0
       menu.labels.push(rowLabel(translationKeys.LabelMaximumResolution, resolutionLabel(resolutionId, resolutionSetting)))
       menu.ids.push(ROW_MAX_RESOLUTION)
+      menu.icons.push(ICON_MAX_RESOLUTION)
     end if
     return menu
   end function
