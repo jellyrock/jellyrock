@@ -1,0 +1,74 @@
+namespace tests
+
+  @suite("Schedule - the channel load is a wait of the host screen")
+  class ScheduleLoadingWaitTests extends tests.BaseTestSuite
+
+    private host as object
+    private guide as object
+    private isGuideDestroyed as boolean
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.host = CreateObject("roSGNode", "JRGroup")
+      m.guide = CreateObject("roSGNode", "Schedule")
+      m.guide.hostScreen = m.host
+      m.isGuideDestroyed = false
+    end sub
+
+    ' onDestroy releases the guide's Tasks, so every test ends with one, and only one.
+    private sub destroyGuide()
+      m.guide.callFunc("onDestroy")
+      m.isGuideDestroyed = true
+    end sub
+
+    protected override sub afterEach()
+      if not m.isGuideDestroyed then m.destroyGuide()
+      m.guide = invalid
+      m.host = invalid
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("startLoading()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("opens the guide wait on the host screen, not on the guide")
+    function _()
+      m.guide.callFunc("startLoading")
+
+      m.assertTrue(m.host.loadingWaits.doesExist("guide"))
+      m.assertFalse(isValid(m.guide.loadingWaits) and m.guide.loadingWaits.doesExist("guide"))
+    end function
+
+    @it("opens no wait and does not crash without a host screen")
+    function _()
+      m.guide.hostScreen = invalid
+
+      m.guide.callFunc("startLoading")
+
+      m.assertFalse(isValid(m.host.loadingWaits) and m.host.loadingWaits.doesExist("guide"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("onDestroy()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("ends the host's wait, which outlives the guide on a switch to another view")
+    function _()
+      m.guide.callFunc("startLoading")
+
+      m.destroyGuide()
+
+      m.assertFalse(m.host.loadingWaits.doesExist("guide"))
+    end function
+
+    @it("lets go of the host screen")
+    function _()
+      m.destroyGuide()
+
+      m.assertInvalid(m.guide.hostScreen)
+    end function
+
+  end class
+
+end namespace

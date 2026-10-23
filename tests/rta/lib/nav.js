@@ -1393,11 +1393,19 @@ export async function focusDetailButton(buttonId, { maxButtons = 12, timeout = 8
   return { pressedOn, pressedIndex, wantedIndex: targetIndex };
 }
 
+/**
+ * On an open library grid: focus tile `index` (Right x index) and press OK. Returns once the
+ * press is sent, without waiting for what it opens, so a spec can watch the screen load.
+ */
+export async function pressGridTile(index = 0) {
+  await focusGridTile(index);
+  await press(ecp.Key.Ok);
+}
+
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
 export async function navMovieDetails(ctx) {
   await navLibraryGrid(ctx);
-  await focusGridTile(ctx?.heroIndex || 0);
-  await press(ecp.Key.Ok);
+  await pressGridTile(ctx?.heroIndex || 0);
   await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t.length > 0, {
     label: 'details title',
     timeout: 20000,
