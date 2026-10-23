@@ -23,14 +23,15 @@ namespace playbackSettingsMenu
 
   ' The Maximum Bitrate choices, in Mbps, highest first. Modeled on jellyfin-web's
   ' quality ladder, kept to whole numbers because playbackBitrateLimit stores whole Mbps.
-  ' 0 is Auto and is not part of the ladder.
+  ' 0 is No limit and is not part of the ladder.
   function ladderMbps() as object
     return [120, 80, 60, 40, 20, 15, 10, 8, 6, 4, 3, 2, 1]
   end function
 
-  ' "Auto" or "8 Mbps".
+  ' "No limit" or "8 Mbps". Not "Auto": that suggests the app measures the connection,
+  ' and 0 here measures nothing.
   function bitrateLabel(mbps as integer) as string
-    if mbps <= 0 then return translate(translationKeys.LabelAuto)
+    if mbps <= 0 then return translate(translationKeys.LabelNoLimit)
     return translate(translationKeys.LabelBitrateMbps, [mbps.toStr()])
   end function
 
@@ -76,7 +77,7 @@ namespace playbackSettingsMenu
   end function
 
   ' The Maximum Bitrate picker, in the shape trackPickerOptions builds:
-  ' { labels, values, defaultIndex, selectedIndex }, where `values` are Mbps and 0 is Auto.
+  ' { labels, values, defaultIndex, selectedIndex }, where `values` are Mbps and 0 is No limit.
   '
   ' Trimmed the way jellyfin-web trims its list: the steps at or below the source's video
   ' bitrate, plus the one step above it. Anything higher constrains nothing this source
@@ -146,7 +147,7 @@ namespace playbackSettingsMenu
     return options
   end function
 
-  ' "Maximum Bitrate (Auto)".
+  ' "Maximum Bitrate (No limit)".
   function rowLabel(nameKey as string, valueLabel as string) as string
     return translate(translationKeys.LabelSettingWithValue, [translate(nameKey), valueLabel])
   end function

@@ -932,6 +932,18 @@ With a bitrate cap set (in Settings or picked in the OSD gear), a stream that re
 
 Revisit if reports show needless transcodes of such sources. The choice then is `IsRequired: false` for the bitrate condition (an unknown bitrate direct-plays, and so can exceed the cap), measured against a few real files with no reported bitrate first.
 
+#### The gear has no Auto that measures the connection with a speed test `[fid: gear-auto-bitrate-speed-test]` `[captured 2026-10-23]`
+
+The OSD gear's Maximum Bitrate offers No limit, a fixed ladder and the Settings value, but nothing that measures the connection. The `jellyfin-web` client's Auto does: before each remote playback, `bitrateTest.ts` downloads up to three payloads from the server's `/Playback/BitrateTest` (0.5, 1 and 3 MB, 5 s timeout each, stopping early under a threshold), sends 70% of the measured speed as `MaxStreamingBitrate`, caches the answer for an hour, and lifts it to at least 140 Mbps on the local network (read 2026-10-23 at jellyfin-web `0878e33`). It measures once at the start and does not react mid-playback. The gear labels 0 No limit, not Auto, so that the name is free for this (decision `bitrate-zero-means-no-limit`).
+
+Not now: it is a feature, not a fix, and it puts a download of up to a few megabytes in front of every remote playback, with a Task to run it (`source/CLAUDE.md` thread rules) and a design choice about where the measured cap applies (`GetBitRateLimit()` per codec, or `MaxStreamingBitrate`). Closes when an Auto row exists in `playbackSettingsMenu.bitrateOptions()` backed by a measured cap, or when the idea is declined in a decision note.
+
+#### The Bitrate Limit's Enable toggle is redundant now that a Maximum Bitrate of 0 means no limit `[fid: bitrate-enable-toggle-redundant]` `[captured 2026-10-23]`
+
+**Settings → Playback → Bitrate Limit** has two settings, the Enable limit toggle (`playbackBitrateMaxLimited`) and the Maximum Bitrate number (`playbackBitrateLimit`). Since 0 stopped meaning Roku's per-codec ceilings (decision `bitrate-zero-means-no-limit`), "on with 0" and "off" behave the same, so the toggle adds a step and no choice: a number alone, 0 for no limit, says everything. `playbackCaps.settingsBitrateMbps()` is the one reader of the pair.
+
+Not now: removing a setting needs a registry migration for users who have the toggle off with a number saved (they must end up with 0), and its own PR. Closes when the toggle is gone through `/new-migration`, or a decision note keeps it on purpose.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -1362,6 +1374,12 @@ When it moves: read `setupClientSocket`'s `connect` handler in the new release. 
 The slideshow and album Shuffle launch moved onto the playback-start wait in blocking-spinners phase C (`QueueManager.launchPhotoAlbum`, `PhotoDetails` taking the start), and `tests/rta/specs/in-screen-action-waits.spec.js` has two cases for it: Back mid-load cancels it and shows the album again, and a load left alone opens the photo viewer. Both skip everywhere today: neither the demo server nor the local Docker matrix nor the home test server has a `PhotoAlbum` item (the home server's photos sit in a home-videos library, so its folders are plain folders). The single-photo path did run on a device.
 
 Close it by adding a photo album to a test server (a library of the photos type), then run the two slideshow cases, red-first against a branch where `launchPhotoAlbum` keeps the plain spinner if a before-state is wanted. Why not now: it needs a fixture no available server has.
+
+#### The RTA gear test's reload sometimes ends on an error dialog, and the failure dump does not say which `[fid: rta-gear-reload-error-dialog]` `[captured 2026-10-23]`
+
+The `dialogs` gear test (`osd gear caps the bitrate for this playback…`) failed 1 run in 4 on `.177` (2026-10-23, branch `feat/osd-settings-menu`, against the stable demo server): after the 1 Mbps pick the reload ended on a `JRDialog` instead of playback (`nav timed out waiting for player playable (pre-OSD) (last="stopped")`, focus on `#jrDialog.#buttonRow.0`, `player=close`). The same build passed the test in the other three runs. The run started at 14:12 and failed about two minutes in, so it did not cross the top of the hour and `demo-server-hourly-reset-suite-flake` does not explain it. It has the shape of the suite's other intermittent demo-server failures (a shared server that transcodes in software, 8 fps by its own `TranscodingInfo`), but the cause was not captured: the failure dump does not say what the dialog was.
+
+Closes when the dump in `tests/rta/lib/diagnostics.js` includes an open dialog's `title` and `message`, and a failing run shows whether the dialog is the playback error (the server's transcode failing) or something the app raised. Not now: it needs a run that fails, and two runs with a temporary capture in place both passed.
 
 ### docs
 

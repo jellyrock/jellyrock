@@ -149,6 +149,35 @@ async function pausedOsd(userSettings = null) {
 }
 
 /**
+ * A transcode a bitrate cap caused, checked on both sides.
+ *
+ * The report blames the Maximum Bitrate setting, spelled as the Settings screen spells it.
+ * The server's reason code passes through verbatim and we do not maintain its vocabulary,
+ * so the attribution is looked for on every reason row that names a bitrate, and a report
+ * with no such row fails rather than skipping the check.
+ *
+ * And the server was asked for no more video than the cap. Its session reports a total
+ * that carries its own audio allowance (1.256 Mbps under a 1 Mbps cap with 67 kbps audio,
+ * measured 2026-10-23 on the stable demo), so the figure compared is the `VideoBitrate`
+ * of the transcode URL the player was handed.
+ */
+async function expectBitrateCapApplied(reasons, capBps) {
+  const bitrateRows = reasons.rows.filter((r) => /bitrate/i.test(r.label));
+  expect(bitrateRows.length, 'a capped transcode must report a bitrate reason').toBeGreaterThan(0);
+  expect(
+    bitrateRows.some((r) => r.value.includes('Maximum Bitrate')),
+    'the bitrate reason must name the Maximum Bitrate setting',
+  ).toBe(true);
+
+  const url = await getVal(`#${heroId}.content.url`);
+  const videoBitrate = Number(new URL(url).searchParams.get('VideoBitrate'));
+  expect(videoBitrate, 'the transcode must carry a video bitrate').toBeGreaterThan(0);
+  expect(videoBitrate, 'the transcode must not target more than the cap').toBeLessThanOrEqual(
+    capBps,
+  );
+}
+
+/**
  * Walk the OSD footer to the button with `buttonId` and press it.
  *
  * Focus is walked with real Rights rather than teleported, because OSDButtonGroup
@@ -632,16 +661,7 @@ it('a user-capped bitrate transcodes, and the report says which setting did it',
   const reasons = sections.find((sec) => sec.id === 'reasons');
   expect(reasons, 'a transcode must report why').toBeTruthy();
 
-  // The server's code passes through verbatim; we do not maintain its vocabulary.
-  const codes = reasons.rows.map((r) => r.label);
-  expect(codes.some((c) => c.includes('Bitrate') || c.includes('BitRate'))).toBe(true);
-
-  // ...and the row for the bitrate reason names the setting responsible, spelled
-  // exactly as the Settings screen spells it.
-  const bitrateRow = reasons.rows.find((r) => r.label === 'VideoBitrateNotSupported');
-  if (bitrateRow) {
-    expect(bitrateRow.value).toContain('Maximum Bitrate');
-  }
+  await expectBitrateCapApplied(reasons, 1000000);
 
   // An arrow appears only where something actually changed, so a transcode must
   // produce at least one.
@@ -686,7 +706,7 @@ it('osd gear caps the bitrate for this playback without saving it, and Back step
   await pausedOsd();
   await pressOsdButton('showPlaybackSettings');
 
-  // The gear menu, carrying each value (Auto: pausedOsd cleared any bitrate cap). Waited on
+  // The gear menu, carrying each value (No limit: pausedOsd cleared any bitrate cap). Waited on
   // by its first row's title, because a row count cannot tell it from a short picker.
   const gearMenuOpen = (label) =>
     waitFor(
@@ -703,7 +723,7 @@ it('osd gear caps the bitrate for this playback without saving it, and Back step
     '#optionList.content.0.title',
     '#optionList.content.1.title',
   ]);
-  expect(bitrateRow).toBe('Maximum Bitrate (Auto)');
+  expect(bitrateRow).toBe('Maximum Bitrate (No limit)');
   expect(resolutionRow).toMatch(/^Maximum Resolution \(.+\)$/);
   // Each row wears its glyph in the gutter, the way the More menu's rows do.
   const [bitrateIcon, resolutionIcon] = await getVals([
@@ -714,9 +734,9 @@ it('osd gear caps the bitrate for this playback without saving it, and Back step
   expect(resolutionIcon).toContain('hd_');
   if (CAPTURE) await captureRawUI('playbackSettingsMenu');
 
-  // OK opens the bitrate picker, with Auto first and checked.
+  // OK opens the bitrate picker, with No limit first and checked.
   await press(ecp.Key.Ok);
-  await waitFor('#optionList.content.0.title', (t) => t === 'Auto', {
+  await waitFor('#optionList.content.0.title', (t) => t === 'No limit', {
     label: 'bitrate picker open',
     timeout: 10000,
   });
@@ -725,7 +745,9 @@ it('osd gear caps the bitrate for this playback without saving it, and Back step
   // leave this picker on screen and deaf. Reading rows cannot see that.
   await waitFocusInside('#optionList', { label: 'bitrate picker focused', timeout: 5000 });
   // Scene-rooted: the dialog is appended to the scene, not to the routed view.
-  expect(await getVal('#optionList.content.0.isSelected'), 'Auto is the current value').toBe(true);
+  expect(await getVal('#optionList.content.0.isSelected'), 'No limit is the current value').toBe(
+    true,
+  );
 
   // Back returns to the gear menu, not to the OSD, on the bitrate row.
   await press(ecp.Key.Back);
@@ -766,7 +788,7 @@ it('osd gear caps the bitrate for this playback without saving it, and Back step
     timeout: 5000,
   });
   await press(ecp.Key.Ok);
-  await waitFor('#optionList.content.0.title', (t) => t === 'Auto', {
+  await waitFor('#optionList.content.0.title', (t) => t === 'No limit', {
     label: 'bitrate picker open (second time)',
     timeout: 10000,
   });
@@ -805,11 +827,8 @@ it('osd gear caps the bitrate for this playback without saving it, and Back step
   const sections = await getVal('#jrDialog.sections');
   const reasons = sections.find((sec) => sec.id === 'reasons');
   expect(reasons, 'a transcode must report why').toBeTruthy();
-  const codes = reasons.rows.map((r) => r.label);
-  expect(codes.some((c) => c.includes('Bitrate') || c.includes('BitRate'))).toBe(true);
   // The cause is the picked cap, which the report must see although Settings hold none.
-  const bitrateReason = reasons.rows.find((r) => r.label === 'VideoBitrateNotSupported');
-  if (bitrateReason) expect(bitrateReason.value).toContain('Maximum Bitrate');
+  await expectBitrateCapApplied(reasons, 1000000);
 
   await press(ecp.Key.Back);
   await waitDialogClosed('playback info dismissed', { timeout: 10000 });

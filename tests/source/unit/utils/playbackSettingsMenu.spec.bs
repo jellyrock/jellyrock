@@ -27,7 +27,7 @@ namespace tests
     function _()
       menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting())
       m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE, playbackSettingsMenu.ROW_MAX_RESOLUTION])
-      m.assertEqual(menu.labels, ["Maximum Bitrate (Auto)", "Maximum Resolution (Auto)"])
+      m.assertEqual(menu.labels, ["Maximum Bitrate (No limit)", "Maximum Resolution (Auto)"])
       m.assertEqual(menu.icons, [playbackSettingsMenu.ICON_MAX_BITRATE, playbackSettingsMenu.ICON_MAX_RESOLUTION], "each row wears its glyph, one per row")
 
       menu = playbackSettingsMenu.rows(false, 2, "720", m.resolutionSetting())
@@ -84,11 +84,11 @@ namespace tests
     @describe("bitrateOptions")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("offers Auto then the whole ladder when the source bitrate is unknown")
+    @it("offers No limit then the whole ladder when the source bitrate is unknown")
     function _()
       options = playbackSettingsMenu.bitrateOptions(0, 0)
       m.assertEqual(options.values, [0, 120, 80, 60, 40, 20, 15, 10, 8, 6, 4, 3, 2, 1])
-      m.assertEqual(options.labels[0], "Auto")
+      m.assertEqual(options.labels[0], "No limit")
       m.assertEqual(options.labels[1], "120 Mbps")
       m.assertEqual(options.labels.count(), options.values.count())
     end function
@@ -113,7 +113,7 @@ namespace tests
       m.assertEqual(options.values, [0, 1])
     end function
 
-    @it("checks and focuses Auto when no cap is set")
+    @it("checks and focuses No limit when no cap is set")
     function _()
       options = playbackSettingsMenu.bitrateOptions(0, 7000000)
       m.assertEqual(options.selectedIndex, 0)
