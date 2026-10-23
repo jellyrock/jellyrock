@@ -2178,6 +2178,14 @@ After sign-in the app opens a deep link that arrived while signed out (`AuthMana
 
 Ruled out: clearing the stash at each sign-in attempt, because a stray that arrives while on the sign-in screen still replays; and keeping a late cast queued, because it opens the previous session's item for whoever signs in next. Deep links are unaffected: cold start, `roInputEvent`, a server switch and the companion plugin's ECP `/launch` wake (ADR 0023) all use `stashedDeepLink`. Recheck if the app ever signs a user out mid-session (on a 401, say): resuming where they were then needs its own intent, captured at that point, not a guard stash.
 
+## decision-id: photo-launch-is-a-playback-start
+
+**date**: 2026-10-23
+**status**: accepted
+**related-files**: `components/manager/QueueManager.bs`, `components/photos/PhotoDetails.bs`, `source/utils/appWaits.bs`
+
+A photo, a slideshow and an album Shuffle open the playback-start wait (`QueueManager.beginPlaybackStart`), and `PhotoDetails` takes it like a player (`isPlaybackScreen`, `takePlaybackStart`) and ends it once a photo shows. The start already does what a photo launch needs: Back cancels it and stops the album's `QuickPlayTask` (`onPlaybackStartEnded`), and a Play pressed meanwhile replaces it. Ruled out: a photo kind of its own, which would need a second slot and cancel path in `QueueManager` to keep in step with the start's; and leaving a single photo's launch without a wait because it makes no request, since the wait is for the slow case and opening the viewer was never timed. Cost: logs and the kind's name say "playback start" for a photo, and a start pressed while the photo viewer is up (a cast) no longer hides it, as a channel switch does not hide a player.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

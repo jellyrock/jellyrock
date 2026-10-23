@@ -104,6 +104,8 @@ export const BUDGETS = new Map([
   // A start the viewer backed out of must not reach a player once its answer lands; no app
   // field reports a launch that did not happen.
   ['tests/rta/specs/playback-start.spec.js', 1],
+  // Keys an audio seek ignores must change nothing; no app field reports a key that did not act.
+  ['tests/rta/specs/in-screen-action-waits.spec.js', 1],
 
   // Timer-window non-events only, since Phase 6b: a dialog that must survive its own 5 s
   // auto-hide, and a Back that must not exit before it. The four pre-action settles that

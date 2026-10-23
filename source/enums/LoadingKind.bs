@@ -10,7 +10,8 @@ enum LoadingKind
   ' 30 s that the wait is the server's.
   CONTENT = "content"
   ' Playback starting, from the press to the player holding a stream (appWaits.begin through
-  ' QueueManager.beginPlaybackStart). An app wait: it outlives the screen that started it.
+  ' QueueManager.beginPlaybackStart), or a photo or slideshow from the press to its first photo
+  ' showing. An app wait: it outlives the screen that started it.
   ' Same stages as CONTENT, under the channel label on a channel switch. Back cancels it and
   ' shows the screen it was pressed on again; other keys wait for it (AppWaitHost).
   PLAYBACK_START = "playbackStart"
@@ -20,4 +21,13 @@ enum LoadingKind
   ' that screen again, until the step commits (appWaits.commit) and only local work is left
   ' (ADR 0053). No stage text.
   SESSION = "session"
+  ' An action the viewer pressed that stays on its screen, such as a details Refresh. An app wait
+  ' opened by the press, which its answer ends. It hides the screen it was pressed on and holds
+  ' the keys; Back cancels it, shows that screen again, and the late answer is dropped
+  ' (ADR 0053). No stage text.
+  ACTION = "action"
+  ' The player waiting on its own stream, such as an audio seek that loads a new one. A screen
+  ' wait on the player (screenWaits.begin): the player stays on show and takes only Back, which
+  ' leaves it. No stage text: the wait is the player's, not a server answer to report.
+  BUFFERING = "buffering"
 end enum

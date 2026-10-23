@@ -71,15 +71,16 @@ namespace appWaits
   function limitMs(kind as string) as dynamic
     if kind = LoadingKind.PLAYBACK_START then return timeouts.PLAYBACK_START_LIMIT_MS
     if kind = LoadingKind.SESSION then return timeouts.SESSION_WAIT_LIMIT_MS
+    if kind = LoadingKind.ACTION then return timeouts.ACTION_WAIT_LIMIT_MS
     return 0
   end function
 
   ' Whether a wait of `kind` hides the screen it was started from while it is open. A playback
   ' start does, so the viewer sees the item's backdrop and the spinner rather than the screen
   ' they pressed Play on, unless that screen is itself a player (a channel switch). A sign-in
-  ' step does, so the screen it was pressed on takes no keys.
+  ' step and a pressed action do, so the screen they were pressed on takes no keys.
   function hidesLaunchingScreen(kind as string) as boolean
-    return kind = LoadingKind.PLAYBACK_START or kind = LoadingKind.SESSION
+    return kind = LoadingKind.PLAYBACK_START or kind = LoadingKind.SESSION or kind = LoadingKind.ACTION
   end function
 
   ' Whether `view` is a screen that plays: reaching it is where a playback start is meant to go.
