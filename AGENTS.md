@@ -53,6 +53,7 @@ decision, followup, running (replaces the one-paragraph Currently running note i
 - `npm run validate`: the BrighterScript type check.
 - `npm run lint`: the lint chain CI runs; pre-push mirrors it, scoped to the files in the push range.
 - `bash .claude/skills/log/voice-check.sh [<file.md>…]`: the house voice of `.claude/rules/writing-style.md`, per tracked Markdown file against `.voice-baseline.tsv` (a file may only go down); lint-staged runs it on each staged `.md`, and `npm run lint` on every file. Reword a new hit, never raise the baseline; `--lower` locks in a file's gain.
+- `npm run lint:comment-voice`: the same voice for code comments, per file against `.doc-voice-baseline.json`; `npm run lint` runs it too. Lock a gain in with `node scripts/lint/comment-voice-ratchet.js --lower-voice-baseline`.
 - On a Roku: `npm run device:check` first, then `npm run test:tdd` (one spec, fastest), `test:unit`, `test:integration` or `test:all`, and `npm run test:rta` for navigation and screen regressions. No hook runs these. A failed probe is reported as the probe failing, and a fix is never called tested when only the build was checked.
 - Never bare `bsc`, `vitest`, `markdownlint-cli2` or `spellchecker`: the npm wrappers carry the project files, plugins and config.
 - Never `--no-verify`. A new worktree has no hooks until `npm ci` runs in it.
