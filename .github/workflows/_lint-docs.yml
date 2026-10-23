@@ -2,9 +2,10 @@ name: lint-docs
 
 # Validates doc references, generated indexes, and CI workflow sync:
 #   - lint:docs:               related-files paths, markdown links, tech-debt anchors
-#   - lint:doc-citations:      per-file ratchets on line-number citations and the
-#                              house voice in tracked markdown and in the
-#                              comments of tracked code (see
+#   - lint:comment-voice:      per-file ratchet on the house voice in the comments
+#                              of tracked code (see docs/dev/writing-style.md)
+#   - lint:voice:              per-file ratchet on the house voice and line-number
+#                              citations in tracked markdown (see
 #                              .claude/rules/derive-dont-duplicate.md and
 #                              docs/dev/writing-style.md)
 #   - docs:dev-index:check:    drift on the auto-generated dev-guides index in
@@ -21,9 +22,9 @@ name: lint-docs
 # with --no-verify bypass that hook entirely. Running them in CI closes
 # the gap.
 #
-# `npm ci` is needed because doc-citation-ratchet.js reads code comments with
+# `npm ci` is needed because comment-voice-ratchet.js reads code comments with
 # the BrighterScript lexer, espree and yaml. The other scripts use only the
-# Node standard library.
+# Node standard library, and voice-check.sh needs bash and git.
 
 on:
   workflow_call:
@@ -47,6 +48,8 @@ jobs:
         with:
           # The code extensions and `.husky/` hooks are here because the same ratchet
           # counts house-voice hits in code comments, so any code change can move it.
+          # The voice-check script, its fence filter and its two config files are here
+          # because they decide what the markdown check counts.
           #
           # Mirrors the previous event-time paths filter (**/*.md, docs/**,
           # the four docs-related scripts, **/CLAUDE.md, AGENTS.md). The
@@ -64,7 +67,7 @@ jobs:
           #      (`_test-scripts.yml` also matches package.json and its vitest
           #      suite asserts the same invariant: belt and braces, not the
           #      primary reason.)
-          pattern: '\.md$|\.(bs|brs|js|cjs|mjs|xml|ya?ml|sh)$|^\.husky/[^/]+$|^docs/|^scripts/lint/(docs-check|docs-stale|docs-stale-blocking|validate-deps-workflow-sync)\.cjs$|^scripts/lint/doc-citation-ratchet\.js$|^\.doc-citation-baseline\.json$|^\.doc-voice-baseline\.json$|^scripts/lint/ci-parity-check\.js$|^scripts/generate/dev-index\.cjs$|^\.github/workflows/_.*\.yml$|^package\.json$|^\.claude/skills/log/journal\.(sh|conf)$'
+          pattern: '\.md$|\.(bs|brs|js|cjs|mjs|xml|ya?ml|sh)$|^\.husky/[^/]+$|^docs/|^scripts/lint/(docs-check|docs-stale|docs-stale-blocking|validate-deps-workflow-sync)\.cjs$|^scripts/lint/comment-voice-ratchet\.js$|^\.doc-voice-baseline\.json$|^\.voice-baseline\.tsv$|^\.voice-ignore$|^\.claude/skills/log/(voice-check\.sh|md-skip\.awk)$|^scripts/lint/ci-parity-check\.js$|^scripts/generate/dev-index\.cjs$|^\.github/workflows/_.*\.yml$|^package\.json$|^\.claude/skills/log/journal\.(sh|conf)$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.detect.outputs.relevant == 'true'
@@ -79,9 +82,12 @@ jobs:
       - name: Validate doc references
         if: steps.detect.outputs.relevant == 'true'
         run: node scripts/lint/docs-check.cjs
-      - name: Line-number citation and house-voice ratchet
+      - name: House voice in code comments
         if: steps.detect.outputs.relevant == 'true'
-        run: node scripts/lint/doc-citation-ratchet.js
+        run: node scripts/lint/comment-voice-ratchet.js
+      - name: House voice
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:voice
       - name: Check dev-index drift
         if: steps.detect.outputs.relevant == 'true'
         run: node scripts/generate/dev-index.cjs --check

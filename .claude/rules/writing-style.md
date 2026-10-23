@@ -10,4 +10,4 @@ Every doc you write or edit in this repo follows [`docs/dev/writing-style.md`](.
 
 - Read the guide's rules before writing a new doc or a long edit. They are short.
 - Fix the voice in the lines you are already editing. Rewriting a whole file is a planned change, not a side effect (see [`isolate-the-fix.md`](isolate-the-fix.md)).
-- `npm run lint:doc-citations` enforces the mechanical rules as a per-file ratchet. A failure means you added a hit: reword, never raise the baseline. When a file improves, lock the gain in with `node scripts/lint/doc-citation-ratchet.js --lower-voice-baseline`.
+- `npm run lint:voice` enforces the mechanical rules in Markdown as a per-file ratchet (`bash .claude/skills/log/voice-check.sh`, baseline `.voice-baseline.tsv`), and `npm run lint:comment-voice` does the same for code comments. A failure means you added a hit: reword, never raise the baseline. When a file improves, lock the gain in with `bash .claude/skills/log/voice-check.sh --lower`, or `node scripts/lint/comment-voice-ratchet.js --lower-voice-baseline` for a code file.

@@ -611,13 +611,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **severity**: Low. The name misleads; the check works, and since #1160 its CI and pre-push triggers include `people.bs`. `parseAA` and `parseAAArray` both read BrightScript by regex, and a comment above `parseAA` already calls for a tokenizer. A fourth table of a third shape is the point to build one.
 - **direction**: Rename to a name covering every table (for example `lint:translation-table-coverage`), moving the npm script, the CI reference, the test file and the doc mentions in one change. Do not split it into two scripts, which would copy `parseAA`.
 
-#### `doc-citation-ratchet-name-covers-voice`
-
-- **area**: [`scripts/lint/doc-citation-ratchet.js`](../../scripts/lint/doc-citation-ratchet.js), its npm script `lint:doc-citations`, the matching step and pattern in [`_lint-docs.yml`](../../.github/workflows/_lint-docs.yml), and [`doc-citation-ratchet.test.js`](../../tests/scripts/unit/doc-citation-ratchet.test.js)
-- **issue**: The script began as the line-number citation ratchet. It now also holds docs and code comments to the house voice ([`writing-style.md`](../dev/writing-style.md)), with their own baseline, `.doc-voice-baseline.json`. The file, npm script, workflow step and test file still say "citation", so someone looking for the house-voice gate will not find it by name. The header's later sections and the workflow comment describe all three scopes. It was extended rather than renamed because the ratchets share one walk, one fenced-block skip and one "may only improve" comparison. A rename touches the CI parity wiring, the pre-push hook and the doc mentions.
-- **severity**: Low. Only the name misleads; every scope runs in CI and pre-push.
-- **direction**: Rename to a name covering all of it (for example `lint:doc-ratchets`), moving the script, npm script, workflow step and pattern, test file and doc mentions in one change. Do not split it into separate scripts.
-
 #### `translate-per-item-task-copy`
 
 - **area**: [`source/utils/translate.bs`](../../source/utils/translate.bs) (`translate()`), and every Task-thread caller that translates per item
