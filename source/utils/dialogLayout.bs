@@ -78,8 +78,10 @@ const PANEL_WIDTH_SCALE = 6
 ' so the spacing gate below covers them: they asserted the 6px rhythm in their
 ' own comments with nothing enforcing it, which is how a scale drifts.
 '
-' LIST_ROW_CHECK_GUTTER = LIST_ROW_PADDING + LIST_ROW_ICON_SIZE + 24 gap. A fixed
-' gutter on every row, selected or not, so the labels line up with each other.
+' LIST_ROW_CHECK_GUTTER = LIST_ROW_PADDING + LIST_ROW_ICON_SIZE + 24 gap. A list
+' that can fill the gutter (listHasGutter) keeps it on every row, selected or not,
+' so the labels line up with each other; a list that never can drops it on every
+' row, so its labels sit at the row padding instead of after an empty slot.
 '
 ' The gutter holds one of two things and never both: the current-option check, or
 ' a leading action icon (an overflow menu's rows carry the same glyph the button
@@ -91,6 +93,29 @@ const LIST_ROW_SPACING = 24
 const LIST_ROW_PADDING = 24
 const LIST_ROW_ICON_SIZE = 36
 const LIST_ROW_CHECK_GUTTER = 84
+
+' Whether a list dialog's rows keep the gutter: when some row has an icon, or when
+' one option is current and so carries the check. Decided for the whole list, never
+' per row, so every label in one list starts at the same x.
+'
+' @param {integer} selectedIndex - the current option, -1 for none
+' @param {dynamic} icons - the rows' icon URIs, or invalid
+function listHasGutter(selectedIndex as integer, icons as dynamic) as boolean
+  if selectedIndex >= 0 then return true
+  if type(icons) <> "roArray" then return false
+  for each icon in icons
+    iconType = LCase(type(icon))
+    if (iconType = "string" or iconType = "rostring") and icon <> "" then return true
+  end for
+  return false
+end function
+
+' Where a list row's label starts: after the gutter, or at the row padding when the
+' list has none.
+function listRowLabelInset(hasGutter as boolean) as integer
+  if hasGutter then return LIST_ROW_CHECK_GUTTER
+  return LIST_ROW_PADDING
+end function
 
 ' Minimum width of a dialog footer button. Shared because several places need the
 ' same number: JRDialog sizes its row with it, choicesFitAsButtons estimates

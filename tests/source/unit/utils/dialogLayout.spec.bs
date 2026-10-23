@@ -652,5 +652,35 @@ namespace tests
       m.assertEqual(x - layout.footer.x, (layout.footer.x + layout.footer.width) - (x + 200))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("listHasGutter and listRowLabelInset")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A list keeps the gutter only when it can fill it: a check on the current
+    ' option, or an icon on some row. A plain choice list has neither.
+    @it("keeps the gutter for a list with a current option")
+    function _()
+      m.assertTrue(listHasGutter(0, invalid))
+      m.assertTrue(listHasGutter(3, []))
+    end function
+
+    @it("keeps the gutter when any row has an icon")
+    function _()
+      m.assertTrue(listHasGutter(-1, ["", "pkg:/images/icons/speed_$$RES$$.png"]))
+    end function
+
+    @it("drops the gutter for a list with no current option and no icons")
+    function _()
+      m.assertFalse(listHasGutter(-1, invalid))
+      m.assertFalse(listHasGutter(-1, []))
+      m.assertFalse(listHasGutter(-1, ["", ""]))
+    end function
+
+    @it("starts a label after the gutter, or at the row padding without one")
+    function _()
+      m.assertEqual(listRowLabelInset(true), LIST_ROW_CHECK_GUTTER)
+      m.assertEqual(listRowLabelInset(false), LIST_ROW_PADDING)
+    end function
+
   end class
 end namespace

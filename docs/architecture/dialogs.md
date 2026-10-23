@@ -134,12 +134,14 @@ Two things follow:
 
 #### A list row's gutter holds one thing
 
-`JRListDialogRow` reserves a fixed 36-pixel slot (`LIST_ROW_ICON_SIZE`, inside `LIST_ROW_CHECK_GUTTER`) on every row, so labels line up whether a row is marked or not. Two things can want that slot, and they never share it:
+`JRListDialogRow` reserves a fixed 36-pixel slot (`LIST_ROW_ICON_SIZE`, inside `LIST_ROW_CHECK_GUTTER`) on every row of a list that can fill it, so labels line up whether a row is marked or not. Two things can want that slot, and they never share it:
 
 | Occupant | Set by | Color | For |
 |---|---|---|---|
 | The current-option check | `selectedIndex` | `colorSecondary`, a state marker | A picker (audio, subtitles, video source) |
 | A leading action icon | The optional `icons` array | `colorTextPrimary`, part of the label, not a state | An action list, such as a **More** menu |
+
+**A list that can fill neither drops the gutter on every row.** `listHasGutter()` in `dialogLayout.bs` decides it once per list: a current option (`selectedIndex` 0 or more) or an icon on any row keeps it. A choice list or an action menu without icons then starts its labels at the row padding (`listRowLabelInset()`), and a `sizeToContent` menu is that much narrower, instead of carrying an empty 60-pixel slot on the left. `JRListDialog` stamps the answer on each row as `hasGutter`; a row built by anything else keeps the gutter.
 
 They cannot both apply: an action list passes `selectedIndex = -1`, so nothing is checked. The row still states which one draws (the check wins), because "cannot happen" is not a layout rule, and the alternative is two images stacked in one slot.
 

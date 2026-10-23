@@ -30,6 +30,8 @@ sub init()
 
   m.chrome = m.top.findNode("chrome")
   m.widthProbe = m.top.findNode("widthProbe")
+  ' Set per list in onItemsChanged (dialogLayout.listHasGutter).
+  m.hasGutter = true
   ' contentWidth is published from applyLayout rather than pinned here, because a
   ' `sizeToContent` panel does not know its width until it has measured its rows.
   ' The fixed-width path still lands on exactly this value.
@@ -92,13 +94,14 @@ sub onItemsChanged()
   ' Optional and positionally paired with `items`: see the field comment in the
   ' XML for why it is a parallel array rather than a richer `items` shape.
   icons = m.top.icons
+  m.hasGutter = listHasGutter(selectedIndex, icons)
   index = 0
   for each item in items
     row = CreateObject("roSGNode", "ContentNode")
     row.title = toString(item)
     rowIconUri = ""
     if isValid(icons) and index < icons.count() then rowIconUri = toString(icons[index])
-    row.addFields({ isSelected: index = selectedIndex, icon: rowIconUri })
+    row.addFields({ isSelected: index = selectedIndex, icon: rowIconUri, hasGutter: m.hasGutter })
 
     ' The three visual markers (check glyph, surface, hue) are all sighted-only,
     ' so the current option is also announced. AUDIO_GUIDE_SUFFIX is a PREDEFINED
@@ -192,8 +195,8 @@ end sub
 ' `sizeToContent`, in which case it is derived from the widest row label.
 '
 ' The row's own arithmetic, inverted. JRListDialogRow puts its label at
-' LIST_ROW_CHECK_GUTTER and gives it `rowWidth - LIST_ROW_CHECK_GUTTER -
-' LIST_ROW_PADDING`, so the width that makes the longest label exactly fit is
+' listRowLabelInset() and gives it `rowWidth - inset - LIST_ROW_PADDING`, so the
+' width that makes the longest label exactly fit is
 ' that expression solved for rowWidth. Reading it off the row rather than
 ' inventing a padding figure is what keeps the two from drifting.
 '
@@ -215,7 +218,7 @@ function resolvePanelWidth(items as object) as integer
     if labelWidth > widestLabel then widestLabel = labelWidth
   end for
 
-  width = snapPanelWidthToScale(int(widestLabel) + LIST_ROW_CHECK_GUTTER + LIST_ROW_PADDING + (PANEL_PADDING * 2))
+  width = snapPanelWidthToScale(int(widestLabel) + listRowLabelInset(m.hasGutter) + LIST_ROW_PADDING + (PANEL_PADDING * 2))
 
   if width < MIN_CONTENT_PANEL_WIDTH then return MIN_CONTENT_PANEL_WIDTH
   ' Never WIDER than the fixed width either. Past that the menu has stopped being

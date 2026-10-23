@@ -42,9 +42,9 @@
 
          It is not a state marker, so it takes colorTextPrimary rather than the
          check's colorSecondary: it reads as part of the label, which is what it
-         is. Sized to the SLOT (LIST_ROW_ICON_SIZE) rather than 1:1 with its
-         source: these are 64px button icons being reused, so this is always a
-         downscale, which is the safe direction. -->
+         is. Drawn at the button's own icon size (ICON_BUTTON_ICON_SIZE) and
+         centred on the slot (LIST_ROW_ICON_SIZE): the files pad the glyph, so
+         at the slot's own size it shrank to about 20px. -->
     <Poster id="rowIcon" visible="false" />
 
     <LabelPrimaryMedium id="rowLabel" horizAlign="left" vertAlign="center" />
