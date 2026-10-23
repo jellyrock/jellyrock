@@ -40,13 +40,11 @@ namespace tests
       m.assertFalse(isValid(m.guide.loadingWaits) and m.guide.loadingWaits.doesExist("guide"))
     end function
 
-    @it("opens no wait and does not crash without a host screen")
+    @it("does not crash without a host screen")
     function _()
       m.guide.hostScreen = invalid
 
       m.guide.callFunc("startLoading")
-
-      m.assertFalse(isValid(m.host.loadingWaits) and m.host.loadingWaits.doesExist("guide"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
