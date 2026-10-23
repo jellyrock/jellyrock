@@ -2206,6 +2206,16 @@ A Maximum Bitrate of 0 means no limit. With the Bitrate Limit setting on and its
 
 Ruled out: keeping the ceilings as a separate "Roku default" choice, which is hard to explain to a viewer. Cost: a user who had the limit on with 0 loses the ceilings and plays as the default does. Recheck if a device is shown to fail direct play above one of the old ceilings.
 
+## decision-id: dialog-close-keeps-new-focus
+
+**date**: 2026-10-23
+**status**: accepted
+**related-files**: `source/utils/dialogClose.bs`, `components/dialogs/JRDialog.bs`, `components/dialogs/JRListDialog.bs`, `components/OverviewDialog.bs`, `components/dialogs/QuickConnectDialog.bs`
+
+A closing overlay dialog gives focus back to its `returnFocusTo` only when it still held focus. `closeOverlayDialog()` reads `isInFocusChain()` before the detach, and all four overlay dialogs close through it. A dialog delivers its result before it closes, so a result handler that opens the next dialog hands that dialog focus first. The old unconditional restore then took focus back and left the new dialog deaf. The OSD gear had worked around it per call site with `handOffFocus`, now removed.
+
+Ruled out: calling `handOffFocus` in each More handler for the button ids that open a dialog (a list every new button must update, and nothing checks it), and closing before delivering the result (it reverses the result-before-close contract for every handler). Cost: a code-made close (`cancelOpenDialog`, a supersede) no longer refocuses the opener when focus has moved elsewhere. Recheck if a flow is found that relied on a dialog pulling focus back after something else took it.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

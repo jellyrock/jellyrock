@@ -940,19 +940,11 @@ end sub
 ' picker, centred like the playback track pickers. Back in a picker returns to
 ' the gear menu on that row; Back there returns to the gear.
 '
-' Each level opens the next from inside its own result handler, and a dialog
-' delivers its result BEFORE it closes (JRListDialog.resolveDialog). Its close then
-' restores focus to its returnFocusTo, which would take focus off the dialog the handler
-' opened and leave it on screen but deaf. So the handler clears the closing
-' dialog's returnFocusTo first (handOffFocus), and every level returns focus to
-' the gear itself rather than to whatever held focus when it opened.
+' Each level opens the next from inside its own result handler, which runs before
+' the closing dialog detaches. The next dialog takes focus, and the closing one
+' leaves it there (closeOverlayDialog, source/utils/dialogClose.bs). Every level
+' returns focus to the gear itself rather than to whatever held focus when it opened.
 ' ===========================================================================
-
-' Let `closing` close without restoring focus, because the caller is about to open
-' the next dialog, which takes focus itself.
-sub handOffFocus(closing as object)
-  if isValid(closing) then closing.returnFocusTo = invalid
-end sub
 
 ' Where the gear sits, for anchoring its menu. The right group is right-ALIGNED, so
 ' its children run left to right from its left edge (osdRowGeometry).
@@ -1018,10 +1010,8 @@ sub onSettingsMenuResult()
 
   current = effectiveCaps()
   if rowId = playbackSettingsMenu.ROW_MAX_BITRATE
-    handOffFocus(dialog)
     openCapPicker(rowId, translationKeys.LabelMaximumBitrate, playbackSettingsMenu.bitrateOptions(current.bitrateMbps, m.top.sourceVideoBitrate), current.bitrateMbps)
   else if rowId = playbackSettingsMenu.ROW_MAX_RESOLUTION
-    handOffFocus(dialog)
     openCapPicker(rowId, translationKeys.LabelMaximumResolution, playbackSettingsMenu.resolutionOptions(current.resolution, resolutionSetting()), current.resolution)
   end if
 end sub
@@ -1045,7 +1035,6 @@ sub onCapPicked()
   ' A close code made (teardown, another dialog replacing this one) must not act.
   if result.externallyCancelled then return
   if result.cancelled
-    handOffFocus(dialog)
     openSettingsMenu(picker.field)
     return
   end if

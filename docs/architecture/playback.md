@@ -431,7 +431,7 @@ The gear sits in the right-hand group, left of playback info, and opens a menu o
 
 **The bitrate ladder is trimmed to the source.** It keeps the steps at or below the playing video stream's bitrate (`OSD.sourceVideoBitrate`, read from the loaded version) plus the one step above it, because a higher cap constrains nothing. A Settings value that is off the ladder is added and checked. **The resolution choices are the Settings entry's own options,** read from `settings.json` (`findConfigTreeKey()`), so the gear and the Settings screen offer one list.
 
-**Each level opens the next from inside its own result handler,** and a list dialog delivers its result before it closes. Its close then restores focus to its `returnFocusTo`, which would leave the new menu on screen without focus. So the handler clears the closing dialog's `returnFocusTo` first (`handOffFocus`), and both levels return focus to the gear. The RTA test in `dialogs.spec.js` checks focus at each level, and it failed with the hand-off disabled (2026-10-23, Streaming Stick 4K).
+**Each level opens the next from inside its own result handler,** and a list dialog delivers its result before it closes. The new menu takes focus, and the closing dialog leaves it there, because a dialog restores its `returnFocusTo` only when it still held focus ([dialogs.md](dialogs.md)). Both levels return focus to the gear. The RTA test in `dialogs.spec.js` checks focus at each level.
 
 **Live TV has no gear yet.** A reload there opens a new live stream, and the one-release-per-stream rule has not been checked on that path, so `rows()` returns nothing for a `TvChannel` and `setButtonStates()` drops the gear. That also gives the left row its slot back.
 

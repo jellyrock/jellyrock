@@ -174,6 +174,54 @@ namespace tests
       m.assertInvalid(m.dialog.getParent())
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("focus on close")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A result handler runs INSIDE the write that delivers the result, before the
+    ' dialog closes, so a dialog it opens takes focus first. The closing dialog
+    ' must then leave focus alone. Stand-in Groups play the opener and that
+    ' second dialog: only focus matters here.
+    @it("hands focus to returnFocusTo when it still held focus")
+    function _()
+      scene = m.top.getScene()
+      opener = CreateObject("roSGNode", "Group")
+      scene.appendChild(opener)
+      m.dialog.code = "523522"
+      m.dialog.returnFocusTo = opener
+      scene.appendChild(m.dialog)
+      m.dialog.setFocus(true)
+
+      m.dialog.callFunc("cancelDialog")
+      focused = opener.hasFocus()
+      scene.removeChild(opener)
+
+      m.assertTrue(focused)
+    end function
+
+    @it("leaves focus alone when a dialog opened by its result handler took it")
+    function _()
+      scene = m.top.getScene()
+      opener = CreateObject("roSGNode", "Group")
+      successor = CreateObject("roSGNode", "Group")
+      scene.appendChild(opener)
+      scene.appendChild(successor)
+      m.dialog.code = "523522"
+      m.dialog.returnFocusTo = opener
+      scene.appendChild(m.dialog)
+      m.dialog.setFocus(true)
+      successor.setFocus(true)
+
+      m.dialog.callFunc("cancelDialog")
+      successorFocused = successor.hasFocus()
+      openerFocused = opener.hasFocus()
+      scene.removeChild(opener)
+      scene.removeChild(successor)
+
+      m.assertTrue(successorFocused, "the closing dialog took focus from the dialog that replaced it")
+      m.assertFalse(openerFocused)
+    end function
+
   end class
 
 end namespace
