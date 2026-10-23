@@ -23,6 +23,7 @@ import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/playKind.bs"
 import "pkg:/source/utils/remoteSubtitles.bs"
 import "pkg:/source/utils/screenReadiness.bs"
+import "pkg:/source/utils/screenWaits.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -927,13 +928,12 @@ sub onItemIdChanged()
 
   m.loadDetailsTask = replaceTask(m.loadDetailsTask, "LoadItemsTask", "content", { itemsToLoad: "metaDataDetails" })
 
-  ' Show the loading spinner during the metadata fetch (onDetailsLoaded stops it). Restores the
-  ' pre-#677 behavior: the removed showScenes.CreateItemDetailsGroup factory started the spinner
-  ' before pushScene; under the router the bare sgrouter.navigateTo at the call sites (Home / grid /
-  ' search) doesn't, so the spinner has to start here, the one place that owns the fetch. itemId's
-  ' observer (the plain m.top.observeField in init()) fires inside loadFromRoute during
-  ' onScreenShown, so the spinner is up before the empty springboard renders a frame.
-  startLoadingSpinner()
+  ' The fetch is this screen's wait (screenWaits, ADR 0044), ended in onDetailsLoaded. The
+  ' screen stays live under the spinner, so Back leaves it mid-load (ADR 0053) and the wait goes
+  ' with it. This is the one place that owns the fetch: the call sites (Home, grid, search)
+  ' navigate with a bare sgrouter.navigateTo. itemId's observer fires inside loadFromRoute
+  ' during onScreenShown, so the spinner is up before the empty springboard renders a frame.
+  screenWaits.begin(m.top, "details")
 
   m.loadDetailsTask.itemId = itemId
   m.loadDetailsTask.shouldForceRefresh = false
@@ -952,15 +952,15 @@ sub onDetailsLoaded(event as object)
     m.top.itemContent = content[0]
   else
     ' Content failed to load. Deep links are pre-validated by JRScene.resolveDeepLink (an invalid
-    ' id never navigates here), so this is the ordinary non-deep-link path: only stop the spinner.
+    ' id never navigates here), so this is the ordinary non-deep-link path: only end the wait.
     ' Clear the deep-link flag defensively in case one ever slips through; never navigate away
     ' (an invalid id must not disrupt the session).
-    stopLoadingSpinner()
+    screenWaits.finish(m.top, "details")
     m.isDeepLinkLaunch = false
     return
   end if
 
-  stopLoadingSpinner()
+  screenWaits.finish(m.top, "details")
 
   ' Id validated; now do what the route's action says (open/play/shuffle/trailer/instantmix).
   if m.isDeepLinkLaunch
@@ -5504,8 +5504,8 @@ sub onDestroy()
 
   destroyTextureManager(m.extrasGrid.content)
 
-  ' Safety net: stop the loading spinner in case the component is destroyed
-  ' while the initial load or a refresh is still in flight.
+  ' Safety net: stop the loading spinner in case the component is destroyed while a refresh
+  ' is still in flight. The initial load's wait is this screen's, so it goes with the screen.
   stopLoadingSpinner()
 
   ' Unobserve child node observers

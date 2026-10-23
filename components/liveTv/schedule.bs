@@ -9,6 +9,7 @@ import "pkg:/source/utils/guidePrograms.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/paging.bs"
+import "pkg:/source/utils/screenWaits.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -91,8 +92,24 @@ end sub
 sub startLoading()
   m.channelQuery = { filter: m.top.filter, searchTerm: m.top.searchTerm, limit: CHANNEL_PAGE_SIZE }
   m.loadingInitialized = true
-  startLoadingSpinner()
+  beginChannelsWait()
   runChannelsPage(0)
+end sub
+
+' The first channel page is a wait of the screen hosting the guide (screenWaits, ADR 0044): the
+' guide is a panel inside that screen, and the scene shows only the routed screen's waits. The
+' screen stays live under the spinner, so Back leaves it mid-load (ADR 0053). Ended by the first
+' page, a failed or empty one, and onDestroy.
+sub beginChannelsWait()
+  if not isValid(m.top.hostScreen)
+    m.log.warn("no hostScreen: the channel load shows no spinner")
+    return
+  end if
+  screenWaits.begin(m.top.hostScreen, "guide")
+end sub
+
+sub endChannelsWait()
+  if isValid(m.top.hostScreen) then screenWaits.finish(m.top.hostScreen, "guide")
 end sub
 
 ' Runs m.channelQuery from `startIndex` on a NEW LoadChannelsTask node, releasing the run in
@@ -108,7 +125,7 @@ end sub
 sub reloadChannels()
   resetPrograms()
   m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
-  startLoadingSpinner()
+  beginChannelsWait()
   runChannelsPage(0)
 end sub
 
@@ -192,9 +209,9 @@ sub onChannelsLoaded(event as object)
   if m.scheduleGrid.loadingDataText <> m.textLoading then m.scheduleGrid.loadingDataText = m.textLoading
 
   if channels.count() = 0 and isFirstPage
-    ' No channels at all: stop spinner and restore focus so user can navigate back
+    ' No channels at all: end the wait and restore focus so user can navigate back
     m.channelsComplete = true
-    stopLoadingSpinner()
+    endChannelsWait()
     m.scheduleGrid.showLoadingDataFeedback = false
     m.scheduleGrid.setFocus(true)
     return
@@ -212,7 +229,7 @@ sub onChannelsLoaded(event as object)
 
     ' Show channels immediately; their rows read "Loading…" until their programs arrive
     m.scheduleGrid.showLoadingDataFeedback = false
-    stopLoadingSpinner()
+    endChannelsWait()
 
     m.scheduleGrid.setFocus(true)
     if m.EPGLaunchCompleteSignaled = false
@@ -248,11 +265,10 @@ sub onChannelPageFailed(startIndex as integer)
   m.LoadChannelsTask = releaseTask(m.LoadChannelsTask, "channels")
 
   if startIndex = 0
-    ' Nothing to show yet: say so over the whole grid, and hand the remote back to the user
-    ' (the loading spinner holds it)
+    ' Nothing to show yet: say so over the whole grid in place of the spinner
     m.scheduleGrid.loadingDataText = m.textUnavailable
     m.scheduleGrid.showLoadingDataFeedback = true
-    stopLoadingSpinner()
+    endChannelsWait()
     m.scheduleGrid.setFocus(true)
   end if
   scheduleRetry()
@@ -820,8 +836,12 @@ sub onDestroy()
   ' would let a late completion dot into invalid (&hec).
   if isValid(m.RecordProgramTask) then m.RecordProgramTask.unobserveField("result")
 
-  ' Stop and release the channel page and the program fetch in flight, if any
+  ' Stop and release the channel page and the program fetch in flight, if any. The host screen
+  ' outlives the guide (a switch to another view), so its wait for that page ends here too.
   m.LoadChannelsTask = releaseTask(m.LoadChannelsTask, "channels")
+  endChannelsWait()
+  ' The host holds this guide as a child; a reference back would keep both alive.
+  m.top.hostScreen = invalid
   m.LoadScheduleTask = releaseTask(m.LoadScheduleTask, "programs")
 
   ' Program details now load via a render-thread promise; the auto-abandon BSC plugin injects

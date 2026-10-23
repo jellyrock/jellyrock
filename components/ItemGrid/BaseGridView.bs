@@ -335,7 +335,8 @@ sub showTVGuide()
   m.tvGuide.observeField("watchChannel", "onTVGuideWatchChannel")
   m.tvGuide.observeField("focusedChannel", "onTVGuideFocusedChannel")
 
-  ' Pass current filter and search state to TV Guide
+  ' This screen owns the guide's loading wait. Then the current filter and search state.
+  m.tvGuide.hostScreen = m.top
   m.tvGuide.filter = m.filter
   m.tvGuide.searchTerm = m.voiceBox.text
 

@@ -22,7 +22,8 @@ import "pkg:/source/utils/misc.bs"
 '
 ' Waits the whole app is in (sign-in, playback starting) are not screen waits: they outlive
 ' the screen that started them. A playback start is an app wait (appWaits, opened through
-' QueueManager.beginPlaybackStart()); sign-in still uses the plain startLoadingSpinner(). See
+' QueueManager.beginPlaybackStart()), and so is a sign-in step (a session wait, opened through
+' signInStep.press()). See
 ' docs/architecture/navigation.md ("What kind of wait a spinner is").
 namespace screenWaits
 

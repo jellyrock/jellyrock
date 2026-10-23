@@ -205,12 +205,12 @@ The main thread reaches the ones in `JRScene.xml`'s interface by `callFunc`.
 | Screen | Starts | Stops |
 |---|---|---|
 | `BaseGridView` | `prepareDataLoad()`, from `loadInitialItems()` | `stopGridSpinner()` |
-| Live TV schedule (`schedule.bs`) | `startLoading()`, `reloadChannels()` | `onChannelsLoaded()`, `onChannelPageFailed()` |
-| `ItemDetails` | `onItemIdChanged()`, before the metadata fetch | `onDetailsLoaded()` |
+| Live TV schedule (`schedule.bs`) | a content wait on its host screen, `screenWaits.begin(m.top.hostScreen, "guide")` in `startLoading()` and `reloadChannels()` | `onChannelsLoaded()`, `onChannelPageFailed()`, `onDestroy()` |
+| `ItemDetails` | a content wait, `screenWaits.begin(m.top, "details")` in `onItemIdChanged()`, before the metadata fetch | `onDetailsLoaded()` |
 | `SearchScreen` | a content wait, `screenWaits.begin()` in `submitSearch()` (not the live search while typing) | `screenWaits.finish()` in `onFullSearchResults()`, or when the query is emptied |
 | `PhotoDetails` | `QueueManager.launchItem()` | `showPhoto()` |
 
-`ItemDetails` starts the spinner from its `itemId` observer, which runs before the empty screen draws a frame. When the route context already holds the full item, as from a resolved deep link, it shows no spinner. Every other item type that `launchItem()` handles opens a playback start instead of a spinner ([below](#what-kind-of-wait-a-spinner-is)).
+`ItemDetails` opens its wait from its `itemId` observer, which runs before the empty screen draws a frame. When the route context already holds the full item, as from a resolved deep link, it opens none. The guide is a panel inside `BaseGridView`, not a routed screen, and the scene follows only the routed screen's waits, so `BaseGridView.showTVGuide()` hands it the screen as `hostScreen`. That screen outlives the guide when the viewer switches to another view, so the guide ends its wait in `onDestroy()` too. Every other item type that `launchItem()` handles opens a playback start instead of a spinner ([below](#what-kind-of-wait-a-spinner-is)).
 
 **A sign-in step's wait crosses screens.** Each pre-login press (Submit on `SetServerScreen` or `LoginScene`, a user tile, the last step of Quick Connect) opens a session wait at the press, `signInStep.press` (`source/utils/signInStep.bs`), and `loginRouter` takes it with the intent's payload (`signInStep.take`). The wait hides the screen and holds the keys in `AppWaitHost`, so a second OK reaches no button. The step then navigates to a different screen. `navigateTo` settles only at `NavigationEnd`, so until then `activeRoutedView` is still the outgoing screen, and ending the wait before that shows it again for a frame before the next one mounts: the "login flash" of #677. So the wait stays up across the navigation and ends when it settles: `routerNavigate` and `navigateThenFocus` take it as `signInWait`. The step to `/login`, the step to Home (`replayAfterLogin`) and the Home step of a stashed deep link (`resolveDeepLink`) all end it there. Back cancels it until the step commits ([below](#what-kind-of-wait-a-spinner-is)).
 

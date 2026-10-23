@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-22
+last-updated: 2026-10-23
 ---
 
 # Progress
@@ -556,7 +556,7 @@ A render-thread `fetchAsync` wait may be bound to its promise so it ends on succ
 
 #### Spinner stops that end someone else's wait, found by the ADR 0044 survey (2026-09-25; read from code, the first two checked against it, none run on a device). `[fid: spinner-stops-ending-others-waits]` `[captured 2026-09-26]`
 
-Each goes away when its call site moves onto a named wait, so fix it then, not separately. (1) `BaseGridView.onGridLoadFailed()` calls `stopGridSpinner()` before it checks for the first page. It can no longer end a playback launch started from that grid, because a playback start is now an app wait the plain spinner's stop does not reach (ADR 0046; read from code, not run), but it still ends whatever plain spinner is up. (2) `BaseGridView.loadInitialItems()` calls `stopGridSpinner()` straight after `showTVGuide()`, which ends the spinner the guide's `Schedule.startLoading()` just started. (3) `JRScene.resolveDeepLink()` never writes `loadingText`, so a cast arriving right after login shows the fallback-font download text. (4) Closed by #1242: the connect now runs under a session app wait that this spinner stop does not end, and the scan no longer takes the focus back from it. (5) Reported, not confirmed: `loginRouter.beginLogin()` writes `isLoading = false` without resetting `isRemoteDisabled`, so `/login` may swallow keys that reach the scene (Back at root gives no exit dialog) — check on a device first.
+Each goes away when its call site moves onto a named wait, so fix it then, not separately. (1) `BaseGridView.onGridLoadFailed()` calls `stopGridSpinner()` before it checks for the first page. It can no longer end a playback launch started from that grid, because a playback start is now an app wait the plain spinner's stop does not reach (ADR 0046; read from code, not run), but it still ends whatever plain spinner is up. (2) Closed by the TV guide's move to a screen wait: `stopGridSpinner()` right after `showTVGuide()` ended the guide's spinner (on a Stick 4K the guide's first load showed none, 2026-10-22), and it cannot reach a screen wait. (3) `JRScene.resolveDeepLink()` never writes `loadingText`, so a cast arriving right after login shows the fallback-font download text. (4) Closed by #1242: the connect now runs under a session app wait that this spinner stop does not end, and the scan no longer takes the focus back from it. (5) Not reproduced (probed 2026-10-22 on a Stick 4K): `isRemoteDisabled` read false on `UserSelect`, `LoginScene` and `SetServerScreen` at a cold start and after Change User, Sign Out and Change Server. Back gives no exit dialog there by design: it scans again on `SetServerScreen` and changes server on `UserSelect`.
 
 #### Per-item `transformBaseItem` without a server version still crosses to the render thread per item outside the grid (from the grid page-cost fix). `[fid: transform-base-item-per-item-crossing]` `[captured 2026-09-25]`
 
