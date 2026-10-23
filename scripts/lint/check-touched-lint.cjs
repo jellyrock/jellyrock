@@ -3,7 +3,7 @@
 // The agent's blind spot: CLAUDE.md tells it not to run `npm run lint:*`
 // manually (the IDE handles `.bs` live, the pre-push hook is the catch-all
 // backstop). That rule means the agent gets *no* live feedback for lint
-// categories the IDE doesn't cover: markdown, spelling and JSON. Failures
+// categories the IDE doesn't cover: markdown, spelling, the house voice and JSON. Failures
 // surface only at `git push` time, after the agent has already reported
 // "done." The user has to debug instead of the agent.
 //
@@ -153,6 +153,30 @@ if (mdLintTargets.length > 0 && binExists('markdownlint-cli2')) {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// House voice (.claude/skills/log/voice-check.sh)
+// ────────────────────────────────────────────────────────────────────
+//
+// The same per-file ratchet lint-staged runs. It reads `.voice-ignore` and
+// skips untracked files itself, so every changed `.md` is passed as is.
+
+const VOICE_CHECK = path.join('.claude', 'skills', 'log', 'voice-check.sh');
+
+if (mdFiles.length > 0 && fs.existsSync(VOICE_CHECK)) {
+  const result = spawnSync('bash', [VOICE_CHECK, ...mdFiles], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0) {
+    findings.push({
+      tool: 'voice',
+      title: 'House voice check failed on changed `.md` files',
+      output: ((result.stdout || '') + (result.stderr || '')).trim(),
+      hint: 'Reword each new hit (docs/dev/writing-style.md); never raise `.voice-baseline.tsv`.',
+    });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
 // JSON lint (jshint --extra-ext .json)
 // ────────────────────────────────────────────────────────────────────
 //
@@ -185,7 +209,7 @@ if (jsonTargets.length > 0 && binExists('jshint')) {
 
 if (findings.length === 0) {
   if (!QUIET) {
-    console.log('check-touched-lint: spell / markdown / json all clean for changed files.');
+    console.log('check-touched-lint: spell / markdown / voice / json all clean for changed files.');
   }
   process.exit(0);
 }

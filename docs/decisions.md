@@ -1528,11 +1528,11 @@ Ruled out: **sending it everywhere because newer servers ignore it**. An ignored
 
 **date**: 2026-09-17
 **status**: accepted
-**related-files**: `.claude/rules/derive-dont-duplicate.md`, `scripts/lint/doc-citation-ratchet.js`, `.doc-citation-baseline.json`
+**related-files**: `.claude/rules/derive-dont-duplicate.md`, `.claude/skills/log/voice-check.sh`, `.voice-baseline.tsv`
 
 Tracked prose cites a **symbol**, never a line number, and does not store a quantity the repo can derive; a number that genuinely is the point is framed as a dated measurement instead. A line number rots on any edit above it rather than only on edits to the thing described, so it decays faster than review or the contextual freshness gates ([ADR 0033](adr/0033-contextual-doc-freshness.md)) can catch — a reader re-reading the prose cannot see that a number drifted underneath it. Of a 14-reference sample taken 2026-09-17, three were already wrong: two past end-of-file, and one citing the `quickPlayNode` self-observer at a line that reads `m.trailerCheckSeq = 0`, in a doc reviewed that same day. Citing the symbol is strictly better rather than merely more durable, because a human or an agent can search the codebase for a symbol and cannot search it for a line number.
 
-Enforced as a **per-file** ratchet ([`doc-citation-ratchet.js`](../scripts/lint/doc-citation-ratchet.js)) over the 55 grandfathered references, drained under issue #959. Ruled out: **one global total**, like `.promise-ratchet-baseline` — the population spans 13 files, so a single integer lets an unrelated cleanup fund a fresh citation elsewhere while the gate stays green, which is the slack-refill failure that ratchet's own advisory warns about. **A hard zero-tolerance gate**, which could not land without one mechanical PR rewriting 13 docs at once. **Convention with no gate**, which is what already failed — 55 accumulated under it. Deliberately NOT gated: whether a quantity is a live claim or a dated measurement, since telling them apart needs reading, so clauses 2 and 3 stay convention. Exempt by construction: fenced code blocks (a quoted transcript would be falsified by a rewrite), gitignored ephemeral prose, and append-only `AUDIT-LOG.md` records.
+Enforced as a **per-file** ratchet (`doc-citation-ratchet.js`, since cut to code comments as [`comment-voice-ratchet.js`](../scripts/lint/comment-voice-ratchet.js); Markdown citations moved to [`voice-check.sh`](../.claude/skills/log/voice-check.sh)) over the 55 grandfathered references, drained under issue #959. Ruled out: **one global total**, like `.promise-ratchet-baseline` — the population spans 13 files, so a single integer lets an unrelated cleanup fund a fresh citation elsewhere while the gate stays green, which is the slack-refill failure that ratchet's own advisory warns about. **A hard zero-tolerance gate**, which could not land without one mechanical PR rewriting 13 docs at once. **Convention with no gate**, which is what already failed — 55 accumulated under it. Deliberately NOT gated: whether a quantity is a live claim or a dated measurement, since telling them apart needs reading, so clauses 2 and 3 stay convention. Exempt by construction: fenced code blocks (a quoted transcript would be falsified by a rewrite), gitignored ephemeral prose, and append-only `AUDIT-LOG.md` records.
 
 ## decision-id: version-resume-near-level
 
@@ -1960,7 +1960,7 @@ Ruled out: asking `bsc` which blocks it excluded, which is exact but depends on 
 
 **date**: 2026-10-09
 **status**: accepted
-**related-files**: `scripts/lint/doc-citation-ratchet.js`, `.doc-voice-baseline.json`, `docs/dev/writing-style.md`, `.github/workflows/_lint-docs.yml`
+**related-files**: `scripts/lint/comment-voice-ratchet.js`, `.claude/skills/log/voice-check.sh`, `.voice-baseline.tsv`, `.doc-voice-baseline.json`, `docs/dev/writing-style.md`, `.github/workflows/_lint-docs.yml`
 
 Code comments follow the house voice, and the voice ratchet enforces the five mechanical categories in them per file, beside the docs in `.doc-voice-baseline.json`. Comments are read by a parser per language so a quote or `//` inside a string never counts; shell has no parser here, so only whole-line `#` comments are read. Ruled out: a guide change with no gate, because a marker with an em dash landed the day the gap was noticed; and counting developer-facing strings too, because a script cannot tell a string that must keep its dash (test data, a parser's accepted separator) from prose. Strings can follow once the comment gate has run for a while.
 

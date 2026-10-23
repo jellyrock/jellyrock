@@ -16,6 +16,8 @@
 //   - bslint (cross-scope; needs full project context, not file-scopable): pre-push
 //   - markdownlint --fix (file-scoped, auto-fix): here
 //   - spellchecker (file-scoped): here
+//   - voice-check.sh (house voice of staged .md, check only; .voice-ignore
+//     handles excludes): here
 //   - jshint .json (file-scoped): here
 //   - eslint --fix (file-scoped, auto-fix): here
 //   - prettier --write (file-scoped, auto-fix; .prettierignore handles excludes): here
@@ -79,13 +81,16 @@ module.exports = {
     return cmd ? [cmd] : [];
   },
 
-  // Markdown: auto-fix style + spell-check (no spell auto-fix; check only).
+  // Markdown: auto-fix style + spell-check (no spell auto-fix; check only) +
+  // house voice (check only). voice-check.sh skips untracked and non-.md paths and
+  // reads its own excludes from `.voice-ignore`, so it gets every staged file.
   '*.md': (files) => {
     const mdLint = cmdWithFiles('npx markdownlint-cli2 --fix', keep(isMarkdownExcluded)(files));
     // Dictionaries and plugins come from `.spellcheckerrc.yaml`: see that file for why
     // they must not be re-specified here.
     const spell = cmdWithFiles('npx spellchecker --files', keep(isSpellExcluded)(files));
-    return [mdLint, spell].filter(Boolean);
+    const voice = cmdWithFiles('bash .claude/skills/log/voice-check.sh', files);
+    return [mdLint, spell, voice].filter(Boolean);
   },
 
   // JSON: jshint syntax + duplicate-key check (broad set), then Prettier

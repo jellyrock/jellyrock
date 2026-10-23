@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-10-07
 
-**related-files**: `docs/dev/writing-style.md`, `.claude/rules/writing-style.md`, `scripts/lint/doc-citation-ratchet.js`, `.doc-voice-baseline.json`, `scripts/docs-fact-report.js`, `.husky/pre-push`, `.github/workflows/_lint-docs.yml`
+**related-files**: `docs/dev/writing-style.md`, `.claude/rules/writing-style.md`, `scripts/lint/comment-voice-ratchet.js`, `.claude/skills/log/voice-check.sh`, `.voice-baseline.tsv`, `.doc-voice-baseline.json`, `scripts/docs-fact-report.js`, `.husky/pre-push`, `.github/workflows/_lint-docs.yml`
 
 The docs read as machine-written: em dashes, stacked qualifiers and sentences past 35 words, in user guides and agent files alike. [`writing-style.md`](../dev/writing-style.md) sets one voice for every doc, and the agent files follow it too, because people read them to improve them or to do a task by hand. Its mechanical rules (em dashes, filler words, capitals for emphasis, arrows outside a bold UI path, `e.g.` and `i.e.`) are enforced by a second per-file ratchet in `doc-citation-ratchet.js`, run by pre-push and CI. Each file is held at its count in `.doc-voice-baseline.json` and may only improve; a new file starts at zero. The scope is every tracked markdown file, ADRs and journals included, because a ratchet forces no rewrite: old entries keep their allowance and new ones start clean. `CHANGELOG.md` (written by CI), `locale/` and `components/vendor/` are exempt. The rules a script cannot judge (sentence length, one reader per doc, active voice) stay with review, and `npm run docs:fact-report` makes reviewing a rewrite a check of the numbers, symbols and links it removed or added. The first baseline, measured 2026-10-07, was 7,408 hits.
 

@@ -38,9 +38,10 @@
 #     tests)
 #   - npm run lint:docs: validates related-files: paths and markdown links
 #     across every doc + CLAUDE.md. Cross-doc check; not file-scopable.
-#   - npm run lint:doc-citations (seconds, not minutes): per-file ratchets on
-#     line-number citations and the house voice in docs and code comments
-#     (docs/dev/writing-style.md).
+#   - npm run lint:comment-voice (seconds, not minutes): per-file ratchet on the
+#     house voice in code comments (docs/dev/writing-style.md).
+#   - npm run lint:voice: per-file ratchet on the house voice and line-number
+#     citations in every tracked .md (.claude/skills/log/voice-check.sh).
 #   - npm run dictionary:sentence-final:check: runs before lint:spelling so
 #     a stale companion dictionary reports as drift rather than as a wall of
 #     spelling failures. dictionary-sentence-final.txt is generated from
@@ -235,8 +236,11 @@ fi
 echo "📚 Validating doc references..."
 npm run lint:docs
 
-echo "✍️  Checking doc citations and house voice..."
-npm run lint:doc-citations
+echo "✍️  Checking the house voice in code comments..."
+npm run lint:comment-voice
+
+echo "✍️  Checking the house voice and line citations in markdown..."
+npm run lint:voice
 
 # Ahead of lint:spelling on purpose: a stale companion dictionary presents as
 # unrelated spelling failures on words that are already in dictionary.txt.

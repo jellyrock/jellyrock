@@ -1,0 +1,8 @@
+# Paths the house-voice check (.claude/skills/log/voice-check.sh) skips.
+# One gitignore pattern per line, each under a comment saying why.
+
+# Third-party code and its docs: not ours to reword.
+components/vendor/
+
+# Translations: the text is the translators' language, not our prose.
+locale/

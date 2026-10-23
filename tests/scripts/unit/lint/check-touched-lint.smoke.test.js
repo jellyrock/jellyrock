@@ -1,13 +1,13 @@
 // Smoke tests for scripts/lint/check-touched-lint.cjs.
 //
-// The script invokes spell / markdown / json linters as child processes
+// The script invokes spell / markdown / voice / json linters as child processes
 // against the working tree (committed + uncommitted + untracked files).
 // Full coverage requires those linters' fixtures, which is heavy. Here we
 // verify the script's basic shape: under --quiet it exits 0 on a clean tree,
 // and it can run from a non-repo directory without crashing.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { gitSafeEnv } from '../_helpers/git-env.js';
 import { tmpdir } from 'node:os';
@@ -38,6 +38,26 @@ describe('check-touched-lint (smoke)', () => {
 
     const { exitCode } = spawnScript(SCRIPT, ['--quiet'], { cwd: dir });
     expect(exitCode).toBe(0);
+  });
+
+  it('reports a house-voice hit in a changed tracked .md file', () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-check-touched-lint-voice-'));
+    git(dir, 'init', '--quiet', '--initial-branch=main');
+    git(dir, 'config', 'user.email', 'test@example.com');
+    git(dir, 'config', 'user.name', 'Test');
+    const logDir = join(dir, '.claude', 'skills', 'log');
+    mkdirSync(logDir, { recursive: true });
+    for (const f of ['voice-check.sh', 'md-skip.awk']) {
+      copyFileSync(join('.claude', 'skills', 'log', f), join(logDir, f));
+    }
+    writeFileSync(join(dir, 'README.md'), '# Heading\n\nbody\n');
+    git(dir, 'add', '.');
+    git(dir, 'commit', '--quiet', '-m', 'init');
+    writeFileSync(join(dir, 'README.md'), '# Heading\n\nbody — with a dash\n');
+
+    const { exitCode, stdout } = spawnScript(SCRIPT, ['--quiet'], { cwd: dir });
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('README.md: em-dash 1 (allowed 0)');
   });
 
   it('exits 0 (always informational) even from a non-git directory', () => {

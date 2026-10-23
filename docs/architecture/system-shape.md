@@ -118,7 +118,7 @@ The spell-check and description check skip the PRs `journal-sync` skips (`should
 
 - `journal.sh check`, the followup format in `progress.md`.
 - [`docs-check.cjs`](../../scripts/lint/docs-check.cjs), the doc reference and journal schema checks listed below.
-- `doc-citation-ratchet.js`, the line-number and house-voice ratchet ([writing style](../dev/writing-style.md#what-the-gate-checks)).
+- `comment-voice-ratchet.js`, the house-voice ratchet for code comments ([writing style](../dev/writing-style.md#what-the-gate-checks)).
 - The check that the generated `docs/dev/` table in the [topic map](README.md) matches the folder.
 - [`docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs), which fails a PR that touches a stale architecture doc's territory without updating the doc.
 - Two workflow-consistency checks: the dependency workflow sync and the check that CI runs every `npm run lint` member.
