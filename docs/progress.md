@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-23: chore(ci): Stop rebuilding the retired API reference site
 - 2026-10-23: fix(dialogs): Keep focus on a dialog opened from another dialog
 - 2026-10-23: feat: Add a quality gear, one cap for all codecs, bigger menu icons
 - 2026-10-23: ci(docs): Trigger docs redeploys and check `docs/user` links
