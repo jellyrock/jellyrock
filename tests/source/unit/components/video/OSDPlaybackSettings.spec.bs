@@ -1,0 +1,83 @@
+namespace tests
+
+  ' The gear's membership in the right group. Its menus open through OK, which a spec
+  ' cannot send, so they are driven in tests/rta/specs/dialogs.spec.js; what they show is
+  ' gated in playbackSettingsMenu.spec.bs.
+  @suite("OSD - playback settings gear")
+  class OSDPlaybackSettingsTests extends tests.BaseTestSuite
+
+    private osd as object
+    private buttonMenuRight as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+
+      if not m.global.doesExist("queueManager")
+        m.global.addField("queueManager", "node", false)
+      end if
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.osd = CreateObject("roSGNode", "OSD")
+      m.buttonMenuRight = m.osd.findNode("buttonMenuRight")
+    end sub
+
+    protected override sub afterEach()
+      m.buttonMenuRight = invalid
+      m.osd = invalid
+      super.afterEach()
+    end sub
+
+    private function itemOfType(itemType as string) as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.setFields({
+        ' onItemDataChanged returns early on a blank id.
+        id: "test-" + LCase(itemType),
+        type: itemType,
+        audioStreamCount: 1,
+        hasSubtitles: false,
+        chapterCount: 0,
+        hasMultipleVideoSources: false
+      })
+      return item
+    end function
+
+    private function rightIds() as object
+      ids = []
+      for i = 0 to m.buttonMenuRight.getChildCount() - 1
+        ids.push(m.buttonMenuRight.getChild(i).id)
+      end for
+      return ids
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("which items get the gear")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts the gear left of the playback-info button for a movie")
+    function _()
+      m.osd.itemData = m.itemOfType("Movie")
+      m.assertEqual(m.rightIds(), ["showPlaybackSettings", "showVideoInfoPopup"])
+    end function
+
+    @it("keeps the gear for an episode")
+    function _()
+      m.osd.itemData = m.itemOfType("Episode")
+      m.assertEqual(m.rightIds(), ["showPlaybackSettings", "showVideoInfoPopup"])
+    end function
+
+    ' Its only row is Maximum Bitrate, which Live TV does not offer yet, and a menu with
+    ' no rows is no affordance at all.
+    @it("drops the gear for a Live TV channel")
+    function _()
+      m.osd.itemData = m.itemOfType("TvChannel")
+      m.assertEqual(m.rightIds(), ["showVideoInfoPopup"])
+    end function
+
+  end class
+
+end namespace

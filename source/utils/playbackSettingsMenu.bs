@@ -1,0 +1,146 @@
+' The OSD's playback-settings (gear) menu: its rows, and the Maximum Bitrate choices.
+'
+' Pure, so the mapping from "the saved setting + the playing source" to "what the user
+' sees, and what a pick writes" is testable without a device. The OSD presents these and
+' VideoPlayerView applies a pick.
+'
+' A pick in the player WRITES the user's Bitrate Limit setting (playbackBitrateMaxLimited and
+' playbackBitrateLimit) rather than overriding it for one playback. jellyfin-web and
+' jellyfin-androidtv both do this, and it keeps one source of truth: the device profile
+' (GetBitRateLimit) and the playback report (causedByBitrateLimit) already read that setting.
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+namespace playbackSettingsMenu
+
+  ' Row ids, which the OSD dispatches on.
+  const ROW_MAX_BITRATE = "maxBitrate"
+
+  ' The Maximum Bitrate choices, in Mbps, highest first. Modeled on jellyfin-web's
+  ' quality ladder, kept to whole numbers because playbackBitrateLimit stores whole Mbps.
+  ' 0 is Auto and is not part of the ladder.
+  function ladderMbps() as object
+    return [120, 80, 60, 40, 20, 15, 10, 8, 6, 4, 3, 2, 1]
+  end function
+
+  ' The user's cap in Mbps, or 0 for Auto (no cap of their own).
+  '
+  ' Reads the setting through the same coercion as GetBitRateLimit() and
+  ' causedByBitrateLimit(), so all three agree on what counts as a cap. "Enabled with 0"
+  ' applies Roku's per-codec ceilings rather than a number the user chose, so it reads as
+  ' Auto here too, and picking Auto from that state is a no-op that leaves it untouched.
+  '
+  ' @param {object} settings - m.global.user.settings
+  ' @returns {integer}
+  function currentMbps(settings as object) as integer
+    if not isValid(settings) then return 0
+    if not isBooleanTrue(settings.playbackBitrateMaxLimited) then return 0
+    limitMbps = mediaNumber(settings.playbackBitrateLimit)
+    if limitMbps <= 0 then return 0
+    return limitMbps
+  end function
+
+  ' "Auto" or "8 Mbps".
+  function valueLabel(mbps as integer) as string
+    if mbps <= 0 then return translate(translationKeys.LabelAuto)
+    return translate(translationKeys.LabelBitrateMbps, [mbps.toStr()])
+  end function
+
+  ' The gear menu's rows. Empty when the menu has nothing to offer, and the OSD then drops
+  ' the gear button.
+  '
+  ' Live TV gets no Maximum Bitrate row: a reload there opens a new live stream, and the
+  ' one-release-per-stream rule has not been checked for that path yet.
+  '
+  ' @param {boolean} isLiveTv - the playing item is a TvChannel
+  ' @param {integer} maxBitrateMbps - currentMbps() of the user's settings
+  ' @returns {object} - { labels: [string], ids: [string] }
+  function rows(isLiveTv as boolean, maxBitrateMbps as integer) as object
+    menu = { labels: [], ids: [] }
+    if not isLiveTv
+      menu.labels.push(translate(translationKeys.LabelSettingWithValue, [translate(translationKeys.LabelMaximumBitrate), valueLabel(maxBitrateMbps)]))
+      menu.ids.push(ROW_MAX_BITRATE)
+    end if
+    return menu
+  end function
+
+  ' The Maximum Bitrate picker, in the shape trackPickerOptions builds:
+  ' { labels, values, defaultIndex, selectedIndex }, where `values` are Mbps and 0 is Auto.
+  '
+  ' Trimmed the way jellyfin-web trims its list: the steps at or below the source's video
+  ' bitrate, plus the one step above it. Anything higher constrains nothing this source
+  ' has, so it would only lengthen the list. An unknown bitrate keeps the whole ladder.
+  ' The current value always appears and is checked, even when it is off the ladder (a
+  ' number typed in Settings) or trimmed away.
+  '
+  ' @param {integer} currentValueMbps - currentMbps() of the user's settings
+  ' @param {integer} sourceVideoBitrate - the playing video stream's bitrate in bit/s, 0 if unknown
+  ' @returns {object}
+  function bitrateOptions(currentValueMbps as integer, sourceVideoBitrate as integer) as object
+    choices = []
+    stepAbove = 0
+    for each mbps in ladderMbps()
+      bitrate = mbps * 1000000
+      if sourceVideoBitrate <= 0 or bitrate <= sourceVideoBitrate
+        choices.push(mbps)
+      else
+        ' Highest first, so the last step above the source is the smallest one.
+        stepAbove = mbps
+      end if
+    end for
+    if stepAbove > 0 then choices.unshift(stepAbove)
+
+    if currentValueMbps > 0 and not containsInteger(choices, currentValueMbps)
+      insertAt = choices.count()
+      for i = 0 to choices.count() - 1
+        if choices[i] < currentValueMbps
+          insertAt = i
+          exit for
+        end if
+      end for
+      choices = insertIntoArray(choices, insertAt, currentValueMbps)
+    end if
+
+    options = { labels: [], values: [], defaultIndex: 0, selectedIndex: 0 }
+    options.labels.push(valueLabel(0))
+    options.values.push(0)
+    for each mbps in choices
+      if mbps = currentValueMbps
+        options.selectedIndex = options.values.count()
+      end if
+      options.labels.push(valueLabel(mbps))
+      options.values.push(mbps)
+    end for
+    options.defaultIndex = options.selectedIndex
+    return options
+  end function
+
+  ' The setting fields a pick writes, as { fieldName: value }, for user.settings.Save().
+  ' Auto turns the limit off and keeps the saved number, so Settings still shows it.
+  function settingWrites(mbps as integer) as object
+    if mbps <= 0 then return { playbackBitrateMaxLimited: false }
+    return { playbackBitrateLimit: mbps, playbackBitrateMaxLimited: true }
+  end function
+
+  ' Whether `items` holds `value`. misc.bs's inArray compares as strings, which an
+  ' integer cannot take.
+  function containsInteger(items as object, value as integer) as boolean
+    for each item in items
+      if item = value then return true
+    end for
+    return false
+  end function
+
+  ' A copy of `items` with `value` inserted at `index`.
+  function insertIntoArray(items as object, index as integer, value as dynamic) as object
+    result = []
+    for i = 0 to items.count() - 1
+      if i = index then result.push(value)
+      result.push(items[i])
+    end for
+    if index >= items.count() then result.push(value)
+    return result
+  end function
+
+end namespace

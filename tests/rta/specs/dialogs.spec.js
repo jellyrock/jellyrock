@@ -40,6 +40,7 @@ import {
   PLAYING_STATES,
   getVal,
   getActiveVals,
+  getVals,
   press,
   sleep,
 } from '../lib/steps.js';
@@ -674,6 +675,114 @@ it('a user-capped bitrate transcodes, and the report says which setting did it',
 
   await stopPlayback();
 }, 240000);
+
+// The OSD's gear: the whole Maximum Bitrate round trip a viewer makes. The menu shows
+// the saved value, Back in the picker steps out one level rather than closing both,
+// and a pick is SAVED as the Bitrate Limit setting and applied by a reload, which the
+// report then attributes to that setting. The trim and label rules are unit-gated in
+// playbackSettingsMenu.spec.bs; this proves the flow on a device.
+it('osd gear sets a maximum bitrate: saved, reloaded, and Back steps out one level', async () => {
+  await pausedOsd();
+  await pressOsdButton('showPlaybackSettings');
+
+  // The gear menu: one row, carrying the value (Auto: pausedOsd cleared any cap).
+  await waitFor('#optionList.content.getChildCount()', (n) => n === 1, {
+    label: 'gear menu rows',
+    timeout: 10000,
+  });
+  await waitFocusInside('#optionList', { label: 'gear menu focused', timeout: 5000 });
+  expect(await getVal('#optionList.content.0.title')).toBe('Maximum Bitrate (Auto)');
+
+  // OK opens the picker, with Auto first and checked.
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.getChildCount()', (n) => typeof n === 'number' && n > 1, {
+    label: 'bitrate picker rows',
+    timeout: 10000,
+  });
+  // FOCUSED, not only mounted: the picker opens from the gear menu's result handler,
+  // and the gear menu closes after that, so a close that restored its own focus would
+  // leave this picker on screen and deaf. Counting rows cannot see that.
+  await waitFocusInside('#optionList', { label: 'bitrate picker focused', timeout: 5000 });
+  // Scene-rooted: the dialog is appended to the scene, not to the routed view.
+  const [autoTitle, autoSelected] = await getVals([
+    '#optionList.content.0.title',
+    '#optionList.content.0.isSelected',
+  ]);
+  expect(autoTitle).toBe('Auto');
+  expect(autoSelected, 'Auto is the current value').toBe(true);
+
+  // Back returns to the gear menu, not to the OSD.
+  await press(ecp.Key.Back);
+  await waitFor('#optionList.content.getChildCount()', (n) => n === 1, {
+    label: 'Back from the picker reopened the gear menu',
+    timeout: 10000,
+  });
+  await waitFocusInside('#optionList', { label: 'reopened gear menu focused', timeout: 5000 });
+  expect(await getVal('#optionList.content.0.title')).toBe('Maximum Bitrate (Auto)');
+
+  // Into the picker again, down to the lowest step, and pick it.
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.getChildCount()', (n) => typeof n === 'number' && n > 1, {
+    label: 'bitrate picker rows (second open)',
+    timeout: 10000,
+  });
+  await waitFocusInside('#optionList', {
+    label: 'bitrate picker focused (second open)',
+    timeout: 5000,
+  });
+  const rows = await getVal('#optionList.content.getChildCount()');
+  const startIndex = await getVal('#optionList.itemFocused');
+  for (let i = startIndex; i < rows - 1; i++) await press(ecp.Key.Down);
+  await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {
+    label: 'focus walked to the lowest bitrate',
+    timeout: 8000,
+  });
+  expect(await getVal(`#optionList.content.${rows - 1}.title`)).toBe('1 Mbps');
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('the pick closed the picker', { timeout: 10000 });
+
+  // The reload plays again, and the pick was saved as the user's setting.
+  await waitMediaPlaying('reload after the bitrate pick');
+  const reg = await odc.readRegistry();
+  const section = reg?.values?.[session.userId] ?? {};
+  expect(section.playbackBitrateMaxLimited).toBe('true');
+  expect(section.playbackBitrateLimit).toBe('1');
+
+  // ...and applied: the stream now transcodes, and the report names the setting.
+  await waitOsdUp('osd visible after the reload', { itemId: heroId });
+  await pressOsdButton('showVideoInfoPopup');
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
+    label: 'playback info report reached the dialog',
+    timeout: 25000,
+  });
+  expect(await getVal('#jrDialog.tagline'), 'a 1 Mbps cap must not direct play').not.toBe(
+    'Direct playing',
+  );
+  const sections = await getVal('#jrDialog.sections');
+  const reasons = sections.find((sec) => sec.id === 'reasons');
+  expect(reasons, 'a transcode must report why').toBeTruthy();
+  const codes = reasons.rows.map((r) => r.label);
+  expect(codes.some((c) => c.includes('Bitrate') || c.includes('BitRate'))).toBe(true);
+
+  await press(ecp.Key.Back);
+  await waitDialogClosed('playback info dismissed', { timeout: 10000 });
+
+  // The gear menu now reads the saved value.
+  await pressOsdButton('showPlaybackSettings');
+  await waitFor('#optionList.content.getChildCount()', (n) => n === 1, {
+    label: 'gear menu rows after the pick',
+    timeout: 10000,
+  });
+  expect(await getVal('#optionList.content.0.title')).toBe('Maximum Bitrate (1 Mbps)');
+  await press(ecp.Key.Back);
+  await waitDialogClosed('gear menu dismissed', { timeout: 10000 });
+  await waitFocused((f) => f.node?.id === 'showPlaybackSettings', {
+    label: 'focus restored to the gear',
+    timeout: 8000,
+  });
+
+  await stopPlayback();
+}, 300000);
 
 // The report's KEY MODEL, driven for real rather than inspected. The focus-ring
 // fix above is about appearance; this asserts the dialog actually WORKS: that it

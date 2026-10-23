@@ -1,0 +1,142 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/playbackSettingsMenu.bs"
+import "pkg:/source/utils/translate.bs"
+
+namespace tests
+
+  @suite("playbackSettingsMenu.bs - the OSD gear menu and its Maximum Bitrate choices")
+  class PlaybackSettingsMenuTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("currentMbps")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is Auto (0) while the limit is off, whatever number is saved")
+    function _()
+      m.assertEqual(playbackSettingsMenu.currentMbps({ playbackBitrateMaxLimited: false, playbackBitrateLimit: 8 }), 0)
+    end function
+
+    @it("is the saved number while the limit is on")
+    function _()
+      m.assertEqual(playbackSettingsMenu.currentMbps({ playbackBitrateMaxLimited: true, playbackBitrateLimit: 8 }), 8)
+    end function
+
+    ' "On with 0" applies Roku's per-codec ceilings, not a number the user picked, so it
+    ' reads as Auto: the same line GetBitRateLimit and causedByBitrateLimit draw.
+    @it("is Auto while the limit is on with 0")
+    function _()
+      m.assertEqual(playbackSettingsMenu.currentMbps({ playbackBitrateMaxLimited: true, playbackBitrateLimit: 0 }), 0)
+    end function
+
+    @it("is Auto with no settings at all")
+    function _()
+      m.assertEqual(playbackSettingsMenu.currentMbps(invalid), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows Maximum Bitrate with its value in parentheses")
+    function _()
+      menu = playbackSettingsMenu.rows(false, 0)
+      m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE])
+      m.assertEqual(menu.labels, ["Maximum Bitrate (Auto)"])
+
+      m.assertEqual(playbackSettingsMenu.rows(false, 2).labels, ["Maximum Bitrate (2 Mbps)"])
+    end function
+
+    @it("has no rows for Live TV, so the OSD drops the gear")
+    function _()
+      menu = playbackSettingsMenu.rows(true, 0)
+      m.assertEqual(menu.ids.count(), 0)
+      m.assertEqual(menu.labels.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("bitrateOptions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers Auto then the whole ladder when the source bitrate is unknown")
+    function _()
+      options = playbackSettingsMenu.bitrateOptions(0, 0)
+      m.assertEqual(options.values, [0, 120, 80, 60, 40, 20, 15, 10, 8, 6, 4, 3, 2, 1])
+      m.assertEqual(options.labels[0], "Auto")
+      m.assertEqual(options.labels[1], "120 Mbps")
+      m.assertEqual(options.labels.count(), options.values.count())
+    end function
+
+    ' Steps at or below the source, plus the one above it: anything higher constrains
+    ' nothing this source has.
+    @it("trims to the source's bitrate plus one step above")
+    function _()
+      options = playbackSettingsMenu.bitrateOptions(0, 7000000)
+      m.assertEqual(options.values, [0, 8, 6, 4, 3, 2, 1])
+    end function
+
+    @it("keeps a source exactly on a step without adding the step above it")
+    function _()
+      options = playbackSettingsMenu.bitrateOptions(0, 8000000)
+      m.assertEqual(options.values, [0, 10, 8, 6, 4, 3, 2, 1])
+    end function
+
+    @it("still offers the smallest step for a source below it")
+    function _()
+      options = playbackSettingsMenu.bitrateOptions(0, 500000)
+      m.assertEqual(options.values, [0, 1])
+    end function
+
+    @it("checks and focuses Auto when no cap is set")
+    function _()
+      options = playbackSettingsMenu.bitrateOptions(0, 7000000)
+      m.assertEqual(options.selectedIndex, 0)
+      m.assertEqual(options.defaultIndex, 0)
+    end function
+
+    @it("checks and focuses the saved cap")
+    function _()
+      options = playbackSettingsMenu.bitrateOptions(4, 7000000)
+      m.assertEqual(options.values[options.selectedIndex], 4)
+      m.assertEqual(options.defaultIndex, options.selectedIndex)
+    end function
+
+    ' A number typed in Settings need not be on the ladder; it must still show as current.
+    @it("inserts a saved cap that is off the ladder, in order, and checks it")
+    function _()
+      options = playbackSettingsMenu.bitrateOptions(7, 0)
+      m.assertEqual(options.values, [0, 120, 80, 60, 40, 20, 15, 10, 8, 7, 6, 4, 3, 2, 1])
+      m.assertEqual(options.values[options.selectedIndex], 7)
+      m.assertEqual(options.labels[options.selectedIndex], "7 Mbps")
+    end function
+
+    @it("keeps a saved cap the trim would have dropped")
+    function _()
+      options = playbackSettingsMenu.bitrateOptions(40, 7000000)
+      m.assertEqual(options.values, [0, 40, 8, 6, 4, 3, 2, 1])
+      m.assertEqual(options.values[options.selectedIndex], 40)
+    end function
+
+    @it("keeps the list in descending order when it inserts an off-ladder cap the trim dropped")
+    function _()
+      options = playbackSettingsMenu.bitrateOptions(5, 500000)
+      m.assertEqual(options.values, [0, 5, 1])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("settingWrites")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Auto keeps the saved number, so Settings still remembers it.
+    @it("turns the limit off for Auto and leaves the number alone")
+    function _()
+      m.assertEqual(playbackSettingsMenu.settingWrites(0), { playbackBitrateMaxLimited: false })
+    end function
+
+    @it("saves the number and turns the limit on for a cap")
+    function _()
+      m.assertEqual(playbackSettingsMenu.settingWrites(8), { playbackBitrateLimit: 8, playbackBitrateMaxLimited: true })
+    end function
+
+  end class
+
+end namespace

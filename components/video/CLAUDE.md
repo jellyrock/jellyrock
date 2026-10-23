@@ -13,6 +13,7 @@ The video playback subsystem. [docs/architecture/playback.md](../../docs/archite
 ## OSD
 
 - One `OSD` instance per `VideoPlayerView`. It hides after 5 seconds without input (`inactiveTimeout="5"` on the instance in `VideoPlayerView.xml`).
+- **The gear's Maximum Bitrate pick saves the user's Bitrate Limit setting;** it is not a per-playback override. The device profile and the report read that one setting, so a second source of truth would let them disagree. A new gear row goes in `playbackSettingsMenu.rows()`. Opening one dialog from another's result handler needs `handOffFocus` first, or the closing dialog takes focus back. See [playback.md](../../docs/architecture/playback.md#playback-settings-the-gear).
 - For a Live TV channel the OSD adapts: a `goToLive` button, the behind-live math (in `source/utils/liveTv.bs`), and times from the guide data and the wall clock, falling back to the player's `positionTime` when program timing is missing. A DVR recording gets episode-style titles only. See [playback.md](../../docs/architecture/playback.md#live-tv-mode).
 
 ## How an item plays

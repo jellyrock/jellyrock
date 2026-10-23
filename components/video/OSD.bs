@@ -5,6 +5,7 @@ import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
@@ -275,6 +276,13 @@ sub setButtonStates()
       ' position tick re-derives this through setGoToLiveEnabled().
       m.goToLiveButton.isEnabled = false
     end if
+  end if
+
+  ' Playback settings: the gear stays only while its menu has a row to show. Removed before
+  ' applyOverflow below, because the right group's width sets the left row's cap.
+  if playbackSettingsMenu.rows(isTvChannel, 0).ids.count() = 0
+    gearButton = m.buttonMenuRight.findNode("showPlaybackSettings")
+    if isValid(gearButton) then m.buttonMenuRight.removeChild(gearButton)
   end if
 
   ' Debug-only: pad the row so the overflow can be reached on a device. Inert at
@@ -782,6 +790,12 @@ sub onButtonSelected()
     return
   end if
 
+  ' The gear is the same kind of affordance: it opens a menu rather than acting.
+  if selectedButton.id = "showPlaybackSettings"
+    openSettingsMenu()
+    return
+  end if
+
   dispatchOsdAction(selectedButton.id)
 end sub
 
@@ -811,11 +825,11 @@ end sub
 ' Button-row overflow: the same contract ItemDetails runs, over this row.
 '
 ' The left group is capped at whatever fits before the RIGHT group's leftmost
-' edge, so the transport row can never run into the pinned playback-info button.
-' That cap is 10, not ItemDetails' 8: the spacing is 24 rather than 18 and the
-' bound is a button rather than the logo. Both numbers come out of the same
-' arithmetic in source/utils/buttonOverflow.bs, which is why neither is written
-' down anywhere.
+' edge, so the transport row can never run into the pinned gear and playback-info
+' buttons. It differs from ItemDetails' cap because the spacing is 24 rather than
+' 18 and the bound is the right group rather than the logo, and it grows by one
+' when the gear is dropped. Both caps come out of the same arithmetic in
+' source/utils/buttonOverflow.bs, which is why neither is written down anywhere.
 '
 ' Only setButtonStates() changes this row's membership (since goToLive stopped
 ' attaching and detaching mid-playback, nothing else does), so unlike ItemDetails
@@ -827,8 +841,8 @@ function osdRowSpacing(group as object) as integer
   return 0
 end function
 
-' The left row's geometry, in ONE place so the cap and the overflow menu's anchor
-' cannot be derived from different numbers.
+' The button row's geometry, in ONE place so the cap and the menus' anchors (More and
+' the gear) cannot be derived from different numbers.
 '
 ' The right group is right-ALIGNED, so its origin is its right edge and it grows
 ' leftward. Its width is derived from its live child count so pinning a second button there
@@ -842,9 +856,9 @@ function osdRowGeometry() as object
   leftSpacing = osdRowSpacing(m.buttonMenuLeft)
 
   rightCount = m.buttonMenuRight.getChildCount()
+  rightSpacing = osdRowSpacing(m.buttonMenuRight)
   rightWidth = 0
   if rightCount > 0
-    rightSpacing = osdRowSpacing(m.buttonMenuRight)
     rightWidth = (rightCount * buttonWidth) + ((rightCount - 1) * rightSpacing)
   end if
   rightGroupLeftEdge = int(m.buttonMenuRight.translation[0]) - rightWidth
@@ -854,7 +868,9 @@ function osdRowGeometry() as object
     rowY: int(m.buttonMenuLeft.translation[1]),
     spacing: leftSpacing,
     itemWidth: buttonWidth,
-    rightBound: rightGroupLeftEdge - leftSpacing
+    rightBound: rightGroupLeftEdge - leftSpacing,
+    rightOriginX: rightGroupLeftEdge,
+    rightSpacing: rightSpacing
   }
 end function
 
@@ -911,6 +927,102 @@ sub onMoreMenuResult()
   ' ItemDetails' identical handler rather than copied into both.
   buttonId = overflowMenuSelection(dialog.result, ids)
   if buttonId <> "" then dispatchOsdAction(buttonId)
+end sub
+
+' ===========================================================================
+' Playback settings (the gear). Rows and choices come from
+' source/utils/playbackSettingsMenu.bs; a Maximum Bitrate pick goes out on
+' maxBitratePick, and VideoPlayerView saves it and reloads.
+'
+' Two levels: the gear menu, anchored to the gear like More, then the bitrate
+' picker, centred like the playback track pickers. Back in the picker returns to
+' the gear menu; Back there returns to the gear.
+'
+' Each level opens the next from inside its own result handler, and a dialog
+' delivers its result BEFORE it closes (JRListDialog.resolveDialog). Its close then
+' restores focus to its returnFocusTo, which would take focus off the dialog the handler
+' opened and leave it on screen but deaf. So the handler clears the closing
+' dialog's returnFocusTo first (handOffFocus), and every level returns focus to
+' the gear itself rather than to whatever held focus when it opened.
+' ===========================================================================
+
+' Let `closing` close without restoring focus, because the caller is about to open
+' the next dialog, which takes focus itself.
+sub handOffFocus(closing as object)
+  if isValid(closing) then closing.returnFocusTo = invalid
+end sub
+
+' Where the gear sits, for anchoring its menu. The right group is right-ALIGNED, so
+' its children run left to right from its left edge (osdRowGeometry).
+function gearButtonAnchor() as object
+  geometry = osdRowGeometry()
+  gearIndex = 0
+  for i = 0 to m.buttonMenuRight.getChildCount() - 1
+    if m.buttonMenuRight.getChild(i).id = "showPlaybackSettings" then gearIndex = i
+  end for
+  return {
+    x: geometry.rightOriginX + (gearIndex * (geometry.itemWidth + geometry.rightSpacing)),
+    y: geometry.rowY,
+    width: geometry.itemWidth
+  }
+end function
+
+sub openSettingsMenu()
+  menu = playbackSettingsMenu.rows(isLiveTvItem(), playbackSettingsMenu.currentMbps(m.global.user.settings))
+  if menu.ids.count() = 0 then return
+
+  m.settingsMenuIds = menu.ids
+  m.settingsMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onSettingsMenuResult", gearButtonAnchor())
+  m.settingsMenuDialog.returnFocusTo = m.buttonMenuRight.findNode("showPlaybackSettings")
+end sub
+
+sub onSettingsMenuResult()
+  dialog = m.settingsMenuDialog
+  ids = m.settingsMenuIds
+  m.settingsMenuDialog = invalid
+  m.settingsMenuIds = invalid
+  if not isValid(dialog) then return
+
+  ' Same rule as the More menu: only a user's pick acts, never a close code made.
+  rowId = overflowMenuSelection(dialog.result, ids)
+  if rowId = playbackSettingsMenu.ROW_MAX_BITRATE
+    handOffFocus(dialog)
+    openMaxBitratePicker()
+  end if
+end sub
+
+sub openMaxBitratePicker()
+  current = playbackSettingsMenu.currentMbps(m.global.user.settings)
+  options = playbackSettingsMenu.bitrateOptions(current, m.top.sourceVideoBitrate)
+  m.maxBitrateCurrent = current
+  m.maxBitrateOptions = options
+  m.maxBitrateDialog = showListDialog(translate(translationKeys.LabelMaximumBitrate), options.labels, "onMaxBitratePicked", options.defaultIndex, options.selectedIndex)
+  m.maxBitrateDialog.returnFocusTo = m.buttonMenuRight.findNode("showPlaybackSettings")
+end sub
+
+sub onMaxBitratePicked()
+  dialog = m.maxBitrateDialog
+  options = m.maxBitrateOptions
+  current = m.maxBitrateCurrent
+  m.maxBitrateDialog = invalid
+  m.maxBitrateOptions = invalid
+  m.maxBitrateCurrent = invalid
+  if not isValid(dialog) or not isValid(dialog.result) or not isValid(options) then return
+
+  result = dialog.result
+  ' A close code made (teardown, another dialog replacing this one) must not act.
+  if result.externallyCancelled then return
+  if result.cancelled
+    handOffFocus(dialog)
+    openSettingsMenu()
+    return
+  end if
+
+  index = result.optionIndex
+  if not isValid(index) or index < 0 or index >= options.values.count() then return
+  picked = options.values[index]
+  m.log.info("onMaxBitratePicked", "pickedMbps", picked, "currentMbps", current)
+  if picked <> current then m.top.maxBitratePick = picked
 end sub
 
 function createSubtitleLabelNode(labelId as string) as object
@@ -1012,6 +1124,14 @@ sub onDestroy()
   abandonDialog(m.moreMenuDialog)
   m.moreMenuDialog = invalid
   m.overflowMenuIds = invalid
+  ' The gear's two menus act too (the picker writes a setting that reloads playback).
+  abandonDialog(m.settingsMenuDialog)
+  abandonDialog(m.maxBitrateDialog)
+  m.settingsMenuDialog = invalid
+  m.settingsMenuIds = invalid
+  m.maxBitrateDialog = invalid
+  m.maxBitrateOptions = invalid
+  m.maxBitrateCurrent = invalid
 
   ' Unobserve all m.top observers
   m.top.unobserveField("itemData")

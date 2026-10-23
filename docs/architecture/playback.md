@@ -11,6 +11,7 @@ related-files:
   - components/video/OSD.xml
   - components/GetPlaybackInfoTask.bs
   - source/utils/trackPickerOptions.bs
+  - source/utils/playbackSettingsMenu.bs
   - source/utils/playbackInfo.bs
   - source/utils/deviceCapabilities.bs
   - source/utils/playbackErrorInfo.bs
@@ -52,7 +53,7 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-21
+last-reviewed: 2026-10-23
 ---
 
 # Video and audio playback
@@ -241,7 +242,7 @@ Its children, declared in `VideoPlayerView.xml`: `captionGroup` (app-drawn subti
 ### Playback lifecycle
 
 1. **Mount.** `PlayerHostView.mountPlayer()` builds the player, observes its state and press fields, and appends it, hidden while it loads so no black frame covers the backdrop.
-2. **Load.** `init()` launches `LoadVideoContentTask` (`m.LoadMetaDataTask`), which asks the server how to play the item ([below](#choosing-a-stream)). Every load, and every reload after it (an audio, subtitle or version change, a retry), goes through `startVideoLoad()`, which runs it on a new node with its full input set and lets the old run go through `releaseVideoLoad()`. A reload can start while the previous run is still going, and the same node would drop it: a second version pick made during the first one's load was lost 6 of 6 times, and the server-stream retry started from inside a delivery never started 1 time in 10 (measured 2026-10-13 on a Streaming Stick 4K against 12.0.0). `onVideoContentLoaded()` ignores a replaced run's delivery (`isCurrentTaskEvent`), then applies the answer (the stream `content`, the chosen audio, subtitle and version, `cachedPlaybackInfo`), makes the player visible and starts it, or shows the playback error when nothing came back.
+2. **Load.** `init()` launches `LoadVideoContentTask` (`m.LoadMetaDataTask`), which asks the server how to play the item ([below](#choosing-a-stream)). Every load, and every reload after it (an audio, subtitle or version change, a Maximum Bitrate pick, a retry), goes through `startVideoLoad()`, which runs it on a new node with its full input set and lets the old run go through `releaseVideoLoad()`. A reload can start while the previous run is still going, and the same node would drop it: a second version pick made during the first one's load was lost 6 of 6 times, and the server-stream retry started from inside a delivery never started 1 time in 10 (measured 2026-10-13 on a Streaming Stick 4K against 12.0.0). `onVideoContentLoaded()` ignores a replaced run's delivery (`isCurrentTaskEvent`), then applies the answer (the stream `content`, the chosen audio, subtitle and version, `cachedPlaybackInfo`), makes the player visible and starts it, or shows the playback error when nothing came back.
 3. **Playing.** The `state` field moves through `buffering` to `playing`. The `playing` branch reports `start` once, tells the OSD the playback state (its icon), starts `playbackTimer`, and undoes a park.
 4. **Steady state.** `playbackTimer` sends `reportPlayback("update")` every 10 seconds. Pausing stops the timer and sends one update; resuming restarts it.
 5. **End.** `finished` reaches `PlayerHostView.onPlayerStateChange()` ([above](#when-a-video-ends)). If the viewer backs out, the router closes the host, and `destroyPlayer()` reports the stop either way.
@@ -410,7 +411,26 @@ From 12.0 playback resumes the exact file and never upgrades on its own, so the 
 
 ## OSD
 
-The on-screen display: title, current time, position bar, end time and play state, plus the buttons for audio, subtitles, version, chapters and playback info, which reach the player as its `select*Pressed` fields. It opens on a key press and hides after `inactiveTimeout` seconds without one (5, set on the player's `osd` instance), except while paused or while a dialog is open (`OSD.inactiveCheck`).
+The on-screen display: title, current time, position bar, end time and play state, plus the buttons for audio, subtitles, version, chapters and playback info, which reach the player as its `select*Pressed` fields, and the playback-settings gear. It opens on a key press and hides after `inactiveTimeout` seconds without one (5, set on the player's `osd` instance), except while paused or while a dialog is open (`OSD.inactiveCheck`).
+
+### Playback settings (the gear)
+
+The gear sits in the right-hand group, left of playback info, and opens a menu of playback settings. Its one row today is **Maximum Bitrate**, which shows the current value in parentheses: `Maximum Bitrate (Auto)` or `Maximum Bitrate (8 Mbps)`.
+
+| Step | What happens |
+| --- | --- |
+| OK on the gear | `OSD.openSettingsMenu()` opens the rows from `playbackSettingsMenu.rows()` as a menu anchored to the gear, the way **More** opens |
+| OK on Maximum Bitrate | `openMaxBitratePicker()` opens a list of Auto and a ladder of whole Mbps values from `playbackSettingsMenu.bitrateOptions()`, with the current value checked |
+| Back in the list | The gear menu opens again; Back there returns focus to the gear |
+| A pick that differs from the saved value | The OSD writes `maxBitratePick`. `VideoPlayerView.onMaxBitratePicked()` saves it and reloads at the current position through `reloadAtCurrentPosition()`, the same path an audio or subtitle change takes |
+
+**A pick is saved, not a one-playback override.** It writes the user's Bitrate Limit setting (`playbackSettingsMenu.settingWrites()`): Auto turns `playbackBitrateMaxLimited` off and keeps the saved number, and a cap writes `playbackBitrateLimit` and turns the limit on. The Jellyfin web and Android TV clients both save their in-player quality pick. It also keeps one source of truth: the device profile (`GetBitRateLimit()`) and the report's cause check (`causedByBitrateLimit()`) already read that setting, so neither needed to change. A limit that is on with `0` (Roku's per-codec ceilings) reads as Auto, the same line both of those draw.
+
+**The ladder is trimmed to the source.** The list keeps the steps at or below the playing video stream's bitrate (`OSD.sourceVideoBitrate`, read from the loaded version) plus the one step above it, as jellyfin-web does, because a higher cap constrains nothing. A saved value that is off the ladder, typed in Settings, is added and checked. The ladder is whole numbers because `playbackBitrateLimit` stores whole Mbps.
+
+**Each level opens the next from inside its own result handler,** and a list dialog delivers its result before it closes. Its close then restores focus to its `returnFocusTo`, which would leave the new menu on screen without focus. So the handler clears the closing dialog's `returnFocusTo` first (`handOffFocus`), and both levels return focus to the gear. The RTA test in `dialogs.spec.js` checks focus at each level, and it failed with the hand-off disabled (2026-10-23, Streaming Stick 4K).
+
+**Live TV has no gear yet.** A bitrate reload there opens a new live stream, and the one-release-per-stream rule has not been checked on that path, so `rows()` returns nothing for a `TvChannel` and `setButtonStates()` drops the gear. That also gives the left row its slot back.
 
 ### Live TV mode
 
