@@ -1,5 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogClose.bs"
 import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
@@ -664,16 +665,14 @@ end sub
 
 ' Dismiss this overlay. presentOverlayDialog appends it to the scene (through showInfoDialog or
 ' showReportDialog), so closing is a removeChild from our parent + restoring focus to the
-' element that opened us (returnFocusTo).
+' element that opened us (returnFocusTo), which closeOverlayDialog does only if we still
+' hold focus (source/utils/dialogClose.bs).
 sub closeDialog()
-  returnFocusTo = m.top.returnFocusTo
-  parent = m.top.getParent()
-  if isValid(parent) then parent.removeChild(m.top)
-  if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+  closeOverlayDialog(m.top)
 
-  ' LAST, so an observer sees a dialog that is already detached and has already
-  ' handed focus back. cancelDialog routes through here too, so this is the one
-  ' place both close routes pass.
+  ' LAST, so an observer sees a dialog that is already detached and, when it held
+  ' focus, has already handed it back. cancelDialog routes through here too, so
+  ' this is the one place both close routes pass.
   m.top.closed = true
 end sub
 

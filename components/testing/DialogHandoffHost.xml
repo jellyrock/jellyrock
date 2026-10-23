@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DialogHandoffHost: the dialog OWNER in tests/source/unit/utils/dialogHandoff.spec.bs.
+
+  Plays the part of a screen whose result handler opens the next dialog (the OSD gear, a More
+  menu, the playback-error alert's Details). The handler has to run in a component scope, as it
+  does in the app: a Rooibos test has no host node to resolve an observer's function name in.
+-->
+<component name="DialogHandoffHost" extends="Group">
+  <interface>
+    <!-- The focused node the first dialog opens from. -->
+    <field id="opener" type="node" />
+    <field id="first" type="node" />
+    <!-- The dialog the first one's result handler opens. -->
+    <field id="second" type="node" />
+    <!-- What the handler saw right after opening the second dialog, while the first was still mounted. -->
+    <field id="inHandler" type="assocarray" />
+    <function name="openFirst" />
+  </interface>
+</component>

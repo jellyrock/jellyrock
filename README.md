@@ -6,7 +6,6 @@
 [![Translation Status](https://translate.jellyrock.app/widget/jellyrock/svg-badge.svg "Translation Status")](https://translate.jellyrock.app/engage/jellyrock/)
 [![License](https://img.shields.io/github/license/jellyrock/jellyrock.svg "GPL 2.0 License")](LICENSE)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/jellyrock/jellyrock/build.yml?logo=github&branch=main "Build Status")](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain)
-[![API docs](https://img.shields.io/badge/API%20docs-purple "API docs")](https://jellyrock.github.io/api-docs/)
 <!-- [![Translation Status](https://translate.jellyfin.org/widgets/jellyfin/-/jellyfin-roku/svg-badge.svg "Translation Status")](https://translate.jellyfin.org/projects/jellyfin/jellyfin-roku/?utm_source=widget) -->
 
 JellyRock is a fast, fluid Jellyfin client for Roku, focused on stability, performance, and a polished UX. Direct Play in original quality, a redesigned playback OSD, deep theming with custom hex colors, and 99 built-in language translations. Free and open-source, no ads, no tracking. Bring your own Jellyfin server.

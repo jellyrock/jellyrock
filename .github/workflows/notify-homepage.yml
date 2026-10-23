@@ -3,7 +3,7 @@ name: Notify Homepage of Content Changes
 # When content the jellyrock.app marketing site renders at build time changes
 # here, tell it to rebuild. The site fetches docs/screenshots fresh on every
 # build (gitignored there), so a redeploy is all that's needed to pick them up.
-# Mirrors build-docs.yml (-> api-docs). See jellyrock/jellyrock.app#1.
+# Mirrors notify-docs.yml (-> docs). See jellyrock/jellyrock.app#1.
 
 on:
   push:
