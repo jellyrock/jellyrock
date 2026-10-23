@@ -26,7 +26,7 @@ related-files:
   - docs/dev/jellyfin-version-boundaries.yml
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-10-20
+last-reviewed: 2026-10-23
 ---
 
 # Jellyfin server-upgrade automation
@@ -277,7 +277,7 @@ Two more cases from the 10.11.8 to 12.0 triage:
 - **A changed default policy.** 12.0 sets `EnableLegacyAuthorization=false` on upgrade (jellyfin/jellyfin#15559), so `?api_key=`, `X-Emby-Token` and the `Emby` scheme stop authenticating. The spec's `components.securitySchemes` is identical in 10.11.8 and 12.0: the change is server configuration, not a declared contract. It broke our remote-control socket's header-less fallback, fixed in [#920](https://github.com/jellyrock/jellyrock/pull/920).
 - **A parameter that stops working long before it disappears.** 10.11.0 marked Next Up's `disableFirstEpisode` obsolete and stopped reading it, but kept it in the spec. The break surfaced only when 12.0 deleted it ([#925](https://github.com/jellyrock/jellyrock/issues/925)): every 10.11 and later server had shown a **Resume** button on series nobody had started. This is why the skill reads the `from` version's controller before calling a removal cleanup, and why the ledger has a [parameters section](#parameters-whose-meaning-changed).
 
-**2. How we call an endpoint, as opposed to which ones we call.** The manifest's `requestFields` list is flat and repo-wide (`{name, sourceFiles}`, no endpoint), and it scans only `source/api/**/*.bs` (`REQUEST_FIELD_GLOBS`). So nothing can compare the parameters we send with the parameters an endpoint declares. All four of #784's call sites live under `components/`. Two consequences:
+**2. How we call an endpoint, as opposed to which ones we call.** The manifest's `requestFields` list is flat and repo-wide (`{name, sourceFiles}`, no endpoint), and it scans only `source/api/**/*.bs` and the SyncPlay request bodies (`REQUEST_FIELD_GLOBS`). So nothing can compare the parameters we send with the parameters an endpoint declares. All four of #784's call sites live under `components/`. Two consequences:
 
 - **Parameters we send that don't exist.** Each of #784's call sites sent `recursive`, `SortBy`, `SortOrder` and `Filters` to an endpoint that has never accepted them (the server sets all four itself, the same from 10.7.0 through master). Harmless, but for years they sent readers looking in the wrong place.
 - **Narrowing parameters we leave out.** That endpoint's `mediaTypes` is the only filter a client controls. The web client asks for videos only; we sent nothing, which is what exposed us when the server's default widened.
