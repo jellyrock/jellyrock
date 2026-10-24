@@ -114,6 +114,9 @@ function playerEvent(evt as object) as object
       ' Only the group's item answers to the group. Anything else the viewer started plays
       ' as their own, so this member halts rather than report a load the group never asked for.
       if syncPlayQueue.isGroupItem(m.global.queueManager.callFunc("getCurrentItem"), m.state.playingItemId)
+        ' A new player has reported no position yet. The old player's last one would go out in
+        ' this mount's Buffering and feed applyPlan's seek check, so start from the load's start.
+        m.playerPositionTicks = m.loadStartTicks
         track({ kind: "mounted", startTicks: m.loadStartTicks })
       else
         haltFollowing("a player mounted for an item the group is not playing")
