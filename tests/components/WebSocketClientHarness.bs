@@ -1,0 +1,3 @@
+import "pkg:/components/vendor/BrightWebSocket/web_socket_client/ByteUtil.brs"
+import "pkg:/components/vendor/BrightWebSocket/web_socket_client/Logger.brs"
+import "pkg:/components/vendor/BrightWebSocket/web_socket_client/WebSocketClient.brs"

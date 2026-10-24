@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WebSocketClientHarness (test builds only): a plain Node that loads the vendored WebSocket
+  client's scripts, so WebSocketClient.spec.bs can run inside a component scope with @SGNode.
+  The client's own component extends Task and starts its socket loop in init(), which a test
+  node would inherit as a thread that never ends.
+-->
+<component name="WebSocketClientHarness" extends="Node" />
