@@ -186,6 +186,19 @@ namespace tests
       m.assertEqual(m.manager.sync.trackerPhase, "ready")
     end function
 
+    @it("a phase change that sends no report still reaches the published phase")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 12.5 })
+      m.assertEqual(m.manager.sync.trackerPhase, "ready")
+      m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 12.5 })
+      m.assertEqual(m.manager.sync.trackerPhase, "stalling")
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 12.5 })
+      m.assertEqual(m.manager.sync.trackerPhase, "ready")
+    end function
+
     @it("a mount of anything else halts: what the viewer started plays as their own")
     function _()
       m.joinGroup()

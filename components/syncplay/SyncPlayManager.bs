@@ -396,6 +396,7 @@ end sub
 ' --- reports ---
 
 sub track(evt as object)
+  phaseBefore = m.tracker.phase
   result = syncPlayPlayback.trackPlayerEvent(m.tracker, evt)
   if result.waitMs > 0
     m.readyTimer.control = "stop"
@@ -412,6 +413,9 @@ sub track(evt as object)
   end if
   if result.report <> ""
     if result.positionTicks >= 0 then report(result.report, isPlaying, result.positionTicks) else report(result.report, isPlaying)
+  else if m.tracker.phase <> phaseBefore
+    ' A phase change that sends no report still reaches the published field.
+    publish()
   end if
 end sub
 
