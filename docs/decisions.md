@@ -2266,6 +2266,16 @@ While a SyncPlay group is paused, the manager holds its player paused, and a pau
 
 Ruled out: confirming a pause once without remembering the group's state, which misses a later drift; holding a Pause until the node reports playing, which rests on the disproved rule. Recheck if a pause during a network stall, while a transcode buffers, or on another device misbehaves: none were measured.
 
+## decision-id: syncplay-load-owed-at-arrival
+
+**date**: 2026-10-24
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayQueue.bs`, `components/syncplay/SyncPlayManager.bs`
+
+The player load a SyncPlay `PlayQueue` frame owes is decided when the frame arrives (`syncPlayQueue.owedLoadAfter`), while the playing item before and after it is still known, and kept in `SyncPlayManager`'s `m.owedLoad` until `applyQueue` performs it, or a halt, a leave or a join clears it. Deciding once the items fetch returned lost the load: a `StateUpdate`, `UserJoined` or `UserLeft` landing mid-fetch moved the baseline, and a newer update that keeps the item was judged by its own reason. Measured on the Streaming Stick 4K on 2026-10-24 against Jellyfin 12.2: `NextItem` then `Pause` back to back left the old item's player paused under the group's `Pause` and never mounted the new one; with the record, the new item mounts.
+
+Ruled out: carrying the previous item through the fetch's context, which misses a newer update that supersedes the fetch; comparing the group's item with the one the mounted player loaded, which still needs the reason rule with no player mounted (a `Queue` after a `Stop` would start playback) and adds bookkeeping to the player hooks.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
