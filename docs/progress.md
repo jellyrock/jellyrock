@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-24: feat(syncplay): Follow a group, fix Play on buffering, speed up casts
 - 2026-10-24: test(rta): Pin the `home-failure` spec to the built-in Home layout
 - 2026-10-23: feat(syncplay): Add the pure SyncPlay layer and parse its frames in the receiver
 - 2026-10-23: chore(ci): Stop rebuilding the retired API reference site
