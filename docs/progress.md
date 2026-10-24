@@ -837,6 +837,12 @@ The SyncPlay membership state (`source/syncplay/syncPlayState.bs`) keeps no memb
 
 Closes when phase D's group menu (the overhang icon's `showListDialog`) fetches `GetApi().BuildGetSyncPlayGroupsRequest()` each time it opens and shows the members from it: each group's members in the join list, and the current group's members in the in-group menu's header (match on `GroupId`). The in-group header in jellyfin-web reads the list from `GroupJoined` only, so it goes stale; this does better. Decide in phase D whether the menu waits for the fetch or fills the members line in when it arrives, and what it shows when the fetch fails (the group and its actions, no members).
 
+#### `handleTransport`'s `playpause` still writes `control = "play"` to a node that is buffering `[fid: playpause-plays-buffering-node]` `[captured 2026-10-24]`
+
+`VideoPlayerView.handleTransport` routes `play` and `resume` through `voiceTransport.playControl()` since commit `4f9c48cd`, which writes nothing to a buffering node. Its `playpause` branch was left as it was: any state that is not playing or paused still gets `control = "play"`. A device probe (Streaming Stick 4K, Roku OS 15.3.4, 2026-10-23) showed that a `control = "play"` written while a seek buffers leaves the node at `buffering` for good, so a remote or voice play/pause pressed during a seek's buffering likely wedges playback the same way. Not checked on a device.
+
+Not done in that fix: it changes voice and remote behavior outside SyncPlay, and needs its own device probe. Closes with: `playpause` decides its control through `playControl()` (or a sibling helper with a spec), and a device probe sends `playpause` during a seek's buffering and sees the node reach `playing`.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
