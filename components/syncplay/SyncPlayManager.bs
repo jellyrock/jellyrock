@@ -65,6 +65,8 @@ sub ensureReady()
   ' What the player last told us.
   m.playerState = ""
   m.playerPositionTicks = 0&
+  ' Where the load now starting was asked to start (ticks), for the tracker's first Ready.
+  m.loadStartTicks = 0&
   ' Set before applyGroupUpdate on a PlayQueue frame, so the item change can be told afterwards.
   m.previousPlayingItemId = ""
   publish()
@@ -112,7 +114,7 @@ function playerEvent(evt as object) as object
       ' Only the group's item answers to the group. Anything else the viewer started plays
       ' as their own, so this member halts rather than report a load the group never asked for.
       if syncPlayQueue.isGroupItem(m.global.queueManager.callFunc("getCurrentItem"), m.state.playingItemId)
-        track({ kind: "mounted" })
+        track({ kind: "mounted", startTicks: m.loadStartTicks })
       else
         haltFollowing("a player mounted for an item the group is not playing")
       end if
@@ -316,14 +318,17 @@ sub applyQueue(reason as string, queueItems as object)
   if reason = "NewPlaylist"
     startTicks& = syncPlayPlayback.startPositionTicks({ lastUpdateMs: m.state.lastUpdateMs, startPositionTicks: m.state.startPositionTicks }, m.lastCommand, m.estimator, syncPlayTime.nowMs())
     queueManager.callFunc("setCurrentStartingPoint", startTicks&, true)
+    m.loadStartTicks = startTicks&
     m.expectingRemount = isValid(host)
     queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
   else if isValid(host)
+    m.loadStartTicks = 0&
     m.expectingRemount = true
     queueManager.callFunc("advanceTo", index)
     host.callFunc("skipToCurrentQueueItem")
   else
+    m.loadStartTicks = 0&
     queueManager.callFunc("startCurrentFresh")
     queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
@@ -347,7 +352,9 @@ sub track(evt as object)
     if isValid(host) then host.callFunc("handleTransport", { command: "pause" })
     isPlaying = false
   end if
-  if result.report <> "" then report(result.report, isPlaying)
+  if result.report <> ""
+    if result.positionTicks >= 0 then report(result.report, isPlaying, result.positionTicks) else report(result.report, isPlaying)
+  end if
 end sub
 
 sub onReadyTimer()
@@ -355,14 +362,17 @@ sub onReadyTimer()
   if isFollowing() then track({ kind: "timeout" })
 end sub
 
-sub report(kind as string, isPlaying as boolean)
+' @param positionTicks - the position to report; omitted, the player's own
+sub report(kind as string, isPlaying as boolean, positionTicks = invalid as dynamic)
   whenMs& = syncPlayOffset.serverNowMs(m.estimator, syncPlayTime.nowMs())
+  reported& = m.playerPositionTicks
+  if isValid(positionTicks) then reported& = syncPlayTime.asLong(positionTicks)
   if kind = "ready"
-    post("Ready", syncPlayRequests.ready(whenMs&, m.playerPositionTicks, isPlaying, m.state.playingItemId))
+    post("Ready", syncPlayRequests.ready(whenMs&, reported&, isPlaying, m.state.playingItemId))
   else
-    post("Buffering", syncPlayRequests.buffering(whenMs&, m.playerPositionTicks, isPlaying, m.state.playingItemId))
+    post("Buffering", syncPlayRequests.buffering(whenMs&, reported&, isPlaying, m.state.playingItemId))
   end if
-  m.log.info("reported", "kind", kind, "positionTicks", m.playerPositionTicks.toStr(), "isPlaying", isPlaying)
+  m.log.info("reported", "kind", kind, "positionTicks", reported&.toStr(), "isPlaying", isPlaying)
   publish()
 end sub
 
@@ -453,6 +463,7 @@ sub leaveLocally()
   m.lastCommand = invalid
   m.pendingPlan = invalid
   m.expectingRemount = false
+  m.loadStartTicks = 0&
   m.failedBursts = 0
   publish()
 end sub

@@ -189,6 +189,35 @@ namespace tests
       m.assertEqual(tracker.lastPositionTicks, 300000000&)
     end function
 
+    @it("a load that started partway in reports ready at its start when the first playing still reads 0")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted", startTicks: 3490000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 0& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      m.assertEqual(result.report, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertEqual(result.positionTicks, 3490000000&)
+    end function
+
+    @it("a load whose first playing reads within the tolerance of its start reports the node's own position")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted", startTicks: 3490000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 3487000000& })
+      m.assertEqual(result.report, "ready")
+      m.assertEqual(result.positionTicks, -1&)
+    end function
+
+    @it("a mount with no start keeps the node's own position")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted" })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      m.assertEqual(result.report, "ready")
+      m.assertEqual(result.positionTicks, -1&)
+    end function
+
     @it("buffering before the first frame reports nothing more")
     function _()
       tracker = syncPlayPlayback.newReadyTracker()

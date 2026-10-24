@@ -108,27 +108,34 @@ namespace syncPlayPlayback
   ' "ready" (the server has this member's position), "stalling" (buffering after ready, not yet
   ' long enough to report), "rebuffering" (a stall the server was told about).
   function newReadyTracker() as object
-    return { phase: "idle", targetTicks: 0&, lastPositionTicks: 0&, lastState: "", reportSeek: false, thenPause: false }
+    return { phase: "idle", targetTicks: 0&, lastPositionTicks: 0&, lastState: "", reportSeek: false, thenPause: false, loadStartTicks: 0& }
   end function
 
   ' Feed one player or coordinator event; get back what to send and what to wait for.
   ' @param tracker - from newReadyTracker, mutated in place
   ' @param evt - { kind: "mounted" | "seek" | "state" | "position" | "timeout" | "unmounted",
-  '   state (for "state"), positionTicks (for "seek", "state" and "position"), and for "seek" the
-  '   plan step's `report` and `thenPause` }. A silent seek (report false) still enters the
-  '   seeking phase, so the buffering and playing it causes are not taken for a stall.
-  ' @returns an AA with report ("", "buffering" or "ready"), waitMs and pauseFirst: `waitMs` above 0 asks for
-  '   a one-shot timer that feeds back { kind: "timeout" }; `pauseFirst` says to pause the player
-  '   before the Ready goes out (a load's first frame: web pauses at playbackstart and reports
-  '   Ready, and the server's Unpause then starts everyone together).
+  '   state (for "state"), positionTicks (for "seek", "state" and "position"), for "mounted" the
+  '   `startTicks` the load was asked to start at (absent when it starts at the beginning), and for
+  '   "seek" the plan step's `report` and `thenPause` }. A silent seek (report false) still enters
+  '   the seeking phase, so the buffering and playing it causes are not taken for a stall.
+  ' @returns an AA with report ("", "buffering" or "ready"), waitMs, pauseFirst and positionTicks:
+  '   `waitMs` above 0 asks for a one-shot timer that feeds back { kind: "timeout" }; `pauseFirst`
+  '   says to pause the player before the Ready goes out (a load's first frame: web pauses at
+  '   playbackstart and reports Ready, and the server's Unpause then starts everyone together);
+  '   `positionTicks` is the position to put in the report, or -1 to use the player's own. A load
+  '   that started partway in has a Video node still reading 0 at its first `playing` (a probe on
+  '   2026-10-23 read 0.0 while buffering and 349.0 just after), and a Ready at 0 makes the server
+  '   send a corrective Seek, so that first Ready carries the start instead.
   function trackPlayerEvent(tracker as object, evt as object) as object
-    result = { report: "", waitMs: 0, pauseFirst: false }
+    result = { report: "", waitMs: 0, pauseFirst: false, positionTicks: -1& }
     if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return result
     kind = evt.kind
     if syncPlayTime.isWholeNumber(evt.positionTicks) then tracker.lastPositionTicks = syncPlayTime.asLong(evt.positionTicks)
 
     if kind = "mounted"
       tracker.phase = "loading"
+      tracker.loadStartTicks = 0&
+      if syncPlayTime.isWholeNumber(evt.startTicks) then tracker.loadStartTicks = syncPlayTime.asLong(evt.startTicks)
       result.report = "buffering"
     else if kind = "seek"
       tracker.phase = "seeking"
@@ -147,6 +154,7 @@ namespace syncPlayPlayback
         tracker.phase = "ready"
         result.report = "ready"
         result.pauseFirst = true
+        if tracker.loadStartTicks - tracker.lastPositionTicks > syncPlayTime.msToTicks(READY_TOLERANCE_MS) then result.positionTicks = tracker.loadStartTicks
       else if state = "buffering" and tracker.phase = "ready"
         tracker.phase = "stalling"
         result.waitMs = STALL_MS
