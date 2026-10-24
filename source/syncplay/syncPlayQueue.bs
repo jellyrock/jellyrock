@@ -5,6 +5,36 @@ import "pkg:/source/utils/playKind.bs"
 ' items here with the parsed playlist.
 namespace syncPlayQueue
 
+  ' The item ids a playlist names, each once, in the order they first appear. A group playlist can
+  ' repeat an item, and queueItemsFor maps by id, so one fetched copy serves every repeat.
+  ' @param playlist - syncPlayMessage's [{ itemId, playlistItemId }]
+  function itemIds(playlist as object) as object
+    ids = []
+    if type(playlist) <> "roArray" then return ids
+    seen = {}
+    for each entry in playlist
+      if not seen.doesExist(entry.itemId)
+        seen[entry.itemId] = true
+        ids.push(entry.itemId)
+      end if
+    end for
+    return ids
+  end function
+
+  ' The items of every page of a fetched queue, in page order, or invalid when any page is not
+  ' usable: a resolved but unusable answer is a missing item, which the caller treats as a failure.
+  ' @param responses - the pool responses, one per page: [{ ok, json }]
+  function pagedItems(responses as object) as dynamic
+    if type(responses) <> "roArray" then return invalid
+    items = []
+    for each res in responses
+      if not isValid(res) or res.ok <> true or not isValid(res.json) then return invalid
+      if type(res.json.Items) <> "roArray" then return invalid
+      items.append(res.json.Items)
+    end for
+    return items
+  end function
+
   ' The QueueManager item AAs for a playlist, in playlist order, each carrying its
   ' syncPlayPlaylistItemId (what commands and the Ready report name the item by). An entry whose
   ' item the server did not return is dropped: the member cannot play what it cannot see.

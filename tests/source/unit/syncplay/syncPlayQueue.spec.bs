@@ -53,6 +53,67 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("itemIds()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists the item ids in playlist order")
+    function _()
+      m.assertEqual(syncPlayQueue.itemIds(m.playlist), ["i-1", "i-2", "i-3"])
+    end function
+
+    @it("names an item once when the playlist repeats it, at its first place")
+    function _()
+      playlist = [{ itemId: "i-2", playlistItemId: "p-1" }, { itemId: "i-1", playlistItemId: "p-2" }, { itemId: "i-2", playlistItemId: "p-3" }]
+      m.assertEqual(syncPlayQueue.itemIds(playlist), ["i-2", "i-1"])
+    end function
+
+    @it("returns no ids for an empty or missing playlist")
+    function _()
+      m.assertEqual(syncPlayQueue.itemIds([]).count(), 0)
+      m.assertEqual(syncPlayQueue.itemIds(invalid).count(), 0)
+      m.assertEqual(syncPlayQueue.itemIds("not a playlist").count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pagedItems()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("appends every page's items, in page order")
+    function _()
+      responses = [
+        { ok: true, json: { Items: [{ Id: "i-1" }, { Id: "i-2" }] } },
+        { ok: true, json: { Items: [{ Id: "i-3" }] } }
+      ]
+      items = syncPlayQueue.pagedItems(responses)
+      m.assertEqual(items.count(), 3)
+      m.assertEqual(items[0].Id, "i-1")
+      m.assertEqual(items[2].Id, "i-3")
+    end function
+
+    @it("is invalid when a page was not ok")
+    function _()
+      responses = [{ ok: true, json: { Items: [{ Id: "i-1" }] } }, { ok: false, json: invalid }]
+      m.assertInvalid(syncPlayQueue.pagedItems(responses))
+    end function
+
+    @it("is invalid when a page has no Items array")
+    function _()
+      m.assertInvalid(syncPlayQueue.pagedItems([{ ok: true, json: { Items: [{ Id: "i-1" }] } }, { ok: true, json: {} }]))
+      m.assertInvalid(syncPlayQueue.pagedItems([{ ok: true, json: invalid }]))
+      m.assertInvalid(syncPlayQueue.pagedItems([invalid]))
+    end function
+
+    @it("is invalid when the responses are not an array")
+    function _()
+      m.assertInvalid(syncPlayQueue.pagedItems(invalid))
+    end function
+
+    @it("returns no items for no responses")
+    function _()
+      m.assertEqual(syncPlayQueue.pagedItems([]).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("positionOf()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
