@@ -160,6 +160,9 @@ namespace syncPlayPlayback
       tracker.targetTicks = syncPlayTime.asLong(evt.positionTicks)
       tracker.reportSeek = evt.report = true
       tracker.thenPause = evt.thenPause = true
+      ' The node's position can reach the target before it reports buffering, so the state
+      ' from before the seek says nothing: forget it and wait for the node's next state.
+      tracker.lastState = ""
       if tracker.reportSeek then result.report = "buffering"
       result.waitMs = SEEK_SETTLE_MS
     else if kind = "state"
