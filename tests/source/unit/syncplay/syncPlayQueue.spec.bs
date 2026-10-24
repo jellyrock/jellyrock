@@ -177,5 +177,40 @@ namespace tests
       m.assertEqual(syncPlayQueue.loadAction("Queue", "p-1", "p-2", true), "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("appliesFetchedQueue()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function memberState(lastUpdateMs as longinteger) as object
+      state = syncPlayState.newState()
+      state.inGroup = true
+      state.lastUpdateMs = lastUpdateMs
+      return state
+    end function
+
+    @it("applies for a member that is following, in the group, with no newer update")
+    function _()
+      state = m.memberState(5000&)
+      m.assertTrue(syncPlayQueue.appliesFetchedQueue(state, 5000&))
+    end function
+
+    @it("applies nothing once the member halted while the items were in flight")
+    function _()
+      state = syncPlayState.halt(m.memberState(5000&))
+      m.assertFalse(syncPlayQueue.appliesFetchedQueue(state, 5000&))
+    end function
+
+    @it("applies nothing outside a group")
+    function _()
+      state = syncPlayState.newState()
+      m.assertFalse(syncPlayQueue.appliesFetchedQueue(state, 0&))
+    end function
+
+    @it("applies nothing when a newer update arrived since the fetch started")
+    function _()
+      state = m.memberState(6000&)
+      m.assertFalse(syncPlayQueue.appliesFetchedQueue(state, 5000&))
+    end function
+
   end class
 end namespace

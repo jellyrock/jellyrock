@@ -84,4 +84,12 @@ namespace syncPlayQueue
     return "launch"
   end function
 
+  ' Whether a fetched play queue still applies: the member is in the group and still following, and
+  ' no newer update arrived while the items were in flight (that one applies its own).
+  ' @param state - the membership state
+  ' @param lastUpdateMs - the update's LastUpdate when the fetch started, as a LongInteger
+  function appliesFetchedQueue(state as object, lastUpdateMs as longinteger) as boolean
+    return state.inGroup and state.following and state.lastUpdateMs = lastUpdateMs
+  end function
+
 end namespace

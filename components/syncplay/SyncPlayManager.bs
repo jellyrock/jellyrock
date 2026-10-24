@@ -286,7 +286,9 @@ sub onQueueUpdate(update as object)
   lastUpdateMs& = m.state.lastUpdateMs
   promises.chain(fetchAsync(req, "syncplay-queue-" + lastUpdateMs&.toStr()), { reason: update.reason, lastUpdateMs: lastUpdateMs& }).then(sub(res as object, ctx as object)
     ' A newer update arrived while this one's items were in flight: it will apply its own.
-    if m.state.lastUpdateMs <> ctx.lastUpdateMs or not m.state.inGroup then return
+    ' A member that stopped following while the items were in flight applies nothing, as onCommand
+    ' does for a halted member.
+    if not syncPlayQueue.appliesFetchedQueue(m.state, ctx.lastUpdateMs) then return
     items = invalid
     if isValid(res) and res.ok = true and isValid(res.json) then items = res.json.Items
     if not isValid(items)
