@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-23
+last-updated: 2026-10-24
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-24: test(rta): Pin the `home-failure` spec to the built-in Home layout
 - 2026-10-23: feat(syncplay): Add the pure SyncPlay layer and parse its frames in the receiver
 - 2026-10-23: chore(ci): Stop rebuilding the retired API reference site
 - 2026-10-23: fix(dialogs): Keep focus on a dialog opened from another dialog
@@ -95,12 +96,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-10: fix(locale): Apply the user's language when preferences fail
 - 2026-10-10: fix: Stop a crash on options in a stopped video's playback info
 - 2026-10-10: fix(overhang): Reset the clock when the screensaver ends
-- 2026-10-09: test(base): Restore `m.global.device` before every test
-- 2026-10-09: chore(lint): Hold code comments to the house voice
-- 2026-10-09: build(bsc): Let a debug build compile past the `dead-code` rule
-- 2026-10-09: build(make): Package the zip that `make install` uploads
-- 2026-10-09: fix(home): Hide pilots of not-yet-started series from Next Up
-- 2026-10-09: fix: Change screens and the overhang in one frame
 
 ## Open followups
 
