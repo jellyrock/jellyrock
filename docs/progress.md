@@ -843,6 +843,12 @@ Closes when phase D's group menu (the overhang icon's `showListDialog`) fetches 
 
 Not done in that fix: it changes voice and remote behavior outside SyncPlay, and needs its own device probe. Closes with: `playpause` decides its control through `playControl()` (or a sibling helper with a spec), and a device probe sends `playpause` during a seek's buffering and sees the node reach `playing`.
 
+#### The vendored socket client drops a message the server sends in fragments `[fid: websocket-fragmented-message-dropped]` `[captured 2026-10-24]`
+
+A message the server splits into several frames is never posted. The last frame of a fragmented message is a continuation frame (opcode 0); `WebSocketClient._decode_frame` hands it to `_handle_frame` with that opcode after appending the earlier fragments, and `_handle_frame` acts only on close, ping, text and binary, so the reassembled message is dropped. Found on 2026-10-24 while writing `tests/source/unit/remotecontrol/WebSocketClient.spec.bs` (commit `4b725d92`): a fragmented-message case failed on the code before and after that commit, and was left out. Jellyfin sends each session message as one frame, so nothing hits it today.
+
+Not done there: it changes how every inbound message is handed over and needs its own spec. Closes with: `_decode_frame` passes the first fragment's opcode for a final continuation frame, a spec case delivers a three-fragment text message intact, and the existing cases still pass.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
