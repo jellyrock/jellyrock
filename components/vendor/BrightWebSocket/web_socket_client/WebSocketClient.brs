@@ -8,6 +8,8 @@
 '   - Removed all TLS/wss:// support (TlsUtil.brs, ByteUtil.rsa_encrypt, m._secure/m._tls
 '     branches). Upstream's TLS was an unimplemented skeleton (stubbed asymmetric crypto,
 '     no cert validation) and Roku cannot do socket TLS regardless — JellyRock is ws:// only.
+'   - _read_socket_data reads all the socket holds per pass (up to _buffer_size) and decodes every
+'     complete frame through _decode_frame, where upstream read 1024 bytes and decoded one frame.
 
 ' Create a new WebSocketClient instance
 function WebSocketClient() as object
@@ -319,109 +321,41 @@ function WebSocketClient() as object
   end sub
 
   ' Read socket data
+  ' JellyRock: one pass takes everything the socket holds (up to _buffer_size) and decodes every
+  ' complete frame. Upstream read 1024 bytes and decoded one frame per pass, which at the task
+  ' loop's 100 ms poll delivered a large frame at about 1 KB per 100 ms.
   ' @param self WebSocketClient
   ws._read_socket_data = sub()
     if m._socket = invalid or m._ready_state = m.STATE.CLOSED
       return
     end if
     buffer = createObject("roByteArray")
-    buffer[1024] = 0
-    bytes_received = 0
-    if m._socket.isReadable() and m._socket.getCountRcvBuf() > 0
-      bytes_received = m._socket.receive(buffer, 0, 1024)
-    end if
-    if bytes_received < 0
-      m._close()
-      m._error(15, "Failed to read from socket")
-      return
-    end if
-    buffer_index = 0
-    for byte_index = m._data_size to m._data_size + bytes_received - 1
-      m._data[byte_index] = buffer[buffer_index]
-      buffer_index++
-    end for
-    m._data_size += bytes_received
-    m._data[m._data_size] = 0
-    ' WebSocket frames
-    if m._has_received_handshake
-      ' Wait for at least the payload 7-bit size
-      if m._data_size < 2
-        return
+    buffer[m._FRAME_SIZE] = 0
+    while m._data_size < m._buffer_size and m._socket.isReadable() and m._socket.getCountRcvBuf() > 0
+      ' Never receive past _buffer_size, so _data_size stays within it and the pad index is free
+      chunk_size = m._buffer_size - m._data_size
+      if chunk_size > m._FRAME_SIZE
+        chunk_size = m._FRAME_SIZE
       end if
-      final = (m._data[0] >> 7) = 1
-      opcode = (m._data[0] and &hf)
-      control = (opcode >> 3) = 1
-      masked = (m._data[1] >> 7) = 1
-      payload_size_7 = m._data[1] and &h7f
-      payload_size = payload_size_7
-      payload_index = 2
-      if payload_size_7 = 126
-        ' Wait for the 16-bit payload size
-        if m._data_size < 4
-          return
-        end if
-        payload_size = bytes_to_short(m._data[2], m._data[3])
-        payload_index += 2
-      else if payload_size_7 = 127
-        ' Wait for the 64-bit payload size
-        if m._data_size < 10
-          return
-        end if
-        payload_size = bytes_to_long(m._data[2], m._data[3], m._data[4], m._data[5], m._data[6], m._data[7], m._data[8], m._data[9])
-        payload_index += 8
-      end if
-      ' JellyRock hardening: bound the server-declared payload size before buffering it, so a
-      ' malicious/MITM frame on the cleartext ws:// LAN can't grow m._data unbounded (OOM/crash).
-      ' Jellyfin command frames are a few KB at most; _buffer_size is the ceiling.
-      if payload_size < 0 or payload_size > m._buffer_size
+      bytes_received = m._socket.receive(buffer, 0, chunk_size)
+      if bytes_received < 0
         m._close()
-        m._error(18, "Frame payload exceeds max size")
+        m._error(15, "Failed to read from socket")
         return
       end if
-      if masked
-        ' Wait for mask int
-        if m._data_size < payload_index
-          return
-        end if
-        ' JellyRock: skip the 4 mask-key bytes. Server->client frames are never masked (RFC 6455),
-        ' so we don't unmask — upstream read the key into a variable it never used (removed).
-        payload_index += 4
+      if bytes_received = 0
+        exit while
       end if
-      ' Wait for payload
-      if m._data_size < payload_index + payload_size
-        return
-      end if
-      payload = createObject("roByteArray")
-      for byte_index = payload_index to payload_index + payload_size - 1
-        payload.push(m._data[byte_index])
+      buffer_index = 0
+      for byte_index = m._data_size to m._data_size + bytes_received - 1
+        m._data[byte_index] = buffer[buffer_index]
+        buffer_index++
       end for
-      ' Handle control frame
-      if control
-        m._handle_frame(opcode, payload)
-        ' Handle data frame
-      else if final
-        full_payload = createObject("roByteArray")
-        full_payload.append(m._frame_data)
-        full_payload.append(payload)
-        m._handle_frame(opcode, full_payload)
-        m._frame_data.clear()
-        ' Check for continuation frame
-      else
-        m._frame_data.append(payload)
-      end if
-      ' Save start of next frame
-      if m._data_size > payload_index + payload_size
-        data = createObject("roByteArray")
-        data.append(m._data)
-        m._data.clear()
-        for byte_index = payload_index + payload_size to m._data_size - 1
-          m._data.push(data[byte_index])
-        end for
-      else
-        m._data.clear()
-      end if
-      ' HTTP/Handshake
-    else
+      m._data_size += bytes_received
+      m._data[m._data_size] = 0
+    end while
+    ' HTTP/Handshake
+    if not m._has_received_handshake
       data = m._data.toAsciiString()
       http_delimiter = m._NL + m._NL
       if data.len() <> data.replace(http_delimiter, "").len()
@@ -439,10 +373,110 @@ function WebSocketClient() as object
         m._handle_handshake_response(message)
       end if
       m._data.fromAsciiString(data)
+      m._data_size = m._data.count()
+      m._data[m._buffer_size] = 0
+    end if
+    ' WebSocket frames. This also decodes the frames left in the buffer behind the handshake response.
+    if m._has_received_handshake
+      pass_state = m._ready_state
+      while m._decode_frame()
+        ' A close frame, an oversize payload or the close reply ends the pass
+        if m._ready_state <> pass_state
+          exit while
+        end if
+      end while
+    end if
+  end sub
+
+  ' Decode the first frame in the buffer and drop it from the buffer
+  ' @param self WebSocketClient
+  ' @return boolean true when a complete frame was consumed, false when the buffer holds none
+  '         or the frame was refused
+  ws._decode_frame = function() as boolean
+    ' Wait for at least the payload 7-bit size
+    if m._data_size < 2
+      return false
+    end if
+    final = (m._data[0] >> 7) = 1
+    opcode = (m._data[0] and &hf)
+    control = (opcode >> 3) = 1
+    masked = (m._data[1] >> 7) = 1
+    payload_size_7 = m._data[1] and &h7f
+    payload_size = payload_size_7
+    payload_index = 2
+    if payload_size_7 = 126
+      ' Wait for the 16-bit payload size
+      if m._data_size < 4
+        return false
+      end if
+      payload_size = bytes_to_short(m._data[2], m._data[3])
+      payload_index += 2
+    else if payload_size_7 = 127
+      ' Wait for the 64-bit payload size
+      if m._data_size < 10
+        return false
+      end if
+      payload_size = bytes_to_long(m._data[2], m._data[3], m._data[4], m._data[5], m._data[6], m._data[7], m._data[8], m._data[9])
+      payload_index += 8
+    end if
+    ' JellyRock hardening: bound the server-declared payload size before buffering it, so a
+    ' malicious/MITM frame on the cleartext ws:// LAN can't grow m._data unbounded (OOM/crash).
+    ' Jellyfin command frames are a few KB at most; the whole frame (header and payload) must fit _buffer_size.
+    frame_header_size = payload_index
+    if masked
+      frame_header_size += 4
+    end if
+    if payload_size < 0 or frame_header_size + payload_size > m._buffer_size
+      m._close()
+      m._error(18, "Frame payload exceeds max size")
+      return false
+    end if
+    if masked
+      ' Wait for mask int
+      if m._data_size < payload_index
+        return false
+      end if
+      ' JellyRock: skip the 4 mask-key bytes. Server->client frames are never masked (RFC 6455),
+      ' so we don't unmask — upstream read the key into a variable it never used (removed).
+      payload_index += 4
+    end if
+    ' Wait for payload
+    if m._data_size < payload_index + payload_size
+      return false
+    end if
+    payload = createObject("roByteArray")
+    for byte_index = payload_index to payload_index + payload_size - 1
+      payload.push(m._data[byte_index])
+    end for
+    ' Handle control frame
+    if control
+      m._handle_frame(opcode, payload)
+      ' Handle data frame
+    else if final
+      full_payload = createObject("roByteArray")
+      full_payload.append(m._frame_data)
+      full_payload.append(payload)
+      m._handle_frame(opcode, full_payload)
+      m._frame_data.clear()
+      ' Check for continuation frame
+    else
+      m._frame_data.append(payload)
+    end if
+    ' Save start of next frame
+    if m._data_size > payload_index + payload_size
+      data = createObject("roByteArray")
+      data.append(m._data)
+      m._data.clear()
+      for byte_index = payload_index + payload_size to m._data_size - 1
+        m._data.push(data[byte_index])
+      end for
+    else
+      m._data.clear()
     end if
     m._data_size = m._data.count()
     m._data[m._buffer_size] = 0
-  end sub
+    return true
+  end function
 
   ' Handle the handshake message or die trying
   ' @param self WebSocketClient

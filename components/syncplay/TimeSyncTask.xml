@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TimeSyncTask: one burst of GET /GetUtcTime rounds for the SyncPlay clock-offset estimate
+  (syncPlayOffset.bs). Raw roUrlTransfer rather than the API pool, so the device's send and
+  receive stamps bracket the request itself and not a queue wait (api.md, pattern 4). One node
+  per burst: SyncPlayManager replaces it with replaceTask() and reads `results` once.
+-->
+<component name="TimeSyncTask" extends="Task">
+  <interface>
+    <!-- The full URL: the server URL plus /GetUtcTime. The manager builds it on the render
+         thread, so the Task reads nothing off m.global. -->
+    <field id="url" type="string" />
+    <!-- buildAuthHeader() for the session. GetUtcTime answers without one on every tested
+         server, but the header keeps the request attributable to this session. -->
+    <field id="authHeader" type="string" />
+    <!-- How many rounds to run back to back. -->
+    <field id="rounds" type="integer" value="1" />
+    <!-- One row per answered round: { txDeviceMs, rxDeviceMs, body } with the device stamps as
+         LongIntegers and the parsed response. Written once, at the end of the burst, so the
+         manager pays one crossing per burst. alwaysNotify: an empty burst still delivers. -->
+    <field id="results" type="array" alwaysNotify="true" />
+  </interface>
+</component>

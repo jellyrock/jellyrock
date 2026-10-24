@@ -54,7 +54,13 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-10-23
+  - components/syncplay/SyncPlayManager.bs
+  - components/syncplay/SyncPlayManager.xml
+  - source/syncplay/syncPlayPlayback.bs
+  - source/syncplay/syncPlayQueue.bs
+  - source/syncplay/syncPlayHooks.bs
+  - source/syncplay/syncPlayState.bs
+last-reviewed: 2026-10-24
 ---
 
 # Video and audio playback
@@ -76,6 +82,7 @@ How JellyRock plays things: the queue that decides what plays, the video player 
 | `LoadVideoContentTask` | `components/ItemGrid/` | Asks the server how to play the item and builds the stream URL |
 | `GetPlaybackInfoTask` | `components/` | Fetches this device's live session for the playback-info report |
 | `GetShuffleItemsTask` | `components/` | Fetches the items for a shuffle |
+| `SyncPlayManager`, `TimeSyncTask` | `components/syncplay/`, at `m.global.syncPlayManager` | The SyncPlay coordinator and its clock-offset Task; the player follows it while in a group |
 | `AudioPlayer` | `components/mediaPlayers/`, at `m.global.audioPlayer` | The audio engine; extends `Video` and lives for the whole app |
 | `AudioPlayerView` | `components/music/` | The routed "now playing" screen (`/audio`); extends `JRScreen` |
 | `LoadScreenSaverTimeoutTask` | `components/music/` | Reads the device's screensaver timeout (`roAppManager.GetScreensaverTimeout()`) |
@@ -221,6 +228,17 @@ After enough unattended videos, the next one plays under a centered prompt (#982
 - **While it is up,** the Skip Intro and Next Episode pop-ups stay down (`isDialogOpen` in `VideoPlayerView.onPositionChanged`), and an auto-skip intro waits.
 
 RTA covers both endings (`tests/rta/specs/still-watching.spec.js`, with the `rtaForceStillWatching` hook so it need not play for an hour first).
+
+### SyncPlay: the player follows the group
+
+While `m.global.syncPlayManager.following` is true, the player answers to a SyncPlay group ([`global-state.md`](global-state.md#manager-nodes-scenemanager-queuemanager-audioplayer)), and the host and the player change in two ways.
+
+- **Events go up, verbs come down, and nothing observes the player from outside.** `PlayerHostView.mountPlayer`, `onPlayerStateChange` and `destroyPlayer`, and `VideoPlayerView.onPositionChanged`, hand the manager their event through `syncPlayHooks.notify` (`source/syncplay/syncPlayHooks.bs`), which is silent while not following. The manager acts through the host's existing `handleTransport` verbs (`pause`, `resume`, `seekto`) and `exitPlayback`. An observer of the player's `state` registered by the manager would be removed along with the host's by any `unobserveField` (#898), so the events are pushed instead. The decisions (when a command applies, which verbs carry it, when `Buffering` and `Ready` go out) are pure in `syncPlayPlayback.bs`; the manager owns the Timers.
+- **The local auto-behaviors stand down,** because each would move this member on its own: `shouldAskStillWatching` returns false; `onPlayerStateChange` does not advance on `finished` (the manager asks the server for the next item, and the server's queue update remounts every member; on the group's last item the manager leaves the route itself); `checkMediaSegments` resolves every segment to `None`, since a skip is a local seek until phase E routes it through the server; `checkTimeToDisplayNextEpisode` shows no button; and the manager sets `setPrerollStatus(false)` on the group's queue, so `LoadVideoContentTask` queues no Cinema Mode intro.
+
+A load reports `Buffering` at mount and `Ready` at its first `playing`, pausing the player there, and the server's `Unpause` starts every member together (jellyfin-web does the same). A load that started partway in (a late join) reports the start it was asked for when the node reads further below it than 500 ms: the node still reads 0 at its first `playing`, and a `Ready` at 0 would draw a corrective `Seek`. After a `Seek` command, `Ready` waits for a `position` notification within 500 ms of the target, never the `playing` edge, where the node once still read the position from before the seek; after 3 s it reports the position in hand and lets the server correct it. Two Stick 4K findings shape the verbs: a `seek` on a paused `Video` node resumes it (2026-10-23), and a `play` or `resume` written while the node buffers leaves it buffering for good (2026-10-23). A `pause` written while it buffers is safe: it lands `paused` at once and stays there (measured 2026-10-24, direct play, a seek to 150 s, two runs). So a `Pause` only pauses, and it pauses a buffering node too, except during a load, where the first-frame pause already holds it. A `Seek` is the seek alone and pauses again only once the node reports `playing` at the new position, which confirms the position first. The node's position reaches the target before it reports buffering (measured 2026-10-24 on a Stick 4K), so the tracker forgets the state from before the seek and waits for the node's next state. The manager's own correction seeks stay unreported, and a `buffering` counts as a stall only after it has lasted a second, since a stall report makes the server pause the whole group. While the group is paused the manager keeps the player paused: `syncPlayPlayback.owesPause` says when the node plays on, a check a second after each pause write confirms it took, and at most three writes go out per command. A player that goes away with no remount the manager asked for (Back, an error that exits) halts: the member stays in the group, stops following, and sends `SetIgnoreWait`, so a server without a group-wait timeout never waits on it. The manager marks a remount as its own only right before it calls the host, never on `finished`, so a `NextItem` the server leaves unanswered cannot turn the next Back into a non-halt.
+
+Only the group's item answers to the group. A mount while following checks that the current queue item carries the group's playlist id (`syncPlayQueue.isGroupItem`), and anything else halts the member, so an item the viewer started plays as their own. A group item the video player does not play (music, Live TV) halts the member before the queue changes, so the group never waits on it. A halted member records the group's commands but applies none of them. A command emitted before the group's playing item last changed is dropped (`syncPlayState.acceptsCommand`): the `Stop` every join brings is held until the first clock estimate, and applied late it would close the new queue's player. mpv-shim and Streamyfin apply the same rule. A new group playlist starts as a new queue (`QueueManager.clear` first), so a version pick or gear caps from the viewer's previous queue do not carry into it. A queue update that moves the group to another item reloads a mounted player in place (`syncPlayQueue.loadAction`), as the next item does, and opens the play route only when no player is mounted. The manager decides that a load is owed as the queue frame arrives (`syncPlayQueue.owedLoadAfter`) and keeps the record until the load is performed, so a frame that lands while the items load cannot cancel it. A queue update that leaves the group playing nothing (items queued onto an idle group, or an emptied playlist) owes no load and fetches nothing: the server waits on no member's `Ready` then, and the update that picks an item owes the load. The route never runs over a mounted host: sgRouter reuses the host for the same item and covers it, still playing, for another. Sign-out and a server switch post `Leave` before the session ends, with the `Authorization` header taken at that moment: the server leaves a group only with its session, and an HTTPS session outlives the app's long poll.
 
 ## `VideoPlayerView`
 

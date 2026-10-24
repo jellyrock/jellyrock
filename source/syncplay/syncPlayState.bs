@@ -23,7 +23,10 @@ namespace syncPlayState
       playingItemId: "",
       startPositionTicks: 0&,
       isPlaying: invalid,
-      lastUpdateMs: 0&
+      lastUpdateMs: 0&,
+      ' The LastUpdate of the queue update that last changed the playing item: a command emitted
+      ' before it is about content that update replaced (see acceptsCommand).
+      playbackQueueAtMs: 0&
     }
   end function
 
@@ -48,6 +51,7 @@ namespace syncPlayState
     else if updateType = "StateUpdate"
       state.groupState = update.groupState
     else if updateType = "PlayQueue"
+      previousItemId = state.playingItemId
       state.playlist = update.playlist
       state.playingItemIndex = update.playingItemIndex
       state.playingItemId = ""
@@ -57,6 +61,10 @@ namespace syncPlayState
       state.startPositionTicks = update.startPositionTicks
       state.isPlaying = update.isPlaying
       state.lastUpdateMs = update.lastUpdateMs
+      ' Appends, moves and mode changes keep the item, and the commands for it stay valid.
+      if (update.reason = "NewPlaylist" or state.playingItemId <> previousItemId) and syncPlayTime.isWholeNumber(update.lastUpdateMs)
+        state.playbackQueueAtMs = syncPlayTime.asLong(update.lastUpdateMs)
+      end if
     end if
     return state
   end function
@@ -75,13 +83,16 @@ namespace syncPlayState
 
   ' Whether a parsed SyncPlayCommand (kind "syncplaycommand") applies to this membership: in a
   ' group, for this group, emitted at or after the join, and for the current playlist item unless
-  ' it is a Stop (web's rules). `following` is not part of it: a halted member still tracks the
-  ' group's state, and phase C decides what a halted player does with an accepted command.
+  ' it is a Stop (web's rules). Also emitted at or after the playing item last changed, so a Stop
+  ' held until the first clock estimate cannot close the new queue's player (the rule
+  ' mpv-shim and Streamyfin apply; web does not). `following` is not part of it: a halted member
+  ' still tracks the group's state, and SyncPlayManager applies nothing while halted.
   function acceptsCommand(state as object, command as object) as boolean
     if not isValid(command) or command.kind <> "syncplaycommand" then return false
     if not state.inGroup then return false
     if isValidAndNotEmpty(command.groupId) and command.groupId <> state.groupId then return false
     if command.emittedAtMs < state.joinedAtMs then return false
+    if command.emittedAtMs < state.playbackQueueAtMs then return false
     if command.command <> "Stop" and command.playlistItemId <> state.playingItemId then return false
     return true
   end function

@@ -23,6 +23,10 @@
       "src": "tests/source/**/*",
       "dest": "source/tests"
     },
+    {
+      "src": "tests/components/**/*",
+      "dest": "components/tests"
+    },
     "!tests/source/e2e/**/*",
     "!tests/source/**/*.md",
     "!**/*.spec.bs",

@@ -16,7 +16,8 @@ related-files:
   - tests/source/unit/platform/TaskThreadSlots.spec.bs
   - tests/source/unit/platform/TaskStopProgress.spec.bs
   - tests/source/unit/utils/tasks.spec.bs
-last-reviewed: 2026-10-19
+  - components/syncplay/SyncPlayManager.bs
+last-reviewed: 2026-10-23
 ---
 
 # Threading
@@ -57,6 +58,7 @@ Each row is an on-device measurement, not a reading of the docs. Record the devi
 | `CreateObject("roFileSystem")` in a component's `init()` | Render (a `Group`) and a `Task` node | **Differs by base type.** The same code returned a valid `roFileSystem` in a `Task` component's `init()` and `Invalid` in a `Group` component's `init()`, which faulted `&hec` on the next `fs.Exists()`. | Streaming Stick 4K, Roku OS 15.3.4, 2026-09-22 |
 | `CreateObject("roSGNode", "Timer")` | Main, before `m.screen.show()` | **Fails:** returns `Invalid`. | Streaming Stick 4K, Roku OS 15.2.4, 2026-08-02 ([logging.md](logging.md)) |
 | A nested `wait(0, port)` message-port loop | Render | **Deadlocks the app.** | Evidence on #287 |
+| AAs built in `init()` and kept in `m`, for a node `setGlobalNodes()` creates from the main thread | Main at `init()`, Render at every later handler | **Entries holding a `LongInteger` or `invalid` are gone by the first handler.** A 12-key AA built in `init()` read back with 8 keys in the first `callFunc` and the first field observer; two more AAs lost exactly their `0&` entries. The same literal built in a component the Rooibos thread created, or assigned later on the render thread, kept every entry. | Streaming Stick 4K, Roku OS 15.3.4, 2026-10-23 (`SyncPlayManager`) |
 
 **`roFileSystem`.** This was found while splitting the old `captionTask` into `LoadCaptionTask` and `CaptionRenderer`, where only the base type changed. What was measured is the difference in what each `init()` can construct. Which thread a Task's `init()` runs on was not separated.
 
@@ -65,6 +67,8 @@ What follows for the code: render-thread code that needs to know whether the fal
 **`Timer`.** This is why the log manager starts in `JRScene.init()`, not in `main.bs`. The limit is about when, before the screen shows, not which thread ([logging.md](logging.md)).
 
 **Nested `wait()`.** This is why each dialog delivers its answer on its own `result` field instead of returning it ([navigation.md](navigation.md#the-standard-dialog-system-sourceutilsdialogsbs)).
+
+**`m` built in `init()` on the main thread.** A node `setGlobalNodes()` creates runs its `init()` where it was created, and what that `init()` leaves in `m` reaches the render thread, where every observer and `callFunc` then runs, as a copy that drops `LongInteger` and `invalid` entries. So a manager node on `m.global` builds its working state on first use from a render-thread entry point (`SyncPlayManager.ensureReady`), and `init()` only binds child nodes and observers. Which values survive the copy beyond these two kinds was not measured. Decision `syncplay-time-longinteger` measured that a `LongInteger` survives an AA within one thread; this is the crossing it did not cover.
 
 ### Field reads across threads
 

@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-23
 ---
 
 # Global state
@@ -58,6 +58,7 @@ m.global
 ├── queueManager          QueueManager
 ├── audioPlayer           AudioPlayer, which extends Video
 ├── remoteControlTask     RemoteControlTask, created here and started by Home after sign-in
+├── syncPlayManager       SyncPlayManager, the SyncPlay coordinator; its frames come from remoteDispatch
 ├── debug                 DebugFlags                  #if debug
 └── rtaSkeletonHoldMs, rtaFailRequests, …             #if ENABLE_RTA (test hooks)
 │
@@ -154,7 +155,7 @@ A component that copies a theme color when it is built keeps the old color until
 
 ## Manager nodes: `sceneManager`, `queueManager`, `audioPlayer`
 
-All three live for the whole app. `sceneManager` and `queueManager` are called through `callFunc`, so each method must be declared in the node's XML interface. `audioPlayer` extends Roku's `Video` node and is driven through its fields:
+All of them live for the whole app. `sceneManager` and `queueManager` are called through `callFunc`, so each method must be declared in the node's XML interface. Each is created from the main thread, so its `init()` runs there and must not build the AAs its handlers use: `LongInteger` and `invalid` entries do not survive the hand-over to the render thread ([threading.md](threading.md#constructing-components)); `SyncPlayManager.ensureReady` is the shape. `audioPlayer` extends Roku's `Video` node and is driven through its fields:
 
 ```brightscript
 m.global.sceneManager.callFunc("reloadHome")
@@ -165,6 +166,7 @@ m.global.audioPlayer.control = "play"
 
 - **`sceneManager`** no longer moves between screens; the router does that ([`navigation.md`](navigation.md)). It keeps the theme refresh, `reloadHome`, the background image, the clock reset and the `isDialogOpen` query.
 - **`queueManager`** owns the play queue and starts playback ([`playback.md`](playback.md)).
+- **`syncPlayManager`** (`components/syncplay/`) coordinates a SyncPlay group: `remoteDispatch.dispatchSyncPlay` writes each parsed frame to its `frame` field, it schedules the group's commands on a Timer against the clock offset its `TimeSyncTask` measures, and drives the player through `PlayerHostView.handleTransport`. `PlayerHostView` and `VideoPlayerView` read its `following` field and send it their events through `playerEvent`, so it never observes the player ([`playback.md`](playback.md#syncplay-the-player-follows-the-group)). `userAuth.SignOut` resets it, which leaves the group.
 - **`audioPlayer`** is the one audio player. It sits on `m.global` and not on a screen, so the stream outlives the `/audio` view's own node, but every way out of that view stops it (Back, `AudioPlayerView.exitAudioPlayback()`, a deep link, a move to a video in a mixed queue). `AudioPlayerView` reads it from `m.global.audioPlayer` and observes its `state` and `position`.
 
 ## Debug flags: `m.global.debug`

@@ -7,7 +7,7 @@ related-files:
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-10-18
+last-reviewed: 2026-10-24
 ---
 
 # Testing
@@ -34,11 +34,14 @@ tests/source/
 │   └── migration/           ← each registry migration end to end
 ├── mocks/                   ← mock data (API responses, registry sections, users, devices)
 └── shared/                  ← shared test helpers
+tests/components/            ← test-only components, mapped to components/tests in the test builds
 ```
+
+A test-only component exists for a suite that must run inside a component scope (Rooibos `@SGNode`) when the real component has side effects in `init()`. `WebSocketClientHarness` loads the vendored socket client's scripts on a plain `Node`, because the client's own component extends `Task` and starts a socket loop that a test node would inherit as a thread that never ends.
 
 ### `BaseTestSuite`
 
-Every suite extends `tests.BaseTestSuite` (`tests/source/BaseTestSuite.spec.bs`), which extends `rooibos.BaseTestSuite`. Rooibos runs `setup()` and `teardown()` once per `@describe` group, and `beforeEach()` and `afterEach()` once per test. The base class uses them like this:
+Every suite extends `tests.BaseTestSuite` (`tests/source/BaseTestSuite.spec.bs`), which extends `rooibos.BaseTestSuite`, except a suite that runs inside a component scope: that scope cannot see `tests.BaseTestSuite`, so it extends `rooibos.BaseTestSuite` and gets none of the setup below. Rooibos runs `setup()` and `teardown()` once per `@describe` group, and `beforeEach()` and `afterEach()` once per test. The base class uses them like this:
 
 - **Global state, per group.** `setup()` takes the global node from the test scene and fills in the app, device, server and user nodes from mock data, then loads the `en_US` translations. Re-applying the mock data for each group is what keeps groups apart. `setGlobals()` itself runs once per session: it writes through `m.global.addFields`, which leaves existing fields alone, so running it again would only build nodes to throw away.
 - **The device, per test.** `resetDevice()` puts `m.global.device` back to the fields `setGlobals()` gave it, in `setup()` and again in `beforeEach()`. A test's `loadTestDevice()` call or direct write never reaches the next test, so a device fixture goes in `beforeEach()`, not `setup()`.

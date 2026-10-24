@@ -38,7 +38,7 @@ BrighterScript modules: shared utilities and the orchestration that doesn't live
 | `source/home/` | Home's row loading and failure handling. |
 | `source/extras/` | The details screen's extras rows. |
 | `source/remotecontrol/` | Remote-control commands and their dispatch. |
-| `source/syncplay/` | The pure SyncPlay layer: server time (LongInteger ms, never a Double: an AA demotes one to a 32-bit float), the clock-offset estimate, the frame parser, the request bodies and the membership state. No node, no HTTP. |
+| `source/syncplay/` | The pure SyncPlay layer: server time (LongInteger ms, never a Double: an AA demotes one to a 32-bit float), the clock-offset estimate, the frame parser, the request bodies, the membership state, the coordinator's decisions (`syncPlayPlayback.bs`) and the queue mapping. No node, no HTTP; `syncPlayHooks.bs` is the one file that reads `m.global`, for the player. |
 | `source/enums/` | Enum constants. |
 | `source/constants/` | Shared constants (timeouts, sizes, layouts). |
 | `source/roku_modules/` | Libraries vendored by ropm. Git ignores them and they are regenerated on install, so never edit them. |

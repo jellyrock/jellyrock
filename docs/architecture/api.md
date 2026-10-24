@@ -286,7 +286,7 @@ It goes through the one `m.global.sideEffectTask`, not the pool. Like the pool, 
 
 ### Pattern 4: a dedicated Task with raw `roUrlTransfer`
 
-For HTTP that is not to Jellyfin, such as a font download or the SSDP server discovery during sign-in. Write a dedicated `Task` component, make the request inline with `wait(port)`, and write the answer to an output field. `FontDownloadTask` and `ServerDiscoveryTask` are examples.
+For HTTP that is not to Jellyfin, such as a font download or the SSDP server discovery during sign-in. Write a dedicated `Task` component, make the request inline with `wait(port)`, and write the answer to an output field. `FontDownloadTask` and `ServerDiscoveryTask` are examples, and so is `TimeSyncTask`, whose `GetUtcTime` rounds go to Jellyfin but need the device's send and receive stamps around the request itself, not around a pool wait.
 
 A Task is worth its thread only for I/O, or for a component the render thread cannot construct. A Task that only computes (building a URL, transforming an AA) costs a thread for work the render thread could do inline. `LoadPhotoTask` was one: its whole body was an `ImageURL()` call, so it was removed and `PhotoDetails` resolves the URL directly.
 

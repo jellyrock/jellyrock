@@ -1,0 +1,440 @@
+namespace tests
+
+  ' The vendored WebSocket client's inbound path. One `_read_socket_data()` call is one pass of the
+  ' task loop, which runs every 100 ms. A pass must take all the socket holds and decode every
+  ' complete frame, or a large SyncPlay PlayQueue frame arrives at 1 KB per pass. The socket and the
+  ' message port are stand-ins and the frames are built by hand. The suite runs inside a node that
+  ' extends WebSocketClientHarness (tests/components), which loads the client's scripts, so no global
+  ' `Logger()` leaks into the source scope. Not the WebSocketClient component itself: it extends Task
+  ' and starts a socket loop in init() that would never end. The suite extends
+  ' `rooibos.BaseTestSuite`, because `tests.BaseTestSuite` sits at a different path in each test
+  ' build and the node scope cannot import it by one; the client needs none of its `m.global` setup.
+  @SGNode("WebSocketClientHarness")
+  @suite("WebSocketClient: inbound frames are drained per pass")
+  class WebSocketClientTests extends rooibos.BaseTestSuite
+
+    private ws as object
+    private socket as object
+    private port as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.socket = m.buildFakeSocket()
+      m.port = m.buildFakePort()
+      ' WebSocketClient() lives in the component's scripts, which only the generated node scope
+      ' loads. The source scope that also compiles this file cannot see it.
+      ' bs:disable-next-line uninitialized-variable cannot-find-function
+      m.ws = WebSocketClient()
+      m.ws._socket = m.socket
+      m.ws._message_port = m.port
+      m.ws._has_received_handshake = true
+      m.ws._ready_state = m.ws.STATE.OPEN
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a pass takes everything the socket holds")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("delivers a 26 KB text frame (16-bit length) after one pass")
+    function _()
+      text = m.buildText(26000)
+      m.socket.feed(m.buildFrame(1, m.textBytes(text)))
+
+      m.ws._read_socket_data()
+
+      messages = m.textMessages()
+      m.assertEqual(messages.count(), 1)
+      m.assertEqual(messages[0].len(), 26000)
+      m.assertTrue(messages[0] = text)
+      m.assertEqual(m.socket.available(), 0)
+    end function
+
+    @it("delivers a frame with a 64-bit length form after one pass")
+    function _()
+      text = m.buildText(300)
+      m.socket.feed(m.buildFrame(1, m.textBytes(text), true, 64))
+
+      m.ws._read_socket_data()
+
+      messages = m.textMessages()
+      m.assertEqual(messages.count(), 1)
+      m.assertTrue(messages[0] = text)
+    end function
+
+    @it("delivers every small frame the socket holds after one pass")
+    function _()
+      m.socket.feed(m.buildFrame(1, m.textBytes("first")))
+      m.socket.feed(m.buildFrame(1, m.textBytes("second")))
+      m.socket.feed(m.buildFrame(1, m.textBytes("third")))
+
+      m.ws._read_socket_data()
+
+      m.assertEqual(m.textMessages(), ["first", "second", "third"])
+    end function
+
+    @it("delivers a large frame and the small frame behind it after one pass")
+    function _()
+      text = m.buildText(5000)
+      m.socket.feed(m.buildFrame(1, m.textBytes(text)))
+      m.socket.feed(m.buildFrame(1, m.textBytes("tail")))
+
+      m.ws._read_socket_data()
+
+      messages = m.textMessages()
+      m.assertEqual(messages.count(), 2)
+      m.assertTrue(messages[0] = text)
+      m.assertEqual(messages[1], "tail")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a frame that has not fully arrived")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("waits for the second half, then delivers the frame once, intact")
+    function _()
+      text = m.buildText(3000)
+      whole = m.buildFrame(1, m.textBytes(text))
+      half = int(whole.count() / 2)
+      m.socket.feed(m.slice(whole, 0, half))
+
+      m.ws._read_socket_data()
+      m.assertEqual(m.textMessages().count(), 0)
+
+      m.socket.feed(m.slice(whole, half, whole.count()))
+      m.ws._read_socket_data()
+
+      messages = m.textMessages()
+      m.assertEqual(messages.count(), 1)
+      m.assertTrue(messages[0] = text)
+    end function
+
+    @it("keeps a partial frame behind a complete one for the next pass")
+    function _()
+      second = m.buildFrame(1, m.textBytes("second"))
+      m.socket.feed(m.buildFrame(1, m.textBytes("first")))
+      m.socket.feed(m.slice(second, 0, 3))
+
+      m.ws._read_socket_data()
+      m.assertEqual(m.textMessages(), ["first"])
+
+      m.socket.feed(m.slice(second, 3, second.count()))
+      m.ws._read_socket_data()
+
+      m.assertEqual(m.textMessages(), ["first", "second"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the pass stops when the connection stops being open")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("an oversize declared payload closes with error 18")
+    function _()
+      declared = m.ws._buffer_size + 1
+      frame = createObject("roByteArray")
+      frame.push(&h81)
+      frame.push(127)
+      frame.append(m.longBytes(declared))
+      m.socket.feed(frame)
+
+      m.ws._read_socket_data()
+
+      error = m.firstMessage("on_error")
+      m.assertNotInvalid(error)
+      m.assertEqual(error.data.code, 18)
+      m.assertEqual(m.textMessages().count(), 0)
+      m.assertEqual(m.ws._ready_state, m.ws.STATE.CLOSING)
+    end function
+
+    @it("decoding stops at a close frame; the frame behind it is not delivered")
+    function _()
+      closePayload = createObject("roByteArray")
+      closePayload.push(3)
+      closePayload.push(232)
+      m.socket.feed(m.buildFrame(1, m.textBytes("before")))
+      m.socket.feed(m.buildFrame(8, closePayload))
+      m.socket.feed(m.buildFrame(1, m.textBytes("after")))
+
+      m.ws._read_socket_data()
+
+      m.assertEqual(m.textMessages(), ["before"])
+      m.assertEqual(m.ws._ready_state, m.ws.STATE.CLOSING)
+    end function
+
+    @it("a close frame answering our own close reaches CLOSED")
+    function _()
+      m.ws._ready_state = m.ws.STATE.CLOSING
+      closePayload = createObject("roByteArray")
+      closePayload.push(3)
+      closePayload.push(232)
+      m.socket.feed(m.buildFrame(8, closePayload))
+
+      m.ws._read_socket_data()
+
+      m.assertEqual(m.ws._ready_state, m.ws.STATE.CLOSED)
+      m.assertNotInvalid(m.firstMessage("on_close"))
+      m.assertTrue(m.socket.closed)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the ceiling on one pass")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stops reading near the buffer size and leaves the rest in the socket")
+    function _()
+      m.ws._buffer_size = 4096
+      for i = 1 to 20
+        m.socket.feed(m.buildFrame(1, m.textBytes(m.buildText(1000))))
+      end for
+      total = m.socket.available()
+
+      m.ws._read_socket_data()
+
+      m.assertTrue(m.socket.available() > 0)
+      m.assertTrue(total - m.socket.available() <= 4096 + 1024)
+      m.assertTrue(m.textMessages().count() < 20)
+
+      for pass = 1 to 40
+        m.ws._read_socket_data()
+      end for
+
+      m.assertEqual(m.textMessages().count(), 20)
+      m.assertEqual(m.socket.available(), 0)
+    end function
+
+    @it("delivers a frame whose header and payload exactly fill the buffer")
+    function _()
+      m.ws._buffer_size = 4000
+      ' 4-byte header (16-bit length form) plus 3996 payload bytes is 4000 in all.
+      text = m.buildText(3996)
+      m.socket.feed(m.buildFrame(1, m.textBytes(text)))
+
+      m.ws._read_socket_data()
+
+      messages = m.textMessages()
+      m.assertEqual(messages.count(), 1)
+      m.assertTrue(messages[0] = text)
+      m.assertEqual(m.socket.available(), 0)
+    end function
+
+    @it("refuses a frame one byte larger than the buffer with error 18")
+    function _()
+      m.ws._buffer_size = 4000
+      m.socket.feed(m.buildFrame(1, m.textBytes(m.buildText(3997))))
+
+      m.ws._read_socket_data()
+
+      error = m.firstMessage("on_error")
+      m.assertNotInvalid(error)
+      m.assertEqual(error.data.code, 18)
+      m.assertEqual(m.textMessages().count(), 0)
+    end function
+
+    @it("delivers a buffer-filling frame, then the next frame on the next pass, intact")
+    function _()
+      m.ws._buffer_size = 4000
+      text = m.buildText(3996)
+      m.socket.feed(m.buildFrame(1, m.textBytes(text)))
+      m.socket.feed(m.buildFrame(1, m.textBytes("next")))
+
+      m.ws._read_socket_data()
+      m.assertEqual(m.textMessages().count(), 1)
+      m.assertTrue(m.textMessages()[0] = text)
+      ' A receive bounded to the buffer leaves the whole next frame in the socket.
+      m.assertEqual(m.socket.available(), m.buildFrame(1, m.textBytes("next")).count())
+
+      m.ws._read_socket_data()
+
+      messages = m.textMessages()
+      m.assertEqual(messages.count(), 2)
+      m.assertEqual(messages[1], "next")
+      m.assertEqual(m.socket.available(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the handshake response and frames in one read")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("delivers the frame that follows the handshake response")
+    function _()
+      m.ws._has_received_handshake = false
+      m.ws._ready_state = m.ws.STATE.CONNECTING
+      response = createObject("roByteArray")
+      response.fromAsciiString("HTTP/1.1 101 Switching Protocols" + chr(13) + chr(10) + "Upgrade: websocket" + chr(13) + chr(10) + "Connection: Upgrade" + chr(13) + chr(10) + chr(13) + chr(10))
+      m.socket.feed(response)
+      m.socket.feed(m.buildFrame(1, m.textBytes("hello")))
+
+      m.ws._read_socket_data()
+
+      m.assertTrue(m.ws._has_received_handshake)
+      m.assertNotInvalid(m.firstMessage("on_open"))
+      m.assertEqual(m.textMessages(), ["hello"])
+    end function
+
+    @it("opens on a handshake response alone and then delivers a later frame")
+    function _()
+      m.ws._has_received_handshake = false
+      m.ws._ready_state = m.ws.STATE.CONNECTING
+      response = createObject("roByteArray")
+      response.fromAsciiString("HTTP/1.1 101 Switching Protocols" + chr(13) + chr(10) + "Upgrade: websocket" + chr(13) + chr(10) + "Connection: Upgrade" + chr(13) + chr(10) + chr(13) + chr(10))
+      m.socket.feed(response)
+
+      m.ws._read_socket_data()
+      m.assertTrue(m.ws._has_received_handshake)
+      m.assertEqual(m.textMessages().count(), 0)
+
+      m.socket.feed(m.buildFrame(1, m.textBytes("later")))
+      m.ws._read_socket_data()
+
+      m.assertEqual(m.textMessages(), ["later"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ' Helpers
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A server-to-client frame: unmasked. `form` 0 picks the 7-bit or 16-bit length by size; 64
+    ' forces the 64-bit form.
+    private function buildFrame(opcode as integer, payload as object, final = true as boolean, form = 0 as integer) as object
+      frame = createObject("roByteArray")
+      first = opcode
+      if final
+        first = first or &h80
+      end if
+      frame.push(first)
+      size = payload.count()
+      if form = 64
+        frame.push(127)
+        frame.append(m.longBytes(size))
+      else if size > 125
+        frame.push(126)
+        frame.push((size >> 8) and &hff)
+        frame.push(size and &hff)
+      else
+        frame.push(size)
+      end if
+      frame.append(payload)
+      return frame
+    end function
+
+    private function longBytes(value as integer) as object
+      bytes = createObject("roByteArray")
+      bytes.push(0)
+      bytes.push(0)
+      bytes.push(0)
+      bytes.push(0)
+      bytes.push((value >> 24) and &hff)
+      bytes.push((value >> 16) and &hff)
+      bytes.push((value >> 8) and &hff)
+      bytes.push(value and &hff)
+      return bytes
+    end function
+
+    private function textBytes(text as string) as object
+      bytes = createObject("roByteArray")
+      bytes.fromAsciiString(text)
+      return bytes
+    end function
+
+    ' Text of `size` characters that is not one repeated byte, so a dropped or doubled chunk shows.
+    private function buildText(size as integer) as string
+      chunk = "0123456789abcdefghijklmnopqrstuvwxyz"
+      text = ""
+      while text.len() < size
+        text += chunk
+      end while
+      return text.left(size)
+    end function
+
+    private function slice(bytes as object, first as integer, endIndex as integer) as object
+      part = createObject("roByteArray")
+      for i = first to endIndex - 1
+        part.push(bytes[i])
+      end for
+      return part
+    end function
+
+    private function textMessages() as object
+      result = []
+      for each msg in m.port.messages
+        if msg.id = "on_message"
+          result.push(msg.data.message)
+        end if
+      end for
+      return result
+    end function
+
+    private function firstMessage(id as string) as dynamic
+      for each msg in m.port.messages
+        if msg.id = id
+          return msg
+        end if
+      end for
+      return invalid
+    end function
+
+    ' A stand-in for the roStreamSocket: a byte pipe the test feeds and the client reads with
+    ' receive(). Only the calls the client makes are here.
+    private function buildFakeSocket() as object
+      socket = {
+        pending: createObject("roByteArray"),
+        readPos: 0,
+        sent: [],
+        closed: false
+      }
+      socket.feed = sub(bytes as object)
+        m.pending.append(bytes)
+      end sub
+      socket.available = function() as integer
+        return m.pending.count() - m.readPos
+      end function
+      socket.isReadable = function() as boolean
+        return m.available() > 0
+      end function
+      socket.getCountRcvBuf = function() as integer
+        return m.available()
+      end function
+      socket.receive = function(buffer as object, offset as integer, length as integer) as integer
+        count = m.available()
+        if count > length
+          count = length
+        end if
+        for i = 0 to count - 1
+          buffer[offset + i] = m.pending[m.readPos + i]
+        end for
+        m.readPos += count
+        return count
+      end function
+      socket.isWritable = function() as boolean
+        return true
+      end function
+      socket.send = function(frame as object, _offset as integer, length as integer) as integer
+        m.sent.push(frame)
+        return length
+      end function
+      socket.GetCountSendBuf = function() as integer
+        return 0
+      end function
+      socket.status = function() as integer
+        return 0
+      end function
+      socket.close = function() as boolean
+        m.closed = true
+        return true
+      end function
+      return socket
+    end function
+
+    ' A stand-in for the roMessagePort the client posts its events to.
+    private function buildFakePort() as object
+      port = {
+        messages: []
+      }
+      port.postMessage = sub(msg as object)
+        m.messages.push(msg)
+      end sub
+      return port
+    end function
+
+  end class
+
+end namespace

@@ -1,0 +1,356 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+import "pkg:/source/syncplay/syncPlayQueue.bs"
+import "pkg:/source/syncplay/syncPlayState.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
+
+namespace tests
+
+  @suite("syncPlayQueue — a play queue update as QueueManager items")
+  class SyncPlayQueueTests extends tests.BaseTestSuite
+
+    private playlist = [{ itemId: "i-1", playlistItemId: "p-1" }, { itemId: "i-2", playlistItemId: "p-2" }, { itemId: "i-3", playlistItemId: "p-3" }]
+
+    private function items() as object
+      ' The server returns raw items in its own order.
+      return [
+        { Id: "i-3", Type: "Episode", Name: "Three", RunTimeTicks: 30000000& },
+        { Id: "i-1", Type: "Movie", Name: "One", RunTimeTicks: 10000000& },
+        { Id: "i-2", Type: "Movie", Name: "Two", RunTimeTicks: 20000000& }
+      ]
+    end function
+
+    private function queueUpdate(lastUpdate as string) as object
+      inner = { Reason: "NewPlaylist", LastUpdate: lastUpdate, Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }], PlayingItemIndex: 0, StartPositionTicks: 0 }
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: "PlayQueue", Data: inner } })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queueItemsFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds one queue item per playlist entry, in playlist order")
+    function _()
+      queueItems = syncPlayQueue.queueItemsFor(m.playlist, m.items())
+      m.assertEqual(queueItems.count(), 3)
+      m.assertEqual(queueItems[0].id, "i-1")
+      m.assertEqual(queueItems[0].type, "Movie")
+      m.assertEqual(queueItems[0].syncPlayPlaylistItemId, "p-1")
+      m.assertEqual(queueItems[2].id, "i-3")
+      m.assertEqual(queueItems[2].syncPlayPlaylistItemId, "p-3")
+    end function
+
+    @it("drops an entry the server returned no item for")
+    function _()
+      queueItems = syncPlayQueue.queueItemsFor(m.playlist, [m.items()[1]])
+      m.assertEqual(queueItems.count(), 1)
+      m.assertEqual(queueItems[0].id, "i-1")
+    end function
+
+    @it("tolerates a missing items array and an empty playlist")
+    function _()
+      m.assertEqual(syncPlayQueue.queueItemsFor(m.playlist, invalid).count(), 0)
+      m.assertEqual(syncPlayQueue.queueItemsFor([], m.items()).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("itemIds()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists the item ids in playlist order")
+    function _()
+      m.assertEqual(syncPlayQueue.itemIds(m.playlist), ["i-1", "i-2", "i-3"])
+    end function
+
+    @it("names an item once when the playlist repeats it, at its first place")
+    function _()
+      playlist = [{ itemId: "i-2", playlistItemId: "p-1" }, { itemId: "i-1", playlistItemId: "p-2" }, { itemId: "i-2", playlistItemId: "p-3" }]
+      m.assertEqual(syncPlayQueue.itemIds(playlist), ["i-2", "i-1"])
+    end function
+
+    @it("returns no ids for an empty or missing playlist")
+    function _()
+      m.assertEqual(syncPlayQueue.itemIds([]).count(), 0)
+      m.assertEqual(syncPlayQueue.itemIds(invalid).count(), 0)
+      m.assertEqual(syncPlayQueue.itemIds("not a playlist").count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pagedItems()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("appends every page's items, in page order")
+    function _()
+      responses = [
+        { ok: true, json: { Items: [{ Id: "i-1" }, { Id: "i-2" }] } },
+        { ok: true, json: { Items: [{ Id: "i-3" }] } }
+      ]
+      items = syncPlayQueue.pagedItems(responses)
+      m.assertEqual(items.count(), 3)
+      m.assertEqual(items[0].Id, "i-1")
+      m.assertEqual(items[2].Id, "i-3")
+    end function
+
+    @it("is invalid when a page was not ok")
+    function _()
+      responses = [{ ok: true, json: { Items: [{ Id: "i-1" }] } }, { ok: false, json: invalid }]
+      m.assertInvalid(syncPlayQueue.pagedItems(responses))
+    end function
+
+    @it("is invalid when a page has no Items array")
+    function _()
+      m.assertInvalid(syncPlayQueue.pagedItems([{ ok: true, json: { Items: [{ Id: "i-1" }] } }, { ok: true, json: {} }]))
+      m.assertInvalid(syncPlayQueue.pagedItems([{ ok: true, json: invalid }]))
+      m.assertInvalid(syncPlayQueue.pagedItems([invalid]))
+    end function
+
+    @it("is invalid when the responses are not an array")
+    function _()
+      m.assertInvalid(syncPlayQueue.pagedItems(invalid))
+    end function
+
+    @it("returns no items for no responses")
+    function _()
+      m.assertEqual(syncPlayQueue.pagedItems([]).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("positionOf()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds the playing item by playlist id, after a drop shifted the index")
+    function _()
+      queueItems = syncPlayQueue.queueItemsFor(m.playlist, [m.items()[0], m.items()[2]])
+      m.assertEqual(syncPlayQueue.positionOf(queueItems, "p-3"), 1)
+      m.assertEqual(syncPlayQueue.positionOf(queueItems, "p-1"), -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isStaleQueueUpdate()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the first update is never stale")
+    function _()
+      state = syncPlayState.newState()
+      m.assertFalse(syncPlayQueue.isStaleQueueUpdate(state, m.queueUpdate("2026-10-23T20:47:25.000Z")))
+    end function
+
+    @it("an update no newer than the applied one is stale; a newer one is not")
+    function _()
+      state = syncPlayState.applyGroupUpdate(syncPlayState.newState(), m.queueUpdate("2026-10-23T20:47:25.000Z"))
+      m.assertTrue(syncPlayQueue.isStaleQueueUpdate(state, m.queueUpdate("2026-10-23T20:47:25.000Z")))
+      m.assertTrue(syncPlayQueue.isStaleQueueUpdate(state, m.queueUpdate("2026-10-23T20:47:24.000Z")))
+      m.assertFalse(syncPlayQueue.isStaleQueueUpdate(state, m.queueUpdate("2026-10-23T20:47:26.000Z")))
+    end function
+
+    @it("only a PlayQueue update can be stale")
+    function _()
+      state = syncPlayState.applyGroupUpdate(syncPlayState.newState(), m.queueUpdate("2026-10-23T20:47:25.000Z"))
+      stateUpdate = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: "StateUpdate", Data: { State: "Paused", Reason: "Pause" } } })
+      m.assertFalse(syncPlayQueue.isStaleQueueUpdate(state, stateUpdate))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("changesPlayingItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a new playlist always moves; a current-item change only when the id changed; queue edits never")
+    function _()
+      m.assertTrue(syncPlayQueue.changesPlayingItem("NewPlaylist", "p-1", "p-1"))
+      m.assertTrue(syncPlayQueue.changesPlayingItem("NextItem", "p-1", "p-2"))
+      m.assertFalse(syncPlayQueue.changesPlayingItem("SetCurrentItem", "p-1", "p-1"))
+      m.assertTrue(syncPlayQueue.changesPlayingItem("RemoveItems", "p-1", "p-2"))
+      m.assertFalse(syncPlayQueue.changesPlayingItem("Queue", "p-1", "p-2"))
+      m.assertFalse(syncPlayQueue.changesPlayingItem("ShuffleMode", "p-1", "p-2"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isLastItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the group's playlist, not the local queue")
+    function _()
+      state = syncPlayState.newState()
+      state.playlist = m.playlist
+      state.playingItemIndex = 1
+      m.assertFalse(syncPlayQueue.isLastItem(state))
+      state.playingItemIndex = 2
+      m.assertTrue(syncPlayQueue.isLastItem(state))
+    end function
+
+    @it("a group with no playing item has nothing to move on to")
+    function _()
+      state = syncPlayState.newState()
+      m.assertTrue(syncPlayQueue.isLastItem(state))
+      state.playlist = m.playlist
+      state.playingItemIndex = -1
+      m.assertTrue(syncPlayQueue.isLastItem(state))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isGroupItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("only the queue item carrying the group's playing playlist id")
+    function _()
+      m.assertTrue(syncPlayQueue.isGroupItem({ id: "i-1", syncPlayPlaylistItemId: "p-1" }, "p-1"))
+      m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-2", syncPlayPlaylistItemId: "p-2" }, "p-1"))
+      m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-1" }, "p-1"))
+    end function
+
+    @it("nothing is the group's item while the group plays nothing")
+    function _()
+      m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-1", syncPlayPlaylistItemId: "" }, ""))
+      m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-1" }, ""))
+      m.assertFalse(syncPlayQueue.isGroupItem(invalid, "p-1"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("followsItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("follows the types the video player plays")
+    function _()
+      m.assertTrue(syncPlayQueue.followsItem({ id: "i-1", type: "Movie" }))
+      m.assertTrue(syncPlayQueue.followsItem({ id: "i-2", type: "Episode" }))
+      m.assertTrue(syncPlayQueue.followsItem({ id: "i-3", type: "Video" }))
+    end function
+
+    @it("does not follow music, audiobooks or Live TV")
+    function _()
+      m.assertFalse(syncPlayQueue.followsItem({ id: "i-1", type: "Audio" }))
+      m.assertFalse(syncPlayQueue.followsItem({ id: "i-2", type: "AudioBook" }))
+      m.assertFalse(syncPlayQueue.followsItem({ id: "i-3", type: "TvChannel" }))
+    end function
+
+    @it("does not follow an item with no type, or no item")
+    function _()
+      m.assertFalse(syncPlayQueue.followsItem({ id: "i-1" }))
+      m.assertFalse(syncPlayQueue.followsItem(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("owedLoadAfter()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a new playlist owes a new-playlist load, even when the playing item's id is unchanged")
+    function _()
+      owed = syncPlayQueue.owedLoadAfter(invalid, "NewPlaylist", "p-1", "p-1")
+      m.assertTrue(owed.newPlaylist)
+    end function
+
+    @it("a move to another item owes a load that is not a new playlist")
+    function _()
+      m.assertFalse(syncPlayQueue.owedLoadAfter(invalid, "NextItem", "p-1", "p-2").newPlaylist)
+      m.assertFalse(syncPlayQueue.owedLoadAfter(invalid, "SetCurrentItem", "p-1", "p-3").newPlaylist)
+    end function
+
+    @it("an update that keeps the item owes nothing when nothing was owed")
+    function _()
+      m.assertInvalid(syncPlayQueue.owedLoadAfter(invalid, "Queue", "p-1", "p-2"))
+      m.assertInvalid(syncPlayQueue.owedLoadAfter(invalid, "NextItem", "p-1", "p-1"))
+    end function
+
+    @it("an update that keeps the item leaves an owed new playlist owed (the race's shape)")
+    function _()
+      owed = syncPlayQueue.owedLoadAfter({ newPlaylist: true }, "Queue", "p-2", "p-2")
+      m.assertTrue(owed.newPlaylist)
+    end function
+
+    @it("a move after an owed new playlist stays a new playlist")
+    function _()
+      owed = syncPlayQueue.owedLoadAfter({ newPlaylist: true }, "NextItem", "p-1", "p-2")
+      m.assertTrue(owed.newPlaylist)
+    end function
+
+    @it("a move after an owed plain load stays owed and is not a new playlist")
+    function _()
+      owed = syncPlayQueue.owedLoadAfter({ newPlaylist: false }, "NextItem", "p-1", "p-2")
+      m.assertFalse(owed.newPlaylist)
+    end function
+
+    @it("an update that leaves the group playing nothing owes nothing, and drops a load owed before it")
+    function _()
+      m.assertInvalid(syncPlayQueue.owedLoadAfter(invalid, "RemoveItems", "p-1", ""))
+      m.assertInvalid(syncPlayQueue.owedLoadAfter({ newPlaylist: true }, "NewPlaylist", "", ""))
+      m.assertInvalid(syncPlayQueue.owedLoadAfter({ newPlaylist: false }, "Queue", "", ""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("loadAction()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("nothing owed loads nothing")
+    function _()
+      m.assertEqual(syncPlayQueue.loadAction(invalid, true), "")
+      m.assertEqual(syncPlayQueue.loadAction(invalid, false), "")
+    end function
+
+    @it("an owed load reloads a mounted player in place")
+    function _()
+      m.assertEqual(syncPlayQueue.loadAction({ newPlaylist: false }, true), "remount")
+      m.assertEqual(syncPlayQueue.loadAction({ newPlaylist: true }, true), "remount")
+    end function
+
+    @it("an owed load with no player opens the play route")
+    function _()
+      m.assertEqual(syncPlayQueue.loadAction({ newPlaylist: false }, false), "launch")
+      m.assertEqual(syncPlayQueue.loadAction({ newPlaylist: true }, false), "launch")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("appliesFetchedQueue()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function memberState(lastUpdateMs as longinteger) as object
+      state = syncPlayState.newState()
+      state.inGroup = true
+      state.lastUpdateMs = lastUpdateMs
+      return state
+    end function
+
+    @it("applies for a member that is following, in the group, with no newer update")
+    function _()
+      state = m.memberState(5000&)
+      m.assertTrue(syncPlayQueue.appliesFetchedQueue(state, 5000&))
+    end function
+
+    @it("applies nothing once the member halted while the items were in flight")
+    function _()
+      state = syncPlayState.halt(m.memberState(5000&))
+      m.assertFalse(syncPlayQueue.appliesFetchedQueue(state, 5000&))
+    end function
+
+    @it("applies nothing outside a group")
+    function _()
+      state = syncPlayState.newState()
+      m.assertFalse(syncPlayQueue.appliesFetchedQueue(state, 0&))
+    end function
+
+    @it("applies nothing when a newer update arrived since the fetch started")
+    function _()
+      state = m.memberState(6000&)
+      m.assertFalse(syncPlayQueue.appliesFetchedQueue(state, 5000&))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("loadFailureAction()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("retries a first request failure")
+    function _()
+      m.assertEqual(syncPlayQueue.loadFailureAction(false, "request"), "retry")
+    end function
+
+    @it("halts a request failure on the retry")
+    function _()
+      m.assertEqual(syncPlayQueue.loadFailureAction(true, "request"), "halt")
+    end function
+
+    @it("halts a missing item whether or not it is a retry")
+    function _()
+      m.assertEqual(syncPlayQueue.loadFailureAction(false, "missing"), "halt")
+      m.assertEqual(syncPlayQueue.loadFailureAction(true, "missing"), "halt")
+    end function
+
+  end class
+end namespace

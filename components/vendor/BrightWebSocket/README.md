@@ -28,6 +28,10 @@ The sources are **not** byte-for-byte upstream — trimmed + hardened when vendo
 - **OOM guard** — the frame decoder now caps the server-declared inbound `payload_size`
   (`WebSocketClient.brs` `_read_socket_data`) — the must-fix from the review below.
 - **100ms poll** — the task loop polls every 100ms instead of the upstream 1ms busy-loop.
+- **Drain per pass** — `_read_socket_data` reads all the socket holds per pass (up to `_buffer_size`)
+  and decodes every complete frame through `_decode_frame`. Upstream read 1 KB and decoded one frame
+  per pass, so a 26 KB SyncPlay PlayQueue frame took about 3.1 s at the 100 ms poll (measured
+  2026-10-24 on a Stick 4K). The 100 ms poll is unchanged.
 - **Task thread self-exits after close** (`WebSocketClientTask.brs`) — upstream's task loop ran
   forever, holding one Task thread per socket for the app's lifetime (one *leaked* thread per
   reconnect against RokuOS's 100-concurrent-threads cap — the #728 `&h29` crash class). The loop
