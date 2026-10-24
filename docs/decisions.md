@@ -2226,6 +2226,16 @@ Epoch milliseconds and Jellyfin ticks in the SyncPlay layer are `LongInteger`s, 
 
 Ruled out: the phase A spike's conclusion to keep server time in a double, which the AA demotion falsifies; a 32-bit Integer, which overflows at 2^31 ms. Recheck if a future Roku OS keeps a Double intact through an AA, which would make the coercion unnecessary but not wrong.
 
+## decision-id: manager-state-on-first-use
+
+**date**: 2026-10-23
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/utils/globals.bs`, `docs/architecture/threading.md`
+
+A manager node that `setGlobalNodes()` creates builds the AAs its handlers use on first use, from a render-thread entry point (`SyncPlayManager.ensureReady`), never in `init()`. Created from the main thread, the node runs `init()` there, and what that `init()` leaves in `m` reaches the render thread, where every observer and `callFunc` then runs, without its `LongInteger` and `invalid` entries. Measured on the Streaming Stick 4K (Roku OS 15.3.4) on 2026-10-23 in the live app: a 12-key state AA built in `init()` read back with 8 keys at the first handler, and the offset estimator and the ready tracker each kept only their non-`LongInteger` entries. The same literal built in a component the Rooibos thread created, or assigned later on the render thread, kept every entry, which is why no unit spec saw it. `init()` still sets the published interface fields, which marshal whole.
+
+Ruled out: assigning each entry after the literal in `init()` (whether a plain assignment survives the hand-over was not measured, and a rule that depends on the value's kind is one nobody remembers); keeping the state in a node field instead of `m` (every handler would pay a field read and write per step). Decision `syncplay-time-longinteger` measured that a `LongInteger` survives an AA within one thread; this is the crossing it did not cover. Recheck if a Roku OS release lets the main thread's `m` cross intact, which would make the lazy build unnecessary but not wrong.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
