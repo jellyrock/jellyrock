@@ -102,12 +102,25 @@ namespace tests
       m.assertEqual(steps[0].command, "seekto")
     end function
 
-    @it("Pause only pauses a playing player: a seek would resume a paused Video node")
+    @it("Pause pauses a playing node, and a buffering node outside a load, and nothing else")
     function _()
-      steps = syncPlayPlayback.applyPlan({ action: "Pause", delayMs: 0&, positionTicks: 600000000& }, "playing", 600000000&)
+      pausePlan = { action: "Pause", delayMs: 0&, positionTicks: 600000000& }
+      steps = syncPlayPlayback.applyPlan(pausePlan, "playing", 600000000&, "ready")
       m.assertEqual(steps.count(), 1)
       m.assertEqual(steps[0].command, "pause")
-      m.assertEqual(syncPlayPlayback.applyPlan({ action: "Pause", delayMs: 0&, positionTicks: 600000000& }, "paused", 600000000&).count(), 0)
+      stalling = syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "stalling")
+      m.assertEqual(stalling.count(), 1)
+      m.assertEqual(stalling[0].command, "pause")
+      ready = syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "ready")
+      m.assertEqual(ready.count(), 1)
+      m.assertEqual(ready[0].command, "pause")
+      m.assertEqual(syncPlayPlayback.applyPlan(pausePlan, "paused", 600000000&, "ready").count(), 0)
+    end function
+
+    @it("Pause on a buffering node during a load sends nothing: the first-frame pause owns it")
+    function _()
+      pausePlan = { action: "Pause", delayMs: 0&, positionTicks: 600000000& }
+      m.assertEqual(syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "loading").count(), 0)
     end function
 
     @it("Seek on a playing player is one reported seek that pauses once it lands")
@@ -140,6 +153,35 @@ namespace tests
       steps = syncPlayPlayback.applyPlan({ action: "Stop", delayMs: 0&, positionTicks: 0& }, "playing", 600000000&)
       m.assertEqual(steps.count(), 1)
       m.assertEqual(steps[0].command, "stop")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("owesPause()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a group that is not paused owes no pause")
+    function _()
+      m.assertFalse(syncPlayPlayback.owesPause(false, "playing", "ready"))
+      m.assertFalse(syncPlayPlayback.owesPause(false, "buffering", "stalling"))
+    end function
+
+    @it("a paused group owes a pause to a playing node in ready, and to a buffering node in stalling")
+    function _()
+      m.assertTrue(syncPlayPlayback.owesPause(true, "playing", "ready"))
+      m.assertTrue(syncPlayPlayback.owesPause(true, "buffering", "stalling"))
+      m.assertTrue(syncPlayPlayback.owesPause(true, "buffering", "rebuffering"))
+    end function
+
+    @it("a paused group owes nothing to a node that is paused")
+    function _()
+      m.assertFalse(syncPlayPlayback.owesPause(true, "paused", "ready"))
+    end function
+
+    @it("the load and seek phases own their own pause")
+    function _()
+      for each phase in ["loading", "seeking", "landing", "idle"]
+        m.assertFalse(syncPlayPlayback.owesPause(true, "playing", phase), phase)
+      end for
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

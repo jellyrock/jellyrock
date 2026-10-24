@@ -43,5 +43,7 @@
     <Timer id="syncTimer" repeat="false" />
     <!-- The seek-settle budget: Ready goes out with the position in hand when it fires. -->
     <Timer id="readyTimer" repeat="false" />
+    <!-- Confirms a pause took while the group is paused: re-pauses a player that plays on. -->
+    <Timer id="pauseTimer" repeat="false" />
   </children>
 </component>

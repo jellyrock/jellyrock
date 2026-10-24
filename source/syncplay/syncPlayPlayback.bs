@@ -28,6 +28,12 @@ namespace syncPlayPlayback
   ' `buffering` for a few milliseconds on a pause and a resume (4 to 16 ms measured 2026-10-23), and
   ' reporting those made the server pause the whole group twice over per command.
   const STALL_MS = 1000
+  ' How long after a pause write the manager checks that it took. A pause landed in under 10 ms
+  ' in the phase A spike (2026-10-23) and by the first 200 ms sample on 2026-10-24, so this leaves
+  ' headroom.
+  const PAUSE_CONFIRM_MS = 1000
+  ' The most pause writes the manager makes for one group command.
+  const PAUSE_ATTEMPTS = 3
 
   ' --- scheduling ---
 
@@ -57,19 +63,21 @@ namespace syncPlayPlayback
   ' scheduleSeek). The seek inside an Unpause is a local correction the server already accounts
   ' for, so it is silent.
   '
-  ' Three rules the Stick 4K taught on 2026-10-23. A `seek` on a paused Video node resumes it, so a
+  ' Three rules the Stick 4K taught. A `seek` on a paused Video node resumes it (2026-10-23), so a
   ' Pause only pauses (the next Unpause carries the position and corrects it), a Seek sends
   ' no `resume` of its own, and an Unpause that seeks sends no `resume` either. A `resume` (a
   ' control `play`) written to a node that is still buffering from a seek leaves it buffering for
-  ' good, and a buffering node plays by itself once it has buffered, so an Unpause sends `resume`
-  ' only to a paused node. And a `pause` while the node is `buffering`, followed by a `resume`,
-  ' left it buffering for good (`pause` then `seek` in one handler, and a pause the moment a seek's
-  ' position confirmed), so the pause a Seek ends in waits for `playing` (the tracker's landing
-  ' phase).
+  ' good (2026-10-23), and a buffering node plays by itself once it has buffered, so an Unpause
+  ' sends `resume` only to a paused node. And a `pause` written to a buffering node lands `paused`
+  ' at once and stays there (measured 2026-10-24, direct play, a seek to 150 s, two runs): the
+  ' wedge of 2026-10-23 came from a `play` or `resume` written while buffering, so a Pause
+  ' pauses a buffering node too. A load is the exception: its first-frame pause (the tracker's
+  ' `pauseFirst`) owns that, and a pause during a load was never measured.
   ' @param plan - from scheduleCommand
   ' @param playerState - the Video node's `state`
   ' @param playerPositionTicks - the player's last known position
-  function applyPlan(plan as object, playerState as string, playerPositionTicks as longinteger) as object
+  ' @param trackerPhase - the ready tracker's phase, to tell a load from a stall
+  function applyPlan(plan as object, playerState as string, playerPositionTicks as longinteger, trackerPhase = "" as string) as object
     steps = []
     target = { command: "seekto", position: ticksToSeconds(plan.positionTicks), report: false, thenPause: false }
     if plan.action = "Unpause"
@@ -77,7 +85,7 @@ namespace syncPlayPlayback
       if needsSeek then steps.push(target)
       if playerState = "paused" and not needsSeek then steps.push({ command: "resume" })
     else if plan.action = "Pause"
-      if playerState = "playing" then steps.push({ command: "pause" })
+      if playerState = "playing" or (playerState = "buffering" and trackerPhase <> "loading") then steps.push({ command: "pause" })
     else if plan.action = "Seek"
       target.report = true
       target.thenPause = true
@@ -86,6 +94,15 @@ namespace syncPlayPlayback
       steps.push({ command: "stop" })
     end if
     return steps
+  end function
+
+  ' Whether the player owes the group a pause: the group is paused and the node plays on. The
+  ' load and seek phases pause by themselves (pauseFirst, thenPause), so only a settled phase
+  ' counts.
+  function owesPause(groupPaused as boolean, playerState as string, trackerPhase as string) as boolean
+    if not groupPaused then return false
+    if trackerPhase <> "ready" and trackerPhase <> "stalling" and trackerPhase <> "rebuffering" then return false
+    return playerState = "playing" or playerState = "buffering"
   end function
 
   ' Where a new playlist starts for this member: the last Unpause estimated forward when it is
@@ -104,7 +121,8 @@ namespace syncPlayPlayback
 
   ' Phases: "idle" (no player, or nothing owed), "loading" (a player mounted, no first frame yet),
   ' "seeking" (a seek is out, waiting for a position near the target), "landing" (the position
-  ' is there but the node is still buffering, so the pause and the Ready wait for `playing`),
+  ' is there but the node is still buffering: the seek's pause and the Ready wait for `playing`,
+  ' which confirms the position before the pause),
   ' "ready" (the server has this member's position), "stalling" (buffering after ready, not yet
   ' long enough to report), "rebuffering" (a stall the server was told about).
   function newReadyTracker() as object
@@ -184,8 +202,8 @@ namespace syncPlayPlayback
     return result
   end function
 
-  ' The seek's position is there. A step that ends in a pause must not pause a node still
-  ' buffering, so it waits (the landing phase) for `playing`, or for `paused` (a seek that
+  ' The seek's position is there. A step that ends in a pause waits (the landing phase) for
+  ' `playing`, so the pause comes after the position is confirmed, or for `paused` (a seek that
   ' left the node paused needs no pause).
   sub seekLanded(tracker as object, result as object)
     if tracker.thenPause and tracker.lastState <> "playing" and tracker.lastState <> "paused"
