@@ -124,7 +124,7 @@ namespace syncPlayPlayback
   '   playbackstart and reports Ready, and the server's Unpause then starts everyone together);
   '   `positionTicks` is the position to put in the report, or -1 to use the player's own. A load
   '   that started partway in has a Video node still reading 0 at its first `playing` (a probe on
-  '   2026-10-23 read 0.0 while buffering and 349.0 just after), and a Ready at 0 makes the server
+  '   2026-10-23 read 0.0 while buffering and 349.0 right after), and a Ready at 0 makes the server
   '   send a corrective Seek, so that first Ready carries the start instead.
   function trackPlayerEvent(tracker as object, evt as object) as object
     result = { report: "", waitMs: 0, pauseFirst: false, positionTicks: -1& }
