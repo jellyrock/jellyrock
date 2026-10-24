@@ -2693,12 +2693,19 @@ function handleTransport(evt as object) as object
   m.log.info("voice transport", cmd)
 
   if cmd = "play" or cmd = "resume"
-    if m.top.state = "paused"
+    ' A buffering node writes nothing and still reports success: it plays once it has buffered, and
+    ' a control "play" written during a seek's buffering wedges it in `buffering` for good
+    ' (measured on a Streaming Stick 4K, 2026-10-23). See voiceTransport.playControl().
+    control = voiceTransport.playControl(m.top.state)
+    if control = "resume"
       m.top.control = "resume"
       return { status: "success" }
     end if
+    if control = "play"
+      m.top.control = "play"
+      return { status: "success" }
+    end if
     if m.top.state = "playing" then return { status: "error.redundant" }
-    m.top.control = "play"
     return { status: "success" }
   end if
 

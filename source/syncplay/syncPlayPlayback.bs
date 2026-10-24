@@ -57,9 +57,12 @@ namespace syncPlayPlayback
   ' scheduleSeek). The seek inside an Unpause is a local correction the server already accounts
   ' for, so it is silent.
   '
-  ' Two rules the Stick 4K taught on 2026-10-23. A `seek` on a paused Video node resumes it, so a
-  ' Pause only pauses (the next Unpause carries the position and corrects it) and a Seek sends
-  ' no `resume` of its own. And a `pause` while the node is `buffering`, followed by a `resume`,
+  ' Three rules the Stick 4K taught on 2026-10-23. A `seek` on a paused Video node resumes it, so a
+  ' Pause only pauses (the next Unpause carries the position and corrects it), a Seek sends
+  ' no `resume` of its own, and an Unpause that seeks sends no `resume` either. A `resume` (a
+  ' control `play`) written to a node that is still buffering from a seek leaves it buffering for
+  ' good, and a buffering node plays by itself once it has buffered, so an Unpause sends `resume`
+  ' only to a paused node. And a `pause` while the node is `buffering`, followed by a `resume`,
   ' left it buffering for good (`pause` then `seek` in one handler, and a pause the moment a seek's
   ' position confirmed), so the pause a Seek ends in waits for `playing` (the tracker's landing
   ' phase).
@@ -70,8 +73,9 @@ namespace syncPlayPlayback
     steps = []
     target = { command: "seekto", position: ticksToSeconds(plan.positionTicks), report: false, thenPause: false }
     if plan.action = "Unpause"
-      if Abs(playerPositionTicks - plan.positionTicks) > syncPlayTime.msToTicks(SKIP_TO_SYNC_MIN_MS) then steps.push(target)
-      if playerState <> "playing" then steps.push({ command: "resume" })
+      needsSeek = Abs(playerPositionTicks - plan.positionTicks) > syncPlayTime.msToTicks(SKIP_TO_SYNC_MIN_MS)
+      if needsSeek then steps.push(target)
+      if playerState = "paused" and not needsSeek then steps.push({ command: "resume" })
     else if plan.action = "Pause"
       if playerState = "playing" then steps.push({ command: "pause" })
     else if plan.action = "Seek"

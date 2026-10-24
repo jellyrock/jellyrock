@@ -77,14 +77,22 @@ namespace tests
       m.assertEqual(steps[0].command, "resume")
     end function
 
-    @it("Unpause on a player more than 400 ms off seeks first, then resumes")
+    @it("Unpause on a paused player more than 400 ms off sends the seek alone: the seek resumes it")
     function _()
       steps = syncPlayPlayback.applyPlan({ action: "Unpause", delayMs: 0&, positionTicks: 600000000& }, "paused", 650000000&)
-      m.assertEqual(steps.count(), 2)
+      m.assertEqual(steps.count(), 1)
       m.assertEqual(steps[0].command, "seekto")
       m.assertEqual(steps[0].position, 60.0)
       m.assertFalse(steps[0].report)
-      m.assertEqual(steps[1].command, "resume")
+    end function
+
+    @it("Unpause on a buffering player sends no resume")
+    function _()
+      plan = { action: "Unpause", delayMs: 0&, positionTicks: 600000000& }
+      m.assertEqual(syncPlayPlayback.applyPlan(plan, "buffering", 601000000&).count(), 0)
+      steps = syncPlayPlayback.applyPlan(plan, "buffering", 650000000&)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "seekto")
     end function
 
     @it("Unpause on a playing player only corrects the position")
