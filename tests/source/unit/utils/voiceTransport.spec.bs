@@ -205,6 +205,35 @@ namespace tests
       m.assertEqual(voiceTransport.formatNowPlayingTitle({ type: "Episode", name: "", seriesName: "The Show" }), "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playControl() — which control a play or resume command writes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("resumes a paused node")
+    function _()
+      m.assertEqual(voiceTransport.playControl("paused"), "resume")
+    end function
+
+    @it("writes nothing for a node that is already playing")
+    function _()
+      m.assertEqual(voiceTransport.playControl("playing"), "")
+    end function
+
+    @it("writes nothing for a node that is buffering: a control play during a seek's buffering wedges it")
+    function _()
+      m.assertEqual(voiceTransport.playControl("buffering"), "")
+    end function
+
+    @it("starts a node that is stopped, finished, errored or has no state")
+    @params("stopped")
+    @params("finished")
+    @params("error")
+    @params("none")
+    @params("")
+    function _(state)
+      m.assertEqual(voiceTransport.playControl(state), "play")
+    end function
+
   end class
 
 end namespace

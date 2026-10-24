@@ -140,8 +140,9 @@ namespace tests
 
     @it("accepts one emitted at the join instant")
     function _()
-      state = m.withQueue(m.joined())
-      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Pause", m.joinedAt)))
+      ' No queue yet, so only the join bounds it; a Stop needs no current item.
+      state = m.joined()
+      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Stop", m.joinedAt)))
     end function
 
     @it("rejects a command for another playlist item, except a Stop")
@@ -164,6 +165,35 @@ namespace tests
     function _()
       state = syncPlayState.halt(m.withQueue(m.joined()))
       m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Pause", "2026-10-23T20:47:30.000Z")))
+    end function
+
+    @it("rejects a command emitted before the playing item last changed, a Stop included")
+    function _()
+      ' The join's own Stop, emitted between the join and the new queue: applied late, it would
+      ' close the queue's player.
+      state = m.withQueue(m.joined())
+      m.assertFalse(syncPlayState.acceptsCommand(state, m.command("Stop", "2026-10-23T20:47:22.000Z")))
+      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Stop", "2026-10-23T20:47:25.000Z")))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playbackQueueAtMs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a new playlist moves it to the update's LastUpdate")
+    function _()
+      m.assertEqual(syncPlayState.newState().playbackQueueAtMs, 0&)
+      state = m.withQueue(m.joined())
+      m.assertEqual(state.playbackQueueAtMs, 1792788445000&)
+    end function
+
+    @it("a current-item change moves it; a queue edit that keeps the item does not")
+    function _()
+      state = m.withQueue(m.joined())
+      syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", { Reason: "Queue", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }, { ItemId: "i-3", PlaylistItemId: "p-3" }], PlayingItemIndex: 0, StartPositionTicks: 0 }))
+      m.assertEqual(state.playbackQueueAtMs, 1792788445000&)
+      syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", { Reason: "NextItem", LastUpdate: "2026-10-23T20:47:27.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }, { ItemId: "i-3", PlaylistItemId: "p-3" }], PlayingItemIndex: 1, StartPositionTicks: 0 }))
+      m.assertEqual(state.playbackQueueAtMs, 1792788447000&)
     end function
 
   end class

@@ -64,14 +64,30 @@
       },
       {
         "kind": "planned",
-        "files": ["source/syncplay/**"],
-        "reason": "#1251: the SyncPlay pure layer (phase B of the syncplay project); phase C's coordinator is its first consumer."
+        "files": ["source/syncplay/syncPlayRequests.bs"],
+        "names": ["newGroup", "setNewQueue", "seek", "previousItem", "setPlaylistItem"],
+        "reason": "#1251: SyncPlay request bodies the group menu (phase D) and local control (phase E) first post."
+      },
+      {
+        "kind": "planned",
+        "files": ["source/syncplay/syncPlayState.bs"],
+        "names": ["resume"],
+        "reason": "#1251: phase E resumes a halted SyncPlay member."
       },
       {
         "kind": "planned",
         "files": ["source/api/ApiClient.bs"],
-        "names": ["BuildSyncPlayRequest", "BuildGetSyncPlayGroupsRequest"],
-        "reason": "#1251: the SyncPlay request builders; phase C's coordinator is their first caller."
+        "names": ["BuildGetSyncPlayGroupsRequest"],
+        "reason": "#1251: phase D's SyncPlay group menu lists the groups."
+      },
+      {
+        "kind": "planned",
+        "files": [
+          "components/syncplay/SyncPlayManager.bs",
+          "components/syncplay/SyncPlayManager.xml"
+        ],
+        "names": ["join", "leave"],
+        "reason": "#1251: phase D's group menu joins and leaves; until then only the device test calls them, over ODC."
       }
     ]
   }

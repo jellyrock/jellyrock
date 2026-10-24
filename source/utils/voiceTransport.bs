@@ -63,4 +63,18 @@ namespace voiceTransport
     return title
   end function
 
+  ' Which `control` value a voice or remote `play` and `resume` writes for a Video node in
+  ' `state`. Returns:
+  '   "resume": the node is paused
+  '   "": write nothing. The node is already playing, or it is buffering and plays by itself
+  '       once it has buffered. A `control = "play"` written while a seek buffers leaves the
+  '       node in `buffering` for good (measured on a Streaming Stick 4K, 2026-10-23).
+  '   "play": anything else (stopped, finished, error, no state), so a voice play still starts
+  '       playback from those states.
+  function playControl(state as string) as string
+    if state = "paused" then return "resume"
+    if state = "playing" or state = "buffering" then return ""
+    return "play"
+  end function
+
 end namespace

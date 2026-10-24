@@ -15,6 +15,7 @@
 namespace syncPlayOffset
 
   const RING_SIZE = 8
+  const BURST_INTERVAL_SECONDS = 60
 
   ' A fresh estimator: no rounds, no estimate.
   function newEstimator() as object
@@ -70,6 +71,20 @@ namespace syncPlayOffset
   ' The device clock reading at which the server's clock reads whenMs (a command's When).
   function deviceTimeForServerMs(estimator as object, whenMs as longinteger) as longinteger
     return whenMs - estimator.offsetMs
+  end function
+
+  ' Seconds until the next burst. Once there is an estimate, jellyfin-web's low-profile interval.
+  ' Until then the member holds every command it gets, so a burst that answered nothing is retried
+  ' after 1 s, doubling to that interval: web pings 1 s apart until it has three answers.
+  ' @param failedBursts - bursts in a row that ended with no estimate
+  function nextBurstSeconds(hasEstimate as boolean, failedBursts as integer) as integer
+    if hasEstimate then return BURST_INTERVAL_SECONDS
+    seconds = 1
+    for i = 2 to failedBursts
+      seconds = seconds * 2
+      if seconds >= BURST_INTERVAL_SECONDS then return BURST_INTERVAL_SECONDS
+    end for
+    return seconds
   end function
 
 end namespace

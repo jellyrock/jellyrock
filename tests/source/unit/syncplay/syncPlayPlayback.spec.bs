@@ -1,0 +1,459 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+import "pkg:/source/syncplay/syncPlayOffset.bs"
+import "pkg:/source/syncplay/syncPlayPlayback.bs"
+
+namespace tests
+
+  ' The coordinator's decisions against a fixed device clock and a fixed offset: the device reads
+  ' 1000 ms behind the server (offset +1000), as one round of the recorded Stick 4K rounds gives.
+  @suite("syncPlayPlayback — scheduling, the transport plan and the ready tracker")
+  class SyncPlayPlaybackTests extends tests.BaseTestSuite
+
+    ' Device clock "now": 2026-10-23T20:47:30.000Z minus the 1000 ms offset.
+    private deviceNow = 1792788449000&
+    private serverNow = 1792788450000&
+
+    private function estimator() as object
+      est = syncPlayOffset.newEstimator()
+      ' Server stamps 1000 ms ahead of the device, 10 ms round trip.
+      syncPlayOffset.addRound(est, 1000&, 2005&, 2005&, 1010&)
+      return est
+    end function
+
+    private function command(name as string, whenText as string, positionTicks as dynamic) as object
+      data = { GroupId: "g-1", PlaylistItemId: "p-1", When: whenText, Command: name, PositionTicks: positionTicks, EmittedAt: "2026-10-23T20:47:29.000Z" }
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: data })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("scheduleCommand()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a future When waits the gap on the device clock")
+    function _()
+      ' Server When 2026-10-23T20:47:31.000Z is 1000 ms after server now.
+      plan = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Pause", "2026-10-23T20:47:31.000Z", 600000000&), m.deviceNow)
+      m.assertEqual(plan.action, "Pause")
+      m.assertEqual(plan.delayMs, 1000&)
+      m.assertEqual(plan.positionTicks, 600000000&)
+    end function
+
+    @it("a past When applies at once")
+    function _()
+      plan = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Seek", "2026-10-23T20:47:20.000Z", 300000000&), m.deviceNow)
+      m.assertEqual(plan.delayMs, 0&)
+      m.assertEqual(plan.positionTicks, 300000000&)
+    end function
+
+    @it("a past Unpause carries the group's position now, estimated forward")
+    function _()
+      ' Unpaused at 20:47:28 from 60 s; server now is 20:47:30, so the group is at 62 s.
+      plan = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Unpause", "2026-10-23T20:47:28.000Z", 600000000&), m.deviceNow)
+      m.assertEqual(plan.delayMs, 0&)
+      m.assertEqual(plan.positionTicks, 620000000&)
+    end function
+
+    @it("a future Unpause keeps its own position")
+    function _()
+      plan = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Unpause", "2026-10-23T20:47:31.000Z", 600000000&), m.deviceNow)
+      m.assertEqual(plan.delayMs, 1000&)
+      m.assertEqual(plan.positionTicks, 600000000&)
+    end function
+
+    @it("an Integer tick count from JSON is handled as a LongInteger")
+    function _()
+      plan = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Seek", "2026-10-23T20:47:20.000Z", 15000), m.deviceNow)
+      m.assertEqual(plan.positionTicks, 15000&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyPlan()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("Unpause on a paused player in sync resumes without a seek")
+    function _()
+      steps = syncPlayPlayback.applyPlan({ action: "Unpause", delayMs: 0&, positionTicks: 600000000& }, "paused", 601000000&)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "resume")
+    end function
+
+    @it("Unpause on a paused player more than 400 ms off sends the seek alone: the seek resumes it")
+    function _()
+      steps = syncPlayPlayback.applyPlan({ action: "Unpause", delayMs: 0&, positionTicks: 600000000& }, "paused", 650000000&)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "seekto")
+      m.assertEqual(steps[0].position, 60.0)
+      m.assertFalse(steps[0].report)
+    end function
+
+    @it("Unpause on a buffering player sends no resume")
+    function _()
+      plan = { action: "Unpause", delayMs: 0&, positionTicks: 600000000& }
+      m.assertEqual(syncPlayPlayback.applyPlan(plan, "buffering", 601000000&).count(), 0)
+      steps = syncPlayPlayback.applyPlan(plan, "buffering", 650000000&)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "seekto")
+    end function
+
+    @it("Unpause on a playing player only corrects the position")
+    function _()
+      steps = syncPlayPlayback.applyPlan({ action: "Unpause", delayMs: 0&, positionTicks: 600000000& }, "playing", 700000000&)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "seekto")
+    end function
+
+    @it("Pause pauses a playing node, and a buffering node outside a load, and nothing else")
+    function _()
+      pausePlan = { action: "Pause", delayMs: 0&, positionTicks: 600000000& }
+      steps = syncPlayPlayback.applyPlan(pausePlan, "playing", 600000000&, "ready")
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "pause")
+      stalling = syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "stalling")
+      m.assertEqual(stalling.count(), 1)
+      m.assertEqual(stalling[0].command, "pause")
+      ready = syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "ready")
+      m.assertEqual(ready.count(), 1)
+      m.assertEqual(ready[0].command, "pause")
+      m.assertEqual(syncPlayPlayback.applyPlan(pausePlan, "paused", 600000000&, "ready").count(), 0)
+    end function
+
+    @it("Pause on a buffering node during a load sends nothing: the first-frame pause owns it")
+    function _()
+      pausePlan = { action: "Pause", delayMs: 0&, positionTicks: 600000000& }
+      m.assertEqual(syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "loading").count(), 0)
+    end function
+
+    @it("Seek on a playing player is one reported seek that pauses once it lands")
+    function _()
+      steps = syncPlayPlayback.applyPlan({ action: "Seek", delayMs: 0&, positionTicks: 1200000000& }, "playing", 600000000&)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "seekto")
+      m.assertEqual(steps[0].position, 120.0)
+      m.assertTrue(steps[0].report)
+      m.assertTrue(steps[0].thenPause)
+    end function
+
+    @it("Seek on a paused player is the seek alone: a seek resumes a paused node by itself")
+    function _()
+      steps = syncPlayPlayback.applyPlan({ action: "Seek", delayMs: 0&, positionTicks: 1200000000& }, "paused", 600000000&)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "seekto")
+      m.assertTrue(steps[0].thenPause)
+    end function
+
+    @it("the Unpause correction seek is silent")
+    function _()
+      steps = syncPlayPlayback.applyPlan({ action: "Unpause", delayMs: 0&, positionTicks: 600000000& }, "paused", 650000000&)
+      m.assertFalse(steps[0].report)
+      m.assertFalse(steps[0].thenPause)
+    end function
+
+    @it("Stop is one stop")
+    function _()
+      steps = syncPlayPlayback.applyPlan({ action: "Stop", delayMs: 0&, positionTicks: 0& }, "playing", 600000000&)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "stop")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("owesPause()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a group that is not paused owes no pause")
+    function _()
+      m.assertFalse(syncPlayPlayback.owesPause(false, "playing", "ready"))
+      m.assertFalse(syncPlayPlayback.owesPause(false, "buffering", "stalling"))
+    end function
+
+    @it("a paused group owes a pause to a playing node in ready, and to a buffering node in stalling")
+    function _()
+      m.assertTrue(syncPlayPlayback.owesPause(true, "playing", "ready"))
+      m.assertTrue(syncPlayPlayback.owesPause(true, "buffering", "stalling"))
+      m.assertTrue(syncPlayPlayback.owesPause(true, "buffering", "rebuffering"))
+    end function
+
+    @it("a paused group owes nothing to a node that is paused")
+    function _()
+      m.assertFalse(syncPlayPlayback.owesPause(true, "paused", "ready"))
+    end function
+
+    @it("the load and seek phases own their own pause")
+    function _()
+      for each phase in ["loading", "seeking", "landing", "idle"]
+        m.assertFalse(syncPlayPlayback.owesPause(true, "playing", phase), phase)
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("startPositionTicks()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes the update's start when no newer Unpause exists")
+    function _()
+      update = { lastUpdateMs: 1792788449500&, startPositionTicks: 300000000& }
+      m.assertEqual(syncPlayPlayback.startPositionTicks(update, invalid, m.estimator(), m.deviceNow), 300000000&)
+    end function
+
+    @it("takes the update's start when the last Unpause is older than the update")
+    function _()
+      update = { lastUpdateMs: 1792788449500&, startPositionTicks: 300000000& }
+      older = m.command("Unpause", "2026-10-23T20:47:28.000Z", 600000000&)
+      m.assertEqual(syncPlayPlayback.startPositionTicks(update, older, m.estimator(), m.deviceNow), 300000000&)
+    end function
+
+    @it("estimates forward from an Unpause newer than the update")
+    function _()
+      update = { lastUpdateMs: 1792788440000&, startPositionTicks: 300000000& }
+      newer = m.command("Unpause", "2026-10-23T20:47:28.000Z", 600000000&)
+      m.assertEqual(syncPlayPlayback.startPositionTicks(update, newer, m.estimator(), m.deviceNow), 620000000&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("trackPlayerEvent(): a load")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a mount reports buffering")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted" })
+      m.assertEqual(result.report, "buffering")
+      m.assertEqual(tracker.phase, "loading")
+    end function
+
+    @it("the first playing after a mount reports ready and asks for a pause first")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted" })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 0& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 300000000& })
+      m.assertEqual(result.report, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertEqual(tracker.lastPositionTicks, 300000000&)
+    end function
+
+    @it("a load that started partway in reports ready at its start when the first playing still reads 0")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted", startTicks: 3490000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 0& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      m.assertEqual(result.report, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertEqual(result.positionTicks, 3490000000&)
+    end function
+
+    @it("a load whose first playing reads within the tolerance of its start reports the node's own position")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted", startTicks: 3490000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 3487000000& })
+      m.assertEqual(result.report, "ready")
+      m.assertEqual(result.positionTicks, -1&)
+    end function
+
+    @it("a mount with no start keeps the node's own position")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted" })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      m.assertEqual(result.report, "ready")
+      m.assertEqual(result.positionTicks, -1&)
+    end function
+
+    @it("buffering before the first frame reports nothing more")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted" })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering" })
+      m.assertEqual(result.report, "")
+    end function
+
+    @it("a buffering after ready is a stall only once it outlasts the stall wait")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted" })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      stall = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 50000000& })
+      m.assertEqual(stall.report, "")
+      m.assertEqual(stall.waitMs, 1000)
+      m.assertEqual(tracker.phase, "stalling")
+      outlasted = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(outlasted.report, "buffering")
+      m.assertEqual(tracker.phase, "rebuffering")
+      back = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 50000000& })
+      m.assertEqual(back.report, "ready")
+      m.assertFalse(back.pauseFirst)
+    end function
+
+    @it("the few milliseconds of buffering around a pause or a resume report nothing")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted" })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 50000000& })
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "paused", positionTicks: 50000000& }).report, "")
+      m.assertEqual(tracker.phase, "ready")
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 50000000& })
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 50000000& }).report, "")
+      m.assertEqual(tracker.phase, "ready")
+      ' A timeout that arrives after the player recovered is nothing.
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" }).report, "")
+    end function
+
+    @it("a pause and a resume after ready report nothing")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted" })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "paused", positionTicks: 0& }).report, "")
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& }).report, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("trackPlayerEvent(): a seek")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function readyTracker() as object
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted" })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      return tracker
+    end function
+
+    @it("a reported seek reports buffering and asks for the settle timer")
+    function _()
+      tracker = m.readyTracker()
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true })
+      m.assertEqual(result.report, "buffering")
+      m.assertEqual(result.waitMs, 3000)
+      m.assertEqual(tracker.phase, "seeking")
+    end function
+
+    @it("playing with the pre-seek position does not report ready (the Ultra's stale read)")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      m.assertEqual(result.report, "")
+      stale = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 1245000000& })
+      m.assertEqual(stale.report, "")
+    end function
+
+    @it("a position within 500 ms of the target on a playing node reports ready, with the pause the step asked for")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 303000000& })
+      m.assertEqual(result.report, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a position that confirms while the node still buffers waits for playing before the pause and the Ready")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      landed = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertEqual(landed.report, "")
+      m.assertFalse(landed.pauseFirst)
+      m.assertEqual(landed.waitMs, 3000)
+      m.assertEqual(tracker.phase, "landing")
+      playing = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 300000000& })
+      m.assertEqual(playing.report, "ready")
+      m.assertTrue(playing.pauseFirst)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a seek that leaves the node paused reports ready with no pause")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "paused", positionTicks: 300000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertEqual(result.report, "ready")
+      m.assertFalse(result.pauseFirst)
+    end function
+
+    @it("a landing that never reaches playing reports ready at the timeout and pauses nothing")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(result.report, "ready")
+      m.assertFalse(result.pauseFirst)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a silent seek reports nothing on the way in or out, and its buffering is not a stall")
+    function _()
+      tracker = m.readyTracker()
+      sent = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: false })
+      m.assertEqual(sent.report, "")
+      m.assertEqual(sent.waitMs, 3000)
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& }).report, "")
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& }).report, "")
+      landed = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertEqual(landed.report, "")
+      m.assertFalse(landed.pauseFirst)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a position further than 500 ms keeps waiting")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 306000000& })
+      m.assertEqual(result.report, "")
+    end function
+
+    @it("the settle timeout reports ready with the position in hand")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(result.report, "ready")
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a timeout outside a seek reports nothing")
+    function _()
+      tracker = m.readyTracker()
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" }).report, "")
+    end function
+
+    @it("an unmount goes idle and a later position reports nothing")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "unmounted" })
+      m.assertEqual(tracker.phase, "idle")
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& }).report, "")
+    end function
+
+    @it("an unknown or empty event reports nothing")
+    function _()
+      tracker = m.readyTracker()
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "dance" }).report, "")
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, invalid).report, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("units")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("converts the player's float seconds to ticks and back")
+    function _()
+      m.assertEqual(syncPlayPlayback.secondsToTicks(124.5), 1245000000&)
+      m.assertEqual(syncPlayPlayback.secondsToTicks(invalid), 0&)
+      m.assertEqual(syncPlayPlayback.ticksToSeconds(1245000000&), 124.5)
+    end function
+
+  end class
+end namespace

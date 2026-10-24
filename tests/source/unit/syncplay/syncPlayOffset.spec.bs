@@ -130,5 +130,25 @@ namespace tests
       m.assertEqual(syncPlayOffset.deviceTimeForServerMs(est, 5086&), 5000&)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextBurstSeconds()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("waits the full interval once there is an estimate, however many bursts failed")
+    function _()
+      m.assertEqual(syncPlayOffset.nextBurstSeconds(true, 0), 60)
+      m.assertEqual(syncPlayOffset.nextBurstSeconds(true, 3), 60)
+    end function
+
+    @it("retries after 1 s while there is none, doubling to the interval")
+    function _()
+      m.assertEqual(syncPlayOffset.nextBurstSeconds(false, 1), 1)
+      m.assertEqual(syncPlayOffset.nextBurstSeconds(false, 2), 2)
+      m.assertEqual(syncPlayOffset.nextBurstSeconds(false, 3), 4)
+      m.assertEqual(syncPlayOffset.nextBurstSeconds(false, 6), 32)
+      m.assertEqual(syncPlayOffset.nextBurstSeconds(false, 7), 60)
+      m.assertEqual(syncPlayOffset.nextBurstSeconds(false, 40), 60)
+    end function
+
   end class
 end namespace

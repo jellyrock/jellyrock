@@ -1,0 +1,105 @@
+' Turning a SyncPlay play queue into QueueManager items, pure. The server's PlayQueue update
+' names items by id only; SyncPlayManager fetches them (GET /Items?ids=…) and hands the raw
+' items here with the parsed playlist.
+namespace syncPlayQueue
+
+  ' The QueueManager item AAs for a playlist, in playlist order, each carrying its
+  ' syncPlayPlaylistItemId (what commands and the Ready report name the item by). An entry whose
+  ' item the server did not return is dropped: the member cannot play what it cannot see.
+  ' @param playlist - syncPlayMessage's [{ itemId, playlistItemId }]
+  ' @param items - the raw Jellyfin items (PascalCase AAs) the fetch returned, any order
+  function queueItemsFor(playlist as object, items as object) as object
+    byId = {}
+    if type(items) = "roArray"
+      for each item in items
+        if isValid(item) and isValidAndNotEmpty(item.Id) then byId[item.Id] = item
+      end for
+    end if
+    queueItems = []
+    if type(playlist) <> "roArray" then return queueItems
+    for each entry in playlist
+      raw = byId[entry.itemId]
+      if isValid(raw)
+        queueItem = nodeHelpers.createQueueItem(raw)
+        if isValid(queueItem)
+          queueItem.syncPlayPlaylistItemId = entry.playlistItemId
+          queueItems.push(queueItem)
+        end if
+      end if
+    end for
+    return queueItems
+  end function
+
+  ' The index of the playlist item in the built queue, or -1. Dropped entries shift the server's
+  ' PlayingItemIndex, so the position is found by id, never copied.
+  function positionOf(queueItems as object, playlistItemId as string) as integer
+    for i = 0 to queueItems.count() - 1
+      if queueItems[i].syncPlayPlaylistItemId = playlistItemId then return i
+    end for
+    return -1
+  end function
+
+  ' A PlayQueue update no newer than the one applied is stale (web's updatePlayQueue guard): the
+  ' two transports can deliver out of order after a reconnect.
+  function isStaleQueueUpdate(state as object, update as object) as boolean
+    if not isValid(update) or update.kind <> "syncplayupdate" or update.updateType <> "PlayQueue" then return false
+    if not syncPlayTime.isWholeNumber(update.lastUpdateMs) then return true
+    if state.lastUpdateMs = 0& then return false
+    return syncPlayTime.asLong(update.lastUpdateMs) <= state.lastUpdateMs
+  end function
+
+  ' Whether the group's playing item is the last of its playlist, so a finished item has nothing to
+  ' move on to. The group's playlist, not the local queue: the local one drops items this member
+  ' cannot see. Repeat modes are phase E's.
+  function isLastItem(state as object) as boolean
+    if state.playingItemIndex < 0 then return true
+    return state.playingItemIndex >= state.playlist.count() - 1
+  end function
+
+  ' Whether a QueueManager item is the one the group is playing: queueItemsFor stamps the
+  ' playlist id, and nothing else in the app sets it.
+  function isGroupItem(queueItem as dynamic, playingItemId as string) as boolean
+    if not isValid(queueItem) or playingItemId = "" then return false
+    playlistItemId = queueItem.syncPlayPlaylistItemId
+    return syncPlayTime.isText(playlistItemId) and playlistItemId = playingItemId
+  end function
+
+  ' Whether a queue update moves this member to another item (a new playlist, the server's
+  ' current-item change, or a removal that took the playing item with it).
+  function changesPlayingItem(reason as string, previousPlaylistItemId as string, playlistItemId as string) as boolean
+    if reason = "NewPlaylist" then return true
+    if reason = "SetCurrentItem" or reason = "NextItem" or reason = "PreviousItem" or reason = "RemoveItems"
+      return previousPlaylistItemId <> playlistItemId
+    end if
+    return false
+  end function
+
+  ' What applying a queue update does to the player: "" when the item stays, "remount" to reload the
+  ' mounted player in place, or "launch" to open the play route. Never the route over a mounted
+  ' PlayerHostView: sgRouter reuses it for the same item and covers it, still playing, for another.
+  ' @param hasPlayer - whether a player host is mounted
+  function loadAction(reason as string, previousPlaylistItemId as string, playlistItemId as string, hasPlayer as boolean) as string
+    if not changesPlayingItem(reason, previousPlaylistItemId, playlistItemId) then return ""
+    if hasPlayer then return "remount"
+    return "launch"
+  end function
+
+  ' Whether a fetched play queue still applies: the member is in the group and still following, and
+  ' no newer update arrived while the items were in flight (that one applies its own).
+  ' @param state - the membership state
+  ' @param lastUpdateMs - the update's LastUpdate when the fetch started, as a LongInteger
+  function appliesFetchedQueue(state as object, lastUpdateMs as longinteger) as boolean
+    return state.inGroup and state.following and state.lastUpdateMs = lastUpdateMs
+  end function
+
+  ' What a failed queue load does next: "retry" or "halt". A request can fail on a blip, so the first
+  ' request failure retries once. A missing item will be missing again, so it halts, as does a
+  ' request failure on the retry.
+  ' @param isRetry - whether this load was already a retry
+  ' @param failure - "request" (the fetch was rejected) or "missing" (no Items, or no playing item)
+  function loadFailureAction(isRetry as boolean, failure as string) as string
+    if failure = "request" and not isRetry then return "retry"
+    return "halt"
+  end function
+
+end namespace

@@ -1,0 +1,578 @@
+' bsc-disable-file auto-abandon-promises: one instance for the app's life on m.global, never destroyed, so no request outlives it
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/syncplay/syncPlayMessage.bs"
+import "pkg:/source/syncplay/syncPlayOffset.bs"
+import "pkg:/source/syncplay/syncPlayPlayback.bs"
+import "pkg:/source/syncplay/syncPlayQueue.bs"
+import "pkg:/source/syncplay/syncPlayRequests.bs"
+import "pkg:/source/syncplay/syncPlayState.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/tasks.bs"
+
+' Rounds in the burst a join starts (the spike's "best of eight") and in each later one; when the
+' next burst runs is syncPlayOffset.nextBurstSeconds.
+const FIRST_SYNC_ROUNDS = 8
+const SYNC_ROUNDS = 3
+
+sub init()
+  m.log = new log.Logger("SyncPlayManager")
+  m.commandTimer = m.top.findNode("commandTimer")
+  m.commandTimer.observeField("fire", "onCommandTimer")
+  m.syncTimer = m.top.findNode("syncTimer")
+  m.syncTimer.observeField("fire", "onSyncTimer")
+  m.readyTimer = m.top.findNode("readyTimer")
+  m.readyTimer.observeField("fire", "onReadyTimer")
+  m.pauseTimer = m.top.findNode("pauseTimer")
+  m.pauseTimer.observeField("fire", "onPauseTimer")
+  ' The working state is built on first use, not here. setGlobalNodes() creates this node from the main
+  ' thread, so init() runs there, and the AAs it leaves in `m` reach the render thread (where
+  ' every handler below runs) without their LongInteger and `invalid` entries: measured on the
+  ' Stick 4K 2026-10-23, a 12-key state read back with 8 keys at the first handler, the
+  ' estimator with 2 of 4. The first handler builds it instead (ensureReady). The published
+  ' fields get their defaults here: a field write marshals whole.
+  m.state = invalid
+  m.top.setFields({
+    inGroup: false,
+    following: false,
+    groupId: "",
+    groupName: "",
+    groupState: "",
+    sync: { offsetMs: 0&, delayMs: 0&, hasEstimate: false, lastCommand: invalid, trackerPhase: "idle", playingItemId: "" }
+  })
+end sub
+
+' Build the working state on the thread that uses it, once.
+sub ensureReady()
+  if isValid(m.state) then return
+  m.state = syncPlayState.newState()
+  m.estimator = syncPlayOffset.newEstimator()
+  m.tracker = syncPlayPlayback.newReadyTracker()
+  ' A command that arrived before the first clock estimate; applied when it lands (web's queuedCommand).
+  m.heldCommand = invalid
+  ' The last command accepted, for the start position of a new playlist.
+  m.lastCommand = invalid
+  ' The plan commandTimer applies when it fires.
+  m.pendingPlan = invalid
+  ' A remount this manager asked for, or a Stop it applied: the unmount that follows is not a halt.
+  m.expectingRemount = false
+  m.timeSyncTask = invalid
+  ' Bursts in a row that ended with no estimate (syncPlayOffset.nextBurstSeconds).
+  m.failedBursts = 0
+  ' What the player last told us.
+  m.playerState = ""
+  m.playerPositionTicks = 0&
+  ' Where the load now starting was asked to start (ticks), for the tracker's first Ready.
+  m.loadStartTicks = 0&
+  ' The group is paused: a Pause or Seek was applied and no Unpause or Stop since. While it holds
+  ' and the node plays on, the manager pauses it again (syncPlayPlayback.owesPause).
+  m.groupPaused = false
+  ' Pause writes made for the current group command, and whether the give-up warning went out.
+  m.pauseAttempts = 0
+  m.pauseGaveUp = false
+  ' Set before applyGroupUpdate on a PlayQueue frame, so the item change can be told afterwards.
+  m.previousPlayingItemId = ""
+  publish()
+end sub
+
+' --- the interface ---
+
+function join(groupId as string) as boolean
+  ensureReady()
+  if not isValidAndNotEmpty(groupId) then return false
+  m.log.info("joining group", "groupId", groupId)
+  return post("Join", syncPlayRequests.join(groupId))
+end function
+
+function leave() as boolean
+  ensureReady()
+  if not m.state.inGroup then return false
+  m.log.info("leaving group", "groupId", m.state.groupId)
+  return post("Leave", invalid)
+end function
+
+' Sign-out and server switch. The server ends a membership only with its session, and an HTTPS
+' session outlives the app's long poll, so the group is left explicitly.
+function reset() as boolean
+  m.log.info("reset")
+  ensureReady()
+  if m.state.inGroup then post("Leave", invalid, true)
+  leaveLocally()
+  return true
+end function
+
+' @returns an AA with `following`: whether the caller should defer to the group (a `finished` the host
+'   must not advance on)
+function playerEvent(evt as object) as object
+  ensureReady()
+  if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return { following: isFollowing() }
+  kind = evt.kind
+  if isValid(evt.position) then m.playerPositionTicks = syncPlayPlayback.secondsToTicks(evt.position)
+  if kind = "state" and syncPlayTime.isText(evt.state) then m.playerState = evt.state
+
+  if kind = "mounted"
+    m.expectingRemount = false
+    m.playerState = ""
+    m.groupPaused = false
+    if isFollowing()
+      ' Only the group's item answers to the group. Anything else the viewer started plays
+      ' as their own, so this member halts rather than report a load the group never asked for.
+      if syncPlayQueue.isGroupItem(m.global.queueManager.callFunc("getCurrentItem"), m.state.playingItemId)
+        ' A new player has reported no position yet. The old player's last one would go out in
+        ' this mount's Buffering and feed applyPlan's seek check, so start from the load's start.
+        m.playerPositionTicks = m.loadStartTicks
+        track({ kind: "mounted", startTicks: m.loadStartTicks })
+      else
+        haltFollowing("a player mounted for an item the group is not playing")
+      end if
+    end if
+  else if kind = "state"
+    if isFollowing()
+      track({ kind: "state", state: m.playerState, positionTicks: m.playerPositionTicks })
+      ' Never written from here: the node passes through `buffering` for milliseconds on its own
+      ' pause, and the timer lets that settle.
+      if syncPlayPlayback.owesPause(m.groupPaused, m.playerState, m.tracker.phase) then armPauseTimer()
+    end if
+  else if kind = "position"
+    if isFollowing() then track({ kind: "position", positionTicks: m.playerPositionTicks })
+  else if kind = "finished"
+    if isFollowing()
+      ' The group moves on together: ask the server, which answers every member with a
+      ' PlayQueue(NextItem) that remounts. On the playlist's last item it answers nothing, so
+      ' this member leaves the route as for any finished queue.
+      post("NextItem", syncPlayRequests.nextItem(m.state.playingItemId))
+      host = playerHost()
+      if syncPlayQueue.isLastItem(m.state) and isValid(host)
+        m.expectingRemount = true
+        host.callFunc("exitPlayback")
+      end if
+    end if
+  else if kind = "unmounted"
+    m.playerState = ""
+    m.groupPaused = false
+    m.pendingPlan = invalid
+    m.commandTimer.control = "stop"
+    m.readyTimer.control = "stop"
+    m.pauseTimer.control = "stop"
+    track({ kind: "unmounted" })
+    if m.expectingRemount
+      m.expectingRemount = false
+    else if isFollowing()
+      ' Back during group playback, or an error that left the player.
+      haltFollowing("the player left while following")
+    end if
+  end if
+  return { following: isFollowing() }
+end function
+
+' This member stops following but stays in the group, and tells the server not to wait on it (a
+' server before 12.1 has no group-wait timeout). Resuming is phase E.
+sub haltFollowing(reason as string)
+  m.log.info("halting", "reason", reason, "groupId", m.state.groupId)
+  syncPlayState.halt(m.state)
+  m.pendingPlan = invalid
+  m.groupPaused = false
+  m.commandTimer.control = "stop"
+  m.readyTimer.control = "stop"
+  m.pauseTimer.control = "stop"
+  m.tracker = syncPlayPlayback.newReadyTracker()
+  post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
+  publish()
+end sub
+
+' --- frames ---
+
+' The event's own payload, never m.top.frame: the main thread writes frames back to back
+' (GroupJoined, a command and a queue update arrive within milliseconds), and the field holds
+' only the latest when a handler runs.
+sub onFrame(event as object)
+  ensureReady()
+  frame = event.getData()
+  if not isValid(frame) or not syncPlayTime.isText(frame.kind) then return
+  if frame.kind = "syncplayupdate"
+    onGroupUpdate(frame)
+  else if frame.kind = "syncplaycommand"
+    onCommand(frame)
+  end if
+end sub
+
+sub onGroupUpdate(update as object)
+  updateType = update.updateType
+  if updateType = "PlayQueue" and syncPlayQueue.isStaleQueueUpdate(m.state, update)
+    m.log.debug("stale PlayQueue update ignored", "lastUpdateMs", update.lastUpdateMs.toStr())
+    return
+  end if
+  m.previousPlayingItemId = m.state.playingItemId
+  m.state = syncPlayState.applyGroupUpdate(m.state, update)
+  m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
+
+  if updateType = "GroupJoined"
+    syncPlayOffset.reset(m.estimator)
+    m.heldCommand = invalid
+    m.lastCommand = invalid
+    m.groupPaused = false
+    m.tracker = syncPlayPlayback.newReadyTracker()
+    m.failedBursts = 0
+    startTimeSync(FIRST_SYNC_ROUNDS)
+  else if updateType = "GroupLeft" or updateType = "NotInGroup"
+    leaveLocally()
+    return
+  else if updateType = "PlayQueue"
+    onQueueUpdate(update)
+  end if
+  publish()
+end sub
+
+sub onCommand(command as object)
+  if not syncPlayState.acceptsCommand(m.state, command)
+    m.log.debug("command not for this member", "command", command.command, "playlistItemId", command.playlistItemId)
+    return
+  end if
+  if not isFollowing()
+    ' Recorded, never applied: whatever plays now is this viewer's own. A resume (phase E)
+    ' starts from the last command.
+    m.log.debug("command recorded while halted", "command", command.command)
+    m.lastCommand = command
+    publish()
+    return
+  end if
+  if not m.estimator.hasEstimate
+    m.log.info("command held until the clock offset is known", "command", command.command)
+    m.heldCommand = command
+    return
+  end if
+  scheduleCommand(command)
+end sub
+
+sub scheduleCommand(command as object)
+  m.lastCommand = command
+  plan = syncPlayPlayback.scheduleCommand(m.estimator, command, syncPlayTime.nowMs())
+  m.pendingPlan = plan
+  m.commandTimer.control = "stop"
+  m.log.info("command scheduled", "command", plan.action, "inMs", plan.delayMs.toStr(), "positionTicks", plan.positionTicks.toStr())
+  if plan.delayMs = 0
+    applyPendingPlan()
+  else
+    m.commandTimer.duration = plan.delayMs / 1000#
+    m.commandTimer.control = "start"
+  end if
+  publish()
+end sub
+
+sub onCommandTimer()
+  ensureReady()
+  applyPendingPlan()
+end sub
+
+sub applyPendingPlan()
+  plan = m.pendingPlan
+  m.pendingPlan = invalid
+  ' A halt can land between scheduling and firing.
+  if not isValid(plan) or not isFollowing() then return
+  host = playerHost()
+  if not isValid(host)
+    m.log.warn("command arrived with no player mounted", "command", plan.action)
+    return
+  end if
+  ' A Seek leaves the player paused for the Unpause that follows.
+  m.groupPaused = plan.action = "Pause" or plan.action = "Seek"
+  if m.groupPaused
+    m.pauseAttempts = 0
+    m.pauseGaveUp = false
+  end if
+  steps = syncPlayPlayback.applyPlan(plan, m.playerState, m.playerPositionTicks, m.tracker.phase)
+  for each verb in steps
+    if verb.command = "stop"
+      m.expectingRemount = true
+      host.callFunc("exitPlayback")
+    else
+      host.callFunc("handleTransport", verb)
+      if verb.command = "pause"
+        m.pauseAttempts++
+        armPauseTimer()
+      end if
+      if verb.command = "seekto" then track({ kind: "seek", positionTicks: plan.positionTicks, report: verb.report, thenPause: verb.thenPause })
+    end if
+  end for
+end sub
+
+' --- the queue ---
+
+sub onQueueUpdate(update as object)
+  if not m.state.following then return
+  fetchQueue(update.reason, m.state.lastUpdateMs, false)
+end sub
+
+' Fetches the group's items and applies the queue. A failed load goes to onQueueLoadFailed: the
+' server waits on this member's Ready, so a silent exit would hold the whole group.
+sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean)
+  ids = []
+  for each entry in m.state.playlist
+    ids.push(entry.itemId)
+  end for
+  if ids.count() = 0 then return
+  req = GetApi().BuildGetItemsByQueryRequest({ ids: ids.join(",") })
+  if not isValid(req) then return
+  requestId = "syncplay-queue-" + lastUpdateMs.toStr()
+  if isRetry then requestId = requestId + "-retry"
+  promises.chain(fetchAsync(req, requestId), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry }).then(sub(res as object, ctx as object)
+    ' A newer update arrived while this one's items were in flight: it will apply its own.
+    ' A member that stopped following while the items were in flight applies nothing, as onCommand
+    ' does for a halted member.
+    if not syncPlayQueue.appliesFetchedQueue(m.state, ctx.lastUpdateMs) then return
+    items = invalid
+    if isValid(res) and res.ok = true and isValid(res.json) then items = res.json.Items
+    if not isValid(items)
+      m.log.warn("the group's items could not be read", "reason", ctx.reason)
+      onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, "missing")
+      return
+    end if
+    applyQueue(ctx.reason, syncPlayQueue.queueItemsFor(m.state.playlist, items), ctx.lastUpdateMs, ctx.isRetry)
+  end sub).catch(sub(err as object, ctx as object)
+    ' err whole: a timeout rejects with the pool's result, which has no `reason`.
+    m.log.warn("the group's items could not be fetched", err)
+    onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, "request")
+  end sub)
+end sub
+
+' A queue that cannot be loaded: retry a request failure once, otherwise stop following so the
+' server stops waiting on this member. Nothing happens when a newer update or a halt took over.
+sub onQueueLoadFailed(reason as string, lastUpdateMs as longinteger, isRetry as boolean, failure as string)
+  if not syncPlayQueue.appliesFetchedQueue(m.state, lastUpdateMs) then return
+  if syncPlayQueue.loadFailureAction(isRetry, failure) = "retry"
+    fetchQueue(reason, lastUpdateMs, true)
+    return
+  end if
+  haltFollowing("the group's queue could not be loaded (" + failure + ")")
+end sub
+
+sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteger, isRetry as boolean)
+  index = syncPlayQueue.positionOf(queueItems, m.state.playingItemId)
+  ' Checked before the queue changes: a member that stops following keeps its own queue.
+  if index < 0
+    m.log.warn("the group's playing item is not in the fetched queue", "playlistItemId", m.state.playingItemId)
+    onQueueLoadFailed(reason, lastUpdateMs, isRetry, "missing")
+    return
+  end if
+  queueManager = m.global.queueManager
+  ' A new playlist is a new queue: the viewer's version pick and gear caps from the queue before
+  ' do not carry into it (set() alone keeps them, for a reorder). Within the group's playlist
+  ' they carry, as in any queue.
+  if reason = "NewPlaylist" then queueManager.callFunc("clear")
+  queueManager.callFunc("set", queueItems)
+  queueManager.callFunc("setPosition", index)
+  ' Cinema Mode: no intro in front of the group's item. set() went through clear(), which
+  ' re-reads the setting, so this comes after it.
+  queueManager.callFunc("setPrerollStatus", false)
+  host = playerHost()
+  action = syncPlayQueue.loadAction(reason, m.previousPlayingItemId, m.state.playingItemId, isValid(host))
+  if action = "" then return
+  if reason = "NewPlaylist"
+    startTicks& = syncPlayPlayback.startPositionTicks({ lastUpdateMs: m.state.lastUpdateMs, startPositionTicks: m.state.startPositionTicks }, m.lastCommand, m.estimator, syncPlayTime.nowMs())
+    queueManager.callFunc("setCurrentStartingPoint", startTicks&, true)
+    m.loadStartTicks = startTicks&
+  else
+    m.loadStartTicks = 0&
+  end if
+  if action = "remount"
+    ' The play route over a mounted player reloads nothing for the same item and stacks a second
+    ' player for another, so the player reloads in place. No playback-start wait opens: a
+    ' remount takes none.
+    m.expectingRemount = true
+    if reason <> "NewPlaylist" then queueManager.callFunc("advanceTo", index)
+    host.callFunc("skipToCurrentQueueItem")
+  else
+    if reason <> "NewPlaylist" then queueManager.callFunc("startCurrentFresh")
+    queueManager.callFunc("beginPlaybackStart", "")
+    queueManager.callFunc("playQueue")
+  end if
+end sub
+
+' --- reports ---
+
+sub track(evt as object)
+  phaseBefore = m.tracker.phase
+  result = syncPlayPlayback.trackPlayerEvent(m.tracker, evt)
+  if result.waitMs > 0
+    m.readyTimer.control = "stop"
+    m.readyTimer.duration = result.waitMs / 1000#
+    m.readyTimer.control = "start"
+  end if
+  isPlaying = m.playerState = "playing"
+  if result.pauseFirst
+    ' A load's first frame: hold here and tell the server where we are. Its Unpause starts
+    ' everyone together (web pauses at playbackstart the same way).
+    host = playerHost()
+    if isValid(host) then host.callFunc("handleTransport", { command: "pause" })
+    isPlaying = false
+  end if
+  if result.report <> ""
+    if result.positionTicks >= 0 then report(result.report, isPlaying, result.positionTicks) else report(result.report, isPlaying)
+  else if m.tracker.phase <> phaseBefore
+    ' A phase change that sends no report still reaches the published field.
+    publish()
+  end if
+end sub
+
+sub onReadyTimer()
+  ensureReady()
+  if isFollowing() then track({ kind: "timeout" })
+end sub
+
+' Check, a moment after a pause write or a state change, that the player is still held.
+sub armPauseTimer()
+  m.pauseTimer.control = "stop"
+  m.pauseTimer.duration = syncPlayPlayback.PAUSE_CONFIRM_MS / 1000#
+  m.pauseTimer.control = "start"
+end sub
+
+' While the group is paused the player stays paused: a pause write that did not take, or a
+' resume from the viewer, is written again, up to PAUSE_ATTEMPTS times per group command.
+sub onPauseTimer()
+  ensureReady()
+  if not isFollowing() then return
+  if not syncPlayPlayback.owesPause(m.groupPaused, m.playerState, m.tracker.phase) then return
+  if m.pauseAttempts >= syncPlayPlayback.PAUSE_ATTEMPTS
+    if not m.pauseGaveUp
+      m.pauseGaveUp = true
+      m.log.warn("the player would not stay paused", "state", m.playerState, "attempts", m.pauseAttempts)
+    end if
+    return
+  end if
+  host = playerHost()
+  if not isValid(host) then return
+  host.callFunc("handleTransport", { command: "pause" })
+  m.pauseAttempts++
+  armPauseTimer()
+end sub
+
+' @param positionTicks - the position to report; omitted, the player's own
+sub report(kind as string, isPlaying as boolean, positionTicks = invalid as dynamic)
+  whenMs& = syncPlayOffset.serverNowMs(m.estimator, syncPlayTime.nowMs())
+  reported& = m.playerPositionTicks
+  if isValid(positionTicks) then reported& = syncPlayTime.asLong(positionTicks)
+  if kind = "ready"
+    post("Ready", syncPlayRequests.ready(whenMs&, reported&, isPlaying, m.state.playingItemId))
+  else
+    post("Buffering", syncPlayRequests.buffering(whenMs&, reported&, isPlaying, m.state.playingItemId))
+  end if
+  m.log.info("reported", "kind", kind, "positionTicks", reported&.toStr(), "isPlaying", isPlaying)
+  publish()
+end sub
+
+' --- time sync ---
+
+sub startTimeSync(rounds as integer)
+  serverUrl = m.global.server.serverUrl
+  if not isValidAndNotEmpty(serverUrl) then return
+  m.timeSyncTask = replaceTask(m.timeSyncTask, "TimeSyncTask", "results", { url: serverUrl + "/GetUtcTime", authHeader: buildAuthHeader(), rounds: rounds })
+  m.timeSyncTask.observeField("results", "onTimeSyncResults")
+  launchTask(m.timeSyncTask)
+end sub
+
+sub onTimeSyncResults(event as object)
+  if not isCurrentTaskEvent(event, m.timeSyncTask) then return
+  rows = event.getData()
+  m.timeSyncTask = releaseTask(m.timeSyncTask, "results")
+  added = 0
+  if type(rows) = "roArray"
+    for each row in rows
+      if syncPlayOffset.addUtcTimeResponse(m.estimator, row.txDeviceMs, row.rxDeviceMs, row.body) then added++
+    end for
+  end if
+  m.log.info("time sync", "rounds", added, "offsetMs", m.estimator.offsetMs.toStr(), "delayMs", m.estimator.delayMs.toStr())
+  if not m.state.inGroup then return
+  if m.estimator.hasEstimate
+    m.failedBursts = 0
+    post("Ping", syncPlayRequests.ping(m.estimator.delayMs \ 2))
+    if isValid(m.heldCommand)
+      held = m.heldCommand
+      m.heldCommand = invalid
+      ' Checked again: a queue update since it was held can have made it stale (acceptsCommand).
+      if syncPlayState.acceptsCommand(m.state, held) and isFollowing() then scheduleCommand(held)
+    end if
+  else
+    m.failedBursts++
+  end if
+  m.syncTimer.duration = syncPlayOffset.nextBurstSeconds(m.estimator.hasEstimate, m.failedBursts)
+  m.syncTimer.control = "start"
+  publish()
+end sub
+
+sub onSyncTimer()
+  ensureReady()
+  if m.state.inGroup then startTimeSync(SYNC_ROUNDS)
+end sub
+
+' --- helpers ---
+
+function isFollowing() as boolean
+  return m.state.inGroup and m.state.following
+end function
+
+' The routed play host, when the viewer is on the play route.
+function playerHost() as dynamic
+  view = m.global.activeRoutedView
+  if isValid(view) and view.subtype() = "PlayerHostView" then return view
+  return invalid
+end function
+
+' A SyncPlay POST nobody reads the answer to: the server's reply is a frame on the receiver.
+' @param isLastForSession - true for a post made as the session ends: the side-effect thread
+'   builds Authorization when it sends, after SignOut has cleared the user, so the header is
+'   taken now (a request's own headers win over the one it builds)
+function post(action as string, body as dynamic, isLastForSession = false as boolean) as boolean
+  req = GetApi().BuildSyncPlayRequest(action, body)
+  if not isValid(req)
+    m.log.warn("no request for SyncPlay action", "action", action)
+    return false
+  end if
+  if isLastForSession
+    if not isValid(req.headers) then req.headers = {}
+    req.headers.Authorization = buildAuthHeader()
+  end if
+  SubmitSideEffect(req)
+  return true
+end function
+
+sub leaveLocally()
+  m.commandTimer.control = "stop"
+  m.syncTimer.control = "stop"
+  m.readyTimer.control = "stop"
+  m.pauseTimer.control = "stop"
+  m.groupPaused = false
+  m.timeSyncTask = releaseTask(m.timeSyncTask, "results")
+  m.state = syncPlayState.newState()
+  syncPlayOffset.reset(m.estimator)
+  m.tracker = syncPlayPlayback.newReadyTracker()
+  m.heldCommand = invalid
+  m.lastCommand = invalid
+  m.pendingPlan = invalid
+  m.expectingRemount = false
+  m.loadStartTicks = 0&
+  m.failedBursts = 0
+  publish()
+end sub
+
+sub publish()
+  m.top.setFields({
+    inGroup: m.state.inGroup,
+    following: isFollowing(),
+    groupId: m.state.groupId,
+    groupName: m.state.groupName,
+    groupState: m.state.groupState,
+    sync: {
+      offsetMs: m.estimator.offsetMs,
+      delayMs: m.estimator.delayMs,
+      hasEstimate: m.estimator.hasEstimate,
+      lastCommand: m.lastCommand,
+      trackerPhase: m.tracker.phase,
+      playingItemId: m.state.playingItemId
+    }
+  })
+end sub
