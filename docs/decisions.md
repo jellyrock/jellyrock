@@ -2276,6 +2276,16 @@ The player load a SyncPlay `PlayQueue` frame owes is decided when the frame arri
 
 Ruled out: carrying the previous item through the fetch's context, which misses a newer update that supersedes the fetch; comparing the group's item with the one the mounted player loaded, which still needs the reason rule with no player mounted (a `Queue` after a `Stop` would start playback) and adds bookkeeping to the player hooks.
 
+## decision-id: socket-drain-per-pass
+
+**date**: 2026-10-24
+**status**: accepted
+**related-files**: `components/vendor/BrightWebSocket/web_socket_client/WebSocketClient.brs`, `components/vendor/BrightWebSocket/README.md`
+
+The vendored socket client's `_read_socket_data` takes everything the socket holds in one pass of its task loop, never past `_buffer_size`, and decodes every complete frame through `_decode_frame`; a frame whose header and payload exceed `_buffer_size` is refused with error 18. The client read 1024 bytes and decoded one frame per pass, and the loop waits up to 100 ms per pass (JellyRock's #707 replaced upstream's 1 ms busy loop to save CPU, with no throughput measurement). So a large frame arrived at about 1 KB per 100 ms: measured on the Streaming Stick 4K on 2026-10-24, a 300-entry SyncPlay `PlayQueue` frame reached the manager 3196 ms after the `NextItem` post, and 284 ms after the change. The whole-frame bound replaced a payload-only check, under which a frame near the limit stalled or the pad write at `_buffer_size` overwrote a real byte.
+
+Ruled out: an event-driven loop with the socket on the task's port, which reshapes the client's event routing for no further gain; skipping the 100 ms wait while bytes are pending, which relies on Roku re-posting a readable event after a partial read, not measured. Recheck if a server sends fragmented messages (followup `websocket-fragmented-message-dropped`) or frames near 512 KB.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
