@@ -74,4 +74,14 @@ namespace syncPlayQueue
     return false
   end function
 
+  ' What applying a queue update does to the player: "" when the item stays, "remount" to reload the
+  ' mounted player in place, or "launch" to open the play route. Never the route over a mounted
+  ' PlayerHostView: sgRouter reuses it for the same item and covers it, still playing, for another.
+  ' @param hasPlayer - whether a player host is mounted
+  function loadAction(reason as string, previousPlaylistItemId as string, playlistItemId as string, hasPlayer as boolean) as string
+    if not changesPlayingItem(reason, previousPlaylistItemId, playlistItemId) then return ""
+    if hasPlayer then return "remount"
+    return "launch"
+  end function
+
 end namespace

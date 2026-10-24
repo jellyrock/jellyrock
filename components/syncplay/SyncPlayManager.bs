@@ -315,24 +315,25 @@ sub applyQueue(reason as string, queueItems as object)
   ' Cinema Mode: no intro in front of the group's item. set() went through clear(), which
   ' re-reads the setting, so this comes after it.
   queueManager.callFunc("setPrerollStatus", false)
-  if not syncPlayQueue.changesPlayingItem(reason, m.previousPlayingItemId, m.state.playingItemId) then return
-
   host = playerHost()
+  action = syncPlayQueue.loadAction(reason, m.previousPlayingItemId, m.state.playingItemId, isValid(host))
+  if action = "" then return
   if reason = "NewPlaylist"
     startTicks& = syncPlayPlayback.startPositionTicks({ lastUpdateMs: m.state.lastUpdateMs, startPositionTicks: m.state.startPositionTicks }, m.lastCommand, m.estimator, syncPlayTime.nowMs())
     queueManager.callFunc("setCurrentStartingPoint", startTicks&, true)
     m.loadStartTicks = startTicks&
-    m.expectingRemount = isValid(host)
-    queueManager.callFunc("beginPlaybackStart", "")
-    queueManager.callFunc("playQueue")
-  else if isValid(host)
-    m.loadStartTicks = 0&
-    m.expectingRemount = true
-    queueManager.callFunc("advanceTo", index)
-    host.callFunc("skipToCurrentQueueItem")
   else
     m.loadStartTicks = 0&
-    queueManager.callFunc("startCurrentFresh")
+  end if
+  if action = "remount"
+    ' The play route over a mounted player reloads nothing for the same item and stacks a second
+    ' player for another, so the player reloads in place. No playback-start wait opens: a
+    ' remount takes none.
+    m.expectingRemount = true
+    if reason <> "NewPlaylist" then queueManager.callFunc("advanceTo", index)
+    host.callFunc("skipToCurrentQueueItem")
+  else
+    if reason <> "NewPlaylist" then queueManager.callFunc("startCurrentFresh")
     queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
   end if

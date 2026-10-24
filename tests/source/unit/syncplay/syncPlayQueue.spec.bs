@@ -143,5 +143,39 @@ namespace tests
       m.assertFalse(syncPlayQueue.isGroupItem(invalid, "p-1"))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("loadAction()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a new playlist reloads a mounted player in place")
+    function _()
+      m.assertEqual(syncPlayQueue.loadAction("NewPlaylist", "p-1", "p-9", true), "remount")
+    end function
+
+    @it("a new playlist with no player opens the play route")
+    function _()
+      m.assertEqual(syncPlayQueue.loadAction("NewPlaylist", "", "p-1", false), "launch")
+    end function
+
+    @it("a new playlist that keeps the playing item's id still loads")
+    function _()
+      m.assertEqual(syncPlayQueue.loadAction("NewPlaylist", "p-1", "p-1", true), "remount")
+      m.assertEqual(syncPlayQueue.loadAction("NewPlaylist", "p-1", "p-1", false), "launch")
+    end function
+
+    @it("a move to another item reloads a mounted player, or opens the route without one")
+    function _()
+      m.assertEqual(syncPlayQueue.loadAction("NextItem", "p-1", "p-2", true), "remount")
+      m.assertEqual(syncPlayQueue.loadAction("NextItem", "p-1", "p-2", false), "launch")
+      m.assertEqual(syncPlayQueue.loadAction("SetCurrentItem", "p-1", "p-3", true), "remount")
+    end function
+
+    @it("an update that keeps the item loads nothing")
+    function _()
+      m.assertEqual(syncPlayQueue.loadAction("NextItem", "p-1", "p-1", true), "")
+      m.assertEqual(syncPlayQueue.loadAction("RemoveItems", "p-1", "p-1", false), "")
+      m.assertEqual(syncPlayQueue.loadAction("Queue", "p-1", "p-2", true), "")
+    end function
+
   end class
 end namespace
