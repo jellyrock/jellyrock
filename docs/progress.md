@@ -1111,6 +1111,16 @@ The FLAC seek workaround (#662, ADR 0052) marks a stream `isFlac` only when its 
 
 Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame is shorter than its frame size. If it stalls before the end like a `.flac` does, extend the check to the audio codec and cover it in `audio-seek.spec.js`; if it ends cleanly, record that here and drop the entry. Why not now: it needs such a fixture, which the demo server does not have.
 
+#### The companion plugin must leave the SyncPlay group of a JellyRock long-poll session whose polls went stale `[fid: syncplay-plugin-leave-stale-session]` `[captured 2026-10-24]`
+
+For the companion plugin repo (`jellyrock/jellyfin-plugin-jellyrock`), which this machine's repo registry does not list, so `/log message` refused it on 2026-10-24 (exit 3, nothing written). Once the plugin repo is registered, move this entry there with `bash .claude/skills/start-project/mailbox.sh send jellyrock/jellyfin-plugin-jellyrock --from syncplay-plugin-leave-stale-session`; until then the text below is the message.
+
+JellyRock's SyncPlay work (epic #1251, phase C merged as `6deec979`) ends a SyncPlay membership that a Roku **Home** exit left behind twice over: the app sends `Leave` at its next launch (phase D), and the plugin removes the stale session from its SyncPlay group. The operator settled this on 2026-10-23 (decision C, `both`).
+
+Why the plugin: on HTTPS the Roku's session never drops a socket, so the server's `SyncPlayManager.OnSessionEnded` never fires for it. The plugin's `PlaybackReaperService` already detects a JellyRock session whose long poll went stale (the freshness its `QueueingSessionController.IsSessionActive` computes) and calls `OnPlaybackStopped`, which does not end the session, so the group keeps a member that never answers `Ready`. Servers before 12.1 have no group-wait timeout and wait for good; from 12.1 the group waits 30 s at every item change. Read 2026-10-23 from the plugin's source and the server's master branch.
+
+What to do there: on the reaper's sweep, when a JellyRock long-poll session is stale, remove it from its SyncPlay group through the server's `ISyncPlayManager`, the same `LeaveGroup` path `OnSessionEnded` takes. Leave only the group; never end the session, because the phantom-session wake for ECP relies on it. Ship alongside JellyRock's phase D. Open question for that plan: which staleness threshold the reaper uses today, and whether a group member should be dropped sooner than a session is reaped, since the whole group waits on it.
+
 ### tests
 
 #### Re-derive what actually reddened PR #800 — the device-contention explanation is REFUTED. `[fid: pr-800-red-cause-rederive]` `[captured 2026-08-10]`
