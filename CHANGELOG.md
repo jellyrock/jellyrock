@@ -22,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - (login) Land on Home after sign-in; drop casts while signed out ([#1237](https://github.com/jellyrock/jellyrock/pull/1237))
 - (audio) Seek in FLAC without freezing or skipping the end ([#1234](https://github.com/jellyrock/jellyrock/pull/1234))
 
+### Dependencies
+
+- Update dotenv from v18.0.8 to v18.0.9 ([#1240](https://github.com/jellyrock/jellyrock/pull/1240))
+
 ## [3.2.0](https://github.com/jellyrock/jellyrock/compare/v3.1.0...v3.2.0) - 2026-10-21
 
 ### Added
