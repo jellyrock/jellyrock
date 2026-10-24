@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-23
+last-updated: 2026-10-24
 ---
 
 # Progress
@@ -372,6 +372,10 @@ Closes when the next brighterscript bump builds clean with all three items handl
 `CLAUDE.md` says never to cite a gitignored path (`tasks/`, `docs/projects/`, `.claude/handoffs/`, `.claude/plans/`) in tracked content, source comments included, and names comments as where it keeps slipping. Nothing checks it. PR #1253 is the latest case: two source comments cited the project's `SPIKES.md`, a spec cited a `.device-runs/` file, and `syncPlayState.bs` cited the project Charter and a decision recorded only in the project folder. Every CI check passed, and the citations were caught only by a review and replaced by hand.
 
 Closes with a lint in `npm run lint` and its CI home that fails a tracked code comment or Markdown file naming one of those folders, `.device-runs/`, or a project file (`PLAN.md`, `SPIKES.md`, a project's `DECISIONS.md`) as a source. A path named as a destination, such as a skill telling an agent where to write a handoff, stays allowed, so the check needs an allowlist for that case. Not now: it needs a design choice (extend `comment-voice-ratchet.js` or `docs-check.cjs`, or a new check) and tests, including a run against the PR #1253 text before its fix to see it fail.
+
+#### The RTA runner captures no device console, so an app crash during a spec reads as a wait timeout `[fid: rta-run-hides-device-crash]` `[captured 2026-10-24]`
+
+A BrightScript runtime error during an RTA spec suspends the app in the micro debugger, and every later wait in the run times out with `last={}` and no hint of the crash. [`scripts/rta-run.js`](../scripts/rta-run.js) and [`tests/rta/lib/driver.js`](../tests/rta/lib/driver.js) open no console tail; `driver.js` only names the telnet command in its deploy-timeout message. **Evidence:** SyncPlay phase C (2026-10-23, Streaming Stick 4K): a type mismatch in `syncPlayQueue.isStaleQueueUpdate` failed seven of eight specs as plain timeouts, and the backtrace surfaced only after a rerun with `nc` on port 8085 held open by hand. Not done in that PR: it is a runner change with its own tests. **Close:** have `rta-run.js` hold a console tail for the run (share the reader `two-roku-console-readers` proposes rather than writing a third), surface any `runtime error` or `Backtrace:` lines seen since the spec started in the failed wait's diagnosis, and save the tail beside the run record.
 
 ### components
 
