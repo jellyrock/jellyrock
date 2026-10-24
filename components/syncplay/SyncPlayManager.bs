@@ -75,8 +75,8 @@ sub ensureReady()
   ' Pause writes made for the current group command, and whether the give-up warning went out.
   m.pauseAttempts = 0
   m.pauseGaveUp = false
-  ' Set before applyGroupUpdate on a PlayQueue frame, so the item change can be told afterwards.
-  m.previousPlayingItemId = ""
+  ' The load a PlayQueue frame owes the player (syncPlayQueue.owedLoadAfter), kept until performed.
+  m.owedLoad = invalid
   publish()
 end sub
 
@@ -176,6 +176,7 @@ sub haltFollowing(reason as string)
   m.log.info("halting", "reason", reason, "groupId", m.state.groupId)
   syncPlayState.halt(m.state)
   m.pendingPlan = invalid
+  m.owedLoad = invalid
   m.groupPaused = false
   m.commandTimer.control = "stop"
   m.readyTimer.control = "stop"
@@ -207,11 +208,15 @@ sub onGroupUpdate(update as object)
     m.log.debug("stale PlayQueue update ignored", "lastUpdateMs", update.lastUpdateMs.toStr())
     return
   end if
-  m.previousPlayingItemId = m.state.playingItemId
+  previousPlayingItemId = m.state.playingItemId
   m.state = syncPlayState.applyGroupUpdate(m.state, update)
+  if updateType = "PlayQueue"
+    m.owedLoad = syncPlayQueue.owedLoadAfter(m.owedLoad, update.reason, previousPlayingItemId, m.state.playingItemId)
+  end if
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
 
   if updateType = "GroupJoined"
+    m.owedLoad = invalid
     syncPlayOffset.reset(m.estimator)
     m.heldCommand = invalid
     m.lastCommand = invalid
@@ -360,19 +365,22 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
     return
   end if
   queueManager = m.global.queueManager
+  newPlaylist = isValid(m.owedLoad) and m.owedLoad.newPlaylist = true
   ' A new playlist is a new queue: the viewer's version pick and gear caps from the queue before
   ' do not carry into it (set() alone keeps them, for a reorder). Within the group's playlist
   ' they carry, as in any queue.
-  if reason = "NewPlaylist" then queueManager.callFunc("clear")
+  if newPlaylist then queueManager.callFunc("clear")
   queueManager.callFunc("set", queueItems)
   queueManager.callFunc("setPosition", index)
   ' Cinema Mode: no intro in front of the group's item. set() went through clear(), which
   ' re-reads the setting, so this comes after it.
   queueManager.callFunc("setPrerollStatus", false)
   host = playerHost()
-  action = syncPlayQueue.loadAction(reason, m.previousPlayingItemId, m.state.playingItemId, isValid(host))
+  action = syncPlayQueue.loadAction(m.owedLoad, isValid(host))
   if action = "" then return
-  if reason = "NewPlaylist"
+  ' The load is performed from here. The early return above kept the record for its retry.
+  m.owedLoad = invalid
+  if newPlaylist
     startTicks& = syncPlayPlayback.startPositionTicks({ lastUpdateMs: m.state.lastUpdateMs, startPositionTicks: m.state.startPositionTicks }, m.lastCommand, m.estimator, syncPlayTime.nowMs())
     queueManager.callFunc("setCurrentStartingPoint", startTicks&, true)
     m.loadStartTicks = startTicks&
@@ -384,10 +392,10 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
     ' player for another, so the player reloads in place. No playback-start wait opens: a
     ' remount takes none.
     m.expectingRemount = true
-    if reason <> "NewPlaylist" then queueManager.callFunc("advanceTo", index)
+    if not newPlaylist then queueManager.callFunc("advanceTo", index)
     host.callFunc("skipToCurrentQueueItem")
   else
-    if reason <> "NewPlaylist" then queueManager.callFunc("startCurrentFresh")
+    if not newPlaylist then queueManager.callFunc("startCurrentFresh")
     queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
   end if
@@ -553,6 +561,7 @@ sub leaveLocally()
   m.heldCommand = invalid
   m.lastCommand = invalid
   m.pendingPlan = invalid
+  m.owedLoad = invalid
   m.expectingRemount = false
   m.loadStartTicks = 0&
   m.failedBursts = 0

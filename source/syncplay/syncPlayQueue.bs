@@ -74,12 +74,30 @@ namespace syncPlayQueue
     return false
   end function
 
-  ' What applying a queue update does to the player: "" when the item stays, "remount" to reload the
+  ' What a PlayQueue frame leaves owed to the player, decided as the frame arrives, when the
+  ' playing item before and after it is still known. A frame that lands while the items are in
+  ' flight (a state update, a join, a leave) moves the playing item's baseline, so deciding at
+  ' apply time would find nothing to load. The record is invalid when no load is owed, or
+  ' { newPlaylist } when one is: newPlaylist says the load is a new queue (clear first, start at
+  ' the group's position). A later frame that keeps the item leaves the record as it was, and a
+  ' later move keeps newPlaylist true once any frame in the run set it. The owner clears it when
+  ' the load is performed, or on a halt, a leave or a join.
+  ' @param owedLoad - the record from before this frame: invalid or { newPlaylist }
+  ' @param previousPlaylistItemId - the group's playing playlist id before this frame
+  ' @param playlistItemId - the group's playing playlist id after this frame
+  function owedLoadAfter(owedLoad as dynamic, reason as string, previousPlaylistItemId as string, playlistItemId as string) as dynamic
+    if not changesPlayingItem(reason, previousPlaylistItemId, playlistItemId) then return owedLoad
+    newPlaylist = reason = "NewPlaylist" or (isValid(owedLoad) and owedLoad.newPlaylist = true)
+    return { newPlaylist: newPlaylist }
+  end function
+
+  ' What applying the owed load does to the player: "" when nothing is owed, "remount" to reload the
   ' mounted player in place, or "launch" to open the play route. Never the route over a mounted
   ' PlayerHostView: sgRouter reuses it for the same item and covers it, still playing, for another.
+  ' @param owedLoad - owedLoadAfter's record
   ' @param hasPlayer - whether a player host is mounted
-  function loadAction(reason as string, previousPlaylistItemId as string, playlistItemId as string, hasPlayer as boolean) as string
-    if not changesPlayingItem(reason, previousPlaylistItemId, playlistItemId) then return ""
+  function loadAction(owedLoad as dynamic, hasPlayer as boolean) as string
+    if not isValid(owedLoad) then return ""
     if hasPlayer then return "remount"
     return "launch"
   end function

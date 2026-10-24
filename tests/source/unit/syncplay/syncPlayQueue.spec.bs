@@ -144,37 +144,65 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("owedLoadAfter()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a new playlist owes a new-playlist load, even when the playing item's id is unchanged")
+    function _()
+      owed = syncPlayQueue.owedLoadAfter(invalid, "NewPlaylist", "p-1", "p-1")
+      m.assertTrue(owed.newPlaylist)
+    end function
+
+    @it("a move to another item owes a load that is not a new playlist")
+    function _()
+      m.assertFalse(syncPlayQueue.owedLoadAfter(invalid, "NextItem", "p-1", "p-2").newPlaylist)
+      m.assertFalse(syncPlayQueue.owedLoadAfter(invalid, "SetCurrentItem", "p-1", "p-3").newPlaylist)
+    end function
+
+    @it("an update that keeps the item owes nothing when nothing was owed")
+    function _()
+      m.assertInvalid(syncPlayQueue.owedLoadAfter(invalid, "Queue", "p-1", "p-2"))
+      m.assertInvalid(syncPlayQueue.owedLoadAfter(invalid, "NextItem", "p-1", "p-1"))
+    end function
+
+    @it("an update that keeps the item leaves an owed new playlist owed (the race's shape)")
+    function _()
+      owed = syncPlayQueue.owedLoadAfter({ newPlaylist: true }, "Queue", "p-2", "p-2")
+      m.assertTrue(owed.newPlaylist)
+    end function
+
+    @it("a move after an owed new playlist stays a new playlist")
+    function _()
+      owed = syncPlayQueue.owedLoadAfter({ newPlaylist: true }, "NextItem", "p-1", "p-2")
+      m.assertTrue(owed.newPlaylist)
+    end function
+
+    @it("a move after an owed plain load stays owed and is not a new playlist")
+    function _()
+      owed = syncPlayQueue.owedLoadAfter({ newPlaylist: false }, "NextItem", "p-1", "p-2")
+      m.assertFalse(owed.newPlaylist)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("loadAction()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("a new playlist reloads a mounted player in place")
+    @it("nothing owed loads nothing")
     function _()
-      m.assertEqual(syncPlayQueue.loadAction("NewPlaylist", "p-1", "p-9", true), "remount")
+      m.assertEqual(syncPlayQueue.loadAction(invalid, true), "")
+      m.assertEqual(syncPlayQueue.loadAction(invalid, false), "")
     end function
 
-    @it("a new playlist with no player opens the play route")
+    @it("an owed load reloads a mounted player in place")
     function _()
-      m.assertEqual(syncPlayQueue.loadAction("NewPlaylist", "", "p-1", false), "launch")
+      m.assertEqual(syncPlayQueue.loadAction({ newPlaylist: false }, true), "remount")
+      m.assertEqual(syncPlayQueue.loadAction({ newPlaylist: true }, true), "remount")
     end function
 
-    @it("a new playlist that keeps the playing item's id still loads")
+    @it("an owed load with no player opens the play route")
     function _()
-      m.assertEqual(syncPlayQueue.loadAction("NewPlaylist", "p-1", "p-1", true), "remount")
-      m.assertEqual(syncPlayQueue.loadAction("NewPlaylist", "p-1", "p-1", false), "launch")
-    end function
-
-    @it("a move to another item reloads a mounted player, or opens the route without one")
-    function _()
-      m.assertEqual(syncPlayQueue.loadAction("NextItem", "p-1", "p-2", true), "remount")
-      m.assertEqual(syncPlayQueue.loadAction("NextItem", "p-1", "p-2", false), "launch")
-      m.assertEqual(syncPlayQueue.loadAction("SetCurrentItem", "p-1", "p-3", true), "remount")
-    end function
-
-    @it("an update that keeps the item loads nothing")
-    function _()
-      m.assertEqual(syncPlayQueue.loadAction("NextItem", "p-1", "p-1", true), "")
-      m.assertEqual(syncPlayQueue.loadAction("RemoveItems", "p-1", "p-1", false), "")
-      m.assertEqual(syncPlayQueue.loadAction("Queue", "p-1", "p-2", true), "")
+      m.assertEqual(syncPlayQueue.loadAction({ newPlaylist: false }, false), "launch")
+      m.assertEqual(syncPlayQueue.loadAction({ newPlaylist: true }, false), "launch")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
