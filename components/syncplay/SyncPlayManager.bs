@@ -364,6 +364,12 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
     onQueueLoadFailed(reason, lastUpdateMs, isRetry, "missing")
     return
   end if
+  ' Also before the queue changes. Not a load failure, so no retry: the audio player and Live TV
+  ' have no group hooks, and a member that cannot report Ready would hold the group.
+  if not syncPlayQueue.followsItem(queueItems[index])
+    haltFollowing("the group is playing an item this player cannot follow")
+    return
+  end if
   queueManager = m.global.queueManager
   newPlaylist = isValid(m.owedLoad) and m.owedLoad.newPlaylist = true
   ' A new playlist is a new queue: the viewer's version pick and gear caps from the queue before

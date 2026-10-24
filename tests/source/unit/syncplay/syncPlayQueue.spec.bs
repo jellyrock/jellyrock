@@ -144,6 +144,30 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("followsItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("follows the types the video player plays")
+    function _()
+      m.assertTrue(syncPlayQueue.followsItem({ id: "i-1", type: "Movie" }))
+      m.assertTrue(syncPlayQueue.followsItem({ id: "i-2", type: "Episode" }))
+      m.assertTrue(syncPlayQueue.followsItem({ id: "i-3", type: "Video" }))
+    end function
+
+    @it("does not follow music, audiobooks or Live TV")
+    function _()
+      m.assertFalse(syncPlayQueue.followsItem({ id: "i-1", type: "Audio" }))
+      m.assertFalse(syncPlayQueue.followsItem({ id: "i-2", type: "AudioBook" }))
+      m.assertFalse(syncPlayQueue.followsItem({ id: "i-3", type: "TvChannel" }))
+    end function
+
+    @it("does not follow an item with no type, or no item")
+    function _()
+      m.assertFalse(syncPlayQueue.followsItem({ id: "i-1" }))
+      m.assertFalse(syncPlayQueue.followsItem(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("owedLoadAfter()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

@@ -1,3 +1,5 @@
+import "pkg:/source/utils/playKind.bs"
+
 ' Turning a SyncPlay play queue into QueueManager items, pure. The server's PlayQueue update
 ' names items by id only; SyncPlayManager fetches them (GET /Items?ids=…) and hands the raw
 ' items here with the parsed playlist.
@@ -54,6 +56,13 @@ namespace syncPlayQueue
   function isLastItem(state as object) as boolean
     if state.playingItemIndex < 0 then return true
     return state.playingItemIndex >= state.playlist.count() - 1
+  end function
+
+  ' Whether this player can follow a queue item. Only the video player has group hooks, so an item
+  ' it does not play (music, Live TV) cannot be followed: phase C is video only.
+  function followsItem(queueItem as dynamic) as boolean
+    if not isValid(queueItem) then return false
+    return playKind.of(queueItem.type) = playKind.VIDEO
   end function
 
   ' Whether a QueueManager item is the one the group is playing: queueItemsFor stamps the
