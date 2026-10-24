@@ -2256,6 +2256,16 @@ A SyncPlay load that starts partway into an item reports its first `Ready` at th
 
 Ruled out: holding the `Ready` until a position notification lands near the start (the seek path's rule), because no probe has shown a paused node sends one; and reading the node's position at report time, which reads the same 0. Recheck if the start of a transcode lands seconds away from the one asked for: it was measured on direct play only (0.37 s short).
 
+## decision-id: syncplay-hold-group-pause
+
+**date**: 2026-10-24
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayPlayback.bs`, `components/syncplay/SyncPlayManager.bs`, `components/syncplay/SyncPlayManager.xml`
+
+While a SyncPlay group is paused, the manager holds its player paused, and a pause may go to a buffering `Video` node. `syncPlayPlayback.applyPlan` sends a Pause to a playing or buffering node, but not during a load, whose first-frame pause owns it. `SyncPlayManager` remembers the group is paused (a `Pause` or `Seek` applied, no `Unpause` or `Stop` since). Through `syncPlayPlayback.owesPause` and `pauseTimer`, it pauses again a node that plays on, `PAUSE_CONFIRM_MS` after each write, at most `PAUSE_ATTEMPTS` writes per command. This retires the 2026-10-23 rule "never pause a buffering node". Measured on the Streaming Stick 4K on 2026-10-24 (direct play, a seek to 150 s, two runs per case): a pause written while a seek buffers lands paused at once, and a later resume plays within 0.25 s. The recorded wedge was a play or resume written mid-buffer, which `no-play-on-buffering-video` prevents. Before the change, a group Pause sent while the node buffered left it playing, and a player that resumed by itself played on, both with the group Paused.
+
+Ruled out: confirming a pause once without remembering the group's state, which misses a later drift; holding a Pause until the node reports playing, which rests on the disproved rule. Recheck if a pause during a network stall, while a transcode buffers, or on another device misbehaves: none were measured.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
