@@ -268,6 +268,13 @@ namespace tests
       m.assertFalse(owed.newPlaylist)
     end function
 
+    @it("an update that leaves the group playing nothing owes nothing, and drops a load owed before it")
+    function _()
+      m.assertInvalid(syncPlayQueue.owedLoadAfter(invalid, "RemoveItems", "p-1", ""))
+      m.assertInvalid(syncPlayQueue.owedLoadAfter({ newPlaylist: true }, "NewPlaylist", "", ""))
+      m.assertInvalid(syncPlayQueue.owedLoadAfter({ newPlaylist: false }, "Queue", "", ""))
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("loadAction()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

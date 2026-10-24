@@ -311,6 +311,9 @@ end sub
 
 sub onQueueUpdate(update as object)
   if not m.state.following then return
+  ' A group that plays nothing waits on no Ready and has no item to load. The update that
+  ' picks an item owes the load (syncPlayQueue.owedLoadAfter).
+  if m.state.playingItemId = "" then return
   fetchQueue(update.reason, m.state.lastUpdateMs, false)
 end sub
 
