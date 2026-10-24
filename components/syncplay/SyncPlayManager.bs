@@ -305,6 +305,12 @@ end sub
 
 sub onQueueUpdate(update as object)
   if not m.state.following then return
+  fetchQueue(update.reason, m.state.lastUpdateMs, false)
+end sub
+
+' Fetches the group's items and applies the queue. A failed load goes to onQueueLoadFailed: the
+' server waits on this member's Ready, so a silent exit would hold the whole group.
+sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean)
   ids = []
   for each entry in m.state.playlist
     ids.push(entry.itemId)
@@ -312,8 +318,9 @@ sub onQueueUpdate(update as object)
   if ids.count() = 0 then return
   req = GetApi().BuildGetItemsByQueryRequest({ ids: ids.join(",") })
   if not isValid(req) then return
-  lastUpdateMs& = m.state.lastUpdateMs
-  promises.chain(fetchAsync(req, "syncplay-queue-" + lastUpdateMs&.toStr()), { reason: update.reason, lastUpdateMs: lastUpdateMs& }).then(sub(res as object, ctx as object)
+  requestId = "syncplay-queue-" + lastUpdateMs.toStr()
+  if isRetry then requestId = requestId + "-retry"
+  promises.chain(fetchAsync(req, requestId), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry }).then(sub(res as object, ctx as object)
     ' A newer update arrived while this one's items were in flight: it will apply its own.
     ' A member that stopped following while the items were in flight applies nothing, as onCommand
     ' does for a halted member.
@@ -322,26 +329,42 @@ sub onQueueUpdate(update as object)
     if isValid(res) and res.ok = true and isValid(res.json) then items = res.json.Items
     if not isValid(items)
       m.log.warn("the group's items could not be read", "reason", ctx.reason)
+      onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, "missing")
       return
     end if
-    applyQueue(ctx.reason, syncPlayQueue.queueItemsFor(m.state.playlist, items))
-  end sub).catch(sub(err as object)
-    m.log.warn("the group's items could not be fetched", err.reason)
+    applyQueue(ctx.reason, syncPlayQueue.queueItemsFor(m.state.playlist, items), ctx.lastUpdateMs, ctx.isRetry)
+  end sub).catch(sub(err as object, ctx as object)
+    ' err whole: a timeout rejects with the pool's result, which has no `reason`.
+    m.log.warn("the group's items could not be fetched", err)
+    onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, "request")
   end sub)
 end sub
 
-sub applyQueue(reason as string, queueItems as object)
+' A queue that cannot be loaded: retry a request failure once, otherwise stop following so the
+' server stops waiting on this member. Nothing happens when a newer update or a halt took over.
+sub onQueueLoadFailed(reason as string, lastUpdateMs as longinteger, isRetry as boolean, failure as string)
+  if not syncPlayQueue.appliesFetchedQueue(m.state, lastUpdateMs) then return
+  if syncPlayQueue.loadFailureAction(isRetry, failure) = "retry"
+    fetchQueue(reason, lastUpdateMs, true)
+    return
+  end if
+  haltFollowing("the group's queue could not be loaded (" + failure + ")")
+end sub
+
+sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteger, isRetry as boolean)
   index = syncPlayQueue.positionOf(queueItems, m.state.playingItemId)
+  ' Checked before the queue changes: a member that stops following keeps its own queue.
+  if index < 0
+    m.log.warn("the group's playing item is not in the fetched queue", "playlistItemId", m.state.playingItemId)
+    onQueueLoadFailed(reason, lastUpdateMs, isRetry, "missing")
+    return
+  end if
   queueManager = m.global.queueManager
   ' A new playlist is a new queue: the viewer's version pick and gear caps from the queue before
   ' do not carry into it (set() alone keeps them, for a reorder). Within the group's playlist
   ' they carry, as in any queue.
   if reason = "NewPlaylist" then queueManager.callFunc("clear")
   queueManager.callFunc("set", queueItems)
-  if index < 0
-    m.log.warn("the group's playing item is not in the fetched queue", "playlistItemId", m.state.playingItemId)
-    return
-  end if
   queueManager.callFunc("setPosition", index)
   ' Cinema Mode: no intro in front of the group's item. set() went through clear(), which
   ' re-reads the setting, so this comes after it.

@@ -212,5 +212,25 @@ namespace tests
       m.assertFalse(syncPlayQueue.appliesFetchedQueue(state, 5000&))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("loadFailureAction()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("retries a first request failure")
+    function _()
+      m.assertEqual(syncPlayQueue.loadFailureAction(false, "request"), "retry")
+    end function
+
+    @it("halts a request failure on the retry")
+    function _()
+      m.assertEqual(syncPlayQueue.loadFailureAction(true, "request"), "halt")
+    end function
+
+    @it("halts a missing item whether or not it is a retry")
+    function _()
+      m.assertEqual(syncPlayQueue.loadFailureAction(false, "missing"), "halt")
+      m.assertEqual(syncPlayQueue.loadFailureAction(true, "missing"), "halt")
+    end function
+
   end class
 end namespace

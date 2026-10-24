@@ -92,4 +92,14 @@ namespace syncPlayQueue
     return state.inGroup and state.following and state.lastUpdateMs = lastUpdateMs
   end function
 
+  ' What a failed queue load does next: "retry" or "halt". A request can fail on a blip, so the first
+  ' request failure retries once. A missing item will be missing again, so it halts, as does a
+  ' request failure on the retry.
+  ' @param isRetry - whether this load was already a retry
+  ' @param failure - "request" (the fetch was rejected) or "missing" (no Items, or no playing item)
+  function loadFailureAction(isRetry as boolean, failure as string) as string
+    if failure = "request" and not isRetry then return "retry"
+    return "halt"
+  end function
+
 end namespace
