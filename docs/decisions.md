@@ -2236,6 +2236,26 @@ A manager node that `setGlobalNodes()` creates builds the AAs its handlers use o
 
 Ruled out: assigning each entry after the literal in `init()` (whether a plain assignment survives the hand-over was not measured, and a rule that depends on the value's kind is one nobody remembers); keeping the state in a node field instead of `m` (every handler would pay a field read and write per step). Decision `syncplay-time-longinteger` measured that a `LongInteger` survives an AA within one thread; this is the crossing it did not cover. Recheck if a Roku OS release lets the main thread's `m` cross intact, which would make the lazy build unnecessary but not wrong.
 
+## decision-id: no-play-on-buffering-video
+
+**date**: 2026-10-23
+**status**: accepted
+**related-files**: `source/utils/voiceTransport.bs`, `components/video/VideoPlayerView.bs`, `source/syncplay/syncPlayPlayback.bs`
+
+A `play` or `resume` never writes a control to a `Video` node that is buffering. `voiceTransport.playControl()` decides the control for `VideoPlayerView.handleTransport`: `resume` for paused, nothing for playing or buffering, and `play` for any other state. A SyncPlay `Unpause` sends `resume` only to a paused node with no seek in its plan (`syncPlayPlayback.applyPlan`), because a seek on a paused node resumes it. Measured on the Streaming Stick 4K (Roku OS 15.3.4) on 2026-10-23 with plain local playback: a seek on a paused node buffers, then plays by itself in about 2 s; a `control = "play"` written while that seek buffers left it at `buffering`, with a full buffer, for the whole 20 s window; a `resume` after the seek settled played normally.
+
+Ruled out: fixing only `applyPlan`, which leaves voice and remote `play` able to wedge a buffering node; fixing only `handleTransport`, which leaves `applyPlan` writing a `resume` mid-seek, an order no probe has run. `playpause` still writes `play` to a buffering node: followup `playpause-plays-buffering-node`. Recheck if a Roku OS release lets a `play` written during buffering recover.
+
+## decision-id: late-join-ready-reports-start
+
+**date**: 2026-10-23
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayPlayback.bs`, `components/syncplay/SyncPlayManager.bs`
+
+A SyncPlay load that starts partway into an item reports its first `Ready` at the start it was asked for, not at the node's position, whenever the node reads further below that start than `READY_TOLERANCE_MS`. `SyncPlayManager` records the start (`m.loadStartTicks`) when `applyQueue` starts the load, passes it at mount, and starts `m.playerPositionTicks` from it. The tracker's loading phase reports it at the first `playing`. Measured on the Stick 4K on 2026-10-23: a load asked to start at 349 s read position 0.0 while buffering and 349.0 right after, and the `Ready` at 0 drew a corrective `Seek` from the server. With the start reported, the next command was the `Unpause`.
+
+Ruled out: holding the `Ready` until a position notification lands near the start (the seek path's rule), because no probe has shown a paused node sends one; and reading the node's position at report time, which reads the same 0. Recheck if the start of a transcode lands seconds away from the one asked for: it was measured on direct play only (0.37 s short).
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
