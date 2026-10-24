@@ -1,0 +1,61 @@
+' Turning a SyncPlay play queue into QueueManager items, pure. The server's PlayQueue update
+' names items by id only; SyncPlayManager fetches them (GET /Items?ids=…) and hands the raw
+' items here with the parsed playlist.
+namespace syncPlayQueue
+
+  ' The QueueManager item AAs for a playlist, in playlist order, each carrying its
+  ' syncPlayPlaylistItemId (what commands and the Ready report name the item by). An entry whose
+  ' item the server did not return is dropped: the member cannot play what it cannot see.
+  ' @param playlist - syncPlayMessage's [{ itemId, playlistItemId }]
+  ' @param items - the raw Jellyfin items (PascalCase AAs) the fetch returned, any order
+  function queueItemsFor(playlist as object, items as object) as object
+    byId = {}
+    if type(items) = "roArray"
+      for each item in items
+        if isValid(item) and isValidAndNotEmpty(item.Id) then byId[item.Id] = item
+      end for
+    end if
+    queueItems = []
+    if type(playlist) <> "roArray" then return queueItems
+    for each entry in playlist
+      raw = byId[entry.itemId]
+      if isValid(raw)
+        queueItem = nodeHelpers.createQueueItem(raw)
+        if isValid(queueItem)
+          queueItem.syncPlayPlaylistItemId = entry.playlistItemId
+          queueItems.push(queueItem)
+        end if
+      end if
+    end for
+    return queueItems
+  end function
+
+  ' The index of the playlist item in the built queue, or -1. Dropped entries shift the server's
+  ' PlayingItemIndex, so the position is found by id, never copied.
+  function positionOf(queueItems as object, playlistItemId as string) as integer
+    for i = 0 to queueItems.count() - 1
+      if queueItems[i].syncPlayPlaylistItemId = playlistItemId then return i
+    end for
+    return -1
+  end function
+
+  ' A PlayQueue update no newer than the one applied is stale (web's updatePlayQueue guard): the
+  ' two transports can deliver out of order after a reconnect.
+  function isStaleQueueUpdate(state as object, update as object) as boolean
+    if not isValid(update) or update.kind <> "syncplayupdate" or update.updateType <> "PlayQueue" then return false
+    if not syncPlayTime.isWholeNumber(update.lastUpdateMs) then return true
+    if state.lastUpdateMs = 0& then return false
+    return syncPlayTime.asLong(update.lastUpdateMs) <= state.lastUpdateMs
+  end function
+
+  ' Whether a queue update moves this member to another item (a new playlist, the server's
+  ' current-item change, or a removal that took the playing item with it).
+  function changesPlayingItem(reason as string, previousPlaylistItemId as string, playlistItemId as string) as boolean
+    if reason = "NewPlaylist" then return true
+    if reason = "SetCurrentItem" or reason = "NextItem" or reason = "PreviousItem" or reason = "RemoveItems"
+      return previousPlaylistItemId <> playlistItemId
+    end if
+    return false
+  end function
+
+end namespace

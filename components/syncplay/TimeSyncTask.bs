@@ -1,0 +1,57 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.top.functionName = "runRounds"
+  m.log = new log.Logger("TimeSyncTask")
+end sub
+
+' One burst. A round that gets no answer within the wait ends the burst: a server that is down
+' gives no estimate however many rounds follow, and the manager's next burst retries.
+sub runRounds()
+  rows = []
+  url = m.top.url
+  if isValidAndNotEmpty(url)
+    port = CreateObject("roMessagePort")
+    for i = 1 to m.top.rounds
+      row = oneRound(url, m.top.authHeader, port)
+      if not isValid(row) then exit for
+      rows.push(row)
+    end for
+  end if
+  m.top.results = rows
+end sub
+
+' @returns an AA with txDeviceMs, rxDeviceMs and body, or invalid when the round failed
+function oneRound(url as string, authHeader as string, port as object) as dynamic
+  xfer = CreateObject("roUrlTransfer")
+  xfer.SetMessagePort(port)
+  if LCase(url).Left(8) = "https://"
+    xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
+    xfer.InitClientCertificates()
+  end if
+  xfer.SetUrl(url)
+  if isValidAndNotEmpty(authHeader) then xfer.AddHeader("Authorization", authHeader)
+
+  txDeviceMs& = syncPlayTime.nowMs()
+  if not xfer.AsyncGetToString() then return invalid
+  msg = wait(ROUND_WAIT_MS, port)
+  rxDeviceMs& = syncPlayTime.nowMs()
+  if type(msg) <> "roUrlEvent"
+    xfer.AsyncCancel()
+    m.log.warn("GetUtcTime round got no answer", "waitMs", ROUND_WAIT_MS)
+    return invalid
+  end if
+  if msg.GetResponseCode() <> 200
+    m.log.warn("GetUtcTime round failed", "code", msg.GetResponseCode())
+    return invalid
+  end if
+  body = ParseJson(msg.GetString())
+  if type(body) <> "roAssociativeArray" then return invalid
+  return { txDeviceMs: txDeviceMs&, rxDeviceMs: rxDeviceMs&, body: body }
+end function
+
+' Longer than any measured round trip (690 ms at the worst, the first HTTPS round on the Stick
+' 4K, 2026-10-23), short enough that a dead server does not hold the burst.
+const ROUND_WAIT_MS = 3000

@@ -1,5 +1,6 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/syncplay/syncPlayHooks.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogs.bs"
@@ -120,6 +121,9 @@ sub mountPlayer(isLiveRestart = false as boolean)
   updateQueueBackdrop()
 
   m.top.appendChild(m.view)
+  ' A SyncPlay group waits for this load: the manager reports Buffering now and Ready at the
+  ' first frame.
+  syncPlayHooks.notify({ kind: "mounted" })
 
   ' Toast "Playing <title>" for a deep-link launch. Fired here (player mount = stable final
   ' destination, nothing churns after) rather than from ItemDetails mid-transition, which was
@@ -140,6 +144,8 @@ sub destroyPlayer()
     m.view.unobserveField("selectSubtitlePressed")
     m.view.unobserveField("selectAudioPressed")
     m.view.unobserveField("selectVideoSourcePressed")
+    ' Before the stop: a SyncPlay member that leaves its player uninvited halts here.
+    syncPlayHooks.notify({ kind: "unmounted" })
     ' Stop so the player reports a stop playstate to Jellyfin (Video.onDestroy alone
     ' does not). Unobserving state first means the stop won't re-enter onPlayerStateChange.
     m.view.control = "stop"
@@ -233,11 +239,22 @@ end sub
 ' ===========================================================================
 sub onPlayerStateChange()
   state = LCase(m.view.state)
+  syncPlayHooks.notify({ kind: "state", state: state, position: m.view.position })
   if state = "playing" then onStillWatchingPlaying()
   if state <> "finished" then return
 
   if not prepareToLeaveMount() then return
   queueManager = m.global.queueManager
+
+  ' In a SyncPlay group the queue moves on together: the manager asks the server for the next
+  ' item and its PlayQueue update remounts every member. On the last item the server answers
+  ' nothing, so the route is left as for any finished queue.
+  if syncPlayHooks.following()
+    syncPlayHooks.notify({ kind: "finished" })
+    if queueManager.callFunc("getPosition") < queueManager.callFunc("getCount") - 1 then return
+    exitPlayback()
+    return
+  end if
 
   ' Live TV channel that finished -> restart the same channel (same queue position). A live feed
   ' that drops mid-stream surfaces as `finished`; one that keeps ending without playing gets the
@@ -390,6 +407,8 @@ end function
 ' @returns {boolean}
 function shouldAskStillWatching(nextItem as dynamic) as boolean
   if isValid(nextItem) and nextItem.followsIntro = true then return false
+  ' A group's playback is attended by the group; a prompt here would pause this member alone.
+  if syncPlayHooks.following() then return false
 
   if not isValid(m.deviceInfo) then m.deviceInfo = CreateObject("roDeviceInfo")
   thresholds = stillWatchingThresholds(textOrEmpty(m.global.user.settings.playbackStillWatching))

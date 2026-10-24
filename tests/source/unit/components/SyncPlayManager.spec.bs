@@ -1,0 +1,186 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+
+namespace tests
+
+  ' The coordinator node driven by frames on `frame`, as remoteDispatch writes them, and by
+  ' playerEvent() as the host calls it. No player and no server: what is asserted is the state
+  ' the node publishes and the gates it applies before anything reaches a player.
+  @suite("SyncPlayManager - frames, published state, held commands and the halt")
+  class SyncPlayManagerTests extends tests.BaseTestSuite
+
+    private manager as object
+    private previousView as object
+    private previousServerUrl as string
+
+    ' beforeEach, not setup: every test moves the node's state (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("activeRoutedView") then m.global.addField("activeRoutedView", "node", false)
+      m.previousView = m.global.activeRoutedView
+      m.global.activeRoutedView = invalid
+      ' No server: a GroupJoined then starts no time-sync burst, so no request leaves the device.
+      m.previousServerUrl = m.global.server.serverUrl
+      m.global.server.serverUrl = ""
+      m.manager = CreateObject("roSGNode", "SyncPlayManager")
+    end function
+
+    protected override function afterEach()
+      m.manager.callFunc("reset")
+      m.manager = invalid
+      m.global.server.serverUrl = m.previousServerUrl
+      m.global.activeRoutedView = m.previousView
+      m.previousView = invalid
+      super.afterEach()
+    end function
+
+    private function update(updateType as string, inner as dynamic) as object
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: updateType, Data: inner } })
+    end function
+
+    private function command(name as string, playlistItemId = "p-1" as string) as object
+      data = { GroupId: "g-1", PlaylistItemId: playlistItemId, When: "2026-10-23T20:47:40.000Z", Command: name, PositionTicks: 0, EmittedAt: "2026-10-23T20:47:30.000Z" }
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: data })
+    end function
+
+    private sub joinGroup()
+      m.manager.frame = m.update("GroupJoined", { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" })
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Published state")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts outside any group, not following")
+    function _()
+      m.assertFalse(m.manager.inGroup)
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.manager.groupId, "")
+      m.assertFalse(m.manager.sync.hasEstimate)
+    end function
+
+    @it("GroupJoined publishes the group and follows")
+    function _()
+      m.joinGroup()
+      m.assertTrue(m.manager.inGroup)
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.groupId, "g-1")
+      m.assertEqual(m.manager.groupName, "Movie night")
+      m.assertEqual(m.manager.groupState, "Idle")
+    end function
+
+    @it("StateUpdate publishes the group state")
+    function _()
+      m.joinGroup()
+      m.manager.frame = m.update("StateUpdate", { State: "Playing", Reason: "Unpause" })
+      m.assertEqual(m.manager.groupState, "Playing")
+    end function
+
+    @it("GroupLeft and NotInGroup return to the fresh state")
+    function _()
+      m.joinGroup()
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertFalse(m.manager.inGroup)
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.manager.groupId, "")
+
+      m.joinGroup()
+      m.manager.frame = m.update("NotInGroup", invalid)
+      m.assertFalse(m.manager.inGroup)
+    end function
+
+    @it("reset() forgets the group")
+    function _()
+      m.joinGroup()
+      m.manager.callFunc("reset")
+      m.assertFalse(m.manager.inGroup)
+      m.assertEqual(m.manager.groupName, "")
+    end function
+
+    @it("a frame with no kind, or no frame, changes nothing")
+    function _()
+      m.joinGroup()
+      m.manager.frame = { raw: "x" }
+      m.manager.frame = invalid
+      m.assertTrue(m.manager.inGroup)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Commands")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a command before the clock offset is known is held, not applied")
+    function _()
+      m.joinGroup()
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.manager.frame = m.command("Pause")
+      m.assertInvalid(m.manager.sync.lastCommand)
+    end function
+
+    @it("the join sequence the 12.2 server sends (GroupJoined, a Stop, then the new queue) applies the queue")
+    function _()
+      ' Recorded over the session socket against a 12.2.0 server, 2026-10-23.
+      m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Data: { GroupId: "g-1", GroupName: "capture", State: "Idle", Participants: ["jellyrock"], LastUpdatedAt: "2026-10-24T01:17:33.6881879Z" }, Type: "GroupJoined" } })
+      m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: { GroupId: "g-1", PlaylistItemId: "00000000000000000000000000000000", When: "2026-10-24T01:17:33.6085654Z", PositionTicks: 0, Command: "Stop", EmittedAt: "2026-10-24T01:17:33.6883144Z" } })
+      m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Data: { Reason: "NewPlaylist", LastUpdate: "2026-10-24T01:17:35.3172014Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: false, ShuffleMode: "Sorted", RepeatMode: "RepeatNone" }, Type: "PlayQueue" } })
+      m.assertTrue(m.manager.inGroup)
+      m.assertEqual(m.manager.sync.playingItemId, "p-1")
+    end function
+
+    @it("a command outside any group is dropped")
+    function _()
+      m.manager.frame = m.command("Pause")
+      m.assertInvalid(m.manager.sync.lastCommand)
+      m.assertFalse(m.manager.inGroup)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playerEvent()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("answers with whether the host should defer to the group")
+    function _()
+      ret = m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertFalse(ret.following)
+      m.joinGroup()
+      ret = m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertTrue(ret.following)
+    end function
+
+    @it("a mount while following starts the ready tracker")
+    function _()
+      m.joinGroup()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertEqual(m.manager.sync.trackerPhase, "loading")
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 12.5 })
+      m.assertEqual(m.manager.sync.trackerPhase, "ready")
+    end function
+
+    @it("an unmount nobody asked for halts: the member stays in the group but stops following")
+    function _()
+      m.joinGroup()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertTrue(m.manager.inGroup)
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.manager.sync.trackerPhase, "idle")
+    end function
+
+    @it("the unmount after a finished item is the remount the group asked for, not a halt")
+    function _()
+      m.joinGroup()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "finished" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertTrue(m.manager.following)
+    end function
+
+    @it("player events outside a group change nothing")
+    function _()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.inGroup)
+      m.assertEqual(m.manager.sync.trackerPhase, "idle")
+    end function
+
+  end class
+end namespace

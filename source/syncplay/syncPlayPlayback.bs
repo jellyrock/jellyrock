@@ -1,0 +1,209 @@
+' The SyncPlay coordinator's decisions, pure: no node, no Timer, no HTTP. SyncPlayManager holds
+' the clocks and the player, asks these functions what to do, and does it.
+'
+' Three concerns live here:
+'   - scheduleCommand: when (on the device clock) a server command applies, and at what position.
+'   - applyPlan: the transport verbs that carry a command out on the player, in order.
+'   - the ready tracker: when to tell the server this member is Buffering, and when it is Ready.
+'
+' The rules follow jellyfin-web's PlaybackCore (read at v10.11.0, unchanged since 10.7.0) where
+' the server's expectations make them the only correct ones, and depart from it where a device
+' measurement says so: Ready after a seek waits for a position notification near the target,
+' because at the `playing` edge the Video node can still read the pre-seek position (seen once
+' in ten seeks across the two test devices, 2026-10-23), and the server corrects any Ready more
+' than MaxPlaybackOffset (500 ms on every server line) off with a Seek command.
+' Every time is a LongInteger: epoch milliseconds or Jellyfin ticks (decision
+' syncplay-time-longinteger).
+namespace syncPlayPlayback
+
+  ' An Unpause seeks first only when the player is further off than this (web's minDelaySkipToSync).
+  const SKIP_TO_SYNC_MIN_MS = 400
+  ' A seek counts as landed once a position notification is within this of the target: the
+  ' server's own tolerance on a Ready report (Group.MaxPlaybackOffset).
+  const READY_TOLERANCE_MS = 500
+  ' How long to wait for that notification before reporting Ready with the position in hand. The
+  ' Stick 4K took up to 2.6 s from the seek write to `playing` on direct play (2026-10-23).
+  const SEEK_SETTLE_MS = 3000
+  ' A `buffering` that outlasts this is a stall worth reporting. The node passes through
+  ' `buffering` for a few milliseconds on a pause and a resume (4 to 16 ms measured 2026-10-23), and
+  ' reporting those made the server pause the whole group twice over per command.
+  const STALL_MS = 1000
+
+  ' --- scheduling ---
+
+  ' When and how a parsed, accepted SyncPlayCommand applies.
+  ' @param estimator - the syncPlayOffset estimator (hasEstimate must be true)
+  ' @param command - a syncPlayMessage "syncplaycommand" AA
+  ' @param nowMs - the device clock now
+  ' @returns an AA with action, delayMs and positionTicks: delayMs is 0 when `When` has passed. An Unpause
+  '   whose When has passed carries the position the group is at now, estimated forward from the
+  '   command's own position (web's estimateCurrentTicks); every other command keeps its ticks.
+  function scheduleCommand(estimator as object, command as object, nowMs as longinteger) as object
+    applyAtMs& = syncPlayOffset.deviceTimeForServerMs(estimator, command.whenMs)
+    delay& = applyAtMs& - nowMs
+    if delay& < 0 then delay& = 0&
+    positionTicks& = syncPlayTime.asLong(command.positionTicks)
+    if command.command = "Unpause" and delay& = 0
+      serverNow& = syncPlayOffset.serverNowMs(estimator, nowMs)
+      positionTicks& = positionTicks& + syncPlayTime.msToTicks(serverNow& - command.whenMs)
+    end if
+    return { action: command.command, delayMs: delay&, positionTicks: positionTicks& }
+  end function
+
+  ' The transport verbs (PlayerHostView.handleTransport's evt shapes) that carry a plan out, in
+  ' order. A seek step carries two flags for the ready tracker: `report` says the server waits on
+  ' this seek (a Seek command: Buffering, then Ready once it lands), and `thenPause` says to pause
+  ' once it lands, which is how a Seek leaves the player for the Unpause that follows (web's
+  ' scheduleSeek). The seek inside an Unpause is a local correction the server already accounts
+  ' for, so it is silent.
+  '
+  ' Two rules the Stick 4K taught on 2026-10-23. A `seek` on a paused Video node resumes it, so a
+  ' Pause only pauses (the next Unpause carries the position and corrects it) and a Seek sends
+  ' no `resume` of its own. And a `pause` while the node is `buffering`, followed by a `resume`,
+  ' left it buffering for good (`pause` then `seek` in one handler, and a pause the moment a seek's
+  ' position confirmed), so the pause a Seek ends in waits for `playing` (the tracker's landing
+  ' phase).
+  ' @param plan - from scheduleCommand
+  ' @param playerState - the Video node's `state`
+  ' @param playerPositionTicks - the player's last known position
+  function applyPlan(plan as object, playerState as string, playerPositionTicks as longinteger) as object
+    steps = []
+    target = { command: "seekto", position: ticksToSeconds(plan.positionTicks), report: false, thenPause: false }
+    if plan.action = "Unpause"
+      if Abs(playerPositionTicks - plan.positionTicks) > syncPlayTime.msToTicks(SKIP_TO_SYNC_MIN_MS) then steps.push(target)
+      if playerState <> "playing" then steps.push({ command: "resume" })
+    else if plan.action = "Pause"
+      if playerState = "playing" then steps.push({ command: "pause" })
+    else if plan.action = "Seek"
+      target.report = true
+      target.thenPause = true
+      steps.push(target)
+    else if plan.action = "Stop"
+      steps.push({ command: "stop" })
+    end if
+    return steps
+  end function
+
+  ' Where a new playlist starts for this member: the last Unpause estimated forward when it is
+  ' newer than the queue update (web's startPlayback), else the update's own start. Web estimates
+  ' forward from the update's LastUpdate even for a paused group and then takes the corrective
+  ' Seek; the update's position as is reports the paused player where it is.
+  function startPositionTicks(update as object, lastCommand as dynamic, estimator as object, nowMs as longinteger) as longinteger
+    if isValid(lastCommand) and lastCommand.command = "Unpause" and lastCommand.emittedAtMs >= update.lastUpdateMs
+      serverNow& = syncPlayOffset.serverNowMs(estimator, nowMs)
+      return syncPlayTime.asLong(lastCommand.positionTicks) + syncPlayTime.msToTicks(serverNow& - lastCommand.whenMs)
+    end if
+    return syncPlayTime.asLong(update.startPositionTicks)
+  end function
+
+  ' --- the ready tracker ---
+
+  ' Phases: "idle" (no player, or nothing owed), "loading" (a player mounted, no first frame yet),
+  ' "seeking" (a seek is out, waiting for a position near the target), "landing" (the position
+  ' is there but the node is still buffering, so the pause and the Ready wait for `playing`),
+  ' "ready" (the server has this member's position), "stalling" (buffering after ready, not yet
+  ' long enough to report), "rebuffering" (a stall the server was told about).
+  function newReadyTracker() as object
+    return { phase: "idle", targetTicks: 0&, lastPositionTicks: 0&, lastState: "", reportSeek: false, thenPause: false }
+  end function
+
+  ' Feed one player or coordinator event; get back what to send and what to wait for.
+  ' @param tracker - from newReadyTracker, mutated in place
+  ' @param evt - { kind: "mounted" | "seek" | "state" | "position" | "timeout" | "unmounted",
+  '   state (for "state"), positionTicks (for "seek", "state" and "position"), and for "seek" the
+  '   plan step's `report` and `thenPause` }. A silent seek (report false) still enters the
+  '   seeking phase, so the buffering and playing it causes are not taken for a stall.
+  ' @returns an AA with report ("", "buffering" or "ready"), waitMs and pauseFirst: `waitMs` above 0 asks for
+  '   a one-shot timer that feeds back { kind: "timeout" }; `pauseFirst` says to pause the player
+  '   before the Ready goes out (a load's first frame: web pauses at playbackstart and reports
+  '   Ready, and the server's Unpause then starts everyone together).
+  function trackPlayerEvent(tracker as object, evt as object) as object
+    result = { report: "", waitMs: 0, pauseFirst: false }
+    if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return result
+    kind = evt.kind
+    if syncPlayTime.isWholeNumber(evt.positionTicks) then tracker.lastPositionTicks = syncPlayTime.asLong(evt.positionTicks)
+
+    if kind = "mounted"
+      tracker.phase = "loading"
+      result.report = "buffering"
+    else if kind = "seek"
+      tracker.phase = "seeking"
+      tracker.targetTicks = syncPlayTime.asLong(evt.positionTicks)
+      tracker.reportSeek = evt.report = true
+      tracker.thenPause = evt.thenPause = true
+      if tracker.reportSeek then result.report = "buffering"
+      result.waitMs = SEEK_SETTLE_MS
+    else if kind = "state"
+      state = ""
+      if syncPlayTime.isText(evt.state) then state = evt.state
+      tracker.lastState = state
+      if tracker.phase = "landing"
+        if state = "playing" or state = "paused" then seekSettled(tracker, result, state = "playing")
+      else if state = "playing" and tracker.phase = "loading"
+        tracker.phase = "ready"
+        result.report = "ready"
+        result.pauseFirst = true
+      else if state = "buffering" and tracker.phase = "ready"
+        tracker.phase = "stalling"
+        result.waitMs = STALL_MS
+      else if (state = "playing" or state = "paused") and tracker.phase = "stalling"
+        tracker.phase = "ready"
+      else if state = "playing" and tracker.phase = "rebuffering"
+        tracker.phase = "ready"
+        result.report = "ready"
+      end if
+    else if kind = "position"
+      if tracker.phase = "seeking" and Abs(tracker.lastPositionTicks - tracker.targetTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
+        seekLanded(tracker, result)
+      end if
+    else if kind = "timeout"
+      if tracker.phase = "seeking"
+        seekLanded(tracker, result)
+      else if tracker.phase = "landing"
+        ' The node never reached playing: report what there is, and pause nothing.
+        seekSettled(tracker, result, false)
+      else if tracker.phase = "stalling"
+        tracker.phase = "rebuffering"
+        result.report = "buffering"
+      end if
+    else if kind = "unmounted"
+      tracker.phase = "idle"
+    end if
+    return result
+  end function
+
+  ' The seek's position is there. A step that ends in a pause must not pause a node still
+  ' buffering, so it waits (the landing phase) for `playing`, or for `paused` (a seek that
+  ' left the node paused needs no pause).
+  sub seekLanded(tracker as object, result as object)
+    if tracker.thenPause and tracker.lastState <> "playing" and tracker.lastState <> "paused"
+      tracker.phase = "landing"
+      result.waitMs = SEEK_SETTLE_MS
+      return
+    end if
+    seekSettled(tracker, result, tracker.lastState = "playing")
+  end sub
+
+  ' Ready again: reported, and preceded by a pause, when the step asked for them.
+  sub seekSettled(tracker as object, result as object, pauseNow as boolean)
+    tracker.phase = "ready"
+    if tracker.reportSeek then result.report = "ready"
+    result.pauseFirst = tracker.thenPause and pauseNow
+    tracker.reportSeek = false
+    tracker.thenPause = false
+  end sub
+
+  ' --- units ---
+
+  ' The Video node's `position` and `seek` are float seconds; the wire is ticks.
+  function secondsToTicks(seconds as dynamic) as longinteger
+    if not isValid(seconds) then return 0&
+    ms& = Int(seconds * 1000)
+    return syncPlayTime.msToTicks(ms&)
+  end function
+
+  function ticksToSeconds(ticks as longinteger) as float
+    return syncPlayTime.ticksToMs(ticks) / 1000#
+  end function
+
+end namespace

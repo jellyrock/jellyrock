@@ -99,6 +99,9 @@ sub SignOut(deleteSavedEntry = true as boolean)
   ' This is the single logout + server-switch chokepoint (a server switch runs SignOut(false) via
   ' replayRoute.performServerSwitch), so the socket never survives a session teardown.
   StopRemoteControlReceiver()
+  ' A group membership belongs to the session that ends here.
+  syncPlayManager = m.global.syncPlayManager
+  if isValid(syncPlayManager) then syncPlayManager.callFunc("reset")
 
   if deleteSavedEntry
     unsetUserSetting("authToken")

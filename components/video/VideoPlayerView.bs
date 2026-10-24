@@ -12,6 +12,7 @@ import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/PlaybackEndReport.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/syncplay/syncPlayHooks.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/bufferStall.bs"
@@ -1469,6 +1470,8 @@ end sub
 sub checkTimeToDisplayNextEpisode()
   if m.top.content.contenttype <> 4 then return ' only display when content is type "Episode"
   if m.nextupbuttonseconds = 0 then return ' is the button disabled?
+  ' In a SyncPlay group the next item is the server's call, so the button stays down.
+  if syncPlayHooks.following() then return
 
   ' Don't show Next Episode button if trickPlayBar is visible
   if m.top.trickPlayBar.visible then return
@@ -1547,6 +1550,9 @@ sub checkMediaSegments()
     ' Already-skipped Skip segments degrade to AskToSkip so replay still offers the
     ' manual button without re-triggering the one-shot auto-skip (see resolveEffectiveSegmentAction).
     action = resolveEffectiveSegmentAction(segmentType, userSession.settings, userSession.config, m.skippedSegments.DoesExist(segmentId))
+    ' In a SyncPlay group no seek is local: an auto-skip would desync this member, and the
+    ' button's press is a local seek too until phase E routes it through the server.
+    if syncPlayHooks.following() then action = MediaSegmentAction.NONE
     m.log.verbose("Active segment found", segmentType, segmentId, "action:", action)
 
     if action = MediaSegmentAction.SKIP
@@ -1706,6 +1712,10 @@ sub onPositionChanged()
   if not m.isContentLoaded then return
 
   if isLiveTvPlayback() then trackLiveProgress()
+
+  ' A SyncPlay member confirms a seek landed from a position notification, never at the
+  ' `playing` edge (syncPlayPlayback.bs). Nothing is sent while not following.
+  syncPlayHooks.notify({ kind: "position", position: m.top.position })
 
   ' Without the content.length fallback (see getEffectiveDuration), progressPercentage stays
   ' pinned at 0 on live-transcoded MKV, and since the OSD only observes progressPercentage,

@@ -76,6 +76,7 @@ How JellyRock plays things: the queue that decides what plays, the video player 
 | `LoadVideoContentTask` | `components/ItemGrid/` | Asks the server how to play the item and builds the stream URL |
 | `GetPlaybackInfoTask` | `components/` | Fetches this device's live session for the playback-info report |
 | `GetShuffleItemsTask` | `components/` | Fetches the items for a shuffle |
+| `SyncPlayManager`, `TimeSyncTask` | `components/syncplay/`, at `m.global.syncPlayManager` | The SyncPlay coordinator and its clock-offset Task; the player follows it while in a group |
 | `AudioPlayer` | `components/mediaPlayers/`, at `m.global.audioPlayer` | The audio engine; extends `Video` and lives for the whole app |
 | `AudioPlayerView` | `components/music/` | The routed "now playing" screen (`/audio`); extends `JRScreen` |
 | `LoadScreenSaverTimeoutTask` | `components/music/` | Reads the device's screensaver timeout (`roAppManager.GetScreensaverTimeout()`) |
@@ -221,6 +222,15 @@ After enough unattended videos, the next one plays under a centered prompt (#982
 - **While it is up,** the Skip Intro and Next Episode pop-ups stay down (`isDialogOpen` in `VideoPlayerView.onPositionChanged`), and an auto-skip intro waits.
 
 RTA covers both endings (`tests/rta/specs/still-watching.spec.js`, with the `rtaForceStillWatching` hook so it need not play for an hour first).
+
+### SyncPlay: the player follows the group
+
+While `m.global.syncPlayManager.following` is true, the player answers to a SyncPlay group ([`global-state.md`](global-state.md#manager-nodes-scenemanager-queuemanager-audioplayer)), and the host and the player change in two ways.
+
+- **Events go up, verbs come down, and nothing observes the player from outside.** `PlayerHostView.mountPlayer`, `onPlayerStateChange` and `destroyPlayer`, and `VideoPlayerView.onPositionChanged`, hand the manager their event through `syncPlayHooks.notify` (`source/syncplay/syncPlayHooks.bs`), which is silent while not following. The manager acts through the host's existing `handleTransport` verbs (`pause`, `resume`, `seekto`) and `exitPlayback`. An observer of the player's `state` registered by the manager would be removed along with the host's by any `unobserveField` (#898), so the events are pushed instead. The decisions (when a command applies, which verbs carry it, when `Buffering` and `Ready` go out) are pure in `syncPlayPlayback.bs`; the manager owns the Timers.
+- **The four local auto-behaviors stand down,** because each would move this member on its own: `shouldAskStillWatching` returns false; `onPlayerStateChange` does not advance on `finished` (the manager asks the server for the next item, and the server's queue update remounts every member; on the last item the host leaves the route as usual); `checkMediaSegments` resolves every segment to `None`, since a skip is a local seek until phase E routes it through the server; `checkTimeToDisplayNextEpisode` shows no button; and the manager sets `setPrerollStatus(false)` on the group's queue, so `LoadVideoContentTask` queues no Cinema Mode intro.
+
+A load reports `Buffering` at mount and `Ready` at its first `playing`, pausing the player there, and the server's `Unpause` starts every member together (jellyfin-web does the same). After a `Seek` command, `Ready` waits for a `position` notification within 500 ms of the target, never the `playing` edge, where the node once still read the position from before the seek; after 3 s it reports the position in hand and lets the server correct it. Two Stick 4K findings (2026-10-23) shape the verbs: a `seek` on a paused `Video` node resumes it, and a `pause` sent while the node buffers, then a `resume`, left it buffering for good. So a `Pause` only pauses, a `Seek` is the seek alone and pauses again only once the node reports `playing` at the new position, the manager's own correction seeks stay unreported, and a `buffering` counts as a stall only after it has lasted a second, since a stall report makes the server pause the whole group. A player that goes away with no remount the manager asked for (Back, an error that exits) halts: the member stays in the group, stops following, and sends `SetIgnoreWait`, so a server without a group-wait timeout never waits on it.
 
 ## `VideoPlayerView`
 

@@ -1,0 +1,106 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+import "pkg:/source/syncplay/syncPlayQueue.bs"
+import "pkg:/source/syncplay/syncPlayState.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
+
+namespace tests
+
+  @suite("syncPlayQueue — a play queue update as QueueManager items")
+  class SyncPlayQueueTests extends tests.BaseTestSuite
+
+    private playlist = [{ itemId: "i-1", playlistItemId: "p-1" }, { itemId: "i-2", playlistItemId: "p-2" }, { itemId: "i-3", playlistItemId: "p-3" }]
+
+    private function items() as object
+      ' The server returns raw items in its own order.
+      return [
+        { Id: "i-3", Type: "Episode", Name: "Three", RunTimeTicks: 30000000& },
+        { Id: "i-1", Type: "Movie", Name: "One", RunTimeTicks: 10000000& },
+        { Id: "i-2", Type: "Movie", Name: "Two", RunTimeTicks: 20000000& }
+      ]
+    end function
+
+    private function queueUpdate(lastUpdate as string) as object
+      inner = { Reason: "NewPlaylist", LastUpdate: lastUpdate, Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }], PlayingItemIndex: 0, StartPositionTicks: 0 }
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: "PlayQueue", Data: inner } })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queueItemsFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds one queue item per playlist entry, in playlist order")
+    function _()
+      queueItems = syncPlayQueue.queueItemsFor(m.playlist, m.items())
+      m.assertEqual(queueItems.count(), 3)
+      m.assertEqual(queueItems[0].id, "i-1")
+      m.assertEqual(queueItems[0].type, "Movie")
+      m.assertEqual(queueItems[0].syncPlayPlaylistItemId, "p-1")
+      m.assertEqual(queueItems[2].id, "i-3")
+      m.assertEqual(queueItems[2].syncPlayPlaylistItemId, "p-3")
+    end function
+
+    @it("drops an entry the server returned no item for")
+    function _()
+      queueItems = syncPlayQueue.queueItemsFor(m.playlist, [m.items()[1]])
+      m.assertEqual(queueItems.count(), 1)
+      m.assertEqual(queueItems[0].id, "i-1")
+    end function
+
+    @it("tolerates a missing items array and an empty playlist")
+    function _()
+      m.assertEqual(syncPlayQueue.queueItemsFor(m.playlist, invalid).count(), 0)
+      m.assertEqual(syncPlayQueue.queueItemsFor([], m.items()).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("positionOf()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds the playing item by playlist id, after a drop shifted the index")
+    function _()
+      queueItems = syncPlayQueue.queueItemsFor(m.playlist, [m.items()[0], m.items()[2]])
+      m.assertEqual(syncPlayQueue.positionOf(queueItems, "p-3"), 1)
+      m.assertEqual(syncPlayQueue.positionOf(queueItems, "p-1"), -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isStaleQueueUpdate()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the first update is never stale")
+    function _()
+      state = syncPlayState.newState()
+      m.assertFalse(syncPlayQueue.isStaleQueueUpdate(state, m.queueUpdate("2026-10-23T20:47:25.000Z")))
+    end function
+
+    @it("an update no newer than the applied one is stale; a newer one is not")
+    function _()
+      state = syncPlayState.applyGroupUpdate(syncPlayState.newState(), m.queueUpdate("2026-10-23T20:47:25.000Z"))
+      m.assertTrue(syncPlayQueue.isStaleQueueUpdate(state, m.queueUpdate("2026-10-23T20:47:25.000Z")))
+      m.assertTrue(syncPlayQueue.isStaleQueueUpdate(state, m.queueUpdate("2026-10-23T20:47:24.000Z")))
+      m.assertFalse(syncPlayQueue.isStaleQueueUpdate(state, m.queueUpdate("2026-10-23T20:47:26.000Z")))
+    end function
+
+    @it("only a PlayQueue update can be stale")
+    function _()
+      state = syncPlayState.applyGroupUpdate(syncPlayState.newState(), m.queueUpdate("2026-10-23T20:47:25.000Z"))
+      stateUpdate = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: "StateUpdate", Data: { State: "Paused", Reason: "Pause" } } })
+      m.assertFalse(syncPlayQueue.isStaleQueueUpdate(state, stateUpdate))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("changesPlayingItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a new playlist always moves; a current-item change only when the id changed; queue edits never")
+    function _()
+      m.assertTrue(syncPlayQueue.changesPlayingItem("NewPlaylist", "p-1", "p-1"))
+      m.assertTrue(syncPlayQueue.changesPlayingItem("NextItem", "p-1", "p-2"))
+      m.assertFalse(syncPlayQueue.changesPlayingItem("SetCurrentItem", "p-1", "p-1"))
+      m.assertTrue(syncPlayQueue.changesPlayingItem("RemoveItems", "p-1", "p-2"))
+      m.assertFalse(syncPlayQueue.changesPlayingItem("Queue", "p-1", "p-2"))
+      m.assertFalse(syncPlayQueue.changesPlayingItem("ShuffleMode", "p-1", "p-2"))
+    end function
+
+  end class
+end namespace
