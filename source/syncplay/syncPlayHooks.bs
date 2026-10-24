@@ -1,11 +1,11 @@
 ' The player's side of SyncPlay: what PlayerHostView and VideoPlayerView call. Both run on the
-' render thread, where an m.global read costs about 2 µs, so `following()` is cheap enough for a
-' position tick. The manager is created in setGlobalNodes(); a test scene may have none, so
-' every call tolerates its absence.
+' render thread, where an m.global read took 2.0 µs on a Stick 4K (2026-08-23, threading.md),
+' so `following()` is cheap enough for a position tick. The manager is created in
+' setGlobalNodes(); a test scene may have none, so every call tolerates its absence.
 namespace syncPlayHooks
 
-  ' True while this device is in a group and following its playback: the four local
-  ' auto-behaviors (still watching, next-episode, segment skip, Cinema Mode) stand down.
+  ' True while this device is in a group and following its playback: the local auto-behaviors
+  ' (still watching, the next-item advance, Next Episode, segment skip, Cinema Mode) stand down.
   function following() as boolean
     manager = m.global.syncPlayManager
     if not isValid(manager) then return false

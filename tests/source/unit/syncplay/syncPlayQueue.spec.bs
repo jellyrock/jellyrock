@@ -102,5 +102,46 @@ namespace tests
       m.assertFalse(syncPlayQueue.changesPlayingItem("ShuffleMode", "p-1", "p-2"))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isLastItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the group's playlist, not the local queue")
+    function _()
+      state = syncPlayState.newState()
+      state.playlist = m.playlist
+      state.playingItemIndex = 1
+      m.assertFalse(syncPlayQueue.isLastItem(state))
+      state.playingItemIndex = 2
+      m.assertTrue(syncPlayQueue.isLastItem(state))
+    end function
+
+    @it("a group with no playing item has nothing to move on to")
+    function _()
+      state = syncPlayState.newState()
+      m.assertTrue(syncPlayQueue.isLastItem(state))
+      state.playlist = m.playlist
+      state.playingItemIndex = -1
+      m.assertTrue(syncPlayQueue.isLastItem(state))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isGroupItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("only the queue item carrying the group's playing playlist id")
+    function _()
+      m.assertTrue(syncPlayQueue.isGroupItem({ id: "i-1", syncPlayPlaylistItemId: "p-1" }, "p-1"))
+      m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-2", syncPlayPlaylistItemId: "p-2" }, "p-1"))
+      m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-1" }, "p-1"))
+    end function
+
+    @it("nothing is the group's item while the group plays nothing")
+    function _()
+      m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-1", syncPlayPlaylistItemId: "" }, ""))
+      m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-1" }, ""))
+      m.assertFalse(syncPlayQueue.isGroupItem(invalid, "p-1"))
+    end function
+
   end class
 end namespace

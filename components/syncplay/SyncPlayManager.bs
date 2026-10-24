@@ -15,11 +15,10 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/tasks.bs"
 
-' Rounds in the burst a join starts (the spike's "best of eight") and in each later one; the
-' interval between later bursts is jellyfin-web's low-profile polling interval.
+' Rounds in the burst a join starts (the spike's "best of eight") and in each later one; when the
+' next burst runs is syncPlayOffset.nextBurstSeconds.
 const FIRST_SYNC_ROUNDS = 8
 const SYNC_ROUNDS = 3
-const SYNC_INTERVAL_SECONDS = 60
 
 sub init()
   m.log = new log.Logger("SyncPlayManager")
@@ -61,6 +60,8 @@ sub ensureReady()
   ' A remount this manager asked for, or a Stop it applied: the unmount that follows is not a halt.
   m.expectingRemount = false
   m.timeSyncTask = invalid
+  ' Bursts in a row that ended with no estimate (syncPlayOffset.nextBurstSeconds).
+  m.failedBursts = 0
   ' What the player last told us.
   m.playerState = ""
   m.playerPositionTicks = 0&
@@ -85,9 +86,12 @@ function leave() as boolean
   return post("Leave", invalid)
 end function
 
+' Sign-out and server switch. The server ends a membership only with its session, and an HTTPS
+' session outlives the app's long poll, so the group is left explicitly.
 function reset() as boolean
   m.log.info("reset")
   ensureReady()
+  if m.state.inGroup then post("Leave", invalid, true)
   leaveLocally()
   return true
 end function
@@ -104,7 +108,15 @@ function playerEvent(evt as object) as object
   if kind = "mounted"
     m.expectingRemount = false
     m.playerState = ""
-    if isFollowing() then track({ kind: "mounted" })
+    if isFollowing()
+      ' Only the group's item answers to the group. Anything else the viewer started plays
+      ' as their own, so this member halts rather than report a load the group never asked for.
+      if syncPlayQueue.isGroupItem(m.global.queueManager.callFunc("getCurrentItem"), m.state.playingItemId)
+        track({ kind: "mounted" })
+      else
+        haltFollowing("a player mounted for an item the group is not playing")
+      end if
+    end if
   else if kind = "state"
     if isFollowing() then track({ kind: "state", state: m.playerState, positionTicks: m.playerPositionTicks })
   else if kind = "position"
@@ -112,9 +124,14 @@ function playerEvent(evt as object) as object
   else if kind = "finished"
     if isFollowing()
       ' The group moves on together: ask the server, which answers every member with a
-      ' PlayQueue(NextItem) that remounts. On the playlist's last item it answers nothing.
-      m.expectingRemount = true
+      ' PlayQueue(NextItem) that remounts. On the playlist's last item it answers nothing, so
+      ' this member leaves the route as for any finished queue.
       post("NextItem", syncPlayRequests.nextItem(m.state.playingItemId))
+      host = playerHost()
+      if syncPlayQueue.isLastItem(m.state) and isValid(host)
+        m.expectingRemount = true
+        host.callFunc("exitPlayback")
+      end if
     end if
   else if kind = "unmounted"
     m.playerState = ""
@@ -125,17 +142,25 @@ function playerEvent(evt as object) as object
     if m.expectingRemount
       m.expectingRemount = false
     else if isFollowing()
-      ' Back during group playback, or an error that left the player: this member stops
-      ' following but stays in the group, and tells the server not to wait on it (a server
-      ' before 12.1 has no group-wait timeout). Resuming is phase E.
-      m.log.info("player left while following: halting", "groupId", m.state.groupId)
-      syncPlayState.halt(m.state)
-      post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
-      publish()
+      ' Back during group playback, or an error that left the player.
+      haltFollowing("the player left while following")
     end if
   end if
   return { following: isFollowing() }
 end function
+
+' This member stops following but stays in the group, and tells the server not to wait on it (a
+' server before 12.1 has no group-wait timeout). Resuming is phase E.
+sub haltFollowing(reason as string)
+  m.log.info("halting", "reason", reason, "groupId", m.state.groupId)
+  syncPlayState.halt(m.state)
+  m.pendingPlan = invalid
+  m.commandTimer.control = "stop"
+  m.readyTimer.control = "stop"
+  m.tracker = syncPlayPlayback.newReadyTracker()
+  post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
+  publish()
+end sub
 
 ' --- frames ---
 
@@ -168,6 +193,7 @@ sub onGroupUpdate(update as object)
     m.heldCommand = invalid
     m.lastCommand = invalid
     m.tracker = syncPlayPlayback.newReadyTracker()
+    m.failedBursts = 0
     startTimeSync(FIRST_SYNC_ROUNDS)
   else if updateType = "GroupLeft" or updateType = "NotInGroup"
     leaveLocally()
@@ -181,6 +207,14 @@ end sub
 sub onCommand(command as object)
   if not syncPlayState.acceptsCommand(m.state, command)
     m.log.debug("command not for this member", "command", command.command, "playlistItemId", command.playlistItemId)
+    return
+  end if
+  if not isFollowing()
+    ' Recorded, never applied: whatever plays now is this viewer's own. A resume (phase E)
+    ' starts from the last command.
+    m.log.debug("command recorded while halted", "command", command.command)
+    m.lastCommand = command
+    publish()
     return
   end if
   if not m.estimator.hasEstimate
@@ -214,7 +248,8 @@ end sub
 sub applyPendingPlan()
   plan = m.pendingPlan
   m.pendingPlan = invalid
-  if not isValid(plan) then return
+  ' A halt can land between scheduling and firing.
+  if not isValid(plan) or not isFollowing() then return
   host = playerHost()
   if not isValid(host)
     m.log.warn("command arrived with no player mounted", "command", plan.action)
@@ -262,6 +297,10 @@ end sub
 sub applyQueue(reason as string, queueItems as object)
   index = syncPlayQueue.positionOf(queueItems, m.state.playingItemId)
   queueManager = m.global.queueManager
+  ' A new playlist is a new queue: the viewer's version pick and gear caps from the queue before
+  ' do not carry into it (set() alone keeps them, for a reorder). Within the group's playlist
+  ' they carry, as in any queue.
+  if reason = "NewPlaylist" then queueManager.callFunc("clear")
   queueManager.callFunc("set", queueItems)
   if index < 0
     m.log.warn("the group's playing item is not in the fetched queue", "playlistItemId", m.state.playingItemId)
@@ -350,14 +389,18 @@ sub onTimeSyncResults(event as object)
   m.log.info("time sync", "rounds", added, "offsetMs", m.estimator.offsetMs.toStr(), "delayMs", m.estimator.delayMs.toStr())
   if not m.state.inGroup then return
   if m.estimator.hasEstimate
+    m.failedBursts = 0
     post("Ping", syncPlayRequests.ping(m.estimator.delayMs \ 2))
     if isValid(m.heldCommand)
       held = m.heldCommand
       m.heldCommand = invalid
-      if syncPlayState.acceptsCommand(m.state, held) then scheduleCommand(held)
+      ' Checked again: a queue update since it was held can have made it stale (acceptsCommand).
+      if syncPlayState.acceptsCommand(m.state, held) and isFollowing() then scheduleCommand(held)
     end if
+  else
+    m.failedBursts++
   end if
-  m.syncTimer.duration = SYNC_INTERVAL_SECONDS
+  m.syncTimer.duration = syncPlayOffset.nextBurstSeconds(m.estimator.hasEstimate, m.failedBursts)
   m.syncTimer.control = "start"
   publish()
 end sub
@@ -381,11 +424,18 @@ function playerHost() as dynamic
 end function
 
 ' A SyncPlay POST nobody reads the answer to: the server's reply is a frame on the receiver.
-function post(action as string, body as dynamic) as boolean
+' @param isLastForSession - true for a post made as the session ends: the side-effect thread
+'   builds Authorization when it sends, after SignOut has cleared the user, so the header is
+'   taken now (a request's own headers win over the one it builds)
+function post(action as string, body as dynamic, isLastForSession = false as boolean) as boolean
   req = GetApi().BuildSyncPlayRequest(action, body)
   if not isValid(req)
     m.log.warn("no request for SyncPlay action", "action", action)
     return false
+  end if
+  if isLastForSession
+    if not isValid(req.headers) then req.headers = {}
+    req.headers.Authorization = buildAuthHeader()
   end if
   SubmitSideEffect(req)
   return true
@@ -403,6 +453,7 @@ sub leaveLocally()
   m.lastCommand = invalid
   m.pendingPlan = invalid
   m.expectingRemount = false
+  m.failedBursts = 0
   publish()
 end sub
 

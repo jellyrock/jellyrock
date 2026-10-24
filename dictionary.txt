@@ -414,6 +414,7 @@ MKV
 mkv
 MP3
 mp4
+mpv-shim
 multicast
 multichannel
 multiline
@@ -644,6 +645,7 @@ stateful
 Stateful
 stdout
 stopword
+Streamyfin
 sub-ADR
 sub-agent
 sub-agents

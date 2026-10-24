@@ -48,6 +48,22 @@ namespace syncPlayQueue
     return syncPlayTime.asLong(update.lastUpdateMs) <= state.lastUpdateMs
   end function
 
+  ' Whether the group's playing item is the last of its playlist, so a finished item has nothing to
+  ' move on to. The group's playlist, not the local queue: the local one drops items this member
+  ' cannot see. Repeat modes are phase E's.
+  function isLastItem(state as object) as boolean
+    if state.playingItemIndex < 0 then return true
+    return state.playingItemIndex >= state.playlist.count() - 1
+  end function
+
+  ' Whether a QueueManager item is the one the group is playing: queueItemsFor stamps the
+  ' playlist id, and nothing else in the app sets it.
+  function isGroupItem(queueItem as dynamic, playingItemId as string) as boolean
+    if not isValid(queueItem) or playingItemId = "" then return false
+    playlistItemId = queueItem.syncPlayPlaylistItemId
+    return syncPlayTime.isText(playlistItemId) and playlistItemId = playingItemId
+  end function
+
   ' Whether a queue update moves this member to another item (a new playlist, the server's
   ' current-item change, or a removal that took the playing item with it).
   function changesPlayingItem(reason as string, previousPlaylistItemId as string, playlistItemId as string) as boolean

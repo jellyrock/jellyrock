@@ -247,12 +247,10 @@ sub onPlayerStateChange()
   queueManager = m.global.queueManager
 
   ' In a SyncPlay group the queue moves on together: the manager asks the server for the next
-  ' item and its PlayQueue update remounts every member. On the last item the server answers
-  ' nothing, so the route is left as for any finished queue.
+  ' item, whose PlayQueue update remounts every member, and on the group's last item it leaves
+  ' the route itself, so that unmount is not taken for a halt.
   if syncPlayHooks.following()
     syncPlayHooks.notify({ kind: "finished" })
-    if queueManager.callFunc("getPosition") < queueManager.callFunc("getCount") - 1 then return
-    exitPlayback()
     return
   end if
 

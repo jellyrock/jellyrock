@@ -11,6 +11,7 @@ namespace tests
     private manager as object
     private previousView as object
     private previousServerUrl as string
+    private previousQueue as object
 
     ' beforeEach, not setup: every test moves the node's state (tests/CLAUDE.md).
     protected override function beforeEach()
@@ -21,12 +22,18 @@ namespace tests
       ' No server: a GroupJoined then starts no time-sync burst, so no request leaves the device.
       m.previousServerUrl = m.global.server.serverUrl
       m.global.server.serverUrl = ""
+      ' The manager reads the playing queue item at a mount: a fresh queue per test.
+      if not m.global.doesExist("queueManager") then m.global.addField("queueManager", "node", false)
+      m.previousQueue = m.global.queueManager
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
       m.manager = CreateObject("roSGNode", "SyncPlayManager")
     end function
 
     protected override function afterEach()
       m.manager.callFunc("reset")
       m.manager = invalid
+      m.global.queueManager = m.previousQueue
+      m.previousQueue = invalid
       m.global.server.serverUrl = m.previousServerUrl
       m.global.activeRoutedView = m.previousView
       m.previousView = invalid
@@ -44,6 +51,15 @@ namespace tests
 
     private sub joinGroup()
       m.manager.frame = m.update("GroupJoined", { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" })
+    end sub
+
+    ' The group plays p-1, and the local queue's current item is p-1 (what applyQueue builds; with
+    ' no server the manager's own fetch builds nothing).
+    private sub playGroupItem(localPlaylistItemId = "p-1" as string)
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      queueItem = { id: "i-1", type: "Movie" }
+      if localPlaylistItemId <> "" then queueItem.syncPlayPlaylistItemId = localPlaylistItemId
+      m.global.queueManager.callFunc("set", [queueItem])
     end sub
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -116,7 +132,7 @@ namespace tests
       m.assertInvalid(m.manager.sync.lastCommand)
     end function
 
-    @it("the join sequence the 12.2 server sends (GroupJoined, a Stop, then the new queue) applies the queue")
+    @it("the join sequence the 12.2 server sends (GroupJoined, a Stop, then the new queue) makes the queue's item the playing one")
     function _()
       ' Recorded over the session socket against a 12.2.0 server, 2026-10-23.
       m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Data: { GroupId: "g-1", GroupName: "capture", State: "Idle", Participants: ["jellyrock"], LastUpdatedAt: "2026-10-24T01:17:33.6881879Z" }, Type: "GroupJoined" } })
@@ -133,6 +149,19 @@ namespace tests
       m.assertFalse(m.manager.inGroup)
     end function
 
+    @it("a command while halted is recorded, not held for the player")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      ' Held, it would read invalid here (the first test above): recorded, it is the last command.
+      m.manager.frame = m.command("Pause")
+      m.assertNotInvalid(m.manager.sync.lastCommand)
+      m.assertEqual(m.manager.sync.lastCommand.command, "Pause")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("playerEvent()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -142,22 +171,43 @@ namespace tests
       ret = m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.assertFalse(ret.following)
       m.joinGroup()
+      m.playGroupItem()
       ret = m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.assertTrue(ret.following)
     end function
 
-    @it("a mount while following starts the ready tracker")
+    @it("a mount of the group's item while following starts the ready tracker")
     function _()
       m.joinGroup()
+      m.playGroupItem()
       m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.assertEqual(m.manager.sync.trackerPhase, "loading")
       m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 12.5 })
       m.assertEqual(m.manager.sync.trackerPhase, "ready")
     end function
 
+    @it("a mount of anything else halts: what the viewer started plays as their own")
+    function _()
+      m.joinGroup()
+      m.playGroupItem("")
+      ret = m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertFalse(ret.following)
+      m.assertTrue(m.manager.inGroup)
+      m.assertEqual(m.manager.sync.trackerPhase, "idle")
+    end function
+
+    @it("a mount while the group plays nothing halts too")
+    function _()
+      m.joinGroup()
+      m.global.queueManager.callFunc("set", [{ id: "i-9", type: "Movie" }])
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertFalse(m.manager.following)
+    end function
+
     @it("an unmount nobody asked for halts: the member stays in the group but stops following")
     function _()
       m.joinGroup()
+      m.playGroupItem()
       m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.manager.callFunc("playerEvent", { kind: "unmounted" })
       m.assertTrue(m.manager.inGroup)
@@ -165,13 +215,15 @@ namespace tests
       m.assertEqual(m.manager.sync.trackerPhase, "idle")
     end function
 
-    @it("the unmount after a finished item is the remount the group asked for, not a halt")
+    @it("a finished item does not excuse the next unmount: Back while NextItem goes unanswered still halts")
     function _()
       m.joinGroup()
+      m.playGroupItem()
       m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.manager.callFunc("playerEvent", { kind: "finished" })
       m.manager.callFunc("playerEvent", { kind: "unmounted" })
-      m.assertTrue(m.manager.following)
+      m.assertTrue(m.manager.inGroup)
+      m.assertFalse(m.manager.following)
     end function
 
     @it("player events outside a group change nothing")
