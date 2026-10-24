@@ -54,6 +54,12 @@ related-files:
   - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
+  - components/syncplay/SyncPlayManager.bs
+  - components/syncplay/SyncPlayManager.xml
+  - source/syncplay/syncPlayPlayback.bs
+  - source/syncplay/syncPlayQueue.bs
+  - source/syncplay/syncPlayHooks.bs
+  - source/syncplay/syncPlayState.bs
 last-reviewed: 2026-10-24
 ---
 
