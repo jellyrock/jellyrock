@@ -4,6 +4,7 @@ import "pkg:/source/enums/HomeAction.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/overhangRow.bs"
 import "pkg:/source/utils/translate.bs"
 
 const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: logo, or the strip without one
@@ -12,14 +13,10 @@ const OVERHANG_RIGHT = 1824 ' The 5% action-safe right edge: the clock's right e
 ' The clock's slot. Limit with headroom: "8:48" measured 99 px wide at 1080p on a Stick 4K
 ' (2026-10-25); four digits and the separator stay under this.
 const CLOCK_SLOT = 150
-const ELEMENT_GAP = 6 ' Before the dropdown and the cluster; the tabs sit 9 apart (JRTabBar)
-const ROW_HEIGHT = 78 ' Every box in the row: a tab's caps with 24 px above and below
-const ROW_BOTTOM = 105 ' The row's bottom edge; content starts right under it (Home's row label at 104)
 const TITLE_Y = 44 ' The title's top, so its caps center on the row's middle (66)
 const TAB_BAR_DROP = 3 ' A tab's caps sit about 3 px above its box middle: the bar drops to center them
 const TITLE_MIN_WIDTH = 120 ' The title keeps at least this, whatever the dropdown's width
 const DROPDOWN_PROVISIONAL_WIDTH = 200 ' Until the trigger reports its width
-const TAB_PADDING = 9 ' Must match JRTab's padding value
 
 sub init()
   m.top.id = "overhang"
@@ -34,11 +31,10 @@ sub init()
   m.userDropdown = CreateObject("roSGNode", "JRDropdown")
   m.userDropdown.id = "userDropdown"
   m.userDropdown.menuWidth = 300
-  m.userDropdown.padding = 9 ' the same inside every overhang box: a 42 px avatar in a 60 px box
+  m.userDropdown.padding = overhangRow.BOX_PADDING ' the same inside every overhang box
   m.userDropdown.visible = false ' hidden until user logs in
   m.top.appendChild(m.userDropdown)
-  m.userDropdown.minHeight = ROW_HEIGHT
-  m.rowY = ROW_BOTTOM - ROW_HEIGHT ' every box in the row shares this top edge
+  m.userDropdown.minHeight = overhangRow.ROW_HEIGHT
 
   ' Reposition everything when the trigger button width changes (a username change, say)
   m.userDropdown.observeField("triggerWidth", "onLayoutInputChanged")
@@ -139,7 +135,7 @@ sub onCurrentUserChanged()
     if isValidAndNotEmpty(localUser.primaryImageTag)
       m.userDropdown.triggerIconBlendColor = "0xFFFFFFFF"
       if m.global.server.serverUrl <> ""
-        m.userDropdown.triggerIconUri = GetUserAvatarURL(localUser, 42, 42)
+        m.userDropdown.triggerIconUri = GetUserAvatarURL(localUser, overhangRow.GLYPH_SIZE, overhangRow.GLYPH_SIZE)
       end if
     else
       m.userDropdown.triggerIconBlendColor = m.global.constants.colorTextSecondary
@@ -309,8 +305,8 @@ sub layout()
   if isValid(m.logo) then stripX = STRIP_X_WITH_LOGO
   if isValid(m.tabBar)
     ' A tab's box is the row's height; the bar drops a little so the caps, not the box,
-    ' center on the row. The text starts at stripX because the box pads TAB_PADDING.
-    m.tabBar.translation = [stripX - TAB_PADDING, m.rowY + TAB_BAR_DROP]
+    ' center on the row. The text starts at stripX because the box pads BOX_PADDING.
+    m.tabBar.translation = [stripX - overhangRow.BOX_PADDING, overhangRow.ROW_TOP + TAB_BAR_DROP]
   end if
 
   titleX = stripX
@@ -321,8 +317,8 @@ sub layout()
   leftOfCluster = rightEdge
   if m.cluster.visible
     clusterX = rightEdge - m.cluster.barWidth
-    m.cluster.translation = [clusterX, m.rowY]
-    leftOfCluster = clusterX - ELEMENT_GAP
+    m.cluster.translation = [clusterX, overhangRow.ROW_TOP]
+    leftOfCluster = clusterX - overhangRow.ELEMENT_GAP
   end if
 
   leftOfDropdown = leftOfCluster
@@ -330,8 +326,8 @@ sub layout()
     triggerWidth = m.userDropdown.triggerWidth
     if triggerWidth <= 0 then triggerWidth = DROPDOWN_PROVISIONAL_WIDTH
     dropdownX = leftOfCluster - triggerWidth
-    m.userDropdown.translation = [dropdownX, m.rowY]
-    leftOfDropdown = dropdownX - ELEMENT_GAP
+    m.userDropdown.translation = [dropdownX, overhangRow.ROW_TOP]
+    leftOfDropdown = dropdownX - overhangRow.ELEMENT_GAP
   end if
 
   m.title.translation = [titleX, TITLE_Y]

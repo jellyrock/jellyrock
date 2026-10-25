@@ -1,4 +1,7 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/overhangRow.bs"
+
+const TAB_ICON_GUTTER = 6 ' The 64/46 canvas pads about 6 px at the glyph size: 12 px visible to the text
 
 sub init()
   ' TextButton.init() has already run: m.buttonBackground, m.buttonBorder, m.buttonText are set
@@ -8,15 +11,15 @@ sub init()
   ' Upgrade font to Large to match overhang title size
   m.buttonText.font.size = constants.fontSizeLarge
 
-  ' 9 px at the sides, like the overhang's icon buttons, and the row's 78 px height: that
-  ' leaves 24 px below the caps, the room the selected underline needs between the text
-  ' and the focus border (the subtitle panel's perfect-match button has the same).
-  m.top.padding = 9
-  m.top.minHeight = 78
+  ' The row's box padding at the sides and the row's height: that leaves 24 px below the
+  ' caps, the room the selected underline needs between the text and the focus border (the
+  ' subtitle panel's perfect-match button has the same).
+  m.top.padding = overhangRow.BOX_PADDING
+  m.top.minHeight = overhangRow.ROW_HEIGHT
 
-  ' The glyph matches the overhang's icon buttons (a 42 px glyph in JROverhangIcon)
-  m.top.iconSize = 42
-  m.top.iconGutter = 6 ' the 64/46 canvas pads about 6 px at this size: 12 px visible to the text
+  ' The glyph matches the overhang's icon buttons
+  m.top.iconSize = overhangRow.GLYPH_SIZE
+  m.top.iconGutter = TAB_ICON_GUTTER
 
   ' Unfocused state: transparent background/border so only text is visible
   m.top.background = "0x00000000"

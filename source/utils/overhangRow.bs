@@ -1,0 +1,20 @@
+' The overhang row's shared geometry, in design pixels. Three numbers are chosen (the row's
+' height, the glyph size and the padding inside a box); the rest follow from them, so a
+' component reads its size here instead of repeating it. Every value is a multiple of 3, so a
+' 720p device (two thirds) draws it on whole pixels. docs/architecture/design-system.md says
+' why each one is what it is.
+namespace overhangRow
+  ' Chosen
+  const ROW_HEIGHT = 78 ' Every box in the row: a tab's caps with 24 px above and below
+  const ROW_BOTTOM = 105 ' The row's bottom edge; content starts right under it (Home's row label at 104)
+  const GLYPH_SIZE = 42 ' Every glyph in the row: the tabs', the cluster's, the avatar
+  const BOX_PADDING = 9 ' Inside a box at its sides: a tab, the dropdown, a glyph's slot
+  const TAB_GAP = 9 ' Between tabs: text has no air of its own
+  const ELEMENT_GAP = 6 ' On the right (before the dropdown, before and inside the cluster): a glyph's canvas pads it
+
+  ' Derived
+  const ROW_TOP = ROW_BOTTOM - ROW_HEIGHT ' Every box in the row shares this top edge
+  const ICON_BOX = ROW_HEIGHT ' An icon button's focus box: a square as tall as the row
+  const ICON_PADDING = (ICON_BOX - GLYPH_SIZE) \ 2 ' Between a glyph and its focus box, all four sides
+  const SLOT_SIZE = GLYPH_SIZE + BOX_PADDING * 2 ' What a glyph takes in the row's layout
+end namespace

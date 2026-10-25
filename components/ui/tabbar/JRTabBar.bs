@@ -1,7 +1,9 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/overhangRow.bs"
 
 sub init()
   m.tabContainer = m.top.findNode("tabContainer")
+  m.tabContainer.itemSpacings = [overhangRow.TAB_GAP]
   m.focusedTabIndex = 0
 
   ' When the tab bar gains focus, highlight the focused tab
