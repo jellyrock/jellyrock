@@ -20,7 +20,7 @@ last-reviewed: 2026-10-25
 
 The visual rules every screen follows, in one place, so a new screen takes them instead of rediscovering them. Each rule says what it is, why, and where the code enforces it. The icon pipeline's own rules (which Material variant, when a glyph is filled) are in [resources/icons/README.md](../../resources/icons/README.md); the dialog standard is [dialogs.md](dialogs.md); grid and list item layout is [list-grid-item-layout.md](list-grid-item-layout.md).
 
-Design pixels throughout: the app lays out at 1920 by 1080 and the OS scales it. Keep sizes and gaps in multiples of 3, so a 720p device (two thirds) lands on whole pixels.
+Design pixels throughout: the app lays out at 1920 by 1080 and the OS scales it. **Every size and every drawn position is a multiple of 3**, the position counted as the sum of the translations above it, so a 720p device (two thirds) draws it on whole pixels. A width that follows text is rounded up onto the grid (`snapToGrid` in `source/utils/pixelGrid.bs`, which the dialogs use too); only the text's own ink is exempt, since the font decides it.
 
 ## Theme colors: which one means what
 
@@ -48,8 +48,10 @@ One row, the same elements in the same order on every screen that shows them (`J
 |---|---|---|
 | Icon button (`JROverhangIcon`) | a 78 pixel square focus box around the 42 pixel glyph; the row lays out by 60 pixel slots 6 apart, so the box overhangs its slot by 9 and overlaps its invisible neighbors | The focus ring is the 6 pixel border; the resting glyph is `colorTextSecondary`, focused `colorTextPrimary`, disabled `colorTextDisabled` in both states |
 | Tab (`JRTab`) | the Large font in a 78 pixel box, 9 pixels at the sides, a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
-| User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content; a name past 300 pixels is cut with an ellipsis |
-| Clock | right-aligned at x 1824 in a 150 pixel slot | Everything else is placed from the slot's left edge |
+| User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content, the name's width rounded up onto the grid; a name past 300 pixels is cut with an ellipsis. The name drops 3 pixels in its box, as a text box does (below) |
+| Logo | 180 by 39 at y 51 | Its capitals and baseline sit on the tab text's |
+| Text box (tabs, the title, the clock) | the row's 78 pixels, 3 pixels below the row's top (y 30 to 108) | A label centers its line box, and caps and digits sit about 7% of the font size above that box's middle, so text in this box centers on the row's line. The title takes the same box as a tab's text, so it sits where the tabs' text does |
+| Clock | right-aligned at x 1824 in a 150 pixel slot, in the text box (`Clock`'s `boxY` and `boxHeight`, whose defaults are the video player's) | Everything else is placed from the slot's left edge |
 | Box gap | 9 pixels between tabs, 6 pixels on the right (before the dropdown, before and inside the cluster) | Text has no air of its own, a glyph's canvas does, so two numbers give one visible rhythm; the row's elements line up from the right edge in, so the cluster sits at the same place on every screen |
 | Row | boxes 78 tall from design y 27 to 105, every static element's ink centered on y 66 (a focus ring may sit above or below that line); content starts at 104 (Home's row label) and near 125 (a grid's tiles) | There is no room for a second row: the phase D spike measured it (2026-10-25). Put a screen's own status text on the screen |
 
@@ -69,4 +71,6 @@ Left and Right walk the row as one and wrap at both ends; Down returns to the sc
 
 ## Where the numbers are enforced
 
-The sizes above live in the components, not in prose: `OVERHANG_ICON_SIZE` and `OVERHANG_ICON_POSTER_SIZE` in `JROverhangIcon.bs`, `SLOT_SIZE`, `SLOT_GAP` and `BOX_OVERHANG` in `iconBarNav.bs` (with a Rooibos spec on its geometry), `ELEMENT_GAP`, `CLOCK_SLOT` and the row's y in `JROverhang.bs`, `itemSpacings` in `JRTabBar.xml`, `iconSize` and `iconGutter` on `TextButton`, and the avatar size and spacing of the dropdown in `JRDropdown.xml`. Change a number there and this page, not the other way round. The look is checked on hardware: `npm run test:rta:capture` photographs the screens, and the RTA specs `search-navigation`, `overhang-clock` and `home-failure` walk the row.
+The row's shared numbers live in one file, `source/utils/overhangRow.bs`: three chosen (the row's height, the glyph size, the padding inside a box), the two gaps and the text drop, and the rest derived from them. The components read it; what only one component uses stays there (`CLOCK_SLOT` and `LOGO_Y` in `JROverhang.bs`, the avatar, chevron and part gap in `JRDropdown`). Change a number there and this page, not the other way round.
+
+Three checks hold it. The Rooibos spec `JROverhangLayout.spec.bs` fails on any box the overhang places off the grid, or off the row's edges. On hardware, `tests/rta/lib/ink.js` reports where each element's ink sits in a capture, and each box's grid position, so a layout change is judged by comparing two runs. The RTA specs `search-navigation`, `overhang-clock` and `home-failure` walk the row.

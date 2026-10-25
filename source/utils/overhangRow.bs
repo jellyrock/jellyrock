@@ -11,9 +11,13 @@ namespace overhangRow
   const BOX_PADDING = 9 ' Inside a box at its sides: a tab, the dropdown, a glyph's slot
   const TAB_GAP = 9 ' Between tabs: text has no air of its own
   const ELEMENT_GAP = 6 ' On the right (before the dropdown, before and inside the cluster): a glyph's canvas pads it
+  ' A label centers its line box, and caps and digits sit about 7% of the font size above that
+  ' box's middle (3 px at the Large font), so a text label takes the row's box dropped this far
+  const TEXT_DROP = 3
 
   ' Derived
   const ROW_TOP = ROW_BOTTOM - ROW_HEIGHT ' Every box in the row shares this top edge
+  const TEXT_TOP = ROW_TOP + TEXT_DROP ' A text label's box (ROW_HEIGHT tall): the tabs, the title, the clock
   const ICON_BOX = ROW_HEIGHT ' An icon button's focus box: a square as tall as the row
   const ICON_PADDING = (ICON_BOX - GLYPH_SIZE) \ 2 ' Between a glyph and its focus box, all four sides
   const SLOT_SIZE = GLYPH_SIZE + BOX_PADDING * 2 ' What a glyph takes in the row's layout

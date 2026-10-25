@@ -24,6 +24,17 @@ sub init()
 end sub
 
 
+' Places the box the digits center in: the group's top, and the height every label centers
+' its text in. Reads its nodes here rather than from init, which skips them when the clock
+' is hidden.
+sub onBoxChanged()
+  group = m.top.findNode("clockGroup")
+  group.translation = [group.translation[0], m.top.boxY]
+  for each id in ["hours", "timeSeperator", "minutes"]
+    m.top.findNode(id).height = m.top.boxHeight
+  end for
+end sub
+
 ' onCurrentTimeTimerFire: Code that runs every time the currentTimeTimer fires
 '
 sub updateTime()

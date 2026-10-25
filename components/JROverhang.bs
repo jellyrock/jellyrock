@@ -13,10 +13,9 @@ const OVERHANG_RIGHT = 1824 ' The 5% action-safe right edge: the clock's right e
 ' The clock's slot. Limit with headroom: "8:48" measured 99 px wide at 1080p on a Stick 4K
 ' (2026-10-25); four digits and the separator stay under this.
 const CLOCK_SLOT = 150
-const TITLE_Y = 44 ' The title's top, so its caps center on the row's middle (66)
-const TAB_BAR_DROP = 3 ' A tab's caps sit about 3 px above its box middle: the bar drops to center them
+const LOGO_Y = 51 ' The wordmark's caps and baseline sit on the tab text's (baseline at design y 81)
 const TITLE_MIN_WIDTH = 120 ' The title keeps at least this, whatever the dropdown's width
-const DROPDOWN_PROVISIONAL_WIDTH = 200 ' Until the trigger reports its width
+const DROPDOWN_PROVISIONAL_WIDTH = 198 ' Until the trigger reports its width
 
 sub init()
   m.top.id = "overhang"
@@ -25,6 +24,11 @@ sub init()
   m.logoPoster = createLogoPoster() ' save node to memory for faster load time
   m.title = m.top.findNode("title")
   m.clock = m.top.findNode("clock")
+  m.clock.boxY = overhangRow.TEXT_TOP
+  m.clock.boxHeight = overhangRow.ROW_HEIGHT
+  ' The title centers in the same box as a tab's text, so its caps sit where the tabs' do
+  m.title.height = overhangRow.ROW_HEIGHT
+  if isValid(m.logo) then m.logo.translation = [OVERHANG_LEFT, LOGO_Y]
   m.isClockHidden = false
 
   ' Create user dropdown
@@ -304,9 +308,9 @@ sub layout()
   stripX = OVERHANG_LEFT
   if isValid(m.logo) then stripX = STRIP_X_WITH_LOGO
   if isValid(m.tabBar)
-    ' A tab's box is the row's height; the bar drops a little so the caps, not the box,
-    ' center on the row. The text starts at stripX because the box pads BOX_PADDING.
-    m.tabBar.translation = [stripX - overhangRow.BOX_PADDING, overhangRow.ROW_TOP + TAB_BAR_DROP]
+    ' A tab's box is the row's text box, so its caps, not the box, center on the row. The
+    ' text starts at stripX because the box pads BOX_PADDING.
+    m.tabBar.translation = [stripX - overhangRow.BOX_PADDING, overhangRow.TEXT_TOP]
   end if
 
   titleX = stripX
@@ -330,7 +334,7 @@ sub layout()
     leftOfDropdown = dropdownX - overhangRow.ELEMENT_GAP
   end if
 
-  m.title.translation = [titleX, TITLE_Y]
+  m.title.translation = [titleX, overhangRow.TEXT_TOP]
   titleWidth = leftOfDropdown - titleX
   if titleWidth < TITLE_MIN_WIDTH then titleWidth = TITLE_MIN_WIDTH
   m.title.maxWidth = titleWidth
@@ -359,7 +363,7 @@ function createLogoPoster()
   logoPoster = createObject("roSGNode", "Poster")
   logoPoster.id = "logo"
   logoPoster.uri = "pkg:/images/branding/logo.png"
-  logoPoster.translation = "[96, 47]"
+  logoPoster.translation = [OVERHANG_LEFT, LOGO_Y]
   logoPoster.width = "180"
   logoPoster.height = "39"
 

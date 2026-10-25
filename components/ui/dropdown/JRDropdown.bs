@@ -1,6 +1,8 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/pixelGrid.bs"
 
 const TRIGGER_LABEL_MAX_WIDTH = 300 ' A longer name ellipsizes; the row's title keeps its room
+const TRIGGER_PART_GAP = 9 ' Between the avatar, the name and the chevron
 
 sub init()
   ' Cache node references
@@ -46,7 +48,7 @@ end sub
 ' ============================================
 
 sub onTriggerTextChanged()
-  m.triggerLabel.width = 0 ' hug the new text; sizeTriggerButton caps it again
+  m.triggerLabel.width = 0 ' hug the new text; sizeTriggerButton snaps and caps it again
   m.triggerLabel.text = m.top.triggerText
   if m.top.renderTracking = "full"
     sizeTriggerButton()
@@ -75,33 +77,43 @@ sub onRenderComplete()
   sizeTriggerButton()
 end sub
 
-' Sizes the trigger button background and border to fit the content.
-' Uses the same padding-based approach as TextButton.
+' Lays out the trigger's parts and sizes its background and border around them, with the
+' same padding approach as TextButton.
 sub sizeTriggerButton()
   if not isValid(m.triggerLabel) then return
 
-  ' Cap a long name before measuring the row around it
-  labelRect = m.triggerLabel.localBoundingRect()
-  if labelRect.width > TRIGGER_LABEL_MAX_WIDTH then m.triggerLabel.width = TRIGGER_LABEL_MAX_WIDTH
+  ' Give the name its width rounded up onto the 3 px grid, so the chevron and the box edges
+  ' land on whole pixels at 720p, and cap a long one
+  labelWidth = snapToGrid(-int(-m.triggerLabel.localBoundingRect().width))
+  if labelWidth = 0 then return ' not rendered yet: onRenderComplete runs this again
+  if labelWidth > TRIGGER_LABEL_MAX_WIDTH then labelWidth = TRIGGER_LABEL_MAX_WIDTH
+  m.triggerLabel.width = labelWidth
 
-  ' Measure the trigger content bounding rect
-  contentRect = m.triggerContent.localBoundingRect()
-  if contentRect.width = 0 then return
-
+  ' Place the parts left to right, each centered on the box's middle. A label centers its
+  ' line box, and the caps sit about 7% of the font size above that box's middle (the rule
+  ' TextButton.layoutIcon uses), so the name drops that far, rounded onto the grid.
   padding = m.top.padding
-  buttonWidth = contentRect.width + (padding * 2)
-  buttonHeight = contentRect.height + (padding * 2)
+  contentHeight = m.triggerLabel.height
+  if m.triggerIcon.visible and m.triggerIcon.height > contentHeight then contentHeight = m.triggerIcon.height
+  buttonHeight = contentHeight + (padding * 2)
   if buttonHeight < m.top.minHeight then buttonHeight = m.top.minHeight
+  textDrop = snapToGrid(int(m.triggerLabel.font.size * 0.07 + 0.5))
+
+  x = padding
+  if m.triggerIcon.visible
+    m.triggerIcon.translation = [x, (buttonHeight - m.triggerIcon.height) / 2]
+    x += m.triggerIcon.width + TRIGGER_PART_GAP
+  end if
+  m.triggerLabel.translation = [x, (buttonHeight - m.triggerLabel.height) / 2 + textDrop]
+  x += labelWidth + TRIGGER_PART_GAP
+  m.triggerChevron.translation = [x, (buttonHeight - m.triggerChevron.height) / 2]
+  buttonWidth = x + m.triggerChevron.width + padding
 
   ' Size background and border
   m.buttonBackground.width = buttonWidth
   m.buttonBackground.height = buttonHeight
   m.buttonBorder.width = buttonWidth
   m.buttonBorder.height = buttonHeight
-
-  ' Center the content in the box. The group centers its children on its own y origin
-  ' (vertAlignment center), so its rect starts above 0: offset by that top edge.
-  m.triggerContent.translation = [padding, (buttonHeight - contentRect.height) / 2 - contentRect.y]
 
   ' Publish computed width so parent can reposition if needed (for example, right-aligning)
   m.top.triggerWidth = int(buttonWidth)

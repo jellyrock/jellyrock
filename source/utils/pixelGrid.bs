@@ -1,0 +1,24 @@
+' The 3 px design grid, for any layout code to share: the dialogs, the buttons, the overhang.
+' Pure.
+
+' The 720p output row. 1080 / 720 = 3 source rows per 2 output rows, so an
+' absolute coordinate divisible by 3 falls on an output-row boundary.
+const PIXEL_GRID = 3
+
+' Round a measured size UP onto the grid. 0 stays 0, so a block that is absent
+' stays absent rather than becoming 3px tall.
+function snapToGrid(value as integer) as integer
+  if value <= 0 then return 0
+
+  remainder = value mod PIXEL_GRID
+  if remainder = 0 then return value
+  return value + (PIXEL_GRID - remainder)
+end function
+
+' Round DOWN onto the grid, for values that are an allowance rather than a
+' measurement. Negatives clamp to 0: the only way to get one is a panel taller
+' than the screen, which the caller is already told about via `overflows`.
+function floorToGrid(value as integer) as integer
+  if value <= 0 then return 0
+  return value - (value mod PIXEL_GRID)
+end function

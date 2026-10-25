@@ -4,17 +4,19 @@
     <!-- Trigger button area -->
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
-    <LayoutGroup id="triggerContent" layoutDirection="horz" itemSpacings="[9]" vertAlignment="center">
+    <!-- The avatar, the name and the chevron, placed by sizeTriggerButton -->
+    <Group id="triggerContent">
       <Poster id="triggerIcon" visible="false" width="42" height="42" loadWidth="42" loadHeight="42" loadDisplayMode="limitSize" />
       <!-- The trigger hugs its text: width 0 sizes the label to the text, and
-           sizeTriggerButton caps it at TRIGGER_LABEL_MAX_WIDTH, where it ellipsizes by
+           sizeTriggerButton rounds it up onto the 3 px grid and caps it at
+           TRIGGER_LABEL_MAX_WIDTH, where it ellipsizes by
            character (no ellipsizeOnBoundary: whole-word ellipsizing drops a too-long
            single word entirely and renders a bare "...", #798). The height matches the
-           avatar so the row centers on it. -->
+           avatar, so both center on the box's middle. -->
       <LabelSecondaryMedium id="triggerLabel" width="0" height="42" horizAlign="left" vertAlign="center" />
       <!-- Dropdown affordance, as TrackDropdown draws it; tinted with the label across focus. -->
       <Poster id="triggerChevron" uri="pkg:/images/icons/expand_$$RES$$.png" width="24" height="24" loadWidth="24" loadHeight="24" loadDisplayMode="limitSize" />
-    </LayoutGroup>
+    </Group>
 
     <!-- Dropdown menu (positioned below trigger, initially hidden) -->
     <Group id="menuContainer" visible="false">

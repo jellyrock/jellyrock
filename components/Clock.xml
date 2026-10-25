@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="Clock" extends="Group">
   <children>
-    <LayoutGroup id="clockGroup" translation="[1824,38]" layoutDirection="horiz" horizAlignment="right" itemSpacings="[3]">
+    <LayoutGroup id="clockGroup" translation="[1824,39]" layoutDirection="horiz" horizAlignment="right" itemSpacings="[3]">
       <LabelSecondaryLarger id="hours" vertAlign="center" height="64" />
       <LabelSecondaryLarge id="timeSeperator" text=":" vertAlign="center" height="64" visible="false" />
       <LabelSecondaryLarger id="minutes" vertAlign="center" height="64" />
@@ -12,6 +12,10 @@
   <interface>
     <field id="hours" type="integer" value="" />
     <field id="minutes" type="integer" value="" />
+    <!-- The box the digits center in: its top and its height, in design pixels. The defaults
+         suit the video OSD; the overhang sets its row's text box (overhangRow.TEXT_TOP). -->
+    <field id="boxY" type="integer" value="39" onChange="onBoxChanged" />
+    <field id="boxHeight" type="integer" value="64" onChange="onBoxChanged" />
     <function name="resetTime" />
   </interface>
 </component>

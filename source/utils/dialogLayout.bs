@@ -28,6 +28,7 @@
 ' reads. Layout is the part that was impossible to check without a device, and
 ' it is the part that drifted.
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/pixelGrid.bs"
 
 ' Screen geometry. The app renders at 1920x1080 and Roku OS downscales to 720p.
 const SCREEN_WIDTH = 1920
@@ -65,10 +66,6 @@ const SUBHEADING_GAP = 24
 ' Non-zero on purpose: the two must not touch, or the menu reads as an extension
 ' of the button row rather than as a surface floating above it.
 const ANCHOR_GAP = 24
-
-' The 720p output row. 1080 / 720 = 3 source rows per 2 output rows, so an
-' absolute coordinate divisible by 3 falls on an output-row boundary.
-const PIXEL_GRID = 3
 
 ' Panel widths step in 6, not 3: centring HALVES the width, so only a multiple
 ' of 6 leaves the halved value on the 3px grid.
@@ -407,16 +404,6 @@ end function
 
 ' ---- internals ----
 
-' Round a measured height UP onto the output-row grid. 0 stays 0, so a block
-' that is absent stays absent rather than becoming 3px tall.
-function snapToGrid(value as integer) as integer
-  if value <= 0 then return 0
-
-  remainder = value mod PIXEL_GRID
-  if remainder = 0 then return value
-  return value + (PIXEL_GRID - remainder)
-end function
-
 ' Round a panel width UP onto the 6px scale, so BOTH vertical edges land on the
 ' output grid: a width divisible by 6 makes the centred panelX divisible by 3
 ' ((1920 - w) / 2 = 960 - w/2), and the right edge is panelX + width.
@@ -431,14 +418,6 @@ function snapPanelWidthToScale(width as integer) as integer
   remainder = width mod PANEL_WIDTH_SCALE
   if remainder = 0 then return width
   return width + (PANEL_WIDTH_SCALE - remainder)
-end function
-
-' Round DOWN onto the grid, for values that are an allowance rather than a
-' measurement. Negatives clamp to 0: the only way to get one is a panel taller
-' than the screen, which the caller is already told about via `overflows`.
-function floorToGrid(value as integer) as integer
-  if value <= 0 then return 0
-  return value - (value mod PIXEL_GRID)
 end function
 
 ' Named layoutRect, not rect: source/ files auto-scope into every component that

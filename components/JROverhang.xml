@@ -9,9 +9,10 @@
 <component name="JROverhang" extends="Group">
   <children>
     <!-- Logo -->
-    <Poster id="logo" translation="[96, 47]" uri="pkg:/images/branding/logo.png" height="39" width="180" />
+    <!-- Logo, title: placed by JROverhang.bs (LOGO_Y, layout()) -->
+    <Poster id="logo" uri="pkg:/images/branding/logo.png" height="39" width="180" />
     <!-- Title: shown when the screen has no tabs, at the tab bar's place -->
-    <ScrollingLabelPrimaryLarge translation="[360, 44]" id="title" vertAlign="center" maxWidth="300" repeatCount="0" />
+    <ScrollingLabelPrimaryLarge id="title" vertAlign="center" maxWidth="300" repeatCount="0" />
     <!-- Tab bar, user dropdown and cluster are created programmatically -->
     <!-- Clock -->
     <Clock />

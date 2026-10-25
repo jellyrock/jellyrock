@@ -1,0 +1,110 @@
+namespace tests
+
+  ' Every box the overhang places sits on the 3 px grid, so a 720p device (two thirds) draws
+  ' it on whole pixels, and every box shares the row's edges. Text-hugging widths (a tab, the
+  ' dropdown's trigger) are measured after render, so the RTA ink probe reports those.
+  @suite("JROverhang - row layout on the 3 px grid")
+  class JROverhangLayoutTests extends tests.BaseTestSuite
+
+    private overhang as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      ' Clock.init() returns early (no timer, no nodes) when the clock is hidden
+      m.global.user.settings.uiDesignHideClock = false
+      m.overhang = CreateObject("roSGNode", "JROverhang")
+      m.overhang.currentUser = "demo"
+      m.overhang.shouldShowIcons = true
+      m.overhang.tabs = [{ id: "home", title: "Home" }, { id: "favorites", title: "Favorites" }]
+    end function
+
+    protected override function afterEach()
+      m.overhang = invalid
+      super.afterEach()
+    end function
+
+    ' Fails naming every value of `values` (an AA of name to number) off the grid
+    private function assertOnGrid(values as object)
+      offGrid = []
+      for each name in values
+        ' Not mod: it truncates a float, so 1342.5 would pass
+        value = values[name]
+        if value - 3 * int(value / 3) <> 0 then offGrid.push(name + " = " + value.toStr())
+      end for
+      m.assertEqual(offGrid.count(), 0, "off the 3 px grid: " + offGrid.join(", "))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the row's metrics")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("are all on the grid")
+    function _()
+      m.assertOnGrid({
+        ROW_HEIGHT: overhangRow.ROW_HEIGHT, ROW_BOTTOM: overhangRow.ROW_BOTTOM, ROW_TOP: overhangRow.ROW_TOP,
+        GLYPH_SIZE: overhangRow.GLYPH_SIZE, BOX_PADDING: overhangRow.BOX_PADDING,
+        TAB_GAP: overhangRow.TAB_GAP, ELEMENT_GAP: overhangRow.ELEMENT_GAP,
+        TEXT_DROP: overhangRow.TEXT_DROP, TEXT_TOP: overhangRow.TEXT_TOP,
+        ICON_BOX: overhangRow.ICON_BOX, ICON_PADDING: overhangRow.ICON_PADDING, SLOT_SIZE: overhangRow.SLOT_SIZE,
+        "iconX(1)": iconBarNav.iconX(1), "barWidth(3)": iconBarNav.barWidth(3)
+      })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the boxes it places")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("put the logo, the tabs, the dropdown, the cluster and the clock on the grid")
+    function _()
+      logo = m.overhang.findNode("logo")
+      tabBar = m.overhang.callFunc("getTabBar")
+      dropdown = m.overhang.callFunc("getUserDropdown")
+      cluster = m.overhang.findNode("cluster")
+      clockGroup = m.overhang.findNode("clockGroup")
+      m.assertOnGrid({
+        "logo x": logo.translation[0], "logo y": logo.translation[1], "logo width": logo.width, "logo height": logo.height,
+        "tab bar x": tabBar.translation[0], "tab bar y": tabBar.translation[1],
+        "dropdown x": dropdown.translation[0], "dropdown y": dropdown.translation[1],
+        "cluster x": cluster.translation[0], "cluster y": cluster.translation[1], "cluster width": cluster.barWidth,
+        "clock y": clockGroup.translation[1], "clock height": m.overhang.findNode("hours").height
+      })
+    end function
+
+    @it("put the title on the grid when a screen has no tabs")
+    function _()
+      m.overhang.tabs = []
+      title = m.overhang.findNode("title")
+      m.assertOnGrid({ "title x": title.translation[0], "title y": title.translation[1], "title height": title.height, "title width": title.maxWidth })
+    end function
+
+    @it("keep the cluster on the grid against the safe edge with the clock hidden")
+    function _()
+      m.overhang.isClockVisible = false
+      cluster = m.overhang.findNode("cluster")
+      m.assertOnGrid({ "cluster x": cluster.translation[0], "dropdown x": m.overhang.callFunc("getUserDropdown").translation[0] })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the row's edges")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("start every box at the row's top, and every text box at the text top")
+    function _()
+      m.assertEqual(m.overhang.findNode("cluster").translation[1], overhangRow.ROW_TOP * 1.0)
+      m.assertEqual(m.overhang.callFunc("getUserDropdown").translation[1], overhangRow.ROW_TOP * 1.0)
+      m.assertEqual(m.overhang.callFunc("getTabBar").translation[1], overhangRow.TEXT_TOP * 1.0)
+      m.assertEqual(m.overhang.findNode("clockGroup").translation[1], overhangRow.TEXT_TOP * 1.0)
+      m.overhang.tabs = []
+      m.assertEqual(m.overhang.findNode("title").translation[1], overhangRow.TEXT_TOP * 1.0)
+    end function
+
+    @it("give every text box the row's height")
+    function _()
+      m.assertEqual(m.overhang.findNode("hours").height, overhangRow.ROW_HEIGHT * 1.0)
+      m.assertEqual(m.overhang.findNode("minutes").height, overhangRow.ROW_HEIGHT * 1.0)
+      m.assertEqual(m.overhang.findNode("title").height, overhangRow.ROW_HEIGHT * 1.0)
+    end function
+
+  end class
+
+end namespace

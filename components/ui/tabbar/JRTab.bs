@@ -20,6 +20,7 @@ sub init()
   ' The glyph matches the overhang's icon buttons
   m.top.iconSize = overhangRow.GLYPH_SIZE
   m.top.iconGutter = TAB_ICON_GUTTER
+  m.top.shouldSnapToGrid = true
 
   ' Unfocused state: transparent background/border so only text is visible
   m.top.background = "0x00000000"
