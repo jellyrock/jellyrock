@@ -2296,6 +2296,16 @@ Ruled out: an event-driven loop with the socket on the task's port, which reshap
 
 Ruled out: classifying the rejection by reading `isRouterNavigating()` in the catch, which runs on a later tick by which a short navigation can have ended, so a real refusal would read as a route error and the press would be lost again; retrying every rejection once, which surfaces a programming error one poll loop late with two log lines for one cause; patching sgRouter, already ruled out by `router-focus-left-notice`. The other direct `sgrouter.navigateTo` calls keep their bare calls: tech debt `bare-router-navigate-calls-skip-refusal-retry`. Recheck when an sgRouter upgrade changes `_rejectNavigationInProgress` or exposes a rejection code.
 
+## decision-id: icon-sizes-multiple-of-three
+
+**date**: 2026-10-25
+**status**: accepted
+**related-files**: `resources/icons/icons.json`, `components/ui/button/IconButton.xml`, `source/utils/buttonOverflow.bs`, `components/JROverhang.bs`
+
+Every icon canvas and icon box is a multiple of 3: 63 pixels, not 64. The app lays out at 1080p and a 720p device scales by two thirds, so a 63/45 icon draws as exactly 42/30 where the old 64 pixel canvas drew at 42.67. The overhang's seven glyphs are pinned at 63/45 in `icons.json`. `IconButton` draws its icon at 63 pixels (`ICON_BUTTON_ICON_SIZE`), so its background, the icon plus 30 pixels of padding on each side, is 123 pixels wide, and with its caption it takes 135 pixels of the row. The 28 icons built on 64 pixel canvases were rebuilt at 63 with each glyph's size kept. The overflow caps did not move (8 buttons on the details row, 10 on the player's left row).
+
+Ruled out: keeping 64, off the grid at 720p; pinning `search` and `settings` at 64/46 to match the tabs, consistent but still off the grid. Recheck when adding an `IconButton` icon: one built below 63 pixels makes a narrower button than its neighbors, because `limitSize` scales a large image down but never a small one up. The canvases still off the grid (16, 24, 35, 36 and 48 pixels, and the 96 pixel `hd`, `speed` and `versions`, whose HD copies are 64) are followup `app-wide-3px-grid-audit`.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
