@@ -76,6 +76,7 @@ An `ERROR:` line in place of a PLAN section means its heading was not found (ren
 
 Every `BANNER:` line is advice. Surface it, say what it probably means, and let the user decide:
 
+- **This resume runs in the repo's main checkout**: the project works in `.claude/worktrees/<slug>`, not here. Say whether that worktree exists (the banner names its path) or has to be made (branch `worktree-<slug>`, or `claude --worktree <slug>`), and ask before building in the main checkout.
 - **Working tree DIRTY**: show the paths and ask before building on them: they are a prior session's uncommitted work.
 - **Files another worktree also changed**: each `<overlap>` line is a file, the worktree that also changed it, and its branch. Say each one and read that worktree's change to the file (`git -C {{worktree}} diff origin/HEAD...HEAD -- {{path}}`, and its `git status`) before building on it: both changes land on the same branch in the end, and the second to land meets the first. A `NOTE:` there says what could not be compared.
 - **Commits on the remote not in this checkout**: ask before working whether to pull first and resume again. A `NOTE:` that the fetch failed or could not run means every remote comparison is as of the last fetch: say so once.

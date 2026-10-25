@@ -20,7 +20,8 @@
 #     trimmed, one blank line, the next heading (none after the last section). A PLAN with no final
 #     newline keeps none.
 #   - Refused, with nothing written: a name that matches no section, or more than one; an empty
-#     body; a body with a `## ` or `# ` line outside a fenced block (it would split the section).
+#     body; a body with a `## ` or `# ` line outside a fenced block (it would split the section);
+#     a body that drops an item of the section's `**Last N decisions` list (each missing one is named).
 #   - The PLAN is replaced by a rename from its own directory, so it is never half-written, and not
 #     rewritten at all when the result equals the file.
 #
@@ -111,6 +112,33 @@ awk -v want="$NAME" "$LIB"'
 ' "$PLAN" >"$work/where" || die "nothing written"
 read -r hl el oldn <"$work/where"
 newn="$(wc -l <"$work/body" | tr -d ' ')"
+
+# Decisions guard: a `**Last N decisions` list in the section being replaced must survive in the
+# body. Items are as in move-old-decisions.sh (a `- ` line plus its indented lines), compared with
+# trailing whitespace trimmed; the template placeholder item may be dropped. Missing ones are listed.
+awk -v hl="$hl" -v el="$el" -v ph="- YYYY-MM-DD: <decision + why>" "$LIB"'
+  function flush() { if (li != "") { if (isold) old[++no] = li; else have[li] = 1 } li = "" }
+  FNR == 1 { flush(); md_fm = 0; md_fn = 0; isold = (FILENAME == ARGV[1]); st = isold ? 0 : 1; nit = 0 }
+  {
+    line = $0; sub(/[ \t]+$/, "", line)
+    if (md_skip($0, isold)) { flush(); if (isold) st = 0; next }
+    if (isold && (FNR <= hl || FNR >= el)) { flush(); next }
+    if (isold && line ~ /^\*\*Last [0-9]+ decisions/) { flush(); st = 1; nit = 0; any = 1; next }
+    if (!st) next
+    if (line ~ /^[ \t]*$/) { flush(); if (isold && nit > 0) st = 0; next }
+    if (line ~ /^- /) { flush(); li = line; nit++; next }
+    if (li != "" && line ~ /^[ \t]+[^ \t]/) { li = li "\n" line; next }
+    flush(); if (isold) st = 0
+  }
+  END {
+    flush()
+    for (i = 1; i <= no; i++) {
+      if (old[i] == ph "") continue
+      if (!(old[i] in have)) { printf "missing: %s\n", old[i] > "/dev/stderr"; miss = 1 }
+    }
+    exit (any && miss) ? 3 : 0
+  }
+' "$PLAN" "$work/body" || die "the body would drop decisions from the Last N decisions list of the section (missing items above). Copy them into the body from the resume output (older ones move to DECISIONS.md only through move-old-decisions.sh). Nothing written"
 
 # Assemble: lines up to the heading, a blank, the body, a blank, then the rest from the next section.
 awk -v hl="$hl" -v el="$el" -v bodyfile="$work/body" '

@@ -75,7 +75,7 @@ Run it once and read what it printed. Never re-run its calls by hand, and never 
 
 ### Step 2: Banners
 
-The `=== CANDIDATES ===` block holds every check that fired, one tab-separated line each, already ranked, each led by its class (`1` to `7`, the rank /focus names; `-` on `FIX`, `INFO` and `CAVEAT`); a line indented two spaces under one is its detail. `ERROR` and `BANNER` lines are banners, word for word, with the value that fired them. `PIN` lines are pinned followups (fid and title). `SLOT` lines mark where judgment comes in, and are never shown as banners. `FIX` lines are quick tree fixes, said in a **Before anything** line with each one's command. `INFO` lines are one-line info entries below the banners. A `CAVEAT` line is quoted word for word on whatever it affects (a count, a section, a banner). Banners are mandatory: skipping a fired banner because it "isn't important right now" defeats the skill, and a quiet banner is a missed signal.
+The `=== CANDIDATES ===` block holds every check that fired, one tab-separated line each, already ranked, each led by its class (`1` to `7`, the rank /focus names; `-` on `FIX`, `INFO` and `CAVEAT`); a line indented two spaces under one is its detail. `ERROR` and `BANNER` lines are banners, word for word, with the value that fired them. `PIN` lines are pinned followups (fid and title); a `mail-pinned` `BANNER` is a pinned message, ranked with them. `SLOT` lines mark where judgment comes in, and are never shown as banners. `FIX` lines are quick tree fixes, said in a **Before anything** line with each one's command. `INFO` lines are one-line info entries below the banners. A `CAVEAT` line is quoted word for word on whatever it affects (a count, a section, a banner). Banners are mandatory: skipping a fired banner because it "isn't important right now" defeats the skill, and a quiet banner is a missed signal.
 
 A failed run that a later run recovered comes as an `INFO` line, never dropped: a job that fails and recovers every night is itself a signal. A check another gate already enforces (a CI job, a pre-commit hook) shows through that gate's result, never through a second parse of what it checks.
 
@@ -86,6 +86,7 @@ First the `ERROR`, `BANNER` and `PIN` lines in the block's order, never re-order
 - **Last session activity**: the last commit, and where the journal's in-flight section and the active projects' phases say you left off.
 - **Active projects**: each open project's folder, status and current phase, and what it waits on, from the reader.
 - **Open followups**: the total and per-category counts with the oldest age, from the reader; when it says the counts are n/a, "n/a" and a pointer to that banner (never a zero).
+- **Held followups**: the reader's held list as printed (each fid, its state and what it waits on), or "Held followups: none".
 - **In-flight work / running jobs / recurring cadences**: the journal's other sections, as the reader printed them.
 - **This repo's own sections**: what the reader printed under `=== OWN READER ===`, per `## This repo` (none, and no heading, when it names none).
 - **Recent commits**: the reader's 7- and 14-day counts, then its 10 recent commits, listed. Nothing here knows when the last session was, so never call a count "since last session".

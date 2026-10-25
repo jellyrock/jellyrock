@@ -13,15 +13,37 @@
 #   2. git ignores docs/projects: unreachable. Projects kept out of this repo need the setting.
 #   3. The repo's own docs/projects (it may not exist yet).
 #
+# Another repo's projects, by name (--repo): only the first answer applies, read from the setting
+# alone, so it needs no repository: <home>/<owner>/<name>/projects, when the setting is set and
+# that folder exists.
+#
 # Usage: bash .claude/skills/start-project/projects-dir.sh [<dir>]
+#        bash .claude/skills/start-project/projects-dir.sh --repo <owner>/<name>
 #   dir:  any folder inside the repo (default: the current one)
 # Prints the absolute path of the projects folder. Exit 2, printing nothing, when <dir> is not
-# inside a git repository; exit 3, printing nothing on stdout and the reason on stderr, when the
-# projects are unreachable. A reason names no absolute path.
+# inside a git repository, or when --repo takes anything but <owner>/<name>; exit 3, printing
+# nothing on stdout and the reason on stderr, when the projects are unreachable. A reason names no
+# absolute path.
 
 set -euo pipefail
 
 unreachable() { printf 'projects-dir: unreachable: %s\n' "$1" >&2; exit 3; }
+
+if [ "${1:-}" = "--repo" ]; then
+  want="${2:-}"
+  # a part made only of dots (. or ..) would point outside the home
+  if ! [[ "$want" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || [[ "${want%%/*}" =~ ^\.+$ ]] || [[ "${want#*/}" =~ ^\.+$ ]]; then
+    printf 'projects-dir: --repo takes <owner>/<name>\n' >&2; exit 2
+  fi
+  want="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')"
+  owner="${want%%/*}"; setting="projects.$owner.home"
+  home="$(git config --type=path --get "$setting")" \
+    || unreachable "$setting is not set: $want's projects are not in a projects home here"
+  case "$home" in /*) ;; *) unreachable "$setting is not an absolute path" ;; esac
+  [ -d "$home" ] || unreachable "$setting names a folder that does not exist"
+  [ -d "${home%/}/$want/projects" ] || unreachable "$want has no projects folder in the projects home"
+  printf '%s/%s/projects\n' "${home%/}" "$want"; exit 0
+fi
 
 dir="${1:-.}"
 root="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" \

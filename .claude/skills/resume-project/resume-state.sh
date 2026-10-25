@@ -47,6 +47,13 @@
 #   … --holder [<slug>]    which session holds the project; only reads (a sub-agent asks as its
 #                          parent session, so "this session" means /end-session will close it)
 #   … --waits <PLAN path>  only what that PLAN waits on, resolved (for other readers)
+#   … --waits-list        wait values from stdin, one line `<id><TAB><waits value>` each, resolved the
+#                          same way; one line back each:
+#                          `<id><TAB>free|held|recheck|unchecked|broken<TAB><detail>`
+#                          (free: every wait met; recheck: only waits no script can check are left and
+#                          every after: re-check date has passed; unchecked: a wait no script can check
+#                          and no after: date; broken: a wait names nothing found or an abandoned
+#                          project; needs no PLAN or projects folder; for other readers: /catchup)
 #   … --plan-check <PLAN path>  only the PLAN check, as a resume shows it: BANNER lines for a
 #                          contradiction, NOTEs, else ok; exit 0 (for other readers: /catchup)
 #   … --section <name> <slug>  only that PLAN section (the heading after its emoji starts with
@@ -56,6 +63,8 @@
 #   … --claims             every claim on this machine an open tab holds, one tab-separated line
 #                          each: the PLAN's path, the tab's name, and busy, idle <n> min or this
 #                          session; only reads, and needs no repo (for other readers: /focus-all)
+# WAITS_NOW=<time>: the clock the after: waits read instead of now (any time date -u -d reads; for
+# tests and dry runs). A value date cannot read is an ERROR and exit 2.
 # Exit: 0 done (a resume: a project was picked and every section printed; --holder: this session
 # holds it); 1 --check found a FAIL, or --holder: another session or none holds it; 2 no project could be picked (none active, several active, a slug matching none or several,
 # no projects folder, not a git repo: the SELECTION lines say which; --section with no name or no slug: a usage ERROR; --check run by a Verify first command: an ERROR); 3 the picked PLAN cannot be
@@ -70,7 +79,7 @@
 set -uo pipefail # not -e: one failed section must not stop the rest
 
 mode=resume
-case "${1:-}" in --check) mode=check; shift ;; --release) mode=release; shift ;; --holder) mode=holder; shift ;; --claims) mode=claims; shift ;; --waits) mode=waits; shift ;; --plan-check) mode=plancheck; shift ;;
+case "${1:-}" in --check) mode=check; shift ;; --release) mode=release; shift ;; --holder) mode=holder; shift ;; --claims) mode=claims; shift ;; --waits) mode=waits; shift ;; --waits-list) mode=waitslist; shift ;; --plan-check) mode=plancheck; shift ;;
   --section) mode=section; shift; secname="${1:-}"; [ $# -gt 0 ] && shift
     [ -n "$secname" ] && [ -n "${1:-}" ] || { echo "ERROR: usage: resume-state.sh --section <name> <slug>"; exit 2; } ;;
 esac
@@ -80,6 +89,9 @@ slug="${1:-}"; [ $# -gt 0 ] && shift
 start="$*"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 journal="$here/../log/journal.sh"
+if [ -n "${WAITS_NOW:-}" ] && ! date -u -d "$WAITS_NOW" +%s >/dev/null 2>&1; then
+  echo "ERROR: WAITS_NOW is not a time date can read"; exit 2
+fi
 WARM_MINUTES=55
 RELAUNCH_QUIET_S=10 # a launch settles to idle within about a second (seen: 186 ms); 10 s leaves wide margin
 
@@ -298,45 +310,141 @@ plan_check() {
   return "$n"
 }
 
-# waits_report <plan>: each waits-on reference resolved, one line each, and a banner when every
-# wait is met. A reference: <slug> (met when completed or archived), <slug>:<phase> (met when that
-# phase is ✅), fid:<id> (met when the followup is closed), <repo>/<slug> (another repo: not
-# checkable here).
+# now_epoch: the clock in seconds, UTC. WAITS_NOW (checked once at the top) stands in for it when set.
+now_epoch() { if [ -n "${WAITS_NOW:-}" ]; then date -u -d "$WAITS_NOW" +%s; else date -u +%s; fi; }
+
+# resolve_project <ref> <slug[:phase]> <folder>: one project wait resolved in <folder> (a projects
+# folder, local or another repo's), one line printed that names the whole reference. Returns as
+# resolve_wait does.
+resolve_project() {
+  local r="$1" s ph p pst mk x folder="$3"
+  s="${2%%:*}"; ph=""; [ "$s" != "$2" ] && ph="${2#*:}"
+  if [ -z "$folder" ] || [ ! -d "$folder" ]; then echo "UNKNOWN: $r (no projects folder here)"; return 2; fi
+  p=""; for x in "$folder"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$s"/PLAN.md "$folder"/_archive/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$s"/PLAN.md; do
+    [ -f "$x" ] && { p="$x"; break; }; done
+  if [ -z "$p" ]; then echo "UNKNOWN: $r (no such project here, active or archived)"; return 2; fi
+  pst="$(frontmatter "$p" status)"
+  if [ "$pst" = abandoned ]; then echo "ENDED: $r (abandoned: this wait will never be met — drop or replace it)"; return 3
+  elif [[ "$p" == "$folder"/_archive/* ]]; then echo "met: $r (archived)"; return 0
+  elif [ "$pst" = completed ]; then echo "met: $r (completed)"; return 0
+  elif [ -z "$ph" ]; then echo "waiting: $r (${pst:-no status})"; return 1
+  fi
+  mk="$(plan_section "$p" "Status" | phase_marks | awk -F'\t' -v c="$ph" '$1 == c "" { print ($2 == "" "" ? "no mark" : $2); f=1; exit } END { if (!f) print "?" }')"
+  if [ "$mk" = "?" ]; then echo "UNKNOWN: $r (no phase $ph in $s's Phase progress)"; return 2
+  elif [ "$mk" = "✅" ]; then echo "met: $r (✅)"; return 0
+  else echo "waiting: $r ($mk)"; return 1; fi
+}
+
+# resolve_wait <ref>: one wait reference resolved, one line printed. A reference: after:<time> (met
+# once that time passes), <slug> (met when completed or archived), <slug>:<phase> (met when that
+# phase is ✅), fid:<id> (met when the followup is closed), <owner>/<name>/<slug>[:<phase>] (another
+# repo's project, read where projects-dir.sh --repo finds its projects), <repo>/<slug> (another
+# repo's project, not checkable here). Returns 0 met, 1 waiting, 2 unknown (names nothing found),
+# 3 ended (abandoned: never met), 4 not checkable here (only a person, an outside event or a repo
+# this machine keeps no projects of can say).
+resolve_wait() {
+  local r="$1" v e t o rest nm sp pout prc msg
+  local date_re='^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+  local time_re='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(Z|[+-][0-9]{2}:[0-9]{2})$'
+  case "$r" in
+    after:*)
+      v="${r#after:}"; t=""
+      if [[ "$v" =~ $date_re ]]; then t="$v 00:00:00 UTC"; elif [[ "$v" =~ $time_re ]]; then t="$v"; fi
+      if [ -z "$t" ] || ! e="$(date -u -d "$t" +%s 2>/dev/null)"; then
+        echo "UNKNOWN: $r (not a date, or a time with Z or an offset)"; return 2
+      elif [ "$(now_epoch)" -ge "$e" ]; then echo "met: $r (passed)"; return 0
+      else echo "waiting: $r (until $(date -u -d "@$e" '+%Y-%m-%d %H:%M') UTC)"; return 1; fi ;;
+    */*/*)
+      o="${r%%/*}"; rest="${r#*/}"; nm="${rest%%/*}"; sp="${rest#*/}"
+      if [[ "$sp" == */* ]]; then echo "UNKNOWN: $r (not <owner>/<name>/<slug>)"; return 2; fi
+      pout="$(bash "$here/../start-project/projects-dir.sh" --repo "$o/$nm" 2>&1)"; prc=$?
+      if [ "$prc" != 0 ]; then echo "not checkable here: $r (${pout#projects-dir: })"; return 4; fi
+      resolve_project "$r" "$sp" "$pout"; return $? ;;
+    */*) echo "not checkable here: $r (another repo's project: check it there)"; return 4 ;;
+    fid:*)
+      if [ ! -f "$journal" ]; then echo "not checkable here: $r (no journal.sh beside this skill)"; return 4
+      elif msg="$(bash "$journal" show "${r#fid:}" 2>&1)"; then echo "waiting: $r (open)"; return 1
+      elif [[ "$msg" == *"is not open"* ]]; then echo "met: $r (closed in commit ${msg##* commit })"; return 0
+      else echo "UNKNOWN: $r (no such followup)"; return 2; fi ;;
+  esac
+  resolve_project "$r" "$r" "${dir:-}"
+}
+
+# gate_reasons <plan>: the reason of each [external-gate: <reason>] tag in the PLAN's Status (with
+# or without backticks around it; fenced code is skipped), one per line. A reason written as an
+# unfilled <placeholder> (the PLAN template's own example) is no gate.
+gate_reasons() {
+  plan_section "$1" "Status" | awk "$MD_LIB"'{ s = md_skip($0, 0) } s { next }
+    { t = $0
+      while (match(t, /\[external-gate: [^]]*\]/)) {
+        r = substr(t, RSTART + 16, RLENGTH - 17); gsub(/^[ \t]+|[ \t]+$/, "", r)
+        if (r !~ /^<.*>$/) print r
+        t = substr(t, RSTART + RLENGTH) } }'
+}
+
+# wait_state <total> <met> <waiting> <bad> <unchecked> <after> <after met>: the one classification
+# of a list of waits, from the counts of its items by resolve_wait code (met 0, waiting 1, bad 2 or 3,
+# unchecked 4) and of its after: items. The first rule that fits:
+#   broken     any item unknown or ended
+#   free       every item met
+#   recheck    nothing waiting, something unchecked, and every after: item met: the day to look
+#   unchecked  something unchecked and no after: item: nobody will look
+#   held       anything else
+wait_state() {
+  if [ "$4" -gt 0 ]; then echo broken
+  elif [ "$2" = "$1" ]; then echo free
+  elif [ "$3" = 0 ] && [ "$5" -gt 0 ] && [ "$6" -gt 0 ] && [ "$7" = "$6" ]; then echo recheck
+  elif [ "$5" -gt 0 ] && [ "$6" = 0 ]; then echo unchecked
+  else echo held; fi
+}
+
+# waits_report <plan>: each waits-on reference resolved, one line each, then each [external-gate:]
+# tag in Status (a wait no script can check), then banners: every wait met, names nothing found, the
+# re-check date passed (recheck), or waits no script can check with no re-check date (unchecked).
 waits_report() {
-  local plan="$1" v r s ph p pst mk total=0 met=0 unknown=0 msg
+  local plan="$1" v r rc g total=0 met=0 waiting=0 bad=0 unknown=0 unchk=0 aft=0 aftmet=0 refs="" state
   v="$(field_value "$plan" waits-on)"
-  if [ -z "$v" ]; then echo "waits-on: none"; return; fi
   while IFS= read -r r; do
     r="${r#"${r%%[![:space:]]*}"}"; r="${r%"${r##*[![:space:]]}"}"; [ -n "$r" ] || continue
     total=$((total+1))
-    case "$r" in
-      */*) echo "not checkable here: $r (another repo's project: check it there)" ;;
-      fid:*)
-        if [ ! -f "$journal" ]; then echo "not checkable here: $r (no journal.sh beside this skill)"
-        elif msg="$(bash "$journal" show "${r#fid:}" 2>&1)"; then echo "waiting: $r (open)"
-        elif [[ "$msg" == *"is not open"* ]]; then met=$((met+1)); echo "met: $r (closed in commit ${msg##* commit })"
-        else unknown=$((unknown+1)); echo "UNKNOWN: $r (no such followup)"; fi ;;
-      *)
-        s="${r%%:*}"; ph=""; [ "$s" != "$r" ] && ph="${r#*:}"
-        p=""; for x in "$dir"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$s"/PLAN.md "$dir"/_archive/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$s"/PLAN.md; do
-          [ -f "$x" ] && { p="$x"; break; }; done
-        if [ -z "$p" ]; then unknown=$((unknown+1)); echo "UNKNOWN: $r (no such project here, active or archived)"; continue; fi
-        pst="$(frontmatter "$p" status)"
-        if [ "$pst" = abandoned ]; then echo "ENDED: $r (abandoned: this wait will never be met — drop or replace it)"
-        elif [[ "$p" == "$dir"/_archive/* ]]; then met=$((met+1)); echo "met: $r (archived)"
-        elif [ "$pst" = completed ]; then met=$((met+1)); echo "met: $r (completed)"
-        elif [ -z "$ph" ]; then echo "waiting: $r (${pst:-no status})"
-        else
-          mk="$(plan_section "$p" "Status" | phase_marks | awk -F'\t' -v c="$ph" '$1 == c "" { print ($2 == "" "" ? "no mark" : $2); f=1; exit } END { if (!f) print "?" }')"
-          if [ "$mk" = "?" ]; then unknown=$((unknown+1)); echo "UNKNOWN: $r (no phase $ph in $s's Phase progress)"
-          elif [ "$mk" = "✅" ]; then met=$((met+1)); echo "met: $r (✅)"
-          else echo "waiting: $r ($mk)"; fi
-        fi ;;
-    esac
+    resolve_wait "$r"; rc=$?
+    case "$rc" in 0) met=$((met+1)) ;; 1) waiting=$((waiting+1)) ;; 2) unknown=$((unknown+1)); bad=$((bad+1)) ;; 3) bad=$((bad+1)) ;; 4) unchk=$((unchk+1)); refs="${refs:+$refs, }$r" ;; esac
+    case "$r" in after:*) aft=$((aft+1)); [ "$rc" = 0 ] && aftmet=$((aftmet+1)) ;; esac
   done < <(tr ',' '\n' <<<"$v")
-  [ "$total" -gt 0 ] && [ "$met" = "$total" ] && echo "BANNER: every wait is met — remove waits-on at the next /end-session"
+  while IFS= read -r g; do
+    total=$((total+1)); unchk=$((unchk+1)); refs="${refs:+$refs, }external-gate: $g"
+    echo "not checkable here: external-gate: $g (only a person or an outside event clears it)"
+  done < <(gate_reasons "$plan")
+  if [ "$total" = 0 ]; then echo "waits-on: none"; return; fi
+  [ "$met" = "$total" ] && echo "BANNER: every wait is met — remove waits-on at the next /end-session"
   [ "$unknown" -gt 0 ] && echo "BANNER: $unknown wait(s) name nothing found here — fix waits-on at the next /end-session"
+  state="$(wait_state "$total" "$met" "$waiting" "$bad" "$unchk" "$aft" "$aftmet")"
+  case "$state" in
+    recheck) echo "BANNER: the re-check date passed: check on $refs, then set a new after: date or clear the wait at the next /end-session" ;;
+    unchecked) echo "BANNER: $unchk wait(s) no script can check have no re-check date: add after:<date> to waits-on at the next /end-session" ;;
+  esac
   return 0
+}
+
+# waits_list: stdin lines `<id><TAB><waits value>`, one output line each: `<id><TAB><state><TAB><detail>`.
+# The state is wait_state's: broken, free, recheck, unchecked or held. The detail is each item's
+# resolution line, joined with "; ". A `# comment` is dropped, as field_value drops it from a PLAN.
+waits_list() {
+  local id v r rc n line total met waiting bad unchk aft aftmet detail
+  while IFS=$'\t' read -r id v || [ -n "$id" ]; do
+    v="${v%%[[:blank:]]#*}"; [[ "$v" == \#* ]] && v=""
+    n=0; met=0; waiting=0; bad=0; unchk=0; aft=0; aftmet=0; detail=""
+    while IFS= read -r r; do
+      r="${r#"${r%%[![:space:]]*}"}"; r="${r%"${r##*[![:space:]]}"}"; [ -n "$r" ] || continue
+      n=$((n+1))
+      line="$(resolve_wait "$r")"; rc=$?
+      detail="${detail:+$detail; }$line"
+      case "$rc" in 0) met=$((met+1)) ;; 1) waiting=$((waiting+1)) ;; 4) unchk=$((unchk+1)) ;; *) bad=$((bad+1)) ;; esac
+      case "$r" in after:*) aft=$((aft+1)); [ "$rc" = 0 ] && aftmet=$((aftmet+1)) ;; esac
+    done < <(tr ',' '\n' <<<"$v")
+    if [ "$n" = 0 ]; then printf '%s\tbroken\tERROR: no waits value\n' "$id"
+    else printf '%s\t%s\t%s\n' "$id" "$(wait_state "$n" "$met" "$waiting" "$bad" "$unchk" "$aft" "$aftmet")" "$detail"; fi
+  done
 }
 
 # --- claims: which session holds a project (per machine) ---
@@ -427,13 +535,16 @@ if [ "$mode" = claims ]; then
 fi
 
 given_plan="" # --waits and --plan-check take a PLAN path, read before the cd below
-case "$mode" in waits|plancheck) given_plan="$(readlink -f "$slug" 2>/dev/null)" ;; *) section "SELECTION" ;; esac
+case "$mode" in waits|plancheck) given_plan="$(readlink -f "$slug" 2>/dev/null)" ;; waitslist) ;; *) section "SELECTION" ;; esac
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || {
   echo "ERROR: not inside a git repository"; echo "BANNER: nothing to resume here"; exit 2; }
 cd "$top" || exit 2
 dir="$(bash "$here/../start-project/projects-dir.sh" 2>&1)" || {
-  [ "$?" = 3 ] && { echo "ERROR: projects ${dir#projects-dir: }"; echo "BANNER: nothing to resume here until the projects are reachable"; exit 2; }
+  pdrc=$?
+  # --waits-list needs no projects folder: a project item is then unknown, a fid item still resolves
+  [ "$mode" != waitslist ] && [ "$pdrc" = 3 ] && { echo "ERROR: projects ${dir#projects-dir: }"; echo "BANNER: nothing to resume here until the projects are reachable"; exit 2; }
   dir=""; }
+if [ "$mode" = waitslist ]; then [ -d "$dir" ] || dir=""; waits_list; exit 0; fi
 if [ -z "$dir" ] || [ ! -d "$dir" ]; then
   echo "ERROR: no projects folder at ${dir:-(the resolver answered nothing)}"
   echo "BANNER: nothing to resume; use /start-project"; exit 2
@@ -528,6 +639,17 @@ dirty="$(git status --short 2>/dev/null)"
 if [ -n "$dirty" ]; then
   echo "BANNER: working tree is DIRTY — a clean /end-session leaves nothing here"; printf '%s\n' "$dirty"
 else echo "clean"; fi
+# A project works in its own worktree under .claude/worktrees, not in the repo's main checkout: a
+# resume that runs in the main checkout (git dir and common dir are the same folder) says so.
+case "$st" in active|paused|draft)
+  if [ "$(cd "$(git rev-parse --git-dir)" && pwd -P)" = "$(cd "$(git rev-parse --git-common-dir)" && pwd -P)" ]; then
+    if [ -d "$top/.claude/worktrees/$pslug" ]; then
+      echo "BANNER: this resume runs in the repo's main checkout, and project $pslug's work belongs in its worktree: $top/.claude/worktrees/$pslug — tell the user to continue there"
+    else
+      echo "BANNER: this resume runs in the repo's main checkout, and project $pslug has no worktree yet: its work belongs in .claude/worktrees/$pslug, created on branch worktree-$pslug (claude --worktree $pslug) — tell the user before building here"
+    fi
+  fi ;;
+esac
 case "$plan" in
   "$top"/*) git check-ignore -q "$plan" && echo "NOTE: the projects folder is not tracked here: a PLAN edit never shows above, so anything listed is real work" ;;
   *) echo "NOTE: the projects folder is outside this repo: a PLAN edit never shows above"

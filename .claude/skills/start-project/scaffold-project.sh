@@ -188,7 +188,7 @@ if [ ! -f "$TEMPLATE" ]; then
 ---
 project: <slug>
 status: active            # draft | active | paused | completed | abandoned
-waits-on:                 # what must finish first, comma-separated: <slug>, <slug>:<phase>, fid:<id>, <repo>/<slug>
+waits-on:                 # what must finish first, comma-separated: <slug>, <slug>:<phase>, fid:<id>, after:<date or time>, <owner>/<name>/<slug> (.claude/skills/log/waits.md)
 created: YYYY-MM-DD
 last-updated: YYYY-MM-DD
 ---
@@ -223,7 +223,7 @@ last-updated: YYYY-MM-DD
 **Last 5 decisions (newest first, dated):**
 - YYYY-MM-DD: <decision + why>
 
-**Open questions / blockers:** <list, or "none". A blocker only a person or an outside event can clear is tagged `[external-gate: <reason>]`.>
+**Open questions / blockers:** <list, or "none". A blocker only a person or an outside event can clear is tagged `[external-gate: <reason>]`, with an `after:<date>` re-check date in `waits-on:`.>
 
 ## 🚀 Next-session kickoff (rewritten by /end-session each time)
 

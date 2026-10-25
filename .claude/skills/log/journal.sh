@@ -10,14 +10,20 @@
 # The format. Under `## Open followups`, each `### Category` holds entries; an entry is a `####`
 # heading, then its body up to the next heading. Nothing is numbered, so nothing renumbers:
 #
-#   #### <title> `[fid: <id>]` `[captured YYYY-MM-DD]` `[prompt: /<command> …]` `[pinned]`
+#   #### <title> `[fid: <id>]` `[captured YYYY-MM-DD]` `[prompt: /<command> …]` `[waits-on: <list>]` `[pinned]`
 #
 #   fid       the entry's identity: lowercase letters, digits and hyphens, at most 64, never
 #             reused in this repo (not in the journal now, and never in its history). Refer to an
 #             entry by its fid, never by its position. A `[fid: x]` in a body is a reference.
 #   captured  the UTC date it was captured; written once, never edited.
 #   prompt    optional: the command a future session should open with.
-#   pinned    optional: this followup outranks project work when the next move is picked.
+#   waits-on  optional: what must finish first, comma-separated, the values a PLAN's waits-on takes
+#             (fid:<id>, <slug>, <slug>:<phase>, after:<date or time>, <owner>/<name>/<slug>;
+#             see .claude/skills/log/waits.md). The entry is held out of the ranking until every
+#             wait is met. An after: value is YYYY-MM-DD (from 00:00 UTC) or YYYY-MM-DDTHH:MM with
+#             Z or an offset. No `]` or backtick in the list.
+#   pinned    optional: this followup outranks project work when the next move is picked. It is
+#             always the last marker.
 # Text between `## Open followups` and the first category, and between a category heading and its
 # first entry, is intro and is kept. Headings inside fenced blocks (CommonMark: md-skip.awk beside this script) are text, not structure.
 #
@@ -39,7 +45,7 @@
 # Usage: bash .claude/skills/log/journal.sh <command> …   (run anywhere inside the repo)
 #   path                                     print the journal's path
 #   list [--tsv]                             every entry: category, fid, captured, age, prompt, title,
-#                                            pinned
+#                                            pinned, waits-on (--tsv: tab-separated, in this order)
 #   show <fid>                               print one entry
 #   history <fid>                            when the entry opened and closed: date, commit, event,
 #                                            subject, oldest first; then "open now" or "closed in …"
@@ -48,12 +54,15 @@
 #   review                                   unreviewed entries, oldest first: fid, category,
 #                                            reviewed, days, title; then TOTAL, unreviewed, entries,
 #                                            review_days (one `review: off` line without review_days)
-#   add --category <c> --fid <f> --title <t> --body-file <p> [--prompt "<command>"] [--pinned]
+#   add --category <c> --fid <f> --title <t> --body-file <p> [--prompt "<command>"] [--waits-on "<list>"] [--pinned]
 #                                            append an entry at the end of its category (made if new)
-#   replace <fid> [--title <t>] [--body-file <p>] [--pin | --unpin]
+#   replace <fid> [--title <t>] [--body-file <p>] [--waits-on "<list>"] [--pin | --unpin]
 #                                            rewrite one entry's title or body, or set or clear its
-#                                            pin; its other markers stay
-#   close <fid>                              remove the entry, and its category if now empty
+#                                            waits (--waits-on "" clears) or its pin; its other
+#                                            markers stay
+#   close <fid>                              remove the entry, and its category if now empty; then
+#                                            one `unblocks:` line for each open entry that waited
+#                                            on it
 #   commit --intent "<words>" [--closes <fid>]… [--body-file <p>] [<path>…]
 #                                            commit the journal as "<prefix>: <words>"
 #                                            --closes repeats: one "Closes fid:" line per fid, a repeat once
@@ -61,7 +70,8 @@
 #                                            commit exactly these paths with this subject
 #   check                                    the format gate: every entry has a valid unique fid
 #                                            and captured date; nothing numbered outside entries;
-#                                            no title opening with a closed marker
+#                                            no title opening with a closed marker; every waits-on
+#                                            list well formed, none on its own fid or in a loop
 #   migrate --plan                           the old numbered or `- ` items, one TSV row each,
 #                                            dated from git, existing fids kept (fill in the rest)
 #   migrate --apply <plan.tsv> [--dry-run]   convert them to entries, using the filled-in plan
@@ -115,7 +125,8 @@ TODAY="${JOURNAL_TODAY:-$(date -u +%F)}"
 [[ $TODAY =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "JOURNAL_TODAY must be YYYY-MM-DD, not '$TODAY'"
 FID_RE='^[a-z0-9][a-z0-9-]*$'
 DATE_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-MARKER_END_RE='\[(fid|captured|prompt|pinned)[^]]*\]`?[[:space:]]*$'
+AFTER_TIME_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(Z|[+-][0-9]{2}:[0-9]{2})$'
+MARKER_END_RE='\[(fid|captured|prompt|waits-on|pinned)[^]]*\]`?[[:space:]]*$'
 # a title that opens with a closed marker: a strike-through, a check mark, [x], or uppercase RESOLVED as a whole word
 CLOSED_TITLE_RE='^[[:space:]]*(\*\*)?[[:space:]]*(~~|✅|\[[xX]\]|RESOLVED([^[:alnum:]_]|$))'
 
@@ -127,8 +138,9 @@ export OLD_INTRO='> Captured via `/log followup`, closed via `/done`. Group by c
 
 # --- reading -----------------------------------------------------------------------------------
 # The index of the journal, one record per line (tab-separated):
-#   E line end category fid captured prompt title pinned   an entry (end: its last line, blanks
-#                                                           included; pinned: 1 or empty)
+#   E line end category fid captured prompt title pinned waits   an entry (end: its last line,
+#                                                           blanks included; pinned: 1 or empty;
+#                                                           waits: the waits-on list or empty)
 #   C line end entries name                          a category
 #   P line message                                   a problem only `check` reports
 #   S sections start end                             the Open followups section (last line printed)
@@ -136,7 +148,7 @@ export OLD_INTRO='> Captured via `/log followup`, closed via `/done`. Group by c
 PARSE_AWK='
 function clean(s) { gsub(/\t/, " ", s); return s }
 function flush_entry(endl) {
-  if (eline) { printf "E\037%d\037%d\037%s\037%s\037%s\037%s\037%s\037%s\n", eline, endl, clean(ecat), efid, ecap, clean(epr), clean(etitle), epin; ncatent++; eline = 0 }
+  if (eline) { printf "E\037%d\037%d\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n", eline, endl, clean(ecat), efid, ecap, clean(epr), clean(etitle), epin, clean(ewait); ncatent++; eline = 0 }
 }
 function flush_cat(endl) {
   flush_entry(endl)
@@ -144,12 +156,13 @@ function flush_cat(endl) {
 }
 function heading(h,   t, g) {
   t = substr(h, 6); sub(/[ \t]+$/, "", t)
-  efid = ""; ecap = ""; epr = ""; epin = ""
-  while (match(t, /[ \t]`?\[(fid|captured|prompt|pinned)[^]`]*\]`?$/)) {
+  efid = ""; ecap = ""; epr = ""; epin = ""; ewait = ""
+  while (match(t, /[ \t]`?\[(fid|captured|prompt|waits-on|pinned)[^]`]*\]`?$/)) {
     g = substr(t, RSTART + 1); t = substr(t, 1, RSTART - 1); sub(/[ \t]+$/, "", t)
     sub(/^`?\[/, "", g); sub(/\]`?$/, "", g)
     if (g ~ /^fid/) { sub(/^fid:?[ \t]*/, "", g); efid = g }
     else if (g ~ /^captured/) { sub(/^captured:?[ \t]*/, "", g); ecap = g }
+    else if (g ~ /^waits-on/) { sub(/^waits-on:?[ \t]*/, "", g); sub(/[ \t]+$/, "", g); ewait = g }
     else if (g ~ /^pinned/) { if (g == "pinned") epin = 1; else printf "P\037%d\037a [pinned] marker takes no value (found [%s])\n", NR, g }
     else { sub(/^prompt:?[ \t]*/, "", g); epr = g }
   }
@@ -297,6 +310,13 @@ writable() {
 
 closed_title() { [[ $1 =~ $CLOSED_TITLE_RE ]]; } # <title> : it opens with a closed marker
 
+# waits_ok <command> <list> : refuse a waits-on list that would corrupt the heading (a newline, a ]
+# or a backtick end the marker early). Its shape (empty items, fids) is `check`'s.
+waits_ok() {
+  [[ $2 == *$'\n'* || $2 == *']'* || $2 == *'`'* ]] && refuse "$1: --waits-on cannot hold a newline, a ] or a backtick"
+  return 0
+}
+
 fid_ok() { # <fid> [--new] : refuse a bad or (with --new) used fid
   local f="$1"
   [[ $f =~ $FID_RE ]] || refuse "fid '$f' must be lowercase letters, digits and hyphens, starting with a letter or digit"
@@ -319,9 +339,9 @@ case "$cmd" in
     need_journal
     awk -F'\037' -v today="$TODAY" -v tsv="$tsv" "$AGE_AWK"'
       $1 != "E" { next }
-      tsv { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $4, $5, $6, age($6), $7, $8, ($9 ? "pinned" : ""); next }
+      tsv { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $4, $5, $6, age($6), $7, $8, ($9 ? "pinned" : ""), $10; next }
       $4 != last "" { print $4; last = $4 }
-      { printf "  %s  %s  %sd  %s%s%s\n", $5, $6, age($6), $8, ($7 != "" ? "  [prompt: " $7 "]" : ""), ($9 ? "  [pinned]" : "") }' <<<"$IDX"
+      { printf "  %s  %s  %sd  %s%s%s%s\n", $5, $6, age($6), $8, ($7 != "" ? "  [prompt: " $7 "]" : ""), ($10 != "" ? "  [waits-on: " $10 "]" : ""), ($9 ? "  [pinned]" : "") }' <<<"$IDX"
     ;;
 
   history)
@@ -401,10 +421,11 @@ case "$cmd" in
   check)
     [ -f "$J" ] || die "no journal at $J"
     IDX="$(index_journal)"; problems=(); declare -A seen=(); ne=0; nc=0
+    declare -A wdeps=() wline=(); worder=()
     IFS=$'\037' read -r _ nsec _ _ < <(awk -F'\037' '$1=="S"' <<<"$IDX")
     [ "$nsec" = 0 ] && problems+=("$FILE: no '## Open followups' section")
     [ "$nsec" -gt 1 ] && problems+=("$FILE: $nsec '## Open followups' sections; there must be one")
-    while IFS=$'\037' read -r kind a b c d e _ g _; do
+    while IFS=$'\037' read -r kind a b c d e _ g _ w; do
       case "$kind" in
         E) ne=$((ne+1))
            if [ -z "$d" ]; then problems+=("$FILE:$a: no [fid: …] marker on the entry heading")
@@ -413,19 +434,58 @@ case "$cmd" in
            else seen[$d]="$a"; fi
            [[ $e =~ $DATE_RE ]] || problems+=("$FILE:$a: no valid [captured YYYY-MM-DD] marker (found '${e}')")
            [ -n "$g" ] || problems+=("$FILE:$a: an entry with no title")
-           closed_title "$g" && problems+=("$FILE:$a: the title opens with a closed marker (~~, ✅, [x] or RESOLVED): close a finished followup with /done; if work remains, retitle it to say what is left") ;;
+           closed_title "$g" && problems+=("$FILE:$a: the title opens with a closed marker (~~, ✅, [x] or RESOLVED): close a finished followup with /done; if work remains, retitle it to say what is left")
+           if [ -n "$w" ] && [[ $d =~ $FID_RE ]]; then
+             wline[$d]="$a"; worder+=("$d"); rest="$w,"
+             while [ -n "$rest" ]; do
+               item="${rest%%,*}"; rest="${rest#*,}"
+               item="${item#"${item%%[![:space:]]*}"}"; item="${item%"${item##*[![:space:]]}"}"
+               if [ -z "$item" ]; then problems+=("$FILE:$a: followup $d: waits-on has an empty item")
+               elif [[ $item == *[[:space:]]* || $item == *']'* || $item == *'`'* ]]; then problems+=("$FILE:$a: followup $d: waits-on item '$item' holds a blank, a ] or a backtick")
+               elif [[ $item == fid:* ]]; then
+                 if ! [[ ${item#fid:} =~ $FID_RE ]] || [ "${#item}" -gt 68 ]; then problems+=("$FILE:$a: followup $d: waits-on item '$item' is not fid: and a followup id (lowercase letters, digits and hyphens, at most 64)")
+                 elif [ "${item#fid:}" = "$d" ]; then problems+=("$FILE:$a: followup $d waits on its own fid")
+                 else wdeps[$d]="${wdeps[$d]:-} ${item#fid:}"; fi
+               elif [[ $item == after:* ]]; then
+                 av="${item#after:}"; at=""
+                 if [[ $av =~ $DATE_RE ]]; then at="$av 00:00:00 UTC"; elif [[ $av =~ $AFTER_TIME_RE ]]; then at="$av"; fi
+                 if [ -z "$at" ] || ! date -u -d "$at" +%s >/dev/null 2>&1; then
+                   problems+=("$FILE:$a: followup $d: waits-on item '$item' is not after:YYYY-MM-DD or after:YYYY-MM-DDTHH:MM with Z or an offset")
+                 fi
+               fi
+             done
+           fi ;;
         C) nc=$((nc+1)); [ "$c" = 0 ] && problems+=("$FILE:$a: category '$d' has no entries (remove the heading)") ;;
         P) problems+=("$FILE:$a: $b") ;;
       esac
     done < <(awk -F'\037' '$1!="S"' <<<"$IDX")
+    # a loop among followups through fid: waits, any length: one problem naming the fids in order.
+    # A depth-first walk in journal order; a wait on an entry not open now is met, so no edge.
+    declare -A wcolor=(); wstack=()
+    wvisit() {
+      local n="$1" m i msg=""
+      wcolor[$n]=1; wstack+=("$n")
+      for m in ${wdeps[$n]:-}; do
+        [ -n "${wline[$m]:-}" ] || continue
+        case "${wcolor[$m]:-0}" in
+          0) wvisit "$m" ;;
+          1) for ((i = 0; i < ${#wstack[@]}; i++)); do [ "${wstack[i]}" = "$m" ] && break; done
+             for ((; i < ${#wstack[@]}; i++)); do msg="${msg:+$msg, }${wstack[i]} waits on ${wstack[i+1]:-$m}"; done
+             problems+=("$FILE:${wline[$m]}: followups wait on each other in a loop: $msg") ;;
+        esac
+      done
+      wcolor[$n]=2; wstack=("${wstack[@]:0:${#wstack[@]}-1}")
+    }
+    for n in ${worder[@]+"${worder[@]}"}; do [ -n "${wcolor[$n]:-}" ] || wvisit "$n"; done
     if [ "${#problems[@]}" -gt 0 ]; then printf '%s\n' "${problems[@]}"; refuse "check failed: $(plural "${#problems[@]}" problem problems)"; fi
     echo "check: ok — $(plural "$ne" entry entries) in $(plural "$nc" category categories)"
     ;;
 
   add)
-    category=""; fid=""; title=""; body=""; prompt=""; pinned=0; dirty=0
+    category=""; fid=""; title=""; body=""; prompt=""; pinned=0; dirty=0; waits=""; have_waits=0
     while [ $# -gt 0 ]; do
       case "$1" in
+        --waits-on) waits="${2:-}"; have_waits=1; shift 2 || die "$cmd: $1 needs a value" ;;
         --category) category="${2:-}"; shift 2 || die "$cmd: $1 needs a value" ;;
         --fid) fid="${2:-}"; shift 2 || die "$cmd: $1 needs a value" ;;
         --title) title="${2-}"; shift 2 || die "$cmd: $1 needs a value" ;;
@@ -442,12 +502,14 @@ case "$cmd" in
     body_copy "$body"; body="$BODY"
     [ -n "$title" ] || refuse "add: the title is empty"
     [[ $title == *$'\n'* || $category == *$'\n'* ]] && refuse "add: the title and category must be one line"
-    [[ $title =~ $MARKER_END_RE ]] && refuse "add: the title ends in something that reads as a marker ([fid|captured|prompt|pinned …]); reword the title"
+    [ "$have_waits" = 1 ] && [ -z "$waits" ] && refuse "add: --waits-on needs a value (leave the flag out for no waits)"
+    waits_ok "add" "$waits"
+    [[ $title =~ $MARKER_END_RE ]] && refuse "add: the title ends in something that reads as a marker ([fid|captured|prompt|waits-on|pinned …]); reword the title"
     closed_title "$title" && refuse "add: the title opens with a closed marker (~~, ✅, [x] or RESOLVED): close a finished followup with /done instead; if work remains, say what is left"
     [[ $category == '#'* ]] && refuse "add: the category is its name, without the ### "
     body_ok "$body" || refuse "add: the body has a heading line outside a fenced block; it would split the entry"
     need_journal; writable "$dirty"; fid_ok "$fid" --new
-    head="#### $title \`[fid: $fid]\` \`[captured $TODAY]\`"; [ -n "$prompt" ] && head="$head \`[prompt: $prompt]\`"; [ "$pinned" = 1 ] && head="$head \`[pinned]\`"
+    head="#### $title \`[fid: $fid]\` \`[captured $TODAY]\`"; [ -n "$prompt" ] && head="$head \`[prompt: $prompt]\`"; [ -n "$waits" ] && head="$head \`[waits-on: $waits]\`"; [ "$pinned" = 1 ] && head="$head \`[pinned]\`"
     new="$(mktemp)"; total="$(wc -l <"$J")"
     crec="$(awk -F'\037' -v c="$category" '$1=="C" && $5==c "" { print; exit }' <<<"$IDX")"
     if [ -n "$crec" ]; then IFS=$'\037' read -r _ from to _ <<<"$crec"
@@ -463,9 +525,10 @@ case "$cmd" in
 
   replace)
     fid="${1:-}"; [ -n "$fid" ] || die "replace needs a fid"; shift
-    title=""; body=""; have=0; pin=""; dirty=0
+    title=""; body=""; have=0; pin=""; dirty=0; waits=""; set_waits=0
     while [ $# -gt 0 ]; do
       case "$1" in
+        --waits-on) waits="${2-}"; set_waits=1; have=1; shift 2 || die "$cmd: $1 needs a value" ;;
         --title) title="${2-}"; have=1; shift 2 || die "$cmd: $1 needs a value" ;;
         --body-file) body="${2:-}"; have=1; shift 2 || die "$cmd: $1 needs a value" ;;
         --pin|--unpin) [ -n "$pin" ] && [ "$pin" != "$1" ] && die "replace takes --pin or --unpin, not both"; pin="$1"; have=1; shift ;;
@@ -473,12 +536,17 @@ case "$cmd" in
         *) die "replace: unknown argument '$1'" ;;
       esac
     done
-    [ "$have" = 1 ] || die "replace needs --title, --body-file, --pin or --unpin"
+    [ "$have" = 1 ] || die "replace needs --title, --body-file, --waits-on, --pin or --unpin"
+    waits_ok "replace" "$waits"
     need_journal; writable "$dirty"; rec="$(entry_rec "$fid")"; [ -n "$rec" ] || not_open "$fid"
     IFS=$'\037' read -r _ a b _ _ _ _ old _ <<<"$rec"
     heading="$(line_of "$a")"; markers="${heading#"#### $old"}"
-    # the pin is always written last: take it out, then put it back unless --unpin
+    # the waits marker and the pin are written last, in that order: take both out, then put them
+    # back (the waits changed by --waits-on, the pin by --pin or --unpin)
     pinned="$(awk -F'\037' '{ print $9 }' <<<"$rec")"; markers="${markers/ \`\[pinned\]\`/}"
+    [ "$set_waits" = 1 ] || waits="$(awk -F'\037' '{ print $10 }' <<<"$rec")"
+    if [[ $markers =~ ^(.*)\ \`\[waits-on:[^]\`]*\]\`(.*)$ ]]; then markers="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"; fi
+    [ -n "$waits" ] && markers="$markers \`[waits-on: $waits]\`"
     case "$pin" in --pin) pinned=1 ;; --unpin) pinned="" ;; esac
     [ "$pinned" = 1 ] && markers="$markers \`[pinned]\`"
     if [ -n "$title" ]; then
@@ -513,6 +581,17 @@ case "$cmd" in
     empty="$(mktemp)"; replace_lines "$a" "$b" "$empty"; rm -f "$empty"
     bump_date; remember
     echo "closed $fid in $FILE"
+    # each open entry that waited on this one, in journal order: free now, or what else it waits on
+    awk -F'\037' -v f="fid:$fid" -v self="$fid" '
+      $1 != "E" || $5 == self "" { next }
+      { n = split($10, it, ","); k = 0; hit = 0; rest = ""
+        for (i = 1; i <= n; i++) { x = it[i]; gsub(/^[ \t]+|[ \t]+$/, "", x)
+          if (x == "") continue
+          if (x == f "") { hit = 1; continue }
+          k++; rest = rest (k > 1 ? ", " : "") x }
+        if (!hit) next
+        if (k == 0) print "unblocks: " $5 " (free now)"
+        else print "unblocks: " $5 " (also waits on: " rest ")" }' <<<"$IDX"
     ;;
 
   commit)
