@@ -42,7 +42,7 @@ These are not the Rooibos tests ([`unit-tests.md`](unit-tests.md)), which are co
 | `npm run test:rta:tdd` | Watch mode: deploys once and re-runs specs on save |
 | `npm run test:rta:fast` | `RTA_NO_DEPLOY=1`: runs against the build already on the device |
 | `npm run test:rta:capture` | Also saves a raw screenshot per screen to `out/rta-captures/` |
-| `RTA_BENCH=1 npm run test:rta` | Also runs the measurement specs (`task-ledger-bench`, `task-ledger-screen-cost`), which report numbers and gate nothing |
+| `RTA_BENCH=1 npm run test:rta` | Also runs the measurement specs (`task-ledger-bench`, `task-ledger-screen-cost`, `overhang-ink`), which report numbers and gate nothing. Add `-- overhang-ink` to run one |
 | `RTA_SERVER_URL=… RTA_SERVER_USER=… RTA_SERVER_PASS=… npm run test:rta` | Runs against another server. The demo server is a control, not a substitute: it has a few libraries where a real server has about ten, so anything that scales with library count reads low on it |
 | `RTA_HERO_MOVIE=… RTA_SEEK_SECONDS=… npm run test:rta` | Changes the content the suite expects. Also `RTA_TRICKPLAY_MOVIE`, `RTA_TRICKPLAY_SEEK_SECONDS`, `RTA_SEARCH_QUERY`, documented in `.env.example` and resolved by `resolveContent()` in [`tests/rta/config.js`](../../tests/rta/config.js). The defaults name films on the public demo server, so set them when you point the suite elsewhere |
 
