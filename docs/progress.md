@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-25: feat(ui): One aligned overhang row, and icons on the 3 pixel grid
 - 2026-10-25: chore(skills): Reject argument placeholders in skills
 - 2026-10-25: fix(navigation): Retry a refused navigation once the router is idle
 - 2026-10-25: docs: Use the org contributing guide and security policy
