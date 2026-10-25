@@ -57,7 +57,7 @@
          after that the difference is the whole point. -->
     <field id="iconSide" type="string" value="left" />
     <!-- The icon's square size in design pixels. 24 suits the medium font every button
-         uses by default; a button with a larger font sets this to match (JRTab: 36). -->
+         uses by default; a button with a larger font sets this to match (JRTab: overhangRow.GLYPH_SIZE). -->
     <field id="iconSize" type="integer" value="24" />
     <!-- The gap between the icon's canvas and the text. 12 suits a 24 px icon; a larger
          icon's canvas carries its own transparent padding, so a tab sets 6 to keep 12 px

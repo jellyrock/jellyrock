@@ -7,8 +7,8 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overhangRow.bs"
 import "pkg:/source/utils/translate.bs"
 
-const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: logo, or the strip without one
-const STRIP_X_WITH_LOGO = 360 ' The strip (or the title) starts here when the logo shows
+const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: the logo, or the tabs without one
+const TABS_X_WITH_LOGO = 360 ' The tabs' text (or the title) starts here when the logo shows
 const OVERHANG_RIGHT = 1824 ' The 5% action-safe right edge: the clock's right edge
 ' The clock's slot. Limit with headroom: "8:48" measured 99 px wide at 1080p on a Stick 4K
 ' (2026-10-25); four digits and the separator stay under this.
@@ -262,15 +262,15 @@ end sub
 sub layout()
   if not isValid(m.cluster) or not isValid(m.userDropdown) then return
 
-  stripX = OVERHANG_LEFT
-  if isValid(m.logo) then stripX = STRIP_X_WITH_LOGO
+  tabsX = OVERHANG_LEFT
+  if isValid(m.logo) then tabsX = TABS_X_WITH_LOGO
   if isValid(m.tabBar)
     ' A tab's box is the row's text box, so its caps, not the box, center on the row. The
-    ' text starts at stripX because the box pads BOX_PADDING.
-    m.tabBar.translation = [stripX - overhangRow.BOX_PADDING, overhangRow.TEXT_TOP]
+    ' text starts at tabsX because the box pads BOX_PADDING.
+    m.tabBar.translation = [tabsX - overhangRow.BOX_PADDING, overhangRow.TEXT_TOP]
   end if
 
-  titleX = stripX
+  titleX = tabsX
 
   rightEdge = OVERHANG_RIGHT - CLOCK_SLOT
   if m.isClockHidden then rightEdge = OVERHANG_RIGHT

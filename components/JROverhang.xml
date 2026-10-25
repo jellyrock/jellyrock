@@ -24,7 +24,7 @@
     <field id="isVisible" value="true" type="boolean" onChange="onIsVisibleChanged" />
     <field id="isMoveAnimationDisabled" value="false" type="boolean" />
     <field id="isLogoVisible" value="true" type="boolean" onChange="onIsLogoVisibleChanged" />
-    <!-- The tab bar's entries: { id, title, icon }, projected from the active view's
+    <!-- The tab bar's entries: { id, title, icon, selectedIcon }, projected from the active view's
          overhangTabs. Empty hides the tab bar and shows the title in its place. -->
     <field id="tabs" type="array" onChange="onTabsChanged" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />

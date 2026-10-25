@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  A row of JROverhangIcon buttons laid out by iconBarNav (66 px icons, 24 px gaps): the
+  A row of JROverhangIcon buttons laid out by iconBarNav (glyph slots ELEMENT_GAP apart, each
+  icon's square focus box overhanging its slot; see overhangRow.bs): the
   overhang's fixed cluster (Search, Settings). Left and Right walk the row and stop at its
   ends, where requestFocusExit tells the overhang which edge was left; OK fires
   selectedAction with the entry's action. Down is each icon's own requestFocusReturn, which

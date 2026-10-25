@@ -5,7 +5,8 @@
     <LayoutGroup id="tabContainer" layoutDirection="horz" />
   </children>
   <interface>
-    <!-- Input: array of { title: string, id: string } -->
+    <!-- Input: array of { id, title, icon, selectedIcon }: icon is the outlined glyph drawn while
+         a tab is not selected, selectedIcon the filled one while it is (both optional) -->
     <field id="tabs" type="array" />
     <!-- Output: id of the currently selected (active) tab -->
     <field id="selectedTabId" type="string" alwaysNotify="true" />

@@ -58,7 +58,7 @@ Scene
 |---|---|---|
 | `lastFocus` | node | The element that had focus when the view was last suspended |
 | `overhangTitle` | string | Title in the top bar |
-| `overhangTabs` | array | The tab bar's entries, `{ id, title, icon }`: the screen's views as text buttons, each with a filled glyph beside its title |
+| `overhangTabs` | array | The tab bar's entries, `{ id, title, icon, selectedIcon }`: the screen's views as text buttons, each with a glyph beside its title, outlined (`icon`) until the tab is selected, then filled (`selectedIcon`) |
 | `selectedTabId` | string, `alwaysNotify` | The selected view |
 | `isOverhangVisible` | bool, default true | Show the top bar (false during playback) |
 | `isLogoVisible` | bool, default false | Show the JellyRock logo in the top bar |
