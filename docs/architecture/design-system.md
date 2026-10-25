@@ -74,7 +74,7 @@ Left and Right walk the row as one and wrap at both ends; Down returns to the sc
 | A tab with the Large font | 42 pixels | 6 pixels | A 42 pixel poster of a 64/46 asset pads about 6 pixels itself, so 12 pixels stays visible |
 | An overhang icon button | 42 pixels in a 78 pixel square box | none | The glyph is the content |
 
-**Density.** An overhang glyph (tabs and the cluster) is built at the 64/46 density in `icons.json`: a 64 pixel canvas with a 46 pixel glyph, so the drawn shape fills about 72% of its poster. The pipeline's default 96/54 fills 56%, which draws visibly smaller at the same poster size: measured 2026-10-25, `search` and `settings` at 64/46 and `home` at the default were 32 pixels and 22 pixels of ink in the same 42 pixel poster. Pin the density when adding a glyph to the overhang.
+**Density.** An overhang glyph is pinned in `icons.json` on a 64 pixel canvas: the tabs' glyphs at 46 pixels (64/46), `search` at 49 and `settings` at 50 (the sizes they were first built at), so the drawn shape fills 72 to 78% of its poster. The pipeline's default 96/54 fills 56%, which draws visibly smaller at the same poster size: measured 2026-10-25, `search` and `settings` on their 64 pixel canvases and `home` at the default were 32 pixels and 22 pixels of ink in the same 42 pixel poster. Pin the density when adding a glyph to the overhang.
 
 **Fill.** Outlined by default; the recorded exceptions are the fill rules in the icon README. A navigation destination's glyph follows selection: outlined while not selected, filled while selected, never tied to focus (rule 8 there).
 
