@@ -118,7 +118,7 @@ If a toggle has an exit that can't unobserve (an `else` for an unhandled state, 
 
 ## Theme colors, borders, sizes and gaps
 
-The visual standard is a human doc: [docs/architecture/design-system.md](../docs/architecture/design-system.md). It says which theme color means what (`colorPrimary` is focusable, `colorSecondary` is not), the 3 pixel static and 6 pixel focusable border weights, the overhang row's sizes and its 12 pixel box gap, glyph sizes and gutters beside text, and the icon density to pin. Read it before placing, sizing or coloring anything; pick a color by meaning, never by what looks right in the default theme.
+The visual standard is a human doc: [docs/architecture/design-system.md](../docs/architecture/design-system.md). It says which theme color means what (`colorPrimary` is focusable, `colorSecondary` is not), the 3 pixel static and 6 pixel focusable border weights, the overhang row's sizes and its two box gaps, glyph sizes and gutters beside text, and the icon density to pin. Read it before placing, sizing or coloring anything; pick a color by meaning, never by what looks right in the default theme.
 
 ## Common patterns
 

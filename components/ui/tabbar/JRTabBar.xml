@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="JRTabBar" extends="Group">
   <children>
-    <LayoutGroup id="tabContainer" layoutDirection="horz" itemSpacings="[12]" />
+    <LayoutGroup id="tabContainer" layoutDirection="horz" itemSpacings="[9]" />
   </children>
   <interface>
     <!-- Input: array of { title: string, id: string } -->

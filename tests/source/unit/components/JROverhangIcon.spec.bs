@@ -104,18 +104,18 @@ namespace tests
     @describe("Button sizing")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("background is sized to 66x66")
+    @it("background is sized to 78x78")
     function _()
       bg = m.icon.findNode("buttonBackground")
-      m.assertEqual(bg.width, 66.0)
-      m.assertEqual(bg.height, 66.0)
+      m.assertEqual(bg.width, 78.0)
+      m.assertEqual(bg.height, 78.0)
     end function
 
-    @it("border is sized to 66x66")
+    @it("border is sized to 78x78")
     function _()
       border = m.icon.findNode("buttonBorder")
-      m.assertEqual(border.width, 66.0)
-      m.assertEqual(border.height, 66.0)
+      m.assertEqual(border.width, 78.0)
+      m.assertEqual(border.height, 78.0)
     end function
 
     @it("icon poster is 42x42")
@@ -125,10 +125,10 @@ namespace tests
       m.assertEqual(poster.height, 42.0)
     end function
 
-    @it("icon is centered at offset [12, 12] within the button")
+    @it("icon is centered at offset [18, 18] within the button")
     function _()
       poster = m.icon.findNode("buttonIcon")
-      m.assertEqual(poster.translation, [12.0, 12.0])
+      m.assertEqual(poster.translation, [18.0, 18.0])
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -12,12 +12,14 @@ const OVERHANG_RIGHT = 1824 ' The 5% action-safe right edge: the clock's right e
 ' The clock's slot. Limit with headroom: "8:48" measured 99 px wide at 1080p on a Stick 4K
 ' (2026-10-25); four digits and the separator stay under this.
 const CLOCK_SLOT = 150
-const ELEMENT_GAP = 12 ' The box gap the whole row uses: between tabs, dropdown and cluster
-const OVERHANG_BASELINE = 54 ' The row's text baseline; buttons sit padding above it
-const TITLE_Y = 51
+const ELEMENT_GAP = 6 ' Before the dropdown and the cluster; the tabs sit 9 apart (JRTabBar)
+const ROW_HEIGHT = 78 ' Every box in the row: a tab's caps with 24 px above and below
+const ROW_BOTTOM = 105 ' The row's bottom edge; content starts right under it (Home's row label at 104)
+const TITLE_Y = 44 ' The title's top, so its caps center on the row's middle (66)
+const TAB_BAR_DROP = 3 ' A tab's caps sit about 3 px above its box middle: the bar drops to center them
 const TITLE_MIN_WIDTH = 120 ' The title keeps at least this, whatever the dropdown's width
 const DROPDOWN_PROVISIONAL_WIDTH = 200 ' Until the trigger reports its width
-const TAB_PADDING = 30 ' Must match JRTab's padding value
+const TAB_PADDING = 9 ' Must match JRTab's padding value
 
 sub init()
   m.top.id = "overhang"
@@ -32,9 +34,11 @@ sub init()
   m.userDropdown = CreateObject("roSGNode", "JRDropdown")
   m.userDropdown.id = "userDropdown"
   m.userDropdown.menuWidth = 300
+  m.userDropdown.padding = 9 ' the same inside every overhang box: a 42 px avatar in a 60 px box
   m.userDropdown.visible = false ' hidden until user logs in
   m.top.appendChild(m.userDropdown)
-  m.rowY = OVERHANG_BASELINE - m.userDropdown.padding ' icons and the dropdown share this top edge
+  m.userDropdown.minHeight = ROW_HEIGHT
+  m.rowY = ROW_BOTTOM - ROW_HEIGHT ' every box in the row shares this top edge
 
   ' Reposition everything when the trigger button width changes (a username change, say)
   m.userDropdown.observeField("triggerWidth", "onLayoutInputChanged")
@@ -304,11 +308,9 @@ sub layout()
   stripX = OVERHANG_LEFT
   if isValid(m.logo) then stripX = STRIP_X_WITH_LOGO
   if isValid(m.tabBar)
-    ' Tab text aligns with where the title sits: TextButton pads around the text.
-    fontSize = m.global.constants.fontSizeLarge
-    buttonHeight = int(fontSize * 0.7) + (TAB_PADDING * 2)
-    yOffset = int((buttonHeight - fontSize) / 2.0)
-    m.tabBar.translation = [stripX - TAB_PADDING, TITLE_Y - yOffset]
+    ' A tab's box is the row's height; the bar drops a little so the caps, not the box,
+    ' center on the row. The text starts at stripX because the box pads TAB_PADDING.
+    m.tabBar.translation = [stripX - TAB_PADDING, m.rowY + TAB_BAR_DROP]
   end if
 
   titleX = stripX
@@ -361,7 +363,7 @@ function createLogoPoster()
   logoPoster = createObject("roSGNode", "Poster")
   logoPoster.id = "logo"
   logoPoster.uri = "pkg:/images/branding/logo.png"
-  logoPoster.translation = "[96, 54]"
+  logoPoster.translation = "[96, 47]"
   logoPoster.width = "180"
   logoPoster.height = "39"
 

@@ -91,6 +91,7 @@ sub sizeTriggerButton()
   padding = m.top.padding
   buttonWidth = contentRect.width + (padding * 2)
   buttonHeight = contentRect.height + (padding * 2)
+  if buttonHeight < m.top.minHeight then buttonHeight = m.top.minHeight
 
   ' Size background and border
   m.buttonBackground.width = buttonWidth
@@ -98,9 +99,9 @@ sub sizeTriggerButton()
   m.buttonBorder.width = buttonWidth
   m.buttonBorder.height = buttonHeight
 
-  ' Place the content inside the padding. The group centers its children on its own y
-  ' origin (vertAlignment center), so its rect starts above 0: offset by that top edge.
-  m.triggerContent.translation = [padding, padding - contentRect.y]
+  ' Center the content in the box. The group centers its children on its own y origin
+  ' (vertAlignment center), so its rect starts above 0: offset by that top edge.
+  m.triggerContent.translation = [padding, (buttonHeight - contentRect.height) / 2 - contentRect.y]
 
   ' Publish computed width so parent can reposition if needed (for example, right-aligning)
   m.top.triggerWidth = int(buttonWidth)

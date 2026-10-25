@@ -350,7 +350,9 @@ end function
 sub layoutIcon(buttonWidth as float, buttonHeight as float, textWidth as float, iconSpace as float)
   if iconSpace = 0 then return
 
-  iconY = int((buttonHeight - m.top.iconSize) / 2)
+  ' Center on the caps, not the label box: the box keeps descender room, so the caps sit
+  ' above its middle by about 7% of the font size (measured 2026-10-25: 3 px at the Large font).
+  iconY = int((buttonHeight - m.top.iconSize) / 2 - m.buttonText.font.size * 0.07)
   if m.top.iconSide = "left"
     ' Sits immediately left of the centred text, one gutter away.
     textLeft = (buttonWidth / 2) + textCenterOffset(iconSpace) - (textWidth / 2)

@@ -47,12 +47,12 @@ One row, the same elements in the same order on every screen that shows them (`J
 
 | Element | Size | Rule |
 |---|---|---|
-| Icon button (`JROverhangIcon`) | a 66 pixel button with a 42 pixel glyph (12 pixels inside) | The focus ring is the 6 pixel border; the resting glyph is `colorTextSecondary`, focused `colorTextPrimary`, disabled `colorError` |
-| Tab (`JRTab`) | the Large font, 30 pixels padding, a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
-| User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 12 pixels apart, 15 pixels padding | The box hugs its content; a name past 300 pixels is cut with an ellipsis |
+| Icon button (`JROverhangIcon`) | a 78 pixel square focus box around the 42 pixel glyph; the row lays out by 60 pixel slots 6 apart, so the box overhangs its slot by 9 and overlaps its invisible neighbors | The focus ring is the 6 pixel border; the resting glyph is `colorTextSecondary`, focused `colorTextPrimary`, disabled `colorError` |
+| Tab (`JRTab`) | the Large font in a 78 pixel box, 9 pixels at the sides, a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
+| User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content; a name past 300 pixels is cut with an ellipsis |
 | Clock | right-aligned at x 1824 in a 150 pixel slot | Everything else is placed from the slot's left edge |
-| Box gap | 12 pixels between every neighboring box in the row | One value for tabs, the dropdown and the cluster; the row's elements line up from the right edge in, so the cluster sits at the same place on every screen |
-| Row | buttons from design y 39 to 105; content starts at 104 (Home's row label) and near 125 (a grid's tiles) | There is no room for a second row: the phase D spike measured it (2026-10-25). Put a screen's own status text on the screen |
+| Box gap | 9 pixels between tabs, 6 pixels on the right (before the dropdown, before and inside the cluster) | Text has no air of its own, a glyph's canvas does, so two numbers give one visible rhythm; the row's elements line up from the right edge in, so the cluster sits at the same place on every screen |
+| Row | boxes 78 tall from design y 27 to 105, every static element's ink centered on y 66 (a focus ring may sit above or below that line); content starts at 104 (Home's row label) and near 125 (a grid's tiles) | There is no room for a second row: the phase D spike measured it (2026-10-25). Put a screen's own status text on the screen |
 
 Left and Right walk the row as one and wrap at both ends; Down returns to the screen; Up from a screen's first row enters the row at the element used last, else the selected tab.
 
@@ -62,7 +62,7 @@ Left and Right walk the row as one and wrap at both ends; Down returns to the sc
 |---|---|---|---|
 | `TextButton` with the Medium font (details, player controls) | 24 pixels (`iconSize`, the default) | 12 pixels (`iconGutter`, the default) | The sizes the app's buttons were drawn at |
 | A tab with the Large font | 42 pixels | 6 pixels | A 42 pixel poster of a 64/46 asset pads about 6 pixels itself, so 12 pixels stays visible |
-| An overhang icon button | 42 pixels in a 66 pixel button | none | The glyph is the content |
+| An overhang icon button | 42 pixels in a 78 pixel square box | none | The glyph is the content |
 
 **Density.** An overhang glyph (tabs and the cluster) is built at the 64/46 density in `icons.json`: a 64 pixel canvas with a 46 pixel glyph, so the drawn shape fills about 72% of its poster. The pipeline's default 96/54 fills 56%, which draws visibly smaller at the same poster size: measured 2026-10-25, `search` and `settings` at 64/46 and `home` at the default were 32 pixels and 22 pixels of ink in the same 42 pixel poster. Pin the density when adding a glyph to the overhang.
 
@@ -70,4 +70,4 @@ Left and Right walk the row as one and wrap at both ends; Down returns to the sc
 
 ## Where the numbers are enforced
 
-The sizes above live in the components, not in prose: `OVERHANG_ICON_SIZE` and `OVERHANG_ICON_POSTER_SIZE` in `JROverhangIcon.bs`, `ICON_GAP` in `iconBarNav.bs` (with a Rooibos spec on its geometry), `ELEMENT_GAP`, `CLOCK_SLOT` and the row's y in `JROverhang.bs`, `itemSpacings` in `JRTabBar.xml`, `iconSize` and `iconGutter` on `TextButton`, and the avatar size and spacing of the dropdown in `JRDropdown.xml`. Change a number there and this page, not the other way round. The look is checked on hardware: `npm run test:rta:capture` photographs the screens, and the RTA specs `search-navigation`, `overhang-clock` and `home-failure` walk the row.
+The sizes above live in the components, not in prose: `OVERHANG_ICON_SIZE` and `OVERHANG_ICON_POSTER_SIZE` in `JROverhangIcon.bs`, `SLOT_SIZE`, `SLOT_GAP` and `BOX_OVERHANG` in `iconBarNav.bs` (with a Rooibos spec on its geometry), `ELEMENT_GAP`, `CLOCK_SLOT` and the row's y in `JROverhang.bs`, `itemSpacings` in `JRTabBar.xml`, `iconSize` and `iconGutter` on `TextButton`, and the avatar size and spacing of the dropdown in `JRDropdown.xml`. Change a number there and this page, not the other way round. The look is checked on hardware: `npm run test:rta:capture` photographs the screens, and the RTA specs `search-navigation`, `overhang-clock` and `home-failure` walk the row.

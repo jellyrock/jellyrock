@@ -4,7 +4,7 @@
     <!-- Trigger button area -->
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
-    <LayoutGroup id="triggerContent" layoutDirection="horz" itemSpacings="[12]" vertAlignment="center">
+    <LayoutGroup id="triggerContent" layoutDirection="horz" itemSpacings="[9]" vertAlignment="center">
       <Poster id="triggerIcon" visible="false" width="42" height="42" loadWidth="42" loadHeight="42" loadDisplayMode="limitSize" />
       <!-- The trigger hugs its text: width 0 sizes the label to the text, and
            sizeTriggerButton caps it at TRIGGER_LABEL_MAX_WIDTH, where it ellipsizes by
@@ -31,6 +31,8 @@
     <field id="selectedItemId" type="string" />
     <field id="menuWidth" type="integer" value="300" />
     <field id="padding" type="integer" value="15" />
+    <!-- The trigger box is at least this tall, its content centered (the overhang row's height). -->
+    <field id="minHeight" type="integer" value="0" />
 
     <!-- Output -->
     <field id="triggerWidth" type="integer" value="0" />

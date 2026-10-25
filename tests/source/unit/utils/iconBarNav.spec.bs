@@ -7,19 +7,19 @@ namespace tests
     @describe("geometry")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("places icons one size plus one gap apart")
+    @it("places icon boxes one slot plus one gap apart, overhanging the slot by 9")
     function _()
-      m.assertEqual(iconBarNav.iconX(0), 0)
-      m.assertEqual(iconBarNav.iconX(1), 78)
-      m.assertEqual(iconBarNav.iconX(3), 234)
+      m.assertEqual(iconBarNav.iconX(0), -9)
+      m.assertEqual(iconBarNav.iconX(1), 57)
+      m.assertEqual(iconBarNav.iconX(3), 189)
     end function
 
-    @it("measures a bar as its icons plus the gaps between them")
+    @it("measures a bar as its slots plus the gaps between them")
     function _()
       m.assertEqual(iconBarNav.barWidth(0), 0)
-      m.assertEqual(iconBarNav.barWidth(1), 66)
-      m.assertEqual(iconBarNav.barWidth(2), 144)
-      m.assertEqual(iconBarNav.barWidth(3), 222)
+      m.assertEqual(iconBarNav.barWidth(1), 60)
+      m.assertEqual(iconBarNav.barWidth(2), 126)
+      m.assertEqual(iconBarNav.barWidth(3), 192)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -35,9 +35,9 @@ namespace tests
       m.assertNotInvalid(settings)
       m.assertEqual(search.subtype(), "JROverhangIcon")
       m.assertEqual(search.icon, "pkg:/images/icons/search_$$RES$$.png")
-      m.assertEqual(search.translation, [0.0, 0.0])
-      m.assertEqual(settings.translation, [78.0, 0.0])
-      m.assertEqual(m.bar.barWidth, 144)
+      m.assertEqual(search.translation, [-9.0, 0.0])
+      m.assertEqual(settings.translation, [57.0, 0.0])
+      m.assertEqual(m.bar.barWidth, 126)
     end function
 
     @it("rebuilds on a new entry list and drops the old icons")
@@ -46,7 +46,7 @@ namespace tests
       m.bar.entries = [{ id: "syncplay", icon: "pkg:/images/icons/search_$$RES$$.png" }]
       m.assertInvalid(m.bar.findNode("searchIcon"))
       m.assertNotInvalid(m.bar.findNode("syncplayIcon"))
-      m.assertEqual(m.bar.barWidth, 66)
+      m.assertEqual(m.bar.barWidth, 60)
     end function
 
     @it("is empty and 0 wide with no entries")

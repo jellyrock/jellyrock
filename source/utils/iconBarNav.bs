@@ -1,18 +1,23 @@
 ' The geometry and the key rules of an overhang icon bar, kept pure so a Rooibos spec can
 ' drive them without a node. JROverhangIconBar applies them to its JROverhangIcon children.
 namespace iconBarNav
-  const ICON_SIZE = 66 ' Must match OVERHANG_ICON_SIZE in JROverhangIcon.bs
-  const ICON_GAP = 12 ' The box gap the whole overhang row uses
+  ' The row is laid out by the glyphs' slots, not by the focus boxes: a slot is the 42 px
+  ' glyph with 9 px at each side (60), slots sit 6 apart, and the 78 px square focus box
+  ' (OVERHANG_ICON_SIZE in JROverhangIcon.bs) overhangs its slot by 9 on every side, so
+  ' boxes overlap their invisible neighbors and nothing moves at rest.
+  const SLOT_SIZE = 60
+  const SLOT_GAP = 6
+  const BOX_OVERHANG = 9
 
-  ' The x of the icon at `index` inside its bar.
+  ' The x of the icon node at `index` inside its bar: its slot's x, less the box overhang.
   function iconX(index as integer) as integer
-    return index * (ICON_SIZE + ICON_GAP)
+    return index * (SLOT_SIZE + SLOT_GAP) - BOX_OVERHANG
   end function
 
-  ' The width a bar of `count` icons takes; 0 for an empty bar.
+  ' The width the slots of `count` icons take; 0 for an empty bar.
   function barWidth(count as integer) as integer
     if count <= 0 then return 0
-    return count * ICON_SIZE + (count - 1) * ICON_GAP
+    return count * SLOT_SIZE + (count - 1) * SLOT_GAP
   end function
 
   ' Where a left or right press from the icon at `index` goes: the neighbor's index, or

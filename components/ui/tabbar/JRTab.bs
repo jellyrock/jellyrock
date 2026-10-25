@@ -8,8 +8,11 @@ sub init()
   ' Upgrade font to Large to match overhang title size
   m.buttonText.font.size = constants.fontSizeLarge
 
-  ' Match TextButton's default padding for consistent styling
-  m.top.padding = 30
+  ' 9 px at the sides, like the overhang's icon buttons, and the row's 78 px height: that
+  ' leaves 24 px below the caps, the room the selected underline needs between the text
+  ' and the focus border (the subtitle panel's perfect-match button has the same).
+  m.top.padding = 9
+  m.top.minHeight = 78
 
   ' The glyph matches the overhang's icon buttons (a 42 px glyph in JROverhangIcon)
   m.top.iconSize = 42
