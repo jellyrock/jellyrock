@@ -92,6 +92,7 @@ The how-to guides in [`docs/dev/`](../dev/), listed by each file's `H1` heading.
 | [`docs/dev/api-layering-guide.md`](../dev/api-layering-guide.md) | API layering guide |
 | [`docs/dev/api-patterns.md`](../dev/api-patterns.md) | API request patterns |
 | [`docs/dev/code-style.md`](../dev/code-style.md) | Code style |
+| [`docs/dev/contributing.md`](../dev/contributing.md) | Contributing to the app |
 | [`docs/dev/crash-reports.md`](../dev/crash-reports.md) | Weekly Roku crash reports |
 | [`docs/dev/debug-flags.md`](../dev/debug-flags.md) | Debug flags and toast testing |
 | [`docs/dev/deep-linking.md`](../dev/deep-linking.md) | Deep linking and casting |

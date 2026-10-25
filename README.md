@@ -104,6 +104,7 @@ npm run build # OR npm run build:prod
 
 ## Dev docs
 
+- [Contributing](docs/dev/contributing.md)
 - [Developer Mode](docs/dev/developer-mode.md)
 - [Dev Guide](docs/dev/DEVGUIDE.md)
 - [Logging](docs/dev/logging.md)

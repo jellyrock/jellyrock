@@ -177,7 +177,7 @@ In one phrase: an agent-collaborative engineering journal with ADRs, Diátaxis a
 
 The system is tuned for one developer and their AI agents. The dense terms, the large `CLAUDE.md` tree and the missing tutorial folder would be wrong for a project with many active contributors. They are right here because the audience is one person and their agents.
 
-JellyRock is public, but few outside contributors arrive today. If more do, add an onboarding layer on top and keep the internals: a friendlier [`CONTRIBUTING.md`](../../CONTRIBUTING.md), and a tutorial that takes a newcomer from `git clone` to a first build and a first PR. The public changelog already exists: `CHANGELOG.md` is generated from PR titles ([changelog](../admin/changelog.md)).
+JellyRock is public, but few outside contributors arrive today. If more do, add an onboarding layer on top and keep the internals: a friendlier [contributing page](../dev/contributing.md), and a tutorial that takes a newcomer from `git clone` to a first build and a first PR. The public changelog already exists: `CHANGELOG.md` is generated from PR titles ([changelog](../admin/changelog.md)).
 
 ## Why this doc is in `architecture/`
 

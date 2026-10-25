@@ -22,7 +22,7 @@ Each doc has one reader. Write for that person.
 | Doc | Reader | They want |
 | --- | --- | --- |
 | `README.md`, `docs/user/` | Someone using JellyRock | What to do and what they will see. No internals. |
-| `CONTRIBUTING.md`, `docs/dev/` | A contributor | Steps that work the first time. |
+| `docs/dev/` | A contributor | Steps that work the first time. |
 | `docs/architecture/`, `docs/adr/` | A maintainer | Why the code is shaped this way, and what breaks if it changes. |
 | `CLAUDE.md`, `.claude/` | An agent, and the person improving it | The rule, the reason, and how to tell it applies. |
 | Code comments | The next person to change that code | What the code can't say: the reason, the platform quirk, the trap. |
