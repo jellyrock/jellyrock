@@ -1,4 +1,6 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/pixelGrid.bs"
+import "pkg:/source/utils/textMetrics.bs"
 
 ' Selected-state underline. 6px is the same weight the overhang has always used
 ' for the selected tab, so the signal reads the same wherever it appears.
@@ -12,11 +14,6 @@ import "pkg:/source/utils/misc.bs"
 ' Centering makes the geometry correct at any padding and any minHeight, and
 ' reproduces JRTab's existing pixels exactly at padding 30.
 const TEXT_BUTTON_INDICATOR_HEIGHT = 6
-' Affordance icon, sized 1:1 with the source bitmaps exactly as TrackDropdown does
-' with the same 24x24 chevron, so the two dropdown affordances match.
-const TEXT_BUTTON_ICON_SIZE = 24
-' Gap between the label's right edge and the icon.
-const TEXT_BUTTON_ICON_GUTTER = 12
 ' The in-flight spinner takes the icon slot (same size, same position, same
 ' gutter) rather than having geometry of its own. That is why there is no
 ' separate spinner-size constant: a leading spinner beside the label is the same
@@ -51,11 +48,7 @@ sub init()
   '
   ' The load-time trio for the same reason applyIconState carries it: 125x125 of
   ' texture to draw 24 is waste, and loadWidth/loadHeight do nothing on their own.
-  m.buttonSpinner.poster.width = TEXT_BUTTON_ICON_SIZE
-  m.buttonSpinner.poster.height = TEXT_BUTTON_ICON_SIZE
-  m.buttonSpinner.poster.loadWidth = TEXT_BUTTON_ICON_SIZE
-  m.buttonSpinner.poster.loadHeight = TEXT_BUTTON_ICON_SIZE
-  m.buttonSpinner.poster.loadDisplayMode = "limitSize"
+  sizeSpinner()
 
   m.top.observeField("isEnabled", "onEnabledChanged")
   m.top.observeField("background", "onBackgroundChanged")
@@ -68,6 +61,9 @@ sub init()
   m.top.observeField("minHeight", "onSizeChanged")
   m.top.observeField("icon", "onIconChanged")
   m.top.observeField("iconSide", "onSizeChanged")
+  m.top.observeField("iconSize", "onIconSizeChanged")
+  m.top.observeField("iconGutter", "onSizeChanged")
+  m.top.observeField("shouldSnapToGrid", "onSizeChanged")
   m.top.observeField("showSelectedIndicator", "onSizeChanged")
   ' Named distinctly from JRTab's own isButtonSelected observer so a subclass can
   ' still react to the same field without displacing the indicator's own toggle.
@@ -196,6 +192,8 @@ sub setSizeAndCenterText()
 
   ' If not rendered yet, wait for onRenderComplete
   if textWidth = 0 then return
+  ' Every width below follows from this one, so snapping it puts them all on the grid
+  if m.top.shouldSnapToGrid then textWidth = snapToGrid(-int(-textWidth))
 
   ' Calculate visible text height for equal padding
   ' localBoundingRect height includes line spacing, adjust to match horizontal padding
@@ -209,7 +207,7 @@ sub setSizeAndCenterText()
   ' button that already has an icon cost nothing extra to put into a busy state.
   iconSpace = 0
   if hasIconSlot()
-    iconSpace = TEXT_BUTTON_ICON_SIZE + TEXT_BUTTON_ICON_GUTTER
+    iconSpace = m.top.iconSize + m.top.iconGutter
   end if
 
   ' Calculate button dimensions with padding
@@ -256,7 +254,7 @@ sub setSizeAndCenterText()
   ' assumed to start at `padding`: that only holds with no icon and no binding
   ' minWidth. Getting this wrong is the bug that motivated centralising it here.
   textLeft = int((buttonWidth / 2) + textCenterOffset(iconSpace) - (textWidth / 2))
-  layoutSelectedIndicator(buttonHeight, textLeft, textWidth, visibleTextHeight)
+  layoutSelectedIndicator(buttonHeight, textLeft, textWidth, visibleTextHeight, iconSpace)
 
   setFocusBorderSize()
 
@@ -275,6 +273,23 @@ end sub
 
 ' ── Icon ─────────────────────────────────────────────────────────────────────
 
+' A subclass sets iconSize after TextButton.init() has run (JRTab does), so both occupants
+' of the slot take it here, not only at init or on the next icon change
+sub onIconSizeChanged()
+  sizeSpinner()
+  applyIconState()
+  setSizeAndCenterText()
+end sub
+
+' The spinner shares the icon's slot, so it takes the icon's size
+sub sizeSpinner()
+  m.buttonSpinner.poster.width = m.top.iconSize
+  m.buttonSpinner.poster.height = m.top.iconSize
+  m.buttonSpinner.poster.loadWidth = m.top.iconSize
+  m.buttonSpinner.poster.loadHeight = m.top.iconSize
+  m.buttonSpinner.poster.loadDisplayMode = "limitSize"
+end sub
+
 sub onIconChanged()
   applyIconState()
   setSizeAndCenterText()
@@ -291,16 +306,16 @@ sub applyIconState()
   ' contributes nothing to the layout.
   m.buttonIcon.loadSync = true
   m.buttonIcon.uri = m.top.icon
-  m.buttonIcon.width = TEXT_BUTTON_ICON_SIZE
-  m.buttonIcon.height = TEXT_BUTTON_ICON_SIZE
+  m.buttonIcon.width = m.top.iconSize
+  m.buttonIcon.height = m.top.iconSize
   ' loadWidth/loadHeight cap the texture, loadDisplayMode is what makes the cap
   ' bite: its default of noScale loads "at the image's original resolution", so
   ' the two size fields were inert here on their own and every icon handed to a
   ' TextButton was loaded at whatever the asset happened to be. limitSize is the
   ' mode the app's other small local icons already use (CommunityRating,
   ' CriticRating, Toast): aspect ratio preserved, small images left alone.
-  m.buttonIcon.loadWidth = TEXT_BUTTON_ICON_SIZE
-  m.buttonIcon.loadHeight = TEXT_BUTTON_ICON_SIZE
+  m.buttonIcon.loadWidth = m.top.iconSize
+  m.buttonIcon.loadHeight = m.top.iconSize
   m.buttonIcon.loadDisplayMode = "limitSize"
   m.buttonIcon.visible = isValidAndNotEmpty(m.top.icon) and not m.top.isLoading
 end sub
@@ -353,13 +368,15 @@ end function
 sub layoutIcon(buttonWidth as float, buttonHeight as float, textWidth as float, iconSpace as float)
   if iconSpace = 0 then return
 
-  iconY = int((buttonHeight - TEXT_BUTTON_ICON_SIZE) / 2)
+  ' Center on the caps, not the label box: the box keeps descender room, so the caps sit
+  ' above its middle (capsAboveCenter).
+  iconY = int((buttonHeight - m.top.iconSize) / 2 - capsAboveCenter(m.buttonText.font.size))
   if m.top.iconSide = "left"
     ' Sits immediately left of the centred text, one gutter away.
     textLeft = (buttonWidth / 2) + textCenterOffset(iconSpace) - (textWidth / 2)
     slot = [int(textLeft - iconSpace), iconY]
   else
-    slot = [int(buttonWidth - m.top.padding - TEXT_BUTTON_ICON_SIZE), iconY]
+    slot = [int(buttonWidth - m.top.padding - m.top.iconSize), iconY]
   end if
 
   ' Both occupants of the slot are placed, not only the visible one: they are
@@ -427,7 +444,7 @@ end sub
 ' The label is vertically centered across the FULL button height, so its bottom
 ' edge follows from that centering. Deriving it from the padding instead is what
 ' broke once a minHeight (or a smaller padding) was in play.
-sub layoutSelectedIndicator(buttonHeight as float, textLeft as float, textWidth as float, visibleTextHeight as float)
+sub layoutSelectedIndicator(buttonHeight as float, textLeft as float, textWidth as float, visibleTextHeight as float, iconSpace as float)
   if not m.top.showSelectedIndicator
     m.buttonIndicator.visible = false
     return
@@ -436,12 +453,21 @@ sub layoutSelectedIndicator(buttonHeight as float, textLeft as float, textWidth 
   textBottom = (buttonHeight + visibleTextHeight) / 2
   gapBelowText = buttonHeight - textBottom
 
-  m.buttonIndicator.width = textWidth
+  ' A leading icon is part of the label, so the underline starts under it; a trailing
+  ' icon is the button's affordance and stays outside the line.
+  lineLeft = textLeft
+  lineWidth = textWidth
+  if iconSpace > 0 and m.top.iconSide = "left"
+    lineLeft = textLeft - iconSpace
+    lineWidth = textWidth + iconSpace
+  end if
+
+  m.buttonIndicator.width = lineWidth
   m.buttonIndicator.height = TEXT_BUTTON_INDICATOR_HEIGHT
   ' Not rounded: the previous implementation passed the raw float here, and
   ' keeping it makes the overhang tab bar's underline bit-identical to what it
   ' rendered before this moved into TextButton.
-  m.buttonIndicator.translation = [textLeft, textBottom + ((gapBelowText - TEXT_BUTTON_INDICATOR_HEIGHT) / 2)]
+  m.buttonIndicator.translation = [lineLeft, textBottom + ((gapBelowText - TEXT_BUTTON_INDICATOR_HEIGHT) / 2)]
   m.buttonIndicator.visible = m.top.isButtonSelected
 end sub
 

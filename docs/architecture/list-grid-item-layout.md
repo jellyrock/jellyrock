@@ -46,7 +46,7 @@ The subtitle panel used to set `drawFocusFeedback="false"`, and each row toggled
 **Use [`applyListFocusChrome(list)`](../../source/utils/listTheme.bs)** and leave `drawFocusFeedback` alone. Three things follow, all measured on a Stick 4K:
 
 1. **The indicator is drawn about 10 pixels outside the row:** a row 72 tall had a ring 92 tall. With rows touching, its edge lands on the next row's first line of text, so the list needs an `itemSpacing` at least that large. The 9-patch has no padding to read this from; it was measured from a screen capture.
-2. **Keep `rowHeight + itemSpacing` divisible by 3.** The UI is designed at 1080 lines and shown at 720, so only an edge on a multiple of 3 lands on a whole 720p line, and the pitch carries the list's origin down each row. See the `PIXEL_GRID` note in `dialogLayout.bs`: it only helps if the absolute origin is on the grid too.
+2. **Keep `rowHeight + itemSpacing` divisible by 3.** The UI is designed at 1080 lines and shown at 720, so only an edge on a multiple of 3 lands on a whole 720p line, and the pitch carries the list's origin down each row. See the `PIXEL_GRID` note in `source/utils/pixelGrid.bs`: it only helps if the absolute origin is on the grid too.
 3. **Two focusable lists on one screen? Hide the footprint.** `focusFootprintBitmapUri` draws on a list's focused item while that list does not have focus. A screen with one focusable list never shows it. With two, the idle one shows a permanent `colorBackgroundSecondary` fill, the color that means focused on a `TextButton`. Set it to `pkg:/images/1px-transparent.png`, as `Alpha.bs` does.
 
 ## Texture lifecycle: which cells hold a poster

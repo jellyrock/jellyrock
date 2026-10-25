@@ -1,0 +1,46 @@
+namespace tests
+
+  ' Both occupants of the icon slot (the icon and the in-flight spinner) follow iconSize,
+  ' whenever it is set: JRTab sets it after TextButton.init() has run.
+  @suite("TextButton - the icon slot follows iconSize")
+  class TextButtonIconSizeTests extends tests.BaseTestSuite
+
+    private button as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.button = CreateObject("roSGNode", "TextButton")
+    end function
+
+    protected override function afterEach()
+      m.button = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("iconSize")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sizes the spinner to an iconSize set after init")
+    function _()
+      m.button.iconSize = 42
+      m.assertEqual(m.button.findNode("buttonSpinner").poster.width, 42.0)
+      m.assertEqual(m.button.findNode("buttonSpinner").poster.height, 42.0)
+    end function
+
+    @it("sizes an icon already set to a later iconSize")
+    function _()
+      m.button.icon = "pkg:/images/icons/search_$$RES$$.png"
+      m.button.iconSize = 42
+      m.assertEqual(m.button.findNode("buttonIcon").width, 42.0)
+      m.assertEqual(m.button.findNode("buttonIcon").height, 42.0)
+    end function
+
+    @it("keeps 24 by default")
+    function _()
+      m.assertEqual(m.button.findNode("buttonSpinner").poster.width, 24.0)
+    end function
+
+  end class
+
+end namespace

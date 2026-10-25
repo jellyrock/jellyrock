@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A row of JROverhangIcon buttons laid out by iconBarNav (glyph slots ELEMENT_GAP apart, each
+  icon's square focus box overhanging its slot; see overhangRow.bs): the
+  overhang's fixed cluster (Search, Settings). Left and Right walk the row and stop at its
+  ends, where requestFocusExit tells the overhang which edge was left; OK fires
+  selectedAction with the entry's action. Down is each icon's own requestFocusReturn, which
+  the screen observes (getIcon).
+-->
+<component name="JROverhangIconBar" extends="Group">
+  <interface>
+    <!-- Input: array of { id, icon, action, disabled }. The child for an entry has the id
+         "<id>Icon" (the RTA suite addresses #overhang.#searchIcon). `action` is what
+         selectedAction carries, defaulting to the id. -->
+    <field id="entries" type="array" onChange="onEntriesChanged" />
+    <!-- Output: the width the laid-out icons take, so the overhang can place what follows. -->
+    <field id="barWidth" type="integer" value="0" />
+    <!-- Output: the pressed entry's action. -->
+    <field id="selectedAction" type="string" alwaysNotify="true" />
+    <!-- Output: "left" or "right", the edge a press walked off. -->
+    <field id="requestFocusExit" type="string" alwaysNotify="true" />
+    <!-- The child icon for an entry id, for focus bookkeeping by the screen. -->
+    <function name="getIcon" />
+    <!-- Focus the icon at the row's first ("left") or last ("right") position. -->
+    <function name="focusEdge" />
+  </interface>
+</component>

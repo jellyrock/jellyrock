@@ -58,8 +58,8 @@ Scene
 |---|---|---|
 | `lastFocus` | node | The element that had focus when the view was last suspended |
 | `overhangTitle` | string | Title in the top bar |
-| `overhangTabs` | array | Tab definitions for the top bar |
-| `selectedTabId` | string, `alwaysNotify` | The selected tab |
+| `overhangTabs` | array | The tab bar's entries, `{ id, title, icon, selectedIcon }`: the screen's views as text buttons, each with a glyph beside its title, outlined (`icon`) until the tab is selected, then filled (`selectedIcon`) |
+| `selectedTabId` | string, `alwaysNotify` | The selected view |
 | `isOverhangVisible` | bool, default true | Show the top bar (false during playback) |
 | `isLogoVisible` | bool, default false | Show the JellyRock logo in the top bar |
 | `shouldShowIcons` | bool, default false | Show the search and settings icons (only with a signed-in user) |
@@ -294,7 +294,7 @@ Saving the deepest node, not only `focusedChild`, is what returns the cursor to 
 
 ## Overhang controller
 
-`JROverhang` is the top bar: logo, current user, search and settings icons, library tabs and clock. It belongs to `JRScene`, not to any view. A view describes what it wants in its `JRGroup` fields, usually in `init()`, and never touches `JROverhang` directly. The controller copies those fields onto the overhang when the active view changes, so the whole bar changes in one frame.
+`JROverhang` is the top bar, one row: the logo, the tab bar (the screen's views as text buttons with a glyph, one selected) or the title in its place, the user dropdown, the fixed cluster (search and settings) and the clock. The cluster is the same on every screen that shows it; a control only one screen has belongs on that screen, next to its state. The cluster is a `JROverhangIconBar`, which lays out `JROverhangIcon` buttons by `iconBarNav`; Left and Right walk tab bar, dropdown and cluster as one row that wraps at both ends. Sizes, gaps and glyph rules are in [design-system.md](design-system.md#the-overhang-row). It belongs to `JRScene`, not to any view. A view describes what it wants in its `JRGroup` fields, usually in `init()`, and never touches `JROverhang` directly. The controller copies those fields onto the overhang when the active view changes, so the whole bar changes in one frame.
 
 `JRScene.onActiveRoutedViewChanged()` runs whenever `m.global.activeRoutedView` is written:
 

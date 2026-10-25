@@ -4,7 +4,7 @@ namespace tests
 
   ' The button-row overflow cap budgets every button at
   ' iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE). That is only true because the
-  ' icon Poster is declared with a 64px load box and loadDisplayMode="limitSize",
+  ' icon Poster is declared with a 63px load box and loadDisplayMode="limitSize",
   ' which scales an oversized source down AT LOAD. Two icons on the capped
   ' ItemDetails row shipped a 96px FHD asset (album, person) until #890 resized
   ' them, and still rendered a 64px bitmap in a 124px plate.

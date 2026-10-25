@@ -1,9 +1,10 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/overhangRow.bs"
 
-const OVERHANG_ICON_SIZE = 66 ' Button size: matches dropdown trigger height
-const OVERHANG_ICON_PADDING = 12 ' Padding between icon and button edge
-const OVERHANG_ICON_POSTER_SIZE = 42 ' Icon display size (66 - 12*2 = 42); source PNGs scaled down via limitSize
+const OVERHANG_ICON_SIZE = overhangRow.ICON_BOX ' The focus box: a square as tall as the row
+const OVERHANG_ICON_PADDING = overhangRow.ICON_PADDING ' Between the glyph and the box edge, all four sides
+const OVERHANG_ICON_POSTER_SIZE = overhangRow.GLYPH_SIZE ' Source PNGs scaled down via limitSize
 
 sub init()
   m.log = new log.Logger("JROverhangIcon")
@@ -12,7 +13,7 @@ sub init()
   m.buttonBorder = m.top.findNode("buttonBorder")
   m.buttonIcon = m.top.findNode("buttonIcon")
 
-  ' Size button background and border to 66x66
+  ' Size button background and border to the square focus box
   m.buttonBackground.width = OVERHANG_ICON_SIZE
   m.buttonBackground.height = OVERHANG_ICON_SIZE
   m.buttonBorder.width = OVERHANG_ICON_SIZE
@@ -37,7 +38,13 @@ sub onIconChanged()
   m.buttonIcon.uri = m.top.icon
 end sub
 
-' Toggle visual state between unfocused (transparent) and focused (backdrop + border)
+sub onIsDisabledChanged()
+  onFocusChanged()
+end sub
+
+' Toggle visual state between unfocused (transparent) and focused (backdrop + border).
+' A disabled glyph keeps the disabled text color in both states, so it reads as unavailable
+' before the press; the focus ring still shows, because the press explains why.
 sub onFocusChanged()
   constants = m.global.constants
   if m.top.hasFocus()
@@ -51,6 +58,7 @@ sub onFocusChanged()
     m.buttonBorder.visible = false
     m.buttonIcon.blendColor = constants.colorTextSecondary
   end if
+  if m.top.isDisabled then m.buttonIcon.blendColor = constants.colorTextDisabled
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

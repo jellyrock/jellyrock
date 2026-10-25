@@ -1,0 +1,48 @@
+' The overhang row's shared geometry, in design pixels, and the order Left and Right walk it.
+' Three numbers are chosen (the row's height, the glyph size and the padding inside a box);
+' the rest follow from them, so a component reads its size here instead of repeating it.
+' Every value is a multiple of 3, so a 720p device (two thirds) draws it on whole pixels.
+' docs/architecture/design-system.md says why each one is what it is.
+namespace overhangRow
+  ' Chosen
+  const ROW_HEIGHT = 78 ' Every box in the row: a tab's caps with 24 px above and below
+  const ROW_BOTTOM = 105 ' The row's bottom edge; content starts right under it (Home's row label at 104)
+  const GLYPH_SIZE = 42 ' Every glyph in the row: the tabs', the cluster's, the avatar
+  const BOX_PADDING = 9 ' Inside a box at its sides: a tab, the dropdown, a glyph's slot
+  const TAB_GAP = 9 ' Between tabs: text has no air of its own
+  const ELEMENT_GAP = 6 ' On the right (before the dropdown, before and inside the cluster): a glyph's canvas pads it
+  ' A label's caps sit above its box's middle (capsAboveCenter in textMetrics.bs: 3 px at the
+  ' Large font, on the grid), so a text label takes the row's box dropped this far.
+  ' textMetrics.spec.bs fails if the two disagree.
+  const TEXT_DROP = 3
+
+  ' Derived
+  const ROW_TOP = ROW_BOTTOM - ROW_HEIGHT ' Every box in the row shares this top edge
+  const TEXT_TOP = ROW_TOP + TEXT_DROP ' A text label's box (ROW_HEIGHT tall): the tabs, the title, the clock
+  const ICON_BOX = ROW_HEIGHT ' An icon button's focus box: a square as tall as the row
+  const ICON_PADDING = (ICON_BOX - GLYPH_SIZE) \ 2 ' Between a glyph and its focus box, all four sides
+  const SLOT_SIZE = GLYPH_SIZE + BOX_PADDING * 2 ' What a glyph takes in the row's layout
+
+  ' Where Left or Right from the row element `from` ("tabs", "dropdown" or "cluster") takes
+  ' focus: the next element `shown` ({ tabs, dropdown, cluster } as booleans) along the row,
+  ' wrapping at both ends. A Right press lands on the element's first item, a Left press on
+  ' its last, so a walk never skips one. Returns { element, edge: "first" | "last" }, with
+  ' element "" when `from` is not shown or the direction is neither.
+  function nextFocus(shown as object, from as string, direction as string) as object
+    if direction <> "left" and direction <> "right" then return { element: "", edge: "" }
+
+    visible = []
+    for each element in ["tabs", "dropdown", "cluster"]
+      if shown[element] = true then visible.push(element)
+    end for
+
+    at = -1
+    for i = 0 to visible.count() - 1
+      if visible[i] = from then at = i
+    end for
+    if at < 0 then return { element: "", edge: "" }
+
+    if direction = "right" then return { element: visible[(at + 1) mod visible.count()], edge: "first" }
+    return { element: visible[(at - 1 + visible.count()) mod visible.count()], edge: "last" }
+  end function
+end namespace

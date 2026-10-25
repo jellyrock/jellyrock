@@ -116,25 +116,9 @@ If a toggle has an exit that can't unobserve (an `else` for an unhandled state, 
 - **Key behavior belongs in `source/utils/dialogKeys.bs`,** not in a component's `onKeyEvent`: it is pure, so a test can reach it. `listDialogKeyAction` and `buttonDialogKeyAction` are the models.
 - **`SceneManager` has no dialog methods left** except `isDialogOpen`, which is a query.
 
-## Theme colors: which one means what
+## Theme colors, borders, sizes and gaps
 
-The theme palette encodes **interaction state**, not only hue. Picking by what looks right is how the meaning drifts.
-
-| Constant | Use for | Never |
-|---|---|---|
-| `colorPrimary` | What the user can **focus or act on**: focus rings, the selected-item indicator, active-state chrome | Static decoration |
-| `colorSecondary` | **Non-focusable** highlights: accent rules, emphasis marks, decorative dividers | Anything focusable |
-| `colorBackgroundPrimary` | Panel and surface fills | |
-| `colorBackgroundSecondary` | Structural separators, subtle borders, footprints behind focus | |
-| `colorTextPrimary`, `colorTextSecondary`, `colorTextDisabled` | Text by emphasis level | |
-
-It matters most where both appear in one frame, as in a dialog: the button focus ring is `colorPrimary` (focusable), and the accent rule under the title is `colorSecondary` (not focusable). An accent rule in `colorPrimary` would read as something you could move focus to.
-
-Users can change every one of these (**Settings → User Interface → General → Theme**, then **Custom**), so a color picked for how it looks in the default theme will be wrong in someone else's. Pick by meaning and it survives any palette.
-
-### Border weights: 3 pixels static, 6 pixels focusable
-
-The 9-patch border images follow the same principle: the weight encodes interaction state. `border-3px.9.png` is for static panel edges: `JRDialogPanel`, the frame of every dialog. `border-6px.9.png` is for focusable things: `TextButton`'s focus ring, `IconButton`, `FocusableOverview`, the dropdowns, and the list and grid focus indicators. The thick border is part of the "you can focus this" signal, so keep the weights distinct.
+The visual standard is a human doc: [docs/architecture/design-system.md](../docs/architecture/design-system.md). It says which theme color means what (`colorPrimary` is focusable, `colorSecondary` is not), the 3 pixel static and 6 pixel focusable border weights, the overhang row's sizes and its two box gaps, glyph sizes and gutters beside text, and the icon density to pin. Read it before placing, sizing or coloring anything; pick a color by meaning, never by what looks right in the default theme.
 
 ## Common patterns
 

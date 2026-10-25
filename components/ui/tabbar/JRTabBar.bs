@@ -1,7 +1,9 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/overhangRow.bs"
 
 sub init()
   m.tabContainer = m.top.findNode("tabContainer")
+  m.tabContainer.itemSpacings = [overhangRow.TAB_GAP]
   m.focusedTabIndex = 0
 
   ' When the tab bar gains focus, highlight the focused tab
@@ -46,6 +48,8 @@ sub onTabsChanged()
     tabNode = CreateObject("roSGNode", "JRTab")
     tabNode.tabTitle = tabData.title
     tabNode.tabId = tabData.id
+    if isValidAndNotEmpty(tabData.icon) then tabNode.tabIcon = tabData.icon
+    if isValidAndNotEmpty(tabData.selectedIcon) then tabNode.tabSelectedIcon = tabData.selectedIcon
 
     ' Mark the first tab as selected by default if no selection exists
     if m.top.selectedTabId = "" and tabData.id = tabs[0].id
@@ -99,7 +103,11 @@ function tabsMatchExisting(tabs as object) as boolean
 
   for i = 0 to tabs.count() - 1
     existing = m.tabContainer.getChild(i)
-    if existing.tabId <> tabs[i].id or existing.tabTitle <> tabs[i].title
+    icon = ""
+    if isValidAndNotEmpty(tabs[i].icon) then icon = tabs[i].icon
+    selectedIcon = ""
+    if isValidAndNotEmpty(tabs[i].selectedIcon) then selectedIcon = tabs[i].selectedIcon
+    if existing.tabId <> tabs[i].id or existing.tabTitle <> tabs[i].title or existing.tabIcon <> icon or existing.tabSelectedIcon <> selectedIcon
       return false
     end if
   end for

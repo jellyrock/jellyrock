@@ -14,13 +14,13 @@ namespace tests
     '   ItemDetails  origin 90 (ItemDetails.xml), spacing 18 (JRButtonGroup.bs),
     '                bound 1324 = 1824 right-anchor - 500 LOGO_MAX_DISPLAY_WIDTH
     '   OSD          origin 90 (OSD.xml), spacing 24 (OSDButtonGroup.bs),
-    '                bound 1670 = 1830 right group - 136 info button - 24 gap
+    '                bound 1671 = 1830 right group - 135 info button - 24 gap
     private itemDetailsOriginX = 90
     private itemDetailsSpacing = 18
     private itemDetailsBound = 1324
     private osdOriginX = 90
     private osdSpacing = 24
-    private osdBound = 1670
+    private osdBound = 1671
 
     ' What a row of n items actually occupies. The gaps sit BETWEEN items, so this
     ' is not n * (width + spacing), on purpose: reproducing the off-by-one-gap
@@ -36,7 +36,7 @@ namespace tests
 
     @it("sizes the background plate from the icon plus four paddings")
     function _()
-      m.assertEqual(iconButtonBackgroundWidth(ICON_BUTTON_ICON_SIZE), 124)
+      m.assertEqual(iconButtonBackgroundWidth(ICON_BUTTON_ICON_SIZE), 123)
     end function
 
     @it("reports a layout footprint wider than the plate, because the caption overhangs")
@@ -44,7 +44,7 @@ namespace tests
       plate = iconButtonBackgroundWidth(ICON_BUTTON_ICON_SIZE)
       layout = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
 
-      m.assertEqual(layout, 136)
+      m.assertEqual(layout, 135)
       m.assertTrue(layout > plate, "the caption, not the plate, sets the footprint")
       m.assertEqual(layout - plate, ICON_BUTTON_TEXT_EXTENSION)
     end function
@@ -114,8 +114,8 @@ namespace tests
 
     @it("returns 0 when the bound is at or behind the origin")
     function _()
-      m.assertEqual(maxVisibleButtons(1324, 18, 136, 1324), 0)
-      m.assertEqual(maxVisibleButtons(1324, 18, 136, 900), 0)
+      m.assertEqual(maxVisibleButtons(1324, 18, 135, 1324), 0)
+      m.assertEqual(maxVisibleButtons(1324, 18, 135, 900), 0)
     end function
 
     @it("returns 0 rather than dividing by a zero stride")
@@ -161,7 +161,7 @@ namespace tests
 
     @it("passes the row's y through as the anchor's y")
     function _()
-      anchor = moreButtonAnchor(90, 18, 136, 932, 10)
+      anchor = moreButtonAnchor(90, 18, 135, 932, 10)
       m.assertEqual(anchor.y, 932)
     end function
 
@@ -182,7 +182,7 @@ namespace tests
     @it("falls back to the row origin when the cap is degenerate")
     function _()
       for each cap in [0, -3]
-        anchor = moreButtonAnchor(90, 18, 136, 800, cap)
+        anchor = moreButtonAnchor(90, 18, 135, 800, cap)
         m.assertEqual(anchor.x, 90, "cap " + cap.toStr() + " moved the anchor off the row origin")
       end for
     end function

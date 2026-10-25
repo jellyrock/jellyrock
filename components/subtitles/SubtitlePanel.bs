@@ -204,8 +204,8 @@ sub init()
   ' Interface observers are registered HERE rather than declared as XML onChange
   ' attributes: this component defines onDestroy, and an XML onChange does not appear
   ' to be removable by unobserveField, so a write landing after teardown (the host
-  ' re-feeding existingStreams, a late close) would still run a handler. Same shape
-  ' as JRTabBar; see the wiring rule in components/CLAUDE.md.
+  ' re-feeding existingStreams, a late close) would still run a handler. See the
+  ' wiring rule in components/CLAUDE.md.
   m.top.observeField("filePath", "onFilePathChanged")
   m.top.observeField("existingStreams", "onExistingStreamsChanged")
   m.top.observeField("isOpen", "onIsOpenChanged")

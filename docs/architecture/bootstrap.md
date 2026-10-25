@@ -91,7 +91,7 @@ The app has one scene for its whole life, `components/JRScene.xml`, which extend
   <AppWaitHost id="appWaitHost" />            <!-- holds app-wide waits; draws nothing -->
   <BackdropFader id="imageFader" />           <!-- the backdrop image, with a crossfade -->
   <sgrouter_Outlet id="routerOutlet" />       <!-- every routed view mounts here -->
-  <JROverhang id="overhang" />                <!-- top bar: logo, title, user, tabs, clock -->
+  <JROverhang id="overhang" />                <!-- top bar: logo, tabs or title, user, cluster, clock -->
   <Group id="optionsPanelOverlay" />          <!-- the options panel, above the overhang -->
   <LabelPrimaryLarge id="loadingText" />      <!-- text above the spinner -->
   <Spinner id="spinner" />

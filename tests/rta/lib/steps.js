@@ -1219,8 +1219,8 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
  * Up is only ever returned while focus is inside a Home row list. At row 0 it is the escape;
  * at any higher row it walks toward row 0, which is the same precondition `walkHomeToFirstRow`
  * establishes. And a stray Up that arrives once focus HAS reached the overhang is inert by
- * design at every step of the chain it walks: `JRTabBar.onKeyEvent` and
- * `JROverhangIcon.onKeyEvent` both fall through on Up ("nothing above the tab bar"), and
+ * design at every step of the chain it walks: `JRTabBar.onKeyEvent`, a closed `JRDropdown` and
+ * `JROverhangIcon.onKeyEvent` all fall through on Up (nothing sits above the row), and
  * `JRScene.onKeyEvent` does not handle it either.
  *
  * ## Why it reads `subtype`, and not the id or the keyPath
@@ -1231,8 +1231,8 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
  * reinstated and invisible. `subtype` is set by the component rather than by the call site,
  * so it cannot be lost that way.
  *
- * The app does create such nodes: `JROverhang` appends its `JRTabBar` with `CreateObject`
- * and assigns no id (`components/JROverhang.bs`), which is on this very walk's path. Home's
+ * The app does create such nodes: `JROverhang` appends its `JRTabBar` with `CreateObject` and
+ * assigns no id (`components/JROverhang.bs`), which is on this very walk's path. Home's
  * row lists are the other example and a sharper one, for a different reason: #864
  * (2026-08-26) made `onTabChanged` assign both ids, so a tab ROUND TRIP no longer loses
  * them, but only one list is in the scene at a time, so under the other tab the id is not

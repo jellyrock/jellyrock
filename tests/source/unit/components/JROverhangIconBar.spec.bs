@@ -1,0 +1,101 @@
+namespace tests
+
+  @suite("JROverhangIconBar - builds and lays out the cluster's icons")
+  class JROverhangIconBarTests extends tests.BaseTestSuite
+
+    private bar as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.bar = CreateObject("roSGNode", "JROverhangIconBar")
+    end function
+
+    protected override function afterEach()
+      m.bar = invalid
+      super.afterEach()
+    end function
+
+    private function entries() as object
+      return [
+        { id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", action: "openSearch" },
+        { id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png", action: "openSettings" }
+      ]
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("building")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("creates one JROverhangIcon per entry, named <id>Icon, laid out by iconBarNav")
+    function _()
+      m.bar.entries = m.entries()
+      search = m.bar.findNode("searchIcon")
+      settings = m.bar.findNode("settingsIcon")
+      m.assertNotInvalid(search)
+      m.assertNotInvalid(settings)
+      m.assertEqual(search.subtype(), "JROverhangIcon")
+      m.assertEqual(search.icon, "pkg:/images/icons/search_$$RES$$.png")
+      m.assertEqual(search.translation, [-9.0, 0.0])
+      m.assertEqual(settings.translation, [57.0, 0.0])
+      m.assertEqual(m.bar.barWidth, 126)
+    end function
+
+    @it("rebuilds on a new entry list and drops the old icons")
+    function _()
+      m.bar.entries = m.entries()
+      m.bar.entries = [{ id: "syncplay", icon: "pkg:/images/icons/search_$$RES$$.png" }]
+      m.assertInvalid(m.bar.findNode("searchIcon"))
+      m.assertNotInvalid(m.bar.findNode("syncplayIcon"))
+      m.assertEqual(m.bar.barWidth, 60)
+    end function
+
+    @it("is empty and 0 wide with no entries")
+    function _()
+      m.bar.entries = []
+      m.assertEqual(m.bar.barWidth, 0)
+      m.assertEqual(m.bar.getChildCount(), 0)
+    end function
+
+    @it("passes disabled through to the icon")
+    function _()
+      m.bar.entries = [{ id: "syncplay", icon: "pkg:/images/icons/search_$$RES$$.png", disabled: true }]
+      m.assertTrue(m.bar.findNode("syncplayIcon").isDisabled)
+    end function
+
+    @it("getIcon returns the child for an id and invalid for a stranger")
+    function _()
+      m.bar.entries = m.entries()
+      m.assertEqual(m.bar.callFunc("getIcon", "settings").id, "settingsIcon")
+      m.assertInvalid(m.bar.callFunc("getIcon", "syncplay"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a press")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports the entry's action, or its id without one")
+    function _()
+      m.bar.entries = m.entries()
+      m.bar.findNode("searchIcon").selectedAction = "search"
+      m.assertEqual(m.bar.selectedAction, "openSearch")
+      m.bar.entries = [{ id: "syncplay", icon: "pkg:/images/icons/search_$$RES$$.png" }]
+      m.bar.findNode("syncplayIcon").selectedAction = "syncplay"
+      m.assertEqual(m.bar.selectedAction, "syncplay")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("walking off an end")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports the edge a press left the bar by")
+    function _()
+      m.bar.entries = m.entries()
+      m.bar.findNode("searchIcon").requestFocusExit = "left"
+      m.assertEqual(m.bar.requestFocusExit, "left")
+      m.bar.findNode("settingsIcon").requestFocusExit = "right"
+      m.assertEqual(m.bar.requestFocusExit, "right")
+    end function
+
+  end class
+
+end namespace

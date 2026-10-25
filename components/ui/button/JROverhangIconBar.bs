@@ -1,0 +1,83 @@
+import "pkg:/source/utils/iconBarNav.bs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.icons = [] ' JROverhangIcon children, in entry order
+end sub
+
+' Rebuild the icons for the entries. Children are recreated rather than diffed: a bar
+' holds a handful of icons and its entries change on a screen change, not per frame.
+sub onEntriesChanged()
+  for each icon in m.icons
+    icon.unobserveField("selectedAction")
+    icon.unobserveField("requestFocusExit")
+    m.top.removeChild(icon)
+  end for
+  m.icons = []
+
+  entries = m.top.entries
+  if isValidAndNotEmpty(entries)
+    for i = 0 to entries.count() - 1
+      entry = entries[i]
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      icon.id = entry.id + "Icon"
+      icon.icon = entry.icon
+      icon.actionId = entry.id
+      icon.isDisabled = entry.disabled = true
+      icon.translation = [iconBarNav.iconX(i), 0]
+      icon.observeField("selectedAction", "onIconPressed")
+      icon.observeField("requestFocusExit", "onIconFocusExit")
+      m.top.appendChild(icon)
+      m.icons.push(icon)
+    end for
+  end if
+
+  m.top.barWidth = iconBarNav.barWidth(m.icons.count())
+end sub
+
+function indexOfIcon(node as object) as integer
+  for i = 0 to m.icons.count() - 1
+    if m.icons[i].isSameNode(node) then return i
+  end for
+  return -1
+end function
+
+sub onIconPressed(msg as object)
+  i = indexOfIcon(msg.getRoSGNode())
+  if i < 0 then return
+  entry = m.top.entries[i]
+  action = entry.id
+  if isValidAndNotEmpty(entry.action) then action = entry.action
+  m.top.selectedAction = action
+end sub
+
+' Left or Right inside the row moves to the neighbor; at an end it leaves the bar.
+sub onIconFocusExit(msg as object)
+  node = msg.getRoSGNode()
+  i = indexOfIcon(node)
+  if i < 0 then return
+  target = iconBarNav.move(i, m.icons.count(), node.requestFocusExit)
+  if target.index >= 0
+    m.icons[target.index].setFocus(true)
+  else
+    m.top.requestFocusExit = target.exit
+  end if
+end sub
+
+function getIcon(id as string) as object
+  i = iconBarNav.indexOf(m.top.entries, id)
+  if i < 0 then return invalid
+  return m.icons[i]
+end function
+
+' Focus the first icon ("left") or the last ("right"): the overhang hands focus to the
+' end nearest the element the press came from. Returns false on an empty bar.
+function focusEdge(edge as string) as boolean
+  if m.icons.count() = 0 then return false
+  if edge = "right"
+    m.icons[m.icons.count() - 1].setFocus(true)
+  else
+    m.icons[0].setFocus(true)
+  end if
+  return true
+end function

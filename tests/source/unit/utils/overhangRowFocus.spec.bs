@@ -1,0 +1,82 @@
+namespace tests
+
+  ' overhangRow.nextFocus: Left and Right walk the row's shown elements in order and wrap at
+  ' both ends. Home shows all three; a screen with only a title shows the dropdown, the
+  ' cluster or neither, which is where a hand-written chain of ifs went untested.
+  @suite("overhangRow.nextFocus - where Left and Right take focus in the overhang row")
+  class OverhangRowFocusTests extends tests.BaseTestSuite
+
+    private function shown(tabs as boolean, dropdown as boolean, cluster as boolean) as object
+      return { tabs: tabs, dropdown: dropdown, cluster: cluster }
+    end function
+
+    private function assertMove(shown as object, from as string, direction as string, element as string, edge as string)
+      target = overhangRow.nextFocus(shown, from, direction)
+      m.assertEqual(target.element + " " + target.edge, element + " " + edge, from + " " + direction)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("all three shown (Home)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("walks right along the row and wraps to the first tab")
+    function _()
+      all = m.shown(true, true, true)
+      m.assertMove(all, "tabs", "right", "dropdown", "first")
+      m.assertMove(all, "dropdown", "right", "cluster", "first")
+      m.assertMove(all, "cluster", "right", "tabs", "first")
+    end function
+
+    @it("walks left along the row and wraps to the cluster's last icon")
+    function _()
+      all = m.shown(true, true, true)
+      m.assertMove(all, "cluster", "left", "dropdown", "last")
+      m.assertMove(all, "dropdown", "left", "tabs", "last")
+      m.assertMove(all, "tabs", "left", "cluster", "last")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an element missing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("skips a hidden dropdown")
+    function _()
+      noDropdown = m.shown(true, false, true)
+      m.assertMove(noDropdown, "tabs", "right", "cluster", "first")
+      m.assertMove(noDropdown, "cluster", "left", "tabs", "last")
+      m.assertMove(noDropdown, "cluster", "right", "tabs", "first")
+      m.assertMove(noDropdown, "tabs", "left", "cluster", "last")
+    end function
+
+    @it("walks a screen with no tabs between the dropdown and the cluster")
+    function _()
+      noTabs = m.shown(false, true, true)
+      m.assertMove(noTabs, "dropdown", "right", "cluster", "first")
+      m.assertMove(noTabs, "cluster", "right", "dropdown", "first")
+      m.assertMove(noTabs, "dropdown", "left", "cluster", "last")
+      m.assertMove(noTabs, "cluster", "left", "dropdown", "last")
+    end function
+
+    @it("wraps a lone element onto itself, at the end the press points to")
+    function _()
+      m.assertMove(m.shown(false, false, true), "cluster", "right", "cluster", "first")
+      m.assertMove(m.shown(false, false, true), "cluster", "left", "cluster", "last")
+      m.assertMove(m.shown(true, false, false), "tabs", "right", "tabs", "first")
+      m.assertMove(m.shown(true, false, false), "tabs", "left", "tabs", "last")
+      m.assertMove(m.shown(false, true, false), "dropdown", "left", "dropdown", "last")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nothing to do")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("goes nowhere from an element that is not shown, or on another key")
+    function _()
+      m.assertMove(m.shown(true, false, true), "dropdown", "right", "", "")
+      m.assertMove(m.shown(true, true, true), "tabs", "up", "", "")
+      m.assertMove(m.shown(true, true, true), "tabs", "", "", "")
+    end function
+
+  end class
+
+end namespace

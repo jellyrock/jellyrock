@@ -41,10 +41,10 @@ sub init()
   ' Only toggle active on screen show/hide.
   initVoiceBox()
 
-  ' Tab configuration
+  ' Tab configuration: a glyph beside each title, outlined until the tab is selected
   m.top.overhangTabs = [
-    { title: translate(translationKeys.LabelHome), id: "home" },
-    { title: translate(translationKeys.LabelFavorites), id: "favorites" }
+    { title: translate(translationKeys.LabelHome), id: "home", icon: "pkg:/images/icons/home_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/home_$$RES$$.png" },
+    { title: translate(translationKeys.LabelFavorites), id: "favorites", icon: "pkg:/images/icons/heart_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/heart_$$RES$$.png" }
   ]
   m.top.selectedTabId = "home"
   m.top.observeField("selectedTabId", "onTabChanged")
@@ -187,13 +187,13 @@ sub onScreenShown()
     if not isValid(m.searchIcon)
       overhang.observeField("iconAction", "onOverhangIconAction")
 
-      searchIcon = overhang.callFunc("getSearchIcon")
+      searchIcon = overhang.callFunc("getIcon", "search")
       if isValid(searchIcon)
         m.searchIcon = searchIcon
         m.searchIcon.observeField("requestFocusReturn", "onIconFocusReturn")
       end if
 
-      settingsIcon = overhang.callFunc("getSettingsIcon")
+      settingsIcon = overhang.callFunc("getIcon", "settings")
       if isValid(settingsIcon)
         m.settingsIcon = settingsIcon
         m.settingsIcon.observeField("requestFocusReturn", "onIconFocusReturn")

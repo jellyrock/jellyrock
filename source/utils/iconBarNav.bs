@@ -1,0 +1,48 @@
+import "pkg:/source/utils/overhangRow.bs"
+
+' The geometry and the key rules of an overhang icon bar, kept pure so a Rooibos spec can
+' drive them without a node. JROverhangIconBar applies them to its JROverhangIcon children.
+namespace iconBarNav
+  ' The row is laid out by the glyphs' slots, not by the focus boxes: a slot is the glyph
+  ' with the box padding at each side, slots sit ELEMENT_GAP apart, and the square focus box
+  ' overhangs its slot on every side, so boxes overlap their invisible neighbors and nothing
+  ' moves at rest.
+  const SLOT_SIZE = overhangRow.SLOT_SIZE
+  const SLOT_GAP = overhangRow.ELEMENT_GAP
+  const BOX_OVERHANG = (overhangRow.ICON_BOX - overhangRow.SLOT_SIZE) \ 2
+
+  ' The x of the icon node at `index` inside its bar: its slot's x, less the box overhang.
+  function iconX(index as integer) as integer
+    return index * (SLOT_SIZE + SLOT_GAP) - BOX_OVERHANG
+  end function
+
+  ' The width the slots of `count` icons take; 0 for an empty bar.
+  function barWidth(count as integer) as integer
+    if count <= 0 then return 0
+    return count * SLOT_SIZE + (count - 1) * SLOT_GAP
+  end function
+
+  ' Where a left or right press from the icon at `index` goes: the neighbor's index, or
+  ' `exit` naming the edge the press left the bar by. The bar stops at its ends; the
+  ' overhang decides what sits beyond them.
+  function move(index as integer, count as integer, direction as string) as object
+    if direction = "left"
+      if index <= 0 then return { index: -1, exit: "left" }
+      return { index: index - 1, exit: "" }
+    end if
+    if direction = "right"
+      if index >= count - 1 then return { index: -1, exit: "right" }
+      return { index: index + 1, exit: "" }
+    end if
+    return { index: index, exit: "" }
+  end function
+
+  ' The index of the entry with `id`, or -1.
+  function indexOf(entries as object, id as string) as integer
+    if not isValid(entries) then return -1
+    for i = 0 to entries.count() - 1
+      if entries[i].id = id then return i
+    end for
+    return -1
+  end function
+end namespace

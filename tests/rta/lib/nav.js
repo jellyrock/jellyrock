@@ -55,9 +55,10 @@ import {
  *
  * Two preconditions, in order. Home's active list must be resting on row 0, or Up does not
  * leave Home at all (`walkHomeToFirstRow`). Only then does Up move focus into the overhang,
- * whose focus chain is TabBar -> Search -> Settings (left to right, see JROverhang.bs) with
- * a variable tab count, so we walk Right until the icon is focused. The action is guarded to
- * only press while not yet on the icon, so it can't overshoot onto the user dropdown.
+ * whose focus chain is tab bar -> user dropdown -> Search -> Settings (left to right, see
+ * overhangRow.nextFocus), so we walk Right until the icon is focused. The action is guarded to
+ * press only while not yet on the icon. The row wraps at its ends, so that guard is what keeps
+ * the walk from overshooting.
  */
 async function focusOverhangIcon(iconId) {
   await waitHome();
