@@ -1,0 +1,130 @@
+import "pkg:/source/utils/iconBarNav.bs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.marker = m.top.findNode("selectedMarker")
+  m.marker.color = m.global.constants.colorPrimary
+  m.icons = [] ' JROverhangIcon children, in entry order
+end sub
+
+' Rebuild the icons for the entries. Children are recreated rather than diffed: a bar
+' holds a handful of icons and its entries change on a screen change, not per frame.
+sub onEntriesChanged()
+  for each icon in m.icons
+    icon.unobserveField("selectedAction")
+    icon.unobserveField("requestFocusExit")
+    icon.unobserveField("requestFocusReturn")
+    m.top.removeChild(icon)
+  end for
+  m.icons = []
+
+  entries = m.top.entries
+  if isValidAndNotEmpty(entries)
+    for i = 0 to entries.count() - 1
+      entry = entries[i]
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      icon.id = entry.id + "Icon"
+      icon.actionId = entry.id
+      icon.isDisabled = entry.disabled = true
+      icon.translation = [iconBarNav.iconX(i), 0]
+      icon.observeField("selectedAction", "onIconPressed")
+      icon.observeField("requestFocusExit", "onIconFocusExit")
+      icon.observeField("requestFocusReturn", "onIconFocusReturn")
+      m.top.appendChild(icon)
+      m.icons.push(icon)
+    end for
+  end if
+
+  m.top.barWidth = iconBarNav.barWidth(m.icons.count())
+  applySelection()
+end sub
+
+sub onSelectedIdChanged()
+  applySelection()
+end sub
+
+' Draw each icon's glyph for its selected state and move the marker under the selected one.
+sub applySelection()
+  entries = m.top.entries
+  selectedIndex = -1
+  if isValidAndNotEmpty(entries)
+    for i = 0 to m.icons.count() - 1
+      entry = entries[i]
+      isSelected = m.top.isSelectable and entry.id = m.top.selectedId
+      uri = entry.icon
+      if isSelected and isValidAndNotEmpty(entry.selectedIcon) then uri = entry.selectedIcon
+      m.icons[i].icon = uri
+      if isSelected then selectedIndex = i
+    end for
+  end if
+
+  if selectedIndex >= 0
+    ' Centered under the glyph: the icon's poster sits 12 px in (OVERHANG_ICON_PADDING).
+    m.marker.translation = [iconBarNav.iconX(selectedIndex) + 12, iconBarNav.ICON_SIZE + 2]
+    m.marker.visible = true
+  else
+    m.marker.visible = false
+  end if
+end sub
+
+function indexOfIcon(node as object) as integer
+  for i = 0 to m.icons.count() - 1
+    if m.icons[i].isSameNode(node) then return i
+  end for
+  return -1
+end function
+
+sub onIconPressed(msg as object)
+  node = msg.getRoSGNode()
+  i = indexOfIcon(node)
+  if i < 0 then return
+  entry = m.top.entries[i]
+  if m.top.isSelectable then m.top.selectedId = entry.id
+  action = entry.id
+  if isValidAndNotEmpty(entry.action) then action = entry.action
+  m.top.selectedAction = action
+end sub
+
+' Left or Right inside the row moves to the neighbor; at an end it leaves the bar.
+sub onIconFocusExit(msg as object)
+  node = msg.getRoSGNode()
+  i = indexOfIcon(node)
+  if i < 0 then return
+  target = iconBarNav.move(i, m.icons.count(), node.requestFocusExit)
+  if target.index >= 0
+    m.icons[target.index].setFocus(true)
+  else
+    m.top.requestFocusExit = target.exit
+  end if
+end sub
+
+sub onIconFocusReturn()
+  m.top.requestFocusReturn = true
+end sub
+
+function getIcon(id as string) as object
+  i = iconBarNav.indexOf(m.top.entries, id)
+  if i < 0 then return invalid
+  return m.icons[i]
+end function
+
+' Focus the first icon ("left") or the last ("right"): the overhang hands focus to the
+' end nearest the element the press came from. Returns false on an empty bar.
+function focusEdge(edge as string) as boolean
+  if m.icons.count() = 0 then return false
+  if edge = "right"
+    m.icons[m.icons.count() - 1].setFocus(true)
+  else
+    m.icons[0].setFocus(true)
+  end if
+  return true
+end function
+
+' Focus the selected icon, else the first. Returns false on an empty bar.
+function focusSelected() as boolean
+  if m.icons.count() = 0 then return false
+  i = iconBarNav.indexOf(m.top.entries, m.top.selectedId)
+  if i < 0 then i = 0
+  m.icons[i].setFocus(true)
+  return true
+end function

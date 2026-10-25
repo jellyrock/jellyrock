@@ -32,6 +32,7 @@ Pass `--filled` to `npm run icons:add` (or store an `_filled.svg` variant) only 
 | 5 | Rating glyph | Inline rating display | `star`: filled is the industry standard for ratings |
 | 6 | Playback action button | Composes the filled `play` | `resume` (an arc plus the play triangle), to match the standalone `play` |
 | 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `favorite_selected` (the on-state in the `ItemGridOptions` favorite menu: outlined geometry, marked by a hard-coded red) |
+| 8 | Selected view in the overhang's view strip | The strip draws a view outlined while not selected and filled while selected, so the selected view reads without color (JellyRock's choice, 2026-10-25) | `home` (with `home_outline`), `heart` (with `heart_outline`) |
 
 **Choosing the fill for a new icon:**
 
@@ -42,6 +43,7 @@ Does it represent a person OR a content-type subject?              → --filled 
 Does it live in images/placeholders/ (item-type representation)?   → --filled (Rule 4)
 Is it a star used for ratings?                                     → --filled (Rule 5)
 Does it visually compose `play` for a playback action?             → --filled (Rule 6)
+Is it the selected state of a view in the overhang strip?          → --filled (Rule 8)
 Is it the on-state of a toggle paired with an outlined off-state?  → --filled (Rule 7)
 Otherwise:                                                         → outlined (default)
 ```
@@ -211,3 +213,6 @@ this table automatically.
 | `versions.svg` | `content_copy` | Rounded | 500 | 0 | `24px` | 2026-09-20 |
 | `speed.svg` | `speed` | Rounded | 500 | 0 | `24px` | 2026-10-23 |
 | `hd.svg` | `hd` | Rounded | 500 | 0 | `24px` | 2026-10-23 |
+| `home.svg` | `home` | Rounded | 500 | 1 | `24px` | 2026-10-25 |
+| `home_outline.svg` | `home` | Rounded | 500 | 0 | `24px` | 2026-10-25 |
+| `heart_outline.svg` | `favorite` | Rounded | 500 | 0 | `24px` | 2026-10-25 |

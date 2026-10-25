@@ -1,0 +1,41 @@
+' The geometry and the key rules of an overhang icon bar, kept pure so a Rooibos spec can
+' drive them without a node. JROverhangIconBar applies them to its JROverhangIcon children.
+namespace iconBarNav
+  const ICON_SIZE = 66 ' Must match OVERHANG_ICON_SIZE in JROverhangIcon.bs
+  const ICON_GAP = 24
+
+  ' The x of the icon at `index` inside its bar.
+  function iconX(index as integer) as integer
+    return index * (ICON_SIZE + ICON_GAP)
+  end function
+
+  ' The width a bar of `count` icons takes; 0 for an empty bar.
+  function barWidth(count as integer) as integer
+    if count <= 0 then return 0
+    return count * ICON_SIZE + (count - 1) * ICON_GAP
+  end function
+
+  ' Where a left or right press from the icon at `index` goes: the neighbor's index, or
+  ' `exit` naming the edge the press left the bar by. The bar stops at its ends; the
+  ' overhang decides what sits beyond them.
+  function move(index as integer, count as integer, direction as string) as object
+    if direction = "left"
+      if index <= 0 then return { index: -1, exit: "left" }
+      return { index: index - 1, exit: "" }
+    end if
+    if direction = "right"
+      if index >= count - 1 then return { index: -1, exit: "right" }
+      return { index: index + 1, exit: "" }
+    end if
+    return { index: index, exit: "" }
+  end function
+
+  ' The index of the entry with `id`, or -1.
+  function indexOf(entries as object, id as string) as integer
+    if not isValid(entries) then return -1
+    for i = 0 to entries.count() - 1
+      if entries[i].id = id then return i
+    end for
+    return -1
+  end function
+end namespace

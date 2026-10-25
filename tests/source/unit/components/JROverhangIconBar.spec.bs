@@ -1,0 +1,148 @@
+namespace tests
+
+  @suite("JROverhangIconBar - builds, lays out and selects its icons")
+  class JROverhangIconBarTests extends tests.BaseTestSuite
+
+    private bar as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.bar = CreateObject("roSGNode", "JROverhangIconBar")
+    end function
+
+    protected override function afterEach()
+      m.bar = invalid
+      super.afterEach()
+    end function
+
+    private function entries() as object
+      return [
+        { id: "home", icon: "pkg:/images/icons/home_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/home_$$RES$$.png" },
+        { id: "favorites", icon: "pkg:/images/icons/heart_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/heart_$$RES$$.png" }
+      ]
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("building")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("creates one JROverhangIcon per entry, named <id>Icon, laid out by iconBarNav")
+    function _()
+      m.bar.entries = m.entries()
+      home = m.bar.findNode("homeIcon")
+      favorites = m.bar.findNode("favoritesIcon")
+      m.assertNotInvalid(home)
+      m.assertNotInvalid(favorites)
+      m.assertEqual(home.subtype(), "JROverhangIcon")
+      m.assertEqual(home.translation, [0.0, 0.0])
+      m.assertEqual(favorites.translation, [90.0, 0.0])
+      m.assertEqual(m.bar.barWidth, 156)
+    end function
+
+    @it("rebuilds on a new entry list and drops the old icons")
+    function _()
+      m.bar.entries = m.entries()
+      m.bar.entries = [{ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", action: "openSearch" }]
+      m.assertInvalid(m.bar.findNode("homeIcon"))
+      m.assertNotInvalid(m.bar.findNode("searchIcon"))
+      m.assertEqual(m.bar.barWidth, 66)
+    end function
+
+    @it("is empty and 0 wide with no entries")
+    function _()
+      m.bar.entries = []
+      m.assertEqual(m.bar.barWidth, 0)
+      m.assertFalse(m.bar.findNode("selectedMarker").visible)
+    end function
+
+    @it("passes disabled through to the icon")
+    function _()
+      m.bar.entries = [{ id: "syncplay", icon: "pkg:/images/icons/groups_$$RES$$.png", disabled: true }]
+      m.assertTrue(m.bar.findNode("syncplayIcon").isDisabled)
+    end function
+
+    @it("getIcon returns the child for an id and invalid for a stranger")
+    function _()
+      m.bar.entries = m.entries()
+      m.assertEqual(m.bar.callFunc("getIcon", "favorites").id, "favoritesIcon")
+      m.assertInvalid(m.bar.callFunc("getIcon", "search"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("selection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("draws the selected entry's filled glyph and the marker under it")
+    function _()
+      m.bar.isSelectable = true
+      m.bar.entries = m.entries()
+      m.bar.selectedId = "favorites"
+      m.assertEqual(m.bar.findNode("favoritesIcon").icon, "pkg:/images/icons/heart_$$RES$$.png")
+      m.assertEqual(m.bar.findNode("homeIcon").icon, "pkg:/images/icons/home_outline_$$RES$$.png")
+      marker = m.bar.findNode("selectedMarker")
+      m.assertTrue(marker.visible)
+      m.assertEqual(marker.translation, [102.0, 68.0])
+    end function
+
+    @it("keeps a selection made before the entries arrive")
+    function _()
+      m.bar.isSelectable = true
+      m.bar.selectedId = "home"
+      m.bar.entries = m.entries()
+      m.assertEqual(m.bar.findNode("homeIcon").icon, "pkg:/images/icons/home_$$RES$$.png")
+      m.assertTrue(m.bar.findNode("selectedMarker").visible)
+    end function
+
+    @it("never marks an entry on a bar that is not selectable")
+    function _()
+      m.bar.entries = m.entries()
+      m.bar.selectedId = "home"
+      m.assertEqual(m.bar.findNode("homeIcon").icon, "pkg:/images/icons/home_outline_$$RES$$.png")
+      m.assertFalse(m.bar.findNode("selectedMarker").visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a press")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("selects the pressed entry on a selectable bar and reports its id")
+    function _()
+      m.bar.isSelectable = true
+      m.bar.entries = m.entries()
+      m.bar.selectedId = "home"
+      m.bar.findNode("favoritesIcon").selectedAction = "favorites"
+      m.assertEqual(m.bar.selectedId, "favorites")
+      m.assertEqual(m.bar.selectedAction, "favorites")
+    end function
+
+    @it("reports the entry's action without selecting on a cluster")
+    function _()
+      m.bar.entries = [{ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", action: "openSearch" }]
+      m.bar.findNode("searchIcon").selectedAction = "search"
+      m.assertEqual(m.bar.selectedAction, "openSearch")
+      m.assertEqual(m.bar.selectedId, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("walking off an end")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports the edge a press left the bar by")
+    function _()
+      m.bar.entries = m.entries()
+      m.bar.findNode("homeIcon").requestFocusExit = "left"
+      m.assertEqual(m.bar.requestFocusExit, "left")
+      m.bar.findNode("favoritesIcon").requestFocusExit = "right"
+      m.assertEqual(m.bar.requestFocusExit, "right")
+    end function
+
+    @it("proxies Down as a focus return")
+    function _()
+      m.bar.entries = m.entries()
+      m.bar.findNode("homeIcon").requestFocusReturn = true
+      m.assertTrue(m.bar.requestFocusReturn)
+    end function
+
+  end class
+
+end namespace

@@ -1,0 +1,71 @@
+namespace tests
+
+  @suite("iconBarNav - overhang icon bar geometry and key rules")
+  class IconBarNavTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("geometry")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("places icons one size plus one gap apart")
+    function _()
+      m.assertEqual(iconBarNav.iconX(0), 0)
+      m.assertEqual(iconBarNav.iconX(1), 90)
+      m.assertEqual(iconBarNav.iconX(3), 270)
+    end function
+
+    @it("measures a bar as its icons plus the gaps between them")
+    function _()
+      m.assertEqual(iconBarNav.barWidth(0), 0)
+      m.assertEqual(iconBarNav.barWidth(1), 66)
+      m.assertEqual(iconBarNav.barWidth(2), 156)
+      m.assertEqual(iconBarNav.barWidth(3), 246)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("move")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("moves to the neighbor inside the bar")
+    function _()
+      m.assertEqual(iconBarNav.move(1, 3, "right").index, 2)
+      m.assertEqual(iconBarNav.move(1, 3, "left").index, 0)
+      m.assertEqual(iconBarNav.move(1, 3, "right").exit, "")
+    end function
+
+    @it("exits by the edge the press left")
+    function _()
+      left = iconBarNav.move(0, 3, "left")
+      m.assertEqual(left.index, -1)
+      m.assertEqual(left.exit, "left")
+      right = iconBarNav.move(2, 3, "right")
+      m.assertEqual(right.index, -1)
+      m.assertEqual(right.exit, "right")
+    end function
+
+    @it("exits both ways from a bar of one")
+    function _()
+      m.assertEqual(iconBarNav.move(0, 1, "left").exit, "left")
+      m.assertEqual(iconBarNav.move(0, 1, "right").exit, "right")
+    end function
+
+    @it("ignores a direction it does not know")
+    function _()
+      m.assertEqual(iconBarNav.move(1, 3, "up").index, 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("indexOf")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds an entry by id and reports a missing one as -1")
+    function _()
+      entries = [{ id: "home" }, { id: "favorites" }]
+      m.assertEqual(iconBarNav.indexOf(entries, "favorites"), 1)
+      m.assertEqual(iconBarNav.indexOf(entries, "search"), -1)
+      m.assertEqual(iconBarNav.indexOf(invalid, "home"), -1)
+    end function
+
+  end class
+
+end namespace

@@ -37,7 +37,13 @@ sub onIconChanged()
   m.buttonIcon.uri = m.top.icon
 end sub
 
-' Toggle visual state between unfocused (transparent) and focused (backdrop + border)
+sub onIsDisabledChanged()
+  onFocusChanged()
+end sub
+
+' Toggle visual state between unfocused (transparent) and focused (backdrop + border).
+' A disabled icon keeps the error color in both states, so the reason it does nothing
+' is visible before the press.
 sub onFocusChanged()
   constants = m.global.constants
   if m.top.hasFocus()
@@ -51,6 +57,7 @@ sub onFocusChanged()
     m.buttonBorder.visible = false
     m.buttonIcon.blendColor = constants.colorTextSecondary
   end if
+  if m.top.isDisabled then m.buttonIcon.blendColor = constants.colorError
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

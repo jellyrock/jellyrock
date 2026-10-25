@@ -641,8 +641,11 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
     node: { subtype: 'HomeRows', id: 'homeRows', rowItemFocused: [0, 2] },
     keyPath: '#routerOutlet.#viewTarget.#abc.#homeRows',
   };
-  // `JROverhang.onTabsChanged` appends its JRTabBar with `CreateObject` and sets no id.
-  const onTabBar = { node: { subtype: 'JRTabBar', id: '' }, keyPath: '#overhang.2' };
+  // The view strip is a bar of icons the overhang creates with `CreateObject`.
+  const onTabBar = {
+    node: { subtype: 'JROverhangIconBar', id: 'viewStrip' },
+    keyPath: '#overhang.#viewStrip',
+  };
 
   it('sends nothing once the icon has focus', () => {
     expect(overhangWalkKey(onIcon, 'settingsIcon')).toBeNull();
@@ -830,7 +833,7 @@ describe('waitFocusInHomeContent — Home focus, asked by subtype', () => {
     // being true when the other tab is selected.
     getFocusedNode.mockResolvedValue({
       keyPath: 'a.#homeRows.b',
-      node: { subtype: 'JRTabBar' },
+      node: { subtype: 'JROverhangIconBar' },
     });
     await expect(waitFocusInHomeContent({ timeout: 1 })).rejects.toThrow(/focus inside Home/);
   });

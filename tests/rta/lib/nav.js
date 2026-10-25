@@ -55,9 +55,9 @@ import {
  *
  * Two preconditions, in order. Home's active list must be resting on row 0, or Up does not
  * leave Home at all (`walkHomeToFirstRow`). Only then does Up move focus into the overhang,
- * whose focus chain is TabBar -> Search -> Settings (left to right, see JROverhang.bs) with
- * a variable tab count, so we walk Right until the icon is focused. The action is guarded to
- * only press while not yet on the icon, so it can't overshoot onto the user dropdown.
+ * whose focus chain is view strip -> user dropdown -> Search -> Settings (left to right, see
+ * JROverhang.bs), so we walk Right until the icon is focused. The action is guarded to only
+ * press while not yet on the icon, and the row stops at its ends, so it cannot overshoot.
  */
 async function focusOverhangIcon(iconId) {
   await waitHome();
@@ -107,61 +107,51 @@ async function focusOverhangIcon(iconId) {
 }
 
 /**
- * From Home, select the tab with id `tabId` (`'home'` or `'favorites'`) in the overhang's tab
- * bar, and wait until that tab's row list is in the scene with focus inside it.
+ * From Home, select the view with id `tabId` (`'home'` or `'favorites'`) in the overhang's
+ * view strip, and wait until that view's row list is in the scene with focus inside it.
  *
- * Selecting a tab DESTROYS the outgoing list and builds the incoming one
+ * Selecting a view DESTROYS the outgoing list and builds the incoming one
  * (`Home.onTabChanged`), so selecting Home from Favorites mounts a fresh `HomeRows` that runs
  * Home's FIRST load again. That is what makes this the way to drive a first-load failure: the
  * request-failure rules live in app memory, so they can only be set after the launch whose own
  * first load has already run.
  *
- * Three steps, each gated on where focus actually is:
+ * Two steps, each gated on where focus actually is:
  *
- * 1. Into the tab bar. Up leaves Home only from row 0 (`walkHomeToFirstRow`), and it lands on
- *    the overhang element used last, which can be an icon to the tab bar's right, so the key is
- *    chosen from the focused node: Up while still in Home's rows, Left from anywhere else in the
- *    overhang.
- * 2. Onto the tab. The bar keeps its focused index internally (its `focusedTabIndex` field is
- *    input-only), so the index is read off the tabs' own `isFocused`. The walk re-reads after
- *    every press and presses at most once per tick; the bar updates `isFocused` inside its key
- *    handler, with no animation between, so a read never lags a press it follows.
- * 3. OK, then the incoming list in the scene and focus inside it (`onTabChanged` focuses it).
+ * 1. Onto the view's icon (`<id>Icon`, a `JROverhangIcon` in `#overhang.#viewStrip`). Up
+ *    leaves Home only from row 0 (`walkHomeToFirstRow`), and it lands on the overhang element
+ *    used last, which can be the dropdown or a cluster icon to the strip's right, so the key is
+ *    chosen from the focused node: Up while still in Home's rows, Left from anything outside
+ *    the strip, and inside the strip the direction of the target (the strip's `entries` give
+ *    the order). The walk re-reads after every press and presses at most once per tick.
+ * 2. OK, then the incoming list in the scene and focus inside it (`onTabChanged` focuses it).
  */
 export async function selectHomeTab(tabId) {
   const wantSubtype = tabId === 'favorites' ? 'FavoritesRows' : 'HomeRows';
+  const iconId = `${tabId}Icon`;
   await waitHome();
   await walkHomeToFirstRow();
 
-  const bar = await waitFocused((f) => f?.node?.subtype === 'JRTabBar', {
-    timeout: 10000,
+  const entries = await getVal('#overhang.#viewStrip.entries');
+  const ids = Array.isArray(entries) ? entries.map((e) => e.id) : [];
+  const target = ids.indexOf(tabId);
+  // eslint-disable-next-line no-restricted-syntax -- a fail-fast naming its cause, not a timeout
+  if (target < 0)
+    throw new Error(`view strip has no "${tabId}" view (entries=${JSON.stringify(entries)})`);
+
+  await waitFocused((f) => f?.node?.id === iconId, {
+    timeout: 15000,
     interval: 400,
     action: async () => {
       const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      if (!f?.node || f.node.subtype === 'JRTabBar') return;
-      await press(focusIsInHomeContent(f) ? ecp.Key.Up : ecp.Key.Left);
+      if (!f?.node || f.node.id === iconId) return;
+      if (focusIsInHomeContent(f)) return press(ecp.Key.Up);
+      const inStrip = typeof f.keyPath === 'string' && f.keyPath.includes('#viewStrip');
+      const at = inStrip ? ids.indexOf(String(f.node.id ?? '').replace(/Icon$/, '')) : -1;
+      if (at < 0) return press(ecp.Key.Left); // outside the strip: it is to the strip's right
+      await press(at < target ? ecp.Key.Right : ecp.Key.Left);
     },
-    label: 'overhang tab bar focused',
-  });
-
-  const tabs = await getVal(`${bar.keyPath}.tabs`);
-  const target = Array.isArray(tabs) ? tabs.findIndex((t) => t.id === tabId) : -1;
-  // eslint-disable-next-line no-restricted-syntax -- a fail-fast naming its cause, not a timeout
-  if (target < 0) throw new Error(`tab bar has no "${tabId}" tab (tabs=${JSON.stringify(tabs)})`);
-  const focusedTab = async () => {
-    const flags = await getVals(tabs.map((_, i) => `${bar.keyPath}.#tabContainer.${i}.isFocused`));
-    return flags.indexOf(true);
-  };
-  await waitFor('focusedTab()', (i) => i === target, {
-    read: focusedTab,
-    action: async () => {
-      const i = await focusedTab();
-      if (i < 0 || i === target) return;
-      await press(i < target ? ecp.Key.Right : ecp.Key.Left);
-    },
-    timeout: 8000,
-    interval: 400,
-    label: `tab "${tabId}" focused`,
+    label: `view "${tabId}" focused`,
   });
 
   await press(ecp.Key.Ok);
@@ -172,7 +162,7 @@ export async function selectHomeTab(tabId) {
     },
     timeout: 10000,
     interval: 300,
-    label: `${wantSubtype} in the scene after selecting the "${tabId}" tab`,
+    label: `${wantSubtype} in the scene after selecting the "${tabId}" view`,
   });
   await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
 }

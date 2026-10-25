@@ -3,7 +3,20 @@ import "pkg:/source/api/imageHelpers.bs"
 import "pkg:/source/enums/HomeAction.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+
+const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: logo, or the strip without one
+const STRIP_X_WITH_LOGO = 360 ' The strip (or the title) starts here when the logo shows
+const OVERHANG_RIGHT = 1824 ' The 5% action-safe right edge: the clock's right edge
+' The clock's slot. Limit with headroom: "8:48" measured 99 px wide at 1080p on a Stick 4K
+' (2026-10-25); four digits and the separator stay under this.
+const CLOCK_SLOT = 150
+const ELEMENT_GAP = 24 ' Between strip, title, dropdown and cluster
+const OVERHANG_BASELINE = 54 ' The row's text baseline; buttons sit padding above it
+const TITLE_Y = 51
+const TITLE_MIN_WIDTH = 120 ' The title keeps at least this, whatever the dropdown's width
+const DROPDOWN_PROVISIONAL_WIDTH = 200 ' Until the trigger reports its width
 
 sub init()
   m.top.id = "overhang"
@@ -20,36 +33,34 @@ sub init()
   m.userDropdown.menuWidth = 300
   m.userDropdown.visible = false ' hidden until user logs in
   m.top.appendChild(m.userDropdown)
+  m.rowY = OVERHANG_BASELINE - m.userDropdown.padding ' icons and the dropdown share this top edge
 
-  ' Reposition dropdown when trigger button width changes (for example, username change while clock is hidden)
-  m.userDropdown.observeField("triggerWidth", "onDropdownTriggerWidthChanged")
+  ' Reposition everything when the trigger button width changes (a username change, say)
+  m.userDropdown.observeField("triggerWidth", "onLayoutInputChanged")
+  m.userDropdown.observeField("requestFocusExit", "onUserDropdownFocusExit")
 
-  ' Create overhang icon buttons (search and settings shortcuts)
-  m.searchIcon = CreateObject("roSGNode", "JROverhangIcon")
-  m.searchIcon.id = "searchIcon"
-  m.searchIcon.icon = "pkg:/images/icons/search_$$RES$$.png"
-  m.searchIcon.actionId = HomeAction.OPEN_SEARCH
-  m.searchIcon.visible = false
-  m.top.appendChild(m.searchIcon)
+  ' The view strip: the active screen's views, one selected (Home: Home, Favorites)
+  m.viewStrip = CreateObject("roSGNode", "JROverhangIconBar")
+  m.viewStrip.id = "viewStrip"
+  m.viewStrip.isSelectable = true
+  m.viewStrip.visible = false
+  m.viewStrip.observeField("selectedId", "onStripSelectionChanged")
+  m.viewStrip.observeField("requestFocusExit", "onStripFocusExit")
+  m.top.appendChild(m.viewStrip)
 
-  m.settingsIcon = CreateObject("roSGNode", "JROverhangIcon")
-  m.settingsIcon.id = "settingsIcon"
-  m.settingsIcon.icon = "pkg:/images/icons/settings_$$RES$$.png"
-  m.settingsIcon.actionId = HomeAction.OPEN_SETTINGS
-  m.settingsIcon.visible = false
-  m.top.appendChild(m.settingsIcon)
+  ' The fixed cluster: the same icons on every screen that shows it
+  m.cluster = CreateObject("roSGNode", "JROverhangIconBar")
+  m.cluster.id = "cluster"
+  m.cluster.entries = [
+    { id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", action: HomeAction.OPEN_SEARCH },
+    { id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png", action: HomeAction.OPEN_SETTINGS }
+  ]
+  m.cluster.visible = false
+  m.cluster.observeField("selectedAction", "onIconAction")
+  m.cluster.observeField("requestFocusExit", "onClusterFocusExit")
+  m.top.appendChild(m.cluster)
 
-  ' Observe icon actions: proxy to overhang-level iconAction field
-  m.searchIcon.observeField("selectedAction", "onIconAction")
-  m.settingsIcon.observeField("selectedAction", "onIconAction")
-
-  ' Observe icon focus exit signals for focus bridging
-  m.searchIcon.observeField("requestFocusExit", "onSearchIconRequestsFocusExit")
-  m.settingsIcon.observeField("requestFocusExit", "onSettingsIconRequestsFocusExit")
-
-  ' Position dropdown so trigger text aligns vertically with overhang title/tabs.
-  ' The trigger button has 30px padding, so offset the dropdown upward to compensate.
-  positionUserDropdown()
+  layout()
 
   ' Create animations programmatically to avoid interpolator field reference issues
   createSlideAnimations()
@@ -143,25 +154,19 @@ sub onCurrentUserChanged()
     ]
   end if
 
-  ' Refresh icon visibility: depends on both currentUser and showIcons
+  ' Refresh cluster visibility: depends on both currentUser and shouldShowIcons
   updateIconVisibility()
 end sub
 
-' Controls icon visibility. Icons require both showIcons=true (set by the active screen)
-' AND a logged-in user. This lets screens opt in (Home) without icons appearing on
-' screens that only set currentUser (for example, Settings).
+' The cluster shows only when the active screen asks for it (shouldShowIcons) AND a user is
+' signed in, so it never appears on a screen that only sets currentUser.
 sub onShouldShowIconsChanged()
   updateIconVisibility()
 end sub
 
 sub updateIconVisibility()
-  shouldShow = m.top.shouldShowIcons and m.top.currentUser <> ""
-  m.searchIcon.visible = shouldShow
-  m.settingsIcon.visible = shouldShow
-
-  if shouldShow
-    positionOverhangIcons()
-  end if
+  m.cluster.visible = m.top.shouldShowIcons and m.top.currentUser <> ""
+  layout()
 end sub
 
 ' Returns the user dropdown reference for direct focus management by screens
@@ -169,132 +174,51 @@ function getUserDropdown() as object
   return m.userDropdown
 end function
 
-' Returns the search icon reference for focus return observers
-function getSearchIcon() as object
-  return m.searchIcon
+' Returns the view strip, for a screen's focus bookkeeping
+function getViewStrip() as object
+  return m.viewStrip
 end function
 
-' Returns the settings icon reference for focus return observers
-function getSettingsIcon() as object
-  return m.settingsIcon
+' The cluster icon for an entry id, for a screen's focus-return observers
+function getIcon(id as string) as object
+  return m.cluster.callFunc("getIcon", id)
 end function
 
-' Proxies icon selectedAction to the overhang-level iconAction field
-sub onIconAction(msg as object)
-  node = msg.getRoSGNode()
-  m.top.iconAction = node.actionId
+' Proxies a cluster press to the overhang-level iconAction field
+sub onIconAction()
+  m.top.iconAction = m.cluster.selectedAction
 end sub
 
 ' ============================================
-' FOCUS BRIDGING: TAB BAR <-> ICONS <-> DROPDOWN
+' FOCUS BRIDGING: VIEW STRIP <-> DROPDOWN <-> CLUSTER
 ' ============================================
-' Focus chain (left to right): TabBar, Search, Settings, Dropdown
-' Wraps: TabBar LEFT at first tab goes to Dropdown, Dropdown RIGHT goes to TabBar first tab
+' One row, left to right: strip, dropdown, cluster. Each hands focus to its visible
+' neighbor and stops at the ends: nothing wraps.
 
-' Called when tab bar signals at its boundary: route into the icon/dropdown chain.
-sub onTabBarRequestsUserMenu()
-  direction = m.tabBar.requestFocusToUserMenu
-
-  if direction = "right"
-    ' Last tab to next element rightward: search icon (or dropdown if icons hidden)
-    if m.searchIcon.visible
-      m.searchIcon.setFocus(true)
-    else if isValid(m.userDropdown) and m.userDropdown.visible
-      m.userDropdown.setFocus(true)
-    else
-      ' Nothing to the right: wrap to first tab
-      m.tabBar.focusedTabIndex = 0
-    end if
-  else if direction = "left"
-    ' First tab wraps to rightmost element: dropdown (or settings/search if dropdown hidden)
-    if isValid(m.userDropdown) and m.userDropdown.visible
-      m.userDropdown.setFocus(true)
-    else if m.settingsIcon.visible
-      m.settingsIcon.setFocus(true)
-    else if m.searchIcon.visible
-      m.searchIcon.setFocus(true)
-    else
-      ' Nothing: wrap to last tab
-      tabCount = m.tabBar.findNode("tabContainer").getChildCount()
-      m.tabBar.focusedTabIndex = tabCount - 1
-    end if
+sub onStripFocusExit()
+  if m.viewStrip.requestFocusExit <> "right" then return
+  if m.userDropdown.visible
+    m.userDropdown.setFocus(true)
+  else if m.cluster.visible
+    m.cluster.callFunc("focusEdge", "left")
   end if
 end sub
 
-' Called when search icon signals LEFT or RIGHT exit
-sub onSearchIconRequestsFocusExit()
-  direction = m.searchIcon.requestFocusExit
-
-  if direction = "left"
-    ' Search, left: tab bar last tab (or wrap to dropdown if no tabs)
-    if isValid(m.tabBar) and m.tabBar.visible
-      tabCount = m.tabBar.findNode("tabContainer").getChildCount()
-      m.tabBar.focusedTabIndex = tabCount - 1
-      m.tabBar.setFocus(true)
-    else if isValid(m.userDropdown) and m.userDropdown.visible
-      m.userDropdown.setFocus(true)
-    else if m.settingsIcon.visible
-      m.settingsIcon.setFocus(true)
-    end if
-  else if direction = "right"
-    ' Search, right: settings icon
-    if m.settingsIcon.visible
-      m.settingsIcon.setFocus(true)
-    else if isValid(m.userDropdown) and m.userDropdown.visible
-      m.userDropdown.setFocus(true)
-    end if
-  end if
-end sub
-
-' Called when settings icon signals LEFT or RIGHT exit
-sub onSettingsIconRequestsFocusExit()
-  direction = m.settingsIcon.requestFocusExit
-
-  if direction = "left"
-    ' Settings, left: search icon
-    if m.searchIcon.visible
-      m.searchIcon.setFocus(true)
-    else if isValid(m.tabBar) and m.tabBar.visible
-      tabCount = m.tabBar.findNode("tabContainer").getChildCount()
-      m.tabBar.focusedTabIndex = tabCount - 1
-      m.tabBar.setFocus(true)
-    end if
-  else if direction = "right"
-    ' Settings, right: dropdown
-    if isValid(m.userDropdown) and m.userDropdown.visible
-      m.userDropdown.setFocus(true)
-    else if isValid(m.tabBar) and m.tabBar.visible
-      m.tabBar.focusedTabIndex = 0
-      m.tabBar.setFocus(true)
-    end if
-  end if
-end sub
-
-' Called when user dropdown signals LEFT or RIGHT exit
-sub onUserDropdownRequestsTabs()
+sub onUserDropdownFocusExit()
   direction = m.userDropdown.requestFocusExit
-
   if direction = "left"
-    ' Dropdown, left: settings icon (or search, or tab bar)
-    if m.settingsIcon.visible
-      m.settingsIcon.setFocus(true)
-    else if m.searchIcon.visible
-      m.searchIcon.setFocus(true)
-    else if isValid(m.tabBar) and m.tabBar.visible
-      tabCount = m.tabBar.findNode("tabContainer").getChildCount()
-      m.tabBar.focusedTabIndex = tabCount - 1
-      m.tabBar.setFocus(true)
-    end if
+    if m.viewStrip.visible then m.viewStrip.callFunc("focusEdge", "right")
   else if direction = "right"
-    ' Dropdown, right: wrap to tab bar first tab (or search if no tabs)
-    if isValid(m.tabBar) and m.tabBar.visible
-      m.tabBar.focusedTabIndex = 0
-      m.tabBar.setFocus(true)
-    else if m.searchIcon.visible
-      m.searchIcon.setFocus(true)
-    else if m.settingsIcon.visible
-      m.settingsIcon.setFocus(true)
-    end if
+    if m.cluster.visible then m.cluster.callFunc("focusEdge", "left")
+  end if
+end sub
+
+sub onClusterFocusExit()
+  if m.cluster.requestFocusExit <> "left" then return
+  if m.userDropdown.visible
+    m.userDropdown.setFocus(true)
+  else if m.viewStrip.visible
+    m.viewStrip.callFunc("focusEdge", "right")
   end if
 end sub
 
@@ -303,79 +227,55 @@ end sub
 ' ============================================
 
 ' Observer for the isClockVisible interface field. Toggles the clock's visibility
-' and repositions the user dropdown so the right-edge chrome still lines up.
-' Replaces the older imperative hideClock() function so every screen uses the
-' same field-assignment pattern for overhang chrome customization.
+' and lays the row out again so the right-edge chrome still lines up.
 sub isClockVisibleChanged()
   visible = m.top.isClockVisible
   if isValid(m.clock) then m.clock.visible = visible
   m.isClockHidden = not visible
-  positionUserDropdown()
+  layout()
 end sub
 
-' Repositions the dropdown when its trigger button width changes.
-' Only matters when clock is hidden (right-aligned mode), since
-' the left-aligned default position doesn't depend on trigger width.
-sub onDropdownTriggerWidthChanged()
-  if m.isClockHidden
-    positionUserDropdown()
+sub onLayoutInputChanged()
+  layout()
+end sub
+
+' Places the row from both edges in. From the left: the strip (or the title) at the logo's
+' right, the title after the strip. From the right: the cluster against the clock's slot
+' (or the safe edge with the clock hidden), the dropdown before the cluster. The title takes
+' what is left between, and scrolls when the text is longer.
+sub layout()
+  if not isValid(m.viewStrip) or not isValid(m.cluster) or not isValid(m.userDropdown) then return
+
+  stripX = OVERHANG_LEFT
+  if isValid(m.logo) then stripX = STRIP_X_WITH_LOGO
+  m.viewStrip.translation = [stripX, m.rowY]
+
+  titleX = stripX
+  if m.viewStrip.visible and m.viewStrip.barWidth > 0 then titleX = stripX + m.viewStrip.barWidth + ELEMENT_GAP
+
+  rightEdge = OVERHANG_RIGHT - CLOCK_SLOT
+  if m.isClockHidden then rightEdge = OVERHANG_RIGHT
+
+  leftOfCluster = rightEdge
+  if m.cluster.visible
+    clusterX = rightEdge - m.cluster.barWidth
+    m.cluster.translation = [clusterX, m.rowY]
+    leftOfCluster = clusterX - ELEMENT_GAP
   end if
-end sub
 
-' Positions the user dropdown in the overhang.
-' When the clock is visible, the dropdown is left-aligned at x=1450 (its original position).
-' When the clock is hidden, the dropdown is right-aligned so its right edge meets the
-' 5% action-safe boundary (x=1824), matching where the clock's right edge sits.
-sub positionUserDropdown()
-  if not isValid(m.userDropdown) then return
-
-  dropdownPadding = m.userDropdown.padding
-  yPos = 54 - dropdownPadding
-
-  if m.isClockHidden
-    ' Right-align: position so the trigger button's right edge lands at x=1824.
-    ' triggerWidth includes padding on both sides, so the full button ends at 1824.
+  leftOfDropdown = leftOfCluster
+  if m.userDropdown.visible
     triggerWidth = m.userDropdown.triggerWidth
-    if triggerWidth > 0
-      xPos = 1824 - triggerWidth - dropdownPadding
-    else
-      ' Trigger hasn't rendered yet: use default position; will reposition on triggerWidth change
-      xPos = 1450 - dropdownPadding
-    end if
-  else
-    xPos = 1450 - dropdownPadding
+    if triggerWidth <= 0 then triggerWidth = DROPDOWN_PROVISIONAL_WIDTH
+    dropdownX = leftOfCluster - triggerWidth
+    m.userDropdown.translation = [dropdownX, m.rowY]
+    leftOfDropdown = dropdownX - ELEMENT_GAP
   end if
 
-  m.userDropdown.translation = [xPos, yPos]
-
-  ' Reposition icons relative to the dropdown whenever it moves
-  if m.searchIcon.visible
-    positionOverhangIcons()
-  end if
-end sub
-
-' Positions the search and settings icons to the left of the user dropdown
-' with equal spacing between all three elements (search, settings, dropdown).
-sub positionOverhangIcons()
-  if not isValid(m.searchIcon) or not isValid(m.settingsIcon) then return
-  if not isValid(m.userDropdown) then return
-
-  iconSize = 66 ' Must match OVERHANG_ICON_SIZE in JROverhangIcon.bs
-  gap = 24 ' Equal spacing between elements
-
-  ' Anchor from the dropdown's visible left edge.
-  ' The dropdown's translation already includes its own padding offset
-  ' (set by positionUserDropdown), and the buttonBackground starts at [0,0]
-  ' within the dropdown, so translation[0] IS the visible button edge.
-  dropdownX = m.userDropdown.translation[0]
-  dropdownPadding = m.userDropdown.padding
-  yPos = 54 - dropdownPadding ' Aligns with dropdown (54 is the overhang baseline)
-
-  settingsX = dropdownX - gap - iconSize
-  searchX = settingsX - gap - iconSize
-
-  m.settingsIcon.translation = [settingsX, yPos]
-  m.searchIcon.translation = [searchX, yPos]
+  m.title.translation = [titleX, TITLE_Y]
+  titleWidth = leftOfDropdown - titleX
+  if titleWidth < TITLE_MIN_WIDTH then titleWidth = TITLE_MIN_WIDTH
+  m.title.maxWidth = titleWidth
 end sub
 
 ' component boolean field isVisible has changed value
@@ -384,21 +284,16 @@ sub onIsLogoVisibleChanged()
     if not isValid(m.logo)
       m.logo = m.logoPoster
       m.top.appendChild(m.logoPoster)
-
-      m.title.translation = [360, 51]
-      m.title.maxWidth = 300
     end if
   else
     ' remove the logo
     if isValid(m.logo)
       m.top.removeChild(m.logo)
       m.logo = invalid
-      m.title.translation = [96, 51]
-      m.title.maxWidth = 1560
     end if
   end if
 
-  positionTabBar()
+  layout()
 end sub
 
 ' Create and return a logo poster node
@@ -414,96 +309,43 @@ function createLogoPoster()
 end function
 
 ' ============================================
-' TAB BAR
+' VIEW STRIP
 ' ============================================
 
-' onTabsChanged: Swaps between title label and tab bar.
-' Empty/invalid tabs restores the title label; non-empty creates a JRTabBar.
+' The active screen's views. Empty hides the strip, and the title takes its place.
 sub onTabsChanged()
   tabs = m.top.tabs
-
   if not isValidAndNotEmpty(tabs)
-    ' No tabs: hide the tab bar (preserve it for instant reuse on return)
-    ' and restore the title label
-    if isValid(m.tabBar)
-      m.tabBar.unobserveField("isReady") ' cancel any pending ready observer before restoring title
-      m.tabBar.visible = false
-    end if
-    m.title.visible = true
+    m.viewStrip.entries = []
+    m.viewStrip.visible = false
+    layout()
     return
   end if
 
-  if not isValid(m.tabBar)
-    m.tabBar = CreateObject("roSGNode", "JRTabBar")
-    m.tabBar.observeField("selectedTabId", "onTabBarSelectionChanged")
-    m.tabBar.observeField("requestFocusToUserMenu", "onTabBarRequestsUserMenu")
-    m.top.appendChild(m.tabBar)
+  ' The selection first, so the strip draws the right glyph as it builds
+  if isValidAndNotEmpty(m.top.selectedTabId) and m.viewStrip.selectedId <> m.top.selectedTabId
+    m.viewStrip.selectedId = m.top.selectedTabId
   end if
+  m.viewStrip.entries = tabs
+  m.viewStrip.visible = true
+  layout()
+end sub
 
-  ' Set up focus bridging between tab bar and dropdown
-  if isValid(m.userDropdown)
-    m.userDropdown.unobserveField("requestFocusExit") ' prevent stacking
-    m.userDropdown.observeField("requestFocusExit", "onUserDropdownRequestsTabs")
-  end if
-
-  m.tabBar.visible = true
-  positionTabBar()
-
-  ' Sync current selection before setting tabs (so the correct tab starts selected)
-  if isValidAndNotEmpty(m.top.selectedTabId)
-    m.tabBar.selectedTabId = m.top.selectedTabId
-  end if
-
-  m.tabBar.tabs = tabs
-
-  ' After setting tabs, check if they were preserved (return path) or rebuilt (init).
-  ' Preserved tabs are already sized, so hide title instantly.
-  ' Rebuilt tabs need render tracking, so keep title visible until ready.
-  if m.tabBar.isReady
-    m.title.visible = false
-  else
-    m.tabBar.unobserveField("isReady") ' prevent stacking duplicate observers on rapid tab changes
-    m.tabBar.observeField("isReady", "onTabBarReady")
+' The controller writes the active view's selection here (and reads a viewer's pick back).
+sub onSelectedTabIdChanged()
+  id = m.top.selectedTabId
+  if isValidAndNotEmpty(id) and m.viewStrip.selectedId <> id
+    m.viewStrip.selectedId = id
   end if
 end sub
 
-' Called when newly created tabs finish sizing. Swaps the title for the
-' fully-formed tab bar in a single frame: no blank gap or sizing dance.
-sub onTabBarReady()
-  if isValid(m.tabBar)
-    m.tabBar.unobserveField("isReady")
-  end if
-  m.title.visible = false
-end sub
-
-' Positions the tab bar so tab text aligns with where the title label sits.
-' TextButton adds padding around the text, so we offset the tab bar to compensate.
-sub positionTabBar()
-  if not isValid(m.tabBar) then return
-
-  tabPadding = 30 ' Must match JRTab's padding value
-  fontSize = m.global.constants.fontSizeLarge
-  buttonHeight = int(fontSize * 0.7) + (tabPadding * 2)
-  yOffset = int((buttonHeight - fontSize) / 2.0)
-
-  if isValid(m.logo)
-    m.tabBar.translation = [360 - tabPadding, 51 - yOffset]
-  else
-    m.tabBar.translation = [96 - tabPadding, 51 - yOffset]
+' A viewer pressed a view: proxy it to selectedTabId, which JRScene writes back to the view.
+sub onStripSelectionChanged()
+  id = m.viewStrip.selectedId
+  if isValidAndNotEmpty(id) and m.top.selectedTabId <> id
+    m.top.selectedTabId = id
   end if
 end sub
-
-' Proxy tab bar selection changes to the overhang's selectedTabId field
-sub onTabBarSelectionChanged()
-  if isValid(m.tabBar)
-    m.top.selectedTabId = m.tabBar.selectedTabId
-  end if
-end sub
-
-' Returns the tab bar node reference for direct focus management by screens
-function getTabBar() as object
-  return m.tabBar
-end function
 
 sub resetTime()
   if isValid(m.clock)

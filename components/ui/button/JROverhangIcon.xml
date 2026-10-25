@@ -9,6 +9,9 @@
     <!-- Input -->
     <field id="icon" type="string" onChange="onIconChanged" />
     <field id="actionId" type="string" />
+    <!-- A disabled icon keeps focus and still fires selectedAction (the press explains
+         why it is disabled); it only draws in the error color. -->
+    <field id="isDisabled" type="boolean" value="false" onChange="onIsDisabledChanged" />
 
     <!-- Output -->
     <field id="selectedAction" type="string" alwaysNotify="true" />
