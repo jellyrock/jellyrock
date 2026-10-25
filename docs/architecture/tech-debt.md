@@ -672,6 +672,12 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: The prod config leaves out six plugins the dev config runs (`brighterscript-xml-plugin`, `callfunc-interface`, `button-row-bracket`, `field-observer-wiring`, `register-once-observer`, `dead-code`) with no recorded reason. `validate` still runs them on every PR, so nothing slips today; the gap is a silent carve-out.
 - **direction**: Record why (most likely: lint-only plugins change nothing in a prod build) as a decision, or add them to match.
 
+#### `bare-router-navigate-calls-skip-refusal-retry`
+
+- **area**: `components/ItemDetails.bs`, `components/ItemGrid/BaseGridView.bs`, `components/search/SearchScreen.bs`, `components/home/Home.bs` (the voice-search and item-open `sgrouter.navigateTo` calls)
+- **issue**: `JRScene.navigateThenFocus` retries a navigation the router refused as "already in progress" (decision `refused-navigation-retried-on-message`). Home's search and settings actions use it through `routerNavigate`. The other direct `sgrouter.navigateTo` calls do not, so a press that lands before the previous navigation ends can still be lost, and most of those calls do not log the rejection either.
+- **direction**: Route them through `routerNavigate`, or give them a shared wrapper. Check first whether any of those screens can be pressed in the window after Back: only Home's overhang has been seen to hit it.
+
 ## Recently removed: don't go searching for these
 
 - **`scenemanager-stack-unbounded`**, **`printregistry-on-startup`**, **`selecteditem-bubbling-implicit`**, **`changelog-syncer-mixes-validate-mutate`**, **`make-npm-overlap`** and **`trickplay-prefetch-hardcoded`**: retired 2026-10-11 because their premises no longer held.
